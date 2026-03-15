@@ -1,0 +1,64 @@
+1. Core Video Workflow (No External Storage)
+Local Storage: Use Replit’s built-in storage to handle video uploads. Create a directory structure for uploads/raw, uploads/srt, and uploads/exports.
+
+Transcription: Integrate the OpenAI Whisper API. Use Replit’s managed AI credits/environment variables for authentication.
+
+FFmpeg Rendering Engine:, use FFmpeg installed on the Replit server to "burn" subtitles into the video.
+
+Implement a function that takes an .mp4 and an .srt and outputs a captioned video.
+
+Style Switcher: Allow users to choose Font, Color (Hex), and Size. These must be passed as arguments to the FFmpeg filter string.
+
+Dual-Rendering Logic: * Preview: Show a low-resolution (480p) quick render for the user to see their style changes.
+
+Final Export: Only perform the high-resolution, high-quality FFmpeg render when the user clicks the "Export" button.
+
+2. Razorpay & Subscription Logic
+Payment Gateway: Integrate the Razorpay Python SDK.
+
+Plans:
+
+Plan A (Weekly): ₹99 for 7 Export Credits (Valid for 7 days).
+
+Plan B (Monthly Pro): ₹199 for 30 Export Credits (Valid for 30 days).
+
+Credit System: * Store credits_remaining and subscription_expiry in the PostgreSQL database.
+
+Deduct 1 credit only upon a successful "Final Export."
+
+Safety Rule: Implement a 24-hour cap. No user can export more than 5 videos in a rolling 24-hour window to prevent system abuse.
+
+3. The "Janitor" Cleanup Task
+Implement a background cron job (APScheduler) that runs every 10 minutes.
+
+Rules:
+
+Delete all files (raw and export) 30 minutes after a user clicks "Download."
+
+Delete all files 60 minutes after user inactivity (if no download occurred).
+
+The SRT file can be kept for 24 hours (minimal space) to allow re-styling without re-transcribing.
+
+4. UI/UX Requirements
+Dashboard: A modern, dark-themed React UI.
+
+Components: * Video Uploader with progress bar.
+
+Live Preview Player.
+
+Style Sidebar (Font selection, Color picker, Size slider).
+
+"Credits Remaining" badge (e.g., 24/30).
+
+History Tab: Show the last 5 videos generated with a "Download" button (display a countdown timer until they are deleted).
+
+Audio Extraction: Extract the audio locally on Base44 (if possible) or via FFmpeg on the VPS before sending to gpt4o to reduce bandwidth.
+Webhook Security: Ensure the VPS-to-Base44 webhook uses a Secret Header so users can't "fake" a successful render to bypass limits.
+Low-Res Preview: They show the user a 480p preview (which is free/cheap to render).
+High-Res Export: They only trigger the expensive render when the user actually hits "Download."
+
+
+5. Initial Setup
+Ensure the app is "Always On" using Replit Core settings.
+
+Setup environment variables for OPENAI_API_KEY, RAZORPAY_KEY_ID, and RAZORPAY_KEY_SECRET. 

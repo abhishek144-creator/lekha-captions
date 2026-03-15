@@ -1,0 +1,1419 @@
+/*
+  LEKHA — CAPTION TEMPLATES
+  Word states:
+    .word           = not yet spoken (inactive, dim)
+    .word.active    = spoken (stays highlighted after highlight passes)
+    .word.current   = the single currently spoken word (for moving effects)
+    .word.imp       = important word (auto-detected or manual)
+*/
+
+/* ── KEYFRAMES ── */
+@keyframes riseIn {
+   0% {
+      opacity: 0;
+      transform: translateY(12px)
+   }
+
+   100% {
+      opacity: 1;
+      transform: translateY(0)
+   }
+}
+
+@keyframes wipeIn {
+   0% {
+      clip-path: inset(0 100% 0 0)
+   }
+
+   100% {
+      clip-path: inset(0 0 0 0)
+   }
+}
+
+@keyframes fadeUp {
+   0% {
+      opacity: 0;
+      transform: translateY(14px)
+   }
+
+   100% {
+      opacity: 1;
+      transform: translateY(0)
+   }
+}
+
+@keyframes echoIn {
+   0% {
+      opacity: 0;
+      transform: scale(.95)
+   }
+
+   100% {
+      opacity: 1;
+      transform: scale(1)
+   }
+}
+
+@keyframes flickerOn {
+   0% {
+      opacity: 0
+   }
+
+   8% {
+      opacity: 1
+   }
+
+   10% {
+      opacity: .15
+   }
+
+   13% {
+      opacity: .9
+   }
+
+   15% {
+      opacity: .2
+   }
+
+   20%,
+   100% {
+      opacity: 1
+   }
+}
+
+/* ── BASE WORD ── */
+[class*="t-"] .word {
+   display: inline-block;
+   margin: 2px 4px;
+   position: relative;
+   transition: color .12s ease, background .12s ease, filter .12s ease,
+      text-shadow .12s ease, border-color .12s ease,
+      opacity .12s ease, -webkit-text-stroke .12s ease;
+}
+
+
+/* ══════════════════════════════════════════
+   1. 3D Shadow  (id: 109)
+══════════════════════════════════════════ */
+.t-109 .cap-text {
+   font-weight: 900;
+   font-size: 26px
+}
+
+.t-109 .word {
+   color: #FFFFFF !important;
+   text-shadow: none !important;
+   filter: none !important;
+   -webkit-filter: none !important;
+   -webkit-text-stroke: 0 !important;
+}
+
+.t-109 .word.active {
+   color: var(--template-primary, #fff) !important;
+   text-shadow: 3px 3px 0 var(--template-secondary, rgba(255, 69, 0, .4)) !important
+}
+
+.t-109 .word.current {
+   text-shadow: 3px 3px 0 var(--template-secondary, #FF4500) !important
+}
+
+.t-109 .word.imp.active {
+   color: var(--template-highlight, #FFE600) !important;
+   text-shadow: 3px 3px 0 var(--template-secondary, #FF4500) !important
+}
+
+/* ══════════════════════════════════════════
+   2. Bold Stroke  (id: 26)
+══════════════════════════════════════════ */
+.t-26 .bg {
+   background: #e8e8e8
+}
+
+.t-26 .cap-text {
+   font-weight: 900;
+   text-transform: uppercase;
+   font-size: 28px;
+   letter-spacing: .05em
+}
+
+.t-26 .word {
+   color: rgba(0, 0, 0, .25) !important
+}
+
+.t-26 .word.active {
+   color: #000 !important;
+   -webkit-text-stroke: 1px #000 !important;
+   text-shadow: 3px 3px 0 rgba(255, 32, 88, .4) !important
+}
+
+.t-26 .word.current {
+   text-shadow: 3px 3px 0 #ff2058 !important
+}
+
+.t-26 .word.imp.active {
+   color: #ff2058 !important;
+   -webkit-text-stroke: 1px #000 !important;
+   text-shadow: 3px 3px 0 #000 !important
+}
+
+/* ══════════════════════════════════════════
+   4. Clarity  (id: 102)
+══════════════════════════════════════════ */
+.t-102 .bg {
+   background: #ffffff
+}
+
+.t-102 .cap-text {
+   font-weight: 800;
+   font-size: 22px;
+   background: var(--template-bg, #FFFFFF);
+   padding: 10px 20px;
+   border-radius: 10px;
+   box-shadow: 0 4px 14px rgba(0, 0, 0, .18)
+}
+
+.t-102 .word {
+   color: #888 !important
+}
+
+.t-102 .word.active {
+   color: #000 !important
+}
+
+.t-102 .word.imp.active {
+   color: #b07d00 !important
+}
+
+/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════
+   5. Color Flash
+══════════════════════════════════════════ */
+.t-36 .cap-text {
+   font-weight: 900;
+   font-size: 26px
+}
+
+.t-36 .word {
+   color: #1F2022 !important;
+   text-shadow: none !important;
+   filter: none
+}
+
+.t-36 .word.active {
+   color: var(--template-primary, #fff) !important;
+   filter: none
+}
+
+.t-36 .word.current {
+   color: var(--template-secondary, #00ffb3) !important;
+   filter: drop-shadow(2px 2px 0 rgba(0, 0, 0, .9))
+}
+
+.t-36 .word.imp.active {
+   color: var(--template-highlight, #FFE600) !important
+}
+
+/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════
+   6. Daze
+══════════════════════════════════════════ */
+.t-105 .cap-text {
+   font-weight: 800;
+   font-size: 24px
+}
+
+.t-105 .word {
+   color: rgba(255, 255, 255, 0) !important;
+   -webkit-text-stroke: 0 !important;
+   paint-order: stroke fill;
+   filter: none
+}
+
+.t-105 .word.active {
+   color: var(--template-primary, #fff) !important;
+   -webkit-text-stroke: 1px #000 !important;
+   paint-order: stroke fill;
+   filter: drop-shadow(2px 2px 2px rgba(0, 0, 0, .8))
+}
+
+.t-105 .word.current {
+   color: var(--template-highlight, #FFE600) !important
+}
+
+.t-105 .word.imp.current {
+   color: var(--template-highlight, #FFE600) !important
+}
+
+/* ══════════════════════════════════════════
+   7. Fire Words  (id: 9)
+══════════════════════════════════════════ */
+.t-9 .bg {
+   background: radial-gradient(ellipse at bottom, rgba(100, 20, 0, .4), #000)
+}
+
+.t-9 .cap-text {
+   font-weight: 900;
+   font-size: 26px;
+   text-transform: uppercase
+}
+
+.t-9 .word {
+   color: rgba(200, 80, 20, .4) !important;
+   text-shadow: none !important
+}
+
+.t-9 .word.active {
+   color: rgba(200, 80, 20, .85) !important
+}
+
+.t-9 .word.current {
+   color: #ff8c00 !important;
+   text-shadow: 0 0 12px #ff4500, 0 0 28px #ff2000 !important
+}
+
+.t-9 .word.imp.active {
+   color: var(--template-highlight, #FFE600) !important
+}
+
+/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════
+   9. Ghost Echo
+══════════════════════════════════════════ */
+.t-124 .cap-text {
+   font-weight: 900;
+   font-size: 26px
+}
+
+.t-124 .word {
+   color: rgba(255, 255, 255, 0) !important;
+   text-shadow: none !important
+}
+
+.t-124 .word.active {
+   color: var(--template-primary, #fff) !important;
+   text-shadow: none !important
+}
+
+.t-124 .word.current {
+   color: var(--template-primary, #fff) !important;
+   animation: echoIn .22s ease-out both;
+   text-shadow: 4px 4px 0 rgba(255, 255, 255, .32), 8px 8px 0 rgba(255, 255, 255, .14) !important
+}
+
+.t-124 .word.imp.active {
+   color: var(--template-highlight, #FFE600) !important
+}
+
+.t-124 .word.imp.current {
+   text-shadow: 4px 4px 0 rgba(255, 210, 0, .28) !important
+}
+
+/* ══════════════════════════════════════════
+   10. Ghost Focus  (id: 16)
+══════════════════════════════════════════ */
+.t-16 .cap-text {
+   font-weight: 700;
+   font-size: 24px;
+   font-style: italic
+}
+
+.t-16 .word {
+   color: rgba(255, 255, 255, .35) !important;
+   filter: blur(2px)
+}
+
+.t-16 .word.active {
+   color: rgba(255, 255, 255, .85) !important;
+   filter: blur(0)
+}
+
+.t-16 .word.current {
+   color: var(--template-primary, #fff) !important;
+   filter: blur(0);
+   text-shadow: 0 0 14px rgba(255, 255, 255, .5) !important
+}
+
+.t-16 .word.imp.active {
+   color: var(--template-highlight, #FFE600) !important;
+   filter: blur(0)
+}
+
+/* ══════════════════════════════════════════
+   11. Glow Dot  (id: 110)
+   Dot moves with current word only
+══════════════════════════════════════════ */
+.t-110 .cap-text {
+   font-weight: 800;
+   font-size: 24px
+}
+
+.t-110 .word {
+   color: rgba(255, 255, 255, .4) !important;
+   position: relative
+}
+
+.t-110 .word.active {
+   color: var(--template-primary, #fff) !important
+}
+
+.t-110 .word.current::after {
+   content: '';
+   position: absolute;
+   bottom: -8px;
+   left: 50%;
+   transform: translateX(-50%);
+   width: 6px;
+   height: 6px;
+   background: var(--template-secondary, #0066FF);
+   border-radius: 50%;
+   box-shadow: 0 0 8px var(--template-secondary, #0066FF)
+}
+
+.t-110 .word.imp.active {
+   color: var(--template-highlight, #FFE600) !important
+}
+
+/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════
+   13. Gradient Box  (id: 119)
+   · Box on CURRENT word only · Imp: yellow box when current, yellow TEXT after
+══════════════════════════════════════════ */
+.t-119 .cap-text {
+   font-weight: 800;
+   font-size: 24px
+}
+
+.t-119 .word {
+   color: rgba(255, 255, 255, .35) !important;
+   margin: 2px 6px;
+   padding: 1px 4px;
+   border-radius: 3px
+}
+
+.t-119 .word.active {
+   color: var(--template-primary, #fff) !important
+}
+
+.t-119 .word.current {
+   color: var(--template-primary, #fff) !important;
+   background: linear-gradient(90deg, #0088FF, #00FFCC) !important;
+   padding: 1px 4px;
+   border-radius: 3px
+}
+
+.t-119 .word.imp.active {
+   color: var(--template-highlight, #FFE600) !important;
+   background: transparent !important;
+   -webkit-text-fill-color: var(--template-highlight, #FFE600) !important
+}
+
+.t-119 .word.imp.current {
+   color: #1a1a1a !important;
+   background: rgba(255, 230, 0, .92) !important;
+   padding: 1px 4px;
+   border-radius: 3px;
+   -webkit-text-fill-color: #1a1a1a !important
+}
+
+/* ══════════════════════════════════════════
+   16. Horror  (id: 12)
+══════════════════════════════════════════ */
+.t-12 .bg {
+   background: #000
+}
+
+.t-12 .cap-text {
+   font-size: 22px
+}
+
+.t-12 .word {
+   color: rgba(180, 0, 0, .35) !important
+}
+
+.t-12 .word.active {
+   color: #c00 !important
+}
+
+.t-12 .word.current {
+   text-shadow: 0 0 18px var(--template-secondary, #c00) !important
+}
+
+.t-12 .word.imp.active {
+   color: var(--template-highlight, #FFE600) !important
+}
+
+/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════
+   17. Iman
+══════════════════════════════════════════ */
+.t-106 .cap-text {
+   font-weight: 800;
+   font-size: 24px
+}
+
+.t-106 .word {
+   color: transparent !important
+}
+
+.t-106 .word.active {
+   color: var(--template-primary, #fff) !important;
+   filter: drop-shadow(1px 2px 3px rgba(0, 0, 0, .8))
+}
+
+.t-106 .word.imp.active {
+   color: var(--template-highlight, #FFE600) !important;
+   filter: drop-shadow(1px 2px 3px rgba(0, 0, 0, .8))
+}
+
+/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════
+   18. Light Streak
+══════════════════════════════════════════ */
+.t-52 .cap-text {
+   font-weight: 900;
+   font-size: 26px
+}
+
+.t-52 .word {
+   color: rgba(255, 255, 255, 0) !important
+}
+
+.t-52 .word.active {
+   color: var(--template-primary, #fff) !important
+}
+
+.t-52 .word.current {
+   animation: riseIn .25s ease-out both
+}
+
+.t-52 .word.imp.active {
+   color: var(--template-highlight, #FFE600) !important
+}
+
+.t-52 .word.imp.current {
+   animation: riseIn .25s ease-out both
+}
+
+/* ══════════════════════════════════════════
+   19. Nightfall  (id: 103)
+══════════════════════════════════════════ */
+.t-103 .cap-text {
+   font-weight: 800;
+   font-size: 22px;
+   background: var(--template-bg, rgba(30, 30, 30, .85));
+   padding: 10px 20px;
+   border-radius: 10px
+}
+
+.t-103 .word {
+   color: rgba(255, 255, 255, .45) !important
+}
+
+.t-103 .word.active {
+   color: var(--template-primary, #fff) !important
+}
+
+.t-103 .word.imp.active {
+   color: var(--template-highlight, #FFE600) !important
+}
+
+/* ══════════════════════════════════════════
+   20. Pink Gradient  (id: 112)
+══════════════════════════════════════════ */
+.t-112 .cap-text {
+   font-weight: 900;
+   font-size: 25px
+}
+
+.t-112 .word {
+   color: rgba(255, 255, 255, .3) !important
+}
+
+.t-112 .word.active {
+   background: linear-gradient(90deg, #FF007F, #FF8E53) !important;
+   -webkit-background-clip: text !important;
+   background-clip: text !important;
+   -webkit-text-fill-color: transparent !important;
+   color: transparent !important
+}
+
+.t-112 .word.imp.active {
+   background: linear-gradient(90deg, var(--template-highlight, #FFE600), #FF007F) !important;
+   -webkit-background-clip: text !important;
+   background-clip: text !important;
+   -webkit-text-fill-color: transparent !important;
+   color: transparent !important
+}
+
+/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════
+   21. Pulse
+══════════════════════════════════════════ */
+.t-104 .cap-text {
+   font-weight: 900;
+   font-size: 26px
+}
+
+.t-104 .word {
+   color: rgba(255, 255, 255, 0) !important;
+   -webkit-text-stroke: 0 !important;
+   paint-order: stroke fill;
+   filter: none
+}
+
+.t-104 .word.active {
+   color: var(--template-primary, #fff) !important;
+   -webkit-text-stroke: 2px var(--template-secondary, #B28DFF) !important;
+   filter: drop-shadow(2px 2px 2px rgba(0, 0, 0, .9))
+}
+
+.t-104 .word.current {
+   filter: drop-shadow(2px 2px 2px rgba(0, 0, 0, .9)) drop-shadow(0 0 6px var(--template-secondary, #B28DFF))
+}
+
+.t-104 .word.imp.active {
+   color: var(--template-highlight, #FFE600) !important;
+   -webkit-text-stroke: 2px var(--template-secondary, #B28DFF) !important
+}
+
+/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════
+   22. Red Tape  (id: 111)
+   · Red box on CURRENT word only · Imp: orange box when current, yellow TEXT after
+══════════════════════════════════════════ */
+.t-111 .cap-text {
+   font-weight: 900;
+   font-size: 22px
+}
+
+.t-111 .word {
+   color: var(--template-primary, #fff) !important;
+   padding: 1px 4px;
+   margin: 2px 8px
+}
+
+.t-111 .word.current {
+   color: var(--template-primary, #fff) !important;
+   background: var(--template-secondary, #E60000) !important;
+   box-shadow: 3px 3px 0 #000;
+   padding: 1px 4px
+}
+
+/* imp.active FIRST (yellow text after passing), then imp.current LAST (box wins when current) */
+.t-111 .word.imp.active {
+   color: var(--template-highlight, #FFE600) !important;
+   background: transparent !important;
+   box-shadow: none
+}
+
+.t-111 .word.imp.current {
+   color: var(--template-primary, #fff) !important;
+   background: #ff6600 !important;
+   box-shadow: 3px 3px 0 #000;
+   padding: 1px 4px
+}
+
+/* ══════════════════════════════════════════
+   23. Sentence Box  (id: T5)
+══════════════════════════════════════════ */
+.t-T5 {
+   display: flex;
+   justify-content: center;
+}
+
+.t-T5 .bg {
+   background: transparent
+}
+
+.t-T5 .cap-text {
+   font-weight: 800;
+   font-style: italic;
+   font-size: 22px;
+   display: inline-block;
+   background: var(--template-bg, #ECF00F);
+   color: #111;
+   border-radius: 10px;
+   padding: 12px 64px;
+   line-height: 1.5;
+   text-align: center;
+}
+
+.t-T5 .word {
+   color: var(--template-primary, #333333) !important;
+   background: transparent !important;
+   padding: 0 2px;
+   transition: none
+}
+
+/* ══════════════════════════════════════════
+   24. Speed Lines  (id: 95)
+══════════════════════════════════════════ */
+.t-95 .cap-text {
+   font-size: 30px;
+   transform: skewX(-12deg)
+}
+
+.t-95 .word {
+   color: rgba(255, 255, 255, .18)
+}
+
+.t-95 .word.active {
+   color: #fff;
+   text-shadow: -3px 0 #0055FF, -7px 0 #00AAFF
+}
+
+.t-95 .word.done {
+   color: #fff
+}
+
+.t-95 .word.imp.active {
+   color: #FFE600
+}
+
+.t-95 .word.imp.done {
+   color: #FFE600
+}
+
+/* ══════════════════════════════════════════
+   25. Stack & Flow  (id: T1)
+══════════════════════════════════════════ */
+.t-T1 .bg {
+   background: linear-gradient(135deg, #0d1b2a, #1b2838)
+}
+
+.t-T1 .cap-text {
+   font-style: italic;
+   font-size: 30px;
+   line-height: 1.4
+}
+
+.t-T1 .word {
+   color: rgba(255, 255, 255, .25) !important;
+   text-shadow: none !important;
+   transform: translateY(6px);
+   opacity: .3;
+   transition: opacity .45s ease, transform .45s ease, color .12s ease !important
+}
+
+.t-T1 .word.active {
+   color: var(--template-primary, #fff) !important;
+   opacity: 1 !important;
+   transform: translateY(0) !important;
+   text-shadow: 0 2px 8px rgba(0, 0, 0, .8) !important
+}
+
+.t-T1 .word.imp.active {
+   color: #cdff00 !important
+}
+
+
+/* ══════════════════════════════════════════
+   28. Study With Me  (id: T4)
+══════════════════════════════════════════ */
+.t-T4 .bg {
+   background: linear-gradient(135deg, #1a0e14, #2a1520)
+}
+
+.t-T4 .cap-text {
+   font-style: italic;
+   font-size: 24px;
+   line-height: 1.8
+}
+
+.t-T4 .word {
+   color: rgba(249, 198, 208, .3) !important
+}
+
+.t-T4 .word.active {
+   color: #f9c6d0 !important;
+   animation: fadeUp .65s ease-out both
+}
+
+.t-T4 .word.imp.active {
+   color: var(--template-primary, #fff) !important
+}
+
+/* ══════════════════════════════════════════
+   29. Underline  (id: 56)
+   · Single underline moves with current word only
+══════════════════════════════════════════ */
+.t-56 .cap-text {
+   font-weight: 900;
+   font-size: 26px
+}
+
+.t-56 .word {
+   color: rgba(255, 255, 255, .3) !important
+}
+
+.t-56 .word.active {
+   color: var(--template-primary, #fff) !important
+}
+
+.t-56 .word.current {
+   border-bottom: 3px solid var(--template-secondary, #0066FF)
+}
+
+.t-56 .word.imp.active {
+   color: var(--template-highlight, #FFE600) !important
+}
+
+.t-56 .word.imp.current {
+   border-bottom: 3px solid var(--template-highlight, #FFE600)
+}
+
+/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════
+   30. Underline Fade
+══════════════════════════════════════════ */
+.t-T3 .bg {
+   background: #0a0a0a
+}
+
+.t-T3 .cap-text {
+   font-weight: 400;
+   font-size: 22px;
+   line-height: 1.8
+}
+
+.t-T3 .word {
+   color: rgba(255, 255, 255, 0) !important
+}
+
+.t-T3 .word.active {
+   color: var(--template-primary, #fff) !important
+}
+
+.t-T3 .word.imp.active {
+   color: var(--template-primary, #fff) !important;
+   border-bottom: 2.5px solid #cdff00;
+   padding-bottom: 2px
+}
+
+/* ══════════════════════════════════════════
+   31. VHS Glitch  (id: 57)
+══════════════════════════════════════════ */
+.t-57 .cap-text {
+   font-weight: 900;
+   font-size: 26px
+}
+
+.t-57 .word {
+   color: rgba(255, 255, 255, .3) !important
+}
+
+.t-57 .word.active {
+   color: var(--template-primary, #fff) !important
+}
+
+.t-57 .word.current {
+   color: var(--template-primary, #fff) !important;
+   animation: flickerOn .18s both;
+   text-shadow: 2px 0 0 #f00, -2px 0 0 #00f !important
+}
+
+.t-57 .word.imp.active {
+   color: var(--template-highlight, #FFE600) !important
+}
+
+/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════
+   32. Wipe Mask
+══════════════════════════════════════════ */
+.t-37 .cap-text {
+   font-weight: 900;
+   font-size: 26px;
+   text-transform: uppercase
+}
+
+.t-37 .word {
+   color: rgba(255, 255, 255, 0) !important
+}
+
+.t-37 .word.active {
+   color: var(--template-primary, #fff) !important;
+   filter: none
+}
+
+.t-37 .word.current {
+   color: #FF2BD6 !important;
+   filter: drop-shadow(2px 2px 0 rgba(0, 0, 0, .9));
+   animation: wipeIn .2s linear both
+}
+
+.t-37 .word.imp.active {
+   color: var(--template-highlight, #FFE600) !important
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   PREMIUM TEMPLATES (P1–P15)  ·  Tab 2
+═══════════════════════════════════════════════════════════════════ */
+
+@keyframes neonPulse {
+
+   0%,
+   100% {
+      text-shadow: 0 0 10px currentColor, 0 0 30px currentColor
+   }
+
+   50% {
+      text-shadow: 0 0 20px currentColor, 0 0 50px currentColor, 0 0 80px currentColor
+   }
+}
+
+@keyframes luxuryFade {
+   0% {
+      opacity: 0;
+      transform: translateY(-3px)
+   }
+
+   100% {
+      opacity: 1;
+      transform: translateY(0)
+   }
+}
+
+@keyframes sprayPaint {
+   0% {
+      opacity: 0;
+      transform: scale(1.3) rotate(-5deg)
+   }
+
+   100% {
+      opacity: 1;
+      transform: scale(1) rotate(0deg)
+   }
+}
+
+@keyframes pixelDrop {
+   0% {
+      transform: translateY(-10px);
+      opacity: 0
+   }
+
+   100% {
+      transform: translateY(0);
+      opacity: 1
+   }
+}
+
+@keyframes zenFade {
+   0% {
+      opacity: 0;
+      letter-spacing: .15em
+   }
+
+   100% {
+      opacity: 1;
+      letter-spacing: .06em
+   }
+}
+
+@keyframes comicSlam {
+   0% {
+      transform: scale(1.8) rotate(-8deg);
+      opacity: 0
+   }
+
+   50% {
+      transform: scale(.9) rotate(2deg)
+   }
+
+   100% {
+      transform: scale(1) rotate(0deg);
+      opacity: 1
+   }
+}
+
+@keyframes typeClick {
+   0% {
+      opacity: 0
+   }
+
+   100% {
+      opacity: 1
+   }
+}
+
+@keyframes sunsetRise {
+   0% {
+      opacity: 0;
+      transform: translateY(8px)
+   }
+
+   100% {
+      opacity: 1;
+      transform: translateY(0)
+   }
+}
+
+@keyframes iceShatter {
+   0% {
+      opacity: 0;
+      transform: scale(1.1)
+   }
+
+   40% {
+      opacity: 1;
+      transform: scale(.97)
+   }
+
+   100% {
+      transform: scale(1)
+   }
+}
+
+@keyframes scholarReveal {
+   0% {
+      opacity: 0;
+      letter-spacing: .1em
+   }
+
+   100% {
+      opacity: 1;
+      letter-spacing: .03em
+   }
+}
+
+@keyframes kpopBounce {
+   0% {
+      transform: scale(0) rotate(-15deg)
+   }
+
+   60% {
+      transform: scale(1.15) rotate(3deg)
+   }
+
+   100% {
+      transform: scale(1) rotate(0)
+   }
+}
+
+@keyframes smokeReveal {
+   0% {
+      opacity: 0;
+      filter: blur(12px)
+   }
+
+   100% {
+      opacity: 1;
+      filter: blur(0)
+   }
+}
+
+@keyframes matrixDrop {
+   0% {
+      opacity: 0;
+      transform: translateY(-15px)
+   }
+
+   100% {
+      opacity: 1;
+      transform: translateY(0)
+   }
+}
+
+@keyframes royalReveal {
+   0% {
+      opacity: 0;
+      transform: scale(.8)
+   }
+
+   50% {
+      transform: scale(1.05)
+   }
+
+   100% {
+      opacity: 1;
+      transform: scale(1)
+   }
+}
+
+@keyframes candyBounce {
+   0% {
+      transform: scale(0) rotate(10deg)
+   }
+
+   50% {
+      transform: scale(1.2) rotate(-3deg)
+   }
+
+   100% {
+      transform: scale(1) rotate(0)
+   }
+}
+
+/* ── P1. Neon Cyber ── */
+.t-p1 .cap-text {
+   font-weight: 700;
+   font-size: 22px;
+   text-transform: uppercase;
+   letter-spacing: .1em
+}
+
+.t-p1 .word {
+   color: rgba(0, 255, 255, .2) !important
+}
+
+.t-p1 .word.active {
+   color: #00FFFF !important;
+   animation: neonPulse 1.2s ease-in-out infinite;
+   text-shadow: 0 0 10px #00FFFF, 0 0 30px #00FFFF, 0 0 60px #0088FF !important
+}
+
+.t-p1 .word.imp.active {
+   color: #FF00FF !important;
+   text-shadow: 0 0 10px #FF00FF, 0 0 30px #FF00FF !important
+}
+
+/* ── P2. Luxury Gold ── */
+.t-p2 .cap-text {
+   font-weight: 600;
+   font-size: 28px;
+   font-style: italic;
+   letter-spacing: .04em
+}
+
+.t-p2 .word {
+   color: rgba(212, 175, 55, .2) !important
+}
+
+.t-p2 .word.active {
+   color: #D4AF37 !important;
+   animation: luxuryFade .4s ease-out both;
+   text-shadow: 0 1px 4px rgba(212, 175, 55, .5) !important
+}
+
+.t-p2 .word.imp.active {
+   color: #FFE8A8 !important;
+   text-shadow: 0 0 12px rgba(255, 232, 168, .6) !important
+}
+
+/* ── P3. Street Graffiti ── */
+.t-p3 .cap-text {
+   font-size: 30px;
+   transform: rotate(-2deg)
+}
+
+.t-p3 .word {
+   color: rgba(255, 255, 255, .2) !important
+}
+
+.t-p3 .word.active {
+   color: #FF3366 !important;
+   animation: sprayPaint .3s ease-out both;
+   text-shadow: 3px 3px 0 #000 !important
+}
+
+.t-p3 .word.imp.active {
+   color: var(--template-highlight, #FFE600) !important;
+   text-shadow: 3px 3px 0 #000 !important
+}
+
+/* ── P4. Retro Pixel ── */
+.t-p4 .cap-text {
+   font-size: 14px;
+   letter-spacing: .02em;
+   line-height: 2
+}
+
+.t-p4 .word {
+   color: rgba(0, 255, 0, .15) !important
+}
+
+.t-p4 .word.active {
+   color: #00FF00 !important;
+   animation: pixelDrop .15s steps(3) both;
+   text-shadow: 2px 2px 0 #005500 !important
+}
+
+.t-p4 .word.imp.active {
+   color: #FFFF00 !important;
+   text-shadow: 2px 2px 0 #555500 !important
+}
+
+/* ── P5. Minimal Zen ── */
+.t-p5 .cap-text {
+   font-weight: 300;
+   font-size: 22px;
+   letter-spacing: .06em
+}
+
+.t-p5 .word {
+   color: rgba(255, 255, 255, .15) !important
+}
+
+.t-p5 .word.active {
+   color: rgba(255, 255, 255, .95) !important;
+   animation: zenFade .5s ease-out both
+}
+
+.t-p5 .word.imp.active {
+   color: #A8E6CF !important
+}
+
+/* ── P6. Comic Pop ── */
+.t-p6 .cap-text {
+   font-weight: 700;
+   font-size: 30px;
+   text-transform: uppercase
+}
+
+.t-p6 .word {
+   color: rgba(255, 255, 255, .15) !important
+}
+
+.t-p6 .word.active {
+   color: var(--template-highlight, #FFE600) !important;
+   animation: comicSlam .25s ease-out both;
+   -webkit-text-stroke: 2.5px #000 !important;
+   paint-order: stroke fill;
+   text-shadow: 4px 4px 0 #FF0000 !important
+}
+
+.t-p6 .word.imp.active {
+   color: #FF3366 !important;
+   -webkit-text-stroke: 2.5px #000 !important;
+   text-shadow: 4px 4px 0 var(--template-highlight, #FFE600) !important
+}
+
+/* ── P7. Typewriter ── */
+.t-p7 .cap-text {
+   font-weight: 400;
+   font-size: 22px
+}
+
+.t-p7 .word {
+   color: rgba(200, 180, 140, .15) !important
+}
+
+.t-p7 .word.active {
+   color: #E8D5B0 !important;
+   animation: typeClick .12s steps(1) both
+}
+
+.t-p7 .word.imp.active {
+   color: #FFE066 !important
+}
+
+/* ── P8. Sunset Blaze ── */
+.t-p8 .cap-text {
+   font-size: 28px;
+   letter-spacing: .03em
+}
+
+.t-p8 .word {
+   color: rgba(255, 100, 50, .15) !important
+}
+
+.t-p8 .word.active {
+   color: #FF6B35 !important;
+   animation: sunsetRise .3s ease-out both;
+   text-shadow: 0 0 15px rgba(255, 107, 53, .7) !important
+}
+
+.t-p8 .word.imp.active {
+   color: #FFD700 !important;
+   text-shadow: 0 0 15px rgba(255, 215, 0, .6) !important
+}
+
+/* ── P9. Ice Crystal ── */
+.t-p9 .cap-text {
+   font-weight: 700;
+   font-size: 26px;
+   text-transform: uppercase;
+   letter-spacing: .08em
+}
+
+.t-p9 .word {
+   color: rgba(135, 206, 235, .15) !important
+}
+
+.t-p9 .word.active {
+   color: #B8E8FC !important;
+   animation: iceShatter .22s ease-out both;
+   text-shadow: 0 0 12px rgba(184, 232, 252, .8) !important;
+   -webkit-text-stroke: 0.5px rgba(255, 255, 255, .5) !important
+}
+
+.t-p9 .word.imp.active {
+   color: #E0F7FF !important;
+   text-shadow: 0 0 20px rgba(224, 247, 255, .8) !important
+}
+
+/* ── P10. Dark Academia ── */
+.t-p10 .cap-text {
+   font-weight: 500;
+   font-size: 26px;
+   font-style: italic;
+   letter-spacing: .03em
+}
+
+.t-p10 .word {
+   color: rgba(139, 115, 85, .2) !important
+}
+
+.t-p10 .word.active {
+   color: #C9A96E !important;
+   animation: scholarReveal .35s ease-out both;
+   text-shadow: 0 2px 6px rgba(0, 0, 0, .6) !important
+}
+
+.t-p10 .word.imp.active {
+   color: #E8D5A8 !important;
+   text-shadow: 0 2px 8px rgba(0, 0, 0, .5) !important
+}
+
+/* ── P11. K-Pop Burst ── */
+.t-p11 .cap-text {
+   font-size: 32px;
+   text-transform: uppercase
+}
+
+.t-p11 .word {
+   color: rgba(255, 255, 255, .15) !important
+}
+
+.t-p11 .word.active {
+   color: #FF69B4 !important;
+   animation: kpopBounce .3s ease-out both;
+   -webkit-text-stroke: 2px #000 !important;
+   paint-order: stroke fill;
+   text-shadow: 3px 3px 0 #7B2FF7 !important
+}
+
+.t-p11 .word.imp.active {
+   color: #00FFCC !important;
+   -webkit-text-stroke: 2px #000 !important;
+   text-shadow: 3px 3px 0 #FF69B4 !important
+}
+
+/* ── P12. Smoke & Mirrors ── */
+.t-p12 .cap-text {
+   font-size: 30px;
+   letter-spacing: .02em
+}
+
+.t-p12 .word {
+   color: rgba(255, 255, 255, .15) !important;
+   filter: blur(4px)
+}
+
+.t-p12 .word.active {
+   color: rgba(255, 255, 255, .95) !important;
+   filter: blur(0);
+   animation: smokeReveal .4s ease-out both;
+   text-shadow: 0 4px 15px rgba(0, 0, 0, .5) !important
+}
+
+.t-p12 .word.imp.active {
+   color: #E8C8FF !important;
+   filter: blur(0);
+   text-shadow: 0 0 15px rgba(232, 200, 255, .5) !important
+}
+
+/* ── P13. Glitch Matrix ── */
+.t-p13 .cap-text {
+   font-size: 20px;
+   letter-spacing: .08em;
+   text-transform: uppercase
+}
+
+.t-p13 .word {
+   color: rgba(0, 255, 65, .15) !important
+}
+
+.t-p13 .word.active {
+   color: #00FF41 !important;
+   animation: matrixDrop .2s ease-out both;
+   text-shadow: 0 0 8px #00FF41, 2px 0 0 #FF0040, -2px 0 0 #0040FF !important
+}
+
+.t-p13 .word.imp.active {
+   color: var(--template-primary, #ffffff) !important;
+   text-shadow: 0 0 10px #fff !important
+}
+
+/* ── P14. Royal Purple ── */
+.t-p14 .cap-text {
+   font-weight: 700;
+   font-size: 24px;
+   letter-spacing: .08em;
+   text-transform: uppercase
+}
+
+.t-p14 .word {
+   color: rgba(147, 112, 219, .15) !important
+}
+
+.t-p14 .word.active {
+   color: #E8D5FF !important;
+   animation: royalReveal .35s ease-out both;
+   text-shadow: 0 0 12px rgba(147, 112, 219, .6) !important;
+   -webkit-text-stroke: 0.5px rgba(212, 175, 55, .4) !important
+}
+
+.t-p14 .word.imp.active {
+   color: #FFD700 !important;
+   text-shadow: 0 0 15px rgba(255, 215, 0, .5) !important
+}
+
+/* ── P15. Candy Pop ── */
+.t-p15 .cap-text {
+   font-weight: 600;
+   font-size: 28px
+}
+
+.t-p15 .word {
+   color: rgba(255, 255, 255, .15) !important
+}
+
+.t-p15 .word.active {
+   color: #FF6FCF !important;
+   animation: candyBounce .3s ease-out both;
+   -webkit-text-stroke: 2px #fff !important;
+   paint-order: stroke fill;
+   text-shadow: 3px 3px 0 #7B2FF7 !important
+}
+
+.t-p15 .word.imp.active {
+   color: var(--template-highlight, #FFE600) !important;
+   -webkit-text-stroke: 2px #fff !important;
+   text-shadow: 3px 3px 0 #FF6FCF !important
+}
+
+/* ══════════════════════════════════════════
+   Green Neon Pulse (id: 115)
+══════════════════════════════════════════ */
+.t-115 .cap-text {
+   font-weight: 900;
+   font-style: italic;
+   font-size: 28px;
+}
+
+.t-115 .word {
+   color: #fff;
+   -webkit-text-stroke: 1.5px #000;
+   paint-order: stroke fill;
+   filter: drop-shadow(2px 2px 0 #000);
+}
+
+.t-115 .cap-text .word.active {
+   color: #39FF14 !important;
+   filter: drop-shadow(2px 2px 0 #000) drop-shadow(0 0 8px rgba(57, 255, 20, .8)) !important;
+}
+
+.t-115 .cap-text .word.done {
+   color: #fff !important;
+   filter: drop-shadow(2px 2px 0 #000) !important;
+}
+
+.t-115 .cap-text .word.imp.active {
+   color: #39FF14 !important;
+   filter: drop-shadow(2px 2px 0 #000) drop-shadow(0 0 8px rgba(57, 255, 20, .8)) !important;
+}
+
+.t-115 .cap-text .word.imp.done {
+   color: #39FF14 !important;
+   filter: drop-shadow(2px 2px 0 #000) drop-shadow(0 0 8px rgba(57, 255, 20, .8)) !important;
+}

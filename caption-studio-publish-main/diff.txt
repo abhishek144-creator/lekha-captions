@@ -1,0 +1,776 @@
+﻿diff --git a/caption-studio-publish-main/src/components/dashboard/TemplatesTab.jsx b/caption-studio-publish-main/src/components/dashboard/TemplatesTab.jsx
+index 7c1c9b8..062e9d0 100644
+--- a/caption-studio-publish-main/src/components/dashboard/TemplatesTab.jsx
++++ b/caption-studio-publish-main/src/components/dashboard/TemplatesTab.jsx
+@@ -1,335 +1,478 @@
+-import React from 'react';
+-import { Button } from '@/components/ui/button';
+-import { Sparkles, Check } from 'lucide-react';
+-import { motion } from 'framer-motion';
++import React, { useState, useEffect, useRef, useCallback } from 'react';
++import { Check, Palette, RotateCcw, Link2, Download, Search, Settings2 } from 'lucide-react';
++import { motion, AnimatePresence } from 'framer-motion';
++import '../../styles/captionTemplates.css';
+ 
++/* ΓöÇΓöÇΓöÇ Template Data ΓöÇΓöÇΓöÇ */
+ const templates = [
+   {
+-    id: 'hormozi_bold',
+-    name: 'Alex Hormozi',
+-    description: 'Bold, yellow/white alternating, heavy stroke.',
+-    preview: '$100M Offers',
+-    style: {
+-      font_family: 'Anton',
+-      font_size: 36,
+-      line_spacing: 1.1,
+-      is_bold: true,
+-      is_caps: true,
+-      text_color: '#ffffff',
+-      highlight_color: '#FFFF00', // Iconic Yellow
+-      has_background: false,
+-      has_shadow: true,
+-      has_stroke: true,
+-      position: 'middle',
+-      position_y: 50,
+-      visual_preset: 'bold_center'
+-    }
++    id: 't-109', name: '3D Shadow', bg: '#1a1a1a', hasBg: false, accent: '#FF4500', wordMode: 'visible',
++    style: { template_id: 't-109', font_family: 'Noto Sans', font_size: 26, font_weight: '900', position_y: 75 }
+   },
+   {
+-    id: 'mr_beast',
+-    name: 'MrBeast',
+-    description: 'High-contrast, fast popping, custom fonts.',
+-    preview: 'I SPENT 50 HRS',
+-    style: {
+-      font_family: 'Bangers',
+-      font_size: 40,
+-      line_spacing: 1.0,
+-      is_bold: true,
+-      is_caps: true,
+-      text_color: '#ffffff',
+-      highlight_color: '#3b82f6', // Cyan/Blue
+-      has_background: false,
+-      has_shadow: true,
+-      has_stroke: true,
+-      position: 'bottom',
+-      position_y: 80,
+-      visual_preset: 'bold_center'
+-    }
++    id: 't-26', name: 'Bold Stroke', bg: '#e8e8e8', hasBg: false, accent: '#ff2058', wordMode: 'visible',
++    style: { template_id: 't-26', font_family: 'Bangers', font_size: 28, position_y: 75 }
+   },
+   {
+-    id: 'ali_abdaal_minimalist',
+-    name: 'Minimalist (Abdaal)',
+-    description: 'Clean Inter, soft shadows, elegant.',
+-    preview: 'Productivity Hacks',
+-    style: {
+-      font_family: 'Inter',
+-      font_size: 20,
+-      line_spacing: 1.4,
+-      is_bold: false,
+-      is_caps: false,
+-      text_color: '#ffffff',
+-      highlight_color: '#facc15',
+-      has_background: false,
+-      has_shadow: true,
+-      has_stroke: false,
+-      position: 'bottom',
+-      position_y: 85,
+-      visual_preset: 'clean_bottom'
+-    }
++    id: 't-102', name: 'Clarity', bg: '#E8E8E8', hasBg: false, accent: '#b07d00', wordMode: 'visible',
++    style: { template_id: 't-102', font_family: 'Noto Sans', font_size: 22, font_weight: '800', position_y: 75 }
+   },
+   {
+-    id: 'viral_hook',
+-    name: 'The Viral Hook',
+-    description: 'Giant text centered on screen, high impact.',
+-    preview: 'WATCH THIS',
+-    style: {
+-      font_family: 'Oswald',
+-      font_size: 44,
+-      line_spacing: 1.0,
+-      is_bold: true,
+-      is_caps: true,
+-      text_color: '#ffffff',
+-      highlight_color: '#FF0000', // Deep red
+-      has_background: true,
+-      background_opacity: 0.9,
+-      background_color: '#000000',
+-      position: 'middle',
+-      position_y: 50,
+-      visual_preset: 'bold_center'
+-    }
++    id: 't-36', name: 'Color Flash', bg: '#111', hasBg: false, accent: '#00ffb3', wordMode: 'one-by-one',
++    style: { template_id: 't-36', font_family: 'Noto Sans', font_size: 26, font_weight: '900', position_y: 75 }
+   },
+   {
+-    id: 'podcast_clip',
+-    name: 'Podcast Clip',
+-    description: 'Two-line standard, clean background box.',
+-    preview: 'Joe Rogan Exp',
+-    style: {
+-      font_family: 'Roboto',
+-      font_size: 24,
+-      line_spacing: 1.3,
+-      is_bold: true,
+-      is_caps: false,
+-      text_color: '#ffffff',
+-      highlight_color: '#22c55e', // Green
+-      has_background: true,
+-      background_opacity: 0.8,
+-      background_color: '#000000',
+-      position: 'bottom',
+-      position_y: 75,
+-      visual_preset: 'subtitle_classic'
+-    }
++    id: 't-105', name: 'Daze', bg: '#111', hasBg: false, accent: '#FFE600', wordMode: 'one-by-one',
++    style: { template_id: 't-105', font_family: 'Noto Sans', font_size: 24, font_weight: '800', position_y: 75 }
+   },
+   {
+-    id: 'gaming_streamer',
+-    name: 'Gaming Streamer',
+-    description: 'Bright neon colors, aggressive animation.',
+-    preview: 'INSANE CLUTCH',
+-    style: {
+-      font_family: 'Montserrat',
+-      font_size: 32,
+-      line_spacing: 1.2,
+-      is_bold: true,
+-      is_caps: true,
+-      text_color: '#ffffff',
+-      highlight_color: '#a855f7', // Purple Neon
+-      has_background: false,
+-      has_shadow: true,
+-      has_stroke: true,
+-      position: 'bottom',
+-      position_y: 80,
+-      visual_preset: 'highlighted_words'
+-    }
++    id: 't-9', name: 'Fire Words', bg: '#1a0500', hasBg: false, accent: '#ff8c00', wordMode: 'visible',
++    style: { template_id: 't-9', font_family: 'Noto Sans', font_size: 26, font_weight: '900', text_case: 'uppercase', position_y: 75 }
+   },
+   {
+-    id: 'corporate_professional',
+-    name: 'Corporate Professional',
+-    description: 'Subtle, elegant, bottom-third placement.',
+-    preview: 'Market Updates',
+-    style: {
+-      font_family: 'Open Sans',
+-      font_size: 18,
+-      line_spacing: 1.5,
+-      is_bold: false,
+-      is_caps: false,
+-      text_color: '#ffffff',
+-      highlight_color: '',
+-      has_background: true,
+-      background_opacity: 0.6,
+-      background_color: '#000000',
+-      position: 'bottom',
+-      position_y: 85,
+-      visual_preset: 'clean_bottom'
+-    }
++    id: 't-124', name: 'Ghost Echo', bg: '#111', hasBg: false, accent: '#fff', wordMode: 'one-by-one',
++    style: { template_id: 't-124', font_family: 'Inter', font_size: 26, font_weight: '900', position_y: 75 }
+   },
+   {
+-    id: 'netflix_doc',
+-    name: 'Netflix Doc',
+-    description: 'Yellow classic subtitles, cinematic.',
+-    preview: '(suspenseful music)',
+-    style: {
+-      font_family: 'Arial',
+-      font_size: 22,
+-      line_spacing: 1.3,
+-      is_bold: false,
+-      is_caps: false,
+-      text_color: '#facc15', // True yellow
+-      highlight_color: '',
+-      has_background: false,
+-      has_shadow: true,
+-      has_stroke: true,
+-      position: 'bottom',
+-      position_y: 85,
+-      visual_preset: 'subtitle_classic'
+-    }
++    id: 't-16', name: 'Ghost Focus', bg: '#111', hasBg: false, accent: '#fff', wordMode: 'visible',
++    style: { template_id: 't-16', font_family: 'Playfair Display', font_size: 24, font_weight: '700', font_style: 'italic', position_y: 75 }
+   },
+   {
+-    id: 'garyvee',
+-    name: 'The "GaryVee"',
+-    description: 'Bold red/white, loud, top/bottom text.',
+-    preview: 'HUSTLE 24/7',
+-    style: {
+-      font_family: 'Impact',
+-      font_size: 38,
+-      line_spacing: 1.1,
+-      is_bold: false,
+-      is_caps: true,
+-      text_color: '#ffffff',
+-      highlight_color: '#ef4444', // Red
+-      has_background: true,
+-      background_opacity: 1,
+-      background_color: '#000000',
+-      position: 'middle',
+-      position_y: 50,
+-      visual_preset: 'bold_center'
+-    }
++    id: 't-110', name: 'Glow Dot', bg: '#111', hasBg: false, accent: '#00FFAA', wordMode: 'visible',
++    style: { template_id: 't-110', font_family: 'Noto Sans', font_size: 24, font_weight: '800', position_y: 75 }
+   },
+   {
+-    id: 'cinematic_clean',
+-    name: 'Cinematic Clean',
+-    description: 'Small font, wide letter spacing, luxury feel.',
+-    preview: 'The journey begins.',
+-    style: {
+-      font_family: 'Playfair Display',
+-      font_size: 16,
+-      line_spacing: 1.6,
+-      is_bold: false,
+-      is_caps: false,
+-      text_color: '#ffffff',
+-      highlight_color: '',
+-      has_background: false,
+-      has_shadow: true,
+-      has_stroke: false,
+-      position: 'bottom',
+-      position_y: 90,
+-      visual_preset: 'clean_bottom'
+-    }
+-  }
++    id: 't-119', name: 'Gradient Box', bg: '#111', hasBg: false, accent: '#0088FF', wordMode: 'visible',
++    style: { template_id: 't-119', font_family: 'Inter', font_size: 24, font_weight: '800', position_y: 75 }
++  },
++  {
++    id: 't-12', name: 'Horror', bg: '#000', hasBg: false, accent: '#c00', wordMode: 'visible',
++    style: { template_id: 't-12', font_family: 'Special Elite', font_size: 22, position_y: 75 }
++  },
++  {
++    id: 't-106', name: 'Iman', bg: '#111', hasBg: false, accent: '#fff', wordMode: 'one-by-one',
++    style: { template_id: 't-106', font_family: 'Noto Sans', font_size: 24, font_weight: '800', position_y: 75 }
++  },
++  {
++    id: 't-52', name: 'Light Streak', bg: '#111', hasBg: false, accent: '#fff', wordMode: 'one-by-one',
++    style: { template_id: 't-52', font_family: 'Inter', font_size: 26, font_weight: '900', position_y: 75 }
++  },
++  {
++    id: 't-103', name: 'Nightfall', bg: '#1e1e1e', hasBg: true, accent: '#fff', wordMode: 'visible',
++    style: { template_id: 't-103', font_family: 'Noto Sans', font_size: 22, font_weight: '800', position_y: 75 }
++  },
++  {
++    id: 't-112', name: 'Pink Gradient', bg: '#111', hasBg: false, accent: '#FF007F', wordMode: 'visible',
++    style: { template_id: 't-112', font_family: 'Noto Sans', font_size: 25, font_weight: '900', position_y: 75 }
++  },
++  {
++    id: 't-104', name: 'Pulse', bg: '#111', hasBg: false, accent: '#B28DFF', wordMode: 'one-by-one',
++    style: { template_id: 't-104', font_family: 'Noto Sans', font_size: 26, font_weight: '900', position_y: 75 }
++  },
++  {
++    id: 't-111', name: 'Block Stamp', bg: '#111', hasBg: false, accent: '#E60000', wordMode: 'visible',
++    style: { template_id: 't-111', font_family: 'Inter', font_size: 22, font_weight: '900', position_y: 75 }
++  },
++  {
++    id: 't-T5', name: 'Sentence Box', bg: '#FFE600', hasBg: true, accent: '#111', wordMode: 'visible',
++    style: { template_id: 't-T5', font_family: 'Montserrat', font_size: 22, font_weight: '800', font_style: 'italic', position_y: 75 }
++  },
++  {
++    id: 't-95', name: 'Speed Lines', bg: '#111', hasBg: false, accent: '#0055FF', wordMode: 'visible',
++    style: { template_id: 't-95', font_family: 'Russo One', font_size: 30, position_y: 75 }
++  },
++  {
++    id: 't-T1', name: 'Stack & Flow', bg: '#0d1b2a', hasBg: false, accent: '#cdff00', wordMode: 'visible',
++    style: { template_id: 't-T1', font_family: 'Playfair Display', font_size: 30, font_style: 'italic', position_y: 75 }
++  },
++  {
++    id: 't-T4', name: 'Study With Me', bg: '#1a0e14', hasBg: false, accent: '#f9c6d0', wordMode: 'visible',
++    style: { template_id: 't-T4', font_family: 'Playfair Display', font_size: 24, font_style: 'italic', position_y: 75 }
++  },
++  {
++    id: 't-56', name: 'Underline', bg: '#111', hasBg: false, accent: '#00ffb3', wordMode: 'visible',
++    style: { template_id: 't-56', font_family: 'Inter', font_size: 26, font_weight: '900', position_y: 75 }
++  },
++  {
++    id: 't-T3', name: 'Underline Fade', bg: '#0a0a0a', hasBg: false, accent: '#cdff00', wordMode: 'one-by-one',
++    style: { template_id: 't-T3', font_family: 'Montserrat', font_size: 22, font_weight: '400', position_y: 75 }
++  },
++  {
++    id: 't-57', name: 'VHS Glitch', bg: '#111', hasBg: false, accent: '#fff', wordMode: 'visible',
++    style: { template_id: 't-57', font_family: 'Inter', font_size: 26, font_weight: '900', position_y: 75 }
++  },
++  {
++    id: 't-37', name: 'Wipe Mask', bg: '#111', hasBg: false, accent: '#FF2BD6', wordMode: 'one-by-one',
++    style: { template_id: 't-37', font_family: 'Inter', font_size: 26, font_weight: '900', text_case: 'uppercase', position_y: 75 }
++  },
+ ];
+ 
++const PREVIEW_WORDS = ['The', 'quick', 'brown', 'fox'];
++
++/* ΓöÇΓöÇΓöÇ Animated Preview Component (Hover Only) ΓöÇΓöÇΓöÇ */
++function AnimatedPreview({ templateId, bg, isHovered }) {
++  const [frame, setFrame] = useState(0);
++
++  useEffect(() => {
++    if (!isHovered) {
++      setFrame(0);
++      return;
++    }
++    const t = setInterval(() => setFrame(f => (f + 1) % 5), 600);
++    return () => clearInterval(t);
++  }, [isHovered]);
++
++  const getWordClass = (idx) => {
++    // We want "The quick" to be active, "quick" to be current+imp if frame points to it
++    // Let's just animate the whole sentence one word at a time if hovered.
++    // If NOT hovered, we want "The quick" to be active, "quick" to be current.
++    const cur = isHovered ? (frame === 4 ? -1 : frame) : 1;
++    let c = 'word';
++    if (idx < cur) c += ' active';
++    if (idx === cur) c += ' active current';
++    if (idx === 1) c += ' imp'; // 'quick' is always important
++    return c;
++  };
++
++  return (
++    <div
++      style={{ backgroundColor: bg, padding: '24px 16px', borderRadius: '8px', minHeight: '80px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}
++      className={`${templateId} transition-colors duration-300 w-full`}
++    >
++      <span className="cap-text" style={{ display: 'inline-flex', gap: '4px', flexWrap: 'wrap', justifyContent: 'center' }}>
++        {PREVIEW_WORDS.map((w, i) => (
++          <span key={i} className={getWordClass(i)}>{w}</span>
++        ))}
++      </span>
++    </div>
++  );
++}
++
++/* ΓöÇΓöÇΓöÇ Color Picker Row ΓöÇΓöÇΓöÇ */
++const ColorRow = ({ label, value, onChange, onReset, defaultVal }) => (
++  <div className="flex items-center justify-between bg-[#1D1E20] border border-[#2A2B2F] rounded-lg px-3 py-2">
++    <span className="text-[13px] font-medium text-gray-300 w-24">{label}</span>
++    <div className="flex items-center gap-3 flex-1 justify-end">
++      <div className="flex items-center gap-2 bg-[#0F0F10] border border-[#2A2B2F] rounded-md px-2 py-1 flex-1 max-w-[140px]">
++        <input
++          type="color"
++          value={value || defaultVal || '#ffffff'}
++          onChange={e => onChange(e.target.value)}
++          className="w-5 h-5 rounded cursor-pointer border-0 p-0 bg-transparent shrink-0"
++        />
++        <span className="text-[#6D6E70] text-[12px] font-mono mr-1">#</span>
++        <span className="text-gray-200 text-[12px] font-mono font-medium truncate uppercase">
++          {(value || defaultVal || '#ffffff').replace('#', '')}
++        </span>
++      </div>
++      <button
++        onClick={onReset}
++        className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-[#2A2B2F] text-gray-400 hover:text-white transition-colors border border-[#2A2B2F]"
++        title={`Reset ${label}`}
++      >
++        <RotateCcw className="w-3.5 h-3.5" />
++      </button>
++    </div>
++  </div>
++);
++
++/* ΓöÇΓöÇΓöÇ Slider Row ΓöÇΓöÇΓöÇ */
++const SliderRow = ({ label, value, min, max, onChange, onReset, defaultVal }) => (
++  <div className="flex items-center justify-between mb-3 last:mb-0">
++    <span className="text-[13px] font-medium text-gray-300 w-24">{label}</span>
++    <div className="flex items-center gap-3 flex-1 justify-end">
++      <input
++        type="range"
++        min={min}
++        max={max}
++        value={value ?? defaultVal}
++        onChange={e => onChange(Number(e.target.value))}
++        className="flex-1 h-1 bg-[#2A2B2F] rounded-full appearance-none accent-white"
++      />
++      <div className="w-14 h-8 flex items-center justify-center bg-[#1D1E20] border border-[#2A2B2F] rounded-md">
++        <span className="text-[12px] font-medium text-white">{value ?? defaultVal}</span>
++      </div>
++    </div>
++  </div>
++);
++
++/* ΓöÇΓöÇΓöÇ Customization Panel ΓöÇΓöÇΓöÇ */
++function CustomizePanel({ template, overrides, onChange }) {
++  const ov = overrides;
++  const set = (key, val) => onChange({ ...ov, [key]: val });
++
++  // Decide which sliders to show based on template properties
++  const showBoxSize = template.id === 't-119' || template.id === 't-111' || template.id === 't-T5';
++  const showStroke = template.id === 't-105' || template.id === 't-104';
++  const showGlow = template.id === 't-110' || template.id === 't-9' || template.id === 't-12' || template.id === 't-109';
++
++  return (
++    <motion.div
++      initial={{ opacity: 0, height: 0 }}
++      animate={{ opacity: 1, height: 'auto' }}
++      exit={{ opacity: 0, height: 0 }}
++      transition={{ duration: 0.2 }}
++      className="overflow-hidden mt-4 pt-4 border-t border-[#2A2B2F]"
++      onClick={e => e.stopPropagation()} // Prevent card click when clicking inside panel
++    >
++      <div className="space-y-5 px-1">
++        {/* Colors Section */}
++        <div>
++          <h4 className="text-[12px] text-gray-400 font-medium mb-3">Colors</h4>
++          <div className="space-y-2">
++            <ColorRow
++              label="Primary"
++              value={ov.fontColor}
++              defaultVal="#ffffff"
++              onChange={v => set('fontColor', v)}
++              onReset={() => set('fontColor', null)}
++            />
++            <ColorRow
++              label="Secondary"
++              value={ov.highlightColor}
++              defaultVal={template.accent || '#FFE600'}
++              onChange={v => set('highlightColor', v)}
++              onReset={() => set('highlightColor', null)}
++            />
++            <ColorRow
++              label="Background"
++              value={ov.bgColor}
++              defaultVal={template.bg || '#111111'}
++              onChange={v => set('bgColor', v)}
++              onReset={() => set('bgColor', null)}
++            />
++          </div>
++        </div>
++
++        {/* Global Sliders (Size, Speed) */}
++        <div>
++          <div className="flex items-center justify-between mb-3">
++            <h4 className="text-[12px] text-gray-400 font-medium">Typography</h4>
++            <div className="flex gap-1.5">
++              <button
++                onClick={() => { set('fontSize', null); set('letterSpacing', null); }}
++                className="w-7 h-7 flex items-center justify-center rounded border border-[#2A2B2F] bg-[#1D1E20] hover:bg-[#2A2B2F] text-gray-400 transition-colors"
++                title="Reset All Typography"
++              >
++                <RotateCcw className="w-3 h-3" />
++              </button>
++            </div>
++          </div>
++          <div className="bg-[#1D1E20] border border-[#2A2B2F] rounded-lg p-3">
++            <SliderRow
++              label="Font Size"
++              value={ov.fontSize}
++              defaultVal={template.style.font_size ?? 24}
++              min={14} max={50}
++              onChange={v => set('fontSize', v)}
++            />
++            <SliderRow
++              label="Tracking"
++              value={ov.letterSpacing}
++              defaultVal={0}
++              min={-2} max={10}
++              onChange={v => set('letterSpacing', v)}
++            />
++          </div>
++        </div>
++
++        {/* Additional Effects Section if applicable */}
++        {(showBoxSize || showStroke || showGlow) && (
++          <div>
++            <div className="flex items-center justify-between mb-3">
++              <h4 className="text-[12px] text-gray-400 font-medium">Effects</h4>
++              <div className="flex gap-1.5">
++                <button
++                  onClick={() => { set('animSpeed', null); set('strokeWidth', null); set('glowIntensity', null); }}
++                  className="w-7 h-7 flex items-center justify-center rounded border border-[#2A2B2F] bg-[#1D1E20] hover:bg-[#2A2B2F] text-gray-400 transition-colors"
++                  title="Reset Effects"
++                >
++                  <RotateCcw className="w-3 h-3" />
++                </button>
++              </div>
++            </div>
++            <div className="bg-[#1D1E20] border border-[#2A2B2F] rounded-lg p-3">
++              <SliderRow
++                label="Speed"
++                value={ov.animSpeed ? Math.round(ov.animSpeed * 10) : 10}
++                defaultVal={10}
++                min={3} max={25}
++                onChange={v => set('animSpeed', v / 10)}
++              />
++              {showStroke && (
++                <SliderRow
++                  label="Stroke Width"
++                  value={ov.strokeWidth ?? 1}
++                  defaultVal={1}
++                  min={0} max={5}
++                  onChange={v => set('strokeWidth', v)}
++                />
++              )}
++              {showGlow && (
++                <SliderRow
++                  label="Glow Intense"
++                  value={ov.glowIntensity ?? 50}
++                  defaultVal={50}
++                  min={0} max={100}
++                  onChange={v => set('glowIntensity', v)}
++                />
++              )}
++            </div>
++          </div>
++        )}
++      </div>
++    </motion.div>
++  );
++}
++
++/* ΓöÇΓöÇΓöÇ Main Component ΓöÇΓöÇΓöÇ */
+ export default function TemplatesTab({ currentStyle, onApplyTemplate }) {
+-  if (!currentStyle || !onApplyTemplate) return null;
++  if (!onApplyTemplate) return null;
++
++  const [hoveredId, setHoveredId] = useState(null);
++  const [overridesMap, setOverridesMap] = useState({});
++
++  const handleClear = useCallback(() => {
++    onApplyTemplate({
++      template_id: '', font_family: 'Inter', font_size: 18, font_weight: '500',
++      font_style: 'normal', text_color: '#ffffff', text_case: '', position_y: 75,
++    });
++  }, [onApplyTemplate]);
++
++  const buildApplyPayload = useCallback((template, ov = {}) => {
++    return {
++      ...template.style,
++      ...(ov.fontColor ? { tpl_font_color: ov.fontColor } : {}),
++      ...(ov.highlightColor ? { tpl_highlight_color: ov.highlightColor } : {}),
++      ...(ov.bgColor ? { tpl_bg_color: ov.bgColor } : {}),
++      ...(ov.fontSize ? { font_size: ov.fontSize } : {}),
++      ...(ov.letterSpacing != null ? { tpl_letter_spacing: ov.letterSpacing } : {}),
++      tpl_word_mode: ov.wordMode ?? template.wordMode,
++      ...(ov.animSpeed ? { tpl_anim_speed: ov.animSpeed } : {}),
++      ...(ov.glowIntensity != null ? { tpl_glow_intensity: ov.glowIntensity } : {}),
++      ...(ov.strokeWidth != null ? { tpl_stroke_width: ov.strokeWidth } : {}),
++    };
++  }, []);
++
++  const handleApply = useCallback((template) => {
++    const ov = overridesMap[template.id] || {};
++    onApplyTemplate(buildApplyPayload(template, ov));
++  }, [onApplyTemplate, overridesMap, buildApplyPayload]);
++
++  const handleOverrideChange = useCallback((templateId, ov) => {
++    setOverridesMap(prev => ({ ...prev, [templateId]: ov }));
++  }, []);
++
++  // Re-apply whenever overrides change for the active template
++  useEffect(() => {
++    if (currentStyle?.template_id) {
++      const tpl = templates.find(t => t.id === currentStyle.template_id);
++      if (tpl) {
++        const ov = overridesMap[tpl.id] || {};
++        onApplyTemplate(buildApplyPayload(tpl, ov));
++      }
++    }
++  }, [overridesMap]);
+ 
+   return (
+-    <div className="h-full overflow-y-auto pr-2 custom-scrollbar">
+-      <div className="mb-6">
+-        <h2 className="text-lg font-semibold text-white mb-2">Caption Templates</h2>
+-        <p className="text-sm text-gray-500">
+-          50 Industry-Standard Presets
+-        </p>
++    <div className="h-full overflow-y-auto pr-3 pl-1 custom-scrollbar text-[#e1e1e1]">
++      <div className="flex items-center gap-2 mb-4 mt-1 bg-[#161618] p-1.5 rounded-lg border border-[#2A2B2F]">
++        <button className="flex-1 py-1.5 bg-[#252526] text-white text-[12px] font-medium rounded-md shadow-sm">Built-in Templates</button>
++        <button className="flex-1 py-1.5 text-gray-400 hover:text-white text-[12px] font-medium rounded-md transition-colors">My Presets</button>
+       </div>
+ 
+-      <div className="space-y-3">
++      <div className="flex items-center gap-2 mb-6">
++        <div className="flex-1 relative">
++          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
++          <input
++            type="text"
++            placeholder="Find a template..."
++            className="w-full bg-[#161618] border border-[#2A2B2F] rounded-md py-1.5 pl-8 pr-3 text-[12px] text-white placeholder-gray-500 focus:outline-none focus:border-green-500/50"
++          />
++        </div>
++        <button className="flex items-center gap-1.5 bg-[#161618] hover:bg-[#1D1E20] border border-[#2A2B2F] px-3 py-1.5 rounded-md text-[12px] font-medium text-white transition-colors">
++          <Download className="w-3 h-3" /> Save Preset
++        </button>
++      </div>
++
++      {/* ΓöÇΓöÇ Template List (Single Column) ΓöÇΓöÇ */}
++      <div className="flex flex-col gap-4 pb-10">
++
++        {/* Default None */}
++        <div
++          onClick={handleClear}
++          className={`px-4 py-3 rounded-xl border cursor-pointer transition-colors flex items-center justify-between group ${!currentStyle?.template_id
++              ? 'border-[#2ecc71] bg-[#161618]'
++              : 'border-[#2A2B2F] bg-[#111112] hover:border-gray-600'
++            }`}
++        >
++          <span className={`text-[13px] font-medium ${!currentStyle?.template_id ? 'text-white' : 'text-gray-400 group-hover:text-gray-300'}`}>None (Default custom style)</span>
++          {!currentStyle?.template_id && (
++            <div className="w-4 h-4 rounded-full bg-[#2ecc71] flex items-center justify-center">
++              <Check className="w-3 h-3 text-white" strokeWidth={3} />
++            </div>
++          )}
++        </div>
++
+         {templates.map((template) => {
+-          // Approximate equality check for active state
+-          const isActive = currentStyle &&
+-            currentStyle.font_family === template.style.font_family &&
+-            currentStyle.font_size === template.style.font_size &&
+-            currentStyle.position_y === template.style.position_y;
++          const isActive = currentStyle?.template_id === template.id;
++          const ov = overridesMap[template.id] || {};
+ 
+           return (
+-            <motion.div
++            <div
+               key={template.id}
+-              whileHover={{ scale: 1.02 }}
+-              whileTap={{ scale: 0.98 }}
+-              className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${isActive
+-                ? 'border-purple-500 bg-purple-600/10'
+-                : 'border-white/10 bg-white/[0.02] hover:border-white/20'
++              onMouseEnter={() => setHoveredId(template.id)}
++              onMouseLeave={() => setHoveredId(null)}
++              onClick={() => { if (!isActive) handleApply(template); }}
++              className={`rounded-xl border transition-all duration-200 ${isActive
++                  ? 'border-[#2ecc71] bg-[#111112]'
++                  : 'border-[#2A2B2F] bg-[#111112] hover:border-gray-500 cursor-pointer'
+                 }`}
+-              onClick={() => onApplyTemplate(template.style)}
+             >
+-              <div className="flex items-start justify-between mb-3">
+-                <div>
+-                  <h3 className="text-white font-semibold flex items-center gap-2">
+-                    {template.name}
+-                    {isActive && <Check className="w-4 h-4 text-purple-400" />}
+-                  </h3>
+-                  <p className="text-xs text-gray-500 mt-0.5">{template.description}</p>
++              {/* Header */}
++              <div className="flex items-center justify-between px-4 py-3 border-b border-[#2A2B2F]/50">
++                <span className={`text-[13px] font-bold ${isActive ? 'text-white' : 'text-gray-300'}`}>
++                  {template.name}
++                </span>
++
++                <div className="flex items-center gap-2">
++                  {isActive ? (
++                    <>
++                      <div className="w-5 h-5 rounded-full bg-[#2ecc71] flex items-center justify-center shadow-[0_0_8px_rgba(46,204,113,0.3)]">
++                        <Check className="w-3.5 h-3.5 text-white" strokeWidth={3} />
++                      </div>
++                      <button className="w-6 h-6 flex items-center justify-center rounded-md bg-[#252526] hover:bg-gray-600 text-gray-300 transition-colors">
++                        <Palette className="w-3.5 h-3.5" />
++                      </button>
++                    </>
++                  ) : (
++                    <div className="w-6 h-6 flex items-center justify-center rounded-md border border-[#2A2B2F] bg-[#161618] text-gray-500 group-hover:text-gray-300 group-hover:border-gray-500 transition-all opacity-0 group-hover:opacity-100">
++                      <Settings2 className="w-3.5 h-3.5" />
++                    </div>
++                  )}
+                 </div>
+-                {!isActive && (
+-                  <Button
+-                    size="sm"
+-                    className="bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 border border-purple-500/30"
+-                    onClick={(e) => {
+-                      e.stopPropagation();
+-                      onApplyTemplate(template.style);
+-                    }}
+-                  >
+-                    <Sparkles className="w-3 h-3 mr-1" />
+-                    Apply
+-                  </Button>
+-                )}
+               </div>
+ 
+-              {/* Preview */}
+-              <div className="relative aspect-video bg-gradient-to-br from-zinc-900 to-zinc-800 rounded-lg overflow-hidden flex items-center justify-center">
+-                <div
+-                  className={`px-3 py-2 rounded-lg`}
+-                  style={{
+-                    backgroundColor: template.style.has_background
+-                      ? (template.style.background_color
+-                        ? (template.style.background_color.startsWith('#')
+-                          ? `rgba(${parseInt(template.style.background_color.slice(1, 3), 16)}, ${parseInt(template.style.background_color.slice(3, 5), 16)}, ${parseInt(template.style.background_color.slice(5, 7), 16)}, ${template.style.background_opacity})`
+-                          : template.style.background_color)
+-                        : `rgba(0,0,0,${template.style.background_opacity})`)
+-                      : 'transparent',
+-                    textShadow: template.style.has_shadow ? '2px 2px 0px rgba(0,0,0,0.8)' : 'none',
+-                    WebkitTextStroke: template.style.has_stroke ? '1px black' : 'none'
+-                  }}
+-                >
+-                  <span
+-                    style={{
+-                      fontFamily: template.style.font_family,
+-                      fontSize: '18px', // Scaled for preview
+-                      lineHeight: template.style.line_spacing,
+-                      fontWeight: template.style.is_bold ? 'bold' : 'normal',
+-                      textTransform: template.style.is_caps ? 'uppercase' : 'none',
+-                      color: template.style.text_color,
+-                    }}
+-                  >
+-                    {template.style.highlight_color || template.style.emphasis_strategy !== 'none' ? (
+-                      <span>
+-                        {template.preview.split(' ').map((word, i) => {
+-                          // Simple logic for preview visualization
+-                          let isHighlighted = false;
+-                          if (template.style.emphasis_strategy === 'hook_first' && i < 2) isHighlighted = true;
+-                          if (template.style.emphasis_strategy === 'keywords' && word.length > 4) isHighlighted = true;
+-                          if (template.style.emphasis_strategy === 'numbers' && /\d/.test(word)) isHighlighted = true;
+-                          if (template.style.emphasis_strategy === 'verbs' && i === 0) isHighlighted = true; // Approx
+-                          if (template.style.visual_preset === 'highlighted_words' && i === 1) isHighlighted = true;
++              {/* Body (Preview + Customization) */}
++              <div className="p-4">
++                <AnimatedPreview
++                  templateId={template.id}
++                  bg={template.hasBg ? template.bg : '#ffffff'}
++                  isHovered={hoveredId === template.id}
++                />
+ 
+-                          const highlightStyle = isHighlighted ? {
+-                            color: template.style.visual_preset === 'highlighted_words' ? template.style.highlight_color : template.style.text_color,
+-                            backgroundColor: template.style.visual_preset !== 'highlighted_words' && template.style.highlight_color ? template.style.highlight_color : 'transparent',
+-                            textShadow: isHighlighted && template.style.highlight_color && template.style.visual_preset !== 'highlighted_words' ? 'none' : undefined,
+-                            padding: '0 2px',
+-                            borderRadius: '2px'
+-                          } : {};
+-
+-                          return (
+-                            <span
+-                              key={i}
+-                              style={highlightStyle}
+-                            >
+-                              {word}{' '}
+-                            </span>
+-                          );
+-                        })}
+-                      </span>
+-                    ) : template.preview}
+-                  </span>
+-                </div>
++                {/* Customization Panel only for active */}
++                <AnimatePresence>
++                  {isActive && (
++                    <CustomizePanel
++                      template={template}
++                      overrides={ov}
++                      onChange={(newOv) => handleOverrideChange(template.id, newOv)}
++                    />
++                  )}
++                </AnimatePresence>
+               </div>
+-            </motion.div>
++            </div>
+           );
+         })}
+       </div>

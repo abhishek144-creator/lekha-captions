@@ -1,0 +1,48 @@
+{
+  "name": "UserCredits",
+  "type": "object",
+  "properties": {
+    "user_email": {
+      "type": "string",
+      "description": "User's email (unique identifier)"
+    },
+    "plan": {
+      "type": "string",
+      "enum": [
+        "free",
+        "A",
+        "B",
+        "C"
+      ],
+      "default": "B",
+      "description": "Subscription plan"
+    },
+    "credits_total": {
+      "type": "number",
+      "default": 30,
+      "description": "Total credits for the month"
+    },
+    "credits_used": {
+      "type": "number",
+      "default": 0,
+      "description": "Credits used this month"
+    },
+    "credits_remaining": {
+      "type": "number",
+      "default": 30,
+      "description": "Remaining credits"
+    },
+    "reset_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Next credit reset date"
+    },
+    "last_render_date": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "user_email"
+  ]
+}
