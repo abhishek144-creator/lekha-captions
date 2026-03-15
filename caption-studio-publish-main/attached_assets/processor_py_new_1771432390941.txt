@@ -1,0 +1,184 @@
+import os
+import subprocess
+import tempfile
+import requests
+import json
+import math
+from openai import OpenAI
+
+class VideoProcessor:
+    def __init__(self, fonts_dir):
+        # 1. SETUP: Absolute paths and Auto-Download Font
+        self.fonts_dir = os.path.abspath(fonts_dir)
+        os.makedirs(self.fonts_dir, exist_ok=True)
+        self.client = OpenAI()
+
+        # --- FIX TOFU BOXES: Download Mukta Font ---
+        self.mukta_path = os.path.join(self.fonts_dir, "Mukta-Bold.ttf")
+        if not os.path.exists(self.mukta_path):
+            print("⬇️ Mukta font missing. Downloading...")
+            try:
+                url = "https://github.com/google/fonts/raw/main/ofl/mukta/Mukta-Bold.ttf"
+                r = requests.get(url, allow_redirects=True)
+                with open(self.mukta_path, 'wb') as f:
+                    f.write(r.content)
+                print("✅ Mukta-Bold.ttf downloaded.")
+            except Exception as e:
+                print(f"⚠️ Font download failed: {e}")
+
+    # --- PART 1: GENERATE CAPTIONS (Word-Level Pacing) ---
+    async def generate_captions_only(self, input_p, target_language="English"):
+        print(f"Processing: {input_p} -> Target: {target_language}")
+        try:
+            # 1. Extract Audio
+            audio_p = tempfile.mktemp(suffix=".mp3")
+            subprocess.run(["ffmpeg", "-y", "-i", input_p, "-vn", "-ar", "16000", "-ac", "1", audio_p], check=True)
+
+            # 2. Transcribe (Whisper) - GET INDIVIDUAL WORDS
+            with open(audio_p, "rb") as f:
+                transcript = self.client.audio.transcriptions.create(
+                    model="whisper-1", 
+                    file=f, 
+                    response_format="verbose_json",
+                    timestamp_granularities=["word"] # Crucial for 1-3 word pacing
+                )
+
+            words = getattr(transcript, 'words', [])
+
+            # 3. Apply Aggressive Pacing (1-3 Words)
+            grouped_captions = self._group_words_aggressively(words)
+
+            if os.path.exists(audio_p): os.remove(audio_p)
+            return {"success": True, "captions": grouped_captions}
+
+        except Exception as e:
+            print(f"Error: {e}")
+            return {"success": False, "error": str(e)}
+
+    # --- PART 2: BURN VIDEO (HD Styles) ---
+    async def burn_only(self, input_p, output_p, captions, style):
+        print(f"🎨 BURNING STYLES: {style}")
+        try:
+            # Generate High-Res ASS File with Inline Styles
+            ass_path = self._create_hd_ass(captions, style)
+
+            # FFmpeg Command (Force 1080p rendering + Font Dir)
+            cmd = [
+                "ffmpeg", "-y", "-i", input_p,
+                "-vf", f"ass={ass_path}:fontsdir={self.fonts_dir}", 
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-c:a", "aac",
+                output_p
+            ]
+
+            subprocess.run(cmd, check=True)
+            if os.path.exists(ass_path): os.remove(ass_path)
+            return {"success": True}
+
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    # --- HELPER: PACING LOGIC ---
+    def _group_words_aggressively(self, words):
+        captions = []
+        current_group = []
+
+        for i, w in enumerate(words):
+            # Normalize Whisper data
+            word_text = w.get('word', '') if isinstance(w, dict) else getattr(w, 'word', '')
+            start = w.get('start', 0) if isinstance(w, dict) else getattr(w, 'start', 0)
+            end = w.get('end', 0) if isinstance(w, dict) else getattr(w, 'end', 0)
+
+            current_group.append({"word": word_text, "start": start, "end": end})
+
+            # DECISION: Break line now?
+            should_break = False
+
+            # Rule 1: Max 3 words
+            if len(current_group) >= 3: should_break = True
+
+            # Rule 2: Single word if long/punchy
+            if len(current_group) == 1 and len(word_text) > 7: should_break = True
+
+            # Rule 3: Pause > 0.2s
+            if i < len(words) - 1:
+                next_start = words[i+1].get('start') if isinstance(words[i+1], dict) else getattr(words[i+1], 'start')
+                if (next_start - end) > 0.2: should_break = True
+            else:
+                should_break = True
+
+            if should_break:
+                text = " ".join([item['word'] for item in current_group]).strip()
+                captions.append({
+                    "id": i,
+                    "text": text,
+                    "start_time": current_group[0]['start'],
+                    "end_time": current_group[-1]['end']
+                })
+                current_group = []
+
+        return captions
+
+    # --- HELPER: STYLE GENERATOR (The Fix for Colors/Box) ---
+    def _create_hd_ass(self, captions, style):
+        ass_path = tempfile.mktemp(suffix=".ass")
+
+        # 1. Force High Resolution Font
+        base_size = int(style.get('font_size', 20))
+        scaled_size = base_size * 4 # Triple size for 1080p
+
+        font = "Mukta-Bold" # FORCE THIS FONT to fix Tofu
+        primary = self._hex_to_ass(style.get('text_color', '#FFFFFF'))
+
+        # Background Box Logic
+        has_bg = style.get('has_background', False)
+        bg_opacity = float(style.get('background_opacity', 0.8))
+        bg_hex = style.get('highlight_color', '#000000') or '#000000'
+        bg_color = self._hex_to_ass(bg_hex, bg_opacity)
+
+        # Position Logic
+        pos_y_percent = float(style.get('position_y', 75))
+        pos_y_pixel = int((pos_y_percent / 100) * 1920)
+
+        # 2. BRUTE FORCE STYLE TAGS
+        # \bord6 = Thick Box, \3c = Box Color
+        if has_bg:
+            tags = f"\\fn{font}\\fs{scaled_size}\\1c{primary}\\bord6\\3c{bg_color}\\shad0\\an5"
+        else:
+            tags = f"\\fn{font}\\fs{scaled_size}\\1c{primary}\\bord4\\3c&H80000000\\shad1\\an5"
+
+        if style.get('has_animation', False):
+            tags += r"\fscx80\fscy80\t(0,150,\fscx100\fscy100)"
+
+        # 3. Write 1080p Header
+        with open(ass_path, "w", encoding="utf-8") as f:
+            f.write(f"""[Script Info]
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, Alignment, MarginV
+Style: Default,{font},20,&H00FFFFFF,2,10
+[Events]
+Format: Layer, Start, End, Style, Text
+""")
+            for c in captions:
+                start = self._fmt(float(c['start_time']))
+                end = self._fmt(float(c['end_time']))
+                text = c['text'].replace('\n', ' ')
+                # Inject tags and force position
+                line = f"Dialogue: 0,{start},{end},Default,{{ {tags} \\pos(540,{pos_y_pixel}) }}{text}\n"
+                f.write(line)
+
+        return ass_path
+
+    def _hex_to_ass(self, hex_c, alpha=1.0):
+        if not hex_c: return "&H00FFFFFF"
+        hex_c = hex_c.lstrip('#')
+        if len(hex_c) != 6: return "&H00FFFFFF"
+        r, g, b = hex_c[:2], hex_c[2:4], hex_c[4:]
+        a_val = int(255 - (alpha * 255))
+        return f"&H{a_val:02X}{b}{g}{r}"
+
+    def _fmt(self, s):
+        h, m, sec = int(s//3600), int((s%3600)//60), s%60
+        return f"{h}:{m:02d}:{sec:05.2f}"

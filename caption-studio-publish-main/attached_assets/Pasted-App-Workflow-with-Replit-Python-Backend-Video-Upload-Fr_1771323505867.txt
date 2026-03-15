@@ -1,0 +1,37 @@
+App Workflow with Replit (Python) Backend:
+Video Upload (Frontend - React/TypeScript):
+
+The user interacts with your React frontend to upload a video.
+Instead of directly calling a Base44 backend function for file upload, the React frontend would upload the video directly to Base44's R2 storage using the Base44 SDK's base44.integrations.Core.UploadFile. This gives you a file_url.
+The frontend then sends this file_url along with other project details (e.g., project title, desired language) to your Replit Python backend via an HTTP API call.
+Initial Project Creation & Trigger (Replit Python Backend):
+
+Your Python backend on Replit receives the file_url and project details.
+It creates a new Project entity in the Base44 database (using the Base44 Python SDK in a service role) to track the project's status (e.g., "uploading" or "transcribing").
+It then initiates the audio extraction and transcription process.
+Audio Extraction & Transcription (Replit Python Backend):
+
+Audio Extraction: Your Python backend downloads the video from the provided Base44 R2 file_url. It uses a Python library (e.g., moviepy or ffmpeg via subprocess) to extract the audio and saves it temporarily.
+Transcription (Whisper): The extracted audio file is sent to the OpenAI Whisper API (or a locally hosted Whisper model) using the OpenAI Python client.
+Caption Generation: Whisper returns the transcribed text with timestamps.
+Database Update: The Python backend updates the Project entity in Base44 with the raw captions and changes the status to "transcribed" or "ready".
+Language Detection & Translation (Replit Python Backend - GPT-4o):
+
+If translation is needed, the Python backend sends the raw captions to the OpenAI GPT-4o API using the OpenAI Python client.
+GPT-4o performs the translation.
+The translated captions are updated in the Base44 Project entity.
+Frontend Editor (React/TypeScript):
+
+The React frontend continuously polls or receives real-time updates (via Base44 entity subscriptions) about the Project entity's status.
+Once captions are available, the frontend fetches them from the Base44 database and displays them in the editor.
+User edits are saved back to the Base44 Project entity directly from the frontend using the Base44 SDK.
+Export/Rendering (Replit Python Backend):
+
+When the user clicks "Export" in the frontend, an HTTP request is made to your Replit Python backend with the projectId and desired export settings (e.g., render video, SRT).
+Your Python backend fetches the latest Project data (captions, styles) from Base44.
+Video Rendering: If a video render is requested, Python uses a library like ffmpeg to process the original video, burn in the captions according to the specified styles, and generate the final output video. This process can be resource-intensive.
+File Upload: The final output (rendered video, SRT file, plain text) is uploaded back to Base44's R2 storage using base44.integrations.Core.UploadFile.
+Database Update: The Project entity in Base44 is updated with the export_url and final status.
+Credit Management: Your Python backend would update the UserCredits entity in Base44.
+Frontend Notification: The frontend is notified, and the user can download the final output.
+This architecture delegates the heavy computational tasks (audio/video processing, AI model inference) to your Replit Python backend, while Base44 provides the persistent data layer (files, database, user authentication) and a streamlined frontend SDK experience.

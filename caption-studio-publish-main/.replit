@@ -1,0 +1,62 @@
+modules = ["nodejs-20", "python-3.11"]
+run = "bash start.sh"
+
+[[ports]]
+localPort = 3000
+externalPort = 80
+
+[[ports]]
+localPort = 3001
+externalPort = 3001
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[nix]
+packages = ["ffmpeg", "psmisc"]
+channel = "stable-25_05"
+
+[agent]
+expertMode = true
+integrations = ["python_openai_ai_integrations:1.0.0"]
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Backend API"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Frontend Dev"
+
+[[workflows.workflow]]
+name = "Backend API"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd /home/runner/workspace && python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload"
+waitForPort = 8000
+
+[[workflows.workflow]]
+name = "Frontend Dev"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npx vite --host 0.0.0.0 --port 5000 --clearScreen false"
+waitForPort = 5000
