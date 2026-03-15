@@ -1,0 +1,25 @@
+# Your Original List
+node_modules/
+.env
+backend_debug.log
+build_*.txt
+dist/
+__pycache__/
+venv/
+backend/service-account.json
+
+# CRITICAL: Space Hogs (To reach 30MB)
+backend/uploads/
+backend/exports/
+*.mp4
+*.MOV
+*.avi
+*.webm
+
+# Security & Temp Files
+.env.*
+.env.local
+*.pem
+*.key
+backend/*.ass
+backend/output_frame.jpg

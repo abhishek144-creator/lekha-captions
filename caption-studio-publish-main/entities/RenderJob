@@ -1,0 +1,83 @@
+{
+  "name": "RenderJob",
+  "type": "object",
+  "properties": {
+    "user_id": {
+      "type": "string",
+      "description": "User who initiated the job"
+    },
+    "file_url": {
+      "type": "string",
+      "description": "Original uploaded video URL"
+    },
+    "export_url": {
+      "type": "string",
+      "description": "Final rendered video URL"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "transcribing",
+        "translating",
+        "rendering",
+        "completed",
+        "failed"
+      ],
+      "default": "pending"
+    },
+    "target_language": {
+      "type": "string",
+      "default": "hindi"
+    },
+    "font_name": {
+      "type": "string",
+      "default": "NotoSansDevanagari-Bold"
+    },
+    "font_size": {
+      "type": "number",
+      "default": 48
+    },
+    "position": {
+      "type": "string",
+      "enum": [
+        "top",
+        "center",
+        "bottom"
+      ],
+      "default": "bottom"
+    },
+    "captions": {
+      "type": "array",
+      "description": "Translated caption segments",
+      "items": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "number"
+          },
+          "end": {
+            "type": "number"
+          },
+          "text": {
+            "type": "string"
+          },
+          "original": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "error_message": {
+      "type": "string"
+    },
+    "credits_used": {
+      "type": "number",
+      "default": 1
+    }
+  },
+  "required": [
+    "user_id",
+    "file_url"
+  ]
+}

@@ -1,0 +1,537 @@
+import React, { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
+import { Loader2, Upload, Sparkles } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+
+// UI Components
+import DashboardHeader from '@/components/dashboard/DashboardHeader';
+import VideoPlayer from '@/components/dashboard/VideoPlayer';
+import CaptionTimeline from '@/components/dashboard/CaptionTimeline';
+import CaptionEditor from '@/components/dashboard/CaptionEditor';
+import StyleControls from '@/components/dashboard/StyleControls';
+import TemplatesTab from '@/components/dashboard/TemplatesTab';
+import TextTab from '@/components/dashboard/TextTab';
+import AnimateTab from '@/components/dashboard/AnimateTab';
+import SidebarNav from '@/components/dashboard/SidebarNav';
+import UploadModal from '@/components/dashboard/UploadModal';
+import ExportPanel from '@/components/dashboard/ExportPanel';
+import PricingModal from '@/components/dashboard/PricingModal';
+import { extractWaveformData } from '@/components/dashboard/audioUtils';
+
+// Helper for retrying operations
+const retryOperation = async (operation, maxRetries = 3, delay = 1000) => {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (i === maxRetries - 1) throw error;
+      console.warn(`Operation failed, retrying (${i + 1}/${maxRetries})...`, error);
+      await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, i)));
+    }
+  }
+};
+
+const defaultCaptionStyle = {
+  font_family: 'Inter',
+  font_size: 18,
+  font_weight: '500',
+  font_style: 'normal',
+  line_spacing: 1.4,
+  word_spacing: 1,
+  is_bold: false,
+  is_caps: false,
+  text_case: 'none',
+  text_align: 'center',
+  text_color: '#ffffff',
+  text_gradient: '',
+  text_opacity: 1,
+  highlight_color: '',
+  highlight_gradient: '',
+  has_background: true,
+  background_opacity: 0.7,
+  has_stroke: false,
+  has_shadow: false,
+  has_animation: false,
+  position: 'bottom',
+  position_y: 75,
+  max_lines: 2,
+  max_chars: 30,
+  auto_rotation: false,
+  scale: 1
+};
+
+export default function Dashboard() {
+  const [user, setUser] = useState({ id: 'guest', email: 'guest@captionstudio.io', plan: 'pro', credits: 30 });
+
+  // Modals
+  const [isPricingModalOpen, setIsPricingModalOpen] = useState(false);
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [isExportPanelOpen, setIsExportPanelOpen] = useState(false);
+
+  // Loading States
+  const [isUploading, setIsUploading] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Video State
+  const [videoUrl, setVideoUrl] = useState('');
+  const [fileId, setFileId] = useState(null);
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  // Caption State
+  const [captions, setCaptions] = useState([]);
+  const [selectedCaptionId, setSelectedCaptionId] = useState(null);
+  const [captionStyle, setCaptionStyle] = useState(defaultCaptionStyle);
+
+  // Project State
+  const [projectId, setProjectId] = useState(null);
+  const [settings, setSettings] = useState({ language: 'english', style: 'viral_hook' });
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  // History (Undo/Redo)
+  const [history, setHistory] = useState([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+
+  // UI State
+  const [activeTab, setActiveTab] = useState('captions');
+  const [wordPopup, setWordPopup] = useState(null);
+  const [selectedWordForAnimation, setSelectedWordForAnimation] = useState(null);
+  const [waveformData, setWaveformData] = useState(null);
+
+  // --- INITIAL LOAD: Restore from LocalStorage ---
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const sessionReset = params.get('session_reset') === 'true';
+    const actionUpload = params.get('action') === 'upload';
+
+    if (sessionReset) {
+      localStorage.removeItem('captionEditorState');
+      setVideoUrl('');
+      setCaptions([]);
+      setCaptionStyle(defaultCaptionStyle);
+      setProjectId(null);
+      setDuration(0);
+      setCurrentTime(0);
+      setHistory([]);
+      setHistoryIndex(-1);
+      setIsUploadModalOpen(false);
+      window.history.replaceState({}, '', window.location.pathname);
+    } else {
+      try {
+        const savedState = localStorage.getItem('captionEditorState');
+        if (savedState) {
+          const parsed = JSON.parse(savedState);
+          if (parsed.videoUrl) setVideoUrl(parsed.videoUrl);
+          if (parsed.fileId) setFileId(parsed.fileId);
+          if (parsed.captions) setCaptions(parsed.captions);
+          if (parsed.captionStyle) setCaptionStyle(parsed.captionStyle);
+          if (parsed.projectId) setProjectId(parsed.projectId);
+          if (parsed.settings) setSettings(parsed.settings);
+          if (parsed.duration) setDuration(parsed.duration);
+          if (parsed.isUploadModalOpen) setIsUploadModalOpen(true);
+        } else {
+          if (actionUpload) setIsUploadModalOpen(true);
+        }
+      } catch (e) {
+        console.warn('Failed to restore state:', e);
+      }
+      if (actionUpload) window.history.replaceState({}, '', window.location.pathname);
+    }
+    setIsLoaded(true);
+  }, []);
+
+  // --- AUTO SAVE ---
+  useEffect(() => {
+    if (!isLoaded) return;
+    const stateToSave = {
+      videoUrl,
+      fileId,
+      captions,
+      captionStyle,
+      projectId,
+      settings,
+      duration,
+      isUploadModalOpen,
+      savedAt: Date.now()
+    };
+    try {
+      localStorage.setItem('captionEditorState', JSON.stringify(stateToSave));
+    } catch (e) {
+      console.warn('Failed to save state:', e);
+    }
+  }, [videoUrl, fileId, captions, captionStyle, projectId, settings, duration, isUploadModalOpen, isLoaded]);
+
+  // --- HISTORY INIT ---
+  useEffect(() => {
+    if (captions.length > 0 && history.length === 0) {
+      setHistory([{ 
+        captions: JSON.parse(JSON.stringify(captions)), 
+        captionStyle: JSON.parse(JSON.stringify(captionStyle)) 
+      }]);
+      setHistoryIndex(0);
+    }
+  }, [captions.length]);
+
+  // --- UPLOAD HANDLER (UPDATED FOR NEW BACKEND) ---
+  const handleUpload = async (file, uploadSettings) => {
+    setIsUploading(true);
+    setSettings(uploadSettings);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      console.log("Uploading to /api/upload...");
+      const uploadRes = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      if (!uploadRes.ok) throw new Error("Upload failed. Is the Python backend running?");
+      const uploadData = await uploadRes.json();
+
+      setIsGenerating(true);
+      setVideoUrl(uploadData.raw_url);
+      setFileId(uploadData.file_id);
+      setIsUploadModalOpen(false);
+
+      // Call new /api/process endpoint with LANGUAGE
+      console.log("Processing with /api/process...");
+      const processRes = await fetch('/api/process', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          file_id: uploadData.file_id,
+          language: uploadSettings.language || 'English' // Critical: Send language!
+        })
+      });
+
+      const processData = await processRes.json();
+      if (!processData.success) throw new Error(processData.error || "AI Processing Failed");
+
+      const captionsData = processData.captions || [];
+      const generatedCaptions = captionsData.map((cap, idx) => ({
+        text: cap?.text || '',
+        start_time: cap?.start_time || 0,
+        end_time: cap?.end_time || 3,
+        id: cap?.id || `${Date.now()}-${idx}`
+      }));
+
+      setCaptions(generatedCaptions);
+
+      // Initialize History
+      setHistory([{ 
+        captions: JSON.parse(JSON.stringify(generatedCaptions)), 
+        captionStyle: JSON.parse(JSON.stringify(captionStyle)) 
+      }]);
+      setHistoryIndex(0);
+
+    } catch (error) {
+      console.error('Upload failed:', error);
+      alert(`Failed to generate captions: ${error.message}`);
+    } finally {
+      setIsUploading(false);
+      setIsGenerating(false);
+    }
+  };
+
+  // --- OTHER HANDLERS ---
+  const handleSave = async () => {
+    setIsSaving(true);
+    setTimeout(() => setIsSaving(false), 800);
+  };
+
+  const handleSeek = (time) => setCurrentTime(time);
+
+  const updateCaptions = (newCaptions) => {
+    const newHistory = history.slice(0, historyIndex + 1);
+    newHistory.push({ 
+      captions: JSON.parse(JSON.stringify(captions)), 
+      captionStyle: JSON.parse(JSON.stringify(captionStyle)) 
+    });
+    setHistory(newHistory);
+    setHistoryIndex(newHistory.length - 1);
+    setCaptions(newCaptions);
+  };
+
+  const updateCaptionStyle = (newStyle) => {
+    const newHistory = history.slice(0, historyIndex + 1);
+    newHistory.push({ 
+      captions: JSON.parse(JSON.stringify(captions)), 
+      captionStyle: JSON.parse(JSON.stringify(captionStyle)) 
+    });
+    setHistory(newHistory);
+    setHistoryIndex(newHistory.length - 1);
+    setCaptionStyle(newStyle);
+  };
+
+  const handleApplyTemplate = (templateStyle) => updateCaptionStyle(templateStyle);
+
+  const addToHistory = () => {
+    const newHistory = history.slice(0, historyIndex + 1);
+    newHistory.push({ 
+      captions: JSON.parse(JSON.stringify(captions)), 
+      captionStyle: JSON.parse(JSON.stringify(captionStyle)) 
+    });
+    setHistory(newHistory);
+    setHistoryIndex(newHistory.length - 1);
+  };
+
+  const handleUndo = () => {
+    if (historyIndex > 0) {
+      const prevState = history[historyIndex - 1];
+      setCaptions(prevState.captions);
+      setCaptionStyle(prevState.captionStyle);
+      setHistoryIndex(historyIndex - 1);
+    }
+  };
+
+  const handleRedo = () => {
+    if (historyIndex < history.length - 1) {
+      const nextState = history[historyIndex + 1];
+      setCaptions(nextState.captions);
+      setCaptionStyle(nextState.captionStyle);
+      setHistoryIndex(historyIndex + 1);
+    }
+  };
+
+  const handleRefresh = () => {
+    localStorage.removeItem('captionEditorState');
+    window.location.reload();
+  };
+
+  const handleNewProject = () => {
+    localStorage.removeItem('captionEditorState');
+    setVideoUrl('');
+    setCaptions([]);
+    setCaptionStyle(defaultCaptionStyle);
+    setProjectId(null);
+    setDuration(0);
+    setCurrentTime(0);
+    setSelectedCaptionId(null);
+    setHistory([]);
+    setHistoryIndex(-1);
+  };
+
+  const handleSelectPlan = async (planId) => {
+    alert(`Payment integration coming soon! Selected plan: ${planId}`);
+    setIsPricingModalOpen(false);
+  };
+
+  return (
+    <div className="h-screen max-h-screen bg-[#0a0a0a] flex flex-col overflow-hidden">
+      <DashboardHeader 
+        onUploadClick={() => setIsUploadModalOpen(true)}
+        onExportClick={() => setIsExportPanelOpen(true)}
+        onSaveClick={handleSave}
+        isSaving={isSaving}
+        hasVideo={!!videoUrl}
+        hasCaptions={captions.length > 0}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        canUndo={historyIndex > 0}
+        canRedo={historyIndex < history.length - 1}
+        onRefresh={handleRefresh}
+      />
+
+      {/* Main content */}
+      <div className="flex-1 overflow-hidden">
+        {!videoUrl ? (
+          // Empty state
+          <div className="h-full flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-center max-w-md"
+            >
+              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-purple-600/20 to-blue-600/20 flex items-center justify-center mx-auto mb-6">
+                <Upload className="w-8 h-8 text-purple-400" />
+              </div>
+              <h2 className="text-2xl font-bold text-white mb-3">
+                Start Creating Captions
+              </h2>
+              <p className="text-gray-500 mb-6">
+                Upload your short-form video (15-90 seconds) and we'll generate professional captions instantly.
+              </p>
+              <Button
+                onClick={() => setIsUploadModalOpen(true)}
+                size="lg"
+                className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-8"
+              >
+                <Upload className="w-5 h-5 mr-2" />
+                Upload Video
+              </Button>
+            </motion.div>
+          </div>
+        ) : isGenerating ? (
+          // Generating state
+          <div className="h-full flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="text-center"
+            >
+              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-purple-600/20 to-blue-600/20 flex items-center justify-center mx-auto mb-6">
+                <Sparkles className="w-8 h-8 text-purple-400 animate-pulse" />
+              </div>
+              <h2 className="text-xl font-semibold text-white mb-2">
+                Generating Captions...
+              </h2>
+              <p className="text-gray-500">
+                AI is analyzing your video and creating perfect captions
+              </p>
+              <div className="mt-6 flex items-center justify-center gap-1">
+                {[0, 1, 2].map((i) => (
+                  <motion.div
+                    key={i}
+                    className="w-2 h-2 rounded-full bg-purple-500"
+                    animate={{ opacity: [0.3, 1, 0.3] }}
+                    transition={{ duration: 1, repeat: Infinity, delay: i * 0.2 }}
+                  />
+                ))}
+              </div>
+            </motion.div>
+          </div>
+        ) : (
+          // Editor layout
+          <div className="h-full flex flex-col lg:flex-row">
+            <SidebarNav 
+              activeTab={activeTab} 
+              setActiveTab={setActiveTab} 
+              user={user}
+              onOpenPricing={() => setIsPricingModalOpen(true)}
+            />
+
+            <div className="w-full lg:w-[340px] xl:w-[360px] border-r border-white/5 p-4 overflow-hidden">
+              {activeTab === 'captions' && (
+                <CaptionEditor
+                  captions={captions}
+                  setCaptions={updateCaptions}
+                  selectedCaptionId={selectedCaptionId}
+                  setSelectedCaptionId={setSelectedCaptionId}
+                  onSeek={handleSeek}
+                  onOpenWordPopup={(caption, wordIndex, position, word) => setWordPopup({ caption, wordIndex, position, word })}
+                  wordPopup={wordPopup}
+                  user={user}
+                />
+              )}
+              {activeTab === 'text' && (
+                <TextTab
+                  captions={captions}
+                  setCaptions={updateCaptions}
+                  currentTime={currentTime}
+                />
+              )}
+              {activeTab === 'templates' && (
+                <TemplatesTab
+                  currentStyle={captionStyle}
+                  onApplyTemplate={handleApplyTemplate}
+                />
+              )}
+              {activeTab === 'animate' && (
+                <AnimateTab 
+                  selectedWord={selectedWordForAnimation}
+                  selectedCaption={
+                    captions.find(c => c.id === selectedCaptionId) ||
+                    captions.find(c => currentTime >= c.start_time && currentTime <= c.end_time)
+                  }
+                  captions={captions}
+                  setCaptions={updateCaptions}
+                />
+              )}
+            </div>
+
+            <div className="flex-1 border-r border-white/5 p-3 flex flex-col overflow-hidden min-h-0">
+              <div className="flex-1 min-h-0 overflow-hidden">
+                <VideoPlayer
+                  videoUrl={videoUrl}
+                  currentTime={currentTime}
+                  setCurrentTime={setCurrentTime}
+                  isPlaying={isPlaying}
+                  setIsPlaying={setIsPlaying}
+                  captions={captions}
+                  setCaptions={updateCaptions}
+                  setCaptionsRaw={setCaptions}
+                  captionStyle={captionStyle}
+                  setCaptionStyle={updateCaptionStyle}
+                  setCaptionStyleRaw={setCaptionStyle}
+                  addToHistory={addToHistory}
+                  duration={duration}
+                  setDuration={setDuration}
+                  selectedCaptionId={selectedCaptionId}
+                  wordPopup={wordPopup}
+                  setWordPopup={setWordPopup}
+                  onVideoLoaded={async (videoEl) => {
+                    if (videoEl && !waveformData) {
+                      const data = await extractWaveformData(videoEl, 400);
+                      if (data) setWaveformData(data);
+                    }
+                  }}
+                />
+              </div>
+              <CaptionTimeline
+                captions={captions}
+                duration={duration}
+                currentTime={currentTime}
+                selectedCaptionId={selectedCaptionId}
+                onSelectCaption={setSelectedCaptionId}
+                onSeek={handleSeek}
+                setCaptions={updateCaptions}
+                waveformData={waveformData}
+              />
+            </div>
+
+            <div className="w-full lg:w-[300px] xl:w-[320px] p-4 overflow-hidden">
+              <StyleControls
+                captionStyle={captionStyle}
+                setCaptionStyle={updateCaptionStyle}
+                setCaptionStyleRaw={setCaptionStyle}
+                addToHistory={addToHistory}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      <UploadModal
+        open={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+        onUpload={handleUpload}
+        isUploading={isUploading}
+      />
+
+      <ExportPanel
+        open={isExportPanelOpen}
+        onClose={() => setIsExportPanelOpen(false)}
+        captions={captions}
+        fileId={fileId}
+        // ✅ CRITICAL FIX: Passing captionStyle so backend knows fonts/colors
+        captionStyle={captionStyle}
+      />
+
+      <PricingModal
+        isOpen={isPricingModalOpen}
+        onClose={() => setIsPricingModalOpen(false)}
+        onSelectPlan={handleSelectPlan}
+        user={user}
+      />
+
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.1);
+          border-radius: 3px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(255, 255, 255, 0.2);
+        }
+      `}</style>
+    </div>
+  );
+}

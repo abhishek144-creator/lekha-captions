@@ -1,0 +1,175 @@
+{
+  "name": "Project",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Project title"
+    },
+    "video_url": {
+      "type": "string",
+      "description": "R2 storage URL for uploaded video"
+    },
+    "video_duration": {
+      "type": "number",
+      "description": "Video duration in seconds"
+    },
+    "video_size_mb": {
+      "type": "number",
+      "description": "Video file size in MB"
+    },
+    "language": {
+      "type": "string",
+      "enum": [
+        "english",
+        "hindi",
+        "hinglish",
+        "tamil",
+        "telugu",
+        "kannada",
+        "malayalam",
+        "marathi",
+        "bengali",
+        "gujarati",
+        "punjabi",
+        "urdu"
+      ],
+      "default": "english"
+    },
+    "style": {
+      "type": "string",
+      "enum": [
+        "viral_hook",
+        "explainer",
+        "motivational",
+        "podcast",
+        "spiritual",
+        "business"
+      ],
+      "default": "viral_hook"
+    },
+    "captions": {
+      "type": "array",
+      "description": "Array of caption objects with word-level timestamps",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "start_time": {
+            "type": "number"
+          },
+          "end_time": {
+            "type": "number"
+          },
+          "words": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "word": {
+                  "type": "string"
+                },
+                "start": {
+                  "type": "number"
+                },
+                "end": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "caption_style": {
+      "type": "object",
+      "properties": {
+        "font_family": {
+          "type": "string"
+        },
+        "font_size": {
+          "type": "number"
+        },
+        "line_spacing": {
+          "type": "number"
+        },
+        "is_bold": {
+          "type": "boolean"
+        },
+        "is_caps": {
+          "type": "boolean"
+        },
+        "text_color": {
+          "type": "string"
+        },
+        "text_gradient": {
+          "type": "string"
+        },
+        "highlight_color": {
+          "type": "string"
+        },
+        "highlight_gradient": {
+          "type": "string"
+        },
+        "has_background": {
+          "type": "boolean"
+        },
+        "background_opacity": {
+          "type": "number"
+        },
+        "position": {
+          "type": "string"
+        },
+        "position_y": {
+          "type": "number"
+        }
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "uploading",
+        "transcribing",
+        "ready",
+        "rendering",
+        "completed",
+        "failed"
+      ],
+      "default": "uploading"
+    },
+    "preview_url": {
+      "type": "string",
+      "description": "480p preview video URL for editor"
+    },
+    "export_url": {
+      "type": "string",
+      "description": "1080p final rendered video URL"
+    },
+    "srt_file_url": {
+      "type": "string",
+      "description": "Downloadable .SRT file URL"
+    },
+    "delete_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Scheduled deletion timestamp (2 hours after creation)"
+    },
+    "downloaded": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the video has been downloaded"
+    },
+    "job_id": {
+      "type": "string",
+      "description": "VPS rendering job ID for webhook tracking"
+    }
+  },
+  "required": [
+    "title"
+  ]
+}
