@@ -254,7 +254,7 @@ export default function PricingSection() {
               }`}
             >
               Yearly
-              <span className="text-xs bg-[#F5A623] text-[#000000] font-semibold px-1.5 py-0.5 rounded-full">-20%</span>
+              <span className="text-xs bg-gradient-to-r from-[#FFE566] to-[#F5A623] text-black font-semibold px-1.5 py-0.5 rounded-full">-20%</span>
             </button>
           </div>
         </motion.div>
@@ -274,7 +274,7 @@ export default function PricingSection() {
             >
               {plan.popular && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                  <span className="px-4 py-1 rounded-full bg-[#F5A623] text-[#000000] text-xs font-semibold">
+                  <span className="px-4 py-1 rounded-full bg-gradient-to-r from-[#FFE566] to-[#F5A623] text-black text-xs font-semibold">
                     Most Popular
                   </span>
                 </div>
@@ -312,7 +312,7 @@ export default function PricingSection() {
                 onClick={() => handleSelectPlan(plan)}
                 disabled={processingPlan === plan.id}
                 className={`w-full py-6 rounded-xl font-semibold ${plan.popular
-                  ? 'bg-[#F5A623] hover:bg-[#D4891A] text-[#000000]'
+                  ? 'bg-gradient-to-r from-[#FFE566] to-[#F5A623] hover:from-[#F5A623] hover:to-[#D4891A] text-black'
                   : 'bg-zinc-800 border border-white/10 text-white hover:bg-zinc-700'
                 }`}
               >
