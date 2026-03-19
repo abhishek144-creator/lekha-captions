@@ -559,7 +559,25 @@ export default function Dashboard() {
           </div>
         ) : (
           // Editor layout
-          <div className="h-full flex flex-col lg:flex-row">
+          <div className="h-full flex flex-col overflow-hidden">
+            {/* Low-credits top-up banner */}
+            {userData && userData.subscription_tier && userData.subscription_tier !== 'free' &&
+              (userData.credits_remaining ?? 999) <= 5 && (
+              <div className="px-4 pt-2 shrink-0">
+                <div className="flex items-center justify-between gap-3 bg-[#2ECC9A]/10 border border-[#2ECC9A]/30 rounded-xl px-4 py-2.5">
+                  <p className="text-sm text-[#2ECC9A] font-medium">
+                    ⚡ Running low? Add {userData.subscription_tier.startsWith('pro') ? '25' : userData.subscription_tier.startsWith('creator') ? '15' : '10'} credits for {userData.subscription_tier.startsWith('pro') ? '₹79' : '₹49'} — no plan change needed.
+                  </p>
+                  <button
+                    onClick={() => setIsPricingModalOpen(true)}
+                    className="shrink-0 text-xs font-semibold bg-[#2ECC9A] text-[#0A3D2C] px-3 py-1.5 rounded-full hover:bg-[#27b889] transition-colors"
+                  >
+                    Top Up
+                  </button>
+                </div>
+              </div>
+            )}
+          <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
             {/* Vertical Sidebar Navigation */}
             <SidebarNav
               activeTab={activeTab}
@@ -731,6 +749,7 @@ export default function Dashboard() {
               />
             </div>
           </div>
+          </div>
         )}
       </div>
 
@@ -764,6 +783,7 @@ export default function Dashboard() {
         onSelectPlan={handleSelectPlan}
         user={currentUser}
         message={pricingMessage}
+        userData={userData}
       />
 
       {/* Plan Expired Modal */}
