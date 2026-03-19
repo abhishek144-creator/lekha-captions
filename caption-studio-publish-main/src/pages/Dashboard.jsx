@@ -814,7 +814,7 @@ export default function Dashboard() {
                   setIsPlanExpiredModalOpen(false);
                   setIsPricingModalOpen(true);
                 }}
-                className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
+                className="flex-1 bg-gradient-to-r from-[#F5A623] to-blue-600 hover:from-[#F5A623] hover:to-blue-700 text-white"
               >
                 <Sparkles className="w-4 h-4 mr-2" />
                 Upgrade Now
