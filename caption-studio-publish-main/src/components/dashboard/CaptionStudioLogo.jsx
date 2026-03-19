@@ -26,8 +26,8 @@ export default function CaptionStudioLogo({ size = 'default', showText = true })
           {/* Gradient definitions */}
           <defs>
             <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#a855f7" />
-              <stop offset="100%" stopColor="#7c3aed" />
+              <stop offset="0%" stopColor="#F5A623" />
+              <stop offset="100%" stopColor="#D4891A" />
             </linearGradient>
           </defs>
 
@@ -64,7 +64,7 @@ export default function CaptionStudioLogo({ size = 'default', showText = true })
 
       {/* Text */}
       {showText && (
-        <span className={`${textSizes[size]} font-bold bg-gradient-to-r from-purple-400 to-purple-600 bg-clip-text text-transparent`}>
+        <span className={`${textSizes[size]} font-bold bg-gradient-to-r from-[#F5A623] to-[#D4891A] bg-clip-text text-transparent`}>
           Lekha Captions
         </span>
       )}
