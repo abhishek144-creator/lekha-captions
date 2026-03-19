@@ -54,7 +54,7 @@ const FontRow = React.memo(({ data, index, style }) => {
   return (
     <div
       style={style}
-      className={`flex items-center px-3 cursor-pointer transition-colors hover:bg-white/10 hover:text-white ${isSelected ? 'bg-purple-500/20 text-purple-400 font-medium' : 'text-white'}`}
+      className={`flex items-center px-3 cursor-pointer transition-colors hover:bg-white/10 hover:text-white ${isSelected ? 'bg-[#F5A623]/30 text-[#F5A623] font-medium' : 'text-white'}`}
       onClick={(e) => {
         e.stopPropagation();
         data.onSelect(font.value);
@@ -63,7 +63,7 @@ const FontRow = React.memo(({ data, index, style }) => {
       <span style={{ fontFamily: font.value, fontSize: '15px' }} className="truncate flex-1">
         {font.label}
       </span>
-      {isSelected && <Check className="ml-1 h-4 w-4 shrink-0 text-purple-400" />}
+      {isSelected && <Check className="ml-1 h-4 w-4 shrink-0 text-[#F5A623]" />}
     </div>
   );
 });
@@ -84,14 +84,14 @@ const fonts = [
 
 const presetColors = [
   '#ffffff', '#000000', '#facc15', '#ef4444',
-  '#3b82f6', '#a855f7', '#ec4899', '#22c55e'
+  '#3b82f6', '#F5A623', '#ec4899', '#22c55e'
 ];
 
 const presetGradients = [
   'linear-gradient(to right, #facc15, #ef4444)', // Yellow-Red (Fire)
-  'linear-gradient(to right, #a855f7, #3b82f6)', // Purple-Blue (Electric)
+  'linear-gradient(to right, #F5A623, #3b82f6)', // Purple-Blue (Electric)
   'linear-gradient(to right, #06b6d4, #2563eb)', // Cyan-DeepBlue (Ocean)
-  'linear-gradient(to right, #ec4899, #8b5cf6)', // Pink-Purple (Magic)
+  'linear-gradient(to right, #ec4899, #F5A623)', // Pink-Purple (Magic)
   'linear-gradient(to right, #4ade80, #0d9488)', // Green-Teal (Nature)
   'linear-gradient(to right, #fb923c, #db2777)', // Orange-Pink (Sunset)
   'linear-gradient(to right, #60a5fa, #4f46e5)', // Blue-Indigo (Night)
@@ -216,21 +216,21 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
           <TabsList className="w-full grid grid-cols-3 rounded-none bg-transparent border-b border-white/5 p-0 h-10">
             <TabsTrigger
               value="font"
-              className="rounded-none border-b-2 border-transparent data-[state=active]:border-purple-500 data-[state=active]:bg-transparent data-[state=active]:text-white text-gray-500 h-10 text-xs"
+              className="rounded-none border-b-2 border-transparent data-[state=active]:border-[#F5A623] data-[state=active]:bg-transparent data-[state=active]:text-white text-gray-500 h-10 text-xs"
             >
               <Type className="w-3.5 h-3.5 mr-1.5" />
               Font
             </TabsTrigger>
             <TabsTrigger
               value="style"
-              className="rounded-none border-b-2 border-transparent data-[state=active]:border-purple-500 data-[state=active]:bg-transparent data-[state=active]:text-white text-gray-500 h-10 text-xs"
+              className="rounded-none border-b-2 border-transparent data-[state=active]:border-[#F5A623] data-[state=active]:bg-transparent data-[state=active]:text-white text-gray-500 h-10 text-xs"
             >
               <Palette className="w-3.5 h-3.5 mr-1.5" />
               Style
             </TabsTrigger>
             <TabsTrigger
               value="fx"
-              className="rounded-none border-b-2 border-transparent data-[state=active]:border-purple-500 data-[state=active]:bg-transparent data-[state=active]:text-white text-gray-500 h-10 text-xs"
+              className="rounded-none border-b-2 border-transparent data-[state=active]:border-[#F5A623] data-[state=active]:bg-transparent data-[state=active]:text-white text-gray-500 h-10 text-xs"
             >
               <Sparkles className="w-3.5 h-3.5 mr-1.5" />
               Animate
@@ -423,7 +423,7 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
                         key={casing}
                         onClick={() => onStyleChange('textTransform', casing)}
                         className={`flex-1 py-1 text-[10px] rounded transition-all ${(currentStyle.textTransform === casing || (!currentStyle.textTransform && casing === 'none'))
-                          ? 'bg-purple-600 text-white'
+                          ? 'bg-[#F5A623] text-white'
                           : 'text-gray-400 hover:text-white'
                           }`}
                       >
@@ -850,7 +850,7 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
                       key={anim.value}
                       onClick={() => onStyleChange('animation', anim.value)}
                       className={`px-2 py-1.5 rounded text-xs capitalize transition-all border ${(currentStyle.animation === anim.value || (!currentStyle.animation && anim.value === 'none'))
-                        ? 'bg-purple-600 border-purple-500 text-white shadow-sm'
+                        ? 'bg-[#F5A623] border-[#F5A623] text-white shadow-sm'
                         : 'bg-zinc-900 border-white/10 text-gray-400 hover:text-white hover:bg-white/5'
                         }`}
                     >
@@ -865,7 +865,7 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
                 <div className="pt-2 border-t border-white/5">
                   <div className="flex items-center justify-between mb-2">
                     <label className="text-xs text-gray-500 uppercase tracking-wider">Speed</label>
-                    <span className="text-xs text-purple-300 font-semibold">
+                    <span className="text-xs text-[#F5A623] font-semibold">
                       {(currentStyle.animationSpeed || 1).toFixed(2)}x
                     </span>
                   </div>
