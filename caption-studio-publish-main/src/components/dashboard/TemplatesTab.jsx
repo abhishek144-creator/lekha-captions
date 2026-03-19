@@ -348,18 +348,18 @@ export default function TemplatesTab({ currentStyle, onApplyTemplate }) {
         whileTap={{ scale: 0.99 }}
         onClick={handleClearTemplate}
         className={`mb-3 rounded-xl border cursor-pointer transition-all overflow-hidden ${!currentStyle?.template_id
-          ? 'border-green-500 bg-green-600/10 shadow-[0_0_10px_rgba(74,222,128,0.12)]'
+          ? 'border-[#F5A623] bg-[#F5A623]/10 shadow-[0_0_10px_rgba(74,222,128,0.12)]'
           : 'border-white/10 bg-white/[0.03] hover:border-white/20'
           }`}
       >
         <div className="px-4 py-3 flex items-center gap-3">
-          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${!currentStyle?.template_id ? 'bg-green-500/20' : 'bg-white/5'}`}>
-            <X className={`w-4 h-4 ${!currentStyle?.template_id ? 'text-green-400' : 'text-gray-500'}`} />
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${!currentStyle?.template_id ? 'bg-[#F5A623]/20' : 'bg-white/5'}`}>
+            <X className={`w-4 h-4 ${!currentStyle?.template_id ? 'text-[#F5A623]' : 'text-gray-500'}`} />
           </div>
           <div>
-            <p className={`text-sm font-medium ${!currentStyle?.template_id ? 'text-green-400' : 'text-gray-300'}`}>
+            <p className={`text-sm font-medium ${!currentStyle?.template_id ? 'text-[#F5A623]' : 'text-gray-300'}`}>
               None (Default)
-              {!currentStyle?.template_id && <Check className="inline w-3.5 h-3.5 ml-1.5 text-green-400" />}
+              {!currentStyle?.template_id && <Check className="inline w-3.5 h-3.5 ml-1.5 text-[#F5A623]" />}
             </p>
             <p className="text-[10px] text-gray-500">Remove template, use custom style</p>
           </div>

@@ -510,8 +510,8 @@ export default function Dashboard() {
               animate={{ opacity: 1 }}
               className="text-center"
             >
-              <div className="w-20 h-20 rounded-full bg-[#2ECC9A]/10 flex items-center justify-center mx-auto mb-6">
-                <Sparkles className="w-8 h-8 text-[#2ECC9A] animate-pulse" />
+              <div className="w-20 h-20 rounded-full bg-[#F5A623]/10 flex items-center justify-center mx-auto mb-6">
+                <Sparkles className="w-8 h-8 text-[#F5A623] animate-pulse" />
               </div>
               <h2 className="text-xl font-semibold text-white mb-2">
                 Generating Captions...
@@ -523,7 +523,7 @@ export default function Dashboard() {
                 {[0, 1, 2].map((i) => (
                   <motion.div
                     key={i}
-                    className="w-2 h-2 rounded-full bg-[#2ECC9A]"
+                    className="w-2 h-2 rounded-full bg-[#F5A623]"
                     animate={{ opacity: [0.3, 1, 0.3] }}
                     transition={{ duration: 1, repeat: Infinity, delay: i * 0.2 }}
                   />
@@ -538,8 +538,8 @@ export default function Dashboard() {
               animate={{ opacity: 1, y: 0 }}
               className="text-center max-w-md"
             >
-              <div className="w-20 h-20 rounded-full bg-[#2ECC9A]/10 flex items-center justify-center mx-auto mb-6">
-                <Upload className="w-8 h-8 text-[#2ECC9A]" />
+              <div className="w-20 h-20 rounded-full bg-[#F5A623]/10 flex items-center justify-center mx-auto mb-6">
+                <Upload className="w-8 h-8 text-[#F5A623]" />
               </div>
               <h2 className="text-2xl font-bold text-white mb-3">
                 Start Creating Captions
@@ -550,7 +550,7 @@ export default function Dashboard() {
               <Button
                 onClick={() => setIsUploadModalOpen(true)}
                 size="lg"
-                className="bg-[#2ECC9A] hover:bg-[#27b889] text-[#0A3D2C] font-semibold px-8"
+                className="bg-[#F5A623] hover:bg-[#D4891A] text-[#000000] font-semibold px-8"
               >
                 <Upload className="w-5 h-5 mr-2" />
                 Upload Video
@@ -564,13 +564,13 @@ export default function Dashboard() {
             {userData && userData.subscription_tier && userData.subscription_tier !== 'free' &&
               (userData.credits_remaining ?? 999) <= 5 && (
               <div className="px-4 pt-2 shrink-0">
-                <div className="flex items-center justify-between gap-3 bg-[#2ECC9A]/10 border border-[#2ECC9A]/30 rounded-xl px-4 py-2.5">
-                  <p className="text-sm text-[#2ECC9A] font-medium">
+                <div className="flex items-center justify-between gap-3 bg-[#F5A623]/10 border border-[#F5A623]/30 rounded-xl px-4 py-2.5">
+                  <p className="text-sm text-[#F5A623] font-medium">
                     ⚡ Running low? Add {userData.subscription_tier.startsWith('pro') ? '25' : userData.subscription_tier.startsWith('creator') ? '15' : '10'} credits for {userData.subscription_tier.startsWith('pro') ? '₹79' : '₹49'} — no plan change needed.
                   </p>
                   <button
                     onClick={() => setIsPricingModalOpen(true)}
-                    className="shrink-0 text-xs font-semibold bg-[#2ECC9A] text-[#0A3D2C] px-3 py-1.5 rounded-full hover:bg-[#27b889] transition-colors"
+                    className="shrink-0 text-xs font-semibold bg-[#F5A623] text-[#000000] px-3 py-1.5 rounded-full hover:bg-[#D4891A] transition-colors"
                   >
                     Top Up
                   </button>

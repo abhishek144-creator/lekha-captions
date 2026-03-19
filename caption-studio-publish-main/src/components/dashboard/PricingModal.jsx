@@ -164,7 +164,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
           }
         },
         prefill: { name: user?.displayName || '', email: user?.email || '' },
-        theme: { color: '#2ECC9A' },
+        theme: { color: '#F5A623' },
         modal: { ondismiss: () => setProcessingPlan(null) },
       }
 
@@ -228,7 +228,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
           finally { setProcessingPlan(null) }
         },
         prefill: { name: user?.displayName || '', email: user?.email || '' },
-        theme: { color: '#2ECC9A' },
+        theme: { color: '#F5A623' },
         modal: { ondismiss: () => setProcessingPlan(null) },
       }
       new window.Razorpay(options).open()
@@ -252,13 +252,13 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
         <div className="flex items-center gap-1 justify-center mt-2 bg-zinc-900 rounded-full p-1 w-fit mx-auto border border-white/10">
           <button
             onClick={() => setBilling('monthly')}
-            className={`px-5 py-1.5 rounded-full text-sm font-medium transition-all ${billing === 'monthly' ? 'bg-[#2ECC9A] text-[#0A3D2C]' : 'text-gray-400 hover:text-white'}`}
+            className={`px-5 py-1.5 rounded-full text-sm font-medium transition-all ${billing === 'monthly' ? 'bg-[#F5A623] text-[#000000]' : 'text-gray-400 hover:text-white'}`}
           >
             Monthly
           </button>
           <button
             onClick={() => setBilling('yearly')}
-            className={`px-5 py-1.5 rounded-full text-sm font-medium transition-all flex items-center gap-1.5 ${billing === 'yearly' ? 'bg-[#2ECC9A] text-[#0A3D2C]' : 'text-gray-400 hover:text-white'}`}
+            className={`px-5 py-1.5 rounded-full text-sm font-medium transition-all flex items-center gap-1.5 ${billing === 'yearly' ? 'bg-[#F5A623] text-[#000000]' : 'text-gray-400 hover:text-white'}`}
           >
             Yearly
             <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded-full font-bold">−17%</span>
@@ -266,9 +266,9 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
         </div>
 
         {message && (
-          <div className="mt-3 p-3 rounded-xl bg-[#2ECC9A]/10 border border-[#2ECC9A]/20 flex items-center gap-3">
-            <Zap className="w-4 h-4 text-[#2ECC9A] shrink-0" />
-            <p className="text-sm text-[#2ECC9A] font-medium">{message}</p>
+          <div className="mt-3 p-3 rounded-xl bg-[#F5A623]/10 border border-[#F5A623]/20 flex items-center gap-3">
+            <Zap className="w-4 h-4 text-[#F5A623] shrink-0" />
+            <p className="text-sm text-[#F5A623] font-medium">{message}</p>
           </div>
         )}
 
@@ -279,20 +279,20 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
               <div
                 key={plan.id}
                 className={`relative rounded-xl border p-5 transition-all ${plan.popular
-                  ? 'border-[#2ECC9A] bg-zinc-900'
+                  ? 'border-[#F5A623] bg-zinc-900'
                   : 'border-white/10 bg-zinc-900/50 hover:border-white/20'
                 }`}
               >
                 {plan.popular && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                    <span className="bg-[#2ECC9A] text-[#0A3D2C] text-xs font-bold px-3 py-1 rounded-full">
+                    <span className="bg-[#F5A623] text-[#000000] text-xs font-bold px-3 py-1 rounded-full">
                       MOST POPULAR
                     </span>
                   </div>
                 )}
 
-                <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-3 ${plan.popular ? 'bg-[#2ECC9A]' : 'bg-white/10'}`}>
-                  <Icon className={`w-5 h-5 ${plan.popular ? 'text-[#0A3D2C]' : 'text-white'}`} />
+                <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-3 ${plan.popular ? 'bg-[#F5A623]' : 'bg-white/10'}`}>
+                  <Icon className={`w-5 h-5 ${plan.popular ? 'text-[#000000]' : 'text-white'}`} />
                 </div>
 
                 <h3 className="text-lg font-bold text-white mb-0.5">{plan.name}</h3>
@@ -305,7 +305,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
                   <span className="text-gray-500 text-sm">/mo</span>
                 </div>
                 {billing === 'yearly' ? (
-                  <p className="text-xs text-[#2ECC9A] mb-3">₹{plan.yearlyPaise / 100} billed yearly</p>
+                  <p className="text-xs text-[#F5A623] mb-3">₹{plan.yearlyPaise / 100} billed yearly</p>
                 ) : (
                   <div className="mb-3" />
                 )}
@@ -318,7 +318,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
                 <ul className="space-y-2 mb-5">
                   {plan.features.map((f, i) => (
                     <li key={i} className="flex items-start gap-2 text-sm">
-                      <Check className="w-3.5 h-3.5 text-[#2ECC9A] mt-0.5 shrink-0" />
+                      <Check className="w-3.5 h-3.5 text-[#F5A623] mt-0.5 shrink-0" />
                       <span className="text-gray-300">{f}</span>
                     </li>
                   ))}
@@ -328,7 +328,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
                   onClick={() => handlePayment(plan)}
                   disabled={processingPlan === plan.id}
                   className={`w-full font-semibold ${plan.popular
-                    ? 'bg-[#2ECC9A] hover:bg-[#27b889] text-[#0A3D2C]'
+                    ? 'bg-[#F5A623] hover:bg-[#D4891A] text-[#000000]'
                     : 'bg-white/10 hover:bg-white/20 text-white'
                   }`}
                 >

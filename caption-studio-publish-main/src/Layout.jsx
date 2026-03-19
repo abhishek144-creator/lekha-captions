@@ -19,14 +19,14 @@ export default function Layout({ children, currentPageName }) {
         }
         */
         :root {
-          --brand-primary: #1B4D3E;
-          --brand-accent: #2ECC9A;
+          --brand-primary: #0A0A0A;
+          --brand-accent: #F5A623;
           --brand-warm: #F5A623;
           --brand-bg: #F8F6F1;
           --brand-dark: #1A1A2E;
           --brand-surface: #E8F5F0;
-          --brand-cta: #2ECC9A;
-          --brand-cta-text: #0A3D2C;
+          --brand-cta: #F5A623;
+          --brand-cta-text: #000000;
           --brand-text: #1A1A2E;
           --brand-text-secondary: #6C7A89;
           --brand-error: #E74C3C;
