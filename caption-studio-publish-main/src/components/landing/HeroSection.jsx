@@ -45,7 +45,7 @@ export default function HeroSection() {
             <Link to={createPageUrl('Dashboard')}>
               <Button
                 size="lg"
-                className="bg-[#F5A623] hover:bg-[#D4891A] text-[#000000] px-8 py-6 text-lg rounded-xl shadow-lg shadow-[#F5A623]/25 group font-semibold"
+                className="bg-gradient-to-r from-[#FFE566] to-[#F5A623] hover:from-[#F5A623] hover:to-[#D4891A] text-black px-8 py-6 text-lg rounded-xl shadow-lg shadow-[#F5A623]/25 group font-semibold"
               >
                 <Play className="w-5 h-5 mr-2" />
                 Upload Video

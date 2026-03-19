@@ -117,7 +117,7 @@ export default function SidebarNav({ activeTab, setActiveTab, user, onOpenPricin
               )}
               <Button
                 onClick={onOpenPricing}
-                className="w-full justify-start bg-[#F5A623] hover:bg-[#D4891A] text-[#000000] font-semibold"
+                className="w-full justify-start bg-gradient-to-r from-[#FFE566] to-[#F5A623] hover:from-[#F5A623] hover:to-[#D4891A] text-black font-semibold"
                 size="sm"
               >
                 Upgrade Plan

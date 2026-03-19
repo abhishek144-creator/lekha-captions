@@ -615,7 +615,7 @@ export default function CaptionTimeline({
 
               {/* Divider line between text and speech */}
               <div
-                className="absolute left-0 right-0 h-px bg-[#F5A623]/30"
+                className="absolute left-0 right-0 h-px bg-white/10"
                 style={{ top: `${TEXT_ROWS * TEXT_ROW_HEIGHT}px` }}
               />
 
@@ -625,12 +625,12 @@ export default function CaptionTimeline({
                 style={{ top: `${TEXT_ROWS * TEXT_ROW_HEIGHT}px`, height: `${SPEECH_HEIGHT + 8}px` }}
               >
                 {/* Row label */}
-                <div className="absolute left-1 top-0.5 text-[8px] text-[#F5A623]/30 uppercase tracking-wider font-medium pointer-events-none z-10">
+                <div className="absolute left-1 top-0.5 text-[8px] text-white/20 uppercase tracking-wider font-medium pointer-events-none z-10">
                   Speech
                 </div>
 
                 {/* Background */}
-                <div className="absolute inset-0 bg-[#F5A623]/30" />
+                <div className="absolute inset-0 bg-white/[0.03]" />
 
                 {/* Speech captions */}
                 <div className="absolute left-0 right-0" style={{ top: '12px', bottom: '4px' }}>

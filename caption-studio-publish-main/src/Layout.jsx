@@ -21,11 +21,14 @@ export default function Layout({ children, currentPageName }) {
         :root {
           --brand-primary: #0A0A0A;
           --brand-accent: #F5A623;
+          --brand-accent-light: #FFE566;
+          --brand-accent-dark: #D4891A;
           --brand-warm: #F5A623;
-          --brand-bg: #F8F6F1;
-          --brand-dark: #1A1A2E;
-          --brand-surface: #E8F5F0;
+          --brand-bg: #0A0A0A;
+          --brand-dark: #0A0A0A;
+          --brand-surface: #1A0F00;
           --brand-cta: #F5A623;
+          --brand-cta-light: #FFE566;
           --brand-cta-text: #000000;
           --brand-text: #1A1A2E;
           --brand-text-secondary: #6C7A89;

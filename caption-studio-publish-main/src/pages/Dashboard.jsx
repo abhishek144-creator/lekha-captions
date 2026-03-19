@@ -550,7 +550,7 @@ export default function Dashboard() {
               <Button
                 onClick={() => setIsUploadModalOpen(true)}
                 size="lg"
-                className="bg-[#F5A623] hover:bg-[#D4891A] text-[#000000] font-semibold px-8"
+                className="bg-gradient-to-r from-[#FFE566] to-[#F5A623] hover:from-[#F5A623] hover:to-[#D4891A] text-black font-semibold px-8"
               >
                 <Upload className="w-5 h-5 mr-2" />
                 Upload Video
@@ -570,7 +570,7 @@ export default function Dashboard() {
                   </p>
                   <button
                     onClick={() => setIsPricingModalOpen(true)}
-                    className="shrink-0 text-xs font-semibold bg-[#F5A623] text-[#000000] px-3 py-1.5 rounded-full hover:bg-[#D4891A] transition-colors"
+                    className="shrink-0 text-xs font-semibold bg-gradient-to-r from-[#FFE566] to-[#F5A623] text-black px-3 py-1.5 rounded-full hover:bg-[#D4891A] transition-colors"
                   >
                     Top Up
                   </button>
