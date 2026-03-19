@@ -1017,7 +1017,7 @@ export default function VideoPlayer({
                           const isWordClicked = wordPopup?.wordIndex === wordIndex && wordPopup?.caption?.id === caption?.id;
 
                           // Extract transform from customStyle - this goes on PARENT wrapper
-                          const { x = 0, y = 0, animation, ...restStyle } = customStyle;
+                          const { x = 0, y = 0, animation, isEmphasis, ...restStyle } = customStyle;
                           const globalLineHeight = (captionStyle?.font_size || 18) * (captionStyle?.line_spacing || 1.4);
 
                           // Per-font vertical offset correction.
@@ -1129,7 +1129,7 @@ export default function VideoPlayer({
                                         backgroundImage: captionStyle.highlight_gradient || undefined,
                                         backgroundColor: captionStyle.highlight_gradient ? undefined : captionStyle.highlight_color
                                       } : {}),
-                                      border: isWordClicked ? '1px solid #a855f7' : 'none',
+                                      border: isWordClicked ? '1px solid #F5A623' : 'none',
                                     }}
                                   />
 
@@ -1138,9 +1138,12 @@ export default function VideoPlayer({
                                     style={{
                                       whiteSpace: 'pre',
                                       fontFamily: restStyle.fontFamily || captionStyle?.font_family || 'Inter',
-                                      fontWeight: restStyle.fontWeight || (captionStyle?.is_bold ? 'bold' : 'normal'),
+                                      fontWeight: isEmphasis ? 'bold' : (restStyle.fontWeight || (captionStyle?.is_bold ? 'bold' : 'normal')),
                                       fontStyle: restStyle.fontStyle || 'normal',
-                                      fontSize: restStyle.fontSize ? `${restStyle.fontSize}px` : undefined,
+                                      fontSize: isEmphasis
+                                        ? `${Math.round((restStyle.fontSize || captionStyle?.font_size || 18) * 1.25)}px`
+                                        : (restStyle.fontSize ? `${restStyle.fontSize}px` : undefined),
+                                      transform: isEmphasis ? 'scaleY(1.08)' : undefined,
                                       lineHeight: `${globalLineHeight}px`,
                                       textAlign: restStyle.textAlign || undefined,
                                       textDecoration: restStyle.textDecoration || captionStyle?.text_decoration || 'none',
@@ -1149,8 +1152,11 @@ export default function VideoPlayer({
                                         ? `${restStyle.backgroundPadding / 12}em ${Math.round(restStyle.backgroundPadding * 1.5) / 12}em`
                                         : ((isHighlighted && !isWordClicked) ? '0.05em 0.1em' : (isWordClicked ? '0.05em 0.1em' : '0.05em 0')),
 
-                                      // Text Color Priority: Local Text Gradient -> Local Color -> Global Text Gradient -> Global Color
-                                      ...(restStyle.textGradient ? {
+                                      // Text Color Priority: Emphasis -> Local Text Gradient -> Local Color -> Global Text Gradient -> Global Color
+                                      ...(isEmphasis && !restStyle.color ? {
+                                        color: '#F5A623',
+                                        textShadow: '0 0 12px rgba(245,166,35,0.7), 0 0 4px rgba(245,166,35,0.5)',
+                                      } : restStyle.textGradient ? {
                                         backgroundImage: restStyle.textGradient,
                                         WebkitBackgroundClip: 'text',
                                         backgroundClip: 'text',
@@ -1212,7 +1218,7 @@ export default function VideoPlayer({
             return (
               <div
                 key={element.id}
-                className={`absolute ${isSelected ? 'ring-2 ring-purple-500' : ''} ${draggedElementId === element.id ? 'cursor-grabbing' : 'cursor-grab'} group`}
+                className={`absolute ${isSelected ? 'ring-2 ring-[#F5A623]' : ''} ${draggedElementId === element.id ? 'cursor-grabbing' : 'cursor-grab'} group`}
                 style={{
                   top: `${style.top || 50}%`,
                   left: `${style.left || 50}%`,
@@ -1251,7 +1257,7 @@ export default function VideoPlayer({
                 {!isEditingThis && (
                   <>
                     <div
-                      className="text-resize-handle absolute -right-1 -bottom-1 w-6 h-6 bg-purple-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-nwse-resize flex items-center justify-center shadow-lg"
+                      className="text-resize-handle absolute -right-1 -bottom-1 w-6 h-6 bg-[#F5A623] rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-nwse-resize flex items-center justify-center shadow-lg"
                       onMouseDown={(e) => handleTextElementResizeDown(e, element.id, style)}
                     >
                       <div className="w-3 h-3 border-r-2 border-b-2 border-white"></div>
