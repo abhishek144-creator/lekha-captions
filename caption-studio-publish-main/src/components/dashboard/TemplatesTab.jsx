@@ -12,8 +12,8 @@ const templates = [
   {
     id: 't-115', name: 'Green Neon Pulse',
     desc: 'White text with pulsing green active glow',
-    bg: '#000000',
-    style: { template_id: 't-115', font_family: 'Noto Sans', font_size: 28, font_weight: '900', font_style: 'italic', position_y: 75, text_color: '#FFFFFF' }
+    bg: '#111',
+    style: { template_id: 't-115', font_family: 'Noto Sans', font_size: 28, font_weight: '900', font_style: 'italic', position_y: 75, text_color: '#FFFFFF', secondary_color: '#39FF14' }
   },
   {
     id: 't-109', name: '3D Shadow',
@@ -21,15 +21,24 @@ const templates = [
     bg: '#1a1a1a',
     style: { template_id: 't-109', font_family: 'Noto Sans', font_size: 26, font_weight: '900', position_y: 75, secondary_color: '#E01A1A' }
   },
-
-
+  {
+    id: 't-26', name: 'Bold Stroke',
+    desc: 'Light bg, black bold text with pink 3D shadow',
+    bg: '#e8e8e8',
+    style: { template_id: 't-26', font_family: 'Bangers', font_size: 28, font_weight: '900', text_case: 'uppercase', position_y: 75, secondary_color: '#ff2058', background_color: '#e8e8e8' }
+  },
   {
     id: 't-102', name: 'Clarity',
     desc: 'Clean light bg, dark readable text',
     bg: '#FFFFFF',
     style: { template_id: 't-102', font_family: 'Noto Sans', font_size: 22, font_weight: '800', position_y: 75, secondary_color: '#1F2022', background_color: '#FFFFFF' }
   },
-
+  {
+    id: 't-36', name: 'Color Flash',
+    desc: 'Invisible until spoken — active word flashes in colour',
+    bg: '#111',
+    style: { template_id: 't-36', font_family: 'Noto Sans', font_size: 26, font_weight: '900', position_y: 75, secondary_color: '#00ffb3' }
+  },
   {
     id: 't-105', name: 'Daze',
     desc: 'White stroked, yellow glow on speak',
@@ -42,21 +51,24 @@ const templates = [
     bg: '#1a0500',
     style: { template_id: 't-9', font_family: 'Noto Sans', font_size: 26, font_weight: '900', text_case: 'uppercase', position_y: 75 }
   },
-
   {
     id: 't-124', name: 'Ghost Echo',
     desc: 'Fade in with ghost echo shadow trail',
     bg: '#111',
     style: { template_id: 't-124', font_family: 'Inter', font_size: 26, font_weight: '900', position_y: 75 }
   },
-
+  {
+    id: 't-16', name: 'Ghost Focus',
+    desc: 'Blurred inactive words, sharp spotlight on spoken',
+    bg: '#111',
+    style: { template_id: 't-16', font_family: 'Playfair Display', font_size: 24, font_weight: '700', font_style: 'italic', position_y: 75 }
+  },
   {
     id: 't-110', name: 'Glow Dot',
-    desc: 'Glowing blue dot under active word',
+    desc: 'Glowing dot under active word',
     bg: '#111',
     style: { template_id: 't-110', font_family: 'Noto Sans', font_size: 24, font_weight: '800', position_y: 75, secondary_color: '#0066FF' }
   },
-
   {
     id: 't-119', name: 'Gradient Box',
     desc: 'Active word gets blue-cyan gradient box',
@@ -69,10 +81,15 @@ const templates = [
     bg: '#000',
     style: { template_id: 't-12', font_family: 'Special Elite', font_size: 22, position_y: 75 }
   },
-
+  {
+    id: 't-106', name: 'Iman',
+    desc: 'Words hidden until spoken — clean instant reveal',
+    bg: '#111',
+    style: { template_id: 't-106', font_family: 'Noto Sans', font_size: 24, font_weight: '800', position_y: 75 }
+  },
   {
     id: 't-52', name: 'Light Streak',
-    desc: 'Words rise into view with each syllable',
+    desc: 'Words rise into view as spoken',
     bg: '#111',
     style: { template_id: 't-52', font_family: 'Inter', font_size: 26, font_weight: '900', position_y: 75 }
   },
@@ -94,14 +111,18 @@ const templates = [
     bg: '#111',
     style: { template_id: 't-104', font_family: 'Noto Sans', font_size: 26, font_weight: '900', position_y: 75 }
   },
-
+  {
+    id: 't-111', name: 'Red Tape',
+    desc: 'Bold red box snaps onto each spoken word',
+    bg: '#111',
+    style: { template_id: 't-111', font_family: 'Inter', font_size: 22, font_weight: '900', position_y: 75, secondary_color: '#E60000' }
+  },
   {
     id: 't-T5', name: 'Sentence Box',
     desc: 'Deep yellow pad box for all words',
-    bg: '#ECF00F',
+    bg: '#111',
     style: { template_id: 't-T5', font_family: 'Montserrat', font_size: 24, font_weight: '800', font_style: 'italic', background_color: '#ECF00F', text_color: '#333333', position_y: 75 }
   },
-
   {
     id: 't-95', name: 'Speed Lines',
     desc: 'Skewed font with blue speed streaks',
@@ -114,7 +135,6 @@ const templates = [
     bg: '#0d1b2a',
     style: { template_id: 't-T1', font_family: 'Noto Sans', font_size: 30, font_style: 'italic', position_y: 75 }
   },
-
   {
     id: 't-T4', name: 'Study With Me',
     desc: 'Soft pink italic serif on dark bg',
@@ -132,6 +152,12 @@ const templates = [
     desc: 'Words fade in, key words get green underline',
     bg: '#0a0a0a',
     style: { template_id: 't-T3', font_family: 'Montserrat', font_size: 22, font_weight: '400', position_y: 75 }
+  },
+  {
+    id: 't-57', name: 'VHS Glitch',
+    desc: 'Flicker-on reveal with chromatic aberration',
+    bg: '#111',
+    style: { template_id: 't-57', font_family: 'Inter', font_size: 26, font_weight: '900', position_y: 75 }
   },
   {
     id: 't-37', name: 'Wipe Mask',
@@ -199,7 +225,7 @@ const CustomColorPicker = ({ label, value, onChange, onReset, defaultColor }) =>
   </div>
 );
 
-const TEMPLATE_FEATURES = { "t-115": ["primary", "secondary", "highlight"], "t-109": ["primary", "secondary", "highlight"], "t-26": ["primary", "secondary", "highlight"], "t-102": ["primary", "bg", "highlight"], "t-36": ["primary", "secondary", "highlight"], "t-105": ["primary", "highlight"], "t-9": ["highlight"], "t-124": ["primary", "highlight"], "t-16": ["primary", "highlight"], "t-110": ["primary", "secondary", "highlight"], "t-119": ["primary", "bg", "highlight"], "t-12": ["primary", "secondary", "highlight"], "t-106": ["primary", "highlight"], "t-52": ["primary", "highlight"], "t-103": ["primary", "bg", "highlight"], "t-112": ["highlight"], "t-104": ["primary", "secondary", "highlight"], "t-111": ["primary", "secondary", "highlight"], "t-T5": ["primary", "bg"], "t-95": ["secondary", "highlight"], "t-T1": ["primary", "highlight"], "t-T4": ["primary", "highlight"], "t-56": ["primary", "secondary", "highlight"], "t-T3": ["primary", "highlight"], "t-37": ["primary", "highlight"] };
+const TEMPLATE_FEATURES = { "t-115": ["primary", "secondary", "highlight"], "t-109": ["primary", "secondary", "highlight"], "t-26": ["primary", "secondary", "bg", "highlight"], "t-102": ["primary", "bg", "highlight"], "t-36": ["primary", "secondary", "highlight"], "t-105": ["primary", "highlight"], "t-9": ["highlight"], "t-124": ["primary", "highlight"], "t-16": ["primary", "highlight"], "t-110": ["primary", "secondary", "highlight"], "t-119": ["primary", "bg", "highlight"], "t-12": ["primary", "secondary", "highlight"], "t-106": ["primary", "highlight"], "t-52": ["primary", "highlight"], "t-103": ["primary", "bg", "highlight"], "t-112": ["highlight"], "t-104": ["primary", "secondary", "highlight"], "t-111": ["primary", "secondary", "highlight"], "t-T5": ["primary", "bg"], "t-95": ["secondary", "highlight"], "t-T1": ["primary", "highlight"], "t-T4": ["primary", "highlight"], "t-56": ["primary", "secondary", "highlight"], "t-T3": ["primary", "highlight"], "t-57": ["primary", "highlight"], "t-37": ["primary", "highlight"] };
 
 const TemplateCustomizationPanel = ({ style, defaultTemplateStyle, onUpdate }) => {
   const currentFeatures = TEMPLATE_FEATURES[style?.template_id] || ['primary', 'secondary', 'bg', 'highlight'];
@@ -275,15 +301,37 @@ export default function TemplatesTab({ currentStyle, onApplyTemplate }) {
   if (!onApplyTemplate) return null;
 
   const handleClearTemplate = () => {
+    // Full reset to original default state — clears all template AND custom overrides
     onApplyTemplate({
       template_id: '',
       font_family: 'Inter',
       font_size: 18,
       font_weight: '500',
       font_style: 'normal',
+      line_spacing: 1.4,
+      word_spacing: 1,
+      is_bold: false,
+      is_caps: false,
+      text_case: 'none',
+      text_align: 'center',
       text_color: '#ffffff',
-      text_case: '',
+      text_gradient: '',
+      text_opacity: 1,
+      highlight_color: '',
+      highlight_gradient: '',
+      secondary_color: '',
+      has_background: true,
+      background_color: '#000000',
+      background_opacity: 0.7,
+      background_padding: 6,
+      background_h_multiplier: 0.99,
+      has_stroke: false,
+      has_shadow: false,
+      has_animation: false,
+      position: 'bottom',
       position_y: 75,
+      show_inactive: undefined,
+      scale: 1,
     });
   };
 
@@ -291,7 +339,7 @@ export default function TemplatesTab({ currentStyle, onApplyTemplate }) {
     <div className="h-full overflow-y-auto pr-1 custom-scrollbar">
       <div className="mb-3">
         <h2 className="text-base font-semibold text-white mb-0.5">Caption Templates</h2>
-        <p className="text-[11px] text-gray-500">24 templates — yellow = important word</p>
+        <p className="text-[11px] text-gray-500">26 templates — yellow = important word</p>
       </div>
 
       {/* ── NONE / REMOVE OPTION ── always visible at top */}

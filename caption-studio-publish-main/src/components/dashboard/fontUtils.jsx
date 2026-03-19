@@ -505,24 +505,29 @@ export function loadGoogleFont(fontName, weights = [400, 700]) {
   // Merge with already-loaded weights for the new link tag
   const allWeights = [...new Set([...alreadyLoaded, ...missing])].sort((a, b) => a - b);
 
-  // Remove any previous link so we can replace it with a richer one
-  const existingLink = document.getElementById(`font-${safeKey}`);
-  if (existingLink) {
-    existingLink.remove();
-  }
+  // Use a unique ID so the old link stays alive until the new one loads successfully
+  const newLinkId = `font-${safeKey}-${Date.now()}`;
 
   return new Promise((resolve, reject) => {
     const link = document.createElement('link');
-    link.id = `font-${safeKey}`;
+    link.id = newLinkId;
     link.rel = 'stylesheet';
     link.href = `https://fonts.googleapis.com/css2?family=${fontName.replace(/\s+/g, '+')}:wght@${allWeights.join(';')}&display=swap`;
 
     link.onload = () => {
       // Record all weights now loaded
       _loadedFontWeights[safeKey] = new Set(allWeights);
+      // Remove any older links for this font now that the new one is live
+      document.querySelectorAll(`link[id^="font-${safeKey}-"]`).forEach(el => {
+        if (el.id !== newLinkId) el.remove();
+      });
       resolve();
     };
-    link.onerror = () => reject(new Error(`Failed to load font: ${fontName}`));
+    link.onerror = () => {
+      // Remove the failed link — old one (if any) stays intact
+      link.remove();
+      reject(new Error(`Failed to load font: ${fontName}`));
+    };
 
     document.head.appendChild(link);
   });

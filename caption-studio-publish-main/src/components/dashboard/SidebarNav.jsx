@@ -65,14 +65,14 @@ export default function SidebarNav({ activeTab, setActiveTab, user, onOpenPricin
             onClick={() => !isDisabled && setActiveTab(item.id)}
             disabled={isDisabled}
             className={`w-full flex flex-col items-center justify-center py-3 px-2 transition-colors relative ${isActive
-              ? 'text-purple-400'
+              ? 'text-[#2ECC9A]'
               : isDisabled
                 ? 'text-zinc-700 cursor-not-allowed'
                 : 'text-zinc-500 hover:text-zinc-300'
               }`}
           >
             {isActive && (
-              <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-8 bg-purple-500 rounded-r-full" />
+              <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-8 bg-[#2ECC9A] rounded-r-full" />
             )}
             <Icon className="w-5 h-5" />
             <span className="text-[10px] mt-1.5 font-medium">{item.label}</span>
@@ -98,10 +98,10 @@ export default function SidebarNav({ activeTab, setActiveTab, user, onOpenPricin
                 <img
                   src={currentUser.photoURL}
                   alt="Profile"
-                  className="w-9 h-9 rounded-full border-2 border-purple-500/50"
+                  className="w-9 h-9 rounded-full border-2 border-[#2ECC9A]/50"
                 />
               ) : (
-                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-white text-xs font-bold">
+                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#1B4D3E] to-[#2ECC9A] flex items-center justify-center text-white text-xs font-bold">
                   {(currentUser.displayName || currentUser.email || 'U').charAt(0).toUpperCase()}
                 </div>
               )}
@@ -117,7 +117,7 @@ export default function SidebarNav({ activeTab, setActiveTab, user, onOpenPricin
               )}
               <Button
                 onClick={onOpenPricing}
-                className="w-full justify-start bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
+                className="w-full justify-start bg-[#2ECC9A] hover:bg-[#27b889] text-[#0A3D2C] font-semibold"
                 size="sm"
               >
                 Upgrade Plan
