@@ -38,21 +38,22 @@ const plans = [
   {
     id: 'starter',
     name: 'Starter',
-    monthlyPrice: '₹99',
-    yearlyPrice: '₹79',
-    monthlyPaise: 9900,
-    yearlyPaise: 7900,
+    monthlyInrPrice: '₹99', yearlyInrPrice: '₹999',
+    monthlyUsdPrice: '$0.99', yearlyUsdPrice: '$9.99',
+    monthlyPaise: 9900, yearlyPaise: 99900,
+    monthlyUsdCents: 99, yearlyUsdCents: 999,
+    credits: 15,
     description: 'Perfect for getting started',
     icon: Zap,
     features: [
-      '15 video credits per month',
-      'Max 2 minutes per video',
-      'Max 3 videos per day',
-      '1080p HD export',
-      'All 115+ languages',
+      '15 video credits / month',
+      'Max 2 min per video',
+      'Max 3 videos / day',
+      'No watermark',
       '25+ caption styles',
-      'SRT + VTT + TXT download',
-      'Email support',
+      'All 115+ languages',
+      '1080p HD export',
+      '2 hr download link',
     ],
     cta: 'Get Started',
     popular: false,
@@ -60,22 +61,23 @@ const plans = [
   {
     id: 'creator',
     name: 'Creator',
-    monthlyPrice: '₹199',
-    yearlyPrice: '₹159',
-    monthlyPaise: 19900,
-    yearlyPaise: 15900,
+    monthlyInrPrice: '₹199', yearlyInrPrice: '₹1,999',
+    monthlyUsdPrice: '$1.99', yearlyUsdPrice: '$19.99',
+    monthlyPaise: 19900, yearlyPaise: 199900,
+    monthlyUsdCents: 199, yearlyUsdCents: 1999,
+    credits: 45,
     description: 'Best value for serious creators',
     icon: Crown,
     features: [
-      '45 video credits per month',
-      'Max 3 minutes per video',
-      'Max 5 videos per day',
-      '1080p HD + 4K export',
-      'All 115+ languages',
+      '45 video credits / month',
+      'Max 3 min per video',
+      'Max 5 videos / day',
+      'No watermark',
       '25+ caption styles',
-      'All export formats',
+      'All 115+ languages',
+      '1080p HD + 4K export',
       'Translation feature',
-      'Priority email support',
+      '24 hr download link',
     ],
     cta: 'Go Creator',
     popular: true,
@@ -83,24 +85,24 @@ const plans = [
   {
     id: 'pro',
     name: 'Pro',
-    monthlyPrice: '₹399',
-    yearlyPrice: '₹319',
-    monthlyPaise: 39900,
-    yearlyPaise: 31900,
+    monthlyInrPrice: '₹399', yearlyInrPrice: '₹3,999',
+    monthlyUsdPrice: '$3.99', yearlyUsdPrice: '$39.99',
+    monthlyPaise: 39900, yearlyPaise: 399900,
+    monthlyUsdCents: 399, yearlyUsdCents: 3999,
+    credits: 100,
     description: 'For power users & teams',
     icon: Star,
     features: [
-      '90 video credits per month',
-      'Max 3 minutes per video',
-      'Unlimited videos per day',
-      '1080p HD + 4K export',
-      'All 115+ languages',
+      '100 video credits / month',
+      'Max 3 min per video',
+      'Unlimited videos / day',
+      'No watermark',
       '25+ caption styles',
-      'All export formats',
+      'All 115+ languages',
+      '1080p HD + 4K export',
       'Translation feature',
-      'API access',
-      '3 team seats',
-      'Priority support',
+      'API access · 3 team seats',
+      '72 hr download link',
     ],
     cta: 'Go Pro',
     popular: false,
@@ -127,6 +129,7 @@ export default function PricingSection() {
         return
       }
 
+      const planId = billing === 'yearly' ? `${plan.id}_yearly` : plan.id
       const amount = billing === 'yearly' ? plan.yearlyPaise : plan.monthlyPaise
       const currency = 'INR'
       let orderId = null
@@ -140,7 +143,7 @@ export default function PricingSection() {
           const orderRes = await fetch(`${API_BASE}/api/create-order`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ plan_id: plan.id, id_token: idToken, currency: 'INR' })
+            body: JSON.stringify({ plan_id: planId, id_token: idToken, currency })
           })
           const orderData = await orderRes.json()
           if (orderData.success) {
@@ -157,8 +160,8 @@ export default function PricingSection() {
         amount,
         currency,
         ...(orderId ? { order_id: orderId } : {}),
-        name: 'Lekha Caption',
-        description: `${plan.name} Plan`,
+        name: 'Lekha Captions',
+        description: `${plan.name} Plan${billing === 'yearly' ? ' · Yearly' : ''}`,
         prefill: {
           name: currentUser?.displayName || '',
           email: currentUser?.email || ''
@@ -175,7 +178,8 @@ export default function PricingSection() {
                   razorpay_order_id: response.razorpay_order_id,
                   razorpay_payment_id: response.razorpay_payment_id,
                   razorpay_signature: response.razorpay_signature,
-                  id_token: idToken
+                  id_token: idToken,
+                  plan_id: planId
                 })
               })
               const data = await verifyRes.json()
@@ -285,14 +289,15 @@ export default function PricingSection() {
 
               <div className="flex items-baseline gap-1 mb-1">
                 <span className="text-4xl font-bold text-white">
-                  {billing === 'yearly' ? plan.yearlyPrice : plan.monthlyPrice}
+                  {billing === 'yearly' ? plan.yearlyInrPrice : plan.monthlyInrPrice}
                 </span>
-                <span className="text-gray-400">/month</span>
+                <span className="text-gray-400">/mo</span>
               </div>
-              {billing === 'yearly' && (
-                <p className="text-xs text-[#2ECC9A] mb-5">Billed annually · Save 20%</p>
+              {billing === 'yearly' ? (
+                <p className="text-xs text-[#2ECC9A] mb-5">₹{plan.yearlyPaise / 100} billed yearly · ~17% off</p>
+              ) : (
+                <div className="mb-5" />
               )}
-              {billing === 'monthly' && <div className="mb-5" />}
 
               <ul className="space-y-3 mb-8">
                 {plan.features.map((feature, i) => (
