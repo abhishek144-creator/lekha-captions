@@ -615,7 +615,7 @@ export default function CaptionTimeline({
 
               {/* Divider line between text and speech */}
               <div
-                className="absolute left-0 right-0 h-px bg-purple-500/40"
+                className="absolute left-0 right-0 h-px bg-[#F5A623]/30"
                 style={{ top: `${TEXT_ROWS * TEXT_ROW_HEIGHT}px` }}
               />
 
@@ -625,12 +625,12 @@ export default function CaptionTimeline({
                 style={{ top: `${TEXT_ROWS * TEXT_ROW_HEIGHT}px`, height: `${SPEECH_HEIGHT + 8}px` }}
               >
                 {/* Row label */}
-                <div className="absolute left-1 top-0.5 text-[8px] text-purple-400/50 uppercase tracking-wider font-medium pointer-events-none z-10">
+                <div className="absolute left-1 top-0.5 text-[8px] text-[#F5A623]/30 uppercase tracking-wider font-medium pointer-events-none z-10">
                   Speech
                 </div>
 
                 {/* Background */}
-                <div className="absolute inset-0 bg-purple-500/5" />
+                <div className="absolute inset-0 bg-[#F5A623]/30" />
 
                 {/* Speech captions */}
                 <div className="absolute left-0 right-0" style={{ top: '12px', bottom: '4px' }}>
@@ -647,10 +647,10 @@ export default function CaptionTimeline({
                         initial={{ opacity: 0, scale: 0.9 }}
                         animate={{ opacity: 1, scale: 1 }}
                         className={`absolute rounded-md transition-all border group cursor-move ${isSelected
-                          ? 'bg-purple-500 border-purple-300 z-20'
+                          ? 'bg-[#F5A623] border-[#F5A623] z-20'
                           : isActive
-                            ? 'bg-purple-600/80 border-purple-500/50 z-10'
-                            : 'bg-purple-500/30 border-purple-500/30 hover:bg-purple-500/40 z-10'
+                            ? 'bg-[#F5A623]/55 border-[#F5A623]/60 z-10'
+                            : 'bg-[#F5A623]/25 border-[#F5A623]/30 hover:bg-[#F5A623]/40 z-10'
                           }`}
                         style={{
                           left: `${left}%`,
@@ -673,7 +673,7 @@ export default function CaptionTimeline({
                         {setCaptions && (
                           <>
                             <div
-                              className="absolute left-0 top-0 bottom-0 w-2 bg-purple-400 opacity-0 group-hover:opacity-100 cursor-ew-resize z-30 rounded-l"
+                              className="absolute left-0 top-0 bottom-0 w-2 bg-[#F5A623] opacity-0 group-hover:opacity-100 cursor-ew-resize z-30 rounded-l"
                               onMouseDown={(e) => {
                                 e.stopPropagation();
                                 e.preventDefault();
@@ -681,7 +681,7 @@ export default function CaptionTimeline({
                               }}
                             />
                             <div
-                              className="absolute right-0 top-0 bottom-0 w-2 bg-purple-400 opacity-0 group-hover:opacity-100 cursor-ew-resize z-30 rounded-r"
+                              className="absolute right-0 top-0 bottom-0 w-2 bg-[#F5A623] opacity-0 group-hover:opacity-100 cursor-ew-resize z-30 rounded-r"
                               onMouseDown={(e) => {
                                 e.stopPropagation();
                                 e.preventDefault();
@@ -690,7 +690,7 @@ export default function CaptionTimeline({
                             />
                           </>
                         )}
-                        <div className="px-2 truncate text-[10px] text-purple-100 pointer-events-none flex items-center h-full">
+                        <div className={`px-2 truncate text-[10px] pointer-events-none flex items-center h-full ${isSelected ? 'text-black font-semibold' : 'text-[#F5A623]'}`}>
                           {(caption.text || '').slice(0, 60)}
                         </div>
                       </motion.div>

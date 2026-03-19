@@ -60,9 +60,9 @@ export default function Login() {
                     <input
                         type="email"
                         placeholder="name@company.com"
-                        className="w-full px-4 py-3 border border-white/20 bg-white/5 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none text-white placeholder-gray-500"
+                        className="w-full px-4 py-3 border border-white/20 bg-white/5 rounded-lg focus:ring-2 focus:ring-[#F5A623] focus:border-[#F5A623] outline-none text-white placeholder-gray-500"
                     />
-                    <button className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors">
+                    <button className="w-full bg-gradient-to-r from-[#F5A623] to-blue-600 hover:from-[#F5A623] hover:to-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors">
                         Continue
                     </button>
                 </div>
@@ -70,12 +70,12 @@ export default function Login() {
                 {/* Terms */}
                 <div className="mt-8 text-center text-sm text-gray-500">
                     By proceeding, you agree to the<br />
-                    <a href="#" className="text-purple-400 hover:underline">Terms of Service</a> and <a href="#" className="text-purple-400 hover:underline">Privacy Policy</a>
+                    <a href="#" className="text-[#F5A623] hover:underline">Terms of Service</a> and <a href="#" className="text-[#F5A623] hover:underline">Privacy Policy</a>
                 </div>
 
                 {/* Log in */}
                 <div className="mt-10 text-center text-sm text-gray-400">
-                    Already have an account? <button onClick={handleGoogleLogin} className="text-purple-400 font-medium hover:underline">Log in</button>
+                    Already have an account? <button onClick={handleGoogleLogin} className="text-[#F5A623] font-medium hover:underline">Log in</button>
                 </div>
             </div>
         </div>

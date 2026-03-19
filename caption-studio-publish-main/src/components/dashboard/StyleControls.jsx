@@ -53,7 +53,7 @@ const FontRow = React.memo(({ data, index, style }) => {
   return (
     <div
       style={style}
-      className={`flex items-center px-3 cursor-pointer transition-colors hover:bg-white/10 ${isSelected ? 'bg-purple-500/20 text-purple-400 font-medium' : 'text-white'}`}
+      className={`flex items-center px-3 cursor-pointer transition-colors hover:bg-white/10 ${isSelected ? 'bg-[#F5A623]/30 text-[#F5A623] font-medium' : 'text-white'}`}
       onClick={(e) => {
         // Stop popover from instantly closing if it misfires
         e.stopPropagation();
@@ -63,7 +63,7 @@ const FontRow = React.memo(({ data, index, style }) => {
       <span style={{ fontFamily: font.value, fontSize: '15px' }} className="truncate flex-1">
         {font.label}
       </span>
-      {isSelected && <Check className="ml-1 h-4 w-4 shrink-0 text-purple-400" />}
+      {isSelected && <Check className="ml-1 h-4 w-4 shrink-0 text-[#F5A623]" />}
     </div>
   );
 });
@@ -89,15 +89,15 @@ const scriptLabels = {
 
 const presetColors = [
   '#E91E63', '#ffffff', '#fef08a', '#22c55e',
-  '#3b82f6', '#a855f7', '#ec4899', '#ff6b35',
+  '#3b82f6', '#F5A623', '#ec4899', '#ff6b35',
   '#fb923c'
 ];
 
 const presetGradients = [
   { name: 'Fire', value: 'linear-gradient(to right, #facc15, #ef4444)' },
-  { name: 'Electric', value: 'linear-gradient(to right, #a855f7, #3b82f6)' },
+  { name: 'Electric', value: 'linear-gradient(to right, #F5A623, #3b82f6)' },
   { name: 'Ocean', value: 'linear-gradient(to right, #06b6d4, #2563eb)' },
-  { name: 'Magic', value: 'linear-gradient(to right, #ec4899, #8b5cf6)' },
+  { name: 'Magic', value: 'linear-gradient(to right, #ec4899, #F5A623)' },
   { name: 'Nature', value: 'linear-gradient(to right, #4ade80, #0d9488)' },
   { name: 'Sunset', value: 'linear-gradient(to right, #fb923c, #db2777)' },
   { name: 'Night', value: 'linear-gradient(to right, #60a5fa, #4f46e5)' },
@@ -351,7 +351,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
       </h2>
 
       {selectedTextElement && (
-        <div className="mb-4 p-3 rounded-lg bg-purple-500/10 border border-purple-500/20">
+        <div className="mb-4 p-3 rounded-lg bg-[#F5A623]/30 border border-[#F5A623]/30">
           <p className="text-xs text-gray-400 mb-1">Editing Text Element</p>
           <p className="text-sm text-white font-medium line-clamp-1">"{selectedTextElement.text}"</p>
         </div>
@@ -366,7 +366,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
           <div>
             <div className="flex items-center justify-between mb-2">
               <Label className="text-sm text-gray-400">Font Family</Label>
-              <span className="text-[10px] text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded">
+              <span className="text-[10px] text-[#F5A623] bg-[#F5A623]/30 px-2 py-0.5 rounded">
                 {scriptLabels[detectedScript] || detectedScript}
               </span>
             </div>
@@ -527,7 +527,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
                   updateStyle('text_anchor', 'top');
                   updateStyle('line_spacing', 1.4);
                 }}
-                className={`h-8 w-8 ${(selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'top' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
+                className={`h-8 w-8 ${(selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'top' ? 'bg-[#F5A623] hover:bg-[#F5A623]' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
                 title="Top Anchor (Grows down)"
               >
                 <ArrowDownCircle className={`w-4 h-4 ${(selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'top' ? 'text-white' : 'text-gray-400'}`} />
@@ -539,7 +539,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
                   updateStyle('text_anchor', 'center');
                   updateStyle('line_spacing', 1.4);
                 }}
-                className={`h-8 w-8 ${(!selectedTextElement?.customStyle?.textAnchor && !captionStyle.text_anchor) || (selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'center' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
+                className={`h-8 w-8 ${(!selectedTextElement?.customStyle?.textAnchor && !captionStyle.text_anchor) || (selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'center' ? 'bg-[#F5A623] hover:bg-[#F5A623]' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
                 title="Center Anchor (Grows both ways)"
               >
                 <AlignCenter className={`w-4 h-4 ${(!selectedTextElement?.customStyle?.textAnchor && !captionStyle.text_anchor) || (selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'center' ? 'text-white' : 'text-gray-400'}`} />
@@ -551,7 +551,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
                   updateStyle('text_anchor', 'bottom');
                   updateStyle('line_spacing', 1.4);
                 }}
-                className={`h-8 w-8 ${(selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'bottom' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
+                className={`h-8 w-8 ${(selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'bottom' ? 'bg-[#F5A623] hover:bg-[#F5A623]' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
                 title="Bottom Anchor (Grows up)"
               >
                 <ArrowUpCircle className={`w-4 h-4 ${(selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'bottom' ? 'text-white' : 'text-gray-400'}`} />
@@ -784,7 +784,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
                   >
                     <span className="text-[9px] text-gray-500">None</span>
                   </button>
-                  {['#fef08a', '#22c55e', '#3b82f6', '#a855f7', '#ec4899', '#ff6b35'].map(color => (
+                  {['#fef08a', '#22c55e', '#3b82f6', '#F5A623', '#ec4899', '#ff6b35'].map(color => (
                     <button
                       key={color}
                       onClick={() => {
@@ -930,7 +930,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
               <button
                 onClick={() => updateStyle('text_align', 'left')}
                 className={`flex-1 flex items-center justify-center py-1.5 rounded-md transition-all ${getCurrentValue('text_align', 'center') === 'left'
-                  ? "bg-purple-600 text-white shadow-sm"
+                  ? "bg-[#F5A623] text-white shadow-sm"
                   : "text-gray-400 hover:text-white hover:bg-white/5"
                   }`}
               >
@@ -939,7 +939,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
               <button
                 onClick={() => updateStyle('text_align', 'center')}
                 className={`flex-1 flex items-center justify-center py-1.5 rounded-md transition-all ${getCurrentValue('text_align', 'center') === 'center'
-                  ? "bg-purple-600 text-white shadow-sm"
+                  ? "bg-[#F5A623] text-white shadow-sm"
                   : "text-gray-400 hover:text-white hover:bg-white/5"
                   }`}
               >
@@ -948,7 +948,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
               <button
                 onClick={() => updateStyle('text_align', 'right')}
                 className={`flex-1 flex items-center justify-center py-1.5 rounded-md transition-all ${getCurrentValue('text_align', 'center') === 'right'
-                  ? "bg-purple-600 text-white shadow-sm"
+                  ? "bg-[#F5A623] text-white shadow-sm"
                   : "text-gray-400 hover:text-white hover:bg-white/5"
                   }`}
               >
@@ -967,7 +967,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
                   if (!selectedTextElement) updateStyle('is_caps', false);
                 }}
                 className={`flex-1 flex items-center justify-center py-1.5 rounded-md text-xs font-medium transition-all ${getCurrentValue('text_case', 'none') === 'lowercase'
-                  ? "bg-purple-600 text-white shadow-sm"
+                  ? "bg-[#F5A623] text-white shadow-sm"
                   : "text-gray-400 hover:text-white hover:bg-white/5"
                   }`}
               >
@@ -979,7 +979,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
                   if (!selectedTextElement) updateStyle('is_caps', false);
                 }}
                 className={`flex-1 flex items-center justify-center py-1.5 rounded-md text-xs font-medium transition-all ${getCurrentValue('text_case', 'none') === 'capitalize'
-                  ? "bg-purple-600 text-white shadow-sm"
+                  ? "bg-[#F5A623] text-white shadow-sm"
                   : "text-gray-400 hover:text-white hover:bg-white/5"
                   }`}
               >
@@ -991,7 +991,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
                   if (!selectedTextElement) updateStyle('is_caps', true);
                 }}
                 className={`flex-1 flex items-center justify-center py-1.5 rounded-md text-xs font-medium transition-all ${(getCurrentValue('text_case', 'none') === 'uppercase' || (!selectedTextElement && captionStyle.is_caps))
-                  ? "bg-purple-600 text-white shadow-sm"
+                  ? "bg-[#F5A623] text-white shadow-sm"
                   : "text-gray-400 hover:text-white hover:bg-white/5"
                   }`}
               >
