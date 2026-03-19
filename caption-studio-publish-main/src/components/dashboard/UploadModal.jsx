@@ -340,7 +340,7 @@ export default function UploadModal({
             >
               <div
                 className={`relative border-2 border-dashed rounded-xl p-8 text-center transition-all ${dragActive
-                  ? 'border-[#2ECC9A] bg-[#2ECC9A]/10'
+                  ? 'border-[#F5A623] bg-[#F5A623]/10'
                   : 'border-white/10 hover:border-white/20'
                   }`}
                 onDragEnter={handleDrag}
@@ -355,8 +355,8 @@ export default function UploadModal({
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 />
 
-                <div className="w-16 h-16 rounded-full bg-[#2ECC9A]/15 flex items-center justify-center mx-auto mb-4">
-                  <Upload className="w-7 h-7 text-[#2ECC9A]" />
+                <div className="w-16 h-16 rounded-full bg-[#F5A623]/15 flex items-center justify-center mx-auto mb-4">
+                  <Upload className="w-7 h-7 text-[#F5A623]" />
                 </div>
 
                 <p className="text-white font-medium mb-1">
@@ -391,8 +391,8 @@ export default function UploadModal({
               className="space-y-6"
             >
               <div className="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10">
-                <div className="w-10 h-10 rounded-lg bg-[#2ECC9A]/15 flex items-center justify-center">
-                  <Film className="w-5 h-5 text-[#2ECC9A]" />
+                <div className="w-10 h-10 rounded-lg bg-[#F5A623]/15 flex items-center justify-center">
+                  <Film className="w-5 h-5 text-[#F5A623]" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-white truncate">{selectedFile?.name}</p>
@@ -419,7 +419,7 @@ export default function UploadModal({
                   <button
                     onClick={handleDetectLanguage}
                     disabled={isDetecting}
-                    className="flex items-center gap-1.5 text-xs text-[#2ECC9A] hover:text-[#27b889] transition-colors disabled:opacity-50"
+                    className="flex items-center gap-1.5 text-xs text-[#F5A623] hover:text-[#D4891A] transition-colors disabled:opacity-50"
                   >
                     {isDetecting ? (
                       <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Detecting...</>
@@ -440,7 +440,7 @@ export default function UploadModal({
                         placeholder="Search languages..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full px-3 py-1.5 rounded-md bg-zinc-700 border border-white/10 text-white text-sm placeholder-gray-500 outline-none focus:border-[#2ECC9A]"
+                        className="w-full px-3 py-1.5 rounded-md bg-zinc-700 border border-white/10 text-white text-sm placeholder-gray-500 outline-none focus:border-[#F5A623]"
                         onClick={(e) => e.stopPropagation()}
                       />
                     </div>
@@ -463,7 +463,7 @@ export default function UploadModal({
                     )}
                     {filterLangs(internationalLanguages).length > 0 && (
                       <SelectGroup>
-                        <SelectLabel className="text-[#2ECC9A] text-xs font-semibold uppercase tracking-wider px-2 mt-2">International & Regional</SelectLabel>
+                        <SelectLabel className="text-[#F5A623] text-xs font-semibold uppercase tracking-wider px-2 mt-2">International & Regional</SelectLabel>
                         {filterLangs(internationalLanguages).map(lang => (
                           <SelectItem
                             key={lang.value}
@@ -504,7 +504,7 @@ export default function UploadModal({
                   {wordsPerLine === 'dynamic' && (
                     <button
                       onClick={() => setShowDynamicInfo(v => !v)}
-                      className="flex items-center gap-1 text-xs text-[#2ECC9A] hover:text-[#27b889] transition-colors"
+                      className="flex items-center gap-1 text-xs text-[#F5A623] hover:text-[#D4891A] transition-colors"
                     >
                       <Info className="w-3.5 h-3.5" />
                       How it works
@@ -530,9 +530,9 @@ export default function UploadModal({
                   <motion.div
                     initial={{ opacity: 0, y: -6 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="mt-2 p-3 rounded-lg bg-[#2ECC9A]/10 border border-[#2ECC9A]/20 text-xs text-gray-300 space-y-1.5"
+                    className="mt-2 p-3 rounded-lg bg-[#F5A623]/10 border border-[#F5A623]/20 text-xs text-gray-300 space-y-1.5"
                   >
-                    <p className="font-semibold text-[#2ECC9A]">How Dynamic (Auto) works:</p>
+                    <p className="font-semibold text-[#F5A623]">How Dynamic (Auto) works:</p>
                     <p>Syncs captions to the exact millisecond of each spoken word using audio timestamps.</p>
                     <p>Shows 1-3 words at a time by default for maximum readability.</p>
                     <p>If 4-5 words are spoken quickly as a phrase, it shows the full phrase together.</p>
@@ -544,7 +544,7 @@ export default function UploadModal({
               <Button
                 onClick={handleSubmit}
                 disabled={isUploading}
-                className="w-full bg-[#2ECC9A] hover:bg-[#27b889] text-[#0A3D2C] font-semibold py-6"
+                className="w-full bg-[#F5A623] hover:bg-[#D4891A] text-[#000000] font-semibold py-6"
               >
                 {isUploading ? (
                   <>

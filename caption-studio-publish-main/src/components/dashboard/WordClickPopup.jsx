@@ -717,15 +717,15 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
                   className="w-full flex items-center justify-between text-xs text-gray-400 uppercase tracking-wider mb-1 group"
                 >
                   <span className="flex items-center gap-1.5">
-                    <Sparkles className="w-3 h-3 text-[#2ECC9A]" />
+                    <Sparkles className="w-3 h-3 text-[#F5A623]" />
                     Effects
                     {(currentStyle.effectType || 'none') !== 'none' && (
-                      <span className="normal-case text-[9px] bg-[#2ECC9A]/15 text-[#2ECC9A] px-1.5 py-0.5 rounded-full font-medium capitalize">
+                      <span className="normal-case text-[9px] bg-[#F5A623]/15 text-[#F5A623] px-1.5 py-0.5 rounded-full font-medium capitalize">
                         {currentStyle.effectType}
                       </span>
                     )}
                   </span>
-                  <span className={`w-4 h-4 rounded border border-white/20 flex items-center justify-center text-gray-500 text-[10px] group-hover:border-[#2ECC9A]/40 group-hover:text-[#2ECC9A] transition-colors ${effectsOpen ? 'bg-[#2ECC9A]/10 border-[#2ECC9A]/30 text-[#2ECC9A]' : ''}`}>
+                  <span className={`w-4 h-4 rounded border border-white/20 flex items-center justify-center text-gray-500 text-[10px] group-hover:border-[#F5A623]/40 group-hover:text-[#F5A623] transition-colors ${effectsOpen ? 'bg-[#F5A623]/10 border-[#F5A623]/30 text-[#F5A623]' : ''}`}>
                     {effectsOpen ? '−' : '+'}
                   </span>
                 </button>
@@ -764,7 +764,7 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
                             }
                           }}
                           className={`p-1.5 rounded border text-[10px] text-center transition-colors ${(currentStyle.effectType || 'none') === effect.id
-                            ? 'bg-[#2ECC9A]/15 border-[#2ECC9A]/60 text-white font-medium'
+                            ? 'bg-[#F5A623]/15 border-[#F5A623]/60 text-white font-medium'
                             : 'bg-zinc-800/50 border-white/10 text-gray-400 hover:bg-zinc-800 hover:border-white/20'
                           }`}
                         >

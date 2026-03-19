@@ -9,9 +9,9 @@ export default function HeroSection() {
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-[#0a0a0a]">
       {/* Decorative gradient orbs */}
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-[#1B4D3E]/20 rounded-full blur-3xl" />
-      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-[#2ECC9A]/15 rounded-full blur-3xl" />
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-[#2ECC9A]/5 rounded-full blur-3xl" />
+      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-[#0A0A0A]/20 rounded-full blur-3xl" />
+      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-[#F5A623]/15 rounded-full blur-3xl" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-[#F5A623]/5 rounded-full blur-3xl" />
 
       {/* Subtle grid pattern */}
       <div className="absolute inset-0 bg-[linear-gradient(rgba(46,204,154,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(46,204,154,0.04)_1px,transparent_1px)] bg-[size:64px_64px]" />
@@ -23,15 +23,15 @@ export default function HeroSection() {
           transition={{ duration: 0.6 }}
         >
           {/* Badge */}
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#2ECC9A]/10 border border-[#2ECC9A]/30 mb-8">
-            <Sparkles className="w-4 h-4 text-[#2ECC9A]" />
-            <span className="text-sm text-[#2ECC9A] font-medium">115+ Languages. Every language your audience speaks.</span>
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#F5A623]/10 border border-[#F5A623]/30 mb-8">
+            <Sparkles className="w-4 h-4 text-[#F5A623]" />
+            <span className="text-sm text-[#F5A623] font-medium">115+ Languages. Every language your audience speaks.</span>
           </div>
 
           {/* Main heading */}
           <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold text-white leading-tight mb-6">
             Professional Captions in
-            <span className="block bg-gradient-to-r from-[#2ECC9A] to-[#F5A623] bg-clip-text text-transparent">
+            <span className="block bg-gradient-to-r from-[#F5A623] to-[#F5A623] bg-clip-text text-transparent">
               Your Language
             </span>
           </h1>
@@ -45,7 +45,7 @@ export default function HeroSection() {
             <Link to={createPageUrl('Dashboard')}>
               <Button
                 size="lg"
-                className="bg-[#2ECC9A] hover:bg-[#27b889] text-[#0A3D2C] px-8 py-6 text-lg rounded-xl shadow-lg shadow-[#2ECC9A]/25 group font-semibold"
+                className="bg-[#F5A623] hover:bg-[#D4891A] text-[#000000] px-8 py-6 text-lg rounded-xl shadow-lg shadow-[#F5A623]/25 group font-semibold"
               >
                 <Play className="w-5 h-5 mr-2" />
                 Upload Video
@@ -76,7 +76,7 @@ export default function HeroSection() {
                 transition={{ duration: 0.4, delay: 0.3 + idx * 0.1 }}
                 className="text-center"
               >
-                <div className="text-2xl md:text-3xl font-bold text-[#2ECC9A]">{stat.value}</div>
+                <div className="text-2xl md:text-3xl font-bold text-[#F5A623]">{stat.value}</div>
                 <div className="text-sm text-gray-400 mt-1">{stat.label}</div>
               </motion.div>
             ))}

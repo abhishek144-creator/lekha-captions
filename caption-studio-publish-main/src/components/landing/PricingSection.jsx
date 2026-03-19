@@ -166,7 +166,7 @@ export default function PricingSection() {
           name: currentUser?.displayName || '',
           email: currentUser?.email || ''
         },
-        theme: { color: '#2ECC9A' },
+        theme: { color: '#F5A623' },
         handler: async (response) => {
           if (orderId && idToken) {
             // Full verification flow
@@ -254,7 +254,7 @@ export default function PricingSection() {
               }`}
             >
               Yearly
-              <span className="text-xs bg-[#2ECC9A] text-[#0A3D2C] font-semibold px-1.5 py-0.5 rounded-full">-20%</span>
+              <span className="text-xs bg-[#F5A623] text-[#000000] font-semibold px-1.5 py-0.5 rounded-full">-20%</span>
             </button>
           </div>
         </motion.div>
@@ -268,20 +268,20 @@ export default function PricingSection() {
               viewport={{ once: true }}
               transition={{ delay: idx * 0.1 }}
               className={`relative rounded-2xl p-8 bg-zinc-900 ${plan.popular
-                ? 'border-2 border-[#2ECC9A] shadow-lg shadow-[#2ECC9A]/10'
+                ? 'border-2 border-[#F5A623] shadow-lg shadow-[#F5A623]/10'
                 : 'border border-white/10'
               }`}
             >
               {plan.popular && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                  <span className="px-4 py-1 rounded-full bg-[#2ECC9A] text-[#0A3D2C] text-xs font-semibold">
+                  <span className="px-4 py-1 rounded-full bg-[#F5A623] text-[#000000] text-xs font-semibold">
                     Most Popular
                   </span>
                 </div>
               )}
 
-              <div className={`w-12 h-12 rounded-xl ${plan.popular ? 'bg-[#2ECC9A]' : 'bg-zinc-800'} flex items-center justify-center mb-6`}>
-                <plan.icon className={`w-6 h-6 ${plan.popular ? 'text-[#0A3D2C]' : 'text-[#2ECC9A]'}`} />
+              <div className={`w-12 h-12 rounded-xl ${plan.popular ? 'bg-[#F5A623]' : 'bg-zinc-800'} flex items-center justify-center mb-6`}>
+                <plan.icon className={`w-6 h-6 ${plan.popular ? 'text-[#000000]' : 'text-[#F5A623]'}`} />
               </div>
 
               <h3 className="text-xl font-semibold text-white mb-1">{plan.name}</h3>
@@ -294,7 +294,7 @@ export default function PricingSection() {
                 <span className="text-gray-400">/mo</span>
               </div>
               {billing === 'yearly' ? (
-                <p className="text-xs text-[#2ECC9A] mb-5">₹{plan.yearlyPaise / 100} billed yearly · ~17% off</p>
+                <p className="text-xs text-[#F5A623] mb-5">₹{plan.yearlyPaise / 100} billed yearly · ~17% off</p>
               ) : (
                 <div className="mb-5" />
               )}
@@ -302,7 +302,7 @@ export default function PricingSection() {
               <ul className="space-y-3 mb-8">
                 {plan.features.map((feature, i) => (
                   <li key={i} className="flex items-center gap-3 text-sm text-white">
-                    <Check className="w-4 h-4 text-[#2ECC9A] flex-shrink-0" />
+                    <Check className="w-4 h-4 text-[#F5A623] flex-shrink-0" />
                     {feature}
                   </li>
                 ))}
@@ -312,7 +312,7 @@ export default function PricingSection() {
                 onClick={() => handleSelectPlan(plan)}
                 disabled={processingPlan === plan.id}
                 className={`w-full py-6 rounded-xl font-semibold ${plan.popular
-                  ? 'bg-[#2ECC9A] hover:bg-[#25b888] text-[#0A3D2C]'
+                  ? 'bg-[#F5A623] hover:bg-[#D4891A] text-[#000000]'
                   : 'bg-zinc-800 border border-white/10 text-white hover:bg-zinc-700'
                 }`}
               >
