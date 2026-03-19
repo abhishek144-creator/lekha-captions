@@ -10,10 +10,15 @@ import { collection, getDocs, query, orderBy } from 'firebase/firestore';
 import { Download, AlertCircle } from 'lucide-react';
 
 const PLAN_LIMITS = {
-  free_plan: { totalCredits: 3, name: 'Free Plan' },
-  weekly_creator: { totalCredits: 15, name: 'Weekly Creator' },
-  monthly_pro: { totalCredits: 45, name: 'Monthly Pro' }
-};
+  free_plan:       { totalCredits: 3,   name: 'Free' },
+  free:            { totalCredits: 3,   name: 'Free' },
+  starter:         { totalCredits: 15,  name: 'Starter' },
+  starter_yearly:  { totalCredits: 15,  name: 'Starter (Yearly)' },
+  creator:         { totalCredits: 45,  name: 'Creator' },
+  creator_yearly:  { totalCredits: 45,  name: 'Creator (Yearly)' },
+  pro:             { totalCredits: 100, name: 'Pro' },
+  pro_yearly:      { totalCredits: 100, name: 'Pro (Yearly)' },
+}
 
 export default function UserAccount() {
   const { currentUser, userData, logout } = useAuth();
@@ -23,12 +28,13 @@ export default function UserAccount() {
   const [payments, setPayments] = useState([]);
   const [isLoadingPayments, setIsLoadingPayments] = useState(true);
 
-  const planId = userData?.subscription_plan || 'free_plan';
-  const planDetails = PLAN_LIMITS[planId] || PLAN_LIMITS.free_plan;
+  const planId = userData?.subscription_tier || userData?.subscription_plan || 'free'
+  const planKey = (planId === 'free' || !planId) ? 'free_plan' : planId
+  const planDetails = PLAN_LIMITS[planKey] || PLAN_LIMITS.free_plan;
   const creditsRemaining = userData?.credits_remaining ?? 0;
 
   React.useEffect(() => {
-    if (userData?.billing_cycle_end && new Date() > new Date(userData.billing_cycle_end) && planId !== 'free_plan') {
+    if (userData?.billing_cycle_end && new Date() > new Date(userData.billing_cycle_end) && planId !== 'free' && planId !== 'free_plan') {
       setIsRenewalModalOpen(true);
     }
   }, [userData, planId]);
@@ -72,7 +78,7 @@ export default function UserAccount() {
         <User className="w-12 h-12 text-gray-500" />
         <p className="text-gray-400">Please sign in to view your account</p>
         <Link to="/login">
-          <Button className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white">
+          <Button className="bg-[#F5A623] hover:bg-[#D4891A] text-white">
             Sign In
           </Button>
         </Link>
@@ -128,10 +134,10 @@ export default function UserAccount() {
               <img
                 src={currentUser.photoURL}
                 alt="Profile"
-                className="w-16 h-16 rounded-full border-2 border-purple-500/50"
+                className="w-16 h-16 rounded-full border-2 border-[#F5A623]/50"
               />
             ) : (
-              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-white font-bold text-xl">
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#0A0A0A] to-[#F5A623] flex items-center justify-center text-white font-bold text-xl">
                 {getInitials(currentUser.displayName)}
               </div>
             )}
@@ -166,7 +172,7 @@ export default function UserAccount() {
                   Dismiss
                 </Button>
                 <Button
-                  className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white"
+                  className="flex-1 bg-[#F5A623] text-white"
                   onClick={() => {
                     setIsRenewalModalOpen(false);
                     setIsPricingModalOpen(true);
@@ -196,7 +202,7 @@ export default function UserAccount() {
                   <tr>
                     <td colSpan="4" className="px-6 py-8 text-center text-gray-500">
                       No payment history found.<br />
-                      <Button onClick={() => setIsPricingModalOpen(true)} variant="link" className="text-purple-400 p-0 mt-2">
+                      <Button onClick={() => setIsPricingModalOpen(true)} variant="link" className="text-[#F5A623] p-0 mt-2">
                         Upgrade your plan
                       </Button>
                     </td>
@@ -211,7 +217,7 @@ export default function UserAccount() {
                         {payment.currency === 'INR' ? '₹' : '$'}{payment.amount}
                       </td>
                       <td className="px-6 py-5">
-                        <span className={`px-3 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase ${payment.status === 'captured' ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                        <span className={`px-3 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase ${payment.status === 'captured' ? 'bg-[#F5A623]/10 text-[#F5A623] border border-[#F5A623]/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
                           }`}>
                           {payment.status === 'captured' ? 'Paid' : payment.status}
                         </span>
@@ -238,7 +244,7 @@ export default function UserAccount() {
           <div className="bg-white/5 rounded-xl border border-white/10 p-6 flex flex-col justify-between">
             <div>
               <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 text-white">
-                <Crown className="w-5 h-5 text-purple-400" />
+                <Crown className="w-5 h-5 text-[#F5A623]" />
                 Plan and billing
               </h2>
 
@@ -255,7 +261,7 @@ export default function UserAccount() {
                   </div>
                   <div className="text-right">
                     <p className="text-sm text-gray-400">Billing Cycle</p>
-                    <p className="text-white font-medium">{planId === 'free_plan' ? 'Forever' : `${daysLeft} days left`}</p>
+                    <p className="text-white font-medium">{(planId === 'free' || planId === 'free_plan') ? 'Forever' : `${daysLeft} days left`}</p>
                   </div>
                 </div>
               </div>
@@ -263,7 +269,7 @@ export default function UserAccount() {
 
             <Button
               onClick={() => setIsPricingModalOpen(true)}
-              className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white border-0"
+              className="w-full bg-[#F5A623] hover:bg-[#D4891A] text-white border-0"
             >
               Upgrade Plan
             </Button>

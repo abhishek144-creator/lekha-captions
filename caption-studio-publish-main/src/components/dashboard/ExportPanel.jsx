@@ -504,7 +504,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
       title: 'SRT File',
       description: 'Standard subtitle format',
       action: handleDownloadSRT,
-      gradient: 'from-[#1B4D3E] to-[#2ECC9A]',
+      gradient: 'from-[#0A0A0A] to-[#F5A623]',
       requiresPlan: false
     },
     {
@@ -530,15 +530,15 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
           <div className="mt-8 p-6 rounded-xl bg-zinc-800/50 border border-white/10 text-center space-y-4 relative overflow-hidden">
             {/* Subtle glow animation */}
             <div className="absolute inset-0 pointer-events-none">
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 bg-[#2ECC9A]/20 rounded-full blur-3xl animate-pulse"></div>
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-24 bg-[#1B4D3E]/15 rounded-full blur-2xl animate-pulse" style={{ animationDelay: '0.5s' }}></div>
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 bg-[#F5A623]/20 rounded-full blur-3xl animate-pulse"></div>
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-24 bg-[#0A0A0A]/15 rounded-full blur-2xl animate-pulse" style={{ animationDelay: '0.5s' }}></div>
             </div>
 
             <div className="relative z-10">
               <div className="relative w-16 h-16 mx-auto">
                 <div className="absolute inset-0 rounded-full border-2 border-white/10"></div>
-                <div className="absolute inset-0 rounded-full border-t-2 border-[#2ECC9A] animate-spin"></div>
-                <div className="absolute inset-0 rounded-full border-r-2 border-[#1B4D3E] animate-spin" style={{ animationDuration: '1.5s' }}></div>
+                <div className="absolute inset-0 rounded-full border-t-2 border-[#F5A623] animate-spin"></div>
+                <div className="absolute inset-0 rounded-full border-r-2 border-[#0A0A0A] animate-spin" style={{ animationDuration: '1.5s' }}></div>
                 <div className="absolute inset-0 flex items-center justify-center text-xs font-bold text-white">
                   {Math.round(progress)}%
                 </div>
@@ -546,7 +546,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
 
               <div className="mt-4">
                 <h3 className="text-lg font-medium text-white mb-1">Rendering Video</h3>
-                <p className="text-sm text-[#2ECC9A] animate-pulse">{statusMessage}</p>
+                <p className="text-sm text-[#F5A623] animate-pulse">{statusMessage}</p>
                 {showServerBusy && (
                   <p className="text-xs text-amber-400 mt-2 animate-pulse">
                     Server is busy • Estimated time remaining: ~2 minutes
@@ -555,7 +555,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
               </div>
 
               <div className="relative mt-4">
-                <Progress value={progress} className="h-2 bg-zinc-700" indicatorClassName="bg-gradient-to-r from-[#1B4D3E] to-[#2ECC9A]" />
+                <Progress value={progress} className="h-2 bg-zinc-700" indicatorClassName="bg-gradient-to-r from-[#0A0A0A] to-[#F5A623]" />
                 {/* Shimmer effect on progress bar */}
                 <div className="absolute inset-0 overflow-hidden rounded-full">
                   <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
@@ -573,13 +573,13 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
           <div className="mt-6 space-y-3">
             {/* Not signed in → Sign up prompt */}
             {!isSignedIn && (
-              <div className="p-4 rounded-xl bg-[#2ECC9A]/10 border border-[#2ECC9A]/20 text-center mb-4">
-                <Lock className="w-8 h-8 text-[#2ECC9A] mx-auto mb-2" />
-                <p className="text-sm text-[#2ECC9A] font-medium mb-1">Sign up to export</p>
-                <p className="text-xs text-[#2ECC9A]/70 mb-3">Create a free account to get 3 free export credits</p>
+              <div className="p-4 rounded-xl bg-[#F5A623]/10 border border-[#F5A623]/20 text-center mb-4">
+                <Lock className="w-8 h-8 text-[#F5A623] mx-auto mb-2" />
+                <p className="text-sm text-[#F5A623] font-medium mb-1">Sign up to export</p>
+                <p className="text-xs text-[#F5A623]/70 mb-3">Create a free account to get 3 free export credits</p>
                 <button
                   onClick={() => window.location.href = '/login'}
-                  className="w-full py-2 rounded-lg bg-[#2ECC9A] hover:bg-[#27b889] text-[#0A3D2C] text-sm font-semibold transition-colors"
+                  className="w-full py-2 rounded-lg bg-[#F5A623] hover:bg-[#D4891A] text-[#000000] text-sm font-semibold transition-colors"
                 >
                   Sign up free
                 </button>
@@ -632,7 +632,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
         )}
 
         {/* Caption count */}
-        <div className="mt-6 p-4 rounded-xl bg-[#2ECC9A]/10 border border-[#2ECC9A]/20">
+        <div className="mt-6 p-4 rounded-xl bg-[#F5A623]/10 border border-[#F5A623]/20">
           <div className="flex items-center justify-between">
             <span className="text-sm text-gray-400">Total Captions</span>
             <span className="text-lg font-bold text-white">{captions?.length || 0}</span>
