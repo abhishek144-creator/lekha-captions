@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
@@ -163,6 +163,8 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
   const [showHighlightGradient, setShowHighlightGradient] = useState(false);
   const [showTextSolid, setShowTextSolid] = useState(false);
   const [showHighlightSolid, setShowHighlightSolid] = useState(false);
+  const [fontPopoverOpen, setFontPopoverOpen] = useState(false)
+  const [effectsOpen, setEffectsOpen] = useState(false)
 
   const updateStyle = (key, value, skipHistory = false) => {
     // If a text element is selected, update its customStyle instead of global captionStyle
@@ -368,7 +370,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
                 {scriptLabels[detectedScript] || detectedScript}
               </span>
             </div>
-            <Popover>
+            <Popover open={fontPopoverOpen} onOpenChange={setFontPopoverOpen}>
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
@@ -444,14 +446,10 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
                         itemData={{
                           items: filtered,
                           selectedValue: getCurrentValue('font_family', 'Inter'),
-                          onSelect: async (fontName) => {
-                            try {
-                              // Load full weights when the user actually commits to selecting the font
-                              await loadGoogleFont(fontName, [300, 400, 500, 600, 700, 800]);
-                              updateStyle('font_family', fontName);
-                            } catch (error) {
-                              console.warn('Font load error:', error);
-                            }
+                          onSelect: (fontName) => {
+                            setFontPopoverOpen(false);
+                            updateStyle('font_family', fontName);
+                            loadGoogleFont(fontName, [300, 400, 500, 600, 700, 800]).catch(() => {});
                           }
                         }}
                       >
@@ -1208,11 +1206,11 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
                   <div className="flex items-center justify-between mb-2">
                     <Label className="text-sm text-gray-400">Background Thickness (H)</Label>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-500">{(getCurrentValue('background_h_multiplier', 1.1)).toFixed ? (getCurrentValue('background_h_multiplier', 1.1)).toFixed(1) : '1.1'}x</span>
+                      <span className="text-xs text-gray-500">{((getCurrentValue('background_h_multiplier', 0.99) - 1) * 100).toFixed(2)}px</span>
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => updateStyle('background_h_multiplier', 1.1)}
+                        onClick={() => updateStyle('background_h_multiplier', 0.99)}
                         className="h-5 w-5 text-gray-500 hover:text-white"
                       >
                         <RotateCcw className="w-3 h-3" />
@@ -1220,11 +1218,11 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
                     </div>
                   </div>
                   <Slider
-                    value={[(getCurrentValue('background_h_multiplier', 1.1)) * 10]}
-                    onValueChange={([value]) => updateStyle('background_h_multiplier', value / 10, true)}
+                    value={[Math.round(getCurrentValue('background_h_multiplier', 0.99) * 100)]}
+                    onValueChange={([value]) => updateStyle('background_h_multiplier', value / 100, true)}
                     onPointerDown={() => addToHistory && addToHistory()}
-                    min={10}
-                    max={30}
+                    min={50}
+                    max={300}
                     step={1}
                     className="cursor-pointer"
                   />
@@ -1233,161 +1231,135 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
             </>
           )}
 
-          {/* Effects Section */}
+          {/* Effects Section — collapsible */}
           <div className="mt-6 pt-6 border-t border-white/10">
-            <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-purple-400" />
-              Effects
-            </h3>
+            <button
+              onClick={() => setEffectsOpen(v => !v)}
+              className="w-full flex items-center justify-between text-sm font-semibold text-white mb-1 group"
+            >
+              <span className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-[#2ECC9A]" />
+                Effects
+                {getCurrentValue('effect_type', 'none') !== 'none' && (
+                  <span className="text-[10px] bg-[#2ECC9A]/15 text-[#2ECC9A] px-1.5 py-0.5 rounded-full font-medium capitalize">
+                    {getCurrentValue('effect_type')}
+                  </span>
+                )}
+              </span>
+              <span className={`w-5 h-5 rounded border border-white/20 flex items-center justify-center text-gray-400 group-hover:border-[#2ECC9A]/50 group-hover:text-[#2ECC9A] transition-colors ${effectsOpen ? 'bg-[#2ECC9A]/10 border-[#2ECC9A]/30 text-[#2ECC9A]' : ''}`}>
+                {effectsOpen ? '−' : '+'}
+              </span>
+            </button>
 
-            <div className="grid grid-cols-4 gap-2 mb-4">
-              {[
-                { id: 'none', label: 'None' },
-                { id: 'shadow', label: 'Shadow' },
-                { id: 'lift', label: 'Lift' },
-                { id: 'hollow', label: 'Hollow' },
-                { id: 'splice', label: 'Splice' },
-                { id: 'outline', label: 'Outline' },
-                { id: 'echo', label: 'Echo' },
-                { id: 'neon', label: 'Neon' }
-              ].map(effect => {
-                const isSelected = getCurrentValue('effect_type', 'none') === effect.id;
-                return (
-                  <button
-                    key={effect.id}
-                    onClick={() => {
-                      updateStyle('effect_type', effect.id);
-                      if (effect.id !== 'none') {
-                        if (effect.id === 'neon') {
-                          if (getCurrentValue('effect_blur') === undefined) updateStyle('effect_blur', 8);
-                          if (getCurrentValue('effect_intensity') === undefined) updateStyle('effect_intensity', 5);
-                          if (getCurrentValue('effect_color') === undefined) updateStyle('effect_color', getCurrentValue('text_color', '#ffffff'));
-                        } else {
-                          if (getCurrentValue('effect_blur') === undefined) updateStyle('effect_blur', 50);
-                          if (getCurrentValue('effect_intensity') === undefined) updateStyle('effect_intensity', 50);
-                          if (getCurrentValue('effect_color') === undefined) updateStyle('effect_color', '#000000');
-                        }
-                        if (getCurrentValue('effect_offset') === undefined) updateStyle('effect_offset', 50);
-                        if (getCurrentValue('effect_direction') === undefined) updateStyle('effect_direction', -45);
-                        if (getCurrentValue('effect_transparency') === undefined) updateStyle('effect_transparency', 40);
-                        if (getCurrentValue('effect_thickness') === undefined) updateStyle('effect_thickness', 50);
-                      }
-                    }}
-                    className={`p-2 rounded-lg border text-xs text-center transition-all duration-200 ${isSelected
-                      ? 'bg-purple-500/20 border-purple-500 text-white font-medium shadow-[0_0_10px_rgba(168,85,247,0.2)]'
-                      : 'bg-zinc-800/50 border-white/5 text-gray-400 hover:bg-zinc-800 hover:border-white/20'
-                      }`}
-                  >
-                    {effect.label}
-                  </button>
-                );
-              })}
-            </div>
+            {effectsOpen && (
+              <div className="mt-3">
+                <div className="grid grid-cols-4 gap-2 mb-3">
+                  {[
+                    { id: 'none', label: 'None' },
+                    { id: 'shadow', label: 'Shadow' },
+                    { id: 'lift', label: 'Lift' },
+                    { id: 'hollow', label: 'Hollow' },
+                    { id: 'splice', label: 'Splice' },
+                    { id: 'outline', label: 'Outline' },
+                    { id: 'echo', label: 'Echo' },
+                    { id: 'neon', label: 'Neon' }
+                  ].map(effect => {
+                    const isSelected = getCurrentValue('effect_type', 'none') === effect.id
+                    return (
+                      <button
+                        key={effect.id}
+                        onClick={() => {
+                          updateStyle('effect_type', effect.id)
+                          if (effect.id !== 'none') {
+                            if (effect.id === 'neon') {
+                              if (getCurrentValue('effect_blur') === undefined) updateStyle('effect_blur', 8)
+                              if (getCurrentValue('effect_intensity') === undefined) updateStyle('effect_intensity', 5)
+                              if (getCurrentValue('effect_color') === undefined) updateStyle('effect_color', getCurrentValue('text_color', '#ffffff'))
+                            } else {
+                              if (getCurrentValue('effect_blur') === undefined) updateStyle('effect_blur', 50)
+                              if (getCurrentValue('effect_intensity') === undefined) updateStyle('effect_intensity', 50)
+                              if (getCurrentValue('effect_color') === undefined) updateStyle('effect_color', '#000000')
+                            }
+                            if (getCurrentValue('effect_offset') === undefined) updateStyle('effect_offset', 50)
+                            if (getCurrentValue('effect_direction') === undefined) updateStyle('effect_direction', -45)
+                            if (getCurrentValue('effect_transparency') === undefined) updateStyle('effect_transparency', 40)
+                            if (getCurrentValue('effect_thickness') === undefined) updateStyle('effect_thickness', 50)
+                          }
+                        }}
+                        className={`p-2 rounded-lg border text-xs text-center transition-all duration-200 ${isSelected
+                          ? 'bg-[#2ECC9A]/15 border-[#2ECC9A]/60 text-white font-medium'
+                          : 'bg-zinc-800/50 border-white/5 text-gray-400 hover:bg-zinc-800 hover:border-white/20'
+                        }`}
+                      >
+                        {effect.label}
+                      </button>
+                    )
+                  })}
+                </div>
 
-            {/* Effect Specific Sliders */}
-            {getCurrentValue('effect_type', 'none') !== 'none' && (
-              <div className="space-y-4 mt-4 p-4 rounded-xl bg-black/20 border border-white/5">
-                {['hollow', 'splice', 'outline'].includes(getCurrentValue('effect_type')) && (
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <Label className="text-sm text-gray-400">Thickness</Label>
-                      <span className="text-xs text-gray-500">{getCurrentValue('effect_thickness', 50)}</span>
-                    </div>
-                    <Slider
-                      value={[getCurrentValue('effect_thickness', 50)]}
-                      onValueChange={([val]) => updateStyle('effect_thickness', val, true)}
-                      onPointerDown={() => addToHistory && addToHistory()}
-                      max={100} step={1}
-                      className="cursor-pointer"
-                    />
-                  </div>
-                )}
-                {['shadow', 'splice', 'echo'].includes(getCurrentValue('effect_type')) && (
-                  <>
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <Label className="text-sm text-gray-400">Offset</Label>
-                        <span className="text-xs text-gray-500">{getCurrentValue('effect_offset', 50)}</span>
+                {/* Effect Specific Sliders */}
+                {getCurrentValue('effect_type', 'none') !== 'none' && (
+                  <div className="space-y-4 p-3 rounded-xl bg-black/20 border border-white/5">
+                    {['hollow', 'splice', 'outline'].includes(getCurrentValue('effect_type')) && (
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <Label className="text-xs text-gray-400">Thickness</Label>
+                          <span className="text-xs text-gray-500">{getCurrentValue('effect_thickness', 50)}</span>
+                        </div>
+                        <Slider value={[getCurrentValue('effect_thickness', 50)]} onValueChange={([val]) => updateStyle('effect_thickness', val, true)} onPointerDown={() => addToHistory && addToHistory()} max={100} step={1} className="cursor-pointer" />
                       </div>
-                      <Slider
-                        value={[getCurrentValue('effect_offset', 50)]}
-                        onValueChange={([val]) => updateStyle('effect_offset', val, true)}
-                        onPointerDown={() => addToHistory && addToHistory()}
-                        max={100} step={1}
-                        className="cursor-pointer"
-                      />
-                    </div>
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <Label className="text-sm text-gray-400">Direction</Label>
-                        <span className="text-xs text-gray-500">{getCurrentValue('effect_direction', -45)}°</span>
+                    )}
+                    {['shadow', 'splice', 'echo', 'lift'].includes(getCurrentValue('effect_type')) && (
+                      <>
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <Label className="text-xs text-gray-400">Offset</Label>
+                            <span className="text-xs text-gray-500">{getCurrentValue('effect_offset', 50)}</span>
+                          </div>
+                          <Slider value={[getCurrentValue('effect_offset', 50)]} onValueChange={([val]) => updateStyle('effect_offset', val, true)} onPointerDown={() => addToHistory && addToHistory()} max={100} step={1} className="cursor-pointer" />
+                        </div>
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <Label className="text-xs text-gray-400">Direction</Label>
+                            <span className="text-xs text-gray-500">{getCurrentValue('effect_direction', -45)}°</span>
+                          </div>
+                          <Slider value={[getCurrentValue('effect_direction', -45)]} onValueChange={([val]) => updateStyle('effect_direction', val, true)} onPointerDown={() => addToHistory && addToHistory()} min={-180} max={180} step={1} className="cursor-pointer" />
+                        </div>
+                      </>
+                    )}
+                    {['shadow', 'neon', 'lift'].includes(getCurrentValue('effect_type')) && (
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <Label className="text-xs text-gray-400">Blur</Label>
+                          <span className="text-xs text-gray-500">{getCurrentValue('effect_blur', 50)}</span>
+                        </div>
+                        <Slider value={[getCurrentValue('effect_blur', 50)]} onValueChange={([val]) => updateStyle('effect_blur', val, true)} onPointerDown={() => addToHistory && addToHistory()} max={100} step={1} className="cursor-pointer" />
                       </div>
-                      <Slider
-                        value={[getCurrentValue('effect_direction', -45)]}
-                        onValueChange={([val]) => updateStyle('effect_direction', val, true)}
-                        onPointerDown={() => addToHistory && addToHistory()}
-                        min={-180} max={180} step={1}
-                        className="cursor-pointer"
-                      />
-                    </div>
-                  </>
-                )}
-                {['shadow', 'neon'].includes(getCurrentValue('effect_type')) && (
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <Label className="text-sm text-gray-400">Blur</Label>
-                      <span className="text-xs text-gray-500">{getCurrentValue('effect_blur', 50)}</span>
-                    </div>
-                    <Slider
-                      value={[getCurrentValue('effect_blur', 50)]}
-                      onValueChange={([val]) => updateStyle('effect_blur', val, true)}
-                      onPointerDown={() => addToHistory && addToHistory()}
-                      max={100} step={1}
-                      className="cursor-pointer"
-                    />
-                  </div>
-                )}
-                {['shadow'].includes(getCurrentValue('effect_type')) && (
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <Label className="text-sm text-gray-400">Transparency</Label>
-                      <span className="text-xs text-gray-500">{getCurrentValue('effect_transparency', 40)}</span>
-                    </div>
-                    <Slider
-                      value={[getCurrentValue('effect_transparency', 40)]}
-                      onValueChange={([val]) => updateStyle('effect_transparency', val, true)}
-                      onPointerDown={() => addToHistory && addToHistory()}
-                      max={100} step={1}
-                      className="cursor-pointer"
-                    />
-                  </div>
-                )}
-                {['lift', 'neon'].includes(getCurrentValue('effect_type')) && (
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <Label className="text-sm text-gray-400">Intensity</Label>
-                      <span className="text-xs text-gray-500">{getCurrentValue('effect_intensity', 50)}</span>
-                    </div>
-                    <Slider
-                      value={[getCurrentValue('effect_intensity', 50)]}
-                      onValueChange={([val]) => updateStyle('effect_intensity', val, true)}
-                      onPointerDown={() => addToHistory && addToHistory()}
-                      max={100} step={1}
-                      className="cursor-pointer"
-                    />
-                  </div>
-                )}
-                {!['lift'].includes(getCurrentValue('effect_type')) && (
-                  <div>
-                    <Label className="text-sm text-gray-400 mb-2 block">Color</Label>
-                    <div className="w-12">
-                      <input
-                        type="color"
-                        value={getCurrentValue('effect_color', '#000000')}
-                        onChange={(e) => updateStyle('effect_color', e.target.value)}
-                        className="w-full h-8 rounded cursor-pointer border border-white/10"
-                      />
-                    </div>
+                    )}
+                    {['shadow', 'echo'].includes(getCurrentValue('effect_type')) && (
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <Label className="text-xs text-gray-400">Transparency</Label>
+                          <span className="text-xs text-gray-500">{getCurrentValue('effect_transparency', 40)}</span>
+                        </div>
+                        <Slider value={[getCurrentValue('effect_transparency', 40)]} onValueChange={([val]) => updateStyle('effect_transparency', val, true)} onPointerDown={() => addToHistory && addToHistory()} max={100} step={1} className="cursor-pointer" />
+                      </div>
+                    )}
+                    {['neon'].includes(getCurrentValue('effect_type')) && (
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <Label className="text-xs text-gray-400">Intensity</Label>
+                          <span className="text-xs text-gray-500">{getCurrentValue('effect_intensity', 50)}</span>
+                        </div>
+                        <Slider value={[getCurrentValue('effect_intensity', 50)]} onValueChange={([val]) => updateStyle('effect_intensity', val, true)} onPointerDown={() => addToHistory && addToHistory()} max={100} step={1} className="cursor-pointer" />
+                      </div>
+                    )}
+                    {!['lift'].includes(getCurrentValue('effect_type')) && (
+                      <div>
+                        <Label className="text-xs text-gray-400 mb-2 block">Color</Label>
+                        <input type="color" value={getCurrentValue('effect_color', '#000000')} onChange={(e) => updateStyle('effect_color', e.target.value)} className="w-10 h-8 rounded cursor-pointer border border-white/10 bg-transparent" />
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

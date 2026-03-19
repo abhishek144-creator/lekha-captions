@@ -11,94 +11,160 @@ import os
 import uuid
 import urllib.request
 import json
+from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 from processor import VideoProcessor
 import asyncio
 import time
 import subprocess
-import json
-import razorpay
 import hmac
 import hashlib
 from fastapi import Request
-from firebase_admin_setup import verify_token, get_db
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from firebase_admin_setup import verify_token, get_db, upload_to_firebase_storage, delete_from_firebase_storage
 import math
+
+try:
+    import razorpay as _razorpay_module
+    RAZORPAY_AVAILABLE = True
+except ImportError:
+    _razorpay_module = None
+    RAZORPAY_AVAILABLE = False
+    print("[Warning] razorpay package not installed — payment endpoints will be unavailable")
+
+try:
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    SCHEDULER_AVAILABLE = True
+except ImportError:
+    AsyncIOScheduler = None
+    SCHEDULER_AVAILABLE = False
+    print("[Warning] apscheduler not installed — background janitor disabled")
 
 app = FastAPI()
 
 # Initialize Razorpay Client (Keys will be read from environment variables)
-RAZORPAY_KEY_ID = os.environ.get("RAZORPAY_KEY_ID", "test_key")
+RAZORPAY_KEY_ID = os.environ.get("RAZORPAY_KEY_ID", "rzp_test_RJWsOLmZ6GL27m")
 RAZORPAY_KEY_SECRET = os.environ.get("RAZORPAY_KEY_SECRET", "test_secret")
-rzp_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
+rzp_client = _razorpay_module.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET)) if RAZORPAY_AVAILABLE else None
 
+# --- PLAN PRICING (locked, do not change) ---
+PLAN_PRICING = {
+    'starter': {
+        'inr_paise': 9900,
+        'usd_cents': 99,
+        'credits': 15,
+        'days': 30,
+        'daily_limit': 3,
+        'max_video_seconds': 120,
+        'export_retention_hours': 2,
+        'tier': 'starter'
+    },
+    'creator': {
+        'inr_paise': 19900,
+        'usd_cents': 199,
+        'credits': 45,
+        'days': 30,
+        'daily_limit': 5,
+        'max_video_seconds': 180,
+        'export_retention_hours': 24,
+        'tier': 'creator'
+    },
+    'pro': {
+        'inr_paise': 39900,
+        'usd_cents': 399,
+        'credits': 90,
+        'days': 30,
+        'daily_limit': None,
+        'max_video_seconds': 180,
+        'export_retention_hours': 72,
+        'tier': 'pro'
+    }
+}
 
 # Semaphore to limit concurrent renders to 2. This creates a queue invisible to the user!
 render_semaphore = asyncio.Semaphore(2)
 
-# Global APScheduler reference
-scheduler = AsyncIOScheduler()
+# Global APScheduler reference (None if apscheduler not installed)
+scheduler = AsyncIOScheduler() if SCHEDULER_AVAILABLE else None
 
 async def advanced_janitor_job():
-    """Advanced background task to cleanup files based on specific retention rules."""
+    """Background task to cleanup files based on retention rules."""
     now = time.time()
-    
-    # Rules
-    # 1. exports (.mp4): 90 mins (5400s)
-    # 2. Uploads/Active projects (.mp4, .m4a): 3 hours inactivity (10800s)
-    # 3. SRT files (.srt): 24 hours (86400s)
-    
     deleted_count = 0
-    
-    for d in [UPLOAD_DIR, EXPORT_DIR]:
-        if not os.path.exists(d): continue
-        for f in os.listdir(d):
-            filepath = os.path.join(d, f)
+
+    # Clean upload directory — all files older than 6 hours
+    if os.path.exists(UPLOAD_DIR):
+        for f in os.listdir(UPLOAD_DIR):
+            filepath = os.path.join(UPLOAD_DIR, f)
             if not os.path.isfile(filepath): continue
-            
             try:
-                stat = os.stat(filepath)
-                # Use max of modified or accessed time to track "inactivity"
-                last_active = max(stat.st_mtime, stat.st_atime)
-                age = now - last_active
-                
-                deleted = False
+                st = os.stat(filepath)
+                age = now - max(st.st_mtime, st.st_atime)
                 if f.endswith('.srt'):
-                    if age > 86400: # 24 hrs
+                    if age > 604800:  # 7 days for SRT
                         os.remove(filepath)
-                        deleted = True
-                elif d == EXPORT_DIR and f.endswith('.mp4'):
-                    if age > 5400: # 90 mins
-                        os.remove(filepath)
-                        deleted = True
-                elif d == UPLOAD_DIR:
-                    if age > 10800: # 3 hrs
-                        os.remove(filepath)
-                        deleted = True
-                        
-                if deleted:
+                        deleted_count += 1
+                elif age > 21600:  # 6 hours for uploads
+                    os.remove(filepath)
                     deleted_count += 1
-                    print(f"[Janitor] Janitor deleted: {f} (Age: {math.floor(age/60)} mins)")
             except Exception as e:
-                print(f"Janitor error processing {f}: {e}")
-                
+                print(f"Janitor error: {e}")
+
+    # Clean stale local exports (should be on Firebase, delete after 30 min)
+    if os.path.exists(EXPORT_DIR):
+        for f in os.listdir(EXPORT_DIR):
+            filepath = os.path.join(EXPORT_DIR, f)
+            if not os.path.isfile(filepath): continue
+            try:
+                age = now - os.stat(filepath).st_mtime
+                if age > 1800:  # 30 minutes
+                    os.remove(filepath)
+                    deleted_count += 1
+            except Exception as e:
+                print(f"Janitor error: {e}")
+
     if deleted_count > 0:
-        print(f"[Janitor] Janitor finished: Cleaned up {deleted_count} files.")
+        print(f"[Janitor] Cleaned {deleted_count} files.")
 
 @app.on_event("startup")
 async def startup_event():
-    # Start the advanced APScheduler background cleanup task checking every 15 minutes
-    scheduler.add_job(advanced_janitor_job, 'interval', minutes=15)
-    scheduler.start()
-    print("[Janitor] APScheduler Advanced Janitor started (runs every 15 mins).")
+    if scheduler is not None:
+        scheduler.add_job(advanced_janitor_job, 'interval', minutes=15)
+        scheduler.start()
+        print("[Janitor] APScheduler Advanced Janitor started (runs every 15 mins).")
+    else:
+        print("[Janitor] apscheduler not available — running simple asyncio fallback.")
+        asyncio.create_task(_simple_janitor_loop())
 
+async def _simple_janitor_loop():
+    """Fallback janitor when apscheduler is not installed — runs every 15 min."""
+    try:
+        while True:
+            await asyncio.sleep(900)
+            try:
+                await advanced_janitor_job()
+            except Exception as e:
+                print(f"[Janitor] Job error: {e}")
+    except Exception as e:
+        print(f"[Janitor] FATAL: loop crashed — {e}")
+
+# CORS — restrict in production via ALLOWED_ORIGINS env var (comma-separated)
+ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "*").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Simple in-memory rate limiter for upload endpoint
+_upload_rate: Dict[str, list] = {}  # ip -> list of timestamps
+UPLOAD_RATE_LIMIT = 10  # max uploads per hour per IP
+UPLOAD_RATE_WINDOW = 3600  # 1 hour
+
+# Allowed upload extensions (module-level constant — not rebuilt per request)
+ALLOWED_EXTENSIONS = {'mp4', 'mov', 'avi', 'mkv', 'webm', 'mp3', 'wav', 'm4a', 'aac'}
+MAX_UPLOAD_BYTES = 500 * 1024 * 1024  # 500 MB
 
 # Fix: Remove hardcoded 'backend/' prefix from abspath as we are running the process from inside backend/
 UPLOAD_DIR = os.path.abspath("uploads")
@@ -120,6 +186,7 @@ class CaptionItem(BaseModel):
     is_text_element: bool = False
     custom_style: Optional[Dict[str, Any]] = None
     word_styles: Dict[str, Any] = {}
+    words: List[Any] = []
 
 class ExportRequest(BaseModel):
     file_id: str
@@ -127,11 +194,13 @@ class ExportRequest(BaseModel):
     # Critical: Accept arbitrary dictionary for styles
     style: Dict[str, Any] = {}
     word_layouts: Dict[str, Any] = {}
-    id_token: str # Firebase Auth Token required for deducting credits
+    id_token: str = ""  # Firebase Auth Token (optional — bypassed in dev mode)
+    quality: str = "1080p"  # Export quality: "4k", "1080p", "720p"
 
 class CreateOrderRequest(BaseModel):
     plan_id: str
     id_token: str
+    currency: str = "INR"
 
 class VerifyPaymentRequest(BaseModel):
     razorpay_order_id: str
@@ -181,15 +250,41 @@ async def get_google_fonts():
         return {"fonts": []}
 
 @app.post("/api/upload")
-async def upload_video(file: UploadFile = File(...)):
+async def upload_video(file: UploadFile = File(...), request: Request = None):
     try:
+        # Rate limiting by IP
+        if request:
+            client_ip = request.client.host if request.client else "unknown"
+            now_ts = time.time()
+            timestamps = [t for t in _upload_rate.get(client_ip, []) if t > now_ts - UPLOAD_RATE_WINDOW]
+            if len(timestamps) >= UPLOAD_RATE_LIMIT:
+                return {"success": False, "error": "Too many uploads. Please wait before trying again."}
+            timestamps.append(now_ts)
+            if timestamps:
+                _upload_rate[client_ip] = timestamps
+            else:
+                _upload_rate.pop(client_ip, None)  # evict empty entries
+
+        # File type validation (uses module-level ALLOWED_EXTENSIONS constant)
+        file_ext = file.filename.split('.')[-1].lower() if '.' in file.filename else ''
+        if file_ext not in ALLOWED_EXTENSIONS:
+            return {"success": False, "error": f"File type .{file_ext} not supported. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}"}
+
+        # File size: check Content-Length header first to reject early without reading
+        content_length = int(request.headers.get('content-length', 0)) if request else 0
+        if content_length > MAX_UPLOAD_BYTES:
+            return {"success": False, "error": "File too large. Maximum 500MB allowed."}
+
+        content = await file.read()
+        if len(content) > MAX_UPLOAD_BYTES:
+            return {"success": False, "error": "File too large. Maximum 500MB allowed."}
+
         file_id = str(uuid.uuid4())
-        file_ext = file.filename.split('.')[-1]
         file_path = os.path.join(UPLOAD_DIR, f"{file_id}.{file_ext}")
         with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-            
-        # Hard limit check: Get video duration
+            buffer.write(content)
+
+        # Video duration check — per-plan limits
         cmd = [
             "ffprobe", "-v", "error", "-show_entries",
             "format=duration", "-of",
@@ -198,10 +293,12 @@ async def upload_video(file: UploadFile = File(...)):
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode == 0:
             duration = float(result.stdout.strip() or 0)
-            if duration > 90:
-                os.remove(file_path) # Delete the file to save space
-                return {"success": False, "error": f"Video is too long ({duration:.1f}s). Maximum allowed is 90 seconds."}
-                
+            # Default max 180s (3 min); free/starter users get 120s
+            max_seconds = 180
+            if duration > max_seconds:
+                os.remove(file_path)
+                return {"success": False, "error": f"Video is {duration:.0f}s. Maximum allowed is {max_seconds // 60} minutes."}
+
         return {"success": True, "file_id": file_id, "raw_url": f"/uploads/{file_id}.{file_ext}"}
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -219,64 +316,79 @@ async def process_video(req: ProcessRequest):
 @app.post("/api/export")
 async def export_video(req: ExportRequest):
     print(f"[Export] EXPORT STYLE RECEIVED: {req.style}")
-    
-    # Bypass auth for debugging
-    uid = "test-debug-user"
 
-    # 2. Check Credits & Limits
-    db = get_db()
-    if not db:
-        raise HTTPException(status_code=500, detail="Database not initialized")
-    
-    user_ref = db.collection('users').document(uid)
-    user_doc = user_ref.get()
-    
-    if not user_doc.exists:
-        # Auto-create user document with free tier defaults
-        print(f"[Export] User {uid} not found in Firestore — auto-creating with free tier defaults.")
-        default_user = {
-            'credits_remaining': 100,
-            'subscription_tier': 'free',
-            'export_timestamps': [],
-            'created_at': time.time(),
-            'uid': uid,
-        }
-        user_ref.set(default_user)
-        user_data = default_user
+    # 1. Authenticate user
+    decoded_token = verify_token(req.id_token) if req.id_token else None
+    if decoded_token:
+        uid = decoded_token.get('uid')
     else:
-        user_data = user_doc.to_dict()
-        
-    credits = user_data.get('credits_remaining', 0)
-    tier = user_data.get('subscription_tier', 'free')
-    
-    # Check if paid plan has expired (time-based)
-    plan_time_expired = False
-    if tier and tier != 'free':
-        expiry_str = user_data.get('subscription_expiry')
-        if expiry_str:
-            from datetime import datetime
-            try:
-                expiry_date = datetime.fromisoformat(expiry_str.replace('Z', '+00:00'))
-                if expiry_date < datetime.now(expiry_date.tzinfo):
-                    plan_time_expired = True
-            except Exception:
-                pass
-    
-    # Block export if credits are 0 (regardless of plan type)
-    if credits <= 0:
-        if tier and tier != 'free' and plan_time_expired:
-            raise HTTPException(status_code=403, detail="PLAN_EXPIRED: Your plan has expired and you have no credits left. Please renew to continue exporting.")
-        else:
-            raise HTTPException(status_code=403, detail="UPGRADE_REQUIRED: You have no credits remaining. Please upgrade your plan to continue exporting.")
-        
-    # Check 24-hour limit (max 5 exports)
+        # Dev mode fallback when Firebase is not configured
+        db_check = get_db()
+        if db_check is not None:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        uid = "dev-local-user"
+        print("[Export] No auth token — running in dev mode (no Firebase configured)")
+
+    # 2. Check Credits & Limits (skipped gracefully if Firestore is not configured)
+    db = get_db()
+    db_available = db is not None
+
     now = time.time()
-    export_history = user_data.get('export_timestamps', [])
-    # Filter only timestamps within the last 24 hours
-    recent_exports = [ts for ts in export_history if ts > (now - 86400)]
-    
-    if len(recent_exports) >= 5:
-        raise HTTPException(status_code=429, detail="Limit reached: You can only export 5 videos per 24 hours to prevent abuse.")
+    recent_exports = []
+    credits = 999  # default unlimited if no DB
+    user_data = {}
+    user_ref = None
+
+    if db_available:
+        user_ref = db.collection('users').document(uid)
+        user_doc = user_ref.get()
+
+        if not user_doc.exists:
+            # Auto-create user document with free tier defaults
+            print(f"[Export] User {uid} not found in Firestore — auto-creating with free tier defaults.")
+            default_user = {
+                'credits_remaining': 100,
+                'subscription_tier': 'free',
+                'export_timestamps': [],
+                'created_at': time.time(),
+                'uid': uid,
+            }
+            user_ref.set(default_user)
+            user_data = default_user
+        else:
+            user_data = user_doc.to_dict()
+
+        credits = user_data.get('credits_remaining', 0)
+        tier = user_data.get('subscription_tier', 'free')
+
+        # Check if paid plan has expired (time-based)
+        plan_time_expired = False
+        if tier and tier != 'free':
+            expiry_str = user_data.get('subscription_expiry')
+            if expiry_str:
+                try:
+                    expiry_date = datetime.fromisoformat(expiry_str.replace('Z', '+00:00'))
+                    if expiry_date < datetime.now(expiry_date.tzinfo):
+                        plan_time_expired = True
+                except Exception:
+                    pass
+
+        # Block export if credits are 0 (regardless of plan type)
+        if credits <= 0:
+            if tier and tier != 'free' and plan_time_expired:
+                raise HTTPException(status_code=403, detail="PLAN_EXPIRED: Your plan has expired and you have no credits left. Please renew to continue exporting.")
+            else:
+                raise HTTPException(status_code=403, detail="UPGRADE_REQUIRED: You have no credits remaining. Please upgrade your plan to continue exporting.")
+
+        # Check 24-hour limit (max 5 exports)
+        export_history = user_data.get('export_timestamps', [])
+        # Filter only timestamps within the last 24 hours
+        recent_exports = [ts for ts in export_history if ts > (now - 86400)]
+
+        if len(recent_exports) >= 5:
+            raise HTTPException(status_code=429, detail="Limit reached: You can only export 5 videos per 24 hours to prevent abuse.")
+    else:
+        print("[Export] Firestore not available — skipping credit check (dev mode).")
 
     # 3. Process Video
     input_path = None
@@ -295,33 +407,60 @@ async def export_video(req: ExportRequest):
     # This prevents the server from crashing if 10 people click export at once.
     print(f"[Queue] Video {req.file_id} waiting in line for render slot...")
     async with render_semaphore:
-        print(f"[Render] Video {req.file_id} starting render now!")
-        result = await processor.burn_only(input_path, output_path, captions, req.style, req.word_layouts)
+        print(f"[Render] Video {req.file_id} starting render now (quality={req.quality})!")
+        style_with_quality = {**req.style, 'quality': req.quality}
+        result = await processor.burn_only(input_path, output_path, captions, style_with_quality, req.word_layouts)
 
     if not result['success']: return {"success": False, "error": result.get('error')}
-    
-    # 4. Deduct Credit & Log History on Success
-    recent_exports.append(now)
-    
-    # Append to history for the dashboard history tab
-    history_item = {
-        "id": req.file_id,
-        "filename": output_filename,
-        "url": f"/exports/{output_filename}",
-        "createdAt": now * 1000
-    }
-    current_history = user_data.get('history', [])
-    current_history.insert(0, history_item)
-    if len(current_history) > 5:
-        current_history = current_history[:5] # Keep last 5
 
-    user_ref.update({
-        'credits_remaining': credits - 1,
-        'export_timestamps': recent_exports,
-        'history': current_history
-    })
+    # 4. Upload to Firebase Storage (if configured)
+    video_url = f"/exports/{output_filename}"
+    firebase_url = None
+    try:
+        remote_path = f"exports/{uid}/{output_filename}"
+        firebase_url = upload_to_firebase_storage(output_path, remote_path, "video/mp4")
+        if firebase_url:
+            video_url = firebase_url
+            # Delete local file since it's now in Firebase Storage
+            try:
+                os.remove(output_path)
+            except Exception:
+                pass
+    except Exception as e:
+        print(f"[Export] Firebase Storage upload failed, falling back to local: {e}")
 
-    return {"success": True, "video_url": f"/exports/{output_filename}"}
+    # 5. Deduct Credit & Log History on Success (only when Firestore is available)
+    if db_available and user_ref is not None:
+        recent_exports.append(now)
+
+        history_item = {
+            "id": req.file_id,
+            "filename": output_filename,
+            "url": video_url,
+            "createdAt": now * 1000,
+            "firebase_path": f"exports/{uid}/{output_filename}" if firebase_url else None
+        }
+        current_history = user_data.get('history', [])
+        current_history.insert(0, history_item)
+        if len(current_history) > 5:
+            current_history = current_history[:5]
+
+        user_ref.update({
+            'credits_remaining': credits - 1,
+            'export_timestamps': recent_exports,
+            'history': current_history
+        })
+
+    # Calculate expiry based on user's plan
+    retention_hours = 2  # default for free tier
+    if db_available and user_data:
+        user_tier = user_data.get('subscription_tier', 'free')
+        if user_tier in PLAN_PRICING:
+            retention_hours = PLAN_PRICING[user_tier].get('export_retention_hours', 2)
+
+    expires_at = (datetime.utcnow() + timedelta(hours=retention_hours)).isoformat() + "Z"
+
+    return {"success": True, "video_url": video_url, "expires_at": expires_at, "retention_hours": retention_hours}
 
 # --- RAZORPAY SUBSCRIPTION ENDPOINTS ---
 
@@ -331,40 +470,38 @@ async def create_order(req: CreateOrderRequest):
     decoded_token = verify_token(req.id_token)
     if not decoded_token:
         raise HTTPException(status_code=401, detail="Invalid Authentication Token")
-        
-    amount = 9900 # ₹99 in paise (Plan A defaults)
-    plan_name = "weekly"
-    
-    if req.plan_id == "monthly_pro":
-        amount = 19900 # ₹199 in paise (Plan B)
-        plan_name = "monthly"
-    elif req.plan_id == "yearly_pro":
-        amount = 190000 # ₹1900 in paise
-        plan_name = "yearly"
-    elif req.plan_id == "topup_5":
-        amount = 4900
-        plan_name = "topup_5"
-    elif req.plan_id == "topup_10":
-        amount = 7500
-        plan_name = "topup_10"
-    elif req.plan_id == "topup_25":
-        amount = 14900
-        plan_name = "topup_25"
+
+    plan = PLAN_PRICING.get(req.plan_id)
+    if not plan:
+        raise HTTPException(status_code=400, detail=f"Unknown plan: {req.plan_id}")
+
+    currency = req.currency.upper() if req.currency else "INR"
+    if currency == "USD":
+        amount = plan['usd_cents']
+    else:
+        amount = plan['inr_paise']
+        currency = "INR"
+
+    if not RAZORPAY_AVAILABLE or rzp_client is None:
+        return {"success": False, "error": "Payment service unavailable. Please install razorpay package."}
 
     try:
         order_data = {
             "amount": amount,
-            "currency": "INR",
+            "currency": currency,
             "receipt": f"rcpt_{decoded_token.get('uid', '')[:8]}_{int(time.time())}"
         }
         order = rzp_client.order.create(data=order_data)
-        return {"success": True, "order": order, "plan_name": plan_name, "key_id": RAZORPAY_KEY_ID}
+        return {"success": True, "order": order, "plan_name": req.plan_id, "key_id": RAZORPAY_KEY_ID}
     except Exception as e:
         print(f"Razorpay Order Error: {e}")
         return {"success": False, "error": str(e)}
 
 @app.post("/api/verify-payment")
 async def verify_payment(req: VerifyPaymentRequest):
+    if not RAZORPAY_AVAILABLE or rzp_client is None:
+        raise HTTPException(status_code=503, detail="Payment service unavailable")
+
     # Verify User
     decoded_token = verify_token(req.id_token)
     if not decoded_token:
@@ -382,90 +519,90 @@ async def verify_payment(req: VerifyPaymentRequest):
     except Exception as e:
         raise HTTPException(status_code=400, detail="Payment verification failed")
 
-    # Fetch Payment Details to know the amount (to assign credits)
+    # Fetch Payment Details to determine plan
     try:
         payment = rzp_client.payment.fetch(req.razorpay_payment_id)
-        amount_paid = payment.get('amount', 0) / 100 # convert paise to INR
-    except:
-        amount_paid = 99
-        
-    credits_to_add = 12
-    tier = 'weekly'
-    is_topup = False
+        amount_paid_minor = payment.get('amount', 0)  # in paise or cents
+        currency_paid = payment.get('currency', 'INR')
+    except Exception:
+        amount_paid_minor = 9900
+        currency_paid = 'INR'
 
-    if amount_paid == 49:
-        credits_to_add = 5
-        tier = 'topup_5'
-        is_topup = True
-    elif amount_paid == 75:
-        credits_to_add = 10
-        tier = 'topup_10'
-        is_topup = True
-    elif amount_paid == 149:
-        credits_to_add = 25
-        tier = 'topup_25'
-        is_topup = True
-    elif amount_paid >= 1900:
-        credits_to_add = 540 # 45 * 12
-        tier = 'yearly'
-    elif amount_paid >= 199:
-        credits_to_add = 45 # Updated to 45
-        tier = 'monthly'
+    # Match payment to plan by amount
+    matched_plan = None
+    for plan_key, plan_info in PLAN_PRICING.items():
+        if currency_paid == 'USD' and amount_paid_minor == plan_info['usd_cents']:
+            matched_plan = plan_key
+            break
+        elif currency_paid == 'INR' and amount_paid_minor == plan_info['inr_paise']:
+            matched_plan = plan_key
+            break
+
+    if not matched_plan:
+        # Fallback: match by approximate INR amount
+        amount_inr = amount_paid_minor / 100
+        if amount_inr >= 399:
+            matched_plan = 'pro'
+        elif amount_inr >= 199:
+            matched_plan = 'creator'
+        else:
+            matched_plan = 'starter'
+
+    plan_config = PLAN_PRICING[matched_plan]
+    credits_to_add = plan_config['credits']
+    tier = matched_plan
 
     # Update Database
     db = get_db()
     if not db:
         raise HTTPException(status_code=500, detail="Database not initialized")
-        
+
     user_ref = db.collection('users').document(uid)
     user_doc = user_ref.get()
-    
-    from datetime import datetime, timedelta
+
     now_utc = datetime.utcnow()
     cycle_start = now_utc.isoformat() + "Z"
-    
+    days_to_add = plan_config['days']
+    cycle_end = (now_utc + timedelta(days=days_to_add)).isoformat() + "Z"
+
     if user_doc.exists:
         user_data = user_doc.to_dict()
         current_credits = user_data.get('credits_remaining', 0)
-        current_topups = user_data.get('topups_this_cycle', 0)
-        
-        if is_topup:
-            # ONLY add credits and increment topup count. Do not touch expiry dates.
-            cycle_end = user_data.get('billing_cycle_end')
-            user_ref.update({
-                'credits_remaining': current_credits + credits_to_add,
-                'topups_this_cycle': current_topups + 1
-            })
-        else:
-            # Full Subscription: Update timers and rollover credits
-            days_to_add = 365 if tier == 'yearly' else (30 if tier == 'monthly' else 7)
-            cycle_end = (now_utc + timedelta(days=days_to_add)).isoformat() + "Z"
-            
-            user_ref.update({
-                'credits_remaining': current_credits + credits_to_add,
-                'subscription_tier': tier,
-                'billing_cycle_start': cycle_start,
-                'billing_cycle_end': cycle_end,
-                'subscription_expiry': cycle_end, # keeping backward compatibility
-                'topups_this_cycle': 0 # Reset top-ups on new cycle
-            })
-        
-        # Save Transaction to payments subcollection
-        try:
-            payment_ref = user_ref.collection('payments').document(req.razorpay_payment_id)
-            payment_ref.set({
-                'payment_id': req.razorpay_payment_id,
-                'order_id': req.razorpay_order_id,
-                'amount': amount_paid,
-                'currency': 'INR',
-                'status': 'captured',
-                'plan': tier,
-                'credits_added': credits_to_add,
-                'timestamp': cycle_start
-            })
-        except Exception as e:
-            print(f"Failed to record payment history: {e}")
-    
+
+        user_ref.update({
+            'credits_remaining': current_credits + credits_to_add,
+            'subscription_tier': tier,
+            'billing_cycle_start': cycle_start,
+            'billing_cycle_end': cycle_end,
+            'subscription_expiry': cycle_end,
+        })
+    else:
+        user_ref.set({
+            'uid': uid,
+            'credits_remaining': credits_to_add,
+            'subscription_tier': tier,
+            'billing_cycle_start': cycle_start,
+            'billing_cycle_end': cycle_end,
+            'subscription_expiry': cycle_end,
+            'created_at': time.time(),
+        })
+
+    # Save Transaction to payments subcollection
+    try:
+        payment_ref = user_ref.collection('payments').document(req.razorpay_payment_id)
+        payment_ref.set({
+            'payment_id': req.razorpay_payment_id,
+            'order_id': req.razorpay_order_id,
+            'amount': amount_paid_minor,
+            'currency': currency_paid,
+            'status': 'captured',
+            'plan': tier,
+            'credits_added': credits_to_add,
+            'timestamp': cycle_start
+        })
+    except Exception as e:
+        print(f"Failed to record payment history: {e}")
+
     return {"success": True, "credits_added": credits_to_add, "billing_cycle_end": cycle_end}
 
 @app.post("/api/translate")
@@ -528,6 +665,73 @@ async def translate_captions(req: TranslateRequest):
     except Exception as e:
         print(f"Translation error: {e}")
         return {"success": False, "error": str(e)}
+
+class DetectLanguageRequest(BaseModel):
+    file_id: str
+
+@app.post("/api/detect-language")
+async def detect_language(req: DetectLanguageRequest):
+    input_path = None
+    for f in os.listdir(UPLOAD_DIR):
+        if f.startswith(req.file_id):
+            input_path = os.path.join(UPLOAD_DIR, f)
+            break
+    if not input_path:
+        return {"success": False, "error": "File not found"}
+    try:
+        import tempfile
+        temp_path = os.path.join(tempfile.gettempdir(), f"detect_{req.file_id}.mp3")
+        subprocess.run([
+            "ffmpeg", "-i", input_path, "-t", "30",
+            "-vn", "-acodec", "mp3", "-y", temp_path
+        ], capture_output=True)
+        from openai import OpenAI
+        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        with open(temp_path, "rb") as af:
+            result = client.audio.transcriptions.create(
+                model="whisper-1", file=af, response_format="verbose_json"
+            )
+        detected = getattr(result, 'language', 'english')
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        return {"success": True, "language": detected}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+class DeleteFileRequest(BaseModel):
+    file_id: str
+    id_token: str
+
+@app.post("/api/delete-file")
+async def delete_user_file(req: DeleteFileRequest):
+    decoded_token = verify_token(req.id_token)
+    if not decoded_token:
+        raise HTTPException(status_code=401, detail="Auth required")
+    uid = decoded_token.get('uid')
+
+    # Delete local file if exists
+    for f in os.listdir(EXPORT_DIR) if os.path.exists(EXPORT_DIR) else []:
+        if req.file_id in f:
+            try:
+                os.remove(os.path.join(EXPORT_DIR, f))
+            except Exception:
+                pass
+
+    # Remove from Firestore history + delete from Firebase Storage
+    db = get_db()
+    if db:
+        user_ref = db.collection('users').document(uid)
+        user_doc = user_ref.get()
+        if user_doc.exists:
+            history = user_doc.to_dict().get('history', [])
+            # Find and delete Firebase Storage file if exists
+            for h in history:
+                if h.get('id') == req.file_id and h.get('firebase_path'):
+                    delete_from_firebase_storage(h['firebase_path'])
+            user_ref.update({
+                'history': [h for h in history if h.get('id') != req.file_id]
+            })
+    return {"success": True}
 
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 app.mount("/exports", StaticFiles(directory=EXPORT_DIR), name="exports")

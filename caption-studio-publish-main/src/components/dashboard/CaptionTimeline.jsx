@@ -152,7 +152,7 @@ export default function CaptionTimeline({
     // 2. Other Element Boundaries
     const snapPoints = [
       { time: 0, type: 'boundary' },
-      { time: duration, type: 'boundary' }
+      ...(duration && duration > 0 && isFinite(duration) ? [{ time: duration, type: 'boundary' }] : [])
     ];
 
     allElements.forEach(el => {
@@ -241,9 +241,8 @@ export default function CaptionTimeline({
     const newTime = percentage * duration;
 
     setLocalScrubTime(newTime);
-    if (videoElement) {
-      videoElement.currentTime = newTime;
-    }
+    // Do NOT seek videoElement here — seeking on every mousedown/mousemove causes black frames.
+    // Video seeks once on mouseup via onSeek below.
   };
 
   const handleContainerMouseMove = (e) => {
@@ -267,9 +266,7 @@ export default function CaptionTimeline({
     const newTime = percentage * duration;
 
     setLocalScrubTime(newTime);
-    if (videoElement) {
-      videoElement.currentTime = newTime;
-    }
+    // Do NOT seek videoElement here — same reason as mousedown above.
   };
 
   useEffect(() => {

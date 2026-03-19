@@ -134,7 +134,7 @@ export default function DashboardHeader({
             <Button
               onClick={onExportClick}
               size="sm"
-              className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
+              className="bg-[#2ECC9A] hover:bg-[#27b889] text-[#0A3D2C] font-semibold"
             >
               <Download className="w-4 h-4 sm:mr-2" />
               <span className="hidden sm:inline">Export</span>
@@ -148,7 +148,7 @@ export default function DashboardHeader({
           <Button
             onClick={onLogin}
             size="sm"
-            className="ml-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-medium rounded-md px-4 py-2 shadow-sm transition-colors duration-200 h-10"
+            className="ml-1 bg-[#2ECC9A] hover:bg-[#27b889] text-[#0A3D2C] font-semibold rounded-md px-4 py-2 shadow-sm transition-colors duration-200 h-10"
           >
             <span className="text-[14px]">Signup</span>
           </Button>
