@@ -46,38 +46,50 @@ RAZORPAY_KEY_ID = os.environ.get("RAZORPAY_KEY_ID", "rzp_test_RJWsOLmZ6GL27m")
 RAZORPAY_KEY_SECRET = os.environ.get("RAZORPAY_KEY_SECRET", "test_secret")
 rzp_client = _razorpay_module.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET)) if RAZORPAY_AVAILABLE else None
 
-# --- PLAN PRICING (locked, do not change) ---
+# --- PLAN PRICING (locked — do not change) ---
 PLAN_PRICING = {
+    # Monthly plans
     'starter': {
-        'inr_paise': 9900,
-        'usd_cents': 99,
-        'credits': 15,
-        'days': 30,
-        'daily_limit': 3,
-        'max_video_seconds': 120,
-        'export_retention_hours': 2,
-        'tier': 'starter'
+        'inr_paise': 9900, 'usd_cents': 99,
+        'credits': 15, 'days': 30,
+        'daily_limit': 3, 'max_video_seconds': 120,
+        'export_retention_hours': 2, 'tier': 'starter',
     },
     'creator': {
-        'inr_paise': 19900,
-        'usd_cents': 199,
-        'credits': 45,
-        'days': 30,
-        'daily_limit': 5,
-        'max_video_seconds': 180,
-        'export_retention_hours': 24,
-        'tier': 'creator'
+        'inr_paise': 19900, 'usd_cents': 199,
+        'credits': 45, 'days': 30,
+        'daily_limit': 5, 'max_video_seconds': 180,
+        'export_retention_hours': 24, 'tier': 'creator',
     },
     'pro': {
-        'inr_paise': 39900,
-        'usd_cents': 399,
-        'credits': 90,
-        'days': 30,
-        'daily_limit': None,
-        'max_video_seconds': 180,
-        'export_retention_hours': 72,
-        'tier': 'pro'
-    }
+        'inr_paise': 39900, 'usd_cents': 399,
+        'credits': 100, 'days': 30,
+        'daily_limit': None, 'max_video_seconds': 180,
+        'export_retention_hours': 72, 'tier': 'pro',
+    },
+    # Yearly plans (billed as single charge, 365 days)
+    'starter_yearly': {
+        'inr_paise': 99900, 'usd_cents': 999,
+        'credits': 15, 'days': 365,
+        'daily_limit': 3, 'max_video_seconds': 120,
+        'export_retention_hours': 2, 'tier': 'starter_yearly',
+    },
+    'creator_yearly': {
+        'inr_paise': 199900, 'usd_cents': 1999,
+        'credits': 45, 'days': 365,
+        'daily_limit': 5, 'max_video_seconds': 180,
+        'export_retention_hours': 24, 'tier': 'creator_yearly',
+    },
+    'pro_yearly': {
+        'inr_paise': 399900, 'usd_cents': 3999,
+        'credits': 100, 'days': 365,
+        'daily_limit': None, 'max_video_seconds': 180,
+        'export_retention_hours': 72, 'tier': 'pro_yearly',
+    },
+    # Top-up packs (add credits only, no tier/expiry change)
+    'topup_starter': {'inr_paise': 4900, 'credits': 10, 'is_topup': True, 'allowed_tier': 'starter'},
+    'topup_creator': {'inr_paise': 4900, 'credits': 15, 'is_topup': True, 'allowed_tier': 'creator'},
+    'topup_pro':     {'inr_paise': 7900, 'credits': 25, 'is_topup': True, 'allowed_tier': 'pro'},
 }
 
 # Semaphore to limit concurrent renders to 2. This creates a queue invisible to the user!
@@ -207,6 +219,7 @@ class VerifyPaymentRequest(BaseModel):
     razorpay_payment_id: str
     razorpay_signature: str
     id_token: str
+    plan_id: str = ""  # echoed back from create-order response
 
 class ProcessRequest(BaseModel):
     file_id: str
@@ -475,12 +488,28 @@ async def create_order(req: CreateOrderRequest):
     if not plan:
         raise HTTPException(status_code=400, detail=f"Unknown plan: {req.plan_id}")
 
+    # Top-up: validate caller's current tier before creating order
+    if plan.get('is_topup'):
+        db_tmp = get_db()
+        if db_tmp:
+            uid_tmp = decoded_token.get('uid')
+            ud = db_tmp.collection('users').document(uid_tmp).get()
+            user_tier_tmp = (ud.to_dict() or {}).get('subscription_tier', 'free') if ud.exists else 'free'
+            # Strip _yearly suffix for comparison
+            base_tier = user_tier_tmp.replace('_yearly', '')
+            if base_tier not in ['starter', 'creator', 'pro']:
+                raise HTTPException(status_code=403, detail="UPGRADE_REQUIRED: Top-ups available for paid plans only.")
+            expected = f"topup_{base_tier}"
+            if req.plan_id != expected:
+                raise HTTPException(status_code=403, detail="This top-up is not available for your current plan.")
+
     currency = req.currency.upper() if req.currency else "INR"
-    if currency == "USD":
-        amount = plan['usd_cents']
-    else:
+    # Top-ups are INR only; USD only applies to subscription plans
+    if plan.get('is_topup') or currency != "USD":
         amount = plan['inr_paise']
         currency = "INR"
+    else:
+        amount = plan.get('usd_cents', plan['inr_paise'])
 
     if not RAZORPAY_AVAILABLE or rzp_client is None:
         return {"success": False, "error": "Payment service unavailable. Please install razorpay package."}
@@ -492,7 +521,7 @@ async def create_order(req: CreateOrderRequest):
             "receipt": f"rcpt_{decoded_token.get('uid', '')[:8]}_{int(time.time())}"
         }
         order = rzp_client.order.create(data=order_data)
-        return {"success": True, "order": order, "plan_name": req.plan_id, "key_id": RAZORPAY_KEY_ID}
+        return {"success": True, "order": order, "plan_id": req.plan_id, "key_id": RAZORPAY_KEY_ID}
     except Exception as e:
         print(f"Razorpay Order Error: {e}")
         return {"success": False, "error": str(e)}
@@ -519,38 +548,33 @@ async def verify_payment(req: VerifyPaymentRequest):
     except Exception as e:
         raise HTTPException(status_code=400, detail="Payment verification failed")
 
-    # Fetch Payment Details to determine plan
-    try:
-        payment = rzp_client.payment.fetch(req.razorpay_payment_id)
-        amount_paid_minor = payment.get('amount', 0)  # in paise or cents
-        currency_paid = payment.get('currency', 'INR')
-    except Exception:
-        amount_paid_minor = 9900
-        currency_paid = 'INR'
+    # Resolve plan from echoed plan_id (most reliable) then fall back to amount matching
+    plan_config = PLAN_PRICING.get(req.plan_id) if req.plan_id else None
 
-    # Match payment to plan by amount
-    matched_plan = None
-    for plan_key, plan_info in PLAN_PRICING.items():
-        if currency_paid == 'USD' and amount_paid_minor == plan_info['usd_cents']:
-            matched_plan = plan_key
-            break
-        elif currency_paid == 'INR' and amount_paid_minor == plan_info['inr_paise']:
-            matched_plan = plan_key
-            break
+    if not plan_config:
+        # Fallback: fetch payment and match by amount
+        try:
+            payment = rzp_client.payment.fetch(req.razorpay_payment_id)
+            amount_paid_minor = payment.get('amount', 0)
+            currency_paid = payment.get('currency', 'INR')
+        except Exception:
+            amount_paid_minor = 9900
+            currency_paid = 'INR'
 
-    if not matched_plan:
-        # Fallback: match by approximate INR amount
-        amount_inr = amount_paid_minor / 100
-        if amount_inr >= 399:
-            matched_plan = 'pro'
-        elif amount_inr >= 199:
-            matched_plan = 'creator'
-        else:
-            matched_plan = 'starter'
+        for plan_key, p in PLAN_PRICING.items():
+            if currency_paid == 'USD' and amount_paid_minor == p.get('usd_cents'):
+                plan_config = p; req.plan_id = plan_key; break
+            elif currency_paid == 'INR' and amount_paid_minor == p.get('inr_paise'):
+                plan_config = p; req.plan_id = plan_key; break
 
-    plan_config = PLAN_PRICING[matched_plan]
+        if not plan_config:
+            # Last-resort fallback by INR paise
+            amount_inr = amount_paid_minor / 100
+            req.plan_id = 'pro' if amount_inr >= 399 else ('creator' if amount_inr >= 199 else 'starter')
+            plan_config = PLAN_PRICING[req.plan_id]
+
+    is_topup = plan_config.get('is_topup', False)
     credits_to_add = plan_config['credits']
-    tier = matched_plan
 
     # Update Database
     db = get_db()
@@ -559,22 +583,60 @@ async def verify_payment(req: VerifyPaymentRequest):
 
     user_ref = db.collection('users').document(uid)
     user_doc = user_ref.get()
+    user_data = user_doc.to_dict() if user_doc.exists else {}
+    current_credits = user_data.get('credits_remaining', 0)
+    current_topups = user_data.get('topups_this_cycle', 0)
 
     now_utc = datetime.utcnow()
     cycle_start = now_utc.isoformat() + "Z"
+
+    if is_topup:
+        # Top-up: add credits only — do not touch tier or expiry
+        base_tier = user_data.get('subscription_tier', 'free').replace('_yearly', '')
+        if base_tier not in ['starter', 'creator', 'pro']:
+            raise HTTPException(status_code=403, detail="UPGRADE_REQUIRED: Top-ups available for paid plans only.")
+        expected_topup = f"topup_{base_tier}"
+        if req.plan_id != expected_topup:
+            raise HTTPException(status_code=403, detail="This top-up is not available for your current plan.")
+
+        if user_doc.exists:
+            user_ref.update({
+                'credits_remaining': current_credits + credits_to_add,
+                'topups_this_cycle': current_topups + 1,
+            })
+        else:
+            raise HTTPException(status_code=404, detail="User not found. Purchase a plan first.")
+
+        try:
+            user_ref.collection('payments').document(req.razorpay_payment_id).set({
+                'payment_id': req.razorpay_payment_id,
+                'order_id': req.razorpay_order_id,
+                'amount': plan_config['inr_paise'],
+                'currency': 'INR',
+                'status': 'captured',
+                'plan': req.plan_id,
+                'credits_added': credits_to_add,
+                'type': 'topup',
+                'timestamp': cycle_start,
+            })
+        except Exception as e:
+            print(f"Failed to record topup payment: {e}")
+
+        return {"success": True, "credits_added": credits_to_add, "type": "topup"}
+
+    # Subscription plan: update tier + expiry + credits
+    tier = req.plan_id
     days_to_add = plan_config['days']
     cycle_end = (now_utc + timedelta(days=days_to_add)).isoformat() + "Z"
 
     if user_doc.exists:
-        user_data = user_doc.to_dict()
-        current_credits = user_data.get('credits_remaining', 0)
-
         user_ref.update({
             'credits_remaining': current_credits + credits_to_add,
             'subscription_tier': tier,
             'billing_cycle_start': cycle_start,
             'billing_cycle_end': cycle_end,
             'subscription_expiry': cycle_end,
+            'topups_this_cycle': 0,  # reset on new billing cycle
         })
     else:
         user_ref.set({
@@ -584,26 +646,26 @@ async def verify_payment(req: VerifyPaymentRequest):
             'billing_cycle_start': cycle_start,
             'billing_cycle_end': cycle_end,
             'subscription_expiry': cycle_end,
+            'topups_this_cycle': 0,
             'created_at': time.time(),
         })
 
-    # Save Transaction to payments subcollection
     try:
-        payment_ref = user_ref.collection('payments').document(req.razorpay_payment_id)
-        payment_ref.set({
+        user_ref.collection('payments').document(req.razorpay_payment_id).set({
             'payment_id': req.razorpay_payment_id,
             'order_id': req.razorpay_order_id,
-            'amount': amount_paid_minor,
-            'currency': currency_paid,
+            'amount': plan_config.get('inr_paise', 0),
+            'currency': 'INR',
             'status': 'captured',
             'plan': tier,
             'credits_added': credits_to_add,
-            'timestamp': cycle_start
+            'type': 'subscription',
+            'timestamp': cycle_start,
         })
     except Exception as e:
         print(f"Failed to record payment history: {e}")
 
-    return {"success": True, "credits_added": credits_to_add, "billing_cycle_end": cycle_end}
+    return {"success": True, "credits_added": credits_to_add, "billing_cycle_end": cycle_end, "type": "subscription"}
 
 @app.post("/api/translate")
 async def translate_captions(req: TranslateRequest):

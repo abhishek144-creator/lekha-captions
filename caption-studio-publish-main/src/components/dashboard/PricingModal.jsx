@@ -26,10 +26,8 @@ const plans = [
   {
     id: 'starter',
     name: 'Starter',
-    monthlyPrice: '₹99',
-    yearlyPrice: '₹79',
-    monthlyPaise: 9900,
-    yearlyPaise: 7900,
+    monthlyPrice: '₹99', yearlyPrice: '₹999',
+    monthlyPaise: 9900, yearlyPaise: 99900,
     credits: 15,
     icon: Zap,
     description: 'Perfect for getting started',
@@ -37,18 +35,16 @@ const plans = [
       '15 video credits / month',
       'Max 2 min per video',
       'Max 3 videos / day',
-      '1080p HD export',
+      'No watermark · 25+ styles',
       'All 115+ languages',
-      'SRT + TXT download',
+      '2 hr download link',
     ],
   },
   {
     id: 'creator',
     name: 'Creator',
-    monthlyPrice: '₹199',
-    yearlyPrice: '₹159',
-    monthlyPaise: 19900,
-    yearlyPaise: 15900,
+    monthlyPrice: '₹199', yearlyPrice: '₹1,999',
+    monthlyPaise: 19900, yearlyPaise: 199900,
     credits: 45,
     icon: Crown,
     description: 'Best value for serious creators',
@@ -57,35 +53,44 @@ const plans = [
       '45 video credits / month',
       'Max 3 min per video',
       'Max 5 videos / day',
-      '1080p HD + 4K export',
+      'No watermark · 25+ styles',
       'All 115+ languages',
       'Translation feature',
-      'Priority support',
+      '24 hr download link',
     ],
   },
   {
     id: 'pro',
     name: 'Pro',
-    monthlyPrice: '₹399',
-    yearlyPrice: '₹319',
-    monthlyPaise: 39900,
-    yearlyPaise: 31900,
-    credits: 90,
+    monthlyPrice: '₹399', yearlyPrice: '₹3,999',
+    monthlyPaise: 39900, yearlyPaise: 399900,
+    credits: 100,
     icon: Star,
     description: 'For power users & teams',
     features: [
-      '90 video credits / month',
+      '100 video credits / month',
       'Max 3 min per video',
       'Unlimited videos / day',
-      '1080p HD + 4K export',
+      'No watermark · 25+ styles',
       'All 115+ languages',
       'Translation + API access',
-      '3 team seats',
+      '72 hr download link',
     ],
   },
 ]
 
-export default function PricingModal({ isOpen, onClose, onSelectPlan, user, message, userData }) {
+const TOPUP_MAP = {
+  starter: { plan_id: 'topup_starter', credits: 10, price: '₹49' },
+  starter_yearly: { plan_id: 'topup_starter', credits: 10, price: '₹49' },
+  creator: { plan_id: 'topup_creator', credits: 15, price: '₹49' },
+  creator_yearly: { plan_id: 'topup_creator', credits: 15, price: '₹49' },
+  pro: { plan_id: 'topup_pro', credits: 25, price: '₹79' },
+  pro_yearly: { plan_id: 'topup_pro', credits: 25, price: '₹79' },
+}
+
+const TOPUP_PAISE = { topup_starter: 4900, topup_creator: 4900, topup_pro: 7900 }
+
+export default function PricingModal({ isOpen, onClose, onSelectPlan, user, message, userData = null }) {
   const [processingPlan, setProcessingPlan] = useState(null)
   const [billing, setBilling] = useState('monthly')
 
@@ -111,25 +116,25 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
       }
 
       const idToken = await currentUser.getIdToken()
+      const planId = billing === 'yearly' ? `${plan.id}_yearly` : plan.id
       const amount = billing === 'yearly' ? plan.yearlyPaise : plan.monthlyPaise
 
       const orderRes = await fetch('/api/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plan_id: plan.id, id_token: idToken, currency: 'INR' }),
+        body: JSON.stringify({ plan_id: planId, id_token: idToken, currency: 'INR' }),
       })
       const orderData = await orderRes.json()
       if (!orderData.success) throw new Error(orderData.error || 'Failed to create order')
 
       onClose()
-      await new Promise(r => setTimeout(r, 100))
 
       const options = {
         key: orderData.key_id || RAZORPAY_KEY_ID,
         amount: orderData.order?.amount || amount,
         currency: 'INR',
         name: 'Lekha Captions',
-        description: `${plan.name} Plan${billing === 'yearly' ? ' (Yearly)' : ''}`,
+        description: `${plan.name} Plan${billing === 'yearly' ? ' · Yearly' : ''}`,
         order_id: orderData.order?.id,
         handler: async (response) => {
           try {
@@ -141,12 +146,13 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
                 razorpay_payment_id: response.razorpay_payment_id,
                 razorpay_signature: response.razorpay_signature,
                 id_token: idToken,
+                plan_id: planId,
               }),
             })
             const verifyData = await verifyRes.json()
             if (verifyData.success) {
-              alert(`✅ Payment successful! You received ${verifyData.credits_added} credits.`)
-              if (onSelectPlan) onSelectPlan(plan.id)
+              alert(`✅ Payment successful! ${verifyData.credits_added} credits added.`)
+              if (onSelectPlan) onSelectPlan(planId)
               window.location.reload()
             } else {
               alert('Payment verification failed. Please contact support.')
@@ -168,6 +174,64 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
         setProcessingPlan(null)
       })
       rzp.open()
+    } catch (error) {
+      alert(`Error: ${error.message}`)
+      setProcessingPlan(null)
+    }
+  }
+
+  const handleTopup = async (topup) => {
+    setProcessingPlan(topup.plan_id)
+    try {
+      await loadRazorpayScript()
+      if (!window.Razorpay) { alert('Payment system unavailable.'); setProcessingPlan(null); return }
+      const currentUser = auth.currentUser
+      if (!currentUser) { alert('Please log in first.'); setProcessingPlan(null); return }
+      const idToken = await currentUser.getIdToken()
+      const orderRes = await fetch('/api/create-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan_id: topup.plan_id, id_token: idToken, currency: 'INR' }),
+      })
+      const orderData = await orderRes.json()
+      if (!orderData.success) throw new Error(orderData.error || 'Failed to create top-up order')
+      onClose()
+      const amount = TOPUP_PAISE[topup.plan_id]
+      const options = {
+        key: orderData.key_id || RAZORPAY_KEY_ID,
+        amount: orderData.order?.amount || amount,
+        currency: 'INR',
+        name: 'Lekha Captions',
+        description: `Top-up · ${topup.credits} credits`,
+        order_id: orderData.order?.id,
+        handler: async (response) => {
+          try {
+            const verifyRes = await fetch('/api/verify-payment', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+                id_token: idToken,
+                plan_id: topup.plan_id,
+              }),
+            })
+            const verifyData = await verifyRes.json()
+            if (verifyData.success) {
+              alert(`✅ Top-up successful! ${verifyData.credits_added} credits added.`)
+              window.location.reload()
+            } else {
+              alert('Top-up verification failed. Please contact support.')
+            }
+          } catch (e) { alert('Error verifying top-up.') }
+          finally { setProcessingPlan(null) }
+        },
+        prefill: { name: user?.displayName || '', email: user?.email || '' },
+        theme: { color: '#2ECC9A' },
+        modal: { ondismiss: () => setProcessingPlan(null) },
+      }
+      new window.Razorpay(options).open()
     } catch (error) {
       alert(`Error: ${error.message}`)
       setProcessingPlan(null)
@@ -197,7 +261,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
             className={`px-5 py-1.5 rounded-full text-sm font-medium transition-all flex items-center gap-1.5 ${billing === 'yearly' ? 'bg-[#2ECC9A] text-[#0A3D2C]' : 'text-gray-400 hover:text-white'}`}
           >
             Yearly
-            <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded-full font-bold">−20%</span>
+            <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded-full font-bold">−17%</span>
           </button>
         </div>
 
@@ -240,10 +304,11 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
                   </span>
                   <span className="text-gray-500 text-sm">/mo</span>
                 </div>
-                {billing === 'yearly' && (
-                  <p className="text-xs text-[#2ECC9A] mb-3">Billed yearly · Save 20%</p>
+                {billing === 'yearly' ? (
+                  <p className="text-xs text-[#2ECC9A] mb-3">₹{plan.yearlyPaise / 100} billed yearly</p>
+                ) : (
+                  <div className="mb-3" />
                 )}
-                {billing === 'monthly' && <div className="mb-3" />}
 
                 <div className="flex items-center gap-2 mb-4 p-2 rounded-lg bg-white/5">
                   <span className="text-xl font-bold text-white">{plan.credits}</span>
@@ -277,6 +342,39 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
             )
           })}
         </div>
+
+        {/* Contextual Top-up Section */}
+        {(() => {
+          const tier = userData?.subscription_tier
+          if (!tier || tier === 'free') {
+            return null
+          }
+          const topup = TOPUP_MAP[tier]
+          if (!topup) return null
+          return (
+            <div className="mt-4 p-4 rounded-xl border border-white/10 bg-zinc-900/60">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-semibold text-white mb-0.5">Need more credits?</p>
+                  <p className="text-xs text-gray-400">
+                    Add {topup.credits} credits to your current plan for {topup.price} — no plan change.
+                  </p>
+                </div>
+                <Button
+                  onClick={() => handleTopup(topup)}
+                  disabled={processingPlan === topup.plan_id}
+                  className="shrink-0 bg-white/10 hover:bg-white/20 text-white font-semibold"
+                >
+                  {processingPlan === topup.plan_id ? (
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Processing...</>
+                  ) : (
+                    `Top Up · ${topup.price}`
+                  )}
+                </Button>
+              </div>
+            </div>
+          )
+        })()}
 
         <p className="text-xs text-gray-600 text-center mt-3">
           Credits deducted only after successful export · Secure payments via Razorpay
