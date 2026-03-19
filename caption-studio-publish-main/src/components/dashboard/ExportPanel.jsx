@@ -579,7 +579,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
                 <p className="text-xs text-[#F5A623]/70 mb-3">Create a free account to get 3 free export credits</p>
                 <button
                   onClick={() => window.location.href = '/login'}
-                  className="w-full py-2 rounded-lg bg-[#F5A623] hover:bg-[#D4891A] text-[#000000] text-sm font-semibold transition-colors"
+                  className="w-full py-2 rounded-lg bg-gradient-to-r from-[#FFE566] to-[#F5A623] hover:from-[#F5A623] hover:to-[#D4891A] text-black text-sm font-semibold transition-colors"
                 >
                   Sign up free
                 </button>
