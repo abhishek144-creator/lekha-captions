@@ -119,13 +119,19 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
       const planId = billing === 'yearly' ? `${plan.id}_yearly` : plan.id
       const amount = billing === 'yearly' ? plan.yearlyPaise : plan.monthlyPaise
 
-      const orderRes = await fetch('/api/create-order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plan_id: planId, id_token: idToken, currency: 'INR' }),
-      })
-      const orderData = await orderRes.json()
-      if (!orderData.success) throw new Error(orderData.error || 'Failed to create order')
+      let orderData = { success: false, order: null, key_id: RAZORPAY_KEY_ID }
+      try {
+        const orderRes = await fetch('/api/create-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ plan_id: planId, id_token: idToken, currency: 'INR' }),
+        })
+        const parsed = await orderRes.json()
+        if (parsed.success) orderData = parsed
+        else if (!RAZORPAY_KEY_ID.startsWith('rzp_test_')) throw new Error(parsed.error || 'Failed to create order')
+      } catch (fetchErr) {
+        if (!RAZORPAY_KEY_ID.startsWith('rzp_test_')) throw fetchErr
+      }
 
       onClose()
 
@@ -252,13 +258,13 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
         <div className="flex items-center gap-1 justify-center mt-2 bg-zinc-900 rounded-full p-1 w-fit mx-auto border border-white/10">
           <button
             onClick={() => setBilling('monthly')}
-            className={`px-5 py-1.5 rounded-full text-sm font-medium transition-all ${billing === 'monthly' ? 'bg-[#F5A623] text-[#000000]' : 'text-gray-400 hover:text-white'}`}
+            className={`px-5 py-1.5 rounded-full text-sm font-medium transition-all ${billing === 'monthly' ? 'bg-gradient-to-r from-[#FFE566] to-[#F5A623] text-black' : 'text-gray-400 hover:text-white'}`}
           >
             Monthly
           </button>
           <button
             onClick={() => setBilling('yearly')}
-            className={`px-5 py-1.5 rounded-full text-sm font-medium transition-all flex items-center gap-1.5 ${billing === 'yearly' ? 'bg-[#F5A623] text-[#000000]' : 'text-gray-400 hover:text-white'}`}
+            className={`px-5 py-1.5 rounded-full text-sm font-medium transition-all flex items-center gap-1.5 ${billing === 'yearly' ? 'bg-gradient-to-r from-[#FFE566] to-[#F5A623] text-black' : 'text-gray-400 hover:text-white'}`}
           >
             Yearly
             <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded-full font-bold">−17%</span>
@@ -285,7 +291,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
               >
                 {plan.popular && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                    <span className="bg-[#F5A623] text-[#000000] text-xs font-bold px-3 py-1 rounded-full">
+                    <span className="bg-gradient-to-r from-[#FFE566] to-[#F5A623] text-black text-xs font-bold px-3 py-1 rounded-full">
                       MOST POPULAR
                     </span>
                   </div>
@@ -328,7 +334,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
                   onClick={() => handlePayment(plan)}
                   disabled={processingPlan === plan.id}
                   className={`w-full font-semibold ${plan.popular
-                    ? 'bg-[#F5A623] hover:bg-[#D4891A] text-[#000000]'
+                    ? 'bg-gradient-to-r from-[#FFE566] to-[#F5A623] hover:from-[#F5A623] hover:to-[#D4891A] text-black'
                     : 'bg-white/10 hover:bg-white/20 text-white'
                   }`}
                 >
