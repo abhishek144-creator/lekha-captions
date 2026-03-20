@@ -59,6 +59,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
   const [statusMessage, setStatusMessage] = useState('');
   const [waitStartTime, setWaitStartTime] = useState(null);
   const [showServerBusy, setShowServerBusy] = useState(false);
+  const [exportExpiry, setExportExpiry] = useState(null);
 
   const generateSRT = () => {
     if (!captions || captions.length === 0) return '';
@@ -139,6 +140,13 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
 
       const videoEl = document.querySelector('video');
       const container = videoEl?.parentElement;
+      if (!videoEl || !container) {
+        alert('Video player not found. Please make sure the video is loaded and try again.');
+        setIsExporting(false);
+        setProgress(0);
+        setStatusMessage('');
+        return;
+      }
       const cw = container?.offsetWidth || 1;
       const ch = container?.offsetHeight || 1;
 
@@ -212,6 +220,16 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
 
       const wordLayouts = captureLayout(captions);
 
+      // Bug 9: Warn if word layout capture returned nothing despite captions having words
+      const captionsWithWords = captions.filter(c => c.words && c.words.length > 0 && !c.isTextElement);
+      const layoutKeys = Object.keys(wordLayouts).length;
+      if (captionsWithWords.length > 0 && layoutKeys === 0) {
+        console.warn('[Export] Word layout capture returned 0 entries. Export will use fallback position-based rendering. Make sure the video player is fully visible before exporting.');
+        setStatusMessage('Note: Using fallback positioning (scroll video into view for best results)');
+      } else {
+        console.log(`[Export] Captured ${layoutKeys} word layout entries for ${captionsWithWords.length} captions.`);
+      }
+
       const patchWordStyles = (ws) => {
         if (!ws || Object.keys(ws).length === 0) return ws;
         if (!container || !containerRect) return ws;
@@ -258,7 +276,8 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
 
       const exportData = {
         file_id: fileId,
-        id_token: idToken,
+        id_token: idToken || '',
+        quality,
         captions: captions.filter(c => c && c.text).map(cap => {
           const isText = cap.isTextElement;
           const cs = cap.customStyle || {};
@@ -319,7 +338,8 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
           text_opacity: captionStyle?.text_opacity ?? 1,
           highlight_color: captionStyle?.highlight_color || '',
           highlight_gradient: captionStyle?.highlight_gradient || '',
-          has_background: captionStyle?.has_background !== false,
+          // Use explicit boolean — templates without bg set has_background:false after hard reset
+          has_background: !!captionStyle?.has_background,
           background_opacity: captionStyle?.background_opacity ?? 0.7,
           background_color: captionStyle?.background_color || '#000000',
           has_stroke: captionStyle?.has_stroke || false,
@@ -350,7 +370,11 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
           letter_spacing: captionStyle?.letter_spacing || 0,
           word_spacing: captionStyle?.word_spacing || 1,
           background_padding: captionStyle?.background_padding ?? 6,
-          background_h_multiplier: captionStyle?.background_h_multiplier ?? 1.1,
+          background_h_multiplier: captionStyle?.background_h_multiplier ?? 0.99,
+          // Template metadata — passed through so the backend knows the active template
+          template_id: captionStyle?.template_id || '',
+          secondary_color: captionStyle?.secondary_color || '',
+          show_inactive: captionStyle?.show_inactive !== false,
           preview_height: renderH
         },
         word_layouts: wordLayouts
@@ -411,10 +435,20 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
         throw new Error(result.error || 'Export failed');
       }
 
+      // Store expiry info
+      if (result.retention_hours) {
+        setExportExpiry({ hours: result.retention_hours, expiresAt: result.expires_at })
+      }
+
       setProgress(90);
       setStatusMessage('Preparing download...');
 
-      const videoResponse = await fetch(result.video_url);
+      // Firebase Storage URLs are absolute; local URLs are relative
+      const downloadUrl = result.video_url
+      const videoResponse = await fetch(downloadUrl);
+      if (!videoResponse.ok) {
+        throw new Error(`Video download failed (${videoResponse.status}). Please try again.`);
+      }
       const blob = await videoResponse.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -470,8 +504,8 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
       title: 'SRT File',
       description: 'Standard subtitle format',
       action: handleDownloadSRT,
-      gradient: 'from-purple-500 to-blue-500',
-      requiresPlan: true
+      gradient: 'from-zinc-600 to-zinc-400',
+      requiresPlan: false
     },
     {
       icon: FileJson,
@@ -479,7 +513,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
       description: 'Just the caption text',
       action: handleDownloadText,
       gradient: 'from-blue-500 to-cyan-500',
-      requiresPlan: true
+      requiresPlan: false
     },
   ];
 
@@ -488,23 +522,23 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
       <SheetContent className="bg-zinc-900 border-white/10 text-white w-full sm:max-w-md">
         <SheetHeader>
           <SheetTitle className="text-xl font-semibold text-white">
-            Export Captions
+            Export
           </SheetTitle>
+          <p className="text-sm text-gray-500 mt-1">Choose your export format below</p>
         </SheetHeader>
 
         {isExporting ? (
-          <div className="mt-8 p-6 rounded-xl bg-zinc-800/50 border border-white/10 text-center space-y-4 relative overflow-hidden">
+          <div className="mt-8 p-6 rounded-xl bg-white/[0.03] border border-white/10 text-center space-y-4 relative overflow-hidden">
             {/* Subtle glow animation */}
             <div className="absolute inset-0 pointer-events-none">
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 bg-purple-500/20 rounded-full blur-3xl animate-pulse"></div>
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-24 bg-blue-500/15 rounded-full blur-2xl animate-pulse" style={{ animationDelay: '0.5s' }}></div>
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 bg-white/5 rounded-full blur-3xl animate-pulse"></div>
             </div>
 
             <div className="relative z-10">
               <div className="relative w-16 h-16 mx-auto">
                 <div className="absolute inset-0 rounded-full border-2 border-white/10"></div>
-                <div className="absolute inset-0 rounded-full border-t-2 border-purple-500 animate-spin"></div>
-                <div className="absolute inset-0 rounded-full border-r-2 border-blue-400 animate-spin" style={{ animationDuration: '1.5s' }}></div>
+                <div className="absolute inset-0 rounded-full border-t-2 border-white/60 animate-spin"></div>
+                <div className="absolute inset-0 rounded-full border-r-2 border-white/20 animate-spin" style={{ animationDuration: '1.5s' }}></div>
                 <div className="absolute inset-0 flex items-center justify-center text-xs font-bold text-white">
                   {Math.round(progress)}%
                 </div>
@@ -512,7 +546,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
 
               <div className="mt-4">
                 <h3 className="text-lg font-medium text-white mb-1">Rendering Video</h3>
-                <p className="text-sm text-purple-300 animate-pulse">{statusMessage}</p>
+                <p className="text-sm text-gray-400 animate-pulse">{statusMessage}</p>
                 {showServerBusy && (
                   <p className="text-xs text-amber-400 mt-2 animate-pulse">
                     Server is busy • Estimated time remaining: ~2 minutes
@@ -521,7 +555,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
               </div>
 
               <div className="relative mt-4">
-                <Progress value={progress} className="h-2 bg-zinc-700" indicatorClassName="bg-gradient-to-r from-purple-500 to-blue-500" />
+                <Progress value={progress} className="h-2 bg-zinc-700" indicatorClassName="bg-white" />
                 {/* Shimmer effect on progress bar */}
                 <div className="absolute inset-0 overflow-hidden rounded-full">
                   <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
@@ -539,13 +573,13 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
           <div className="mt-6 space-y-3">
             {/* Not signed in → Sign up prompt */}
             {!isSignedIn && (
-              <div className="p-4 rounded-xl bg-purple-500/10 border border-purple-500/20 text-center mb-4">
-                <Lock className="w-8 h-8 text-purple-400 mx-auto mb-2" />
-                <p className="text-sm text-purple-300 font-medium mb-1">Sign up to export</p>
-                <p className="text-xs text-purple-400/70 mb-3">Create a free account to get 3 free export credits</p>
+              <div className="p-4 rounded-xl bg-white/5 border border-white/10 text-center mb-4">
+                <Lock className="w-8 h-8 text-white/60 mx-auto mb-2" />
+                <p className="text-sm text-white font-medium mb-1">Sign up to export</p>
+                <p className="text-xs text-gray-400 mb-3">Create a free account to get 3 free export credits</p>
                 <button
                   onClick={() => window.location.href = '/login'}
-                  className="w-full py-2 rounded-lg bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white text-sm font-semibold transition-colors"
+                  className="w-full py-2 rounded-lg bg-white hover:bg-gray-100 text-black text-sm font-semibold transition-colors"
                 >
                   Sign up free
                 </button>
@@ -568,8 +602,10 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
                 </Button>
               </div>
             )}
-            {exportOptions.map((option, idx) => {
-              const isLocked = option.requiresPlan && !isPlanActive;
+            {/* Video exports */}
+            <p className="text-[11px] text-gray-500 uppercase tracking-wider font-medium px-1">Video Export</p>
+            {exportOptions.filter(o => o.requiresPlan).map((option, idx) => {
+              const isLocked = !isPlanActive;
               return (
                 <motion.button
                   key={idx}
@@ -579,7 +615,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
                   onClick={isLocked ? onUpgradeClick : option.action}
                   className={`w-full p-4 rounded-xl border transition-all flex items-center gap-4 group ${isLocked
                     ? 'bg-white/[0.01] border-white/5 opacity-60 cursor-not-allowed'
-                    : 'bg-white/[0.02] border-white/5 hover:border-white/10 cursor-pointer'
+                    : 'bg-white/[0.02] border-white/5 hover:bg-white/[0.04] hover:border-white/15 cursor-pointer'
                     }`}
                 >
                   <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${option.gradient} p-0.5 ${isLocked ? 'opacity-50' : ''}`}>
@@ -594,16 +630,48 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
                 </motion.button>
               );
             })}
+
+            {/* Caption file exports */}
+            <p className="text-[11px] text-gray-500 uppercase tracking-wider font-medium px-1 pt-2">Caption Files</p>
+            {exportOptions.filter(o => !o.requiresPlan).map((option, idx) => (
+              <motion.button
+                key={idx}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: (idx + 3) * 0.07 }}
+                onClick={option.action}
+                className="w-full p-4 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.04] hover:border-white/15 transition-all flex items-center gap-4 group cursor-pointer"
+              >
+                <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${option.gradient} p-0.5`}>
+                  <div className="w-full h-full rounded-xl bg-zinc-900 flex items-center justify-center group-hover:bg-zinc-800 transition-colors">
+                    <option.icon className="w-5 h-5 text-white" />
+                  </div>
+                </div>
+                <div className="text-left flex-1">
+                  <p className="font-medium text-white">{option.title}</p>
+                  <p className="text-sm text-gray-500">{option.description}</p>
+                </div>
+              </motion.button>
+            ))}
           </div>
         )}
 
         {/* Caption count */}
-        <div className="mt-6 p-4 rounded-xl bg-purple-600/10 border border-purple-500/20">
+        <div className="mt-6 p-4 rounded-xl bg-white/[0.03] border border-white/10">
           <div className="flex items-center justify-between">
             <span className="text-sm text-gray-400">Total Captions</span>
             <span className="text-lg font-bold text-white">{captions?.length || 0}</span>
           </div>
         </div>
+
+        {/* Export expiry notice */}
+        {exportExpiry && (
+          <div className="mt-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
+            <p className="text-xs text-amber-300">
+              Download link valid for <span className="font-semibold">{exportExpiry.hours} hours</span>. Save your exported video before it expires.
+            </p>
+          </div>
+        )}
       </SheetContent>
     </Sheet>
   );

@@ -632,9 +632,9 @@
    display: inline-block;
    background: var(--template-bg, #ECF00F);
    color: #111;
-   border-radius: 10px;
-   padding: 12px 64px;
-   line-height: 1.5;
+   border-radius: 6px;
+   padding: 4px 16px;
+   line-height: 1.4;
    text-align: center;
 }
 
@@ -1386,34 +1386,33 @@
    Green Neon Pulse (id: 115)
 ══════════════════════════════════════════ */
 .t-115 .cap-text {
+   font-family: 'Noto Sans', sans-serif;
    font-weight: 900;
    font-style: italic;
    font-size: 28px;
 }
 
 .t-115 .word {
-   color: #fff;
+   color: var(--template-primary, #fff);
    -webkit-text-stroke: 1.5px #000;
    paint-order: stroke fill;
    filter: drop-shadow(2px 2px 0 #000);
 }
 
-.t-115 .cap-text .word.active {
-   color: #39FF14 !important;
-   filter: drop-shadow(2px 2px 0 #000) drop-shadow(0 0 8px rgba(57, 255, 20, .8)) !important;
+.t-115 .word.active {
+   color: #39FF14;
+   filter: drop-shadow(2px 2px 0 #000) drop-shadow(0 0 8px rgba(57, 255, 20, .8));
 }
 
-.t-115 .cap-text .word.done {
-   color: #fff !important;
-   filter: drop-shadow(2px 2px 0 #000) !important;
+.t-115 .word.done {
+   color: var(--template-primary, #fff);
+   filter: drop-shadow(2px 2px 0 #000);
 }
 
-.t-115 .cap-text .word.imp.active {
-   color: #39FF14 !important;
-   filter: drop-shadow(2px 2px 0 #000) drop-shadow(0 0 8px rgba(57, 255, 20, .8)) !important;
+.t-115 .word.imp.active {
+   color: #39FF14;
 }
 
-.t-115 .cap-text .word.imp.done {
-   color: #39FF14 !important;
-   filter: drop-shadow(2px 2px 0 #000) drop-shadow(0 0 8px rgba(57, 255, 20, .8)) !important;
+.t-115 .word.imp.done {
+   color: #39FF14;
 }

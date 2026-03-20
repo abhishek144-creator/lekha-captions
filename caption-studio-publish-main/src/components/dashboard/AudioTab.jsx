@@ -31,7 +31,7 @@ export default function AudioTab({ onAudioEnhance }) {
         <div className="p-4 rounded-lg bg-white/[0.02] border border-white/5 space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <VolumeX className="w-4 h-4 text-purple-400" />
+              <VolumeX className="w-4 h-4 text-[#F5A623]" />
               <Label className="text-sm text-white">Remove Background Noise</Label>
             </div>
             <Switch
@@ -48,7 +48,7 @@ export default function AudioTab({ onAudioEnhance }) {
         <div className="p-4 rounded-lg bg-white/[0.02] border border-white/5 space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Volume2 className="w-4 h-4 text-purple-400" />
+              <Volume2 className="w-4 h-4 text-[#F5A623]" />
               <Label className="text-sm text-white">Enhance Audio Quality</Label>
             </div>
             <Switch
@@ -66,7 +66,7 @@ export default function AudioTab({ onAudioEnhance }) {
           <Button
             onClick={handleApply}
             disabled={isProcessing}
-            className="w-full bg-purple-600 hover:bg-purple-700"
+            className="w-full bg-[#F5A623] hover:bg-[#F5A623]"
           >
             {isProcessing ? (
               <>
