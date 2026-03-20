@@ -57,7 +57,7 @@ const features = [
 
 export default function FeaturesSection() {
   return (
-    <section className="py-24 bg-[#0f0f0f] relative">
+    <section className="py-24 bg-[#111111] relative">
       <div className="max-w-6xl mx-auto px-6">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -68,7 +68,7 @@ export default function FeaturesSection() {
           <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
             Everything You Need
           </h2>
-          <p className="text-gray-400 max-w-xl mx-auto">
+          <p className="text-[#949494] max-w-xl mx-auto">
             Professional tools designed specifically for Indian short-form creators
           </p>
         </motion.div>
@@ -81,15 +81,15 @@ export default function FeaturesSection() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ delay: idx * 0.1 }}
-              className="group p-6 rounded-2xl bg-zinc-900 border border-white/10 hover:border-[#F5A623]/40 hover:shadow-lg hover:shadow-[#F5A623]/5 transition-all duration-300"
+              className="group p-6 rounded-2xl bg-[#1A1A1A] border border-white/10 hover:border-white/20 hover:shadow-lg hover:shadow-white/5 transition-all duration-300"
             >
               <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${feature.gradient} p-0.5 mb-4`}>
-                <div className="w-full h-full rounded-xl bg-zinc-900 flex items-center justify-center">
+                <div className="w-full h-full rounded-xl bg-[#1A1A1A] flex items-center justify-center">
                   <feature.icon className="w-5 h-5 text-[#F5A623]" />
                 </div>
               </div>
               <h3 className="text-lg font-semibold text-white mb-2">{feature.title}</h3>
-              <p className="text-gray-400 text-sm leading-relaxed">{feature.description}</p>
+              <p className="text-[#949494] text-sm leading-relaxed">{feature.description}</p>
             </motion.div>
           ))}
         </div>

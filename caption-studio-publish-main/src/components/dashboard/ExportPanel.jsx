@@ -504,7 +504,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
       title: 'SRT File',
       description: 'Standard subtitle format',
       action: handleDownloadSRT,
-      gradient: 'from-[#0A0A0A] to-[#F5A623]',
+      gradient: 'from-zinc-600 to-zinc-400',
       requiresPlan: false
     },
     {
@@ -522,23 +522,23 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
       <SheetContent className="bg-zinc-900 border-white/10 text-white w-full sm:max-w-md">
         <SheetHeader>
           <SheetTitle className="text-xl font-semibold text-white">
-            Export Captions
+            Export
           </SheetTitle>
+          <p className="text-sm text-gray-500 mt-1">Choose your export format below</p>
         </SheetHeader>
 
         {isExporting ? (
-          <div className="mt-8 p-6 rounded-xl bg-zinc-800/50 border border-white/10 text-center space-y-4 relative overflow-hidden">
+          <div className="mt-8 p-6 rounded-xl bg-white/[0.03] border border-white/10 text-center space-y-4 relative overflow-hidden">
             {/* Subtle glow animation */}
             <div className="absolute inset-0 pointer-events-none">
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 bg-[#F5A623]/20 rounded-full blur-3xl animate-pulse"></div>
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-24 bg-[#0A0A0A]/15 rounded-full blur-2xl animate-pulse" style={{ animationDelay: '0.5s' }}></div>
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 bg-white/5 rounded-full blur-3xl animate-pulse"></div>
             </div>
 
             <div className="relative z-10">
               <div className="relative w-16 h-16 mx-auto">
                 <div className="absolute inset-0 rounded-full border-2 border-white/10"></div>
-                <div className="absolute inset-0 rounded-full border-t-2 border-[#F5A623] animate-spin"></div>
-                <div className="absolute inset-0 rounded-full border-r-2 border-[#0A0A0A] animate-spin" style={{ animationDuration: '1.5s' }}></div>
+                <div className="absolute inset-0 rounded-full border-t-2 border-white/60 animate-spin"></div>
+                <div className="absolute inset-0 rounded-full border-r-2 border-white/20 animate-spin" style={{ animationDuration: '1.5s' }}></div>
                 <div className="absolute inset-0 flex items-center justify-center text-xs font-bold text-white">
                   {Math.round(progress)}%
                 </div>
@@ -546,7 +546,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
 
               <div className="mt-4">
                 <h3 className="text-lg font-medium text-white mb-1">Rendering Video</h3>
-                <p className="text-sm text-[#F5A623] animate-pulse">{statusMessage}</p>
+                <p className="text-sm text-gray-400 animate-pulse">{statusMessage}</p>
                 {showServerBusy && (
                   <p className="text-xs text-amber-400 mt-2 animate-pulse">
                     Server is busy • Estimated time remaining: ~2 minutes
@@ -555,7 +555,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
               </div>
 
               <div className="relative mt-4">
-                <Progress value={progress} className="h-2 bg-zinc-700" indicatorClassName="bg-gradient-to-r from-[#0A0A0A] to-[#F5A623]" />
+                <Progress value={progress} className="h-2 bg-zinc-700" indicatorClassName="bg-white" />
                 {/* Shimmer effect on progress bar */}
                 <div className="absolute inset-0 overflow-hidden rounded-full">
                   <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
@@ -573,13 +573,13 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
           <div className="mt-6 space-y-3">
             {/* Not signed in → Sign up prompt */}
             {!isSignedIn && (
-              <div className="p-4 rounded-xl bg-[#F5A623]/10 border border-[#F5A623]/20 text-center mb-4">
-                <Lock className="w-8 h-8 text-[#F5A623] mx-auto mb-2" />
-                <p className="text-sm text-[#F5A623] font-medium mb-1">Sign up to export</p>
-                <p className="text-xs text-[#F5A623]/70 mb-3">Create a free account to get 3 free export credits</p>
+              <div className="p-4 rounded-xl bg-white/5 border border-white/10 text-center mb-4">
+                <Lock className="w-8 h-8 text-white/60 mx-auto mb-2" />
+                <p className="text-sm text-white font-medium mb-1">Sign up to export</p>
+                <p className="text-xs text-gray-400 mb-3">Create a free account to get 3 free export credits</p>
                 <button
                   onClick={() => window.location.href = '/login'}
-                  className="w-full py-2 rounded-lg bg-gradient-to-r from-[#FFE566] to-[#F5A623] hover:from-[#F5A623] hover:to-[#D4891A] text-black text-sm font-semibold transition-colors"
+                  className="w-full py-2 rounded-lg bg-white hover:bg-gray-100 text-black text-sm font-semibold transition-colors"
                 >
                   Sign up free
                 </button>
@@ -602,8 +602,10 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
                 </Button>
               </div>
             )}
-            {exportOptions.map((option, idx) => {
-              const isLocked = option.requiresPlan && !isPlanActive;
+            {/* Video exports */}
+            <p className="text-[11px] text-gray-500 uppercase tracking-wider font-medium px-1">Video Export</p>
+            {exportOptions.filter(o => o.requiresPlan).map((option, idx) => {
+              const isLocked = !isPlanActive;
               return (
                 <motion.button
                   key={idx}
@@ -613,7 +615,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
                   onClick={isLocked ? onUpgradeClick : option.action}
                   className={`w-full p-4 rounded-xl border transition-all flex items-center gap-4 group ${isLocked
                     ? 'bg-white/[0.01] border-white/5 opacity-60 cursor-not-allowed'
-                    : 'bg-white/[0.02] border-white/5 hover:border-white/10 cursor-pointer'
+                    : 'bg-white/[0.02] border-white/5 hover:bg-white/[0.04] hover:border-white/15 cursor-pointer'
                     }`}
                 >
                   <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${option.gradient} p-0.5 ${isLocked ? 'opacity-50' : ''}`}>
@@ -628,11 +630,34 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
                 </motion.button>
               );
             })}
+
+            {/* Caption file exports */}
+            <p className="text-[11px] text-gray-500 uppercase tracking-wider font-medium px-1 pt-2">Caption Files</p>
+            {exportOptions.filter(o => !o.requiresPlan).map((option, idx) => (
+              <motion.button
+                key={idx}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: (idx + 3) * 0.07 }}
+                onClick={option.action}
+                className="w-full p-4 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.04] hover:border-white/15 transition-all flex items-center gap-4 group cursor-pointer"
+              >
+                <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${option.gradient} p-0.5`}>
+                  <div className="w-full h-full rounded-xl bg-zinc-900 flex items-center justify-center group-hover:bg-zinc-800 transition-colors">
+                    <option.icon className="w-5 h-5 text-white" />
+                  </div>
+                </div>
+                <div className="text-left flex-1">
+                  <p className="font-medium text-white">{option.title}</p>
+                  <p className="text-sm text-gray-500">{option.description}</p>
+                </div>
+              </motion.button>
+            ))}
           </div>
         )}
 
         {/* Caption count */}
-        <div className="mt-6 p-4 rounded-xl bg-[#F5A623]/10 border border-[#F5A623]/20">
+        <div className="mt-6 p-4 rounded-xl bg-white/[0.03] border border-white/10">
           <div className="flex items-center justify-between">
             <span className="text-sm text-gray-400">Total Captions</span>
             <span className="text-lg font-bold text-white">{captions?.length || 0}</span>

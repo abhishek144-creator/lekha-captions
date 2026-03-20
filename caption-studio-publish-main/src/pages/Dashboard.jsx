@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Upload, Sparkles, Maximize2, Minimize2 } from 'lucide-react';
+import { Upload, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -87,6 +87,12 @@ export default function Dashboard() {
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+
+  // Lock body scroll while dashboard is mounted (prevents shrink when navigating back from UserAccount)
+  React.useEffect(() => {
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = '' }
+  }, [])
 
   // Video canvas fullscreen & resizable timeline
   const [isVideoFullscreen, setIsVideoFullscreen] = useState(false);
@@ -325,7 +331,10 @@ export default function Dashboard() {
 
     } catch (error) {
       console.error('Upload failed:', error);
-      alert(`Failed to process video: ${error.message || 'Unknown error'} `);
+      const msg = error.message === 'Failed to fetch'
+        ? 'Cannot reach the backend server. Please start the backend (uvicorn on port 8000).'
+        : (error.message || 'Unknown error')
+      alert(`Failed to process video: ${msg}`)
     } finally {
       setIsUploading(false);
       setIsGenerating(false);
@@ -479,7 +488,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="h-screen max-h-screen bg-[#0a0a0a] flex flex-col overflow-hidden">
+    <div className="h-screen max-h-screen bg-[#0A0A0A] flex flex-col overflow-hidden">
       <DashboardHeader
         onUploadClick={() => setIsUploadModalOpen(true)}
         onExportClick={handleExportClick}
@@ -510,20 +519,20 @@ export default function Dashboard() {
               animate={{ opacity: 1 }}
               className="text-center"
             >
-              <div className="w-20 h-20 rounded-full bg-[#F5A623]/10 flex items-center justify-center mx-auto mb-6">
-                <Sparkles className="w-8 h-8 text-[#F5A623] animate-pulse" />
+              <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mx-auto mb-6">
+                <Sparkles className="w-8 h-8 text-white/60 animate-pulse" />
               </div>
               <h2 className="text-xl font-semibold text-white mb-2">
                 Generating Captions...
               </h2>
               <p className="text-gray-500">
-                Caption Studio is analyzing your video and creating perfect captions
+                Lekha Captions is analyzing your video and creating perfect captions
               </p>
               <div className="mt-6 flex items-center justify-center gap-1">
                 {[0, 1, 2].map((i) => (
                   <motion.div
                     key={i}
-                    className="w-2 h-2 rounded-full bg-[#F5A623]"
+                    className="w-2 h-2 rounded-full bg-white/40"
                     animate={{ opacity: [0.3, 1, 0.3] }}
                     transition={{ duration: 1, repeat: Infinity, delay: i * 0.2 }}
                   />
@@ -538,8 +547,8 @@ export default function Dashboard() {
               animate={{ opacity: 1, y: 0 }}
               className="text-center max-w-md"
             >
-              <div className="w-20 h-20 rounded-full bg-[#F5A623]/10 flex items-center justify-center mx-auto mb-6">
-                <Upload className="w-8 h-8 text-[#F5A623]" />
+              <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mx-auto mb-6">
+                <Upload className="w-8 h-8 text-white/60" />
               </div>
               <h2 className="text-2xl font-bold text-white mb-3">
                 Start Creating Captions
@@ -550,7 +559,7 @@ export default function Dashboard() {
               <Button
                 onClick={() => setIsUploadModalOpen(true)}
                 size="lg"
-                className="bg-gradient-to-r from-[#FFE566] to-[#F5A623] hover:from-[#F5A623] hover:to-[#D4891A] text-black font-semibold px-8"
+                className="bg-white hover:bg-gray-100 text-black font-semibold px-8 rounded-[4px]"
               >
                 <Upload className="w-5 h-5 mr-2" />
                 Upload Video
@@ -564,13 +573,13 @@ export default function Dashboard() {
             {userData && userData.subscription_tier && userData.subscription_tier !== 'free' &&
               (userData.credits_remaining ?? 999) <= 5 && (
               <div className="px-4 pt-2 shrink-0">
-                <div className="flex items-center justify-between gap-3 bg-[#F5A623]/10 border border-[#F5A623]/30 rounded-xl px-4 py-2.5">
-                  <p className="text-sm text-[#F5A623] font-medium">
+                <div className="flex items-center justify-between gap-3 bg-white/5 border border-white/15 rounded-xl px-4 py-2.5">
+                  <p className="text-sm text-white font-medium">
                     ⚡ Running low? Add {userData.subscription_tier.startsWith('pro') ? '25' : userData.subscription_tier.startsWith('creator') ? '15' : '10'} credits for {userData.subscription_tier.startsWith('pro') ? '₹79' : '₹49'} — no plan change needed.
                   </p>
                   <button
                     onClick={() => setIsPricingModalOpen(true)}
-                    className="shrink-0 text-xs font-semibold bg-gradient-to-r from-[#FFE566] to-[#F5A623] text-black px-3 py-1.5 rounded-full hover:bg-[#D4891A] transition-colors"
+                    className="shrink-0 text-xs font-semibold bg-white text-black px-3 py-1.5 rounded-full hover:bg-gray-100 transition-colors"
                   >
                     Top Up
                   </button>
@@ -593,7 +602,7 @@ export default function Dashboard() {
             />
 
             {/* Left Panel - Content based on active tab */}
-            <div className="w-full lg:w-[340px] xl:w-[360px] border-r border-white/5 p-4 overflow-hidden">
+            <div className="w-full lg:w-[340px] xl:w-[360px] bg-[#0F0F0F] border-r border-white/5 p-4 overflow-hidden">
               {activeTab === 'captions' && (
                 <CaptionEditor
                   captions={captions}
