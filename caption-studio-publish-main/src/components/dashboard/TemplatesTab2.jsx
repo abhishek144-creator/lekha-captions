@@ -219,7 +219,7 @@ export default function TemplatesTab2({ currentStyle, onApplyTemplate }) {
                             whileHover={{ scale: 1.01 }}
                             whileTap={{ scale: 0.99 }}
                             className={`rounded-xl border cursor-pointer transition-all overflow-hidden ${isActive
-                                ? 'border-amber-500/60 bg-amber-500/10 shadow-[0_0_16px_rgba(217,166,48,0.12)]'
+                                ? 'border-white/60 bg-white/10 shadow-[0_0_16px_rgba(255,255,255,0.08)]'
                                 : 'border-white/8 bg-white/[0.02] hover:border-white/15'
                                 }`}
                             onClick={() => onApplyTemplate(template.style)}
@@ -255,7 +255,7 @@ export default function TemplatesTab2({ currentStyle, onApplyTemplate }) {
                                 <div className="flex-1 min-w-0">
                                     <h3 className="text-sm text-white font-medium flex items-center gap-1.5">
                                         {template.name}
-                                        {isActive && <Check className="w-3.5 h-3.5 text-amber-400" />}
+                                        {isActive && <Check className="w-3.5 h-3.5 text-white" />}
                                     </h3>
                                     <div className="flex items-center gap-2 mt-0.5">
                                         <span
@@ -274,7 +274,7 @@ export default function TemplatesTab2({ currentStyle, onApplyTemplate }) {
                                 {!isActive && (
                                     <Button
                                         size="sm"
-                                        className="h-7 text-[10px] bg-amber-600/15 hover:bg-amber-600/25 text-amber-400 border border-amber-500/25 ml-2 flex-shrink-0"
+                                        className="h-7 text-[10px] bg-white/10 hover:bg-white/20 text-white border border-white/20 ml-2 flex-shrink-0"
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             onApplyTemplate(template.style);

@@ -54,7 +54,7 @@ const FontRow = React.memo(({ data, index, style }) => {
   return (
     <div
       style={style}
-      className={`flex items-center px-3 cursor-pointer transition-colors hover:bg-white/10 hover:text-white ${isSelected ? 'bg-purple-500/20 text-purple-400 font-medium' : 'text-white'}`}
+      className={`flex items-center px-3 cursor-pointer transition-colors hover:bg-white/10 hover:text-white ${isSelected ? 'bg-[#F5A623]/30 text-[#F5A623] font-medium' : 'text-white'}`}
       onClick={(e) => {
         e.stopPropagation();
         data.onSelect(font.value);
@@ -63,7 +63,7 @@ const FontRow = React.memo(({ data, index, style }) => {
       <span style={{ fontFamily: font.value, fontSize: '15px' }} className="truncate flex-1">
         {font.label}
       </span>
-      {isSelected && <Check className="ml-1 h-4 w-4 shrink-0 text-purple-400" />}
+      {isSelected && <Check className="ml-1 h-4 w-4 shrink-0 text-[#F5A623]" />}
     </div>
   );
 });
@@ -84,14 +84,14 @@ const fonts = [
 
 const presetColors = [
   '#ffffff', '#000000', '#facc15', '#ef4444',
-  '#3b82f6', '#a855f7', '#ec4899', '#22c55e'
+  '#3b82f6', '#F5A623', '#ec4899', '#22c55e'
 ];
 
 const presetGradients = [
   'linear-gradient(to right, #facc15, #ef4444)', // Yellow-Red (Fire)
-  'linear-gradient(to right, #a855f7, #3b82f6)', // Purple-Blue (Electric)
+  'linear-gradient(to right, #F5A623, #3b82f6)', // Purple-Blue (Electric)
   'linear-gradient(to right, #06b6d4, #2563eb)', // Cyan-DeepBlue (Ocean)
-  'linear-gradient(to right, #ec4899, #8b5cf6)', // Pink-Purple (Magic)
+  'linear-gradient(to right, #ec4899, #F5A623)', // Pink-Purple (Magic)
   'linear-gradient(to right, #4ade80, #0d9488)', // Green-Teal (Nature)
   'linear-gradient(to right, #fb923c, #db2777)', // Orange-Pink (Sunset)
   'linear-gradient(to right, #60a5fa, #4f46e5)', // Blue-Indigo (Night)
@@ -125,7 +125,8 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
   const createGradient = (c1, c2) => `linear-gradient(135deg, ${c1} 0%, ${c2} 100%)`;
 
   const [customFontInput, setCustomFontInput] = useState('');
-  const [googleFontsList, setGoogleFontsList] = useState([]);
+  const [googleFontsList, setGoogleFontsList] = useState([])
+  const [effectsOpen, setEffectsOpen] = useState(false)
 
   React.useEffect(() => {
     // Pre-fetch complete Google Fonts list for suggestions
@@ -215,21 +216,21 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
           <TabsList className="w-full grid grid-cols-3 rounded-none bg-transparent border-b border-white/5 p-0 h-10">
             <TabsTrigger
               value="font"
-              className="rounded-none border-b-2 border-transparent data-[state=active]:border-purple-500 data-[state=active]:bg-transparent data-[state=active]:text-white text-gray-500 h-10 text-xs"
+              className="rounded-none border-b-2 border-transparent data-[state=active]:border-[#F5A623] data-[state=active]:bg-transparent data-[state=active]:text-white text-gray-500 h-10 text-xs"
             >
               <Type className="w-3.5 h-3.5 mr-1.5" />
               Font
             </TabsTrigger>
             <TabsTrigger
               value="style"
-              className="rounded-none border-b-2 border-transparent data-[state=active]:border-purple-500 data-[state=active]:bg-transparent data-[state=active]:text-white text-gray-500 h-10 text-xs"
+              className="rounded-none border-b-2 border-transparent data-[state=active]:border-[#F5A623] data-[state=active]:bg-transparent data-[state=active]:text-white text-gray-500 h-10 text-xs"
             >
               <Palette className="w-3.5 h-3.5 mr-1.5" />
               Style
             </TabsTrigger>
             <TabsTrigger
               value="fx"
-              className="rounded-none border-b-2 border-transparent data-[state=active]:border-purple-500 data-[state=active]:bg-transparent data-[state=active]:text-white text-gray-500 h-10 text-xs"
+              className="rounded-none border-b-2 border-transparent data-[state=active]:border-[#F5A623] data-[state=active]:bg-transparent data-[state=active]:text-white text-gray-500 h-10 text-xs"
             >
               <Sparkles className="w-3.5 h-3.5 mr-1.5" />
               Animate
@@ -422,7 +423,7 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
                         key={casing}
                         onClick={() => onStyleChange('textTransform', casing)}
                         className={`flex-1 py-1 text-[10px] rounded transition-all ${(currentStyle.textTransform === casing || (!currentStyle.textTransform && casing === 'none'))
-                          ? 'bg-purple-600 text-white'
+                          ? 'bg-[#F5A623] text-white'
                           : 'text-gray-400 hover:text-white'
                           }`}
                       >
@@ -709,148 +710,117 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
                 )}
               </div>
 
-              {/* Effects Section */}
+              {/* Effects Section — collapsible */}
               <div className="mt-4 pt-4 border-t border-white/5">
-                <label className="text-xs text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-2">
-                  <Sparkles className="w-3 h-3 text-purple-400" />
-                  Effects
-                </label>
-                <div className="grid grid-cols-4 gap-1.5 mb-2">
-                  {[
-                    { id: 'none', label: 'None' },
-                    { id: 'shadow', label: 'Shadow' },
-                    { id: 'lift', label: 'Lift' },
-                    { id: 'hollow', label: 'Hollow' },
-                    { id: 'splice', label: 'Splice' },
-                    { id: 'outline', label: 'Outline' },
-                    { id: 'echo', label: 'Echo' },
-                    { id: 'neon', label: 'Neon' }
-                  ].map(effect => (
-                    <button
-                      key={effect.id}
-                      onClick={() => {
-                        onStyleChange('effectType', effect.id);
-                        if (effect.id !== 'none') {
-                          if (effect.id === 'neon') {
-                            if (currentStyle.effectBlur === undefined) onStyleChange('effectBlur', 8);
-                            if (currentStyle.effectIntensity === undefined) onStyleChange('effectIntensity', 5);
-                            if (currentStyle.effectColor === undefined) onStyleChange('effectColor', currentStyle.color || '#ffffff');
-                          } else {
-                            if (currentStyle.effectBlur === undefined) onStyleChange('effectBlur', 50);
-                            if (currentStyle.effectIntensity === undefined) onStyleChange('effectIntensity', 50);
-                            if (currentStyle.effectColor === undefined) onStyleChange('effectColor', '#000000');
-                          }
-                          if (currentStyle.effectOffset === undefined) onStyleChange('effectOffset', 50);
-                          if (currentStyle.effectDirection === undefined) onStyleChange('effectDirection', -45);
-                          if (currentStyle.effectTransparency === undefined) onStyleChange('effectTransparency', 40);
-                          if (currentStyle.effectThickness === undefined) onStyleChange('effectThickness', 50);
-                        }
-                      }}
-                      className={`p-1.5 rounded border text-[10px] text-center transition-colors ${(currentStyle.effectType || 'none') === effect.id
-                        ? 'bg-purple-500/20 border-purple-500 text-white font-medium'
-                        : 'bg-zinc-800/50 border-white/10 text-gray-400 hover:bg-zinc-800 hover:border-white/20'
-                        }`}
-                    >
-                      {effect.label}
-                    </button>
-                  ))}
-                </div>
+                <button
+                  onClick={() => setEffectsOpen(v => !v)}
+                  className="w-full flex items-center justify-between text-xs text-gray-400 uppercase tracking-wider mb-1 group"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Sparkles className="w-3 h-3 text-[#F5A623]" />
+                    Effects
+                    {(currentStyle.effectType || 'none') !== 'none' && (
+                      <span className="normal-case text-[9px] bg-[#F5A623]/15 text-[#F5A623] px-1.5 py-0.5 rounded-full font-medium capitalize">
+                        {currentStyle.effectType}
+                      </span>
+                    )}
+                  </span>
+                  <span className={`w-4 h-4 rounded border border-white/20 flex items-center justify-center text-gray-500 text-[10px] group-hover:border-[#F5A623]/40 group-hover:text-[#F5A623] transition-colors ${effectsOpen ? 'bg-[#F5A623]/10 border-[#F5A623]/30 text-[#F5A623]' : ''}`}>
+                    {effectsOpen ? '−' : '+'}
+                  </span>
+                </button>
 
-                {/* Effect Specific Sliders (Word Level) */}
-                {(currentStyle.effectType || 'none') !== 'none' && (
-                  <div className="space-y-3 mt-3">
-                    {['hollow', 'splice', 'outline'].includes(currentStyle.effectType) && (
-                      <div>
-                        <div className="flex justify-between mb-1">
-                          <span className="text-[10px] text-gray-400">Thickness</span>
-                          <span className="text-[10px] text-gray-500">{currentStyle.effectThickness ?? 50}</span>
-                        </div>
-                        <Slider
-                          value={[currentStyle.effectThickness ?? 50]}
-                          onValueChange={([val]) => onStyleChange('effectThickness', val)}
-                          max={100} step={1}
-                        />
-                      </div>
-                    )}
-                    {['shadow', 'splice', 'echo'].includes(currentStyle.effectType) && (
-                      <>
-                        <div>
-                          <div className="flex justify-between mb-1">
-                            <span className="text-[10px] text-gray-400">Offset</span>
-                            <span className="text-[10px] text-gray-500">{currentStyle.effectOffset ?? 50}</span>
+                {effectsOpen && (
+                  <>
+                    <div className="grid grid-cols-4 gap-1.5 mb-2 mt-2">
+                      {[
+                        { id: 'none', label: 'None' },
+                        { id: 'shadow', label: 'Shadow' },
+                        { id: 'lift', label: 'Lift' },
+                        { id: 'hollow', label: 'Hollow' },
+                        { id: 'splice', label: 'Splice' },
+                        { id: 'outline', label: 'Outline' },
+                        { id: 'echo', label: 'Echo' },
+                        { id: 'neon', label: 'Neon' }
+                      ].map(effect => (
+                        <button
+                          key={effect.id}
+                          onClick={() => {
+                            onStyleChange('effectType', effect.id)
+                            if (effect.id !== 'none') {
+                              if (effect.id === 'neon') {
+                                if (currentStyle.effectBlur === undefined) onStyleChange('effectBlur', 8)
+                                if (currentStyle.effectIntensity === undefined) onStyleChange('effectIntensity', 5)
+                                if (currentStyle.effectColor === undefined) onStyleChange('effectColor', currentStyle.color || '#ffffff')
+                              } else {
+                                if (currentStyle.effectBlur === undefined) onStyleChange('effectBlur', 50)
+                                if (currentStyle.effectIntensity === undefined) onStyleChange('effectIntensity', 50)
+                                if (currentStyle.effectColor === undefined) onStyleChange('effectColor', '#000000')
+                              }
+                              if (currentStyle.effectOffset === undefined) onStyleChange('effectOffset', 50)
+                              if (currentStyle.effectDirection === undefined) onStyleChange('effectDirection', -45)
+                              if (currentStyle.effectTransparency === undefined) onStyleChange('effectTransparency', 40)
+                              if (currentStyle.effectThickness === undefined) onStyleChange('effectThickness', 50)
+                            }
+                          }}
+                          className={`p-1.5 rounded border text-[10px] text-center transition-colors ${(currentStyle.effectType || 'none') === effect.id
+                            ? 'bg-[#F5A623]/15 border-[#F5A623]/60 text-white font-medium'
+                            : 'bg-zinc-800/50 border-white/10 text-gray-400 hover:bg-zinc-800 hover:border-white/20'
+                          }`}
+                        >
+                          {effect.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Effect Specific Sliders */}
+                    {(currentStyle.effectType || 'none') !== 'none' && (
+                      <div className="space-y-3 p-2 rounded-lg bg-black/20 border border-white/5">
+                        {['hollow', 'splice', 'outline'].includes(currentStyle.effectType) && (
+                          <div>
+                            <div className="flex justify-between mb-1"><span className="text-[10px] text-gray-400">Thickness</span><span className="text-[10px] text-gray-500">{currentStyle.effectThickness ?? 50}</span></div>
+                            <Slider value={[currentStyle.effectThickness ?? 50]} onValueChange={([val]) => onStyleChange('effectThickness', val)} max={100} step={1} />
                           </div>
-                          <Slider
-                            value={[currentStyle.effectOffset ?? 50]}
-                            onValueChange={([val]) => onStyleChange('effectOffset', val)}
-                            max={100} step={1}
-                          />
-                        </div>
-                        <div>
-                          <div className="flex justify-between mb-1">
-                            <span className="text-[10px] text-gray-400">Direction</span>
-                            <span className="text-[10px] text-gray-500">{currentStyle.effectDirection ?? -45}°</span>
+                        )}
+                        {['shadow', 'splice', 'echo', 'lift'].includes(currentStyle.effectType) && (
+                          <>
+                            <div>
+                              <div className="flex justify-between mb-1"><span className="text-[10px] text-gray-400">Offset</span><span className="text-[10px] text-gray-500">{currentStyle.effectOffset ?? 50}</span></div>
+                              <Slider value={[currentStyle.effectOffset ?? 50]} onValueChange={([val]) => onStyleChange('effectOffset', val)} max={100} step={1} />
+                            </div>
+                            <div>
+                              <div className="flex justify-between mb-1"><span className="text-[10px] text-gray-400">Direction</span><span className="text-[10px] text-gray-500">{currentStyle.effectDirection ?? -45}°</span></div>
+                              <Slider value={[currentStyle.effectDirection ?? -45]} onValueChange={([val]) => onStyleChange('effectDirection', val)} min={-180} max={180} step={1} />
+                            </div>
+                          </>
+                        )}
+                        {['shadow', 'neon', 'lift'].includes(currentStyle.effectType) && (
+                          <div>
+                            <div className="flex justify-between mb-1"><span className="text-[10px] text-gray-400">Blur</span><span className="text-[10px] text-gray-500">{currentStyle.effectBlur ?? 50}</span></div>
+                            <Slider value={[currentStyle.effectBlur ?? 50]} onValueChange={([val]) => onStyleChange('effectBlur', val)} max={100} step={1} />
                           </div>
-                          <Slider
-                            value={[currentStyle.effectDirection ?? -45]}
-                            onValueChange={([val]) => onStyleChange('effectDirection', val)}
-                            min={-180} max={180} step={1}
-                          />
-                        </div>
-                      </>
-                    )}
-                    {['shadow', 'neon'].includes(currentStyle.effectType) && (
-                      <div>
-                        <div className="flex justify-between mb-1">
-                          <span className="text-[10px] text-gray-400">Blur</span>
-                          <span className="text-[10px] text-gray-500">{currentStyle.effectBlur ?? 50}</span>
-                        </div>
-                        <Slider
-                          value={[currentStyle.effectBlur ?? 50]}
-                          onValueChange={([val]) => onStyleChange('effectBlur', val)}
-                          max={100} step={1}
-                        />
+                        )}
+                        {['shadow', 'echo'].includes(currentStyle.effectType) && (
+                          <div>
+                            <div className="flex justify-between mb-1"><span className="text-[10px] text-gray-400">Transparency</span><span className="text-[10px] text-gray-500">{currentStyle.effectTransparency ?? 40}</span></div>
+                            <Slider value={[currentStyle.effectTransparency ?? 40]} onValueChange={([val]) => onStyleChange('effectTransparency', val)} max={100} step={1} />
+                          </div>
+                        )}
+                        {['neon'].includes(currentStyle.effectType) && (
+                          <div>
+                            <div className="flex justify-between mb-1"><span className="text-[10px] text-gray-400">Intensity</span><span className="text-[10px] text-gray-500">{currentStyle.effectIntensity ?? 50}</span></div>
+                            <Slider value={[currentStyle.effectIntensity ?? 50]} onValueChange={([val]) => onStyleChange('effectIntensity', val)} max={100} step={1} />
+                          </div>
+                        )}
+                        {!['lift'].includes(currentStyle.effectType) && (
+                          <div>
+                            <span className="text-[10px] text-gray-400 mb-1 block">Color</span>
+                            <input type="color" value={currentStyle.effectColor || '#000000'} onChange={(e) => onStyleChange('effectColor', e.target.value)} className="w-8 h-6 rounded border border-white/10" />
+                          </div>
+                        )}
                       </div>
                     )}
-                    {['shadow'].includes(currentStyle.effectType) && (
-                      <div>
-                        <div className="flex justify-between mb-1">
-                          <span className="text-[10px] text-gray-400">Transparency</span>
-                          <span className="text-[10px] text-gray-500">{currentStyle.effectTransparency ?? 40}</span>
-                        </div>
-                        <Slider
-                          value={[currentStyle.effectTransparency ?? 40]}
-                          onValueChange={([val]) => onStyleChange('effectTransparency', val)}
-                          max={100} step={1}
-                        />
-                      </div>
-                    )}
-                    {['lift', 'neon'].includes(currentStyle.effectType) && (
-                      <div>
-                        <div className="flex justify-between mb-1">
-                          <span className="text-[10px] text-gray-400">Intensity</span>
-                          <span className="text-[10px] text-gray-500">{currentStyle.effectIntensity ?? 50}</span>
-                        </div>
-                        <Slider
-                          value={[currentStyle.effectIntensity ?? 50]}
-                          onValueChange={([val]) => onStyleChange('effectIntensity', val)}
-                          max={100} step={1}
-                        />
-                      </div>
-                    )}
-                    {!['lift'].includes(currentStyle.effectType) && (
-                      <div>
-                        <span className="text-[10px] text-gray-400 mb-1 block">Color</span>
-                        <div className="w-8">
-                          <input
-                            type="color"
-                            value={currentStyle.effectColor || '#000000'}
-                            onChange={(e) => onStyleChange('effectColor', e.target.value)}
-                            className="w-full h-6 rounded border border-white/10"
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                  </>
                 )}
               </div>
 
@@ -880,7 +850,7 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
                       key={anim.value}
                       onClick={() => onStyleChange('animation', anim.value)}
                       className={`px-2 py-1.5 rounded text-xs capitalize transition-all border ${(currentStyle.animation === anim.value || (!currentStyle.animation && anim.value === 'none'))
-                        ? 'bg-purple-600 border-purple-500 text-white shadow-sm'
+                        ? 'bg-[#F5A623] border-[#F5A623] text-white shadow-sm'
                         : 'bg-zinc-900 border-white/10 text-gray-400 hover:text-white hover:bg-white/5'
                         }`}
                     >
@@ -895,7 +865,7 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
                 <div className="pt-2 border-t border-white/5">
                   <div className="flex items-center justify-between mb-2">
                     <label className="text-xs text-gray-500 uppercase tracking-wider">Speed</label>
-                    <span className="text-xs text-purple-300 font-semibold">
+                    <span className="text-xs text-[#F5A623] font-semibold">
                       {(currentStyle.animationSpeed || 1).toFixed(2)}x
                     </span>
                   </div>

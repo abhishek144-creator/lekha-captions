@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Upload, Sparkles, Maximize2, Minimize2 } from 'lucide-react';
+import { Upload, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -55,7 +55,7 @@ const defaultCaptionStyle = {
   has_background: true,
   background_opacity: 0.7,
   background_padding: 6,
-  background_h_multiplier: 1.2,
+  background_h_multiplier: 0.99,
   background_color: '#000000',
   has_stroke: false,
   has_shadow: false,
@@ -87,6 +87,12 @@ export default function Dashboard() {
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+
+  // Lock body scroll while dashboard is mounted (prevents shrink when navigating back from UserAccount)
+  React.useEffect(() => {
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = '' }
+  }, [])
 
   // Video canvas fullscreen & resizable timeline
   const [isVideoFullscreen, setIsVideoFullscreen] = useState(false);
@@ -186,7 +192,8 @@ export default function Dashboard() {
         duration,
         fileId,
         originalFileName,
-        isUploadModalOpen,
+        // Note: modal states (isUploadModalOpen etc.) are intentionally NOT saved
+        // so modals don't re-open unexpectedly on page reload
         savedAt: Date.now()
       };
 
@@ -202,7 +209,7 @@ export default function Dashboard() {
     }, 500); // Debounce 500ms
 
     return () => clearTimeout(timeoutId);
-  }, [videoUrl, captions, captionStyle, projectId, settings, duration, fileId, originalFileName, isUploadModalOpen, isLoaded]);
+  }, [videoUrl, captions, captionStyle, projectId, settings, duration, fileId, originalFileName, isLoaded]);
 
   const handleUpload = async (file, uploadSettings) => {
     setIsUploading(true);
@@ -222,13 +229,18 @@ export default function Dashboard() {
       setOriginalFileName(file.name);
 
       // Parse wordsPerLine range for backend (e.g., "1-2" → min=1, max=2)
-      let minWords = 0, maxWordsVal = 0;
+      // "dynamic" (or unset) → min=2, max=5 so backend groups 2-5 words (not single-word captions)
+      let minWords = 2, maxWordsVal = 5;
       const wpl = uploadSettings?.wordsPerLine;
       if (wpl && wpl !== 'dynamic') {
         const rangeParts = wpl.split('-').map(Number);
         if (rangeParts.length === 2) {
           minWords = rangeParts[0];
           maxWordsVal = rangeParts[1];
+        } else if (rangeParts.length === 1 && !isNaN(rangeParts[0]) && rangeParts[0] > 0) {
+          // Single value like "1" → exactly N words per caption
+          minWords = rangeParts[0];
+          maxWordsVal = rangeParts[0];
         }
       }
 
@@ -244,7 +256,7 @@ export default function Dashboard() {
         text: cap?.text || '',
         start_time: cap?.start_time || 0,
         end_time: cap?.end_time || 3,
-        id: `${Date.now()} -${idx} `,
+        id: `${Date.now()}-${idx}`,
         words: cap?.words || []
       }));
 
@@ -308,7 +320,7 @@ export default function Dashboard() {
         }));
       }
 
-      setProjectId(`local_${Date.now()} `);
+      setProjectId(`local_${Date.now()}`);
 
       try {
         const waveform = await extractWaveformData(uploadData.raw_url);
@@ -319,7 +331,10 @@ export default function Dashboard() {
 
     } catch (error) {
       console.error('Upload failed:', error);
-      alert(`Failed to process video: ${error.message || 'Unknown error'} `);
+      const msg = error.message === 'Failed to fetch'
+        ? 'Cannot reach the backend server. Please start the backend (uvicorn on port 8000).'
+        : (error.message || 'Unknown error')
+      alert(`Failed to process video: ${msg}`)
     } finally {
       setIsUploading(false);
       setIsGenerating(false);
@@ -366,13 +381,32 @@ export default function Dashboard() {
   const updateCaptions = (newCaptions) => pushHistory(newCaptions, undefined);
   const updateCaptionStyle = (newStyle) => pushHistory(undefined, newStyle);
   const handleApplyTemplate = async (templateStyle) => {
-    // Merge template delta ON TOP of the current captionStyle so we don't
-    // lose background, line_spacing, shadow, etc.
-    const merged = { ...captionStyle, ...templateStyle };
+    // Hard Reset: properties that templates fully control are cleared before applying
+    // so Template B never inherits BG, color, font, or animation from Template A.
+    // Non-template properties (line_spacing, shadow, effects, position) are preserved.
+    const TEMPLATE_OWNED_RESET = {
+      template_id: '',
+      font_family: 'Inter',
+      font_size: 18,
+      font_weight: '500',
+      font_style: 'normal',
+      text_color: '#ffffff',
+      text_case: 'none',
+      secondary_color: '',
+      highlight_color: '',
+      highlight_gradient: '',
+      has_background: false,
+      background_color: '#000000',
+      background_opacity: 0.7,
+      show_inactive: undefined,
+      position_y: 75,
+    };
+    const merged = { ...captionStyle, ...TEMPLATE_OWNED_RESET, ...templateStyle };
     // Load the template's font (if any) before applying so the browser has it
     if (templateStyle?.font_family) {
       const { loadGoogleFont } = await import('@/components/dashboard/fontUtils');
-      await loadGoogleFont(templateStyle.font_family, [300, 400, 500, 600, 700, 800]).catch(() => {});
+      // Apply font immediately; loading is best-effort
+      loadGoogleFont(templateStyle.font_family, [300, 400, 500, 600, 700, 800]).catch(() => {});
     }
     pushHistory(undefined, merged);
   };
@@ -421,7 +455,7 @@ export default function Dashboard() {
     setIsPricingModalOpen(false);
   };
 
-  // Initialize history when captions are loaded
+  // Initialize history when captions are first loaded (transition from empty → populated)
   useEffect(() => {
     if (captions.length > 0 && history.length === 0) {
       setHistory([{
@@ -430,7 +464,19 @@ export default function Dashboard() {
       }]);
       setHistoryIndex(0);
     }
-  }, [captions.length]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [captions.length, history.length]);
+
+  // Auto-Center: when the font changes (or 'None' is selected), load the new font and
+  // trigger a style refresh so the preview re-measures word bounding boxes with the
+  // correct font metrics.  This also ensures Indic ↔ Latin switches re-anchor correctly.
+  useEffect(() => {
+    const fontFamily = captionStyle?.font_family;
+    if (!fontFamily) return;
+    import('@/components/dashboard/fontUtils').then(({ loadGoogleFont }) => {
+      loadGoogleFont(fontFamily, [300, 400, 500, 600, 700, 800]).catch(() => {});
+    });
+  }, [captionStyle?.font_family]);
 
   const navigate = useNavigate();
 
@@ -442,7 +488,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="h-screen max-h-screen bg-[#0a0a0a] flex flex-col overflow-hidden">
+    <div className="h-screen max-h-screen bg-[#0A0A0A] flex flex-col overflow-hidden">
       <DashboardHeader
         onUploadClick={() => setIsUploadModalOpen(true)}
         onExportClick={handleExportClick}
@@ -473,20 +519,20 @@ export default function Dashboard() {
               animate={{ opacity: 1 }}
               className="text-center"
             >
-              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-purple-600/20 to-blue-600/20 flex items-center justify-center mx-auto mb-6">
-                <Sparkles className="w-8 h-8 text-purple-400 animate-pulse" />
+              <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mx-auto mb-6">
+                <Sparkles className="w-8 h-8 text-white/60 animate-pulse" />
               </div>
               <h2 className="text-xl font-semibold text-white mb-2">
                 Generating Captions...
               </h2>
               <p className="text-gray-500">
-                Caption Studio is analyzing your video and creating perfect captions
+                Lekha Captions is analyzing your video and creating perfect captions
               </p>
               <div className="mt-6 flex items-center justify-center gap-1">
                 {[0, 1, 2].map((i) => (
                   <motion.div
                     key={i}
-                    className="w-2 h-2 rounded-full bg-purple-500"
+                    className="w-2 h-2 rounded-full bg-white/40"
                     animate={{ opacity: [0.3, 1, 0.3] }}
                     transition={{ duration: 1, repeat: Infinity, delay: i * 0.2 }}
                   />
@@ -501,8 +547,8 @@ export default function Dashboard() {
               animate={{ opacity: 1, y: 0 }}
               className="text-center max-w-md"
             >
-              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-purple-600/20 to-blue-600/20 flex items-center justify-center mx-auto mb-6">
-                <Upload className="w-8 h-8 text-purple-400" />
+              <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mx-auto mb-6">
+                <Upload className="w-8 h-8 text-white/60" />
               </div>
               <h2 className="text-2xl font-bold text-white mb-3">
                 Start Creating Captions
@@ -513,7 +559,7 @@ export default function Dashboard() {
               <Button
                 onClick={() => setIsUploadModalOpen(true)}
                 size="lg"
-                className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-8"
+                className="bg-white hover:bg-gray-100 text-black font-semibold px-8 rounded-[4px]"
               >
                 <Upload className="w-5 h-5 mr-2" />
                 Upload Video
@@ -522,7 +568,25 @@ export default function Dashboard() {
           </div>
         ) : (
           // Editor layout
-          <div className="h-full flex flex-col lg:flex-row">
+          <div className="h-full flex flex-col overflow-hidden">
+            {/* Low-credits top-up banner */}
+            {userData && userData.subscription_tier && userData.subscription_tier !== 'free' &&
+              (userData.credits_remaining ?? 999) <= 5 && (
+              <div className="px-4 pt-2 shrink-0">
+                <div className="flex items-center justify-between gap-3 bg-white/5 border border-white/15 rounded-xl px-4 py-2.5">
+                  <p className="text-sm text-white font-medium">
+                    ⚡ Running low? Add {userData.subscription_tier.startsWith('pro') ? '25' : userData.subscription_tier.startsWith('creator') ? '15' : '10'} credits for {userData.subscription_tier.startsWith('pro') ? '₹79' : '₹49'} — no plan change needed.
+                  </p>
+                  <button
+                    onClick={() => setIsPricingModalOpen(true)}
+                    className="shrink-0 text-xs font-semibold bg-white text-black px-3 py-1.5 rounded-full hover:bg-gray-100 transition-colors"
+                  >
+                    Top Up
+                  </button>
+                </div>
+              </div>
+            )}
+          <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
             {/* Vertical Sidebar Navigation */}
             <SidebarNav
               activeTab={activeTab}
@@ -538,7 +602,7 @@ export default function Dashboard() {
             />
 
             {/* Left Panel - Content based on active tab */}
-            <div className="w-full lg:w-[340px] xl:w-[360px] border-r border-white/5 p-4 overflow-hidden">
+            <div className="w-full lg:w-[340px] xl:w-[360px] bg-[#0F0F0F] border-r border-white/5 p-4 overflow-hidden">
               {activeTab === 'captions' && (
                 <CaptionEditor
                   captions={captions}
@@ -682,7 +746,7 @@ export default function Dashboard() {
             </div>
 
             {/* Right Panel - Styling */}
-            <div className="w-full lg:w-[300px] xl:w-[320px] p-4 overflow-hidden">
+            <div className="w-full lg:w-[340px] xl:w-[360px] p-4 overflow-hidden">
               <StyleControls
                 captionStyle={captionStyle}
                 setCaptionStyle={updateCaptionStyle}
@@ -693,6 +757,7 @@ export default function Dashboard() {
                 setCaptions={updateCaptions}
               />
             </div>
+          </div>
           </div>
         )}
       </div>
@@ -727,6 +792,7 @@ export default function Dashboard() {
         onSelectPlan={handleSelectPlan}
         user={currentUser}
         message={pricingMessage}
+        userData={userData}
       />
 
       {/* Plan Expired Modal */}
@@ -757,7 +823,7 @@ export default function Dashboard() {
                   setIsPlanExpiredModalOpen(false);
                   setIsPricingModalOpen(true);
                 }}
-                className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
+                className="flex-1 bg-gradient-to-r from-[#F5A623] to-blue-600 hover:from-[#F5A623] hover:to-blue-700 text-white"
               >
                 <Sparkles className="w-4 h-4 mr-2" />
                 Upgrade Now
@@ -769,19 +835,19 @@ export default function Dashboard() {
 
       {/* Custom scrollbar styles */}
       <style>{`
-  .custom - scrollbar:: -webkit - scrollbar {
-  width: 6px;
-}
-        .custom - scrollbar:: -webkit - scrollbar - track {
-  background: transparent;
-}
-        .custom - scrollbar:: -webkit - scrollbar - thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border - radius: 3px;
-}
-        .custom - scrollbar:: -webkit - scrollbar - thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
-}
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
 `}</style>
     </div>
   );
