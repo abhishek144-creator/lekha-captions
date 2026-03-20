@@ -862,8 +862,10 @@ export default function VideoPlayer({
                       {editText}
                     </div>
                   ) : (
+                    // Template class wrapper — gives the CSS template rules (.t-109 .cap-text .word etc.) their scope
+                    <div className={captionStyle?.template_id || ''} style={{ display: 'contents' }}>
                     <span
-                      className={caption.animation ? `animate-${caption.animation}` : ''}
+                      className={`cap-text${caption.animation ? ` animate-${caption.animation}` : ''}`}
                       style={{
                         fontFamily: captionStyle?.font_family || 'Inter',
                         fontSize: `${captionStyle?.font_size || 18}px`,
@@ -896,8 +898,12 @@ export default function VideoPlayer({
                           const wordIndex = wordCounter++;
                           const highlightRange = getHighlightedWordRange(caption);
                           const isHighlighted = wordIndex >= highlightRange.start && wordIndex <= highlightRange.end;
+                          const isCurrent = wordIndex === highlightRange.end && isHighlighted;
+                          const isDoneWord = wordIndex < highlightRange.start;
                           const customStyle = caption?.wordStyles?.[`${caption?.id}-${wordIndex}`] || {};
                           const isWordClicked = wordPopup?.wordIndex === wordIndex && wordPopup?.caption?.id === caption?.id;
+                          // Word CSS classes for template system
+                          const wordClasses = ['word', isDoneWord ? 'done' : isHighlighted ? (isCurrent ? 'current' : 'active') : ''].filter(Boolean).join(' ');
 
                           // Extract transform from customStyle - this goes on PARENT wrapper
                           const { x = 0, y = 0, animation, ...restStyle } = customStyle;
@@ -924,6 +930,7 @@ export default function VideoPlayer({
                             <span
                               key={i}
                               data-word-key={`${caption?.id}-${wordIndex}`}
+                              className={wordClasses}
                               style={{
                                 display: 'inline-block',
                                 position: 'relative',
@@ -1065,6 +1072,7 @@ export default function VideoPlayer({
                         });
                       })()}
                     </span>
+                    </div>
                   )}
                 </div>
               </div>
