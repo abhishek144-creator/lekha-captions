@@ -705,78 +705,71 @@ export default function CaptionTimeline({
                 className="absolute left-0 right-0"
                 style={{ top: `${TEXT_ROWS * TEXT_ROW_HEIGHT + SPEECH_HEIGHT + 8}px`, height: `${WAVEFORM_HEIGHT}px` }}
               >
-                {/* Divider line */}
-                <div className="absolute top-0 left-0 right-0 h-px bg-violet-500/30" />
+                {/* Subtle top separator */}
+                <div className="absolute top-0 left-0 right-0 h-px bg-white/8" />
 
                 {/* Row label */}
-                <div className="absolute left-1 top-1 text-[8px] text-violet-400/60 uppercase tracking-wider font-medium pointer-events-none z-10">
+                <div className="absolute left-1 top-0.5 text-[8px] text-white/25 uppercase tracking-wider font-medium pointer-events-none z-10">
                   Audio
                 </div>
 
-                {/* Waveform Background */}
-                <div className="absolute inset-0 bg-violet-500/[0.03]" />
-
-                {/* Waveform Visualization */}
-                <div className="absolute left-0 right-0 top-3 bottom-1 flex items-center px-1">
+                {/* Waveform Visualization — professional white-bar style */}
+                <div className="absolute left-0 right-0 top-2.5 bottom-0.5 overflow-hidden">
                   {waveformData && waveformData.length > 0 ? (
                     <svg
                       width="100%"
                       height="100%"
-                      viewBox={`0 0 ${waveformData.length} 100`}
+                      viewBox={`0 0 ${waveformData.length * 2} 100`}
                       preserveAspectRatio="none"
-                      className="opacity-80"
                     >
-                      {/* Mirrored waveform bars */}
                       {waveformData.map((amplitude, i) => {
-                        // Square/Power the amplitude to dramatically emphasize audio spikes and suppress background noise
-                        const expandedAmp = Math.pow(amplitude, 2.0); // more drastic exponent for sharper spikes
-                        const barHeight = Math.max(1.5, expandedAmp * 90);
-                        const y = 50 - barHeight / 2;
+                        // Sharpen spikes: mild power curve to keep quiet parts visible
+                        const amp = Math.pow(Math.max(0, amplitude), 1.6)
+                        const barHeight = Math.max(2, amp * 94)
+                        const y = 50 - barHeight / 2
+                        // Taller bars are more opaque — quiet zones fade into background
+                        const opacity = 0.2 + amp * 0.8
                         return (
                           <rect
                             key={i}
-                            x={i}
+                            x={i * 2}
                             y={y}
-                            width={0.4} // Thinner width
+                            width={1.1}
                             height={barHeight}
-                            fill="url(#waveformGradient)"
-                            rx={0.2} // Sharper corners
+                            fill="white"
+                            fillOpacity={opacity}
+                            rx={0.55}
                           />
-                        );
+                        )
                       })}
-                      <defs>
-                        <linearGradient id="waveformGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                          <stop offset="0%" stopColor="#8b5cf6" stopOpacity="0.9" />
-                          <stop offset="50%" stopColor="#a78bfa" stopOpacity="1" />
-                          <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0.9" />
-                        </linearGradient>
-                      </defs>
                     </svg>
                   ) : (
-                    /* Placeholder waveform pattern when no data */
+                    /* Placeholder: subtle white bars when no audio loaded */
                     <svg
                       width="100%"
                       height="100%"
-                      viewBox="0 0 200 100"
+                      viewBox="0 0 400 100"
                       preserveAspectRatio="none"
-                      className="opacity-40"
                     >
                       {Array.from({ length: 200 }).map((_, i) => {
-                        // Generate a pseudo-random pattern for placeholder
-                        const seed = Math.sin(i * 0.3) * Math.cos(i * 0.17);
-                        const barHeight = Math.abs(seed) * 60 + 5;
-                        const y = 50 - barHeight / 2;
+                        // Natural-looking pseudo-random waveform shape
+                        const t = i / 200
+                        const wave = Math.sin(t * Math.PI * 8) * Math.sin(t * Math.PI * 2.3)
+                        const barHeight = Math.max(2, Math.abs(wave) * 70 + 3)
+                        const y = 50 - barHeight / 2
+                        const opacity = 0.08 + Math.abs(wave) * 0.15
                         return (
                           <rect
                             key={i}
-                            x={i}
+                            x={i * 2}
                             y={y}
-                            width={0.5}
+                            width={1.1}
                             height={barHeight}
-                            fill="#8b5cf6"
-                            rx={0.25}
+                            fill="white"
+                            fillOpacity={opacity}
+                            rx={0.55}
                           />
-                        );
+                        )
                       })}
                     </svg>
                   )}
