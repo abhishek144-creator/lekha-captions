@@ -112,7 +112,7 @@ export default function TextTab({ captions, setCaptions, currentTime, setSelecte
     <div className="h-full flex flex-col space-y-3 overflow-y-auto pr-2 custom-scrollbar">
       <button
         onClick={() => addTextElement('textbox')}
-        className="w-full py-3 px-4 rounded-lg bg-gradient-to-r from-[#F5A623] to-[#F5A623] hover:from-[#F5A623] hover:to-[#F5A623] text-white font-medium flex items-center justify-center gap-2 transition-all"
+        className="w-full py-3 px-4 rounded-[4px] bg-white hover:bg-gray-100 text-black font-medium flex items-center justify-center gap-2 transition-all"
       >
         <Type className="w-5 h-5" />
         Add a text box

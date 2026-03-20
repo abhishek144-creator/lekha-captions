@@ -52,7 +52,7 @@ export default function SidebarNav({ activeTab, setActiveTab, user, onOpenPricin
   };
 
   return (
-    <div className="w-[72px] bg-black border-r border-white/5 flex flex-col items-center py-4 gap-1 h-full">
+    <div className="w-[72px] bg-zinc-950 border-r border-white/5 flex flex-col items-center py-4 gap-1 h-full">
       {navItems.map((item) => {
         const Icon = item.icon;
         const isActive = activeTab === item.id;
@@ -65,14 +65,14 @@ export default function SidebarNav({ activeTab, setActiveTab, user, onOpenPricin
             onClick={() => !isDisabled && setActiveTab(item.id)}
             disabled={isDisabled}
             className={`w-full flex flex-col items-center justify-center py-3 px-2 transition-colors relative ${isActive
-              ? 'text-[#F5A623]'
+              ? 'text-white'
               : isDisabled
                 ? 'text-zinc-700 cursor-not-allowed'
-                : 'text-zinc-500 hover:text-zinc-300'
+                : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/5'
               }`}
           >
             {isActive && (
-              <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-8 bg-[#F5A623] rounded-r-full" />
+              <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-8 rounded-r-full" style={{ background: 'linear-gradient(135deg, #BF953F 0%, #FCF6BA 45%, #B38728 70%, #AA771C 100%)' }} />
             )}
             <Icon className="w-5 h-5" />
             <span className="text-[10px] mt-1.5 font-medium">{item.label}</span>
@@ -101,7 +101,7 @@ export default function SidebarNav({ activeTab, setActiveTab, user, onOpenPricin
                   className="w-9 h-9 rounded-full border-2 border-[#F5A623]/50"
                 />
               ) : (
-                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#0A0A0A] to-[#F5A623] flex items-center justify-center text-white text-xs font-bold">
+                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-zinc-700 to-zinc-500 flex items-center justify-center text-white text-xs font-bold">
                   {(currentUser.displayName || currentUser.email || 'U').charAt(0).toUpperCase()}
                 </div>
               )}
@@ -117,7 +117,7 @@ export default function SidebarNav({ activeTab, setActiveTab, user, onOpenPricin
               )}
               <Button
                 onClick={onOpenPricing}
-                className="w-full justify-start bg-gradient-to-r from-[#FFE566] to-[#F5A623] hover:from-[#F5A623] hover:to-[#D4891A] text-black font-semibold"
+                className="w-full justify-start bg-white hover:bg-gray-100 text-black font-semibold rounded-[4px]"
                 size="sm"
               >
                 Upgrade Plan

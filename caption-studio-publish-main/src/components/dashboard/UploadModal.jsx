@@ -544,7 +544,7 @@ export default function UploadModal({
               <Button
                 onClick={handleSubmit}
                 disabled={isUploading}
-                className="w-full bg-gradient-to-r from-[#FFE566] to-[#F5A623] hover:from-[#F5A623] hover:to-[#D4891A] text-black font-semibold py-6"
+                className="w-full bg-white hover:bg-gray-100 text-black font-semibold py-6 rounded-[4px]"
               >
                 {isUploading ? (
                   <>

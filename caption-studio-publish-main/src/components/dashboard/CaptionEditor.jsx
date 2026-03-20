@@ -123,7 +123,7 @@ export default function CaptionEditor({
           <Button
             onClick={addCaption}
             size="sm"
-            className="bg-[#F5A623] hover:bg-[#F5A623] text-white h-8 px-2.5"
+            className="bg-white hover:bg-gray-100 text-black h-8 px-2.5"
           >
             <Plus className="w-4 h-4 mr-1" />
             Add

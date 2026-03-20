@@ -58,17 +58,6 @@ export default function DashboardHeader({
       <div className="flex items-center gap-2 sm:gap-3">
         {hasVideo && (
           <div className="flex items-center gap-1 mr-2 border-r border-white/10 pr-3">
-            {/* Upgrade button — before undo */}
-            {showUpgrade && (
-              <Button
-                onClick={user ? onUpgradeClick : onLogin}
-                size="sm"
-                className="border border-amber-500/60 bg-transparent text-amber-400 hover:bg-amber-500/10 hover:text-amber-300 hover:border-amber-400 font-medium h-8 px-2.5 text-xs mr-3 border-r border-r-white/10 pr-3 transition-all"
-              >
-                <Crown className="w-3.5 h-3.5 mr-1" />
-                Upgrade
-              </Button>
-            )}
             <Button
               variant="ghost"
               size="icon"
@@ -134,7 +123,7 @@ export default function DashboardHeader({
             <Button
               onClick={onExportClick}
               size="sm"
-              className="bg-gradient-to-r from-[#FFE566] to-[#F5A623] hover:from-[#F5A623] hover:to-[#D4891A] text-black font-semibold"
+              className="bg-white hover:bg-gray-100 text-black font-semibold rounded-[4px]"
             >
               <Download className="w-4 h-4 sm:mr-2" />
               <span className="hidden sm:inline">Export</span>
@@ -148,7 +137,7 @@ export default function DashboardHeader({
           <Button
             onClick={onLogin}
             size="sm"
-            className="ml-1 bg-gradient-to-r from-[#FFE566] to-[#F5A623] hover:from-[#F5A623] hover:to-[#D4891A] text-black font-semibold rounded-md px-4 py-2 shadow-sm transition-colors duration-200 h-10"
+            className="ml-1 bg-white hover:bg-gray-100 text-black font-semibold rounded-[4px] px-4 py-2 shadow-sm transition-colors duration-200 h-10"
           >
             <span className="text-[14px]">Signup</span>
           </Button>
