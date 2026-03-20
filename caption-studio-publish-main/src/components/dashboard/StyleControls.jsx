@@ -358,8 +358,145 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
       )}
 
       <div className="space-y-6">
-        {/* TYPOGRAPHY Section */}
+
+        {/* ── 1. POSITION ──────────────────────────── */}
         <div className="space-y-4">
+          <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider">POSITION</h3>
+
+          {/* Text Alignment */}
+          <div>
+            <Label className="text-sm text-gray-400 mb-2 block">Text Alignment</Label>
+            <div className="bg-zinc-900 border border-white/5 rounded-lg p-1 flex gap-1">
+              <button
+                onClick={() => updateStyle('text_align', 'left')}
+                className={`flex-1 flex items-center justify-center py-1.5 rounded-md transition-all ${getCurrentValue('text_align', 'center') === 'left'
+                  ? "bg-white text-black shadow-sm"
+                  : "text-gray-400 hover:text-white hover:bg-white/5"
+                  }`}
+              >
+                <AlignLeft className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => updateStyle('text_align', 'center')}
+                className={`flex-1 flex items-center justify-center py-1.5 rounded-md transition-all ${getCurrentValue('text_align', 'center') === 'center'
+                  ? "bg-white text-black shadow-sm"
+                  : "text-gray-400 hover:text-white hover:bg-white/5"
+                  }`}
+              >
+                <AlignCenter className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => updateStyle('text_align', 'right')}
+                className={`flex-1 flex items-center justify-center py-1.5 rounded-md transition-all ${getCurrentValue('text_align', 'center') === 'right'
+                  ? "bg-white text-black shadow-sm"
+                  : "text-gray-400 hover:text-white hover:bg-white/5"
+                  }`}
+              >
+                <AlignRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Case */}
+          <div>
+            <Label className="text-sm text-gray-400 mb-2 block">Case</Label>
+            <div className="bg-zinc-900 border border-white/5 rounded-lg p-1 flex gap-1">
+              <button
+                onClick={() => {
+                  updateStyle('text_case', 'lowercase');
+                  if (!selectedTextElement) updateStyle('is_caps', false);
+                }}
+                className={`flex-1 flex items-center justify-center py-1.5 rounded-md text-xs font-medium transition-all ${getCurrentValue('text_case', 'none') === 'lowercase'
+                  ? "bg-white text-black shadow-sm"
+                  : "text-gray-400 hover:text-white hover:bg-white/5"
+                  }`}
+              >
+                aa
+              </button>
+              <button
+                onClick={() => {
+                  updateStyle('text_case', 'capitalize');
+                  if (!selectedTextElement) updateStyle('is_caps', false);
+                }}
+                className={`flex-1 flex items-center justify-center py-1.5 rounded-md text-xs font-medium transition-all ${getCurrentValue('text_case', 'none') === 'capitalize'
+                  ? "bg-white text-black shadow-sm"
+                  : "text-gray-400 hover:text-white hover:bg-white/5"
+                  }`}
+              >
+                Aa
+              </button>
+              <button
+                onClick={() => {
+                  updateStyle('text_case', 'uppercase');
+                  if (!selectedTextElement) updateStyle('is_caps', true);
+                }}
+                className={`flex-1 flex items-center justify-center py-1.5 rounded-md text-xs font-medium transition-all ${(getCurrentValue('text_case', 'none') === 'uppercase' || (!selectedTextElement && captionStyle.is_caps))
+                  ? "bg-white text-black shadow-sm"
+                  : "text-gray-400 hover:text-white hover:bg-white/5"
+                  }`}
+              >
+                AA
+              </button>
+            </div>
+          </div>
+
+          {/* Position Y - for text elements uses top */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <Label className="text-sm text-gray-400">Position Y</Label>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500">{selectedTextElement ? Math.round(selectedTextElement.customStyle?.top || 50) : (captionStyle.position_y || 75)}%</span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => updateStyle(selectedTextElement ? 'top' : 'position_y', selectedTextElement ? 50 : 75)}
+                  className="h-5 w-5 text-gray-500 hover:text-white"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                </Button>
+              </div>
+            </div>
+            <Slider
+              value={[selectedTextElement ? (selectedTextElement.customStyle?.top || 50) : (captionStyle.position_y || 75)]}
+              onValueChange={([value]) => updateStyle(selectedTextElement ? 'top' : 'position_y', value, true)}
+              onPointerDown={() => addToHistory && addToHistory()}
+              min={5}
+              max={95}
+              step={1}
+              className="cursor-pointer"
+            />
+          </div>
+
+          {/* Position X - for text elements uses left */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <Label className="text-sm text-gray-400">Position X</Label>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500">{selectedTextElement ? Math.round(selectedTextElement.customStyle?.left || 50) : (captionStyle.position_x || 50)}%</span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => updateStyle(selectedTextElement ? 'left' : 'position_x', 50)}
+                  className="h-5 w-5 text-gray-500 hover:text-white"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                </Button>
+              </div>
+            </div>
+            <Slider
+              value={[selectedTextElement ? (selectedTextElement.customStyle?.left || 50) : (captionStyle.position_x || 50)]}
+              onValueChange={([value]) => updateStyle(selectedTextElement ? 'left' : 'position_x', value, true)}
+              onPointerDown={() => addToHistory && addToHistory()}
+              min={0}
+              max={100}
+              step={1}
+              className="cursor-pointer"
+            />
+          </div>
+        </div>
+
+        {/* ── 2. TYPOGRAPHY ─────────────────────────── */}
+        <div className="space-y-4 pt-4 border-t border-white/5">
           <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider">TYPOGRAPHY</h3>
 
           {/* Font Family */}
@@ -516,141 +653,32 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
             />
           </div>
 
-        </div>
-
-        {/* ADVANCED Section */}
-        <div className="space-y-4 pt-4 border-t border-white/5">
-          <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider">ADVANCED</h3>
-
-          {/* Text Alignment */}
+          {/* Font Style Selector */}
           <div>
-            <Label className="text-sm text-gray-400 mb-2 block">Text Alignment</Label>
-            <div className="bg-zinc-900 border border-white/5 rounded-lg p-1 flex gap-1">
-              <button
-                onClick={() => updateStyle('text_align', 'left')}
-                className={`flex-1 flex items-center justify-center py-1.5 rounded-md transition-all ${getCurrentValue('text_align', 'center') === 'left'
-                  ? "bg-white text-black shadow-sm"
-                  : "text-gray-400 hover:text-white hover:bg-white/5"
-                  }`}
-              >
-                <AlignLeft className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => updateStyle('text_align', 'center')}
-                className={`flex-1 flex items-center justify-center py-1.5 rounded-md transition-all ${getCurrentValue('text_align', 'center') === 'center'
-                  ? "bg-white text-black shadow-sm"
-                  : "text-gray-400 hover:text-white hover:bg-white/5"
-                  }`}
-              >
-                <AlignCenter className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => updateStyle('text_align', 'right')}
-                className={`flex-1 flex items-center justify-center py-1.5 rounded-md transition-all ${getCurrentValue('text_align', 'center') === 'right'
-                  ? "bg-white text-black shadow-sm"
-                  : "text-gray-400 hover:text-white hover:bg-white/5"
-                  }`}
-              >
-                <AlignRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-
-          {/* Case */}
-          <div>
-            <Label className="text-sm text-gray-400 mb-2 block">Case</Label>
-            <div className="bg-zinc-900 border border-white/5 rounded-lg p-1 flex gap-1">
-              <button
-                onClick={() => {
-                  updateStyle('text_case', 'lowercase');
-                  if (!selectedTextElement) updateStyle('is_caps', false);
-                }}
-                className={`flex-1 flex items-center justify-center py-1.5 rounded-md text-xs font-medium transition-all ${getCurrentValue('text_case', 'none') === 'lowercase'
-                  ? "bg-white text-black shadow-sm"
-                  : "text-gray-400 hover:text-white hover:bg-white/5"
-                  }`}
-              >
-                aa
-              </button>
-              <button
-                onClick={() => {
-                  updateStyle('text_case', 'capitalize');
-                  if (!selectedTextElement) updateStyle('is_caps', false);
-                }}
-                className={`flex-1 flex items-center justify-center py-1.5 rounded-md text-xs font-medium transition-all ${getCurrentValue('text_case', 'none') === 'capitalize'
-                  ? "bg-white text-black shadow-sm"
-                  : "text-gray-400 hover:text-white hover:bg-white/5"
-                  }`}
-              >
-                Aa
-              </button>
-              <button
-                onClick={() => {
-                  updateStyle('text_case', 'uppercase');
-                  if (!selectedTextElement) updateStyle('is_caps', true);
-                }}
-                className={`flex-1 flex items-center justify-center py-1.5 rounded-md text-xs font-medium transition-all ${(getCurrentValue('text_case', 'none') === 'uppercase' || (!selectedTextElement && captionStyle.is_caps))
-                  ? "bg-white text-black shadow-sm"
-                  : "text-gray-400 hover:text-white hover:bg-white/5"
-                  }`}
-              >
-                AA
-              </button>
-            </div>
-          </div>
-
-          {/* Position X - for text elements uses left */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <Label className="text-sm text-gray-400">Position X</Label>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500">{selectedTextElement ? Math.round(selectedTextElement.customStyle?.left || 50) : (captionStyle.position_x || 50)}%</span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => updateStyle(selectedTextElement ? 'left' : 'position_x', 50)}
-                  className="h-5 w-5 text-gray-500 hover:text-white"
-                >
-                  <RotateCcw className="w-3 h-3" />
-                </Button>
-              </div>
-            </div>
-            <Slider
-              value={[selectedTextElement ? (selectedTextElement.customStyle?.left || 50) : (captionStyle.position_x || 50)]}
-              onValueChange={([value]) => updateStyle(selectedTextElement ? 'left' : 'position_x', value, true)}
-              onPointerDown={() => addToHistory && addToHistory()}
-              min={0}
-              max={100}
-              step={1}
-              className="cursor-pointer"
-            />
-          </div>
-
-          {/* Position Y - for text elements uses top */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <Label className="text-sm text-gray-400">Position Y</Label>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500">{selectedTextElement ? Math.round(selectedTextElement.customStyle?.top || 50) : (captionStyle.position_y || 75)}%</span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => updateStyle(selectedTextElement ? 'top' : 'position_y', selectedTextElement ? 50 : 75)}
-                  className="h-5 w-5 text-gray-500 hover:text-white"
-                >
-                  <RotateCcw className="w-3 h-3" />
-                </Button>
-              </div>
-            </div>
-            <Slider
-              value={[selectedTextElement ? (selectedTextElement.customStyle?.top || 50) : (captionStyle.position_y || 75)]}
-              onValueChange={([value]) => updateStyle(selectedTextElement ? 'top' : 'position_y', value, true)}
-              onPointerDown={() => addToHistory && addToHistory()}
-              min={5}
-              max={95}
-              step={1}
-              className="cursor-pointer"
-            />
+            <Label className="text-sm text-gray-400 mb-2 block">Font Style</Label>
+            <Select
+              value={`${normalizeFontWeight(getCurrentValue('font_weight', '500'))}-${getCurrentValue('font_style', 'normal')}`}
+              onValueChange={(value) => {
+                const [weight, style] = value.split('-');
+                updateStyle('font_weight', weight);
+                updateStyle('font_style', style);
+                if (!selectedTextElement) updateStyle('is_bold', parseInt(weight) >= 700);
+              }}
+            >
+              <SelectTrigger className="bg-zinc-900 border-white/10 text-white">
+                <SelectValue placeholder="Select style" />
+              </SelectTrigger>
+              <SelectContent className="bg-zinc-900 border-white/10 max-h-80">
+                <SelectItem value="300-normal" className="text-white hover:bg-white/10" style={{ fontWeight: '300' }}>Light</SelectItem>
+                <SelectItem value="400-normal" className="text-white hover:bg-white/10" style={{ fontWeight: '400' }}>Regular</SelectItem>
+                <SelectItem value="500-normal" className="text-white hover:bg-white/10" style={{ fontWeight: '500' }}>Medium</SelectItem>
+                <SelectItem value="600-normal" className="text-white hover:bg-white/10" style={{ fontWeight: '600' }}>Semi Bold</SelectItem>
+                <SelectItem value="700-normal" className="text-white hover:bg-white/10" style={{ fontWeight: '700' }}>Bold</SelectItem>
+                <SelectItem value="800-normal" className="text-white hover:bg-white/10" style={{ fontWeight: '800' }}>Extra Bold</SelectItem>
+                <SelectItem value="400-italic" className="text-white hover:bg-white/10" style={{ fontWeight: '400', fontStyle: 'italic' }}>Regular Italic</SelectItem>
+                <SelectItem value="700-italic" className="text-white hover:bg-white/10" style={{ fontWeight: '700', fontStyle: 'italic' }}>Bold Italic</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Letter Spacing */}
@@ -708,269 +736,9 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
               />
             </div>
           )}
-
-          {/* Background Toggle */}
-          <div className="flex items-center justify-between">
-            <Label className="text-sm text-gray-400">Background</Label>
-            <Switch
-              checked={selectedTextElement ? (selectedTextElement.customStyle?.hasBackground !== false) : !!captionStyle.has_background}
-              onCheckedChange={(checked) => updateStyle('has_background', checked)}
-            />
-          </div>
-
-          {(selectedTextElement ? (selectedTextElement.customStyle?.hasBackground !== false) : !!captionStyle.has_background) && (
-            <>
-              <div>
-                <Label className="text-sm text-gray-400 mb-2 block">Background Color</Label>
-                <input
-                  type="color"
-                  value={selectedTextElement ? (selectedTextElement.customStyle?.backgroundColor || '#000000') : (captionStyle.background_color || '#000000')}
-                  onChange={(e) => {
-                    if (selectedTextElement && setCaptions) {
-                      setCaptions(prev => prev.map(cap => cap.id === selectedTextElement.id ? { ...cap, customStyle: { ...cap.customStyle, backgroundColor: e.target.value } } : cap));
-                    } else {
-                      updateStyle('background_color', e.target.value);
-                    }
-                  }}
-                  className="w-10 h-10 rounded cursor-pointer border-0 outline-none"
-                  style={{ borderWidth: '0' }}
-                />
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <Label className="text-sm text-gray-400">Background Opacity</Label>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-500">{Math.round((getCurrentValue('background_opacity', 0.7)) * 100)}%</span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => updateStyle('background_opacity', 0.7)}
-                      className="h-5 w-5 text-gray-500 hover:text-white"
-                    >
-                      <RotateCcw className="w-3 h-3" />
-                    </Button>
-                  </div>
-                </div>
-                <Slider
-                  value={[(getCurrentValue('background_opacity', 0.7)) * 100]}
-                  onValueChange={([value]) => updateStyle('background_opacity', value / 100, true)}
-                  onPointerDown={() => addToHistory && addToHistory()}
-                  min={0}
-                  max={100}
-                  step={5}
-                  className="cursor-pointer"
-                />
-              </div>
-
-              <div className="space-y-3">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <Label className="text-sm text-gray-400">Background Thickness (V)</Label>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-500">{selectedTextElement ? (selectedTextElement.customStyle?.padding ?? 8) : (captionStyle.background_padding ?? 3)}px</span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => {
-                          if (selectedTextElement && setCaptions) {
-                            setCaptions(prev => prev.map(cap => cap.id === selectedTextElement.id ? { ...cap, customStyle: { ...cap.customStyle, padding: 8 } } : cap));
-                          } else {
-                            updateStyle('background_padding', 3);
-                          }
-                        }}
-                        className="h-5 w-5 text-gray-500 hover:text-white"
-                      >
-                        <RotateCcw className="w-3 h-3" />
-                      </Button>
-                    </div>
-                  </div>
-                  <Slider
-                    value={[selectedTextElement ? (selectedTextElement.customStyle?.padding ?? 8) : (captionStyle.background_padding ?? 3)]}
-                    onValueChange={([value]) => {
-                      if (selectedTextElement && setCaptions) {
-                        setCaptions(prev => prev.map(cap => cap.id === selectedTextElement.id ? { ...cap, customStyle: { ...cap.customStyle, padding: value } } : cap));
-                      } else {
-                        updateStyle('background_padding', value, true);
-                      }
-                    }}
-                    onPointerDown={() => addToHistory && addToHistory()}
-                    min={2}
-                    max={40}
-                    step={1}
-                    className="cursor-pointer"
-                  />
-                </div>
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <Label className="text-sm text-gray-400">Background Thickness (H)</Label>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-500">{((getCurrentValue('background_h_multiplier', 0.99) - 1) * 100).toFixed(2)}px</span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => updateStyle('background_h_multiplier', 0.99)}
-                        className="h-5 w-5 text-gray-500 hover:text-white"
-                      >
-                        <RotateCcw className="w-3 h-3" />
-                      </Button>
-                    </div>
-                  </div>
-                  <Slider
-                    value={[Math.round(getCurrentValue('background_h_multiplier', 0.99) * 100)]}
-                    onValueChange={([value]) => updateStyle('background_h_multiplier', value / 100, true)}
-                    onPointerDown={() => addToHistory && addToHistory()}
-                    min={50}
-                    max={300}
-                    step={1}
-                    className="cursor-pointer"
-                  />
-                </div>
-              </div>
-            </>
-          )}
-
-          {/* Effects Section — collapsible */}
-          <div className="mt-6 pt-6 border-t border-white/10">
-            <button
-              onClick={() => setEffectsOpen(v => !v)}
-              className="w-full flex items-center justify-between text-sm font-semibold text-white mb-1 group"
-            >
-              <span className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-white" />
-                Effects
-                {getCurrentValue('effect_type', 'none') !== 'none' && (
-                  <span className="text-[10px] bg-white/10 text-white px-1.5 py-0.5 rounded-full font-medium capitalize">
-                    {getCurrentValue('effect_type')}
-                  </span>
-                )}
-              </span>
-              <span className={`w-5 h-5 rounded border border-white/20 flex items-center justify-center text-gray-400 group-hover:border-white/50 group-hover:text-white transition-colors ${effectsOpen ? 'bg-white/10 border-white/30 text-white' : ''}`}>
-                {effectsOpen ? '−' : '+'}
-              </span>
-            </button>
-
-            {effectsOpen && (
-              <div className="mt-3">
-                <div className="grid grid-cols-4 gap-2 mb-3">
-                  {[
-                    { id: 'none', label: 'None' },
-                    { id: 'shadow', label: 'Shadow' },
-                    { id: 'lift', label: 'Lift' },
-                    { id: 'hollow', label: 'Hollow' },
-                    { id: 'splice', label: 'Splice' },
-                    { id: 'outline', label: 'Outline' },
-                    { id: 'echo', label: 'Echo' },
-                    { id: 'neon', label: 'Neon' }
-                  ].map(effect => {
-                    const isSelected = getCurrentValue('effect_type', 'none') === effect.id
-                    return (
-                      <button
-                        key={effect.id}
-                        onClick={() => {
-                          updateStyle('effect_type', effect.id)
-                          if (effect.id !== 'none') {
-                            if (effect.id === 'neon') {
-                              if (getCurrentValue('effect_blur') === undefined) updateStyle('effect_blur', 8)
-                              if (getCurrentValue('effect_intensity') === undefined) updateStyle('effect_intensity', 5)
-                              if (getCurrentValue('effect_color') === undefined) updateStyle('effect_color', getCurrentValue('text_color', '#ffffff'))
-                            } else {
-                              if (getCurrentValue('effect_blur') === undefined) updateStyle('effect_blur', 50)
-                              if (getCurrentValue('effect_intensity') === undefined) updateStyle('effect_intensity', 50)
-                              if (getCurrentValue('effect_color') === undefined) updateStyle('effect_color', '#000000')
-                            }
-                            if (getCurrentValue('effect_offset') === undefined) updateStyle('effect_offset', 50)
-                            if (getCurrentValue('effect_direction') === undefined) updateStyle('effect_direction', -45)
-                            if (getCurrentValue('effect_transparency') === undefined) updateStyle('effect_transparency', 40)
-                            if (getCurrentValue('effect_thickness') === undefined) updateStyle('effect_thickness', 50)
-                          }
-                        }}
-                        className={`p-2 rounded-lg border text-xs text-center transition-all duration-200 ${isSelected
-                          ? 'bg-white/10 border-white/40 text-white font-medium'
-                          : 'bg-zinc-800/50 border-white/5 text-gray-400 hover:bg-zinc-800 hover:border-white/20'
-                        }`}
-                      >
-                        {effect.label}
-                      </button>
-                    )
-                  })}
-                </div>
-
-                {/* Effect Specific Sliders */}
-                {getCurrentValue('effect_type', 'none') !== 'none' && (
-                  <div className="space-y-4 p-3 rounded-xl bg-black/20 border border-white/5">
-                    {['hollow', 'splice', 'outline'].includes(getCurrentValue('effect_type')) && (
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <Label className="text-xs text-gray-400">Thickness</Label>
-                          <span className="text-xs text-gray-500">{getCurrentValue('effect_thickness', 50)}</span>
-                        </div>
-                        <Slider value={[getCurrentValue('effect_thickness', 50)]} onValueChange={([val]) => updateStyle('effect_thickness', val, true)} onPointerDown={() => addToHistory && addToHistory()} max={100} step={1} className="cursor-pointer" />
-                      </div>
-                    )}
-                    {['shadow', 'splice', 'echo', 'lift'].includes(getCurrentValue('effect_type')) && (
-                      <>
-                        <div>
-                          <div className="flex items-center justify-between mb-2">
-                            <Label className="text-xs text-gray-400">Offset</Label>
-                            <span className="text-xs text-gray-500">{getCurrentValue('effect_offset', 50)}</span>
-                          </div>
-                          <Slider value={[getCurrentValue('effect_offset', 50)]} onValueChange={([val]) => updateStyle('effect_offset', val, true)} onPointerDown={() => addToHistory && addToHistory()} max={100} step={1} className="cursor-pointer" />
-                        </div>
-                        <div>
-                          <div className="flex items-center justify-between mb-2">
-                            <Label className="text-xs text-gray-400">Direction</Label>
-                            <span className="text-xs text-gray-500">{getCurrentValue('effect_direction', -45)}°</span>
-                          </div>
-                          <Slider value={[getCurrentValue('effect_direction', -45)]} onValueChange={([val]) => updateStyle('effect_direction', val, true)} onPointerDown={() => addToHistory && addToHistory()} min={-180} max={180} step={1} className="cursor-pointer" />
-                        </div>
-                      </>
-                    )}
-                    {['shadow', 'neon', 'lift'].includes(getCurrentValue('effect_type')) && (
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <Label className="text-xs text-gray-400">Blur</Label>
-                          <span className="text-xs text-gray-500">{getCurrentValue('effect_blur', 50)}</span>
-                        </div>
-                        <Slider value={[getCurrentValue('effect_blur', 50)]} onValueChange={([val]) => updateStyle('effect_blur', val, true)} onPointerDown={() => addToHistory && addToHistory()} max={100} step={1} className="cursor-pointer" />
-                      </div>
-                    )}
-                    {['shadow', 'echo'].includes(getCurrentValue('effect_type')) && (
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <Label className="text-xs text-gray-400">Transparency</Label>
-                          <span className="text-xs text-gray-500">{getCurrentValue('effect_transparency', 40)}</span>
-                        </div>
-                        <Slider value={[getCurrentValue('effect_transparency', 40)]} onValueChange={([val]) => updateStyle('effect_transparency', val, true)} onPointerDown={() => addToHistory && addToHistory()} max={100} step={1} className="cursor-pointer" />
-                      </div>
-                    )}
-                    {['neon'].includes(getCurrentValue('effect_type')) && (
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <Label className="text-xs text-gray-400">Intensity</Label>
-                          <span className="text-xs text-gray-500">{getCurrentValue('effect_intensity', 50)}</span>
-                        </div>
-                        <Slider value={[getCurrentValue('effect_intensity', 50)]} onValueChange={([val]) => updateStyle('effect_intensity', val, true)} onPointerDown={() => addToHistory && addToHistory()} max={100} step={1} className="cursor-pointer" />
-                      </div>
-                    )}
-                    {!['lift'].includes(getCurrentValue('effect_type')) && (
-                      <div>
-                        <Label className="text-xs text-gray-400 mb-2 block">Color</Label>
-                        <input type="color" value={getCurrentValue('effect_color', '#000000')} onChange={(e) => updateStyle('effect_color', e.target.value)} className="w-10 h-8 rounded cursor-pointer border border-white/10 bg-transparent" />
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-
-
-
         </div>
 
-        {/* COLORS Section */}
+        {/* ── 3. COLORS ─────────────────────────────── */}
         <div className="space-y-4 pt-4 border-t border-white/5">
           <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider">COLORS</h3>
 
@@ -1298,12 +1066,276 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
                 </div>
               </>
             )}
-          </div>
         </div>
 
-        {/* TEXT STYLE Section — Anchor & Font Weight */}
+        {/* ── 4. BACKGROUND ─────────────────────────── */}
         <div className="space-y-4 pt-4 border-t border-white/5">
-          <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider">TEXT STYLE</h3>
+          <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider">BACKGROUND</h3>
+
+          {/* Background Toggle */}
+          <div className="flex items-center justify-between">
+            <Label className="text-sm text-gray-400">Background</Label>
+            <Switch
+              checked={selectedTextElement ? (selectedTextElement.customStyle?.hasBackground !== false) : !!captionStyle.has_background}
+              onCheckedChange={(checked) => updateStyle('has_background', checked)}
+            />
+          </div>
+
+          {(selectedTextElement ? (selectedTextElement.customStyle?.hasBackground !== false) : !!captionStyle.has_background) && (
+            <>
+              <div>
+                <Label className="text-sm text-gray-400 mb-2 block">Background Color</Label>
+                <input
+                  type="color"
+                  value={selectedTextElement ? (selectedTextElement.customStyle?.backgroundColor || '#000000') : (captionStyle.background_color || '#000000')}
+                  onChange={(e) => {
+                    if (selectedTextElement && setCaptions) {
+                      setCaptions(prev => prev.map(cap => cap.id === selectedTextElement.id ? { ...cap, customStyle: { ...cap.customStyle, backgroundColor: e.target.value } } : cap));
+                    } else {
+                      updateStyle('background_color', e.target.value);
+                    }
+                  }}
+                  className="w-10 h-10 rounded cursor-pointer border-0 outline-none"
+                  style={{ borderWidth: '0' }}
+                />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <Label className="text-sm text-gray-400">Background Opacity</Label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-500">{Math.round((getCurrentValue('background_opacity', 0.7)) * 100)}%</span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => updateStyle('background_opacity', 0.7)}
+                      className="h-5 w-5 text-gray-500 hover:text-white"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                    </Button>
+                  </div>
+                </div>
+                <Slider
+                  value={[(getCurrentValue('background_opacity', 0.7)) * 100]}
+                  onValueChange={([value]) => updateStyle('background_opacity', value / 100, true)}
+                  onPointerDown={() => addToHistory && addToHistory()}
+                  min={0}
+                  max={100}
+                  step={5}
+                  className="cursor-pointer"
+                />
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <Label className="text-sm text-gray-400">Background Thickness (V)</Label>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500">{selectedTextElement ? (selectedTextElement.customStyle?.padding ?? 8) : (captionStyle.background_padding ?? 3)}px</span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          if (selectedTextElement && setCaptions) {
+                            setCaptions(prev => prev.map(cap => cap.id === selectedTextElement.id ? { ...cap, customStyle: { ...cap.customStyle, padding: 8 } } : cap));
+                          } else {
+                            updateStyle('background_padding', 3);
+                          }
+                        }}
+                        className="h-5 w-5 text-gray-500 hover:text-white"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  </div>
+                  <Slider
+                    value={[selectedTextElement ? (selectedTextElement.customStyle?.padding ?? 8) : (captionStyle.background_padding ?? 3)]}
+                    onValueChange={([value]) => {
+                      if (selectedTextElement && setCaptions) {
+                        setCaptions(prev => prev.map(cap => cap.id === selectedTextElement.id ? { ...cap, customStyle: { ...cap.customStyle, padding: value } } : cap));
+                      } else {
+                        updateStyle('background_padding', value, true);
+                      }
+                    }}
+                    onPointerDown={() => addToHistory && addToHistory()}
+                    min={2}
+                    max={40}
+                    step={1}
+                    className="cursor-pointer"
+                  />
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <Label className="text-sm text-gray-400">Background Thickness (H)</Label>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500">{((getCurrentValue('background_h_multiplier', 0.99) - 1) * 100).toFixed(2)}px</span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => updateStyle('background_h_multiplier', 0.99)}
+                        className="h-5 w-5 text-gray-500 hover:text-white"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  </div>
+                  <Slider
+                    value={[Math.round(getCurrentValue('background_h_multiplier', 0.99) * 100)]}
+                    onValueChange={([value]) => updateStyle('background_h_multiplier', value / 100, true)}
+                    onPointerDown={() => addToHistory && addToHistory()}
+                    min={50}
+                    max={300}
+                    step={1}
+                    className="cursor-pointer"
+                  />
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* ── 5. EFFECTS ────────────────────────────── */}
+        <div className="space-y-4 pt-4 border-t border-white/5">
+          <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider">EFFECTS</h3>
+
+          {/* Effects Section — collapsible */}
+          <div className="mt-6 pt-6 border-t border-white/10">
+            <button
+              onClick={() => setEffectsOpen(v => !v)}
+              className="w-full flex items-center justify-between text-sm font-semibold text-white mb-1 group"
+            >
+              <span className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-white" />
+                Effects
+                {getCurrentValue('effect_type', 'none') !== 'none' && (
+                  <span className="text-[10px] bg-white/10 text-white px-1.5 py-0.5 rounded-full font-medium capitalize">
+                    {getCurrentValue('effect_type')}
+                  </span>
+                )}
+              </span>
+              <span className={`w-5 h-5 rounded border border-white/20 flex items-center justify-center text-gray-400 group-hover:border-white/50 group-hover:text-white transition-colors ${effectsOpen ? 'bg-white/10 border-white/30 text-white' : ''}`}>
+                {effectsOpen ? '−' : '+'}
+              </span>
+            </button>
+
+            {effectsOpen && (
+              <div className="mt-3">
+                <div className="grid grid-cols-4 gap-2 mb-3">
+                  {[
+                    { id: 'none', label: 'None' },
+                    { id: 'shadow', label: 'Shadow' },
+                    { id: 'lift', label: 'Lift' },
+                    { id: 'hollow', label: 'Hollow' },
+                    { id: 'splice', label: 'Splice' },
+                    { id: 'outline', label: 'Outline' },
+                    { id: 'echo', label: 'Echo' },
+                    { id: 'neon', label: 'Neon' }
+                  ].map(effect => {
+                    const isSelected = getCurrentValue('effect_type', 'none') === effect.id
+                    return (
+                      <button
+                        key={effect.id}
+                        onClick={() => {
+                          updateStyle('effect_type', effect.id)
+                          if (effect.id !== 'none') {
+                            if (effect.id === 'neon') {
+                              if (getCurrentValue('effect_blur') === undefined) updateStyle('effect_blur', 8)
+                              if (getCurrentValue('effect_intensity') === undefined) updateStyle('effect_intensity', 5)
+                              if (getCurrentValue('effect_color') === undefined) updateStyle('effect_color', getCurrentValue('text_color', '#ffffff'))
+                            } else {
+                              if (getCurrentValue('effect_blur') === undefined) updateStyle('effect_blur', 50)
+                              if (getCurrentValue('effect_intensity') === undefined) updateStyle('effect_intensity', 50)
+                              if (getCurrentValue('effect_color') === undefined) updateStyle('effect_color', '#000000')
+                            }
+                            if (getCurrentValue('effect_offset') === undefined) updateStyle('effect_offset', 50)
+                            if (getCurrentValue('effect_direction') === undefined) updateStyle('effect_direction', -45)
+                            if (getCurrentValue('effect_transparency') === undefined) updateStyle('effect_transparency', 40)
+                            if (getCurrentValue('effect_thickness') === undefined) updateStyle('effect_thickness', 50)
+                          }
+                        }}
+                        className={`p-2 rounded-lg border text-xs text-center transition-all duration-200 ${isSelected
+                          ? 'bg-white/10 border-white/40 text-white font-medium'
+                          : 'bg-zinc-800/50 border-white/5 text-gray-400 hover:bg-zinc-800 hover:border-white/20'
+                        }`}
+                      >
+                        {effect.label}
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* Effect Specific Sliders */}
+                {getCurrentValue('effect_type', 'none') !== 'none' && (
+                  <div className="space-y-4 p-3 rounded-xl bg-black/20 border border-white/5">
+                    {['hollow', 'splice', 'outline'].includes(getCurrentValue('effect_type')) && (
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <Label className="text-xs text-gray-400">Thickness</Label>
+                          <span className="text-xs text-gray-500">{getCurrentValue('effect_thickness', 50)}</span>
+                        </div>
+                        <Slider value={[getCurrentValue('effect_thickness', 50)]} onValueChange={([val]) => updateStyle('effect_thickness', val, true)} onPointerDown={() => addToHistory && addToHistory()} max={100} step={1} className="cursor-pointer" />
+                      </div>
+                    )}
+                    {['shadow', 'splice', 'echo', 'lift'].includes(getCurrentValue('effect_type')) && (
+                      <>
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <Label className="text-xs text-gray-400">Offset</Label>
+                            <span className="text-xs text-gray-500">{getCurrentValue('effect_offset', 50)}</span>
+                          </div>
+                          <Slider value={[getCurrentValue('effect_offset', 50)]} onValueChange={([val]) => updateStyle('effect_offset', val, true)} onPointerDown={() => addToHistory && addToHistory()} max={100} step={1} className="cursor-pointer" />
+                        </div>
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <Label className="text-xs text-gray-400">Direction</Label>
+                            <span className="text-xs text-gray-500">{getCurrentValue('effect_direction', -45)}°</span>
+                          </div>
+                          <Slider value={[getCurrentValue('effect_direction', -45)]} onValueChange={([val]) => updateStyle('effect_direction', val, true)} onPointerDown={() => addToHistory && addToHistory()} min={-180} max={180} step={1} className="cursor-pointer" />
+                        </div>
+                      </>
+                    )}
+                    {['shadow', 'neon', 'lift'].includes(getCurrentValue('effect_type')) && (
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <Label className="text-xs text-gray-400">Blur</Label>
+                          <span className="text-xs text-gray-500">{getCurrentValue('effect_blur', 50)}</span>
+                        </div>
+                        <Slider value={[getCurrentValue('effect_blur', 50)]} onValueChange={([val]) => updateStyle('effect_blur', val, true)} onPointerDown={() => addToHistory && addToHistory()} max={100} step={1} className="cursor-pointer" />
+                      </div>
+                    )}
+                    {['shadow', 'echo'].includes(getCurrentValue('effect_type')) && (
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <Label className="text-xs text-gray-400">Transparency</Label>
+                          <span className="text-xs text-gray-500">{getCurrentValue('effect_transparency', 40)}</span>
+                        </div>
+                        <Slider value={[getCurrentValue('effect_transparency', 40)]} onValueChange={([val]) => updateStyle('effect_transparency', val, true)} onPointerDown={() => addToHistory && addToHistory()} max={100} step={1} className="cursor-pointer" />
+                      </div>
+                    )}
+                    {['neon'].includes(getCurrentValue('effect_type')) && (
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <Label className="text-xs text-gray-400">Intensity</Label>
+                          <span className="text-xs text-gray-500">{getCurrentValue('effect_intensity', 50)}</span>
+                        </div>
+                        <Slider value={[getCurrentValue('effect_intensity', 50)]} onValueChange={([val]) => updateStyle('effect_intensity', val, true)} onPointerDown={() => addToHistory && addToHistory()} max={100} step={1} className="cursor-pointer" />
+                      </div>
+                    )}
+                    {!['lift'].includes(getCurrentValue('effect_type')) && (
+                      <div>
+                        <Label className="text-xs text-gray-400 mb-2 block">Color</Label>
+                        <input type="color" value={getCurrentValue('effect_color', '#000000')} onChange={(e) => updateStyle('effect_color', e.target.value)} className="w-10 h-8 rounded cursor-pointer border border-white/10 bg-transparent" />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+        </div>
+
+        {/* ── 6. EXTRAS ─────────────────────────────── */}
+        <div className="space-y-4 pt-4 border-t border-white/5">
+          <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider">EXTRAS</h3>
 
           {/* Anchor Text Box */}
           <div>
@@ -1347,36 +1379,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
               </Button>
             </div>
           </div>
-
-          {/* Font Style Selector */}
-          <div>
-            <Label className="text-sm text-gray-400 mb-2 block">Font Style</Label>
-            <Select
-              value={`${normalizeFontWeight(getCurrentValue('font_weight', '500'))}-${getCurrentValue('font_style', 'normal')}`}
-              onValueChange={(value) => {
-                const [weight, style] = value.split('-');
-                updateStyle('font_weight', weight);
-                updateStyle('font_style', style);
-                if (!selectedTextElement) updateStyle('is_bold', parseInt(weight) >= 700);
-              }}
-            >
-              <SelectTrigger className="bg-zinc-900 border-white/10 text-white">
-                <SelectValue placeholder="Select style" />
-              </SelectTrigger>
-              <SelectContent className="bg-zinc-900 border-white/10 max-h-80">
-                <SelectItem value="300-normal" className="text-white hover:bg-white/10" style={{ fontWeight: '300' }}>Light</SelectItem>
-                <SelectItem value="400-normal" className="text-white hover:bg-white/10" style={{ fontWeight: '400' }}>Regular</SelectItem>
-                <SelectItem value="500-normal" className="text-white hover:bg-white/10" style={{ fontWeight: '500' }}>Medium</SelectItem>
-                <SelectItem value="600-normal" className="text-white hover:bg-white/10" style={{ fontWeight: '600' }}>Semi Bold</SelectItem>
-                <SelectItem value="700-normal" className="text-white hover:bg-white/10" style={{ fontWeight: '700' }}>Bold</SelectItem>
-                <SelectItem value="800-normal" className="text-white hover:bg-white/10" style={{ fontWeight: '800' }}>Extra Bold</SelectItem>
-                <SelectItem value="400-italic" className="text-white hover:bg-white/10" style={{ fontWeight: '400', fontStyle: 'italic' }}>Regular Italic</SelectItem>
-                <SelectItem value="700-italic" className="text-white hover:bg-white/10" style={{ fontWeight: '700', fontStyle: 'italic' }}>Bold Italic</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
         </div>
-
       </div>
     </div>
   );
