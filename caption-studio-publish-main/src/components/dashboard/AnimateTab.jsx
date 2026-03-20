@@ -66,7 +66,7 @@ const advancedAnimationCategories = {
 const categoryColors = {
   Basic: { bg: 'bg-blue-500/15', border: 'border-blue-500/30', text: 'text-blue-400' },
   Kinetic: { bg: 'bg-orange-500/15', border: 'border-orange-500/30', text: 'text-orange-400' },
-  Cinematic: { bg: 'bg-purple-500/15', border: 'border-purple-500/30', text: 'text-purple-400' },
+  Cinematic: { bg: 'bg-white/10', border: 'border-white/20', text: 'text-white/80' },
   Playful: { bg: 'bg-pink-500/15', border: 'border-pink-500/30', text: 'text-pink-400' },
 };
 
@@ -110,14 +110,14 @@ export default function AnimateTab({ selectedCaption, captions, setCaptions }) {
 
       <div className="space-y-4">
         {!freshSelectedCaption ? (
-          <div className="p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
-            <p className="text-sm text-yellow-200">
+          <div className="p-4 rounded-lg bg-white/5 border border-white/10">
+            <p className="text-sm text-gray-300">
               Select a caption or text element to apply animation.
             </p>
           </div>
         ) : (
           <>
-            <div className="p-3 rounded-lg bg-purple-500/10 border border-purple-500/20">
+            <div className="p-3 rounded-lg bg-white/5 border border-white/10">
               <p className="text-xs text-gray-400 mb-1">
                 {freshSelectedCaption.isTextElement ? 'Selected Text Element' : 'Selected Caption'}
               </p>
@@ -135,16 +135,16 @@ export default function AnimateTab({ selectedCaption, captions, setCaptions }) {
                     className={`
                       relative group overflow-hidden rounded-xl p-3 transition-all duration-300 border
                       ${currentAnimation === anim.value && !isAdvancedActive
-                        ? 'bg-gradient-to-br from-purple-600/20 to-blue-600/20 border-purple-500/50 shadow-[0_0_15px_rgba(168,85,247,0.15)]'
-                        : 'bg-zinc-900/50 border-white/5 hover:border-white/20 hover:bg-zinc-800/80 hover:shadow-lg hover:shadow-purple-500/5'}
+                        ? 'bg-white/10 border-white/30 shadow-[0_0_10px_rgba(255,255,255,0.08)]'
+                        : 'bg-zinc-900/50 border-white/5 hover:border-white/20 hover:bg-zinc-800/80'}
                     `}
                   >
-                    <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-blue-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                    <div className="absolute inset-0 bg-white/[0.03] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                     <div className="relative flex flex-col items-center gap-3">
                       <div className={`
                         w-10 h-10 rounded-lg flex items-center justify-center backdrop-blur-md transition-all duration-300
                         ${currentAnimation === anim.value && !isAdvancedActive
-                          ? 'bg-gradient-to-br from-purple-500 to-blue-600 shadow-lg shadow-purple-500/20 scale-110'
+                          ? 'bg-white/20 shadow-lg shadow-white/10 scale-110'
                           : 'bg-white/5 group-hover:bg-white/10 group-hover:scale-105'}
                       `}>
                         <div className={`w-3 h-3 rounded-full bg-white/90 ${anim.value !== 'none' ? 'animate-pulse shadow-[0_0_8px_rgba(255,255,255,0.5)]' : 'opacity-50'}`} />
@@ -165,12 +165,12 @@ export default function AnimateTab({ selectedCaption, captions, setCaptions }) {
                 className="w-full flex items-center justify-between text-xs text-gray-400 hover:text-gray-200 transition-colors mb-2 group"
               >
                 <div className="flex items-center gap-2">
-                  <div className={`flex items-center justify-center w-5 h-5 rounded border transition-all ${showAdvanced ? 'bg-purple-600 border-purple-500' : 'bg-white/5 border-white/20 group-hover:border-white/40'}`}>
+                  <div className={`flex items-center justify-center w-5 h-5 rounded border transition-all ${showAdvanced ? 'bg-white/20 border-white/40' : 'bg-white/5 border-white/20 group-hover:border-white/40'}`}>
                     {showAdvanced ? <span className="text-white text-xs font-bold leading-none">−</span> : <Plus className="w-3 h-3 text-gray-400 group-hover:text-white" />}
                   </div>
                   <span className="uppercase tracking-wider font-medium">Advanced Animations</span>
                   {isAdvancedActive && (
-                    <span className="text-[9px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-1.5 py-0.5 rounded-full font-semibold">Active</span>
+                    <span className="text-[9px] bg-white/10 text-white border border-white/20 px-1.5 py-0.5 rounded-full font-semibold">Active</span>
                   )}
                 </div>
                 <span className="text-gray-600">34 animations</span>
@@ -221,9 +221,9 @@ export default function AnimateTab({ selectedCaption, captions, setCaptions }) {
             {currentAnimation !== 'none' && (
               <div className="pt-3 border-t border-white/5">
                 <div className="flex items-center gap-2 mb-3">
-                  <Zap className="w-3.5 h-3.5 text-purple-400" />
+                  <Zap className="w-3.5 h-3.5 text-white/60" />
                   <span className="text-xs text-gray-400 uppercase tracking-wider">Animation Speed</span>
-                  <span className="ml-auto text-xs font-semibold text-purple-300">
+                  <span className="ml-auto text-xs font-semibold text-white">
                     {currentSpeed === 1 ? 'Normal' : currentSpeed < 1 ? 'Slow' : currentSpeed < 2 ? 'Fast' : 'Fastest'}
                     {' '}({currentSpeed}x)
                   </span>
@@ -246,7 +246,7 @@ export default function AnimateTab({ selectedCaption, captions, setCaptions }) {
         )}
 
         {/* Info */}
-        <div className="mt-4 p-3 rounded-lg bg-gradient-to-br from-purple-900/20 to-blue-900/20 border border-purple-500/20">
+        <div className="mt-4 p-3 rounded-lg bg-white/[0.03] border border-white/8">
           <p className="text-xs text-gray-400 mb-1">How it works</p>
           <p className="text-xs text-white leading-relaxed">
             Select an animation to apply it to the entire caption line.
