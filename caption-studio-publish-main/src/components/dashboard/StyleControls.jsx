@@ -53,7 +53,7 @@ const FontRow = React.memo(({ data, index, style }) => {
   return (
     <div
       style={style}
-      className={`flex items-center px-3 cursor-pointer transition-colors hover:bg-white/10 ${isSelected ? 'bg-[#F5A623]/30 text-[#F5A623] font-medium' : 'text-white'}`}
+      className={`flex items-center px-3 cursor-pointer transition-colors hover:bg-white/10 ${isSelected ? 'bg-white/10 text-white font-medium' : 'text-white'}`}
       onClick={(e) => {
         // Stop popover from instantly closing if it misfires
         e.stopPropagation();
@@ -63,7 +63,7 @@ const FontRow = React.memo(({ data, index, style }) => {
       <span style={{ fontFamily: font.value, fontSize: '15px' }} className="truncate flex-1">
         {font.label}
       </span>
-      {isSelected && <Check className="ml-1 h-4 w-4 shrink-0 text-[#F5A623]" />}
+      {isSelected && <Check className="ml-1 h-4 w-4 shrink-0 text-white" />}
     </div>
   );
 });
@@ -351,7 +351,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
       </h2>
 
       {selectedTextElement && (
-        <div className="mb-4 p-3 rounded-lg bg-[#F5A623]/30 border border-[#F5A623]/30">
+        <div className="mb-4 p-3 rounded-lg bg-white/5 border border-white/10">
           <p className="text-xs text-gray-400 mb-1">Editing Text Element</p>
           <p className="text-sm text-white font-medium line-clamp-1">"{selectedTextElement.text}"</p>
         </div>
@@ -366,7 +366,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
           <div>
             <div className="flex items-center justify-between mb-2">
               <Label className="text-sm text-gray-400">Font Family</Label>
-              <span className="text-[10px] text-[#F5A623] bg-[#F5A623]/30 px-2 py-0.5 rounded">
+              <span className="text-[10px] text-white bg-white/10 px-2 py-0.5 rounded">
                 {scriptLabels[detectedScript] || detectedScript}
               </span>
             </div>
@@ -516,407 +516,6 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
             />
           </div>
 
-          {/* Anchor Text Box */}
-          <div>
-            <Label className="text-sm text-gray-400 mb-2 block">Anchor Text Box</Label>
-            <div className="flex items-start gap-2">
-              <Button
-                variant={(selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'top' ? "default" : "outline"}
-                size="icon"
-                onClick={() => {
-                  updateStyle('text_anchor', 'top');
-                  updateStyle('line_spacing', 1.4);
-                }}
-                className={`h-8 w-8 ${(selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'top' ? 'bg-[#F5A623] hover:bg-[#F5A623]' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
-                title="Top Anchor (Grows down)"
-              >
-                <ArrowDownCircle className={`w-4 h-4 ${(selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'top' ? 'text-white' : 'text-gray-400'}`} />
-              </Button>
-              <Button
-                variant={(!selectedTextElement?.customStyle?.textAnchor && !captionStyle.text_anchor) || (selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'center' ? "default" : "outline"}
-                size="icon"
-                onClick={() => {
-                  updateStyle('text_anchor', 'center');
-                  updateStyle('line_spacing', 1.4);
-                }}
-                className={`h-8 w-8 ${(!selectedTextElement?.customStyle?.textAnchor && !captionStyle.text_anchor) || (selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'center' ? 'bg-[#F5A623] hover:bg-[#F5A623]' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
-                title="Center Anchor (Grows both ways)"
-              >
-                <AlignCenter className={`w-4 h-4 ${(!selectedTextElement?.customStyle?.textAnchor && !captionStyle.text_anchor) || (selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'center' ? 'text-white' : 'text-gray-400'}`} />
-              </Button>
-              <Button
-                variant={(selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'bottom' ? "default" : "outline"}
-                size="icon"
-                onClick={() => {
-                  updateStyle('text_anchor', 'bottom');
-                  updateStyle('line_spacing', 1.4);
-                }}
-                className={`h-8 w-8 ${(selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'bottom' ? 'bg-[#F5A623] hover:bg-[#F5A623]' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
-                title="Bottom Anchor (Grows up)"
-              >
-                <ArrowUpCircle className={`w-4 h-4 ${(selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'bottom' ? 'text-white' : 'text-gray-400'}`} />
-              </Button>
-            </div>
-          </div>
-
-          {/* Font Style Selector */}
-          <div>
-            <Label className="text-sm text-gray-400 mb-2 block">Style</Label>
-            <Select
-              value={`${normalizeFontWeight(getCurrentValue('font_weight', '500'))}-${getCurrentValue('font_style', 'normal')}`}
-              onValueChange={(value) => {
-                const [weight, style] = value.split('-');
-                updateStyle('font_weight', weight);
-                updateStyle('font_style', style);
-                if (!selectedTextElement) updateStyle('is_bold', parseInt(weight) >= 700);
-              }}
-            >
-              <SelectTrigger className="bg-zinc-900 border-white/10 text-white">
-                <SelectValue placeholder="Select style" />
-              </SelectTrigger>
-              <SelectContent className="bg-zinc-900 border-white/10 max-h-80">
-                <SelectItem value="300-normal" className="text-white hover:bg-white/10" style={{ fontWeight: '300' }}>Light</SelectItem>
-                <SelectItem value="400-normal" className="text-white hover:bg-white/10" style={{ fontWeight: '400' }}>Regular</SelectItem>
-                <SelectItem value="500-normal" className="text-white hover:bg-white/10" style={{ fontWeight: '500' }}>Medium</SelectItem>
-                <SelectItem value="600-normal" className="text-white hover:bg-white/10" style={{ fontWeight: '600' }}>Semi Bold</SelectItem>
-                <SelectItem value="700-normal" className="text-white hover:bg-white/10" style={{ fontWeight: '700' }}>Bold</SelectItem>
-                <SelectItem value="800-normal" className="text-white hover:bg-white/10" style={{ fontWeight: '800' }}>Extra Bold</SelectItem>
-                <SelectItem value="400-italic" className="text-white hover:bg-white/10" style={{ fontWeight: '400', fontStyle: 'italic' }}>Regular Italic</SelectItem>
-                <SelectItem value="700-italic" className="text-white hover:bg-white/10" style={{ fontWeight: '700', fontStyle: 'italic' }}>Bold Italic</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        {/* COLORS Section */}
-        <div className="space-y-4 pt-4 border-t border-white/5">
-          <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider">COLORS</h3>
-
-          {/* Text Color */}
-          <div>
-            <Label className="text-sm text-gray-400 mb-2 block">Text Color</Label>
-
-            {/* Solid Toggle */}
-            <button
-              onClick={() => setShowTextSolid(!showTextSolid)}
-              className="flex items-center justify-between w-full text-xs text-gray-400 hover:text-gray-300"
-            >
-              <span>Solid</span>
-              <span>{showTextSolid ? '−' : '+'}</span>
-            </button>
-
-            {/* Color Grid - 7 in first row, 2 in second */}
-            {showTextSolid && (
-              <div className="mb-3 mt-2">
-                <div className="grid grid-cols-7 gap-1.5 mb-1.5">
-                  <button
-                    onClick={() => {
-                      updateStyle('text_color', '#ffffff');
-                      updateStyle('text_gradient', '');
-                    }}
-                    className={`h-8 rounded-md border-2 flex items-center justify-center ${captionStyle.text_color === '#ffffff' && !captionStyle.text_gradient
-                      ? 'border-white'
-                      : 'border-white/10'
-                      } bg-zinc-800`}
-                  >
-                    <span className="text-[9px] text-gray-500">None</span>
-                  </button>
-                  {presetColors.slice(0, 6).map(color => (
-                    <button
-                      key={color}
-                      onClick={() => {
-                        updateStyle('text_color', color);
-                        updateStyle('text_gradient', '');
-                      }}
-                      className={`h-8 rounded-md border-2 transition-all ${captionStyle.text_color === color && !captionStyle.text_gradient
-                        ? 'border-white scale-105'
-                        : 'border-white/10 hover:border-white/30'
-                        }`}
-                      style={{ backgroundColor: color }}
-                    />
-                  ))}
-                </div>
-                <div className="grid grid-cols-7 gap-1.5">
-                  {presetColors.slice(6, 9).map(color => (
-                    <button
-                      key={color}
-                      onClick={() => {
-                        updateStyle('text_color', color);
-                        updateStyle('text_gradient', '');
-                      }}
-                      className={`h-8 rounded-md border-2 transition-all ${captionStyle.text_color === color && !captionStyle.text_gradient
-                        ? 'border-white scale-105'
-                        : 'border-white/10 hover:border-white/30'
-                        }`}
-                      style={{ backgroundColor: color }}
-                    />
-                  ))}
-                  <div></div>
-                </div>
-              </div>
-            )}
-
-            {/* Color Picker */}
-            <div className="flex items-center gap-2 p-2 mt-3 rounded-lg bg-white/[0.02] border border-white/5">
-              <input
-                type="color"
-                value={captionStyle.text_color || '#ffffff'}
-                onChange={(e) => {
-                  updateStyle('text_color', e.target.value);
-                  updateStyle('text_gradient', '');
-                }}
-                className="w-8 h-8 rounded cursor-pointer bg-transparent"
-              />
-              <span className="text-xs text-gray-400">Color Picker</span>
-            </div>
-
-            {/* Gradient Toggle */}
-            <button
-              onClick={() => setShowTextGradient(!showTextGradient)}
-              className="flex items-center justify-between w-full mt-3 text-xs text-gray-400 hover:text-gray-300"
-            >
-              <span>Gradient</span>
-              <span>{showTextGradient ? '−' : '+'}</span>
-            </button>
-
-            {showTextGradient && (
-              <>
-                <div className="mb-3 mt-2">
-                  <div className="grid grid-cols-4 gap-1.5 mb-1.5">
-                    <button
-                      onClick={() => {
-                        updateStyle('text_gradient', '');
-                        updateStyle('text_color', '#ffffff');
-                      }}
-                      className={`h-8 rounded-md border-2 flex items-center justify-center ${!captionStyle.text_gradient
-                        ? 'border-white'
-                        : 'border-white/10'
-                        } bg-zinc-800`}
-                    >
-                      <span className="text-[9px] text-gray-500">None</span>
-                    </button>
-                    {presetGradients.slice(0, 3).map(gradient => (
-                      <button
-                        key={gradient.value}
-                        onClick={() => {
-                          updateStyle('text_gradient', gradient.value);
-                          updateStyle('text_color', '#ffffff');
-                        }}
-                        className={`h-8 rounded-md border-2 transition-all ${captionStyle.text_gradient === gradient.value
-                          ? 'border-white scale-105'
-                          : 'border-white/10 hover:border-white/30'
-                          }`}
-                        style={{ background: gradient.value }}
-                      />
-                    ))}
-                  </div>
-                  <div className="grid grid-cols-4 gap-1.5">
-                    {presetGradients.slice(3, 6).map(gradient => (
-                      <button
-                        key={gradient.value}
-                        onClick={() => {
-                          updateStyle('text_gradient', gradient.value);
-                          updateStyle('text_color', '#ffffff');
-                        }}
-                        className={`h-8 rounded-md border-2 transition-all ${captionStyle.text_gradient === gradient.value
-                          ? 'border-white scale-105'
-                          : 'border-white/10 hover:border-white/30'
-                          }`}
-                        style={{ background: gradient.value }}
-                      />
-                    ))}
-                  </div>
-                </div>
-
-                {/* Custom Gradient Picker */}
-                <div className="flex items-center gap-2 p-2 rounded-lg bg-white/[0.02] border border-white/5">
-                  <Plus className="w-4 h-4 text-gray-500" />
-                  <input
-                    type="color"
-                    value={customTextColor1}
-                    onChange={(e) => {
-                      setCustomTextColor1(e.target.value);
-                      applyCustomTextGradient(e.target.value, customTextColor2);
-                    }}
-                    className="w-8 h-8 rounded cursor-pointer bg-transparent"
-                  />
-                  <input
-                    type="color"
-                    value={customTextColor2}
-                    onChange={(e) => {
-                      setCustomTextColor2(e.target.value);
-                      applyCustomTextGradient(customTextColor1, e.target.value);
-                    }}
-                    className="w-8 h-8 rounded cursor-pointer bg-transparent"
-                  />
-                  <span className="text-xs text-gray-500">Custom</span>
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Highlight Word */}
-          <div>
-            <Label className="text-sm text-gray-400 mb-2 block">Highlight Word</Label>
-
-            {/* Solid Toggle */}
-            <button
-              onClick={() => setShowHighlightSolid(!showHighlightSolid)}
-              className="flex items-center justify-between w-full text-xs text-gray-400 hover:text-gray-300"
-            >
-              <span>Solid</span>
-              <span>{showHighlightSolid ? '−' : '+'}</span>
-            </button>
-
-            {/* Color Grid - 7 in first row, 2 in second */}
-            {showHighlightSolid && (
-              <div className="mb-3 mt-2">
-                <div className="grid grid-cols-7 gap-1.5 mb-1.5">
-                  <button
-                    onClick={() => {
-                      updateStyle('highlight_color', '');
-                      updateStyle('highlight_gradient', '');
-                    }}
-                    className={`h-8 rounded-md border-2 flex items-center justify-center ${!captionStyle.highlight_color && !captionStyle.highlight_gradient
-                      ? 'border-white'
-                      : 'border-white/10'
-                      } bg-zinc-800`}
-                  >
-                    <span className="text-[9px] text-gray-500">None</span>
-                  </button>
-                  {['#fef08a', '#22c55e', '#3b82f6', '#F5A623', '#ec4899', '#ff6b35'].map(color => (
-                    <button
-                      key={color}
-                      onClick={() => {
-                        updateStyle('highlight_color', color);
-                        updateStyle('highlight_gradient', '');
-                      }}
-                      className={`h-8 rounded-md border-2 transition-all ${captionStyle.highlight_color === color && !captionStyle.highlight_gradient
-                        ? 'border-white scale-105'
-                        : 'border-white/10 hover:border-white/30'
-                        }`}
-                      style={{ backgroundColor: color }}
-                    />
-                  ))}
-                </div>
-                <div className="grid grid-cols-7 gap-1.5">
-                  {['#fb923c', '#E91E63'].map(color => (
-                    <button
-                      key={color}
-                      onClick={() => {
-                        updateStyle('highlight_color', color);
-                        updateStyle('highlight_gradient', '');
-                      }}
-                      className={`h-8 rounded-md border-2 transition-all ${captionStyle.highlight_color === color && !captionStyle.highlight_gradient
-                        ? 'border-white scale-105'
-                        : 'border-white/10 hover:border-white/30'
-                        }`}
-                      style={{ backgroundColor: color }}
-                    />
-                  ))}
-                  <div></div>
-                </div>
-              </div>
-            )}
-
-            {/* Color Picker */}
-            <div className="flex items-center gap-2 p-2 mt-3 rounded-lg bg-white/[0.02] border border-white/5">
-              <input
-                type="color"
-                value={captionStyle.highlight_color || '#facc15'}
-                onChange={(e) => {
-                  updateStyle('highlight_color', e.target.value);
-                  updateStyle('highlight_gradient', '');
-                }}
-                className="w-8 h-8 rounded cursor-pointer bg-transparent"
-              />
-              <span className="text-xs text-gray-400">Color Picker</span>
-            </div>
-
-            {/* Gradient Toggle */}
-            <button
-              onClick={() => setShowHighlightGradient(!showHighlightGradient)}
-              className="flex items-center justify-between w-full mt-3 text-xs text-gray-400 hover:text-gray-300"
-            >
-              <span>Gradient</span>
-              <span>{showHighlightGradient ? '−' : '+'}</span>
-            </button>
-
-            {showHighlightGradient && (
-              <>
-                <div className="mb-3 mt-2">
-                  <div className="grid grid-cols-4 gap-1.5 mb-1.5">
-                    <button
-                      onClick={() => {
-                        updateStyle('highlight_gradient', '');
-                        updateStyle('highlight_color', '');
-                      }}
-                      className={`h-8 rounded-md border-2 flex items-center justify-center ${!captionStyle.highlight_gradient
-                        ? 'border-white'
-                        : 'border-white/10'
-                        } bg-zinc-800`}
-                    >
-                      <span className="text-[9px] text-gray-500">None</span>
-                    </button>
-                    {presetGradients.slice(0, 3).map(gradient => (
-                      <button
-                        key={gradient.value}
-                        onClick={() => {
-                          updateStyle('highlight_gradient', gradient.value);
-                          updateStyle('highlight_color', '');
-                        }}
-                        className={`h-8 rounded-md border-2 transition-all ${captionStyle.highlight_gradient === gradient.value
-                          ? 'border-white scale-105'
-                          : 'border-white/10 hover:border-white/30'
-                          }`}
-                        style={{ background: gradient.value }}
-                      />
-                    ))}
-                  </div>
-                  <div className="grid grid-cols-4 gap-1.5">
-                    {presetGradients.slice(3, 6).map(gradient => (
-                      <button
-                        key={gradient.value}
-                        onClick={() => {
-                          updateStyle('highlight_gradient', gradient.value);
-                          updateStyle('highlight_color', '');
-                        }}
-                        className={`h-8 rounded-md border-2 transition-all ${captionStyle.highlight_gradient === gradient.value
-                          ? 'border-white scale-105'
-                          : 'border-white/10 hover:border-white/30'
-                          }`}
-                        style={{ background: gradient.value }}
-                      />
-                    ))}
-                  </div>
-                </div>
-
-                {/* Custom Gradient Picker */}
-                <div className="flex items-center gap-2 p-2 rounded-lg bg-white/[0.02] border border-white/5">
-                  <Plus className="w-4 h-4 text-gray-500" />
-                  <input
-                    type="color"
-                    value={customHighlightColor1}
-                    onChange={(e) => {
-                      setCustomHighlightColor1(e.target.value);
-                      applyCustomHighlightGradient(e.target.value, customHighlightColor2);
-                    }}
-                    className="w-8 h-8 rounded cursor-pointer bg-transparent"
-                  />
-                  <input
-                    type="color"
-                    value={customHighlightColor2}
-                    onChange={(e) => {
-                      setCustomHighlightColor2(e.target.value);
-                      applyCustomHighlightGradient(customHighlightColor1, e.target.value);
-                    }}
-                    className="w-8 h-8 rounded cursor-pointer bg-transparent"
-                  />
-                  <span className="text-xs text-gray-500">Custom</span>
-                </div>
-              </>
-            )}
-          </div>
         </div>
 
         {/* ADVANCED Section */}
@@ -930,7 +529,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
               <button
                 onClick={() => updateStyle('text_align', 'left')}
                 className={`flex-1 flex items-center justify-center py-1.5 rounded-md transition-all ${getCurrentValue('text_align', 'center') === 'left'
-                  ? "bg-[#F5A623] text-white shadow-sm"
+                  ? "bg-white text-black shadow-sm"
                   : "text-gray-400 hover:text-white hover:bg-white/5"
                   }`}
               >
@@ -939,7 +538,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
               <button
                 onClick={() => updateStyle('text_align', 'center')}
                 className={`flex-1 flex items-center justify-center py-1.5 rounded-md transition-all ${getCurrentValue('text_align', 'center') === 'center'
-                  ? "bg-[#F5A623] text-white shadow-sm"
+                  ? "bg-white text-black shadow-sm"
                   : "text-gray-400 hover:text-white hover:bg-white/5"
                   }`}
               >
@@ -948,7 +547,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
               <button
                 onClick={() => updateStyle('text_align', 'right')}
                 className={`flex-1 flex items-center justify-center py-1.5 rounded-md transition-all ${getCurrentValue('text_align', 'center') === 'right'
-                  ? "bg-[#F5A623] text-white shadow-sm"
+                  ? "bg-white text-black shadow-sm"
                   : "text-gray-400 hover:text-white hover:bg-white/5"
                   }`}
               >
@@ -967,7 +566,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
                   if (!selectedTextElement) updateStyle('is_caps', false);
                 }}
                 className={`flex-1 flex items-center justify-center py-1.5 rounded-md text-xs font-medium transition-all ${getCurrentValue('text_case', 'none') === 'lowercase'
-                  ? "bg-[#F5A623] text-white shadow-sm"
+                  ? "bg-white text-black shadow-sm"
                   : "text-gray-400 hover:text-white hover:bg-white/5"
                   }`}
               >
@@ -979,7 +578,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
                   if (!selectedTextElement) updateStyle('is_caps', false);
                 }}
                 className={`flex-1 flex items-center justify-center py-1.5 rounded-md text-xs font-medium transition-all ${getCurrentValue('text_case', 'none') === 'capitalize'
-                  ? "bg-[#F5A623] text-white shadow-sm"
+                  ? "bg-white text-black shadow-sm"
                   : "text-gray-400 hover:text-white hover:bg-white/5"
                   }`}
               >
@@ -991,7 +590,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
                   if (!selectedTextElement) updateStyle('is_caps', true);
                 }}
                 className={`flex-1 flex items-center justify-center py-1.5 rounded-md text-xs font-medium transition-all ${(getCurrentValue('text_case', 'none') === 'uppercase' || (!selectedTextElement && captionStyle.is_caps))
-                  ? "bg-[#F5A623] text-white shadow-sm"
+                  ? "bg-white text-black shadow-sm"
                   : "text-gray-400 hover:text-white hover:bg-white/5"
                   }`}
               >
@@ -1238,15 +837,15 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
               className="w-full flex items-center justify-between text-sm font-semibold text-white mb-1 group"
             >
               <span className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-[#F5A623]" />
+                <Sparkles className="w-4 h-4 text-white" />
                 Effects
                 {getCurrentValue('effect_type', 'none') !== 'none' && (
-                  <span className="text-[10px] bg-[#F5A623]/15 text-[#F5A623] px-1.5 py-0.5 rounded-full font-medium capitalize">
+                  <span className="text-[10px] bg-white/10 text-white px-1.5 py-0.5 rounded-full font-medium capitalize">
                     {getCurrentValue('effect_type')}
                   </span>
                 )}
               </span>
-              <span className={`w-5 h-5 rounded border border-white/20 flex items-center justify-center text-gray-400 group-hover:border-[#F5A623]/50 group-hover:text-[#F5A623] transition-colors ${effectsOpen ? 'bg-[#F5A623]/10 border-[#F5A623]/30 text-[#F5A623]' : ''}`}>
+              <span className={`w-5 h-5 rounded border border-white/20 flex items-center justify-center text-gray-400 group-hover:border-white/50 group-hover:text-white transition-colors ${effectsOpen ? 'bg-white/10 border-white/30 text-white' : ''}`}>
                 {effectsOpen ? '−' : '+'}
               </span>
             </button>
@@ -1287,7 +886,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
                           }
                         }}
                         className={`p-2 rounded-lg border text-xs text-center transition-all duration-200 ${isSelected
-                          ? 'bg-[#F5A623]/15 border-[#F5A623]/60 text-white font-medium'
+                          ? 'bg-white/10 border-white/40 text-white font-medium'
                           : 'bg-zinc-800/50 border-white/5 text-gray-400 hover:bg-zinc-800 hover:border-white/20'
                         }`}
                       >
@@ -1370,6 +969,414 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
 
 
         </div>
+
+        {/* COLORS Section */}
+        <div className="space-y-4 pt-4 border-t border-white/5">
+          <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider">COLORS</h3>
+
+          {/* Text Color */}
+          <div>
+            <Label className="text-sm text-gray-400 mb-2 block">Text Color</Label>
+
+            {/* Solid Toggle */}
+            <button
+              onClick={() => setShowTextSolid(!showTextSolid)}
+              className="flex items-center justify-between w-full text-xs text-gray-400 hover:text-gray-300"
+            >
+              <span>Solid</span>
+              <span>{showTextSolid ? '−' : '+'}</span>
+            </button>
+
+            {/* Color Grid - 7 in first row, 2 in second */}
+            {showTextSolid && (
+              <div className="mb-3 mt-2">
+                <div className="grid grid-cols-7 gap-1.5 mb-1.5">
+                  <button
+                    onClick={() => {
+                      updateStyle('text_color', '#ffffff');
+                      updateStyle('text_gradient', '');
+                    }}
+                    className={`h-8 rounded-md border-2 flex items-center justify-center ${captionStyle.text_color === '#ffffff' && !captionStyle.text_gradient
+                      ? 'border-white'
+                      : 'border-white/10'
+                      } bg-zinc-800`}
+                  >
+                    <span className="text-[9px] text-gray-500">None</span>
+                  </button>
+                  {presetColors.slice(0, 6).map(color => (
+                    <button
+                      key={color}
+                      onClick={() => {
+                        updateStyle('text_color', color);
+                        updateStyle('text_gradient', '');
+                      }}
+                      className={`h-8 rounded-md border-2 transition-all ${captionStyle.text_color === color && !captionStyle.text_gradient
+                        ? 'border-white scale-105'
+                        : 'border-white/10 hover:border-white/30'
+                        }`}
+                      style={{ backgroundColor: color }}
+                    />
+                  ))}
+                </div>
+                <div className="grid grid-cols-7 gap-1.5">
+                  {presetColors.slice(6, 9).map(color => (
+                    <button
+                      key={color}
+                      onClick={() => {
+                        updateStyle('text_color', color);
+                        updateStyle('text_gradient', '');
+                      }}
+                      className={`h-8 rounded-md border-2 transition-all ${captionStyle.text_color === color && !captionStyle.text_gradient
+                        ? 'border-white scale-105'
+                        : 'border-white/10 hover:border-white/30'
+                        }`}
+                      style={{ backgroundColor: color }}
+                    />
+                  ))}
+                  <div></div>
+                </div>
+              </div>
+            )}
+
+            {/* Color Picker */}
+            <div className="flex items-center gap-2 p-2 mt-3 rounded-lg bg-white/[0.02] border border-white/5">
+              <input
+                type="color"
+                value={captionStyle.text_color || '#ffffff'}
+                onChange={(e) => {
+                  updateStyle('text_color', e.target.value);
+                  updateStyle('text_gradient', '');
+                }}
+                className="w-8 h-8 rounded cursor-pointer bg-transparent"
+              />
+              <span className="text-xs text-gray-400">Color Picker</span>
+            </div>
+
+            {/* Gradient Toggle */}
+            <button
+              onClick={() => setShowTextGradient(!showTextGradient)}
+              className="flex items-center justify-between w-full mt-3 text-xs text-gray-400 hover:text-gray-300"
+            >
+              <span>Gradient</span>
+              <span>{showTextGradient ? '−' : '+'}</span>
+            </button>
+
+            {showTextGradient && (
+              <>
+                <div className="mb-3 mt-2">
+                  <div className="grid grid-cols-4 gap-1.5 mb-1.5">
+                    <button
+                      onClick={() => {
+                        updateStyle('text_gradient', '');
+                        updateStyle('text_color', '#ffffff');
+                      }}
+                      className={`h-8 rounded-md border-2 flex items-center justify-center ${!captionStyle.text_gradient
+                        ? 'border-white'
+                        : 'border-white/10'
+                        } bg-zinc-800`}
+                    >
+                      <span className="text-[9px] text-gray-500">None</span>
+                    </button>
+                    {presetGradients.slice(0, 3).map(gradient => (
+                      <button
+                        key={gradient.value}
+                        onClick={() => {
+                          updateStyle('text_gradient', gradient.value);
+                          updateStyle('text_color', '#ffffff');
+                        }}
+                        className={`h-8 rounded-md border-2 transition-all ${captionStyle.text_gradient === gradient.value
+                          ? 'border-white scale-105'
+                          : 'border-white/10 hover:border-white/30'
+                          }`}
+                        style={{ background: gradient.value }}
+                      />
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {presetGradients.slice(3, 6).map(gradient => (
+                      <button
+                        key={gradient.value}
+                        onClick={() => {
+                          updateStyle('text_gradient', gradient.value);
+                          updateStyle('text_color', '#ffffff');
+                        }}
+                        className={`h-8 rounded-md border-2 transition-all ${captionStyle.text_gradient === gradient.value
+                          ? 'border-white scale-105'
+                          : 'border-white/10 hover:border-white/30'
+                          }`}
+                        style={{ background: gradient.value }}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {/* Custom Gradient Picker */}
+                <div className="flex items-center gap-2 p-2 rounded-lg bg-white/[0.02] border border-white/5">
+                  <Plus className="w-5 h-5 text-gray-300" />
+                  <input
+                    type="color"
+                    value={customTextColor1}
+                    onChange={(e) => {
+                      setCustomTextColor1(e.target.value);
+                      applyCustomTextGradient(e.target.value, customTextColor2);
+                    }}
+                    className="w-8 h-8 rounded cursor-pointer bg-transparent"
+                  />
+                  <input
+                    type="color"
+                    value={customTextColor2}
+                    onChange={(e) => {
+                      setCustomTextColor2(e.target.value);
+                      applyCustomTextGradient(customTextColor1, e.target.value);
+                    }}
+                    className="w-8 h-8 rounded cursor-pointer bg-transparent"
+                  />
+                  <span className="text-xs text-gray-500">Custom</span>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Highlight Word */}
+          <div>
+            <Label className="text-sm text-gray-400 mb-2 block">Highlight Word</Label>
+
+            {/* Solid Toggle */}
+            <button
+              onClick={() => setShowHighlightSolid(!showHighlightSolid)}
+              className="flex items-center justify-between w-full text-xs text-gray-400 hover:text-gray-300"
+            >
+              <span>Solid</span>
+              <span>{showHighlightSolid ? '−' : '+'}</span>
+            </button>
+
+            {/* Color Grid - 7 in first row, 2 in second */}
+            {showHighlightSolid && (
+              <div className="mb-3 mt-2">
+                <div className="grid grid-cols-7 gap-1.5 mb-1.5">
+                  <button
+                    onClick={() => {
+                      updateStyle('highlight_color', '');
+                      updateStyle('highlight_gradient', '');
+                    }}
+                    className={`h-8 rounded-md border-2 flex items-center justify-center ${!captionStyle.highlight_color && !captionStyle.highlight_gradient
+                      ? 'border-white'
+                      : 'border-white/10'
+                      } bg-zinc-800`}
+                  >
+                    <span className="text-[9px] text-gray-500">None</span>
+                  </button>
+                  {['#fef08a', '#22c55e', '#3b82f6', '#F5A623', '#ec4899', '#ff6b35'].map(color => (
+                    <button
+                      key={color}
+                      onClick={() => {
+                        updateStyle('highlight_color', color);
+                        updateStyle('highlight_gradient', '');
+                      }}
+                      className={`h-8 rounded-md border-2 transition-all ${captionStyle.highlight_color === color && !captionStyle.highlight_gradient
+                        ? 'border-white scale-105'
+                        : 'border-white/10 hover:border-white/30'
+                        }`}
+                      style={{ backgroundColor: color }}
+                    />
+                  ))}
+                </div>
+                <div className="grid grid-cols-7 gap-1.5">
+                  {['#fb923c', '#E91E63'].map(color => (
+                    <button
+                      key={color}
+                      onClick={() => {
+                        updateStyle('highlight_color', color);
+                        updateStyle('highlight_gradient', '');
+                      }}
+                      className={`h-8 rounded-md border-2 transition-all ${captionStyle.highlight_color === color && !captionStyle.highlight_gradient
+                        ? 'border-white scale-105'
+                        : 'border-white/10 hover:border-white/30'
+                        }`}
+                      style={{ backgroundColor: color }}
+                    />
+                  ))}
+                  <div></div>
+                </div>
+              </div>
+            )}
+
+            {/* Color Picker */}
+            <div className="flex items-center gap-2 p-2 mt-3 rounded-lg bg-white/[0.02] border border-white/5">
+              <input
+                type="color"
+                value={captionStyle.highlight_color || '#facc15'}
+                onChange={(e) => {
+                  updateStyle('highlight_color', e.target.value);
+                  updateStyle('highlight_gradient', '');
+                }}
+                className="w-8 h-8 rounded cursor-pointer bg-transparent"
+              />
+              <span className="text-xs text-gray-400">Color Picker</span>
+            </div>
+
+            {/* Gradient Toggle */}
+            <button
+              onClick={() => setShowHighlightGradient(!showHighlightGradient)}
+              className="flex items-center justify-between w-full mt-3 text-xs text-gray-400 hover:text-gray-300"
+            >
+              <span>Gradient</span>
+              <span>{showHighlightGradient ? '−' : '+'}</span>
+            </button>
+
+            {showHighlightGradient && (
+              <>
+                <div className="mb-3 mt-2">
+                  <div className="grid grid-cols-4 gap-1.5 mb-1.5">
+                    <button
+                      onClick={() => {
+                        updateStyle('highlight_gradient', '');
+                        updateStyle('highlight_color', '');
+                      }}
+                      className={`h-8 rounded-md border-2 flex items-center justify-center ${!captionStyle.highlight_gradient
+                        ? 'border-white'
+                        : 'border-white/10'
+                        } bg-zinc-800`}
+                    >
+                      <span className="text-[9px] text-gray-500">None</span>
+                    </button>
+                    {presetGradients.slice(0, 3).map(gradient => (
+                      <button
+                        key={gradient.value}
+                        onClick={() => {
+                          updateStyle('highlight_gradient', gradient.value);
+                          updateStyle('highlight_color', '');
+                        }}
+                        className={`h-8 rounded-md border-2 transition-all ${captionStyle.highlight_gradient === gradient.value
+                          ? 'border-white scale-105'
+                          : 'border-white/10 hover:border-white/30'
+                          }`}
+                        style={{ background: gradient.value }}
+                      />
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {presetGradients.slice(3, 6).map(gradient => (
+                      <button
+                        key={gradient.value}
+                        onClick={() => {
+                          updateStyle('highlight_gradient', gradient.value);
+                          updateStyle('highlight_color', '');
+                        }}
+                        className={`h-8 rounded-md border-2 transition-all ${captionStyle.highlight_gradient === gradient.value
+                          ? 'border-white scale-105'
+                          : 'border-white/10 hover:border-white/30'
+                          }`}
+                        style={{ background: gradient.value }}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {/* Custom Gradient Picker */}
+                <div className="flex items-center gap-2 p-2 rounded-lg bg-white/[0.02] border border-white/5">
+                  <Plus className="w-5 h-5 text-gray-300" />
+                  <input
+                    type="color"
+                    value={customHighlightColor1}
+                    onChange={(e) => {
+                      setCustomHighlightColor1(e.target.value);
+                      applyCustomHighlightGradient(e.target.value, customHighlightColor2);
+                    }}
+                    className="w-8 h-8 rounded cursor-pointer bg-transparent"
+                  />
+                  <input
+                    type="color"
+                    value={customHighlightColor2}
+                    onChange={(e) => {
+                      setCustomHighlightColor2(e.target.value);
+                      applyCustomHighlightGradient(customHighlightColor1, e.target.value);
+                    }}
+                    className="w-8 h-8 rounded cursor-pointer bg-transparent"
+                  />
+                  <span className="text-xs text-gray-500">Custom</span>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* TEXT STYLE Section — Anchor & Font Weight */}
+        <div className="space-y-4 pt-4 border-t border-white/5">
+          <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider">TEXT STYLE</h3>
+
+          {/* Anchor Text Box */}
+          <div>
+            <Label className="text-sm text-gray-400 mb-2 block">Anchor Text Box</Label>
+            <div className="flex items-start gap-2">
+              <Button
+                variant={(selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'top' ? "default" : "outline"}
+                size="icon"
+                onClick={() => {
+                  updateStyle('text_anchor', 'top');
+                  updateStyle('line_spacing', 1.4);
+                }}
+                className={`h-8 w-8 ${(selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'top' ? 'bg-white hover:bg-gray-100' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
+                title="Top Anchor (Grows down)"
+              >
+                <ArrowDownCircle className={`w-4 h-4 ${(selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'top' ? 'text-black' : 'text-gray-400'}`} />
+              </Button>
+              <Button
+                variant={(!selectedTextElement?.customStyle?.textAnchor && !captionStyle.text_anchor) || (selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'center' ? "default" : "outline"}
+                size="icon"
+                onClick={() => {
+                  updateStyle('text_anchor', 'center');
+                  updateStyle('line_spacing', 1.4);
+                }}
+                className={`h-8 w-8 ${(!selectedTextElement?.customStyle?.textAnchor && !captionStyle.text_anchor) || (selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'center' ? 'bg-white hover:bg-gray-100' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
+                title="Center Anchor (Grows both ways)"
+              >
+                <AlignCenter className={`w-4 h-4 ${(!selectedTextElement?.customStyle?.textAnchor && !captionStyle.text_anchor) || (selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'center' ? 'text-black' : 'text-gray-400'}`} />
+              </Button>
+              <Button
+                variant={(selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'bottom' ? "default" : "outline"}
+                size="icon"
+                onClick={() => {
+                  updateStyle('text_anchor', 'bottom');
+                  updateStyle('line_spacing', 1.4);
+                }}
+                className={`h-8 w-8 ${(selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'bottom' ? 'bg-white hover:bg-gray-100' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
+                title="Bottom Anchor (Grows up)"
+              >
+                <ArrowUpCircle className={`w-4 h-4 ${(selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'bottom' ? 'text-black' : 'text-gray-400'}`} />
+              </Button>
+            </div>
+          </div>
+
+          {/* Font Style Selector */}
+          <div>
+            <Label className="text-sm text-gray-400 mb-2 block">Font Style</Label>
+            <Select
+              value={`${normalizeFontWeight(getCurrentValue('font_weight', '500'))}-${getCurrentValue('font_style', 'normal')}`}
+              onValueChange={(value) => {
+                const [weight, style] = value.split('-');
+                updateStyle('font_weight', weight);
+                updateStyle('font_style', style);
+                if (!selectedTextElement) updateStyle('is_bold', parseInt(weight) >= 700);
+              }}
+            >
+              <SelectTrigger className="bg-zinc-900 border-white/10 text-white">
+                <SelectValue placeholder="Select style" />
+              </SelectTrigger>
+              <SelectContent className="bg-zinc-900 border-white/10 max-h-80">
+                <SelectItem value="300-normal" className="text-white hover:bg-white/10" style={{ fontWeight: '300' }}>Light</SelectItem>
+                <SelectItem value="400-normal" className="text-white hover:bg-white/10" style={{ fontWeight: '400' }}>Regular</SelectItem>
+                <SelectItem value="500-normal" className="text-white hover:bg-white/10" style={{ fontWeight: '500' }}>Medium</SelectItem>
+                <SelectItem value="600-normal" className="text-white hover:bg-white/10" style={{ fontWeight: '600' }}>Semi Bold</SelectItem>
+                <SelectItem value="700-normal" className="text-white hover:bg-white/10" style={{ fontWeight: '700' }}>Bold</SelectItem>
+                <SelectItem value="800-normal" className="text-white hover:bg-white/10" style={{ fontWeight: '800' }}>Extra Bold</SelectItem>
+                <SelectItem value="400-italic" className="text-white hover:bg-white/10" style={{ fontWeight: '400', fontStyle: 'italic' }}>Regular Italic</SelectItem>
+                <SelectItem value="700-italic" className="text-white hover:bg-white/10" style={{ fontWeight: '700', fontStyle: 'italic' }}>Bold Italic</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
       </div>
     </div>
   );

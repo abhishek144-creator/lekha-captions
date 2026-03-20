@@ -466,7 +466,7 @@ export default function CaptionTimeline({
       <div className="flex gap-2" style={{ height: `${timelineHeight - 40}px` }}>
         {/* Scrollable timeline container */}
         <div
-          className="flex-1 overflow-hidden bg-zinc-900/50 rounded-lg border border-white/5"
+          className="flex-1 overflow-hidden bg-[#161616] rounded-lg border border-white/5"
         >
           <div
             ref={scrollContainerRef}
@@ -508,7 +508,7 @@ export default function CaptionTimeline({
               {snappedTime !== null && (
                 <div
                   className={`absolute top-0 bottom-0 w-px z-50 pointer-events-none ${snappedTime.type === 'waveform'
-                    ? 'bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.9)]'
+                    ? 'bg-violet-400 shadow-[0_0_12px_rgba(167,139,250,0.9)]'
                     : 'bg-yellow-400 shadow-[0_0_8px_rgba(250,204,21,0.8)]'
                     }`}
                   style={{ left: `${getPositionPercentage(typeof snappedTime === 'object' ? snappedTime.time : snappedTime)}%` }}
@@ -647,16 +647,17 @@ export default function CaptionTimeline({
                         initial={{ opacity: 0, scale: 0.9 }}
                         animate={{ opacity: 1, scale: 1 }}
                         className={`absolute rounded-md transition-all border group cursor-move ${isSelected
-                          ? 'bg-[#F5A623] border-[#F5A623] z-20'
+                          ? 'bg-white/20 border-white/50 z-20'
                           : isActive
-                            ? 'bg-[#F5A623]/55 border-[#F5A623]/60 z-10'
-                            : 'bg-[#F5A623]/25 border-[#F5A623]/30 hover:bg-[#F5A623]/40 z-10'
+                            ? 'bg-white/15 border-white/30 z-10'
+                            : 'bg-white/10 border-white/20 hover:bg-white/15 hover:border-white/30 z-10'
                           }`}
                         style={{
                           left: `${left}%`,
                           width: `${Math.max(width, 1)}%`,
                           top: '0',
-                          height: `${SPEECH_HEIGHT - 4}px`
+                          height: `${SPEECH_HEIGHT - 4}px`,
+                          ...(isSelected ? { borderWidth: '1.5px' } : {})
                         }}
                         onClick={(e) => {
                           e.stopPropagation();
@@ -673,7 +674,7 @@ export default function CaptionTimeline({
                         {setCaptions && (
                           <>
                             <div
-                              className="absolute left-0 top-0 bottom-0 w-2 bg-[#F5A623] opacity-0 group-hover:opacity-100 cursor-ew-resize z-30 rounded-l"
+                              className="absolute left-0 top-0 bottom-0 w-2 bg-white/60 opacity-0 group-hover:opacity-100 cursor-ew-resize z-30 rounded-l"
                               onMouseDown={(e) => {
                                 e.stopPropagation();
                                 e.preventDefault();
@@ -681,7 +682,7 @@ export default function CaptionTimeline({
                               }}
                             />
                             <div
-                              className="absolute right-0 top-0 bottom-0 w-2 bg-[#F5A623] opacity-0 group-hover:opacity-100 cursor-ew-resize z-30 rounded-r"
+                              className="absolute right-0 top-0 bottom-0 w-2 bg-white/60 opacity-0 group-hover:opacity-100 cursor-ew-resize z-30 rounded-r"
                               onMouseDown={(e) => {
                                 e.stopPropagation();
                                 e.preventDefault();
@@ -690,7 +691,7 @@ export default function CaptionTimeline({
                             />
                           </>
                         )}
-                        <div className={`px-2 truncate text-[10px] pointer-events-none flex items-center h-full ${isSelected ? 'text-black font-semibold' : 'text-[#F5A623]'}`}>
+                        <div className={`px-2 truncate text-[10px] pointer-events-none flex items-center h-full ${isSelected ? 'text-white font-semibold' : 'text-white/80'}`}>
                           {(caption.text || '').slice(0, 60)}
                         </div>
                       </motion.div>
@@ -705,15 +706,15 @@ export default function CaptionTimeline({
                 style={{ top: `${TEXT_ROWS * TEXT_ROW_HEIGHT + SPEECH_HEIGHT + 8}px`, height: `${WAVEFORM_HEIGHT}px` }}
               >
                 {/* Divider line */}
-                <div className="absolute top-0 left-0 right-0 h-px bg-emerald-500/30" />
+                <div className="absolute top-0 left-0 right-0 h-px bg-violet-500/30" />
 
                 {/* Row label */}
-                <div className="absolute left-1 top-1 text-[8px] text-emerald-400/60 uppercase tracking-wider font-medium pointer-events-none z-10">
+                <div className="absolute left-1 top-1 text-[8px] text-violet-400/60 uppercase tracking-wider font-medium pointer-events-none z-10">
                   Audio
                 </div>
 
                 {/* Waveform Background */}
-                <div className="absolute inset-0 bg-emerald-500/[0.03]" />
+                <div className="absolute inset-0 bg-violet-500/[0.03]" />
 
                 {/* Waveform Visualization */}
                 <div className="absolute left-0 right-0 top-3 bottom-1 flex items-center px-1">
@@ -745,9 +746,9 @@ export default function CaptionTimeline({
                       })}
                       <defs>
                         <linearGradient id="waveformGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                          <stop offset="0%" stopColor="#10b981" stopOpacity="0.9" />
-                          <stop offset="50%" stopColor="#34d399" stopOpacity="1" />
-                          <stop offset="100%" stopColor="#10b981" stopOpacity="0.9" />
+                          <stop offset="0%" stopColor="#8b5cf6" stopOpacity="0.9" />
+                          <stop offset="50%" stopColor="#a78bfa" stopOpacity="1" />
+                          <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0.9" />
                         </linearGradient>
                       </defs>
                     </svg>
@@ -772,7 +773,7 @@ export default function CaptionTimeline({
                             y={y}
                             width={0.5}
                             height={barHeight}
-                            fill="#10b981"
+                            fill="#8b5cf6"
                             rx={0.25}
                           />
                         );

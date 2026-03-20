@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
-import { Play, Pause, Volume2, VolumeX, X } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, X, Maximize2, Minimize2 } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
 import WordClickPopup from './WordClickPopup';
@@ -99,7 +99,9 @@ export default function VideoPlayer({
   setSelectedCaptionId,
   wordPopup,
   setWordPopup,
-  onVideoLoaded
+  onVideoLoaded,
+  isVideoFullscreen,
+  setIsVideoFullscreen
 }) {
   const videoRef = useRef(null);
   const [isMuted, setIsMuted] = useState(false);
@@ -788,6 +790,16 @@ export default function VideoPlayer({
     <div className="flex flex-col h-full">
       {/* Video container with 9:16 aspect ratio for mobile preview */}
       <div className="relative flex-1 bg-zinc-950 rounded-xl overflow-hidden flex items-center justify-center min-h-0">
+        {/* Fullscreen toggle — overlaid in top-right corner of canvas */}
+        {setIsVideoFullscreen && (
+          <button
+            onClick={() => setIsVideoFullscreen(v => !v)}
+            className="absolute top-2 right-2 z-50 p-1.5 rounded bg-black/40 hover:bg-black/70 text-white/70 hover:text-white transition-colors backdrop-blur-sm"
+            title={isVideoFullscreen ? 'Collapse' : 'Expand'}
+          >
+            {isVideoFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+          </button>
+        )}
         <div ref={videoContainerRef} className="relative w-full h-full max-h-full aspect-[9/16] bg-black shadow-2xl" onClick={(e) => {
           if (e.target === e.currentTarget && setSelectedCaptionId) setSelectedCaptionId(null);
         }}>

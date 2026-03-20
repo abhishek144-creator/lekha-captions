@@ -112,6 +112,7 @@ const plans = [
 export default function PricingSection() {
   const [processingPlan, setProcessingPlan] = useState(null)
   const [billing, setBilling] = useState('monthly')
+  const [selectedPlan, setSelectedPlan] = useState(null)
   const { currentUser } = useAuth()
 
   useEffect(() => {
@@ -218,7 +219,7 @@ export default function PricingSection() {
   }
 
   return (
-    <section className="py-24 bg-[#0a0a0a] relative">
+    <section className="py-24 bg-[#111111] relative">
       <div className="max-w-6xl mx-auto px-6 relative">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -229,7 +230,7 @@ export default function PricingSection() {
           <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
             Simple, Transparent Pricing
           </h2>
-          <p className="text-gray-400 mb-8">
+          <p className="text-[#949494] mb-8">
             Choose the plan that fits your content schedule.
           </p>
 
@@ -254,7 +255,7 @@ export default function PricingSection() {
               }`}
             >
               Yearly
-              <span className="text-xs bg-gradient-to-r from-[#FFE566] to-[#F5A623] text-black font-semibold px-1.5 py-0.5 rounded-full">-20%</span>
+              <span className="text-xs bg-white text-black font-semibold px-1.5 py-0.5 rounded-full">-20%</span>
             </button>
           </div>
         </motion.div>
@@ -267,25 +268,28 @@ export default function PricingSection() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ delay: idx * 0.1 }}
-              className={`relative rounded-2xl p-8 bg-zinc-900 ${plan.popular
-                ? 'border-2 border-[#F5A623] shadow-lg shadow-[#F5A623]/10'
-                : 'border border-white/10'
-              }`}
+              className="relative rounded-2xl p-8 bg-zinc-900 cursor-pointer"
+              onClick={() => setSelectedPlan(plan.id)}
+              style={(plan.popular || selectedPlan === plan.id) ? {
+                background: 'linear-gradient(#18181b, #18181b) padding-box, linear-gradient(135deg, #BF953F 0%, #FCF6BA 45%, #B38728 70%, #AA771C 100%) border-box',
+                border: '2px solid transparent',
+                boxShadow: '0 0 20px rgba(191,149,63,0.15)'
+              } : { border: '1px solid rgba(255,255,255,0.1)' }}
             >
               {plan.popular && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                  <span className="px-4 py-1 rounded-full bg-gradient-to-r from-[#FFE566] to-[#F5A623] text-black text-xs font-semibold">
+                  <span className="px-4 py-1 rounded-full text-black text-xs font-semibold" style={{ background: 'linear-gradient(135deg, #BF953F 0%, #FCF6BA 45%, #B38728 70%, #AA771C 100%)' }}>
                     Most Popular
                   </span>
                 </div>
               )}
 
-              <div className={`w-12 h-12 rounded-xl ${plan.popular ? 'bg-[#F5A623]' : 'bg-zinc-800'} flex items-center justify-center mb-6`}>
-                <plan.icon className={`w-6 h-6 ${plan.popular ? 'text-[#000000]' : 'text-[#F5A623]'}`} />
+              <div className={`w-12 h-12 rounded-xl ${plan.popular ? 'bg-white' : 'bg-zinc-800'} flex items-center justify-center mb-6`}>
+                <plan.icon className={`w-6 h-6 ${plan.popular ? 'text-black' : 'text-white'}`} />
               </div>
 
               <h3 className="text-xl font-semibold text-white mb-1">{plan.name}</h3>
-              <p className="text-gray-400 text-sm mb-4">{plan.description}</p>
+              <p className="text-[#949494] text-sm mb-4">{plan.description}</p>
 
               <div className="flex items-baseline gap-1 mb-1">
                 <span className="text-4xl font-bold text-white">
@@ -311,9 +315,9 @@ export default function PricingSection() {
               <Button
                 onClick={() => handleSelectPlan(plan)}
                 disabled={processingPlan === plan.id}
-                className={`w-full py-6 rounded-xl font-semibold ${plan.popular
-                  ? 'bg-gradient-to-r from-[#FFE566] to-[#F5A623] hover:from-[#F5A623] hover:to-[#D4891A] text-black'
-                  : 'bg-zinc-800 border border-white/10 text-white hover:bg-zinc-700'
+                className={`w-full py-6 rounded-[4px] font-semibold ${plan.popular
+                  ? 'bg-white hover:bg-gray-100 text-black'
+                  : 'bg-transparent border border-white text-white hover:bg-white/10'
                 }`}
               >
                 {processingPlan === plan.id ? (
@@ -331,7 +335,7 @@ export default function PricingSection() {
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
-          className="mt-16 bg-zinc-900 rounded-2xl border border-white/10 overflow-hidden"
+          className="mt-16 bg-[#1E1E1E] rounded-2xl border border-white/10 overflow-hidden"
         >
           <div className="p-6 border-b border-white/10">
             <h3 className="text-lg font-semibold text-white">Feature Comparison</h3>
@@ -339,8 +343,8 @@ export default function PricingSection() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-zinc-800/50">
-                  <th className="text-left p-4 text-gray-400 font-medium">Feature</th>
+                <tr className="bg-[#161616]">
+                  <th className="text-left p-4 text-[#949494] font-medium">Feature</th>
                   <th className="text-center p-4 text-white font-semibold">Starter</th>
                   <th className="text-center p-4 text-white font-semibold">Creator</th>
                   <th className="text-center p-4 text-white font-semibold">Pro</th>
@@ -360,7 +364,7 @@ export default function PricingSection() {
                 ].map(([feature, starter, creator, pro], i) => (
                   <tr key={i} className="hover:bg-zinc-800/30">
                     <td className="p-4 text-white">{feature}</td>
-                    <td className="p-4 text-center text-gray-400">{starter}</td>
+                    <td className="p-4 text-center text-[#949494]">{starter}</td>
                     <td className="p-4 text-center text-white font-medium">{creator}</td>
                     <td className="p-4 text-center text-white font-medium">{pro}</td>
                   </tr>

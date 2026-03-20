@@ -93,6 +93,7 @@ const TOPUP_PAISE = { topup_starter: 4900, topup_creator: 4900, topup_pro: 7900 
 export default function PricingModal({ isOpen, onClose, onSelectPlan, user, message, userData = null }) {
   const [processingPlan, setProcessingPlan] = useState(null)
   const [billing, setBilling] = useState('monthly')
+  const [selectedPlan, setSelectedPlan] = useState(null)
 
   useEffect(() => {
     loadRazorpayScript().catch(() => {})
@@ -258,13 +259,13 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
         <div className="flex items-center gap-1 justify-center mt-2 bg-zinc-900 rounded-full p-1 w-fit mx-auto border border-white/10">
           <button
             onClick={() => setBilling('monthly')}
-            className={`px-5 py-1.5 rounded-full text-sm font-medium transition-all ${billing === 'monthly' ? 'bg-gradient-to-r from-[#FFE566] to-[#F5A623] text-black' : 'text-gray-400 hover:text-white'}`}
+            className={`px-5 py-1.5 rounded-full text-sm font-medium transition-all ${billing === 'monthly' ? 'bg-white text-black' : 'text-gray-400 hover:text-white'}`}
           >
             Monthly
           </button>
           <button
             onClick={() => setBilling('yearly')}
-            className={`px-5 py-1.5 rounded-full text-sm font-medium transition-all flex items-center gap-1.5 ${billing === 'yearly' ? 'bg-gradient-to-r from-[#FFE566] to-[#F5A623] text-black' : 'text-gray-400 hover:text-white'}`}
+            className={`px-5 py-1.5 rounded-full text-sm font-medium transition-all flex items-center gap-1.5 ${billing === 'yearly' ? 'bg-white text-black' : 'text-gray-400 hover:text-white'}`}
           >
             Yearly
             <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded-full font-bold">−17%</span>
@@ -284,21 +285,24 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
             return (
               <div
                 key={plan.id}
-                className={`relative rounded-xl border p-5 transition-all ${plan.popular
-                  ? 'border-[#F5A623] bg-zinc-900'
-                  : 'border-white/10 bg-zinc-900/50 hover:border-white/20'
-                }`}
+                className="relative rounded-xl p-5 transition-all cursor-pointer bg-zinc-900"
+                onClick={() => setSelectedPlan(plan.id)}
+                style={(plan.popular || selectedPlan === plan.id) ? {
+                  background: 'linear-gradient(#18181b, #18181b) padding-box, linear-gradient(135deg, #BF953F 0%, #FCF6BA 45%, #B38728 70%, #AA771C 100%) border-box',
+                  border: '2px solid transparent',
+                  boxShadow: '0 0 16px rgba(191,149,63,0.12)'
+                } : { border: '1px solid rgba(255,255,255,0.1)' }}
               >
                 {plan.popular && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                    <span className="bg-gradient-to-r from-[#FFE566] to-[#F5A623] text-black text-xs font-bold px-3 py-1 rounded-full">
+                    <span className="text-black text-xs font-bold px-3 py-1 rounded-full" style={{ background: 'linear-gradient(135deg, #BF953F 0%, #FCF6BA 45%, #B38728 70%, #AA771C 100%)' }}>
                       MOST POPULAR
                     </span>
                   </div>
                 )}
 
-                <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-3 ${plan.popular ? 'bg-[#F5A623]' : 'bg-white/10'}`}>
-                  <Icon className={`w-5 h-5 ${plan.popular ? 'text-[#000000]' : 'text-white'}`} />
+                <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-3 ${plan.popular ? 'bg-white' : 'bg-white/10'}`}>
+                  <Icon className="w-5 h-5 text-black" />
                 </div>
 
                 <h3 className="text-lg font-bold text-white mb-0.5">{plan.name}</h3>
@@ -333,9 +337,9 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
                 <Button
                   onClick={() => handlePayment(plan)}
                   disabled={processingPlan === plan.id}
-                  className={`w-full font-semibold ${plan.popular
-                    ? 'bg-gradient-to-r from-[#FFE566] to-[#F5A623] hover:from-[#F5A623] hover:to-[#D4891A] text-black'
-                    : 'bg-white/10 hover:bg-white/20 text-white'
+                  className={`w-full font-semibold rounded-[4px] ${plan.popular
+                    ? 'bg-white hover:bg-gray-100 text-black'
+                    : 'bg-white/10 hover:bg-white/20 text-white border border-white/20'
                   }`}
                 >
                   {processingPlan === plan.id ? (
