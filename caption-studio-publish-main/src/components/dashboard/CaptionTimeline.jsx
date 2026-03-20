@@ -152,7 +152,7 @@ export default function CaptionTimeline({
     // 2. Other Element Boundaries
     const snapPoints = [
       { time: 0, type: 'boundary' },
-      { time: duration, type: 'boundary' }
+      ...(duration && duration > 0 && isFinite(duration) ? [{ time: duration, type: 'boundary' }] : [])
     ];
 
     allElements.forEach(el => {
@@ -241,9 +241,8 @@ export default function CaptionTimeline({
     const newTime = percentage * duration;
 
     setLocalScrubTime(newTime);
-    if (videoElement) {
-      videoElement.currentTime = newTime;
-    }
+    // Do NOT seek videoElement here — seeking on every mousedown/mousemove causes black frames.
+    // Video seeks once on mouseup via onSeek below.
   };
 
   const handleContainerMouseMove = (e) => {
@@ -267,9 +266,7 @@ export default function CaptionTimeline({
     const newTime = percentage * duration;
 
     setLocalScrubTime(newTime);
-    if (videoElement) {
-      videoElement.currentTime = newTime;
-    }
+    // Do NOT seek videoElement here — same reason as mousedown above.
   };
 
   useEffect(() => {
@@ -469,7 +466,7 @@ export default function CaptionTimeline({
       <div className="flex gap-2" style={{ height: `${timelineHeight - 40}px` }}>
         {/* Scrollable timeline container */}
         <div
-          className="flex-1 overflow-hidden bg-zinc-900/50 rounded-lg border border-white/5"
+          className="flex-1 overflow-hidden bg-[#161616] rounded-lg border border-white/5"
         >
           <div
             ref={scrollContainerRef}
@@ -511,7 +508,7 @@ export default function CaptionTimeline({
               {snappedTime !== null && (
                 <div
                   className={`absolute top-0 bottom-0 w-px z-50 pointer-events-none ${snappedTime.type === 'waveform'
-                    ? 'bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.9)]'
+                    ? 'bg-violet-400 shadow-[0_0_12px_rgba(167,139,250,0.9)]'
                     : 'bg-yellow-400 shadow-[0_0_8px_rgba(250,204,21,0.8)]'
                     }`}
                   style={{ left: `${getPositionPercentage(typeof snappedTime === 'object' ? snappedTime.time : snappedTime)}%` }}
@@ -618,7 +615,7 @@ export default function CaptionTimeline({
 
               {/* Divider line between text and speech */}
               <div
-                className="absolute left-0 right-0 h-px bg-purple-500/40"
+                className="absolute left-0 right-0 h-px bg-white/10"
                 style={{ top: `${TEXT_ROWS * TEXT_ROW_HEIGHT}px` }}
               />
 
@@ -628,12 +625,12 @@ export default function CaptionTimeline({
                 style={{ top: `${TEXT_ROWS * TEXT_ROW_HEIGHT}px`, height: `${SPEECH_HEIGHT + 8}px` }}
               >
                 {/* Row label */}
-                <div className="absolute left-1 top-0.5 text-[8px] text-purple-400/50 uppercase tracking-wider font-medium pointer-events-none z-10">
+                <div className="absolute left-1 top-0.5 text-[8px] text-white/20 uppercase tracking-wider font-medium pointer-events-none z-10">
                   Speech
                 </div>
 
                 {/* Background */}
-                <div className="absolute inset-0 bg-purple-500/5" />
+                <div className="absolute inset-0 bg-white/[0.03]" />
 
                 {/* Speech captions */}
                 <div className="absolute left-0 right-0" style={{ top: '12px', bottom: '4px' }}>
@@ -650,16 +647,17 @@ export default function CaptionTimeline({
                         initial={{ opacity: 0, scale: 0.9 }}
                         animate={{ opacity: 1, scale: 1 }}
                         className={`absolute rounded-md transition-all border group cursor-move ${isSelected
-                          ? 'bg-purple-500 border-purple-300 z-20'
+                          ? 'bg-white/20 border-white/50 z-20'
                           : isActive
-                            ? 'bg-purple-600/80 border-purple-500/50 z-10'
-                            : 'bg-purple-500/30 border-purple-500/30 hover:bg-purple-500/40 z-10'
+                            ? 'bg-white/15 border-white/30 z-10'
+                            : 'bg-white/10 border-white/20 hover:bg-white/15 hover:border-white/30 z-10'
                           }`}
                         style={{
                           left: `${left}%`,
                           width: `${Math.max(width, 1)}%`,
                           top: '0',
-                          height: `${SPEECH_HEIGHT - 4}px`
+                          height: `${SPEECH_HEIGHT - 4}px`,
+                          ...(isSelected ? { borderWidth: '1.5px' } : {})
                         }}
                         onClick={(e) => {
                           e.stopPropagation();
@@ -676,7 +674,7 @@ export default function CaptionTimeline({
                         {setCaptions && (
                           <>
                             <div
-                              className="absolute left-0 top-0 bottom-0 w-2 bg-purple-400 opacity-0 group-hover:opacity-100 cursor-ew-resize z-30 rounded-l"
+                              className="absolute left-0 top-0 bottom-0 w-2 bg-white/60 opacity-0 group-hover:opacity-100 cursor-ew-resize z-30 rounded-l"
                               onMouseDown={(e) => {
                                 e.stopPropagation();
                                 e.preventDefault();
@@ -684,7 +682,7 @@ export default function CaptionTimeline({
                               }}
                             />
                             <div
-                              className="absolute right-0 top-0 bottom-0 w-2 bg-purple-400 opacity-0 group-hover:opacity-100 cursor-ew-resize z-30 rounded-r"
+                              className="absolute right-0 top-0 bottom-0 w-2 bg-white/60 opacity-0 group-hover:opacity-100 cursor-ew-resize z-30 rounded-r"
                               onMouseDown={(e) => {
                                 e.stopPropagation();
                                 e.preventDefault();
@@ -693,7 +691,7 @@ export default function CaptionTimeline({
                             />
                           </>
                         )}
-                        <div className="px-2 truncate text-[10px] text-purple-100 pointer-events-none flex items-center h-full">
+                        <div className={`px-2 truncate text-[10px] pointer-events-none flex items-center h-full ${isSelected ? 'text-white font-semibold' : 'text-white/80'}`}>
                           {(caption.text || '').slice(0, 60)}
                         </div>
                       </motion.div>
@@ -707,78 +705,71 @@ export default function CaptionTimeline({
                 className="absolute left-0 right-0"
                 style={{ top: `${TEXT_ROWS * TEXT_ROW_HEIGHT + SPEECH_HEIGHT + 8}px`, height: `${WAVEFORM_HEIGHT}px` }}
               >
-                {/* Divider line */}
-                <div className="absolute top-0 left-0 right-0 h-px bg-emerald-500/30" />
+                {/* Subtle top separator */}
+                <div className="absolute top-0 left-0 right-0 h-px bg-white/8" />
 
                 {/* Row label */}
-                <div className="absolute left-1 top-1 text-[8px] text-emerald-400/60 uppercase tracking-wider font-medium pointer-events-none z-10">
+                <div className="absolute left-1 top-0.5 text-[8px] text-white/25 uppercase tracking-wider font-medium pointer-events-none z-10">
                   Audio
                 </div>
 
-                {/* Waveform Background */}
-                <div className="absolute inset-0 bg-emerald-500/[0.03]" />
-
-                {/* Waveform Visualization */}
-                <div className="absolute left-0 right-0 top-3 bottom-1 flex items-center px-1">
+                {/* Waveform Visualization — professional white-bar style */}
+                <div className="absolute left-0 right-0 top-2.5 bottom-0.5 overflow-hidden">
                   {waveformData && waveformData.length > 0 ? (
                     <svg
                       width="100%"
                       height="100%"
-                      viewBox={`0 0 ${waveformData.length} 100`}
+                      viewBox={`0 0 ${waveformData.length * 2} 100`}
                       preserveAspectRatio="none"
-                      className="opacity-80"
                     >
-                      {/* Mirrored waveform bars */}
                       {waveformData.map((amplitude, i) => {
-                        // Square/Power the amplitude to dramatically emphasize audio spikes and suppress background noise
-                        const expandedAmp = Math.pow(amplitude, 2.0); // more drastic exponent for sharper spikes
-                        const barHeight = Math.max(1.5, expandedAmp * 90);
-                        const y = 50 - barHeight / 2;
+                        // Sharpen spikes: mild power curve to keep quiet parts visible
+                        const amp = Math.pow(Math.max(0, amplitude), 1.6)
+                        const barHeight = Math.max(2, amp * 94)
+                        const y = 50 - barHeight / 2
+                        // Taller bars are more opaque — quiet zones fade into background
+                        const opacity = 0.2 + amp * 0.8
                         return (
                           <rect
                             key={i}
-                            x={i}
+                            x={i * 2}
                             y={y}
-                            width={0.4} // Thinner width
+                            width={1.1}
                             height={barHeight}
-                            fill="url(#waveformGradient)"
-                            rx={0.2} // Sharper corners
+                            fill="white"
+                            fillOpacity={opacity}
+                            rx={0.55}
                           />
-                        );
+                        )
                       })}
-                      <defs>
-                        <linearGradient id="waveformGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                          <stop offset="0%" stopColor="#10b981" stopOpacity="0.9" />
-                          <stop offset="50%" stopColor="#34d399" stopOpacity="1" />
-                          <stop offset="100%" stopColor="#10b981" stopOpacity="0.9" />
-                        </linearGradient>
-                      </defs>
                     </svg>
                   ) : (
-                    /* Placeholder waveform pattern when no data */
+                    /* Placeholder: subtle white bars when no audio loaded */
                     <svg
                       width="100%"
                       height="100%"
-                      viewBox="0 0 200 100"
+                      viewBox="0 0 400 100"
                       preserveAspectRatio="none"
-                      className="opacity-40"
                     >
                       {Array.from({ length: 200 }).map((_, i) => {
-                        // Generate a pseudo-random pattern for placeholder
-                        const seed = Math.sin(i * 0.3) * Math.cos(i * 0.17);
-                        const barHeight = Math.abs(seed) * 60 + 5;
-                        const y = 50 - barHeight / 2;
+                        // Natural-looking pseudo-random waveform shape
+                        const t = i / 200
+                        const wave = Math.sin(t * Math.PI * 8) * Math.sin(t * Math.PI * 2.3)
+                        const barHeight = Math.max(2, Math.abs(wave) * 70 + 3)
+                        const y = 50 - barHeight / 2
+                        const opacity = 0.08 + Math.abs(wave) * 0.15
                         return (
                           <rect
                             key={i}
-                            x={i}
+                            x={i * 2}
                             y={y}
-                            width={0.5}
+                            width={1.1}
                             height={barHeight}
-                            fill="#10b981"
-                            rx={0.25}
+                            fill="white"
+                            fillOpacity={opacity}
+                            rx={0.55}
                           />
-                        );
+                        )
                       })}
                     </svg>
                   )}

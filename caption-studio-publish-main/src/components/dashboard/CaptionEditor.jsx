@@ -123,7 +123,7 @@ export default function CaptionEditor({
           <Button
             onClick={addCaption}
             size="sm"
-            className="bg-purple-600 hover:bg-purple-700 text-white h-8 px-2.5"
+            className="bg-white hover:bg-gray-100 text-black h-8 px-2.5"
           >
             <Plus className="w-4 h-4 mr-1" />
             Add
@@ -141,7 +141,7 @@ export default function CaptionEditor({
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 20 }}
               className={`group rounded-xl border transition-all cursor-pointer overflow-hidden ${selectedCaptionId === caption.id
-                ? 'bg-[#0F0F12] border-purple-500/50 shadow-2xl shadow-purple-900/10'
+                ? 'bg-[#0F0F12] border-[#F5A623]/30 shadow-2xl shadow-[#F5A623]/30'
                 : 'bg-white/[0.02] border-white/5 hover:border-white/10 hover:bg-white/[0.04]'
                 }`}
               onClick={() => {
@@ -203,9 +203,9 @@ export default function CaptionEditor({
                     {selectedCaptionId === caption.id ? (
                       <div className="space-y-3">
                         {wordPopup && wordPopup.caption && wordPopup.caption.id === caption.id && (
-                          <div className="flex items-center gap-2 mb-2 p-2 rounded bg-purple-900/20 border border-purple-500/20">
-                            <span className="text-xs text-purple-300">selected word - </span>
-                            <span className="text-xs font-semibold text-white bg-purple-500/40 px-1.5 py-0.5 rounded border border-purple-500/40 truncate max-w-[150px]">
+                          <div className="flex items-center gap-2 mb-2 p-2 rounded bg-[#F5A623]/30 border border-[#F5A623]/30">
+                            <span className="text-xs text-[#F5A623]">selected word - </span>
+                            <span className="text-xs font-semibold text-white bg-[#F5A623]/30 px-1.5 py-0.5 rounded border border-[#F5A623]/30 truncate max-w-[150px]">
                               {wordPopup.word}
                             </span>
                           </div>
@@ -240,7 +240,7 @@ export default function CaptionEditor({
                                     );
                                   }}
                                   className={`px-2 py-1 text-xs rounded-md border transition-all ${isSelected
-                                    ? 'bg-purple-600 border-purple-400 text-white shadow-sm ring-1 ring-purple-400/50 font-medium'
+                                    ? 'bg-[#F5A623] border-[#F5A623] text-white shadow-sm ring-1 ring-[#F5A623]/30 font-medium'
                                     : 'bg-white/5 border-white/10 text-gray-300 hover:bg-white/10 hover:border-white/20'
                                     }`}
                                 >

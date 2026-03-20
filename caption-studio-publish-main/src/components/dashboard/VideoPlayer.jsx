@@ -1,14 +1,89 @@
-import React, { useRef, useEffect, useState } from 'react';
-import { Play, Pause, Volume2, VolumeX, X } from 'lucide-react';
+import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
+import { Play, Pause, Volume2, VolumeX, X, Maximize2, Minimize2 } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
 import WordClickPopup from './WordClickPopup';
+import '../../styles/captionTemplates.css';
 
+// --- Effect CSS helper ---
+function _hexRgba(hex, a) {
+  try {
+    const h = hex.replace('#', '')
+    const r = parseInt(h.slice(0, 2), 16)
+    const g = parseInt(h.slice(2, 4), 16)
+    const b = parseInt(h.slice(4, 6), 16)
+    return `rgba(${r},${g},${b},${a})`
+  } catch { return hex }
+}
+
+function computeEffectCSS(cs) {
+  const type = cs?.effect_type || 'none'
+  if (type === 'none') return {}
+  const color = cs?.effect_color || '#000000'
+  const blur   = ((cs?.effect_blur   ?? 50) / 100) * 24  // 0-24px
+  const offset = ((cs?.effect_offset ?? 50) / 100) * 16  // 0-16px
+  const dir    = cs?.effect_direction ?? -45
+  const transp = cs?.effect_transparency ?? 40
+  const thick  = cs?.effect_thickness ?? 50
+  const alpha  = (100 - transp) / 100
+  const rad = (dir * Math.PI) / 180
+  const ox = +(Math.cos(rad) * offset).toFixed(1)
+  const oy = +(Math.sin(rad) * offset).toFixed(1)
+  const rc = (a = alpha) => _hexRgba(color, a)
+  switch (type) {
+    case 'shadow':
+      return { textShadow: `${ox}px ${oy}px ${blur}px ${rc()}` }
+    case 'lift':
+      return { textShadow: `0px ${(offset * 0.4).toFixed(1)}px ${(blur * 0.5).toFixed(1)}px ${rc()}, 0px ${offset}px ${blur}px ${rc(alpha * 0.4)}` }
+    case 'hollow':
+      return { WebkitTextStroke: `${(thick / 40).toFixed(1)}px ${color}`, color: 'transparent', WebkitTextFillColor: 'transparent' }
+    case 'splice':
+      return { textShadow: `${ox}px ${oy}px 0px ${rc()}` }
+    case 'outline':
+      return { WebkitTextStroke: `${(thick / 40).toFixed(1)}px ${color}` }
+    case 'echo':
+      return { textShadow: `${ox}px ${oy}px 0px ${rc()}, ${ox * 2}px ${oy * 2}px 0px ${rc(alpha * 0.55)}, ${ox * 3}px ${oy * 3}px 0px ${rc(alpha * 0.25)}` }
+    case 'neon': {
+      const nc = cs?.effect_color || cs?.text_color || '#39ff14'
+      return { textShadow: `0 0 ${(blur * 0.5).toFixed(1)}px ${nc}, 0 0 ${blur}px ${nc}, 0 0 ${(blur * 2).toFixed(1)}px ${nc}` }
+    }
+    default: return {}
+  }
+}
+
+
+// Memoized video element — prevents React from touching the <video> DOM node during
+// parent re-renders. Without this, re-renders from scrubbing/state changes cause the
+// browser to re-composite the video layer, which can show a black frame on some systems.
+const MemoizedVideo = React.memo(function MemoizedVideo({ videoRef, videoUrl, onTimeUpdate, onLoadedMetadata, setIsPlaying, setSelectedCaptionId }) {
+  return (
+    <video
+      ref={videoRef}
+      src={videoUrl}
+      className="w-full h-full object-contain"
+      playsInline
+      preload="auto"
+      disablePictureInPicture
+      controlsList="nodownload nofullscreen noremoteplayback nopip"
+      onContextMenu={(e) => e.preventDefault()}
+      onTimeUpdate={onTimeUpdate}
+      onLoadedMetadata={onLoadedMetadata}
+      onEnded={() => setIsPlaying(false)}
+      onPlay={() => setIsPlaying(true)}
+      onPause={() => setIsPlaying(false)}
+      onClick={() => { if (setSelectedCaptionId) setSelectedCaptionId(null); }}
+    />
+  );
+}, (prev, next) => {
+  // Only re-render when the video source changes — nothing else should touch the DOM
+  return prev.videoUrl === next.videoUrl;
+});
 
 export default function VideoPlayer({
   videoUrl,
   currentTime,
   setCurrentTime,
+  seekSignal,
   isPlaying,
   setIsPlaying,
   captions,
@@ -24,7 +99,9 @@ export default function VideoPlayer({
   setSelectedCaptionId,
   wordPopup,
   setWordPopup,
-  onVideoLoaded
+  onVideoLoaded,
+  isVideoFullscreen,
+  setIsVideoFullscreen
 }) {
   const videoRef = useRef(null);
   const [isMuted, setIsMuted] = useState(false);
@@ -56,6 +133,8 @@ export default function VideoPlayer({
   const currentDragCoordinates = useRef(null);
   const lastDragDropTime = useRef(0);
   const inputRef = useRef(null);
+  // Blocks handleTimeUpdate from propagating to Dashboard while user is dragging
+  const isScrubbingRef = useRef(false);
 
   useEffect(() => {
     if (videoRef.current) {
@@ -74,37 +153,42 @@ export default function VideoPlayer({
     }
   }, [volume, isMuted]);
 
-  const isSeekingRef = useRef(false);
+  // Local scrub time: used during Slider drag so we don't call setCurrentTime(Dashboard)
+  // on every tick (which triggers heavy re-renders). Only committed on release.
+  const [localScrubTime, setLocalScrubTime] = useState(null);
 
+  // Handle external seek signals (from CaptionEditor clicking a caption, etc.)
+  // seekSignal is set by Dashboard.handleSeek → ensures video element moves too
   useEffect(() => {
-    if (videoRef.current && isSeekingRef.current) {
-      videoRef.current.currentTime = currentTime;
-      isSeekingRef.current = false;
+    if (videoRef.current && seekSignal !== null && seekSignal !== undefined) {
+      videoRef.current.currentTime = seekSignal;
     }
-  }, [currentTime]);
+  }, [seekSignal]);
 
-  const handleTimeUpdate = () => {
-    if (videoRef.current) {
+  // Stable refs for callbacks passed to MemoizedVideo — these MUST not change reference
+  // between renders, otherwise React.memo comparison would need to track them.
+  const onVideoLoadedRef = useRef(onVideoLoaded);
+  onVideoLoadedRef.current = onVideoLoaded;
+
+  const handleTimeUpdate = useCallback(() => {
+    if (videoRef.current && !isScrubbingRef.current) {
       setCurrentTime(videoRef.current.currentTime);
     }
-  };
+  }, [setCurrentTime]);
 
-  const handleLoadedMetadata = () => {
+  const handleLoadedMetadata = useCallback(() => {
     if (videoRef.current) {
       setDuration(videoRef.current.duration);
-      // Trigger waveform extraction callback
-      if (onVideoLoaded) {
-        onVideoLoaded(videoRef.current);
+      if (onVideoLoadedRef.current) {
+        onVideoLoadedRef.current(videoRef.current);
       }
     }
-  };
+  }, [setDuration]);
 
   const handleSeek = (value) => {
     if (videoRef.current) {
       // Handle both array (from Slider) and scalar (from buttons) values
       const targetTime = Array.isArray(value) ? value[0] : value;
-
-      isSeekingRef.current = true;
       videoRef.current.currentTime = targetTime;
       setCurrentTime(targetTime);
     }
@@ -202,8 +286,9 @@ export default function VideoPlayer({
         // Get timing info for words in this potential group
         const getWordDuration = (idx) => {
           const w = caption.words[idx];
-          if (!w) return 0.3;
-          return (w.end - w.start);
+          if (!w || typeof w.end !== 'number' || typeof w.start !== 'number') return 0.3;
+          const dur = w.end - w.start;
+          return isFinite(dur) && dur > 0 ? dur : 0.3;
         };
         const getGapAfter = (idx) => {
           const w = caption.words[idx];
@@ -705,20 +790,27 @@ export default function VideoPlayer({
     <div className="flex flex-col h-full">
       {/* Video container with 9:16 aspect ratio for mobile preview */}
       <div className="relative flex-1 bg-zinc-950 rounded-xl overflow-hidden flex items-center justify-center min-h-0">
+        {/* Fullscreen toggle — overlaid in top-right corner of canvas */}
+        {setIsVideoFullscreen && (
+          <button
+            onClick={() => setIsVideoFullscreen(v => !v)}
+            className="absolute top-2 right-2 z-50 p-1.5 rounded bg-black/40 hover:bg-black/70 text-white/70 hover:text-white transition-colors backdrop-blur-sm"
+            title={isVideoFullscreen ? 'Collapse' : 'Expand'}
+          >
+            {isVideoFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+          </button>
+        )}
         <div ref={videoContainerRef} className="relative w-full h-full max-h-full aspect-[9/16] bg-black shadow-2xl" onClick={(e) => {
           if (e.target === e.currentTarget && setSelectedCaptionId) setSelectedCaptionId(null);
         }}>
           {videoUrl ? (
-            <video
-              ref={videoRef}
-              src={videoUrl}
-              className="w-full h-full object-contain"
+            <MemoizedVideo
+              videoRef={videoRef}
+              videoUrl={videoUrl}
               onTimeUpdate={handleTimeUpdate}
               onLoadedMetadata={handleLoadedMetadata}
-              onEnded={() => setIsPlaying(false)}
-              onPlay={() => setIsPlaying(true)}
-              onPause={() => setIsPlaying(false)}
-              onClick={() => { if (setSelectedCaptionId) setSelectedCaptionId(null); }}
+              setIsPlaying={setIsPlaying}
+              setSelectedCaptionId={setSelectedCaptionId}
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center bg-zinc-900/50">
@@ -758,7 +850,7 @@ export default function VideoPlayer({
                 onDoubleClick={(e) => handleCaptionDoubleClick(e, caption)}
               >
                 <div
-                  className={`rounded-lg border-2 border-solid ${selectedCaptionId === caption.id ? 'border-white/40' : 'border-transparent'} relative ${isDragging ? 'cursor-grabbing' : isEditingThis ? 'cursor-text' : setCaptionStyle ? 'cursor-grab' : ''} group`}
+                  className={`rounded-lg border-2 border-solid ${selectedCaptionId === caption.id ? 'border-white/40' : 'border-transparent'} relative ${isDragging ? 'cursor-grabbing' : isEditingThis ? 'cursor-text' : setCaptionStyle ? 'cursor-grab' : ''} group ${captionStyle?.template_id || ''}`}
                   style={{
                     backgroundColor: 'transparent',
                     padding: '0px',
@@ -766,7 +858,11 @@ export default function VideoPlayer({
                     width: 'fit-content',
                     maxWidth: '90vw',
                     position: 'relative',
-                    display: 'inline-block'
+                    display: 'inline-block',
+                    '--template-primary': captionStyle?.text_color || '#ffffff',
+                    '--template-secondary': captionStyle?.secondary_color || '#000000',
+                    '--template-bg': captionStyle?.background_color || 'transparent',
+                    '--template-highlight': captionStyle?.highlight_color || '#FFE600',
                   }}
                 >
                   {/* Background layer with H multiplier support */}
@@ -861,9 +957,40 @@ export default function VideoPlayer({
                     >
                       {editText}
                     </div>
+                  ) : captionStyle?.template_id ? (
+                    // Template rendering: simple word spans with CSS class states for template effects
+                    <span
+                      className={`cap-text${caption.animation && caption.animation !== 'none' ? ` animate-${caption.animation}` : ''}`}
+                      style={{
+                        fontFamily: captionStyle?.font_family || 'Inter',
+                        fontSize: `${captionStyle?.font_size || 18}px`,
+                        fontWeight: captionStyle?.font_weight || 'normal',
+                        fontStyle: captionStyle?.font_style || 'normal',
+                        textAlign: captionStyle?.text_align || 'center',
+                        display: 'block',
+                        letterSpacing: `${captionStyle?.letter_spacing || 0}px`,
+                        textTransform: captionStyle?.text_case === 'uppercase' ? 'uppercase' : captionStyle?.text_case === 'lowercase' ? 'lowercase' : captionStyle?.text_case === 'capitalize' ? 'capitalize' : 'none',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {(() => {
+                        const words = (caption?.text || '').split(/\s+/).filter(Boolean);
+                        const highlightRange = getHighlightedWordRange(caption);
+                        const currentIdx = highlightRange.start;
+                        return words.map((wordText, i) => {
+                          const isPast = i < currentIdx;
+                          const isCurrent = i === currentIdx;
+                          // Word by Word: hide future words when toggle is ON (show_inactive === false)
+                          if (captionStyle?.show_inactive === false && !isPast && !isCurrent) return null;
+                          let cls = 'word';
+                          if (isCurrent) cls += ' active current';
+                          else if (isPast) cls += ' done';
+                          return <span key={i} className={cls}>{wordText}{' '}</span>;
+                        });
+                      })()}
+                    </span>
                   ) : (
-                    // Template class wrapper — gives the CSS template rules (.t-109 .cap-text .word etc.) their scope
-                    <div className={captionStyle?.template_id || ''} style={{ display: 'contents' }}>
+                    // Custom rendering: complex word-level inline styles with backgrounds and offsets
                     <span
                       className={`cap-text${caption.animation ? ` animate-${caption.animation}` : ''}`}
                       style={{
@@ -906,7 +1033,7 @@ export default function VideoPlayer({
                           const wordClasses = ['word', isDoneWord ? 'done' : isHighlighted ? (isCurrent ? 'current' : 'active') : ''].filter(Boolean).join(' ');
 
                           // Extract transform from customStyle - this goes on PARENT wrapper
-                          const { x = 0, y = 0, animation, ...restStyle } = customStyle;
+                          const { x = 0, y = 0, animation, isEmphasis, ...restStyle } = customStyle;
                           const globalLineHeight = (captionStyle?.font_size || 18) * (captionStyle?.line_spacing || 1.4);
 
                           // Per-font vertical offset correction.
@@ -1019,7 +1146,7 @@ export default function VideoPlayer({
                                         backgroundImage: captionStyle.highlight_gradient || undefined,
                                         backgroundColor: captionStyle.highlight_gradient ? undefined : captionStyle.highlight_color
                                       } : {}),
-                                      border: isWordClicked ? '1px solid #a855f7' : 'none',
+                                      border: isWordClicked ? '1px solid #F5A623' : 'none',
                                     }}
                                   />
 
@@ -1028,9 +1155,12 @@ export default function VideoPlayer({
                                     style={{
                                       whiteSpace: 'pre',
                                       fontFamily: restStyle.fontFamily || captionStyle?.font_family || 'Inter',
-                                      fontWeight: restStyle.fontWeight || (captionStyle?.is_bold ? 'bold' : 'normal'),
+                                      fontWeight: isEmphasis ? 'bold' : (restStyle.fontWeight || (captionStyle?.is_bold ? 'bold' : 'normal')),
                                       fontStyle: restStyle.fontStyle || 'normal',
-                                      fontSize: restStyle.fontSize ? `${restStyle.fontSize}px` : undefined,
+                                      fontSize: isEmphasis
+                                        ? `${Math.round((restStyle.fontSize || captionStyle?.font_size || 18) * 1.25)}px`
+                                        : (restStyle.fontSize ? `${restStyle.fontSize}px` : undefined),
+                                      transform: isEmphasis ? 'scaleY(1.08)' : undefined,
                                       lineHeight: `${globalLineHeight}px`,
                                       textAlign: restStyle.textAlign || undefined,
                                       textDecoration: restStyle.textDecoration || captionStyle?.text_decoration || 'none',
@@ -1039,8 +1169,11 @@ export default function VideoPlayer({
                                         ? `${restStyle.backgroundPadding / 12}em ${Math.round(restStyle.backgroundPadding * 1.5) / 12}em`
                                         : ((isHighlighted && !isWordClicked) ? '0.05em 0.1em' : (isWordClicked ? '0.05em 0.1em' : '0.05em 0')),
 
-                                      // Text Color Priority: Local Text Gradient -> Local Color -> Global Text Gradient -> Global Color
-                                      ...(restStyle.textGradient ? {
+                                      // Text Color Priority: Emphasis -> Local Text Gradient -> Local Color -> Global Text Gradient -> Global Color
+                                      ...(isEmphasis && !restStyle.color ? {
+                                        color: '#F5A623',
+                                        textShadow: '0 0 12px rgba(245,166,35,0.7), 0 0 4px rgba(245,166,35,0.5)',
+                                      } : restStyle.textGradient ? {
                                         backgroundImage: restStyle.textGradient,
                                         WebkitBackgroundClip: 'text',
                                         backgroundClip: 'text',
@@ -1058,9 +1191,16 @@ export default function VideoPlayer({
                                         color: captionStyle?.text_color || '#ffffff'
                                       }),
 
-                                      // Stroke/Shadow - disable if text gradient active (either local or global)
-                                      textShadow: restStyle.textShadow || (captionStyle?.has_shadow && !(captionStyle?.text_gradient || restStyle.textGradient) ? `${captionStyle?.shadow_offset_x || 0}px ${captionStyle?.shadow_offset_y || 2}px ${captionStyle?.shadow_blur || 4}px ${captionStyle?.shadow_color || 'rgba(0,0,0,0.8)'}` : 'none'),
-                                      WebkitTextStroke: restStyle.WebkitTextStroke || (captionStyle?.has_stroke === true && !(captionStyle?.text_gradient || restStyle.textGradient) ? `${captionStyle?.stroke_width || 0.5}px ${captionStyle?.stroke_color || '#000000'}` : '0px transparent'),
+                                      // Stroke/Shadow — effect_type overrides has_shadow/has_stroke; disable if text gradient active
+                                      ...(() => {
+                                        const efx = computeEffectCSS(captionStyle)
+                                        const hasGrad = captionStyle?.text_gradient || restStyle.textGradient
+                                        return {
+                                          textShadow: restStyle.textShadow || efx.textShadow || (captionStyle?.has_shadow && !hasGrad ? `${captionStyle?.shadow_offset_x || 0}px ${captionStyle?.shadow_offset_y || 2}px ${captionStyle?.shadow_blur || 4}px ${captionStyle?.shadow_color || 'rgba(0,0,0,0.8)'}` : undefined),
+                                          WebkitTextStroke: restStyle.WebkitTextStroke || efx.WebkitTextStroke || (captionStyle?.has_stroke === true && !hasGrad ? `${captionStyle?.stroke_width || 0.5}px ${captionStyle?.stroke_color || '#000000'}` : '0px transparent'),
+                                          ...(efx.color === 'transparent' && !restStyle.color && !hasGrad ? { color: 'transparent', WebkitTextFillColor: 'transparent' } : {}),
+                                        }
+                                      })(),
                                     }}
                                   >
                                     {part}
@@ -1072,7 +1212,6 @@ export default function VideoPlayer({
                         });
                       })()}
                     </span>
-                    </div>
                   )}
                 </div>
               </div>
@@ -1096,7 +1235,7 @@ export default function VideoPlayer({
             return (
               <div
                 key={element.id}
-                className={`absolute ${isSelected ? 'ring-2 ring-purple-500' : ''} ${draggedElementId === element.id ? 'cursor-grabbing' : 'cursor-grab'} group`}
+                className={`absolute ${isSelected ? 'ring-2 ring-[#F5A623]' : ''} ${draggedElementId === element.id ? 'cursor-grabbing' : 'cursor-grab'} group`}
                 style={{
                   top: `${style.top || 50}%`,
                   left: `${style.left || 50}%`,
@@ -1135,7 +1274,7 @@ export default function VideoPlayer({
                 {!isEditingThis && (
                   <>
                     <div
-                      className="text-resize-handle absolute -right-1 -bottom-1 w-6 h-6 bg-purple-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-nwse-resize flex items-center justify-center shadow-lg"
+                      className="text-resize-handle absolute -right-1 -bottom-1 w-6 h-6 bg-[#F5A623] rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-nwse-resize flex items-center justify-center shadow-lg"
                       onMouseDown={(e) => handleTextElementResizeDown(e, element.id, style)}
                     >
                       <div className="w-3 h-3 border-r-2 border-b-2 border-white"></div>
@@ -1408,12 +1547,25 @@ export default function VideoPlayer({
 
       {/* Video controls */}
       <div className="mt-4 space-y-3 px-2">
-        {/* Progress bar */}
+        {/* Progress bar — uses localScrubTime during drag so Dashboard state
+            is NOT updated on every tick (avoids heavy re-renders & double-seek).
+            Only commits the final time to Dashboard on release (onValueCommit). */}
         <Slider
-          value={[currentTime]}
+          value={[localScrubTime ?? currentTime]}
           max={duration || 100}
           step={0.1}
-          onValueChange={handleSeek}
+          onValueChange={([val]) => {
+            isScrubbingRef.current = true;
+            setLocalScrubTime(val);
+            // Do NOT seek video here — any seek during drag causes black frame until decode completes.
+            // Video stays on current frame; only seeks to final position on mouse release below.
+          }}
+          onValueCommit={([val]) => {
+            isScrubbingRef.current = false;
+            setLocalScrubTime(null);
+            if (videoRef.current) videoRef.current.currentTime = val;
+            setCurrentTime(val);
+          }}
           className="cursor-pointer"
         />
 

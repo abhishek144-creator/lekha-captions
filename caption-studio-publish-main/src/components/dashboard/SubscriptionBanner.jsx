@@ -15,7 +15,7 @@ export default function SubscriptionBanner({ user, onUpgrade }) {
         return {
           name: 'Monthly Pro',
           icon: <Crown className="w-4 h-4" />,
-          gradient: 'from-purple-500 to-pink-500',
+          gradient: 'from-[#F5A623] to-pink-500',
           total: 20
         };
       default:
@@ -45,7 +45,7 @@ export default function SubscriptionBanner({ user, onUpgrade }) {
 
   if (user?.subscription_plan === 'free') {
     return (
-      <div className="bg-gradient-to-r from-purple-600 to-pink-600 rounded-lg p-4 mb-6">
+      <div className="bg-gradient-to-r from-[#F5A623] to-pink-600 rounded-lg p-4 mb-6">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-white font-semibold text-lg mb-1">
@@ -57,7 +57,7 @@ export default function SubscriptionBanner({ user, onUpgrade }) {
           </div>
           <Button
             onClick={onUpgrade}
-            className="bg-white text-purple-600 hover:bg-gray-100"
+            className="bg-white text-[#F5A623] hover:bg-gray-100"
           >
             <Crown className="w-4 h-4 mr-2" />
             Upgrade Now
@@ -108,7 +108,7 @@ export default function SubscriptionBanner({ user, onUpgrade }) {
           onClick={onUpgrade}
           variant="outline"
           size="sm"
-          className="border-white/20 text-white hover:bg-white/10 bg-green-600 hover:bg-green-700 border-green-500"
+          className="border-white/20 text-white hover:bg-white/10 bg-[#F5A623] hover:bg-[#D4891A] border-[#F5A623]"
         >
           Manage Plan
         </Button>

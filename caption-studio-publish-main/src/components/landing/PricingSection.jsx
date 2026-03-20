@@ -1,268 +1,324 @@
-import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { Button } from '@/components/ui/button';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
-import { Check, Zap, Crown, Loader2 } from 'lucide-react';
-import { createPageUrl } from '@/utils';
+import React, { useState, useEffect } from 'react'
+import { motion } from 'framer-motion'
+import { Button } from '@/components/ui/button'
+import { Check, Zap, Crown, Star, Loader2 } from 'lucide-react'
+import { createPageUrl } from '@/utils'
+import { useAuth } from '@/lib/AuthContext'
 
-const RAZORPAY_KEY_ID = 'rzp_test_RJWsOLmZ6GL27m';
+const RAZORPAY_KEY_ID = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_RJWsOLmZ6GL27m'
+const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
 
 const loadRazorpayScript = () => {
   return new Promise((resolve, reject) => {
     if (window.Razorpay) {
-      resolve(true);
-      return;
+      resolve(true)
+      return
     }
-    const script = document.createElement('script');
-    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-    script.async = true;
-    script.onload = () => setTimeout(() => resolve(true), 100);
-    script.onerror = () => reject(new Error('Failed to load Razorpay'));
-    document.head.appendChild(script);
-  });
-};
+    const script = document.createElement('script')
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js'
+    script.async = true
+    script.onload = () => setTimeout(() => resolve(true), 100)
+    script.onerror = () => reject(new Error('Failed to load Razorpay'))
+    document.head.appendChild(script)
+  })
+}
+
+const detectInternationalUser = () => {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+    const lang = navigator.language || ''
+    const indianTZ = ['Asia/Calcutta', 'Asia/Kolkata']
+    const indianLangs = ['hi', 'ta', 'te', 'kn', 'ml', 'mr', 'gu', 'pa', 'bn', 'or', 'as', 'ur']
+    const isIndian = indianTZ.includes(tz) || indianLangs.some(l => lang.startsWith(l))
+    return !isIndian
+  } catch (e) { return false }
+}
 
 const plans = [
   {
-    id: 'weekly',
-    name: 'Weekly Creator',
-    monthlyPrice: '₹99',
-    monthlyPriceInPaise: 9900,
-    yearlyPrice: '₹79',
-    yearlyPriceInPaise: 7900,
-    period: 'per week',
-    description: 'Perfect for consistent posting',
+    id: 'starter',
+    name: 'Starter',
+    monthlyInrPrice: '₹99', yearlyInrPrice: '₹999',
+    monthlyUsdPrice: '$0.99', yearlyUsdPrice: '$9.99',
+    monthlyPaise: 9900, yearlyPaise: 99900,
+    monthlyUsdCents: 99, yearlyUsdCents: 999,
+    credits: 15,
+    description: 'Perfect for getting started',
     icon: Zap,
     features: [
-      '12 Video Credits',
-      'Valid for 7 Days',
-      '1080p HD Export',
-      '4K Export Option',
-      'All caption styles',
-      'Full editing controls',
+      '15 video credits / month',
+      'Max 2 min per video',
+      'Max 3 videos / day',
+      'No watermark',
+      '25+ caption styles',
+      'All 115+ languages',
+      '1080p HD export',
+      '2 hr download link',
     ],
-    cta: 'Start Weekly',
+    cta: 'Get Started',
     popular: false,
-    credits: 12,
-    validDays: 7
   },
   {
-    id: 'monthly',
-    name: 'Monthly Pro',
-    monthlyPrice: '₹199',
-    monthlyPriceInPaise: 19900,
-    yearlyPrice: '₹159',
-    yearlyPriceInPaise: 15900,
-    period: 'per month',
+    id: 'creator',
+    name: 'Creator',
+    monthlyInrPrice: '₹199', yearlyInrPrice: '₹1,999',
+    monthlyUsdPrice: '$1.99', yearlyUsdPrice: '$19.99',
+    monthlyPaise: 19900, yearlyPaise: 199900,
+    monthlyUsdCents: 199, yearlyUsdCents: 1999,
+    credits: 45,
     description: 'Best value for serious creators',
     icon: Crown,
     features: [
-      '45 Video Credits / month',
-      'Valid for 30 Days',
-      'Max 5 Videos/Day', // Updated as per instruction (was 'Max 5 Videos/Day', instruction implies 'Max 5 Videos / 24hrs' to 'Max 5 Videos/Day')
-      '1080p HD Export',
-      '4K Export Option',
-      'All caption styles',
-      'Full editing controls',
+      '45 video credits / month',
+      'Max 3 min per video',
+      'Max 5 videos / day',
+      'No watermark',
+      '25+ caption styles',
+      'All 115+ languages',
+      '1080p HD + 4K export',
+      'Translation feature',
+      '24 hr download link',
+    ],
+    cta: 'Go Creator',
+    popular: true,
+  },
+  {
+    id: 'pro',
+    name: 'Pro',
+    monthlyInrPrice: '₹399', yearlyInrPrice: '₹3,999',
+    monthlyUsdPrice: '$3.99', yearlyUsdPrice: '$39.99',
+    monthlyPaise: 39900, yearlyPaise: 399900,
+    monthlyUsdCents: 399, yearlyUsdCents: 3999,
+    credits: 100,
+    description: 'For power users & teams',
+    icon: Star,
+    features: [
+      '100 video credits / month',
+      'Max 3 min per video',
+      'Unlimited videos / day',
+      'No watermark',
+      '25+ caption styles',
+      'All 115+ languages',
+      '1080p HD + 4K export',
+      'Translation feature',
+      'API access · 3 team seats',
+      '72 hr download link',
     ],
     cta: 'Go Pro',
-    popular: true,
-    credits: 45,
-    validDays: 30
+    popular: false,
   }
-];
+]
 
 export default function PricingSection() {
-  const [processingPlan, setProcessingPlan] = useState(null);
-  const [user, setUser] = useState(null);
-  const [isYearly, setIsYearly] = useState(false);
+  const [processingPlan, setProcessingPlan] = useState(null)
+  const [billing, setBilling] = useState('monthly')
+  const [selectedPlan, setSelectedPlan] = useState(null)
+  const { currentUser } = useAuth()
 
   useEffect(() => {
-    const checkUser = async () => {
-      try {
-        const defaultUser = { id: 'guest', email: 'guest@captionstudio.io', full_name: 'Guest User', plan: 'pro', credits_remaining: 30 };
-        const savedData = JSON.parse(localStorage.getItem('captionStudioPlan') || '{}');
-        const currentUser = { ...defaultUser, ...savedData };
-        setUser(currentUser);
-      } catch (e) {
-        // Not logged in
-      }
-    };
-    checkUser();
-    loadRazorpayScript().catch(() => { });
-  }, []);
+    loadRazorpayScript().catch(() => {})
+  }, [])
 
   const handleSelectPlan = async (plan) => {
-    if (!user) {
-      window.location.href = createPageUrl('Dashboard');
-      return;
-    }
-
-    setProcessingPlan(plan.id);
+    setProcessingPlan(plan.id)
 
     try {
-      await loadRazorpayScript();
-
+      await loadRazorpayScript()
       if (!window.Razorpay) {
-        alert('Payment system unavailable. Please refresh and try again.');
-        setProcessingPlan(null);
-        return;
+        alert('Payment system unavailable. Please refresh and try again.')
+        setProcessingPlan(null)
+        return
       }
 
-      // 45 credits explicitly handled in plan obj, price driven by override
-      const planCostInPaise = isYearly && plan.id === 'monthly' ? 190000 : plan.monthlyPriceInPaise;
+      const planId = billing === 'yearly' ? `${plan.id}_yearly` : plan.id
+      const amount = billing === 'yearly' ? plan.yearlyPaise : plan.monthlyPaise
+      const currency = 'INR'
+      let orderId = null
+      let keyId = RAZORPAY_KEY_ID
+      let idToken = null
+
+      // Try to create a backend order if user is logged in
+      if (currentUser) {
+        try {
+          idToken = await currentUser.getIdToken()
+          const orderRes = await fetch(`${API_BASE}/api/create-order`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ plan_id: planId, id_token: idToken, currency })
+          })
+          const orderData = await orderRes.json()
+          if (orderData.success) {
+            orderId = orderData.order.id
+            keyId = orderData.key_id || keyId
+          }
+        } catch (e) {
+          console.warn('Backend order creation failed, opening test checkout', e)
+        }
+      }
 
       const options = {
-        key: RAZORPAY_KEY_ID,
-        amount: planCostInPaise,
-        currency: 'INR',
-        name: 'Caption Studio',
-        description: `${plan.name} Subscription`,
-        prefill: { name: user?.full_name || '', email: user?.email || '' },
-        theme: { color: '#9333ea' },
+        key: keyId,
+        amount,
+        currency,
+        ...(orderId ? { order_id: orderId } : {}),
+        name: 'Lekha Captions',
+        description: `${plan.name} Plan${billing === 'yearly' ? ' · Yearly' : ''}`,
+        prefill: {
+          name: currentUser?.displayName || '',
+          email: currentUser?.email || ''
+        },
+        theme: { color: '#F5A623' },
         handler: async (response) => {
-          const expiryDate = new Date();
-          expiryDate.setDate(expiryDate.getDate() + (isYearly && plan.id === 'monthly' ? 365 : plan.validDays));
-          const actualPlanId = isYearly && plan.id === 'monthly' ? 'yearly_pro' : plan.id;
-
-          localStorage.setItem('captionStudioPlan', JSON.stringify({
-            subscription_plan: actualPlanId,
-            subscription_expiry: expiryDate.toISOString(),
-            credits_total: plan.credits,
-            credits_remaining: plan.credits,
-            last_payment_id: response.razorpay_payment_id
-          }));
-
-          alert(`Successfully subscribed to ${plan.name}! You now have ${plan.credits} credits.`);
-          setProcessingPlan(null);
-          window.location.href = createPageUrl('Dashboard');
+          if (orderId && idToken) {
+            // Full verification flow
+            try {
+              const verifyRes = await fetch(`${API_BASE}/api/verify-payment`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  razorpay_order_id: response.razorpay_order_id,
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_signature: response.razorpay_signature,
+                  id_token: idToken,
+                  plan_id: planId
+                })
+              })
+              const data = await verifyRes.json()
+              if (data.success) {
+                alert('Payment successful! Credits added to your account.')
+                window.location.href = createPageUrl('Dashboard')
+              } else {
+                alert('Payment verification failed. Please contact support.')
+              }
+            } catch (err) {
+              console.error('Verify error:', err)
+              alert('Payment verification error. Please contact support.')
+            }
+          } else {
+            // Test / guest mode — no backend verification
+            alert('Test payment received! Sign in to activate your plan and add credits.')
+            window.location.href = createPageUrl('Dashboard')
+          }
+          setProcessingPlan(null)
         },
         modal: {
           ondismiss: () => setProcessingPlan(null)
         }
-      };
+      }
 
-      const razorpay = new window.Razorpay(options);
+      const razorpay = new window.Razorpay(options)
       razorpay.on('payment.failed', (resp) => {
-        console.error('Payment failed:', resp.error);
-        setProcessingPlan(null);
-      });
-      razorpay.open();
+        console.error('Payment failed:', resp.error)
+        setProcessingPlan(null)
+      })
+      razorpay.open()
     } catch (error) {
-      console.error('Payment initiation failed:', error);
-      setProcessingPlan(null);
+      console.error('Payment initiation failed:', error)
+      setProcessingPlan(null)
     }
-  };
+  }
 
   return (
-    <section className="py-24 bg-[#0a0a0a] relative">
-      {/* Gradient background */}
-      <div className="absolute inset-0 bg-gradient-to-b from-purple-600/5 to-transparent" />
-
-      <div className="max-w-4xl mx-auto px-6 relative">
+    <section className="py-24 bg-[#111111] relative">
+      <div className="max-w-6xl mx-auto px-6 relative">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
-          className="text-center mb-16"
+          className="text-center mb-12"
         >
           <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
             Simple, Transparent Pricing
           </h2>
-          <p className="text-gray-400 mb-8">
+          <p className="text-[#949494] mb-8">
             Choose the plan that fits your content schedule.
           </p>
 
-          <div className="flex items-center justify-center">
-            <div className="flex items-center gap-4 bg-white/5 py-2 px-6 rounded-full border border-white/10">
-              <Label htmlFor="landing-pricing-toggle" className={`text-sm font-medium cursor-pointer ${!isYearly ? 'text-white' : 'text-gray-400'}`}>
-                Monthly
-              </Label>
-              <Switch
-                id="landing-pricing-toggle"
-                checked={isYearly}
-                onCheckedChange={setIsYearly}
-                className="data-[state=checked]:bg-purple-500"
-              />
-              <Label htmlFor="landing-pricing-toggle" className={`flex items-center gap-2 text-sm font-medium cursor-pointer ${isYearly ? 'text-white' : 'text-gray-400'}`}>
-                Yearly
-                <span className="bg-gradient-to-r from-green-500 to-emerald-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
-                  Save 20%
-                </span>
-              </Label>
-            </div>
+          {/* Billing Toggle */}
+          <div className="flex items-center gap-1 justify-center mb-8 bg-zinc-900 border border-white/10 rounded-full p-1 w-fit mx-auto">
+            <button
+              onClick={() => setBilling('monthly')}
+              className={`px-5 py-2 rounded-full text-sm font-medium transition-all ${
+                billing === 'monthly'
+                  ? 'bg-zinc-800 text-white shadow-sm'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              Monthly
+            </button>
+            <button
+              onClick={() => setBilling('yearly')}
+              className={`px-5 py-2 rounded-full text-sm font-medium transition-all flex items-center gap-2 ${
+                billing === 'yearly'
+                  ? 'bg-zinc-800 text-white shadow-sm'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              Yearly
+              <span className="text-xs bg-white text-black font-semibold px-1.5 py-0.5 rounded-full">-20%</span>
+            </button>
           </div>
         </motion.div>
 
-        <div className="grid md:grid-cols-2 gap-6">
+        <div className="grid md:grid-cols-3 gap-6">
           {plans.map((plan, idx) => (
             <motion.div
-              key={idx}
+              key={plan.id}
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ delay: idx * 0.1 }}
-              className={`relative rounded-2xl p-8 ${plan.popular
-                ? 'bg-gradient-to-b from-purple-600/20 to-purple-600/5 border-2 border-purple-500/30'
-                : 'bg-white/[0.02] border border-white/5'
-                }`}
+              className="relative rounded-2xl p-8 bg-zinc-900 cursor-pointer"
+              onClick={() => setSelectedPlan(plan.id)}
+              style={(plan.popular || selectedPlan === plan.id) ? {
+                background: 'linear-gradient(#18181b, #18181b) padding-box, linear-gradient(135deg, #BF953F 0%, #FCF6BA 45%, #B38728 70%, #AA771C 100%) border-box',
+                border: '2px solid transparent',
+                boxShadow: '0 0 20px rgba(191,149,63,0.15)'
+              } : { border: '1px solid rgba(255,255,255,0.1)' }}
             >
               {plan.popular && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                  <span className="px-4 py-1 rounded-full bg-gradient-to-r from-purple-600 to-blue-600 text-white text-xs font-medium">
+                  <span className="px-4 py-1 rounded-full text-black text-xs font-semibold" style={{ background: 'linear-gradient(135deg, #BF953F 0%, #FCF6BA 45%, #B38728 70%, #AA771C 100%)' }}>
                     Most Popular
                   </span>
                 </div>
               )}
 
-              <div className={`w-12 h-12 rounded-xl ${plan.popular ? 'bg-purple-600' : 'bg-white/10'} flex items-center justify-center mb-6`}>
-                <plan.icon className="w-6 h-6 text-white" />
+              <div className={`w-12 h-12 rounded-xl ${plan.popular ? 'bg-white' : 'bg-zinc-800'} flex items-center justify-center mb-6`}>
+                <plan.icon className={`w-6 h-6 ${plan.popular ? 'text-black' : 'text-white'}`} />
               </div>
 
-              <h3 className="text-xl font-semibold text-white mb-1">
-                {isYearly && plan.id === 'monthly' ? 'Yearly Pro' : plan.name}
-              </h3>
-              <p className="text-gray-500 text-sm mb-4">{plan.description}</p>
+              <h3 className="text-xl font-semibold text-white mb-1">{plan.name}</h3>
+              <p className="text-[#949494] text-sm mb-4">{plan.description}</p>
 
-              <div className="flex items-baseline gap-1 mb-2">
+              <div className="flex items-baseline gap-1 mb-1">
                 <span className="text-4xl font-bold text-white">
-                  {isYearly && plan.id === 'monthly' ? '₹1900' : plan.monthlyPrice}
+                  {billing === 'yearly' ? plan.yearlyInrPrice : plan.monthlyInrPrice}
                 </span>
-                <span className="text-gray-500 flex items-center">
-                  {isYearly && plan.id === 'monthly' ? <span className="text-sm tracking-tight ml-2">billed yearly</span> : `/${plan.period}`}
-                </span>
+                <span className="text-gray-400">/mo</span>
               </div>
-
-              {isYearly && plan.id === 'monthly' && (
-                <p className="text-sm text-green-400 font-medium mb-4">
-                  Billed ₹1900 annually
-                </p>
+              {billing === 'yearly' ? (
+                <p className="text-xs text-[#F5A623] mb-5">₹{plan.yearlyPaise / 100} billed yearly · ~17% off</p>
+              ) : (
+                <div className="mb-5" />
               )}
-              {(!isYearly || plan.id !== 'monthly') && <div className="h-9 mb-4" />} {/* Spacer to prevent layout shift */}
 
               <ul className="space-y-3 mb-8">
-                {plan.features.map((feature, i) => {
-                  let displayFeature = feature;
-                  if (isYearly && plan.id === 'monthly' && feature === 'Valid for 30 Days') {
-                    displayFeature = 'Valid for 365 Days';
-                  }
-                  return (
-                    <li key={i} className="flex items-center gap-3 text-sm text-gray-300">
-                      <Check className="w-4 h-4 text-purple-400 flex-shrink-0" />
-                      {displayFeature}
-                    </li>
-                  )
-                })}
+                {plan.features.map((feature, i) => (
+                  <li key={i} className="flex items-center gap-3 text-sm text-white">
+                    <Check className="w-4 h-4 text-[#F5A623] flex-shrink-0" />
+                    {feature}
+                  </li>
+                ))}
               </ul>
 
               <Button
                 onClick={() => handleSelectPlan(plan)}
                 disabled={processingPlan === plan.id}
-                className={`w-full py-6 rounded-xl ${plan.popular
-                  ? 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white'
-                  : 'bg-white/10 hover:bg-white/20 text-white'
-                  }`}
+                className={`w-full py-6 rounded-[4px] font-semibold ${plan.popular
+                  ? 'bg-white hover:bg-gray-100 text-black'
+                  : 'bg-transparent border border-white text-white hover:bg-white/10'
+                }`}
               >
                 {processingPlan === plan.id ? (
                   <Loader2 className="w-5 h-5 animate-spin" />
@@ -273,7 +329,51 @@ export default function PricingSection() {
             </motion.div>
           ))}
         </div>
+
+        {/* Feature Comparison */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          className="mt-16 bg-[#1E1E1E] rounded-2xl border border-white/10 overflow-hidden"
+        >
+          <div className="p-6 border-b border-white/10">
+            <h3 className="text-lg font-semibold text-white">Feature Comparison</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-[#161616]">
+                  <th className="text-left p-4 text-[#949494] font-medium">Feature</th>
+                  <th className="text-center p-4 text-white font-semibold">Starter</th>
+                  <th className="text-center p-4 text-white font-semibold">Creator</th>
+                  <th className="text-center p-4 text-white font-semibold">Pro</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {[
+                  ['Monthly Credits', '15', '45', '90'],
+                  ['Max Video Length', '2 min', '3 min', '3 min'],
+                  ['Daily Limit', '3/day', '5/day', 'Unlimited'],
+                  ['Export Quality', '1080p', '1080p + 4K', '1080p + 4K'],
+                  ['Languages', '115+', '115+', '115+'],
+                  ['Translation', '—', '✓', '✓'],
+                  ['API Access', '—', '—', '✓'],
+                  ['Team Seats', '—', '—', '3'],
+                  ['Download Link Valid', '2 hours', '24 hours', '72 hours'],
+                ].map(([feature, starter, creator, pro], i) => (
+                  <tr key={i} className="hover:bg-zinc-800/30">
+                    <td className="p-4 text-white">{feature}</td>
+                    <td className="p-4 text-center text-[#949494]">{starter}</td>
+                    <td className="p-4 text-center text-white font-medium">{creator}</td>
+                    <td className="p-4 text-center text-white font-medium">{pro}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </motion.div>
       </div>
     </section>
-  );
+  )
 }
