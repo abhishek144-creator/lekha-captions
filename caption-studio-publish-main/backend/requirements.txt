@@ -6,3 +6,7 @@ pydantic
 aiofiles
 razorpay
 apscheduler
+python-dotenv
+firebase-admin
+requests
+sarvamai

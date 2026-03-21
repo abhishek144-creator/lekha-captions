@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
@@ -53,7 +53,7 @@ const FontRow = React.memo(({ data, index, style }) => {
   return (
     <div
       style={style}
-      className={`flex items-center px-3 cursor-pointer transition-colors hover:bg-white/10 ${isSelected ? 'bg-purple-500/20 text-purple-400 font-medium' : 'text-white'}`}
+      className={`flex items-center px-3 cursor-pointer transition-colors hover:bg-white/10 ${isSelected ? 'bg-[#F5A623]/30 text-[#F5A623] font-medium' : 'text-white'}`}
       onClick={(e) => {
         // Stop popover from instantly closing if it misfires
         e.stopPropagation();
@@ -63,7 +63,7 @@ const FontRow = React.memo(({ data, index, style }) => {
       <span style={{ fontFamily: font.value, fontSize: '15px' }} className="truncate flex-1">
         {font.label}
       </span>
-      {isSelected && <Check className="ml-1 h-4 w-4 shrink-0 text-purple-400" />}
+      {isSelected && <Check className="ml-1 h-4 w-4 shrink-0 text-[#F5A623]" />}
     </div>
   );
 });
@@ -89,15 +89,15 @@ const scriptLabels = {
 
 const presetColors = [
   '#E91E63', '#ffffff', '#fef08a', '#22c55e',
-  '#3b82f6', '#a855f7', '#ec4899', '#ff6b35',
+  '#3b82f6', '#F5A623', '#ec4899', '#ff6b35',
   '#fb923c'
 ];
 
 const presetGradients = [
   { name: 'Fire', value: 'linear-gradient(to right, #facc15, #ef4444)' },
-  { name: 'Electric', value: 'linear-gradient(to right, #a855f7, #3b82f6)' },
+  { name: 'Electric', value: 'linear-gradient(to right, #F5A623, #3b82f6)' },
   { name: 'Ocean', value: 'linear-gradient(to right, #06b6d4, #2563eb)' },
-  { name: 'Magic', value: 'linear-gradient(to right, #ec4899, #8b5cf6)' },
+  { name: 'Magic', value: 'linear-gradient(to right, #ec4899, #F5A623)' },
   { name: 'Nature', value: 'linear-gradient(to right, #4ade80, #0d9488)' },
   { name: 'Sunset', value: 'linear-gradient(to right, #fb923c, #db2777)' },
   { name: 'Night', value: 'linear-gradient(to right, #60a5fa, #4f46e5)' },
@@ -163,6 +163,8 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
   const [showHighlightGradient, setShowHighlightGradient] = useState(false);
   const [showTextSolid, setShowTextSolid] = useState(false);
   const [showHighlightSolid, setShowHighlightSolid] = useState(false);
+  const [fontPopoverOpen, setFontPopoverOpen] = useState(false)
+  const [effectsOpen, setEffectsOpen] = useState(false)
 
   const updateStyle = (key, value, skipHistory = false) => {
     // If a text element is selected, update its customStyle instead of global captionStyle
@@ -349,7 +351,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
       </h2>
 
       {selectedTextElement && (
-        <div className="mb-4 p-3 rounded-lg bg-purple-500/10 border border-purple-500/20">
+        <div className="mb-4 p-3 rounded-lg bg-[#F5A623]/30 border border-[#F5A623]/30">
           <p className="text-xs text-gray-400 mb-1">Editing Text Element</p>
           <p className="text-sm text-white font-medium line-clamp-1">"{selectedTextElement.text}"</p>
         </div>
@@ -364,11 +366,11 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
           <div>
             <div className="flex items-center justify-between mb-2">
               <Label className="text-sm text-gray-400">Font Family</Label>
-              <span className="text-[10px] text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded">
+              <span className="text-[10px] text-[#F5A623] bg-[#F5A623]/30 px-2 py-0.5 rounded">
                 {scriptLabels[detectedScript] || detectedScript}
               </span>
             </div>
-            <Popover>
+            <Popover open={fontPopoverOpen} onOpenChange={setFontPopoverOpen}>
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
@@ -444,14 +446,10 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
                         itemData={{
                           items: filtered,
                           selectedValue: getCurrentValue('font_family', 'Inter'),
-                          onSelect: async (fontName) => {
-                            try {
-                              // Load full weights when the user actually commits to selecting the font
-                              await loadGoogleFont(fontName, [300, 400, 500, 600, 700, 800]);
-                              updateStyle('font_family', fontName);
-                            } catch (error) {
-                              console.warn('Font load error:', error);
-                            }
+                          onSelect: (fontName) => {
+                            setFontPopoverOpen(false);
+                            updateStyle('font_family', fontName);
+                            loadGoogleFont(fontName, [300, 400, 500, 600, 700, 800]).catch(() => {});
                           }
                         }}
                       >
@@ -529,7 +527,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
                   updateStyle('text_anchor', 'top');
                   updateStyle('line_spacing', 1.4);
                 }}
-                className={`h-8 w-8 ${(selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'top' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
+                className={`h-8 w-8 ${(selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'top' ? 'bg-[#F5A623] hover:bg-[#F5A623]' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
                 title="Top Anchor (Grows down)"
               >
                 <ArrowDownCircle className={`w-4 h-4 ${(selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'top' ? 'text-white' : 'text-gray-400'}`} />
@@ -541,7 +539,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
                   updateStyle('text_anchor', 'center');
                   updateStyle('line_spacing', 1.4);
                 }}
-                className={`h-8 w-8 ${(!selectedTextElement?.customStyle?.textAnchor && !captionStyle.text_anchor) || (selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'center' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
+                className={`h-8 w-8 ${(!selectedTextElement?.customStyle?.textAnchor && !captionStyle.text_anchor) || (selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'center' ? 'bg-[#F5A623] hover:bg-[#F5A623]' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
                 title="Center Anchor (Grows both ways)"
               >
                 <AlignCenter className={`w-4 h-4 ${(!selectedTextElement?.customStyle?.textAnchor && !captionStyle.text_anchor) || (selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'center' ? 'text-white' : 'text-gray-400'}`} />
@@ -553,7 +551,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
                   updateStyle('text_anchor', 'bottom');
                   updateStyle('line_spacing', 1.4);
                 }}
-                className={`h-8 w-8 ${(selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'bottom' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
+                className={`h-8 w-8 ${(selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'bottom' ? 'bg-[#F5A623] hover:bg-[#F5A623]' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
                 title="Bottom Anchor (Grows up)"
               >
                 <ArrowUpCircle className={`w-4 h-4 ${(selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'bottom' ? 'text-white' : 'text-gray-400'}`} />
@@ -786,7 +784,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
                   >
                     <span className="text-[9px] text-gray-500">None</span>
                   </button>
-                  {['#fef08a', '#22c55e', '#3b82f6', '#a855f7', '#ec4899', '#ff6b35'].map(color => (
+                  {['#fef08a', '#22c55e', '#3b82f6', '#F5A623', '#ec4899', '#ff6b35'].map(color => (
                     <button
                       key={color}
                       onClick={() => {
@@ -932,7 +930,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
               <button
                 onClick={() => updateStyle('text_align', 'left')}
                 className={`flex-1 flex items-center justify-center py-1.5 rounded-md transition-all ${getCurrentValue('text_align', 'center') === 'left'
-                  ? "bg-purple-600 text-white shadow-sm"
+                  ? "bg-[#F5A623] text-white shadow-sm"
                   : "text-gray-400 hover:text-white hover:bg-white/5"
                   }`}
               >
@@ -941,7 +939,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
               <button
                 onClick={() => updateStyle('text_align', 'center')}
                 className={`flex-1 flex items-center justify-center py-1.5 rounded-md transition-all ${getCurrentValue('text_align', 'center') === 'center'
-                  ? "bg-purple-600 text-white shadow-sm"
+                  ? "bg-[#F5A623] text-white shadow-sm"
                   : "text-gray-400 hover:text-white hover:bg-white/5"
                   }`}
               >
@@ -950,7 +948,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
               <button
                 onClick={() => updateStyle('text_align', 'right')}
                 className={`flex-1 flex items-center justify-center py-1.5 rounded-md transition-all ${getCurrentValue('text_align', 'center') === 'right'
-                  ? "bg-purple-600 text-white shadow-sm"
+                  ? "bg-[#F5A623] text-white shadow-sm"
                   : "text-gray-400 hover:text-white hover:bg-white/5"
                   }`}
               >
@@ -969,7 +967,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
                   if (!selectedTextElement) updateStyle('is_caps', false);
                 }}
                 className={`flex-1 flex items-center justify-center py-1.5 rounded-md text-xs font-medium transition-all ${getCurrentValue('text_case', 'none') === 'lowercase'
-                  ? "bg-purple-600 text-white shadow-sm"
+                  ? "bg-[#F5A623] text-white shadow-sm"
                   : "text-gray-400 hover:text-white hover:bg-white/5"
                   }`}
               >
@@ -981,7 +979,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
                   if (!selectedTextElement) updateStyle('is_caps', false);
                 }}
                 className={`flex-1 flex items-center justify-center py-1.5 rounded-md text-xs font-medium transition-all ${getCurrentValue('text_case', 'none') === 'capitalize'
-                  ? "bg-purple-600 text-white shadow-sm"
+                  ? "bg-[#F5A623] text-white shadow-sm"
                   : "text-gray-400 hover:text-white hover:bg-white/5"
                   }`}
               >
@@ -993,7 +991,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
                   if (!selectedTextElement) updateStyle('is_caps', true);
                 }}
                 className={`flex-1 flex items-center justify-center py-1.5 rounded-md text-xs font-medium transition-all ${(getCurrentValue('text_case', 'none') === 'uppercase' || (!selectedTextElement && captionStyle.is_caps))
-                  ? "bg-purple-600 text-white shadow-sm"
+                  ? "bg-[#F5A623] text-white shadow-sm"
                   : "text-gray-400 hover:text-white hover:bg-white/5"
                   }`}
               >
@@ -1208,11 +1206,11 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
                   <div className="flex items-center justify-between mb-2">
                     <Label className="text-sm text-gray-400">Background Thickness (H)</Label>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-500">{(getCurrentValue('background_h_multiplier', 1.1)).toFixed ? (getCurrentValue('background_h_multiplier', 1.1)).toFixed(1) : '1.1'}x</span>
+                      <span className="text-xs text-gray-500">{((getCurrentValue('background_h_multiplier', 0.99) - 1) * 100).toFixed(2)}px</span>
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => updateStyle('background_h_multiplier', 1.1)}
+                        onClick={() => updateStyle('background_h_multiplier', 0.99)}
                         className="h-5 w-5 text-gray-500 hover:text-white"
                       >
                         <RotateCcw className="w-3 h-3" />
@@ -1220,11 +1218,11 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
                     </div>
                   </div>
                   <Slider
-                    value={[(getCurrentValue('background_h_multiplier', 1.1)) * 10]}
-                    onValueChange={([value]) => updateStyle('background_h_multiplier', value / 10, true)}
+                    value={[Math.round(getCurrentValue('background_h_multiplier', 0.99) * 100)]}
+                    onValueChange={([value]) => updateStyle('background_h_multiplier', value / 100, true)}
                     onPointerDown={() => addToHistory && addToHistory()}
-                    min={10}
-                    max={30}
+                    min={50}
+                    max={300}
                     step={1}
                     className="cursor-pointer"
                   />
@@ -1233,161 +1231,135 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
             </>
           )}
 
-          {/* Effects Section */}
+          {/* Effects Section — collapsible */}
           <div className="mt-6 pt-6 border-t border-white/10">
-            <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-purple-400" />
-              Effects
-            </h3>
+            <button
+              onClick={() => setEffectsOpen(v => !v)}
+              className="w-full flex items-center justify-between text-sm font-semibold text-white mb-1 group"
+            >
+              <span className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-[#F5A623]" />
+                Effects
+                {getCurrentValue('effect_type', 'none') !== 'none' && (
+                  <span className="text-[10px] bg-[#F5A623]/15 text-[#F5A623] px-1.5 py-0.5 rounded-full font-medium capitalize">
+                    {getCurrentValue('effect_type')}
+                  </span>
+                )}
+              </span>
+              <span className={`w-5 h-5 rounded border border-white/20 flex items-center justify-center text-gray-400 group-hover:border-[#F5A623]/50 group-hover:text-[#F5A623] transition-colors ${effectsOpen ? 'bg-[#F5A623]/10 border-[#F5A623]/30 text-[#F5A623]' : ''}`}>
+                {effectsOpen ? '−' : '+'}
+              </span>
+            </button>
 
-            <div className="grid grid-cols-4 gap-2 mb-4">
-              {[
-                { id: 'none', label: 'None' },
-                { id: 'shadow', label: 'Shadow' },
-                { id: 'lift', label: 'Lift' },
-                { id: 'hollow', label: 'Hollow' },
-                { id: 'splice', label: 'Splice' },
-                { id: 'outline', label: 'Outline' },
-                { id: 'echo', label: 'Echo' },
-                { id: 'neon', label: 'Neon' }
-              ].map(effect => {
-                const isSelected = getCurrentValue('effect_type', 'none') === effect.id;
-                return (
-                  <button
-                    key={effect.id}
-                    onClick={() => {
-                      updateStyle('effect_type', effect.id);
-                      if (effect.id !== 'none') {
-                        if (effect.id === 'neon') {
-                          if (getCurrentValue('effect_blur') === undefined) updateStyle('effect_blur', 8);
-                          if (getCurrentValue('effect_intensity') === undefined) updateStyle('effect_intensity', 5);
-                          if (getCurrentValue('effect_color') === undefined) updateStyle('effect_color', getCurrentValue('text_color', '#ffffff'));
-                        } else {
-                          if (getCurrentValue('effect_blur') === undefined) updateStyle('effect_blur', 50);
-                          if (getCurrentValue('effect_intensity') === undefined) updateStyle('effect_intensity', 50);
-                          if (getCurrentValue('effect_color') === undefined) updateStyle('effect_color', '#000000');
-                        }
-                        if (getCurrentValue('effect_offset') === undefined) updateStyle('effect_offset', 50);
-                        if (getCurrentValue('effect_direction') === undefined) updateStyle('effect_direction', -45);
-                        if (getCurrentValue('effect_transparency') === undefined) updateStyle('effect_transparency', 40);
-                        if (getCurrentValue('effect_thickness') === undefined) updateStyle('effect_thickness', 50);
-                      }
-                    }}
-                    className={`p-2 rounded-lg border text-xs text-center transition-all duration-200 ${isSelected
-                      ? 'bg-purple-500/20 border-purple-500 text-white font-medium shadow-[0_0_10px_rgba(168,85,247,0.2)]'
-                      : 'bg-zinc-800/50 border-white/5 text-gray-400 hover:bg-zinc-800 hover:border-white/20'
-                      }`}
-                  >
-                    {effect.label}
-                  </button>
-                );
-              })}
-            </div>
+            {effectsOpen && (
+              <div className="mt-3">
+                <div className="grid grid-cols-4 gap-2 mb-3">
+                  {[
+                    { id: 'none', label: 'None' },
+                    { id: 'shadow', label: 'Shadow' },
+                    { id: 'lift', label: 'Lift' },
+                    { id: 'hollow', label: 'Hollow' },
+                    { id: 'splice', label: 'Splice' },
+                    { id: 'outline', label: 'Outline' },
+                    { id: 'echo', label: 'Echo' },
+                    { id: 'neon', label: 'Neon' }
+                  ].map(effect => {
+                    const isSelected = getCurrentValue('effect_type', 'none') === effect.id
+                    return (
+                      <button
+                        key={effect.id}
+                        onClick={() => {
+                          updateStyle('effect_type', effect.id)
+                          if (effect.id !== 'none') {
+                            if (effect.id === 'neon') {
+                              if (getCurrentValue('effect_blur') === undefined) updateStyle('effect_blur', 8)
+                              if (getCurrentValue('effect_intensity') === undefined) updateStyle('effect_intensity', 5)
+                              if (getCurrentValue('effect_color') === undefined) updateStyle('effect_color', getCurrentValue('text_color', '#ffffff'))
+                            } else {
+                              if (getCurrentValue('effect_blur') === undefined) updateStyle('effect_blur', 50)
+                              if (getCurrentValue('effect_intensity') === undefined) updateStyle('effect_intensity', 50)
+                              if (getCurrentValue('effect_color') === undefined) updateStyle('effect_color', '#000000')
+                            }
+                            if (getCurrentValue('effect_offset') === undefined) updateStyle('effect_offset', 50)
+                            if (getCurrentValue('effect_direction') === undefined) updateStyle('effect_direction', -45)
+                            if (getCurrentValue('effect_transparency') === undefined) updateStyle('effect_transparency', 40)
+                            if (getCurrentValue('effect_thickness') === undefined) updateStyle('effect_thickness', 50)
+                          }
+                        }}
+                        className={`p-2 rounded-lg border text-xs text-center transition-all duration-200 ${isSelected
+                          ? 'bg-[#F5A623]/15 border-[#F5A623]/60 text-white font-medium'
+                          : 'bg-zinc-800/50 border-white/5 text-gray-400 hover:bg-zinc-800 hover:border-white/20'
+                        }`}
+                      >
+                        {effect.label}
+                      </button>
+                    )
+                  })}
+                </div>
 
-            {/* Effect Specific Sliders */}
-            {getCurrentValue('effect_type', 'none') !== 'none' && (
-              <div className="space-y-4 mt-4 p-4 rounded-xl bg-black/20 border border-white/5">
-                {['hollow', 'splice', 'outline'].includes(getCurrentValue('effect_type')) && (
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <Label className="text-sm text-gray-400">Thickness</Label>
-                      <span className="text-xs text-gray-500">{getCurrentValue('effect_thickness', 50)}</span>
-                    </div>
-                    <Slider
-                      value={[getCurrentValue('effect_thickness', 50)]}
-                      onValueChange={([val]) => updateStyle('effect_thickness', val, true)}
-                      onPointerDown={() => addToHistory && addToHistory()}
-                      max={100} step={1}
-                      className="cursor-pointer"
-                    />
-                  </div>
-                )}
-                {['shadow', 'splice', 'echo'].includes(getCurrentValue('effect_type')) && (
-                  <>
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <Label className="text-sm text-gray-400">Offset</Label>
-                        <span className="text-xs text-gray-500">{getCurrentValue('effect_offset', 50)}</span>
+                {/* Effect Specific Sliders */}
+                {getCurrentValue('effect_type', 'none') !== 'none' && (
+                  <div className="space-y-4 p-3 rounded-xl bg-black/20 border border-white/5">
+                    {['hollow', 'splice', 'outline'].includes(getCurrentValue('effect_type')) && (
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <Label className="text-xs text-gray-400">Thickness</Label>
+                          <span className="text-xs text-gray-500">{getCurrentValue('effect_thickness', 50)}</span>
+                        </div>
+                        <Slider value={[getCurrentValue('effect_thickness', 50)]} onValueChange={([val]) => updateStyle('effect_thickness', val, true)} onPointerDown={() => addToHistory && addToHistory()} max={100} step={1} className="cursor-pointer" />
                       </div>
-                      <Slider
-                        value={[getCurrentValue('effect_offset', 50)]}
-                        onValueChange={([val]) => updateStyle('effect_offset', val, true)}
-                        onPointerDown={() => addToHistory && addToHistory()}
-                        max={100} step={1}
-                        className="cursor-pointer"
-                      />
-                    </div>
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <Label className="text-sm text-gray-400">Direction</Label>
-                        <span className="text-xs text-gray-500">{getCurrentValue('effect_direction', -45)}°</span>
+                    )}
+                    {['shadow', 'splice', 'echo', 'lift'].includes(getCurrentValue('effect_type')) && (
+                      <>
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <Label className="text-xs text-gray-400">Offset</Label>
+                            <span className="text-xs text-gray-500">{getCurrentValue('effect_offset', 50)}</span>
+                          </div>
+                          <Slider value={[getCurrentValue('effect_offset', 50)]} onValueChange={([val]) => updateStyle('effect_offset', val, true)} onPointerDown={() => addToHistory && addToHistory()} max={100} step={1} className="cursor-pointer" />
+                        </div>
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <Label className="text-xs text-gray-400">Direction</Label>
+                            <span className="text-xs text-gray-500">{getCurrentValue('effect_direction', -45)}°</span>
+                          </div>
+                          <Slider value={[getCurrentValue('effect_direction', -45)]} onValueChange={([val]) => updateStyle('effect_direction', val, true)} onPointerDown={() => addToHistory && addToHistory()} min={-180} max={180} step={1} className="cursor-pointer" />
+                        </div>
+                      </>
+                    )}
+                    {['shadow', 'neon', 'lift'].includes(getCurrentValue('effect_type')) && (
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <Label className="text-xs text-gray-400">Blur</Label>
+                          <span className="text-xs text-gray-500">{getCurrentValue('effect_blur', 50)}</span>
+                        </div>
+                        <Slider value={[getCurrentValue('effect_blur', 50)]} onValueChange={([val]) => updateStyle('effect_blur', val, true)} onPointerDown={() => addToHistory && addToHistory()} max={100} step={1} className="cursor-pointer" />
                       </div>
-                      <Slider
-                        value={[getCurrentValue('effect_direction', -45)]}
-                        onValueChange={([val]) => updateStyle('effect_direction', val, true)}
-                        onPointerDown={() => addToHistory && addToHistory()}
-                        min={-180} max={180} step={1}
-                        className="cursor-pointer"
-                      />
-                    </div>
-                  </>
-                )}
-                {['shadow', 'neon'].includes(getCurrentValue('effect_type')) && (
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <Label className="text-sm text-gray-400">Blur</Label>
-                      <span className="text-xs text-gray-500">{getCurrentValue('effect_blur', 50)}</span>
-                    </div>
-                    <Slider
-                      value={[getCurrentValue('effect_blur', 50)]}
-                      onValueChange={([val]) => updateStyle('effect_blur', val, true)}
-                      onPointerDown={() => addToHistory && addToHistory()}
-                      max={100} step={1}
-                      className="cursor-pointer"
-                    />
-                  </div>
-                )}
-                {['shadow'].includes(getCurrentValue('effect_type')) && (
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <Label className="text-sm text-gray-400">Transparency</Label>
-                      <span className="text-xs text-gray-500">{getCurrentValue('effect_transparency', 40)}</span>
-                    </div>
-                    <Slider
-                      value={[getCurrentValue('effect_transparency', 40)]}
-                      onValueChange={([val]) => updateStyle('effect_transparency', val, true)}
-                      onPointerDown={() => addToHistory && addToHistory()}
-                      max={100} step={1}
-                      className="cursor-pointer"
-                    />
-                  </div>
-                )}
-                {['lift', 'neon'].includes(getCurrentValue('effect_type')) && (
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <Label className="text-sm text-gray-400">Intensity</Label>
-                      <span className="text-xs text-gray-500">{getCurrentValue('effect_intensity', 50)}</span>
-                    </div>
-                    <Slider
-                      value={[getCurrentValue('effect_intensity', 50)]}
-                      onValueChange={([val]) => updateStyle('effect_intensity', val, true)}
-                      onPointerDown={() => addToHistory && addToHistory()}
-                      max={100} step={1}
-                      className="cursor-pointer"
-                    />
-                  </div>
-                )}
-                {!['lift'].includes(getCurrentValue('effect_type')) && (
-                  <div>
-                    <Label className="text-sm text-gray-400 mb-2 block">Color</Label>
-                    <div className="w-12">
-                      <input
-                        type="color"
-                        value={getCurrentValue('effect_color', '#000000')}
-                        onChange={(e) => updateStyle('effect_color', e.target.value)}
-                        className="w-full h-8 rounded cursor-pointer border border-white/10"
-                      />
-                    </div>
+                    )}
+                    {['shadow', 'echo'].includes(getCurrentValue('effect_type')) && (
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <Label className="text-xs text-gray-400">Transparency</Label>
+                          <span className="text-xs text-gray-500">{getCurrentValue('effect_transparency', 40)}</span>
+                        </div>
+                        <Slider value={[getCurrentValue('effect_transparency', 40)]} onValueChange={([val]) => updateStyle('effect_transparency', val, true)} onPointerDown={() => addToHistory && addToHistory()} max={100} step={1} className="cursor-pointer" />
+                      </div>
+                    )}
+                    {['neon'].includes(getCurrentValue('effect_type')) && (
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <Label className="text-xs text-gray-400">Intensity</Label>
+                          <span className="text-xs text-gray-500">{getCurrentValue('effect_intensity', 50)}</span>
+                        </div>
+                        <Slider value={[getCurrentValue('effect_intensity', 50)]} onValueChange={([val]) => updateStyle('effect_intensity', val, true)} onPointerDown={() => addToHistory && addToHistory()} max={100} step={1} className="cursor-pointer" />
+                      </div>
+                    )}
+                    {!['lift'].includes(getCurrentValue('effect_type')) && (
+                      <div>
+                        <Label className="text-xs text-gray-400 mb-2 block">Color</Label>
+                        <input type="color" value={getCurrentValue('effect_color', '#000000')} onChange={(e) => updateStyle('effect_color', e.target.value)} className="w-10 h-8 rounded cursor-pointer border border-white/10 bg-transparent" />
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

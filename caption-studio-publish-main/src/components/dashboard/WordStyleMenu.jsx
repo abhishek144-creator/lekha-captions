@@ -92,7 +92,7 @@ export default function WordStyleMenu({ position, onApply, onClose, detectedScri
       <Button
         size="sm"
         onClick={handleApply}
-        className="w-full bg-purple-600 hover:bg-purple-700"
+        className="w-full bg-[#F5A623] hover:bg-[#F5A623]"
       >
         Apply
       </Button>
