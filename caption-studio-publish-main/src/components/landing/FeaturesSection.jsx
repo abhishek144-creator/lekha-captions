@@ -1,56 +1,63 @@
-import React from 'react';
-import { motion } from 'framer-motion';
-import { 
-  Wand2, 
-  Type, 
-  Palette, 
-  Languages, 
-  Download, 
-  Zap 
-} from 'lucide-react';
+import React from 'react'
+import { motion } from 'framer-motion'
+import {
+  Wand2,
+  Type,
+  Palette,
+  Globe,
+  Languages,
+  Download,
+  Zap
+} from 'lucide-react'
 
 const features = [
   {
     icon: Wand2,
     title: 'AI-Powered Generation',
     description: 'Auto-transcribe and generate punchy captions that match speech rhythm perfectly.',
-    gradient: 'from-purple-500 to-pink-500'
+    gradient: 'from-[#0A0A0A] to-[#F5A623]'
   },
   {
     icon: Type,
     title: 'Professional Typography',
     description: 'Premium fonts, precise sizing, and spacing controls for that polished look.',
-    gradient: 'from-blue-500 to-cyan-500'
+    gradient: 'from-[#F5A623] to-[#0A0A0A]'
   },
   {
     icon: Palette,
     title: 'Custom Styling',
     description: 'Full control over colors, highlights, backgrounds, and positioning.',
-    gradient: 'from-orange-500 to-red-500'
+    gradient: 'from-[#F5A623] to-[#F5A623]'
+  },
+  {
+    icon: Globe,
+    title: 'Every Regional Language',
+    description: '115+ languages including South Asian, African, Southeast Asian, Middle Eastern, and European regional languages. Powered by Sarvam AI for Indian languages and Whisper for global languages.',
+    gradient: 'from-[#0A0A0A] to-[#F5A623]'
   },
   {
     icon: Languages,
     title: 'Multi-Language',
-    description: 'Support for 20+ Indian languages including Hindi, Tamil, Telugu, Marathi, Bengali & more.',
-    gradient: 'from-green-500 to-emerald-500'
+    description: 'Support for 115+ languages including Hindi, Tamil, Telugu, Marathi, Bengali & more.',
+    gradient: 'from-[#F5A623] to-[#F5A623]'
   },
   {
     icon: Download,
     title: 'Easy Export',
     description: 'Download as SRT, plain text, or copy directly to your editor.',
-    gradient: 'from-violet-500 to-purple-500'
+    gradient: 'from-[#0A0A0A] to-[#F5A623]'
   },
   {
     icon: Zap,
     title: 'Built for Speed',
     description: 'Optimized for short-form. No bloat, no complexity.',
-    gradient: 'from-yellow-500 to-orange-500'
+    gradient: 'from-[#F5A623] to-[#0A0A0A]'
   }
-];
+]
 
 export default function FeaturesSection() {
   return (
-    <section className="py-24 bg-[#0a0a0a] relative">
+    <section className="py-24 bg-[#0f0f0f] relative">
       <div className="max-w-6xl mx-auto px-6">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -65,7 +72,7 @@ export default function FeaturesSection() {
             Professional tools designed specifically for Indian short-form creators
           </p>
         </motion.div>
-        
+
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {features.map((feature, idx) => (
             <motion.div
@@ -74,19 +81,19 @@ export default function FeaturesSection() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ delay: idx * 0.1 }}
-              className="group p-6 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-white/10 transition-all duration-300"
+              className="group p-6 rounded-2xl bg-zinc-900 border border-white/10 hover:border-[#F5A623]/40 hover:shadow-lg hover:shadow-[#F5A623]/5 transition-all duration-300"
             >
               <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${feature.gradient} p-0.5 mb-4`}>
-                <div className="w-full h-full rounded-xl bg-[#0a0a0a] flex items-center justify-center">
-                  <feature.icon className="w-5 h-5 text-white" />
+                <div className="w-full h-full rounded-xl bg-zinc-900 flex items-center justify-center">
+                  <feature.icon className="w-5 h-5 text-[#F5A623]" />
                 </div>
               </div>
               <h3 className="text-lg font-semibold text-white mb-2">{feature.title}</h3>
-              <p className="text-gray-500 text-sm leading-relaxed">{feature.description}</p>
+              <p className="text-gray-400 text-sm leading-relaxed">{feature.description}</p>
             </motion.div>
           ))}
         </div>
       </div>
     </section>
-  );
+  )
 }

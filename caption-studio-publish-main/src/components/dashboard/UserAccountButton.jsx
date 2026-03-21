@@ -27,7 +27,7 @@ export default function UserAccountButton() {
   const getPlanDetails = () => {
     const plan = user?.subscription_plan || 'free';
     if (plan === 'weekly_creator') {
-      return { name: 'Weekly Creator', icon: <Crown className="w-4 h-4" />, gradient: 'from-purple-500 to-pink-500', totalCredits: 50 };
+      return { name: 'Weekly Creator', icon: <Crown className="w-4 h-4" />, gradient: 'from-[#F5A623] to-pink-500', totalCredits: 50 };
     } else if (plan === 'monthly_pro') {
       return { name: 'Monthly Pro', icon: <Crown className="w-4 h-4" />, gradient: 'from-blue-500 to-cyan-500', totalCredits: 200 };
     } else {
@@ -53,7 +53,7 @@ export default function UserAccountButton() {
           onClick={() => setShowDropdown(!showDropdown)}
           className="flex items-center gap-3 p-2 pr-3 rounded-lg hover:bg-white/5 transition-colors"
         >
-          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-white font-semibold text-sm">
+          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#F5A623] to-blue-500 flex items-center justify-center text-white font-semibold text-sm">
             {getInitials(user?.full_name)}
           </div>
         </button>
@@ -68,7 +68,7 @@ export default function UserAccountButton() {
               {/* Plan Info */}
               <div className="p-4 border-b border-white/10 bg-white/5">
                 <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-white font-semibold">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#F5A623] to-blue-500 flex items-center justify-center text-white font-semibold">
                     {getInitials(user?.full_name)}
                   </div>
                   <div>
