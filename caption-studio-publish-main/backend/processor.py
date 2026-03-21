@@ -11,6 +11,7 @@ from sarvamai import SarvamAI
 GOOGLE_FONTS_MAP = {
     'Anton': {'url': 'https://github.com/google/fonts/raw/main/ofl/anton/Anton-Regular.ttf', 'file': 'Anton-Regular.ttf', 'ass_name': 'Anton'},
     'ArchivoBlack': {'url': 'https://github.com/google/fonts/raw/main/ofl/archivoblack/ArchivoBlack-Regular.ttf', 'file': 'ArchivoBlack-Regular.ttf', 'ass_name': 'Archivo Black'},
+    'Bangers': {'url': 'https://github.com/google/fonts/raw/main/ofl/bangers/Bangers-Regular.ttf', 'file': 'Bangers-Regular.ttf', 'ass_name': 'Bangers'},
     'Arimo': {'url': 'https://github.com/google/fonts/raw/main/ofl/arimo/Arimo%5Bwght%5D.ttf', 'file': 'Arimo.ttf', 'ass_name': 'Arimo'},
     'BebasNeue': {'url': 'https://github.com/google/fonts/raw/main/ofl/bebasneue/BebasNeue-Regular.ttf', 'file': 'BebasNeue-Regular.ttf', 'ass_name': 'Bebas Neue'},
     'BodoniModa': {'url': 'https://github.com/google/fonts/raw/main/ofl/bodonimoda/BodoniModa%5Bopsz%2Cwght%5D.ttf', 'file': 'BodoniModa.ttf', 'ass_name': 'Bodoni Moda'},
@@ -31,6 +32,7 @@ GOOGLE_FONTS_MAP = {
     'Merriweather': {'url': 'https://github.com/google/fonts/raw/main/ofl/merriweather/Merriweather-Regular.ttf', 'file': 'Merriweather-Regular.ttf', 'ass_name': 'Merriweather'},
     'Montserrat': {'url': 'https://github.com/google/fonts/raw/main/ofl/montserrat/Montserrat%5Bwght%5D.ttf', 'file': 'Montserrat.ttf', 'ass_name': 'Montserrat'},
     'Mulish': {'url': 'https://github.com/google/fonts/raw/main/ofl/mulish/Mulish%5Bwght%5D.ttf', 'file': 'Mulish.ttf', 'ass_name': 'Mulish'},
+    'NotoSans': {'url': 'https://github.com/google/fonts/raw/main/ofl/notosans/NotoSans%5Bwdth%2Cwght%5D.ttf', 'file': 'NotoSans.ttf', 'ass_name': 'Noto Sans'},
     'Nunito': {'url': 'https://github.com/google/fonts/raw/main/ofl/nunito/Nunito%5Bwght%5D.ttf', 'file': 'Nunito.ttf', 'ass_name': 'Nunito'},
     'OpenSans': {'url': 'https://github.com/google/fonts/raw/main/ofl/opensans/OpenSans%5Bwdth%2Cwght%5D.ttf', 'file': 'OpenSans.ttf', 'ass_name': 'Open Sans'},
     'Orbitron': {'url': 'https://github.com/google/fonts/raw/main/ofl/orbitron/Orbitron%5Bwght%5D.ttf', 'file': 'Orbitron.ttf', 'ass_name': 'Orbitron'},
@@ -43,6 +45,7 @@ GOOGLE_FONTS_MAP = {
     'Raleway': {'url': 'https://github.com/google/fonts/raw/main/ofl/raleway/Raleway%5Bwght%5D.ttf', 'file': 'Raleway.ttf', 'ass_name': 'Raleway'},
     'Roboto': {'url': 'https://github.com/google/fonts/raw/main/ofl/roboto/Roboto%5Bwdth%2Cwght%5D.ttf', 'file': 'Roboto.ttf', 'ass_name': 'Roboto'},
     'RockSalt': {'url': 'https://github.com/google/fonts/raw/main/apache/rocksalt/RockSalt-Regular.ttf', 'file': 'RockSalt-Regular.ttf', 'ass_name': 'Rock Salt'},
+    'Special Elite': {'url': 'https://github.com/google/fonts/raw/main/apache/specialelite/SpecialElite-Regular.ttf', 'file': 'SpecialElite-Regular.ttf', 'ass_name': 'Special Elite'},
     'Rubik': {'url': 'https://github.com/google/fonts/raw/main/ofl/rubik/Rubik%5Bwght%5D.ttf', 'file': 'Rubik.ttf', 'ass_name': 'Rubik'},
     'SourceSans3': {'url': 'https://github.com/google/fonts/raw/main/ofl/sourcesans3/SourceSans3%5Bwght%5D.ttf', 'file': 'SourceSans3.ttf', 'ass_name': 'Source Sans 3'},
     'SpaceGrotesk': {'url': 'https://github.com/google/fonts/raw/main/ofl/spacegrotesk/SpaceGrotesk%5Bwght%5D.ttf', 'file': 'SpaceGrotesk.ttf', 'ass_name': 'Space Grotesk'},
@@ -66,7 +69,7 @@ INDIC_FONTS = {
 
 SCRIPT_FONTS_MAP = {
     'Mukta': {'url': 'https://github.com/google/fonts/raw/main/ofl/mukta/Mukta-Regular.ttf', 'file': 'Mukta-Regular.ttf', 'ass_name': 'Mukta', 'script': 'devanagari'},
-    'NotoSansDevanagari': {'url': 'https://github.com/google/fonts/raw/main/ofl/notosansdevanagari/NotoSansDevanagari%5Bwdth%2Cwght%5D.ttf', 'file': 'NotoSansDevanagari.ttf', 'ass_name': 'Noto Sans', 'script': 'devanagari'},
+    'NotoSansDevanagari': {'url': 'https://github.com/google/fonts/raw/main/ofl/notosansdevanagari/NotoSansDevanagari%5Bwdth%2Cwght%5D.ttf', 'file': 'NotoSansDevanagari.ttf', 'ass_name': 'Noto Sans Devanagari', 'script': 'devanagari'},
     'Baloo2': {'url': 'https://github.com/google/fonts/raw/main/ofl/baloo2/Baloo2%5Bwght%5D.ttf', 'file': 'Baloo2.ttf', 'ass_name': 'Baloo 2', 'script': 'devanagari'},
     'TiroDevanagariHindi': {'url': 'https://github.com/google/fonts/raw/main/ofl/tirodevanagarihindiregular/TiroDevanagariHindi-Regular.ttf', 'file': 'TiroDevanagariHindi-Regular.ttf', 'ass_name': 'Tiro Devanagari Hindi', 'script': 'devanagari'},
     'Kalam': {'url': 'https://github.com/google/fonts/raw/main/ofl/kalam/Kalam-Regular.ttf', 'file': 'Kalam-Regular.ttf', 'ass_name': 'Kalam', 'script': 'devanagari'},
@@ -257,7 +260,8 @@ class VideoProcessor:
         return info
 
     FONT_ALIASES = {
-        'Noto Sans': 'devanagari',
+        # 'Noto Sans' (plain) is now in GOOGLE_FONTS_MAP as the Latin variant — no alias needed.
+        # Only alias the Devanagari-specific name so Indian-script captions still auto-download.
         'Noto Sans Devanagari': 'devanagari',
         'Noto Sans Tamil': 'tamil',
         'Noto Sans Telugu': 'telugu',
@@ -342,9 +346,23 @@ class VideoProcessor:
                 else:
                     print(f"Font download returned bad response for {font_key}, using Inter")
                     info = GOOGLE_FONTS_MAP.get('Inter')
+                    font_path = os.path.join(self.fonts_dir, info['file'])
             except Exception as e:
                 print(f"Font download failed for {font_key}: {e}, using Inter")
                 info = GOOGLE_FONTS_MAP.get('Inter')
+                font_path = os.path.join(self.fonts_dir, info['file'])
+
+        # Ensure the fallback font (Inter) is also downloaded if not present
+        if not os.path.exists(font_path):
+            try:
+                print(f"Downloading fallback font: {info['file']}")
+                r = requests.get(info['url'], allow_redirects=True, timeout=15)
+                if r.status_code == 200 and len(r.content) > 1000:
+                    with open(font_path, 'wb') as f:
+                        f.write(r.content)
+                    print(f"Downloaded fallback: {info['file']}")
+            except Exception as e:
+                print(f"Fallback font download also failed: {e}")
 
         return info
 
@@ -367,11 +385,60 @@ class VideoProcessor:
             api_error_msg = None
 
             sarvam_langs = {
-                'hindi': 'hi-IN', 'bengali': 'bn-IN', 'kannada': 'kn-IN', 
-                'malayalam': 'ml-IN', 'marathi': 'mr-IN', 'odia': 'od-IN', 
-                'punjabi': 'pa-IN', 'tamil': 'ta-IN', 'telugu': 'te-IN', 
+                'hindi': 'hi-IN', 'bengali': 'bn-IN', 'kannada': 'kn-IN',
+                'malayalam': 'ml-IN', 'marathi': 'mr-IN', 'odia': 'od-IN',
+                'punjabi': 'pa-IN', 'tamil': 'ta-IN', 'telugu': 'te-IN',
                 'gujarati': 'gu-IN', 'assamese': 'as-IN'
             }
+
+            # Whisper ISO 639-1 language codes for non-Indian languages
+            whisper_lang_codes = {
+                'english': 'en', 'english_us': 'en', 'english_uk': 'en',
+                'english_australia': 'en', 'english_new_zealand': 'en',
+                'english_india': 'en',
+                'arabic': 'ar', 'bulgarian': 'bg', 'burmese': 'my',
+                'catalan': 'ca', 'chinese_simplified': 'zh',
+                'chinese_traditional': 'zh', 'chinese_cantonese': 'zh',
+                'czech': 'cs', 'danish': 'da', 'danish_denmark': 'da',
+                'dutch': 'nl', 'dutch_belgium': 'nl', 'dzongkha': 'dz',
+                'estonian': 'et', 'finnish': 'fi', 'french': 'fr',
+                'french_canada': 'fr', 'german': 'de',
+                'german_switzerland': 'de', 'greek': 'el',
+                'hebrew': 'he', 'hungarian': 'hu',
+                'indonesian': 'id', 'italian': 'it',
+                'japanese': 'ja', 'korean': 'ko',
+                'korean_south_korea': 'ko', 'latvian': 'lv',
+                'lithuanian': 'lt', 'malay': 'ms',
+                'mandarin': 'zh', 'norwegian': 'no',
+                'persian': 'fa', 'polish': 'pl',
+                'portuguese': 'pt', 'romanian': 'ro',
+                'russian': 'ru', 'spanish': 'es',
+                'swahili': 'sw', 'swedish': 'sv',
+                'thai': 'th', 'tibetan': 'bo',
+                'turkish': 'tr', 'ukrainian': 'uk',
+                'vietnamese': 'vi',
+                # --- Africa ---
+                'yoruba': 'yo', 'hausa': 'ha', 'igbo': 'ig',
+                'amharic': 'am', 'afrikaans': 'af', 'zulu': 'zu',
+                'xhosa': 'xh', 'tigrinya': 'ti', 'somali': 'so',
+                'kinyarwanda': 'rw', 'shona': 'sn',
+                # --- Southeast Asia ---
+                'tagalog': 'tl', 'javanese': 'jw', 'cebuano': 'ceb',
+                'khmer': 'km', 'lao': 'lo', 'sundanese': 'su',
+                # --- Central Asia & Caucasus ---
+                'uzbek': 'uz', 'kazakh': 'kk', 'azerbaijani': 'az',
+                'georgian': 'ka', 'armenian': 'hy', 'mongolian': 'mn',
+                'kyrgyz': 'ky', 'tajik': 'tg',
+                # --- Middle East ---
+                'kurdish': 'ku', 'pashto': 'ps',
+                # --- Europe Regional ---
+                'serbian': 'sr', 'croatian': 'hr', 'bosnian': 'bs',
+                'slovak': 'sk', 'slovenian': 'sl', 'albanian': 'sq',
+                'macedonian': 'mk', 'belarusian': 'be', 'welsh': 'cy',
+                'irish': 'ga', 'basque': 'eu', 'galician': 'gl',
+                'maltese': 'mt', 'icelandic': 'is',
+            }
+
             is_indian_lang = target_language.lower() in sarvam_langs
             sarvam_api_key = os.environ.get("SARVAM_API_KEY")
 
@@ -403,41 +470,67 @@ class VideoProcessor:
                     # We need to map sarvam words to dict {"word": "Hi", "start": 0.0, "end": 0.5}
                     
                     try:
-                        resp_data = response.dict() if hasattr(response, 'dict') else response
-                        words = getattr(response, 'words', []) # adjust depending on SDK structure
-                        
-                        # Try to handle common SDK word structures:
-                        if hasattr(response, 'words') and getattr(response, 'words'):
-                            words = []
-                            for w in response.words:
-                                words.append({
-                                    "word": w.word, 
-                                    "start": w.start_time if hasattr(w, 'start_time') else w.start, 
-                                    "end": w.end_time if hasattr(w, 'end_time') else w.end
-                                })
-                        elif isinstance(resp_data, dict) and 'words' in resp_data:
-                            words = resp_data['words']
+                        # Normalize: convert response to dict first, then extract words
+                        resp_data = response.dict() if hasattr(response, 'dict') else (
+                            response if isinstance(response, dict) else {}
+                        )
+
+                        # Extract raw word list from either attribute or dict form
+                        raw_sarvam_words = (
+                            list(response.words) if hasattr(response, 'words') and response.words
+                            else resp_data.get('words', [])
+                        )
+
+                        # Normalize each word: handle attribute-style objects and dicts
+                        def _normalize_word(w):
+                            if isinstance(w, dict):
+                                return {
+                                    "word": w.get('word') or w.get('text', ''),
+                                    "start": float(w.get('start') or w.get('start_time') or 0),
+                                    "end": float(w.get('end') or w.get('end_time') or 0),
+                                }
+                            return {
+                                "word": getattr(w, 'word', None) or getattr(w, 'text', ''),
+                                "start": float(getattr(w, 'start', None) or getattr(w, 'start_time', 0) or 0),
+                                "end": float(getattr(w, 'end', None) or getattr(w, 'end_time', 0) or 0),
+                            }
+
+                        words = [_normalize_word(w) for w in raw_sarvam_words if w]
+                        print(f"[Sarvam] Parsed {len(words)} words from response")
                     except Exception as parse_e:
                         print(f"Failed to parse Sarvam response: {parse_e}")
-                        pass
+                        words = []
                 else:
                     if not self.client:
                         raise Exception("No OpenAI Client")
+                    whisper_lang = whisper_lang_codes.get(target_language.lower())
+                    whisper_kwargs = {
+                        "model": "whisper-1",
+                        "response_format": "verbose_json",
+                        "timestamp_granularities": ["word"],
+                    }
+                    if whisper_lang:
+                        whisper_kwargs["language"] = whisper_lang
                     with open(audio_p, "rb") as f:
                         transcript = self.client.audio.transcriptions.create(
-                            model="whisper-1",
                             file=f,
-                            response_format="verbose_json",
-                            timestamp_granularities=["word"]
+                            **whisper_kwargs
                         )
-                        raw_words = getattr(transcript, 'words', [])
-                        # Ensure dict format
+                        raw_words = getattr(transcript, 'words', []) or []
+                        # Normalize: handle both attribute-style objects and dicts
                         for w in raw_words:
-                            words.append({
-                                "word": w.word if hasattr(w, 'word') else w.get('word'),
-                                "start": w.start if hasattr(w, 'start') else w.get('start'),
-                                "end": w.end if hasattr(w, 'end') else w.get('end')
-                            })
+                            if isinstance(w, dict):
+                                words.append({
+                                    "word": w.get('word', ''),
+                                    "start": float(w.get('start') or 0),
+                                    "end": float(w.get('end') or 0),
+                                })
+                            else:
+                                words.append({
+                                    "word": getattr(w, 'word', ''),
+                                    "start": float(getattr(w, 'start', 0) or 0),
+                                    "end": float(getattr(w, 'end', 0) or 0),
+                                })
             except Exception as api_error:
                 api_error_msg = str(api_error)
                 print(f"[Warning] API Error: {api_error}. Using MOCK CAPTIONS for testing.")
@@ -549,7 +642,29 @@ class VideoProcessor:
             input_fwd = input_p.replace('\\', '/')
             output_fwd = output_p.replace('\\', '/')
 
-            vf_filter = f"{crop_filter}ass={ass_rel}:fontsdir={fonts_rel}"
+            # Quality settings — always scale by width (scale=W:-2 keeps aspect, ensures even height)
+            # After the crop step, horizontal videos are already converted to vertical (9:16),
+            # so scaling by width works uniformly for all orientations.
+            quality = style.get('quality', '1080p')
+            if quality == '4k':
+                scale_filter = "scale=2160:-2:flags=lanczos"
+                crf = "18"
+                audio_bitrate = "192k"
+            elif quality == '720p':
+                scale_filter = "scale=720:-2:flags=lanczos"
+                crf = "26"
+                audio_bitrate = "128k"
+            else:  # 1080p default
+                scale_filter = "scale=1080:-2:flags=lanczos"
+                crf = "22"
+                audio_bitrate = "128k"
+
+            # Filter chain: crop → ass → scale
+            # ass must come before scale so ASS PlayRes coords match the pre-scale frame dimensions.
+            ass_filter = f"ass={ass_rel}:fontsdir={fonts_rel}"
+            vf_parts = [p for p in [crop_filter.rstrip(','), ass_filter, scale_filter] if p]
+            vf_filter = ",".join(vf_parts)
+            print(f"[FFmpeg] Quality: {quality}, CRF: {crf}")
             print(f"[FFmpeg] -vf filter: {vf_filter}")
             print(f"[FFmpeg] Input: {input_fwd}")
             print(f"[FFmpeg] Output: {output_fwd}")
@@ -558,8 +673,8 @@ class VideoProcessor:
                 "ffmpeg", "-y", "-i", input_fwd,
                 "-vf", vf_filter,
                 "-map", "0:v:0", "-map", "0:a?",
-                "-c:v", "libx264", "-preset", "fast", "-crf", "28",
-                "-c:a", "aac", "-b:a", "128k",
+                "-c:v", "libx264", "-preset", "fast", "-crf", crf,
+                "-c:a", "aac", "-b:a", audio_bitrate,
                 "-shortest",
                 output_fwd
             ]
@@ -832,7 +947,11 @@ class VideoProcessor:
             bg_h_multiplier = float(style.get('background_h_multiplier', 1.1))
 
             highlight_hex = style.get('highlight_color', '') or ''
-            
+            secondary_hex_template = style.get('secondary_color', '') or ''
+            template_id_style = style.get('template_id', '') or ''
+            show_inactive_mode = style.get('show_inactive')
+            if show_inactive_mode is None: show_inactive_mode = True
+
             with open(ass_path, "w", encoding="utf-8") as f:
                 f.write(f"""[Script Info]
 ScriptType: v4.00+
@@ -861,6 +980,15 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                         cs = c.get('custom_style', {})
                         px = int((float(cs.get('position_x', 50)) / 100) * video_w)
                         py = int((float(cs.get('position_y', 50)) / 100) * video_h)
+                        # Apply Indic Y-correction for text elements (same as fallback path)
+                        _te_script = self._detect_script(c.get('text', ''))
+                        _TE_INDIC_Y_CORR = {
+                            'devanagari': -0.025, 'bengali': -0.020, 'gujarati': -0.020,
+                            'punjabi': -0.015, 'tamil': -0.015, 'telugu': -0.015,
+                            'kannada': -0.015, 'malayalam': -0.015, 'odia': -0.015, 'arabic': -0.010,
+                        }
+                        if _te_script in _TE_INDIC_Y_CORR:
+                            py = max(10, py + int(_TE_INDIC_Y_CORR[_te_script] * video_h))
                         
                         w_font_size = float(cs.get('font_size', 18))
                         w_scaled_size = int(w_font_size * scale_factor)
@@ -909,7 +1037,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                             f.write(f"Dialogue: 3,{c_start},{c_end},Default,,0,0,0,,{{\\pos({px},{py})\\an5\\fn{w_font_name}\\fs{w_scaled_size}\\1c{w_color_ass}{w_eff_tags}\\bord0\\shad0{anim_tags_str}}}{w_text}\n")
                         continue
 
-                    words = c.get('words', [])
+                    words = c.get('words') or []
                     # Pass 1: Base Layer (0)
                     for i, w in enumerate(words):
                         w_text = w.get('word', '').strip()
@@ -922,23 +1050,39 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                             w_px = int((float(layout['w']) / 100) * video_w)
                             h_px = int((float(layout['h']) / 100) * video_h)
                             
-                            w_font_size = float(c.get('word_styles', {}).get(f"{c['id']}-{i}", {}).get('fontSize', style.get('font_size', 18)))
+                            _cap_ws = c.get('word_styles') or {}
+                            _cap_ws = _cap_ws if isinstance(_cap_ws, dict) else {}
+                            w_font_size = float(_cap_ws.get(f"{c['id']}-{i}", {}).get('fontSize', style.get('font_size', 18)))
                             w_scaled_size = int(w_font_size * scale_factor)
 
                             # Fetch specific animation
-                            w_anim = c.get('word_styles', {}).get(f"{c['id']}-{i}", {}).get('animation', c.get('animation', 'none'))
+                            w_anim = _cap_ws.get(f"{c['id']}-{i}", {}).get('animation', c.get('animation', 'none'))
                             anim_tags_str = ""
                             if w_anim and w_anim != 'none':
                                 anim_tags = self._get_animation_tags(w_anim, float(w.get('start', c.get('start_time', 0))), float(w.get('end', c.get('end_time', 0))), w_scaled_size, px, py)
                                 anim_tags_clean = [t for t in anim_tags if t != "__skip_pos__"]
                                 anim_tags_str = "".join(anim_tags_clean)
 
+                            # Word by Word Delivery: when show_inactive=False, draw each word only during its own timing
+                            if show_inactive_mode == False:
+                                _w_start = float(w.get('start', c.get('start_time', 0)))
+                                _w_end = float(w.get('end', c.get('end_time', 0)))
+                                if _w_end > _w_start:
+                                    w_draw_start = self._fmt(_w_start)
+                                    w_draw_end = self._fmt(_w_end)
+                                else:
+                                    w_draw_start = c_start
+                                    w_draw_end = c_end
+                            else:
+                                w_draw_start = c_start
+                                w_draw_end = c_end
+
                             # Draw Background
                             if has_bg:
                                 bw = int((w_px * bg_h_multiplier) / 2)
                                 bh = int(h_px / 2)
                                 p_obj = f"m {-bw} {-bh} l {bw} {-bh} l {bw} {bh} l {-bw} {bh}"
-                                f.write(f"Dialogue: 0,{c_start},{c_end},Default,,0,0,0,,{{\\pos({px},{py})\\an5\\1c{bg_ass}\\1a&H00&\\3c{bg_ass}\\bord0\\shad0\\p1{anim_tags_str}}}{p_obj}\n")
+                                f.write(f"Dialogue: 0,{w_draw_start},{w_draw_end},Default,,0,0,0,,{{\\pos({px},{py})\\an5\\1c{bg_ass}\\1a&H00&\\3c{bg_ass}\\bord0\\shad0\\p1{anim_tags_str}}}{p_obj}\n")
 
                             # Draw Text
                             if style.get('is_caps') or style.get('text_case') == 'uppercase': w_text = w_text.upper()
@@ -946,8 +1090,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                             elif style.get('text_case') == 'capitalize': w_text = w_text.title()
                             
                             # Fetch word specific styles if available, else fallback to global
-                            ws_dict = c.get('word_styles', {}).get(f"{c['id']}-{i}", {})
-                            if isinstance(ws_dict, str): ws_dict = {}
+                            ws_dict = _cap_ws.get(f"{c['id']}-{i}", {})
+                            if not isinstance(ws_dict, dict): ws_dict = {}
                             
                             w_color_hex = ws_dict.get('color', primary_hex)
                             is_emp = ws_dict.get('isEmphasis', False)
@@ -981,7 +1125,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                             w_font_info = self._ensure_font(w_font_family)
                             w_font_name = w_font_info['ass_name']
                             
-                            f.write(f"Dialogue: 0,{c_start},{c_end},Default,,0,0,0,,{{\\pos({px},{py})\\an5\\fn{w_font_name}\\fs{w_scaled_size}\\1c{w_color_ass}{w_eff_tags}{emp_tags}}}{w_text}\n")
+                            f.write(f"Dialogue: 0,{w_draw_start},{w_draw_end},Default,,0,0,0,,{{\\pos({px},{py})\\an5\\fn{w_font_name}\\fs{w_scaled_size}\\1c{w_color_ass}{w_eff_tags}{emp_tags}}}{w_text}\n")
 
                     # Pass 2: Highlight Layer (1)
                     if highlight_hex:
@@ -993,8 +1137,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                             we = float(w.get('end', 0))
                             if we <= ws: continue
                             
-                            ws_dict_h = c.get('word_styles', {}).get(f"{c['id']}-{i}", {})
-                            if isinstance(ws_dict_h, str): ws_dict_h = {}
+                            ws_dict_h = _cap_ws.get(f"{c['id']}-{i}", {})
+                            if not isinstance(ws_dict_h, dict): ws_dict_h = {}
                             if ws_dict_h.get('isEmphasis', False): continue
                             
                             layout = word_layouts.get(f"{c['id']}-{i}")
@@ -1018,7 +1162,36 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                                 elif style.get('text_case') == 'lowercase': w_text = w_text.lower()
                                 elif style.get('text_case') == 'capitalize': w_text = w_text.title()
                                 f.write(f"Dialogue: 1,{w_start_str},{w_end_str},Default,,0,0,0,,{{\\pos({px},{py})\\an5\\1c{primary_ass}\\bord0\\shad0}}{w_text}\n")
-            
+
+                    # Pass 3: Karaoke Text Color (active word in secondary_color during word timing)
+                    # Used for templates like Green Neon Pulse where active word changes text color
+                    if secondary_hex_template and template_id_style:
+                        sec_ass = self._hex_to_ass(secondary_hex_template, 1.0)
+                        _cap_ws_k = c.get('word_styles') or {}
+                        _cap_ws_k = _cap_ws_k if isinstance(_cap_ws_k, dict) else {}
+                        for i, w in enumerate(words):
+                            w_text = w.get('word', '').strip()
+                            if not w_text: continue
+                            ws = float(w.get('start', 0))
+                            we = float(w.get('end', 0))
+                            if we <= ws: continue
+                            layout = word_layouts.get(f"{c['id']}-{i}")
+                            if layout:
+                                px = int((float(layout['x']) / 100) * video_w)
+                                py = int((float(layout['y']) / 100) * video_h)
+                                ws_str = self._fmt(ws)
+                                we_str = self._fmt(we)
+                                w_font_size_k = float(_cap_ws_k.get(f"{c['id']}-{i}", {}).get('fontSize', style.get('font_size', 18)))
+                                w_scaled_size_k = int(w_font_size_k * scale_factor)
+                                w_font_family_k = _cap_ws_k.get(f"{c['id']}-{i}", {}).get('fontFamily', style.get('font_family', 'Inter'))
+                                w_font_info_k = self._ensure_font(w_font_family_k)
+                                w_font_name_k = w_font_info_k['ass_name']
+                                display_k = w_text
+                                if style.get('is_caps') or style.get('text_case') == 'uppercase': display_k = display_k.upper()
+                                elif style.get('text_case') == 'lowercase': display_k = display_k.lower()
+                                elif style.get('text_case') == 'capitalize': display_k = display_k.title()
+                                f.write(f"Dialogue: 2,{ws_str},{we_str},Default,,0,0,0,,{{\\pos({px},{py})\\an5\\fn{w_font_name_k}\\fs{w_scaled_size_k}\\1c{sec_ass}\\bord0\\shad0}}{display_k}\n")
+
             return ass_path
 
         font_name = font_info['ass_name']
@@ -1093,6 +1266,26 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         pos_y_px = int((pos_y_pct / 100) * video_h)
         pos_x_px = int((pos_x_pct / 100) * video_w)
 
+        # Global Vertical Center: Indic scripts have tall ascenders/descenders that
+        # shift the visual center downward.  Shift up to compensate so the
+        # text bounding box is truly centered on the requested Y position.
+        INDIC_Y_CORRECTIONS = {
+            'devanagari': -0.025,
+            'bengali':    -0.020,
+            'gujarati':   -0.020,
+            'punjabi':    -0.015,
+            'tamil':      -0.015,
+            'telugu':     -0.015,
+            'kannada':    -0.015,
+            'malayalam':  -0.015,
+            'odia':       -0.015,
+            'arabic':     -0.010,
+        }
+        if detected_script in INDIC_Y_CORRECTIONS:
+            correction_px = int(INDIC_Y_CORRECTIONS[detected_script] * video_h)
+            pos_y_px = max(10, pos_y_px + correction_px)
+            print(f"[Align] Applied y-correction for {detected_script}: {correction_px}px -> pos_y={pos_y_px}")
+
         alignment = 5
 
         is_caps = style.get('is_caps', False)
@@ -1165,6 +1358,17 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     te_pos_y = float(custom_style.get('position_y', 50))
                     te_pos_x_px = int((te_pos_x / 100) * video_w)
                     te_pos_y_px = int((te_pos_y / 100) * video_h)
+
+                    # Apply Indic y-correction for text elements (same as caption fallback path)
+                    _TE_INDIC_Y_CORRECTIONS = {
+                        'devanagari': -0.025, 'bengali': -0.020, 'gujarati': -0.020,
+                        'punjabi': -0.015, 'tamil': -0.015, 'telugu': -0.015,
+                        'kannada': -0.015, 'malayalam': -0.015, 'odia': -0.015,
+                        'arabic': -0.010,
+                    }
+                    if detected_script in _TE_INDIC_Y_CORRECTIONS:
+                        te_y_correction = int(_TE_INDIC_Y_CORRECTIONS[detected_script] * video_h)
+                        te_pos_y_px = max(10, te_pos_y_px + te_y_correction)
 
                     # Frontend anchors to center. align=5 is middle-center in ASS.
                     te_align_map = {'left': 4, 'center': 5, 'right': 6}
@@ -1436,7 +1640,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
                 has_caption_anim = caption_animation and caption_animation != 'none'
 
-                word_styles = c.get('word_styles', {})
+                word_styles = c.get('word_styles') or {}
+                if not isinstance(word_styles, dict): word_styles = {}
                 caption_id = c.get('id', '')
 
                 has_word_positions = False
@@ -1695,6 +1900,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                                     continue
                                 style_key = f"{caption_id}-{word_idx}"
                                 ws = word_styles.get(style_key, {})
+                                if not isinstance(ws, dict): ws = {}
                                 word_idx += 1
                                 if not ws:
                                     styled_parts.append(token)
@@ -1758,6 +1964,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                                     continue
                                 style_key = f"{caption_id}-{word_idx}"
                                 ws = word_styles.get(style_key, {})
+                                if not isinstance(ws, dict): ws = {}
                                 word_idx += 1
                                 if not ws:
                                     styled_parts.append(token)

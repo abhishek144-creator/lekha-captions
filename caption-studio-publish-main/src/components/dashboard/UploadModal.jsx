@@ -15,7 +15,7 @@ import {
   SelectGroup,
   SelectLabel,
 } from "@/components/ui/select";
-import { Upload, Film, Sparkles, Globe, Palette, Loader2, Info } from 'lucide-react';
+import { Upload, Film, Sparkles, Globe, Palette, Loader2, Info, Wand2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const indianLanguages = [
@@ -46,13 +46,28 @@ const indianLanguages = [
 ];
 
 const internationalLanguages = [
+  // --- Africa ---
+  { value: 'afrikaans', label: 'Afrikaans' },
+  { value: 'amharic', label: 'Amharic (አማርኛ)' },
+  // --- Middle East ---
   { value: 'arabic', label: 'Arabic (العربية)' },
+  // --- Central Asia & Caucasus ---
+  { value: 'armenian', label: 'Armenian (Հայերեն)' },
+  { value: 'azerbaijani', label: 'Azerbaijani (Azərbaycan)' },
+  // --- Europe Regional ---
+  { value: 'albanian', label: 'Albanian (Shqip)' },
+  { value: 'basque', label: 'Basque (Euskara)' },
+  { value: 'belarusian', label: 'Belarusian (Беларуская)' },
+  { value: 'bosnian', label: 'Bosnian (Bosanski)' },
   { value: 'bulgarian', label: 'Bulgarian' },
   { value: 'burmese', label: 'Burmese (မြန်မာ)' },
   { value: 'catalan', label: 'Catalan' },
+  // --- Southeast Asia ---
+  { value: 'cebuano', label: 'Cebuano (Bisaya)' },
   { value: 'chinese_simplified', label: 'Chinese (Simplified)' },
   { value: 'chinese_traditional', label: 'Chinese (Traditional)' },
   { value: 'chinese_cantonese', label: 'Chinese (Cantonese, Hong Kong)' },
+  { value: 'croatian', label: 'Croatian (Hrvatski)' },
   { value: 'czech', label: 'Czech (Čeština)' },
   { value: 'danish', label: 'Danish' },
   { value: 'danish_denmark', label: 'Danish (Denmark)' },
@@ -68,34 +83,86 @@ const internationalLanguages = [
   { value: 'finnish', label: 'Finnish (Suomi)' },
   { value: 'french', label: 'French (Français)' },
   { value: 'french_canada', label: 'French (Canada)' },
+  { value: 'galician', label: 'Galician (Galego)' },
+  { value: 'georgian', label: 'Georgian (ქართული)' },
   { value: 'german', label: 'German (Deutsch)' },
   { value: 'german_switzerland', label: 'German (Switzerland)' },
   { value: 'greek', label: 'Greek (Ελληνικά)' },
+  // --- Africa ---
+  { value: 'hausa', label: 'Hausa (Harshen Hausa)' },
   { value: 'hebrew', label: 'Hebrew (עברית)' },
   { value: 'hungarian', label: 'Hungarian (Magyar)' },
+  { value: 'icelandic', label: 'Icelandic (Íslenska)' },
+  { value: 'igbo', label: 'Igbo' },
   { value: 'indonesian', label: 'Indonesian (Bahasa)' },
+  { value: 'irish', label: 'Irish (Gaeilge)' },
   { value: 'italian', label: 'Italian (Italiano)' },
   { value: 'japanese', label: 'Japanese (日本語)' },
+  // --- Southeast Asia ---
+  { value: 'javanese', label: 'Javanese (Basa Jawa)' },
+  // --- Central Asia & Caucasus ---
+  { value: 'kazakh', label: 'Kazakh (Қазақша)' },
+  // --- Southeast Asia ---
+  { value: 'khmer', label: 'Khmer (ខ្មែរ)' },
+  // --- Africa ---
+  { value: 'kinyarwanda', label: 'Kinyarwanda' },
   { value: 'korean', label: 'Korean (한국어)' },
   { value: 'korean_south_korea', label: 'Korean (South Korea)' },
+  // --- Middle East ---
+  { value: 'kurdish', label: 'Kurdish (Kurdî)' },
+  // --- Central Asia & Caucasus ---
+  { value: 'kyrgyz', label: 'Kyrgyz (Кыргызча)' },
+  // --- Southeast Asia ---
+  { value: 'lao', label: 'Lao (ລາວ)' },
   { value: 'latvian', label: 'Latvian' },
   { value: 'lithuanian', label: 'Lithuanian' },
+  // --- Europe Regional ---
+  { value: 'macedonian', label: 'Macedonian (Македонски)' },
   { value: 'malay', label: 'Malay (Bahasa Melayu)' },
+  { value: 'maltese', label: 'Maltese (Malti)' },
   { value: 'mandarin', label: 'Mandarin (普通话)' },
+  // --- Central Asia & Caucasus ---
+  { value: 'mongolian', label: 'Mongolian (Монгол)' },
   { value: 'norwegian', label: 'Norwegian (Norsk)' },
+  // --- Middle East ---
+  { value: 'pashto', label: 'Pashto (پښتو)' },
   { value: 'persian', label: 'Persian (فارسی)' },
   { value: 'polish', label: 'Polish (Polski)' },
   { value: 'portuguese', label: 'Portuguese (Português)' },
   { value: 'romanian', label: 'Romanian (Română)' },
   { value: 'russian', label: 'Russian (Русский)' },
+  // --- Europe Regional ---
+  { value: 'serbian', label: 'Serbian (Српски)' },
+  // --- Africa ---
+  { value: 'shona', label: 'Shona (chiShona)' },
+  { value: 'slovak', label: 'Slovak (Slovenčina)' },
+  { value: 'slovenian', label: 'Slovenian (Slovenščina)' },
+  // --- Africa ---
+  { value: 'somali', label: 'Somali (Soomaali)' },
   { value: 'spanish', label: 'Spanish (Español)' },
+  // --- Southeast Asia ---
+  { value: 'sundanese', label: 'Sundanese (Basa Sunda)' },
   { value: 'swahili', label: 'Swahili (Kiswahili)' },
   { value: 'swedish', label: 'Swedish (Svenska)' },
+  // --- Southeast Asia ---
+  { value: 'tagalog', label: 'Tagalog / Filipino (Wikang Filipino)' },
+  // --- Central Asia & Caucasus ---
+  { value: 'tajik', label: 'Tajik (Тоҷикӣ)' },
   { value: 'thai', label: 'Thai (ไทย)' },
   { value: 'tibetan', label: 'Tibetan (བོད་སྐད)' },
+  // --- Africa ---
+  { value: 'tigrinya', label: 'Tigrinya (ትግርኛ)' },
   { value: 'turkish', label: 'Turkish (Türkçe)' },
   { value: 'ukrainian', label: 'Ukrainian (Українська)' },
+  // --- Central Asia & Caucasus ---
+  { value: 'uzbek', label: 'Uzbek (Oʻzbek)' },
   { value: 'vietnamese', label: 'Vietnamese (Tiếng Việt)' },
+  // --- Europe Regional ---
+  { value: 'welsh', label: 'Welsh (Cymraeg)' },
+  // --- Africa ---
+  { value: 'xhosa', label: 'Xhosa (isiXhosa)' },
+  { value: 'yoruba', label: 'Yoruba (Yorùbá)' },
+  { value: 'zulu', label: 'Zulu (isiZulu)' },
 ];
 
 export default function UploadModal({
@@ -112,6 +179,8 @@ export default function UploadModal({
   const [step, setStep] = useState(1);
   const [fileSizeError, setFileSizeError] = useState(null);
   const [showDynamicInfo, setShowDynamicInfo] = useState(false);
+  const [isDetecting, setIsDetecting] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Reset modal to step 1 (upload page) whenever it opens
   useEffect(() => {
@@ -189,6 +258,62 @@ export default function UploadModal({
     setStyle('dynamic');
     setWordsPerLine('dynamic');
     setFileSizeError(null);
+    setSearchQuery('');
+  };
+
+  // Language detection — uploads file first, then calls detect endpoint
+  const handleDetectLanguage = async () => {
+    if (!selectedFile) return
+    setIsDetecting(true)
+    try {
+      // Upload file first to get file_id
+      const formData = new FormData()
+      formData.append('file', selectedFile)
+      const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData })
+      const uploadData = await uploadRes.json()
+      if (!uploadData.success) {
+        alert(uploadData.error || 'Upload failed for detection')
+        setIsDetecting(false)
+        return
+      }
+      // Call detect-language
+      const detectRes = await fetch('/api/detect-language', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file_id: uploadData.file_id })
+      })
+      const detectData = await detectRes.json()
+      if (detectData.success && detectData.language) {
+        // Try to match Whisper language code to our dropdown values
+        const detected = detectData.language.toLowerCase()
+        const allLangs = [...indianLanguages, ...internationalLanguages]
+        const match = allLangs.find(l =>
+          l.value === detected ||
+          l.value.startsWith(detected) ||
+          l.label.toLowerCase().startsWith(detected)
+        )
+        if (match) {
+          setLanguage(match.value)
+        } else {
+          // Fallback: set as-is if it's a valid value
+          setLanguage(detected)
+          alert(`Detected language: ${detected}. Please verify in the dropdown.`)
+        }
+      } else {
+        alert('Could not detect language. Please select manually.')
+      }
+    } catch (err) {
+      console.error('Language detection error:', err)
+      alert('Language detection failed. Please select manually.')
+    }
+    setIsDetecting(false)
+  };
+
+  // Filter languages by search query
+  const filterLangs = (langs) => {
+    if (!searchQuery.trim()) return langs
+    const q = searchQuery.toLowerCase()
+    return langs.filter(l => l.label.toLowerCase().includes(q) || l.value.toLowerCase().includes(q))
   };
 
   return (
@@ -215,7 +340,7 @@ export default function UploadModal({
             >
               <div
                 className={`relative border-2 border-dashed rounded-xl p-8 text-center transition-all ${dragActive
-                  ? 'border-purple-500 bg-purple-500/10'
+                  ? 'border-[#F5A623] bg-[#F5A623]/10'
                   : 'border-white/10 hover:border-white/20'
                   }`}
                 onDragEnter={handleDrag}
@@ -230,8 +355,8 @@ export default function UploadModal({
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 />
 
-                <div className="w-16 h-16 rounded-full bg-purple-600/20 flex items-center justify-center mx-auto mb-4">
-                  <Upload className="w-7 h-7 text-purple-400" />
+                <div className="w-16 h-16 rounded-full bg-[#F5A623]/15 flex items-center justify-center mx-auto mb-4">
+                  <Upload className="w-7 h-7 text-[#F5A623]" />
                 </div>
 
                 <p className="text-white font-medium mb-1">
@@ -266,8 +391,8 @@ export default function UploadModal({
               className="space-y-6"
             >
               <div className="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10">
-                <div className="w-10 h-10 rounded-lg bg-purple-600/20 flex items-center justify-center">
-                  <Film className="w-5 h-5 text-purple-400" />
+                <div className="w-10 h-10 rounded-lg bg-[#F5A623]/15 flex items-center justify-center">
+                  <Film className="w-5 h-5 text-[#F5A623]" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-white truncate">{selectedFile?.name}</p>
@@ -286,42 +411,70 @@ export default function UploadModal({
               </div>
 
               <div>
-                <label className="text-sm text-gray-400 mb-2 flex items-center gap-2">
-                  <Globe className="w-4 h-4" />
-                  Caption Language
-                </label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm text-gray-400 flex items-center gap-2">
+                    <Globe className="w-4 h-4" />
+                    Caption Language
+                  </label>
+                  <button
+                    onClick={handleDetectLanguage}
+                    disabled={isDetecting}
+                    className="flex items-center gap-1.5 text-xs text-[#F5A623] hover:text-[#D4891A] transition-colors disabled:opacity-50"
+                  >
+                    {isDetecting ? (
+                      <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Detecting...</>
+                    ) : (
+                      <><Wand2 className="w-3.5 h-3.5" /> Auto-detect</>
+                    )}
+                  </button>
+                </div>
                 <Select value={language} onValueChange={setLanguage}>
                   <SelectTrigger className="bg-zinc-800 border-white/10 text-white">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-zinc-800 border-white/10 max-h-80">
+                    {/* Search input */}
+                    <div className="px-2 pb-2">
+                      <input
+                        type="text"
+                        placeholder="Search languages..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full px-3 py-1.5 rounded-md bg-zinc-700 border border-white/10 text-white text-sm placeholder-gray-500 outline-none focus:border-[#F5A623]"
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </div>
                     <SelectItem value="auto" className="text-white hover:bg-white/10 font-medium">
                       🎯 Same as Video (Auto-Detect)
                     </SelectItem>
-                    <SelectGroup>
-                      <SelectLabel className="text-orange-400 text-xs font-semibold uppercase tracking-wider px-2 mt-2">Indian Languages</SelectLabel>
-                      {indianLanguages.map(lang => (
-                        <SelectItem
-                          key={lang.value}
-                          value={lang.value}
-                          className="text-white hover:bg-white/10"
-                        >
-                          {lang.label}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                    <SelectGroup>
-                      <SelectLabel className="text-purple-400 text-xs font-semibold uppercase tracking-wider px-2 mt-2">International</SelectLabel>
-                      {internationalLanguages.map(lang => (
-                        <SelectItem
-                          key={lang.value}
-                          value={lang.value}
-                          className="text-white hover:bg-white/10"
-                        >
-                          {lang.label}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
+                    {filterLangs(indianLanguages).length > 0 && (
+                      <SelectGroup>
+                        <SelectLabel className="text-orange-400 text-xs font-semibold uppercase tracking-wider px-2 mt-2">Indian Languages</SelectLabel>
+                        {filterLangs(indianLanguages).map(lang => (
+                          <SelectItem
+                            key={lang.value}
+                            value={lang.value}
+                            className="text-white hover:bg-white/10"
+                          >
+                            {lang.label}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    )}
+                    {filterLangs(internationalLanguages).length > 0 && (
+                      <SelectGroup>
+                        <SelectLabel className="text-[#F5A623] text-xs font-semibold uppercase tracking-wider px-2 mt-2">International & Regional</SelectLabel>
+                        {filterLangs(internationalLanguages).map(lang => (
+                          <SelectItem
+                            key={lang.value}
+                            value={lang.value}
+                            className="text-white hover:bg-white/10"
+                          >
+                            {lang.label}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -351,7 +504,7 @@ export default function UploadModal({
                   {wordsPerLine === 'dynamic' && (
                     <button
                       onClick={() => setShowDynamicInfo(v => !v)}
-                      className="flex items-center gap-1 text-xs text-purple-400 hover:text-purple-300 transition-colors"
+                      className="flex items-center gap-1 text-xs text-[#F5A623] hover:text-[#D4891A] transition-colors"
                     >
                       <Info className="w-3.5 h-3.5" />
                       How it works
@@ -377,9 +530,9 @@ export default function UploadModal({
                   <motion.div
                     initial={{ opacity: 0, y: -6 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="mt-2 p-3 rounded-lg bg-purple-500/10 border border-purple-500/20 text-xs text-gray-300 space-y-1.5"
+                    className="mt-2 p-3 rounded-lg bg-[#F5A623]/10 border border-[#F5A623]/20 text-xs text-gray-300 space-y-1.5"
                   >
-                    <p className="font-semibold text-purple-300">How Dynamic (Auto) works:</p>
+                    <p className="font-semibold text-[#F5A623]">How Dynamic (Auto) works:</p>
                     <p>Syncs captions to the exact millisecond of each spoken word using audio timestamps.</p>
                     <p>Shows 1-3 words at a time by default for maximum readability.</p>
                     <p>If 4-5 words are spoken quickly as a phrase, it shows the full phrase together.</p>
@@ -391,7 +544,7 @@ export default function UploadModal({
               <Button
                 onClick={handleSubmit}
                 disabled={isUploading}
-                className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white py-6"
+                className="w-full bg-gradient-to-r from-[#FFE566] to-[#F5A623] hover:from-[#F5A623] hover:to-[#D4891A] text-black font-semibold py-6"
               >
                 {isUploading ? (
                   <>

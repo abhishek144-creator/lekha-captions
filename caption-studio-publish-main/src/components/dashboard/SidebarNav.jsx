@@ -27,15 +27,15 @@ export default function SidebarNav({ activeTab, setActiveTab, user, onOpenPricin
   };
 
   const getPlanDetails = () => {
-    const plan = userData?.subscription_tier || 'free';
-    if (plan === 'weekly_creator') {
-      return { name: 'Weekly Creator', icon: <Crown className="w-4 h-4" />, gradient: 'from-purple-500 to-pink-500', totalCredits: 10 };
-    } else if (plan === 'monthly_pro') {
-      return { name: 'Monthly Pro', icon: <Crown className="w-4 h-4" />, gradient: 'from-blue-500 to-cyan-500', totalCredits: 30 };
-    } else {
-      return { name: 'Free Plan', icon: <Video className="w-4 h-4" />, gradient: 'from-blue-500 to-cyan-500', totalCredits: 3 };
-    }
-  };
+    const plan = userData?.subscription_tier || 'free'
+    if (plan === 'starter' || plan === 'starter_yearly')
+      return { name: 'Starter', icon: <Crown className="w-4 h-4" />, totalCredits: 15 }
+    if (plan === 'creator' || plan === 'creator_yearly')
+      return { name: 'Creator', icon: <Crown className="w-4 h-4" />, totalCredits: 45 }
+    if (plan === 'pro' || plan === 'pro_yearly')
+      return { name: 'Pro', icon: <Crown className="w-4 h-4" />, totalCredits: 100 }
+    return { name: 'Free', icon: <Video className="w-4 h-4" />, totalCredits: 3 }
+  }
 
   const planDetails = getPlanDetails();
   const creditsLeft = userData?.credits_remaining ?? 0;
@@ -65,14 +65,14 @@ export default function SidebarNav({ activeTab, setActiveTab, user, onOpenPricin
             onClick={() => !isDisabled && setActiveTab(item.id)}
             disabled={isDisabled}
             className={`w-full flex flex-col items-center justify-center py-3 px-2 transition-colors relative ${isActive
-              ? 'text-purple-400'
+              ? 'text-[#F5A623]'
               : isDisabled
                 ? 'text-zinc-700 cursor-not-allowed'
                 : 'text-zinc-500 hover:text-zinc-300'
               }`}
           >
             {isActive && (
-              <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-8 bg-purple-500 rounded-r-full" />
+              <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-8 bg-[#F5A623] rounded-r-full" />
             )}
             <Icon className="w-5 h-5" />
             <span className="text-[10px] mt-1.5 font-medium">{item.label}</span>
@@ -98,10 +98,10 @@ export default function SidebarNav({ activeTab, setActiveTab, user, onOpenPricin
                 <img
                   src={currentUser.photoURL}
                   alt="Profile"
-                  className="w-9 h-9 rounded-full border-2 border-purple-500/50"
+                  className="w-9 h-9 rounded-full border-2 border-[#F5A623]/50"
                 />
               ) : (
-                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-white text-xs font-bold">
+                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#0A0A0A] to-[#F5A623] flex items-center justify-center text-white text-xs font-bold">
                   {(currentUser.displayName || currentUser.email || 'U').charAt(0).toUpperCase()}
                 </div>
               )}
@@ -117,7 +117,7 @@ export default function SidebarNav({ activeTab, setActiveTab, user, onOpenPricin
               )}
               <Button
                 onClick={onOpenPricing}
-                className="w-full justify-start bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
+                className="w-full justify-start bg-gradient-to-r from-[#FFE566] to-[#F5A623] hover:from-[#F5A623] hover:to-[#D4891A] text-black font-semibold"
                 size="sm"
               >
                 Upgrade Plan

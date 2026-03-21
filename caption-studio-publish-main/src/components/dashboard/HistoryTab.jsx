@@ -39,7 +39,7 @@ export default function HistoryTab({ user, userData }) {
     if (loading) {
         return (
             <div className="h-full flex items-center justify-center">
-                <Loader2 className="w-6 h-6 text-purple-500 animate-spin" />
+                <Loader2 className="w-6 h-6 text-[#F5A623] animate-spin" />
             </div>
         );
     }
@@ -82,7 +82,7 @@ export default function HistoryTab({ user, userData }) {
                             <Button
                                 variant="secondary"
                                 size="sm"
-                                className="w-full mt-2 bg-purple-600/20 text-purple-300 hover:bg-purple-600/30"
+                                className="w-full mt-2 bg-[#F5A623]/30 text-[#F5A623] hover:bg-[#F5A623]/30"
                                 onClick={() => window.open(item.url, '_blank')}
                             >
                                 <Download className="w-4 h-4 mr-2" />
