@@ -54,7 +54,7 @@ const FontRow = React.memo(({ data, index, style }) => {
   return (
     <div
       style={style}
-      className={`flex items-center px-3 cursor-pointer transition-colors hover:bg-white/10 hover:text-white ${isSelected ? 'bg-[#F5A623]/30 text-[#F5A623] font-medium' : 'text-white'}`}
+      className={`flex items-center px-3 cursor-pointer transition-colors hover:bg-white/10 hover:text-white ${isSelected ? 'bg-white/20 text-white font-medium' : 'text-white'}`}
       onClick={(e) => {
         e.stopPropagation();
         data.onSelect(font.value);
@@ -63,7 +63,7 @@ const FontRow = React.memo(({ data, index, style }) => {
       <span style={{ fontFamily: font.value, fontSize: '15px' }} className="truncate flex-1">
         {font.label}
       </span>
-      {isSelected && <Check className="ml-1 h-4 w-4 shrink-0 text-[#F5A623]" />}
+      {isSelected && <Check className="ml-1 h-4 w-4 shrink-0 text-white" />}
     </div>
   );
 });
@@ -133,12 +133,14 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
     const fetchFullGoogleFonts = async () => {
       try {
         const res = await fetch('/api/fonts');
+        if (!res.ok) throw new Error(`fonts api failed: ${res.status}`);
         const data = await res.json();
-        if (data.fonts && data.fonts.length > 0) {
+        if (data.fonts?.length > 0) {
           setGoogleFontsList(data.fonts.map(f => ({ value: f.family, label: f.family })));
         }
       } catch (e) {
-        console.warn('Failed to fetch full google fonts list', e);
+        console.warn('Font list fetch failed, using defaults only:', e);
+        // Don't crash — scriptFontMap defaults still show
       }
     };
     fetchFullGoogleFonts();
@@ -149,7 +151,7 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
   return (
     <>
       <div
-        className="fixed inset-0 z-40 bg-transparent"
+        className="fixed inset-0 z-[99998] bg-transparent"
         onClick={(e) => {
           onClose();
         }}
@@ -161,12 +163,12 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
         dragListener={false}
         dragControls={dragControls}
         dragMomentum={false}
-        className="fixed z-50 bg-zinc-900 border border-white/10 rounded-xl shadow-2xl overflow-hidden w-80"
+        className="fixed z-[99999] bg-zinc-900 border border-white/10 rounded-xl shadow-2xl overflow-hidden w-[300px]"
         style={{
           position: 'fixed',
-          top: '120px',
-          // Adjusted to 360px to clear the right sidebar and sit beside the canvas
-          right: '360px',
+          top: '80px',
+          right: '380px',
+          zIndex: 99999,
           maxHeight: 'calc(100vh - 200px)',
           backgroundColor: 'rgba(24, 24, 27, 0.95)',
           backdropFilter: 'blur(12px)',
@@ -193,7 +195,7 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
                   e.stopPropagation();
                   if (onResetPosition) onResetPosition();
                 }}
-                className="h-6 w-6 text-yellow-500 hover:text-yellow-400 hover:bg-yellow-500/10"
+                className="h-6 w-6 text-white hover:text-gray-200 hover:bg-white/10"
                 title="Reset Position"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
@@ -216,21 +218,21 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
           <TabsList className="w-full grid grid-cols-3 rounded-none bg-transparent border-b border-white/5 p-0 h-10">
             <TabsTrigger
               value="font"
-              className="rounded-none border-b-2 border-transparent data-[state=active]:border-[#F5A623] data-[state=active]:bg-transparent data-[state=active]:text-white text-gray-500 h-10 text-xs"
+              className="rounded-none border-b-2 border-transparent data-[state=active]:border-white data-[state=active]:bg-transparent data-[state=active]:text-white text-gray-500 h-10 text-sm"
             >
               <Type className="w-3.5 h-3.5 mr-1.5" />
               Font
             </TabsTrigger>
             <TabsTrigger
               value="style"
-              className="rounded-none border-b-2 border-transparent data-[state=active]:border-[#F5A623] data-[state=active]:bg-transparent data-[state=active]:text-white text-gray-500 h-10 text-xs"
+              className="rounded-none border-b-2 border-transparent data-[state=active]:border-white data-[state=active]:bg-transparent data-[state=active]:text-white text-gray-500 h-10 text-sm"
             >
               <Palette className="w-3.5 h-3.5 mr-1.5" />
               Style
             </TabsTrigger>
             <TabsTrigger
               value="fx"
-              className="rounded-none border-b-2 border-transparent data-[state=active]:border-[#F5A623] data-[state=active]:bg-transparent data-[state=active]:text-white text-gray-500 h-10 text-xs"
+              className="rounded-none border-b-2 border-transparent data-[state=active]:border-white data-[state=active]:bg-transparent data-[state=active]:text-white text-gray-500 h-10 text-sm"
             >
               <Sparkles className="w-3.5 h-3.5 mr-1.5" />
               Animate
@@ -238,7 +240,7 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
           </TabsList>
 
           <div
-            className="p-4 max-h-[calc(100vh-320px)] overflow-y-auto custom-scrollbar bg-zinc-950/95"
+            className="p-3 max-h-[calc(100vh-320px)] overflow-y-auto custom-scrollbar bg-zinc-950/95"
             onPointerDown={(e) => e.stopPropagation()}
           >
 
@@ -247,7 +249,7 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
               {/* Font Family */}
               <div className="z-50 relative">
                 <label className="text-xs text-gray-500 mb-2 block uppercase tracking-wider">Font Family</label>
-                <Popover>
+                <Popover modal={true}>
                   <PopoverTrigger asChild>
                     <Button variant="outline" className="w-full justify-between h-8 bg-zinc-900 border-white/10 text-white text-xs hover:bg-zinc-800 hover:text-white">
                       <span className="truncate" style={{ fontFamily: currentStyle.fontFamily || 'Inter' }}>
@@ -256,7 +258,7 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
                       <ChevronDown className="h-4 w-4 opacity-50" />
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-[260px] p-0 bg-zinc-900 border-white/10" align="start">
+                  <PopoverContent className="w-[260px] p-0 bg-zinc-900 border-white/10" align="start" style={{ zIndex: 999999 }}>
                     <div className="p-2 border-b border-white/10 sticky top-0 bg-zinc-900 z-10 flex gap-2">
                       <div className="relative flex-1 text-white">
                         <Search className="absolute left-2 top-2 h-4 w-4 text-gray-500" />
@@ -423,7 +425,7 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
                         key={casing}
                         onClick={() => onStyleChange('textTransform', casing)}
                         className={`flex-1 py-1 text-[10px] rounded transition-all ${(currentStyle.textTransform === casing || (!currentStyle.textTransform && casing === 'none'))
-                          ? 'bg-[#F5A623] text-white'
+                          ? 'bg-white text-black font-medium'
                           : 'text-gray-400 hover:text-white'
                           }`}
                       >
@@ -498,7 +500,7 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
               {/* Color */}
               <div>
                 <label className="text-xs text-gray-500 mb-2 block uppercase tracking-wider">Color</label>
-                <div className="grid grid-cols-8 gap-1 mb-2">
+                <div className="grid grid-cols-8 gap-2 mb-2">
                   {presetColors.map(color => (
                     <button
                       key={color}
@@ -528,63 +530,28 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
                 </div>
               </div>
 
-              {/* Text Gradient Toggle */}
-              <button
-                onClick={() => setShowTextGradient(!showTextGradient)}
-                className="flex items-center justify-between w-full mt-3 text-xs text-gray-400 hover:text-gray-300"
-              >
-                <span>Text Gradient</span>
-                <span>{showTextGradient ? '−' : '+'}</span>
-              </button>
 
-              {showTextGradient && (
-                <div className="mb-3 mt-2">
-                  <div className="grid grid-cols-4 gap-1.5 mb-2">
+              {/* Simple Gradients — always visible below colors */}
+              <div className="mt-2">
+                <label className="text-xs text-gray-500 mb-2 block uppercase tracking-wider">Gradient</label>
+                <div className="grid grid-cols-4 gap-1.5">
+                  <button
+                    onClick={() => onStyleChange('textGradient', '')}
+                    className={`h-8 rounded-md border-2 flex items-center justify-center ${!currentStyle.textGradient ? 'border-white' : 'border-white/10'} bg-zinc-800`}
+                  >
+                    <span className="text-[9px] text-gray-500">None</span>
+                  </button>
+                  {presetGradients.map(gradient => (
                     <button
-                      onClick={() => onStyleChange('textGradient', '')}
-                      className={`h-8 rounded-md border-2 flex items-center justify-center ${!currentStyle.textGradient ? 'border-white' : 'border-white/10'
-                        } bg-zinc-800`}
-                    >
-                      <span className="text-[9px] text-gray-500">None</span>
-                    </button>
-                    {presetGradients.map(gradient => (
-                      <button
-                        key={gradient}
-                        onClick={() => onStyleChange('textGradient', gradient)}
-                        className={`h-8 rounded-md border-2 transition-all ${currentStyle.textGradient === gradient
-                          ? 'border-white scale-105'
-                          : 'border-white/10 hover:border-white/30'
-                          }`}
-                        style={{ background: gradient }}
-                      />
-                    ))}
-                  </div>
-
-                  {/* Custom Gradient Picker */}
-                  <div className="flex items-center gap-2 p-2 rounded-lg bg-white/[0.02] border border-white/5">
-                    <Plus className="w-4 h-4 text-gray-500" />
-                    <input
-                      type="color"
-                      value={customColor1}
-                      onChange={(e) => {
-                        setCustomColor1(e.target.value);
-                        onStyleChange('textGradient', createGradient(e.target.value, customColor2));
-                      }}
-                      className="w-8 h-8 rounded cursor-pointer bg-transparent"
+                      key={gradient}
+                      onClick={() => onStyleChange('textGradient', gradient)}
+                      className={`h-8 rounded-md border-2 transition-all ${currentStyle.textGradient === gradient ? 'border-white scale-105' : 'border-white/10 hover:border-white/30'}`}
+                      style={{ background: gradient }}
                     />
-                    <input
-                      type="color"
-                      value={customColor2}
-                      onChange={(e) => {
-                        setCustomColor2(e.target.value);
-                        onStyleChange('textGradient', createGradient(customColor1, e.target.value));
-                      }}
-                      className="w-8 h-8 rounded cursor-pointer bg-transparent"
-                    />
-                    <span className="text-xs text-gray-500">Custom</span>
-                  </div>
+                  ))}
                 </div>
-              )}
+              </div>
+
 
               {/* Background for Word - Auto-detects state */}
               <div className="mt-4">
@@ -717,22 +684,22 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
                   className="w-full flex items-center justify-between text-xs text-gray-400 uppercase tracking-wider mb-1 group"
                 >
                   <span className="flex items-center gap-1.5">
-                    <Sparkles className="w-3 h-3 text-[#F5A623]" />
+                    <Sparkles className="w-3 h-3 text-white" />
                     Effects
                     {(currentStyle.effectType || 'none') !== 'none' && (
-                      <span className="normal-case text-[9px] bg-[#F5A623]/15 text-[#F5A623] px-1.5 py-0.5 rounded-full font-medium capitalize">
+                      <span className="normal-case text-[9px] bg-white/20 text-white px-1.5 py-0.5 rounded-full font-medium capitalize">
                         {currentStyle.effectType}
                       </span>
                     )}
                   </span>
-                  <span className={`w-4 h-4 rounded border border-white/20 flex items-center justify-center text-gray-500 text-[10px] group-hover:border-[#F5A623]/40 group-hover:text-[#F5A623] transition-colors ${effectsOpen ? 'bg-[#F5A623]/10 border-[#F5A623]/30 text-[#F5A623]' : ''}`}>
+                  <span className={`w-4 h-4 rounded border border-white/20 flex items-center justify-center text-gray-500 text-[10px] group-hover:border-white/40 group-hover:text-white transition-colors ${effectsOpen ? 'bg-white/20 border-white text-white' : ''}`}>
                     {effectsOpen ? '−' : '+'}
                   </span>
                 </button>
 
                 {effectsOpen && (
                   <>
-                    <div className="grid grid-cols-4 gap-1.5 mb-2 mt-2">
+                    <div className="grid grid-cols-4 gap-2 mb-2 mt-2">
                       {[
                         { id: 'none', label: 'None' },
                         { id: 'shadow', label: 'Shadow' },
@@ -764,7 +731,7 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
                             }
                           }}
                           className={`p-1.5 rounded border text-[10px] text-center transition-colors ${(currentStyle.effectType || 'none') === effect.id
-                            ? 'bg-[#F5A623]/15 border-[#F5A623]/60 text-white font-medium'
+                            ? 'bg-white/20 border-white text-white font-medium'
                             : 'bg-zinc-800/50 border-white/10 text-gray-400 hover:bg-zinc-800 hover:border-white/20'
                           }`}
                         >

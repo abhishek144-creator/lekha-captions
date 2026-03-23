@@ -59,6 +59,7 @@ export default function CaptionTimeline({
   const [scrollPos, setScrollPos] = useState(0);
   const timelineRef = useRef(null);
   const scrollContainerRef = useRef(null);
+  const defaultScrollTop = useRef(null); // captures the initial scroll position once on mount
 
   // Custom High-Performance Timeline Scrubbing state
   const isScrubbingRef = useRef(false);
@@ -100,9 +101,25 @@ export default function CaptionTimeline({
           // Leave 1 text row (TEXT_ROW_HEIGHT) visible above speech/audio
           const targetScroll = Math.max(0, totalH - visibleH - TEXT_ROW_HEIGHT);
           scrollContainerRef.current.scrollTop = targetScroll;
+          // Capture this as the hard floor — user cannot scroll down past here
+          defaultScrollTop.current = targetScroll;
         }
       }, 100);
     }
+  }, []);
+
+  // Clamp vertical scroll — prevent scrolling BELOW the default position
+  // (user can freely scroll UP to see text rows, but never past speech/audio layers)
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const handleScroll = () => {
+      if (defaultScrollTop.current !== null && el.scrollTop > defaultScrollTop.current) {
+        el.scrollTop = defaultScrollTop.current;
+      }
+    };
+    el.addEventListener('scroll', handleScroll, { passive: false });
+    return () => el.removeEventListener('scroll', handleScroll);
   }, []);
 
   // Auto-pan timeline content to keep playhead visible (uses CSS transform, NOT scrollLeft)
@@ -736,7 +753,7 @@ export default function CaptionTimeline({
                             y={y}
                             width={1.1}
                             height={barHeight}
-                            fill="white"
+                            fill="#FACC15"
                             fillOpacity={opacity}
                             rx={0.55}
                           />
@@ -765,7 +782,7 @@ export default function CaptionTimeline({
                             y={y}
                             width={1.1}
                             height={barHeight}
-                            fill="white"
+                            fill="#FACC15"
                             fillOpacity={opacity}
                             rx={0.55}
                           />

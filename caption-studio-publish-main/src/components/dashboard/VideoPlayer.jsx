@@ -51,6 +51,33 @@ function computeEffectCSS(cs) {
   }
 }
 
+// Per-word effect CSS (uses ws keys, not cs keys)
+function computeWordEffectCSS(ws) {
+  const type = ws?.effectType || 'none';
+  if (type === 'none') return {};
+  const color = ws?.effectColor || '#000000';
+  const blur = ((ws?.effectBlur ?? 50) / 100) * 24;
+  const offset = ((ws?.effectOffset ?? 50) / 100) * 16;
+  const dir = ws?.effectDirection ?? -45;
+  const transp = ws?.effectTransparency ?? 40;
+  const thick = ws?.effectThickness ?? 50;
+  const alpha = (100 - transp) / 100;
+  const rad = (dir * Math.PI) / 180;
+  const ox = +(Math.cos(rad) * offset).toFixed(1);
+  const oy = +(Math.sin(rad) * offset).toFixed(1);
+  const rc = (a = alpha) => _hexRgba(color, a);
+  switch (type) {
+    case 'shadow': return { textShadow: `${ox}px ${oy}px ${blur}px ${rc()}` };
+    case 'lift': return { textShadow: `0px ${(offset*0.4).toFixed(1)}px ${(blur*0.5).toFixed(1)}px ${rc()}, 0px ${offset}px ${blur}px ${rc(alpha*0.4)}` };
+    case 'hollow': return { WebkitTextStroke: `${(thick/40).toFixed(1)}px ${color}`, color: 'transparent', WebkitTextFillColor: 'transparent' };
+    case 'splice': return { textShadow: `${ox}px ${oy}px 0px ${rc()}` };
+    case 'outline': return { WebkitTextStroke: `${(thick/40).toFixed(1)}px ${color}` };
+    case 'echo': return { textShadow: `${ox}px ${oy}px 0px ${rc()}, ${ox*2}px ${oy*2}px 0px ${rc(alpha*0.55)}, ${ox*3}px ${oy*3}px 0px ${rc(alpha*0.25)}` };
+    case 'neon': return { textShadow: `0 0 ${(blur*0.5).toFixed(1)}px ${color}, 0 0 ${blur}px ${color}, 0 0 ${(blur*2).toFixed(1)}px ${color}` };
+    default: return {};
+  }
+}
+
 
 // Memoized video element — prevents React from touching the <video> DOM node during
 // parent re-renders. Without this, re-renders from scrubbing/state changes cause the
@@ -109,6 +136,8 @@ export default function VideoPlayer({
   const [isDragging, setIsDragging] = useState(false);
   const [dragStartY, setDragStartY] = useState(0);
   const [dragStartPos, setDragStartPos] = useState(0);
+  const [dragStartX, setDragStartX] = useState(0);
+  const [dragStartXPos, setDragStartXPos] = useState(0);
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState('');
 
@@ -136,6 +165,13 @@ export default function VideoPlayer({
   // Blocks handleTimeUpdate from propagating to Dashboard while user is dragging
   const isScrubbingRef = useRef(false);
 
+  // ── Alignment snap guides ───────────────────────────────────────────────
+  // { hLines: [pct], vLines: [pct] } — percent values to draw guide lines
+  const [snapGuides, setSnapGuides] = useState({ hLines: [], vLines: [] });
+
+  // ── Canvas zoom (Ctrl+Scroll) ───────────────────────────────────────────
+  const [canvasScale, setCanvasScale] = useState(1);
+
   useEffect(() => {
     if (videoRef.current) {
       if (isPlaying) {
@@ -145,6 +181,37 @@ export default function VideoPlayer({
       }
     }
   }, [isPlaying]);
+
+  // ── F / Shift+F → toggle fullscreen ────────────────────────────────────
+  useEffect(() => {
+    if (!setIsVideoFullscreen) return;
+    const onKey = (e) => {
+      const tag = document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || (document.activeElement?.isContentEditable)) return;
+      if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault();
+        setIsVideoFullscreen(v => !v);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [setIsVideoFullscreen]);
+
+  // ── Ctrl+Scroll → zoom canvas ───────────────────────────────────────────
+  useEffect(() => {
+    const el = videoContainerRef.current;
+    if (!el) return;
+    const onWheel = (e) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      setCanvasScale(prev => {
+        const delta = e.deltaY > 0 ? -0.05 : 0.05;
+        return Math.min(2, Math.max(0.5, +(prev + delta).toFixed(2)));
+      });
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
 
   useEffect(() => {
     if (videoRef.current) {
@@ -524,7 +591,9 @@ export default function VideoPlayer({
     if (addToHistory) addToHistory();
     setIsDragging(true);
     setDragStartY(e.clientY);
-    setDragStartPos(captionStyle?.position_y || 50);
+    setDragStartPos(captionStyle?.position_y !== undefined ? captionStyle.position_y : 50);
+    setDragStartX(e.clientX);
+    setDragStartXPos(captionStyle?.position_x !== undefined ? captionStyle.position_x : 50);
   };
 
   const handleTextElementMouseDown = (e, elementId, currentStyle) => {
@@ -667,21 +736,72 @@ export default function VideoPlayer({
   useEffect(() => {
     if ((!isDragging && !draggedElementId && !resizedElementId) || (!setCaptionStyle && !setCaptions)) return;
 
+    const SNAP_THRESHOLD_PCT = 2.5; // % within which to snap
+    const getSnapGuides = (axis, value, excludeId) => {
+      // Static snap targets
+      const targets = axis === 'y'
+        ? [5, 50, 75, 95]
+        : [5, 50, 95];
+      // Add other elements
+      if (captions) {
+        captions.forEach(c => {
+          if (c.isTextElement && c.id !== excludeId && c.customStyle) {
+            if (axis === 'x' && c.customStyle.left != null) targets.push(c.customStyle.left);
+            if (axis === 'y' && c.customStyle.top != null) targets.push(c.customStyle.top);
+          }
+        });
+      }
+      for (const t of targets) {
+        if (Math.abs(value - t) <= SNAP_THRESHOLD_PCT) {
+          return { snapped: true, value: t };
+        }
+      }
+      return { snapped: false, value };
+    };
+
     const handleMouseMove = (e) => {
-      // 1. Handle Caption Vertical Drag
+      // 1. Handle Caption Full Drag (X and Y)
       if (isDragging) {
         const videoContainer = captionRef.current?.parentElement;
         if (!videoContainer) return;
 
         const containerHeight = videoContainer.offsetHeight;
+        const containerWidth = videoContainer.offsetWidth;
+        
         const deltaY = e.clientY - dragStartY;
-        const deltaPercent = (deltaY / containerHeight) * 100;
+        const deltaPercentY = (deltaY / containerHeight) * 100;
+        let newPosY = dragStartPos + deltaPercentY;
+        newPosY = Math.max(5, Math.min(95, newPosY));
 
-        let newPos = dragStartPos + deltaPercent;
-        newPos = Math.max(5, Math.min(95, newPos));
+        const deltaX = e.clientX - dragStartX;
+        const deltaPercentX = (deltaX / containerWidth) * 100;
+        let newPosX = dragStartXPos + deltaPercentX;
+        newPosX = Math.max(5, Math.min(95, newPosX));
+
+        // Snap check for Y and X axis
+        const ySnap = getSnapGuides('y', newPosY, null);
+        const xSnap = getSnapGuides('x', newPosX, null);
+        
+        let hLines = [];
+        let vLines = [];
+        
+        if (ySnap.snapped) {
+          newPosY = ySnap.value;
+          hLines.push(newPosY);
+        }
+        if (xSnap.snapped) {
+          newPosX = xSnap.value;
+          vLines.push(newPosX);
+        }
+        
+        setSnapGuides({ hLines, vLines });
 
         const styleUpdater = setCaptionStyleRaw || setCaptionStyle;
-        styleUpdater(prev => ({ ...prev, position_y: Math.round(newPos) }));
+        styleUpdater(prev => ({ 
+          ...prev, 
+          position_y: Math.round(newPosY),
+          position_x: Math.round(newPosX)
+        }));
       }
 
       // 3. Handle Text Element Drag
@@ -700,6 +820,16 @@ export default function VideoPlayer({
         let newTop = elementDragStart.initialTop + deltaPercentY;
         newLeft = Math.max(5, Math.min(95, newLeft));
         newTop = Math.max(5, Math.min(95, newTop));
+
+        // Snap checks for X and Y
+        const xSnap = getSnapGuides('x', newLeft, draggedElementId);
+        const ySnap = getSnapGuides('y', newTop, draggedElementId);
+        if (xSnap.snapped) newLeft = xSnap.value;
+        if (ySnap.snapped) newTop = ySnap.value;
+        setSnapGuides({
+          hLines: ySnap.snapped ? [newTop] : [],
+          vLines: xSnap.snapped ? [newLeft] : []
+        });
 
         const captionUpdater = setCaptionsRaw || setCaptions;
         captionUpdater(prev => prev.map(c => {
@@ -744,6 +874,7 @@ export default function VideoPlayer({
       setIsDragging(false);
       setDraggedElementId(null);
       setResizedElementId(null);
+      setSnapGuides({ hLines: [], vLines: [] }); // clear guides
     };
 
     document.addEventListener('mousemove', handleMouseMove);
@@ -789,20 +920,38 @@ export default function VideoPlayer({
   return (
     <div className="flex flex-col h-full">
       {/* Video container with 9:16 aspect ratio for mobile preview */}
-      <div className="relative flex-1 bg-zinc-950 rounded-xl overflow-hidden flex items-center justify-center min-h-0">
+      <div className="relative flex-1 bg-zinc-950 rounded-xl overflow-hidden flex items-center justify-center min-h-[340px]">
         {/* Fullscreen toggle — overlaid in top-right corner of canvas */}
         {setIsVideoFullscreen && (
           <button
             onClick={() => setIsVideoFullscreen(v => !v)}
-            className="absolute top-2 right-2 z-50 p-1.5 rounded bg-black/40 hover:bg-black/70 text-white/70 hover:text-white transition-colors backdrop-blur-sm"
-            title={isVideoFullscreen ? 'Collapse' : 'Expand'}
+            className="absolute top-2 right-2 z-50 p-2 rounded bg-black/40 hover:bg-black/70 text-white/70 hover:text-white transition-colors backdrop-blur-sm"
+            title={`${isVideoFullscreen ? 'Collapse' : 'Expand'} (F)`}
           >
-            {isVideoFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+            {isVideoFullscreen ? <Minimize2 className="w-6 h-6" /> : <Maximize2 className="w-6 h-6" />}
           </button>
         )}
-        <div ref={videoContainerRef} className="relative w-full h-full max-h-full aspect-[9/16] bg-black shadow-2xl" onClick={(e) => {
-          if (e.target === e.currentTarget && setSelectedCaptionId) setSelectedCaptionId(null);
-        }}>
+        {/* Zoom level badge — only visible when zoomed */}
+        {canvasScale !== 1 && (
+          <div className="absolute top-2 left-2 z-50 px-1.5 py-0.5 rounded bg-black/60 text-white/70 text-[10px] tabular-nums backdrop-blur-sm">
+            {Math.round(canvasScale * 100)}%
+          </div>
+        )}
+        <div
+          ref={videoContainerRef}
+          className="relative w-full h-full max-h-full aspect-[9/16] bg-black shadow-2xl"
+          style={{ transform: `scale(${canvasScale})`, transformOrigin: 'center center', transition: 'transform 0.1s ease' }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && setSelectedCaptionId) setSelectedCaptionId(null);
+          }}
+        >
+          {/* Alignment snap guide lines */}
+          {snapGuides.hLines.map((pct, i) => (
+            <div key={`hg-${i}`} className="absolute left-0 right-0 pointer-events-none z-[999]" style={{ top: `${pct}%`, height: '1px', background: 'rgba(255,60,60,0.85)', boxShadow: '0 0 4px rgba(255,60,60,0.5)' }} />
+          ))}
+          {snapGuides.vLines.map((pct, i) => (
+            <div key={`vg-${i}`} className="absolute top-0 bottom-0 pointer-events-none z-[999]" style={{ left: `${pct}%`, width: '1px', background: 'rgba(60,120,255,0.85)', boxShadow: '0 0 4px rgba(60,120,255,0.5)' }} />
+          ))}
           {videoUrl ? (
             <MemoizedVideo
               videoRef={videoRef}
@@ -932,8 +1081,8 @@ export default function VideoPlayer({
                         fontWeight: captionStyle?.font_weight || 'normal',
                         fontStyle: captionStyle?.font_style || 'normal',
                         textAlign: captionStyle?.text_align || 'center',
-                        letterSpacing: `${captionStyle?.letter_spacing || 0}px`,
-                        wordSpacing: `${captionStyle?.word_spacing || 1}px`,
+                        letterSpacing: '0px',
+                        wordSpacing: '0px',
                         textDecoration: captionStyle?.text_decoration || 'none',
                         opacity: captionStyle?.text_opacity || 1,
                         transform: `scale(${captionStyle?.scale || 1})`,
@@ -968,24 +1117,58 @@ export default function VideoPlayer({
                         fontStyle: captionStyle?.font_style || 'normal',
                         textAlign: captionStyle?.text_align || 'center',
                         display: 'block',
-                        letterSpacing: `${captionStyle?.letter_spacing || 0}px`,
+                        letterSpacing: 'normal',
+                        wordSpacing: '-3px',
                         textTransform: captionStyle?.text_case === 'uppercase' ? 'uppercase' : captionStyle?.text_case === 'lowercase' ? 'lowercase' : captionStyle?.text_case === 'capitalize' ? 'capitalize' : 'none',
                         whiteSpace: 'nowrap',
                       }}
                     >
                       {(() => {
-                        const words = (caption?.text || '').split(/\s+/).filter(Boolean);
-                        const highlightRange = getHighlightedWordRange(caption);
-                        const currentIdx = highlightRange.start;
-                        return words.map((wordText, i) => {
-                          const isPast = i < currentIdx;
-                          const isCurrent = i === currentIdx;
-                          // Word by Word: hide future words when toggle is ON (show_inactive === false)
-                          if (captionStyle?.show_inactive === false && !isPast && !isCurrent) return null;
+                        const words = caption.text.split(' ');
+                        const wordCount = words.length;
+                        const captionDuration = (caption.end || 0) - (caption.start || 0);
+                        const timeIntoCaption = (currentTime || 0) - (caption.start || 0);
+                        // Compute which word index is currently being spoken
+                        const currentIdx = wordCount > 1
+                          ? Math.max(0, Math.min(wordCount - 1, Math.floor((timeIntoCaption / captionDuration) * wordCount)))
+                          : 0;
+
+                        return words.map((word, wordIndex, arr) => {
+                          const isPast    = wordIndex < currentIdx;
+                          const isCurrent = wordIndex === currentIdx;
+
                           let cls = 'word';
-                          if (isCurrent) cls += ' active current';
-                          else if (isPast) cls += ' done';
-                          return <span key={i} className={cls}>{wordText}{' '}</span>;
+                          if (isCurrent) cls += ' current active';
+                          else if (isPast) cls += ' active done';
+
+                          // Word-by-word delivery mode: hide future words
+                          if (captionStyle?.show_inactive === false && !isPast && !isCurrent) {
+                            return null;
+                          }
+
+                          const isSelected = wordPopup?.caption?.id === caption.id
+                            && wordPopup?.wordIndex === wordIndex;
+
+                          return (
+                            <span
+                              key={wordIndex}
+                              className={cls + (isSelected ? ' ring-2 ring-[#F5A623] rounded-sm' : '')}
+                              style={{ cursor: 'pointer', display: 'inline-block' }}
+                              onClick={(e) => {
+                                if (setWordPopup) {
+                                  e.stopPropagation();
+                                  setWordPopup({
+                                    word,
+                                    position: { x: e.clientX, y: e.clientY },
+                                    caption,
+                                    wordIndex,
+                                  });
+                                }
+                              }}
+                            >
+                              {word}{wordIndex < arr.length - 1 ? ' ' : ''}
+                            </span>
+                          );
                         });
                       })()}
                     </span>
@@ -1001,8 +1184,8 @@ export default function VideoPlayer({
                         fontStyle: captionStyle?.font_style || 'normal',
                         textAlign: captionStyle?.text_align || 'center',
                         display: 'block',
-                        letterSpacing: `${captionStyle?.letter_spacing || 0}px`,
-                        wordSpacing: `${captionStyle?.word_spacing || 1}px`,
+                        letterSpacing: 'normal',
+                        wordSpacing: 'normal',
                         textDecoration: captionStyle?.text_decoration || 'none',
                         opacity: captionStyle?.text_opacity || 1,
                         transform: `scale(${captionStyle?.scale || 1})`,
@@ -1013,204 +1196,134 @@ export default function VideoPlayer({
                         padding: `${captionStyle?.background_padding || 6}px 8px`,
                         position: 'relative',
                         zIndex: 10,
-                        whiteSpace: 'nowrap'
+                        whiteSpace: 'nowrap',
+                        // Add shadow/stroke if configured
+                        ...(() => {
+                          const efx = computeEffectCSS(captionStyle);
+                          return {
+                            textShadow: efx.textShadow || (captionStyle?.has_shadow && !captionStyle?.text_gradient ? `${captionStyle?.shadow_offset_x || 0}px ${captionStyle?.shadow_offset_y || 2}px ${captionStyle?.shadow_blur || 4}px ${captionStyle?.shadow_color || 'rgba(0,0,0,0.8)'}` : undefined),
+                            WebkitTextStroke: efx.WebkitTextStroke || (captionStyle?.has_stroke === true && !captionStyle?.text_gradient ? `${captionStyle?.stroke_width || 0.5}px ${captionStyle?.stroke_color || '#000000'}` : '0px transparent'),
+                          };
+                        })(),
+                        // Add background or highlight if configured
+                        ...(captionStyle?.highlight_gradient ? {
+                          backgroundImage: captionStyle.highlight_gradient
+                        } : captionStyle?.highlight_color ? {
+                          backgroundColor: captionStyle.highlight_color
+                        } : {}),
+                        // Global text gradient
+                        ...(captionStyle?.text_gradient ? {
+                          backgroundImage: captionStyle.text_gradient,
+                          WebkitBackgroundClip: 'text',
+                          backgroundClip: 'text',
+                          WebkitTextFillColor: 'transparent',
+                          color: 'transparent'
+                        } : {})
                       }}
                     >
-                      {(() => {
-                        let wordCounter = 0;
-                        return (caption?.text || '').split(/(\s+|\n)/).map((part, i) => {
-                          if (part === '\n') return <br key={i} />;
-                          if (part.match(/^\s+$/)) return <span key={i}>{part}</span>;
+                      {caption.text.split(' ').map((word, wordIndex, arr) => {
+                        const styleKey = `${caption.id}-${wordIndex}`;
+                        const ws = caption.wordStyles?.[styleKey] || {};
+                        const isSelected = wordPopup?.caption?.id === caption.id && wordPopup?.wordIndex === wordIndex;
+                        const baseFontSize = captionStyle?.font_size || 18;
+                        const wordFontSize = ws.fontSize || ws.frozenFontSize || baseFontSize;
 
-                          const wordIndex = wordCounter++;
-                          const highlightRange = getHighlightedWordRange(caption);
-                          const isHighlighted = wordIndex >= highlightRange.start && wordIndex <= highlightRange.end;
-                          const isCurrent = wordIndex === highlightRange.end && isHighlighted;
-                          const isDoneWord = wordIndex < highlightRange.start;
-                          const customStyle = caption?.wordStyles?.[`${caption?.id}-${wordIndex}`] || {};
-                          const isWordClicked = wordPopup?.wordIndex === wordIndex && wordPopup?.caption?.id === caption?.id;
-                          // Word CSS classes for template system
-                          const wordClasses = ['word', isDoneWord ? 'done' : isHighlighted ? (isCurrent ? 'current' : 'active') : ''].filter(Boolean).join(' ');
+                        // Emphasis: larger, bold, highlighted color
+                        const emphasisStyle = ws.isEmphasis ? {
+                          fontWeight: 'bold',
+                          color: ws.color || captionStyle?.text_color || '#ffffff',
+                          fontSize: `${Math.round(wordFontSize * 1.15)}px`,
+                        } : {};
 
-                          // Extract transform from customStyle - this goes on PARENT wrapper
-                          const { x = 0, y = 0, animation, isEmphasis, ...restStyle } = customStyle;
-                          const globalLineHeight = (captionStyle?.font_size || 18) * (captionStyle?.line_spacing || 1.4);
 
-                          // Per-font vertical offset correction.
-                          // Different fonts have different internal ascender/descender metrics.
-                          // Positive = shift text DOWN (font sits high), Negative = shift UP (font sits low).
-                          const FONT_VERTICAL_OFFSET_MAP = {
-                            'Noto Sans': -0.06,
-                            'Noto Sans Devanagari': 0.04,
-                            'Mukta': -0.02,
-                            'Hind': -0.03,
-                            'Poppins': -0.04,
-                            'Montserrat': -0.04,
-                            'Inter': -0.03,
-                            'Roboto': -0.03,
-                          };
-                          const currentFont = captionStyle?.font_family || 'Inter';
-                          const fontVerticalOffset = FONT_VERTICAL_OFFSET_MAP[currentFont] ?? -0.03;
-                          const fontVerticalOffsetPx = fontVerticalOffset * (captionStyle?.font_size || 18);
-
-                          return (
+                        return (
+                          <span
+                            key={wordIndex}
+                            style={{
+                              display: 'inline-block',
+                              position: 'relative',
+                              fontSize: `${baseFontSize}px`,
+                              lineHeight: 'inherit',
+                              verticalAlign: 'baseline',
+                              marginRight: wordIndex < arr.length - 1 ? '8px' : '0',
+                              transform: (ws.x || ws.y)
+                                ? `translate(${ws.x || 0}px, ${ws.y || 0}px)`
+                                : 'none',
+                              zIndex: (ws.x || ws.y) ? 20 : 'auto',
+                              cursor: 'pointer',
+                            }}
+                            onMouseDown={(e) => handleWordMouseDown(e, caption, wordIndex)}
+                            onClick={(e) => {
+                              if (setWordPopup) {
+                                e.stopPropagation();
+                                setWordPopup({
+                                  word: word,
+                                  position: { x: e.clientX, y: e.clientY },
+                                  caption: caption,
+                                  wordIndex: wordIndex
+                                });
+                              }
+                            }}
+                          >
+                            {/* Fixed-size selection ring — sized by spacer, never by fontSize */}
+                            {isSelected && (
+                              <span style={{
+                                position: 'absolute',
+                                inset: '-2px',
+                                border: '2px solid #F5A623',
+                                borderRadius: '3px',
+                                pointerEvents: 'none',
+                                zIndex: 30,
+                              }} />
+                            )}
+                            {/* Inner span: all visual styles. Absolute so it never affects layout flow */}
                             <span
-                              key={i}
-                              data-word-key={`${caption?.id}-${wordIndex}`}
-                              className={wordClasses}
                               style={{
-                                display: 'inline-block',
-                                position: 'relative',
-                                transform: `translate(${x}px, ${y}px)`,
-                                transition: draggingWord ? 'none' : 'transform 0.1s ease',
-                                verticalAlign: 'top',
-                                cursor: 'move',
-                                height: `${globalLineHeight}px`,
-                              }}
-                              onMouseDown={(e) => handleWordMouseDown(e, caption, wordIndex)}
-                              onClick={(e) => {
-                                // Only suppress click if we literally just dropped a drag (<150ms ago)
-                                if (Date.now() - lastDragDropTime.current < 150) return;
-                                
-                                if (setWordPopup) {
-                                  e.stopPropagation();
-                                  setWordPopup({
-                                    word: part,
-                                    position: { x: e.clientX, y: e.clientY },
-                                    caption: caption,
-                                    wordIndex
-                                  });
-                                }
+                                position: 'absolute',
+                                top: '50%',
+                                left: '50%',
+                                transform: 'translate(-50%, -50%)',
+                                whiteSpace: 'nowrap',
+                                fontFamily: ws.fontFamily || 'inherit',
+                                fontSize: `${wordFontSize}px`,
+                                fontWeight: ws.fontWeight || 'inherit',
+                                fontStyle: ws.fontStyle || 'inherit',
+                                textDecoration: ws.textDecoration || 'inherit',
+                                textTransform: (() => {
+                                  if (!ws.textTransform || ws.textTransform === 'none') return 'none';
+                                  return ws.textTransform;
+                                })(),
+                                ...(ws.textGradient ? {
+                                  backgroundImage: ws.textGradient,
+                                  WebkitBackgroundClip: 'text',
+                                  backgroundClip: 'text',
+                                  WebkitTextFillColor: 'transparent',
+                                  color: 'transparent',
+                                } : {
+                                  color: ws.color || 'inherit',
+                                }),
+                                ...(ws.backgroundColor ? {
+                                  backgroundColor: `rgba(${parseInt(ws.backgroundColor.slice(1,3),16)}, ${parseInt(ws.backgroundColor.slice(3,5),16)}, ${parseInt(ws.backgroundColor.slice(5,7),16)}, ${ws.backgroundOpacity ?? 0.6})`,
+                                  borderRadius: '3px',
+                                  padding: `${ws.backgroundPadding || 2}px 4px`,
+                                } : {}),
+                                ...computeWordEffectCSS(ws),
+                                ...emphasisStyle,
+                                animation: ws.animation && ws.animation !== 'none'
+                                  ? getAnimationStyle(ws.animation)
+                                  : 'none',
                               }}
                             >
-                              {/* Spacer: reserves original space in sentence flow */}
-                              <span
-                                style={{
-                                  visibility: 'hidden',
-                                  fontFamily: captionStyle?.font_family || 'Inter',
-                                  fontSize: `${captionStyle?.font_size || 18}px`,
-                                  lineHeight: `${globalLineHeight}px`,
-                                  fontWeight: captionStyle?.is_bold ? 'bold' : 'normal',
-                                  letterSpacing: `${captionStyle?.letter_spacing || 0}px`,
-                                  textTransform: captionStyle?.text_case === 'uppercase' ? 'uppercase' : captionStyle?.text_case === 'lowercase' ? 'lowercase' : captionStyle?.text_case === 'capitalize' ? 'capitalize' : 'none',
-                                  whiteSpace: 'pre',
-                                }}
-                              >
-                                {part}
-                              </span>
-
-                              {/* Absolute Content Wrapper - Centers text + background */}
-                              <span
-                                style={{
-                                  position: 'absolute',
-                                  top: 0,
-                                  left: 0,
-                                  width: '100%',
-                                  height: '100%',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  pointerEvents: 'none',
-                                  // Font-specific vertical offset to keep text centered in the background pill
-                                  marginTop: `${fontVerticalOffsetPx}px`,
-                                }}
-                              >
-                                {/* UNIFIED GROUP: Background wraps text, both move with parent transform */}
-                                <span
-                                  className={animation ? `animate-${animation}` : ''}
-                                  style={{
-                                    pointerEvents: 'auto',
-                                    position: 'relative',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    animation: animation && animation !== 'none' ? getAnimationStyle(animation) : 'none',
-                                  }}
-                                >
-                                  {/* BACKGROUND LAYER - Fixed padding, independent of text size */}
-                                  <span
-                                    style={{
-                                      position: 'absolute',
-                                      top: -1,
-                                      left: -1,
-                                      right: -1,
-                                      bottom: -1,
-                                      zIndex: -1,
-                                      borderRadius: (isHighlighted && !isWordClicked) || isWordClicked ? '4px' : '0',
-                                      // Background Priority: Local Highlight Gradient -> Local BG Color -> Global Highlight (if highlighted)
-                                      ...(restStyle.highlightGradient ? {
-                                        backgroundImage: restStyle.highlightGradient
-                                      } : restStyle.backgroundColor ? {
-                                        backgroundColor: `rgba(${parseInt(restStyle.backgroundColor.slice(1, 3), 16)}, ${parseInt(restStyle.backgroundColor.slice(3, 5), 16)}, ${parseInt(restStyle.backgroundColor.slice(5, 7), 16)}, ${restStyle.backgroundOpacity ?? 1})`
-                                      } : (isHighlighted && !isWordClicked && (captionStyle?.highlight_color || captionStyle?.highlight_gradient)) ? {
-                                        backgroundImage: captionStyle.highlight_gradient || undefined,
-                                        backgroundColor: captionStyle.highlight_gradient ? undefined : captionStyle.highlight_color
-                                      } : {}),
-                                      border: isWordClicked ? '1px solid #F5A623' : 'none',
-                                    }}
-                                  />
-
-                                  {/* TEXT LAYER */}
-                                  <span
-                                    style={{
-                                      whiteSpace: 'pre',
-                                      fontFamily: restStyle.fontFamily || captionStyle?.font_family || 'Inter',
-                                      fontWeight: isEmphasis ? 'bold' : (restStyle.fontWeight || (captionStyle?.is_bold ? 'bold' : 'normal')),
-                                      fontStyle: restStyle.fontStyle || 'normal',
-                                      fontSize: isEmphasis
-                                        ? `${Math.round((restStyle.fontSize || captionStyle?.font_size || 18) * 1.25)}px`
-                                        : (restStyle.fontSize ? `${restStyle.fontSize}px` : undefined),
-                                      transform: isEmphasis ? 'scaleY(1.08)' : undefined,
-                                      lineHeight: `${globalLineHeight}px`,
-                                      textAlign: restStyle.textAlign || undefined,
-                                      textDecoration: restStyle.textDecoration || captionStyle?.text_decoration || 'none',
-                                      textTransform: restStyle.textTransform || (captionStyle?.text_case === 'uppercase' ? 'uppercase' : captionStyle?.text_case === 'lowercase' ? 'lowercase' : captionStyle?.text_case === 'capitalize' ? 'capitalize' : 'none'),
-                                      padding: restStyle.backgroundPadding !== undefined
-                                        ? `${restStyle.backgroundPadding / 12}em ${Math.round(restStyle.backgroundPadding * 1.5) / 12}em`
-                                        : ((isHighlighted && !isWordClicked) ? '0.05em 0.1em' : (isWordClicked ? '0.05em 0.1em' : '0.05em 0')),
-
-                                      // Text Color Priority: Emphasis -> Local Text Gradient -> Local Color -> Global Text Gradient -> Global Color
-                                      ...(isEmphasis && !restStyle.color ? {
-                                        color: '#F5A623',
-                                        textShadow: '0 0 12px rgba(245,166,35,0.7), 0 0 4px rgba(245,166,35,0.5)',
-                                      } : restStyle.textGradient ? {
-                                        backgroundImage: restStyle.textGradient,
-                                        WebkitBackgroundClip: 'text',
-                                        backgroundClip: 'text',
-                                        WebkitTextFillColor: 'transparent',
-                                        color: 'transparent'
-                                      } : restStyle.color ? {
-                                        color: restStyle.color
-                                      } : captionStyle?.text_gradient ? {
-                                        backgroundImage: captionStyle.text_gradient,
-                                        WebkitBackgroundClip: 'text',
-                                        backgroundClip: 'text',
-                                        WebkitTextFillColor: 'transparent',
-                                        color: 'transparent'
-                                      } : {
-                                        color: captionStyle?.text_color || '#ffffff'
-                                      }),
-
-                                      // Stroke/Shadow — effect_type overrides has_shadow/has_stroke; disable if text gradient active
-                                      ...(() => {
-                                        const efx = computeEffectCSS(captionStyle)
-                                        const hasGrad = captionStyle?.text_gradient || restStyle.textGradient
-                                        return {
-                                          textShadow: restStyle.textShadow || efx.textShadow || (captionStyle?.has_shadow && !hasGrad ? `${captionStyle?.shadow_offset_x || 0}px ${captionStyle?.shadow_offset_y || 2}px ${captionStyle?.shadow_blur || 4}px ${captionStyle?.shadow_color || 'rgba(0,0,0,0.8)'}` : undefined),
-                                          WebkitTextStroke: restStyle.WebkitTextStroke || efx.WebkitTextStroke || (captionStyle?.has_stroke === true && !hasGrad ? `${captionStyle?.stroke_width || 0.5}px ${captionStyle?.stroke_color || '#000000'}` : '0px transparent'),
-                                          ...(efx.color === 'transparent' && !restStyle.color && !hasGrad ? { color: 'transparent', WebkitTextFillColor: 'transparent' } : {}),
-                                        }
-                                      })(),
-                                    }}
-                                  >
-                                    {part}
-                                  </span>
-                                </span>
-                              </span>
+                              {word}
                             </span>
-                          );
-                        });
-                      })()}
+                            {/* Invisible spacer — holds layout space, never changes size */}
+                            <span style={{ visibility: 'hidden', fontSize: `${baseFontSize}px`, whiteSpace: 'pre' }}>
+                              {word}
+                            </span>
+                            {wordIndex < arr.length - 1 ? '\u00A0' : ''}
+                          </span>
+                        );
+                      })}
                     </span>
                   )}
                 </div>
@@ -1454,43 +1567,12 @@ export default function VideoPlayer({
             );
           })}
 
-          {/* Word Click Popup */}
-          {wordPopup && (
-            <WordClickPopup
-              word={wordPopup.word}
-              position={wordPopup.position}
-              onEdit={() => {
-                setWordPopup(null);
-                if (wordPopup.type === 'element') {
-                  const element = captions.find(c => c.id === wordPopup.elementId);
-                  if (element) handleCaptionDoubleClick(new Event('dblclick'), element);
-                } else {
-                  handleCaptionDoubleClick(new Event('dblclick'), wordPopup.caption);
-                }
-              }}
-              onClose={() => setWordPopup(null)}
-              onResetPosition={() => {
-                if (addToHistory) addToHistory();
-                handleWordStyleChange('x', 0);
-                handleWordStyleChange('y', 0);
-              }}
-              currentStyle={(() => {
-                if (wordPopup.type === 'element') {
-                  const element = captions.find(c => c.id === wordPopup.elementId);
-                  return element?.wordStyles?.[`${wordPopup.elementId}-${wordPopup.wordIndex}`] || {};
-                }
-                const freshCaption = captions.find(c => c.id === wordPopup.caption?.id);
-                return freshCaption?.wordStyles?.[`${wordPopup.caption?.id}-${wordPopup.wordIndex}`] || {};
-              })()}
-              onStyleChange={handleWordStyleChange}
-              onHistoryRecord={addToHistory}
-              videoContainerRef={videoContainerRef}
-              isElementWord={wordPopup.type === 'element'}
-            />
-          )}
+          {/* Word Click Popup — REMOVED FROM HERE, rendered outside overflow-hidden below */}
 
         </div>
       </div>
+
+      {/* Word Click Popup — moved to Dashboard.jsx root level */}
 
       {/* Animation keyframes */}
       <style>{`
