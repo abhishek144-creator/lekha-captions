@@ -291,20 +291,81 @@ export default function VideoPlayer({
     );
   };
 
-  const getAnimationStyle = (animationType) => {
+  const getAnimationStyle = (animationType, speed = 1) => {
+    // [keyframe-name, duration-ms, timing, fill]
+    const defs = {
+      // General
+      'rise':        ['rise',        400,  'ease-out',              'both'],
+      'pan':         ['pan',         500,  'ease-in-out',           'both'],
+      'fade':        ['fade',        500,  'ease-in',               'both'],
+      'pop':         ['pop',         300,  'ease-out',              'both'],
+      'wipe':        ['wipe',        400,  'ease-out',              'both'],
+      'blur':        ['blur',        500,  'ease-in-out',           'both'],
+      'succession':  ['succession',  400,  'ease-out',              'both'],
+      'breathe':     ['breathe',    1500,  'ease-in-out',           'infinite'],
+      'baseline':    ['baseline',    400,  'ease-out',              'both'],
+      'drift':       ['drift',       600,  'ease-in-out',           'both'],
+      'tectonic':    ['tectonic',    500,  'ease-out',              'both'],
+      'tumble':      ['tumble',      600,  'ease-in-out',           'both'],
+      // Advanced – Basic
+      'fadeInUp':    ['fadeInUp',    500,  'ease-out',              'both'],
+      'fadeInDown':  ['fadeInDown',  500,  'ease-out',              'both'],
+      'slideInRight':['slideInRight',500,  'ease-out',              'both'],
+      'flipInX':     ['flipInX',     600,  'ease-out',              'both'],
+      'flipInY':     ['flipInY',     600,  'ease-out',              'both'],
+      'blurIn':      ['blurIn',      500,  'ease-out',              'both'],
+      'zoomInFade':  ['zoomInFade',  500,  'ease-out',              'both'],
+      'bounceInUp':  ['bounceInUp',  600,  'ease-out',              'both'],
+      'skewLeft':    ['skewLeft',    400,  'ease-out',              'both'],
+      // Advanced – Kinetic
+      'missile':     ['missile',     500,  'cubic-bezier(0.22,1,0.36,1)', 'both'],
+      'shockwave':   ['shockwave',   500,  'ease-out',              'both'],
+      'typewriter':  ['typewriter',  600,  'steps(20,end)',          'both'],
+      'slamDown':    ['slamDown',    500,  'cubic-bezier(0.22,1,0.36,1)', 'both'],
+      'fireCharge':  ['fireCharge',  500,  'ease-out',              'both'],
+      'stampede':    ['stampede',    500,  'cubic-bezier(0.22,1,0.36,1)', 'both'],
+      'recoil':      ['recoil',      400,  'ease-out',              'both'],
+      // Advanced – Cinematic
+      'irisOpen':    ['irisOpen',    600,  'ease-out',              'both'],
+      'parallaxRise':['parallaxRise',700,  'ease-out',              'both'],
+      'goldenRatio': ['goldenRatio', 600,  'ease-out',              'both'],
+      'curtainSplit':['curtainSplit',500,  'ease-out',              'both'],
+      'prestige':    ['prestige',   1000,  'ease-out',              'both'],
+      'fadeThroughBlack':['fadeThroughBlack',800,'ease-in-out',     'both'],
+      'depthPull':   ['depthPull',   600,  'ease-out',              'both'],
+      'slowBurn':    ['slowBurn',   1500,  'ease-in',               'both'],
+      'diagonalWipe':['diagonalWipe',500,  'ease-out',              'both'],
+      // Advanced – Playful
+      'confettiPop': ['confettiPop', 500,  'ease-out',              'both'],
+      'stickerSlap': ['stickerSlap', 400,  'cubic-bezier(0.34,1.56,0.64,1)', 'both'],
+      'wobbleEntry': ['wobbleEntry', 600,  'ease-out',              'both'],
+      'balloonFloat':['balloonFloat',600,  'ease-out',              'both'],
+      'colorSplash': ['colorSplash', 500,  'ease-out',              'both'],
+    };
+    const def = defs[animationType];
+    if (!def) return 'none';
+    const [name, ms, timing, fill] = def;
+    const s = Math.max(0.1, speed || 1);
+    const duration = fill === 'infinite' ? `${ms}ms` : `${Math.round(ms / s)}ms`;
+    return `${name} ${duration} ${timing} ${fill}`;
+  };
+
+  // Word-level animations — keyframes include translate(-50%,-50%) centering so they
+  // don't override the inner span's centering transform.
+  const getWordAnimationStyle = (animationType) => {
     const animations = {
-      'rise': 'rise 0.4s ease-out',
-      'pan': 'pan 0.5s ease-in-out',
-      'fade': 'fade 0.5s ease-in',
-      'pop': 'pop 0.3s ease-out',
-      'wipe': 'wipe 0.4s ease-out',
-      'blur': 'blur 0.5s ease-in-out',
-      'succession': 'succession 0.4s ease-out',
-      'breathe': 'breathe 1.5s ease-in-out infinite',
-      'baseline': 'baseline 0.4s ease-out',
-      'drift': 'drift 0.6s ease-in-out',
-      'tectonic': 'tectonic 0.5s ease-out',
-      'tumble': 'tumble 0.6s ease-in-out'
+      'rise': 'word-rise 0.4s ease-out both',
+      'pan': 'word-pan 0.5s ease-in-out both',
+      'fade': 'fade 0.5s ease-in both',
+      'pop': 'word-pop 0.3s ease-out both',
+      'wipe': 'wipe 0.4s ease-out both',
+      'blur': 'blur 0.5s ease-in-out both',
+      'succession': 'word-succession 0.4s ease-out both',
+      'breathe': 'word-breathe 1.5s ease-in-out infinite',
+      'baseline': 'word-baseline 0.4s ease-out both',
+      'drift': 'word-drift 0.6s ease-in-out both',
+      'tectonic': 'word-tectonic 0.5s ease-out both',
+      'tumble': 'word-tumble 0.6s ease-in-out both'
     };
     return animations[animationType] || 'none';
   };
@@ -569,15 +630,19 @@ export default function VideoPlayer({
   };
 
   const getPositionStyle = () => {
-    const posY = captionStyle?.position_y || 75; // Default lowered for captions
+    const posY = captionStyle?.position_y || 75;
     const posX = captionStyle?.position_x || 50;
+    const align = captionStyle?.text_align || 'center';
 
-    // Always center transform to prevent visual jumping when changing anchor
-    // The anchor setting will strictly affect text growth direction via StyleControls
+    // Anchor point shifts based on text alignment:
+    // left   → left edge of caption at posX
+    // center → center of caption at posX (default)
+    // right  → right edge of caption at posX
+    const transformX = align === 'left' ? '0%' : align === 'right' ? '-100%' : '-50%';
     return {
       top: `${posY}%`,
       left: `${posX}%`,
-      transform: 'translate(-50%, -50%)'
+      transform: `translate(${transformX}, -50%)`
     };
   };
 
@@ -1014,23 +1079,19 @@ export default function VideoPlayer({
                     '--template-highlight': captionStyle?.highlight_color || '#FFE600',
                   }}
                 >
-                  {/* Background layer with H multiplier support */}
+                  {/* Background layer — padding expands equally above and below the text */}
                   {captionStyle?.has_background && (
                     <div
                       style={{
                         position: 'absolute',
-                        top: 0,
+                        top: `-${captionStyle?.background_padding || 6}px`,
                         left: '50%',
                         transform: 'translateX(-50%)',
                         zIndex: -1,
                         backgroundColor: `rgba(${parseInt((captionStyle?.background_color || '#000000').slice(1, 3), 16)}, ${parseInt((captionStyle?.background_color || '#000000').slice(3, 5), 16)}, ${parseInt((captionStyle?.background_color || '#000000').slice(5, 7), 16)}, ${captionStyle?.background_opacity || 0.7})`,
                         borderRadius: '6px',
-                        width: `${100 * (captionStyle?.background_h_multiplier || 1.1)}%`,
-                        paddingTop: `${captionStyle?.background_padding || 6}px`,
-                        paddingBottom: `${captionStyle?.background_padding || 6}px`,
-                        paddingLeft: '8px',
-                        paddingRight: '8px',
-                        minHeight: '100%'
+                        width: `${100 * (captionStyle?.background_h_multiplier || 1)}%`,
+                        height: `calc(100% + ${2 * (captionStyle?.background_padding || 6)}px)`,
                       }}
                     />
                   )}
@@ -1081,8 +1142,8 @@ export default function VideoPlayer({
                         fontWeight: captionStyle?.font_weight || 'normal',
                         fontStyle: captionStyle?.font_style || 'normal',
                         textAlign: captionStyle?.text_align || 'center',
-                        letterSpacing: '0px',
-                        wordSpacing: '0px',
+                        letterSpacing: captionStyle?.letter_spacing ? `${captionStyle.letter_spacing}px` : '0px',
+                        wordSpacing: `${captionStyle?.word_spacing ?? 0}px`,
                         textDecoration: captionStyle?.text_decoration || 'none',
                         opacity: captionStyle?.text_opacity || 1,
                         transform: `scale(${captionStyle?.scale || 1})`,
@@ -1098,7 +1159,7 @@ export default function VideoPlayer({
                         } : {
                           color: captionStyle?.text_color || '#ffffff'
                         }),
-                        textTransform: captionStyle?.text_case === 'uppercase' ? 'uppercase' : captionStyle?.text_case === 'lowercase' ? 'lowercase' : captionStyle?.text_case === 'capitalize' ? 'capitalize' : 'none',
+                        textTransform: captionStyle?.text_case && captionStyle.text_case !== 'none' ? captionStyle.text_case : undefined,
                         width: '100%',
                         minWidth: '200px',
                         minHeight: '60px'
@@ -1109,7 +1170,7 @@ export default function VideoPlayer({
                   ) : captionStyle?.template_id ? (
                     // Template rendering: simple word spans with CSS class states for template effects
                     <span
-                      className={`cap-text${caption.animation && caption.animation !== 'none' ? ` animate-${caption.animation}` : ''}`}
+                      className="cap-text"
                       style={{
                         fontFamily: captionStyle?.font_family || 'Inter',
                         fontSize: `${captionStyle?.font_size || 18}px`,
@@ -1117,17 +1178,19 @@ export default function VideoPlayer({
                         fontStyle: captionStyle?.font_style || 'normal',
                         textAlign: captionStyle?.text_align || 'center',
                         display: 'block',
-                        letterSpacing: 'normal',
-                        wordSpacing: '-3px',
-                        textTransform: captionStyle?.text_case === 'uppercase' ? 'uppercase' : captionStyle?.text_case === 'lowercase' ? 'lowercase' : captionStyle?.text_case === 'capitalize' ? 'capitalize' : 'none',
+                        lineHeight: `${(captionStyle?.font_size || 18) * (captionStyle?.line_spacing || 1.4)}px`,
+                        letterSpacing: captionStyle?.letter_spacing ? `${captionStyle.letter_spacing}px` : '0px',
+                        wordSpacing: `${captionStyle?.word_spacing ?? 0}px`,
+                        textTransform: captionStyle?.text_case && captionStyle.text_case !== 'none' ? captionStyle.text_case : undefined,
                         whiteSpace: 'nowrap',
+                        animation: caption.animation && caption.animation !== 'none' ? getAnimationStyle(caption.animation, caption.animationSpeed) : 'none',
                       }}
                     >
                       {(() => {
                         const words = caption.text.split(' ');
                         const wordCount = words.length;
-                        const captionDuration = (caption.end || 0) - (caption.start || 0);
-                        const timeIntoCaption = (currentTime || 0) - (caption.start || 0);
+                        const captionDuration = (caption.end_time || caption.end || 0) - (caption.start_time || caption.start || 0);
+                        const timeIntoCaption = (currentTime || 0) - (caption.start_time || caption.start || 0);
                         // Compute which word index is currently being spoken
                         const currentIdx = wordCount > 1
                           ? Math.max(0, Math.min(wordCount - 1, Math.floor((timeIntoCaption / captionDuration) * wordCount)))
@@ -1141,8 +1204,8 @@ export default function VideoPlayer({
                           if (isCurrent) cls += ' current active';
                           else if (isPast) cls += ' active done';
 
-                          // Word-by-word delivery mode: hide future words
-                          if (captionStyle?.show_inactive === false && !isPast && !isCurrent) {
+                          // Word-by-word delivery mode: accumulate — show words 0..currentIdx
+                          if (captionStyle?.show_inactive === false && wordIndex > currentIdx) {
                             return null;
                           }
 
@@ -1152,8 +1215,9 @@ export default function VideoPlayer({
                           return (
                             <span
                               key={wordIndex}
+                              data-word-key={`${caption.id}-${wordIndex}`}
                               className={cls + (isSelected ? ' ring-2 ring-[#F5A623] rounded-sm' : '')}
-                              style={{ cursor: 'pointer', display: 'inline-block' }}
+                              style={{ cursor: 'pointer', display: 'inline-block', marginRight: wordIndex < words.length - 1 ? `${(captionStyle?.word_spacing ?? 1) * 3}px` : '0' }}
                               onClick={(e) => {
                                 if (setWordPopup) {
                                   e.stopPropagation();
@@ -1184,15 +1248,15 @@ export default function VideoPlayer({
                         fontStyle: captionStyle?.font_style || 'normal',
                         textAlign: captionStyle?.text_align || 'center',
                         display: 'block',
-                        letterSpacing: 'normal',
-                        wordSpacing: 'normal',
+                        letterSpacing: captionStyle?.letter_spacing ? `${captionStyle.letter_spacing}px` : '0px',
+                        wordSpacing: `${captionStyle?.word_spacing ?? 0}px`,
                         textDecoration: captionStyle?.text_decoration || 'none',
                         opacity: captionStyle?.text_opacity || 1,
                         transform: `scale(${captionStyle?.scale || 1})`,
 
-                        animation: caption.animation && caption.animation !== 'none' ? getAnimationStyle(caption.animation) : 'none',
+                        animation: caption.animation && caption.animation !== 'none' ? getAnimationStyle(caption.animation, caption.animationSpeed) : 'none',
                         color: captionStyle?.text_color || '#ffffff',
-                        textTransform: captionStyle?.text_case === 'uppercase' ? 'uppercase' : captionStyle?.text_case === 'lowercase' ? 'lowercase' : captionStyle?.text_case === 'capitalize' ? 'capitalize' : 'none',
+                        textTransform: captionStyle?.text_case && captionStyle.text_case !== 'none' ? captionStyle.text_case : undefined,
                         padding: `${captionStyle?.background_padding || 6}px 8px`,
                         position: 'relative',
                         zIndex: 10,
@@ -1222,30 +1286,47 @@ export default function VideoPlayer({
                       }}
                     >
                       {caption.text.split(' ').map((word, wordIndex, arr) => {
+                        // Word-by-word mode: compute current word index from timing
+                        if (captionStyle?.show_inactive === false) {
+                          const wordCount = arr.length
+                          const captionDuration = (caption.end_time || caption.end || 0) - (caption.start_time || caption.start || 0)
+                          const timeIntoCaption = (currentTime || 0) - (caption.start_time || caption.start || 0)
+                          const currentIdx = wordCount > 1
+                            ? Math.max(0, Math.min(wordCount - 1, Math.floor((timeIntoCaption / captionDuration) * wordCount)))
+                            : 0
+                          // Accumulate: show words 0..currentIdx (sentence builds word by word)
+                          if (wordIndex > currentIdx) return null
+                        }
                         const styleKey = `${caption.id}-${wordIndex}`;
                         const ws = caption.wordStyles?.[styleKey] || {};
                         const isSelected = wordPopup?.caption?.id === caption.id && wordPopup?.wordIndex === wordIndex;
                         const baseFontSize = captionStyle?.font_size || 18;
                         const wordFontSize = ws.fontSize || ws.frozenFontSize || baseFontSize;
+                        // Dragged words (non-zero x or y) must not inflate the bg layout
+                        const isPositioned = !!(ws.x || ws.y);
+                        const layoutFontSize = isPositioned ? baseFontSize : wordFontSize;
 
-                        // Emphasis: larger, bold, highlighted color
+                        // Emphasis: bold + 1.2x scale + gold accent color + subtle glow
+                        const emphasisAccent = captionStyle?.secondary_color || '#FFD700';
                         const emphasisStyle = ws.isEmphasis ? {
                           fontWeight: 'bold',
-                          color: ws.color || captionStyle?.text_color || '#ffffff',
-                          fontSize: `${Math.round(wordFontSize * 1.15)}px`,
+                          color: ws.color || emphasisAccent,
+                          fontSize: `${Math.round(wordFontSize * 1.2)}px`,
+                          textShadow: `0 0 18px ${emphasisAccent}99, 0 0 6px ${emphasisAccent}66`,
                         } : {};
 
 
                         return (
                           <span
                             key={wordIndex}
+                            data-word-key={`${caption.id}-${wordIndex}`}
                             style={{
                               display: 'inline-block',
                               position: 'relative',
-                              fontSize: `${baseFontSize}px`,
+                              fontSize: `${layoutFontSize}px`,
                               lineHeight: 'inherit',
                               verticalAlign: 'baseline',
-                              marginRight: wordIndex < arr.length - 1 ? '8px' : '0',
+                              marginRight: wordIndex < arr.length - 1 ? `${Math.round(layoutFontSize * 0.18 + (captionStyle?.word_spacing ?? 1) * 3)}px` : '0',
                               transform: (ws.x || ws.y)
                                 ? `translate(${ws.x || 0}px, ${ws.y || 0}px)`
                                 : 'none',
@@ -1289,10 +1370,7 @@ export default function VideoPlayer({
                                 fontWeight: ws.fontWeight || 'inherit',
                                 fontStyle: ws.fontStyle || 'inherit',
                                 textDecoration: ws.textDecoration || 'inherit',
-                                textTransform: (() => {
-                                  if (!ws.textTransform || ws.textTransform === 'none') return 'none';
-                                  return ws.textTransform;
-                                })(),
+                                textTransform: ws.textTransform || undefined,
                                 ...(ws.textGradient ? {
                                   backgroundImage: ws.textGradient,
                                   WebkitBackgroundClip: 'text',
@@ -1310,17 +1388,16 @@ export default function VideoPlayer({
                                 ...computeWordEffectCSS(ws),
                                 ...emphasisStyle,
                                 animation: ws.animation && ws.animation !== 'none'
-                                  ? getAnimationStyle(ws.animation)
+                                  ? getWordAnimationStyle(ws.animation)
                                   : 'none',
                               }}
                             >
                               {word}
                             </span>
-                            {/* Invisible spacer — holds layout space, never changes size */}
-                            <span style={{ visibility: 'hidden', fontSize: `${baseFontSize}px`, whiteSpace: 'pre' }}>
+                            {/* Invisible spacer — holds layout width at layoutFontSize (baseFontSize for dragged words) */}
+                            <span style={{ visibility: 'hidden', fontSize: `${layoutFontSize}px`, whiteSpace: 'pre' }}>
                               {word}
                             </span>
-                            {wordIndex < arr.length - 1 ? '\u00A0' : ''}
                           </span>
                         );
                       })}
@@ -1624,6 +1701,188 @@ export default function VideoPlayer({
         @keyframes tumble {
           0% { transform: rotate(-180deg) scale(0.5); opacity: 0; }
           100% { transform: rotate(0) scale(1); opacity: 1; }
+        }
+        /* Word-level keyframes — include translate(-50%,-50%) in every step
+           to preserve the inner span's centering transform */
+        @keyframes word-rise {
+          0% { transform: translate(-50%, calc(-50% + 20px)); opacity: 0; }
+          100% { transform: translate(-50%, -50%); opacity: 1; }
+        }
+        @keyframes word-pan {
+          0% { transform: translate(calc(-50% - 30px), -50%); opacity: 0; }
+          100% { transform: translate(-50%, -50%); opacity: 1; }
+        }
+        @keyframes word-pop {
+          0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
+          50% { transform: translate(-50%, -50%) scale(1.1); }
+          100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+        }
+        @keyframes word-succession {
+          0% { transform: translate(-50%, calc(-50% - 10px)); opacity: 0; }
+          100% { transform: translate(-50%, -50%); opacity: 1; }
+        }
+        @keyframes word-breathe {
+          0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+          50% { transform: translate(-50%, -50%) scale(1.05); opacity: 0.9; }
+        }
+        @keyframes word-baseline {
+          0% { transform: translate(-50%, calc(-50% + 5px)); opacity: 0; }
+          100% { transform: translate(-50%, -50%); opacity: 1; }
+        }
+        @keyframes word-drift {
+          0% { transform: translate(calc(-50% - 10px), calc(-50% - 10px)); opacity: 0; }
+          100% { transform: translate(-50%, -50%); opacity: 1; }
+        }
+        @keyframes word-tectonic {
+          0% { transform: translate(calc(-50% - 20px), -50%) rotate(-5deg); opacity: 0; }
+          100% { transform: translate(-50%, -50%) rotate(0); opacity: 1; }
+        }
+        @keyframes word-tumble {
+          0% { transform: translate(-50%, -50%) rotate(-180deg) scale(0.5); opacity: 0; }
+          100% { transform: translate(-50%, -50%) rotate(0) scale(1); opacity: 1; }
+        }
+        /* ── Advanced – Basic ── */
+        @keyframes fadeInUp {
+          0% { transform: translateY(22px); opacity: 0; }
+          100% { transform: translateY(0); opacity: 1; }
+        }
+        @keyframes fadeInDown {
+          0% { transform: translateY(-22px); opacity: 0; }
+          100% { transform: translateY(0); opacity: 1; }
+        }
+        @keyframes slideInRight {
+          0% { transform: translateX(40px); opacity: 0; }
+          100% { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes flipInX {
+          0% { transform: perspective(500px) rotateX(-90deg); opacity: 0; }
+          100% { transform: perspective(500px) rotateX(0); opacity: 1; }
+        }
+        @keyframes flipInY {
+          0% { transform: perspective(500px) rotateY(-90deg); opacity: 0; }
+          100% { transform: perspective(500px) rotateY(0); opacity: 1; }
+        }
+        @keyframes blurIn {
+          0% { filter: blur(14px); opacity: 0; }
+          100% { filter: blur(0); opacity: 1; }
+        }
+        @keyframes zoomInFade {
+          0% { transform: scale(0.65); opacity: 0; }
+          100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes bounceInUp {
+          0%   { transform: translateY(32px); opacity: 0; }
+          60%  { transform: translateY(-8px); opacity: 1; }
+          80%  { transform: translateY(4px); }
+          100% { transform: translateY(0); opacity: 1; }
+        }
+        @keyframes skewLeft {
+          0% { transform: translateX(-30px) skewX(20deg); opacity: 0; }
+          100% { transform: translateX(0) skewX(0deg); opacity: 1; }
+        }
+        /* ── Advanced – Kinetic ── */
+        @keyframes missile {
+          0%   { transform: translateX(-60px) scaleX(0.6); opacity: 0; }
+          65%  { transform: translateX(6px) scaleX(1.04); opacity: 1; }
+          100% { transform: translateX(0) scaleX(1); opacity: 1; }
+        }
+        @keyframes shockwave {
+          0%   { transform: scale(1.6); opacity: 0; filter: blur(6px); }
+          55%  { transform: scale(0.94); opacity: 1; filter: blur(0); }
+          100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes typewriter {
+          0%   { clip-path: inset(0 100% 0 0); }
+          100% { clip-path: inset(0 0% 0 0); }
+        }
+        @keyframes slamDown {
+          0%   { transform: translateY(-55px) scaleY(1.2); opacity: 0; }
+          65%  { transform: translateY(6px) scaleY(0.94); opacity: 1; }
+          100% { transform: translateY(0) scaleY(1); opacity: 1; }
+        }
+        @keyframes fireCharge {
+          0%   { transform: translateY(18px) scaleX(0.8); opacity: 0; filter: blur(5px); }
+          70%  { transform: translateY(-4px) scaleX(1.02); opacity: 1; filter: blur(0); }
+          100% { transform: translateY(0) scaleX(1); opacity: 1; }
+        }
+        @keyframes stampede {
+          0%   { transform: translateX(-55px) scaleX(1.1); opacity: 0; }
+          70%  { transform: translateX(5px) scaleX(0.98); opacity: 1; }
+          100% { transform: translateX(0) scaleX(1); opacity: 1; }
+        }
+        @keyframes recoil {
+          0%   { transform: translateX(0); opacity: 1; }
+          20%  { transform: translateX(-10px); }
+          60%  { transform: translateX(4px); }
+          100% { transform: translateX(0); opacity: 1; }
+        }
+        /* ── Advanced – Cinematic ── */
+        @keyframes irisOpen {
+          0%   { clip-path: circle(0% at 50% 50%); opacity: 0.4; }
+          100% { clip-path: circle(150% at 50% 50%); opacity: 1; }
+        }
+        @keyframes parallaxRise {
+          0%   { transform: translateY(14px) scale(0.97); opacity: 0; }
+          100% { transform: translateY(0) scale(1); opacity: 1; }
+        }
+        @keyframes goldenRatio {
+          0%   { transform: scaleX(0.618) translateX(-20px); opacity: 0; }
+          100% { transform: scaleX(1) translateX(0); opacity: 1; }
+        }
+        @keyframes curtainSplit {
+          0%   { clip-path: inset(0 50% 0 50%); opacity: 0.5; }
+          100% { clip-path: inset(0 0% 0 0%); opacity: 1; }
+        }
+        @keyframes prestige {
+          0%   { transform: scale(1.1); opacity: 0; }
+          100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes fadeThroughBlack {
+          0%   { opacity: 1; }
+          35%  { opacity: 0; }
+          65%  { opacity: 0; }
+          100% { opacity: 1; }
+        }
+        @keyframes depthPull {
+          0%   { transform: scale(0.35); opacity: 0; }
+          100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes slowBurn {
+          0%   { opacity: 0; }
+          100% { opacity: 1; }
+        }
+        @keyframes diagonalWipe {
+          0%   { clip-path: inset(0 100% 100% 0); }
+          100% { clip-path: inset(0 0% 0% 0); }
+        }
+        /* ── Advanced – Playful ── */
+        @keyframes confettiPop {
+          0%   { transform: scale(0.3) rotate(-12deg); opacity: 0; }
+          55%  { transform: scale(1.15) rotate(3deg); opacity: 1; }
+          75%  { transform: scale(0.95) rotate(-1deg); }
+          100% { transform: scale(1) rotate(0); opacity: 1; }
+        }
+        @keyframes stickerSlap {
+          0%   { transform: scale(1.45) rotate(-6deg); opacity: 0; }
+          45%  { transform: scale(0.94) rotate(1deg); opacity: 1; }
+          75%  { transform: scale(1.02) rotate(0); }
+          100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes wobbleEntry {
+          0%   { transform: translateX(-22px) rotate(-4deg); opacity: 0; }
+          35%  { transform: translateX(9px) rotate(2deg); opacity: 1; }
+          65%  { transform: translateX(-4px) rotate(-1deg); }
+          100% { transform: translateX(0) rotate(0); opacity: 1; }
+        }
+        @keyframes balloonFloat {
+          0%   { transform: translateY(22px) scale(0.8); opacity: 0; }
+          65%  { transform: translateY(-6px) scale(1.03); opacity: 1; }
+          100% { transform: translateY(0) scale(1); opacity: 1; }
+        }
+        @keyframes colorSplash {
+          0%   { transform: scale(0.85); opacity: 0; filter: saturate(3) brightness(1.6); }
+          50%  { transform: scale(1.06); opacity: 1; filter: saturate(2) brightness(1.3); }
+          100% { transform: scale(1); opacity: 1; filter: saturate(1) brightness(1); }
         }
       `}</style>
 

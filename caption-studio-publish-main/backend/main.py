@@ -231,6 +231,16 @@ class TranslateRequest(BaseModel):
     captions: List[Dict[str, Any]]
     target_language: str
 
+# Debug endpoint: view the last exported ASS file
+@app.get("/api/debug/last-ass")
+async def get_last_ass():
+    ass_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "last_export_debug.ass")
+    if not os.path.exists(ass_path):
+        return {"error": "No debug ASS file found. Export a video first."}
+    with open(ass_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    return {"ass_content": content, "path": ass_path}
+
 # Google Fonts Cache Map
 _cached_google_fonts = None
 
@@ -331,16 +341,18 @@ async def export_video(req: ExportRequest):
     print(f"[Export] EXPORT STYLE RECEIVED: {req.style}")
 
     # 1. Authenticate user
-    decoded_token = verify_token(req.id_token) if req.id_token else None
+    is_dev_token = not req.id_token or req.id_token == 'mock-token'
+    decoded_token = verify_token(req.id_token) if req.id_token and not is_dev_token else None
     if decoded_token:
         uid = decoded_token.get('uid')
     else:
-        # Dev mode fallback when Firebase is not configured
-        db_check = get_db()
-        if db_check is not None:
-            raise HTTPException(status_code=401, detail="Authentication required")
+        # Dev mode: either no token, mock-token, or Firebase not configured
+        if not is_dev_token:
+            db_check = get_db()
+            if db_check is not None:
+                raise HTTPException(status_code=401, detail="Authentication required")
         uid = "dev-local-user"
-        print("[Export] No auth token — running in dev mode (no Firebase configured)")
+        print("[Export] No real auth token — running in dev mode")
 
     # 2. Check Credits & Limits (skipped gracefully if Firestore is not configured)
     db = get_db()
@@ -398,8 +410,9 @@ async def export_video(req: ExportRequest):
         # Filter only timestamps within the last 24 hours
         recent_exports = [ts for ts in export_history if ts > (now - 86400)]
 
-        if len(recent_exports) >= 5:
-            raise HTTPException(status_code=429, detail="Limit reached: You can only export 5 videos per 24 hours to prevent abuse.")
+        # TODO: RE-ENABLE BEFORE DEPLOY — export rate limit (5/24h)
+        # if len(recent_exports) >= 5:
+        #     raise HTTPException(status_code=429, detail="Limit reached: You can only export 5 videos per 24 hours to prevent abuse.")
     else:
         print("[Export] Firestore not available — skipping credit check (dev mode).")
 

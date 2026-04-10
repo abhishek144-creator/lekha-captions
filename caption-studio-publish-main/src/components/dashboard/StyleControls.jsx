@@ -665,7 +665,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
             <Label className="text-sm text-gray-400 mb-2 block">Text Alignment</Label>
             <div className="bg-zinc-900 border border-white/5 rounded-lg p-1 flex gap-1">
               <button
-                onClick={() => updateStyle('text_align', 'left')}
+                onClick={() => { updateStyle('text_align', 'left'); if (!selectedTextElement) updateStyle('position_x', 10); }}
                 className={`flex-1 flex items-center justify-center py-1.5 rounded-md transition-all ${getCurrentValue('text_align', 'center') === 'left'
                   ? "bg-white text-black shadow-sm"
                   : "text-gray-400 hover:text-white hover:bg-white/5"
@@ -674,7 +674,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
                 <AlignLeft className="w-4 h-4" />
               </button>
               <button
-                onClick={() => updateStyle('text_align', 'center')}
+                onClick={() => { updateStyle('text_align', 'center'); if (!selectedTextElement) updateStyle('position_x', 50); }}
                 className={`flex-1 flex items-center justify-center py-1.5 rounded-md transition-all ${getCurrentValue('text_align', 'center') === 'center'
                   ? "bg-white text-black shadow-sm"
                   : "text-gray-400 hover:text-white hover:bg-white/5"
@@ -683,7 +683,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
                 <AlignCenter className="w-4 h-4" />
               </button>
               <button
-                onClick={() => updateStyle('text_align', 'right')}
+                onClick={() => { updateStyle('text_align', 'right'); if (!selectedTextElement) updateStyle('position_x', 90); }}
                 className={`flex-1 flex items-center justify-center py-1.5 rounded-md transition-all ${getCurrentValue('text_align', 'center') === 'right'
                   ? "bg-white text-black shadow-sm"
                   : "text-gray-400 hover:text-white hover:bg-white/5"
@@ -1066,7 +1066,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
                 </div>
               </>
             )}
-        </div>
+          </div>
         </div>
 
         {/* ── 4. BACKGROUND ─────────────────────────── */}
@@ -1334,6 +1334,35 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
             )}
         </div>
         </div>
+
+        {/* ── 6. CAPTION SETTINGS ─────────────────── */}
+        {!selectedTextElement && (
+        <div className="space-y-4 pt-4 border-t border-white/5">
+          <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider">CAPTION SETTINGS</h3>
+
+          {/* Display Mode */}
+          <div>
+            <Label className="text-sm text-gray-400 mb-2 block">Display Mode</Label>
+            <Select
+              value={captionStyle.display_mode || 'sentence'}
+              onValueChange={(value) => {
+                updateStyle('display_mode', value)
+                // map to show_inactive: sentence → true, word_by_word → false
+                updateStyle('show_inactive', value === 'sentence')
+              }}
+            >
+              <SelectTrigger className="bg-zinc-900 border-white/10 text-white h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-zinc-900 border-white/10">
+                <SelectItem value="sentence" className="text-white hover:bg-white/10 focus:bg-white/10 focus:text-white">Sentence</SelectItem>
+                <SelectItem value="word_by_word" className="text-white hover:bg-white/10 focus:bg-white/10 focus:text-white">Word by Word</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        )}
+
       </div>
     </div>
   );

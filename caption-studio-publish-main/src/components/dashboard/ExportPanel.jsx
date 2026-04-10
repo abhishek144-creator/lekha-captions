@@ -17,6 +17,78 @@ import { motion } from 'framer-motion';
 
 import { Progress } from "@/components/ui/progress";
 
+// ─── TEMPLATE CANONICAL STYLES ────────────────────────────────────────────────
+// Ensures the export always uses the correct template-defined visual properties
+// (background, stroke, shadow) even if the user's React state is stale from
+// applying the template before these properties were added to the template def.
+// User-customized properties (font, color, position) are NOT overridden here.
+const TEMPLATE_CANONICAL_STYLES = {
+  't-115': { has_shadow: true, shadow_color: '#39FF14', shadow_blur: 10, shadow_offset_x: 0, shadow_offset_y: 0, has_background: false, has_stroke: false },
+  't-109': { has_shadow: true, shadow_color: '#E01A1A', shadow_blur: 0, shadow_offset_x: 3, shadow_offset_y: 3, has_background: false, has_stroke: false },
+  't-26':  { has_background: true, background_color: '#e8e8e8', background_opacity: 1.0, has_stroke: true, stroke_color: '#000000', stroke_width: 1, has_shadow: false },
+  't-102': { has_background: true, background_color: '#FFFFFF', background_opacity: 1.0, background_padding: 10, has_stroke: false, has_shadow: false },
+  't-36':  { has_background: false, has_stroke: false, has_shadow: false },
+  't-105': { has_stroke: true, stroke_color: '#000000', stroke_width: 1, has_shadow: true, shadow_color: '#000000', shadow_blur: 2, shadow_offset_x: 2, shadow_offset_y: 2, has_background: false },
+  't-9':   { has_shadow: true, shadow_color: '#ff4500', shadow_blur: 10, shadow_offset_x: 0, shadow_offset_y: 0, has_background: false, has_stroke: false },
+  't-124': { has_shadow: true, shadow_color: '#ffffff', shadow_blur: 0, shadow_offset_x: 4, shadow_offset_y: 4, has_background: false, has_stroke: false },
+  't-16':  { has_background: false, has_stroke: false, has_shadow: false },
+  't-110': { has_background: false, has_stroke: false, has_shadow: false },
+  't-119': { has_background: false, has_stroke: false, has_shadow: false },
+  't-12':  { has_shadow: true, shadow_color: '#cc0000', shadow_blur: 10, shadow_offset_x: 0, shadow_offset_y: 0, has_background: false, has_stroke: false },
+  't-106': { has_shadow: true, shadow_color: '#000000', shadow_blur: 3, shadow_offset_x: 1, shadow_offset_y: 2, has_background: false, has_stroke: false },
+  't-52':  { has_background: false, has_stroke: false, has_shadow: false },
+  't-103': { has_background: true, background_color: '#1e1e1e', background_opacity: 0.85, background_padding: 10, has_stroke: false, has_shadow: false },
+  't-112': { has_background: false, has_stroke: false, has_shadow: false },
+  't-104': { has_stroke: true, stroke_color: '#B28DFF', stroke_width: 2, has_background: false, has_shadow: false },
+  't-111': { has_background: false, has_stroke: false, has_shadow: false },
+  't-T5':  { has_background: true, background_color: '#ECF00F', background_opacity: 1.0, background_padding: 10, has_stroke: false, has_shadow: false },
+  't-95':  { has_background: false, has_stroke: false, has_shadow: false },
+  't-T1':  { has_background: false, has_stroke: false, has_shadow: false },
+  't-T4':  { has_background: false, has_stroke: false, has_shadow: false },
+  't-56':  { has_background: false, has_stroke: false, has_shadow: false },
+  't-T3':  { has_background: false, has_stroke: false, has_shadow: false },
+  't-57':  { has_shadow: true, shadow_color: '#00ffff', shadow_blur: 0, shadow_offset_x: 2, shadow_offset_y: 0, has_background: false, has_stroke: false },
+  't-37':  { has_background: false, has_stroke: false, has_shadow: false },
+  // TemplatesTab2 templates (t01–t35) — all use CSS-only visual effects,
+  // no background/stroke/shadow in their style definitions; reset to prevent
+  // style-bleed from previously applied templates.
+  't01': { has_background: false, has_stroke: false, has_shadow: false },
+  't02': { has_background: false, has_stroke: false, has_shadow: false },
+  't03': { has_background: false, has_stroke: false, has_shadow: false },
+  't04': { has_background: false, has_stroke: false, has_shadow: false },
+  't05': { has_background: false, has_stroke: false, has_shadow: false },
+  't06': { has_background: false, has_stroke: false, has_shadow: false },
+  't07': { has_background: false, has_stroke: false, has_shadow: false },
+  't08': { has_background: false, has_stroke: false, has_shadow: false },
+  't09': { has_background: false, has_stroke: false, has_shadow: false },
+  't10': { has_background: false, has_stroke: false, has_shadow: false },
+  't11': { has_background: false, has_stroke: false, has_shadow: false },
+  't12': { has_background: false, has_stroke: false, has_shadow: false },
+  't13': { has_background: false, has_stroke: false, has_shadow: false },
+  't14': { has_background: false, has_stroke: false, has_shadow: false },
+  't15': { has_background: false, has_stroke: false, has_shadow: false },
+  't16': { has_background: false, has_stroke: false, has_shadow: false },
+  't17': { has_background: false, has_stroke: false, has_shadow: false },
+  't18': { has_background: false, has_stroke: false, has_shadow: false },
+  't19': { has_background: false, has_stroke: false, has_shadow: false },
+  't20': { has_background: false, has_stroke: false, has_shadow: false },
+  't21': { has_background: false, has_stroke: false, has_shadow: false },
+  't22': { has_background: false, has_stroke: false, has_shadow: false },
+  't23': { has_background: false, has_stroke: false, has_shadow: false },
+  't24': { has_background: false, has_stroke: false, has_shadow: false },
+  't25': { has_background: false, has_stroke: false, has_shadow: false },
+  't26': { has_background: false, has_stroke: false, has_shadow: false },
+  't27': { has_background: false, has_stroke: false, has_shadow: false },
+  't28': { has_background: false, has_stroke: false, has_shadow: false },
+  't29': { has_background: false, has_stroke: false, has_shadow: false },
+  't30': { has_background: false, has_stroke: false, has_shadow: false },
+  't31': { has_background: false, has_stroke: false, has_shadow: false },
+  't32': { has_background: false, has_stroke: false, has_shadow: false },
+  't33': { has_background: false, has_stroke: false, has_shadow: false },
+  't34': { has_background: false, has_stroke: false, has_shadow: false },
+  't35': { has_background: false, has_stroke: false, has_shadow: false },
+};
+
 // Simple queue system to prevent server overload
 const exportQueue = {
   queue: [],
@@ -314,9 +386,9 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
                 stroke_color: cs.strokeColor || '#000000',
                 has_shadow: cs.hasShadow || false,
                 shadow_color: cs.shadowColor || '#000000',
-                shadow_blur: cs.shadowBlur || 4,
-                shadow_offset_x: cs.shadowOffsetX || 0,
-                shadow_offset_y: cs.shadowOffsetY || 2,
+                shadow_blur: cs.shadowBlur ?? 4,
+                shadow_offset_x: cs.shadowOffsetX ?? 0,
+                shadow_offset_y: cs.shadowOffsetY ?? 2,
                 letter_spacing: cs.letterSpacing || 0,
                 effect_type: cs.effectType || 'none',
                 effect_offset: cs.effectOffset ?? 50,
@@ -332,56 +404,63 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
             words: cap.words || []
           };
         }),
-        style: {
-          font_family: captionStyle?.font_family || 'Inter',
-          font_size: captionStyle?.font_size || 18,
-          font_weight: captionStyle?.font_weight || '500',
-          font_style: captionStyle?.font_style || 'normal',
-          line_spacing: captionStyle?.line_spacing || 1.4,
-          text_color: captionStyle?.text_color || '#ffffff',
-          text_gradient: captionStyle?.text_gradient || '',
-          text_opacity: captionStyle?.text_opacity ?? 1,
-          highlight_color: captionStyle?.highlight_color || '',
-          highlight_gradient: captionStyle?.highlight_gradient || '',
+        style: (() => {
+          // Merge template canonical overrides — ensures correct has_shadow/has_stroke/has_background
+          // even when the user's React state was set before these properties were added to the template def.
+          const _tid = captionStyle?.template_id || '';
+          const _tOverride = TEMPLATE_CANONICAL_STYLES[_tid] || {};
+          const _cs = { ...captionStyle, ..._tOverride };
+          return {
+          font_family: _cs?.font_family || 'Inter',
+          font_size: _cs?.font_size || 18,
+          font_weight: _cs?.font_weight || '500',
+          font_style: _cs?.font_style || 'normal',
+          line_spacing: _cs?.line_spacing || 1.4,
+          text_color: _cs?.text_color || '#ffffff',
+          text_gradient: _cs?.text_gradient || '',
+          text_opacity: _cs?.text_opacity ?? 1,
+          highlight_color: _cs?.highlight_color || '',
+          highlight_gradient: _cs?.highlight_gradient || '',
           // Use explicit boolean — templates without bg set has_background:false after hard reset
-          has_background: !!captionStyle?.has_background,
-          background_opacity: captionStyle?.background_opacity ?? 0.7,
-          background_color: captionStyle?.background_color || '#000000',
-          has_stroke: captionStyle?.has_stroke || false,
-          stroke_width: captionStyle?.stroke_width || 1,
-          stroke_color: captionStyle?.stroke_color || '#000000',
-          has_shadow: captionStyle?.has_shadow || false,
-          shadow_color: captionStyle?.shadow_color || '#000000',
-          shadow_blur: captionStyle?.shadow_blur || 4,
-          shadow_offset_x: captionStyle?.shadow_offset_x || 0,
-          shadow_offset_y: captionStyle?.shadow_offset_y || 2,
-          has_animation: captionStyle?.has_animation || false,
-          text_align: captionStyle?.text_align || 'center',
-          text_case: captionStyle?.text_case || 'none',
-          is_caps: captionStyle?.is_caps || false,
-          is_bold: captionStyle?.is_bold || false,
-          effect_type: captionStyle?.effect_type || 'none',
-          effect_offset: captionStyle?.effect_offset ?? 50,
-          effect_direction: captionStyle?.effect_direction ?? -45,
-          effect_blur: captionStyle?.effect_blur ?? 50,
-          effect_transparency: captionStyle?.effect_transparency ?? 40,
-          effect_thickness: captionStyle?.effect_thickness ?? 50,
-          effect_intensity: captionStyle?.effect_intensity ?? 50,
-          effect_color: captionStyle?.effect_color || '#000000',
+          has_background: !!_cs?.has_background,
+          background_opacity: _cs?.background_opacity ?? 0.7,
+          background_color: _cs?.background_color || '#000000',
+          has_stroke: _cs?.has_stroke || false,
+          stroke_width: _cs?.stroke_width || 1,
+          stroke_color: _cs?.stroke_color || '#000000',
+          has_shadow: _cs?.has_shadow || false,
+          shadow_color: _cs?.shadow_color || '#000000',
+          shadow_blur: _cs?.shadow_blur ?? 4,
+          shadow_offset_x: _cs?.shadow_offset_x ?? 0,
+          shadow_offset_y: _cs?.shadow_offset_y ?? 2,
+          has_animation: _cs?.has_animation || false,
+          text_align: _cs?.text_align || 'center',
+          text_case: _cs?.text_case || 'none',
+          is_caps: _cs?.is_caps || false,
+          is_bold: _cs?.is_bold || false,
+          effect_type: _cs?.effect_type || 'none',
+          effect_offset: _cs?.effect_offset ?? 50,
+          effect_direction: _cs?.effect_direction ?? -45,
+          effect_blur: _cs?.effect_blur ?? 50,
+          effect_transparency: _cs?.effect_transparency ?? 40,
+          effect_thickness: _cs?.effect_thickness ?? 50,
+          effect_intensity: _cs?.effect_intensity ?? 50,
+          effect_color: _cs?.effect_color || '#000000',
           ...(() => {
-            const capVidPos = containerToVideo(captionStyle?.position_x ?? 50, captionStyle?.position_y ?? 75);
+            const capVidPos = containerToVideo(_cs?.position_x ?? 50, _cs?.position_y ?? 75);
             return { position_x: capVidPos.x, position_y: capVidPos.y };
           })(),
-          letter_spacing: captionStyle?.letter_spacing || 0,
-          word_spacing: captionStyle?.word_spacing || 1,
-          background_padding: captionStyle?.background_padding ?? 6,
-          background_h_multiplier: captionStyle?.background_h_multiplier ?? 0.99,
+          letter_spacing: _cs?.letter_spacing || 0,
+          word_spacing: _cs?.word_spacing || 1,
+          background_padding: _cs?.background_padding ?? 6,
+          background_h_multiplier: _cs?.background_h_multiplier ?? 0.99,
           // Template metadata — passed through so the backend knows the active template
-          template_id: captionStyle?.template_id || '',
-          secondary_color: captionStyle?.secondary_color || '',
+          template_id: _cs?.template_id || '',
+          secondary_color: _cs?.secondary_color || '',
           show_inactive: captionStyle?.show_inactive !== false,
           preview_height: renderH
-        },
+          };
+        })(),
         word_layouts: wordLayouts
       };
 
