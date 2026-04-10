@@ -1,0 +1,488 @@
+/* =====================================================================
+   LEKHA CAPTIONS — Advanced Template Previews (T01–T35)
+   Used ONLY in TemplatesTab2 preview cards.
+   ===================================================================== */
+
+/* === PREVIEW STAGE === */
+.adv-stage{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border-radius:8px 8px 0 0}
+.adv-sblock{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;padding:16px;transition:opacity 0.25s ease}
+.adv-sblock.active{opacity:1;pointer-events:auto}
+
+/* === GLOBAL SENTENCE TYPES === */
+.plain-s{text-align:center;line-height:1.6}
+.plain-s .imp{font-weight:700;color:#fff}
+.wbw-rise{text-align:center;line-height:1.6}
+.wbw-rise .w{display:inline-block;transform:translateY(20px);opacity:0}
+.wbw-rise .w.in{transform:translateY(0);opacity:1;transition:transform 0.28s cubic-bezier(0.22,1,0.36,1),opacity 0.22s ease}
+.wbw-slide{text-align:center;line-height:1.6}
+.wbw-slide .w{display:inline-block;transform:translateX(-16px);opacity:0}
+.wbw-slide .w.in{transform:translateX(0);opacity:1;transition:transform 0.28s cubic-bezier(0.22,1,0.36,1),opacity 0.22s ease}
+
+/* === GLOBAL IMP WORD STYLES === */
+.w.imp-bold{font-weight:900;color:#fff}
+.w.imp-gold{font-weight:900;color:#d4af37}
+.w.imp-rose{font-weight:900;color:#ff3d71}
+.w.imp-cyan{font-weight:900;color:#00e5ff}
+.w.imp-green{font-weight:900;color:#39ff14}
+.w.imp-purple{font-weight:700;color:#a78bfa;font-style:italic}
+.w.imp-italic{font-weight:700;color:#fff;font-style:italic}
+.w.imp-weight{font-weight:900;color:#fff}
+.w.imp-underline{font-weight:700;color:#fff;position:relative}
+.w.imp-underline.in::after{width:100%}
+.w.imp-underline::after{content:'';position:absolute;bottom:-2px;left:0;width:0;height:2px;background:#d4af37;transition:width 0.4s ease}
+.w.imp-box{font-weight:700;color:#fff;padding:0 7px;border-radius:3px}
+.w.imp-box.in{background:rgba(255,59,48,0.22)}
+.w.imp-space{font-weight:700;color:#fff;letter-spacing:0.18em}
+.w.imp-flicker{font-weight:900;color:#fff}
+.w.imp-flicker.fx{animation:advFlk 0.28s 1}
+.w.imp-typewrite{font-weight:900;color:#fff;border-right:2px solid transparent}
+.w.imp-typewrite.fx{animation:advTwCursor 0.5s steps(2) 2}
+@keyframes advFlk{0%{opacity:1}20%{opacity:0}40%{opacity:1}60%{opacity:0}80%{opacity:1}100%{opacity:1}}
+@keyframes advTwCursor{0%{border-right-color:#fff}50%{border-right-color:transparent}100%{border-right-color:#fff}}
+
+/* ================================================================
+   T01 — THE AWAKENING | Spiritual */
+.t01 .adv-stage{background:#090909}
+.t01-cluster{display:inline-flex;flex-direction:column;gap:0;align-items:stretch}
+.t01-rtop{overflow:hidden;white-space:nowrap;width:100%;text-align:right;padding-right:3px}
+.t01-rtop span{font-family:'Instrument Serif',serif;font-style:italic;font-size:17px;color:rgba(255,255,255,0.5);display:inline-block;transform:translateX(110%);transition:transform 0.55s cubic-bezier(0.22,1,0.36,1)}
+.adv-sblock.active .t01-rtop span{transform:translateX(0)}
+.t01-hl{font-family:'Bebas Neue',sans-serif;font-size:clamp(44px,8vw,70px);line-height:0.88;color:#ff3d71;text-align:center;text-shadow:0 0 50px rgba(255,61,113,0.3);transform:scale(0);transition:transform 0.45s 0.4s cubic-bezier(0.34,1.56,0.64,1)}
+.adv-sblock.active .t01-hl{transform:scale(1)}
+.t01-rbot{overflow:hidden;white-space:nowrap;width:100%;text-align:left;padding-left:3px}
+.t01-rbot span{font-family:'Instrument Serif',serif;font-style:italic;font-size:17px;color:rgba(255,255,255,0.5);display:inline-block;transform:translateX(-110%);transition:transform 0.55s 0.6s cubic-bezier(0.22,1,0.36,1)}
+.adv-sblock.active .t01-rbot span{transform:translateX(0)}
+.t01 .plain-s{font-family:'Noto Sans',sans-serif;font-size:17px;color:rgba(255,255,255,0.55)}
+.t01 .wbw-rise{font-family:'DM Serif Display',serif;font-size:20px;color:rgba(255,255,255,0.6)}
+
+/* ================================================================
+   T02 — THE CONFESSION | Intimate */
+.t02 .adv-stage{background:#0a0a0d}
+.t02-split{text-align:center}
+.t02-split-big{font-family:'Cormorant Garamond',serif;font-size:clamp(22px,4vw,36px);font-weight:300;font-style:italic;color:rgba(255,255,255,0.7);transform:translateY(18px);opacity:0;transition:all 0.5s cubic-bezier(0.22,1,0.36,1)}
+.adv-sblock.active .t02-split-big{transform:translateY(0);opacity:1}
+.t02-split-big .imp{font-weight:700;color:#fff;font-style:normal}
+.t02-split-sub{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:4px;text-transform:uppercase;color:rgba(255,255,255,0.2);margin-top:10px;transform:translateY(10px);opacity:0;transition:all 0.4s 0.35s cubic-bezier(0.22,1,0.36,1)}
+.adv-sblock.active .t02-split-sub{transform:translateY(0);opacity:1}
+.t02 .plain-s{font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:300;color:rgba(255,255,255,0.5);font-style:italic}
+
+/* ================================================================
+   T03 — THE MACHINE | Startup */
+.t03 .adv-stage{background:#070a0c}
+.t03-snap{font-family:'Darker Grotesque',sans-serif;font-size:clamp(20px,3.5vw,32px);font-weight:900;color:rgba(255,255,255,0.8);text-align:center;letter-spacing:0.5em;opacity:0;transition:letter-spacing 0.5s cubic-bezier(0.22,1,0.36,1),opacity 0.3s ease}
+.adv-sblock.active .t03-snap{letter-spacing:0.03em;opacity:1}
+.t03-snap .imp{color:#00e5ff;font-weight:900}
+.t03 .plain-s{font-family:'Noto Sans',sans-serif;font-size:16px;color:rgba(255,255,255,0.5)}
+.t03 .wbw-rise{font-family:'Noto Sans',sans-serif;font-size:16px;color:rgba(255,255,255,0.55)}
+
+/* ================================================================
+   T04 — THE WEIGHT | Literary */
+.t04 .adv-stage{background:#0b0a08}
+.t04-karaoke{font-family:'Libre Baskerville',serif;font-size:clamp(16px,2.8vw,24px);color:rgba(255,255,255,0.25);text-align:center;line-height:1.6;background:linear-gradient(90deg,#d4af37 50%,rgba(255,255,255,0.25) 50%);background-size:200% 100%;background-position:100% 0;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;transition:background-position 2s ease}
+.adv-sblock.active .t04-karaoke{background-position:0 0}
+.t04 .plain-s{font-family:'Libre Baskerville',serif;font-size:18px;color:rgba(255,255,255,0.5)}
+
+/* ================================================================
+   T05 — THE STORM | Drama */
+.t05 .adv-stage{background:#0a0608}
+.t05-cluster{display:inline-flex;flex-direction:column;gap:0;align-items:stretch}
+.t05-rtop{overflow:hidden;white-space:nowrap;width:100%;text-align:left;padding-left:2px}
+.t05-rtop span{font-family:'Oswald',sans-serif;font-weight:300;font-size:12px;letter-spacing:5px;text-transform:uppercase;color:rgba(255,255,255,0.25);display:inline-block;transform:translateX(-110%);transition:transform 0.5s cubic-bezier(0.22,1,0.36,1)}
+.adv-sblock.active .t05-rtop span{transform:translateX(0)}
+.t05-hl{font-family:'Dela Gothic One',sans-serif;font-size:clamp(36px,6.5vw,56px);line-height:0.95;color:#ff3d71;text-align:center;text-shadow:0 0 40px rgba(255,61,113,0.35);transform:translateY(-50px) scale(0.8);opacity:0;transition:all 0.5s 0.35s cubic-bezier(0.34,1.56,0.64,1)}
+.adv-sblock.active .t05-hl{transform:translateY(0) scale(1);opacity:1}
+.t05-rbot{overflow:hidden;white-space:nowrap;width:100%;text-align:right;padding-right:2px}
+.t05-rbot span{font-family:'Oswald',sans-serif;font-weight:300;font-size:12px;letter-spacing:5px;text-transform:uppercase;color:rgba(255,255,255,0.25);display:inline-block;transform:translateX(110%);transition:transform 0.5s 0.55s cubic-bezier(0.22,1,0.36,1)}
+.adv-sblock.active .t05-rbot span{transform:translateX(0)}
+.t05-flip{font-family:'Noto Sans',sans-serif;font-size:18px;color:rgba(255,255,255,0.6);text-align:center;perspective:600px}
+.t05-flip-inner{transform:rotateX(90deg);opacity:0;transition:all 0.45s cubic-bezier(0.22,1,0.36,1)}
+.adv-sblock.active .t05-flip-inner{transform:rotateX(0);opacity:1}
+.t05 .plain-s{font-family:'Noto Sans',sans-serif;font-size:15px;color:rgba(255,255,255,0.5)}
+.t05 .wbw-rise{font-family:'Noto Sans',sans-serif;font-size:17px;color:rgba(255,255,255,0.55)}
+
+/* ================================================================
+   T06 — THE COUNTDOWN | Motivation */
+.t06 .adv-stage{background:#070810}
+.t06-stack{display:flex;flex-direction:column;align-items:flex-start;gap:5px;padding-left:14%}
+.t06-ln{font-family:'Unbounded',sans-serif;font-weight:300;font-size:12px;color:rgba(255,255,255,0.3);transform:translateX(-20px);opacity:0;transition:all 0.3s cubic-bezier(0.22,1,0.36,1)}
+.t06-ln:nth-child(1){transition-delay:0s}
+.t06-ln:nth-child(2){transition-delay:0.08s}
+.t06-ln:nth-child(3){transition-delay:0.16s}
+.adv-sblock.active .t06-ln{transform:translateX(0);opacity:1}
+.t06-hero{font-family:'Unbounded',sans-serif;font-weight:900;font-size:clamp(26px,5vw,44px);color:#fff;transform:translateX(-30px) scale(0.85);opacity:0;transition:all 0.5s 0.3s cubic-bezier(0.34,1.56,0.64,1)}
+.adv-sblock.active .t06-hero{transform:translateX(0) scale(1);opacity:1}
+.t06-hero .acc{color:#00e5ff;text-shadow:0 0 25px rgba(0,229,255,0.35)}
+.t06 .plain-s{font-family:'Noto Sans',sans-serif;font-size:14px;color:rgba(255,255,255,0.45)}
+.t06 .wbw-rise{font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:rgba(255,255,255,0.55)}
+
+/* ================================================================
+   T07 — THE SILENCE | Horror */
+.t07 .adv-stage{background:#060606}
+.t07-loadbar{position:relative;text-align:center;overflow:hidden}
+.t07-loadbar-text{font-family:'Space Mono',monospace;font-size:14px;color:rgba(255,255,255,0.6);letter-spacing:2px;clip-path:inset(0 100% 0 0);transition:clip-path 1.2s 0.2s ease}
+.adv-sblock.active .t07-loadbar-text{clip-path:inset(0 0 0 0)}
+.t07-loadbar-bar{position:absolute;bottom:-6px;left:0;height:1px;width:0;background:rgba(255,255,255,0.15);transition:width 1.2s 0.2s ease}
+.adv-sblock.active .t07-loadbar-bar{width:100%}
+.t07-loadbar .imp{font-weight:700;color:#fff}
+.t07 .plain-s{font-family:'Space Mono',monospace;font-size:13px;color:rgba(255,255,255,0.4);letter-spacing:1px}
+.t07-flkstyle{font-family:'Space Mono',monospace;font-size:15px;color:rgba(255,255,255,0.5);text-align:center;letter-spacing:1px;transform:translateY(10px);opacity:0;transition:all 0.35s cubic-bezier(0.22,1,0.36,1)}
+.adv-sblock.active .t07-flkstyle{transform:translateY(0);opacity:1}
+.t07-flkstyle .imp-flk{font-weight:700;color:#fff}
+.adv-sblock.active .t07-flkstyle .imp-flk{animation:advFlk 0.28s 0.4s 1}
+.t07 .wbw-rise{font-family:'DM Serif Display',serif;font-style:italic;font-size:18px;color:rgba(255,255,255,0.5)}
+
+/* ================================================================
+   T08 — THE FRAME | Cinematic */
+.t08 .adv-stage{background:#08080e}
+.t08-frame{width:78%;max-width:360px}
+.t08-bar{height:1px;background:rgba(255,255,255,0.1);width:0;transition:width 0.6s ease}
+.adv-sblock.active .t08-bar{width:100%}
+.t08-bar.b2{transition-delay:0.15s}
+.t08-mid{padding:16px 0;text-align:center;opacity:0;transform:translateY(6px);transition:all 0.5s 0.4s cubic-bezier(0.22,1,0.36,1)}
+.adv-sblock.active .t08-mid{opacity:1;transform:translateY(0)}
+.t08-lbl{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:4px;text-transform:uppercase;color:rgba(255,255,255,0.2);margin-bottom:8px}
+.t08-ttl{font-family:'Bodoni Moda',serif;font-size:clamp(18px,3.5vw,30px);font-weight:400;color:#fff}
+.t08-ttl .em{font-style:italic;color:#a78bfa;text-shadow:0 0 18px rgba(167,139,250,0.25)}
+.t08-lbl2{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:4px;text-transform:uppercase;color:rgba(255,255,255,0.2);margin-top:8px}
+.t08 .plain-s{font-family:'Noto Sans',sans-serif;font-size:14px;color:rgba(255,255,255,0.45)}
+.t08 .wbw-rise{font-family:'Bodoni Moda',serif;font-size:18px;font-style:italic;color:rgba(255,255,255,0.5)}
+
+/* ================================================================
+   T09 — THE SEED | Defiance */
+.t09 .adv-stage{background:#0b0808}
+.t09-swipe{font-family:'Crimson Text',serif;font-size:clamp(16px,2.8vw,22px);color:rgba(255,255,255,0.6);text-align:center;line-height:1.6;opacity:0;transform:translateY(10px);transition:all 0.4s cubic-bezier(0.22,1,0.36,1)}
+.adv-sblock.active .t09-swipe{opacity:1;transform:translateY(0)}
+.t09-swipe .hl{position:relative;color:#fff;font-weight:700;display:inline-block}
+.t09-swipe .hl::after{content:'';position:absolute;bottom:2px;left:-3px;right:-3px;height:36%;background:rgba(255,59,48,0.28);z-index:-1;transform:scaleX(0);transform-origin:left;transition:transform 0.5s 0.45s ease}
+.adv-sblock.active .t09-swipe .hl::after{transform:scaleX(1)}
+.t09 .plain-s{font-family:'Crimson Text',serif;font-size:19px;color:rgba(255,255,255,0.5)}
+.t09 .wbw-rise{font-family:'Crimson Text',serif;font-size:18px;color:rgba(255,255,255,0.5)}
+
+/* ================================================================
+   T10 — THE GRAVITY | Impact */
+.t10 .adv-stage{background:#060a06}
+.t10-cluster{display:inline-flex;flex-direction:column;gap:0;align-items:stretch}
+.t10-rtop{overflow:hidden;white-space:nowrap;width:100%;text-align:right;padding-right:2px}
+.t10-rtop span{font-family:'Instrument Serif',serif;font-style:italic;font-size:14px;color:rgba(255,255,255,0.3);display:inline-block;transform:translateX(110%);transition:transform 0.5s cubic-bezier(0.22,1,0.36,1)}
+.adv-sblock.active .t10-rtop span{transform:translateX(0)}
+.t10-hl{font-family:'Unbounded',sans-serif;font-weight:900;font-size:clamp(30px,6vw,52px);line-height:1;color:#39ff14;text-align:center;text-shadow:0 0 30px rgba(57,255,20,0.3);transform:translateY(-45px);opacity:0;transition:all 0.5s 0.35s cubic-bezier(0.34,1.56,0.64,1)}
+.adv-sblock.active .t10-hl{transform:translateY(0);opacity:1}
+.t10-crack{width:0;height:2px;background:rgba(57,255,20,0.2);margin:3px auto 0;transition:width 0.3s 0.7s ease}
+.adv-sblock.active .t10-crack{width:70px}
+.t10-rbot{overflow:hidden;white-space:nowrap;width:100%;text-align:left;padding-left:2px}
+.t10-rbot span{font-family:'Instrument Serif',serif;font-style:italic;font-size:14px;color:rgba(255,255,255,0.3);display:inline-block;transform:translateX(-110%);transition:transform 0.5s 0.6s cubic-bezier(0.22,1,0.36,1)}
+.adv-sblock.active .t10-rbot span{transform:translateX(0)}
+.t10 .plain-s{font-family:'Noto Sans',sans-serif;font-size:15px;color:rgba(255,255,255,0.45)}
+.t10-lsnap{font-family:'Darker Grotesque',sans-serif;font-size:20px;font-weight:700;color:rgba(255,255,255,0.6);text-align:center;letter-spacing:0.45em;opacity:0;transition:letter-spacing 0.5s cubic-bezier(0.22,1,0.36,1),opacity 0.3s ease}
+.adv-sblock.active .t10-lsnap{letter-spacing:0.04em;opacity:1}
+.t10-lsnap .imp{letter-spacing:0.2em;color:#39ff14;font-weight:900}
+
+/* ================================================================
+   T11 — THE SIGNAL | Sci-Fi */
+.t11 .adv-stage{background:#06080c}
+.t11-wipe{font-family:'Overpass Mono',monospace;font-size:14px;color:rgba(255,255,255,0.6);text-align:center;letter-spacing:2px;clip-path:inset(0 100% 0 0);transition:clip-path 1s 0.2s cubic-bezier(0.22,1,0.36,1)}
+.adv-sblock.active .t11-wipe{clip-path:inset(0 0 0 0)}
+.t11-wipe .imp{color:#00e5ff;font-weight:700}
+.t11-blur{font-family:'Overpass Mono',monospace;font-size:14px;color:rgba(255,255,255,0.55);text-align:center;letter-spacing:1px;filter:blur(7px);opacity:0;transition:filter 0.6s ease,opacity 0.3s ease}
+.adv-sblock.active .t11-blur{filter:blur(0);opacity:1}
+.t11-blur .imp{color:#00e5ff;font-weight:700}
+.t11 .wbw-rise,.t11 .wbw-slide{font-family:'Overpass Mono',monospace;font-size:13px;color:rgba(255,255,255,0.45);letter-spacing:1px}
+
+/* ================================================================
+   T12 — THE EMBER | Love */
+.t12 .adv-stage{background:#0c0808}
+.t12-split{text-align:center}
+.t12-big{font-family:'Lora',serif;font-size:clamp(18px,3.2vw,28px);font-style:italic;color:rgba(255,255,255,0.7);transform:translateY(16px);opacity:0;transition:all 0.5s cubic-bezier(0.22,1,0.36,1)}
+.adv-sblock.active .t12-big{transform:translateY(0);opacity:1}
+.t12-big .imp{color:#ff3d71;font-weight:700;font-style:normal}
+.t12-sub{font-family:'Josefin Sans',sans-serif;font-size:10px;letter-spacing:5px;text-transform:uppercase;color:rgba(255,255,255,0.18);margin-top:10px;transform:translateY(8px);opacity:0;transition:all 0.4s 0.35s ease}
+.adv-sblock.active .t12-sub{transform:translateY(0);opacity:1}
+.t12 .plain-s{font-family:'Lora',serif;font-size:18px;font-style:italic;color:rgba(255,255,255,0.45)}
+
+/* ================================================================
+   T13 — THE HEADLINE | Editorial */
+.t13 .adv-stage{background:#0a0a08}
+.t13-cluster{display:inline-flex;flex-direction:column;gap:0;align-items:stretch}
+.t13-rtop{overflow:hidden;white-space:nowrap;width:100%;text-align:left;padding-left:2px}
+.t13-rtop span{font-family:'Tenor Sans',sans-serif;font-size:12px;letter-spacing:3px;text-transform:uppercase;color:rgba(255,255,255,0.25);display:inline-block;transform:translateX(-110%);transition:transform 0.5s cubic-bezier(0.22,1,0.36,1)}
+.adv-sblock.active .t13-rtop span{transform:translateX(0)}
+.t13-hl{font-family:'Abril Fatface',serif;font-size:clamp(36px,7vw,60px);line-height:0.9;color:#fff;text-align:center;transform:scale(0);transition:transform 0.45s 0.35s cubic-bezier(0.34,1.56,0.64,1)}
+.adv-sblock.active .t13-hl{transform:scale(1)}
+.t13-rbot{overflow:hidden;white-space:nowrap;width:100%;text-align:right;padding-right:2px}
+.t13-rbot span{font-family:'Tenor Sans',sans-serif;font-size:12px;letter-spacing:3px;text-transform:uppercase;color:rgba(255,255,255,0.25);display:inline-block;transform:translateX(110%);transition:transform 0.5s 0.55s cubic-bezier(0.22,1,0.36,1)}
+.adv-sblock.active .t13-rbot span{transform:translateX(0)}
+.t13-snap{font-family:'Raleway',sans-serif;font-size:clamp(16px,2.5vw,22px);font-weight:200;color:rgba(255,255,255,0.6);text-align:center;letter-spacing:0.4em;opacity:0;transition:letter-spacing 0.5s cubic-bezier(0.22,1,0.36,1),opacity 0.3s ease}
+.adv-sblock.active .t13-snap{letter-spacing:0.03em;opacity:1}
+.t13-snap .imp{font-weight:700;color:#fff}
+.t13 .plain-s{font-family:'Tenor Sans',sans-serif;font-size:14px;color:rgba(255,255,255,0.4);letter-spacing:1px}
+.t13 .wbw-rise{font-family:'Raleway',sans-serif;font-size:15px;font-weight:400;color:rgba(255,255,255,0.5)}
+
+/* ================================================================
+   T14 — THE STREET | Raw */
+.t14 .adv-stage{background:#0a0808}
+.t14-drop{font-family:'Permanent Marker',cursive;font-size:clamp(20px,4vw,34px);color:rgba(255,255,255,0.85);text-align:center;text-transform:uppercase;transform:translateY(-40px);opacity:0;transition:all 0.4s cubic-bezier(0.34,1.56,0.64,1)}
+.adv-sblock.active .t14-drop{transform:translateY(0);opacity:1}
+.t14-drop .imp{color:#ff3d71}
+.t14 .wbw-rise,.t14 .wbw-slide{font-family:'Noto Sans',sans-serif;font-size:14px;font-weight:700;color:rgba(255,255,255,0.5);text-transform:uppercase}
+
+/* ================================================================
+   T15 — THE ZEN | Meditation */
+.t15 .adv-stage{background:#08090a}
+.t15-karaoke{font-family:'Questrial',sans-serif;font-size:clamp(16px,2.8vw,24px);color:rgba(255,255,255,0.2);text-align:center;line-height:1.7;background:linear-gradient(90deg,rgba(255,255,255,0.7) 50%,rgba(255,255,255,0.2) 50%);background-size:200% 100%;background-position:100% 0;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;transition:background-position 2.2s ease}
+.adv-sblock.active .t15-karaoke{background-position:0 0}
+.t15 .plain-s{font-family:'Questrial',sans-serif;font-size:17px;color:rgba(255,255,255,0.4)}
+
+/* ================================================================
+   T16 — THE FURNACE | Battle */
+.t16 .adv-stage{background:#0c0604}
+.t16-cluster{display:inline-flex;flex-direction:column;gap:0;align-items:stretch}
+.t16-rtop{overflow:hidden;white-space:nowrap;width:100%;text-align:right;padding-right:3px}
+.t16-rtop span{font-family:'Antonio',sans-serif;font-size:13px;letter-spacing:4px;text-transform:uppercase;color:rgba(255,255,255,0.2);display:inline-block;transform:translateX(110%);transition:transform 0.5s cubic-bezier(0.22,1,0.36,1)}
+.adv-sblock.active .t16-rtop span{transform:translateX(0)}
+.t16-hl{font-family:'Staatliches',sans-serif;font-size:clamp(40px,7.5vw,64px);line-height:0.9;color:#ff3d71;text-align:center;text-shadow:0 0 40px rgba(255,61,113,0.3);transform:translateY(-40px) scale(0.85);opacity:0;transition:all 0.5s 0.35s cubic-bezier(0.34,1.56,0.64,1)}
+.adv-sblock.active .t16-hl{transform:translateY(0) scale(1);opacity:1}
+.t16-rbot{overflow:hidden;white-space:nowrap;width:100%;text-align:left;padding-left:3px}
+.t16-rbot span{font-family:'Antonio',sans-serif;font-size:13px;letter-spacing:4px;text-transform:uppercase;color:rgba(255,255,255,0.2);display:inline-block;transform:translateX(-110%);transition:transform 0.5s 0.55s cubic-bezier(0.22,1,0.36,1)}
+.adv-sblock.active .t16-rbot span{transform:translateX(0)}
+.t16-flip{font-family:'Antonio',sans-serif;font-size:17px;color:rgba(255,255,255,0.55);text-align:center;perspective:600px;text-transform:uppercase;letter-spacing:2px}
+.t16-flip-inner{transform:rotateX(90deg);opacity:0;transition:all 0.45s cubic-bezier(0.22,1,0.36,1)}
+.adv-sblock.active .t16-flip-inner{transform:rotateX(0);opacity:1}
+.t16-flip .imp{font-weight:700;color:#ff3d71}
+.t16 .plain-s{font-family:'Antonio',sans-serif;font-size:14px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:2px}
+.t16 .wbw-rise{font-family:'Antonio',sans-serif;font-size:15px;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:1px}
+
+/* ================================================================
+   T17 — THE VELVET | Fashion */
+.t17 .adv-stage{background:#0a080c}
+.t17-snap{font-family:'Cinzel',serif;font-size:clamp(14px,2.4vw,20px);font-weight:400;color:rgba(255,255,255,0.7);text-align:center;letter-spacing:0.5em;opacity:0;transition:letter-spacing 0.6s cubic-bezier(0.22,1,0.36,1),opacity 0.3s ease}
+.adv-sblock.active .t17-snap{letter-spacing:0.12em;opacity:1}
+.t17-snap .imp{font-weight:900;color:#fff}
+.t17-frame{width:75%;max-width:340px}
+.t17-bar{height:1px;background:rgba(255,255,255,0.08);width:0;transition:width 0.6s ease}
+.adv-sblock.active .t17-bar{width:100%}
+.t17-bar.b2{transition-delay:0.15s}
+.t17-mid{padding:16px 0;text-align:center;opacity:0;transform:translateY(5px);transition:all 0.5s 0.4s ease}
+.adv-sblock.active .t17-mid{opacity:1;transform:translateY(0)}
+.t17-lbl{font-family:'Josefin Sans',sans-serif;font-size:9px;letter-spacing:5px;text-transform:uppercase;color:rgba(255,255,255,0.15);margin-bottom:6px}
+.t17-ttl{font-family:'Cinzel',serif;font-size:clamp(16px,2.8vw,24px);font-weight:400;color:#fff}
+.t17-ttl .em{font-weight:700;color:#a78bfa}
+.t17 .wbw-slide{font-family:'Josefin Sans',sans-serif;font-size:13px;font-weight:300;color:rgba(255,255,255,0.4);letter-spacing:1px}
+
+/* ================================================================
+   T18 — THE PULSE | Anime */
+.t18 .adv-stage{background:#08060c}
+.t18-pop{font-family:'Righteous',sans-serif;font-size:clamp(22px,4vw,36px);color:rgba(255,255,255,0.9);text-align:center;transform:scale(0);opacity:0;transition:all 0.35s cubic-bezier(0.34,1.56,0.64,1)}
+.adv-sblock.active .t18-pop{transform:scale(1);opacity:1}
+.t18-pop .imp{color:#a78bfa}
+.t18-wipe{font-family:'Noto Sans',sans-serif;font-size:16px;color:rgba(255,255,255,0.55);text-align:center;clip-path:inset(0 100% 0 0);transition:clip-path 0.7s 0.1s cubic-bezier(0.22,1,0.36,1)}
+.adv-sblock.active .t18-wipe{clip-path:inset(0 0 0 0)}
+.t18-wipe .imp{color:#a78bfa;font-weight:700}
+.t18 .plain-s{font-family:'Noto Sans',sans-serif;font-size:15px;color:rgba(255,255,255,0.4)}
+.t18 .wbw-rise{font-family:'Righteous',sans-serif;font-size:15px;color:rgba(255,255,255,0.5)}
+
+/* ================================================================
+   T19 — THE LEDGER | Documentary */
+.t19 .adv-stage{background:#080a08}
+.t19-lower{position:absolute;bottom:18%;left:16px;right:16px}
+.t19-line{width:0;height:1px;background:#d4af37;transition:width 0.5s ease;margin-bottom:8px}
+.adv-sblock.active .t19-line{width:40%}
+.t19-title{font-family:'Bitter',serif;font-size:18px;font-weight:700;color:rgba(255,255,255,0.8);transform:translateX(-20px);opacity:0;transition:all 0.4s 0.3s cubic-bezier(0.22,1,0.36,1)}
+.adv-sblock.active .t19-title{transform:translateX(0);opacity:1}
+.t19-title .imp{color:#d4af37}
+.t19-sub{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:3px;text-transform:uppercase;color:rgba(255,255,255,0.2);margin-top:4px;transform:translateX(-15px);opacity:0;transition:all 0.3s 0.5s ease}
+.adv-sblock.active .t19-sub{transform:translateX(0);opacity:1}
+.t19 .wbw-rise{font-family:'Bitter',serif;font-size:17px;color:rgba(255,255,255,0.55)}
+.t19 .wbw-slide{font-family:'Bitter',serif;font-size:15px;color:rgba(255,255,255,0.45)}
+
+/* ================================================================
+   T20 — THE GHOST | Nostalgia */
+.t20 .adv-stage{background:#0a0808}
+.t20-blur{font-family:'Cormorant Garamond',serif;font-size:clamp(18px,3vw,28px);font-weight:300;color:rgba(255,255,255,0.6);text-align:center;filter:blur(8px);opacity:0;transition:filter 0.7s ease,opacity 0.35s ease}
+.adv-sblock.active .t20-blur{filter:blur(0);opacity:1}
+.t20-blur .imp{font-weight:700;color:#fff}
+.t20 .plain-s{font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:300;color:rgba(255,255,255,0.4)}
+
+/* ================================================================
+   T21 — THE GRID | Tech */
+.t21 .adv-stage{background:#06080a}
+.t21-loadbar{position:relative;text-align:center;overflow:hidden}
+.t21-loadbar-text{font-family:'Space Mono',monospace;font-size:13px;color:rgba(255,255,255,0.55);letter-spacing:2px;text-transform:uppercase;clip-path:inset(0 100% 0 0);transition:clip-path 1s 0.2s ease}
+.adv-sblock.active .t21-loadbar-text{clip-path:inset(0 0 0 0)}
+.t21-loadbar-bar{position:absolute;bottom:-5px;left:0;height:2px;width:0;background:#00e5ff;transition:width 1s 0.2s ease}
+.adv-sblock.active .t21-loadbar-bar{width:100%}
+.t21-loadbar .imp{color:#00e5ff;font-weight:700}
+.t21-snap{font-family:'Space Mono',monospace;font-size:13px;color:rgba(255,255,255,0.5);text-align:center;letter-spacing:0.4em;text-transform:uppercase;opacity:0;transition:letter-spacing 0.5s cubic-bezier(0.22,1,0.36,1),opacity 0.3s ease}
+.adv-sblock.active .t21-snap{letter-spacing:0.08em;opacity:1}
+.t21-snap .imp{color:#00e5ff;font-weight:700}
+.t21 .wbw-rise{font-family:'Space Mono',monospace;font-size:12px;color:rgba(255,255,255,0.45);letter-spacing:1px}
+
+/* ================================================================
+   T22 — THE VERSE | Poetic */
+.t22 .adv-stage{background:#0a080a}
+.t22-slideup{font-family:'Playfair Display',serif;font-size:clamp(17px,2.8vw,24px);font-style:italic;color:rgba(255,255,255,0.6);text-align:center;transform:translateY(18px);opacity:0;transition:all 0.5s cubic-bezier(0.22,1,0.36,1)}
+.adv-sblock.active .t22-slideup{transform:translateY(0);opacity:1}
+.t22-slideup .imp{font-weight:700;color:#fff;font-style:normal}
+.t22 .plain-s{font-family:'Playfair Display',serif;font-size:18px;font-style:italic;color:rgba(255,255,255,0.4)}
+.t22 .wbw-rise,.t22 .wbw-slide{font-family:'Playfair Display',serif;font-size:17px;font-style:italic;color:rgba(255,255,255,0.5)}
+
+/* ================================================================
+   T23 — THE RIOT | Rebellion */
+.t23 .adv-stage{background:#0a0606}
+.t23-drop{font-family:'Archivo Black',sans-serif;font-size:clamp(18px,3.5vw,30px);color:rgba(255,255,255,0.85);text-align:center;text-transform:uppercase;transform:translateY(-35px);opacity:0;transition:all 0.4s cubic-bezier(0.34,1.56,0.64,1)}
+.adv-sblock.active .t23-drop{transform:translateY(0);opacity:1}
+.t23-drop .imp{color:#ff3d71}
+.t23-swipe{font-family:'Noto Sans',sans-serif;font-size:17px;color:rgba(255,255,255,0.6);text-align:center;opacity:0;transform:translateY(10px);transition:all 0.4s cubic-bezier(0.22,1,0.36,1)}
+.adv-sblock.active .t23-swipe{opacity:1;transform:translateY(0)}
+.t23-swipe .hl{position:relative;color:#fff;font-weight:700;display:inline-block}
+.t23-swipe .hl::after{content:'';position:absolute;bottom:2px;left:-3px;right:-3px;height:36%;background:rgba(255,59,48,0.28);z-index:-1;transform:scaleX(0);transform-origin:left;transition:transform 0.5s 0.45s ease}
+.adv-sblock.active .t23-swipe .hl::after{transform:scaleX(1)}
+.t23 .wbw-rise{font-family:'Noto Sans',sans-serif;font-size:15px;font-weight:700;color:rgba(255,255,255,0.5);text-transform:uppercase}
+
+/* ================================================================
+   T24 — THE COMPASS | Philosophy */
+.t24 .adv-stage{background:#08080a}
+.t24-split{text-align:center}
+.t24-big{font-family:'DM Serif Display',serif;font-size:clamp(17px,2.8vw,24px);color:rgba(255,255,255,0.65);text-align:center;transform:translateY(14px);opacity:0;transition:all 0.5s cubic-bezier(0.22,1,0.36,1)}
+.adv-sblock.active .t24-big{transform:translateY(0);opacity:1}
+.t24-big .imp{font-weight:700;color:#fff}
+.t24-sub{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:4px;text-transform:uppercase;color:rgba(255,255,255,0.2);margin-top:8px;transform:translateY(8px);opacity:0;transition:all 0.4s 0.35s ease}
+.adv-sblock.active .t24-sub{transform:translateY(0);opacity:1}
+.t24 .plain-s{font-family:'DM Serif Display',serif;font-size:17px;color:rgba(255,255,255,0.4)}
+.t24 .wbw-rise{font-family:'DM Serif Display',serif;font-size:18px;color:rgba(255,255,255,0.55)}
+
+/* ================================================================
+   T25 — THE WIRE | Thriller */
+.t25 .adv-stage{background:#060808}
+.t25-wipe{font-family:'IBM Plex Mono',monospace;font-size:14px;color:rgba(255,255,255,0.7);text-align:center;letter-spacing:2px;text-transform:uppercase;clip-path:inset(0 100% 0 0);transition:clip-path 0.8s 0.15s cubic-bezier(0.22,1,0.36,1)}
+.adv-sblock.active .t25-wipe{clip-path:inset(0 0 0 0)}
+.t25-wipe .imp{color:#39ff14;font-weight:700}
+.t25-flip{font-family:'IBM Plex Mono',monospace;font-size:14px;color:rgba(255,255,255,0.5);text-align:center;letter-spacing:1px;perspective:600px}
+.t25-flip-inner{transform:rotateX(90deg);opacity:0;transition:all 0.45s cubic-bezier(0.22,1,0.36,1)}
+.adv-sblock.active .t25-flip-inner{transform:rotateX(0);opacity:1}
+.t25-flip .imp{font-weight:700;color:#39ff14}
+.t25 .wbw-slide{font-family:'IBM Plex Mono',monospace;font-size:13px;color:rgba(255,255,255,0.45);letter-spacing:1px}
+
+/* ================================================================
+   T26 — THE CROWN | Hindi */
+.t26 .adv-stage{background:#0a0806}
+.t26-cluster{display:inline-flex;flex-direction:column;gap:0;align-items:stretch}
+.t26-rtop{overflow:hidden;white-space:nowrap;width:100%;text-align:left;padding-left:2px}
+.t26-rtop span{font-family:'Noto Sans',sans-serif;font-size:13px;color:rgba(255,255,255,0.4);display:inline-block;transform:translateX(-110%);transition:transform 0.5s cubic-bezier(0.22,1,0.36,1)}
+.adv-sblock.active .t26-rtop span{transform:translateX(0)}
+.t26-hl{font-family:'Bebas Neue',sans-serif;font-size:clamp(38px,7vw,60px);line-height:0.9;color:#d4af37;text-align:center;text-shadow:0 0 30px rgba(212,175,55,0.2);transform:scale(0);transition:transform 0.45s 0.35s cubic-bezier(0.34,1.56,0.64,1)}
+.adv-sblock.active .t26-hl{transform:scale(1)}
+.t26-rbot{overflow:hidden;white-space:nowrap;width:100%;text-align:right;padding-right:2px}
+.t26-rbot span{font-family:'Noto Sans',sans-serif;font-size:13px;color:rgba(255,255,255,0.4);display:inline-block;transform:translateX(110%);transition:transform 0.5s 0.55s cubic-bezier(0.22,1,0.36,1)}
+.adv-sblock.active .t26-rbot span{transform:translateX(0)}
+.t26 .wbw-rise{font-family:'Noto Sans',sans-serif;font-size:16px;color:rgba(255,255,255,0.55)}
+
+/* ================================================================
+   T27 — THE DUSK | Whispered */
+.t27 .adv-stage{background:#080808}
+.t27-blur{font-family:'Caveat',cursive;font-size:clamp(22px,4vw,34px);color:rgba(255,255,255,0.6);text-align:center;filter:blur(8px);opacity:0;transition:filter 0.7s ease,opacity 0.35s ease}
+.adv-sblock.active .t27-blur{filter:blur(0);opacity:1}
+.t27-blur .imp{font-weight:700;color:#fff}
+.t27 .plain-s{font-family:'Caveat',cursive;font-size:26px;color:rgba(255,255,255,0.35)}
+
+/* ================================================================
+   T28 — THE ANVIL | Impact */
+.t28 .adv-stage{background:#080604}
+.t28-drop{font-family:'Unbounded',sans-serif;font-size:clamp(22px,4.5vw,38px);font-weight:900;color:rgba(255,255,255,0.9);text-align:center;transform:translateY(-40px);opacity:0;transition:all 0.45s cubic-bezier(0.34,1.56,0.64,1)}
+.adv-sblock.active .t28-drop{transform:translateY(0);opacity:1}
+.t28-drop .imp{color:#39ff14}
+.t28-wipe{font-family:'Noto Sans',sans-serif;font-size:16px;color:rgba(255,255,255,0.55);text-align:center;clip-path:inset(0 100% 0 0);transition:clip-path 0.7s 0.1s cubic-bezier(0.22,1,0.36,1)}
+.adv-sblock.active .t28-wipe{clip-path:inset(0 0 0 0)}
+.t28-wipe .imp{color:#39ff14;font-weight:700}
+.t28 .plain-s{font-family:'Noto Sans',sans-serif;font-size:15px;color:rgba(255,255,255,0.4)}
+.t28 .wbw-rise{font-family:'Noto Sans',sans-serif;font-size:15px;color:rgba(255,255,255,0.5)}
+
+/* ================================================================
+   T29 — THE SILK | Luxury */
+.t29 .adv-stage{background:#0a0808}
+.t29-snap{font-family:'Cinzel',serif;font-size:clamp(13px,2.2vw,19px);font-weight:900;color:rgba(255,255,255,0.75);text-align:center;letter-spacing:0.45em;opacity:0;transition:letter-spacing 0.6s cubic-bezier(0.22,1,0.36,1),opacity 0.3s ease}
+.adv-sblock.active .t29-snap{letter-spacing:0.1em;opacity:1}
+.t29-snap .imp{color:#d4af37}
+.t29 .wbw-rise{font-family:'Josefin Sans',sans-serif;font-size:15px;font-weight:300;color:rgba(255,255,255,0.5);letter-spacing:2px}
+.t29 .wbw-slide{font-family:'Josefin Sans',sans-serif;font-size:13px;font-weight:300;color:rgba(255,255,255,0.4);letter-spacing:1px}
+
+/* ================================================================
+   T30 — THE GLITCH | Cyberpunk */
+.t30 .adv-stage{background:#06060a}
+.t30-loadbar{position:relative;text-align:center;overflow:hidden}
+.t30-loadbar-text{font-family:'Silkscreen',monospace;font-size:11px;color:rgba(255,255,255,0.6);letter-spacing:2px;text-transform:uppercase;clip-path:inset(0 100% 0 0);transition:clip-path 1s 0.2s ease}
+.adv-sblock.active .t30-loadbar-text{clip-path:inset(0 0 0 0)}
+.t30-loadbar-bar{position:absolute;bottom:-5px;left:0;height:2px;width:0;background:#a78bfa;transition:width 1s 0.2s ease}
+.adv-sblock.active .t30-loadbar-bar{width:100%}
+.t30-loadbar .imp{color:#a78bfa}
+.t30-cpop{font-family:'Silkscreen',monospace;font-size:12px;color:rgba(255,255,255,0.55);text-align:center;text-transform:uppercase;letter-spacing:2px;transform:scale(0);opacity:0;transition:all 0.35s cubic-bezier(0.34,1.56,0.64,1)}
+.adv-sblock.active .t30-cpop{transform:scale(1);opacity:1}
+.t30-cpop .imp{color:#a78bfa;font-weight:700}
+.t30 .plain-s{font-family:'Silkscreen',monospace;font-size:10px;color:rgba(255,255,255,0.35);text-transform:uppercase;letter-spacing:1px}
+.t30 .wbw-slide{font-family:'Silkscreen',monospace;font-size:10px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:1px}
+
+/* ================================================================
+   T31 — THE OATH | Spiritual Hindi */
+.t31 .adv-stage{background:#0a0906}
+.t31-cluster{display:inline-flex;flex-direction:column;gap:0;align-items:stretch}
+.t31-rtop{overflow:hidden;white-space:nowrap;width:100%;text-align:left;padding-left:2px}
+.t31-rtop span{font-family:'Noto Sans',sans-serif;font-size:13px;color:rgba(255,255,255,0.4);display:inline-block;transform:translateX(-110%);transition:transform 0.5s cubic-bezier(0.22,1,0.36,1)}
+.adv-sblock.active .t31-rtop span{transform:translateX(0)}
+.t31-hl{font-family:'Bebas Neue',sans-serif;font-size:clamp(38px,7vw,60px);line-height:0.9;color:#d4af37;text-align:center;text-shadow:0 0 35px rgba(212,175,55,0.2);transform:scale(0);transition:transform 0.45s 0.35s cubic-bezier(0.34,1.56,0.64,1)}
+.adv-sblock.active .t31-hl{transform:scale(1)}
+.t31-rbot{overflow:hidden;white-space:nowrap;width:100%;text-align:right;padding-right:2px}
+.t31-rbot span{font-family:'Noto Sans',sans-serif;font-size:13px;color:rgba(255,255,255,0.4);display:inline-block;transform:translateX(110%);transition:transform 0.5s 0.55s cubic-bezier(0.22,1,0.36,1)}
+.adv-sblock.active .t31-rbot span{transform:translateX(0)}
+.t31-karaoke{font-family:'Noto Sans',sans-serif;font-size:17px;color:rgba(255,255,255,0.2);text-align:center;background:linear-gradient(90deg,#d4af37 50%,rgba(255,255,255,0.2) 50%);background-size:200% 100%;background-position:100% 0;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;transition:background-position 1.8s ease}
+.adv-sblock.active .t31-karaoke{background-position:0 0}
+.t31 .wbw-rise{font-family:'Noto Sans',sans-serif;font-size:15px;color:rgba(255,255,255,0.5)}
+
+/* ================================================================
+   T32 — THE HAZE | Lofi */
+.t32 .adv-stage{background:#08080a}
+.t32-slideup{font-family:'Questrial',sans-serif;font-size:clamp(18px,3vw,26px);color:rgba(255,255,255,0.6);text-align:center;transform:translateY(20px);opacity:0;transition:all 0.6s cubic-bezier(0.22,1,0.36,1)}
+.adv-sblock.active .t32-slideup{transform:translateY(0);opacity:1}
+.t32-slideup .imp{font-weight:700;color:#fff}
+.t32 .plain-s{font-family:'Questrial',sans-serif;font-size:17px;color:rgba(255,255,255,0.35)}
+
+/* ================================================================
+   T33 — THE ARC | Comedy */
+.t33 .adv-stage{background:#0a0a06}
+.t33-slideup{font-family:'Noto Sans',sans-serif;font-size:18px;font-weight:400;color:rgba(255,255,255,0.65);text-align:center;transform:translateY(16px);opacity:0;transition:all 0.4s cubic-bezier(0.22,1,0.36,1)}
+.adv-sblock.active .t33-slideup{transform:translateY(0);opacity:1}
+.t33-slideup .imp{font-weight:700;color:#fff}
+.t33-cpop{font-family:'Noto Sans',sans-serif;font-size:17px;color:rgba(255,255,255,0.55);text-align:center;transform:scale(0);opacity:0;transition:all 0.35s cubic-bezier(0.34,1.56,0.64,1)}
+.adv-sblock.active .t33-cpop{transform:scale(1);opacity:1}
+.t33-cpop .imp{font-weight:900;color:#d4af37}
+.t33 .plain-s{font-family:'Noto Sans',sans-serif;font-size:16px;color:rgba(255,255,255,0.45)}
+.t33 .wbw-rise{font-family:'Noto Sans',sans-serif;font-size:16px;color:rgba(255,255,255,0.55)}
+
+/* ================================================================
+   T34 — THE RUIN | Dark Poetry */
+.t34 .adv-stage{background:#080608}
+.t34-blur{font-family:'Playfair Display',serif;font-size:clamp(18px,3vw,27px);font-style:italic;color:rgba(255,255,255,0.6);text-align:center;filter:blur(8px);opacity:0;transition:filter 0.7s ease,opacity 0.35s ease}
+.adv-sblock.active .t34-blur{filter:blur(0);opacity:1}
+.t34-blur .imp{color:#ff3d71;font-weight:700;font-style:normal}
+.t34-frame{width:75%;max-width:340px}
+.t34-bar{height:1px;background:rgba(255,61,113,0.15);width:0;transition:width 0.5s ease}
+.adv-sblock.active .t34-bar{width:100%}
+.t34-bar.b2{transition-delay:0.12s}
+.t34-mid{padding:14px 0;text-align:center;opacity:0;transform:translateY(5px);transition:all 0.5s 0.35s ease}
+.adv-sblock.active .t34-mid{opacity:1;transform:translateY(0)}
+.t34-ttl{font-family:'Playfair Display',serif;font-size:19px;font-style:italic;color:rgba(255,255,255,0.6)}
+.t34-ttl .em{color:#ff3d71;font-weight:700;font-style:normal}
+.t34 .wbw-rise{font-family:'Playfair Display',serif;font-size:16px;font-style:italic;color:rgba(255,255,255,0.45)}
+
+/* ================================================================
+   T35 — THE MONUMENT | Epic */
+.t35 .adv-stage{background:#060608}
+.t35-cluster{display:inline-flex;flex-direction:column;gap:0;align-items:stretch}
+.t35-rtop{overflow:hidden;white-space:nowrap;width:100%;text-align:right;padding-right:3px}
+.t35-rtop span{font-family:'Oswald',sans-serif;font-weight:300;font-size:11px;letter-spacing:5px;text-transform:uppercase;color:rgba(255,255,255,0.2);display:inline-block;transform:translateX(110%);transition:transform 0.5s cubic-bezier(0.22,1,0.36,1)}
+.adv-sblock.active .t35-rtop span{transform:translateX(0)}
+.t35-hl{font-family:'Cinzel',serif;font-size:clamp(32px,6vw,54px);font-weight:900;line-height:0.9;color:#fff;text-align:center;transform:scale(0);transition:transform 0.45s 0.35s cubic-bezier(0.34,1.56,0.64,1)}
+.adv-sblock.active .t35-hl{transform:scale(1)}
+.t35-rbot{overflow:hidden;white-space:nowrap;width:100%;text-align:left;padding-left:3px}
+.t35-rbot span{font-family:'Oswald',sans-serif;font-weight:300;font-size:11px;letter-spacing:5px;text-transform:uppercase;color:rgba(255,255,255,0.2);display:inline-block;transform:translateX(-110%);transition:transform 0.5s 0.55s cubic-bezier(0.22,1,0.36,1)}
+.adv-sblock.active .t35-rbot span{transform:translateX(0)}
+.t35 .plain-s{font-family:'Oswald',sans-serif;font-size:13px;font-weight:300;color:rgba(255,255,255,0.35);letter-spacing:2px;text-transform:uppercase}
+.t35 .wbw-rise{font-family:'Cinzel',serif;font-size:16px;color:rgba(255,255,255,0.5)}

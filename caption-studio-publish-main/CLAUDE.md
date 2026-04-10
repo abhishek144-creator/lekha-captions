@@ -126,6 +126,10 @@ Caption IDs are `${Date.now()}-${idx}` (no spaces). They are used as key prefixe
 | seekSignal unused | VideoPlayer.jsx | Added `useEffect([seekSignal])` to consume external seeks |
 | Font fallback not downloaded | processor.py _ensure_font | Update `font_path` + download Inter on fallback |
 | Font ass_name mismatch | processor.py GOOGLE_FONTS_MAP | Mitigated — Google variable fonts preserve family name in nameID=1 |
+| Shadow `\|\|` vs `??` bug | ExportPanel.jsx | All shadow numerics use `??` not `\|\|` — `0 \|\| 2 = 2` broke all zero-offset/zero-blur templates |
+| Glow on all words (Layer 0) | processor.py `_create_styled_ass` | `needs_per_word_glow` flag: suppresses `global_eff` on Layer 0; per-word glow only on Layer 2 active word |
+| t-9/t-12 lost glow | processor.py `needs_per_word_glow` | Added `secondary != primary` check — same-color templates use global Layer-0 glow |
+| Text element backgrounds in ASS | processor.py `_create_styled_ass` | Second ASS Style `TextBg` with `BorderStyle=3` in header; text elements reference it when `has_background=True` |
 
 ---
 
