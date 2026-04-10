@@ -26,6 +26,76 @@ This is the **Work Diary** for the Lekha Captions project.
 - [ ] **Effects / Emphasis button** — Not working in `StyleControls.jsx` and `WordClickPopup.jsx`. Put effects section in a collapsible `+` icon block in both places. Brainstorm: emphasis effect = bold + scale(1.15) + color highlight + optional shadow/glow on word.
 - [ ] **Styling tab width** — Increase styling panel width to match caption tab width
 - [ ] **Commit + PR** — Commit all uncommitted changes, push branch `claude/stoic-moore`, open PR to `main`
+- [ ] **Verify template export fidelity** — User to test all 26+15 templates and confirm exported video matches dashboard preview after Session 5 fixes
+- [ ] **Verify Text tab export** — Confirm text boxes added via Text tab (custom color, animation, position) appear correctly in exported video
+
+---
+
+### Session 5 — 2026-04-02
+
+**Theme:** Export pipeline fixes — template fidelity, glow/shadow bugs, text element backgrounds, "Failed to fetch" error
+
+**Completed:**
+
+| Area | What Was Fixed |
+|------|---------------|
+| **"Export failed: Failed to fetch"** | Vite dev server (port 5000) was not running — no proxy existed for `/api`. Fixed by starting `npm run dev` in worktree. Both services now running: backend port 8000, frontend port 5000. |
+| **All shadow/glow templates rendering wrong** | Root cause: `shadow_offset_x \|\| 0`, `shadow_offset_y \|\| 2`, `shadow_blur \|\| 4` in `ExportPanel.jsx` — when a template sets these to `0`, `0 \|\| default` silently overwrote them. Neon templates got y_offset=2 (directional shadow) instead of 0 (glow). Fixed: changed all 4 instances to `??` (nullish coalescing). |
+| **Green glow on ALL words** | `global_eff` (glow ASS tags) was unconditionally appended to Layer 0 — all words glowed. Should only apply to active word in Layer 2 karaoke. Fixed in `processor.py`: added `needs_per_word_glow` flag; Layer 0 suppresses glow when per-word glow is active; Layer 2 applies glow only to active word, resets on inactive words. |
+| **t-9 Fire / t-12 Horror lost ALL glow** | Over-broad fix suppressed Layer-0 glow whenever `secondary_hex` was present + `is_glow_shadow`. But these templates set `secondary == primary` for uniform global glow. Fixed: `needs_per_word_glow` now also checks `secondary != primary`. |
+| **Text element backgrounds not rendering** | ASS `BorderStyle=3` (opaque background box) is a Style-header property — can't be overridden inline. Added second ASS Style `TextBg` with `BorderStyle=3` in header when any text element needs a background. Text element Dialogue lines reference `TextBg` style instead of `Default`. |
+
+**Key Rule Learned — `||` vs `??` for style numerics:**
+Always use `??` for any numeric style property that can legitimately be `0`:
+- `shadow_blur`, `shadow_offset_x`, `shadow_offset_y`
+- `background_padding`, `background_h_multiplier`, `position_y`, `position_x`
+Using `||` silently replaces `0` with the default, breaking all templates that zero out a property.
+
+**ASS Glow Logic Summary:**
+- `shadow_offset_x=0` AND `shadow_offset_y=0` → **Neon/glow** effect (use `\bord\3c\blur\shad0`)
+- Either offset non-zero → **Drop shadow** (use `\shad` with offsets)
+- `secondary_color != primary_color` + glow → **Per-word karaoke glow** (Layer 2 only)
+- `secondary_color == primary_color` + glow → **Global uniform glow** (Layer 0)
+
+**Files Modified:**
+- `src/components/dashboard/ExportPanel.jsx` — `||` → `??` for shadow_blur, shadow_offset_x, shadow_offset_y (global caption style + text element custom_style)
+- `backend/processor.py` — `is_glow_shadow` + `needs_per_word_glow` detection; Layer-0 glow suppression; per-word active/inactive glow in Layer 2; `TextBg` ASS style definition for text element backgrounds
+
+**Added to Known Fixed Bugs in CLAUDE.md:** (pending — should be added)
+- `||` vs `??` for shadow numerics in ExportPanel.jsx
+- Per-word glow suppression on Layer 0 (`needs_per_word_glow` in processor.py)
+- TextBg ASS style for text element backgrounds (processor.py)
+
+---
+
+### Session 4 — 2026-04-01
+
+**Theme:** Style/template propagation fixes, animation keyframes, Caption Display mode (word-by-word vs sentence)
+
+**Completed:**
+
+| Area | What Was Fixed |
+|------|---------------|
+| `VideoPlayer.jsx` — template path | Fixed word timing: was reading `caption.start/end`, now correctly reads `caption.start_time/end_time` — template word highlighting was broken |
+| `VideoPlayer.jsx` — template path | Unfroze hardcoded `fontSize: '24px'` → reads `captionStyle.font_size` |
+| `VideoPlayer.jsx` — template path | Added full inline style block: `lineHeight`, `fontWeight`, `fontStyle`, `textAlign`, `letterSpacing`, `wordSpacing`, `textTransform`, `animation` — all were missing |
+| `VideoPlayer.jsx` — non-template path | Added `letterSpacing` and `wordSpacing` that were previously hardcoded to `'normal'` |
+| `VideoPlayer.jsx` — non-template path | Added word-by-word IIFE wrapper: respects `captionStyle.show_inactive === false` to hide future words |
+| `captionTemplates.css` | Added all missing `@keyframes` and `.animate-*` classes for 12 standard + 21 advanced animations — animate tab was silently no-oping |
+| `StyleControls.jsx` | Added "Caption Display" toggle in Typography section: **Sentence** / **Word by Word** buttons; writes `show_inactive: true/false` to captionStyle; active state uses gold `#F5A623` |
+
+**Architecture Notes:**
+- `show_inactive` field: `false` = word-by-word (hide future words), `true`/`undefined` = sentence (show all at once)
+- `wordSpacing` formula: `(word_spacing - 1) * 4` px — default `word_spacing=1` → `0px` extra
+- Template rendering applies CSS class (`t-XXX`) + CSS variables + full inline style on wrapper → word spans get `.word`, `.active`, `.current`, `.done` classes
+- Non-template rendering: inline style applied per-caption-block; words split from `caption.text`
+- Backend (`processor.py`) already handles `show_inactive=False` → per-word ASS Dialogue entries; `letter_spacing` → ASS Style Spacing field — no backend changes needed
+- Export payload (`ExportPanel.jsx`) already sends all style fields — no changes needed
+
+**Files Modified:**
+- `src/components/dashboard/VideoPlayer.jsx`
+- `src/components/dashboard/StyleControls.jsx`
+- `src/styles/captionTemplates.css`
 
 ---
 
