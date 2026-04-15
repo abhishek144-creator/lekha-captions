@@ -57,7 +57,7 @@ const features = [
 
 export default function FeaturesSection() {
   return (
-    <section className="py-24 bg-[#111111] relative">
+    <section aria-label="Features" className="py-24 bg-[#111111] relative">
       <div className="max-w-6xl mx-auto px-6">
         <motion.div
           initial={{ opacity: 0, y: 20 }}

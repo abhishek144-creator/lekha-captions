@@ -92,6 +92,19 @@ Caption IDs are `${Date.now()}-${idx}` (no spaces). They are used as key prefixe
 
 ---
 
+## Search-First Rule
+
+**Before touching any file, search first:**
+1. Use `Grep` to find the class/function/keyword in the codebase
+2. Use `Glob` to find files by name pattern
+3. Only then open the specific file at the relevant line range
+4. **Never read an entire file** to find a single bug — use Grep to locate it first
+5. **Never read the full codebase** for a change — stay targeted
+
+This is mandatory, not optional.
+
+---
+
 ## Coding Conventions
 
 - **Never use semicolons** in JSX/JS files (existing code is semicolon-free)
