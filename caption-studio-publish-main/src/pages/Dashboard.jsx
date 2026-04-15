@@ -21,7 +21,8 @@ import ExportPanel from '@/components/dashboard/ExportPanel';
 import PricingModal from '@/components/dashboard/PricingModal';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { extractWaveformData } from '@/components/dashboard/audioUtils';
-import { autoLoadFontForText } from '@/components/dashboard/fontUtils';
+import { autoLoadFontForText, loadGoogleFont } from '@/components/dashboard/fontUtils';
+import WordClickPopup from '@/components/dashboard/WordClickPopup';
 
 // Helper for retrying operations
 const retryOperation = async (operation, maxRetries = 3, delay = 1000) => {
@@ -96,11 +97,25 @@ export default function Dashboard() {
 
   // Video canvas fullscreen & resizable timeline
   const [isVideoFullscreen, setIsVideoFullscreen] = useState(false);
-  const [timelineHeight, setTimelineHeight] = useState(170);
+  const [timelineHeight, setTimelineHeight] = useState(135);
+  const [dividerSnapping, setDividerSnapping] = useState(false); // visual snap feedback
   const timelineDividerRef = useRef(null);
   const isDraggingDivider = useRef(false);
   const dividerStartY = useRef(0);
-  const dividerStartHeight = useRef(200);
+  const dividerStartHeight = useRef(135);
+  const defaultTimelineHeight = useRef(null); // captured once on mount
+
+  // Capture the default timeline height exactly once on mount
+  useEffect(() => {
+    defaultTimelineHeight.current = timelineHeight;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Resizer snap positions (timeline height values)
+  // SNAP_MAX_CANVAS is dynamic — matches the actual rendered default
+  const SNAP_BALANCED  = 220;
+  const SNAP_MAX_TIMELINE = 350;
+  const SNAP_THRESHOLD = 20;     // px distance to trigger a snap
 
   const [captions, setCaptions] = useState([]);
   const [selectedCaptionId, setSelectedCaptionId] = useState(null);
@@ -178,6 +193,10 @@ export default function Dashboard() {
     setIsLoaded(true);
   }, []);
 
+  useEffect(() => {
+    if (!videoUrl) setWordPopup(null);
+  }, [videoUrl]);
+
   // Auto-save to localStorage whenever state changes (debounced)
   useEffect(() => {
     if (!isLoaded) return;
@@ -212,6 +231,7 @@ export default function Dashboard() {
   }, [videoUrl, captions, captionStyle, projectId, settings, duration, fileId, originalFileName, isLoaded]);
 
   const handleUpload = async (file, uploadSettings) => {
+    setWordPopup(null);
     setIsUploading(true);
     setSettings(uploadSettings);
     setIsUploadModalOpen(false);
@@ -380,6 +400,37 @@ export default function Dashboard() {
 
   const updateCaptions = (newCaptions) => pushHistory(newCaptions, undefined);
   const updateCaptionStyle = (newStyle) => pushHistory(undefined, newStyle);
+
+  const handleWordStyleChange = (key, value, skipHistory = false) => {
+    if (!wordPopup) return;
+    
+    // Always use raw setCaptions — never updateCaptions here.
+    // History is recorded separately via onHistoryRecord (onPointerDown on sliders).
+    // Using updateCaptions causes stale closure snapshots and corrupts other words.
+    setCaptions(prev => prev.map(c => {
+      if (wordPopup.type === 'element') {
+        if (c.id !== wordPopup.elementId) return c;
+      } else {
+        if (c.id !== wordPopup.caption?.id) return c;
+      }
+      const wordStyles = c.wordStyles || {};
+      const styleKey = wordPopup.type === 'element'
+        ? `${wordPopup.elementId}-${wordPopup.wordIndex}`
+        : `${wordPopup.caption?.id}-${wordPopup.wordIndex}`;
+      const existingStyle = wordStyles[styleKey] || {};
+      const updatedStyle = { ...existingStyle, [key]: value };
+      // When user explicitly sets fontSize, clear frozenFontSize so it doesn't override
+      if (key === 'fontSize') delete updatedStyle.frozenFontSize;
+      
+      return {
+        ...c,
+        wordStyles: {
+          ...wordStyles,
+          [styleKey]: updatedStyle
+        }
+      };
+    }));
+  };
   const handleApplyTemplate = async (templateStyle) => {
     // Hard Reset: properties that templates fully control are cleared before applying
     // so Template B never inherits BG, color, font, or animation from Template A.
@@ -404,8 +455,6 @@ export default function Dashboard() {
     const merged = { ...captionStyle, ...TEMPLATE_OWNED_RESET, ...templateStyle };
     // Load the template's font (if any) before applying so the browser has it
     if (templateStyle?.font_family) {
-      const { loadGoogleFont } = await import('@/components/dashboard/fontUtils');
-      // Apply font immediately; loading is best-effort
       loadGoogleFont(templateStyle.font_family, [300, 400, 500, 600, 700, 800]).catch(() => {});
     }
     pushHistory(undefined, merged);
@@ -429,6 +478,20 @@ export default function Dashboard() {
       setHistoryIndex(historyIndex + 1);
     }
   };
+
+  // Global keyboard shortcuts: Ctrl+Z (undo), Ctrl+Y / Ctrl+Shift+Z (redo)
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      const tag = document.activeElement?.tagName;
+      // Don't intercept if user is typing in an input/textarea/contenteditable
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return;
+      if (e.ctrlKey && !e.shiftKey && e.key === 'z') { e.preventDefault(); handleUndo(); }
+      if (e.ctrlKey && (e.key === 'y' || (e.shiftKey && e.key === 'Z'))) { e.preventDefault(); handleRedo(); }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyIndex, history]);
 
   const handleRefresh = () => {
     // Clear localStorage and reload
@@ -473,9 +536,7 @@ export default function Dashboard() {
   useEffect(() => {
     const fontFamily = captionStyle?.font_family;
     if (!fontFamily) return;
-    import('@/components/dashboard/fontUtils').then(({ loadGoogleFont }) => {
-      loadGoogleFont(fontFamily, [300, 400, 500, 600, 700, 800]).catch(() => {});
-    });
+    loadGoogleFont(fontFamily, [300, 400, 500, 600, 700, 800]).catch(() => {});
   }, [captionStyle?.font_family]);
 
   const navigate = useNavigate();
@@ -519,8 +580,8 @@ export default function Dashboard() {
               animate={{ opacity: 1 }}
               className="text-center"
             >
-              <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mx-auto mb-6">
-                <Sparkles className="w-8 h-8 text-white/60 animate-pulse" />
+              <div className="w-20 h-20 rounded-full bg-yellow-500/10 flex items-center justify-center mx-auto mb-6">
+                <Sparkles className="w-8 h-8 text-yellow-400 animate-pulse" />
               </div>
               <h2 className="text-xl font-semibold text-white mb-2">
                 Generating Captions...
@@ -547,8 +608,8 @@ export default function Dashboard() {
               animate={{ opacity: 1, y: 0 }}
               className="text-center max-w-md"
             >
-              <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mx-auto mb-6">
-                <Upload className="w-8 h-8 text-white/60" />
+              <div className="w-20 h-20 rounded-full bg-yellow-500/10 flex items-center justify-center mx-auto mb-6">
+                <Upload className="w-8 h-8 text-yellow-400" />
               </div>
               <h2 className="text-2xl font-bold text-white mb-3">
                 Start Creating Captions
@@ -649,12 +710,13 @@ export default function Dashboard() {
                   onApplyTemplate={handleApplyTemplate}
                 />
               )}
+
             </div>
 
             {/* Center Panel - Video Player & Timeline */}
-            <div className="flex-1 border-r border-white/5 px-2 py-1 flex flex-col overflow-hidden min-h-0">
+            <div className="flex-1 border-r border-white/5 px-2 py-1 flex flex-col overflow-hidden min-h-0" style={{ position: 'relative', zIndex: 50 }}>
 
-              <div className="flex-1 min-h-0 overflow-hidden">
+              <div className="flex-1 min-h-[380px] overflow-hidden">
                 <VideoPlayer
                   videoUrl={videoUrl}
                   currentTime={currentTime}
@@ -698,33 +760,46 @@ export default function Dashboard() {
                     isDraggingDivider.current = true;
                     dividerStartY.current = e.clientY;
                     dividerStartHeight.current = timelineHeight;
+                    const SNAPS = [defaultTimelineHeight.current, SNAP_BALANCED, SNAP_MAX_TIMELINE];
                     const onMove = (ev) => {
                       if (!isDraggingDivider.current) return;
+                      // delta > 0 = dragging up = growing timeline
                       const delta = dividerStartY.current - ev.clientY;
-                      // Drag up grows timeline, drag down stops at starting position — never shrinks below grab point
-                      const newHeight = Math.max(dividerStartHeight.current, Math.min(400, dividerStartHeight.current + delta));
-                      setTimelineHeight(newHeight);
+                      const floor = defaultTimelineHeight.current;
+                      let raw = Math.max(floor, Math.min(400, dividerStartHeight.current + delta));
+                      // Check snap proximity
+                      let snapped = false;
+                      for (const s of SNAPS) {
+                        if (Math.abs(raw - s) <= SNAP_THRESHOLD) {
+                          raw = s;
+                          snapped = true;
+                          break;
+                        }
+                      }
+                      setDividerSnapping(snapped);
+                      setTimelineHeight(raw);
                     };
                     const onUp = () => {
                       isDraggingDivider.current = false;
+                      setDividerSnapping(false);
                       document.removeEventListener('mousemove', onMove);
                       document.removeEventListener('mouseup', onUp);
                     };
                     document.addEventListener('mousemove', onMove);
                     document.addEventListener('mouseup', onUp);
                   }}
-                  onDoubleClick={() => setTimelineHeight(170)}
+                  onDoubleClick={() => setTimelineHeight(135)}
                 >
                   {/* Divider line */}
-                  <div className="w-full h-px bg-white/5 group-hover:bg-white/15 transition-colors" />
+                  <div className={`w-full h-px transition-colors ${dividerSnapping ? 'bg-yellow-400/60' : 'bg-white/5 group-hover:bg-white/15'}`} />
                   {/* Drag handle indicator */}
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="w-8 h-1 bg-white/10 rounded-full group-hover:bg-white/25 transition-colors" />
+                    <div className={`w-8 h-1 rounded-full transition-colors ${dividerSnapping ? 'bg-yellow-400/80' : 'bg-white/10 group-hover:bg-white/25'}`} />
                   </div>
                 </div>
               )}
               {!isVideoFullscreen && (
-                <div style={{ height: `${timelineHeight}px`, flexShrink: 0 }}>
+                <div style={{ height: `${timelineHeight}px`, flexShrink: 0, position: 'relative', zIndex: 1 }}>
                   <CaptionTimeline
                     captions={captions}
                     duration={duration}
@@ -761,6 +836,49 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      {/* Word Click Popup — fixed at Dashboard root, above EVERYTHING including navbar */}
+      {wordPopup && (
+        <>
+          <div
+            className="fixed inset-0 z-[9998]"
+            onClick={() => setWordPopup(null)}
+          />
+          <WordClickPopup
+            word={wordPopup.word}
+          position={wordPopup.position}
+          onStyleChange={handleWordStyleChange}
+          currentStyle={(() => {
+            const c = captions.find(cap =>
+              wordPopup.type === 'element'
+                ? cap.id === wordPopup.elementId
+                : cap.id === wordPopup.caption?.id
+            );
+            const key = wordPopup.type === 'element'
+              ? `${wordPopup.elementId}-${wordPopup.wordIndex}`
+              : `${wordPopup.caption?.id}-${wordPopup.wordIndex}`;
+            return c?.wordStyles?.[key] || {};
+          })()}
+          onEdit={() => setWordPopup(null)}
+          onClose={() => setWordPopup(null)}
+          onResetPosition={() => {
+            if (addToHistory) addToHistory();
+            const key = wordPopup.type === 'element'
+              ? `${wordPopup.elementId}-${wordPopup.wordIndex}`
+              : `${wordPopup.caption?.id}-${wordPopup.wordIndex}`;
+            setCaptions(prev => prev.map(c => {
+              const id = wordPopup.type === 'element' ? wordPopup.elementId : wordPopup.caption?.id;
+              if (c.id !== id) return c;
+              const ws = c.wordStyles || {};
+              return { ...c, wordStyles: { ...ws, [key]: { ...(ws[key] || {}), x: 0, y: 0 } } };
+            }));
+          }}
+          onHistoryRecord={addToHistory}
+          videoContainerRef={null}
+          isElementWord={wordPopup.type === 'element'}
+        />
+        </>
+      )}
 
       {/* Modals */}
       <UploadModal
