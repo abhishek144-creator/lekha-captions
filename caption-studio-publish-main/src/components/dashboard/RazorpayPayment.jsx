@@ -13,6 +13,7 @@ export const initiateRazorpayPayment = async ({
   amount,
   planName,
   planId,
+  keyId,
   userEmail,
   userName,
   onSuccess,
@@ -25,11 +26,13 @@ export const initiateRazorpayPayment = async ({
     return;
   }
 
-  // Razorpay Test Key ID
-  const RAZORPAY_KEY_ID = 'rzp_test_RJWsOLmZ6GL27m';
+  if (!keyId) {
+    alert('Payment configuration error. Please contact support.');
+    return;
+  }
 
   const options = {
-    key: RAZORPAY_KEY_ID,
+    key: keyId,
     amount: amount, // Amount in paise
     currency: 'INR',
     name: 'Caption Studio',
