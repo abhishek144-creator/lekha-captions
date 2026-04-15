@@ -16,20 +16,65 @@ This is the **Work Diary** for the Lekha Captions project.
 
 > Keep this section always up-to-date. It is the first thing read at session start.
 
-- [ ] **Timeline fix** — Speech track background is showing gold stripe. Only the individual caption *blocks* should be gold, not the entire track row background. Fix in `src/components/dashboard/CaptionTimeline.jsx`
-- [ ] **Gradient gold buttons** — Replace flat `bg-[#F5A623]` buttons with gradient: `bg-gradient-to-r from-[#FFE566] to-[#F5A623] hover:from-[#F5A623] hover:to-[#D4891A]` across all CTA buttons (14 files)
-- [ ] **Text gradient** — Apply `bg-gradient-to-r from-[#F5A623] to-[#FFD700] bg-clip-text text-transparent` to key headings, logo, and accent text
-- [ ] **Razorpay demo fallback** — `PricingModal.jsx` `handlePayment`: when backend `create-order` fails (e.g. missing env keys), fall back to opening Razorpay checkout without an `order_id` if `RAZORPAY_KEY_ID.startsWith('rzp_test_')`. Currently checkout never opens on local dev.
-- [ ] **Landing footer bottom** — Bottom section / CTA strip color → gold (`src/components/landing/Footer.jsx`)
-- [ ] **UserAccount.jsx** — Update `PLAN_LIMITS` constant to new 3-plan structure (starter/creator/pro + yearly variants). Replace all purple/blue gradients with gold. Fix `planKey` lookup.
-- [ ] **SidebarNav.jsx** — Update `getPlanDetails()` to map new `starter / creator / pro` tiers with gold color. Remove old purple gradient usage.
-- [ ] **Effects / Emphasis button** — Not working in `StyleControls.jsx` and `WordClickPopup.jsx`. Put effects section in a collapsible `+` icon block in both places. Brainstorm: emphasis effect = bold + scale(1.15) + color highlight + optional shadow/glow on word.
-- [ ] **Styling tab width** — Increase styling panel width to match caption tab width
-- [ ] **Commit + PR** — Commit all uncommitted changes, push branch `claude/stoic-moore`, open PR to `main`
+### Active Worktree: `claude/stoic-moore`
+Path: `C:\Users\ADMIN\Downloads\caption-studio-publish-main\.claude\worktrees\stoic-moore\caption-studio-publish-main\`
+
+### Pending Tasks
+- [ ] **GSAP Lab templates — commit & push worktree** — The GSAP system (Kaleidoscope + Montage) was built in the `stoic-moore` worktree but NOT committed yet. Files: `src/lib/gsap-setup.js`, `src/components/dashboard/GsapCaptionRenderer.jsx`, `src/components/dashboard/TemplatesTab3.jsx`, `src/components/dashboard/gsapTemplates/`, `src/styles/captionTemplatesLab.css` + edits to `SidebarNav.jsx`, `Dashboard.jsx`, `VideoPlayer.jsx`
+- [ ] **StyleControls.jsx JSX fix** — File was restructured (new section order: Position → Typography → Colors → Background → Effects → Extras) but has JSX syntax issues from the restructure. Needs careful review and fix before committing.
+- [ ] **Effects / Emphasis button** — Not working in `StyleControls.jsx` and `WordClickPopup.jsx`. Emphasis effect = bold + scale(1.15) + color highlight + optional shadow/glow on word.
+- [ ] **Razorpay demo fallback** — `PricingModal.jsx` `handlePayment`: when backend `create-order` fails, fall back to opening Razorpay checkout without `order_id` if `RAZORPAY_KEY_ID.startsWith('rzp_test_')`.
+- [ ] **UserAccount.jsx** — Update `PLAN_LIMITS` to new 3-plan structure (starter/creator/pro + yearly). Fix `planKey` lookup.
+- [ ] **SidebarNav.jsx** — Update `getPlanDetails()` to map `starter/creator/pro` tiers correctly.
+- [ ] **More GSAP Lab templates** — Quantum (ScrambleText + tile flip), Prismatic (MorphSVG blob), Aurora (venetian blinds + weight wave) — 3 more templates planned for the Lab tab.
+
+### Completed This Week (already on GitHub main)
+- ✅ Full UI polish batch (Sessions 4–6): fullscreen overlay button in VideoPlayer, waveform redesign (white spikes), gold removal from templates/animate tab, export panel polish, sidebar/caption tab color balance
+- ✅ StyleControls section restructure (Position → Typography → Colors → Background → Effects → Extras)
+- ✅ GSAP Lab tab system built (Kaleidoscope + Montage templates, GsapCaptionRenderer, TemplatesTab3, Lab sidebar tab)
+- ✅ All changes pushed to GitHub (`origin/main` fully up to date as of 2026-03-23)
 
 ---
 
 ## Session Log
+
+---
+
+### Session 6 — 2026-03-23
+
+**Theme:** GSAP Lab template system, git sync to GitHub
+
+**Completed:**
+
+| File | What Changed |
+|------|-------------|
+| `src/lib/gsap-setup.js` | NEW — imports gsap@3.14.1 + registers SplitText, DrawSVGPlugin, ScrambleTextPlugin, TextPlugin, CustomEase |
+| `src/components/dashboard/GsapCaptionRenderer.jsx` | NEW — React component managing GSAP template lifecycle (setup/update/clean with useEffect) |
+| `src/components/dashboard/gsapTemplates/index.js` | NEW — registry: `labTemplates` array + `getLabTemplate(id)` |
+| `src/components/dashboard/gsapTemplates/kaleidoscope.js` | NEW — 3-variant cycling (Rise Reveal / 3-Level Bebas Stack / Split Card), cycles `captionIndex % 3` |
+| `src/components/dashboard/gsapTemplates/montage.js` | NEW — documentary editorial: Playfair Display, lines slide from left, gold power word + DrawSVG underline |
+| `src/components/dashboard/TemplatesTab3.jsx` | NEW — Lab tab UI with animated mini-previews (rAF loop), template cards, "GSAP" badge |
+| `src/styles/captionTemplatesLab.css` | NEW — scoped styles for GSAP containers |
+| `src/components/dashboard/SidebarNav.jsx` | Added `FlaskConical` import + `{ id: 'templates3', icon: FlaskConical, label: 'Lab' }` to navItems |
+| `src/pages/Dashboard.jsx` | Added `TemplatesTab3` import + `{activeTab === 'templates3' && <TemplatesTab3 .../>}` render |
+| `src/components/dashboard/VideoPlayer.jsx` | Added `GsapCaptionRenderer` import + `captionTemplatesLab.css` import + `t-lab-*` branch before CSS template path |
+
+**Key Architecture:**
+- `t-lab-*` template IDs trigger GSAP renderer; all other `t-*` IDs use existing CSS path — zero conflict
+- Word timing: `computeWordState(caption, currentTime)` in GsapCaptionRenderer uses `caption.words[].start/end` for per-word precision; fallback to even distribution
+- Multi-style cycling: `captionIndex % 3` determines variant per caption (0=rise, 1=stack, 2=splitcard)
+- Export: lab templates are preview-only; backend uses standard fallback rendering for `t-lab-*`
+- Fonts used: `Bebas Neue` (stack variant), `Playfair Display` (montage + splitcard top line), Inter (rise reveal + card text)
+
+**Git:**
+- Committed 6 previously-uncommitted files in main repo (`96efefe`)
+- Pulled GitHub PR merge commit (`db8ee21` — user's manual PR from GitHub UI)
+- Pushed all 12 commits to `origin/main` — GitHub fully up to date
+- **GSAP Lab files NOT committed yet** — still unstaged in `stoic-moore` worktree
+
+**Still pending:**
+- Commit GSAP Lab files to `stoic-moore` branch and push
+- StyleControls.jsx JSX syntax review (restructured sections may have unclosed divs)
 
 ---
 

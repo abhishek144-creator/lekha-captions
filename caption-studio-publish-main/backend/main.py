@@ -11,7 +11,8 @@ import os
 import uuid
 import urllib.request
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
+from dateutil.relativedelta import relativedelta
 from typing import List, Dict, Any, Optional
 from processor import VideoProcessor
 import asyncio
@@ -42,8 +43,8 @@ except ImportError:
 app = FastAPI()
 
 # Initialize Razorpay Client (Keys will be read from environment variables)
-RAZORPAY_KEY_ID = os.environ.get("RAZORPAY_KEY_ID", "rzp_test_RJWsOLmZ6GL27m")
-RAZORPAY_KEY_SECRET = os.environ.get("RAZORPAY_KEY_SECRET", "test_secret")
+RAZORPAY_KEY_ID = os.environ.get("RAZORPAY_KEY_ID", "")
+RAZORPAY_KEY_SECRET = os.environ.get("RAZORPAY_KEY_SECRET", "")
 rzp_client = _razorpay_module.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET)) if RAZORPAY_AVAILABLE else None
 
 # --- PLAN PRICING (locked — do not change) ---
@@ -159,24 +160,70 @@ async def _simple_janitor_loop():
     except Exception as e:
         print(f"[Janitor] FATAL: loop crashed — {e}")
 
-# CORS — restrict in production via ALLOWED_ORIGINS env var (comma-separated)
-ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "*").split(",")
+# CORS — set ALLOWED_ORIGINS env var (comma-separated) in production
+# Falls back to localhost only; wildcard is never used
+_origins_env = os.environ.get("ALLOWED_ORIGINS", "")
+ALLOWED_ORIGINS = [o.strip() for o in _origins_env.split(",") if o.strip()] if _origins_env else [
+    "http://localhost:3000",
+    "http://localhost:5000",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:5000",
+]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
-# Simple in-memory rate limiter for upload endpoint
-_upload_rate: Dict[str, list] = {}  # ip -> list of timestamps
-UPLOAD_RATE_LIMIT = 10  # max uploads per hour per IP
+# Simple in-memory rate limiters (ip -> list of timestamps)
+_upload_rate: Dict[str, list] = {}
+UPLOAD_RATE_LIMIT = 10    # max uploads per hour per IP
 UPLOAD_RATE_WINDOW = 3600  # 1 hour
+
+_payment_rate: Dict[str, list] = {}
+PAYMENT_RATE_LIMIT = 10   # max payment attempts per hour per IP
+
+_promo_rate: Dict[str, list] = {}
+PROMO_RATE_LIMIT = 5      # max promo redemptions per hour per IP
+
+def _check_rate(store: Dict[str, list], key: str, limit: int, window: int = 3600) -> bool:
+    """Returns True if the request is allowed, False if rate-limited.
+    Mutates *store* in-place to record the current timestamp."""
+    now_ts = time.time()
+    timestamps = [t for t in store.get(key, []) if t > now_ts - window]
+    if len(timestamps) >= limit:
+        store[key] = timestamps
+        return False
+    timestamps.append(now_ts)
+    store[key] = timestamps
+    return True
 
 # Allowed upload extensions (module-level constant — not rebuilt per request)
 ALLOWED_EXTENSIONS = {'mp4', 'mov', 'avi', 'mkv', 'webm', 'mp3', 'wav', 'm4a', 'aac'}
 MAX_UPLOAD_BYTES = 500 * 1024 * 1024  # 500 MB
+
+def _validate_file_id(file_id: str) -> bool:
+    """Validate file_id is a UUID4 — prevents path traversal via user-supplied IDs."""
+    try:
+        uuid.UUID(str(file_id))
+        return True
+    except (ValueError, AttributeError):
+        return False
+
+def _safe_find_upload(file_id: str) -> Optional[str]:
+    """Return the full path of the uploaded file for *file_id*, or None.
+    Validates UUID format and guards against directory traversal."""
+    if not _validate_file_id(file_id):
+        return None
+    real_dir = os.path.realpath(UPLOAD_DIR)
+    for f in os.listdir(UPLOAD_DIR):
+        if f.startswith(file_id):
+            candidate = os.path.realpath(os.path.join(UPLOAD_DIR, f))
+            if candidate.startswith(real_dir + os.sep):
+                return os.path.join(UPLOAD_DIR, f)
+    return None
 
 # Fix: Remove hardcoded 'backend/' prefix from abspath as we are running the process from inside backend/
 UPLOAD_DIR = os.path.abspath("uploads")
@@ -208,6 +255,7 @@ class ExportRequest(BaseModel):
     word_layouts: Dict[str, Any] = {}
     id_token: str = ""  # Firebase Auth Token (optional — bypassed in dev mode)
     quality: str = "1080p"  # Export quality: "4k", "1080p", "720p"
+    fps: int = 30  # Frame rate: 24, 30, 60
 
 class CreateOrderRequest(BaseModel):
     plan_id: str
@@ -226,10 +274,24 @@ class ProcessRequest(BaseModel):
     language: str = "English"
     min_words: int = 0
     max_words: int = 0
+    id_token: str = ""  # Firebase Auth Token (optional — bypassed in dev mode)
 
 class TranslateRequest(BaseModel):
     captions: List[Dict[str, Any]]
     target_language: str
+
+# Debug endpoint: view the last exported ASS file (only in DEBUG_MODE)
+@app.get("/api/debug/last-ass")
+async def get_last_ass():
+    if not os.environ.get("DEBUG_MODE"):
+        raise HTTPException(status_code=404, detail="Not found")
+    ass_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "last_export_debug.ass")
+    if not os.path.exists(ass_path):
+        return {"error": "No debug ASS file found. Export a video first."}
+    with open(ass_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    # Return content only — never expose server filesystem paths
+    return {"ass_content": content}
 
 # Google Fonts Cache Map
 _cached_google_fonts = None
@@ -318,11 +380,17 @@ async def upload_video(file: UploadFile = File(...), request: Request = None):
 
 @app.post("/api/process")
 async def process_video(req: ProcessRequest):
-    input_path = None
-    for f in os.listdir(UPLOAD_DIR):
-        if f.startswith(req.file_id):
-            input_path = os.path.join(UPLOAD_DIR, f)
-            break
+    # Auth — same dev-mode bypass as /api/export
+    is_dev_token = not req.id_token or req.id_token == 'mock-token'
+    if not is_dev_token:
+        decoded_token = verify_token(req.id_token)
+        if not decoded_token:
+            db_check = get_db()
+            if db_check is not None:
+                raise HTTPException(status_code=401, detail="Authentication required")
+    if not _validate_file_id(req.file_id):
+        raise HTTPException(status_code=400, detail="Invalid file_id")
+    input_path = _safe_find_upload(req.file_id)
     if not input_path: return {"success": False, "error": "File not found"}
     return await processor.generate_captions_only(input_path, target_language=req.language, min_words=req.min_words, max_words=req.max_words)
 
@@ -331,16 +399,18 @@ async def export_video(req: ExportRequest):
     print(f"[Export] EXPORT STYLE RECEIVED: {req.style}")
 
     # 1. Authenticate user
-    decoded_token = verify_token(req.id_token) if req.id_token else None
+    is_dev_token = not req.id_token or req.id_token == 'mock-token'
+    decoded_token = verify_token(req.id_token) if req.id_token and not is_dev_token else None
     if decoded_token:
         uid = decoded_token.get('uid')
     else:
-        # Dev mode fallback when Firebase is not configured
-        db_check = get_db()
-        if db_check is not None:
-            raise HTTPException(status_code=401, detail="Authentication required")
+        # Dev mode: either no token, mock-token, or Firebase not configured
+        if not is_dev_token:
+            db_check = get_db()
+            if db_check is not None:
+                raise HTTPException(status_code=401, detail="Authentication required")
         uid = "dev-local-user"
-        print("[Export] No auth token — running in dev mode (no Firebase configured)")
+        print("[Export] No real auth token — running in dev mode")
 
     # 2. Check Credits & Limits (skipped gracefully if Firestore is not configured)
     db = get_db()
@@ -386,6 +456,22 @@ async def export_video(req: ExportRequest):
                 except Exception:
                     pass
 
+        # Reset expired promo users back to free tier
+        if user_data.get("is_promo_user") and user_data.get("promo_expires"):
+            try:
+                promo_exp = date.fromisoformat(user_data["promo_expires"])
+                if date.today() > promo_exp:
+                    user_ref.update({
+                        "subscription_tier": "free",
+                        "credits_remaining": 0,
+                        "is_promo_user": False,
+                    })
+                    credits = 0
+                    tier = "free"
+                    plan_time_expired = True
+            except Exception as e:
+                print(f"[Export] Promo expiry check failed: {e}")
+
         # Block export if credits are 0 (regardless of plan type)
         if credits <= 0:
             if tier and tier != 'free' and plan_time_expired:
@@ -404,11 +490,9 @@ async def export_video(req: ExportRequest):
         print("[Export] Firestore not available — skipping credit check (dev mode).")
 
     # 3. Process Video
-    input_path = None
-    for f in os.listdir(UPLOAD_DIR):
-        if f.startswith(req.file_id):
-            input_path = os.path.join(UPLOAD_DIR, f)
-            break
+    if not _validate_file_id(req.file_id):
+        raise HTTPException(status_code=400, detail="Invalid file_id")
+    input_path = _safe_find_upload(req.file_id)
     if not input_path: raise HTTPException(status_code=404, detail="Video not found")
 
     output_filename = f"export_{req.file_id}.mp4"
@@ -421,7 +505,7 @@ async def export_video(req: ExportRequest):
     print(f"[Queue] Video {req.file_id} waiting in line for render slot...")
     async with render_semaphore:
         print(f"[Render] Video {req.file_id} starting render now (quality={req.quality})!")
-        style_with_quality = {**req.style, 'quality': req.quality}
+        style_with_quality = {**req.style, 'quality': req.quality, 'fps': req.fps}
         result = await processor.burn_only(input_path, output_path, captions, style_with_quality, req.word_layouts)
 
     if not result['success']: return {"success": False, "error": result.get('error')}
@@ -478,7 +562,10 @@ async def export_video(req: ExportRequest):
 # --- RAZORPAY SUBSCRIPTION ENDPOINTS ---
 
 @app.post("/api/create-order")
-async def create_order(req: CreateOrderRequest):
+async def create_order(req: CreateOrderRequest, request: Request):
+    client_ip = request.client.host if request.client else "unknown"
+    if not _check_rate(_payment_rate, client_ip, PAYMENT_RATE_LIMIT):
+        raise HTTPException(status_code=429, detail="Too many payment requests. Please wait before trying again.")
     # Verify User
     decoded_token = verify_token(req.id_token)
     if not decoded_token:
@@ -527,7 +614,10 @@ async def create_order(req: CreateOrderRequest):
         return {"success": False, "error": str(e)}
 
 @app.post("/api/verify-payment")
-async def verify_payment(req: VerifyPaymentRequest):
+async def verify_payment(req: VerifyPaymentRequest, request: Request):
+    client_ip = request.client.host if request.client else "unknown"
+    if not _check_rate(_payment_rate, client_ip, PAYMENT_RATE_LIMIT):
+        raise HTTPException(status_code=429, detail="Too many payment requests. Please wait before trying again.")
     if not RAZORPAY_AVAILABLE or rzp_client is None:
         raise HTTPException(status_code=503, detail="Payment service unavailable")
 
@@ -667,6 +757,69 @@ async def verify_payment(req: VerifyPaymentRequest):
 
     return {"success": True, "credits_added": credits_to_add, "billing_cycle_end": cycle_end, "type": "subscription"}
 
+
+class RedeemPromoRequest(BaseModel):
+    id_token: str
+    code: str
+
+@app.post("/api/redeem-promo")
+async def redeem_promo(req: RedeemPromoRequest, request: Request):
+    client_ip = request.client.host if request.client else "unknown"
+    if not _check_rate(_promo_rate, client_ip, PROMO_RATE_LIMIT):
+        raise HTTPException(status_code=429, detail="Too many promo code attempts. Please wait before trying again.")
+    decoded = verify_token(req.id_token)
+    if not decoded:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    uid = decoded.get('uid')
+
+    db = get_db()
+    if not db:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+
+    code_upper = req.code.strip().upper()
+    code_ref = db.collection("promo_codes").document(code_upper)
+    code_doc = code_ref.get()
+
+    if not code_doc.exists:
+        raise HTTPException(status_code=400, detail="Invalid or already used code")
+
+    promo = code_doc.to_dict()
+    if promo.get("is_used"):
+        raise HTTPException(status_code=400, detail="Invalid or already used code")
+
+    now = datetime.utcnow()
+    expiry_date = (now + relativedelta(months=int(promo["duration_months"]))).date().isoformat()
+
+    user_ref = db.collection("users").document(uid)
+    user_doc = user_ref.get()
+    user_email = user_doc.to_dict().get("email", "") if user_doc.exists else ""
+
+    code_ref.update({
+        "is_used": True,
+        "used_by_email": user_email,
+        "used_at": now.isoformat(),
+    })
+
+    user_ref.set({
+        "subscription_tier": promo["plan_id"],
+        "credits_remaining": int(promo["credits_per_month"]),
+        "billing_cycle_start": now.isoformat(),
+        "billing_cycle_end": expiry_date,
+        "subscription_expiry": expiry_date,
+        "is_promo_user": True,
+        "promo_code_used": code_upper,
+        "promo_plan": promo["plan_id"],
+        "promo_expires": expiry_date,
+    }, merge=True)
+
+    return {
+        "success": True,
+        "plan": promo["plan_id"],
+        "credits": int(promo["credits_per_month"]),
+        "expires": expiry_date,
+    }
+
+
 @app.post("/api/translate")
 async def translate_captions(req: TranslateRequest):
     try:
@@ -730,19 +883,27 @@ async def translate_captions(req: TranslateRequest):
 
 class DetectLanguageRequest(BaseModel):
     file_id: str
+    id_token: str = ""  # Firebase Auth Token (optional — bypassed in dev mode)
 
 @app.post("/api/detect-language")
 async def detect_language(req: DetectLanguageRequest):
-    input_path = None
-    for f in os.listdir(UPLOAD_DIR):
-        if f.startswith(req.file_id):
-            input_path = os.path.join(UPLOAD_DIR, f)
-            break
+    # Auth — same dev-mode bypass as /api/export
+    is_dev_token = not req.id_token or req.id_token == 'mock-token'
+    if not is_dev_token:
+        decoded_token = verify_token(req.id_token)
+        if not decoded_token:
+            db_check = get_db()
+            if db_check is not None:
+                raise HTTPException(status_code=401, detail="Authentication required")
+    if not _validate_file_id(req.file_id):
+        raise HTTPException(status_code=400, detail="Invalid file_id")
+    input_path = _safe_find_upload(req.file_id)
     if not input_path:
         return {"success": False, "error": "File not found"}
     try:
         import tempfile
-        temp_path = os.path.join(tempfile.gettempdir(), f"detect_{req.file_id}.mp3")
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as _tf:
+            temp_path = _tf.name
         subprocess.run([
             "ffmpeg", "-i", input_path, "-t", "30",
             "-vn", "-acodec", "mp3", "-y", temp_path
@@ -771,11 +932,17 @@ async def delete_user_file(req: DeleteFileRequest):
         raise HTTPException(status_code=401, detail="Auth required")
     uid = decoded_token.get('uid')
 
-    # Delete local file if exists
-    for f in os.listdir(EXPORT_DIR) if os.path.exists(EXPORT_DIR) else []:
-        if req.file_id in f:
+    if not _validate_file_id(req.file_id):
+        raise HTTPException(status_code=400, detail="Invalid file_id")
+
+    # Delete local file using exact filename — never substring match
+    if os.path.exists(EXPORT_DIR):
+        exact_name = f"export_{req.file_id}.mp4"
+        candidate = os.path.realpath(os.path.join(EXPORT_DIR, exact_name))
+        real_export_dir = os.path.realpath(EXPORT_DIR)
+        if candidate.startswith(real_export_dir + os.sep) and os.path.isfile(candidate):
             try:
-                os.remove(os.path.join(EXPORT_DIR, f))
+                os.remove(candidate)
             except Exception:
                 pass
 
