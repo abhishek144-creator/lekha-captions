@@ -5,6 +5,7 @@ import requests
 import json
 import math
 import re
+import shutil
 from openai import OpenAI
 from sarvamai import SarvamAI
 
@@ -230,6 +231,9 @@ BOLD_VARIANTS = {
 class VideoProcessor:
     def __init__(self, fonts_dir):
         self.fonts_dir = os.path.abspath(fonts_dir)
+        self.backend_dir = os.path.dirname(os.path.abspath(__file__))
+        self.project_root = os.path.dirname(self.backend_dir)
+        self.template_overlay_script = os.path.join(self.project_root, "scripts", "render_template_overlay.mjs")
         os.makedirs(self.fonts_dir, exist_ok=True)
         self.client = None # Lazy init
         self._ensure_fallback_font()
@@ -392,7 +396,8 @@ class VideoProcessor:
                 except Exception as e:
                     print(f"[Warning] OpenAI Init Warning: {e}. Proceeding to mock fallback.")
             
-            audio_p = tempfile.mktemp(suffix=".mp3")
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as _tf:
+                audio_p = _tf.name
             subprocess.run(["ffmpeg", "-y", "-i", input_p, "-vn", "-ar", "16000", "-ac", "1", audio_p],
                            check=True, capture_output=True)
 
@@ -643,6 +648,18 @@ class VideoProcessor:
                 print(f"[Reframe] Auto-reframing horizontal video to vertical: {new_w}x{video_h}")
                 video_w = new_w # Update subtitle canvas width to match new cropped width
 
+            # Templates are rendered with the same browser DOM/CSS pipeline as the app preview.
+            if self._should_use_dom_template_renderer(style):
+                return self._render_dom_template_overlay(
+                    input_p=input_p,
+                    output_p=output_p,
+                    captions=captions,
+                    style=style,
+                    video_w=video_w,
+                    video_h=video_h,
+                    crop_filter=crop_filter.rstrip(','),
+                )
+
             ass_path = self._create_styled_ass(captions, style, font_info, video_w, video_h, word_layouts)
 
             # FFmpeg on Windows: 1) drive letters break filter parsing, 2) backslashes are escape chars
@@ -738,6 +755,123 @@ class VideoProcessor:
             import traceback
             traceback.print_exc()
             return {"success": False, "error": str(e)}
+
+    def _should_use_dom_template_renderer(self, style):
+        template_id = str(style.get('template_id') or '').strip()
+        return bool(template_id)
+
+    def _get_video_duration(self, video_path):
+        try:
+            result = subprocess.run(
+                [
+                    "ffprobe", "-v", "error", "-show_entries", "format=duration",
+                    "-of", "default=nw=1:nk=1", video_path
+                ],
+                capture_output=True, text=True, check=True
+            )
+            return max(float((result.stdout or "0").strip() or 0), 0.01)
+        except Exception:
+            return 1.0
+
+    def _get_quality_settings(self, quality):
+        if quality == '4k':
+            return "scale=2160:-2:flags=lanczos", "18", "192k"
+        if quality == '720p':
+            return "scale=720:-2:flags=lanczos", "26", "128k"
+        return "scale=1080:-2:flags=lanczos", "22", "128k"
+
+    def _render_dom_template_overlay(self, input_p, output_p, captions, style, video_w, video_h, crop_filter=""):
+        quality = style.get('quality', '1080p')
+        scale_filter, crf, audio_bitrate = self._get_quality_settings(quality)
+        duration = self._get_video_duration(input_p)
+
+        with tempfile.TemporaryDirectory(prefix="caption-template-overlay-") as temp_dir:
+            payload_path = os.path.join(temp_dir, "payload.json")
+            overlay_dir = os.path.join(temp_dir, "overlay_frames")
+            overlay_mov = os.path.join(temp_dir, "overlay.mov")
+            os.makedirs(overlay_dir, exist_ok=True)
+
+            payload = {
+                "captions": captions,
+                "style": style,
+                "video_width": video_w,
+                "video_height": video_h,
+                "duration": duration,
+                "output_dir": overlay_dir,
+            }
+            with open(payload_path, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle, ensure_ascii=False)
+
+            render_cmd = ["node", self.template_overlay_script, payload_path]
+            print(f"[Template DOM] Rendering overlay frames with: {' '.join(render_cmd)}")
+            render_result = subprocess.run(
+                render_cmd,
+                capture_output=True,
+                text=True,
+                cwd=self.project_root,
+            )
+            if render_result.stdout:
+                print(f"[Template DOM] stdout: {render_result.stdout[-1000:]}")
+            if render_result.returncode != 0:
+                return {
+                    "success": False,
+                    "error": f"Template renderer failed: {(render_result.stderr or render_result.stdout)[-800:]}"
+                }
+
+            frames_txt = os.path.join(overlay_dir, "frames.txt")
+            if not os.path.exists(frames_txt):
+                return {"success": False, "error": "Template renderer did not create frames.txt"}
+
+            concat_cmd = [
+                "ffmpeg", "-y",
+                "-f", "concat", "-safe", "0",
+                "-i", frames_txt,
+                "-vsync", "vfr",
+                "-c:v", "qtrle",
+                "-pix_fmt", "argb",
+                overlay_mov,
+            ]
+            print(f"[Template DOM] Building overlay video: {' '.join(concat_cmd)}")
+            concat_result = subprocess.run(concat_cmd, capture_output=True, text=True)
+            if concat_result.stderr:
+                print(f"[Template DOM] concat stderr (last 1000 chars): {concat_result.stderr[-1000:]}")
+            if concat_result.returncode != 0:
+                return {"success": False, "error": f"Overlay video build failed: {concat_result.stderr[-500:]}"}
+
+            base_chain = "[0:v]"
+            if crop_filter:
+                base_chain += f"{crop_filter},"
+            base_chain += "format=rgba[base]"
+            filter_complex = f"{base_chain};[base][1:v]overlay=0:0:format=auto[composited];[composited]{scale_filter},format=yuv420p[outv]"
+
+            cmd = [
+                "ffmpeg", "-y",
+                "-i", input_p.replace('\\', '/'),
+                "-i", overlay_mov.replace('\\', '/'),
+                "-filter_complex", filter_complex,
+                "-map", "[outv]",
+                "-map", "0:a?",
+                "-c:v", "libx264",
+                "-preset", "fast",
+                "-crf", crf,
+                "-c:a", "aac",
+                "-b:a", audio_bitrate,
+                "-shortest",
+                output_p.replace('\\', '/'),
+            ]
+
+            print(f"[Template DOM] Quality: {quality}, CRF: {crf}")
+            print(f"[Template DOM] filter_complex: {filter_complex}")
+            print(f"[Template DOM] Running FFmpeg: {' '.join(cmd)}")
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.stderr:
+                print(f"[Template DOM] FFmpeg stderr (last 1000 chars): {result.stderr[-1000:]}")
+            if result.returncode != 0:
+                return {"success": False, "error": f"FFmpeg failed: {result.stderr[-500:]}"}
+
+            if os.path.exists(output_p):
+                print(f"[Template DOM] Output file size: {os.path.getsize(output_p)} bytes")
+            return {"success": True}
 
     def _get_video_dimensions(self, video_path):
         try:
