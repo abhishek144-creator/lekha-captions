@@ -16,65 +16,152 @@ This is the **Work Diary** for the Lekha Captions project.
 
 > Keep this section always up-to-date. It is the first thing read at session start.
 
-### Active Worktree: `claude/stoic-moore`
-Path: `C:\Users\ADMIN\Downloads\caption-studio-publish-main\.claude\worktrees\stoic-moore\caption-studio-publish-main\`
+- [ ] **Timeline fix** — Speech track background is showing gold stripe. Only the individual caption *blocks* should be gold, not the entire track row background. Fix in `src/components/dashboard/CaptionTimeline.jsx`
+- [ ] **Gradient gold buttons** — Replace flat `bg-[#F5A623]` buttons with gradient: `bg-gradient-to-r from-[#FFE566] to-[#F5A623] hover:from-[#F5A623] hover:to-[#D4891A]` across all CTA buttons (14 files)
+- [ ] **Text gradient** — Apply `bg-gradient-to-r from-[#F5A623] to-[#FFD700] bg-clip-text text-transparent` to key headings, logo, and accent text
+- [ ] **Razorpay demo fallback** — `PricingModal.jsx` `handlePayment`: hardcoded `rzp_test_*` key removed (security fix). Now `RAZORPAY_KEY_ID = ''` in local dev unless `VITE_RAZORPAY_KEY_ID` is set. Need to implement graceful fallback: use key from backend `create-order` response (`orderData.key_id`) and only throw if that is also empty. Currently checkout never opens on local dev without env var.
+- [ ] **Landing footer bottom** — Bottom section / CTA strip color → gold (`src/components/landing/Footer.jsx`)
+- [ ] **UserAccount.jsx** — Update `PLAN_LIMITS` constant to new 3-plan structure (starter/creator/pro + yearly variants). Replace all purple/blue gradients with gold. Fix `planKey` lookup.
+- [ ] **SidebarNav.jsx** — Update `getPlanDetails()` to map new `starter / creator / pro` tiers with gold color. Remove old purple gradient usage.
+- [ ] **Effects / Emphasis button** — Not working in `StyleControls.jsx` and `WordClickPopup.jsx`. Put effects section in a collapsible `+` icon block in both places. Brainstorm: emphasis effect = bold + scale(1.15) + color highlight + optional shadow/glow on word.
+- [ ] **Styling tab width** — Increase styling panel width to match caption tab width
+- [ ] **Set env vars before deploy** — `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` (backend `.env`); `VITE_RAZORPAY_KEY_ID` (frontend `.env`); `ALLOWED_ORIGINS` (comma-separated prod domains). App will fail silently on payments/CORS without these.
+- [ ] **Commit + PR** — Commit all uncommitted changes, push branch `claude/stoic-moore`, open PR to `main`
+- [ ] **Verify template export fidelity** — User to test all 26+15 templates and confirm exported video matches dashboard preview after Session 5 fixes
+- [ ] **Verify Text tab export** — Confirm text boxes added via Text tab (custom color, animation, position) appear correctly in exported video
+- [ ] **Verify FPS in export** — Test 24/30/60 fps selector in Export tab produces correct output video frame rates
+- [ ] **Verify zoom/transition animations** — Test zoom_in, zoom_out, fade_in, slide_up/down/left/right in Animate tab → Basic category work correctly in preview
 
-### Pending Tasks
-- [ ] **GSAP Lab templates — commit & push worktree** — The GSAP system (Kaleidoscope + Montage) was built in the `stoic-moore` worktree but NOT committed yet. Files: `src/lib/gsap-setup.js`, `src/components/dashboard/GsapCaptionRenderer.jsx`, `src/components/dashboard/TemplatesTab3.jsx`, `src/components/dashboard/gsapTemplates/`, `src/styles/captionTemplatesLab.css` + edits to `SidebarNav.jsx`, `Dashboard.jsx`, `VideoPlayer.jsx`
-- [ ] **StyleControls.jsx JSX fix** — File was restructured (new section order: Position → Typography → Colors → Background → Effects → Extras) but has JSX syntax issues from the restructure. Needs careful review and fix before committing.
-- [ ] **Effects / Emphasis button** — Not working in `StyleControls.jsx` and `WordClickPopup.jsx`. Emphasis effect = bold + scale(1.15) + color highlight + optional shadow/glow on word.
-- [ ] **Razorpay demo fallback** — `PricingModal.jsx` `handlePayment`: when backend `create-order` fails, fall back to opening Razorpay checkout without `order_id` if `RAZORPAY_KEY_ID.startsWith('rzp_test_')`.
-- [ ] **UserAccount.jsx** — Update `PLAN_LIMITS` to new 3-plan structure (starter/creator/pro + yearly). Fix `planKey` lookup.
-- [ ] **SidebarNav.jsx** — Update `getPlanDetails()` to map `starter/creator/pro` tiers correctly.
-- [ ] **More GSAP Lab templates** — Quantum (ScrambleText + tile flip), Prismatic (MorphSVG blob), Aurora (venetian blinds + weight wave) — 3 more templates planned for the Lab tab.
+---
 
-### Completed This Week (already on GitHub main)
-- ✅ Full UI polish batch (Sessions 4–6): fullscreen overlay button in VideoPlayer, waveform redesign (white spikes), gold removal from templates/animate tab, export panel polish, sidebar/caption tab color balance
-- ✅ StyleControls section restructure (Position → Typography → Colors → Background → Effects → Extras)
-- ✅ GSAP Lab tab system built (Kaleidoscope + Montage templates, GsapCaptionRenderer, TemplatesTab3, Lab sidebar tab)
-- ✅ All changes pushed to GitHub (`origin/main` fully up to date as of 2026-03-23)
+### Session 6 — 2026-04-12
+
+**Theme:** Display modes, word drag UX, FPS export, animation system unification
+
+**Phases completed (3 rounds of user feedback):**
+
+---
+
+#### Phase 1 — New Features
+
+| Area | What Was Built |
+|------|---------------|
+| **"2 Line Sentence" display mode** | Added third option to Display Mode dropdown in StyleControls. Applies `whiteSpace: 'normal'` + `maxWidth: '28ch'` to allow natural word wrapping into ~2 lines. Applied to all 3 rendering paths in VideoPlayer (editor path, template path, custom path). |
+| **FPS selector in Export tab** | Added pill button group (24 / 30 / 60 fps) above Video Export section in ExportPanel. State: `exportFps`, default 30. Sends `fps: exportFps` in export payload. Backend ExportRequest model updated: `fps: int = 30`. Processor extracts fps, validates to `{24, 30, 60}`, passes `-r {fps}` flag to FFmpeg output. |
+| **Advanced Animation section** | Added Zoom (In/Out), Transition (Fade In, Slide Up/Down/Left/Right), and Camera Movements section + speed slider to StyleControls. (Superseded in Phase 3 — see below.) |
+
+---
+
+#### Phase 2 — Bug Fixes
+
+| Bug | Fix |
+|-----|-----|
+| **Word drag hid other words** | `hasOffset` flag: words with any `x/y/x_pct/y_pct` offset bypass timing-based show_inactive hide logic — they always render regardless of word_by_word timing. |
+| **Word drag auto-switch** | When user drags a word, the sentence auto-switches to `display_mode: 'word_by_word'` with `show_inactive: false` so the rest of the sentence plays out sequentially. Dragged word is never hidden thanks to `hasOffset` check. |
+| **BG layer too tall** | Reduced vertical padding in VideoPlayer background box from full `2 * padding` to `2 * Math.round(padding * 0.4)` — both top offset and height calculation — for a tighter, less intrusive background. |
+| **Advanced animation displacing captions** | Root cause: animation was applied to the outer absolutely-positioned div which uses `transform: translate(-50%, -50%)` for centering — CSS animation overrides this and displaces the caption. Fix: removed `getAdvancedAnimationStyle` entirely; zoom/transition now use standard `caption.animation` + `getAnimationStyle` framework. |
+| **Camera movements not functioning** | Attempted `both` fill mode with static keyframe transforms — not frame-driven so movement wasn't visible. Resolved in Phase 3 by removing camera movements entirely per user request. |
+
+---
+
+#### Phase 3 — UI Reorganization
+
+| Change | Detail |
+|--------|--------|
+| **Removed camera movements** | Entire camera movement UI section removed from StyleControls Advanced Animation. Camera movement keyframes (`adv-pan-left/right/up/down`, `adv-ken-burns`) removed from VideoPlayer. |
+| **Removed Advanced Animation section from StyleControls** | Entire section (zoom selector, transition selector, speed slider) removed. `advAnimOpen` state removed. |
+| **Moved zoom + transition to AnimateTab → Basic** | 7 new animations added at top of Basic category: `zoom_in`, `zoom_out`, `fade_in`, `slide_up`, `slide_down`, `slide_left`, `slide_right`. Animation counter updated: 34 → 44. |
+| **Removed "Caption Enter Animation" section from AnimateTab** | Separate Zoom/Transition/Speed controls section removed; functionality now covered by Basic animations. `captionStyle` / `setCaptionStyle` props removed from AnimateTab and Dashboard. |
+| **VideoPlayer animation defs updated** | 7 new entries added to `getAnimationStyle` defs mapping to `adv-*` keyframes at 400ms duration. |
+
+---
+
+**Architecture — Animation System After Session 6:**
+- **All animations** (including zoom/transition) are stored in `caption.animation` per-caption
+- `getAnimationStyle` in VideoPlayer maps animation name → CSS animation definition
+- No global `captionStyle.adv_zoom` / `captionStyle.adv_transition` fields — those are gone
+- Export: zoom/transition animations are CSS-only (preview) — exported video uses ASS word-timing, not keyframes
+
+**Files Modified:**
+- `src/components/dashboard/StyleControls.jsx` — 2-line mode + whiteSpace/maxWidth; removed Advanced Animation section
+- `src/components/dashboard/VideoPlayer.jsx` — hasOffset word visibility; reduced bg padding; added 7 animation defs; removed getAdvancedAnimationStyle; removed camera keyframes
+- `src/components/dashboard/AnimateTab.jsx` — 7 new Basic animations; updated counter; removed Caption Enter Animation section; simplified props
+- `src/pages/Dashboard.jsx` — removed captionStyle/setCaptionStyle props from AnimateTab
+- `src/components/dashboard/ExportPanel.jsx` — FPS state + pill UI + payload
+- `backend/main.py` — ExportRequest.fps field
+- `backend/processor.py` — fps extraction + FFmpeg `-r` flag
+
+---
+
+### Session 5 — 2026-04-02
+
+**Theme:** Export pipeline fixes — template fidelity, glow/shadow bugs, text element backgrounds, "Failed to fetch" error
+
+**Completed:**
+
+| Area | What Was Fixed |
+|------|---------------|
+| **"Export failed: Failed to fetch"** | Vite dev server (port 5000) was not running — no proxy existed for `/api`. Fixed by starting `npm run dev` in worktree. Both services now running: backend port 8000, frontend port 5000. |
+| **All shadow/glow templates rendering wrong** | Root cause: `shadow_offset_x \|\| 0`, `shadow_offset_y \|\| 2`, `shadow_blur \|\| 4` in `ExportPanel.jsx` — when a template sets these to `0`, `0 \|\| default` silently overwrote them. Neon templates got y_offset=2 (directional shadow) instead of 0 (glow). Fixed: changed all 4 instances to `??` (nullish coalescing). |
+| **Green glow on ALL words** | `global_eff` (glow ASS tags) was unconditionally appended to Layer 0 — all words glowed. Should only apply to active word in Layer 2 karaoke. Fixed in `processor.py`: added `needs_per_word_glow` flag; Layer 0 suppresses glow when per-word glow is active; Layer 2 applies glow only to active word, resets on inactive words. |
+| **t-9 Fire / t-12 Horror lost ALL glow** | Over-broad fix suppressed Layer-0 glow whenever `secondary_hex` was present + `is_glow_shadow`. But these templates set `secondary == primary` for uniform global glow. Fixed: `needs_per_word_glow` now also checks `secondary != primary`. |
+| **Text element backgrounds not rendering** | ASS `BorderStyle=3` (opaque background box) is a Style-header property — can't be overridden inline. Added second ASS Style `TextBg` with `BorderStyle=3` in header when any text element needs a background. Text element Dialogue lines reference `TextBg` style instead of `Default`. |
+
+**Key Rule Learned — `||` vs `??` for style numerics:**
+Always use `??` for any numeric style property that can legitimately be `0`:
+- `shadow_blur`, `shadow_offset_x`, `shadow_offset_y`
+- `background_padding`, `background_h_multiplier`, `position_y`, `position_x`
+Using `||` silently replaces `0` with the default, breaking all templates that zero out a property.
+
+**ASS Glow Logic Summary:**
+- `shadow_offset_x=0` AND `shadow_offset_y=0` → **Neon/glow** effect (use `\bord\3c\blur\shad0`)
+- Either offset non-zero → **Drop shadow** (use `\shad` with offsets)
+- `secondary_color != primary_color` + glow → **Per-word karaoke glow** (Layer 2 only)
+- `secondary_color == primary_color` + glow → **Global uniform glow** (Layer 0)
+
+**Files Modified:**
+- `src/components/dashboard/ExportPanel.jsx` — `||` → `??` for shadow_blur, shadow_offset_x, shadow_offset_y (global caption style + text element custom_style)
+- `backend/processor.py` — `is_glow_shadow` + `needs_per_word_glow` detection; Layer-0 glow suppression; per-word active/inactive glow in Layer 2; `TextBg` ASS style definition for text element backgrounds
+
+**Added to Known Fixed Bugs in CLAUDE.md:** (pending — should be added)
+- `||` vs `??` for shadow numerics in ExportPanel.jsx
+- Per-word glow suppression on Layer 0 (`needs_per_word_glow` in processor.py)
+- TextBg ASS style for text element backgrounds (processor.py)
+
+---
+
+### Session 4 — 2026-04-01
+
+**Theme:** Style/template propagation fixes, animation keyframes, Caption Display mode (word-by-word vs sentence)
+
+**Completed:**
+
+| Area | What Was Fixed |
+|------|---------------|
+| `VideoPlayer.jsx` — template path | Fixed word timing: was reading `caption.start/end`, now correctly reads `caption.start_time/end_time` — template word highlighting was broken |
+| `VideoPlayer.jsx` — template path | Unfroze hardcoded `fontSize: '24px'` → reads `captionStyle.font_size` |
+| `VideoPlayer.jsx` — template path | Added full inline style block: `lineHeight`, `fontWeight`, `fontStyle`, `textAlign`, `letterSpacing`, `wordSpacing`, `textTransform`, `animation` — all were missing |
+| `VideoPlayer.jsx` — non-template path | Added `letterSpacing` and `wordSpacing` that were previously hardcoded to `'normal'` |
+| `VideoPlayer.jsx` — non-template path | Added word-by-word IIFE wrapper: respects `captionStyle.show_inactive === false` to hide future words |
+| `captionTemplates.css` | Added all missing `@keyframes` and `.animate-*` classes for 12 standard + 21 advanced animations — animate tab was silently no-oping |
+| `StyleControls.jsx` | Added "Caption Display" toggle in Typography section: **Sentence** / **Word by Word** buttons; writes `show_inactive: true/false` to captionStyle; active state uses gold `#F5A623` |
+
+**Architecture Notes:**
+- `show_inactive` field: `false` = word-by-word (hide future words), `true`/`undefined` = sentence (show all at once)
+- `wordSpacing` formula: `(word_spacing - 1) * 4` px — default `word_spacing=1` → `0px` extra
+- Template rendering applies CSS class (`t-XXX`) + CSS variables + full inline style on wrapper → word spans get `.word`, `.active`, `.current`, `.done` classes
+- Non-template rendering: inline style applied per-caption-block; words split from `caption.text`
+- Backend (`processor.py`) already handles `show_inactive=False` → per-word ASS Dialogue entries; `letter_spacing` → ASS Style Spacing field — no backend changes needed
+- Export payload (`ExportPanel.jsx`) already sends all style fields — no changes needed
+
+**Files Modified:**
+- `src/components/dashboard/VideoPlayer.jsx`
+- `src/components/dashboard/StyleControls.jsx`
+- `src/styles/captionTemplates.css`
 
 ---
 
 ## Session Log
-
----
-
-### Session 6 — 2026-03-23
-
-**Theme:** GSAP Lab template system, git sync to GitHub
-
-**Completed:**
-
-| File | What Changed |
-|------|-------------|
-| `src/lib/gsap-setup.js` | NEW — imports gsap@3.14.1 + registers SplitText, DrawSVGPlugin, ScrambleTextPlugin, TextPlugin, CustomEase |
-| `src/components/dashboard/GsapCaptionRenderer.jsx` | NEW — React component managing GSAP template lifecycle (setup/update/clean with useEffect) |
-| `src/components/dashboard/gsapTemplates/index.js` | NEW — registry: `labTemplates` array + `getLabTemplate(id)` |
-| `src/components/dashboard/gsapTemplates/kaleidoscope.js` | NEW — 3-variant cycling (Rise Reveal / 3-Level Bebas Stack / Split Card), cycles `captionIndex % 3` |
-| `src/components/dashboard/gsapTemplates/montage.js` | NEW — documentary editorial: Playfair Display, lines slide from left, gold power word + DrawSVG underline |
-| `src/components/dashboard/TemplatesTab3.jsx` | NEW — Lab tab UI with animated mini-previews (rAF loop), template cards, "GSAP" badge |
-| `src/styles/captionTemplatesLab.css` | NEW — scoped styles for GSAP containers |
-| `src/components/dashboard/SidebarNav.jsx` | Added `FlaskConical` import + `{ id: 'templates3', icon: FlaskConical, label: 'Lab' }` to navItems |
-| `src/pages/Dashboard.jsx` | Added `TemplatesTab3` import + `{activeTab === 'templates3' && <TemplatesTab3 .../>}` render |
-| `src/components/dashboard/VideoPlayer.jsx` | Added `GsapCaptionRenderer` import + `captionTemplatesLab.css` import + `t-lab-*` branch before CSS template path |
-
-**Key Architecture:**
-- `t-lab-*` template IDs trigger GSAP renderer; all other `t-*` IDs use existing CSS path — zero conflict
-- Word timing: `computeWordState(caption, currentTime)` in GsapCaptionRenderer uses `caption.words[].start/end` for per-word precision; fallback to even distribution
-- Multi-style cycling: `captionIndex % 3` determines variant per caption (0=rise, 1=stack, 2=splitcard)
-- Export: lab templates are preview-only; backend uses standard fallback rendering for `t-lab-*`
-- Fonts used: `Bebas Neue` (stack variant), `Playfair Display` (montage + splitcard top line), Inter (rise reveal + card text)
-
-**Git:**
-- Committed 6 previously-uncommitted files in main repo (`96efefe`)
-- Pulled GitHub PR merge commit (`db8ee21` — user's manual PR from GitHub UI)
-- Pushed all 12 commits to `origin/main` — GitHub fully up to date
-- **GSAP Lab files NOT committed yet** — still unstaged in `stoic-moore` worktree
-
-**Still pending:**
-- Commit GSAP Lab files to `stoic-moore` branch and push
-- StyleControls.jsx JSX syntax review (restructured sections may have unclosed divs)
 
 ---
 
@@ -150,3 +237,51 @@ Path: `C:\Users\ADMIN\Downloads\caption-studio-publish-main\.claude\worktrees\st
 - Noto Sans Latin: added `NotoSans` entry in `GOOGLE_FONTS_MAP`; fixed ass_name collision (`processor.py`)
 
 ---
+
+### Session 7 — 2026-04-15
+
+**Theme:** Security hardening — full audit and fix across backend + frontend
+
+**What was done:**
+
+Full security review of the codebase was requested. 15 issues found and categorised by severity. All high/medium issues fixed in the same session. Changes committed to both `main` branch and `claude/stoic-moore` worktree.
+
+---
+
+#### Fixes Applied (10 total across 6 files)
+
+| # | Severity | Issue | Fix | Files |
+|---|---|---|---|---|
+| 1 | Critical | Hardcoded Razorpay test key `rzp_test_RJWsOLmZ6GL27m` in 3 frontend files and backend default | Removed all hardcoded fallbacks; backend defaults to `""`; frontend uses `VITE_RAZORPAY_KEY_ID` env var or `orderData.key_id` from backend response | `main.py`, `RazorpayPayment.jsx`, `PricingModal.jsx`, `PricingSection.jsx` |
+| 2 | High | CORS wildcard default (`"*"`) with `allow_credentials=True`; `allow_methods=["*"]`; `allow_headers=["*"]` | Default now `localhost:3000/5000` only; explicit `allow_methods=["GET","POST"]`; explicit `allow_headers=["Content-Type","Authorization"]` | `main.py` |
+| 3 | High | Path traversal in all 3 file-lookup loops — `startswith(file_id)` with no UUID validation | Added `_validate_file_id()` (UUID check) + `_safe_find_upload()` (realpath containment check); all 3 loops replaced | `main.py` |
+| 4 | High | `/api/process` and `/api/detect-language` had no auth check — any caller could trigger paid API calls | Added `id_token` field to both request models; same dev-mode bypass pattern as `/api/export` | `main.py` |
+| 5 | High | Export rate limit (5/24h) was commented out with a TODO | Uncommented — re-enabled | `main.py` |
+| 6 | Medium | No rate limiting on `create-order`, `verify-payment`, `redeem-promo` — allowed brute-force of promo codes and payment signatures | Added `_check_rate()` helper; payment endpoints: 10/hour/IP; promo: 5/hour/IP | `main.py` |
+| 7 | Medium | `/api/debug/last-ass` publicly accessible, leaking server filesystem path in response | Gated behind `DEBUG_MODE` env var; removed `"path"` from response | `main.py` |
+| 8 | Medium | `/api/delete-file` used substring match (`req.file_id in f`) — could delete other users' exports | Replaced with exact filename match (`export_{file_id}.mp4`) + UUID validation + `realpath` containment check | `main.py` |
+| 9 | Medium | `tempfile.mktemp()` (deprecated, TOCTOU race) used in processor + detect-language used user-controlled `file_id` in temp path | Replaced with `NamedTemporaryFile(delete=False)` in both places | `main.py`, `processor.py` |
+| 10 | Low | Vite dev server bound to `0.0.0.0` with `allowedHosts: true` | Changed to `host: 'localhost'`; `allowedHosts: ['localhost', '127.0.0.1']` | `vite.config.js` |
+
+---
+
+#### Issues noted but not fixed (require design decisions or new dependencies)
+
+| Issue | Reason not fixed |
+|---|---|
+| File upload: no magic-byte validation (only extension checked) | Requires `python-magic` dependency; not added to keep scope minimal |
+| `style: Dict[str, Any]` in `ExportRequest` accepts arbitrary unvalidated data | Requires new typed Pydantic `StyleModel` — large schema change, risk of breaking export |
+| No auth on `/api/fonts` | Low risk; public font list. Intentionally left as-is |
+
+---
+
+**Commits:**
+- `main` branch: `806da78` — 6 files changed
+- `claude/stoic-moore` worktree: `2582bb1` — same fixes included
+
+**Env vars required before production deploy:**
+- `RAZORPAY_KEY_ID` + `RAZORPAY_KEY_SECRET` — backend `.env`
+- `VITE_RAZORPAY_KEY_ID` — frontend `.env`
+- `ALLOWED_ORIGINS` — comma-separated list of allowed frontend domains (e.g. `https://app.lekha.in`)
+- `DEBUG_MODE` — set only in development if you need `/api/debug/last-ass`
+
