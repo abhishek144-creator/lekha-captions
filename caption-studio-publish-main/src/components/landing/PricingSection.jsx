@@ -5,7 +5,7 @@ import { Check, Zap, Crown, Star, Loader2 } from 'lucide-react'
 import { createPageUrl } from '@/utils'
 import { useAuth } from '@/lib/AuthContext'
 
-const RAZORPAY_KEY_ID = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_RJWsOLmZ6GL27m'
+const RAZORPAY_KEY_ID = import.meta.env.VITE_RAZORPAY_KEY_ID || ''
 const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
 
 const loadRazorpayScript = () => {
@@ -268,7 +268,7 @@ export default function PricingSection() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ delay: idx * 0.1 }}
-              className="relative rounded-2xl p-8 bg-zinc-900 cursor-pointer"
+              className="relative rounded-2xl p-5 md:p-8 bg-zinc-900 cursor-pointer"
               onClick={() => setSelectedPlan(plan.id)}
               style={(plan.popular || selectedPlan === plan.id) ? {
                 background: 'linear-gradient(#18181b, #18181b) padding-box, linear-gradient(135deg, #BF953F 0%, #FCF6BA 45%, #B38728 70%, #AA771C 100%) border-box',
@@ -288,11 +288,11 @@ export default function PricingSection() {
                 <plan.icon className={`w-6 h-6 ${plan.popular ? 'text-black' : 'text-white'}`} />
               </div>
 
-              <h3 className="text-xl font-semibold text-white mb-1">{plan.name}</h3>
+              <h3 className="text-base md:text-xl font-semibold text-white mb-1">{plan.name}</h3>
               <p className="text-[#949494] text-sm mb-4">{plan.description}</p>
 
               <div className="flex items-baseline gap-1 mb-1">
-                <span className="text-4xl font-bold text-white">
+                <span className="text-3xl md:text-4xl font-bold text-white">
                   {billing === 'yearly' ? plan.yearlyInrPrice : plan.monthlyInrPrice}
                 </span>
                 <span className="text-gray-400">/mo</span>
