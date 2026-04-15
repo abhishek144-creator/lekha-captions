@@ -9,8 +9,9 @@ import {
 import { Button } from '@/components/ui/button'
 import { Check, Crown, Zap, Star, Loader2 } from 'lucide-react'
 import { auth } from '@/lib/firebase'
+import { useAuth } from '@/lib/AuthContext'
 
-const RAZORPAY_KEY_ID = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_RJWsOLmZ6GL27m'
+const RAZORPAY_KEY_ID = import.meta.env.VITE_RAZORPAY_KEY_ID || ''
 
 const loadRazorpayScript = () => new Promise((resolve, reject) => {
   if (window.Razorpay) { resolve(true); return }
@@ -94,6 +95,11 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
   const [processingPlan, setProcessingPlan] = useState(null)
   const [billing, setBilling] = useState('monthly')
   const [selectedPlan, setSelectedPlan] = useState(null)
+  const [promoCode, setPromoCode] = useState('')
+  const [promoStatus, setPromoStatus] = useState(null)
+  const [promoLoading, setPromoLoading] = useState(false)
+
+  const { refreshUserData } = useAuth()
 
   useEffect(() => {
     loadRazorpayScript().catch(() => {})
@@ -109,7 +115,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
         return
       }
 
-      const currentUser = auth.currentUser
+      const currentUser = user || auth.currentUser
       if (!currentUser) {
         alert('Please log in first to purchase a plan.')
         setProcessingPlan(null)
@@ -187,12 +193,43 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
     }
   }
 
+  const handlePromoRedeem = async () => {
+    if (!promoCode.trim()) return
+    setPromoLoading(true)
+    setPromoStatus(null)
+    try {
+      const currentUser = user || auth.currentUser
+      if (!currentUser) {
+        setPromoStatus({ type: 'error', message: 'Please log in first.' })
+        return
+      }
+      const idToken = await currentUser.getIdToken()
+      const res = await fetch('/api/redeem-promo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id_token: idToken, code: promoCode.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || 'Redemption failed')
+      setPromoStatus({
+        type: 'success',
+        message: `🎉 Promo activated! Your ${data.plan} plan is free until ${data.expires}`,
+      })
+      setPromoCode('')
+      await refreshUserData()
+    } catch (err) {
+      setPromoStatus({ type: 'error', message: err.message })
+    } finally {
+      setPromoLoading(false)
+    }
+  }
+
   const handleTopup = async (topup) => {
     setProcessingPlan(topup.plan_id)
     try {
       await loadRazorpayScript()
       if (!window.Razorpay) { alert('Payment system unavailable.'); setProcessingPlan(null); return }
-      const currentUser = auth.currentUser
+      const currentUser = user || auth.currentUser
       if (!currentUser) { alert('Please log in first.'); setProcessingPlan(null); return }
       const idToken = await currentUser.getIdToken()
       const orderRes = await fetch('/api/create-order', {
@@ -385,6 +422,33 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
             </div>
           )
         })()}
+
+        {/* Promo Code Section */}
+        <div className="mt-4 pt-4 border-t border-white/10">
+          <p className="text-sm text-gray-400 mb-2">Have a promo code?</p>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={promoCode}
+              onChange={e => setPromoCode(e.target.value.toUpperCase())}
+              onKeyDown={e => e.key === 'Enter' && handlePromoRedeem()}
+              placeholder="Enter code"
+              className="flex-1 bg-white/5 border border-white/20 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-white/40"
+            />
+            <Button
+              onClick={handlePromoRedeem}
+              disabled={promoLoading || !promoCode.trim()}
+              className="shrink-0 bg-white/10 hover:bg-white/20 disabled:opacity-50 text-white font-semibold"
+            >
+              {promoLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Apply'}
+            </Button>
+          </div>
+          {promoStatus && (
+            <p className={`mt-2 text-sm ${promoStatus.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>
+              {promoStatus.message}
+            </p>
+          )}
+        </div>
 
         <p className="text-xs text-gray-600 text-center mt-3">
           Credits deducted only after successful export · Secure payments via Razorpay

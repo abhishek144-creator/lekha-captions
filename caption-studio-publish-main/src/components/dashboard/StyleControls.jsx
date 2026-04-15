@@ -361,142 +361,6 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
 
         {/* ── 1. POSITION ──────────────────────────── */}
         <div className="space-y-4">
-          <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider">POSITION</h3>
-
-          {/* Text Alignment */}
-          <div>
-            <Label className="text-sm text-gray-400 mb-2 block">Text Alignment</Label>
-            <div className="bg-zinc-900 border border-white/5 rounded-lg p-1 flex gap-1">
-              <button
-                onClick={() => updateStyle('text_align', 'left')}
-                className={`flex-1 flex items-center justify-center py-1.5 rounded-md transition-all ${getCurrentValue('text_align', 'center') === 'left'
-                  ? "bg-white text-black shadow-sm"
-                  : "text-gray-400 hover:text-white hover:bg-white/5"
-                  }`}
-              >
-                <AlignLeft className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => updateStyle('text_align', 'center')}
-                className={`flex-1 flex items-center justify-center py-1.5 rounded-md transition-all ${getCurrentValue('text_align', 'center') === 'center'
-                  ? "bg-white text-black shadow-sm"
-                  : "text-gray-400 hover:text-white hover:bg-white/5"
-                  }`}
-              >
-                <AlignCenter className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => updateStyle('text_align', 'right')}
-                className={`flex-1 flex items-center justify-center py-1.5 rounded-md transition-all ${getCurrentValue('text_align', 'center') === 'right'
-                  ? "bg-white text-black shadow-sm"
-                  : "text-gray-400 hover:text-white hover:bg-white/5"
-                  }`}
-              >
-                <AlignRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-
-          {/* Case */}
-          <div>
-            <Label className="text-sm text-gray-400 mb-2 block">Case</Label>
-            <div className="bg-zinc-900 border border-white/5 rounded-lg p-1 flex gap-1">
-              <button
-                onClick={() => {
-                  updateStyle('text_case', 'lowercase');
-                  if (!selectedTextElement) updateStyle('is_caps', false);
-                }}
-                className={`flex-1 flex items-center justify-center py-1.5 rounded-md text-xs font-medium transition-all ${getCurrentValue('text_case', 'none') === 'lowercase'
-                  ? "bg-white text-black shadow-sm"
-                  : "text-gray-400 hover:text-white hover:bg-white/5"
-                  }`}
-              >
-                aa
-              </button>
-              <button
-                onClick={() => {
-                  updateStyle('text_case', 'capitalize');
-                  if (!selectedTextElement) updateStyle('is_caps', false);
-                }}
-                className={`flex-1 flex items-center justify-center py-1.5 rounded-md text-xs font-medium transition-all ${getCurrentValue('text_case', 'none') === 'capitalize'
-                  ? "bg-white text-black shadow-sm"
-                  : "text-gray-400 hover:text-white hover:bg-white/5"
-                  }`}
-              >
-                Aa
-              </button>
-              <button
-                onClick={() => {
-                  updateStyle('text_case', 'uppercase');
-                  if (!selectedTextElement) updateStyle('is_caps', true);
-                }}
-                className={`flex-1 flex items-center justify-center py-1.5 rounded-md text-xs font-medium transition-all ${(getCurrentValue('text_case', 'none') === 'uppercase' || (!selectedTextElement && captionStyle.is_caps))
-                  ? "bg-white text-black shadow-sm"
-                  : "text-gray-400 hover:text-white hover:bg-white/5"
-                  }`}
-              >
-                AA
-              </button>
-            </div>
-          </div>
-
-          {/* Position Y - for text elements uses top */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <Label className="text-sm text-gray-400">Position Y</Label>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500">{selectedTextElement ? Math.round(selectedTextElement.customStyle?.top || 50) : (captionStyle.position_y || 75)}%</span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => updateStyle(selectedTextElement ? 'top' : 'position_y', selectedTextElement ? 50 : 75)}
-                  className="h-5 w-5 text-gray-500 hover:text-white"
-                >
-                  <RotateCcw className="w-3 h-3" />
-                </Button>
-              </div>
-            </div>
-            <Slider
-              value={[selectedTextElement ? (selectedTextElement.customStyle?.top || 50) : (captionStyle.position_y || 75)]}
-              onValueChange={([value]) => updateStyle(selectedTextElement ? 'top' : 'position_y', value, true)}
-              onPointerDown={() => addToHistory && addToHistory()}
-              min={5}
-              max={95}
-              step={1}
-              className="cursor-pointer"
-            />
-          </div>
-
-          {/* Position X - for text elements uses left */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <Label className="text-sm text-gray-400">Position X</Label>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500">{selectedTextElement ? Math.round(selectedTextElement.customStyle?.left || 50) : (captionStyle.position_x || 50)}%</span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => updateStyle(selectedTextElement ? 'left' : 'position_x', 50)}
-                  className="h-5 w-5 text-gray-500 hover:text-white"
-                >
-                  <RotateCcw className="w-3 h-3" />
-                </Button>
-              </div>
-            </div>
-            <Slider
-              value={[selectedTextElement ? (selectedTextElement.customStyle?.left || 50) : (captionStyle.position_x || 50)]}
-              onValueChange={([value]) => updateStyle(selectedTextElement ? 'left' : 'position_x', value, true)}
-              onPointerDown={() => addToHistory && addToHistory()}
-              min={0}
-              max={100}
-              step={1}
-              className="cursor-pointer"
-            />
-          </div>
-        </div>
-
-        {/* ── 2. TYPOGRAPHY ─────────────────────────── */}
-        <div className="space-y-4 pt-4 border-t border-white/5">
           <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider">TYPOGRAPHY</h3>
 
           {/* Font Family */}
@@ -738,6 +602,142 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
           )}
         </div>
 
+        {/* ── 2. POSITION ────────────────────────────── */}
+        <div className="space-y-4 pt-4 border-t border-white/5">
+          <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider">POSITION</h3>
+
+          {/* Position Y */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <Label className="text-sm text-gray-400">Position Y</Label>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500">{selectedTextElement ? Math.round(selectedTextElement.customStyle?.top || 50) : (captionStyle.position_y || 75)}%</span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => updateStyle(selectedTextElement ? 'top' : 'position_y', selectedTextElement ? 50 : 75)}
+                  className="h-5 w-5 text-gray-500 hover:text-white"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                </Button>
+              </div>
+            </div>
+            <Slider
+              value={[selectedTextElement ? (selectedTextElement.customStyle?.top || 50) : (captionStyle.position_y || 75)]}
+              onValueChange={([value]) => updateStyle(selectedTextElement ? 'top' : 'position_y', value, true)}
+              onPointerDown={() => addToHistory && addToHistory()}
+              min={5}
+              max={95}
+              step={1}
+              className="cursor-pointer"
+            />
+          </div>
+
+          {/* Position X */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <Label className="text-sm text-gray-400">Position X</Label>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500">{selectedTextElement ? Math.round(selectedTextElement.customStyle?.left || 50) : (captionStyle.position_x || 50)}%</span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => updateStyle(selectedTextElement ? 'left' : 'position_x', 50)}
+                  className="h-5 w-5 text-gray-500 hover:text-white"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                </Button>
+              </div>
+            </div>
+            <Slider
+              value={[selectedTextElement ? (selectedTextElement.customStyle?.left || 50) : (captionStyle.position_x || 50)]}
+              onValueChange={([value]) => updateStyle(selectedTextElement ? 'left' : 'position_x', value, true)}
+              onPointerDown={() => addToHistory && addToHistory()}
+              min={0}
+              max={100}
+              step={1}
+              className="cursor-pointer"
+            />
+          </div>
+
+          {/* Text Alignment */}
+          <div>
+            <Label className="text-sm text-gray-400 mb-2 block">Text Alignment</Label>
+            <div className="bg-zinc-900 border border-white/5 rounded-lg p-1 flex gap-1">
+              <button
+                onClick={() => updateStyle('text_align', 'left')}
+                className={`flex-1 flex items-center justify-center py-1.5 rounded-md transition-all ${getCurrentValue('text_align', 'center') === 'left'
+                  ? "bg-white text-black shadow-sm"
+                  : "text-gray-400 hover:text-white hover:bg-white/5"
+                  }`}
+              >
+                <AlignLeft className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => updateStyle('text_align', 'center')}
+                className={`flex-1 flex items-center justify-center py-1.5 rounded-md transition-all ${getCurrentValue('text_align', 'center') === 'center'
+                  ? "bg-white text-black shadow-sm"
+                  : "text-gray-400 hover:text-white hover:bg-white/5"
+                  }`}
+              >
+                <AlignCenter className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => updateStyle('text_align', 'right')}
+                className={`flex-1 flex items-center justify-center py-1.5 rounded-md transition-all ${getCurrentValue('text_align', 'center') === 'right'
+                  ? "bg-white text-black shadow-sm"
+                  : "text-gray-400 hover:text-white hover:bg-white/5"
+                  }`}
+              >
+                <AlignRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Case */}
+          <div>
+            <Label className="text-sm text-gray-400 mb-2 block">Case</Label>
+            <div className="bg-zinc-900 border border-white/5 rounded-lg p-1 flex gap-1">
+              <button
+                onClick={() => {
+                  updateStyle('text_case', 'lowercase');
+                  if (!selectedTextElement) updateStyle('is_caps', false);
+                }}
+                className={`flex-1 flex items-center justify-center py-1.5 rounded-md text-xs font-medium transition-all ${getCurrentValue('text_case', 'none') === 'lowercase'
+                  ? "bg-white text-black shadow-sm"
+                  : "text-gray-400 hover:text-white hover:bg-white/5"
+                  }`}
+              >
+                aa
+              </button>
+              <button
+                onClick={() => {
+                  updateStyle('text_case', 'capitalize');
+                  if (!selectedTextElement) updateStyle('is_caps', false);
+                }}
+                className={`flex-1 flex items-center justify-center py-1.5 rounded-md text-xs font-medium transition-all ${getCurrentValue('text_case', 'none') === 'capitalize'
+                  ? "bg-white text-black shadow-sm"
+                  : "text-gray-400 hover:text-white hover:bg-white/5"
+                  }`}
+              >
+                Aa
+              </button>
+              <button
+                onClick={() => {
+                  updateStyle('text_case', 'uppercase');
+                  if (!selectedTextElement) updateStyle('is_caps', true);
+                }}
+                className={`flex-1 flex items-center justify-center py-1.5 rounded-md text-xs font-medium transition-all ${(getCurrentValue('text_case', 'none') === 'uppercase' || (!selectedTextElement && captionStyle.is_caps))
+                  ? "bg-white text-black shadow-sm"
+                  : "text-gray-400 hover:text-white hover:bg-white/5"
+                  }`}
+              >
+                AA
+              </button>
+            </div>
+          </div>
+        </div>
+
         {/* ── 3. COLORS ─────────────────────────────── */}
         <div className="space-y-4 pt-4 border-t border-white/5">
           <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider">COLORS</h3>
@@ -752,7 +752,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
               className="flex items-center justify-between w-full text-xs text-gray-400 hover:text-gray-300"
             >
               <span>Solid</span>
-              <span>{showTextSolid ? '−' : '+'}</span>
+              <span className="text-lg font-bold leading-none">{showTextSolid ? '−' : '+'}</span>
             </button>
 
             {/* Color Grid - 7 in first row, 2 in second */}
@@ -826,7 +826,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
               className="flex items-center justify-between w-full mt-3 text-xs text-gray-400 hover:text-gray-300"
             >
               <span>Gradient</span>
-              <span>{showTextGradient ? '−' : '+'}</span>
+              <span className="text-lg font-bold leading-none">{showTextGradient ? '−' : '+'}</span>
             </button>
 
             {showTextGradient && (
@@ -915,7 +915,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
               className="flex items-center justify-between w-full text-xs text-gray-400 hover:text-gray-300"
             >
               <span>Solid</span>
-              <span>{showHighlightSolid ? '−' : '+'}</span>
+              <span className="text-lg font-bold leading-none">{showHighlightSolid ? '−' : '+'}</span>
             </button>
 
             {/* Color Grid - 7 in first row, 2 in second */}
@@ -989,7 +989,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
               className="flex items-center justify-between w-full mt-3 text-xs text-gray-400 hover:text-gray-300"
             >
               <span>Gradient</span>
-              <span>{showHighlightGradient ? '−' : '+'}</span>
+              <span className="text-lg font-bold leading-none">{showHighlightGradient ? '−' : '+'}</span>
             </button>
 
             {showHighlightGradient && (
@@ -1066,6 +1066,8 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
                 </div>
               </>
             )}
+          </div>
+        </div>
         </div>
 
         {/* ── 4. BACKGROUND ─────────────────────────── */}
@@ -1331,6 +1333,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
                 )}
               </div>
             )}
+        </div>
         </div>
 
         {/* ── 6. EXTRAS ─────────────────────────────── */}

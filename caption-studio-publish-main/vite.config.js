@@ -1,6 +1,6 @@
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
-import path from 'path';
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import path from 'path'
 
 export default defineConfig({
   plugins: [react()],
@@ -10,9 +10,9 @@ export default defineConfig({
     },
   },
   server: {
-    host: '0.0.0.0',
+    host: 'localhost',
     port: 5000,
-    allowedHosts: true,
+    allowedHosts: ['localhost', '127.0.0.1'],
     proxy: {
       // 1. Send API requests to Python
       '/api': {

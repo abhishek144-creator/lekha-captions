@@ -52,6 +52,22 @@ GOOGLE_FONTS_MAP = {
     'Unna': {'url': 'https://github.com/google/fonts/raw/main/ofl/unna/Unna-Regular.ttf', 'file': 'Unna-Regular.ttf', 'ass_name': 'Unna'},
     'VarelaRound': {'url': 'https://github.com/google/fonts/raw/main/ofl/varelaround/VarelaRound-Regular.ttf', 'file': 'VarelaRound-Regular.ttf', 'ass_name': 'Varela Round'},
     'WorkSans': {'url': 'https://github.com/google/fonts/raw/main/ofl/worksans/WorkSans%5Bwght%5D.ttf', 'file': 'WorkSans.ttf', 'ass_name': 'Work Sans'},
+    # TemplatesTab2 fonts
+    'AbrilFatface': {'url': 'https://github.com/google/fonts/raw/main/ofl/abrilfatface/AbrilFatface-Regular.ttf', 'file': 'AbrilFatface-Regular.ttf', 'ass_name': 'Abril Fatface'},
+    'Bitter': {'url': 'https://github.com/google/fonts/raw/main/ofl/bitter/Bitter%5Bwght%5D.ttf', 'file': 'Bitter.ttf', 'ass_name': 'Bitter'},
+    'Caveat': {'url': 'https://github.com/google/fonts/raw/main/ofl/caveat/Caveat%5Bwght%5D.ttf', 'file': 'Caveat.ttf', 'ass_name': 'Caveat'},
+    'CrimsonText': {'url': 'https://github.com/google/fonts/raw/main/ofl/crimsontext/CrimsonText-Regular.ttf', 'file': 'CrimsonText-Regular.ttf', 'ass_name': 'Crimson Text'},
+    'DarkerGrotesque': {'url': 'https://github.com/google/fonts/raw/main/ofl/darkergrotesque/DarkerGrotesque%5Bwght%5D.ttf', 'file': 'DarkerGrotesque.ttf', 'ass_name': 'Darker Grotesque'},
+    'DelaGothicOne': {'url': 'https://github.com/google/fonts/raw/main/ofl/delagothicone/DelaGothicOne-Regular.ttf', 'file': 'DelaGothicOne-Regular.ttf', 'ass_name': 'Dela Gothic One'},
+    'DMSerifDisplay': {'url': 'https://github.com/google/fonts/raw/main/ofl/dmserifdisplay/DMSerifDisplay-Regular.ttf', 'file': 'DMSerifDisplay-Regular.ttf', 'ass_name': 'DM Serif Display'},
+    'IBMPlexMono': {'url': 'https://github.com/google/fonts/raw/main/ofl/ibmplexmono/IBMPlexMono-Regular.ttf', 'file': 'IBMPlexMono-Regular.ttf', 'ass_name': 'IBM Plex Mono'},
+    'OverpassMono': {'url': 'https://github.com/google/fonts/raw/main/ofl/overpassmono/OverpassMono%5Bwght%5D.ttf', 'file': 'OverpassMono.ttf', 'ass_name': 'Overpass Mono'},
+    'Questrial': {'url': 'https://github.com/google/fonts/raw/main/ofl/questrial/Questrial-Regular.ttf', 'file': 'Questrial-Regular.ttf', 'ass_name': 'Questrial'},
+    'Righteous': {'url': 'https://github.com/google/fonts/raw/main/ofl/righteous/Righteous-Regular.ttf', 'file': 'Righteous-Regular.ttf', 'ass_name': 'Righteous'},
+    'Silkscreen': {'url': 'https://github.com/google/fonts/raw/main/ofl/silkscreen/Silkscreen-Regular.ttf', 'file': 'Silkscreen-Regular.ttf', 'ass_name': 'Silkscreen'},
+    'SpaceMono': {'url': 'https://github.com/google/fonts/raw/main/ofl/spacemono/SpaceMono-Regular.ttf', 'file': 'SpaceMono-Regular.ttf', 'ass_name': 'Space Mono'},
+    'Staatliches': {'url': 'https://github.com/google/fonts/raw/main/ofl/staatliches/Staatliches-Regular.ttf', 'file': 'Staatliches-Regular.ttf', 'ass_name': 'Staatliches'},
+    'Unbounded': {'url': 'https://github.com/google/fonts/raw/main/ofl/unbounded/Unbounded%5Bwght%5D.ttf', 'file': 'Unbounded.ttf', 'ass_name': 'Unbounded'},
 }
 
 INDIC_FONTS = {
@@ -376,7 +392,8 @@ class VideoProcessor:
                 except Exception as e:
                     print(f"[Warning] OpenAI Init Warning: {e}. Proceeding to mock fallback.")
             
-            audio_p = tempfile.mktemp(suffix=".mp3")
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as _tf:
+                audio_p = _tf.name
             subprocess.run(["ffmpeg", "-y", "-i", input_p, "-vn", "-ar", "16000", "-ac", "1", audio_p],
                            check=True, capture_output=True)
 
@@ -664,7 +681,9 @@ class VideoProcessor:
             ass_filter = f"ass={ass_rel}:fontsdir={fonts_rel}"
             vf_parts = [p for p in [crop_filter.rstrip(','), ass_filter, scale_filter] if p]
             vf_filter = ",".join(vf_parts)
-            print(f"[FFmpeg] Quality: {quality}, CRF: {crf}")
+            fps = style.get('fps', 30)
+            fps = int(fps) if fps in (24, 30, 60) else 30
+            print(f"[FFmpeg] Quality: {quality}, CRF: {crf}, FPS: {fps}")
             print(f"[FFmpeg] -vf filter: {vf_filter}")
             print(f"[FFmpeg] Input: {input_fwd}")
             print(f"[FFmpeg] Output: {output_fwd}")
@@ -672,6 +691,7 @@ class VideoProcessor:
             cmd = [
                 "ffmpeg", "-y", "-i", input_fwd,
                 "-vf", vf_filter,
+                "-r", str(fps),
                 "-map", "0:v:0", "-map", "0:a?",
                 "-c:v", "libx264", "-preset", "fast", "-crf", crf,
                 "-c:a", "aac", "-b:a", audio_bitrate,
@@ -679,10 +699,40 @@ class VideoProcessor:
                 output_fwd
             ]
 
+            # Save a debug copy of the ASS file BEFORE running FFmpeg
+            debug_ass_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "last_export_debug.ass")
+            try:
+                import shutil
+                shutil.copy2(ass_path, debug_ass_path)
+                print(f"[Debug] ASS file saved to: {debug_ass_path}")
+                # Count Dialogue lines for quick sanity check
+                with open(ass_path, "r", encoding="utf-8") as _df:
+                    _lines = _df.readlines()
+                    _dialogue_count = sum(1 for l in _lines if l.startswith("Dialogue:"))
+                    print(f"[Debug] ASS file: {len(_lines)} total lines, {_dialogue_count} Dialogue lines")
+                    # Print first 3 Dialogue lines as sample
+                    _sample = [l.strip() for l in _lines if l.startswith("Dialogue:")][:3]
+                    for _s in _sample:
+                        print(f"[Debug] Sample: {_s[:200]}")
+            except Exception as _de:
+                print(f"[Debug] Could not save debug ASS: {_de}")
+
+            print(f"[FFmpeg] Running command: {' '.join(cmd)}")
             result = subprocess.run(cmd, capture_output=True, text=True)
+
+            # Always log FFmpeg stderr (even on success — libass warnings appear here)
+            if result.stderr:
+                print(f"[FFmpeg] stderr (last 1000 chars): {result.stderr[-1000:]}")
+
             if result.returncode != 0:
-                print(f"FFmpeg stderr: {result.stderr}")
                 return {"success": False, "error": f"FFmpeg failed: {result.stderr[-500:]}"}
+
+            # Verify output file exists and has size
+            if os.path.exists(output_fwd.replace('/', os.sep)):
+                out_size = os.path.getsize(output_fwd.replace('/', os.sep))
+                print(f"[FFmpeg] Output file size: {out_size} bytes")
+            else:
+                print(f"[FFmpeg] WARNING: Output file not found at {output_fwd}")
 
             if os.path.exists(ass_path):
                 os.remove(ass_path)
@@ -861,23 +911,31 @@ class VideoProcessor:
         return captions
 
     def _create_styled_ass(self, captions, style, font_info, video_w, video_h, word_layouts=None):
-        # Create ASS file in project dir (not system temp) so FFmpeg can use relative paths
+        """
+        Generate an ASS subtitle file for FFmpeg burning.
+
+        PRIMARY PATH (when template_id + word_layouts available):
+          Each word is rendered as an independent Dialogue line at its DOM-captured position.
+          Gives pixel-accurate positioning and per-word effects matching the CSS preview.
+
+        FALLBACK PATH (no template or no word_layouts):
+          Position-based with inline per-word style overrides (legacy behaviour).
+        """
         import uuid as _uuid
         ass_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f"_tmp_{_uuid.uuid4().hex[:8]}.ass")
 
+        # ── Scale factor: preview coords → video coords ────────────────────
         base_size = int(style.get('font_size', 18))
         preview_h = float(style.get('preview_height', 400))
+        if preview_h < 50:
+            preview_h = 400
         scale_factor = video_h / preview_h
         scaled_size = max(int(base_size * scale_factor), 20)
-        
+
+        # ── Effect/stroke/shadow override tag builder ──────────────────────
         def _get_effect_tags(eff_type, base_color_hex, stroke_data, shadow_data, eff_props):
-            # stroke_data = (has_stroke, width, color)
-            # shadow_data = (has_shadow, blur, ox, oy, color)
             base_c_ass = self._hex_to_ass(base_color_hex)
             tags = []
-            
-            import math
-            
             eff_offset = eff_props.get('offset', 50)
             eff_dir = eff_props.get('direction', -45)
             eff_blur = eff_props.get('blur', 50)
@@ -885,25 +943,20 @@ class VideoProcessor:
             eff_thick = eff_props.get('thickness', 50)
             eff_intens = eff_props.get('intensity', 50)
             eff_color = eff_props.get('color', '#000000')
-            
             dist = (eff_offset / 100.0) * 15 * scale_factor
             ox = round(math.cos(math.radians(eff_dir)) * dist, 1)
             oy = round(math.sin(math.radians(eff_dir)) * dist, 1)
             b_px = round((eff_blur / 100.0) * 20 * scale_factor, 1)
-            
             alpha_frac = max(0, min(1, 1.0 - (eff_trans / 100.0)))
             eff_c_ass = self._hex_to_ass(eff_color, alpha_frac)
-
             if eff_type == 'shadow':
                 tags.extend([f"\\bord0", f"\\shad4", f"\\xshad{ox}", f"\\yshad{oy}", f"\\blur{b_px}", f"\\4c{eff_c_ass}"])
             elif eff_type == 'lift':
                 lift_b = round((eff_intens / 100.0) * 30 * scale_factor, 1)
-                lift_opacity = (eff_intens / 100.0) * 0.8
-                lift_c_ass = self._hex_to_ass('#000000', lift_opacity)
+                lift_c_ass = self._hex_to_ass('#000000', (eff_intens / 100.0) * 0.8)
                 tags.extend([f"\\bord0", f"\\shad4", f"\\xshad0", f"\\yshad{round(15*scale_factor, 1)}", f"\\blur{lift_b}", f"\\4c{lift_c_ass}"])
             elif eff_type == 'hollow':
                 stroke_px = max(1, round((eff_thick / 100.0) * 4 * scale_factor, 1))
-                # \1a&HFF& makes fill transparent
                 tags.extend([f"\\1a&HFF&", f"\\bord{stroke_px}", f"\\3c{self._hex_to_ass(eff_color)}", f"\\shad0"])
             elif eff_type == 'splice':
                 stroke_px = max(1, round((eff_thick / 100.0) * 4 * scale_factor, 1))
@@ -912,7 +965,6 @@ class VideoProcessor:
                 stroke_px = max(1, round((eff_thick / 100.0) * 8 * scale_factor, 1))
                 tags.extend([f"\\bord{stroke_px}", f"\\3c{self._hex_to_ass(eff_color)}", f"\\shad0"])
             elif eff_type == 'echo':
-                # Echo is tricky in ASS. We use a single offset shadow to mimic it.
                 tags.extend([f"\\bord0", f"\\shad4", f"\\xshad{ox}", f"\\yshad{oy}", f"\\4c{eff_c_ass}"])
             elif eff_type == 'neon':
                 glow_px = round((eff_intens / 100.0) * 20 * scale_factor, 1)
@@ -934,1175 +986,791 @@ class VideoProcessor:
                 tags.extend([f"\\bord0", f"\\shad0"])
             return "".join(tags)
 
-        if word_layouts:
-            font_name = font_info['ass_name']
-
-            primary_hex = style.get('text_color', '#FFFFFF')
-            primary_ass = self._hex_to_ass(primary_hex, float(style.get('text_opacity', 1.0)))
-            
-            has_bg = style.get('has_background', False)
-            bg_hex = style.get('background_color', '#000000')
-            bg_opacity = float(style.get('background_opacity', 0.7))
-            bg_ass = self._hex_to_ass(bg_hex, bg_opacity)
-            bg_h_multiplier = float(style.get('background_h_multiplier', 1.1))
-
-            highlight_hex = style.get('highlight_color', '') or ''
-            secondary_hex_template = style.get('secondary_color', '') or ''
-            template_id_style = style.get('template_id', '') or ''
-            show_inactive_mode = style.get('show_inactive')
-            if show_inactive_mode is None: show_inactive_mode = True
-
-            with open(ass_path, "w", encoding="utf-8") as f:
-                f.write(f"""[Script Info]
-ScriptType: v4.00+
-PlayResX: {video_w}
-PlayResY: {video_h}
-WrapStyle: 0
-
-[V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,{font_name},{scaled_size},{primary_ass},&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,5,10,10,10,1
-
-[Events]
-Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-""")
-                print(f"USING PRECISE WORD LAYOUTS for ASS generation. Count: {len(word_layouts)}")
-                # Debug log to verify coordinates
-                first_key = next(iter(word_layouts))
-                print(f"Sample Layout [{first_key}]: {word_layouts[first_key]}")
-                
-                for c in captions:
-                    if float(c.get('end_time', 0)) <= float(c.get('start_time', 0)): continue
-                    c_start = self._fmt(float(c.get('start_time', 0)))
-                    c_end = self._fmt(float(c.get('end_time', 0)))
-                    
-                    if c.get('is_text_element'):
-                        cs = c.get('custom_style', {})
-                        px = int((float(cs.get('position_x', 50)) / 100) * video_w)
-                        py = int((float(cs.get('position_y', 50)) / 100) * video_h)
-                        # Apply Indic Y-correction for text elements (same as fallback path)
-                        _te_script = self._detect_script(c.get('text', ''))
-                        _TE_INDIC_Y_CORR = {
-                            'devanagari': -0.025, 'bengali': -0.020, 'gujarati': -0.020,
-                            'punjabi': -0.015, 'tamil': -0.015, 'telugu': -0.015,
-                            'kannada': -0.015, 'malayalam': -0.015, 'odia': -0.015, 'arabic': -0.010,
-                        }
-                        if _te_script in _TE_INDIC_Y_CORR:
-                            py = max(10, py + int(_TE_INDIC_Y_CORR[_te_script] * video_h))
-                        
-                        w_font_size = float(cs.get('font_size', 18))
-                        w_scaled_size = int(w_font_size * scale_factor)
-                        
-                        w_font_family = cs.get('font_family', 'Inter')
-                        w_font_weight_str = cs.get('font_weight', '500')
-                        w_font_weight = 700 if w_font_weight_str == 'bold' else (400 if w_font_weight_str == 'normal' else int(w_font_weight_str))
-                        w_font_info = self._ensure_font(w_font_family)
-                        w_font_name = w_font_info['ass_name']
-
-                        w_anim = c.get('animation', 'none')
-                        anim_tags_str = ""
-                        if w_anim and w_anim != 'none':
-                            anim_tags = self._get_animation_tags(w_anim, float(c.get('start_time', 0)), float(c.get('end_time', 0)), w_scaled_size, px, py)
-                            # _get_animation_tags might contain __skip_pos__ logic which isn't heavily used for pure words but handle it
-                            anim_tags_clean = [t for t in anim_tags if t != "__skip_pos__"]
-                            anim_tags_str = "".join(anim_tags_clean)
-
-                        w_color_hex = cs.get('text_color', '#ffffff')
-                        w_color_ass = self._hex_to_ass(w_color_hex, 1.0)
-                        
-                        # Handle text transform
-                        w_text = c.get('text', '')
-                        tc = cs.get('text_transform', 'none')
-                        if tc == 'uppercase' or cs.get('is_caps'): w_text = w_text.upper()
-                        elif tc == 'lowercase': w_text = w_text.lower()
-                        elif tc == 'capitalize': w_text = w_text.title()
-                        
-                        w_text = w_text.replace('\\n', '\\N').replace('\n', '\\N')
-                        
-                        has_te_bg = cs.get('has_background', False)
-                        w_eff_tags = ""
-                        
-                        w_stroke_data = (cs.get('has_stroke', False), cs.get('stroke_width', 1), cs.get('stroke_color', '#000000'))
-                        w_shadow_data = (cs.get('has_shadow', False), cs.get('shadow_blur', 4), cs.get('shadow_offset_x', 0), cs.get('shadow_offset_y', 2), cs.get('shadow_color', '#000000'))
-                        w_eff_tags += _get_effect_tags('none', w_color_hex, w_stroke_data, w_shadow_data, {})
-                        
-                        # Background roughly using \bord
-                        bg_tags = ""
-                        if has_te_bg:
-                            te_bg_ass = self._hex_to_ass(cs.get('background_color', '#000000'), float(cs.get('background_opacity', 0.6)))
-                            bg_tags = f"\\3c{te_bg_ass}\\1a&H00&\\bord{max(10, int(w_scaled_size*0.2))}"
-                        
-                        f.write(f"Dialogue: 2,{c_start},{c_end},Default,,0,0,0,,{{\\pos({px},{py})\\an5\\fn{w_font_name}\\fs{w_scaled_size}\\1c{w_color_ass}{w_eff_tags}{bg_tags}{anim_tags_str}}}{w_text}\n")
-                        if has_te_bg:
-                            f.write(f"Dialogue: 3,{c_start},{c_end},Default,,0,0,0,,{{\\pos({px},{py})\\an5\\fn{w_font_name}\\fs{w_scaled_size}\\1c{w_color_ass}{w_eff_tags}\\bord0\\shad0{anim_tags_str}}}{w_text}\n")
-                        continue
-
-                    words = c.get('words') or []
-                    # Pass 1: Base Layer (0)
-                    for i, w in enumerate(words):
-                        w_text = w.get('word', '').strip()
-                        if not w_text: continue
-                        layout = word_layouts.get(f"{c['id']}-{i}")
-                        if layout:
-                            # Parse layout
-                            px = int((float(layout['x']) / 100) * video_w)
-                            py = int((float(layout['y']) / 100) * video_h)
-                            w_px = int((float(layout['w']) / 100) * video_w)
-                            h_px = int((float(layout['h']) / 100) * video_h)
-                            
-                            _cap_ws = c.get('word_styles') or {}
-                            _cap_ws = _cap_ws if isinstance(_cap_ws, dict) else {}
-                            w_font_size = float(_cap_ws.get(f"{c['id']}-{i}", {}).get('fontSize', style.get('font_size', 18)))
-                            w_scaled_size = int(w_font_size * scale_factor)
-
-                            # Fetch specific animation
-                            w_anim = _cap_ws.get(f"{c['id']}-{i}", {}).get('animation', c.get('animation', 'none'))
-                            anim_tags_str = ""
-                            if w_anim and w_anim != 'none':
-                                anim_tags = self._get_animation_tags(w_anim, float(w.get('start', c.get('start_time', 0))), float(w.get('end', c.get('end_time', 0))), w_scaled_size, px, py)
-                                anim_tags_clean = [t for t in anim_tags if t != "__skip_pos__"]
-                                anim_tags_str = "".join(anim_tags_clean)
-
-                            # Word by Word Delivery: when show_inactive=False, draw each word only during its own timing
-                            if show_inactive_mode == False:
-                                _w_start = float(w.get('start', c.get('start_time', 0)))
-                                _w_end = float(w.get('end', c.get('end_time', 0)))
-                                if _w_end > _w_start:
-                                    w_draw_start = self._fmt(_w_start)
-                                    w_draw_end = self._fmt(_w_end)
-                                else:
-                                    w_draw_start = c_start
-                                    w_draw_end = c_end
-                            else:
-                                w_draw_start = c_start
-                                w_draw_end = c_end
-
-                            # Draw Background
-                            if has_bg:
-                                bw = int((w_px * bg_h_multiplier) / 2)
-                                bh = int(h_px / 2)
-                                p_obj = f"m {-bw} {-bh} l {bw} {-bh} l {bw} {bh} l {-bw} {bh}"
-                                f.write(f"Dialogue: 0,{w_draw_start},{w_draw_end},Default,,0,0,0,,{{\\pos({px},{py})\\an5\\1c{bg_ass}\\1a&H00&\\3c{bg_ass}\\bord0\\shad0\\p1{anim_tags_str}}}{p_obj}\n")
-
-                            # Draw Text
-                            if style.get('is_caps') or style.get('text_case') == 'uppercase': w_text = w_text.upper()
-                            elif style.get('text_case') == 'lowercase': w_text = w_text.lower()
-                            elif style.get('text_case') == 'capitalize': w_text = w_text.title()
-                            
-                            # Fetch word specific styles if available, else fallback to global
-                            ws_dict = _cap_ws.get(f"{c['id']}-{i}", {})
-                            if not isinstance(ws_dict, dict): ws_dict = {}
-                            
-                            w_color_hex = ws_dict.get('color', primary_hex)
-                            is_emp = ws_dict.get('isEmphasis', False)
-                            emp_tags = ""
-
-                            if is_emp:
-                                emp_tags = f"\\3c{self._hex_to_ass(w_color_hex, 1.0)}\\blur0.8\\bord0.8"
-
-                            w_eff_type = ws_dict.get('effectType', style.get('effect_type', 'none'))
-                            w_stroke_data = (ws_dict.get('hasStroke', style.get('has_stroke', False)), ws_dict.get('strokeWidth', style.get('stroke_width', 1)), ws_dict.get('strokeColor', style.get('stroke_color', '#000000')))
-                            w_shadow_data = (ws_dict.get('hasShadow', style.get('has_shadow', False)), ws_dict.get('shadowBlur', style.get('shadow_blur', 4)), ws_dict.get('shadowOffsetX', style.get('shadow_offset_x', 0)), ws_dict.get('shadowOffsetY', style.get('shadow_offset_y', 2)), ws_dict.get('shadowColor', style.get('shadow_color', '#000000')))
-                            
-                            w_color_ass = self._hex_to_ass(w_color_hex, float(style.get('text_opacity', 1.0)))
-                            w_eff_props = {
-                                'offset': float(ws_dict.get('effectOffset', style.get('effect_offset', 50))),
-                                'direction': float(ws_dict.get('effectDirection', style.get('effect_direction', -45))),
-                                'blur': float(ws_dict.get('effectBlur', style.get('effect_blur', 50))),
-                                'transparency': float(ws_dict.get('effectTransparency', style.get('effect_transparency', 40))),
-                                'thickness': float(ws_dict.get('effectThickness', style.get('effect_thickness', 50))),
-                                'intensity': float(ws_dict.get('effectIntensity', style.get('effect_intensity', 50))),
-                                'color': ws_dict.get('effectColor', style.get('effect_color', '#000000')),
-                            }
-                            w_eff_tags = _get_effect_tags(w_eff_type, w_color_hex, w_stroke_data, w_shadow_data, w_eff_props)
-                            
-                            w_font_size = float(ws_dict.get('fontSize', style.get('font_size', 18)))
-                            w_scaled_size = int(w_font_size * scale_factor)
-                            
-                            w_font_family = ws_dict.get('fontFamily', style.get('font_family', 'Inter'))
-                            w_font_weight_str = ws_dict.get('fontWeight', style.get('font_weight', '500'))
-                            w_font_weight = 700 if w_font_weight_str == 'bold' else (400 if w_font_weight_str == 'normal' else int(w_font_weight_str))
-                            w_font_info = self._ensure_font(w_font_family)
-                            w_font_name = w_font_info['ass_name']
-                            
-                            f.write(f"Dialogue: 0,{w_draw_start},{w_draw_end},Default,,0,0,0,,{{\\pos({px},{py})\\an5\\fn{w_font_name}\\fs{w_scaled_size}\\1c{w_color_ass}{w_eff_tags}{emp_tags}}}{w_text}\n")
-
-                    # Pass 2: Highlight Layer (1)
-                    if highlight_hex:
-                        h_bg_ass = self._hex_to_ass(highlight_hex, 1.0)
-                        for i, w in enumerate(words):
-                            w_text = w.get('word', '').strip()
-                            if not w_text: continue
-                            ws = float(w.get('start', 0))
-                            we = float(w.get('end', 0))
-                            if we <= ws: continue
-                            
-                            ws_dict_h = _cap_ws.get(f"{c['id']}-{i}", {})
-                            if not isinstance(ws_dict_h, dict): ws_dict_h = {}
-                            if ws_dict_h.get('isEmphasis', False): continue
-                            
-                            layout = word_layouts.get(f"{c['id']}-{i}")
-                            if layout:
-                                px = int((float(layout['x']) / 100) * video_w)
-                                py = int((float(layout['y']) / 100) * video_h)
-                                w_px = int((float(layout['w']) / 100) * video_w)
-                                h_px = int((float(layout['h']) / 100) * video_h)
-                                
-                                w_start_str = self._fmt(ws)
-                                w_end_str = self._fmt(we)
-                                
-                                # Highlight Background
-                                bw = int((w_px * bg_h_multiplier) / 2)
-                                bh = int(h_px / 2)
-                                p_obj = f"m {-bw} {-bh} l {bw} {-bh} l {bw} {bh} l {-bw} {bh}"
-                                f.write(f"Dialogue: 1,{w_start_str},{w_end_str},Default,,0,0,0,,{{\\pos({px},{py})\\an5\\1c{h_bg_ass}\\1a&H00&\\bord0\\shad0\\p1}}{p_obj}\n")
-                                
-                                # Highlight Text (keep primary color for now, or could change)
-                                if style.get('is_caps') or style.get('text_case') == 'uppercase': w_text = w_text.upper()
-                                elif style.get('text_case') == 'lowercase': w_text = w_text.lower()
-                                elif style.get('text_case') == 'capitalize': w_text = w_text.title()
-                                f.write(f"Dialogue: 1,{w_start_str},{w_end_str},Default,,0,0,0,,{{\\pos({px},{py})\\an5\\1c{primary_ass}\\bord0\\shad0}}{w_text}\n")
-
-                    # Pass 3: Karaoke Text Color (active word in secondary_color during word timing)
-                    # Used for templates like Green Neon Pulse where active word changes text color
-                    if secondary_hex_template and template_id_style:
-                        sec_ass = self._hex_to_ass(secondary_hex_template, 1.0)
-                        _cap_ws_k = c.get('word_styles') or {}
-                        _cap_ws_k = _cap_ws_k if isinstance(_cap_ws_k, dict) else {}
-                        for i, w in enumerate(words):
-                            w_text = w.get('word', '').strip()
-                            if not w_text: continue
-                            ws = float(w.get('start', 0))
-                            we = float(w.get('end', 0))
-                            if we <= ws: continue
-                            layout = word_layouts.get(f"{c['id']}-{i}")
-                            if layout:
-                                px = int((float(layout['x']) / 100) * video_w)
-                                py = int((float(layout['y']) / 100) * video_h)
-                                ws_str = self._fmt(ws)
-                                we_str = self._fmt(we)
-                                w_font_size_k = float(_cap_ws_k.get(f"{c['id']}-{i}", {}).get('fontSize', style.get('font_size', 18)))
-                                w_scaled_size_k = int(w_font_size_k * scale_factor)
-                                w_font_family_k = _cap_ws_k.get(f"{c['id']}-{i}", {}).get('fontFamily', style.get('font_family', 'Inter'))
-                                w_font_info_k = self._ensure_font(w_font_family_k)
-                                w_font_name_k = w_font_info_k['ass_name']
-                                display_k = w_text
-                                if style.get('is_caps') or style.get('text_case') == 'uppercase': display_k = display_k.upper()
-                                elif style.get('text_case') == 'lowercase': display_k = display_k.lower()
-                                elif style.get('text_case') == 'capitalize': display_k = display_k.title()
-                                f.write(f"Dialogue: 2,{ws_str},{we_str},Default,,0,0,0,,{{\\pos({px},{py})\\an5\\fn{w_font_name_k}\\fs{w_scaled_size_k}\\1c{sec_ass}\\bord0\\shad0}}{display_k}\n")
-
-            return ass_path
-
+        # ── Font ───────────────────────────────────────────────────────────
         font_name = font_info['ass_name']
-        print(f"Using user-selected font: {font_name}")
+        print(f"[ASS] font={font_name!r} size={scaled_size} scale_factor={scale_factor:.2f}")
 
-        all_text = " ".join([c.get('text', '') for c in captions])
+        # ── Script detection + Indic font override ────────────────────────
+        all_text = " ".join(c.get('text', '') for c in captions)
         detected_script = self._detect_script(all_text)
         if detected_script:
-            self._ensure_indic_font(detected_script)
-            print(f"Detected {detected_script} script, ensured fallback font is available")
-
-        base_size = int(style.get('font_size', 18))
-        preview_h = float(style.get('preview_height', 400))
-        # scale_factor is already defined
-        # scaled_size is already defined
-
-        is_bold = style.get('is_bold', False)
-        font_weight = style.get('font_weight', '500')
-        try:
-            weight_num = int(font_weight) if font_weight not in ('normal', 'bold') else (700 if font_weight == 'bold' else 400)
-        except (ValueError, TypeError):
-            weight_num = 500
-        bold_flag = 1 if (is_bold or weight_num >= 700) else 0
-
-        is_italic = style.get('font_style', 'normal') == 'italic'
-        italic_flag = 1 if is_italic else 0
-
-        primary_hex = style.get('text_color', '#FFFFFF')
-        primary_ass = self._hex_to_ass(primary_hex, float(style.get('text_opacity', 1.0)))
-
-        has_bg = style.get('has_background', False)
-        bg_opacity = float(style.get('background_opacity', 0.7))
-        highlight_hex = style.get('highlight_color', '') or ''
-        highlight_gradient = style.get('highlight_gradient', '') or ''
-        if not highlight_hex.strip() and highlight_gradient.strip():
-            import re as _re
-            grad_colors = _re.findall(r'#[0-9a-fA-F]{3,8}', highlight_gradient)
-            if grad_colors:
-                highlight_hex = grad_colors[0]
-
-        has_stroke = style.get('has_stroke', False)
-        has_shadow = style.get('has_shadow', False)
-        stroke_color = style.get('stroke_color', '#000000')
-        stroke_width = float(style.get('stroke_width', 1))
-        shadow_color = style.get('shadow_color', '#000000')
-        shadow_blur = float(style.get('shadow_blur', 4))
-        shadow_offset_x = float(style.get('shadow_offset_x', 0))
-        shadow_offset_y = float(style.get('shadow_offset_y', 2))
-
-        bg_h_multiplier = float(style.get('background_h_multiplier', 1.2))
-        bg_padding = float(style.get('background_padding', 6))
+            indic_font_info = self._ensure_indic_font(detected_script)
+            # Fonts known to include Indic Unicode ranges — keep as-is
+            _indic_safe = {
+                'noto sans', 'noto sans devanagari', 'mukta', 'baloo 2',
+                'hind', 'hind siliguri', 'hind guntur', 'hind madurai',
+                'hind vadodara', 'hind mysuru',
+                'noto sans bengali', 'noto sans telugu', 'noto sans tamil',
+                'noto sans gujarati', 'noto sans kannada', 'noto sans malayalam',
+                'noto sans oriya', 'noto sans arabic',
+                'mukta malar', 'mukta mahee', 'mukta vaani',
+                'rajdhani', 'kalam', 'tiro devanagari hindi',
+                'catamaran', 'arima', 'atma', 'galada',
+            }
+            if indic_font_info and font_name.lower() not in _indic_safe:
+                print(f"[ASS] Font '{font_name}' is Latin-only; overriding to {indic_font_info['ass_name']} for {detected_script}")
+                font_name = indic_font_info['ass_name']
+        INDIC_Y_CORR = {
+            'devanagari': -0.025, 'bengali': -0.020, 'gujarati': -0.020,
+            'punjabi': -0.015, 'tamil': -0.015, 'telugu': -0.015,
+            'kannada': -0.015, 'malayalam': -0.015, 'odia': -0.015, 'arabic': -0.010,
+        }
         bord_factor = 0.65 if detected_script else 0.85
+
+        # ── Per-template word-state alpha config ──────────────────────────
+        # (inactive_alpha, active_alpha)
+        # inactive = not yet spoken, active = already spoken, current = now speaking
+        TEMPLATE_WORD_CONFIG = {
+            # Transparent inactive (word-reveal: only spoken words visible)
+            't-106': (0.0, 1.0),  # Iman
+            't-105': (0.0, 1.0),  # Daze
+            't-52':  (0.0, 1.0),  # Light Streak
+            't-124': (0.0, 1.0),  # Ghost Echo
+            't-104': (0.0, 1.0),  # Pulse
+            't-37':  (0.0, 1.0),  # Wipe Mask
+            't-36':  (0.0, 1.0),  # Color Flash
+            't-112': (0.15, 1.0), # Pink Gradient
+            # Dim inactive (unspoken words dimmed) — alphas verified against CSS rgba()
+            't-16':  (0.35, 0.85), # Ghost Focus   — CSS: rgba(255,255,255,.35)
+            't-9':   (0.4, 0.85),  # Fire Words    — CSS: rgba(200,80,20,.4)
+            't-12':  (0.35, 1.0),  # Horror        — CSS: rgba(180,0,0,.35)
+            't-26':  (0.25, 1.0),  # Bold Stroke   — CSS: rgba(0,0,0,.25)
+            't-102': (0.5, 1.0),   # Clarity       — CSS: #888 on white
+            't-103': (0.45, 1.0),  # Nightfall     — CSS: rgba(255,255,255,.45)
+            't-110': (0.4, 1.0),   # Glow Dot      — CSS: rgba(255,255,255,.4)
+            't-119': (0.35, 1.0),  # Gradient Box  — CSS: rgba(255,255,255,.35)
+            't-95':  (0.18, 1.0),  # Speed Lines   — CSS: rgba(255,255,255,.18)
+            't-T1':  (0.25, 1.0),  # Stack & Flow  — CSS: rgba(255,255,255,.25)
+            't-T3':  (0.0, 1.0),   # Underline Fade— CSS: rgba(255,255,255,0) = transparent!
+            't-T4':  (0.3, 1.0),   # Study With Me — CSS: rgba(249,198,208,.3)
+            't-56':  (0.3, 1.0),   # Underline     — CSS: rgba(255,255,255,.3)
+            't-57':  (0.3, 1.0),   # VHS Glitch    — CSS: rgba(255,255,255,.3) NOT 1.0!
+            # All words always fully visible (current word gets secondary color)
+            't-111': (1.0, 1.0),  # Red Tape
+            't-115': (1.0, 1.0),  # Green Neon Pulse
+            't-109': (1.0, 1.0),  # 3D Shadow
+            't-T5':  (1.0, 1.0),  # Sentence Box
+            # TemplatesTab2 templates (t01-t35)
+            # wbw-rise/wbw-slide: word-reveal (inactive transparent)
+            't01': (0.0, 1.0),  # Bebas Neue wbw-rise
+            't03': (0.0, 1.0),  # Darker Grotesque wbw-rise
+            't05': (0.0, 1.0),  # Dela Gothic One wbw-rise
+            't06': (0.0, 1.0),  # Unbounded wbw-rise
+            't07': (0.0, 1.0),  # Space Mono wbw-rise
+            't08': (0.0, 1.0),  # Bodoni Moda wbw-rise
+            't09': (0.0, 1.0),  # Crimson Text wbw-rise
+            't10': (0.0, 1.0),  # Unbounded wbw-rise
+            't11': (0.0, 1.0),  # Overpass Mono wbw-slide
+            't13': (0.0, 1.0),  # Abril Fatface wbw-rise
+            't14': (0.0, 1.0),  # Permanent Marker wbw-slide
+            't16': (0.0, 1.0),  # Staatliches wbw-rise
+            't17': (0.0, 1.0),  # Cinzel wbw-slide
+            't18': (0.0, 1.0),  # Righteous wbw-rise
+            't19': (0.0, 1.0),  # Bitter wbw-rise
+            't21': (0.0, 1.0),  # Space Mono wbw-rise
+            't23': (0.0, 1.0),  # Archivo Black wbw-rise
+            't24': (0.0, 1.0),  # DM Serif Display wbw-rise
+            't25': (0.0, 1.0),  # IBM Plex Mono wbw-slide
+            't26': (0.0, 1.0),  # Bebas Neue wbw-rise
+            't28': (0.0, 1.0),  # Unbounded wbw-rise
+            't29': (0.0, 1.0),  # Cinzel wbw-rise
+            't30': (0.0, 1.0),  # Silkscreen wbw-slide
+            't31': (0.0, 1.0),  # Bebas Neue wbw-rise
+            't33': (0.0, 1.0),  # Noto Sans wbw-rise
+            't34': (0.0, 1.0),  # Playfair Display wbw-rise
+            't35': (0.0, 1.0),  # Cinzel wbw-rise
+            # Full-sentence / karaoke templates (all words visible)
+            't02': (1.0, 1.0),  # Cormorant Garamond plain-s
+            't04': (1.0, 1.0),  # Libre Baskerville karaoke
+            't12': (1.0, 1.0),  # Lora plain-s
+            't15': (1.0, 1.0),  # Questrial karaoke
+            't20': (1.0, 1.0),  # Cormorant Garamond plain-s
+            't22': (1.0, 1.0),  # Playfair Display plain-s
+            't27': (1.0, 1.0),  # Caveat plain-s
+            't32': (1.0, 1.0),  # Questrial plain-s
+        }
+
+        # ── Per-template inactive word color overrides ────────────────────
+        # When inactive words use a DIFFERENT base hex than primary_hex.
+        # Most templates use white (primary) at reduced alpha; these are exceptions.
+        TEMPLATE_INACTIVE_HEX = {
+            't-9':  '#C85014',  # Fire Words: rgba(200,80,20) — brick-orange base
+            't-12': '#B40000',  # Horror: rgba(180,0,0) — dark blood red base
+        }
+
+        # ── Global style values ────────────────────────────────────────────
+        primary_hex = style.get('text_color', '#FFFFFF') or '#FFFFFF'
+        primary_ass = self._hex_to_ass(primary_hex, float(style.get('text_opacity', 1.0) or 1.0))
+        has_bg = bool(style.get('has_background', False))
+        bg_hex = style.get('background_color', '#000000') or '#000000'
+        bg_opacity = float(style.get('background_opacity', 0.7) or 0.7)
+        bg_ass = self._hex_to_ass(bg_hex, bg_opacity)
+        bg_padding = float(style.get('background_padding', 6) or 6)
+        bg_h_mult = float(style.get('background_h_multiplier', 0.99) or 0.99)
+        has_stroke = bool(style.get('has_stroke', False))
+        stroke_color_hex = style.get('stroke_color', '#000000') or '#000000'
+        stroke_width_v = float(style.get('stroke_width', 1) or 1)
+        has_shadow_v = bool(style.get('has_shadow', False))
+        shadow_color_hex = style.get('shadow_color', '#000000') or '#000000'
+        shadow_blur_v = float(style.get('shadow_blur', 4) or 4)
+        shadow_ox_v = float(style.get('shadow_offset_x', 0) or 0)
+        shadow_oy_v = float(style.get('shadow_offset_y', 2) or 2)
+        bold_flag = 1 if (style.get('is_bold', False) or str(style.get('font_weight', '500') or '500') in ('bold', '700', '800', '900')) else 0
+        italic_flag = 1 if (style.get('font_style', 'normal') or 'normal') == 'italic' else 0
+        letter_spacing = int(float(style.get('letter_spacing', 0) or 0) * scale_factor)
+        is_caps = bool(style.get('is_caps', False))
+        text_case = (style.get('text_case', 'none') or 'none')
+        text_align = (style.get('text_align', 'center') or 'center')
+        ass_align = {'left': 4, 'center': 5, 'right': 6}.get(text_align, 5)
+        highlight_hex = (style.get('highlight_color', '') or '').strip()
+        secondary_hex = (style.get('secondary_color', '') or '').strip()
+        template_id = (style.get('template_id', '') or '').strip()
+        show_inactive = style.get('show_inactive', True)
+        if show_inactive is None: show_inactive = True
+        effect_type = (style.get('effect_type', 'none') or 'none')
+        g_eff_props = {
+            'offset': float(style.get('effect_offset', 50) or 50),
+            'direction': float(style.get('effect_direction', -45) or -45),
+            'blur': float(style.get('effect_blur', 50) or 50),
+            'transparency': float(style.get('effect_transparency', 40) or 40),
+            'thickness': float(style.get('effect_thickness', 50) or 50),
+            'intensity': float(style.get('effect_intensity', 50) or 50),
+            'color': style.get('effect_color', '#000000') or '#000000',
+        }
+        g_stroke_data = (has_stroke and not has_bg, stroke_width_v, stroke_color_hex)
+        g_shadow_data = (has_shadow_v and not has_bg, shadow_blur_v, shadow_ox_v, shadow_oy_v, shadow_color_hex)
+        # When has_bg=True with no special effect, skip inline \bord0 — it overrides BorderStyle=3 background box
+        if has_bg and effect_type == 'none':
+            global_eff = ''
+        else:
+            global_eff = _get_effect_tags(effect_type, primary_hex, g_stroke_data, g_shadow_data, g_eff_props)
+
+        # ── Global caption position (video-% from ExportPanel containerToVideo) ──
+        pos_x = int((float(style.get('position_x', 50) or 50) / 100) * video_w)
+        pos_y = int((float(style.get('position_y', 75) or 75) / 100) * video_h)
+        if detected_script in INDIC_Y_CORR:
+            pos_y = max(10, pos_y + int(INDIC_Y_CORR[detected_script] * video_h))
+
+        # ── ASS Style header ───────────────────────────────────────────────
+        # BorderStyle=3 = opaque background box, BorderStyle=1 = outline/shadow
         if has_bg:
             border_style = 3
-            bg_hex = style.get('background_color', '#000000')
-            bg_ass = self._hex_to_ass(bg_hex, bg_opacity)
-            outline_size = max(int(bg_padding * scale_factor * bord_factor * bg_h_multiplier), 2)
+            outline_size = max(int(bg_padding * scale_factor * bg_h_mult), 2)
             shadow_size = 0
-            outline_color = bg_ass
-            back_color = bg_ass
+            outline_c = bg_ass
+            back_c = bg_ass
+        elif has_stroke:
+            border_style = 1
+            outline_size = max(int(stroke_width_v * scale_factor), 1)
+            shadow_size = max(int(shadow_blur_v * scale_factor * 0.5), 1) if has_shadow_v else 1
+            outline_c = self._hex_to_ass(stroke_color_hex, 1.0)
+            back_c = self._hex_to_ass(shadow_color_hex, 1.0) if has_shadow_v else self._hex_to_ass('#000000', 0.0)
         else:
             border_style = 1
-            stroke_scaled = max(int(stroke_width * scale_factor), 1) if has_stroke else 2
-            shadow_depth = max(int(shadow_blur * scale_factor * 0.5), 1) if has_shadow else 1
-            outline_size = stroke_scaled
-            shadow_size = shadow_depth
-            outline_color = self._hex_to_ass(stroke_color, 1.0) if has_stroke else self._hex_to_ass('#000000', 0.6)
-            back_color = self._hex_to_ass(shadow_color, 1.0) if has_shadow else self._hex_to_ass('#000000', 0.0)
+            outline_size = 2
+            shadow_size = max(int(shadow_blur_v * scale_factor * 0.5), 1) if has_shadow_v else 1
+            outline_c = self._hex_to_ass('#000000', 0.6)
+            back_c = self._hex_to_ass(shadow_color_hex, 1.0) if has_shadow_v else self._hex_to_ass('#000000', 0.0)
 
-        pos_y_pct = float(style.get('position_y', 75))
-        pos_x_pct = float(style.get('position_x', 50))
-        pos_y_px = int((pos_y_pct / 100) * video_h)
-        pos_x_px = int((pos_x_pct / 100) * video_w)
+        # ── Text transform helper ─────────────────────────────────────────
+        def _T(t):
+            if is_caps or text_case == 'uppercase': return t.upper()
+            elif text_case == 'lowercase': return t.lower()
+            elif text_case == 'capitalize': return t.title()
+            return t
 
-        # Global Vertical Center: Indic scripts have tall ascenders/descenders that
-        # shift the visual center downward.  Shift up to compensate so the
-        # text bounding box is truly centered on the requested Y position.
-        INDIC_Y_CORRECTIONS = {
-            'devanagari': -0.025,
-            'bengali':    -0.020,
-            'gujarati':   -0.020,
-            'punjabi':    -0.015,
-            'tamil':      -0.015,
-            'telugu':     -0.015,
-            'kannada':    -0.015,
-            'malayalam':  -0.015,
-            'odia':       -0.015,
-            'arabic':     -0.010,
-        }
-        if detected_script in INDIC_Y_CORRECTIONS:
-            correction_px = int(INDIC_Y_CORRECTIONS[detected_script] * video_h)
-            pos_y_px = max(10, pos_y_px + correction_px)
-            print(f"[Align] Applied y-correction for {detected_script}: {correction_px}px -> pos_y={pos_y_px}")
+        # ── WordBox style dimensions (per-word background box, for primary path) ──
+        _word_box_pad = max(int(bg_padding * scale_factor * bg_h_mult), 2)
+        _word_box_bg  = self._hex_to_ass(bg_hex, bg_opacity) if has_bg else self._hex_to_ass('#000000', 0.7)
 
-        alignment = 5
+        with open(ass_path, 'w', encoding='utf-8') as f:
+            f.write(
+                f"[Script Info]\nScriptType: v4.00+\nPlayResX: {video_w}\nPlayResY: {video_h}\n"
+                f"WrapStyle: 0\n\n"
+                f"[V4+ Styles]\n"
+                f"Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
+                f"Style: Default,{font_name},{scaled_size},{primary_ass},&H000000FF,{outline_c},{back_c},{bold_flag},{italic_flag},0,0,100,100,{letter_spacing},0,{border_style},{outline_size},{shadow_size},{ass_align},10,10,10,1\n"
+                f"Style: WordBox,{font_name},{scaled_size},{primary_ass},&H000000FF,{_word_box_bg},&H00000000,{bold_flag},{italic_flag},0,0,100,100,{letter_spacing},0,3,{_word_box_pad},0,5,10,10,10,1\n\n"
+                f"[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+            )
 
-        is_caps = style.get('is_caps', False)
-        text_case = style.get('text_case', 'none')
-
-        letter_spacing = int(float(style.get('letter_spacing', 0)) * scale_factor)
-
-        with open(ass_path, "w", encoding="utf-8") as f:
-            f.write(f"""[Script Info]
-ScriptType: v4.00+
-PlayResX: {video_w}
-PlayResY: {video_h}
-WrapStyle: 0
-
-[V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,{font_name},{scaled_size},{primary_ass},&H000000FF,{outline_color},{back_color},{bold_flag},{italic_flag},0,0,100,100,{letter_spacing},0,{border_style},{outline_size},{shadow_size},{alignment},10,10,10,1
-
-[Events]
-Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-""")
             for c in captions:
-                start_time = float(c.get('start_time', 0))
-                end_time = float(c.get('end_time', 0))
+                st = float(c.get('start_time', 0))
+                et = float(c.get('end_time', 0))
+                if et <= st: continue
+                raw_text = c.get('text', '')
+                if not raw_text.strip(): continue
+                s = self._fmt(st)
+                e = self._fmt(et)
+                cid = str(c.get('id', ''))
+                anim = (c.get('animation', 'none') or 'none')
+                ws_map = c.get('word_styles') or {}
+                if not isinstance(ws_map, dict): ws_map = {}
+                words_timing = c.get('words') or []
+                is_te = bool(c.get('is_text_element', False))
 
-                if end_time <= start_time:
-                    continue
+                # Extract word layouts for this caption (primary per-word path)
+                cap_word_layouts = {}
+                if word_layouts:
+                    for _wlk, _wlv in word_layouts.items():
+                        if _wlk.startswith(cid + '-'):
+                            try:
+                                cap_word_layouts[int(_wlk[len(cid) + 1:])] = _wlv
+                            except ValueError:
+                                pass
 
-                start_str = self._fmt(start_time)
-                end_str = self._fmt(end_time)
+                # Pre-build positioned list (words with custom abs positions, dragged by user)
+                # Needed by both the primary path and the fallback path.
+                positioned = []
+                _pos_tokens = re.split(r'(\s+)', _T(raw_text).replace('\n', '\\N'))
+                _pos_wi = 0
+                for _pos_tok in _pos_tokens:
+                    if not _pos_tok.strip():
+                        continue
+                    _pos_ws = ws_map.get(f"{cid}-{_pos_wi}", {})
+                    if isinstance(_pos_ws, dict) and _pos_ws.get('abs_x_pct') is not None:
+                        positioned.append((_pos_wi, _pos_tok, _pos_ws))
+                    _pos_wi += 1
 
-                text = c.get('text', '')
-                if not text.strip():
-                    continue
-
-                is_text_element = c.get('is_text_element', False)
-                custom_style = c.get('custom_style') or {}
-                caption_animation = c.get('animation', 'none')
-
-                if is_text_element and custom_style:
-                    te_text = text.replace('\n', '\\N')
-                    te_transform = custom_style.get('text_transform', 'none')
-                    if te_transform == 'uppercase':
-                        te_text = te_text.upper()
-                    elif te_transform == 'lowercase':
-                        te_text = te_text.lower()
-                    elif te_transform == 'capitalize':
-                        te_text = te_text.title()
-
-                    te_font_family = custom_style.get('font_family', 'Inter')
-                    te_font_info = self._ensure_font(te_font_family)
-                    te_font_name = te_font_info['ass_name']
-                    te_font_size = int(custom_style.get('font_size', 18))
-                    te_scaled_size = max(int(te_font_size * scale_factor), 20)
-                    te_color = self._hex_to_ass(custom_style.get('text_color', '#ffffff'))
-                    te_font_weight = custom_style.get('font_weight', '500')
-                    try:
-                        te_weight_num = int(te_font_weight) if te_font_weight not in ('normal', 'bold') else (700 if te_font_weight == 'bold' else 400)
-                    except (ValueError, TypeError):
-                        te_weight_num = 500
-                    te_bold = 1 if te_weight_num >= 700 else 0
-                    te_italic = 1 if custom_style.get('font_style', 'normal') == 'italic' else 0
-
-                    te_has_bg = custom_style.get('has_background', True)
-                    te_bg_opacity = float(custom_style.get('background_opacity', 0.6))
-                    te_bg_color = custom_style.get('background_color', '#000000')
-                    te_bg_h_mult = float(custom_style.get('background_h_multiplier', 1.2))
-
-                    te_pos_x = float(custom_style.get('position_x', 50))
-                    te_pos_y = float(custom_style.get('position_y', 50))
-                    te_pos_x_px = int((te_pos_x / 100) * video_w)
-                    te_pos_y_px = int((te_pos_y / 100) * video_h)
-
-                    # Apply Indic y-correction for text elements (same as caption fallback path)
-                    _TE_INDIC_Y_CORRECTIONS = {
-                        'devanagari': -0.025, 'bengali': -0.020, 'gujarati': -0.020,
-                        'punjabi': -0.015, 'tamil': -0.015, 'telugu': -0.015,
-                        'kannada': -0.015, 'malayalam': -0.015, 'odia': -0.015,
-                        'arabic': -0.010,
-                    }
-                    if detected_script in _TE_INDIC_Y_CORRECTIONS:
-                        te_y_correction = int(_TE_INDIC_Y_CORRECTIONS[detected_script] * video_h)
-                        te_pos_y_px = max(10, te_pos_y_px + te_y_correction)
-
-                    # Frontend anchors to center. align=5 is middle-center in ASS.
-                    te_align_map = {'left': 4, 'center': 5, 'right': 6}
-                    te_align = te_align_map.get(custom_style.get('text_align', 'center'), 5)
-
-                    te_has_stroke = custom_style.get('has_stroke', False)
-                    te_stroke_color = custom_style.get('stroke_color', '#000000')
-                    te_stroke_width = float(custom_style.get('stroke_width', 1))
-                    te_has_shadow = custom_style.get('has_shadow', False)
-                    te_shadow_color = custom_style.get('shadow_color', '#000000')
-                    te_shadow_blur = float(custom_style.get('shadow_blur', 4))
-                    te_shadow_ox = float(custom_style.get('shadow_offset_x', 0))
-                    te_shadow_oy = float(custom_style.get('shadow_offset_y', 2))
-                    te_letter_spacing = int(float(custom_style.get('letter_spacing', 0)) * scale_factor)
-
-                    te_padding = float(custom_style.get('padding', 8))
-                    te_bord_factor = 0.65 if detected_script else 0.85
-                    te_bord = max(int(te_padding * scale_factor * te_bord_factor * te_bg_h_mult), 2)
-
-                    te_has_anim = caption_animation and caption_animation != 'none'
-
-                    te_word_styles = c.get('word_styles', {}) or {}
-                    te_caption_id = c.get('id', '')
-                    te_has_word_positions = any(
-                        ws.get('abs_x_pct') is not None or ws.get('x_pct', 0) != 0 or ws.get('y_pct', 0) != 0
-                        for ws in te_word_styles.values() if isinstance(ws, dict)
-                    )
-                    te_has_word_anims = any(
-                        ws.get('animation') and ws.get('animation') != 'none'
-                        for ws in te_word_styles.values() if isinstance(ws, dict)
-                    )
-                    te_has_word_styles = any(
-                        ws.get('color') or ws.get('fontFamily') or ws.get('fontSize')
-                        for ws in te_word_styles.values() if isinstance(ws, dict)
-                    )
-
-                    def _te_stroke_shadow_tags():
-                        te_eff = custom_style.get('effect_type', 'none')
-                        te_color_hex = custom_style.get('text_color', '#ffffff')
-                        te_stroke_data = (te_has_stroke, te_stroke_width, te_stroke_color)
-                        te_shadow_data = (te_has_shadow, te_shadow_blur, te_shadow_ox, te_shadow_oy, te_shadow_color)
-                        te_eff_props = {
-                            'offset': float(custom_style.get('effect_offset', 50)),
-                            'direction': float(custom_style.get('effect_direction', -45)),
-                            'blur': float(custom_style.get('effect_blur', 50)),
-                            'transparency': float(custom_style.get('effect_transparency', 40)),
-                            'thickness': float(custom_style.get('effect_thickness', 50)),
-                            'intensity': float(custom_style.get('effect_intensity', 50)),
-                            'color': custom_style.get('effect_color', '#000000'),
+                # ─── TEXT ELEMENT ─────────────────────────────────────────
+                if is_te:
+                    cs = c.get('custom_style') or {}
+                    te_fi = self._ensure_font(cs.get('font_family', 'Inter') or 'Inter')
+                    te_fn = te_fi['ass_name']
+                    te_fs = max(int(int(cs.get('font_size', 18) or 18) * scale_factor), 20)
+                    te_c = self._hex_to_ass(cs.get('text_color', '#ffffff') or '#ffffff',
+                                            float(cs.get('text_opacity', 1.0) or 1.0))
+                    te_bold = 1 if str(cs.get('font_weight', '500') or '500') in ('bold', '700', '800', '900') else 0
+                    te_italic = 1 if (cs.get('font_style', 'normal') or 'normal') == 'italic' else 0
+                    te_lsp = int(float(cs.get('letter_spacing', 0) or 0) * scale_factor)
+                    te_has_bg = bool(cs.get('has_background', True))
+                    te_bg_a = self._hex_to_ass(cs.get('background_color', '#000000') or '#000000',
+                                               float(cs.get('background_opacity', 0.6) or 0.6))
+                    te_bord = max(int(float(cs.get('background_padding', 8) or 8) * scale_factor * bord_factor *
+                                      float(cs.get('background_h_multiplier', 0.99) or 0.99)), 2) if te_has_bg else 2
+                    te_align = {'left': 4, 'center': 5, 'right': 6}.get(cs.get('text_align', 'center'), 5)
+                    te_px = int((float(cs.get('position_x', 50) or 50) / 100) * video_w)
+                    te_py = int((float(cs.get('position_y', 50) or 50) / 100) * video_h)
+                    if detected_script in INDIC_Y_CORR:
+                        te_py = max(10, te_py + int(INDIC_Y_CORR[detected_script] * video_h))
+                    te_tc = cs.get('text_transform', 'none') or 'none'
+                    def _TT(t):
+                        if te_tc == 'uppercase': return t.upper()
+                        elif te_tc == 'lowercase': return t.lower()
+                        elif te_tc == 'capitalize': return t.title()
+                        return t
+                    te_text = _TT(raw_text).replace('\n', '\\N')
+                    if te_has_bg:
+                        te_style_str = f"\\3c{te_bg_a}\\4c{te_bg_a}\\bord{te_bord}\\shad0"
+                    else:
+                        te_sd = (cs.get('has_stroke', False), float(cs.get('stroke_width', 1) or 1), cs.get('stroke_color', '#000000') or '#000000')
+                        te_shd = (cs.get('has_shadow', False), float(cs.get('shadow_blur', 4) or 4),
+                                  float(cs.get('shadow_offset_x', 0) or 0), float(cs.get('shadow_offset_y', 2) or 2),
+                                  cs.get('shadow_color', '#000000') or '#000000')
+                        te_ep = {
+                            'offset': float(cs.get('effect_offset', 50) or 50),
+                            'direction': float(cs.get('effect_direction', -45) or -45),
+                            'blur': float(cs.get('effect_blur', 50) or 50),
+                            'transparency': float(cs.get('effect_transparency', 40) or 40),
+                            'thickness': float(cs.get('effect_thickness', 50) or 50),
+                            'intensity': float(cs.get('effect_intensity', 50) or 50),
+                            'color': cs.get('effect_color', '#000000') or '#000000',
                         }
-                        return [_get_effect_tags(te_eff, te_color_hex, te_stroke_data, te_shadow_data, te_eff_props)]
-
-                    def _te_bg_tags_for_line():
-                        if te_has_bg:
-                            te_bg_ass = self._hex_to_ass(te_bg_color, te_bg_opacity)
-                            return [f"\\3c{te_bg_ass}", f"\\4c{te_bg_ass}", f"\\bord{te_bord}", f"\\shad0"]
-                        return _te_stroke_shadow_tags()
-
-                    def _te_base_tags():
-                        tags = []
-                        tags.append(f"\\fn{te_font_name}")
-                        tags.append(f"\\fs{te_scaled_size}")
-                        tags.append(f"\\1c{te_color}")
-                        tags.append(f"\\an{te_align}")
-                        if te_bold: tags.append("\\b1")
-                        if te_italic: tags.append("\\i1")
-                        if te_letter_spacing: tags.append(f"\\fsp{te_letter_spacing}")
-                        return tags
-
-                    if te_has_word_positions or te_has_word_anims or te_has_word_styles:
-                        te_words = te_text.split()
-                        te_main_parts = []
-                        te_sep_words = []
-                        for w_i, w_token in enumerate(te_words):
-                            style_key = f"{te_caption_id}-{w_i}"
-                            ws = te_word_styles.get(style_key, {}) if isinstance(te_word_styles.get(style_key), dict) else {}
-                            abs_x = ws.get('abs_x_pct')
-                            abs_y = ws.get('abs_y_pct')
-                            w_anim = ws.get('animation', 'none') or 'none'
-                            has_custom_pos = abs_x is not None and abs_y is not None and (float(abs_x) != 0 or float(abs_y) != 0)
-                            has_custom_anim = w_anim != 'none'
-                            has_custom_style = ws.get('color') or ws.get('fontFamily') or ws.get('fontSize')
-
-                            if has_custom_pos or has_custom_anim:
-                                te_sep_words.append((w_i, w_token, ws))
-                            else:
-                                inline_overrides = ""
-                                if has_custom_style:
-                                    ov = []
-                                    if ws.get('color'):
-                                        ov.append(f"\\1c{self._hex_to_ass(ws['color'])}")
-                                    if ws.get('fontFamily'):
-                                        wfi = self._ensure_font(ws['fontFamily'])
-                                        ov.append(f"\\fn{wfi['ass_name']}")
-                                    if ws.get('fontSize'):
-                                        wfs = max(int(float(ws['fontSize']) * scale_factor), 20)
-                                        ov.append(f"\\fs{wfs}")
-                                    if ws.get('fontWeight') in ('bold', '700'):
-                                        ov.append("\\b1")
-                                    if ws.get('fontStyle') == 'italic':
-                                        ov.append("\\i1")
-                                    inline_overrides = "".join(ov)
-                                    reset = f"\\1c{te_color}\\fn{te_font_name}\\fs{te_scaled_size}\\b{te_bold}\\i{te_italic}"
-                                    te_main_parts.append(f"{{{inline_overrides}}}{w_token}{{{reset}}}")
-                                else:
-                                    te_main_parts.append(w_token)
-
-                        if te_main_parts:
-                            main_text = " ".join(te_main_parts)
-                            tags = _te_base_tags()
-
-                            if te_has_bg and (te_has_anim or te_sep_words):
-                                te_bg_ass = self._hex_to_ass(te_bg_color, te_bg_opacity)
-                                bg_t = list(_te_base_tags())
-                                bg_t.append(f"\\1c&H00000000")
-                                bg_t.append(f"\\1a&HFF&")
-                                bg_t.append(f"\\3c{te_bg_ass}")
-                                bg_t.append(f"\\4c{te_bg_ass}")
-                                bg_t.append(f"\\bord{te_bord}")
-                                bg_t.append(f"\\shad0")
-                                bg_t.append(f"\\pos({te_pos_x_px},{te_pos_y_px})")
-                                f.write(f"Dialogue: 0,{start_str},{end_str},Default,,0,0,0,,{{{''.join(bg_t)}}}{main_text}\n")
-                                tags.extend(_te_stroke_shadow_tags())
-                            else:
-                                tags.extend(_te_bg_tags_for_line())
-
-                            skip_pos = False
-                            if te_has_anim:
-                                anim_tags = self._get_animation_tags(caption_animation, start_time, end_time, te_scaled_size, te_pos_x_px, te_pos_y_px)
-                                for at in anim_tags:
-                                    if at == "__skip_pos__":
-                                        skip_pos = True
-                                    else:
-                                        tags.append(at)
-                            if not skip_pos:
-                                tags.append(f"\\pos({te_pos_x_px},{te_pos_y_px})")
-                            layer = 1 if (te_has_bg and te_has_anim) else 0
-                            f.write(f"Dialogue: {layer},{start_str},{end_str},Default,,0,0,0,,{{{''.join(tags)}}}{main_text}\n")
-
-                        for w_i, w_token, ws in te_sep_words:
-                            abs_x = ws.get('abs_x_pct', te_pos_x)
-                            abs_y = ws.get('abs_y_pct', te_pos_y)
-                            w_x_px = int((float(abs_x) / 100) * video_w)
-                            w_y_px = int((float(abs_y) / 100) * video_h)
-                            w_anim = ws.get('animation', 'none') or 'none'
-
-                            wt = _te_base_tags()
-                            if ws.get('color'):
-                                wt.append(f"\\1c{self._hex_to_ass(ws['color'])}")
-                            if ws.get('fontFamily'):
-                                wfi = self._ensure_font(ws['fontFamily'])
-                                wt.append(f"\\fn{wfi['ass_name']}")
-                            if ws.get('fontSize'):
-                                wfs = max(int(float(ws['fontSize']) * scale_factor), 20)
-                                wt.append(f"\\fs{wfs}")
-                            if ws.get('fontWeight') in ('bold', '700'):
-                                wt.append("\\b1")
-                            if ws.get('fontStyle') == 'italic':
-                                wt.append("\\i1")
-
-                            if ws.get('backgroundColor'):
-                                w_bg = self._hex_to_ass(ws['backgroundColor'], float(ws.get('backgroundOpacity', te_bg_opacity)))
-                                w_bord = max(int(te_padding * scale_factor * 0.5), 2)
-                                wt.append(f"\\3c{w_bg}")
-                                wt.append(f"\\4c{w_bg}")
-                                wt.append(f"\\bord{w_bord}")
-                                wt.append(f"\\shad0")
-                            else:
-                                wt.extend(_te_stroke_shadow_tags())
-
-                            skip_pos = False
-                            if w_anim != 'none':
-                                anim_tags = self._get_animation_tags(w_anim, start_time, end_time, te_scaled_size, w_x_px, w_y_px)
-                                for at in anim_tags:
-                                    if at == "__skip_pos__":
-                                        skip_pos = True
-                                    else:
-                                        wt.append(at)
-                            if not skip_pos:
-                                wt.append(f"\\pos({w_x_px},{w_y_px})")
-                            f.write(f"Dialogue: 1,{start_str},{end_str},Default,,0,0,0,,{{{''.join(wt)}}}{w_token}\n")
-
-                    else:
-                        te_tags = _te_base_tags()
-
-                        if te_has_bg and te_has_anim:
-                            te_bg_ass = self._hex_to_ass(te_bg_color, te_bg_opacity)
-                            bg_tags = list(_te_base_tags())
-                            bg_tags.append(f"\\1c&H00000000")
-                            bg_tags.append(f"\\1a&HFF&")
-                            bg_tags.append(f"\\3c{te_bg_ass}")
-                            bg_tags.append(f"\\4c{te_bg_ass}")
-                            bg_tags.append(f"\\bord{te_bord}")
-                            bg_tags.append(f"\\shad0")
-                            bg_tags.append(f"\\pos({te_pos_x_px},{te_pos_y_px})")
-                            f.write(f"Dialogue: 0,{start_str},{end_str},Default,,0,0,0,,{{{''.join(bg_tags)}}}{te_text}\n")
-
-                            te_tags.extend(_te_stroke_shadow_tags())
-                            skip_pos = False
-                            anim_tags = self._get_animation_tags(caption_animation, start_time, end_time, te_scaled_size, te_pos_x_px, te_pos_y_px)
-                            for at in anim_tags:
-                                if at == "__skip_pos__":
-                                    skip_pos = True
-                                else:
-                                    te_tags.append(at)
-                            if not skip_pos:
-                                te_tags.append(f"\\pos({te_pos_x_px},{te_pos_y_px})")
-                            f.write(f"Dialogue: 1,{start_str},{end_str},Default,,0,0,0,,{{{''.join(te_tags)}}}{te_text}\n")
+                        te_style_str = _get_effect_tags(cs.get('effect_type', 'none') or 'none',
+                                                        cs.get('text_color', '#ffffff') or '#ffffff',
+                                                        te_sd, te_shd, te_ep)
+                    # Build inline per-word overrides for text elements
+                    te_words_list = te_text.split()
+                    te_parts = []
+                    te_sep = []
+                    for wi2, tok2 in enumerate(te_words_list):
+                        wsv2 = ws_map.get(f"{cid}-{wi2}", {})
+                        if not isinstance(wsv2, dict): wsv2 = {}
+                        ax2 = wsv2.get('abs_x_pct'); ay2 = wsv2.get('abs_y_pct')
+                        if ax2 is not None and ay2 is not None:
+                            te_sep.append((wi2, tok2, wsv2))
                         else:
-                            te_tags.extend(_te_bg_tags_for_line())
-
-                            skip_pos = False
-                            if te_has_anim:
-                                anim_tags = self._get_animation_tags(caption_animation, start_time, end_time, te_scaled_size, te_pos_x_px, te_pos_y_px)
-                                for at in anim_tags:
-                                    if at == "__skip_pos__":
-                                        skip_pos = True
-                                    else:
-                                        te_tags.append(at)
-                            if not skip_pos:
-                                te_tags.append(f"\\pos({te_pos_x_px},{te_pos_y_px})")
-                            f.write(f"Dialogue: 0,{start_str},{end_str},Default,,0,0,0,,{{{''.join(te_tags)}}}{te_text}\n")
-
-                    print(f"Text element '{c.get('id','')}': pos=({te_pos_x_px},{te_pos_y_px}), font={te_font_name}, size={te_scaled_size}, anim={caption_animation}, timing={start_str}->{end_str}, word_styles={bool(te_has_word_styles or te_has_word_anims or te_has_word_positions)}")
+                            ov2 = []; rv2 = []
+                            if wsv2.get('color'):
+                                ov2.append(f"\\1c{self._hex_to_ass(wsv2['color'])}"); rv2.append(f"\\1c{te_c}")
+                            if wsv2.get('fontFamily'):
+                                wfi2 = self._ensure_font(wsv2['fontFamily'])
+                                ov2.append(f"\\fn{wfi2['ass_name']}"); rv2.append(f"\\fn{te_fn}")
+                            if wsv2.get('fontSize'):
+                                ov2.append(f"\\fs{max(int(float(wsv2['fontSize'])*scale_factor),20)}"); rv2.append(f"\\fs{te_fs}")
+                            te_parts.append("{" + "".join(ov2) + "}" + tok2 + "{" + "".join(rv2) + "}" if ov2 else tok2)
+                    te_main = " ".join(te_parts)
+                    te_base = [f"\\fn{te_fn}", f"\\fs{te_fs}", f"\\1c{te_c}", f"\\an{te_align}", te_style_str]
+                    if te_bold: te_base.append("\\b1")
+                    if te_italic: te_base.append("\\i1")
+                    if te_lsp: te_base.append(f"\\fsp{te_lsp}")
+                    skip_p2 = False
+                    if anim != 'none':
+                        for at2 in self._get_animation_tags(anim, st, et, te_fs, te_px, te_py):
+                            if at2 == '__skip_pos__': skip_p2 = True
+                            else: te_base.append(at2)
+                    if not skip_p2: te_base.append(f"\\pos({te_px},{te_py})")
+                    f.write(f"Dialogue: 0,{s},{e},Default,,0,0,0,,{{{''.join(te_base)}}}{te_main}\n")
+                    for _, tok3, wsv3 in te_sep:
+                        wx3 = int((float(wsv3.get('abs_x_pct', 50)) / 100) * video_w)
+                        wy3 = int((float(wsv3.get('abs_y_pct', 50)) / 100) * video_h)
+                        wc3 = self._hex_to_ass(wsv3.get('color', cs.get('text_color', '#ffffff') or '#ffffff'))
+                        wfn3 = self._ensure_font(wsv3['fontFamily'])['ass_name'] if wsv3.get('fontFamily') else te_fn
+                        wfs3 = max(int(float(wsv3['fontSize'])*scale_factor), 20) if wsv3.get('fontSize') else te_fs
+                        pt3 = [f"\\fn{wfn3}", f"\\fs{wfs3}", f"\\1c{wc3}", f"\\an{te_align}", te_style_str, f"\\pos({wx3},{wy3})"]
+                        if te_bold: pt3.append("\\b1")
+                        if te_italic: pt3.append("\\i1")
+                        f.write(f"Dialogue: 1,{s},{e},Default,,0,0,0,,{{{''.join(pt3)}}}{tok3}\n")
                     continue
 
-                if is_caps or text_case == 'uppercase':
-                    text = text.upper()
-                elif text_case == 'lowercase':
-                    text = text.lower()
-                elif text_case == 'capitalize':
-                    text = text.title()
+                # ─── PRIMARY: WORD-LAYOUT TEMPLATE PATH ───────────────────
+                # Uses DOM-captured word positions (word_layouts) for per-word rendering.
+                # Each word is its own Dialogue line at the exact captured position.
+                # This matches the CSS preview: correct positions, per-word colors/effects.
+                if template_id and words_timing and cap_word_layouts:
+                    _ia, _aa = TEMPLATE_WORD_CONFIG.get(template_id, (0.3, 1.0))
 
-                text = text.replace('\n', '\\N')
+                    # Templates where only the CURRENT word gets a snap background box
+                    _CUR_BOX  = {'t-111', 't-119'}
+                    # Templates where ALL words get a background box
+                    _ALL_BOX  = {'t-102', 't-103', 't-T5', 't-26'}
+                    _ucb = template_id in _CUR_BOX
+                    _uab = template_id in _ALL_BOX
 
-                override_tags = []
-                override_tags.append(f"\\fn{font_name}")
-                override_tags.append(f"\\fs{scaled_size}")
-                override_tags.append(f"\\1c{primary_ass}")
-                if has_bg:
-                    override_tags.append(f"\\3c{outline_color}")
-                    override_tags.append(f"\\4c{back_color}")
-                    override_tags.append(f"\\bord{outline_size}")
-                    override_tags.append(f"\\shad0")
-                elif has_stroke:
-                    override_tags.append(f"\\3c{outline_color}")
-                    override_tags.append(f"\\bord{max(int(stroke_width * scale_factor), 1)}")
-                    override_tags.append(f"\\shad{shadow_size if has_shadow else 0}")
-                else:
-                    override_tags.append(f"\\bord{2 if not has_shadow else 0}")
-                    override_tags.append(f"\\shad{shadow_size if has_shadow else 1}")
-                    override_tags.append(f"\\3c{outline_color}")
-                    override_tags.append(f"\\4c{back_color}")
-                override_tags.append(f"\\an{alignment}")
-                if bold_flag:
-                    override_tags.append(f"\\b1")
-                if italic_flag:
-                    override_tags.append(f"\\i1")
-                if letter_spacing:
-                    override_tags.append(f"\\fsp{letter_spacing}")
-
-                if has_shadow and not has_bg:
-                    xshad = int(shadow_offset_x * scale_factor)
-                    yshad = int(shadow_offset_y * scale_factor)
-                    if xshad != 0:
-                        override_tags.append(f"\\xshad{xshad}")
-                    if yshad != 0:
-                        override_tags.append(f"\\yshad{yshad}")
-
-                has_caption_anim = caption_animation and caption_animation != 'none'
-
-                word_styles = c.get('word_styles') or {}
-                if not isinstance(word_styles, dict): word_styles = {}
-                caption_id = c.get('id', '')
-
-                has_word_positions = False
-                has_word_animations = False
-                if word_styles:
-                    for ws_key, ws_val in word_styles.items():
-                        if isinstance(ws_val, dict):
-                            if ws_val.get('x_pct', 0) != 0 or ws_val.get('y_pct', 0) != 0:
-                                has_word_positions = True
-                            if ws_val.get('animation') and ws_val['animation'] != 'none':
-                                has_word_animations = True
-
-                needs_separate_lines = has_word_positions or has_word_animations
-                print(f"Caption '{caption_id}': animation='{caption_animation}', word_positions={has_word_positions}, word_anims={has_word_animations}, separate={needs_separate_lines}")
-
-                def _write_bg_layer(f_handle, s_str, e_str, tags_base, px, py, txt):
-                    bg_tags = []
-                    bg_tags.append(f"\\fn{font_name}")
-                    bg_tags.append(f"\\fs{scaled_size}")
-                    bg_tags.append(f"\\1c&H00000000")
-                    bg_tags.append(f"\\1a&HFF&")
-                    bg_tags.append(f"\\3c{outline_color}")
-                    bg_tags.append(f"\\4c{back_color}")
-                    bg_tags.append(f"\\bord{outline_size}")
-                    bg_tags.append(f"\\shad0")
-                    bg_tags.append(f"\\an{alignment}")
-                    if bold_flag:
-                        bg_tags.append(f"\\b1")
-                    if italic_flag:
-                        bg_tags.append(f"\\i1")
-                    if letter_spacing:
-                        bg_tags.append(f"\\fsp{letter_spacing}")
-                    bg_tags.append(f"\\pos({px},{py})")
-                    bg_str = "".join(bg_tags)
-                    f_handle.write(f"Dialogue: 0,{s_str},{e_str},Default,,0,0,0,,{{{bg_str}}}{txt}\n")
-
-                def _make_text_only_tags():
-                    t_tags = []
-                    t_tags.append(f"\\fn{font_name}")
-                    t_tags.append(f"\\fs{scaled_size}")
-                    t_tags.append(f"\\an{alignment}")
-                    if bold_flag:
-                        t_tags.append(f"\\b1")
-                    if italic_flag:
-                        t_tags.append(f"\\i1")
-                    if letter_spacing:
-                        t_tags.append(f"\\fsp{letter_spacing}")
-                    
-                    eff_type = style.get('effect_type', 'none')
-                    eff_props = {
-                        'offset': float(style.get('effect_offset', 50)),
-                        'direction': float(style.get('effect_direction', -45)),
-                        'blur': float(style.get('effect_blur', 50)),
-                        'transparency': float(style.get('effect_transparency', 40)),
-                        'thickness': float(style.get('effect_thickness', 50)),
-                        'intensity': float(style.get('effect_intensity', 50)),
-                        'color': style.get('effect_color', '#000000'),
+                    # Per-template extra ASS tags for the currently-speaking word
+                    _gn = self._hex_to_ass
+                    _glow = max(int(5 * scale_factor), 4)
+                    _spd_x = -max(int(3 * scale_factor), 2)  # negative = shadow goes LEFT
+                    _CEFF = {
+                        # t-115: omnidirectional neon glow (CSS: drop-shadow 0 0 8px #39FF14)
+                        't-115': f'\\bord{_glow}\\3c{_gn(secondary_hex or "#39FF14")}\\blur{_glow}\\shad0',
+                        # t-109: 3px-3px directional shadow (CSS: text-shadow 3px 3px 0 secondary)
+                        't-109': f'\\bord0\\shad0\\xshad{max(int(3*scale_factor),1)}\\yshad{max(int(3*scale_factor),1)}\\4c{_gn(secondary_hex or "#E01A1A")}',
+                        # t-9: omnidirectional fire glow (CSS: 0 0 12px #ff4500)
+                        't-9':   f'\\bord{max(int(3*scale_factor),2)}\\3c{_gn(shadow_color_hex or "#ff4500")}\\blur{max(int(5*scale_factor),4)}\\shad0',
+                        # t-12: omnidirectional horror glow (CSS: 0 0 18px secondary)
+                        't-12':  f'\\bord{max(int(4*scale_factor),3)}\\3c{_gn(secondary_hex or "#cc0000")}\\blur{max(int(6*scale_factor),5)}\\shad0',
+                        # t-57: chromatic aberration — right red shadow (CSS: 2px 0 #f00, -2px 0 #00f — best approx)
+                        't-57':  f'\\bord0\\shad0\\xshad{max(int(2*scale_factor),1)}\\yshad0\\4c{_gn(shadow_color_hex or "#FF0000")}',
+                        # t-56: underline on current word (CSS: border-bottom 3px solid secondary)
+                        't-56':  '\\u1\\bord0\\shad0',
+                        # t-124: 4px-4px ghost echo shadow (CSS: 4px 4px 0 rgba(255,255,255,.32))
+                        't-124': f'\\bord0\\shad0\\xshad{max(int(4*scale_factor),1)}\\yshad{max(int(4*scale_factor),1)}\\4c{_gn(shadow_color_hex or "#ffffff", 0.35)}',
+                        # t-104: colored stroke on current (CSS: drop-shadow glow + stroke secondary)
+                        't-104': f'\\bord{max(int(stroke_width_v*scale_factor),1)}\\3c{_gn(secondary_hex or "#B28DFF",1.0)}\\shad0',
+                        # t-110: shadow dot below current word (CSS: ::after dot glow in secondary)
+                        't-110': f'\\bord0\\shad{max(int(4*scale_factor),2)}\\blur3\\4c{_gn(secondary_hex or "#0066FF")}',
+                        # t-105: stroke+shadow for current (CSS: .word.active stroke+shadow also apply to .word.current)
+                        't-105': f'\\bord{max(int(1*scale_factor),1)}\\3c{_gn("#000000",1.0)}\\shad0\\xshad{max(int(2*scale_factor),1)}\\yshad{max(int(2*scale_factor),1)}\\4c{_gn("#000000",1.0)}',
+                        # t-16: omnidirectional white glow on current (CSS: text-shadow 0 0 14px rgba(255,255,255,.5))
+                        't-16':  f'\\bord{max(int(3*scale_factor),2)}\\3c{_gn("#FFFFFF", 0.5)}\\blur{max(int(5*scale_factor),4)}\\shad0',
+                        # t-95: left speed-line shadow (CSS: -3px 0 #0055FF, -7px 0 #00AAFF)
+                        't-95':  f'\\bord0\\shad0\\xshad{_spd_x}\\yshad0\\4c{_gn(secondary_hex or "#0055FF")}',
                     }
-                    eff_tags = _get_effect_tags(eff_type, primary_hex, (has_stroke and not has_bg, stroke_width, stroke_color), (has_shadow and not has_bg, shadow_blur, shadow_offset_x, shadow_offset_y, shadow_color), eff_props)
-                    t_tags.append(eff_tags)
-                    
-                    if eff_type not in ('hollow', 'splice'):
-                        t_tags.append(f"\\1c{primary_ass}")
-                        
-                    return t_tags
+                    _cur_eff = _CEFF.get(template_id, '\\bord0\\shad0')
 
-                def _make_sep_word_tags(ws_dict):
-                    wt = []
-                    wt.append(f"\\fn{font_name}")
-                    wt.append(f"\\fs{scaled_size}")
-                    wt.append(f"\\an{alignment}")
-                    if bold_flag:
-                        wt.append(f"\\b1")
-                    if italic_flag:
-                        wt.append(f"\\i1")
-                    if letter_spacing:
-                        wt.append(f"\\fsp{letter_spacing}")
-                    
-                    w_color_hex = ws_dict.get('color', primary_hex)
-                    w_eff_type = ws_dict.get('effectType', style.get('effect_type', 'none'))
-                    if ws_dict.get('backgroundColor'):
-                        w_bg_ass = self._hex_to_ass(ws_dict['backgroundColor'], float(ws_dict.get('backgroundOpacity', bg_opacity)))
-                        w_bord = max(int(bg_padding * scale_factor * 0.5), 2) if has_bg else max(int(scaled_size * 0.04), 2)
-                        wt.append(f"\\3c{w_bg_ass}\\4c{w_bg_ass}\\bord{w_bord}\\shad0")
-                        wt.append(f"\\1c{self._hex_to_ass(w_color_hex)}")
+                    # Done/active word extra effects — templates where .word.active has effects beyond color
+                    _AEFF = {
+                        # t-109: 3D shadow on done words (CSS: text-shadow 3px 3px 0 secondary@40%)
+                        't-109': f'\\bord0\\shad0\\xshad{max(int(3*scale_factor),1)}\\yshad{max(int(3*scale_factor),1)}\\4c{_gn(secondary_hex or "#E01A1A", 0.4)}',
+                        # t-104: colored stroke on done words (CSS: -webkit-text-stroke 2px secondary)
+                        't-104': f'\\bord{max(int(stroke_width_v*scale_factor),1)}\\3c{_gn(secondary_hex or "#B28DFF",1.0)}\\shad0',
+                        # t-105: stroke+shadow on done words (CSS: -webkit-text-stroke 1px #000 + drop-shadow 2px 2px)
+                        't-105': f'\\bord{max(int(1*scale_factor),1)}\\3c{_gn("#000000",1.0)}\\shad0\\xshad{max(int(2*scale_factor),1)}\\yshad{max(int(2*scale_factor),1)}\\4c{_gn("#000000",1.0)}',
+                    }
+
+                    # Templates where DONE (already-spoken) words use secondary color — none in CSS
+                    _ACT_SEC = set()
+                    # Templates where the CURRENT word uses secondary_color
+                    # Verified against CSS .word.current { color: secondary/highlight }
+                    # t-52: NO .word.current color override → same as done (primary) — removed
+                    # t-112: NO .word.current rule → same as done (primary) — removed
+                    _CUR_SEC = {'t-36', 't-37', 't-115', 't-T1', 't-T4', 't-T3', 't-105'}
+
+                    _pa = float(style.get('text_opacity', 1.0) or 1.0)
+                    _act_c   = _gn(secondary_hex if (secondary_hex and template_id in _ACT_SEC) else primary_hex, _aa * _pa)
+                    _inact_hex = TEMPLATE_INACTIVE_HEX.get(template_id, primary_hex)
+                    _inact_c = _gn(_inact_hex, _ia * _pa)
+                    _cur_c   = _gn(secondary_hex if (secondary_hex and template_id in _CUR_SEC) else primary_hex, 1.0)
+
+                    _cur_box_bg  = _gn(secondary_hex or '#FFE600', 1.0)
+                    _base_box_bg = _gn(bg_hex, bg_opacity)
+
+                    # Base tags shared by every word line (no position/color — added per word)
+                    _bt = f'\\fn{font_name}\\fs{scaled_size}\\an5'
+                    if bold_flag:      _bt += '\\b1'
+                    if italic_flag:    _bt += '\\i1'
+                    if letter_spacing: _bt += f'\\fsp{letter_spacing}'
+
+                    # Suppressor: hides outline/shadow/box from Default style (BoxStyle=1 or 3)
+                    _nobox = '\\bord0\\shad0\\3a&HFF&\\4a&HFF&'
+
+                    def _wxy(lyt):
+                        _wx = int((float(lyt['x']) / 100) * video_w)
+                        _wy = int((float(lyt['y']) / 100) * video_h)
+                        if detected_script in INDIC_Y_CORR:
+                            _wy = max(10, _wy + int(INDIC_Y_CORR[detected_script] * video_h))
+                        return _wx, _wy
+
+                    _aw = [_T((wt2.get('word') or '').strip()) for wt2 in words_timing]
+
+                    # Gap before first word — write all inactive words
+                    _fts = float(words_timing[0].get('start', st)) if words_timing else st
+                    if _fts > st + 0.05 and _ia > 0.0:
+                        for _wi2, _wd2 in enumerate(_aw):
+                            if not _wd2: continue
+                            _lyt2 = cap_word_layouts.get(_wi2)
+                            if not _lyt2: continue
+                            _wx2, _wy2 = _wxy(_lyt2)
+                            if _uab:
+                                _lt = f'{_bt}\\1c{_inact_c}\\3c{_gn(bg_hex, bg_opacity * _ia)}\\pos({_wx2},{_wy2})'
+                                _sn = 'WordBox'
+                            else:
+                                _lt = f'{_bt}\\1c{_inact_c}{_nobox}\\pos({_wx2},{_wy2})'
+                                _sn = 'Default'
+                            f.write(f"Dialogue: 0,{self._fmt(st)},{self._fmt(_fts)},{_sn},,0,0,0,,{{{_lt}}}{_wd2}\n")
+
+                    # Per-word timing windows
+                    for _wi, _wt2 in enumerate(words_timing):
+                        _ww = _aw[_wi]
+                        if not _ww: continue
+                        _wsc = ws_map.get(f"{cid}-{_wi}", {})
+                        if isinstance(_wsc, dict) and _wsc.get('abs_x_pct') is not None:
+                            continue  # Separately positioned — rendered below
+                        _ws2 = float(_wt2.get('start', st))
+                        _we2 = float(words_timing[_wi + 1].get('start', et) if _wi + 1 < len(words_timing) else et)
+                        if _we2 <= _ws2: _we2 = _ws2 + 0.05
+                        _ts_s = self._fmt(_ws2)
+                        _ts_e = self._fmt(_we2)
+
+                        for _wi2, _wd2 in enumerate(_aw):
+                            if not _wd2: continue
+                            _lyt2 = cap_word_layouts.get(_wi2)
+                            if not _lyt2: continue
+                            _wx2, _wy2 = _wxy(_lyt2)
+                            _pt = f'\\pos({_wx2},{_wy2})'
+
+                            if _wi2 < _wi:
+                                # Already spoken — active color + per-template done effects
+                                if _uab:
+                                    _lt = f'{_bt}\\1c{_act_c}\\3c{_base_box_bg}{_pt}'
+                                    _sn = 'WordBox'
+                                else:
+                                    _done_eff_p = _AEFF.get(template_id, _nobox)
+                                    _lt = f'{_bt}\\1c{_act_c}{_done_eff_p}{_pt}'
+                                    _sn = 'Default'
+                                f.write(f"Dialogue: 0,{_ts_s},{_ts_e},{_sn},,0,0,0,,{{{_lt}}}{_wd2}\n")
+
+                            elif _wi2 == _wi:
+                                # Currently speaking — template effects + current color
+                                if _ucb or _uab:
+                                    _lt = f'{_bt}\\1c{_gn(primary_hex,1.0)}\\3c{_cur_box_bg}{_pt}'
+                                    _sn = 'WordBox'
+                                else:
+                                    _lt = f'{_bt}\\1c{_cur_c}\\3a&HFF&\\4a&HFF&{_cur_eff}{_pt}'
+                                    _sn = 'Default'
+                                f.write(f"Dialogue: 2,{_ts_s},{_ts_e},{_sn},,0,0,0,,{{{_lt}}}{_wd2}\n")
+
+                            else:
+                                # Not yet spoken — inactive
+                                if _ia == 0.0:
+                                    continue
+                                if _uab:
+                                    _lt = f'{_bt}\\1c{_inact_c}\\3c{_gn(bg_hex, bg_opacity * _ia)}{_pt}'
+                                    _sn = 'WordBox'
+                                else:
+                                    _lt = f'{_bt}\\1c{_inact_c}{_nobox}{_pt}'
+                                    _sn = 'Default'
+                                f.write(f"Dialogue: 0,{_ts_s},{_ts_e},{_sn},,0,0,0,,{{{_lt}}}{_wd2}\n")
+
+                    # Separately-positioned (dragged) words — always rendered
+                    for _, _tok_p, _ws_p in positioned:
+                        _wx_p = int((float(_ws_p.get('abs_x_pct', 50)) / 100) * video_w)
+                        _wy_p = int((float(_ws_p.get('abs_y_pct', 75)) / 100) * video_h)
+                        _wc_p = _gn(_ws_p.get('color', primary_hex) or primary_hex, float(style.get('text_opacity', 1.0) or 1.0))
+                        _wfn_p = self._ensure_font(_ws_p['fontFamily'])['ass_name'] if _ws_p.get('fontFamily') else font_name
+                        _wfs_p = max(int(float(_ws_p['fontSize']) * scale_factor), 20) if _ws_p.get('fontSize') else scaled_size
+                        _weff_t = _ws_p.get('effectType', 'none') or 'none'
+                        if _weff_t != 'none':
+                            _weff_p = {'offset': float(_ws_p.get('effectOffset', 50) or 50), 'direction': float(_ws_p.get('effectDirection', -45) or -45), 'blur': float(_ws_p.get('effectBlur', 50) or 50), 'transparency': float(_ws_p.get('effectTransparency', 40) or 40), 'thickness': float(_ws_p.get('effectThickness', 50) or 50), 'intensity': float(_ws_p.get('effectIntensity', 50) or 50), 'color': _ws_p.get('effectColor', '#000000') or '#000000'}
+                            _weff_str = _get_effect_tags(_weff_t, _ws_p.get('color', primary_hex) or primary_hex, (False, 0, '#000000'), (False, 0, 0, 0, '#000000'), _weff_p)
+                        else:
+                            _weff_str = '\\bord0\\shad0'
+                        _pt_p = [f"\\fn{_wfn_p}", f"\\fs{_wfs_p}", f"\\1c{_wc_p}", "\\an5", _weff_str, f"\\pos({_wx_p},{_wy_p})"]
+                        if bold_flag or str(_ws_p.get('fontWeight', '')) in ('bold', '700', '800', '900'): _pt_p.append("\\b1")
+                        if italic_flag: _pt_p.append("\\i1")
+                        if _ws_p.get('isEmphasis'): _pt_p.append("\\fscx115\\fscy115\\blur0.5")
+                        f.write(f"Dialogue: 1,{s},{e},Default,,0,0,0,,{{{''.join(_pt_p)}}}{_tok_p}\n")
+
+                    continue  # Skip legacy rendering paths
+
+                # ─── REGULAR CAPTION ──────────────────────────────────────
+                text = _T(raw_text).replace('\n', '\\N')
+
+                # Split into tokens; words with abs_x/y are rendered as separate Dialogue lines
+                tokens = re.split(r'(\s+)', text)
+                word_idx = 0
+                inline_parts = []
+                positioned = []   # (word_idx, token, ws_dict) — rebuilt from tokens for legacy path
+
+                for tok in tokens:
+                    if not tok.strip():
+                        inline_parts.append(tok)
+                        continue
+                    ws = ws_map.get(f"{cid}-{word_idx}", {})
+                    if not isinstance(ws, dict): ws = {}
+                    ax = ws.get('abs_x_pct'); ay = ws.get('abs_y_pct')
+                    if ax is not None and ay is not None:
+                        positioned.append((word_idx, tok, ws))
                     else:
-                        w_stroke_data = (ws_dict.get('hasStroke', has_stroke), ws_dict.get('strokeWidth', stroke_width), ws_dict.get('strokeColor', stroke_color))
-                        w_shadow_data = (ws_dict.get('hasShadow', has_shadow), ws_dict.get('shadowBlur', shadow_blur), ws_dict.get('shadowOffsetX', shadow_offset_x), ws_dict.get('shadowOffsetY', shadow_offset_y), ws_dict.get('shadowColor', shadow_color))
+                        ov = []; rv = []
+                        if ws.get('color'):
+                            ov.append(f"\\1c{self._hex_to_ass(ws['color'])}"); rv.append(f"\\1c{primary_ass}")
+                        if ws.get('fontFamily'):
+                            wfi = self._ensure_font(ws['fontFamily'])
+                            ov.append(f"\\fn{wfi['ass_name']}"); rv.append(f"\\fn{font_name}")
+                        if ws.get('fontSize'):
+                            ov.append(f"\\fs{max(int(float(ws['fontSize'])*scale_factor),20)}"); rv.append(f"\\fs{scaled_size}")
+                        if str(ws.get('fontWeight', '')) in ('bold', '700', '800', '900'):
+                            ov.append("\\b1"); rv.append(f"\\b{bold_flag}")
+                        if ws.get('fontStyle') == 'italic':
+                            ov.append("\\i1"); rv.append(f"\\i{italic_flag}")
+                        if ws.get('isEmphasis'):
+                            ov.append("\\fscx115\\fscy115\\blur0.5"); rv.append("\\fscx100\\fscy100\\blur0")
+                        inline_parts.append("{" + "".join(ov) + "}" + tok + "{" + "".join(rv) + "}" if ov else tok)
+                    word_idx += 1
+
+                main_text = "".join(inline_parts).strip()
+
+                # Base override tags for this caption's Dialogue line
+                tags = [f"\\fn{font_name}", f"\\fs{scaled_size}", f"\\1c{primary_ass}", f"\\an{ass_align}"]
+                if bold_flag: tags.append("\\b1")
+                if italic_flag: tags.append("\\i1")
+                if letter_spacing: tags.append(f"\\fsp{letter_spacing}")
+                if global_eff: tags.append(global_eff)
+
+                # Animation tags
+                skip_pos = False
+                if anim != 'none':
+                    for at in self._get_animation_tags(anim, st, et, scaled_size, pos_x, pos_y):
+                        if at == '__skip_pos__': skip_pos = True
+                        else: tags.append(at)
+                if not skip_pos: tags.append(f"\\pos({pos_x},{pos_y})")
+
+                # ─── TEMPLATE KARAOKE PATH ────────────────────────────────
+                # Replaces Layer 0 + secondary karaoke for template captions.
+                # Renders one Dialogue line per word window with inactive/active/current
+                # states properly encoded — matching the CSS preview word states.
+                #
+                # KEY: Effects (shadow/glow/stroke) are applied PER-WORD-STATE,
+                # not globally.  In CSS, only .word.active/.word.current get
+                # template effects; inactive/done words are plain or dimmed.
+                # This must match in the ASS output.
+                used_template_karaoke = False
+                if template_id and words_timing:
+                    _ia_fb, _aa_fb = TEMPLATE_WORD_CONFIG.get(template_id, (0.3, 1.0))
+                    _pa_fb = float(style.get('text_opacity', 1.0) or 1.0)
+                    _gn_fb = self._hex_to_ass
+
+                    # Color logic — mirrors primary word-layout path exactly
+                    _ACT_SEC_FB = set()
+                    # t-52: NO .word.current color override — removed
+                    # t-112: NO .word.current rule — removed
+                    _CUR_SEC_FB = {'t-36', 't-37', 't-115', 't-T1', 't-T4', 't-T3', 't-105'}
+                    _act_c_fb  = _gn_fb(secondary_hex if (secondary_hex and template_id in _ACT_SEC_FB) else primary_hex, _aa_fb * _pa_fb)
+                    _inact_hex_fb = TEMPLATE_INACTIVE_HEX.get(template_id, primary_hex)
+                    _inact_c_fb = _gn_fb(_inact_hex_fb, _ia_fb * _pa_fb)
+                    _cur_c_fb  = _gn_fb(secondary_hex if (secondary_hex and template_id in _CUR_SEC_FB) else primary_hex, 1.0)
+
+                    all_tpl_words = [_T((wt.get('word') or '').strip()) for wt in words_timing]
+
+                    # Build tpl_tag WITHOUT global_eff — effects go per-word-state below.
+                    # For bg templates global_eff is already '' (has_bg + effect_type=none).
+                    tpl_base = [f"\\fn{font_name}", f"\\fs{scaled_size}", f"\\an{ass_align}"]
+                    if bold_flag: tpl_base.append("\\b1")
+                    if italic_flag: tpl_base.append("\\i1")
+                    if letter_spacing: tpl_base.append(f"\\fsp{letter_spacing}")
+                    # Only include global_eff for bg templates (where it's already empty)
+                    if has_bg and global_eff: tpl_base.append(global_eff)
+                    tpl_base.append(f"\\pos({pos_x},{pos_y})")
+                    tpl_tag = "".join(tpl_base)
+
+                    # Per-template CURRENT-word effects (mirrors primary path _CEFF exactly)
+                    _glow_fb = max(int(5 * scale_factor), 4)
+                    _spd_x_fb = -max(int(3 * scale_factor), 2)
+                    _CEFF_FB = {
+                        't-115': f'\\bord{_glow_fb}\\3c{_gn_fb(secondary_hex or "#39FF14")}\\blur{_glow_fb}\\shad0',
+                        't-109': f'\\bord0\\shad0\\xshad{max(int(3*scale_factor),1)}\\yshad{max(int(3*scale_factor),1)}\\4c{_gn_fb(secondary_hex or "#E01A1A")}',
+                        't-9':   f'\\bord{max(int(3*scale_factor),2)}\\3c{_gn_fb(shadow_color_hex or "#ff4500")}\\blur{max(int(5*scale_factor),4)}\\shad0',
+                        't-12':  f'\\bord{max(int(4*scale_factor),3)}\\3c{_gn_fb(secondary_hex or "#cc0000")}\\blur{max(int(6*scale_factor),5)}\\shad0',
+                        't-57':  f'\\bord0\\shad0\\xshad{max(int(2*scale_factor),1)}\\yshad0\\4c{_gn_fb(shadow_color_hex or "#FF0000")}',
+                        't-56':  '\\u1\\bord0\\shad0',
+                        't-124': f'\\bord0\\shad0\\xshad{max(int(4*scale_factor),1)}\\yshad{max(int(4*scale_factor),1)}\\4c{_gn_fb(shadow_color_hex or "#ffffff", 0.35)}',
+                        't-104': f'\\bord{max(int(stroke_width_v*scale_factor),1)}\\3c{_gn_fb(secondary_hex or "#B28DFF",1.0)}\\shad0',
+                        't-110': f'\\bord0\\shad{max(int(4*scale_factor),2)}\\blur3\\4c{_gn_fb(secondary_hex or "#0066FF")}',
+                        't-105': f'\\bord{max(int(1*scale_factor),1)}\\3c{_gn_fb("#000000",1.0)}\\shad0\\xshad{max(int(2*scale_factor),1)}\\yshad{max(int(2*scale_factor),1)}\\4c{_gn_fb("#000000",1.0)}',
+                        't-16':  f'\\bord{max(int(3*scale_factor),2)}\\3c{_gn_fb("#FFFFFF", 0.5)}\\blur{max(int(5*scale_factor),4)}\\shad0',
+                        't-95':  f'\\bord0\\shad0\\xshad{_spd_x_fb}\\yshad0\\4c{_gn_fb(secondary_hex or "#0055FF")}',
+                    }
+                    _cur_eff_fb = _CEFF_FB.get(template_id, '\\bord0\\shad0')
+                    # Suppress default ASS style effects for non-current words
+                    _noeff_fb = '\\bord0\\shad0\\blur0'
+
+                    # Done/active word extra effects (CSS: .word.active effects beyond color)
+                    _AEFF_FB = {
+                        't-109': f'\\bord0\\shad0\\xshad{max(int(3*scale_factor),1)}\\yshad{max(int(3*scale_factor),1)}\\4c{_gn_fb(secondary_hex or "#E01A1A", 0.4)}',
+                        't-104': f'\\bord{max(int(stroke_width_v*scale_factor),1)}\\3c{_gn_fb(secondary_hex or "#B28DFF",1.0)}\\shad0',
+                        't-105': f'\\bord{max(int(1*scale_factor),1)}\\3c{_gn_fb("#000000",1.0)}\\shad0\\xshad{max(int(2*scale_factor),1)}\\yshad{max(int(2*scale_factor),1)}\\4c{_gn_fb("#000000",1.0)}',
+                    }
+
+                    def _tpl_line(w_s, w_e, cur_wi):
+                        if w_e <= w_s: return
+                        parts = []
+                        _done_eff_tpl = _AEFF_FB.get(template_id, _noeff_fb)
+                        for j, tw in enumerate(all_tpl_words):
+                            if not tw: continue
+                            if cur_wi is None:
+                                # Gap before first word — all inactive, no effects
+                                parts.append(f"{{\\1c{_inact_c_fb}{_noeff_fb}}}{tw}")
+                            elif j < cur_wi:
+                                # Already spoken — active color + per-template done effects
+                                if has_bg:
+                                    parts.append(f"{{\\1c{_act_c_fb}}}{tw}")
+                                else:
+                                    parts.append(f"{{\\1c{_act_c_fb}{_done_eff_tpl}}}{tw}")
+                            elif j == cur_wi:
+                                # Currently speaking — template color + effects
+                                if has_bg:
+                                    parts.append(f"{{\\1c{_cur_c_fb}}}{tw}")
+                                else:
+                                    parts.append(f"{{\\1c{_cur_c_fb}{_cur_eff_fb}}}{tw}")
+                            else:
+                                # Not yet spoken — inactive, no effects
+                                parts.append(f"{{\\1c{_inact_c_fb}{_noeff_fb}}}{tw}")
+                        f.write(f"Dialogue: 2,{self._fmt(w_s)},{self._fmt(w_e)},Default,,0,0,0,,{{{tpl_tag}}}{' '.join(parts)}\n")
+
+                    # Gap before first word → all inactive
+                    first_st = float(words_timing[0].get('start', st))
+                    if first_st > st + 0.05:
+                        _tpl_line(st, first_st, None)
+
+                    # Per-word windows (extended to fill inter-word gaps)
+                    for wi, wt in enumerate(words_timing):
+                        ww = _T((wt.get('word') or '').strip())
+                        if not ww: continue
+                        ws_chk = ws_map.get(f"{cid}-{wi}", {})
+                        if isinstance(ws_chk, dict) and ws_chk.get('abs_x_pct') is not None: continue
+                        w_s2 = float(wt.get('start', st))
+                        w_e2 = float(wt.get('end', et))
+                        if w_e2 <= w_s2: continue
+                        w_e2 = float(words_timing[wi + 1].get('start', w_e2)) if wi + 1 < len(words_timing) else et
+                        if w_e2 <= w_s2: w_e2 = w_s2 + 0.05
+                        _tpl_line(w_s2, w_e2, wi)
+
+                    used_template_karaoke = True
+
+                # ─── STANDARD PATH (no active template) ───────────────────
+                if not used_template_karaoke:
+                    if not show_inactive and words_timing:
+                        for wi, wt in enumerate(words_timing):
+                            ww = _T(wt.get('word', '').strip())
+                            if not ww: continue
+                            w_st = float(wt.get('start', st)); w_et = float(wt.get('end', et))
+                            if w_et <= w_st: continue
+                            ws2 = ws_map.get(f"{cid}-{wi}", {})
+                            if not isinstance(ws2, dict): ws2 = {}
+                            if ws2.get('abs_x_pct') is not None: continue
+                            w_tags = list(tags)
+                            if ws2.get('color'):
+                                w_tags = [t for t in w_tags if not t.startswith('\\1c')]
+                                w_tags.insert(2, f"\\1c{self._hex_to_ass(ws2['color'])}")
+                            if ws2.get('fontFamily'):
+                                wfi3 = self._ensure_font(ws2['fontFamily'])
+                                w_tags = [t for t in w_tags if not t.startswith('\\fn')]
+                                w_tags.insert(0, f"\\fn{wfi3['ass_name']}")
+                            if ws2.get('fontSize'):
+                                w_tags = [t for t in w_tags if not t.startswith('\\fs')]
+                                w_tags.insert(1, f"\\fs{max(int(float(ws2['fontSize'])*scale_factor),20)}")
+                            f.write(f"Dialogue: 0,{self._fmt(w_st)},{self._fmt(w_et)},Default,,0,0,0,,{{{''.join(w_tags)}}}{ww}\n")
+                    elif main_text:
+                        f.write(f"Dialogue: 0,{s},{e},Default,,0,0,0,,{{{''.join(tags)}}}{main_text}\n")
+
+                # Positioned (emphasis/dragged) words as separate Dialogue lines (always)
+                for _, tok4, ws4 in positioned:
+                    wx4 = int((float(ws4.get('abs_x_pct', 50)) / 100) * video_w)
+                    wy4 = int((float(ws4.get('abs_y_pct', 75)) / 100) * video_h)
+                    wc4 = self._hex_to_ass(ws4.get('color', primary_hex) or primary_hex,
+                                           float(style.get('text_opacity', 1.0) or 1.0))
+                    wfn4 = self._ensure_font(ws4['fontFamily'])['ass_name'] if ws4.get('fontFamily') else font_name
+                    wfs4 = max(int(float(ws4['fontSize'])*scale_factor), 20) if ws4.get('fontSize') else scaled_size
+                    # Per-word effects from floating popup (effectType, effectBlur, etc.)
+                    w_eff_type = ws4.get('effectType', 'none') or 'none'
+                    if w_eff_type != 'none':
                         w_eff_props = {
-                            'offset': float(ws_dict.get('effectOffset', style.get('effect_offset', 50))),
-                            'direction': float(ws_dict.get('effectDirection', style.get('effect_direction', -45))),
-                            'blur': float(ws_dict.get('effectBlur', style.get('effect_blur', 50))),
-                            'transparency': float(ws_dict.get('effectTransparency', style.get('effect_transparency', 40))),
-                            'thickness': float(ws_dict.get('effectThickness', style.get('effect_thickness', 50))),
-                            'intensity': float(ws_dict.get('effectIntensity', style.get('effect_intensity', 50))),
-                            'color': ws_dict.get('effectColor', style.get('effect_color', '#000000')),
+                            'offset': float(ws4.get('effectOffset', 50) or 50),
+                            'direction': float(ws4.get('effectDirection', -45) or -45),
+                            'blur': float(ws4.get('effectBlur', 50) or 50),
+                            'transparency': float(ws4.get('effectTransparency', 40) or 40),
+                            'thickness': float(ws4.get('effectThickness', 50) or 50),
+                            'intensity': float(ws4.get('effectIntensity', 50) or 50),
+                            'color': ws4.get('effectColor', '#000000') or '#000000',
                         }
-                        eff_tags = _get_effect_tags(w_eff_type, w_color_hex, w_stroke_data, w_shadow_data, w_eff_props)
-                        wt.append(eff_tags)
-                        if w_eff_type not in ('hollow', 'splice'):
-                            wt.append(f"\\1c{self._hex_to_ass(w_color_hex)}")
-                        
-                    if ws_dict.get('fontFamily'):
-                        wf_info = self._ensure_font(ws_dict['fontFamily'])
-                        wt.append(f"\\fn{wf_info['ass_name']}")
-                    if ws_dict.get('fontSize'):
-                        wf_size = max(int(float(ws_dict['fontSize']) * scale_factor), 20)
-                        wt.append(f"\\fs{wf_size}")
-                    if ws_dict.get('fontWeight') in ('bold', '700'):
-                        wt.append("\\b1")
-                    if ws_dict.get('fontStyle') == 'italic':
-                        wt.append("\\i1")
-                    return wt
-
-                if has_word_positions and word_styles:
-                    tokens = re.split(r'(\s+|\\N)', text)
-                    main_parts = []
-                    word_idx = 0
-                    for token in tokens:
-                        if not token or re.match(r'^\s+$', token) or token == '\\N':
-                            main_parts.append(token)
-                            continue
-                        style_key = f"{caption_id}-{word_idx}"
-                        ws = word_styles.get(style_key, {}) if isinstance(word_styles.get(style_key), dict) else {}
-                        word_idx += 1
-
-                        abs_x_pct = ws.get('abs_x_pct')
-                        abs_y_pct = ws.get('abs_y_pct')
-                        x_pct = float(ws.get('x_pct', 0))
-                        y_pct = float(ws.get('y_pct', 0))
-                        word_has_pos = abs_x_pct is not None or x_pct != 0 or y_pct != 0
-
-                        if word_has_pos:
-                            sep_tags = _make_sep_word_tags(ws)
-                            if abs_x_pct is not None and abs_y_pct is not None:
-                                word_x = int((float(abs_x_pct) / 100) * video_w)
-                                word_y = int((float(abs_y_pct) / 100) * video_h)
-                            else:
-                                print(f"  WARN: word '{token}' missing abs_x_pct, using legacy offset calc")
-                                word_x = int(pos_x_px + (x_pct / 100) * video_w)
-                                word_y = int(pos_y_px + (y_pct / 100) * video_h)
-
-                            word_anim = ws.get('animation')
-                            word_skip_pos = False
-                            if word_anim and word_anim != 'none':
-                                wa_tags = self._get_animation_tags(word_anim, start_time, end_time, scaled_size, word_x, word_y)
-                                for wt in wa_tags:
-                                    if wt == "__skip_pos__":
-                                        word_skip_pos = True
-                                    else:
-                                        sep_tags.append(wt)
-                            elif has_caption_anim:
-                                cap_anim_for_word = self._get_animation_tags(caption_animation, start_time, end_time, scaled_size, word_x, word_y)
-                                for wt in cap_anim_for_word:
-                                    if wt == "__skip_pos__":
-                                        word_skip_pos = True
-                                    else:
-                                        sep_tags.append(wt)
-
-                            if not word_skip_pos:
-                                sep_tags.append(f"\\pos({word_x},{word_y})")
-
-                            sep_str = "".join(sep_tags)
-                            f.write(f"Dialogue: 1,{start_str},{end_str},Default,,0,0,0,,{{{sep_str}}}{token}\n")
-                        else:
-                            if ws:
-                                word_tags = []
-                                if ws.get('color'):
-                                    word_tags.append(f"\\1c{self._hex_to_ass(ws['color'])}")
-                                if ws.get('fontFamily'):
-                                    wf_info = self._ensure_font(ws['fontFamily'])
-                                    word_tags.append(f"\\fn{wf_info['ass_name']}")
-                                if ws.get('fontSize'):
-                                    wf_size = max(int(float(ws['fontSize']) * scale_factor), 20)
-                                    word_tags.append(f"\\fs{wf_size}")
-                                if ws.get('fontWeight') in ('bold', '700'):
-                                    word_tags.append("\\b1")
-                                if ws.get('fontStyle') == 'italic':
-                                    word_tags.append("\\i1")
-                                if ws.get('backgroundColor'):
-                                    word_tags.append(f"\\3c{self._hex_to_ass(ws['backgroundColor'], float(ws.get('backgroundOpacity', bg_opacity)))}")
-                                if word_tags:
-                                    wt_str = "".join(word_tags)
-                                    reset_tags = []
-                                    if ws.get('color'):
-                                        reset_tags.append(f"\\1c{primary_ass}")
-                                    if ws.get('fontFamily'):
-                                        reset_tags.append(f"\\fn{font_name}")
-                                    if ws.get('fontSize'):
-                                        reset_tags.append(f"\\fs{scaled_size}")
-                                    if ws.get('fontWeight') in ('bold', '700'):
-                                        reset_tags.append(f"\\b{bold_flag}")
-                                    if ws.get('fontStyle') == 'italic':
-                                        reset_tags.append(f"\\i{italic_flag}")
-                                    if ws.get('backgroundColor'):
-                                        reset_tags.append(f"\\3c{outline_color}")
-                                    reset_str = "".join(reset_tags)
-                                    main_parts.append(f"{{{wt_str}}}{token}{{{reset_str}}}")
-                                else:
-                                    main_parts.append(token)
-                            else:
-                                main_parts.append(token)
-                    remaining = "".join(main_parts).strip()
-                    if remaining:
-                        if has_bg and has_caption_anim:
-                            _write_bg_layer(f, start_str, end_str, override_tags, pos_x_px, pos_y_px, remaining)
-                            text_tags = _make_text_only_tags()
-                            text_skip_pos = False
-                            main_anim = self._get_animation_tags(caption_animation, start_time, end_time, scaled_size, pos_x_px, pos_y_px)
-                            for mat in main_anim:
-                                if mat == "__skip_pos__":
-                                    text_skip_pos = True
-                                else:
-                                    text_tags.append(mat)
-                            if not text_skip_pos:
-                                text_tags.append(f"\\pos({pos_x_px},{pos_y_px})")
-                            tag_str = "".join(text_tags)
-                            f.write(f"Dialogue: 1,{start_str},{end_str},Default,,0,0,0,,{{{tag_str}}}{remaining}\n")
-                        else:
-                            main_override = list(override_tags)
-                            main_skip_pos = False
-                            if has_caption_anim:
-                                main_anim = self._get_animation_tags(caption_animation, start_time, end_time, scaled_size, pos_x_px, pos_y_px)
-                                for mat in main_anim:
-                                    if mat == "__skip_pos__":
-                                        main_skip_pos = True
-                                    else:
-                                        main_override.append(mat)
-                            if not main_skip_pos:
-                                main_override.append(f"\\pos({pos_x_px},{pos_y_px})")
-                            tag_str = "".join(main_override)
-                            f.write(f"Dialogue: 0,{start_str},{end_str},Default,,0,0,0,,{{{tag_str}}}{remaining}\n")
-                else:
-                    if has_bg and has_caption_anim:
-                        _write_bg_layer(f, start_str, end_str, override_tags, pos_x_px, pos_y_px, text)
-
-                        text_tags = _make_text_only_tags()
-                        anim_tags = self._get_animation_tags(caption_animation, start_time, end_time, scaled_size, pos_x_px, pos_y_px)
-                        text_skip_pos = False
-                        for at in anim_tags:
-                            if at == "__skip_pos__":
-                                text_skip_pos = True
-                            else:
-                                text_tags.append(at)
-                        if not text_skip_pos:
-                            text_tags.append(f"\\pos({pos_x_px},{pos_y_px})")
-
-                        if word_styles:
-                            tag_str = "".join(text_tags)
-                            tokens = re.split(r'(\s+|\\N)', text)
-                            styled_parts = []
-                            word_idx = 0
-                            for token in tokens:
-                                if not token or re.match(r'^\s+$', token) or token == '\\N':
-                                    styled_parts.append(token)
-                                    continue
-                                style_key = f"{caption_id}-{word_idx}"
-                                ws = word_styles.get(style_key, {})
-                                if not isinstance(ws, dict): ws = {}
-                                word_idx += 1
-                                if not ws:
-                                    styled_parts.append(token)
-                                    continue
-                                word_tags = []
-                                if ws.get('color'):
-                                    word_tags.append(f"\\1c{self._hex_to_ass(ws['color'])}")
-                                if ws.get('fontFamily'):
-                                    wf_info = self._ensure_font(ws['fontFamily'])
-                                    word_tags.append(f"\\fn{wf_info['ass_name']}")
-                                if ws.get('fontSize'):
-                                    wf_size = max(int(float(ws['fontSize']) * scale_factor), 20)
-                                    word_tags.append(f"\\fs{wf_size}")
-                                if ws.get('fontWeight') in ('bold', '700'):
-                                    word_tags.append("\\b1")
-                                if ws.get('fontStyle') == 'italic':
-                                    word_tags.append("\\i1")
-                                if not word_tags:
-                                    styled_parts.append(token)
-                                    continue
-                                wt_str = "".join(word_tags)
-                                reset_tags = []
-                                if ws.get('color'):
-                                    reset_tags.append(f"\\1c{primary_ass}")
-                                if ws.get('fontFamily'):
-                                    reset_tags.append(f"\\fn{font_name}")
-                                if ws.get('fontSize'):
-                                    reset_tags.append(f"\\fs{scaled_size}")
-                                if ws.get('fontWeight') in ('bold', '700'):
-                                    reset_tags.append(f"\\b{bold_flag}")
-                                if ws.get('fontStyle') == 'italic':
-                                    reset_tags.append(f"\\i{italic_flag}")
-                                reset_str = "".join(reset_tags)
-                                styled_parts.append(f"{{{wt_str}}}{token}{{{reset_str}}}")
-                            styled_text = "".join(styled_parts)
-                            f.write(f"Dialogue: 1,{start_str},{end_str},Default,,0,0,0,,{{{tag_str}}}{styled_text}\n")
-                        else:
-                            tag_str = "".join(text_tags)
-                            f.write(f"Dialogue: 1,{start_str},{end_str},Default,,0,0,0,,{{{tag_str}}}{text}\n")
+                        w_eff_str = _get_effect_tags(w_eff_type, ws4.get('color', primary_hex) or primary_hex,
+                                                     (False, 0, '#000000'), (False, 0, 0, 0, '#000000'), w_eff_props)
                     else:
-                        skip_pos = False
-                        if has_caption_anim:
-                            anim_tags = self._get_animation_tags(caption_animation, start_time, end_time, scaled_size, pos_x_px, pos_y_px)
-                            for at in anim_tags:
-                                if at == "__skip_pos__":
-                                    skip_pos = True
-                                else:
-                                    override_tags.append(at)
-
-                        if not skip_pos:
-                            override_tags.append(f"\\pos({pos_x_px},{pos_y_px})")
-
-                        if word_styles:
-                            tag_str = "".join(override_tags)
-                            tokens = re.split(r'(\s+|\\N)', text)
-                            styled_parts = []
-                            word_idx = 0
-                            for token in tokens:
-                                if not token or re.match(r'^\s+$', token) or token == '\\N':
-                                    styled_parts.append(token)
-                                    continue
-                                style_key = f"{caption_id}-{word_idx}"
-                                ws = word_styles.get(style_key, {})
-                                if not isinstance(ws, dict): ws = {}
-                                word_idx += 1
-                                if not ws:
-                                    styled_parts.append(token)
-                                    continue
-                                word_tags = []
-                                if ws.get('color'):
-                                    word_tags.append(f"\\1c{self._hex_to_ass(ws['color'])}")
-                                if ws.get('fontFamily'):
-                                    wf_info = self._ensure_font(ws['fontFamily'])
-                                    word_tags.append(f"\\fn{wf_info['ass_name']}")
-                                if ws.get('fontSize'):
-                                    wf_size = max(int(float(ws['fontSize']) * scale_factor), 20)
-                                    word_tags.append(f"\\fs{wf_size}")
-                                if ws.get('fontWeight') in ('bold', '700'):
-                                    word_tags.append("\\b1")
-                                if ws.get('fontStyle') == 'italic':
-                                    word_tags.append("\\i1")
-                                if ws.get('backgroundColor'):
-                                    word_tags.append(f"\\3c{self._hex_to_ass(ws['backgroundColor'], float(ws.get('backgroundOpacity', bg_opacity)))}")
-                                if not word_tags:
-                                    styled_parts.append(token)
-                                    continue
-                                wt_str = "".join(word_tags)
-                                reset_tags = []
-                                if ws.get('color'):
-                                    reset_tags.append(f"\\1c{primary_ass}")
-                                if ws.get('fontFamily'):
-                                    reset_tags.append(f"\\fn{font_name}")
-                                if ws.get('fontSize'):
-                                    reset_tags.append(f"\\fs{scaled_size}")
-                                if ws.get('fontWeight') in ('bold', '700'):
-                                    reset_tags.append(f"\\b{bold_flag}")
-                                if ws.get('fontStyle') == 'italic':
-                                    reset_tags.append(f"\\i{italic_flag}")
-                                if ws.get('backgroundColor'):
-                                    reset_tags.append(f"\\3c{outline_color}")
-                                reset_str = "".join(reset_tags)
-                                styled_parts.append(f"{{{wt_str}}}{token}{{{reset_str}}}")
-                            styled_text = "".join(styled_parts)
-                            line = f"Dialogue: 0,{start_str},{end_str},Default,,0,0,0,,{{{tag_str}}}{styled_text}\n"
-                        else:
-                            override_tags_final = list(override_tags)
-                            tag_str = "".join(override_tags_final)
-                            line = f"Dialogue: 0,{start_str},{end_str},Default,,0,0,0,,{{{tag_str}}}{text}\n"
-                        f.write(line)
-
-                if highlight_hex.strip() and not is_text_element:
-                    words_data = c.get('words', [])
-                    if words_data:
-                        highlight_ass = self._hex_to_ass(highlight_hex, 1.0)
-                        h_bord = max(int(bg_padding * scale_factor * bord_factor * bg_h_multiplier), 2) if has_bg else max(int(scaled_size * 0.08), 2)
-                        all_words = []
-                        for wd in words_data:
-                            w = wd.get('word', '').strip()
-                            if not w:
-                                continue
-                            if is_caps or text_case == 'uppercase':
-                                w = w.upper()
-                            elif text_case == 'lowercase':
-                                w = w.lower()
-                            elif text_case == 'capitalize':
-                                w = w.title()
-                            all_words.append(w)
-
-                        hide_tags = "\\1a&HFF&\\3a&HFF&\\4a&HFF&"
-                        show_tags = f"\\1a&H00&\\3c{highlight_ass}\\4c{highlight_ass}\\3a&H00&\\4a&H00&\\bord{h_bord}"
-
-                        for w_idx, wd in enumerate(words_data):
-                            w_text = wd.get('word', '').strip()
-                            w_start = float(wd.get('start', 0))
-                            w_end = float(wd.get('end', 0))
-                            if not w_text or w_end <= w_start:
-                                continue
-                            if is_caps or text_case == 'uppercase':
-                                w_text = w_text.upper()
-                            elif text_case == 'lowercase':
-                                w_text = w_text.lower()
-                            elif text_case == 'capitalize':
-                                w_text = w_text.title()
-
-                            style_key = f"{caption_id}-{w_idx}"
-                            ws = word_styles.get(style_key, {}) if word_styles and isinstance(word_styles.get(style_key), dict) else {}
-                            w_abs_x = ws.get('abs_x_pct')
-                            w_abs_y = ws.get('abs_y_pct')
-                            has_custom_pos = w_abs_x is not None and w_abs_y is not None and (float(w_abs_x) != 0 or float(w_abs_y) != 0)
-
-                            if has_custom_pos:
-                                w_pos_x = int((float(w_abs_x) / 100) * video_w)
-                                w_pos_y = int((float(w_abs_y) / 100) * video_h)
-                                h_tags = []
-                                h_tags.append(f"\\fn{font_name}")
-                                h_tags.append(f"\\fs{scaled_size}")
-                                h_tags.append(f"\\1c{primary_ass}")
-                                h_tags.append(f"\\3c{highlight_ass}")
-                                h_tags.append(f"\\4c{highlight_ass}")
-                                h_tags.append(f"\\bord{h_bord}")
-                                h_tags.append(f"\\shad0")
-                                h_tags.append(f"\\an{alignment}")
-                                if bold_flag: h_tags.append("\\b1")
-                                if italic_flag: h_tags.append("\\i1")
-                                if letter_spacing: h_tags.append(f"\\fsp{letter_spacing}")
-                                if ws.get('color'): h_tags.append(f"\\1c{self._hex_to_ass(ws['color'])}")
-                                h_tags.append(f"\\pos({w_pos_x},{w_pos_y})")
-                                h_str = "".join(h_tags)
-                                w_start_str = self._fmt(w_start)
-                                w_end_str = self._fmt(w_end)
-                                f.write(f"Dialogue: 2,{w_start_str},{w_end_str},Default,,0,0,0,,{{{h_str}}}{w_text}\n")
+                        w_eff_str = '\\bord0\\shad0'
+                    pt4 = [f"\\fn{wfn4}", f"\\fs{wfs4}", f"\\1c{wc4}", "\\an5", w_eff_str]
+                    if str(ws4.get('fontWeight', '')) in ('bold', '700') or bold_flag: pt4.append("\\b1")
+                    if italic_flag: pt4.append("\\i1")
+                    if ws4.get('isEmphasis'): pt4.append("\\fscx115\\fscy115\\blur0.5")
+                    # Per-word animation from floating popup
+                    w_anim = ws4.get('animation', 'none') or 'none'
+                    skip_pos_w = False
+                    if w_anim != 'none':
+                        for at in self._get_animation_tags(w_anim, st, et, wfs4, wx4, wy4):
+                            if at == '__skip_pos__':
+                                skip_pos_w = True
                             else:
-                                parts = []
-                                for i, aw in enumerate(all_words):
-                                    if i == w_idx:
-                                        parts.append(f"{{{show_tags}}}{aw}")
-                                    else:
-                                        parts.append(f"{{{hide_tags}}}{aw}")
-                                highlight_text = " ".join(parts)
+                                pt4.append(at)
+                    if not skip_pos_w:
+                        pt4.append(f"\\pos({wx4},{wy4})")
+                    f.write(f"Dialogue: 1,{s},{e},Default,,0,0,0,,{{{''.join(pt4)}}}{tok4}\n")
 
-                                h_base = []
-                                h_base.append(f"\\fn{font_name}")
-                                h_base.append(f"\\fs{scaled_size}")
-                                h_base.append(f"\\1c{primary_ass}")
-                                h_base.append(f"\\bord0")
-                                h_base.append(f"\\shad0")
-                                h_base.append(f"\\an{alignment}")
-                                if bold_flag: h_base.append("\\b1")
-                                if italic_flag: h_base.append("\\i1")
-                                if letter_spacing: h_base.append(f"\\fsp{letter_spacing}")
-                                h_base.append(f"\\1a&HFF&\\3a&HFF&\\4a&HFF&")
-                                h_base.append(f"\\pos({pos_x_px},{pos_y_px})")
-                                h_str = "".join(h_base)
-                                w_start_str = self._fmt(w_start)
-                                w_end_str = self._fmt(w_end)
-                                f.write(f"Dialogue: 2,{w_start_str},{w_end_str},Default,,0,0,0,,{{{h_str}}}{highlight_text}\n")
-                        print(f"  Highlight color '{highlight_hex}' applied to {len(words_data)} words (full-line method)")
+                # ─── HIGHLIGHT KARAOKE (standard/non-template captions only) ──
+                if not used_template_karaoke and highlight_hex and words_timing:
+                    h_ass = self._hex_to_ass(highlight_hex, 1.0)
+                    h_bord = max(int(bg_padding * scale_factor * bord_factor * bg_h_mult), 2) if has_bg else max(int(scaled_size * 0.08), 2)
+                    all_ww = [_T(wt.get('word', '').strip()) for wt in words_timing if wt.get('word', '').strip()]
+                    h_base = [f"\\fn{font_name}", f"\\fs{scaled_size}", f"\\an{ass_align}", f"\\pos({pos_x},{pos_y})"]
+                    if bold_flag: h_base.append("\\b1")
+                    if italic_flag: h_base.append("\\i1")
+                    for wi, wt in enumerate(words_timing):
+                        ww = _T(wt.get('word', '').strip())
+                        if not ww: continue
+                        w_st2 = float(wt.get('start', st)); w_et2 = float(wt.get('end', et))
+                        if w_et2 <= w_st2: continue
+                        ws5 = ws_map.get(f"{cid}-{wi}", {})
+                        if not isinstance(ws5, dict): ws5 = {}
+                        if ws5.get('isEmphasis') or ws5.get('abs_x_pct') is not None: continue
+                        parts_h = []
+                        for j, tw in enumerate(all_ww):
+                            if j == wi:
+                                parts_h.append(f"{{\\1c{h_ass}\\3c{h_ass}\\4c{h_ass}\\bord{h_bord}\\shad0}}{tw}")
+                            else:
+                                parts_h.append(f"{{\\1c{primary_ass}\\3c{outline_c}\\4c{back_c}\\bord{outline_size}\\shad{shadow_size}}}{tw}")
+                        h_str = "{" + "".join(h_base) + "}" + " ".join(parts_h)
+                        f.write(f"Dialogue: 2,{self._fmt(w_st2)},{self._fmt(w_et2)},Default,,0,0,0,,{h_str}\n")
 
-        print(f"ASS file created: {ass_path}")
-        with open(ass_path, 'r', encoding='utf-8') as f:
-            content = f.read()
-            print(f"ASS content preview:\n{content[:3000]}")
+        # Debug: log sample Dialogue lines
+        try:
+            with open(ass_path, 'r', encoding='utf-8') as _df:
+                _lines = _df.readlines()
+                _diags = [l.strip() for l in _lines if l.startswith('Dialogue:')]
+                print(f"[ASS] Created: {len(_lines)} lines, {len(_diags)} Dialogue entries")
+                for dl in _diags[:4]:
+                    print(f"[ASS]   {dl[:200]}")
+        except Exception:
+            pass
 
         return ass_path
 

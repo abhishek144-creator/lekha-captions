@@ -108,16 +108,21 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
   // If signed in but Firestore data hasn't loaded yet, default to unlocked (optimistic)
   const isPlanActive = (() => {
     if (!isSignedIn) return false;
-    // userData not loaded yet — assume active until we know otherwise
     if (!userData) return true;
-    // Has remaining credits (free plan or subscription with credits)
     if (userData.credits_remaining > 0) return true;
-    // Has active subscription (weekly/monthly not expired)
     if (userData.subscription_tier && userData.subscription_tier !== 'free') {
       if (!userData.subscription_expiry) return true;
       return new Date(userData.subscription_expiry) > new Date();
     }
     return false;
+  })();
+
+  // 4K is only available for pro / pro+ plans (not free or starter)
+  const is4kAllowed = (() => {
+    if (!isSignedIn || !userData) return false;
+    const tier = userData.subscription_tier || 'free';
+    // Allow only tiers that explicitly include 4K
+    return ['pro', 'pro_plus', 'professional', 'business'].includes(tier.toLowerCase());
   })();
 
   const handleExportVideo = async (quality) => {
@@ -481,7 +486,8 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
       description: 'Ultra HD MP4 render',
       action: () => handleExportVideo('4k'),
       gradient: 'from-rose-500 to-pink-600',
-      requiresPlan: true
+      requiresPlan: true,
+      requiresPro: true,
     },
     {
       icon: Video,
@@ -605,7 +611,8 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
             {/* Video exports */}
             <p className="text-[11px] text-gray-500 uppercase tracking-wider font-medium px-1">Video Export</p>
             {exportOptions.filter(o => o.requiresPlan).map((option, idx) => {
-              const isLocked = !isPlanActive;
+              const isLocked = !isPlanActive || (option.requiresPro && !is4kAllowed);
+              const lockReason = !isPlanActive ? 'Requires active plan' : (option.requiresPro && !is4kAllowed) ? 'Pro plan required' : null;
               return (
                 <motion.button
                   key={idx}
@@ -625,7 +632,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
                   </div>
                   <div className="text-left flex-1">
                     <p className={`font-medium ${isLocked ? 'text-gray-500' : 'text-white'}`}>{option.title}</p>
-                    <p className="text-sm text-gray-500">{isLocked ? 'Requires active plan' : option.description}</p>
+                    <p className="text-sm text-gray-500">{isLocked ? lockReason : option.description}</p>
                   </div>
                 </motion.button>
               );
