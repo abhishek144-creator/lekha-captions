@@ -380,6 +380,12 @@ class VideoProcessor:
             except Exception as e:
                 print(f"Fallback font download also failed: {e}")
 
+        if not os.path.exists(font_path):
+            raise RuntimeError(
+                f"Font unavailable: '{font_key}' could not be downloaded and the fallback Inter font is also missing. "
+                f"Expected at: {font_path}"
+            )
+
         return info
 
     async def generate_captions_only(self, input_p, target_language="English", min_words=0, max_words=0):
@@ -556,8 +562,8 @@ class VideoProcessor:
             try:
                 if os.path.exists(audio_p):
                     os.remove(audio_p)
-            except Exception:
-                pass
+            except Exception as _cleanup_e:
+                print(f"[Warning] Failed to delete temp audio file {audio_p}: {_cleanup_e}")
 
             # If API failed, generate mock captions
             if api_error_msg is not None:
@@ -569,7 +575,8 @@ class VideoProcessor:
                         capture_output=True, text=True
                     )
                     video_duration = float(dur_result.stdout.strip())
-                except Exception:
+                except Exception as _dur_e:
+                    print(f"[Warning] Failed to get video duration for mock captions: {_dur_e}")
                     video_duration = 16.8  # fallback
 
                 # Generate realistic word-level mock data spanning entire video
@@ -607,7 +614,7 @@ class VideoProcessor:
                     sentence_idx += 1
 
                 grouped = self._group_words_by_speech_pace(all_words, min_words=min_words, max_words=max_words)
-                return {"success": True, "captions": grouped}
+                return {"success": False, "error": f"Transcription API unavailable: {api_error_msg}", "captions": grouped, "is_mock": True}
 
             grouped_captions = self._group_words_by_speech_pace(words, min_words=min_words, max_words=max_words)
             return {"success": True, "captions": grouped_captions}
@@ -732,7 +739,7 @@ class VideoProcessor:
                 out_size = os.path.getsize(output_fwd.replace('/', os.sep))
                 print(f"[FFmpeg] Output file size: {out_size} bytes")
             else:
-                print(f"[FFmpeg] WARNING: Output file not found at {output_fwd}")
+                return {"success": False, "error": f"FFmpeg succeeded but output file was not created at {output_fwd}"}
 
             if os.path.exists(ass_path):
                 os.remove(ass_path)
@@ -761,7 +768,8 @@ class VideoProcessor:
                 print(f"Video is rotated {rotation}°, swapping dimensions to {w}x{h}")
 
             return w, h
-        except Exception:
+        except Exception as e:
+            print(f"[Warning] Failed to get video dimensions for {video_path}: {e} — using 1080x1920 fallback")
             return 1080, 1920
 
     def _get_rotation(self, video_path):
@@ -788,8 +796,8 @@ class VideoProcessor:
             rot_str = result2.stdout.strip()
             if rot_str:
                 return int(rot_str)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[Warning] Failed to read video rotation for {video_path}: {e}")
         return 0
 
     def _group_words_by_speech_pace(self, words, min_words=0, max_words=0):
@@ -1769,8 +1777,8 @@ class VideoProcessor:
                 print(f"[ASS] Created: {len(_lines)} lines, {len(_diags)} Dialogue entries")
                 for dl in _diags[:4]:
                     print(f"[ASS]   {dl[:200]}")
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[Warning] Failed to read back ASS debug log: {e}")
 
         return ass_path
 
@@ -1839,7 +1847,8 @@ class VideoProcessor:
             r = hex_c[0:2]
             g = hex_c[2:4]
             b = hex_c[4:6]
-        except Exception:
+        except Exception as e:
+            print(f"[Warning] Failed to parse hex color '{hex_c}': {e}")
             return "&H00FFFFFF"
 
         ass_alpha_val = int(255 * (1.0 - min(max(alpha, 0), 1.0)))
