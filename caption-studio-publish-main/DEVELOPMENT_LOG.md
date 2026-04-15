@@ -26,11 +26,111 @@ This is the **Work Diary** for the Lekha Captions project.
 - [ ] **Effects / Emphasis button** — Not working in `StyleControls.jsx` and `WordClickPopup.jsx`. Put effects section in a collapsible `+` icon block in both places. Brainstorm: emphasis effect = bold + scale(1.15) + color highlight + optional shadow/glow on word.
 - [ ] **Styling tab width** — Increase styling panel width to match caption tab width
 - [ ] **Set env vars before deploy** — `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` (backend `.env`); `VITE_RAZORPAY_KEY_ID` (frontend `.env`); `ALLOWED_ORIGINS` (comma-separated prod domains). App will fail silently on payments/CORS without these.
-- [ ] **Commit + PR** — Commit all uncommitted changes, push branch `claude/stoic-moore`, open PR to `main`
 - [ ] **Verify template export fidelity** — User to test all 26+15 templates and confirm exported video matches dashboard preview after Session 5 fixes
 - [ ] **Verify Text tab export** — Confirm text boxes added via Text tab (custom color, animation, position) appear correctly in exported video
 - [ ] **Verify FPS in export** — Test 24/30/60 fps selector in Export tab produces correct output video frame rates
 - [ ] **Verify zoom/transition animations** — Test zoom_in, zoom_out, fade_in, slide_up/down/left/right in Animate tab → Basic category work correctly in preview
+
+---
+
+### Session 8 — 2026-04-15
+
+**Theme:** Full error handling audit and hardening — backend + frontend
+
+**Scope:** No new features. Pure error handling pass: every silent failure, bare except, empty catch, and crash-on-bad-input found and fixed.
+
+---
+
+#### Backend — `processor.py`
+
+| Fix | Detail |
+|-----|--------|
+| **Mock captions no longer fake success** | When Whisper/Sarvam API fails, `generate_captions_only` was returning `{"success": True, "captions": mock_data}` — user got garbage captions with no error. Changed to `{"success": False, "error": "...", "captions": mock, "is_mock": True}`. |
+| **`_ensure_font` raises if font missing after all fallbacks** | After primary download fails and Inter fallback also fails, code previously silently returned `info` for a nonexistent file — FFmpeg would then fail with a cryptic error. Now raises `RuntimeError` immediately with the missing path. |
+| **`burn_only` output-not-found is now an error** | When FFmpeg exits 0 but the output file doesn't exist, changed from `print("[FFmpeg] WARNING...")` to `return {"success": False, "error": ...}` — export route now correctly fails. |
+| **Temp audio cleanup logs failures** | `except Exception: pass` → logs with file path so disk/permission issues are visible. |
+| **Duration ffprobe in mock path logs failure** | `except Exception: pass` → logs so we can see why duration detection failed. |
+| **`_get_video_dimensions` bare except** | Now logs file path and exception before returning 1080×1920 fallback. |
+| **`_get_rotation` bare except** | Now logs file path and exception. |
+| **ASS debug readback bare except** | Now logs the error instead of silently skipping. |
+| **Hex color parse bare except** | `_color_to_ass`: logs the bad hex value instead of silent return. |
+
+#### Backend — `main.py`
+
+| Fix | Detail |
+|-----|--------|
+| **`/api/detect-language` FFmpeg returncode** | Added `if ffmpeg_result.returncode != 0: raise RuntimeError(stderr)` — previously a failed audio extraction would pass an empty/broken file to Whisper. |
+| **`/api/detect-language` temp file cleanup** | `os.remove` not wrapped — now wrapped in try/except with logging. |
+| **Firebase Storage local delete** | `except Exception: pass` → logs failure so disk issues don't disappear silently. |
+| **Subscription expiry date parse** | `except Exception: pass` → `except (ValueError, TypeError) as e: print(...)` — only catches parse errors, not broad exceptions. |
+
+#### Frontend — `src/pages/Login.jsx`
+
+| Fix | Detail |
+|-----|--------|
+| **Auth errors now visible to user** | `catch (error) { console.error(...) }` with no UI feedback. Added `loginError` state + red error banner rendered below the card header. Button shows `disabled` + `opacity-60` while `isLoggingIn` is true to prevent double-submit. |
+
+#### Frontend — `src/components/dashboard/ExportPanel.jsx`
+
+| Fix | Detail |
+|-----|--------|
+| **Null `video_url` guard** | Added explicit check: `if (!downloadUrl) throw new Error('Server did not return a download URL...')` before calling `fetch(downloadUrl)`. |
+| **Network error during export** | Changed `try { fetch } finally { clearInterval }` to `try { fetch } catch (networkErr) { clearInterval; throw descriptive error }` — progress bar now resets properly on network failure and user gets a clear message. |
+
+#### Frontend — `src/components/dashboard/WordClickPopup.jsx`
+
+| Fix | Detail |
+|-----|--------|
+| **AbortController on font list fetch** | useEffect now creates an `AbortController`, passes `signal` to fetch, and aborts on unmount. `AbortError` is silently swallowed; other errors are logged. Prevents React "setState on unmounted component" warning. |
+| **Empty font preview catch** | `.catch(() => {})` → logs with font name. |
+
+#### Frontend — `src/pages/Dashboard.jsx`
+
+| Fix | Detail |
+|-----|--------|
+| **Template font empty catch** | `.catch(() => {})` → logs with font family name. |
+| **Style font useEffect empty catch** | `.catch(() => {})` → logs with font family name. |
+
+#### Frontend — `src/components/dashboard/StyleControls.jsx`
+
+| Fix | Detail |
+|-----|--------|
+| **`/api/fonts` fetch** | Added `if (!res.ok) throw new Error(...)` before parsing JSON. |
+| **Three empty font load catches** | FontRow dropdown preview, script font auto-load, font selector onSelect — all now log with font name instead of silent `() => {}`. |
+
+#### Frontend — `src/components/dashboard/VideoPlayer.jsx`
+
+| Fix | Detail |
+|-----|--------|
+| **Hex parse `catch { return hex }`** | Changed to `catch (e) { console.warn(...); return hex }` — logs invalid hex values so color bugs are detectable. |
+| **`onVideoLoaded` callback** | Wrapped in try/catch — a throwing callback no longer crashes `handleLoadedMetadata`. |
+
+#### Frontend — `src/components/dashboard/fontUtils.jsx`
+
+| Fix | Detail |
+|-----|--------|
+| **`autoLoadFontForText` return type** | All return paths now include `error: null` or `error: message` field so callers can distinguish a successful load from a silent fallback to `sans-serif`. |
+
+---
+
+**Files Modified:**
+- `backend/processor.py` — mock captions, _ensure_font, burn_only, _get_video_dimensions, _get_rotation, temp cleanup, hex parse, ASS debug
+- `backend/main.py` — detect-language FFmpeg check, temp cleanup, Firebase delete, date parse
+- `src/pages/Login.jsx` — loginError state + UI, isLoggingIn guard
+- `src/components/dashboard/ExportPanel.jsx` — null video_url guard, network error handling
+- `src/components/dashboard/WordClickPopup.jsx` — AbortController, font catch logging
+- `src/pages/Dashboard.jsx` — font catch logging (×2)
+- `src/components/dashboard/StyleControls.jsx` — res.ok check, font catch logging (×3)
+- `src/components/dashboard/VideoPlayer.jsx` — hex catch logging, onVideoLoaded try/catch
+- `src/components/dashboard/fontUtils.jsx` — error field in return values
+
+---
+
+### Session 7 — 2026-04-13
+
+**Theme:** Security hardening audit
+
+*(See git commit `2582bb1` for full details)*
 
 ---
 
