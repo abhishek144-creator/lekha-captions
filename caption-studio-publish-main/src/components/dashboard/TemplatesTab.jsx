@@ -1,6 +1,5 @@
-import React from 'react';
-import { Sparkles, Check, X, RotateCcw, SlidersHorizontal } from 'lucide-react';
-import { motion } from 'framer-motion';
+import React, { useState, useEffect, useRef } from 'react';
+import { Check, X, RotateCcw } from 'lucide-react';
 import '../../styles/captionTemplates.css';
 
 /*
@@ -10,171 +9,233 @@ import '../../styles/captionTemplates.css';
 */
 const templates = [
   {
-    id: 't-115', name: 'Green Neon Pulse',
-    desc: 'White text with pulsing green active glow',
+    id: 't-115', name: 'Green Neon Pulse', mood: 'Energy', dot: '#39FF14',
     bg: '#111',
-    style: { template_id: 't-115', font_family: 'Noto Sans', font_size: 28, font_weight: '900', font_style: 'italic', position_y: 75, text_color: '#FFFFFF', secondary_color: '#39FF14' }
+    style: { template_id: 't-115', font_family: 'Noto Sans', font_size: 28, font_weight: '900', font_style: 'italic', position_y: 75, text_color: '#FFFFFF', secondary_color: '#39FF14', has_shadow: true, shadow_color: '#39FF14', shadow_blur: 10, shadow_offset_x: 0, shadow_offset_y: 0 }
   },
   {
-    id: 't-109', name: '3D Shadow',
-    desc: 'White text with bold orange 3D shadow on active',
+    id: 't-109', name: '3D Shadow', mood: 'Bold', dot: '#E01A1A',
     bg: '#1a1a1a',
-    style: { template_id: 't-109', font_family: 'Noto Sans', font_size: 26, font_weight: '900', position_y: 75, secondary_color: '#E01A1A' }
+    style: { template_id: 't-109', font_family: 'Noto Sans', font_size: 26, font_weight: '900', position_y: 75, text_color: '#FFFFFF', secondary_color: '#E01A1A', has_shadow: true, shadow_color: '#E01A1A', shadow_offset_x: 3, shadow_offset_y: 3, shadow_blur: 0 }
   },
   {
-    id: 't-26', name: 'Bold Stroke',
-    desc: 'Light bg, black bold text with pink 3D shadow',
+    id: 't-26', name: 'Bold Stroke', mood: 'Pop', dot: '#ff2058',
     bg: '#e8e8e8',
-    style: { template_id: 't-26', font_family: 'Bangers', font_size: 28, font_weight: '900', text_case: 'uppercase', position_y: 75, secondary_color: '#ff2058', background_color: '#e8e8e8' }
+    style: { template_id: 't-26', font_family: 'Bangers', font_size: 28, font_weight: '900', text_case: 'uppercase', position_y: 75, text_color: '#000000', secondary_color: '#ff2058', has_background: true, background_color: '#e8e8e8', background_opacity: 1.0, has_stroke: true, stroke_color: '#000000', stroke_width: 1 }
   },
   {
-    id: 't-102', name: 'Clarity',
-    desc: 'Clean light bg, dark readable text',
+    id: 't-102', name: 'Clarity', mood: 'Clean', dot: '#555555',
     bg: '#FFFFFF',
-    style: { template_id: 't-102', font_family: 'Noto Sans', font_size: 22, font_weight: '800', position_y: 75, secondary_color: '#1F2022', background_color: '#FFFFFF' }
+    style: { template_id: 't-102', font_family: 'Noto Sans', font_size: 22, font_weight: '800', position_y: 75, text_color: '#1F2022', secondary_color: '#1F2022', has_background: true, background_color: '#FFFFFF', background_opacity: 1.0, background_padding: 10 }
   },
   {
-    id: 't-36', name: 'Color Flash',
-    desc: 'Invisible until spoken — active word flashes in colour',
+    id: 't-36', name: 'Color Flash', mood: 'Flash', dot: '#00ffb3',
     bg: '#111',
-    style: { template_id: 't-36', font_family: 'Noto Sans', font_size: 26, font_weight: '900', position_y: 75, secondary_color: '#00ffb3' }
+    style: { template_id: 't-36', font_family: 'Noto Sans', font_size: 26, font_weight: '900', position_y: 75, text_color: '#FFFFFF', secondary_color: '#00ffb3' }
   },
   {
-    id: 't-105', name: 'Daze',
-    desc: 'White stroked, yellow glow on speak',
+    id: 't-105', name: 'Daze', mood: 'Glow', dot: '#FFE600',
     bg: '#111',
-    style: { template_id: 't-105', font_family: 'Noto Sans', font_size: 24, font_weight: '800', position_y: 75 }
+    style: { template_id: 't-105', font_family: 'Noto Sans', font_size: 24, font_weight: '800', position_y: 75, text_color: '#FFFFFF', secondary_color: '#FFE600', has_stroke: true, stroke_color: '#000000', stroke_width: 1, has_shadow: true, shadow_color: '#000000', shadow_blur: 2, shadow_offset_x: 2, shadow_offset_y: 2 }
   },
   {
-    id: 't-9', name: 'Fire Words',
-    desc: 'Words ignite in fire orange glow',
+    id: 't-9', name: 'Fire Words', mood: 'Drama', dot: '#ff4500',
     bg: '#1a0500',
-    style: { template_id: 't-9', font_family: 'Noto Sans', font_size: 26, font_weight: '900', text_case: 'uppercase', position_y: 75 }
+    style: { template_id: 't-9', font_family: 'Noto Sans', font_size: 26, font_weight: '900', text_case: 'uppercase', position_y: 75, text_color: '#ff8c00', secondary_color: '#ff8c00', has_shadow: true, shadow_color: '#ff4500', shadow_blur: 10, shadow_offset_x: 0, shadow_offset_y: 0 }
   },
   {
-    id: 't-124', name: 'Ghost Echo',
-    desc: 'Fade in with ghost echo shadow trail',
+    id: 't-124', name: 'Ghost Echo', mood: 'Haunted', dot: '#aaaaaa',
     bg: '#111',
-    style: { template_id: 't-124', font_family: 'Inter', font_size: 26, font_weight: '900', position_y: 75 }
+    style: { template_id: 't-124', font_family: 'Inter', font_size: 26, font_weight: '900', position_y: 75, text_color: '#FFFFFF', has_shadow: true, shadow_color: '#ffffff', shadow_offset_x: 4, shadow_offset_y: 4, shadow_blur: 0 }
   },
   {
-    id: 't-16', name: 'Ghost Focus',
-    desc: 'Blurred inactive words, sharp spotlight on spoken',
+    id: 't-16', name: 'Ghost Focus', mood: 'Cinema', dot: '#dddddd',
     bg: '#111',
-    style: { template_id: 't-16', font_family: 'Playfair Display', font_size: 24, font_weight: '700', font_style: 'italic', position_y: 75 }
+    style: { template_id: 't-16', font_family: 'Playfair Display', font_size: 24, font_weight: '700', font_style: 'italic', position_y: 75, text_color: '#FFFFFF' }
   },
   {
-    id: 't-110', name: 'Glow Dot',
-    desc: 'Glowing dot under active word',
+    id: 't-110', name: 'Glow Dot', mood: 'Minimal', dot: '#0066FF',
     bg: '#111',
-    style: { template_id: 't-110', font_family: 'Noto Sans', font_size: 24, font_weight: '800', position_y: 75, secondary_color: '#0066FF' }
+    style: { template_id: 't-110', font_family: 'Noto Sans', font_size: 24, font_weight: '800', position_y: 75, text_color: '#FFFFFF', secondary_color: '#0066FF' }
   },
   {
-    id: 't-119', name: 'Gradient Box',
-    desc: 'Active word gets blue-cyan gradient box',
+    id: 't-119', name: 'Gradient Box', mood: 'Sleek', dot: '#00FFCC',
     bg: '#111',
-    style: { template_id: 't-119', font_family: 'Inter', font_size: 24, font_weight: '800', position_y: 75 }
+    style: { template_id: 't-119', font_family: 'Inter', font_size: 24, font_weight: '800', position_y: 75, text_color: '#FFFFFF', secondary_color: '#00FFCC' }
   },
   {
-    id: 't-12', name: 'Horror',
-    desc: 'Typewriter font, blood-red glow',
+    id: 't-12', name: 'Horror', mood: 'Dark', dot: '#cc0000',
     bg: '#000',
-    style: { template_id: 't-12', font_family: 'Special Elite', font_size: 22, position_y: 75 }
+    style: { template_id: 't-12', font_family: 'Special Elite', font_size: 22, position_y: 75, text_color: '#cc0000', secondary_color: '#cc0000', has_shadow: true, shadow_color: '#cc0000', shadow_blur: 10, shadow_offset_x: 0, shadow_offset_y: 0 }
   },
   {
-    id: 't-106', name: 'Iman',
-    desc: 'Words hidden until spoken — clean instant reveal',
+    id: 't-106', name: 'Iman', mood: 'Clean', dot: '#eeeeee',
     bg: '#111',
-    style: { template_id: 't-106', font_family: 'Noto Sans', font_size: 24, font_weight: '800', position_y: 75 }
+    style: { template_id: 't-106', font_family: 'Noto Sans', font_size: 24, font_weight: '800', position_y: 75, text_color: '#FFFFFF', has_shadow: true, shadow_color: '#000000', shadow_blur: 3, shadow_offset_x: 1, shadow_offset_y: 2 }
   },
   {
-    id: 't-52', name: 'Light Streak',
-    desc: 'Words rise into view as spoken',
+    id: 't-52', name: 'Light Streak', mood: 'Rise', dot: '#cccccc',
     bg: '#111',
-    style: { template_id: 't-52', font_family: 'Inter', font_size: 26, font_weight: '900', position_y: 75 }
+    style: { template_id: 't-52', font_family: 'Inter', font_size: 26, font_weight: '900', position_y: 75, text_color: '#FFFFFF' }
   },
   {
-    id: 't-103', name: 'Nightfall',
-    desc: 'Muted words on dark bg, spotlight on speak',
+    id: 't-103', name: 'Nightfall', mood: 'Moody', dot: '#888888',
     bg: '#1e1e1e',
-    style: { template_id: 't-103', font_family: 'Noto Sans', font_size: 22, font_weight: '800', position_y: 75 }
+    style: { template_id: 't-103', font_family: 'Noto Sans', font_size: 22, font_weight: '800', position_y: 75, text_color: '#FFFFFF', has_background: true, background_color: '#1e1e1e', background_opacity: 0.85, background_padding: 10 }
   },
   {
-    id: 't-112', name: 'Pink Gradient',
-    desc: 'Hot pink-to-coral gradient text reveal',
+    id: 't-112', name: 'Pink Gradient', mood: 'Vibe', dot: '#FF007F',
     bg: '#111',
-    style: { template_id: 't-112', font_family: 'Noto Sans', font_size: 25, font_weight: '900', position_y: 75 }
+    style: { template_id: 't-112', font_family: 'Noto Sans', font_size: 25, font_weight: '900', position_y: 75, text_color: '#FF007F', secondary_color: '#FF8E53' }
   },
   {
-    id: 't-104', name: 'Pulse',
-    desc: 'White text with purple stroke glow',
+    id: 't-104', name: 'Pulse', mood: 'Rhythm', dot: '#B28DFF',
     bg: '#111',
-    style: { template_id: 't-104', font_family: 'Noto Sans', font_size: 26, font_weight: '900', position_y: 75 }
+    style: { template_id: 't-104', font_family: 'Noto Sans', font_size: 26, font_weight: '900', position_y: 75, text_color: '#FFFFFF', secondary_color: '#B28DFF', has_stroke: true, stroke_color: '#B28DFF', stroke_width: 2 }
   },
   {
-    id: 't-111', name: 'Red Tape',
-    desc: 'Bold red box snaps onto each spoken word',
+    id: 't-111', name: 'Red Tape', mood: 'Alert', dot: '#E60000',
     bg: '#111',
-    style: { template_id: 't-111', font_family: 'Inter', font_size: 22, font_weight: '900', position_y: 75, secondary_color: '#E60000' }
+    style: { template_id: 't-111', font_family: 'Inter', font_size: 22, font_weight: '900', position_y: 75, text_color: '#FFFFFF', secondary_color: '#E60000' }
   },
   {
-    id: 't-T5', name: 'Sentence Box',
-    desc: 'Deep yellow pad box for all words',
+    id: 't-T5', name: 'Sentence Box', mood: 'Punchy', dot: '#ECF00F',
     bg: '#111',
-    style: { template_id: 't-T5', font_family: 'Montserrat', font_size: 24, font_weight: '800', font_style: 'italic', background_color: '#ECF00F', text_color: '#333333', position_y: 75 }
+    style: { template_id: 't-T5', font_family: 'Montserrat', font_size: 24, font_weight: '800', font_style: 'italic', has_background: true, background_color: '#ECF00F', background_opacity: 1.0, background_padding: 10, text_color: '#333333', position_y: 75 }
   },
   {
-    id: 't-95', name: 'Speed Lines',
-    desc: 'Skewed font with blue speed streaks',
+    id: 't-95', name: 'Speed Lines', mood: 'Speed', dot: '#0055FF',
     bg: '#111',
-    style: { template_id: 't-95', font_family: 'Montserrat', font_size: 30, position_y: 75 }
+    style: { template_id: 't-95', font_family: 'Montserrat', font_size: 30, position_y: 75, text_color: '#FFFFFF', secondary_color: '#0055FF' }
   },
   {
-    id: 't-T1', name: 'Stack & Flow',
-    desc: 'Italic serif, words stack then flow in',
+    id: 't-T1', name: 'Stack & Flow', mood: 'Poetic', dot: '#6bb5ff',
     bg: '#0d1b2a',
-    style: { template_id: 't-T1', font_family: 'Noto Sans', font_size: 30, font_style: 'italic', position_y: 75 }
+    style: { template_id: 't-T1', font_family: 'Noto Sans', font_size: 30, font_style: 'italic', position_y: 75, text_color: '#FFFFFF' }
   },
   {
-    id: 't-T4', name: 'Study With Me',
-    desc: 'Soft pink italic serif on dark bg',
+    id: 't-T4', name: 'Study With Me', mood: 'Soft', dot: '#f9a8d4',
     bg: '#1a0e14',
-    style: { template_id: 't-T4', font_family: 'Playfair Display', font_size: 24, font_style: 'italic', position_y: 75 }
+    style: { template_id: 't-T4', font_family: 'Playfair Display', font_size: 24, font_style: 'italic', position_y: 75, text_color: '#f9a8d4' }
   },
   {
-    id: 't-56', name: 'Underline',
-    desc: 'Active word gets a blue bottom border',
+    id: 't-56', name: 'Underline', mood: 'Cool', dot: '#0066FF',
     bg: '#111',
-    style: { template_id: 't-56', font_family: 'Inter', font_size: 26, font_weight: '900', position_y: 75, secondary_color: '#0066FF' }
+    style: { template_id: 't-56', font_family: 'Inter', font_size: 26, font_weight: '900', position_y: 75, text_color: '#FFFFFF', secondary_color: '#0066FF' }
   },
   {
-    id: 't-T3', name: 'Underline Fade',
-    desc: 'Words fade in, key words get green underline',
+    id: 't-T3', name: 'Underline Fade', mood: 'Subtle', dot: '#4ade80',
     bg: '#0a0a0a',
-    style: { template_id: 't-T3', font_family: 'Montserrat', font_size: 22, font_weight: '400', position_y: 75 }
+    style: { template_id: 't-T3', font_family: 'Montserrat', font_size: 22, font_weight: '400', position_y: 75, text_color: '#FFFFFF' }
   },
   {
-    id: 't-57', name: 'VHS Glitch',
-    desc: 'Flicker-on reveal with chromatic aberration',
+    id: 't-57', name: 'VHS Glitch', mood: 'Retro', dot: '#00ffff',
     bg: '#111',
-    style: { template_id: 't-57', font_family: 'Inter', font_size: 26, font_weight: '900', position_y: 75 }
+    style: { template_id: 't-57', font_family: 'Inter', font_size: 26, font_weight: '900', position_y: 75, text_color: '#FFFFFF', has_shadow: true, shadow_color: '#00ffff', shadow_offset_x: 2, shadow_offset_y: 0, shadow_blur: 0 }
   },
   {
-    id: 't-37', name: 'Wipe Mask',
-    desc: 'Pink uppercase text wipes in from left',
+    id: 't-37', name: 'Wipe Mask', mood: 'Bold', dot: '#FF007F',
     bg: '#111',
-    style: { template_id: 't-37', font_family: 'Inter', font_size: 26, font_weight: '900', text_case: 'uppercase', position_y: 75 }
+    style: { template_id: 't-37', font_family: 'Inter', font_size: 26, font_weight: '900', text_case: 'uppercase', position_y: 75, text_color: '#FF007F', secondary_color: '#FF2BD6' }
   }
 ];
 
-// Live preview words — shows done, active, done+imp states
-// word 1 "This" = done (already spoken), word 2 "IS" = done+imp (important spoken), word 3 "great" = active (current), word 4 "now" = upcoming
-const PREVIEW_WORDS = [
-  { text: 'This', classes: 'word active' },
-  { text: 'IS', classes: 'word active imp' },
-  { text: 'great', classes: 'word current' },
-  { text: 'now', classes: 'word' },
-];
+const PREVIEW_WORDS = ['और', 'ये', 'लोकेशन', 'है']
+
+/* ─── Animated Template Card ─────────────────────────────────── */
+function TemplateCard({ template, isActive, onApply, currentStyle, onUpdate }) {
+  const [curIdx, setCurIdx] = useState(0)
+  const timerRef = useRef(null)
+
+  useEffect(() => {
+    timerRef.current = setInterval(() => {
+      setCurIdx(i => (i + 1) % PREVIEW_WORDS.length)
+    }, 700)
+    return () => clearInterval(timerRef.current)
+  }, [])
+
+  const primaryColor = isActive ? (currentStyle?.text_color || template.style?.text_color || '#fff') : (template.style?.text_color || '#fff')
+  const secondaryColor = isActive ? (currentStyle?.secondary_color || template.style?.secondary_color || '#000') : (template.style?.secondary_color || '#000')
+  const bgColor = isActive ? (currentStyle?.background_color || template.style?.background_color || 'transparent') : (template.style?.background_color || 'transparent')
+  const hlColor = isActive ? (currentStyle?.highlight_color || template.style?.highlight_color || '#FFE600') : (template.style?.highlight_color || '#FFE600')
+
+  return (
+    <div
+      className={`rounded-xl border cursor-pointer transition-all overflow-hidden ${
+        isActive
+          ? 'border-amber-500/50 bg-amber-500/5 shadow-[0_0_12px_rgba(245,166,35,0.12)]'
+          : 'border-white/10 bg-white/[0.02] hover:border-white/20'
+      }`}
+      onClick={() => onApply(template.style)}
+    >
+      {/* ── Animated CSS Preview ── */}
+      <div
+        style={{
+          backgroundColor: template.bg,
+          padding: '12px 16px',
+          display: 'flex',
+          justifyContent: 'center',
+          minHeight: '52px',
+          alignItems: 'center',
+          '--template-primary': primaryColor,
+          '--template-secondary': secondaryColor,
+          '--template-bg': bgColor,
+          '--template-highlight': hlColor,
+        }}
+        className={template.id}
+      >
+        <span className="cap-text" style={{ display: 'inline-flex', gap: '4px', flexWrap: 'wrap', justifyContent: 'center' }}>
+          {PREVIEW_WORDS.map((word, i) => {
+            let cls = 'word'
+            if (i < curIdx) cls = 'word active'
+            else if (i === curIdx) cls = 'word current'
+            return <span key={i} className={cls}>{word}</span>
+          })}
+        </span>
+      </div>
+
+      {/* ── Info Row ── */}
+      <div className="px-3 py-2.5 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <span
+            className="w-2 h-2 rounded-full flex-shrink-0"
+            style={{ backgroundColor: template.dot, boxShadow: `0 0 4px ${template.dot}88` }}
+          />
+          <div className="min-w-0">
+            <span className="text-sm text-white font-medium truncate block leading-tight">
+              {template.name}
+              {isActive && <Check className="inline w-3.5 h-3.5 ml-1 text-amber-400" />}
+            </span>
+            <span className="text-[10px] text-gray-500">{template.mood}</span>
+          </div>
+        </div>
+        {!isActive ? (
+          <button
+            className="flex-shrink-0 text-[11px] px-3 py-1 rounded-md bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white border border-white/10 hover:border-white/20 transition-all"
+            onClick={e => { e.stopPropagation(); onApply(template.style) }}
+          >
+            Apply
+          </button>
+        ) : (
+          <span className="flex-shrink-0 text-[11px] px-3 py-1 rounded-md bg-amber-500/15 text-amber-400 border border-amber-500/30 font-medium">
+            Active
+          </span>
+        )}
+      </div>
+
+      {/* ── Customization Panel (active only) ── */}
+      {isActive && (
+        <div onClick={e => e.stopPropagation()} className="px-2 pb-2">
+          <TemplateCustomizationPanel
+            style={currentStyle}
+            defaultTemplateStyle={template.style}
+            onUpdate={onUpdate}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
 
 
 
@@ -225,7 +286,7 @@ const CustomColorPicker = ({ label, value, onChange, onReset, defaultColor }) =>
   </div>
 );
 
-const TEMPLATE_FEATURES = { "t-115": ["primary", "secondary", "highlight"], "t-109": ["primary", "secondary", "highlight"], "t-26": ["primary", "secondary", "bg", "highlight"], "t-102": ["primary", "bg", "highlight"], "t-36": ["primary", "secondary", "highlight"], "t-105": ["primary", "highlight"], "t-9": ["highlight"], "t-124": ["primary", "highlight"], "t-16": ["primary", "highlight"], "t-110": ["primary", "secondary", "highlight"], "t-119": ["primary", "bg", "highlight"], "t-12": ["primary", "secondary", "highlight"], "t-106": ["primary", "highlight"], "t-52": ["primary", "highlight"], "t-103": ["primary", "bg", "highlight"], "t-112": ["highlight"], "t-104": ["primary", "secondary", "highlight"], "t-111": ["primary", "secondary", "highlight"], "t-T5": ["primary", "bg"], "t-95": ["secondary", "highlight"], "t-T1": ["primary", "highlight"], "t-T4": ["primary", "highlight"], "t-56": ["primary", "secondary", "highlight"], "t-T3": ["primary", "highlight"], "t-57": ["primary", "highlight"], "t-37": ["primary", "highlight"] };
+const TEMPLATE_FEATURES = { "t-115": ["primary", "secondary", "highlight"], "t-109": ["primary", "secondary", "highlight"], "t-26": ["primary", "secondary", "bg", "highlight"], "t-102": ["primary", "bg", "highlight"], "t-36": ["primary", "secondary", "highlight"], "t-105": ["primary", "highlight"], "t-9": ["highlight"], "t-124": ["primary", "highlight"], "t-16": ["primary", "highlight"], "t-110": ["primary", "secondary", "highlight"], "t-119": ["primary", "bg", "highlight"], "t-12": ["primary", "secondary", "highlight"], "t-106": ["primary", "highlight"], "t-52": ["primary", "highlight"], "t-103": ["primary", "bg", "highlight"], "t-112": ["highlight"], "t-104": ["primary", "secondary", "highlight"], "t-111": ["primary", "secondary", "highlight"], "t-T5": ["primary", "bg"], "t-95": ["secondary", "highlight"], "t-T1": ["primary", "highlight"], "t-T4": ["primary", "highlight"], "t-56": ["primary", "secondary", "highlight"], "t-T3": ["primary", "highlight"], "t-57": ["primary", "highlight"], "t-37": ["primary", "secondary", "highlight"] };
 
 const TemplateCustomizationPanel = ({ style, defaultTemplateStyle, onUpdate }) => {
   const currentFeatures = TEMPLATE_FEATURES[style?.template_id] || ['primary', 'secondary', 'bg', 'highlight'];
@@ -343,106 +404,44 @@ export default function TemplatesTab({ currentStyle, onApplyTemplate }) {
       </div>
 
       {/* ── NONE / REMOVE OPTION ── always visible at top */}
-      <motion.div
-        whileHover={{ scale: 1.01 }}
-        whileTap={{ scale: 0.99 }}
+      <div
         onClick={handleClearTemplate}
         className={`mb-3 rounded-xl border cursor-pointer transition-all overflow-hidden ${!currentStyle?.template_id
-          ? 'border-white/30 bg-white/5 shadow-[0_0_10px_rgba(255,255,255,0.05)]'
+          ? 'border-white/30 bg-white/5'
           : 'border-white/10 bg-white/[0.03] hover:border-white/20'
           }`}
       >
-        <div className="px-4 py-3 flex items-center gap-3">
-          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${!currentStyle?.template_id ? 'bg-white/10' : 'bg-white/5'}`}>
-            <X className={`w-4 h-4 ${!currentStyle?.template_id ? 'text-white' : 'text-gray-500'}`} />
+        <div className="px-4 py-3 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-gray-500 flex-shrink-0" />
+            <div>
+              <p className={`text-sm font-medium ${!currentStyle?.template_id ? 'text-white' : 'text-gray-300'}`}>
+                None (Default)
+                {!currentStyle?.template_id && <Check className="inline w-3.5 h-3.5 ml-1.5 text-white" />}
+              </p>
+              <p className="text-[10px] text-gray-500">Custom style</p>
+            </div>
           </div>
-          <div>
-            <p className={`text-sm font-medium ${!currentStyle?.template_id ? 'text-white' : 'text-gray-300'}`}>
-              None (Default)
-              {!currentStyle?.template_id && <Check className="inline w-3.5 h-3.5 ml-1.5 text-white" />}
-            </p>
-            <p className="text-[10px] text-gray-500">Remove template, use custom style</p>
-          </div>
+          {currentStyle?.template_id && (
+            <button className="flex-shrink-0 text-[11px] px-3 py-1 rounded-md bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 transition-all">
+              Reset
+            </button>
+          )}
         </div>
-      </motion.div>
+      </div>
 
       {/* ── TEMPLATE CARDS ── */}
       <div className="space-y-2.5">
-        {templates.map((template) => {
-          const isActive = currentStyle?.template_id === template.id;
-
-          return (
-            <motion.div
-              key={template.id}
-              whileHover={{ scale: 1.01 }}
-              whileTap={{ scale: 0.99 }}
-              className={`rounded-xl border cursor-pointer transition-all overflow-hidden ${isActive
-                ? 'border-purple-500 bg-purple-600/10 shadow-[0_0_12px_rgba(168,85,247,0.15)]'
-                : 'border-white/10 bg-white/[0.02] hover:border-white/20'
-                }`}
-              onClick={() => onApplyTemplate(template.style)}
-            >
-              {/* ── LIVE CSS PREVIEW ── actual template classes applied */}
-              <div
-                style={{
-                  backgroundColor: template.bg,
-                  padding: '10px 16px',
-                  display: 'flex',
-                  justifyContent: 'center',
-                  minHeight: '44px',
-                  alignItems: 'center',
-                  '--template-primary': isActive ? (currentStyle?.text_color || template.style?.text_color || '#fff') : (template.style?.text_color || '#fff'),
-                  '--template-secondary': isActive ? (currentStyle?.secondary_color || template.style?.secondary_color || '#000') : (template.style?.secondary_color || '#000'),
-                  '--template-bg': isActive ? (currentStyle?.background_color || template.style?.background_color || 'transparent') : (template.style?.background_color || 'transparent'),
-                  '--template-highlight': isActive ? (currentStyle?.highlight_color || template.style?.highlight_color || '#FFE600') : (template.style?.highlight_color || '#FFE600')
-                }}
-                className={template.id}
-              >
-                <span className="cap-text" style={{ display: 'inline-flex', gap: '2px', flexWrap: 'wrap', justifyContent: 'center' }}>
-                  {PREVIEW_WORDS.map((w, i) => (
-                    <span key={i} className={w.classes}>{w.text}</span>
-                  ))}
-                </span>
-              </div>
-
-
-              {/* ── INFO ROW ── */}
-              <div className="px-3 py-2 flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm text-white font-medium flex items-center gap-1.5">
-                    {template.name}
-                    {isActive && <Check className="w-3.5 h-3.5 text-purple-400" />}
-                  </h3>
-                  <p className="text-[10px] text-gray-500">{template.desc}</p>
-                </div>
-                {!isActive && (
-                  <button
-                    className="text-[11px] px-2.5 py-1 rounded-lg bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 border border-purple-500/30 flex items-center gap-1 transition-colors"
-                    onClick={(e) => { e.stopPropagation(); onApplyTemplate(template.style); }}
-                  >
-                    <Sparkles className="w-3 h-3" />
-                  </button>
-                )}
-              </div>
-
-              {/* ── CUSTOMIZATION PANEL (ACTIVE ONLY) ── */}
-              {
-                isActive && (
-                  <div onClick={(e) => e.stopPropagation()} className="px-2 pb-2">
-                    <TemplateCustomizationPanel
-                      style={currentStyle}
-                      defaultTemplateStyle={template.style}
-                      onUpdate={(newStyleProps) => {
-                        onApplyTemplate({ ...currentStyle, ...newStyleProps });
-                      }}
-                    />
-                  </div>
-                )
-              }
-
-            </motion.div>
-          );
-        })}
+        {templates.map((template) => (
+          <TemplateCard
+            key={template.id}
+            template={template}
+            isActive={currentStyle?.template_id === template.id}
+            onApply={onApplyTemplate}
+            currentStyle={currentStyle}
+            onUpdate={(newStyleProps) => onApplyTemplate({ ...currentStyle, ...newStyleProps })}
+          />
+        ))}
       </div>
     </div >
   );

@@ -303,6 +303,7 @@ export default function Dashboard() {
           }
         } catch (translateErr) {
           console.warn('Auto-translation failed, using original captions:', translateErr);
+          // Non-blocking: captions already generated, translation is best-effort
         }
       }
 
@@ -449,13 +450,22 @@ export default function Dashboard() {
       has_background: false,
       background_color: '#000000',
       background_opacity: 0.7,
+      background_padding: 6,
+      has_stroke: false,
+      stroke_color: '#000000',
+      stroke_width: 1,
+      has_shadow: false,
+      shadow_color: '#000000',
+      shadow_blur: 4,
+      shadow_offset_x: 0,
+      shadow_offset_y: 2,
       show_inactive: undefined,
       position_y: 75,
     };
     const merged = { ...captionStyle, ...TEMPLATE_OWNED_RESET, ...templateStyle };
     // Load the template's font (if any) before applying so the browser has it
     if (templateStyle?.font_family) {
-      loadGoogleFont(templateStyle.font_family, [300, 400, 500, 600, 700, 800]).catch(() => {});
+      loadGoogleFont(templateStyle.font_family, [300, 400, 500, 600, 700, 800]).catch(e => console.warn(`Failed to load template font (${templateStyle.font_family}):`, e));
     }
     pushHistory(undefined, merged);
   };
@@ -536,7 +546,7 @@ export default function Dashboard() {
   useEffect(() => {
     const fontFamily = captionStyle?.font_family;
     if (!fontFamily) return;
-    loadGoogleFont(fontFamily, [300, 400, 500, 600, 700, 800]).catch(() => {});
+    loadGoogleFont(fontFamily, [300, 400, 500, 600, 700, 800]).catch(e => console.warn(`Failed to load style font (${fontFamily}):`, e));
   }, [captionStyle?.font_family]);
 
   const navigate = useNavigate();
@@ -653,13 +663,7 @@ export default function Dashboard() {
               activeTab={activeTab}
               setActiveTab={setActiveTab}
               user={currentUser}
-              onOpenPricing={(action) => {
-                if (action === 'logout') {
-                  // Handled by AuthContext logout 
-                } else {
-                  setIsPricingModalOpen(true)
-                }
-              }}
+              onOpenPricing={() => setIsPricingModalOpen(true)}
             />
 
             {/* Left Panel - Content based on active tab */}
@@ -710,7 +714,6 @@ export default function Dashboard() {
                   onApplyTemplate={handleApplyTemplate}
                 />
               )}
-
             </div>
 
             {/* Center Panel - Video Player & Timeline */}

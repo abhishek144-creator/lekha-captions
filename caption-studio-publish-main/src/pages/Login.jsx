@@ -5,6 +5,8 @@ import { useNavigate } from 'react-router-dom';
 export default function Login() {
     const { loginWithGoogle, user } = useAuth();
     const navigate = useNavigate();
+    const [loginError, setLoginError] = React.useState(null);
+    const [isLoggingIn, setIsLoggingIn] = React.useState(false);
 
     React.useEffect(() => {
         if (user) {
@@ -13,19 +15,24 @@ export default function Login() {
     }, [user, navigate]);
 
     const handleGoogleLogin = async () => {
+        setLoginError(null);
+        setIsLoggingIn(true);
         try {
             await loginWithGoogle();
             navigate('/Dashboard');
         } catch (error) {
             console.error('Failed to log in', error);
+            setLoginError(error?.message || 'Login failed. Please try again.');
+        } finally {
+            setIsLoggingIn(false);
         }
     };
 
     return (
         <div className="flex min-h-screen items-center justify-center bg-[#0a0a0a]">
-            <div className="w-full max-w-md bg-zinc-900 border border-white/10 rounded-2xl shadow-2xl p-10 mx-4">
+            <div className="w-full max-w-md bg-zinc-900 border border-white/10 rounded-2xl shadow-2xl p-6 md:p-10 mx-4">
                 <div className="text-center mb-10">
-                    <h1 className="text-3xl font-bold tracking-tight text-white mb-2">
+                    <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-white mb-2">
                         Welcome to Caption Studio
                     </h1>
                     <p className="text-gray-400 text-base">
@@ -33,10 +40,18 @@ export default function Login() {
                     </p>
                 </div>
 
+                {/* Login error */}
+                {loginError && (
+                    <div className="mb-6 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm text-center">
+                        {loginError}
+                    </div>
+                )}
+
                 {/* Signup with Google */}
                 <button
                     onClick={handleGoogleLogin}
-                    className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-white/20 rounded-lg bg-white/5 hover:bg-white/10 text-white font-medium transition-colors"
+                    disabled={isLoggingIn}
+                    className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-white/20 rounded-lg bg-white/5 hover:bg-white/10 text-white font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                     <svg className="w-5 h-5" viewBox="0 0 48 48">
                         <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
@@ -60,7 +75,7 @@ export default function Login() {
                     <input
                         type="email"
                         placeholder="name@company.com"
-                        className="w-full px-4 py-3 border border-white/20 bg-white/5 rounded-lg focus:ring-2 focus:ring-[#F5A623] focus:border-[#F5A623] outline-none text-white placeholder-gray-500"
+                        className="w-full px-4 py-3 border border-white/20 bg-white/5 rounded-lg focus:ring-2 focus:ring-[#F5A623] focus:border-[#F5A623] outline-none text-white placeholder-gray-500 text-base"
                     />
                     <button className="w-full bg-gradient-to-r from-[#F5A623] to-blue-600 hover:from-[#F5A623] hover:to-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors">
                         Continue
@@ -75,7 +90,7 @@ export default function Login() {
 
                 {/* Log in */}
                 <div className="mt-10 text-center text-sm text-gray-400">
-                    Already have an account? <button onClick={handleGoogleLogin} className="text-[#F5A623] font-medium hover:underline">Log in</button>
+                    Already have an account? <button onClick={handleGoogleLogin} disabled={isLoggingIn} className="text-[#F5A623] font-medium hover:underline disabled:opacity-60">Log in</button>
                 </div>
             </div>
         </div>

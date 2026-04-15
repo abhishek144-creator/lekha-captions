@@ -36,7 +36,7 @@ const FontRow = React.memo(({ data, index, style }) => {
   React.useEffect(() => {
     // Only load standard weight for dropdown previews to save bandwidth
     if (font?.value && font.value !== '___CUSTOM___' && !font.isHeader) {
-      loadGoogleFont(font.value, [400]).catch(() => { });
+      loadGoogleFont(font.value, [400]).catch(e => console.warn(`Font preview load failed (${font.value}):`, e));
     }
   }, [font?.value, font?.isHeader]);
 
@@ -119,12 +119,14 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
     const fetchFullGoogleFonts = async () => {
       try {
         const res = await fetch('/api/fonts');
+        if (!res.ok) throw new Error(`/api/fonts returned ${res.status}`);
         const data = await res.json();
         if (data.fonts && data.fonts.length > 0) {
           setGoogleFontsList(data.fonts.map(f => ({ value: f.family, label: f.family })));
         }
       } catch (e) {
-        console.warn('Failed to fetch full google fonts list', e);
+        console.warn('Failed to fetch full google fonts list:', e);
+        // Font dropdown will still show script-specific fonts from scriptFontMap
       }
     };
     fetchFullGoogleFonts();
@@ -145,7 +147,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
         if (script !== prevScript && script !== 'latin') {
           const firstFont = scriptFonts[0];
           if (firstFont) {
-            loadGoogleFont(firstFont.name, firstFont.weights).catch(() => { });
+            loadGoogleFont(firstFont.name, firstFont.weights).catch(e => console.warn(`Failed to load script font (${firstFont.name}):`, e));
           }
         }
       }
@@ -450,7 +452,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
                           onSelect: (fontName) => {
                             setFontPopoverOpen(false);
                             updateStyle('font_family', fontName);
-                            loadGoogleFont(fontName, [300, 400, 500, 600, 700, 800]).catch(() => {});
+                            loadGoogleFont(fontName, [300, 400, 500, 600, 700, 800]).catch(e => console.warn(`Failed to load selected font (${fontName}):`, e));
                           }
                         }}
                       >
@@ -660,82 +662,6 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
             />
           </div>
 
-          {/* Text Alignment */}
-          <div>
-            <Label className="text-sm text-gray-400 mb-2 block">Text Alignment</Label>
-            <div className="bg-zinc-900 border border-white/5 rounded-lg p-1 flex gap-1">
-              <button
-                onClick={() => updateStyle('text_align', 'left')}
-                className={`flex-1 flex items-center justify-center py-1.5 rounded-md transition-all ${getCurrentValue('text_align', 'center') === 'left'
-                  ? "bg-white text-black shadow-sm"
-                  : "text-gray-400 hover:text-white hover:bg-white/5"
-                  }`}
-              >
-                <AlignLeft className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => updateStyle('text_align', 'center')}
-                className={`flex-1 flex items-center justify-center py-1.5 rounded-md transition-all ${getCurrentValue('text_align', 'center') === 'center'
-                  ? "bg-white text-black shadow-sm"
-                  : "text-gray-400 hover:text-white hover:bg-white/5"
-                  }`}
-              >
-                <AlignCenter className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => updateStyle('text_align', 'right')}
-                className={`flex-1 flex items-center justify-center py-1.5 rounded-md transition-all ${getCurrentValue('text_align', 'center') === 'right'
-                  ? "bg-white text-black shadow-sm"
-                  : "text-gray-400 hover:text-white hover:bg-white/5"
-                  }`}
-              >
-                <AlignRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-
-          {/* Case */}
-          <div>
-            <Label className="text-sm text-gray-400 mb-2 block">Case</Label>
-            <div className="bg-zinc-900 border border-white/5 rounded-lg p-1 flex gap-1">
-              <button
-                onClick={() => {
-                  updateStyle('text_case', 'lowercase');
-                  if (!selectedTextElement) updateStyle('is_caps', false);
-                }}
-                className={`flex-1 flex items-center justify-center py-1.5 rounded-md text-xs font-medium transition-all ${getCurrentValue('text_case', 'none') === 'lowercase'
-                  ? "bg-white text-black shadow-sm"
-                  : "text-gray-400 hover:text-white hover:bg-white/5"
-                  }`}
-              >
-                aa
-              </button>
-              <button
-                onClick={() => {
-                  updateStyle('text_case', 'capitalize');
-                  if (!selectedTextElement) updateStyle('is_caps', false);
-                }}
-                className={`flex-1 flex items-center justify-center py-1.5 rounded-md text-xs font-medium transition-all ${getCurrentValue('text_case', 'none') === 'capitalize'
-                  ? "bg-white text-black shadow-sm"
-                  : "text-gray-400 hover:text-white hover:bg-white/5"
-                  }`}
-              >
-                Aa
-              </button>
-              <button
-                onClick={() => {
-                  updateStyle('text_case', 'uppercase');
-                  if (!selectedTextElement) updateStyle('is_caps', true);
-                }}
-                className={`flex-1 flex items-center justify-center py-1.5 rounded-md text-xs font-medium transition-all ${(getCurrentValue('text_case', 'none') === 'uppercase' || (!selectedTextElement && captionStyle.is_caps))
-                  ? "bg-white text-black shadow-sm"
-                  : "text-gray-400 hover:text-white hover:bg-white/5"
-                  }`}
-              >
-                AA
-              </button>
-            </div>
-          </div>
         </div>
 
         {/* ── 3. COLORS ─────────────────────────────── */}
@@ -1067,7 +993,111 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
               </>
             )}
           </div>
-        </div>
+
+          {/* Section divider */}
+          <div className="border-t border-white/10 pt-4 mt-2">
+            <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">FORMAT</h3>
+          </div>
+
+          {/* Display Mode */}
+          {!selectedTextElement && (
+          <div>
+            <Label className="text-sm text-gray-400 mb-2 block">Display Mode</Label>
+            <Select
+              value={captionStyle.display_mode || 'sentence'}
+              onValueChange={(value) => {
+                updateStyle('display_mode', value)
+                updateStyle('show_inactive', value === 'sentence' || value === 'two_line_sentence')
+              }}
+            >
+              <SelectTrigger className="bg-zinc-900 border-white/10 text-white h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-zinc-900 border-white/10">
+                <SelectItem value="sentence" className="text-white hover:bg-white/10 focus:bg-white/10 focus:text-white">Sentence</SelectItem>
+                <SelectItem value="two_line_sentence" className="text-white hover:bg-white/10 focus:bg-white/10 focus:text-white">2 Line Sentence</SelectItem>
+                <SelectItem value="word_by_word" className="text-white hover:bg-white/10 focus:bg-white/10 focus:text-white">Word by Word</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          )}
+
+          {/* Text Alignment */}
+          <div>
+            <Label className="text-sm text-gray-400 mb-2 block">Text Alignment</Label>
+            <div className="bg-zinc-900 border border-white/5 rounded-lg p-1 flex gap-1">
+              <button
+                onClick={() => { updateStyle('text_align', 'left'); if (!selectedTextElement) updateStyle('position_x', 10); }}
+                className={`flex-1 flex items-center justify-center py-1.5 rounded-md transition-all ${getCurrentValue('text_align', 'center') === 'left'
+                  ? "bg-white text-black shadow-sm"
+                  : "text-gray-400 hover:text-white hover:bg-white/5"
+                  }`}
+              >
+                <AlignLeft className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => { updateStyle('text_align', 'center'); if (!selectedTextElement) updateStyle('position_x', 50); }}
+                className={`flex-1 flex items-center justify-center py-1.5 rounded-md transition-all ${getCurrentValue('text_align', 'center') === 'center'
+                  ? "bg-white text-black shadow-sm"
+                  : "text-gray-400 hover:text-white hover:bg-white/5"
+                  }`}
+              >
+                <AlignCenter className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => { updateStyle('text_align', 'right'); if (!selectedTextElement) updateStyle('position_x', 90); }}
+                className={`flex-1 flex items-center justify-center py-1.5 rounded-md transition-all ${getCurrentValue('text_align', 'center') === 'right'
+                  ? "bg-white text-black shadow-sm"
+                  : "text-gray-400 hover:text-white hover:bg-white/5"
+                  }`}
+              >
+                <AlignRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Case */}
+          <div>
+            <Label className="text-sm text-gray-400 mb-2 block">Case</Label>
+            <div className="bg-zinc-900 border border-white/5 rounded-lg p-1 flex gap-1">
+              <button
+                onClick={() => {
+                  updateStyle('text_case', 'lowercase');
+                  if (!selectedTextElement) updateStyle('is_caps', false);
+                }}
+                className={`flex-1 flex items-center justify-center py-1.5 rounded-md text-xs font-medium transition-all ${getCurrentValue('text_case', 'none') === 'lowercase'
+                  ? "bg-white text-black shadow-sm"
+                  : "text-gray-400 hover:text-white hover:bg-white/5"
+                  }`}
+              >
+                aa
+              </button>
+              <button
+                onClick={() => {
+                  updateStyle('text_case', 'capitalize');
+                  if (!selectedTextElement) updateStyle('is_caps', false);
+                }}
+                className={`flex-1 flex items-center justify-center py-1.5 rounded-md text-xs font-medium transition-all ${getCurrentValue('text_case', 'none') === 'capitalize'
+                  ? "bg-white text-black shadow-sm"
+                  : "text-gray-400 hover:text-white hover:bg-white/5"
+                  }`}
+              >
+                Aa
+              </button>
+              <button
+                onClick={() => {
+                  updateStyle('text_case', 'uppercase');
+                  if (!selectedTextElement) updateStyle('is_caps', true);
+                }}
+                className={`flex-1 flex items-center justify-center py-1.5 rounded-md text-xs font-medium transition-all ${(getCurrentValue('text_case', 'none') === 'uppercase' || (!selectedTextElement && captionStyle.is_caps))
+                  ? "bg-white text-black shadow-sm"
+                  : "text-gray-400 hover:text-white hover:bg-white/5"
+                  }`}
+              >
+                AA
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* ── 4. BACKGROUND ─────────────────────────── */}
@@ -1336,53 +1366,7 @@ export default function StyleControls({ captionStyle, setCaptionStyle, setCaptio
         </div>
         </div>
 
-        {/* ── 6. EXTRAS ─────────────────────────────── */}
-        <div className="space-y-4 pt-4 border-t border-white/5">
-          <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider">EXTRAS</h3>
 
-          {/* Anchor Text Box */}
-          <div>
-            <Label className="text-sm text-gray-400 mb-2 block">Anchor Text Box</Label>
-            <div className="flex items-start gap-2">
-              <Button
-                variant={(selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'top' ? "default" : "outline"}
-                size="icon"
-                onClick={() => {
-                  updateStyle('text_anchor', 'top');
-                  updateStyle('line_spacing', 1.4);
-                }}
-                className={`h-8 w-8 ${(selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'top' ? 'bg-white hover:bg-gray-100' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
-                title="Top Anchor (Grows down)"
-              >
-                <ArrowDownCircle className={`w-4 h-4 ${(selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'top' ? 'text-black' : 'text-gray-400'}`} />
-              </Button>
-              <Button
-                variant={(!selectedTextElement?.customStyle?.textAnchor && !captionStyle.text_anchor) || (selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'center' ? "default" : "outline"}
-                size="icon"
-                onClick={() => {
-                  updateStyle('text_anchor', 'center');
-                  updateStyle('line_spacing', 1.4);
-                }}
-                className={`h-8 w-8 ${(!selectedTextElement?.customStyle?.textAnchor && !captionStyle.text_anchor) || (selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'center' ? 'bg-white hover:bg-gray-100' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
-                title="Center Anchor (Grows both ways)"
-              >
-                <AlignCenter className={`w-4 h-4 ${(!selectedTextElement?.customStyle?.textAnchor && !captionStyle.text_anchor) || (selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'center' ? 'text-black' : 'text-gray-400'}`} />
-              </Button>
-              <Button
-                variant={(selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'bottom' ? "default" : "outline"}
-                size="icon"
-                onClick={() => {
-                  updateStyle('text_anchor', 'bottom');
-                  updateStyle('line_spacing', 1.4);
-                }}
-                className={`h-8 w-8 ${(selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'bottom' ? 'bg-white hover:bg-gray-100' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
-                title="Bottom Anchor (Grows up)"
-              >
-                <ArrowUpCircle className={`w-4 h-4 ${(selectedTextElement ? selectedTextElement.customStyle?.textAnchor : captionStyle.text_anchor) === 'bottom' ? 'text-black' : 'text-gray-400'}`} />
-              </Button>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );

@@ -51,6 +51,9 @@ import Dashboard from './pages/Dashboard';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import UserAccount from './pages/UserAccount';
+import Faq from './pages/Faq';
+import Help from './pages/Help';
+import Terms from './pages/Terms';
 import __Layout from './Layout.jsx';
 
 
@@ -59,6 +62,9 @@ export const PAGES = {
     "Home": Home,
     "login": Login,
     "UserAccount": UserAccount,
+    "Faq": Faq,
+    "Help": Help,
+    "Terms": Terms,
 }
 
 export const pagesConfig = {

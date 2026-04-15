@@ -37,7 +37,7 @@ const FontRow = React.memo(({ data, index, style }) => {
 
   React.useEffect(() => {
     if (font?.value && font.value !== '___CUSTOM___' && !font.isHeader) {
-      loadGoogleFont(font.value, [400]).catch(() => { });
+      loadGoogleFont(font.value, [400]).catch(e => console.warn(`Font preview load failed (${font.value}):`, e));
     }
   }, [font?.value, font?.isHeader]);
 
@@ -130,20 +130,24 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
 
   React.useEffect(() => {
     // Pre-fetch complete Google Fonts list for suggestions
+    const controller = new AbortController()
     const fetchFullGoogleFonts = async () => {
       try {
-        const res = await fetch('/api/fonts');
+        const res = await fetch('/api/fonts', { signal: controller.signal });
         if (!res.ok) throw new Error(`fonts api failed: ${res.status}`);
         const data = await res.json();
         if (data.fonts?.length > 0) {
           setGoogleFontsList(data.fonts.map(f => ({ value: f.family, label: f.family })));
         }
       } catch (e) {
-        console.warn('Font list fetch failed, using defaults only:', e);
+        if (e.name !== 'AbortError') {
+          console.warn('Font list fetch failed, using defaults only:', e);
+        }
         // Don't crash — scriptFontMap defaults still show
       }
     };
     fetchFullGoogleFonts();
+    return () => controller.abort()
   }, []);
 
   if (!position) return null;
@@ -323,12 +327,10 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
                               items: filtered,
                               selectedValue: currentStyle.fontFamily || 'Inter',
                               onSelect: async (val) => {
-                                try {
-                                  await loadGoogleFont(val, [300, 400, 500, 600, 700, 800]);
-                                  onStyleChange('fontFamily', val);
-                                } catch (error) {
-                                  console.warn('Font load error:', error);
-                                }
+                                onStyleChange('fontFamily', val)
+                                loadGoogleFont(val, [300, 400, 500, 600, 700, 800]).catch(err => {
+                                  console.warn('Font load error:', err)
+                                })
                               }
                             }}
                           >

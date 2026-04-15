@@ -453,8 +453,8 @@ async def export_video(req: ExportRequest):
                     expiry_date = datetime.fromisoformat(expiry_str.replace('Z', '+00:00'))
                     if expiry_date < datetime.now(expiry_date.tzinfo):
                         plan_time_expired = True
-                except Exception:
-                    pass
+                except (ValueError, TypeError) as e:
+                    print(f"[Export] Failed to parse subscription_expiry '{expiry_str}': {e}")
 
         # Reset expired promo users back to free tier
         if user_data.get("is_promo_user") and user_data.get("promo_expires"):
@@ -521,8 +521,8 @@ async def export_video(req: ExportRequest):
             # Delete local file since it's now in Firebase Storage
             try:
                 os.remove(output_path)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[Export] Failed to delete local export file after Firebase upload: {e}")
     except Exception as e:
         print(f"[Export] Firebase Storage upload failed, falling back to local: {e}")
 
@@ -904,10 +904,12 @@ async def detect_language(req: DetectLanguageRequest):
         import tempfile
         with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as _tf:
             temp_path = _tf.name
-        subprocess.run([
+        ffmpeg_result = subprocess.run([
             "ffmpeg", "-i", input_path, "-t", "30",
             "-vn", "-acodec", "mp3", "-y", temp_path
         ], capture_output=True)
+        if ffmpeg_result.returncode != 0:
+            raise RuntimeError(f"FFmpeg audio extraction failed: {ffmpeg_result.stderr.decode(errors='replace')[-500:]}")
         from openai import OpenAI
         client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
         with open(temp_path, "rb") as af:
@@ -915,8 +917,11 @@ async def detect_language(req: DetectLanguageRequest):
                 model="whisper-1", file=af, response_format="verbose_json"
             )
         detected = getattr(result, 'language', 'english')
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
+        try:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+        except Exception as _e:
+            print(f"[DetectLang] Failed to delete temp audio file: {_e}")
         return {"success": True, "language": detected}
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -943,8 +948,8 @@ async def delete_user_file(req: DeleteFileRequest):
         if candidate.startswith(real_export_dir + os.sep) and os.path.isfile(candidate):
             try:
                 os.remove(candidate)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[DeleteFile] Failed to remove local export file {candidate}: {e}")
 
     # Remove from Firestore history + delete from Firebase Storage
     db = get_db()
