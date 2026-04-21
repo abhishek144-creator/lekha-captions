@@ -4,6 +4,31 @@ import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
 import WordClickPopup from './WordClickPopup';
 import '../../styles/captionTemplates.css';
+import '../../styles/captionTemplatesAdvanced.css';
+
+const ADVANCED_TEMPLATE_VARIANTS = {
+  t01: 'wbw-rise', t02: 'plain-s', t03: 'wbw-rise', t04: 'plain-s', t05: 'wbw-rise',
+  t06: 'wbw-rise', t07: 'wbw-rise', t08: 'wbw-rise', t09: 'wbw-rise', t10: 'wbw-rise',
+  t11: 'wbw-slide', t12: 'plain-s', t13: 'wbw-rise', t14: 'wbw-slide', t15: 'plain-s',
+  t16: 'wbw-rise', t17: 'wbw-slide', t18: 'wbw-rise', t19: 'wbw-rise', t20: 'plain-s',
+  t21: 'wbw-rise', t22: 'wbw-rise', t23: 'wbw-rise', t24: 'wbw-rise', t25: 'wbw-slide',
+  t26: 'wbw-rise', t27: 'plain-s', t28: 'wbw-rise', t29: 'wbw-rise', t30: 'wbw-slide',
+  t31: 'wbw-rise', t32: 'plain-s', t33: 'wbw-rise', t34: 'wbw-rise', t35: 'wbw-rise',
+};
+const TEMPLATE_CANVAS_FONT_SCALE = 0.88;
+
+function isAdvancedTemplateId(templateId) {
+  return /^t\d{2}$/.test(String(templateId || ''));
+}
+
+function getTemplateWrapperClassName(templateId) {
+  if (!isAdvancedTemplateId(templateId)) return 'cap-text';
+  return `${ADVANCED_TEMPLATE_VARIANTS[templateId] || 'wbw-rise'} ${templateId}`;
+}
+
+function scaleTemplateFontSize(fontSize) {
+  return Math.max(12, Math.round((fontSize || 18) * TEMPLATE_CANVAS_FONT_SCALE));
+}
 
 // --- Effect CSS helper ---
 function _hexRgba(hex, a) {
@@ -1170,15 +1195,15 @@ export default function VideoPlayer({
                   ) : captionStyle?.template_id ? (
                     // Template rendering: simple word spans with CSS class states for template effects
                     <span
-                      className="cap-text"
+                      className={getTemplateWrapperClassName(captionStyle?.template_id)}
                       style={{
                         fontFamily: captionStyle?.font_family || 'Inter',
-                        fontSize: `${captionStyle?.font_size || 18}px`,
+                        fontSize: `${scaleTemplateFontSize(captionStyle?.font_size)}px`,
                         fontWeight: captionStyle?.font_weight || 'normal',
                         fontStyle: captionStyle?.font_style || 'normal',
                         textAlign: captionStyle?.text_align || 'center',
                         display: 'block',
-                        lineHeight: `${(captionStyle?.font_size || 18) * (captionStyle?.line_spacing || 1.4)}px`,
+                        lineHeight: `${scaleTemplateFontSize(captionStyle?.font_size) * (captionStyle?.line_spacing || 1.4)}px`,
                         letterSpacing: captionStyle?.letter_spacing ? `${captionStyle.letter_spacing}px` : '0px',
                         wordSpacing: `${captionStyle?.word_spacing ?? 0}px`,
                         textTransform: captionStyle?.text_case && captionStyle.text_case !== 'none' ? captionStyle.text_case : undefined,
@@ -1200,9 +1225,17 @@ export default function VideoPlayer({
                           const isPast    = wordIndex < currentIdx;
                           const isCurrent = wordIndex === currentIdx;
 
+                          const isAdvancedTemplate = isAdvancedTemplateId(captionStyle?.template_id);
+                          const wordStyle = caption.wordStyles?.[`${caption.id}-${wordIndex}`] || {};
                           let cls = 'word';
                           if (isCurrent) cls += ' current active';
                           else if (isPast) cls += ' active done';
+                          if (wordStyle?.isEmphasis) cls += ' imp';
+                          if (isAdvancedTemplate) {
+                            cls = ['w', isPast || isCurrent ? 'in' : '', wordStyle?.isEmphasis ? 'imp-bold' : '']
+                              .filter(Boolean)
+                              .join(' ');
+                          }
 
                           // Word-by-word delivery mode: accumulate — show words 0..currentIdx
                           if (captionStyle?.show_inactive === false && wordIndex > currentIdx) {
@@ -1217,7 +1250,7 @@ export default function VideoPlayer({
                               key={wordIndex}
                               data-word-key={`${caption.id}-${wordIndex}`}
                               className={cls + (isSelected ? ' ring-2 ring-[#F5A623] rounded-sm' : '')}
-                              style={{ cursor: 'pointer', display: 'inline-block', marginRight: wordIndex < words.length - 1 ? `${(captionStyle?.word_spacing ?? 1) * 3}px` : '0' }}
+                              style={{ cursor: 'pointer', display: 'inline-block', marginRight: wordIndex < words.length - 1 ? `${(captionStyle?.word_spacing ?? 1) * 2}px` : '0' }}
                               onClick={(e) => {
                                 if (setWordPopup) {
                                   e.stopPropagation();
@@ -1326,7 +1359,7 @@ export default function VideoPlayer({
                               fontSize: `${layoutFontSize}px`,
                               lineHeight: 'inherit',
                               verticalAlign: 'baseline',
-                              marginRight: wordIndex < arr.length - 1 ? `${Math.round(layoutFontSize * 0.18 + (captionStyle?.word_spacing ?? 1) * 3)}px` : '0',
+                              marginRight: wordIndex < arr.length - 1 ? `${Math.round(layoutFontSize * 0.18 + (captionStyle?.word_spacing ?? 1) * 2)}px` : '0',
                               transform: (ws.x || ws.y)
                                 ? `translate(${ws.x || 0}px, ${ws.y || 0}px)`
                                 : 'none',
