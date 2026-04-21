@@ -32,3 +32,7 @@ backend/codex-backend.out.log
 codex-frontend.err.log
 codex-frontend.out.log
 vite.log
+
+# Local preview artifacts and downloaded fonts
+backend/fonts/
+preview*.png
