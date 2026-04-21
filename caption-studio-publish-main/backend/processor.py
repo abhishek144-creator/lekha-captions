@@ -232,6 +232,7 @@ class VideoProcessor:
         self.fonts_dir = os.path.abspath(fonts_dir)
         os.makedirs(self.fonts_dir, exist_ok=True)
         self.client = None # Lazy init
+        self._font_cache: dict = {}  # resolved font_key -> info dict; avoids N+1 downloads per export
         self._ensure_fallback_font()
 
     def _ensure_fallback_font(self):
@@ -294,6 +295,9 @@ class VideoProcessor:
     }
 
     def _ensure_font(self, font_key):
+        if font_key in self._font_cache:
+            return self._font_cache[font_key]
+        _original_key = font_key
         info = GOOGLE_FONTS_MAP.get(font_key)
         if not info:
             for k, v in GOOGLE_FONTS_MAP.items():
@@ -386,6 +390,7 @@ class VideoProcessor:
                 f"Expected at: {font_path}"
             )
 
+        self._font_cache[_original_key] = info
         return info
 
     async def generate_captions_only(self, input_p, target_language="English", min_words=0, max_words=0):
@@ -1258,7 +1263,7 @@ class VideoProcessor:
                                       float(cs.get('background_h_multiplier', 0.99) or 0.99)), 2) if te_has_bg else 2
                     te_align = {'left': 4, 'center': 5, 'right': 6}.get(cs.get('text_align', 'center'), 5)
                     te_px = int((float(cs.get('position_x', 50) or 50) / 100) * video_w)
-                    te_py = int((float(cs.get('position_y', 50) or 50) / 100) * video_h)
+                    te_py = int((float(cs.get('position_y', 75) or 75) / 100) * video_h)
                     if detected_script in INDIC_Y_CORR:
                         te_py = max(10, te_py + int(INDIC_Y_CORR[detected_script] * video_h))
                     te_tc = cs.get('text_transform', 'none') or 'none'
@@ -1414,8 +1419,8 @@ class VideoProcessor:
                     _nobox = '\\bord0\\shad0\\3a&HFF&\\4a&HFF&'
 
                     def _wxy(lyt):
-                        _wx = int((float(lyt['x']) / 100) * video_w)
-                        _wy = int((float(lyt['y']) / 100) * video_h)
+                        _wx = int((float(lyt.get('x', 50) or 50) / 100) * video_w)
+                        _wy = int((float(lyt.get('y', 75) or 75) / 100) * video_h)
                         if detected_script in INDIC_Y_CORR:
                             _wy = max(10, _wy + int(INDIC_Y_CORR[detected_script] * video_h))
                         return _wx, _wy
@@ -1423,12 +1428,15 @@ class VideoProcessor:
                     _aw = [_T((wt2.get('word') or '').strip()) for wt2 in words_timing]
 
                     # Gap before first word — write all inactive words
-                    _fts = float(words_timing[0].get('start', st)) if words_timing else st
+                    try:
+                        _fts = float(words_timing[0].get('start', st)) if words_timing else st
+                    except (ValueError, TypeError):
+                        _fts = st
                     if _fts > st + 0.05 and _ia > 0.0:
                         for _wi2, _wd2 in enumerate(_aw):
                             if not _wd2: continue
                             _lyt2 = cap_word_layouts.get(_wi2)
-                            if not _lyt2: continue
+                            if not _lyt2 or 'x' not in _lyt2 or 'y' not in _lyt2: continue
                             _wx2, _wy2 = _wxy(_lyt2)
                             if _uab:
                                 _lt = f'{_bt}\\1c{_inact_c}\\3c{_gn(bg_hex, bg_opacity * _ia)}\\pos({_wx2},{_wy2})'
@@ -1445,8 +1453,14 @@ class VideoProcessor:
                         _wsc = ws_map.get(f"{cid}-{_wi}", {})
                         if isinstance(_wsc, dict) and _wsc.get('abs_x_pct') is not None:
                             continue  # Separately positioned — rendered below
-                        _ws2 = float(_wt2.get('start', st))
-                        _we2 = float(words_timing[_wi + 1].get('start', et) if _wi + 1 < len(words_timing) else et)
+                        try:
+                            _ws2 = float(_wt2.get('start', st))
+                        except (ValueError, TypeError):
+                            _ws2 = st
+                        try:
+                            _we2 = float(words_timing[_wi + 1].get('start', et) if _wi + 1 < len(words_timing) else et)
+                        except (ValueError, TypeError):
+                            _we2 = et
                         if _we2 <= _ws2: _we2 = _ws2 + 0.05
                         _ts_s = self._fmt(_ws2)
                         _ts_e = self._fmt(_we2)
@@ -1454,7 +1468,7 @@ class VideoProcessor:
                         for _wi2, _wd2 in enumerate(_aw):
                             if not _wd2: continue
                             _lyt2 = cap_word_layouts.get(_wi2)
-                            if not _lyt2: continue
+                            if not _lyt2 or 'x' not in _lyt2 or 'y' not in _lyt2: continue
                             _wx2, _wy2 = _wxy(_lyt2)
                             _pt = f'\\pos({_wx2},{_wy2})'
 
@@ -1519,6 +1533,10 @@ class VideoProcessor:
                 tokens = re.split(r'(\s+)', text)
                 word_idx = 0
                 inline_parts = []
+                # NOTE: `positioned` was already pre-built at line ~1237 (shared with template path).
+                # This re-build is kept because the loop below also constructs `inline_parts` in
+                # the same pass. If you change the abs_x_pct detection logic here, mirror it in
+                # the pre-build above to keep both paths consistent.
                 positioned = []   # (word_idx, token, ws_dict) — rebuilt from tokens for legacy path
 
                 for tok in tokens:
