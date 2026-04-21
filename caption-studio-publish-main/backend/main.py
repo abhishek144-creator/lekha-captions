@@ -23,6 +23,7 @@ import hashlib
 from fastapi import Request
 from firebase_admin_setup import verify_token, get_db, upload_to_firebase_storage, delete_from_firebase_storage
 import math
+from google.cloud import firestore
 
 try:
     import razorpay as _razorpay_module
@@ -778,39 +779,44 @@ async def redeem_promo(req: RedeemPromoRequest, request: Request):
 
     code_upper = req.code.strip().upper()
     code_ref = db.collection("promo_codes").document(code_upper)
-    code_doc = code_ref.get()
-
-    if not code_doc.exists:
-        raise HTTPException(status_code=400, detail="Invalid or already used code")
-
-    promo = code_doc.to_dict()
-    if promo.get("is_used"):
-        raise HTTPException(status_code=400, detail="Invalid or already used code")
-
-    now = datetime.utcnow()
-    expiry_date = (now + relativedelta(months=int(promo["duration_months"]))).date().isoformat()
-
     user_ref = db.collection("users").document(uid)
-    user_doc = user_ref.get()
-    user_email = user_doc.to_dict().get("email", "") if user_doc.exists else ""
+    transaction = db.transaction()
 
-    code_ref.update({
-        "is_used": True,
-        "used_by_email": user_email,
-        "used_at": now.isoformat(),
-    })
+    @firestore.transactional
+    def redeem_in_transaction(txn):
+        code_doc = code_ref.get(transaction=txn)
+        if not code_doc.exists:
+            raise HTTPException(status_code=400, detail="Invalid or already used code")
 
-    user_ref.set({
-        "subscription_tier": promo["plan_id"],
-        "credits_remaining": int(promo["credits_per_month"]),
-        "billing_cycle_start": now.isoformat(),
-        "billing_cycle_end": expiry_date,
-        "subscription_expiry": expiry_date,
-        "is_promo_user": True,
-        "promo_code_used": code_upper,
-        "promo_plan": promo["plan_id"],
-        "promo_expires": expiry_date,
-    }, merge=True)
+        promo = code_doc.to_dict() or {}
+        if promo.get("is_used"):
+            raise HTTPException(status_code=400, detail="Invalid or already used code")
+
+        user_doc = user_ref.get(transaction=txn)
+        user_email = user_doc.to_dict().get("email", "") if user_doc.exists else ""
+        now = datetime.utcnow()
+        expiry_date = (now + relativedelta(months=int(promo["duration_months"]))).date().isoformat()
+
+        txn.update(code_ref, {
+            "is_used": True,
+            "used_by_email": user_email,
+            "used_at": now.isoformat(),
+        })
+
+        txn.set(user_ref, {
+            "subscription_tier": promo["plan_id"],
+            "credits_remaining": int(promo["credits_per_month"]),
+            "billing_cycle_start": now.isoformat(),
+            "billing_cycle_end": expiry_date,
+            "subscription_expiry": expiry_date,
+            "is_promo_user": True,
+            "promo_code_used": code_upper,
+            "promo_plan": promo["plan_id"],
+            "promo_expires": expiry_date,
+        }, merge=True)
+        return promo, expiry_date
+
+    promo, expiry_date = redeem_in_transaction(transaction)
 
     return {
         "success": True,

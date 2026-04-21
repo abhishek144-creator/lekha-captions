@@ -6,6 +6,7 @@ import json
 import math
 import re
 import shutil
+import uuid
 from openai import OpenAI
 from sarvamai import SarvamAI
 
@@ -679,6 +680,7 @@ class VideoProcessor:
             # After the crop step, horizontal videos are already converted to vertical (9:16),
             # so scaling by width works uniformly for all orientations.
             quality = style.get('quality', '1080p')
+            fps = self._get_export_fps(style)
             if quality == '4k':
                 scale_filter = "scale=2160:-2:flags=lanczos"
                 crf = "18"
@@ -707,6 +709,7 @@ class VideoProcessor:
                 "-vf", vf_filter,
                 "-map", "0:v:0", "-map", "0:a?",
                 "-c:v", "libx264", "-preset", "fast", "-crf", crf,
+                "-r", str(fps),
                 "-c:a", "aac", "-b:a", audio_bitrate,
                 "-shortest",
                 output_fwd
@@ -780,12 +783,23 @@ class VideoProcessor:
             return "scale=720:-2:flags=lanczos", "26", "128k"
         return "scale=1080:-2:flags=lanczos", "22", "128k"
 
+    def _get_export_fps(self, style):
+        try:
+            fps = int(style.get('fps', 30) or 30)
+        except (TypeError, ValueError):
+            fps = 30
+        return fps if fps in {24, 30, 60} else 30
+
     def _render_dom_template_overlay(self, input_p, output_p, captions, style, video_w, video_h, crop_filter=""):
         quality = style.get('quality', '1080p')
         scale_filter, crf, audio_bitrate = self._get_quality_settings(quality)
+        fps = self._get_export_fps(style)
         duration = self._get_video_duration(input_p)
-
-        with tempfile.TemporaryDirectory(prefix="caption-template-overlay-") as temp_dir:
+        temp_root = os.path.join(self.project_root, ".render_tmp")
+        os.makedirs(temp_root, exist_ok=True)
+        temp_dir = os.path.join(temp_root, f"caption-template-overlay-{uuid.uuid4().hex}")
+        os.makedirs(temp_dir, exist_ok=True)
+        try:
             payload_path = os.path.join(temp_dir, "payload.json")
             overlay_dir = os.path.join(temp_dir, "overlay_frames")
             overlay_mov = os.path.join(temp_dir, "overlay.mov")
@@ -854,6 +868,7 @@ class VideoProcessor:
                 "-c:v", "libx264",
                 "-preset", "fast",
                 "-crf", crf,
+                "-r", str(fps),
                 "-c:a", "aac",
                 "-b:a", audio_bitrate,
                 "-shortest",
@@ -872,6 +887,8 @@ class VideoProcessor:
             if os.path.exists(output_p):
                 print(f"[Template DOM] Output file size: {os.path.getsize(output_p)} bytes")
             return {"success": True}
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
     def _get_video_dimensions(self, video_path):
         try:
