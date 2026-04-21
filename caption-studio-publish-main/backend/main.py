@@ -17,12 +17,10 @@ from typing import List, Dict, Any, Optional
 from processor import VideoProcessor
 import asyncio
 import time
-import subprocess
 import hmac
 import hashlib
 from fastapi import Request
 from firebase_admin_setup import verify_token, get_db, upload_to_firebase_storage, delete_from_firebase_storage
-import math
 
 try:
     import razorpay as _razorpay_module
@@ -46,6 +44,17 @@ app = FastAPI()
 RAZORPAY_KEY_ID = os.environ.get("RAZORPAY_KEY_ID", "")
 RAZORPAY_KEY_SECRET = os.environ.get("RAZORPAY_KEY_SECRET", "")
 rzp_client = _razorpay_module.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET)) if RAZORPAY_AVAILABLE else None
+
+# DEV_MODE: when True, an empty or "mock-token" id_token is accepted as dev bypass.
+# MUST be False (or unset) in production — set DEV_MODE=true only in local .env.
+DEV_MODE: bool = os.environ.get("DEV_MODE", "false").lower() == "true"
+
+# CREDITS_HMAC_SECRET: 32+ random bytes, hex-encoded.  When set, every backend
+# write to `credits_remaining` also writes a `credits_sig` HMAC.  On read the
+# HMAC is verified — a mismatch means the field was written directly to Firestore
+# outside the backend (Vulnerability 2).  Generate with:
+#   python -c "import secrets; print(secrets.token_hex(32))"
+CREDITS_HMAC_SECRET: str = os.environ.get("CREDITS_HMAC_SECRET", "")
 
 # --- PLAN PRICING (locked — do not change) ---
 PLAN_PRICING = {
@@ -105,35 +114,39 @@ async def advanced_janitor_job():
     deleted_count = 0
 
     # Clean upload directory — all files older than 6 hours
+    # os.scandir returns a lazy iterator (no full directory materialisation) and
+    # reuses the stat() result from the dir entry, saving a syscall per file.
     if os.path.exists(UPLOAD_DIR):
-        for f in os.listdir(UPLOAD_DIR):
-            filepath = os.path.join(UPLOAD_DIR, f)
-            if not os.path.isfile(filepath): continue
-            try:
-                st = os.stat(filepath)
-                age = now - max(st.st_mtime, st.st_atime)
-                if f.endswith('.srt'):
-                    if age > 604800:  # 7 days for SRT
-                        os.remove(filepath)
+        with os.scandir(UPLOAD_DIR) as it:
+            for entry in it:
+                if not entry.is_file():
+                    continue
+                try:
+                    st = entry.stat()
+                    age = now - max(st.st_mtime, st.st_atime)
+                    if entry.name.endswith('.srt'):
+                        if age > 604800:  # 7 days for SRT
+                            os.remove(entry.path)
+                            deleted_count += 1
+                    elif age > 21600:  # 6 hours for uploads
+                        os.remove(entry.path)
                         deleted_count += 1
-                elif age > 21600:  # 6 hours for uploads
-                    os.remove(filepath)
-                    deleted_count += 1
-            except Exception as e:
-                print(f"Janitor error: {e}")
+                except Exception as e:
+                    print(f"Janitor error: {e}")
 
     # Clean stale local exports (should be on Firebase, delete after 30 min)
     if os.path.exists(EXPORT_DIR):
-        for f in os.listdir(EXPORT_DIR):
-            filepath = os.path.join(EXPORT_DIR, f)
-            if not os.path.isfile(filepath): continue
-            try:
-                age = now - os.stat(filepath).st_mtime
-                if age > 1800:  # 30 minutes
-                    os.remove(filepath)
-                    deleted_count += 1
-            except Exception as e:
-                print(f"Janitor error: {e}")
+        with os.scandir(EXPORT_DIR) as it:
+            for entry in it:
+                if not entry.is_file():
+                    continue
+                try:
+                    age = now - entry.stat().st_mtime
+                    if age > 1800:  # 30 minutes
+                        os.remove(entry.path)
+                        deleted_count += 1
+                except Exception as e:
+                    print(f"Janitor error: {e}")
 
     if deleted_count > 0:
         print(f"[Janitor] Cleaned {deleted_count} files.")
@@ -188,17 +201,90 @@ PAYMENT_RATE_LIMIT = 10   # max payment attempts per hour per IP
 _promo_rate: Dict[str, list] = {}
 PROMO_RATE_LIMIT = 5      # max promo redemptions per hour per IP
 
+_rate_call_count = 0  # used to trigger periodic sweep of stale keys
+
 def _check_rate(store: Dict[str, list], key: str, limit: int, window: int = 3600) -> bool:
     """Returns True if the request is allowed, False if rate-limited.
-    Mutates *store* in-place to record the current timestamp."""
+    Mutates *store* in-place to record the current timestamp.
+
+    Safety properties:
+    - Per-key list is capped at (limit + 5) entries — prevents unbounded growth for a
+      single hammered IP even if the sweep has not run yet.
+    - Every 1 000 calls a sweep evicts keys whose newest timestamp is older than the
+      window, reclaiming memory for IPs that have gone quiet.
+    """
+    global _rate_call_count
     now_ts = time.time()
     timestamps = [t for t in store.get(key, []) if t > now_ts - window]
     if len(timestamps) >= limit:
         store[key] = timestamps
         return False
     timestamps.append(now_ts)
-    store[key] = timestamps
+    store[key] = timestamps[-(limit + 5):]  # cap per-key list
+    # Periodic sweep: evict keys with no activity in the last window
+    _rate_call_count += 1
+    if _rate_call_count >= 1000:
+        _rate_call_count = 0
+        cutoff = now_ts - window
+        stale = [k for k, v in store.items() if not v or v[-1] <= cutoff]
+        for k in stale:
+            del store[k]
     return True
+
+# ── Credits integrity helpers ─────────────────────────────────────────────────
+def _sign_credits(uid: str, credits: int) -> str:
+    """Return an HMAC-SHA256 hex digest over (uid, credits).
+
+    An empty string is returned when CREDITS_HMAC_SECRET is not configured so
+    the feature degrades gracefully in dev environments without the secret.
+    """
+    if not CREDITS_HMAC_SECRET:
+        return ""
+    msg = f"{uid}:{credits}".encode()
+    return hmac.new(CREDITS_HMAC_SECRET.encode(), msg, hashlib.sha256).hexdigest()
+
+
+def _verify_credits(uid: str, user_data: dict) -> tuple:
+    """Return (credits: int, tampered: bool).
+
+    tampered=True means the `credits_remaining` field was written directly to
+    Firestore outside of the backend (signature mismatch) or contains a
+    non-numeric value.  The caller must treat tampered credits as zero and
+    block the operation.
+
+    Absent signature (legacy users who pre-date this feature, or dev mode
+    without CREDITS_HMAC_SECRET) is treated as *trusted but unverified* — the
+    backend will write a proper signature on its next credit mutation so the
+    account self-heals after one operation.
+    """
+    # --- type-safety: reject non-numeric values outright --------------------
+    raw = user_data.get('credits_remaining', 0)
+    try:
+        credits = int(raw)
+        if credits < 0:
+            credits = 0
+    except (TypeError, ValueError):
+        print(f"[Security] uid={uid}: credits_remaining={raw!r} is non-numeric — treating as tampered")
+        return 0, True
+
+    # --- signature verification (skipped when secret not configured) --------
+    if not CREDITS_HMAC_SECRET:
+        return credits, False
+
+    stored_sig = user_data.get('credits_sig', '')
+    if not stored_sig:
+        # No signature: legacy user or first use — trust the stored value but
+        # log it so we can monitor accounts that never get a signature written.
+        print(f"[Credits] uid={uid}: no credits_sig (legacy/first-use) — trusting value={credits}")
+        return credits, False
+
+    expected = _sign_credits(uid, credits)
+    if not hmac.compare_digest(expected, stored_sig):
+        print(f"[Security] TAMPER DETECTED uid={uid}: credits_remaining={credits} sig mismatch — blocking")
+        return 0, True
+
+    return credits, False
+
 
 # Allowed upload extensions (module-level constant — not rebuilt per request)
 ALLOWED_EXTENSIONS = {'mp4', 'mov', 'avi', 'mkv', 'webm', 'mp3', 'wav', 'm4a', 'aac'}
@@ -380,8 +466,8 @@ async def upload_video(file: UploadFile = File(...), request: Request = None):
 
 @app.post("/api/process")
 async def process_video(req: ProcessRequest):
-    # Auth — same dev-mode bypass as /api/export
-    is_dev_token = not req.id_token or req.id_token == 'mock-token'
+    # DEV_MODE bypass only — never accept mock-token on production
+    is_dev_token = DEV_MODE and (not req.id_token or req.id_token == 'mock-token')
     if not is_dev_token:
         decoded_token = verify_token(req.id_token)
         if not decoded_token:
@@ -399,12 +485,12 @@ async def export_video(req: ExportRequest):
     print(f"[Export] EXPORT STYLE RECEIVED: {req.style}")
 
     # 1. Authenticate user
-    is_dev_token = not req.id_token or req.id_token == 'mock-token'
+    # DEV_MODE bypass only — never accept mock-token on production (Vulnerability 1 fix)
+    is_dev_token = DEV_MODE and (not req.id_token or req.id_token == 'mock-token')
     decoded_token = verify_token(req.id_token) if req.id_token and not is_dev_token else None
     if decoded_token:
         uid = decoded_token.get('uid')
     else:
-        # Dev mode: either no token, mock-token, or Firebase not configured
         if not is_dev_token:
             db_check = get_db()
             if db_check is not None:
@@ -423,25 +509,37 @@ async def export_video(req: ExportRequest):
     user_ref = None
 
     if db_available:
+        _loop = asyncio.get_running_loop()
         user_ref = db.collection('users').document(uid)
-        user_doc = user_ref.get()
+        # Firestore SDK is synchronous — offload to thread pool so the event loop
+        # is not blocked during the network round-trip.
+        user_doc = await _loop.run_in_executor(None, user_ref.get)
 
         if not user_doc.exists:
             # Auto-create user document with free tier defaults
             print(f"[Export] User {uid} not found in Firestore — auto-creating with free tier defaults.")
             default_user = {
                 'credits_remaining': 100,
+                'credits_sig': _sign_credits(uid, 100),
                 'subscription_tier': 'free',
                 'export_timestamps': [],
                 'created_at': time.time(),
                 'uid': uid,
             }
-            user_ref.set(default_user)
+            await _loop.run_in_executor(None, lambda: user_ref.set(default_user))
             user_data = default_user
         else:
             user_data = user_doc.to_dict()
 
-        credits = user_data.get('credits_remaining', 0)
+        # Vulnerability 2 fix: verify HMAC before trusting the stored value.
+        # A mismatch means credits_remaining was written directly to Firestore
+        # outside the backend (e.g. via Firebase client SDK).
+        credits, _tampered = _verify_credits(uid, user_data)
+        if _tampered:
+            raise HTTPException(
+                status_code=403,
+                detail="Account integrity check failed. Please contact support."
+            )
         tier = user_data.get('subscription_tier', 'free')
 
         # Check if paid plan has expired (time-based)
@@ -482,7 +580,7 @@ async def export_video(req: ExportRequest):
         # Check 24-hour limit (max 5 exports)
         export_history = user_data.get('export_timestamps', [])
         # Filter only timestamps within the last 24 hours
-        recent_exports = [ts for ts in export_history if ts > (now - 86400)]
+        recent_exports = [ts for ts in export_history if ts >= (now - 86400)]
 
         if len(recent_exports) >= 5:
             raise HTTPException(status_code=429, detail="Limit reached: You can only export 5 videos per 24 hours to prevent abuse.")
@@ -499,6 +597,8 @@ async def export_video(req: ExportRequest):
     output_path = os.path.join(EXPORT_DIR, output_filename)
 
     captions = [c.dict() for c in req.captions]
+    if not captions or not any(c.get('text', '').strip() for c in captions):
+        raise HTTPException(status_code=400, detail="No captions provided for export")
     
     # QUEUE SYSTEM: Wait for an available render slot via Semaphore 
     # This prevents the server from crashing if 10 people click export at once.
@@ -542,11 +642,14 @@ async def export_video(req: ExportRequest):
         if len(current_history) > 5:
             current_history = current_history[:5]
 
-        user_ref.update({
-            'credits_remaining': credits - 1,
+        _new_credits = credits - 1
+        _update_payload = {
+            'credits_remaining': _new_credits,
+            'credits_sig': _sign_credits(uid, _new_credits),
             'export_timestamps': recent_exports,
-            'history': current_history
-        })
+            'history': current_history,
+        }
+        await _loop.run_in_executor(None, lambda: user_ref.update(_update_payload))
 
     # Calculate expiry based on user's plan
     retention_hours = 2  # default for free tier
@@ -674,7 +777,13 @@ async def verify_payment(req: VerifyPaymentRequest, request: Request):
     user_ref = db.collection('users').document(uid)
     user_doc = user_ref.get()
     user_data = user_doc.to_dict() if user_doc.exists else {}
-    current_credits = user_data.get('credits_remaining', 0)
+    # Verify before using — if credits were tampered via direct Firestore write,
+    # use 0 as the base so the attacker doesn't keep their inflated value.
+    # The payment is still processed normally (they paid legitimately).
+    current_credits, _credits_tampered = _verify_credits(uid, user_data)
+    if _credits_tampered:
+        print(f"[Security] verify_payment: tampered credits detected for uid={uid}, resetting base to 0")
+        current_credits = 0
     current_topups = user_data.get('topups_this_cycle', 0)
 
     now_utc = datetime.utcnow()
@@ -689,16 +798,22 @@ async def verify_payment(req: VerifyPaymentRequest, request: Request):
         if req.plan_id != expected_topup:
             raise HTTPException(status_code=403, detail="This top-up is not available for your current plan.")
 
-        if user_doc.exists:
-            user_ref.update({
-                'credits_remaining': current_credits + credits_to_add,
-                'topups_this_cycle': current_topups + 1,
-            })
-        else:
+        if not user_doc.exists:
             raise HTTPException(status_code=404, detail="User not found. Purchase a plan first.")
 
-        try:
-            user_ref.collection('payments').document(req.razorpay_payment_id).set({
+        # Use a batch write so both the credit update and the payment record
+        # are committed atomically — a crash between the two can't leave the
+        # user with extra credits but no audit trail.
+        _topup_new_credits = current_credits + credits_to_add
+        _topup_batch = db.batch()
+        _topup_batch.update(user_ref, {
+            'credits_remaining': _topup_new_credits,
+            'credits_sig': _sign_credits(uid, _topup_new_credits),
+            'topups_this_cycle': current_topups + 1,
+        })
+        _topup_batch.set(
+            user_ref.collection('payments').document(req.razorpay_payment_id),
+            {
                 'payment_id': req.razorpay_payment_id,
                 'order_id': req.razorpay_order_id,
                 'amount': plan_config['inr_paise'],
@@ -708,9 +823,9 @@ async def verify_payment(req: VerifyPaymentRequest, request: Request):
                 'credits_added': credits_to_add,
                 'type': 'topup',
                 'timestamp': cycle_start,
-            })
-        except Exception as e:
-            print(f"Failed to record topup payment: {e}")
+            }
+        )
+        _topup_batch.commit()
 
         return {"success": True, "credits_added": credits_to_add, "type": "topup"}
 
@@ -719,9 +834,15 @@ async def verify_payment(req: VerifyPaymentRequest, request: Request):
     days_to_add = plan_config['days']
     cycle_end = (now_utc + timedelta(days=days_to_add)).isoformat() + "Z"
 
+    # Use a batch write so the subscription update and payment record are
+    # committed atomically — prevents credits being granted with no audit trail
+    # if the process crashes between the two writes.
+    _sub_new_credits = current_credits + credits_to_add
+    _sub_batch = db.batch()
     if user_doc.exists:
-        user_ref.update({
-            'credits_remaining': current_credits + credits_to_add,
+        _sub_batch.update(user_ref, {
+            'credits_remaining': _sub_new_credits,
+            'credits_sig': _sign_credits(uid, _sub_new_credits),
             'subscription_tier': tier,
             'billing_cycle_start': cycle_start,
             'billing_cycle_end': cycle_end,
@@ -729,9 +850,10 @@ async def verify_payment(req: VerifyPaymentRequest, request: Request):
             'topups_this_cycle': 0,  # reset on new billing cycle
         })
     else:
-        user_ref.set({
+        _sub_batch.set(user_ref, {
             'uid': uid,
             'credits_remaining': credits_to_add,
+            'credits_sig': _sign_credits(uid, credits_to_add),
             'subscription_tier': tier,
             'billing_cycle_start': cycle_start,
             'billing_cycle_end': cycle_end,
@@ -739,9 +861,9 @@ async def verify_payment(req: VerifyPaymentRequest, request: Request):
             'topups_this_cycle': 0,
             'created_at': time.time(),
         })
-
-    try:
-        user_ref.collection('payments').document(req.razorpay_payment_id).set({
+    _sub_batch.set(
+        user_ref.collection('payments').document(req.razorpay_payment_id),
+        {
             'payment_id': req.razorpay_payment_id,
             'order_id': req.razorpay_order_id,
             'amount': plan_config.get('inr_paise', 0),
@@ -751,9 +873,9 @@ async def verify_payment(req: VerifyPaymentRequest, request: Request):
             'credits_added': credits_to_add,
             'type': 'subscription',
             'timestamp': cycle_start,
-        })
-    except Exception as e:
-        print(f"Failed to record payment history: {e}")
+        }
+    )
+    _sub_batch.commit()
 
     return {"success": True, "credits_added": credits_to_add, "billing_cycle_end": cycle_end, "type": "subscription"}
 
@@ -800,9 +922,11 @@ async def redeem_promo(req: RedeemPromoRequest, request: Request):
         "used_at": now.isoformat(),
     })
 
+    _promo_credits = int(promo["credits_per_month"])
     user_ref.set({
         "subscription_tier": promo["plan_id"],
-        "credits_remaining": int(promo["credits_per_month"]),
+        "credits_remaining": _promo_credits,
+        "credits_sig": _sign_credits(uid, _promo_credits),
         "billing_cycle_start": now.isoformat(),
         "billing_cycle_end": expiry_date,
         "subscription_expiry": expiry_date,
@@ -887,8 +1011,8 @@ class DetectLanguageRequest(BaseModel):
 
 @app.post("/api/detect-language")
 async def detect_language(req: DetectLanguageRequest):
-    # Auth — same dev-mode bypass as /api/export
-    is_dev_token = not req.id_token or req.id_token == 'mock-token'
+    # DEV_MODE bypass only — never accept mock-token on production
+    is_dev_token = DEV_MODE and (not req.id_token or req.id_token == 'mock-token')
     if not is_dev_token:
         decoded_token = verify_token(req.id_token)
         if not decoded_token:
