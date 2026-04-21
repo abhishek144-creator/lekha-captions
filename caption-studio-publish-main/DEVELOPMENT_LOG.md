@@ -25,11 +25,107 @@ This is the **Work Diary** for the Lekha Captions project.
 - [ ] **SidebarNav.jsx** — Update `getPlanDetails()` to map new `starter / creator / pro` tiers with gold color. Remove old purple gradient usage.
 - [ ] **Effects / Emphasis button** — Not working in `StyleControls.jsx` and `WordClickPopup.jsx`. Put effects section in a collapsible `+` icon block in both places. Brainstorm: emphasis effect = bold + scale(1.15) + color highlight + optional shadow/glow on word.
 - [ ] **Styling tab width** — Increase styling panel width to match caption tab width
-- [ ] **Set env vars before deploy** — `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` (backend `.env`); `VITE_RAZORPAY_KEY_ID` (frontend `.env`); `ALLOWED_ORIGINS` (comma-separated prod domains). App will fail silently on payments/CORS without these.
+- [ ] **Set remaining env vars before deploy** — `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` (backend `.env` stubs already exist); `VITE_RAZORPAY_KEY_ID` (frontend `.env`); `ALLOWED_ORIGINS` (comma-separated prod domains). `CREDITS_HMAC_SECRET` and `DEV_MODE=false` are already set in `backend/.env`.
 - [ ] **Verify template export fidelity** — User to test all 26+15 templates and confirm exported video matches dashboard preview after Session 5 fixes
 - [ ] **Verify Text tab export** — Confirm text boxes added via Text tab (custom color, animation, position) appear correctly in exported video
 - [ ] **Verify FPS in export** — Test 24/30/60 fps selector in Export tab produces correct output video frame rates
 - [ ] **Verify zoom/transition animations** — Test zoom_in, zoom_out, fade_in, slide_up/down/left/right in Animate tab → Basic category work correctly in preview
+
+---
+
+### Session 11 — 2026-04-16
+
+**Theme:** Core business logic hardening — edge cases, crash bugs, and data integrity fixes
+
+**Scope:** No new features. Bug fixes only across `processor.py`, `main.py`, `ExportPanel.jsx`.
+
+---
+
+#### Fixes — `backend/processor.py`
+
+| Bug | Fix |
+|-----|-----|
+| **`_wxy()` KeyError on missing layout keys** | Changed `lyt['x']` / `lyt['y']` to `lyt.get('x', 50)` / `lyt.get('y', 75)`. Malformed or partial word layout dicts no longer crash export. |
+| **`_lyt2` empty-dict false negative** | Both inner-loop `_lyt2` checks upgraded from `if not _lyt2` to `if not _lyt2 or 'x' not in _lyt2 or 'y' not in _lyt2`. An empty dict `{}` is truthy, so the old check passed and `_wxy` would crash with KeyError. |
+| **Unguarded `float()` on word timing values** | Wrapped `_fts = float(words_timing[0].get('start', st))` and the per-word `_ws2`/`_we2` float conversions in `try/except (ValueError, TypeError)`. A bad timing string (e.g. `"auto"`) now falls back to the caption start/end instead of crashing. |
+
+#### Fixes — `backend/main.py`
+
+| Bug | Fix |
+|-----|-----|
+| **Empty captions array silently exported** | Added `if not captions or not any(c.get('text','').strip() for c in captions): raise HTTPException(400, ...)` immediately after `captions = [c.dict() for c in req.captions]`. Prevents burning an empty subtitle track and wasting a credit. |
+| **Rate limit window off-by-one** | Changed `ts > (now - 86400)` to `ts >= (now - 86400)`. The old check excluded an export made exactly 24h ago, allowing a user to slightly exceed their 5-per-day limit. |
+
+#### Fixes — `src/components/dashboard/ExportPanel.jsx`
+
+| Bug | Fix |
+|-----|-----|
+| **Unknown `template_id` silently fell back with no log** | Changed `TEMPLATE_CANONICAL_STYLES[_tid] \|\| {}` to also call `console.warn(...)` when `_tid` is non-empty but not found in the map. Makes typos and renamed IDs visible in browser devtools without changing export behavior. |
+
+#### Additional fixes found via pending-list audit
+
+| File | Bug | Fix |
+|------|-----|-----|
+| `backend/processor.py` | **`te_py` text-element default was 50, not 75** | `cs.get('position_y', 50)` → `cs.get('position_y', 75)`. Text-tab boxes with no explicit position were landing at vertical center instead of 75% like the global caption default. |
+| `backend/processor.py` | **Duplicate `positioned` list construction** | The legacy path re-builds `positioned` even though a shared pre-build exists at ~line 1237. Full consolidation is unsafe (the loop also builds `inline_parts`). Added a sync-warning comment so future edits to the detection logic don't diverge between the two paths. |
+| `CLAUDE.md` | **3 Session 5 known-fixes never added to Known Fixed Bugs table** | Added `\|\|` vs `??` for shadow numerics, `needs_per_word_glow` Layer-0 suppression, and `TextBg` ASS style for text element backgrounds — all were fixed in Session 5 but marked "(pending)" and never recorded. |
+
+---
+
+### Session 9 — 2026-04-16
+
+**Theme:** Data layer performance audit + security vulnerability fixes (auth bypass + credits tampering)
+
+**Scope:** No new features. Backend-only. Two security CVEs fixed, seven performance issues fixed.
+
+---
+
+#### Security — `main.py`
+
+**Vulnerability 1 — `mock-token` auth bypass (all 3 endpoints)**
+
+| Fix | Detail |
+|-----|--------|
+| **`DEV_MODE` env guard on dev bypass** | `is_dev_token = not req.id_token or req.id_token == 'mock-token'` was always true on any server. Changed to `is_dev_token = DEV_MODE and (...)`. On production (`DEV_MODE` unset), empty or `mock-token` id_token now gets a 401. Applied to `/api/process`, `/api/export`, `/api/detect-language`. |
+| **`DEV_MODE` env var added** | `DEV_MODE=false` added to `backend/.env`. Set `DEV_MODE=true` in local `.env` only. |
+
+**Vulnerability 2 — Backend blindly trusted `credits_remaining` from Firestore**
+
+An authenticated user could write `credits_remaining: 99999` directly to their Firestore document via the Firebase client SDK (if security rules were permissive), and the backend would use that value without question.
+
+| Fix | Detail |
+|-----|--------|
+| **`_sign_credits(uid, credits)`** | HMAC-SHA256 over `"{uid}:{credits}"` using `CREDITS_HMAC_SECRET`. Returns `""` when secret not configured (graceful degradation). |
+| **`_verify_credits(uid, user_data)`** | Reads `credits_remaining`, verifies `credits_sig`. Returns `(credits, tampered)`. Non-numeric value → tampered. Signature mismatch → tampered. Missing signature (legacy user) → trusted + logged (self-heals on next write). |
+| **Export blocks on tamper** | `export_video` calls `_verify_credits`; if `tampered=True` → 403. |
+| **Payment resets base on tamper** | `verify_payment` calls `_verify_credits`; if `tampered=True` → resets base credits to 0 before adding purchased credits (payment still processes). |
+| **All credit writes now include `credits_sig`** | Auto-create user doc, export deduction, topup batch, subscription update batch, subscription new-user batch, promo redeem — every write now co-writes `credits_sig: _sign_credits(uid, new_value)`. |
+| **`CREDITS_HMAC_SECRET` env var generated** | 32-byte random hex secret generated and written to `backend/.env`. |
+| **`backend/.env` created** | New file with `CREDITS_HMAC_SECRET`, `DEV_MODE=false`, and stubs for all other env vars. Already covered by `.gitignore`. |
+
+---
+
+#### Performance — `processor.py`
+
+| Fix | Detail |
+|-----|--------|
+| **N+1 font downloads eliminated** | Added `self._font_cache: dict = {}` to `VideoProcessor.__init__`. `_ensure_font` checks cache on entry and stores result before returning. A 100-caption export with 3 unique fonts goes from up to 1,500 potential HTTP calls down to 3. |
+
+#### Performance — `main.py`
+
+| Fix | Detail |
+|-----|--------|
+| **Rate limiter memory leak fixed** | `_check_rate` now caps each key's timestamp list at `limit + 5` entries. Every 1,000 calls a sweep evicts keys with no activity in the last window. Prevents unbounded dict growth from attack traffic. |
+| **Janitor uses `os.scandir`** | Replaced `os.listdir` (materialises full name list) with `with os.scandir(...) as it:` (lazy iterator, reuses OS-provided stat). Applied to both `UPLOAD_DIR` and `EXPORT_DIR` loops. |
+| **Sync Firestore unblocks event loop** | `export_video` is `async def` but called sync Firestore SDK methods, blocking the event loop for 100–500 ms per request. The three Firestore calls (`user_ref.get`, `user_ref.set`, `user_ref.update`) are now wrapped in `await loop.run_in_executor(None, ...)`. |
+| **Payment writes are now atomic** | `verify_payment` previously did two separate Firestore writes (user doc + payments subcollection). A crash between them left credits granted with no audit record. Both paths (topup + subscription) now use `db.batch()` — committed atomically. |
+
+---
+
+**Files Modified:**
+- `backend/main.py` — DEV_MODE guard, _sign_credits, _verify_credits, _verify_credits in export + payment, credits_sig on all writes, rate limiter cap + sweep, scandir janitor, run_in_executor Firestore, atomic batch payments
+- `backend/processor.py` — _font_cache in __init__, cache check + store in _ensure_font
+- `backend/.env` — created (CREDITS_HMAC_SECRET, DEV_MODE=false, env stubs)
 
 ---
 
@@ -384,4 +480,53 @@ Full security review of the codebase was requested. 15 issues found and categori
 - `VITE_RAZORPAY_KEY_ID` — frontend `.env`
 - `ALLOWED_ORIGINS` — comma-separated list of allowed frontend domains (e.g. `https://app.lekha.in`)
 - `DEBUG_MODE` — set only in development if you need `/api/debug/last-ass`
+
+---
+
+### Session 10 — 2026-04-16
+
+**Theme:** Dead code cleanup — unused deps, dead imports, test scripts, log file hygiene
+
+**Scope:** No logic changes. Pure housekeeping across frontend, backend, and repo config.
+
+---
+
+#### Changes Made
+
+**`package.json` — Removed 13 unused npm dependencies**
+
+| Package | Reason removed |
+|---------|----------------|
+| `@react-oauth/google` | No imports in `src/` |
+| `@stripe/react-stripe-js` | No Stripe usage in codebase |
+| `@stripe/stripe-js` | No Stripe usage in codebase |
+| `canvas-confetti` | Label exists but package never imported |
+| `date-fns` | No imports in `src/` |
+| `html2canvas` | No imports in `src/` |
+| `jspdf` | No imports in `src/` |
+| `lodash` | No imports in `src/` |
+| `moment` | Appears only in template name strings, not imported |
+| `react-leaflet` | No imports in `src/` |
+| `react-markdown` | No imports in `src/` |
+| `recharts` | Only referenced in `chart.jsx` which is never imported |
+| `three` | Appears as template name string, not imported |
+| `baseline-browser-mapping` (devDep) | No imports anywhere |
+
+**`backend/main.py` — Removed 2 unused imports**
+- `import subprocess` — only used in `processor.py`, not `main.py`
+- `import math` — imported but no `math.*` calls in file
+
+**Deleted 3 backend test/debug scripts**
+- `backend/test2.py` — SarvamAI help-text scratch file
+- `backend/test_export.py` — hardcoded test data script
+- `backend/debug_export.py` — debug async function
+
+**`.gitignore` — Added log file patterns**
+- Added `*.log`, `backend/*.log`, and explicit codex/vite log filenames
+- Prevents `codex-backend.{err,out}.log`, `codex-frontend.{err,out}.log`, `uvicorn.log`, `vite.log` from being tracked
+
+---
+
+**Files changed:** `package.json`, `backend/main.py`, `.gitignore`
+**Files deleted:** `backend/test2.py`, `backend/test_export.py`, `backend/debug_export.py`
 

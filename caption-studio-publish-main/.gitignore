@@ -23,3 +23,12 @@ backend/exports/
 *.key
 backend/*.ass
 backend/output_frame.jpg
+
+# Log files
+*.log
+backend/*.log
+backend/codex-backend.err.log
+backend/codex-backend.out.log
+codex-frontend.err.log
+codex-frontend.out.log
+vite.log

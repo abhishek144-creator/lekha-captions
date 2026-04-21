@@ -139,6 +139,15 @@ This is mandatory, not optional.
 | seekSignal unused | VideoPlayer.jsx | Added `useEffect([seekSignal])` to consume external seeks |
 | Font fallback not downloaded | processor.py _ensure_font | Update `font_path` + download Inter on fallback |
 | Font ass_name mismatch | processor.py GOOGLE_FONTS_MAP | Mitigated — Google variable fonts preserve family name in nameID=1 |
+| `||` vs `??` for shadow numerics | ExportPanel.jsx export style build | Use `??` (nullish coalescing) not `\|\|` for `shadow_blur`, `shadow_offset_x/y`, `bg_padding`, `position_x/y` — `\|\|` replaces legitimate `0` values with defaults |
+| Per-word glow on Layer 0 | processor.py `_create_styled_ass` | `needs_per_word_glow` flag — Layer 0 suppresses glow when `secondary != primary`; Layer 2 applies glow only to active word |
+| TextBg ASS style for text element backgrounds | processor.py `_create_styled_ass` | ASS `BorderStyle=3` can't be overridden inline — added `TextBg` Style header entry; text elements with bg reference `TextBg` style |
+| `_wxy()` KeyError on partial layout | processor.py `_wxy()` | `.get('x', 50)` / `.get('y', 75)` instead of direct key access |
+| `_lyt2` empty-dict crash | processor.py word_layouts loop | `if not _lyt2 or 'x' not in _lyt2 or 'y' not in _lyt2: continue` |
+| Unguarded `float()` on word timings | processor.py `_fts`/`_ws2`/`_we2` | Wrapped in `try/except (ValueError, TypeError)` with fallback to caption start/end |
+| Empty captions silently exported | backend/main.py `/api/export` | `400` raised if all captions are empty/whitespace |
+| Rate limit window off-by-one | backend/main.py export_timestamps filter | `>=` instead of `>` for 24h window |
+| Unknown template_id silent fallback | ExportPanel.jsx TEMPLATE_CANONICAL_STYLES | `console.warn` when `_tid` non-empty but not in map |
 
 ---
 
