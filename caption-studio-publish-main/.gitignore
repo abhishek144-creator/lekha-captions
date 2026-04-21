@@ -23,3 +23,15 @@ backend/exports/
 *.key
 backend/*.ass
 backend/output_frame.jpg
+
+# Local logs and generated preview artifacts
+.claude/worktrees/
+backend/*.log
+backend/*.err.log
+frontend-dev.log
+frontend-dev.err.log
+codex-latest-frontend.log
+flat_fonts/
+latest-preview-*.png
+test-tab*.png
+timing-check.png
