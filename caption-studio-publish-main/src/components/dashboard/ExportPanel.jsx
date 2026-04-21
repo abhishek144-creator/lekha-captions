@@ -410,7 +410,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
           // Merge template canonical overrides — ensures correct has_shadow/has_stroke/has_background
           // even when the user's React state was set before these properties were added to the template def.
           const _tid = captionStyle?.template_id || '';
-          const _tOverride = TEMPLATE_CANONICAL_STYLES[_tid] || {};
+          const _tOverride = _tid ? (TEMPLATE_CANONICAL_STYLES[_tid] || (console.warn(`[Export] Unknown template_id: '${_tid}' — falling back to raw captionStyle`), {})) : {};
           const _cs = { ...captionStyle, ..._tOverride };
           return {
           font_family: _cs?.font_family || 'Inter',

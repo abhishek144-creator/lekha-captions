@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /Dashboard
+Disallow: /dashboard
+Disallow: /UserAccount
+Disallow: /login
+
+Sitemap: https://lekhacaptions.com/sitemap.xml
