@@ -10,8 +10,7 @@ import {
   Loader2,
   Undo,
   Redo,
-  RotateCw,
-  Crown
+  RotateCw
 } from 'lucide-react';
 
 export default function DashboardHeader({

@@ -1,0 +1,904 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Caption Template Research Lab</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo:wght@400;600;800&family=DM+Sans:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;700;800;900&family=Merriweather:ital,wght@0,700;1,700&family=Plus+Jakarta+Sans:wght@500;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #09111f;
+      --panel: rgba(12, 18, 31, 0.84);
+      --panel-strong: #0f1828;
+      --line: rgba(255, 255, 255, 0.1);
+      --text: #edf4ff;
+      --muted: #8ea2bd;
+      --soft: rgba(255, 255, 255, 0.06);
+      --shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+      color-scheme: dark;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Inter", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(43, 101, 255, 0.2), transparent 32%),
+        radial-gradient(circle at top right, rgba(0, 224, 196, 0.12), transparent 30%),
+        linear-gradient(180deg, #0c1220 0%, #08101c 100%);
+    }
+
+    .shell {
+      width: min(1280px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 28px 0 40px;
+    }
+
+    .hero {
+      display: grid;
+      gap: 18px;
+      margin-bottom: 22px;
+      padding: 24px;
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.05), transparent 45%),
+        var(--panel);
+      backdrop-filter: blur(16px);
+      box-shadow: var(--shadow);
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      width: fit-content;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #c4d4ee;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(28px, 4vw, 48px);
+      line-height: 0.98;
+      letter-spacing: -0.04em;
+    }
+
+    .hero p {
+      margin: 0;
+      max-width: 860px;
+      color: var(--muted);
+      line-height: 1.55;
+      font-size: 14px;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .controls {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    button,
+    select {
+      appearance: none;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text);
+      border-radius: 14px;
+      padding: 10px 14px;
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+      font-weight: 700;
+      transition: transform 0.16s ease, background 0.16s ease, border-color 0.16s ease;
+    }
+
+    button:hover,
+    select:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.18);
+    }
+
+    button:active {
+      transform: translateY(1px);
+    }
+
+    .meta {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .grid {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    }
+
+    .card {
+      overflow: hidden;
+      border-radius: 22px;
+      border: 1px solid var(--line);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 28%),
+        rgba(11, 16, 27, 0.88);
+      box-shadow: var(--shadow);
+    }
+
+    .card-head {
+      display: flex;
+      gap: 12px;
+      justify-content: space-between;
+      padding: 16px 18px 0;
+    }
+
+    .card-title {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .card-label {
+      display: inline-flex;
+      align-items: center;
+      height: fit-content;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.11em;
+      color: #bed0e7;
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .card-desc {
+      margin: 6px 18px 12px;
+      min-height: 34px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .stage {
+      position: relative;
+      aspect-ratio: 9 / 16;
+      margin: 0 12px 12px;
+      border-radius: 18px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background:
+        radial-gradient(circle at 20% 15%, rgba(255, 255, 255, 0.1), transparent 24%),
+        linear-gradient(180deg, rgba(37, 51, 78, 0.75), rgba(8, 13, 24, 0.95));
+    }
+
+    .stage::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(180deg, transparent 0%, transparent 55%, rgba(0, 0, 0, 0.55) 100%);
+      pointer-events: none;
+    }
+
+    .template-scene {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      padding: 18px;
+      overflow: hidden;
+    }
+
+    .caption-line {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.32em;
+      align-items: center;
+      justify-content: center;
+      text-wrap: balance;
+      position: relative;
+      z-index: 2;
+    }
+
+    .word {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      white-space: nowrap;
+      transition: transform 0.24s ease, opacity 0.24s ease, color 0.24s ease, background 0.24s ease;
+    }
+
+    .word .fill {
+      display: inline-block;
+    }
+
+    .speaker-chip {
+      position: absolute;
+      z-index: 3;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 11px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      backdrop-filter: blur(10px);
+    }
+
+    .speaker-chip::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: currentColor;
+      box-shadow: 0 0 10px currentColor;
+    }
+
+    .score-bug {
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      z-index: 3;
+      display: grid;
+      overflow: hidden;
+      border-radius: 12px;
+      box-shadow: 0 16px 30px rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .score-bug span {
+      padding: 7px 10px;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .score-bug .top {
+      background: #f5c542;
+      color: #111;
+    }
+
+    .score-bug .bottom {
+      background: rgba(15, 23, 38, 0.92);
+      color: #dbe8fb;
+    }
+
+    .caption-karaoke {
+      font-family: "Anton", sans-serif;
+      font-size: 30px;
+      line-height: 1;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      align-items: flex-end;
+    }
+
+    .caption-karaoke .word {
+      color: rgba(255, 255, 255, 0.22);
+    }
+
+    .caption-karaoke .word.done {
+      color: rgba(255, 255, 255, 0.56);
+    }
+
+    .caption-karaoke .word.active .fill {
+      display: inline-block;
+      background-image: linear-gradient(90deg, #f9ff67 0%, #f9ff67 var(--fill), rgba(255, 255, 255, 0.22) var(--fill), rgba(255, 255, 255, 0.22) 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      color: transparent;
+      text-shadow: 0 0 18px rgba(249, 255, 103, 0.22);
+    }
+
+    .caption-pill {
+      font-family: "Plus Jakarta Sans", sans-serif;
+      font-size: 24px;
+      line-height: 1.2;
+      font-weight: 800;
+      width: 100%;
+      justify-content: center;
+    }
+
+    .caption-pill .word {
+      color: rgba(236, 244, 255, 0.58);
+    }
+
+    .caption-pill .word.active {
+      color: #081019;
+      background: #f4f7fb;
+      padding: 0.24em 0.62em;
+      border-radius: 999px;
+      box-shadow: 0 8px 18px rgba(244, 247, 251, 0.24);
+    }
+
+    .lower-third-shell {
+      align-items: flex-end;
+      justify-content: flex-start;
+      padding: 18px;
+    }
+
+    .lower-third-shell .speaker-chip {
+      bottom: 82px;
+      left: 18px;
+      color: #93ffd9;
+      background: rgba(7, 22, 27, 0.72);
+      border: 1px solid rgba(147, 255, 217, 0.18);
+    }
+
+    .caption-lower-third {
+      max-width: 82%;
+      padding: 13px 14px;
+      border-left: 4px solid #62ffc8;
+      border-radius: 0 16px 16px 0;
+      background: rgba(7, 15, 28, 0.85);
+      backdrop-filter: blur(12px);
+      box-shadow: 0 14px 30px rgba(0, 0, 0, 0.35);
+      justify-content: flex-start;
+      font-family: "Archivo", sans-serif;
+      font-size: 20px;
+      font-weight: 700;
+      line-height: 1.32;
+    }
+
+    .caption-lower-third .word {
+      color: #dceaff;
+    }
+
+    .caption-lower-third .word.active {
+      color: #62ffc8;
+    }
+
+    .caption-sticker {
+      font-family: "DM Sans", sans-serif;
+      font-size: 22px;
+      line-height: 1.28;
+      font-weight: 800;
+      max-width: 88%;
+      justify-content: center;
+    }
+
+    .caption-sticker .word {
+      color: rgba(240, 246, 255, 0.68);
+    }
+
+    .caption-sticker .word.active {
+      color: #08111c;
+      padding: 0.2em 0.36em;
+      transform: rotate(-2deg);
+    }
+
+    .caption-sticker .word.active::before {
+      content: "";
+      position: absolute;
+      inset: -0.02em -0.2em;
+      z-index: -1;
+      background: linear-gradient(135deg, #ffe875, #ffd041);
+      border-radius: 0.24em;
+      transform: skewX(-9deg);
+      box-shadow: 0 12px 24px rgba(255, 208, 65, 0.2);
+    }
+
+    .caption-sticker .word.active::after {
+      content: "";
+      position: absolute;
+      top: -0.35em;
+      left: 50%;
+      width: 1.1em;
+      height: 0.26em;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.72);
+      transform: translateX(-50%) rotate(6deg);
+      opacity: 0.8;
+    }
+
+    .caption-frame-lock {
+      font-family: "Anton", sans-serif;
+      font-size: 32px;
+      line-height: 1.08;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+      max-width: 86%;
+    }
+
+    .caption-frame-lock .word {
+      color: rgba(255, 255, 255, 0.18);
+    }
+
+    .caption-frame-lock .word.done {
+      color: rgba(255, 255, 255, 0.46);
+    }
+
+    .caption-frame-lock .word.active {
+      color: #9ef6ff;
+      padding: 0.04em 0.18em;
+      border: 2px solid rgba(158, 246, 255, 0.9);
+      border-radius: 0.14em;
+      box-shadow: 0 0 0 5px rgba(158, 246, 255, 0.08);
+    }
+
+    .caption-soft-beam {
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 18px;
+      line-height: 1.55;
+      font-weight: 500;
+      max-width: 88%;
+      justify-content: flex-start;
+      align-items: flex-end;
+      padding: 14px 16px;
+      border-radius: 18px;
+      background: rgba(5, 11, 19, 0.74);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+    }
+
+    .caption-soft-beam .word {
+      color: rgba(226, 236, 255, 0.28);
+    }
+
+    .caption-soft-beam .word.done {
+      color: rgba(226, 236, 255, 0.64);
+    }
+
+    .caption-soft-beam .word.active {
+      color: #ffffff;
+      text-shadow: 0 0 16px rgba(102, 255, 228, 0.2);
+    }
+
+    .caption-soft-beam .word.active::before {
+      content: "";
+      position: absolute;
+      inset: 0.62em -0.12em 0.02em -0.12em;
+      z-index: -1;
+      background: linear-gradient(90deg, rgba(102, 255, 228, 0.95), rgba(102, 255, 228, 0));
+      border-radius: 999px;
+      opacity: 0.82;
+    }
+
+    .caption-stack-signal {
+      font-family: "Archivo", sans-serif;
+      font-size: 22px;
+      line-height: 1.28;
+      font-weight: 800;
+      max-width: 78%;
+      justify-content: center;
+      text-align: center;
+    }
+
+    .caption-stack-signal .word {
+      color: rgba(255, 255, 255, 0.2);
+    }
+
+    .caption-stack-signal .word.done {
+      color: rgba(255, 255, 255, 0.54);
+    }
+
+    .caption-stack-signal .word.active {
+      color: #0b1320;
+      padding: 0.18em 0.44em;
+      border-radius: 999px;
+      background: linear-gradient(135deg, #83fff1, #d7ff6f);
+      box-shadow: 0 10px 22px rgba(131, 255, 241, 0.24);
+      transform: translateY(-2px) scale(1.03);
+    }
+
+    .quote-shell {
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .caption-quote {
+      max-width: 88%;
+      padding: 22px 20px;
+      border-radius: 24px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      backdrop-filter: blur(18px);
+      font-family: "Merriweather", serif;
+      font-size: 22px;
+      line-height: 1.6;
+      font-style: italic;
+      text-align: center;
+      box-shadow: 0 20px 36px rgba(0, 0, 0, 0.26);
+    }
+
+    .caption-quote::before,
+    .caption-quote::after {
+      position: absolute;
+      font-size: 54px;
+      color: rgba(255, 255, 255, 0.18);
+      line-height: 1;
+      pointer-events: none;
+    }
+
+    .caption-quote::before {
+      content: "“";
+      top: 6px;
+      left: 16px;
+    }
+
+    .caption-quote::after {
+      content: "”";
+      bottom: -4px;
+      right: 16px;
+    }
+
+    .caption-quote .word {
+      color: rgba(255, 255, 255, 0.55);
+    }
+
+    .caption-quote .word.active {
+      color: #fff7b2;
+    }
+
+    .podcast-shell .speaker-chip {
+      top: 14px;
+      left: 14px;
+      color: #84efff;
+      background: rgba(6, 22, 29, 0.72);
+      border: 1px solid rgba(132, 239, 255, 0.18);
+    }
+
+    .caption-podcast {
+      width: 100%;
+      justify-content: flex-start;
+      align-self: flex-end;
+      font-family: "Inter", sans-serif;
+      font-size: 22px;
+      line-height: 1.3;
+      font-weight: 800;
+      padding-top: 48px;
+    }
+
+    .caption-podcast .word {
+      color: rgba(255, 255, 255, 0.42);
+    }
+
+    .caption-podcast .word.done {
+      color: rgba(255, 255, 255, 0.78);
+    }
+
+    .caption-podcast .word.active {
+      color: #84efff;
+      text-decoration: underline;
+      text-decoration-thickness: 0.14em;
+      text-underline-offset: 0.14em;
+    }
+
+    .ticker-badge {
+      position: absolute;
+      left: 16px;
+      bottom: 86px;
+      z-index: 3;
+      padding: 8px 11px;
+      border-radius: 999px;
+      font-family: "Archivo", sans-serif;
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #0a1220;
+      background: #f5c542;
+      box-shadow: 0 12px 24px rgba(245, 197, 66, 0.24);
+    }
+
+    .sports-shell {
+      justify-content: center;
+      align-items: flex-end;
+      padding: 18px 0 22px;
+      background:
+        radial-gradient(circle at 100% 0%, rgba(245, 197, 66, 0.1), transparent 24%),
+        linear-gradient(180deg, rgba(17, 23, 33, 0.78), rgba(5, 8, 14, 0.98));
+    }
+
+    .caption-ticker {
+      width: calc(100% - 28px);
+      justify-content: flex-start;
+      padding: 12px 14px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(6, 11, 19, 0.92);
+      font-family: "Archivo", sans-serif;
+      font-size: 19px;
+      line-height: 1.24;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.01em;
+    }
+
+    .caption-ticker .word {
+      color: rgba(255, 255, 255, 0.42);
+    }
+
+    .caption-ticker .word.active {
+      color: #f5c542;
+    }
+
+    .footer-note {
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    @keyframes blink {
+      50% {
+        opacity: 0;
+      }
+    }
+
+    @keyframes bounce-pop {
+      0% {
+        transform: translateY(10px) scale(0.84);
+      }
+      55% {
+        transform: translateY(-6px) scale(1.1);
+      }
+      100% {
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    @media (max-width: 720px) {
+      .shell {
+        width: min(100% - 20px, 1280px);
+        padding-top: 18px;
+      }
+
+      .hero {
+        padding: 18px;
+        border-radius: 20px;
+      }
+
+      .toolbar {
+        align-items: flex-start;
+      }
+
+      .caption-karaoke,
+      .caption-frame-lock {
+        font-size: 26px;
+      }
+
+      .caption-stack-signal {
+        font-size: 22px;
+      }
+
+      .caption-pill,
+      .caption-sticker,
+      .caption-podcast,
+      .caption-quote,
+      .caption-soft-beam {
+        font-size: 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="hero">
+      <div class="eyebrow">Research-backed caption styles</div>
+      <h1>Popular caption template directions, isolated for review.</h1>
+      <p>
+        This lab focuses on formats that are currently common across creator tools and social video workflows:
+        karaoke fill, lower-third broadcast captions, sticker highlights, framed emphasis,
+        editorial quote cards, podcast tags, and ticker-style update overlays.
+      </p>
+      <div class="toolbar">
+        <div class="controls">
+          <button id="toggle">Pause animation</button>
+          <button id="next">Next word</button>
+          <select id="lineSelect" aria-label="Change preview sentence">
+            <option value="viral">You need one hook that instantly stops the scroll</option>
+            <option value="coach">Your system is strong but your message still needs clarity</option>
+            <option value="sports">Final minute and the whole game changes right here</option>
+            <option value="podcast">That one honest sentence usually changes the whole conversation</option>
+          </select>
+        </div>
+        <div class="meta" id="meta">Animating 9 words at 1.15s per step</div>
+      </div>
+    </section>
+
+    <section class="grid" id="grid"></section>
+
+    <p class="footer-note">
+      These are standalone exploration concepts only. Once you approve the strongest ones, we can map the winners into your app as proper template cards and CSS classes without touching the existing templates.
+    </p>
+  </div>
+
+  <script>
+    const lines = {
+      viral: "You need one hook that instantly stops the scroll",
+      coach: "Your system is strong but your message still needs clarity",
+      sports: "Final minute and the whole game changes right here",
+      podcast: "That one honest sentence usually changes the whole conversation"
+    };
+
+    const templates = [
+      {
+        id: "karaoke-fill",
+        name: "Karaoke Fill",
+        label: "Music / reels",
+        desc: "Active word fills from left to right instead of just changing color.",
+        sceneClass: "",
+        captionClass: "caption-line caption-karaoke",
+        renderExtras: () => ""
+      },
+      {
+        id: "minimal-pill",
+        name: "Minimal Pill",
+        label: "Clean creator",
+        desc: "Only the current word sits inside a soft rounded pill for a modern edit.",
+        sceneClass: "",
+        captionClass: "caption-line caption-pill",
+        renderExtras: () => ""
+      },
+      {
+        id: "quote-card",
+        name: "Quote Card",
+        label: "Story / motivation",
+        desc: "Premium editorial quote panel for reflective or cinematic speech captions.",
+        sceneClass: "quote-shell",
+        captionClass: "caption-line caption-quote",
+        renderExtras: () => ""
+      },
+      {
+        id: "podcast-speaker-tag",
+        name: "Podcast Speaker Tag",
+        label: "Podcast / panel",
+        desc: "Speaker identity stays visible while active words get a focused editorial accent.",
+        sceneClass: "podcast-shell",
+        captionClass: "caption-line caption-podcast",
+        renderExtras: () => '<div class="speaker-chip">Guest A</div>'
+      },
+      {
+        id: "ticker-alert",
+        name: "Ticker Alert",
+        label: "Sports / finance / facts",
+        desc: "A bottom ticker strip feels more like a live alert than a score card.",
+        sceneClass: "sports-shell",
+        captionClass: "caption-line caption-ticker",
+        renderExtras: () => '<div class="ticker-badge">Breaking</div>'
+      }
+    ];
+
+    const grid = document.getElementById("grid");
+    const toggleButton = document.getElementById("toggle");
+    const nextButton = document.getElementById("next");
+    const lineSelect = document.getElementById("lineSelect");
+    const meta = document.getElementById("meta");
+
+    let currentWords = lines[lineSelect.value].split(" ");
+    let activeIndex = 0;
+    let playing = true;
+    let tickMs = 1150;
+    let intervalId = null;
+    let stepStartedAt = Date.now();
+
+    function wordState(index) {
+      if (index < activeIndex) return "done";
+      if (index === activeIndex) return "active";
+      return "";
+    }
+
+    function buildWord(word, index, templateId) {
+      const state = wordState(index);
+      const classes = ["word"];
+      if (state) classes.push(state);
+
+      let style = "";
+      if (templateId === "karaoke-fill" && state === "active") {
+        const elapsed = Math.max(0, Date.now() - stepStartedAt);
+        const fill = Math.min(100, Math.max(14, Math.round((elapsed / tickMs) * 100)));
+        style = ` style="--fill:${fill}%;"`;
+      }
+
+      return `<span class="${classes.join(" ")}"${style}><span class="fill">${word}</span></span>`;
+    }
+
+    function renderCaption(templateId) {
+      return currentWords.map((word, index) => buildWord(word, index, templateId)).join("");
+    }
+
+    function renderCards() {
+      grid.innerHTML = templates.map((template) => `
+        <article class="card">
+          <div class="card-head">
+            <div>
+              <h2 class="card-title">${template.name}</h2>
+            </div>
+            <span class="card-label">${template.label}</span>
+          </div>
+          <p class="card-desc">${template.desc}</p>
+          <div class="stage">
+            <div class="template-scene ${template.sceneClass}">
+              ${template.renderExtras()}
+              <div class="${template.captionClass}" data-template="${template.id}">
+                ${renderCaption(template.id)}
+              </div>
+            </div>
+          </div>
+        </article>
+      `).join("");
+      updateMeta();
+    }
+
+    function updateCaptions() {
+      document.querySelectorAll("[data-template]").forEach((node) => {
+        const templateId = node.getAttribute("data-template");
+        node.innerHTML = renderCaption(templateId);
+      });
+      updateMeta();
+    }
+
+    function updateMeta() {
+      meta.textContent = `Animating ${currentWords.length} words at ${(tickMs / 1000).toFixed(2)}s per step`;
+    }
+
+    function stepForward() {
+      activeIndex = (activeIndex + 1) % currentWords.length;
+      stepStartedAt = Date.now();
+      updateCaptions();
+    }
+
+    function startLoop() {
+      clearInterval(intervalId);
+      intervalId = setInterval(() => {
+        if (!playing) return;
+        stepForward();
+      }, tickMs);
+    }
+
+    toggleButton.addEventListener("click", () => {
+      playing = !playing;
+      toggleButton.textContent = playing ? "Pause animation" : "Resume animation";
+    });
+
+    nextButton.addEventListener("click", () => {
+      stepForward();
+    });
+
+    lineSelect.addEventListener("change", () => {
+      currentWords = lines[lineSelect.value].split(" ");
+      activeIndex = 0;
+      stepStartedAt = Date.now();
+      renderCards();
+    });
+
+    renderCards();
+    startLoop();
+
+    // Keep karaoke fill feeling alive between whole-word steps.
+    setInterval(() => {
+      if (playing) updateCaptions();
+    }, 60);
+  </script>
+</body>
+</html>

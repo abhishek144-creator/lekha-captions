@@ -23,6 +23,10 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { extractWaveformData } from '@/components/dashboard/audioUtils';
 import { autoLoadFontForText, loadGoogleFont } from '@/components/dashboard/fontUtils';
 import WordClickPopup from '@/components/dashboard/WordClickPopup';
+import { toast } from '@/components/ui/use-toast';
+import { apiRequest } from '@/lib/apiClient';
+import { notifyApiError } from '@/lib/notifyApiError';
+import { getClientContext, trackAnalytics } from '@/lib/analytics';
 
 // Helper for retrying operations
 const retryOperation = async (operation, maxRetries = 3, delay = 1000) => {
@@ -108,7 +112,7 @@ export default function Dashboard() {
   // Capture the default timeline height exactly once on mount
   useEffect(() => {
     defaultTimelineHeight.current = timelineHeight;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, []);
 
   // Resizer snap positions (timeline height values)
@@ -238,11 +242,26 @@ export default function Dashboard() {
     setIsGenerating(true);
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData });
-      const uploadData = await uploadRes.json();
-      if (!uploadData.success) throw new Error(uploadData.error || 'Upload failed');
+      const idToken = currentUser?.accessToken || await currentUser?.getIdToken?.() || '';
+      let uploadData = null;
+      if (uploadSettings?.preUploadedFileId && uploadSettings?.preUploadedRawUrl) {
+        uploadData = {
+          success: true,
+          file_id: uploadSettings.preUploadedFileId,
+          raw_url: uploadSettings.preUploadedRawUrl
+        };
+      } else {
+        const formData = new FormData();
+        formData.append('file', file);
+        uploadData = await apiRequest('/api/upload', {
+          method: 'POST',
+          body: formData,
+          dedupeKey: 'upload-video',
+          cancelPrevious: true,
+        });
+        if (!uploadData.success) throw new Error(uploadData.error || 'Upload failed');
+        trackAnalytics('funnel.upload.success', getClientContext({ stage: 'upload', fileId: uploadData.file_id || '' }));
+      }
 
       setVideoUrl(uploadData.raw_url);
       setFileId(uploadData.file_id);
@@ -264,13 +283,21 @@ export default function Dashboard() {
         }
       }
 
-      const processRes = await fetch('/api/process', {
+      const processData = await apiRequest('/api/process', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ file_id: uploadData.file_id, language: 'auto', min_words: minWords, max_words: maxWordsVal })
+        body: JSON.stringify({
+          file_id: uploadData.file_id,
+          language: 'auto',
+          min_words: minWords,
+          max_words: maxWordsVal,
+          id_token: idToken,
+        }),
+        dedupeKey: 'process-video',
+        cancelPrevious: true,
       });
-      const processData = await processRes.json();
       if (!processData.success) throw new Error(processData.error || 'Processing failed');
+      trackAnalytics('funnel.process.success', getClientContext({ stage: 'process', language: uploadSettings?.language || 'auto' }));
 
       let generatedCaptions = (processData.captions || []).map((cap, idx) => ({
         text: cap?.text || '',
@@ -284,16 +311,20 @@ export default function Dashboard() {
       const targetLang = uploadSettings?.language;
       if (targetLang && targetLang !== 'auto' && generatedCaptions.length > 0) {
         try {
-          const translateRes = await fetch('/api/translate', {
+          const translateToken = idToken || currentUser?.accessToken || await currentUser?.getIdToken();
+          const translateData = await apiRequest('/api/translate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               captions: generatedCaptions.filter(c => !c.isTextElement),
-              target_language: targetLang
-            })
+              target_language: targetLang,
+              id_token: translateToken || '',
+            }),
+            dedupeKey: 'translate-captions',
+            cancelPrevious: true,
           });
-          const translateData = await translateRes.json();
           if (translateData.success && translateData.captions) {
+            trackAnalytics('funnel.translate.success', getClientContext({ stage: 'translate', targetLanguage: targetLang }));
             const translatedMap = new Map();
             translateData.captions.forEach(tc => { if (tc.id) translatedMap.set(tc.id, tc.text); });
             generatedCaptions = generatedCaptions.map(c => {
@@ -351,10 +382,8 @@ export default function Dashboard() {
 
     } catch (error) {
       console.error('Upload failed:', error);
-      const msg = error.message === 'Failed to fetch'
-        ? 'Cannot reach the backend server. Please start the backend (uvicorn on port 8000).'
-        : (error.message || 'Unknown error')
-      alert(`Failed to process video: ${msg}`)
+      trackAnalytics('funnel.upload.failed', getClientContext({ stage: 'upload' }));
+      notifyApiError(error, 'Failed to process video')
     } finally {
       setIsUploading(false);
       setIsGenerating(false);
@@ -403,7 +432,7 @@ export default function Dashboard() {
 
   const handleWordStyleChange = (key, value, skipHistory = false) => {
     if (!wordPopup) return;
-    
+
     // Always use raw setCaptions — never updateCaptions here.
     // History is recorded separately via onHistoryRecord (onPointerDown on sliders).
     // Using updateCaptions causes stale closure snapshots and corrupts other words.
@@ -421,7 +450,7 @@ export default function Dashboard() {
       const updatedStyle = { ...existingStyle, [key]: value };
       // When user explicitly sets fontSize, clear frozenFontSize so it doesn't override
       if (key === 'fontSize') delete updatedStyle.frozenFontSize;
-      
+
       return {
         ...c,
         wordStyles: {
@@ -499,7 +528,7 @@ export default function Dashboard() {
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [historyIndex, history]);
 
   const handleRefresh = () => {
@@ -523,7 +552,10 @@ export default function Dashboard() {
 
   const handleSelectPlan = async (planId) => {
     // This would integrate with payment gateway
-    alert(`Payment integration coming soon! Selected plan: ${planId} `);
+    toast({
+      title: 'Payment integration coming soon',
+      description: `Selected plan: ${planId}`,
+    });
     setIsPricingModalOpen(false);
   };
 
@@ -536,7 +568,7 @@ export default function Dashboard() {
       }]);
       setHistoryIndex(0);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [captions.length, history.length]);
 
   // Auto-Center: when the font changes (or 'None' is selected), load the new font and
@@ -624,7 +656,7 @@ export default function Dashboard() {
                 Start Creating Captions
               </h2>
               <p className="text-gray-500 mb-6">
-                Upload your short-form video (15-90 seconds) and we'll generate professional captions instantly.
+                Upload your short-form video (best for 15-180 seconds) and we'll generate professional captions instantly.
               </p>
               <Button
                 onClick={() => setIsUploadModalOpen(true)}
@@ -664,7 +696,7 @@ export default function Dashboard() {
               user={currentUser}
               onOpenPricing={(action) => {
                 if (action === 'logout') {
-                  // Handled by AuthContext logout 
+                  // Handled by AuthContext logout
                 } else {
                   setIsPricingModalOpen(true)
                 }

@@ -1,8 +1,7 @@
-import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { Play, Pause, Volume2, VolumeX, X, Maximize2, Minimize2 } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
-import WordClickPopup from './WordClickPopup';
 import '../../styles/captionTemplates.css';
 import '../../styles/captionTemplatesAdvanced.css';
 

@@ -405,6 +405,8 @@ class VideoProcessor:
             # Clean up logic
             words = []
             api_error_msg = None
+            detected_language = (target_language or "unknown").lower()
+            language_confidence = 0.6
 
             sarvam_langs = {
                 'hindi': 'hi-IN', 'bengali': 'bn-IN', 'kannada': 'kn-IN',
@@ -519,6 +521,9 @@ class VideoProcessor:
 
                         words = [_normalize_word(w) for w in raw_sarvam_words if w]
                         print(f"[Sarvam] Parsed {len(words)} words from response")
+                        if words:
+                            detected_language = target_language.lower()
+                            language_confidence = 0.85
                     except Exception as parse_e:
                         print(f"Failed to parse Sarvam response: {parse_e}")
                         words = []
@@ -538,6 +543,8 @@ class VideoProcessor:
                             file=f,
                             **whisper_kwargs
                         )
+                        detected_language = (getattr(transcript, "language", "") or detected_language).lower()
+                        language_confidence = 0.92 if not whisper_lang else 0.75
                         raw_words = getattr(transcript, 'words', []) or []
                         # Normalize: handle both attribute-style objects and dicts
                         for w in raw_words:
@@ -556,6 +563,33 @@ class VideoProcessor:
             except Exception as api_error:
                 api_error_msg = str(api_error)
                 print(f"[Warning] API Error: {api_error}. Using MOCK CAPTIONS for testing.")
+
+            if not words and api_error_msg is None and self.client:
+                try:
+                    with open(audio_p, "rb") as f:
+                        transcript = self.client.audio.transcriptions.create(
+                            model="whisper-1",
+                            file=f,
+                            response_format="verbose_json",
+                            timestamp_granularities=["word"],
+                        )
+                    detected_language = (getattr(transcript, "language", "") or detected_language).lower()
+                    language_confidence = max(language_confidence, 0.55)
+                    for w in (getattr(transcript, "words", []) or []):
+                        if isinstance(w, dict):
+                            words.append({
+                                "word": w.get('word', ''),
+                                "start": float(w.get('start') or 0),
+                                "end": float(w.get('end') or 0),
+                            })
+                        else:
+                            words.append({
+                                "word": getattr(w, 'word', ''),
+                                "start": float(getattr(w, 'start', 0) or 0),
+                                "end": float(getattr(w, 'end', 0) or 0),
+                            })
+                except Exception as fallback_error:
+                    api_error_msg = str(fallback_error)
 
             # Clean up temp file (file is now closed)
             try:
@@ -612,10 +646,24 @@ class VideoProcessor:
                     sentence_idx += 1
 
                 grouped = self._group_words_by_speech_pace(all_words, min_words=min_words, max_words=max_words)
-                return {"success": True, "captions": grouped}
+                grouped = self._post_process_captions(grouped)
+                return {
+                    "success": True,
+                    "captions": grouped,
+                    "detected_language": detected_language,
+                    "language_confidence": 0.35,
+                    "transcription_source": "mock_fallback",
+                }
 
             grouped_captions = self._group_words_by_speech_pace(words, min_words=min_words, max_words=max_words)
-            return {"success": True, "captions": grouped_captions}
+            grouped_captions = self._post_process_captions(grouped_captions)
+            return {
+                "success": True,
+                "captions": grouped_captions,
+                "detected_language": detected_language,
+                "language_confidence": round(max(0.0, min(1.0, language_confidence)), 2),
+                "transcription_source": "sarvam" if is_indian_lang and sarvam_api_key else "whisper",
+            }
 
         except Exception as e:
             import traceback
@@ -1037,11 +1085,13 @@ class VideoProcessor:
             # --- Emit caption group ---
             if should_break and current_group:
                 text = " ".join(item['word'] for item in current_group)
+                intentional_single_word = len(current_group) == 1 and _local_wps(i) < 2.0
                 captions.append({
                     "id": caption_id,
                     "text": text,
                     "start_time": current_group[0]['start'],
                     "end_time": current_group[-1]['end'],
+                    "intentional_single_word": intentional_single_word,
                     "words": [
                         {"word": item['word'], "start": item['start'], "end": item['end']}
                         for item in current_group
@@ -1056,6 +1106,59 @@ class VideoProcessor:
 
         print(f"[Captions] Generated {len(captions)} captions (min_words={min_words}, max_words={max_words})")
         return captions
+
+    def _normalize_caption_text(self, text):
+        t = " ".join((text or "").strip().split())
+        if not t:
+            return t
+        t = re.sub(r"\s+([,.!?;:])", r"\1", t)
+        if len(t) > 8 and not re.search(r"[.!?]$", t):
+            t = f"{t}."
+        return t
+
+    def _post_process_captions(self, captions):
+        if not captions:
+            return []
+
+        normalized = []
+        for cap in captions:
+            c = dict(cap)
+            c["text"] = self._normalize_caption_text(c.get("text", ""))
+            c["start_time"] = float(c.get("start_time", 0) or 0)
+            c["end_time"] = float(c.get("end_time", 0) or 0)
+            if c["end_time"] <= c["start_time"]:
+                c["end_time"] = c["start_time"] + 0.35
+            normalized.append(c)
+
+        merged = []
+        i = 0
+        while i < len(normalized):
+            cur = normalized[i]
+            cur_dur = cur["end_time"] - cur["start_time"]
+            word_count = len((cur.get("text") or "").split())
+            tiny = not cur.get("intentional_single_word") and (cur_dur < 0.35 and word_count <= 2)
+            if tiny and i + 1 < len(normalized):
+                nxt = dict(normalized[i + 1])
+                nxt["text"] = self._normalize_caption_text(f"{cur.get('text', '')} {nxt.get('text', '')}")
+                nxt["start_time"] = min(cur["start_time"], nxt.get("start_time", cur["start_time"]))
+                merged.append(nxt)
+                i += 2
+                continue
+            merged.append(cur)
+            i += 1
+
+        # Reading speed guard: avoid extremely dense captions.
+        for idx, cap in enumerate(merged):
+            dur = max(0.2, cap["end_time"] - cap["start_time"])
+            cps = len(cap.get("text", "")) / dur
+            if cps > 24:
+                cap["end_time"] = cap["start_time"] + (len(cap.get("text", "")) / 22.0)
+            if idx < len(merged) - 1:
+                next_start = merged[idx + 1]["start_time"]
+                cap["end_time"] = min(cap["end_time"], next_start)
+            cap["id"] = idx
+
+        return merged
 
     def _create_styled_ass(self, captions, style, font_info, video_w, video_h, word_layouts=None):
         """

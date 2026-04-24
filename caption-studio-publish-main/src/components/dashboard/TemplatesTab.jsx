@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, Check, X, RotateCcw, SlidersHorizontal } from 'lucide-react';
+import { Sparkles, Check, X, RotateCcw } from 'lucide-react';
 import { motion } from 'framer-motion';
 import '../../styles/captionTemplates.css';
 

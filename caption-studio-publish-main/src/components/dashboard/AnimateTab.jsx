@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Slider } from '@/components/ui/slider';
-import { Zap, ChevronDown, ChevronRight, Plus } from 'lucide-react';
+import { Zap, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // Standard animations

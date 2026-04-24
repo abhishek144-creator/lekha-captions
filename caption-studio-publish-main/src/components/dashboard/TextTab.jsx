@@ -1,12 +1,17 @@
 import React from 'react';
 import { Type } from 'lucide-react';
+import { toast } from '@/components/ui/use-toast';
 
 export default function TextTab({ captions, setCaptions, currentTime, setSelectedCaptionId }) {
   const addTextElement = (type) => {
     // Check limit
     const activeTextCount = captions.filter(c => c.isTextElement).length;
     if (activeTextCount >= 6) {
-      alert("You can only add up to 6 text boxes.");
+      toast({
+        variant: 'destructive',
+        title: 'Text limit reached',
+        description: 'You can only add up to 6 text boxes.',
+      });
       return;
     }
 
@@ -53,7 +58,11 @@ export default function TextTab({ captions, setCaptions, currentTime, setSelecte
     // Check limit
     const activeTextCount = captions.filter(c => c.isTextElement).length;
     if (activeTextCount >= 6) {
-      alert("You can only add up to 6 text boxes.");
+      toast({
+        variant: 'destructive',
+        title: 'Text limit reached',
+        description: 'You can only add up to 6 text boxes.',
+      });
       return;
     }
 
