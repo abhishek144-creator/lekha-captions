@@ -9,6 +9,7 @@ except ImportError:
     fb_storage = None
 
 STORAGE_BUCKET = os.environ.get('FIREBASE_STORAGE_BUCKET', '')
+ALLOW_FIREBASE_SERVICE_ACCOUNT_PATH = os.environ.get('ALLOW_FIREBASE_SERVICE_ACCOUNT_PATH', '0') == '1'
 
 def init_firebase():
     # Only initialize if it hasn't been initialized yet
@@ -18,18 +19,7 @@ def init_firebase():
         if bucket_name:
             opts['storageBucket'] = bucket_name
 
-        # Try 1: Load from service-account.json file (recommended for local dev)
-        service_account_path = os.path.join(os.path.dirname(__file__), 'service-account.json')
-        if os.path.exists(service_account_path):
-            try:
-                cred = credentials.Certificate(service_account_path)
-                firebase_admin.initialize_app(cred, opts)
-                print(f"Firebase Admin initialized from service-account.json file. Bucket: {bucket_name or 'none'}")
-                return
-            except Exception as e:
-                print(f"Failed to initialize from service-account.json: {e}")
-
-        # Try 2: Load from FIREBASE_SERVICE_ACCOUNT_JSON env var (for production/Replit)
+        # Try 1: Load from FIREBASE_SERVICE_ACCOUNT_JSON env var
         service_account_str = os.environ.get('FIREBASE_SERVICE_ACCOUNT_JSON')
         if service_account_str:
             try:
@@ -41,7 +31,22 @@ def init_firebase():
             except Exception as e:
                 print(f"Failed to initialize from env var: {e}")
 
-        print("Warning: No Firebase service account found. Authentication will fail.")
+        # Try 2 (opt-in): explicit credentials path from env.
+        # Disabled by default to avoid local secret-file runtime dependency.
+        service_account_path = os.environ.get('FIREBASE_SERVICE_ACCOUNT_PATH', '').strip()
+        if service_account_path:
+            if not ALLOW_FIREBASE_SERVICE_ACCOUNT_PATH:
+                print("Ignored FIREBASE_SERVICE_ACCOUNT_PATH because ALLOW_FIREBASE_SERVICE_ACCOUNT_PATH is not enabled.")
+            else:
+                try:
+                    cred = credentials.Certificate(service_account_path)
+                    firebase_admin.initialize_app(cred, opts)
+                    print(f"Firebase Admin initialized from FIREBASE_SERVICE_ACCOUNT_PATH. Bucket: {bucket_name or 'none'}")
+                    return
+                except Exception as e:
+                    print(f"Failed to initialize from FIREBASE_SERVICE_ACCOUNT_PATH: {e}")
+
+        print("Warning: No Firebase credentials found in env. Set FIREBASE_SERVICE_ACCOUNT_JSON.")
 
 # Initialize on import
 init_firebase()

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
@@ -13,7 +13,6 @@ import {
 } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { FixedSizeList as List } from 'react-window';
-import { AutoSizer } from 'react-virtualized-auto-sizer';
 import { detectScript, scriptFontMap, loadGoogleFont } from './fontUtils';
 import {
   AlignLeft,
@@ -21,8 +20,6 @@ import {
   AlignRight,
   Plus,
   RotateCcw,
-  ArrowUpCircle,
-  ArrowDownCircle,
   Search,
   Check,
   ChevronDown,

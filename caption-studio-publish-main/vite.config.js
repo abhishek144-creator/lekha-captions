@@ -4,6 +4,21 @@ import path from 'path'
 
 export default defineConfig({
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return
+          if (id.includes('@radix-ui') || id.includes('lucide-react')) return 'vendor-ui'
+          if (id.includes('@tanstack/react-query')) return 'vendor-query'
+          if (id.includes('framer-motion')) return 'vendor-motion'
+          if (id.includes('react') || id.includes('scheduler')) return 'vendor-react'
+          if (id.includes('firebase')) return 'vendor-firebase'
+          return 'vendor-misc'
+        },
+      },
+    },
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -28,7 +43,7 @@ export default defineConfig({
       '/exports': {
         target: 'http://localhost:8000',
         changeOrigin: true,
-      }
+      },
     }
   }
-});
+})
