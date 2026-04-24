@@ -1080,7 +1080,6 @@ class CaptionItem(BaseModel):
 class ExportRequest(BaseModel):
     file_id: str
     captions: List[CaptionItem]
-    # Critical: Accept arbitrary dictionary for styles
     style: Dict[str, Any] = {}
     word_layouts: Dict[str, Any] = {}
     id_token: str = ""  # Firebase Auth Token (optional — bypassed in dev mode)
@@ -1088,6 +1087,32 @@ class ExportRequest(BaseModel):
     quality: str = "1080p"  # Export quality: "4k", "1080p", "720p"
     fps: int = 30  # Frame rate: 24, 30, 60
     org_id: str = ""
+
+    def validated_style(self) -> Dict[str, Any]:
+        """Return a copy of style with all numeric fields clamped to safe ranges."""
+        s = dict(self.style)
+        _num_clamps = {
+            'font_size':               (8,   200),
+            'position_x':              (0,   100),
+            'position_y':              (0,   100),
+            'background_padding':      (0,   100),
+            'background_h_multiplier': (0.5, 3.0),
+            'shadow_blur':             (0,   50),
+            'shadow_offset_x':         (-50, 50),
+            'shadow_offset_y':         (-50, 50),
+            'letter_spacing':          (-10, 20),
+            'line_height':             (0.5, 4.0),
+            'outline_width':           (0,   20),
+        }
+        for field, (lo, hi) in _num_clamps.items():
+            if field in s:
+                try:
+                    s[field] = max(lo, min(hi, float(s[field])))
+                except (TypeError, ValueError):
+                    del s[field]
+        if s.get('quality') not in ('4k', '1080p', '720p', None):
+            s.pop('quality', None)
+        return s
 
 class CreateOrderRequest(BaseModel):
     plan_id: str
@@ -1282,7 +1307,7 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
         queue_wait_ms = int((processing_started_at - queue_entered_at) * 1000)
         _set_export_job(export_job_id, "processing", processing_started_at=processing_started_at, queue_wait_ms=queue_wait_ms)
         _log(rid, f"Starting render now job={export_job_id}")
-        style_with_quality = {**req.style, 'quality': preset["quality"], 'fps': preset["fps"]}
+        style_with_quality = {**req.validated_style(), 'quality': preset["quality"], 'fps': preset["fps"]}
         result = await processor.burn_only(input_path, output_path, captions, style_with_quality, req.word_layouts)
         if not result.get('success'):
             raise HTTPException(status_code=500, detail=result.get('error') or "Render failed")
