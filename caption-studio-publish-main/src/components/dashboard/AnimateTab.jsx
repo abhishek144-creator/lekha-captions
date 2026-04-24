@@ -23,15 +23,22 @@ const wordAnimations = [
 // Advanced animations — grouped by category
 const advancedAnimationCategories = {
   Basic: [
-    { value: 'fadeInUp', label: 'Fade Up' },
-    { value: 'fadeInDown', label: 'Fade Down' },
-    { value: 'slideInRight', label: 'Slide Right' },
-    { value: 'flipInX', label: 'Flip X' },
-    { value: 'flipInY', label: 'Flip Y' },
-    { value: 'blurIn', label: 'Blur In' },
-    { value: 'zoomInFade', label: 'Zoom Fade' },
-    { value: 'bounceInUp', label: 'Bounce Up' },
-    { value: 'skewLeft', label: 'Skew Left' },
+    { value: 'zoom_in',     label: 'Zoom In' },
+    { value: 'zoom_out',    label: 'Zoom Out' },
+    { value: 'fade_in',     label: 'Fade In' },
+    { value: 'slide_up',    label: 'Slide Up' },
+    { value: 'slide_down',  label: 'Slide Down' },
+    { value: 'slide_left',  label: 'Slide Left' },
+    { value: 'slide_right', label: 'Slide Right' },
+    { value: 'fadeInUp',    label: 'Fade Up' },
+    { value: 'fadeInDown',  label: 'Fade Down' },
+    { value: 'slideInRight',label: 'Slide Right+' },
+    { value: 'flipInX',     label: 'Flip X' },
+    { value: 'flipInY',     label: 'Flip Y' },
+    { value: 'blurIn',      label: 'Blur In' },
+    { value: 'zoomInFade',  label: 'Zoom Fade' },
+    { value: 'bounceInUp',  label: 'Bounce Up' },
+    { value: 'skewLeft',    label: 'Skew Left' },
   ],
   Kinetic: [
     { value: 'missile', label: 'Missile' },
@@ -173,7 +180,7 @@ export default function AnimateTab({ selectedCaption, captions, setCaptions }) {
                     <span className="text-[9px] bg-white/10 text-white border border-white/20 px-1.5 py-0.5 rounded-full font-semibold">Active</span>
                   )}
                 </div>
-                <span className="text-gray-600">34 animations</span>
+                <span className="text-gray-600">44 animations</span>
               </button>
 
               <AnimatePresence initial={false}>

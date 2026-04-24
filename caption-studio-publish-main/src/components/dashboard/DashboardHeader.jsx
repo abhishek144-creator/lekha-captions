@@ -57,6 +57,17 @@ export default function DashboardHeader({
       <div className="flex items-center gap-2 sm:gap-3">
         {hasVideo && (
           <div className="flex items-center gap-1 mr-2 border-r border-white/10 pr-3">
+            {showUpgrade && (
+              <Button
+                onClick={onUpgradeClick}
+                size="sm"
+                className="mr-1 h-8 bg-white hover:bg-gray-100 text-black font-semibold rounded-[4px] px-3 flex items-center gap-1.5 transition-colors"
+              >
+                <Crown className="w-3.5 h-3.5 flex-shrink-0" />
+                <span className="hidden sm:inline text-[13px]">Upgrade</span>
+              </Button>
+            )}
+
             <Button
               variant="ghost"
               size="icon"
