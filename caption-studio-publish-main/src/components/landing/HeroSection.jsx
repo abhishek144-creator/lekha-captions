@@ -7,7 +7,7 @@ import { motion } from 'framer-motion'
 
 export default function HeroSection() {
   return (
-    <section className="relative min-h-screen flex flex-col justify-center overflow-hidden bg-[#111111]">
+    <section aria-label="Hero" className="relative min-h-screen flex flex-col justify-center overflow-hidden bg-[#111111]">
       {/* Subtle grid pattern */}
       <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:64px_64px]" />
 
@@ -41,11 +41,11 @@ export default function HeroSection() {
 
           {/* Middle band — CTAs, slightly separated */}
           <div className="py-8 border-t border-white/[0.06]">
-            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-              <Link to={createPageUrl('Dashboard')}>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center w-full sm:w-auto">
+              <Link to={createPageUrl('Dashboard')} className="w-full sm:w-auto">
                 <Button
                   size="lg"
-                  className="bg-white hover:bg-gray-100 text-black px-8 py-6 text-lg rounded-[4px] font-semibold group"
+                  className="w-full sm:w-auto bg-white hover:bg-gray-100 text-black px-8 py-6 text-lg rounded-[4px] font-semibold group"
                 >
                   <Play className="w-5 h-5 mr-2" />
                   Upload Video
@@ -55,7 +55,7 @@ export default function HeroSection() {
               <Button
                 variant="outline"
                 size="lg"
-                className="bg-transparent border border-white text-white hover:bg-white/10 px-8 py-6 text-lg rounded-[4px] font-semibold"
+                className="w-full sm:w-auto bg-transparent border border-white text-white hover:bg-white/10 px-8 py-6 text-lg rounded-[4px] font-semibold"
                 onClick={() => window.location.href = createPageUrl('Dashboard')}
               >
                 Try for Free
@@ -65,7 +65,7 @@ export default function HeroSection() {
 
           {/* Bottom band — Stats, darker bg strip */}
           <div className="py-8 border-t border-white/[0.06] bg-[#0D0D0D]/60 rounded-xl">
-            <div className="flex flex-wrap justify-center gap-8">
+            <div className="flex flex-wrap justify-center gap-6 md:gap-8">
               {[
                 { value: '115+', label: 'Languages Supported' },
                 { value: '25+', label: 'Caption Styles' },

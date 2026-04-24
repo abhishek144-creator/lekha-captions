@@ -535,24 +535,25 @@ export function loadGoogleFont(fontName, weights = [400, 700]) {
 
 export async function autoLoadFontForText(text) {
   const script = detectScript(text);
-  
+
   // Explicitly handle script-to-font mapping for Hindi/Hinglish vs Global default
   if (script === 'devanagari') {
     try {
       await loadGoogleFont('Noto Sans', [300, 400, 500, 600, 700, 800]);
-      return { fontFamily: 'Noto Sans', script, fontOptions: scriptFontMap.devanagari };
+      return { fontFamily: 'Noto Sans', script, fontOptions: scriptFontMap.devanagari, error: null };
     } catch (error) {
-      console.error('Failed to load Noto Sans:', error);
+      console.warn('Failed to load Noto Sans for Devanagari, falling back to Inter:', error);
+      // Fall through to Inter as backup
     }
   }
 
   // Global default: Inter
   try {
     await loadGoogleFont('Inter', [300, 400, 500, 600, 700, 800]);
-    return { fontFamily: 'Inter', script: 'latin', fontOptions: scriptFontMap.latin };
+    return { fontFamily: 'Inter', script: 'latin', fontOptions: scriptFontMap.latin, error: null };
   } catch (error) {
-    console.error('Failed to load Inter fallback:', error);
-    return { fontFamily: 'sans-serif', script: 'latin', fontOptions: scriptFontMap.latin };
+    console.error('Failed to load Inter fallback font:', error);
+    return { fontFamily: 'sans-serif', script: 'latin', fontOptions: scriptFontMap.latin, error: error?.message || 'Font load failed' };
   }
 }
 

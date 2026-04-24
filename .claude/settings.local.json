@@ -19,7 +19,9 @@
       "Read(//c/tmp/**)",
       "Bash(mkdir -p lekha-compare)",
       "Bash(unzip -o \"/c/Users/ADMIN/Downloads/lekha-captions-main \\(1\\).zip\" -d /tmp/lekha-compare/)",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Bash(python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload)",
+      "Bash(npm install:*)"
     ]
   }
 }
