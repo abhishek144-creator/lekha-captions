@@ -101,7 +101,7 @@
 }
 
 .t-109 .word {
-   color: #FFFFFF !important;
+   color: #bbb !important;
    text-shadow: none !important;
    filter: none !important;
    -webkit-filter: none !important;
@@ -110,14 +110,20 @@
 
 .t-109 .word.active {
    color: var(--template-primary, #fff) !important;
-   text-shadow: 3px 3px 0 var(--template-secondary, rgba(255, 69, 0, .4)) !important
+   text-shadow: 3px 3px 0 rgba(255, 69, 0, .4) !important
 }
 
 .t-109 .word.current {
+   color: var(--template-primary, #fff) !important;
    text-shadow: 3px 3px 0 var(--template-secondary, #FF4500) !important
 }
 
 .t-109 .word.imp.active {
+   color: var(--template-highlight, #FFE600) !important;
+   text-shadow: 3px 3px 0 var(--template-secondary, #FF4500) !important
+}
+
+.t-109 .word.imp.current {
    color: var(--template-highlight, #FFE600) !important;
    text-shadow: 3px 3px 0 var(--template-secondary, #FF4500) !important
 }
@@ -137,16 +143,18 @@
 }
 
 .t-26 .word {
-   color: rgba(0, 0, 0, .25) !important
+   color: rgba(0, 0, 0, .14) !important
 }
 
 .t-26 .word.active {
-   color: #000 !important;
-   -webkit-text-stroke: 1px #000 !important;
-   text-shadow: 3px 3px 0 rgba(255, 32, 88, .4) !important
+   color: #aaa !important;
+   -webkit-text-stroke: 0 !important;
+   text-shadow: none !important
 }
 
 .t-26 .word.current {
+   color: #000 !important;
+   -webkit-text-stroke: 1px #000 !important;
    text-shadow: 3px 3px 0 #ff2058 !important
 }
 
@@ -156,17 +164,23 @@
    text-shadow: 3px 3px 0 #000 !important
 }
 
+.t-26 .word.imp.current {
+   color: #ff2058 !important;
+   -webkit-text-stroke: 1px #000 !important;
+   text-shadow: 3px 3px 0 #000 !important
+}
+
 /* ══════════════════════════════════════════
    4. Clarity  (id: 102)
 ══════════════════════════════════════════ */
 .t-102 .bg {
-   background: #ffffff
+   background: #d0d0d0
 }
 
 .t-102 .cap-text {
    font-weight: 800;
    font-size: 22px;
-   background: var(--template-bg, #FFFFFF);
+   background: #E8E8E8;
    padding: 10px 20px;
    border-radius: 10px;
    box-shadow: 0 4px 14px rgba(0, 0, 0, .18)
@@ -184,6 +198,14 @@
    color: #b07d00 !important
 }
 
+.t-102 .word.current {
+   color: #000 !important
+}
+
+.t-102 .word.imp.current {
+   color: #b07d00 !important
+}
+
 /* ══════════════════════════════════════════
 /* ══════════════════════════════════════════
    5. Color Flash
@@ -194,7 +216,7 @@
 }
 
 .t-36 .word {
-   color: #1F2022 !important;
+   color: rgba(255, 255, 255, 0) !important;
    text-shadow: none !important;
    filter: none
 }
@@ -213,6 +235,10 @@
    color: var(--template-highlight, #FFE600) !important
 }
 
+.t-36 .word.imp.current {
+   color: var(--template-highlight, #FFE600) !important
+}
+
 /* ══════════════════════════════════════════
 /* ══════════════════════════════════════════
    6. Daze
@@ -223,10 +249,10 @@
 }
 
 .t-105 .word {
-   color: rgba(255, 255, 255, 0) !important;
-   -webkit-text-stroke: 0 !important;
+   color: #fff !important;
+   -webkit-text-stroke: 1px #000 !important;
    paint-order: stroke fill;
-   filter: none
+   filter: drop-shadow(2px 2px 2px rgba(0, 0, 0, .8))
 }
 
 .t-105 .word.active {
@@ -237,6 +263,10 @@
 }
 
 .t-105 .word.current {
+   color: var(--template-highlight, #FFE600) !important
+}
+
+.t-105 .word.imp.active {
    color: var(--template-highlight, #FFE600) !important
 }
 
@@ -258,7 +288,7 @@
 }
 
 .t-9 .word {
-   color: rgba(200, 80, 20, .4) !important;
+   color: rgba(200, 80, 20, .18) !important;
    text-shadow: none !important
 }
 
@@ -272,6 +302,10 @@
 }
 
 .t-9 .word.imp.active {
+   color: var(--template-highlight, #FFE600) !important
+}
+
+.t-9 .word.imp.current {
    color: var(--template-highlight, #FFE600) !important
 }
 
@@ -305,6 +339,7 @@
 }
 
 .t-124 .word.imp.current {
+   color: var(--template-highlight, #FFE600) !important;
    text-shadow: 4px 4px 0 rgba(255, 210, 0, .28) !important
 }
 
@@ -318,8 +353,8 @@
 }
 
 .t-16 .word {
-   color: rgba(255, 255, 255, .35) !important;
-   filter: blur(2px)
+   color: rgba(255, 255, 255, .08) !important;
+   filter: blur(3px)
 }
 
 .t-16 .word.active {
@@ -334,6 +369,11 @@
 }
 
 .t-16 .word.imp.active {
+   color: var(--template-highlight, #FFE600) !important;
+   filter: blur(0)
+}
+
+.t-16 .word.imp.current {
    color: var(--template-highlight, #FFE600) !important;
    filter: blur(0)
 }
@@ -373,6 +413,27 @@
    color: var(--template-highlight, #FFE600) !important
 }
 
+.t-110 .word.current {
+   color: var(--template-primary, #fff) !important
+}
+
+.t-110 .word.imp.current {
+   color: var(--template-highlight, #FFE600) !important
+}
+
+.t-110 .word.imp.current::after {
+   content: '';
+   position: absolute;
+   bottom: -8px;
+   left: 50%;
+   transform: translateX(-50%);
+   width: 6px;
+   height: 6px;
+   background: #00FFAA;
+   border-radius: 50%;
+   box-shadow: 0 0 8px #00FFAA;
+}
+
 /* ══════════════════════════════════════════
 /* ══════════════════════════════════════════
    13. Gradient Box  (id: 119)
@@ -384,10 +445,10 @@
 }
 
 .t-119 .word {
-   color: rgba(255, 255, 255, .35) !important;
-   margin: 2px 6px;
-   padding: 1px 4px;
-   border-radius: 3px
+   color: rgba(255, 255, 255, .5) !important;
+   margin: 1px 3px;
+   padding: 2px 6px;
+   border-radius: 4px
 }
 
 .t-119 .word.active {
@@ -397,21 +458,23 @@
 .t-119 .word.current {
    color: var(--template-primary, #fff) !important;
    background: linear-gradient(90deg, #0088FF, #00FFCC) !important;
-   padding: 1px 4px;
-   border-radius: 3px
+   padding: 2px 6px;
+   border-radius: 4px
 }
 
 .t-119 .word.imp.active {
-   color: var(--template-highlight, #FFE600) !important;
-   background: transparent !important;
-   -webkit-text-fill-color: var(--template-highlight, #FFE600) !important
+   color: #1a1a1a !important;
+   background: rgba(255, 230, 0, .78) !important;
+   padding: 2px 6px;
+   border-radius: 4px;
+   -webkit-text-fill-color: #1a1a1a !important
 }
 
 .t-119 .word.imp.current {
    color: #1a1a1a !important;
-   background: rgba(255, 230, 0, .92) !important;
-   padding: 1px 4px;
-   border-radius: 3px;
+   background: rgba(255, 230, 0, .78) !important;
+   padding: 2px 6px;
+   border-radius: 4px;
    -webkit-text-fill-color: #1a1a1a !important
 }
 
@@ -427,7 +490,7 @@
 }
 
 .t-12 .word {
-   color: rgba(180, 0, 0, .35) !important
+   color: rgba(180, 0, 0, .18) !important
 }
 
 .t-12 .word.active {
@@ -435,10 +498,15 @@
 }
 
 .t-12 .word.current {
+   color: #c00 !important;
    text-shadow: 0 0 18px var(--template-secondary, #c00) !important
 }
 
 .t-12 .word.imp.active {
+   color: var(--template-highlight, #FFE600) !important
+}
+
+.t-12 .word.imp.current {
    color: var(--template-highlight, #FFE600) !important
 }
 
@@ -465,6 +533,15 @@
    filter: drop-shadow(1px 2px 3px rgba(0, 0, 0, .8))
 }
 
+.t-106 .word.current {
+   color: var(--template-primary, #fff) !important;
+   filter: drop-shadow(1px 2px 3px rgba(0, 0, 0, .8))
+}
+
+.t-106 .word.imp.current {
+   color: var(--template-highlight, #FFE600) !important
+}
+
 /* ══════════════════════════════════════════
 /* ══════════════════════════════════════════
    18. Light Streak
@@ -483,6 +560,7 @@
 }
 
 .t-52 .word.current {
+   color: var(--template-primary, #fff) !important;
    animation: riseIn .25s ease-out both
 }
 
@@ -517,6 +595,14 @@
    color: var(--template-highlight, #FFE600) !important
 }
 
+.t-103 .word.current {
+   color: var(--template-primary, #fff) !important
+}
+
+.t-103 .word.imp.current {
+   color: var(--template-highlight, #FFE600) !important
+}
+
 /* ══════════════════════════════════════════
    20. Pink Gradient  (id: 112)
 ══════════════════════════════════════════ */
@@ -545,6 +631,22 @@
    color: transparent !important
 }
 
+.t-112 .word.current {
+   background: linear-gradient(90deg, #FF007F, #FF8E53) !important;
+   -webkit-background-clip: text !important;
+   background-clip: text !important;
+   -webkit-text-fill-color: transparent !important;
+   color: transparent !important
+}
+
+.t-112 .word.imp.current {
+   background: linear-gradient(90deg, var(--template-highlight, #FFE600), #FF007F) !important;
+   -webkit-background-clip: text !important;
+   background-clip: text !important;
+   -webkit-text-fill-color: transparent !important;
+   color: transparent !important
+}
+
 /* ══════════════════════════════════════════
 /* ══════════════════════════════════════════
    21. Pulse
@@ -555,10 +657,10 @@
 }
 
 .t-104 .word {
-   color: rgba(255, 255, 255, 0) !important;
-   -webkit-text-stroke: 0 !important;
+   color: #fff !important;
+   -webkit-text-stroke: 2px #B28DFF !important;
    paint-order: stroke fill;
-   filter: none
+   filter: drop-shadow(2px 2px 2px rgba(0, 0, 0, .9))
 }
 
 .t-104 .word.active {
@@ -572,6 +674,11 @@
 }
 
 .t-104 .word.imp.active {
+   color: var(--template-highlight, #FFE600) !important;
+   -webkit-text-stroke: 2px rgba(178, 141, 255, .5) !important
+}
+
+.t-104 .word.imp.current {
    color: var(--template-highlight, #FFE600) !important;
    -webkit-text-stroke: 2px var(--template-secondary, #B28DFF) !important
 }
@@ -588,29 +695,29 @@
 
 .t-111 .word {
    color: var(--template-primary, #fff) !important;
-   padding: 1px 4px;
-   margin: 2px 8px
+   padding: 2px 4px;
+   margin: 1px 2px
 }
 
 .t-111 .word.current {
    color: var(--template-primary, #fff) !important;
    background: var(--template-secondary, #E60000) !important;
-   box-shadow: 3px 3px 0 #000;
-   padding: 1px 4px
+   box-shadow: 4px 4px 0 #000;
+   padding: 2px 4px
 }
 
-/* imp.active FIRST (yellow text after passing), then imp.current LAST (box wins when current) */
 .t-111 .word.imp.active {
-   color: var(--template-highlight, #FFE600) !important;
-   background: transparent !important;
-   box-shadow: none
+   color: #fff !important;
+   background: #ff6600 !important;
+   box-shadow: 4px 4px 0 #000;
+   padding: 2px 4px
 }
 
 .t-111 .word.imp.current {
    color: var(--template-primary, #fff) !important;
    background: #ff6600 !important;
-   box-shadow: 3px 3px 0 #000;
-   padding: 1px 4px
+   box-shadow: 4px 4px 0 #000;
+   padding: 2px 4px
 }
 
 /* ══════════════════════════════════════════
@@ -626,22 +733,27 @@
 }
 
 .t-T5 .cap-text {
+   font-family: 'Montserrat', sans-serif;
    font-weight: 800;
    font-style: italic;
    font-size: 22px;
    display: inline-block;
-   background: var(--template-bg, #ECF00F);
+   width: auto;
+   max-width: 90%;
+   background: #FFE600;
    color: #111;
-   border-radius: 6px;
-   padding: 4px 16px;
-   line-height: 1.4;
+   border-radius: 10px;
+   padding: 8px 12px;
+   line-height: 1.5;
    text-align: center;
+   word-spacing: -2px;
+   letter-spacing: -0.2px;
 }
 
 .t-T5 .word {
-   color: var(--template-primary, #333333) !important;
+   color: #111 !important;
    background: transparent !important;
-   padding: 0 2px;
+   padding: 0 1px;
    transition: none
 }
 
@@ -659,6 +771,11 @@
 
 .t-95 .word.active {
    color: #fff;
+   text-shadow: none
+}
+
+.t-95 .word.current {
+   color: #fff;
    text-shadow: -3px 0 #0055FF, -7px 0 #00AAFF
 }
 
@@ -667,6 +784,10 @@
 }
 
 .t-95 .word.imp.active {
+   color: #FFE600
+}
+
+.t-95 .word.imp.current {
    color: #FFE600
 }
 
@@ -721,16 +842,25 @@
 }
 
 .t-T4 .word {
-   color: rgba(249, 198, 208, .3) !important
+   color: rgba(249, 198, 208, 0) !important
 }
 
 .t-T4 .word.active {
-   color: #f9c6d0 !important;
-   animation: fadeUp .65s ease-out both
+   color: #f9c6d0 !important
 }
 
 .t-T4 .word.imp.active {
    color: var(--template-primary, #fff) !important
+}
+
+.t-T4 .word.current {
+   color: #f9c6d0 !important;
+   animation: fadeUp .65s ease-out both
+}
+
+.t-T4 .word.imp.current {
+   color: var(--template-primary, #fff) !important;
+   animation: fadeUp .65s ease-out both
 }
 
 /* ══════════════════════════════════════════
@@ -743,7 +873,7 @@
 }
 
 .t-56 .word {
-   color: rgba(255, 255, 255, .3) !important
+   color: rgba(255, 255, 255, .14) !important
 }
 
 .t-56 .word.active {
@@ -759,6 +889,7 @@
 }
 
 .t-56 .word.imp.current {
+   color: var(--template-highlight, #FFE600) !important;
    border-bottom: 3px solid var(--template-highlight, #FFE600)
 }
 
@@ -790,6 +921,18 @@
    padding-bottom: 2px
 }
 
+.t-T3 .word.current {
+   color: var(--template-primary, #fff) !important;
+   animation: fadeUp .4s ease-out both
+}
+
+.t-T3 .word.imp.current {
+   color: var(--template-primary, #fff) !important;
+   border-bottom: 2.5px solid #cdff00;
+   padding-bottom: 2px;
+   animation: fadeUp .4s ease-out both
+}
+
 /* ══════════════════════════════════════════
    31. VHS Glitch  (id: 57)
 ══════════════════════════════════════════ */
@@ -799,7 +942,7 @@
 }
 
 .t-57 .word {
-   color: rgba(255, 255, 255, .3) !important
+   color: rgba(255, 255, 255, .1) !important
 }
 
 .t-57 .word.active {
@@ -814,6 +957,12 @@
 
 .t-57 .word.imp.active {
    color: var(--template-highlight, #FFE600) !important
+}
+
+.t-57 .word.imp.current {
+   color: var(--template-highlight, #FFE600) !important;
+   animation: flickerOn .18s both;
+   text-shadow: 2px 0 0 #f00, -2px 0 0 #00f !important
 }
 
 /* ══════════════════════════════════════════
@@ -843,6 +992,12 @@
 
 .t-37 .word.imp.active {
    color: var(--template-highlight, #FFE600) !important
+}
+
+.t-37 .word.imp.current {
+   color: var(--template-highlight, #FFE600) !important;
+   filter: drop-shadow(2px 2px 0 rgba(0, 0, 0, .9));
+   animation: wipeIn .2s linear both
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -1400,6 +1555,11 @@
 }
 
 .t-115 .word.active {
+   color: var(--template-primary, #fff);
+   filter: drop-shadow(2px 2px 0 #000);
+}
+
+.t-115 .word.current {
    color: #39FF14;
    filter: drop-shadow(2px 2px 0 #000) drop-shadow(0 0 8px rgba(57, 255, 20, .8));
 }
@@ -1410,6 +1570,10 @@
 }
 
 .t-115 .word.imp.active {
+   color: #39FF14;
+}
+
+.t-115 .word.imp.current {
    color: #39FF14;
 }
 

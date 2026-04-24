@@ -1,5 +1,17 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { auth, db, googleProvider, signInWithPopup, signOut, onAuthStateChanged, doc, getDoc, setDoc } from '../lib/firebase';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import {
+    auth,
+    db,
+    googleProvider,
+    signInWithPopup,
+    signInWithRedirect,
+    getRedirectResult,
+    signOut,
+    onAuthStateChanged,
+    doc,
+    getDoc,
+    setDoc
+} from '../lib/firebase';
 
 const AuthContext = createContext();
 
@@ -9,63 +21,91 @@ export function useAuth() {
 
 export function AuthProvider({ children }) {
     const [currentUser, setCurrentUser] = useState(null);
-    const [userData, setUserData] = useState(null); // Holds credits & subscription from Firestore
+    const [userData, setUserData] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [authError, setAuthError] = useState(null);
 
-    // Sign in with Google
-    const loginWithGoogle = async () => {
+    const syncUserRecord = async (user) => {
+        const userRef = doc(db, 'users', user.uid);
+        const userSnap = await getDoc(userRef);
+
+        if (!userSnap.exists()) {
+            const newUserDoc = {
+                email: user.email,
+                displayName: user.displayName,
+                photoURL: user.photoURL,
+                credits_remaining: 3,
+                subscription_tier: 'free',
+                subscription_expiry: null,
+                createdAt: new Date().toISOString()
+            };
+            await setDoc(userRef, newUserDoc);
+            setUserData(newUserDoc);
+            return newUserDoc;
+        }
+
+        const existingUserDoc = userSnap.data();
+        setUserData(existingUserDoc);
+        return existingUserDoc;
+    };
+
+    const loginWithGoogle = async ({ preferRedirect = false } = {}) => {
         try {
-            const result = await signInWithPopup(auth, googleProvider);
-            const user = result.user;
+            setAuthError(null);
 
-            // Check if user document exists in Firestore
-            const userRef = doc(db, 'users', user.uid);
-            const userSnap = await getDoc(userRef);
-
-            if (!userSnap.exists()) {
-                // First time login! Create their document with 3 credits free tier
-                const newUserDoc = {
-                    email: user.email,
-                    displayName: user.displayName,
-                    photoURL: user.photoURL,
-                    credits_remaining: 3,
-                    subscription_tier: 'free', // 'free', 'weekly', 'monthly'
-                    subscription_expiry: null,
-                    createdAt: new Date().toISOString()
-                };
-                await setDoc(userRef, newUserDoc);
-                setUserData(newUserDoc);
-            } else {
-                setUserData(userSnap.data());
+            if (preferRedirect) {
+                await signInWithRedirect(auth, googleProvider);
+                return { redirected: true };
             }
-            return user;
+
+            const result = await signInWithPopup(auth, googleProvider);
+            await syncUserRecord(result.user);
+            return result.user;
         } catch (error) {
-            console.error("Google Sign In Error:", error);
+            console.error('Google Sign In Error:', error);
+            const fallbackCodes = new Set([
+                'auth/popup-blocked',
+                'auth/popup-closed-by-user',
+                'auth/cancelled-popup-request',
+            ]);
+
+            if (fallbackCodes.has(error?.code)) {
+                await signInWithRedirect(auth, googleProvider);
+                return { redirected: true };
+            }
+
+            setAuthError(error);
             throw error;
         }
     };
 
-    const logout = () => {
-        return signOut(auth);
-    };
+    const logout = () => signOut(auth);
 
-    // Watch Authentication State
     useEffect(() => {
         if (!auth) {
-            // Firebase not configured, skip auth listening
             setLoading(false);
             return;
         }
 
+        getRedirectResult(auth)
+            .then((result) => {
+                if (result?.user) {
+                    return syncUserRecord(result.user);
+                }
+                return null;
+            })
+            .catch((error) => {
+                console.warn('Google redirect sign-in failed:', error.message);
+                setAuthError(error);
+            });
+
         try {
             const unsubscribe = onAuthStateChanged(auth, (user) => {
                 setCurrentUser(user);
-                // Unblock the app immediately — don't wait for Firestore
                 setLoading(false);
-
+                setAuthError(null);
 
                 if (user) {
-                    // Fetch Firestore data in the background (non-blocking)
                     const userRef = doc(db, 'users', user.uid);
                     getDoc(userRef)
                         .then((userSnap) => {
@@ -82,21 +122,20 @@ export function AuthProvider({ children }) {
             });
 
             return unsubscribe;
-        } catch (err) {
-            console.error('Firebase Auth Init Error:', err);
+        } catch (error) {
+            console.error('Firebase Auth Init Error:', error);
             setLoading(false);
-            return () => { };
+            setAuthError(error);
+            return () => {};
         }
     }, []);
 
-    // Force a refresh of user data (useful after a Razorpay payment succeeds)
     const refreshUserData = async () => {
-        if (currentUser) {
-            const userRef = doc(db, 'users', currentUser.uid);
-            const userSnap = await getDoc(userRef);
-            if (userSnap.exists()) {
-                setUserData(userSnap.data());
-            }
+        if (!currentUser) return;
+        const userRef = doc(db, 'users', currentUser.uid);
+        const userSnap = await getDoc(userRef);
+        if (userSnap.exists()) {
+            setUserData(userSnap.data());
         }
     };
 
@@ -106,14 +145,13 @@ export function AuthProvider({ children }) {
         loginWithGoogle,
         logout,
         refreshUserData,
-        // Additional properties expected by App.jsx
         user: currentUser,
         isAuthenticated: !!currentUser,
         isLoadingAuth: loading,
         isLoadingPublicSettings: false,
-        authError: null,
-        navigateToLogin: () => { },
-        checkAppState: () => { },
+        authError,
+        navigateToLogin: () => {},
+        checkAppState: () => {},
         appPublicSettings: null,
     };
 

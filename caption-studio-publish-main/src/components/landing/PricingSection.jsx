@@ -4,9 +4,19 @@ import { Button } from '@/components/ui/button'
 import { Check, Zap, Crown, Star, Loader2 } from 'lucide-react'
 import { createPageUrl } from '@/utils'
 import { useAuth } from '@/lib/AuthContext'
+import { toast } from '@/components/ui/use-toast'
+import { apiRequest } from '@/lib/apiClient'
+import { notifyApiError } from '@/lib/notifyApiError'
 
 const RAZORPAY_KEY_ID = import.meta.env.VITE_RAZORPAY_KEY_ID || ''
 const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
+
+const createIdempotencyKey = (scope, planId) => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return `${scope}:${planId}:${crypto.randomUUID()}`
+  }
+  return `${scope}:${planId}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`
+}
 
 const loadRazorpayScript = () => {
   return new Promise((resolve, reject) => {
@@ -31,7 +41,7 @@ const detectInternationalUser = () => {
     const indianLangs = ['hi', 'ta', 'te', 'kn', 'ml', 'mr', 'gu', 'pa', 'bn', 'or', 'as', 'ur']
     const isIndian = indianTZ.includes(tz) || indianLangs.some(l => lang.startsWith(l))
     return !isIndian
-  } catch (e) { return false }
+  } catch { return false }
 }
 
 const plans = [
@@ -113,10 +123,12 @@ export default function PricingSection() {
   const [processingPlan, setProcessingPlan] = useState(null)
   const [billing, setBilling] = useState('monthly')
   const [selectedPlan, setSelectedPlan] = useState(null)
+  const [isInternational, setIsInternational] = useState(false)
   const { currentUser } = useAuth()
 
   useEffect(() => {
     loadRazorpayScript().catch(() => {})
+    setIsInternational(detectInternationalUser())
   }, [])
 
   const handleSelectPlan = async (plan) => {
@@ -125,28 +137,30 @@ export default function PricingSection() {
     try {
       await loadRazorpayScript()
       if (!window.Razorpay) {
-        alert('Payment system unavailable. Please refresh and try again.')
+        toast({ variant: 'destructive', title: 'Payment system unavailable', description: 'Please refresh and try again.' })
         setProcessingPlan(null)
         return
       }
 
       const planId = billing === 'yearly' ? `${plan.id}_yearly` : plan.id
-      const amount = billing === 'yearly' ? plan.yearlyPaise : plan.monthlyPaise
-      const currency = 'INR'
+      const currency = isInternational ? 'USD' : 'INR'
+      const amount = billing === 'yearly'
+        ? (currency === 'USD' ? plan.yearlyUsdCents : plan.yearlyPaise)
+        : (currency === 'USD' ? plan.monthlyUsdCents : plan.monthlyPaise)
       let orderId = null
       let keyId = RAZORPAY_KEY_ID
       let idToken = null
+      const paymentAttemptKey = createIdempotencyKey('landing-plan', planId)
 
       // Try to create a backend order if user is logged in
       if (currentUser) {
         try {
           idToken = await currentUser.getIdToken()
-          const orderRes = await fetch(`${API_BASE}/api/create-order`, {
+          const orderData = await apiRequest(`${API_BASE}/api/create-order`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ plan_id: planId, id_token: idToken, currency })
+            body: JSON.stringify({ plan_id: planId, id_token: idToken, currency, idempotency_key: paymentAttemptKey })
           })
-          const orderData = await orderRes.json()
           if (orderData.success) {
             orderId = orderData.order.id
             keyId = orderData.key_id || keyId
@@ -172,7 +186,7 @@ export default function PricingSection() {
           if (orderId && idToken) {
             // Full verification flow
             try {
-              const verifyRes = await fetch(`${API_BASE}/api/verify-payment`, {
+              const data = await apiRequest(`${API_BASE}/api/verify-payment`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -180,23 +194,23 @@ export default function PricingSection() {
                   razorpay_payment_id: response.razorpay_payment_id,
                   razorpay_signature: response.razorpay_signature,
                   id_token: idToken,
-                  plan_id: planId
+                  plan_id: planId,
+                  idempotency_key: paymentAttemptKey
                 })
               })
-              const data = await verifyRes.json()
               if (data.success) {
-                alert('Payment successful! Credits added to your account.')
+                toast({ title: 'Payment successful', description: 'Credits added to your account.' })
                 window.location.href = createPageUrl('Dashboard')
               } else {
-                alert('Payment verification failed. Please contact support.')
+                toast({ variant: 'destructive', title: 'Payment verification failed', description: 'Please contact support.' })
               }
             } catch (err) {
               console.error('Verify error:', err)
-              alert('Payment verification error. Please contact support.')
+              notifyApiError(err, 'Payment verification error')
             }
           } else {
             // Test / guest mode — no backend verification
-            alert('Test payment received! Sign in to activate your plan and add credits.')
+            toast({ title: 'Test payment received', description: 'Sign in to activate your plan and add credits.' })
             window.location.href = createPageUrl('Dashboard')
           }
           setProcessingPlan(null)
@@ -214,6 +228,7 @@ export default function PricingSection() {
       razorpay.open()
     } catch (error) {
       console.error('Payment initiation failed:', error)
+      notifyApiError(error, 'Payment initiation failed')
       setProcessingPlan(null)
     }
   }
@@ -293,12 +308,18 @@ export default function PricingSection() {
 
               <div className="flex items-baseline gap-1 mb-1">
                 <span className="text-3xl md:text-4xl font-bold text-white">
-                  {billing === 'yearly' ? plan.yearlyInrPrice : plan.monthlyInrPrice}
+                  {billing === 'yearly'
+                    ? (isInternational ? plan.yearlyUsdPrice : plan.yearlyInrPrice)
+                    : (isInternational ? plan.monthlyUsdPrice : plan.monthlyInrPrice)}
                 </span>
                 <span className="text-gray-400">/mo</span>
               </div>
               {billing === 'yearly' ? (
-                <p className="text-xs text-[#F5A623] mb-5">₹{plan.yearlyPaise / 100} billed yearly · ~17% off</p>
+                <p className="text-xs text-[#F5A623] mb-5">
+                  {isInternational
+                    ? `${plan.yearlyUsdPrice} billed yearly · ~17% off`
+                    : `₹${plan.yearlyPaise / 100} billed yearly · ~17% off`}
+                </p>
               ) : (
                 <div className="mb-5" />
               )}
@@ -352,7 +373,7 @@ export default function PricingSection() {
               </thead>
               <tbody className="divide-y divide-white/5">
                 {[
-                  ['Monthly Credits', '15', '45', '90'],
+                  ['Monthly Credits', '15', '45', '100'],
                   ['Max Video Length', '2 min', '3 min', '3 min'],
                   ['Daily Limit', '3/day', '5/day', 'Unlimited'],
                   ['Export Quality', '1080p', '1080p + 4K', '1080p + 4K'],

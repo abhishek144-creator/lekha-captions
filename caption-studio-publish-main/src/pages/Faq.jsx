@@ -1,97 +1,114 @@
-import React, { useState } from 'react'
-import { Link } from 'react-router-dom'
-import { createPageUrl } from '@/utils'
-import CaptionStudioLogo from '@/components/dashboard/CaptionStudioLogo'
-import { ChevronDown } from 'lucide-react'
+import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
+import CaptionStudioLogo from '@/components/dashboard/CaptionStudioLogo';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 
 const faqs = [
   {
-    q: 'What is Lekha Captions?',
-    a: 'Lekha Captions is an AI-powered caption tool that auto-transcribes your videos and lets you style, edit, and burn professional captions in 115+ languages.',
+    q: 'What languages does Lekha Captions support?',
+    a: 'Lekha Captions supports 115+ languages including all major Indic languages (Hindi, Marathi, Tamil, Telugu, Bengali, Gujarati, Punjabi, Kannada, Malayalam, Odia), African, Arab, Southeast Asian, European, and English variants.',
   },
   {
-    q: 'Which languages are supported?',
-    a: 'We support 115+ languages including Hindi, Tamil, Telugu, Marathi, Bengali, Kannada, Malayalam, Punjabi, Arabic, French, Spanish, German, Japanese, Korean, and many more. Indic languages are powered by Sarvam AI; global languages use OpenAI Whisper.',
+    q: 'What video formats are supported?',
+    a: 'We support MP4, MOV, AVI, MKV, and WebM. For best results use MP4 (H.264). The ideal video duration is 120–180 seconds (shorts & reels sweet spot).',
   },
   {
-    q: 'How many video credits do I get?',
-    a: 'Starter plan: 15 credits/month. Creator plan: 45 credits/month. Pro plan: 100 credits/month. Each processed video consumes one credit.',
+    q: 'How accurate are the captions?',
+    a: 'Our AI transcription achieves 90–98% accuracy for clear audio in supported languages. Background noise, multiple speakers, or heavy accents may reduce accuracy slightly.',
   },
   {
-    q: 'What video length is supported?',
-    a: 'Starter: up to 2 minutes. Creator & Pro: up to 3 minutes per video. We are optimized for short-form content (Reels, Shorts, TikTok).',
+    q: 'Can I edit the captions after they are generated?',
+    a: 'Yes. Every word is individually editable in the editor. You can click any caption to edit text, drag words to reposition them, and apply per-word styling.',
   },
   {
-    q: 'Can I edit captions after they are generated?',
-    a: 'Yes. You can click any word in the caption timeline to edit text, change timing, split or merge captions, and apply per-word styling.',
+    q: 'What caption styles and templates are available?',
+    a: 'We offer 25+ professional templates including word-by-word reveals, gradient effects, neon glows, bold strokes, and more. You can also fully customize fonts, colors, animations, and effects.',
   },
   {
-    q: 'Does the exported video have a watermark?',
-    a: 'No watermark on any paid plan. Free plan videos may include a subtle Lekha branding.',
+    q: 'How do I export the captioned video?',
+    a: 'Use the Export button in the editor. You can export with captions burned into the video or as a separate SRT/VTT subtitle file.',
   },
   {
-    q: 'How long is the download link valid?',
-    a: 'Starter: 2 hours. Creator: 24 hours. Pro: 72 hours. Download your video promptly after export.',
+    q: 'Is my video data private?',
+    a: 'Yes. Uploaded videos are processed securely and are not shared with third parties. We do not train AI models on your content.',
   },
   {
-    q: 'Can I customize the caption style?',
-    a: 'Yes — font, size, color, background, stroke, shadow, animations, and 26+ pre-built templates are available in the Style tab.',
+    q: 'What is the maximum file size?',
+    a: 'Currently we support video files up to 500MB. For larger files, we recommend compressing the video first.',
   },
-  {
-    q: 'Is there a free plan?',
-    a: 'Yes. The free plan gives you 3 video credits to try the product. No credit card required.',
-  },
-  {
-    q: 'How do I cancel my subscription?',
-    a: 'You can manage or cancel your subscription at any time from the Account page. Credits remain usable until the end of the billing period.',
-  },
-]
+];
 
 function FaqItem({ q, a }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(false);
   return (
     <div
-      className={`border border-white/10 rounded-xl overflow-hidden transition-colors ${open ? 'bg-white/5' : 'bg-white/[0.02] hover:bg-white/[0.04]'}`}
+      className="border border-white/10 rounded-xl overflow-hidden"
+      style={{ background: 'rgba(255,255,255,0.03)' }}
     >
       <button
-        className="w-full flex items-center justify-between px-5 py-4 text-left"
-        onClick={() => setOpen(v => !v)}
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between px-6 py-4 text-left text-white font-medium text-sm hover:bg-white/5 transition-colors"
       >
-        <span className="text-sm font-medium text-white">{q}</span>
-        <ChevronDown className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+        <span>{q}</span>
+        {open ? <ChevronUp className="w-4 h-4 text-gray-400 shrink-0" /> : <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />}
       </button>
       {open && (
-        <div className="px-5 pb-4 text-sm text-gray-400 leading-relaxed">{a}</div>
+        <div className="px-6 pb-5 text-sm text-gray-400 leading-relaxed border-t border-white/5 pt-4">
+          {a}
+        </div>
       )}
     </div>
-  )
+  );
 }
 
 export default function Faq() {
   return (
-    <div className="min-h-screen bg-[#111111]">
-      <nav className="sticky top-0 z-50 bg-[#0d0d0d]/90 backdrop-blur-md border-b border-white/5 h-14 flex items-center justify-between px-6">
-        <Link to={createPageUrl('Home')} className="hover:opacity-80 transition-opacity">
+    <div className="min-h-screen bg-[#111111] text-white">
+      {/* Nav */}
+      <nav className="border-b border-white/10 px-6 py-4 flex items-center justify-between max-w-6xl mx-auto">
+        <Link to="/">
           <CaptionStudioLogo size="default" showText={true} />
         </Link>
-        <div className="flex items-center gap-3 md:gap-6 flex-wrap justify-end">
-          <Link to={createPageUrl('Faq')} className="text-sm text-white font-medium">FAQ</Link>
-          <Link to={createPageUrl('Help')} className="text-sm text-gray-400 hover:text-white transition-colors">Help</Link>
-          <Link to={createPageUrl('Terms')} className="text-sm text-gray-400 hover:text-white transition-colors">Terms</Link>
+        <div className="flex gap-6 text-sm text-gray-400">
+          <Link to="/HelpAndSupport" className="hover:text-white transition-colors">Support</Link>
+          <Link to="/TermsAndConditions" className="hover:text-white transition-colors">Terms</Link>
         </div>
       </nav>
 
-      <div className="max-w-2xl mx-auto px-6 py-10 md:py-16">
-        <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">Frequently Asked Questions</h1>
-        <p className="text-gray-500 mb-10">Everything you need to know about Lekha Captions.</p>
-        <div className="space-y-3">
-          {faqs.map((item, i) => <FaqItem key={i} {...item} />)}
+      {/* Hero */}
+      <div className="max-w-3xl mx-auto px-6 pt-20 pb-8 text-center">
+        <div className="inline-flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-4 py-1.5 text-xs text-gray-400 mb-6">
+          Help Center
         </div>
-        <p className="mt-10 text-sm text-gray-500">
-          Still have questions?{' '}
-          <Link to={createPageUrl('Help')} className="text-[#F5A623] hover:underline">Contact support</Link>
-        </p>
+        <h1 className="text-4xl font-bold mb-4">Frequently Asked Questions</h1>
+        <p className="text-gray-400 text-lg">Everything you need to know about Lekha Captions.</p>
       </div>
+
+      {/* FAQ List */}
+      <div className="max-w-3xl mx-auto px-6 pb-24 space-y-3">
+        {faqs.map((item, i) => (
+          <FaqItem key={i} {...item} />
+        ))}
+      </div>
+
+      {/* Still stuck */}
+      <div className="max-w-3xl mx-auto px-6 pb-24 text-center">
+        <div className="rounded-2xl border border-white/10 bg-white/3 p-10" style={{ background: 'rgba(255,255,255,0.02)' }}>
+          <h2 className="text-xl font-semibold mb-2">Still have questions?</h2>
+          <p className="text-gray-400 text-sm mb-6">Our support team is here to help.</p>
+          <Link
+            to="/HelpAndSupport"
+            className="inline-flex items-center gap-2 bg-white text-black font-semibold text-sm px-6 py-2.5 rounded-full hover:bg-gray-200 transition-colors"
+          >
+            Contact Support
+          </Link>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <footer className="border-t border-white/10 py-8 text-center text-gray-500 text-sm">
+        <p>© {new Date().getFullYear()} Lekha Captions · <Link to="/TermsAndConditions" className="hover:text-gray-300">Terms</Link> · <Link to="/Faq" className="hover:text-gray-300">FAQ</Link></p>
+      </footer>
     </div>
-  )
+  );
 }

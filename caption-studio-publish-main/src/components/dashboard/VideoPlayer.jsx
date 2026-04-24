@@ -1,9 +1,33 @@
-import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { Play, Pause, Volume2, VolumeX, X, Maximize2, Minimize2 } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
-import WordClickPopup from './WordClickPopup';
 import '../../styles/captionTemplates.css';
+import '../../styles/captionTemplatesAdvanced.css';
+
+const ADVANCED_TEMPLATE_VARIANTS = {
+  t01: 'wbw-rise', t02: 'plain-s', t03: 'wbw-rise', t04: 'plain-s', t05: 'wbw-rise',
+  t06: 'wbw-rise', t07: 'wbw-rise', t08: 'wbw-rise', t09: 'wbw-rise', t10: 'wbw-rise',
+  t11: 'wbw-slide', t12: 'plain-s', t13: 'wbw-rise', t14: 'wbw-slide', t15: 'plain-s',
+  t16: 'wbw-rise', t17: 'wbw-slide', t18: 'wbw-rise', t19: 'wbw-rise', t20: 'plain-s',
+  t21: 'wbw-rise', t22: 'wbw-rise', t23: 'wbw-rise', t24: 'wbw-rise', t25: 'wbw-slide',
+  t26: 'wbw-rise', t27: 'plain-s', t28: 'wbw-rise', t29: 'wbw-rise', t30: 'wbw-slide',
+  t31: 'wbw-rise', t32: 'plain-s', t33: 'wbw-rise', t34: 'wbw-rise', t35: 'wbw-rise',
+};
+const TEMPLATE_CANVAS_FONT_SCALE = 0.88;
+
+function isAdvancedTemplateId(templateId) {
+  return /^t\d{2}$/.test(String(templateId || ''));
+}
+
+function getTemplateWrapperClassName(templateId) {
+  if (!isAdvancedTemplateId(templateId)) return 'cap-text';
+  return `${ADVANCED_TEMPLATE_VARIANTS[templateId] || 'wbw-rise'} ${templateId}`;
+}
+
+function scaleTemplateFontSize(fontSize) {
+  return Math.max(12, Math.round((fontSize || 18) * TEMPLATE_CANVAS_FONT_SCALE));
+}
 
 // --- Effect CSS helper ---
 function _hexRgba(hex, a) {
@@ -13,10 +37,7 @@ function _hexRgba(hex, a) {
     const g = parseInt(h.slice(2, 4), 16)
     const b = parseInt(h.slice(4, 6), 16)
     return `rgba(${r},${g},${b},${a})`
-  } catch (e) {
-    console.warn(`Invalid hex color value '${hex}':`, e)
-    return hex
-  }
+  } catch { return hex }
 }
 
 function computeEffectCSS(cs) {
@@ -175,21 +196,6 @@ export default function VideoPlayer({
   // ── Canvas zoom (Ctrl+Scroll) ───────────────────────────────────────────
   const [canvasScale, setCanvasScale] = useState(1);
 
-  // ── Container size tracking for fullscreen-safe word positioning ─────────
-  const [containerSize, setContainerSize] = useState({ width: 1, height: 1 })
-
-  useEffect(() => {
-    const el = videoContainerRef.current
-    if (!el) return
-    const ro = new ResizeObserver(entries => {
-      for (const entry of entries) {
-        setContainerSize({ width: entry.contentRect.width, height: entry.contentRect.height })
-      }
-    })
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
-
   useEffect(() => {
     if (videoRef.current) {
       if (isPlaying) {
@@ -265,11 +271,7 @@ export default function VideoPlayer({
     if (videoRef.current) {
       setDuration(videoRef.current.duration);
       if (onVideoLoadedRef.current) {
-        try {
-          onVideoLoadedRef.current(videoRef.current)
-        } catch (e) {
-          console.error('onVideoLoaded callback threw an error:', e)
-        }
+        onVideoLoadedRef.current(videoRef.current);
       }
     }
   }, [setDuration]);
@@ -330,13 +332,6 @@ export default function VideoPlayer({
       'tectonic':    ['tectonic',    500,  'ease-out',              'both'],
       'tumble':      ['tumble',      600,  'ease-in-out',           'both'],
       // Advanced – Basic
-      'zoom_in':     ['adv-zoom-in',  400, 'ease-out',              'both'],
-      'zoom_out':    ['adv-zoom-out', 400, 'ease-out',              'both'],
-      'fade_in':     ['adv-fade-in',  400, 'ease-out',              'both'],
-      'slide_up':    ['adv-slide-up', 400, 'ease-out',              'both'],
-      'slide_down':  ['adv-slide-down',400,'ease-out',              'both'],
-      'slide_left':  ['adv-slide-left',400,'ease-out',              'both'],
-      'slide_right': ['adv-slide-right',400,'ease-out',             'both'],
       'fadeInUp':    ['fadeInUp',    500,  'ease-out',              'both'],
       'fadeInDown':  ['fadeInDown',  500,  'ease-out',              'both'],
       'slideInRight':['slideInRight',500,  'ease-out',              'both'],
@@ -804,22 +799,13 @@ export default function VideoPlayer({
             };
           }));
         }
-
-        // Auto-switch to word-by-word mode so dragged word plays back in sequence
-        if (!isElement && setCaptionStyle) {
-          setCaptionStyle(prev => ({
-            ...prev,
-            display_mode: 'word_by_word',
-            show_inactive: false
-          }))
-        }
-
+        
         lastDragDropTime.current = Date.now();
       }
-
+      
       setDraggingWord(null);
       currentDragCoordinates.current = null;
-    }
+    };
 
     document.addEventListener('mousemove', handleNativeMouseMove);
     document.addEventListener('mouseup', handleNativeMouseUp);
@@ -1022,26 +1008,27 @@ export default function VideoPlayer({
 
   return (
     <div className="flex flex-col h-full">
+      {/* Video container with 9:16 aspect ratio for mobile preview */}
       <div className="relative flex-1 bg-zinc-950 rounded-xl overflow-hidden flex items-center justify-center min-h-[340px]">
+        {/* Fullscreen toggle — overlaid in top-right corner of canvas */}
+        {setIsVideoFullscreen && (
+          <button
+            onClick={() => setIsVideoFullscreen(v => !v)}
+            className="absolute top-2 right-2 z-50 p-2 rounded bg-black/40 hover:bg-black/70 text-white/70 hover:text-white transition-colors backdrop-blur-sm"
+            title={`${isVideoFullscreen ? 'Collapse' : 'Expand'} (F)`}
+          >
+            {isVideoFullscreen ? <Minimize2 className="w-6 h-6" /> : <Maximize2 className="w-6 h-6" />}
+          </button>
+        )}
         {/* Zoom level badge — only visible when zoomed */}
         {canvasScale !== 1 && (
           <div className="absolute top-2 left-2 z-50 px-1.5 py-0.5 rounded bg-black/60 text-white/70 text-[10px] tabular-nums backdrop-blur-sm">
             {Math.round(canvasScale * 100)}%
           </div>
         )}
-        {/* Fullscreen toggle — top-right corner of canvas */}
-        {setIsVideoFullscreen && (
-          <button
-            onClick={() => setIsVideoFullscreen(v => !v)}
-            className="absolute top-2 right-2 z-50 p-1.5 rounded bg-black/40 hover:bg-black/70 text-white/70 hover:text-white transition-colors backdrop-blur-sm"
-            title={isVideoFullscreen ? 'Collapse' : 'Expand'}
-          >
-            {isVideoFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-          </button>
-        )}
         <div
           ref={videoContainerRef}
-          className="relative w-full h-full max-h-full aspect-[9/16] bg-black shadow-2xl group"
+          className="relative w-full h-full max-h-full aspect-[9/16] bg-black shadow-2xl"
           style={{ transform: `scale(${canvasScale})`, transformOrigin: 'center center', transition: 'transform 0.1s ease' }}
           onClick={(e) => {
             if (e.target === e.currentTarget && setSelectedCaptionId) setSelectedCaptionId(null);
@@ -1095,7 +1082,7 @@ export default function VideoPlayer({
                   // If it's a text element, maybe offset it slightly or allow it to be distinct?
                   // For now, they share the same position setting which allows dragging ONE changes ALL.
                   // This is "MVP" behavior.
-                  zIndex: caption.isTextElement ? 20 : 10,
+                  zIndex: caption.isTextElement ? 20 : 10
                 }}
                 onMouseDown={setCaptionStyle && !isEditingThis ? handleMouseDown : undefined}
                 onDoubleClick={(e) => handleCaptionDoubleClick(e, caption)}
@@ -1121,14 +1108,14 @@ export default function VideoPlayer({
                     <div
                       style={{
                         position: 'absolute',
-                        top: `-${Math.round((captionStyle?.background_padding || 6) * 0.4)}px`,
+                        top: `-${captionStyle?.background_padding || 6}px`,
                         left: '50%',
                         transform: 'translateX(-50%)',
                         zIndex: -1,
                         backgroundColor: `rgba(${parseInt((captionStyle?.background_color || '#000000').slice(1, 3), 16)}, ${parseInt((captionStyle?.background_color || '#000000').slice(3, 5), 16)}, ${parseInt((captionStyle?.background_color || '#000000').slice(5, 7), 16)}, ${captionStyle?.background_opacity || 0.7})`,
                         borderRadius: '6px',
                         width: `${100 * (captionStyle?.background_h_multiplier || 1)}%`,
-                        height: `calc(100% + ${2 * Math.round((captionStyle?.background_padding || 6) * 0.4)}px)`,
+                        height: `calc(100% + ${2 * (captionStyle?.background_padding || 6)}px)`,
                       }}
                     />
                   )}
@@ -1185,8 +1172,7 @@ export default function VideoPlayer({
                         opacity: captionStyle?.text_opacity || 1,
                         transform: `scale(${captionStyle?.scale || 1})`,
                         padding: `${captionStyle?.background_padding || 6}px 8px`,
-                        whiteSpace: captionStyle?.display_mode === 'two_line_sentence' ? 'normal' : 'nowrap',
-                        maxWidth: captionStyle?.display_mode === 'two_line_sentence' ? '28ch' : undefined,
+                        whiteSpace: 'nowrap',
                         ...(captionStyle?.text_gradient ? {
                           backgroundImage: captionStyle.text_gradient,
                           WebkitBackgroundClip: 'text',
@@ -1208,20 +1194,19 @@ export default function VideoPlayer({
                   ) : captionStyle?.template_id ? (
                     // Template rendering: simple word spans with CSS class states for template effects
                     <span
-                      className="cap-text"
+                      className={getTemplateWrapperClassName(captionStyle?.template_id)}
                       style={{
                         fontFamily: captionStyle?.font_family || 'Inter',
-                        fontSize: `${captionStyle?.font_size || 18}px`,
+                        fontSize: `${scaleTemplateFontSize(captionStyle?.font_size)}px`,
                         fontWeight: captionStyle?.font_weight || 'normal',
                         fontStyle: captionStyle?.font_style || 'normal',
                         textAlign: captionStyle?.text_align || 'center',
                         display: 'block',
-                        lineHeight: `${(captionStyle?.font_size || 18) * (captionStyle?.line_spacing || 1.4)}px`,
+                        lineHeight: `${scaleTemplateFontSize(captionStyle?.font_size) * (captionStyle?.line_spacing || 1.4)}px`,
                         letterSpacing: captionStyle?.letter_spacing ? `${captionStyle.letter_spacing}px` : '0px',
                         wordSpacing: `${captionStyle?.word_spacing ?? 0}px`,
                         textTransform: captionStyle?.text_case && captionStyle.text_case !== 'none' ? captionStyle.text_case : undefined,
-                        whiteSpace: captionStyle?.display_mode === 'two_line_sentence' ? 'normal' : 'nowrap',
-                        maxWidth: captionStyle?.display_mode === 'two_line_sentence' ? '28ch' : undefined,
+                        whiteSpace: 'nowrap',
                         animation: caption.animation && caption.animation !== 'none' ? getAnimationStyle(caption.animation, caption.animationSpeed) : 'none',
                       }}
                     >
@@ -1239,9 +1224,17 @@ export default function VideoPlayer({
                           const isPast    = wordIndex < currentIdx;
                           const isCurrent = wordIndex === currentIdx;
 
+                          const isAdvancedTemplate = isAdvancedTemplateId(captionStyle?.template_id);
+                          const wordStyle = caption.wordStyles?.[`${caption.id}-${wordIndex}`] || {};
                           let cls = 'word';
                           if (isCurrent) cls += ' current active';
                           else if (isPast) cls += ' active done';
+                          if (wordStyle?.isEmphasis) cls += ' imp';
+                          if (isAdvancedTemplate) {
+                            cls = ['w', isPast || isCurrent ? 'in' : '', wordStyle?.isEmphasis ? 'imp-bold' : '']
+                              .filter(Boolean)
+                              .join(' ');
+                          }
 
                           // Word-by-word delivery mode: accumulate — show words 0..currentIdx
                           if (captionStyle?.show_inactive === false && wordIndex > currentIdx) {
@@ -1256,7 +1249,7 @@ export default function VideoPlayer({
                               key={wordIndex}
                               data-word-key={`${caption.id}-${wordIndex}`}
                               className={cls + (isSelected ? ' ring-2 ring-[#F5A623] rounded-sm' : '')}
-                              style={{ cursor: 'pointer', display: 'inline-block', marginRight: wordIndex < words.length - 1 ? `${(captionStyle?.word_spacing ?? 1) * 3}px` : '0' }}
+                              style={{ cursor: 'pointer', display: 'inline-block', marginRight: wordIndex < words.length - 1 ? `${(captionStyle?.word_spacing ?? 1) * 2}px` : '0' }}
                               onClick={(e) => {
                                 if (setWordPopup) {
                                   e.stopPropagation();
@@ -1299,8 +1292,7 @@ export default function VideoPlayer({
                         padding: `${captionStyle?.background_padding || 6}px 8px`,
                         position: 'relative',
                         zIndex: 10,
-                        whiteSpace: captionStyle?.display_mode === 'two_line_sentence' ? 'normal' : 'nowrap',
-                        maxWidth: captionStyle?.display_mode === 'two_line_sentence' ? '28ch' : undefined,
+                        whiteSpace: 'nowrap',
                         // Add shadow/stroke if configured
                         ...(() => {
                           const efx = computeEffectCSS(captionStyle);
@@ -1326,31 +1318,24 @@ export default function VideoPlayer({
                       }}
                     >
                       {caption.text.split(' ').map((word, wordIndex, arr) => {
+                        // Word-by-word mode: compute current word index from timing
+                        if (captionStyle?.show_inactive === false) {
+                          const wordCount = arr.length
+                          const captionDuration = (caption.end_time || caption.end || 0) - (caption.start_time || caption.start || 0)
+                          const timeIntoCaption = (currentTime || 0) - (caption.start_time || caption.start || 0)
+                          const currentIdx = wordCount > 1
+                            ? Math.max(0, Math.min(wordCount - 1, Math.floor((timeIntoCaption / captionDuration) * wordCount)))
+                            : 0
+                          // Accumulate: show words 0..currentIdx (sentence builds word by word)
+                          if (wordIndex > currentIdx) return null
+                        }
                         const styleKey = `${caption.id}-${wordIndex}`;
                         const ws = caption.wordStyles?.[styleKey] || {};
-                        // Word-by-word mode: compute current word index from timing
-                        // Repositioned words (dragged) are always visible regardless of timing
-                        if (captionStyle?.show_inactive === false) {
-                          const hasOffset = !!(ws.x || ws.y || ws.x_pct || ws.y_pct)
-                          if (!hasOffset) {
-                            const wordCount = arr.length
-                            const captionDuration = (caption.end_time || caption.end || 0) - (caption.start_time || caption.start || 0)
-                            const timeIntoCaption = (currentTime || 0) - (caption.start_time || caption.start || 0)
-                            const currentIdx = wordCount > 1
-                              ? Math.max(0, Math.min(wordCount - 1, Math.floor((timeIntoCaption / captionDuration) * wordCount)))
-                              : 0
-                            // Accumulate: show words 0..currentIdx (sentence builds word by word)
-                            if (wordIndex > currentIdx) return null
-                          }
-                        }
                         const isSelected = wordPopup?.caption?.id === caption.id && wordPopup?.wordIndex === wordIndex;
                         const baseFontSize = captionStyle?.font_size || 18;
                         const wordFontSize = ws.fontSize || ws.frozenFontSize || baseFontSize;
-                        // compute pixel offsets from stored percentages (fullscreen-safe)
-                        const wordX = (ws.x_pct != null) ? (ws.x_pct / 100) * containerSize.width : (ws.x || 0)
-                        const wordY = (ws.y_pct != null) ? (ws.y_pct / 100) * containerSize.height : (ws.y || 0)
                         // Dragged words (non-zero x or y) must not inflate the bg layout
-                        const isPositioned = !!(wordX || wordY);
+                        const isPositioned = !!(ws.x || ws.y);
                         const layoutFontSize = isPositioned ? baseFontSize : wordFontSize;
 
                         // Emphasis: bold + 1.2x scale + gold accent color + subtle glow
@@ -1373,11 +1358,11 @@ export default function VideoPlayer({
                               fontSize: `${layoutFontSize}px`,
                               lineHeight: 'inherit',
                               verticalAlign: 'baseline',
-                              marginRight: wordIndex < arr.length - 1 ? `${Math.round(layoutFontSize * 0.18 + (captionStyle?.word_spacing ?? 1) * 3)}px` : '0',
-                              transform: (wordX || wordY)
-                                ? `translate(${wordX}px, ${wordY}px)`
+                              marginRight: wordIndex < arr.length - 1 ? `${Math.round(layoutFontSize * 0.18 + (captionStyle?.word_spacing ?? 1) * 2)}px` : '0',
+                              transform: (ws.x || ws.y)
+                                ? `translate(${ws.x || 0}px, ${ws.y || 0}px)`
                                 : 'none',
-                              zIndex: (wordX || wordY) ? 20 : 'auto',
+                              zIndex: (ws.x || ws.y) ? 20 : 'auto',
                               cursor: 'pointer',
                             }}
                             onMouseDown={(e) => handleWordMouseDown(e, caption, wordIndex)}
@@ -1569,9 +1554,7 @@ export default function VideoPlayer({
                       const wordStyle = element.wordStyles?.[`${element.id}-${wordIndex}`] || {};
                       const isWordClicked = wordPopup?.type === 'element' && wordPopup?.elementId === element.id && wordPopup?.wordIndex === wordIndex;
                       // Extract transform to parent - ensures text + background move together
-                      const { x: rawX = 0, y: rawY = 0, x_pct, y_pct, animation, ...restWordStyle } = wordStyle;
-                      const x = (x_pct != null) ? (x_pct / 100) * containerSize.width : rawX
-                      const y = (y_pct != null) ? (y_pct / 100) * containerSize.height : rawY
+                      const { x = 0, y = 0, animation, ...restWordStyle } = wordStyle;
 
                       return (
                         <span
@@ -1695,75 +1678,6 @@ export default function VideoPlayer({
 
           {/* Word Click Popup — REMOVED FROM HERE, rendered outside overflow-hidden below */}
 
-        </div>
-      </div>
-
-      {/* Video controls — below the video container */}
-      <div className="mt-3 space-y-2 px-1">
-        {/* Progress bar */}
-        <div className="relative w-full h-1 rounded-full bg-white/20 cursor-pointer overflow-hidden"
-          onClick={(e) => {
-            const rect = e.currentTarget.getBoundingClientRect()
-            const pct = (e.clientX - rect.left) / rect.width
-            const val = pct * (duration || 0)
-            if (videoRef.current) videoRef.current.currentTime = val
-            setCurrentTime(val)
-          }}
-        >
-          <div
-            className="absolute left-0 top-0 h-full rounded-full transition-none"
-            style={{ width: `${((localScrubTime ?? currentTime) / (duration || 1)) * 100}%`, backgroundColor: '#FFB800' }}
-          />
-          <Slider
-            value={[localScrubTime ?? currentTime]}
-            max={duration || 100}
-            step={0.1}
-            onValueChange={([val]) => {
-              isScrubbingRef.current = true
-              setLocalScrubTime(val)
-            }}
-            onValueCommit={([val]) => {
-              isScrubbingRef.current = false
-              setLocalScrubTime(null)
-              if (videoRef.current) videoRef.current.currentTime = val
-              setCurrentTime(val)
-            }}
-            className="absolute inset-0 opacity-0 cursor-pointer"
-          />
-        </div>
-        {/* Buttons row */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            {/* Play/Pause */}
-            <button
-              onClick={() => setIsPlaying(!isPlaying)}
-              className="h-8 w-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
-            >
-              {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
-            </button>
-            {/* Volume */}
-            <div className="flex items-center gap-1 group/volume">
-              <button
-                onClick={() => setIsMuted(!isMuted)}
-                className="h-8 w-8 flex items-center justify-center text-gray-400 hover:text-white transition-colors"
-              >
-                {isMuted || volume === 0 ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-              </button>
-              <div className="w-0 overflow-hidden group-hover/volume:w-20 transition-all duration-300 ease-in-out">
-                <Slider
-                  value={[isMuted ? 0 : volume]}
-                  max={1}
-                  step={0.05}
-                  onValueChange={([val]) => { setVolume(val); if (val > 0) setIsMuted(false) }}
-                  className="w-18 cursor-pointer"
-                />
-              </div>
-            </div>
-          </div>
-          {/* Time */}
-          <span className="text-sm text-gray-400 font-mono">
-            {formatTime(currentTime)} / {formatTime(duration || 0)}
-          </span>
         </div>
       </div>
 
@@ -2002,37 +1916,73 @@ export default function VideoPlayer({
           50%  { transform: scale(1.06); opacity: 1; filter: saturate(2) brightness(1.3); }
           100% { transform: scale(1); opacity: 1; filter: saturate(1) brightness(1); }
         }
-        /* ── Advanced Animation (StyleControls) ── */
-        @keyframes adv-fade-in {
-          0%   { opacity: 0; }
-          100% { opacity: 1; }
-        }
-        @keyframes adv-slide-up {
-          0%   { transform: translateY(30px); opacity: 0; }
-          100% { transform: translateY(0); opacity: 1; }
-        }
-        @keyframes adv-slide-down {
-          0%   { transform: translateY(-30px); opacity: 0; }
-          100% { transform: translateY(0); opacity: 1; }
-        }
-        @keyframes adv-slide-left {
-          0%   { transform: translateX(40px); opacity: 0; }
-          100% { transform: translateX(0); opacity: 1; }
-        }
-        @keyframes adv-slide-right {
-          0%   { transform: translateX(-40px); opacity: 0; }
-          100% { transform: translateX(0); opacity: 1; }
-        }
-        @keyframes adv-zoom-in {
-          0%   { transform: scale(0.6); opacity: 0; }
-          100% { transform: scale(1); opacity: 1; }
-        }
-        @keyframes adv-zoom-out {
-          0%   { transform: scale(1.5); opacity: 0; }
-          100% { transform: scale(1); opacity: 1; }
-        }
       `}</style>
 
+      {/* Video controls */}
+      <div className="mt-4 space-y-3 px-2">
+        {/* Progress bar — uses localScrubTime during drag so Dashboard state
+            is NOT updated on every tick (avoids heavy re-renders & double-seek).
+            Only commits the final time to Dashboard on release (onValueCommit). */}
+        <Slider
+          value={[localScrubTime ?? currentTime]}
+          max={duration || 100}
+          step={0.1}
+          onValueChange={([val]) => {
+            isScrubbingRef.current = true;
+            setLocalScrubTime(val);
+            // Do NOT seek video here — any seek during drag causes black frame until decode completes.
+            // Video stays on current frame; only seeks to final position on mouse release below.
+          }}
+          onValueCommit={([val]) => {
+            isScrubbingRef.current = false;
+            setLocalScrubTime(null);
+            if (videoRef.current) videoRef.current.currentTime = val;
+            setCurrentTime(val);
+          }}
+          className="cursor-pointer"
+        />
+
+        {/* Control buttons */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setIsPlaying(!isPlaying)}
+              className="h-10 w-10 rounded-full bg-white/10 hover:bg-white/20 text-white"
+            >
+              {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
+            </Button>
+
+            <div className="flex items-center gap-2 group">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setIsMuted(!isMuted)}
+                className="h-8 w-8 text-gray-400 hover:text-white"
+              >
+                {isMuted || volume === 0 ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+              </Button>
+              <div className="w-0 overflow-hidden group-hover:w-24 pl-2 transition-all duration-300 ease-in-out">
+                <Slider
+                  value={[isMuted ? 0 : volume]}
+                  max={1}
+                  step={0.05}
+                  onValueChange={([val]) => {
+                    setVolume(val);
+                    if (val > 0) setIsMuted(false);
+                  }}
+                  className="w-20 cursor-pointer py-4"
+                />
+              </div>
+            </div>
+          </div>
+
+          <span className="text-sm text-gray-400 font-mono">
+            {formatTime(currentTime)} / {formatTime(duration || 0)}
+          </span>
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,0 +1,549 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Original Caption Template Lab</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=DM+Sans:wght@500;700;800&family=Fraunces:opsz,wght@9..144,700&family=Inter:wght@500;700;800;900&family=Manrope:wght@700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #08101c;
+      --panel: rgba(12, 18, 31, 0.86);
+      --line: rgba(255, 255, 255, 0.1);
+      --text: #eef4ff;
+      --muted: #92a5c1;
+      --shadow: 0 18px 42px rgba(0, 0, 0, 0.34);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Inter", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(62, 121, 255, 0.2), transparent 30%),
+        radial-gradient(circle at top right, rgba(63, 255, 219, 0.1), transparent 28%),
+        linear-gradient(180deg, #0b1220 0%, #07101a 100%);
+    }
+
+    .shell {
+      width: min(1280px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 28px 0 40px;
+    }
+
+    .hero {
+      margin-bottom: 22px;
+      padding: 24px;
+      border-radius: 24px;
+      border: 1px solid var(--line);
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.05), transparent 48%), var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: #c7d7f0;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    h1 {
+      margin: 14px 0 10px;
+      font-size: clamp(28px, 4vw, 46px);
+      line-height: 0.98;
+      letter-spacing: -0.04em;
+    }
+
+    .hero p {
+      margin: 0;
+      max-width: 820px;
+      color: var(--muted);
+      line-height: 1.55;
+      font-size: 14px;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 18px;
+    }
+
+    .controls {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    button,
+    select {
+      appearance: none;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text);
+      border-radius: 14px;
+      padding: 10px 14px;
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+      font-weight: 700;
+    }
+
+    .meta {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .grid {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    }
+
+    .card {
+      overflow: hidden;
+      border-radius: 22px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 28%), rgba(10, 16, 28, 0.9);
+      box-shadow: var(--shadow);
+    }
+
+    .card-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px 18px 0;
+    }
+
+    .card-title {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 800;
+    }
+
+    .card-label {
+      display: inline-flex;
+      align-items: center;
+      height: fit-content;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.11em;
+      color: #bfd0e6;
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .card-desc {
+      margin: 6px 18px 12px;
+      min-height: 34px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .stage {
+      position: relative;
+      aspect-ratio: 9 / 16;
+      margin: 0 12px 12px;
+      border-radius: 18px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background:
+        radial-gradient(circle at 20% 12%, rgba(255, 255, 255, 0.08), transparent 26%),
+        linear-gradient(180deg, rgba(36, 51, 77, 0.78), rgba(8, 12, 22, 0.96));
+    }
+
+    .scene {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      padding: 18px;
+      overflow: hidden;
+      background: linear-gradient(180deg, transparent 0%, transparent 52%, rgba(0, 0, 0, 0.56) 100%);
+    }
+
+    .caption {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.28em;
+      justify-content: center;
+      align-items: center;
+      text-wrap: balance;
+    }
+
+    .word {
+      position: relative;
+      display: inline-flex;
+      white-space: nowrap;
+      transition: transform 0.22s ease, color 0.22s ease, opacity 0.22s ease;
+    }
+
+    .word.done {
+      opacity: 0.9;
+    }
+
+    .word.upcoming {
+      opacity: 0.22;
+    }
+
+    .caption-ribbon {
+      font-family: "Manrope", sans-serif;
+      font-size: 23px;
+      font-weight: 800;
+      line-height: 1.2;
+    }
+
+    .caption-ribbon .word {
+      color: rgba(255, 255, 255, 0.3);
+    }
+
+    .caption-ribbon .word.active {
+      color: #08111e;
+      padding: 0.18em 0.52em;
+    }
+
+    .caption-ribbon .word.active::before {
+      content: "";
+      position: absolute;
+      inset: -0.08em -0.18em;
+      z-index: -1;
+      background: linear-gradient(90deg, #8affdb, #44c8ff);
+      clip-path: polygon(7% 0, 100% 0, 93% 100%, 0 100%);
+      box-shadow: 0 10px 22px rgba(68, 200, 255, 0.18);
+    }
+
+    .caption-spotlight {
+      font-family: "Fraunces", serif;
+      font-size: 25px;
+      font-weight: 700;
+      line-height: 1.45;
+      max-width: 86%;
+      text-align: center;
+    }
+
+    .caption-spotlight .word {
+      color: rgba(255, 255, 255, 0.28);
+      filter: none;
+      transform: translateY(12px);
+      opacity: 0;
+    }
+
+    .caption-spotlight .word.done {
+      color: rgba(255, 255, 255, 0.84);
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .caption-spotlight .word.active {
+      color: #fff4b1;
+      filter: none;
+      text-shadow: 0 0 18px rgba(255, 244, 177, 0.18);
+      transform: translateY(-2px);
+      opacity: 1;
+    }
+
+    .caption-spotlight .word.upcoming {
+      opacity: 0;
+    }
+
+    .caption-corner {
+      width: 100%;
+      justify-content: flex-start;
+      align-self: flex-end;
+      font-family: "Inter", sans-serif;
+      font-size: 22px;
+      font-weight: 800;
+      line-height: 1.24;
+    }
+
+    .caption-corner .word {
+      color: rgba(255, 255, 255, 0.22);
+      transform: translateY(12px);
+      opacity: 0;
+    }
+
+    .caption-corner .word.done {
+      color: rgba(255, 255, 255, 0.86);
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    .caption-corner .word.active {
+      color: #8fffe8;
+      transform: translateY(0);
+      opacity: 1;
+      text-shadow: 0 0 18px rgba(143, 255, 232, 0.2);
+    }
+
+    .caption-corner .word.active::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: -0.14em;
+      height: 0.14em;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #8fffe8, #44c8ff);
+    }
+
+    .caption-paper {
+      max-width: 84%;
+      justify-content: center;
+      padding: 20px 18px;
+      border-radius: 20px;
+      background: rgba(244, 238, 223, 0.92);
+      color: #1e2025;
+      box-shadow: 0 18px 32px rgba(0, 0, 0, 0.22);
+      font-family: "Fraunces", serif;
+      font-size: 23px;
+      line-height: 1.5;
+      text-align: center;
+    }
+
+    .caption-paper .word {
+      color: rgba(30, 32, 37, 0.36);
+    }
+
+    .caption-paper .word.done {
+      color: rgba(30, 32, 37, 0.9);
+      opacity: 1;
+    }
+
+    .caption-paper .word.active {
+      color: #111;
+      background: linear-gradient(transparent 60%, #ffe67a 60%);
+    }
+
+    .caption-pixel {
+      font-family: "Space Grotesk", sans-serif;
+      font-size: 22px;
+      font-weight: 700;
+      line-height: 1.18;
+      text-transform: uppercase;
+    }
+
+    .caption-pixel .word {
+      color: rgba(255, 255, 255, 0.22);
+      text-shadow: 2px 0 0 transparent;
+      transform: translateY(0);
+      opacity: 0.32;
+    }
+
+    .caption-pixel .word.done {
+      color: rgba(255, 255, 255, 0.86);
+      text-shadow: none;
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    .caption-pixel .word.active {
+      color: #ffffff;
+      text-shadow: -2px 0 0 #00f0ff, 2px 0 0 #ff5ea8;
+      transform: translateY(-3px);
+      opacity: 1;
+      animation: rise-word 0.34s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    }
+
+    .caption-pixel .word.upcoming {
+      opacity: 0.32;
+    }
+
+    @keyframes rise-word {
+      0% {
+        transform: translateY(22px) scale(0.96);
+        opacity: 0;
+      }
+      65% {
+        transform: translateY(-4px) scale(1.02);
+        opacity: 1;
+      }
+      100% {
+        transform: translateY(-3px) scale(1);
+        opacity: 1;
+      }
+    }
+
+    .footer-note {
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    @media (max-width: 720px) {
+      .shell {
+        width: min(100% - 20px, 1280px);
+        padding-top: 18px;
+      }
+
+      .hero {
+        padding: 18px;
+      }
+
+      .caption-spotlight {
+        font-size: 24px;
+      }
+
+      .caption-ribbon,
+      .caption-paper {
+        font-size: 21px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="hero">
+      <div class="eyebrow">Original directions</div>
+      <h1>Simple templates with a more original visual idea.</h1>
+      <p>
+        This file is intentionally less trend-copy and more concept-driven. Each template is still simple enough to implement,
+        but it tries to feel fresher than the usual glow, bubble, underline, or plain box treatment.
+      </p>
+      <div class="toolbar">
+        <div class="controls">
+          <button id="toggle">Pause animation</button>
+          <button id="next">Next word</button>
+          <select id="lineSelect" aria-label="Change preview sentence">
+            <option value="hook">You need one hook that instantly stops the scroll</option>
+            <option value="clarity">Your message becomes stronger when the visual stays intentional</option>
+            <option value="trust">Simple design often feels more premium than loud design</option>
+          </select>
+        </div>
+        <div class="meta" id="meta">4 original simple concepts</div>
+      </div>
+    </section>
+
+    <section class="grid" id="grid"></section>
+
+    <p class="footer-note">
+      If a few of these feel closer to your taste, I can evolve them into a stronger second pass instead of giving you another generic set.
+    </p>
+  </div>
+
+  <script>
+    const lines = {
+      hook: "You need one hook that instantly stops the scroll",
+      clarity: "Your message becomes stronger when the visual stays intentional",
+      trust: "Simple design often feels more premium than loud design"
+    };
+
+    const templates = [
+      { id: "ribbon", name: "Ribbon Tag", label: "Promo", desc: "Current word sits on a slanted ribbon instead of a normal chip.", captionClass: "caption caption-ribbon", extras: "" },
+      { id: "spotlight", name: "Soft Spotlight", label: "Story", desc: "Spoken words stay visible while the current word gets a warm focus glow.", captionClass: "caption caption-spotlight", extras: "" },
+      { id: "corner", name: "Corner Flow", label: "Minimal", desc: "Words rise in one by one with a clean underline accent on the active word.", captionClass: "caption caption-corner", extras: "" },
+      { id: "paper", name: "Paper Note", label: "Journal", desc: "A soft note-card look where spoken words remain complete and readable.", captionClass: "caption caption-paper", extras: "" }
+    ];
+
+    const grid = document.getElementById("grid");
+    const toggleButton = document.getElementById("toggle");
+    const nextButton = document.getElementById("next");
+    const lineSelect = document.getElementById("lineSelect");
+    const meta = document.getElementById("meta");
+
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let currentWords = lines[lineSelect.value].split(" ");
+    let activeIndex = 0;
+    let playing = !prefersReducedMotion;
+    let tickMs = 1150;
+    let intervalId = null;
+
+    function wordState(index) {
+      if (index < activeIndex) return "done";
+      if (index === activeIndex) return "active";
+      return "upcoming";
+    }
+
+    function buildWord(word, index) {
+      const state = wordState(index);
+      const classes = ["word"];
+      if (state) classes.push(state);
+      return `<span class="${classes.join(" ")}">${word}</span>`;
+    }
+
+    function renderCards() {
+      grid.innerHTML = templates.map((template) => `
+        <article class="card">
+          <div class="card-head">
+            <h2 class="card-title">${template.name}</h2>
+            <span class="card-label">${template.label}</span>
+          </div>
+          <p class="card-desc">${template.desc}</p>
+          <div class="stage">
+            <div class="scene">
+              ${template.extras}
+              <div class="${template.captionClass}" data-template="${template.id}">
+                ${currentWords.map((word, index) => buildWord(word, index)).join("")}
+              </div>
+            </div>
+          </div>
+        </article>
+      `).join("");
+      meta.textContent = `${templates.length} original simple concepts`;
+    }
+
+    function updateCaptions() {
+      document.querySelectorAll("[data-template]").forEach((node) => {
+        node.innerHTML = currentWords.map((word, index) => buildWord(word, index)).join("");
+      });
+    }
+
+    function stepForward() {
+      activeIndex = (activeIndex + 1) % currentWords.length;
+      updateCaptions();
+    }
+
+    function startLoop() {
+      clearInterval(intervalId);
+      if (!playing) {
+        intervalId = null;
+        return;
+      }
+      intervalId = setInterval(() => {
+        stepForward();
+      }, tickMs);
+    }
+
+    toggleButton.addEventListener("click", () => {
+      playing = !playing;
+      toggleButton.textContent = playing ? "Pause animation" : "Resume animation";
+      startLoop();
+    });
+
+    nextButton.addEventListener("click", () => {
+      stepForward();
+    });
+
+    lineSelect.addEventListener("change", () => {
+      currentWords = lines[lineSelect.value].split(" ");
+      activeIndex = 0;
+      renderCards();
+    });
+
+    renderCards();
+    toggleButton.textContent = playing ? "Pause animation" : "Resume animation";
+    startLoop();
+  </script>
+</body>
+</html>
