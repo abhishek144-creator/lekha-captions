@@ -1,4 +1,5 @@
 import os
+import asyncio
 import subprocess
 import tempfile
 import requests
@@ -730,7 +731,10 @@ class VideoProcessor:
                 print(f"[Debug] Could not save debug ASS: {_de}")
 
             print(f"[FFmpeg] Running command: {' '.join(cmd)}")
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            # run_in_executor releases the event loop during the long FFmpeg render
+            result = await asyncio.get_running_loop().run_in_executor(
+                None, lambda: subprocess.run(cmd, capture_output=True, text=True)
+            )
 
             # Always log FFmpeg stderr (even on success — libass warnings appear here)
             if result.stderr:

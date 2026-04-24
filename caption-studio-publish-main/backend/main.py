@@ -9,6 +9,7 @@ from pydantic import BaseModel
 import shutil
 import os
 import uuid
+import subprocess
 import urllib.request
 import json
 from datetime import datetime, timedelta, date
@@ -104,6 +105,15 @@ PLAN_PRICING = {
 
 # Semaphore to limit concurrent renders to 2. This creates a queue invisible to the user!
 render_semaphore = asyncio.Semaphore(2)
+
+# Per-user locks prevent two concurrent export requests from the same user from
+# racing past the daily-limit check and both deducting a credit.
+_user_export_locks: Dict[str, asyncio.Lock] = {}
+
+def _get_user_export_lock(uid: str) -> asyncio.Lock:
+    if uid not in _user_export_locks:
+        _user_export_locks[uid] = asyncio.Lock()
+    return _user_export_locks[uid]
 
 # Global APScheduler reference (None if apscheduler not installed)
 scheduler = AsyncIOScheduler() if SCHEDULER_AVAILABLE else None
@@ -336,12 +346,38 @@ class CaptionItem(BaseModel):
 class ExportRequest(BaseModel):
     file_id: str
     captions: List[CaptionItem]
-    # Critical: Accept arbitrary dictionary for styles
     style: Dict[str, Any] = {}
     word_layouts: Dict[str, Any] = {}
     id_token: str = ""  # Firebase Auth Token (optional — bypassed in dev mode)
     quality: str = "1080p"  # Export quality: "4k", "1080p", "720p"
     fps: int = 30  # Frame rate: 24, 30, 60
+
+    def validated_style(self) -> Dict[str, Any]:
+        """Return a copy of style with all numeric fields clamped to safe ranges."""
+        s = dict(self.style)
+        _num_clamps = {
+            'font_size':               (8,   200),
+            'position_x':              (0,   100),
+            'position_y':              (0,   100),
+            'background_padding':      (0,   100),
+            'background_h_multiplier': (0.5, 3.0),
+            'shadow_blur':             (0,   50),
+            'shadow_offset_x':         (-50, 50),
+            'shadow_offset_y':         (-50, 50),
+            'letter_spacing':          (-10, 20),
+            'line_height':             (0.5, 4.0),
+            'outline_width':           (0,   20),
+        }
+        for field, (lo, hi) in _num_clamps.items():
+            if field in s:
+                try:
+                    s[field] = max(lo, min(hi, float(s[field])))
+                except (TypeError, ValueError):
+                    del s[field]
+        # Whitelist quality and fps to prevent injection via those fields
+        if s.get('quality') not in ('4k', '1080p', '720p', None):
+            s.pop('quality', None)
+        return s
 
 class CreateOrderRequest(BaseModel):
     plan_id: str
@@ -471,9 +507,7 @@ async def process_video(req: ProcessRequest):
     if not is_dev_token:
         decoded_token = verify_token(req.id_token)
         if not decoded_token:
-            db_check = get_db()
-            if db_check is not None:
-                raise HTTPException(status_code=401, detail="Authentication required")
+            raise HTTPException(status_code=401, detail="Authentication required")
     if not _validate_file_id(req.file_id):
         raise HTTPException(status_code=400, detail="Invalid file_id")
     input_path = _safe_find_upload(req.file_id)
@@ -490,13 +524,11 @@ async def export_video(req: ExportRequest):
     decoded_token = verify_token(req.id_token) if req.id_token and not is_dev_token else None
     if decoded_token:
         uid = decoded_token.get('uid')
-    else:
-        if not is_dev_token:
-            db_check = get_db()
-            if db_check is not None:
-                raise HTTPException(status_code=401, detail="Authentication required")
+    elif is_dev_token:
         uid = "dev-local-user"
         print("[Export] No real auth token — running in dev mode")
+    else:
+        raise HTTPException(status_code=401, detail="Authentication required")
 
     # 2. Check Credits & Limits (skipped gracefully if Firestore is not configured)
     db = get_db()
@@ -508,148 +540,156 @@ async def export_video(req: ExportRequest):
     user_data = {}
     user_ref = None
 
-    if db_available:
-        _loop = asyncio.get_running_loop()
-        user_ref = db.collection('users').document(uid)
-        # Firestore SDK is synchronous — offload to thread pool so the event loop
-        # is not blocked during the network round-trip.
-        user_doc = await _loop.run_in_executor(None, user_ref.get)
-
-        if not user_doc.exists:
-            # Auto-create user document with free tier defaults
-            print(f"[Export] User {uid} not found in Firestore — auto-creating with free tier defaults.")
-            default_user = {
-                'credits_remaining': 100,
-                'credits_sig': _sign_credits(uid, 100),
-                'subscription_tier': 'free',
-                'export_timestamps': [],
-                'created_at': time.time(),
-                'uid': uid,
-            }
-            await _loop.run_in_executor(None, lambda: user_ref.set(default_user))
-            user_data = default_user
-        else:
-            user_data = user_doc.to_dict()
-
-        # Vulnerability 2 fix: verify HMAC before trusting the stored value.
-        # A mismatch means credits_remaining was written directly to Firestore
-        # outside the backend (e.g. via Firebase client SDK).
-        credits, _tampered = _verify_credits(uid, user_data)
-        if _tampered:
-            raise HTTPException(
-                status_code=403,
-                detail="Account integrity check failed. Please contact support."
-            )
-        tier = user_data.get('subscription_tier', 'free')
-
-        # Check if paid plan has expired (time-based)
-        plan_time_expired = False
-        if tier and tier != 'free':
-            expiry_str = user_data.get('subscription_expiry')
-            if expiry_str:
-                try:
-                    expiry_date = datetime.fromisoformat(expiry_str.replace('Z', '+00:00'))
-                    if expiry_date < datetime.now(expiry_date.tzinfo):
-                        plan_time_expired = True
-                except (ValueError, TypeError) as e:
-                    print(f"[Export] Failed to parse subscription_expiry '{expiry_str}': {e}")
-
-        # Reset expired promo users back to free tier
-        if user_data.get("is_promo_user") and user_data.get("promo_expires"):
-            try:
-                promo_exp = date.fromisoformat(user_data["promo_expires"])
-                if date.today() > promo_exp:
-                    user_ref.update({
-                        "subscription_tier": "free",
-                        "credits_remaining": 0,
-                        "is_promo_user": False,
-                    })
-                    credits = 0
-                    tier = "free"
-                    plan_time_expired = True
-            except Exception as e:
-                print(f"[Export] Promo expiry check failed: {e}")
-
-        # Block export if credits are 0 (regardless of plan type)
-        if credits <= 0:
-            if tier and tier != 'free' and plan_time_expired:
-                raise HTTPException(status_code=403, detail="PLAN_EXPIRED: Your plan has expired and you have no credits left. Please renew to continue exporting.")
-            else:
-                raise HTTPException(status_code=403, detail="UPGRADE_REQUIRED: You have no credits remaining. Please upgrade your plan to continue exporting.")
-
-        # Check 24-hour limit (max 5 exports)
-        export_history = user_data.get('export_timestamps', [])
-        # Filter only timestamps within the last 24 hours
-        recent_exports = [ts for ts in export_history if ts >= (now - 86400)]
-
-        if len(recent_exports) >= 5:
-            raise HTTPException(status_code=429, detail="Limit reached: You can only export 5 videos per 24 hours to prevent abuse.")
-    else:
-        print("[Export] Firestore not available — skipping credit check (dev mode).")
-
-    # 3. Process Video
-    if not _validate_file_id(req.file_id):
-        raise HTTPException(status_code=400, detail="Invalid file_id")
-    input_path = _safe_find_upload(req.file_id)
-    if not input_path: raise HTTPException(status_code=404, detail="Video not found")
-
-    output_filename = f"export_{req.file_id}.mp4"
-    output_path = os.path.join(EXPORT_DIR, output_filename)
-
-    captions = [c.dict() for c in req.captions]
-    if not captions or not any(c.get('text', '').strip() for c in captions):
-        raise HTTPException(status_code=400, detail="No captions provided for export")
-    
-    # QUEUE SYSTEM: Wait for an available render slot via Semaphore 
-    # This prevents the server from crashing if 10 people click export at once.
-    print(f"[Queue] Video {req.file_id} waiting in line for render slot...")
-    async with render_semaphore:
-        print(f"[Render] Video {req.file_id} starting render now (quality={req.quality})!")
-        style_with_quality = {**req.style, 'quality': req.quality, 'fps': req.fps}
-        result = await processor.burn_only(input_path, output_path, captions, style_with_quality, req.word_layouts)
-
-    if not result['success']: return {"success": False, "error": result.get('error')}
-
-    # 4. Upload to Firebase Storage (if configured)
-    video_url = f"/exports/{output_filename}"
-    firebase_url = None
+    # Per-user lock: prevents two concurrent exports from the same user racing past
+    # the daily-limit check and double-spending credits. Lock is held through render
+    # and deduct — same user can't start a second export until the first completes.
+    _user_lock = _get_user_export_lock(uid)
+    await _user_lock.acquire()
     try:
-        remote_path = f"exports/{uid}/{output_filename}"
-        firebase_url = upload_to_firebase_storage(output_path, remote_path, "video/mp4")
-        if firebase_url:
-            video_url = firebase_url
-            # Delete local file since it's now in Firebase Storage
-            try:
-                os.remove(output_path)
-            except Exception as e:
-                print(f"[Export] Failed to delete local export file after Firebase upload: {e}")
-    except Exception as e:
-        print(f"[Export] Firebase Storage upload failed, falling back to local: {e}")
+        if db_available:
+            _loop = asyncio.get_running_loop()
+            user_ref = db.collection('users').document(uid)
+            # Firestore SDK is synchronous — offload to thread pool so the event loop
+            # is not blocked during the network round-trip.
+            user_doc = await _loop.run_in_executor(None, user_ref.get)
 
-    # 5. Deduct Credit & Log History on Success (only when Firestore is available)
-    if db_available and user_ref is not None:
-        recent_exports.append(now)
+            if not user_doc.exists:
+                # Auto-create user document with free tier defaults
+                print(f"[Export] User {uid} not found in Firestore — auto-creating with free tier defaults.")
+                default_user = {
+                    'credits_remaining': 100,
+                    'credits_sig': _sign_credits(uid, 100),
+                    'subscription_tier': 'free',
+                    'export_timestamps': [],
+                    'created_at': time.time(),
+                    'uid': uid,
+                }
+                await _loop.run_in_executor(None, lambda: user_ref.set(default_user))
+                user_data = default_user
+            else:
+                user_data = user_doc.to_dict()
 
-        history_item = {
-            "id": req.file_id,
-            "filename": output_filename,
-            "url": video_url,
-            "createdAt": now * 1000,
-            "firebase_path": f"exports/{uid}/{output_filename}" if firebase_url else None
-        }
-        current_history = user_data.get('history', [])
-        current_history.insert(0, history_item)
-        if len(current_history) > 5:
-            current_history = current_history[:5]
+            # Vulnerability 2 fix: verify HMAC before trusting the stored value.
+            # A mismatch means credits_remaining was written directly to Firestore
+            # outside the backend (e.g. via Firebase client SDK).
+            credits, _tampered = _verify_credits(uid, user_data)
+            if _tampered:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Account integrity check failed. Please contact support."
+                )
+            tier = user_data.get('subscription_tier', 'free')
 
-        _new_credits = credits - 1
-        _update_payload = {
-            'credits_remaining': _new_credits,
-            'credits_sig': _sign_credits(uid, _new_credits),
-            'export_timestamps': recent_exports,
-            'history': current_history,
-        }
-        await _loop.run_in_executor(None, lambda: user_ref.update(_update_payload))
+            # Check if paid plan has expired (time-based)
+            plan_time_expired = False
+            if tier and tier != 'free':
+                expiry_str = user_data.get('subscription_expiry')
+                if expiry_str:
+                    try:
+                        expiry_date = datetime.fromisoformat(expiry_str.replace('Z', '+00:00'))
+                        if expiry_date < datetime.now(expiry_date.tzinfo):
+                            plan_time_expired = True
+                    except (ValueError, TypeError) as e:
+                        print(f"[Export] Failed to parse subscription_expiry '{expiry_str}': {e}")
+
+            # Reset expired promo users back to free tier (offloaded — avoids blocking loop)
+            if user_data.get("is_promo_user") and user_data.get("promo_expires"):
+                try:
+                    promo_exp = date.fromisoformat(user_data["promo_expires"])
+                    if date.today() > promo_exp:
+                        await _loop.run_in_executor(None, lambda: user_ref.update({
+                            "subscription_tier": "free",
+                            "credits_remaining": 0,
+                            "is_promo_user": False,
+                        }))
+                        credits = 0
+                        tier = "free"
+                        plan_time_expired = True
+                except Exception as e:
+                    print(f"[Export] Promo expiry check failed: {e}")
+
+            # Block export if credits are 0 (regardless of plan type)
+            if credits <= 0:
+                if tier and tier != 'free' and plan_time_expired:
+                    raise HTTPException(status_code=403, detail="PLAN_EXPIRED: Your plan has expired and you have no credits left. Please renew to continue exporting.")
+                else:
+                    raise HTTPException(status_code=403, detail="UPGRADE_REQUIRED: You have no credits remaining. Please upgrade your plan to continue exporting.")
+
+            # Check 24-hour limit — atomic with deduct because the per-user lock is held
+            export_history = user_data.get('export_timestamps', [])
+            recent_exports = [ts for ts in export_history if ts >= (now - 86400)]
+
+            if len(recent_exports) >= 5:
+                raise HTTPException(status_code=429, detail="Limit reached: You can only export 5 videos per 24 hours to prevent abuse.")
+        else:
+            print("[Export] Firestore not available — skipping credit check (dev mode).")
+
+        # 3. Process Video
+        if not _validate_file_id(req.file_id):
+            raise HTTPException(status_code=400, detail="Invalid file_id")
+        input_path = _safe_find_upload(req.file_id)
+        if not input_path: raise HTTPException(status_code=404, detail="Video not found")
+
+        output_filename = f"export_{req.file_id}.mp4"
+        output_path = os.path.join(EXPORT_DIR, output_filename)
+
+        captions = [c.dict() for c in req.captions]
+        if not captions or not any(c.get('text', '').strip() for c in captions):
+            raise HTTPException(status_code=400, detail="No captions provided for export")
+
+        # QUEUE SYSTEM: Wait for an available render slot via Semaphore
+        # This prevents the server from crashing if 10 people click export at once.
+        print(f"[Queue] Video {req.file_id} waiting in line for render slot...")
+        async with render_semaphore:
+            print(f"[Render] Video {req.file_id} starting render now (quality={req.quality})!")
+            style_with_quality = {**req.validated_style(), 'quality': req.quality, 'fps': req.fps}
+            result = await processor.burn_only(input_path, output_path, captions, style_with_quality, req.word_layouts)
+
+        if not result['success']:
+            return {"success": False, "error": result.get('error')}
+
+        # 4. Upload to Firebase Storage (if configured)
+        video_url = f"/exports/{output_filename}"
+        firebase_url = None
+        try:
+            remote_path = f"exports/{uid}/{output_filename}"
+            firebase_url = upload_to_firebase_storage(output_path, remote_path, "video/mp4")
+            if firebase_url:
+                video_url = firebase_url
+                try:
+                    os.remove(output_path)
+                except Exception as e:
+                    print(f"[Export] Failed to delete local export file after Firebase upload: {e}")
+        except Exception as e:
+            print(f"[Export] Firebase Storage upload failed, falling back to local: {e}")
+
+        # 5. Deduct Credit & Log History on Success (only when Firestore is available)
+        if db_available and user_ref is not None:
+            recent_exports.append(now)
+
+            history_item = {
+                "id": req.file_id,
+                "filename": output_filename,
+                "url": video_url,
+                "createdAt": now * 1000,
+                "firebase_path": f"exports/{uid}/{output_filename}" if firebase_url else None
+            }
+            current_history = user_data.get('history', [])
+            current_history.insert(0, history_item)
+            if len(current_history) > 5:
+                current_history = current_history[:5]
+
+            _new_credits = credits - 1
+            _update_payload = {
+                'credits_remaining': _new_credits,
+                'credits_sig': _sign_credits(uid, _new_credits),
+                'export_timestamps': recent_exports,
+                'history': current_history,
+            }
+            await _loop.run_in_executor(None, lambda: user_ref.update(_update_payload))
+
+    finally:
+        _user_lock.release()
 
     # Calculate expiry based on user's plan
     retention_hours = 2  # default for free tier
@@ -774,8 +814,9 @@ async def verify_payment(req: VerifyPaymentRequest, request: Request):
     if not db:
         raise HTTPException(status_code=500, detail="Database not initialized")
 
+    _vp_loop = asyncio.get_running_loop()
     user_ref = db.collection('users').document(uid)
-    user_doc = user_ref.get()
+    user_doc = await _vp_loop.run_in_executor(None, user_ref.get)
     user_data = user_doc.to_dict() if user_doc.exists else {}
     # Verify before using — if credits were tampered via direct Firestore write,
     # use 0 as the base so the attacker doesn't keep their inflated value.
@@ -825,7 +866,7 @@ async def verify_payment(req: VerifyPaymentRequest, request: Request):
                 'timestamp': cycle_start,
             }
         )
-        _topup_batch.commit()
+        await _vp_loop.run_in_executor(None, _topup_batch.commit)
 
         return {"success": True, "credits_added": credits_to_add, "type": "topup"}
 
@@ -875,7 +916,7 @@ async def verify_payment(req: VerifyPaymentRequest, request: Request):
             'timestamp': cycle_start,
         }
     )
-    _sub_batch.commit()
+    await _vp_loop.run_in_executor(None, _sub_batch.commit)
 
     return {"success": True, "credits_added": credits_to_add, "billing_cycle_end": cycle_end, "type": "subscription"}
 
@@ -898,9 +939,10 @@ async def redeem_promo(req: RedeemPromoRequest, request: Request):
     if not db:
         raise HTTPException(status_code=503, detail="Database unavailable")
 
+    _promo_loop = asyncio.get_running_loop()
     code_upper = req.code.strip().upper()
     code_ref = db.collection("promo_codes").document(code_upper)
-    code_doc = code_ref.get()
+    code_doc = await _promo_loop.run_in_executor(None, code_ref.get)
 
     if not code_doc.exists:
         raise HTTPException(status_code=400, detail="Invalid or already used code")
@@ -913,17 +955,17 @@ async def redeem_promo(req: RedeemPromoRequest, request: Request):
     expiry_date = (now + relativedelta(months=int(promo["duration_months"]))).date().isoformat()
 
     user_ref = db.collection("users").document(uid)
-    user_doc = user_ref.get()
+    user_doc = await _promo_loop.run_in_executor(None, user_ref.get)
     user_email = user_doc.to_dict().get("email", "") if user_doc.exists else ""
 
-    code_ref.update({
+    await _promo_loop.run_in_executor(None, lambda: code_ref.update({
         "is_used": True,
         "used_by_email": user_email,
         "used_at": now.isoformat(),
-    })
+    }))
 
     _promo_credits = int(promo["credits_per_month"])
-    user_ref.set({
+    await _promo_loop.run_in_executor(None, lambda: user_ref.set({
         "subscription_tier": promo["plan_id"],
         "credits_remaining": _promo_credits,
         "credits_sig": _sign_credits(uid, _promo_credits),
@@ -934,7 +976,7 @@ async def redeem_promo(req: RedeemPromoRequest, request: Request):
         "promo_code_used": code_upper,
         "promo_plan": promo["plan_id"],
         "promo_expires": expiry_date,
-    }, merge=True)
+    }, merge=True))
 
     return {
         "success": True,
@@ -1016,9 +1058,7 @@ async def detect_language(req: DetectLanguageRequest):
     if not is_dev_token:
         decoded_token = verify_token(req.id_token)
         if not decoded_token:
-            db_check = get_db()
-            if db_check is not None:
-                raise HTTPException(status_code=401, detail="Authentication required")
+            raise HTTPException(status_code=401, detail="Authentication required")
     if not _validate_file_id(req.file_id):
         raise HTTPException(status_code=400, detail="Invalid file_id")
     input_path = _safe_find_upload(req.file_id)
