@@ -49,6 +49,10 @@ function scaleTemplateFontSize(fontSize) {
 
 function buildRuntimeScript() {
   return `
+    const TEMPLATE_CANVAS_FONT_SCALE = ${TEMPLATE_CANVAS_FONT_SCALE};
+    const scaleTemplateFontSize = (fontSize) =>
+      Math.max(12, Math.round((fontSize || 18) * TEMPLATE_CANVAS_FONT_SCALE));
+
     const escapeHtml = (value = '') =>
       String(value)
         .replace(/&/g, '&amp;')

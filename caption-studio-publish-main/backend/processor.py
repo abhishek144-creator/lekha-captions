@@ -1144,6 +1144,9 @@ class VideoProcessor:
                 nxt = dict(normalized[i + 1])
                 nxt["text"] = self._normalize_caption_text(f"{cur.get('text', '')} {nxt.get('text', '')}")
                 nxt["start_time"] = min(cur["start_time"], nxt.get("start_time", cur["start_time"]))
+                words = list(cur.get("words") or []) + list(nxt.get("words") or [])
+                if words:
+                    nxt["words"] = sorted(words, key=lambda item: float(item.get("start", 0) or 0))
                 merged.append(nxt)
                 i += 2
                 continue

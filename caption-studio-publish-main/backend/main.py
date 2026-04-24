@@ -2698,6 +2698,7 @@ async def account_delete(req: AccountDataRequest):
         firebase_auth.delete_user(uid)
     except Exception as e:
         _json_log("warning", "account_delete_auth_delete_failed", uid=uid, error=str(e))
+        raise HTTPException(status_code=500, detail="Failed to delete authentication record") from e
     if user_doc.exists:
         user_ref.delete()
     _audit_action("account_delete", uid)
