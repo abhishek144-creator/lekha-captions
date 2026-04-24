@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import {
   Sheet,
@@ -14,6 +14,11 @@ import {
   Lock
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { toast } from '@/components/ui/use-toast';
+import { apiRequest } from '@/lib/apiClient';
+import { notifyApiError } from '@/lib/notifyApiError';
+import { getClientContext, trackAnalytics } from '@/lib/analytics';
+import { isFeatureEnabled } from '@/lib/featureFlags';
 
 import { Progress } from "@/components/ui/progress";
 
@@ -132,7 +137,88 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
   const [waitStartTime, setWaitStartTime] = useState(null);
   const [showServerBusy, setShowServerBusy] = useState(false);
   const [exportExpiry, setExportExpiry] = useState(null);
-  const [exportFps, setExportFps] = useState(30);
+  const exportInFlightRef = useRef(false);
+  const exportAbortRef = useRef(null);
+
+  const throwIfAborted = (signal) => {
+    if (signal?.aborted) throw new DOMException('Export cancelled', 'AbortError');
+  };
+
+  const abortableSleep = (ms, signal) => new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException('Export cancelled', 'AbortError'));
+      return;
+    }
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener('abort', () => {
+      clearTimeout(timer);
+      reject(new DOMException('Export cancelled', 'AbortError'));
+    }, { once: true });
+  });
+
+  const pollExportStatus = async (jobId, authHeaders = {}, timeoutMs = 2 * 60 * 1000, signal = null) => {
+    const startedAt = Date.now();
+    let hadTransientFailure = false;
+    while (Date.now() - startedAt < timeoutMs) {
+      throwIfAborted(signal);
+      let statusPayload;
+      try {
+        statusPayload = await apiRequest(`/api/export-status/${jobId}`, {
+          headers: authHeaders,
+          signal
+        });
+        throwIfAborted(signal);
+        if (hadTransientFailure) {
+          setStatusMessage('Connection restored. Finalizing export status...');
+          hadTransientFailure = false;
+        }
+      } catch (err) {
+        throwIfAborted(signal);
+        hadTransientFailure = true;
+        setStatusMessage('Reconnecting to export status...');
+        await abortableSleep(1500, signal);
+        continue;
+      }
+      const status = (statusPayload?.status || '').toLowerCase();
+      if (status === 'queued') {
+        setStatusMessage('Preparing render job...');
+        setProgress(prev => Math.max(prev, 25));
+      } else if (status === 'processing') {
+        setStatusMessage('Rendering in progress...');
+        setProgress(prev => Math.max(prev, 55));
+      } else if (status === 'finalizing') {
+        setStatusMessage('Finalizing your export...');
+        setProgress(prev => Math.max(prev, 82));
+      } else if (status === 'completed') {
+        setProgress(prev => Math.max(prev, 90));
+        return;
+      } else if (status === 'failed') {
+        throw new Error(statusPayload?.error || 'Export failed');
+      }
+      await abortableSleep(1200, signal);
+    }
+    throw new Error('Export status check timed out. Please retry.');
+  };
+
+  useEffect(() => () => {
+    exportAbortRef.current?.abort();
+  }, []);
+
+  useEffect(() => {
+    if (!isExporting || !waitStartTime) return;
+
+    const timer = setInterval(() => {
+      const elapsedMs = Date.now() - waitStartTime;
+      if (elapsedMs > 30000) setShowServerBusy(true);
+      if (elapsedMs > 90000) {
+        setStatusMessage('Almost there... finalizing your video render');
+      } else if (elapsedMs > 45000) {
+        setStatusMessage('Rendering in progress... this can take up to 2 minutes');
+      }
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [isExporting, waitStartTime]);
 
   const generateSRT = () => {
     if (!captions || captions.length === 0) return '';
@@ -190,27 +276,60 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
     return false;
   })();
 
-  // 4K is only available for pro / pro+ plans (not free or starter)
+  // 4K is available for Creator and above (matches pricing promises)
   const is4kAllowed = (() => {
     if (!isSignedIn || !userData) return false;
     const tier = userData.subscription_tier || 'free';
-    // Allow only tiers that explicitly include 4K
-    return ['pro', 'pro_plus', 'professional', 'business'].includes(tier.toLowerCase());
+    const normalizedTier = tier.toLowerCase();
+    return [
+      'creator',
+      'creator_yearly',
+      'pro',
+      'pro_yearly',
+      'pro_plus',
+      'professional',
+      'business'
+    ].includes(normalizedTier);
   })();
 
   const handleExportVideo = async (quality) => {
+    if (exportInFlightRef.current) {
+      toast({
+        title: 'Export already running',
+        description: 'Please wait for the current export to finish.',
+      });
+      return;
+    }
     if (!fileId) {
-      alert('No video uploaded. Please upload a video first.');
+      toast({
+        variant: 'destructive',
+        title: 'No video uploaded',
+        description: 'Please upload a video first.',
+      });
       return;
     }
     if (!captions || captions.length === 0) {
-      alert('No captions to export');
+      toast({
+        variant: 'destructive',
+        title: 'No captions to export',
+      });
       return;
     }
 
     setIsExporting(true);
+    exportInFlightRef.current = true;
+    exportAbortRef.current?.abort();
+    const exportController = new AbortController();
+    exportAbortRef.current = exportController;
     setProgress(10);
     setStatusMessage('Preparing export...');
+    setWaitStartTime(Date.now());
+    setShowServerBusy(false);
+    trackAnalytics('funnel.export.started', getClientContext({
+      stage: 'export',
+      quality,
+      plan: userData?.subscription_tier || 'free'
+    }));
 
     try {
       setProgress(20);
@@ -219,8 +338,13 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
       const videoEl = document.querySelector('video');
       const container = videoEl?.parentElement;
       if (!videoEl || !container) {
-        alert('Video player not found. Please make sure the video is loaded and try again.');
+        toast({
+          variant: 'destructive',
+          title: 'Video player not found',
+          description: 'Please make sure the video is loaded and try again.',
+        });
         setIsExporting(false);
+        exportInFlightRef.current = false;
         setProgress(0);
         setStatusMessage('');
         return;
@@ -351,12 +475,22 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
       };
 
       const idToken = currentUser?.accessToken || await currentUser?.getIdToken();
+      const authHeaders = idToken ? { Authorization: `Bearer ${idToken}` } : {};
+      let effectiveQuality = quality;
+      const prefersDataSave = !!navigator?.connection?.saveData;
+      const lowBandwidth = (navigator?.connection?.effectiveType || '').includes('2g');
+      if ((prefersDataSave || lowBandwidth) && quality === '4k') {
+        effectiveQuality = '1080p';
+        toast({
+          title: 'Adaptive export quality',
+          description: 'Network conditions detected. Using 1080p for a faster, safer export.',
+        });
+      }
 
       const exportData = {
         file_id: fileId,
         id_token: idToken || '',
-        quality,
-        fps: exportFps,
+        quality: effectiveQuality,
         captions: captions.filter(c => c && c.text).map(cap => {
           const isText = cap.isTextElement;
           const cs = cap.customStyle || {};
@@ -410,7 +544,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
           // Merge template canonical overrides — ensures correct has_shadow/has_stroke/has_background
           // even when the user's React state was set before these properties were added to the template def.
           const _tid = captionStyle?.template_id || '';
-          const _tOverride = _tid ? (TEMPLATE_CANONICAL_STYLES[_tid] || (console.warn(`[Export] Unknown template_id: '${_tid}' — falling back to raw captionStyle`), {})) : {};
+          const _tOverride = TEMPLATE_CANONICAL_STYLES[_tid] || {};
           const _cs = { ...captionStyle, ..._tOverride };
           return {
           font_family: _cs?.font_family || 'Inter',
@@ -479,26 +613,18 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
         });
       }, 500);
 
-      let response;
-      try {
-        response = await fetch('/api/export', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(exportData)
-        });
-      } catch (networkErr) {
-        clearInterval(progressInterval);
-        throw new Error(`Network error — could not reach the server. Check your connection and try again.`)
-      }
-      clearInterval(progressInterval);
-
-      // Safely parse response — backend may return non-JSON on crashes
       let result;
-      const responseText = await response.text();
       try {
-        result = JSON.parse(responseText);
-      } catch (parseErr) {
-        throw new Error(responseText || `Server error (${response.status})`);
+        result = await exportQueue.add(() => apiRequest('/api/export', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(isFeatureEnabled('canaryExportFlow') ? { 'x-api-version': '2026-04-21' } : {}),
+          },
+          body: JSON.stringify(exportData)
+        }));
+      } finally {
+        clearInterval(progressInterval);
       }
 
       if (!result.success) {
@@ -510,9 +636,17 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
           setStatusMessage('');
           // Show user-friendly message first
           if (detail.includes('PLAN_EXPIRED')) {
-            alert('Your plan has expired and you have no credits left. Please renew to continue exporting.');
+            toast({
+              variant: 'destructive',
+              title: 'Plan expired',
+              description: 'Your plan has expired and you have no credits left. Please renew to continue exporting.',
+            });
           } else {
-            alert('You have no credits remaining. Please upgrade your plan to continue exporting.');
+            toast({
+              variant: 'destructive',
+              title: 'No credits remaining',
+              description: 'Please upgrade your plan to continue exporting.',
+            });
           }
           // Then open the pricing/upgrade modal
           if (onUpgradeClick) {
@@ -523,17 +657,27 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
         throw new Error(result.error || 'Export failed');
       }
 
+      let resolvedResult = result;
+      if (result.export_job_id) {
+        await pollExportStatus(result.export_job_id, authHeaders, 2 * 60 * 1000, exportController.signal);
+        if (!result.video_url) {
+          resolvedResult = await apiRequest(`/api/export-result/${result.export_job_id}`, {
+            headers: authHeaders,
+            signal: exportController.signal
+          });
+        }
+      }
+
       // Store expiry info
-      if (result.retention_hours) {
-        setExportExpiry({ hours: result.retention_hours, expiresAt: result.expires_at })
+      if (resolvedResult.retention_hours) {
+        setExportExpiry({ hours: resolvedResult.retention_hours, expiresAt: resolvedResult.expires_at })
       }
 
       setProgress(90);
       setStatusMessage('Preparing download...');
 
       // Firebase Storage URLs are absolute; local URLs are relative
-      const downloadUrl = result.video_url
-      if (!downloadUrl) throw new Error('Server did not return a download URL. Please try again.')
+      const downloadUrl = resolvedResult.video_url
       const videoResponse = await fetch(downloadUrl);
       if (!videoResponse.ok) {
         throw new Error(`Video download failed (${videoResponse.status}). Please try again.`);
@@ -548,6 +692,11 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+      trackAnalytics('funnel.export.success', getClientContext({
+        stage: 'export',
+        quality: effectiveQuality,
+        plan: userData?.subscription_tier || 'free'
+      }));
 
       setProgress(100);
       setStatusMessage('Export complete!');
@@ -555,11 +704,22 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
 
     } catch (error) {
       console.error('Export failed:', error);
-      alert(`Export failed: ${error.message}`);
+      trackAnalytics('funnel.export.failed', getClientContext({
+        stage: 'export',
+        quality,
+        plan: userData?.subscription_tier || 'free'
+      }));
+      notifyApiError(error, 'Export failed');
     } finally {
       setIsExporting(false);
+      exportInFlightRef.current = false;
+      if (exportAbortRef.current === exportController) {
+        exportAbortRef.current = null;
+      }
       setProgress(0);
       setStatusMessage('');
+      setWaitStartTime(null);
+      setShowServerBusy(false);
     }
   };
 
@@ -639,7 +799,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
                 <p className="text-sm text-gray-400 animate-pulse">{statusMessage}</p>
                 {showServerBusy && (
                   <p className="text-xs text-amber-400 mt-2 animate-pulse">
-                    Server is busy • Estimated time remaining: ~2 minutes
+                    High demand right now • render may take up to ~2 minutes
                   </p>
                 )}
               </div>
@@ -692,30 +852,11 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
                 </Button>
               </div>
             )}
-            {/* FPS selector */}
-            <div className="p-3 rounded-xl bg-white/[0.03] border border-white/10">
-              <p className="text-xs text-gray-400 mb-2 font-medium">Frame Rate (FPS)</p>
-              <div className="flex gap-2">
-                {[24, 30, 60].map(fps => (
-                  <button
-                    key={fps}
-                    onClick={() => setExportFps(fps)}
-                    className={`flex-1 py-1.5 rounded-lg text-sm font-medium border transition-all ${exportFps === fps
-                      ? 'bg-white text-black border-white'
-                      : 'bg-white/[0.03] text-gray-400 border-white/10 hover:border-white/30 hover:text-white'
-                    }`}
-                  >
-                    {fps}
-                  </button>
-                ))}
-              </div>
-            </div>
-
             {/* Video exports */}
             <p className="text-[11px] text-gray-500 uppercase tracking-wider font-medium px-1">Video Export</p>
             {exportOptions.filter(o => o.requiresPlan).map((option, idx) => {
               const isLocked = !isPlanActive || (option.requiresPro && !is4kAllowed);
-              const lockReason = !isPlanActive ? 'Requires active plan' : (option.requiresPro && !is4kAllowed) ? 'Pro plan required' : null;
+              const lockReason = !isPlanActive ? 'Requires active plan' : (option.requiresPro && !is4kAllowed) ? 'Creator or Pro plan required' : null;
               return (
                 <motion.button
                   key={idx}
