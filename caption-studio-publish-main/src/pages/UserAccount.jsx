@@ -18,7 +18,6 @@ const PLAN_LIMITS = {
   pro:             { totalCredits: 100, name: 'Pro' },
   pro_yearly:      { totalCredits: 100, name: 'Pro (Yearly)' },
 }
-
 export default function UserAccount() {
   const { currentUser, userData, logout } = useAuth()
   const navigate = useNavigate()
@@ -68,6 +67,14 @@ export default function UserAccount() {
   const getInitials = (name) => {
     if (!name) return 'U'
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+  }
+
+  const formatPaymentAmount = (payment) => {
+    const currency = (payment?.currency || 'INR').toUpperCase()
+    const symbol = currency === 'INR' ? '₹' : '$'
+    const amountMinor = Number(payment?.amount || 0)
+    const amountMajor = Number.isFinite(amountMinor) ? amountMinor / 100 : 0
+    return `${symbol}${amountMajor.toFixed(2)}`
   }
 
   const memberSince = userData?.createdAt
@@ -238,7 +245,7 @@ export default function UserAccount() {
                           {new Date(payment.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                         </td>
                         <td className="px-5 py-4 text-white font-medium text-xs">
-                          {payment.currency === 'INR' ? '₹' : '$'}{payment.amount}
+                          {formatPaymentAmount(payment)}
                         </td>
                         <td className="px-5 py-4">
                           <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase ${

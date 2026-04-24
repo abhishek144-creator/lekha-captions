@@ -1,0 +1,682 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Creative Caption Template Lab</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800;900&family=Cormorant+Garamond:wght@600;700&family=DM+Sans:wght@500;700;800&family=Inter:wght@500;700;800;900&family=Manrope:wght@700;800&family=Plus+Jakarta+Sans:wght@700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #08111d;
+      --panel: rgba(11, 18, 30, 0.88);
+      --line: rgba(255, 255, 255, 0.1);
+      --text: #edf4ff;
+      --muted: #8fa5c2;
+      --shadow: 0 20px 44px rgba(0, 0, 0, 0.34);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Inter", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(72, 130, 255, 0.18), transparent 30%),
+        radial-gradient(circle at top right, rgba(88, 255, 215, 0.1), transparent 28%),
+        linear-gradient(180deg, #0b1220 0%, #07101a 100%);
+    }
+
+    .shell {
+      width: min(1280px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 28px 0 40px;
+    }
+
+    .hero {
+      margin-bottom: 22px;
+      padding: 24px;
+      border-radius: 24px;
+      border: 1px solid var(--line);
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.05), transparent 48%), var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: #c7d7f0;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    h1 {
+      margin: 14px 0 10px;
+      font-size: clamp(28px, 4vw, 46px);
+      line-height: 0.98;
+      letter-spacing: -0.04em;
+    }
+
+    .hero p {
+      margin: 0;
+      max-width: 880px;
+      color: var(--muted);
+      line-height: 1.55;
+      font-size: 14px;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 18px;
+    }
+
+    .controls {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    button,
+    select {
+      appearance: none;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text);
+      border-radius: 14px;
+      padding: 10px 14px;
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+      font-weight: 700;
+      transition: background 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
+    }
+
+    button:hover,
+    select:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.18);
+    }
+
+    button:active {
+      transform: translateY(1px);
+    }
+
+    .meta {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .grid {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    }
+
+    .card {
+      overflow: hidden;
+      border-radius: 22px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 28%), rgba(10, 16, 28, 0.9);
+      box-shadow: var(--shadow);
+    }
+
+    .card-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px 18px 0;
+    }
+
+    .card-title {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 800;
+    }
+
+    .card-label {
+      display: inline-flex;
+      align-items: center;
+      height: fit-content;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.11em;
+      color: #bfd0e6;
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .card-desc {
+      margin: 6px 18px 12px;
+      min-height: 34px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .stage {
+      position: relative;
+      aspect-ratio: 9 / 16;
+      margin: 0 12px 12px;
+      border-radius: 18px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background:
+        radial-gradient(circle at 20% 12%, rgba(255, 255, 255, 0.08), transparent 26%),
+        linear-gradient(180deg, rgba(36, 51, 77, 0.78), rgba(8, 12, 22, 0.96));
+    }
+
+    .scene {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      padding: 18px;
+      overflow: hidden;
+      background: linear-gradient(180deg, transparent 0%, transparent 52%, rgba(0, 0, 0, 0.56) 100%);
+    }
+
+    .caption {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.3em;
+      justify-content: center;
+      align-items: center;
+      text-wrap: balance;
+    }
+
+    .word {
+      position: relative;
+      display: inline-flex;
+      white-space: nowrap;
+      transition: transform 0.24s ease, color 0.24s ease, opacity 0.24s ease, letter-spacing 0.24s ease;
+    }
+
+    .word.done {
+      opacity: 0.94;
+    }
+
+    .word.upcoming {
+      opacity: 0.34;
+    }
+
+    .caption-driftline {
+      font-family: "Cormorant Garamond", serif;
+      font-size: 27px;
+      font-weight: 700;
+      line-height: 1.42;
+      max-width: 86%;
+      text-align: center;
+    }
+
+    .caption-driftline .word {
+      color: rgba(255, 255, 255, 0.26);
+    }
+
+    .caption-driftline .word.done {
+      color: rgba(255, 255, 255, 0.84);
+    }
+
+    .caption-driftline .word.active {
+      color: #fff2a8;
+      animation: soft-rise 0.34s ease both;
+    }
+
+    .caption-driftline .word.active::after {
+      content: "";
+      position: absolute;
+      left: -0.06em;
+      right: -0.06em;
+      bottom: -0.14em;
+      height: 0.08em;
+      border-radius: 999px;
+      background: linear-gradient(90deg, transparent, rgba(255, 242, 168, 0.95), transparent);
+      animation: trace-draw 0.38s ease both;
+    }
+
+    .caption-supersize {
+      font-family: "Archivo", sans-serif;
+      font-size: 22px;
+      font-weight: 800;
+      line-height: 1.18;
+      text-transform: uppercase;
+      letter-spacing: 0.01em;
+    }
+
+    .caption-supersize .word {
+      color: rgba(255, 255, 255, 0.22);
+    }
+
+    .caption-supersize .word.done {
+      color: rgba(255, 255, 255, 0.84);
+    }
+
+    .caption-supersize .word.active {
+      color: #ffffff;
+      letter-spacing: 0.03em;
+      transform: scale(1.16);
+      text-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+      animation: size-lift 0.3s ease both;
+    }
+
+    .caption-supersize .word.active::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      bottom: -0.28em;
+      width: 0.28em;
+      height: 0.28em;
+      border-radius: 999px;
+      background: #7effdf;
+      transform: translateX(-50%);
+      box-shadow: 0 0 12px rgba(126, 255, 223, 0.28);
+    }
+
+    .caption-gutter {
+      align-self: flex-end;
+      justify-content: flex-start;
+      width: 100%;
+      padding-left: 18px;
+      font-family: "Plus Jakarta Sans", sans-serif;
+      font-size: 21px;
+      font-weight: 800;
+      line-height: 1.26;
+    }
+
+    .caption-gutter::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      bottom: 0.18em;
+      top: 0.18em;
+      width: 2px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 999px;
+    }
+
+    .caption-gutter .word {
+      color: rgba(255, 255, 255, 0.22);
+    }
+
+    .caption-gutter .word.done {
+      color: rgba(255, 255, 255, 0.86);
+    }
+
+    .caption-gutter .word.active {
+      color: #9efee5;
+      animation: soft-rise 0.28s ease both;
+    }
+
+    .caption-gutter .word.active::before {
+      content: "";
+      position: absolute;
+      left: -1.02em;
+      top: 50%;
+      width: 0.54em;
+      height: 0.12em;
+      border-radius: 999px;
+      background: #9efee5;
+      transform: translateY(-50%);
+    }
+
+    .note-shell {
+      padding: 24px 18px 18px;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .caption-marginnote {
+      max-width: 84%;
+      padding: 18px 18px 20px;
+      border-radius: 18px;
+      background: rgba(255, 249, 233, 0.92);
+      color: #1d2330;
+      box-shadow: 0 18px 34px rgba(0, 0, 0, 0.22);
+      font-family: "DM Sans", sans-serif;
+      font-size: 22px;
+      font-weight: 700;
+      line-height: 1.36;
+      text-align: center;
+    }
+
+    .caption-marginnote::before {
+      content: "";
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      width: 26px;
+      height: 2px;
+      background: rgba(29, 35, 48, 0.18);
+      box-shadow: 0 8px 0 rgba(29, 35, 48, 0.12);
+    }
+
+    .caption-marginnote .word {
+      color: rgba(29, 35, 48, 0.34);
+    }
+
+    .caption-marginnote .word.done {
+      color: rgba(29, 35, 48, 0.92);
+    }
+
+    .caption-marginnote .word.active {
+      color: #10141d;
+      animation: note-rise 0.32s ease both;
+    }
+
+    .caption-marginnote .word.active::after {
+      content: "";
+      position: absolute;
+      inset: 62% -0.06em -0.04em -0.06em;
+      background: rgba(255, 217, 93, 0.78);
+      z-index: -1;
+      border-radius: 4px;
+    }
+
+    .caption-ticker {
+      align-self: flex-end;
+      justify-content: flex-start;
+      width: 100%;
+      padding: 12px 0 0;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      font-family: "Space Grotesk", sans-serif;
+      font-size: 19px;
+      font-weight: 700;
+      line-height: 1.28;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+    }
+
+    .caption-ticker .word {
+      color: rgba(255, 255, 255, 0.22);
+    }
+
+    .caption-ticker .word.done {
+      color: rgba(255, 255, 255, 0.82);
+    }
+
+    .caption-ticker .word.active {
+      color: #7cefff;
+      animation: soft-rise 0.28s ease both;
+    }
+
+    .caption-ticker .word.active::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: -0.16em;
+      height: 0.12em;
+      background: linear-gradient(90deg, #7cefff, #4e91ff);
+      border-radius: 999px;
+      animation: ticker-scan 0.34s ease both;
+    }
+
+    @keyframes soft-rise {
+      0% {
+        transform: translateY(8px);
+        opacity: 0.46;
+      }
+      100% {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    @keyframes size-lift {
+      0% {
+        transform: translateY(8px) scale(0.92);
+        opacity: 0.56;
+      }
+      100% {
+        transform: translateY(0) scale(1.16);
+        opacity: 1;
+      }
+    }
+
+    @keyframes trace-draw {
+      0% {
+        transform: scaleX(0.2);
+        opacity: 0.2;
+      }
+      100% {
+        transform: scaleX(1);
+        opacity: 1;
+      }
+    }
+
+    @keyframes note-rise {
+      0% {
+        transform: translateY(8px);
+        opacity: 0.54;
+      }
+      100% {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    @keyframes ticker-scan {
+      0% {
+        transform: scaleX(0.16);
+        transform-origin: left center;
+        opacity: 0.3;
+      }
+      100% {
+        transform: scaleX(1);
+        transform-origin: left center;
+        opacity: 1;
+      }
+    }
+
+    .footer-note {
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    @media (max-width: 720px) {
+      .shell {
+        width: min(100% - 20px, 1280px);
+        padding-top: 18px;
+      }
+
+      .hero {
+        padding: 18px;
+      }
+
+      .caption-driftline {
+        font-size: 24px;
+      }
+
+      .caption-supersize,
+      .caption-gutter,
+      .caption-marginnote,
+      .caption-ticker {
+        font-size: 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="hero">
+      <div class="eyebrow">Round 2 creative research</div>
+      <h1>Five more different directions with new behavior families.</h1>
+      <p>
+        This round intentionally avoids the previous box, halo, and beam-heavy patterns. It pulls from broader
+        product cues like supersized active words, contemporary subtitle scans, editorial margin-notes, and softer
+        serif trace treatments seen across creator tools and template ecosystems.
+      </p>
+      <div class="toolbar">
+        <div class="controls">
+          <button id="toggle">Pause animation</button>
+          <button id="next">Next word</button>
+          <select id="lineSelect" aria-label="Change preview sentence">
+            <option value="hook">You need one hook that instantly stops the scroll</option>
+            <option value="clarity">Your message becomes stronger when the visual stays intentional</option>
+            <option value="trust">People trust clean confident captions more than loud clutter</option>
+          </select>
+        </div>
+        <div class="meta" id="meta">5 new creative concepts</div>
+      </div>
+    </section>
+
+    <section class="grid" id="grid"></section>
+
+    <p class="footer-note">
+      This file is exploratory only. If one of these feels closer, I can deepen that one direction instead of generating another mixed batch.
+    </p>
+  </div>
+
+  <script>
+    const lines = {
+      hook: "You need one hook that instantly stops the scroll",
+      clarity: "Your message becomes stronger when the visual stays intentional",
+      trust: "People trust clean confident captions more than loud clutter"
+    };
+
+    const templates = [
+      {
+        id: "driftline",
+        name: "Driftline Serif",
+        label: "Soft / editorial",
+        desc: "A fine traced line glides under the active word while the sentence stays elegant and readable.",
+        sceneClass: "scene",
+        captionClass: "caption caption-driftline"
+      },
+      {
+        id: "supersize-dot",
+        name: "Supersize Dot",
+        label: "Hook / creator",
+        desc: "The active word briefly scales up with a small anchor dot instead of a box or glow cloud.",
+        sceneClass: "scene",
+        captionClass: "caption caption-supersize"
+      },
+      {
+        id: "gutter-cue",
+        name: "Gutter Cue",
+        label: "Talking head / clean",
+        desc: "A left gutter cue quietly marks the active word without changing the full sentence structure.",
+        sceneClass: "scene",
+        captionClass: "caption caption-gutter"
+      },
+      {
+        id: "margin-note",
+        name: "Margin Note",
+        label: "Journal / story",
+        desc: "A note-card treatment with a flat highlight swipe behind the active word instead of a sticker block.",
+        sceneClass: "scene note-shell",
+        captionClass: "caption caption-marginnote"
+      },
+      {
+        id: "ticker-scan",
+        name: "Ticker Scan",
+        label: "Modern / subtitle",
+        desc: "A clean scanning underline gives the active word motion while the sentence behaves like a subtitle rail.",
+        sceneClass: "scene",
+        captionClass: "caption caption-ticker"
+      }
+    ];
+
+    const grid = document.getElementById("grid");
+    const toggleButton = document.getElementById("toggle");
+    const nextButton = document.getElementById("next");
+    const lineSelect = document.getElementById("lineSelect");
+    const meta = document.getElementById("meta");
+
+    let currentWords = lines[lineSelect.value].split(" ");
+    let activeIndex = 0;
+    let playing = true;
+    let tickMs = 1150;
+    let intervalId = null;
+
+    function wordState(index) {
+      if (index < activeIndex) return "done";
+      if (index === activeIndex) return "active";
+      return "upcoming";
+    }
+
+    function buildWord(word, index) {
+      const state = wordState(index);
+      const classes = ["word"];
+      if (state) classes.push(state);
+      return `<span class="${classes.join(" ")}">${word}</span>`;
+    }
+
+    function renderCards() {
+      grid.innerHTML = templates.map((template) => `
+        <article class="card">
+          <div class="card-head">
+            <h2 class="card-title">${template.name}</h2>
+            <span class="card-label">${template.label}</span>
+          </div>
+          <p class="card-desc">${template.desc}</p>
+          <div class="stage">
+            <div class="${template.sceneClass}">
+              <div class="${template.captionClass}" data-template="${template.id}">
+                ${currentWords.map((word, index) => buildWord(word, index)).join("")}
+              </div>
+            </div>
+          </div>
+        </article>
+      `).join("");
+      meta.textContent = `${templates.length} new creative concepts`;
+    }
+
+    function updateCaptions() {
+      document.querySelectorAll("[data-template]").forEach((node) => {
+        node.innerHTML = currentWords.map((word, index) => buildWord(word, index)).join("");
+      });
+    }
+
+    function stepForward() {
+      activeIndex = (activeIndex + 1) % currentWords.length;
+      updateCaptions();
+    }
+
+    function startLoop() {
+      clearInterval(intervalId);
+      intervalId = setInterval(() => {
+        if (playing) stepForward();
+      }, tickMs);
+    }
+
+    toggleButton.addEventListener("click", () => {
+      playing = !playing;
+      toggleButton.textContent = playing ? "Pause animation" : "Resume animation";
+    });
+
+    nextButton.addEventListener("click", () => {
+      stepForward();
+    });
+
+    lineSelect.addEventListener("change", () => {
+      currentWords = lines[lineSelect.value].split(" ");
+      activeIndex = 0;
+      renderCards();
+    });
+
+    renderCards();
+    startLoop();
+  </script>
+</body>
+</html>
