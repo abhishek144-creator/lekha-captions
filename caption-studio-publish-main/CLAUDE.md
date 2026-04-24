@@ -92,19 +92,6 @@ Caption IDs are `${Date.now()}-${idx}` (no spaces). They are used as key prefixe
 
 ---
 
-## Search-First Rule
-
-**Before touching any file, search first:**
-1. Use `Grep` to find the class/function/keyword in the codebase
-2. Use `Glob` to find files by name pattern
-3. Only then open the specific file at the relevant line range
-4. **Never read an entire file** to find a single bug — use Grep to locate it first
-5. **Never read the full codebase** for a change — stay targeted
-
-This is mandatory, not optional.
-
----
-
 ## Coding Conventions
 
 - **Never use semicolons** in JSX/JS files (existing code is semicolon-free)
@@ -139,15 +126,10 @@ This is mandatory, not optional.
 | seekSignal unused | VideoPlayer.jsx | Added `useEffect([seekSignal])` to consume external seeks |
 | Font fallback not downloaded | processor.py _ensure_font | Update `font_path` + download Inter on fallback |
 | Font ass_name mismatch | processor.py GOOGLE_FONTS_MAP | Mitigated — Google variable fonts preserve family name in nameID=1 |
-| `||` vs `??` for shadow numerics | ExportPanel.jsx export style build | Use `??` (nullish coalescing) not `\|\|` for `shadow_blur`, `shadow_offset_x/y`, `bg_padding`, `position_x/y` — `\|\|` replaces legitimate `0` values with defaults |
-| Per-word glow on Layer 0 | processor.py `_create_styled_ass` | `needs_per_word_glow` flag — Layer 0 suppresses glow when `secondary != primary`; Layer 2 applies glow only to active word |
-| TextBg ASS style for text element backgrounds | processor.py `_create_styled_ass` | ASS `BorderStyle=3` can't be overridden inline — added `TextBg` Style header entry; text elements with bg reference `TextBg` style |
-| `_wxy()` KeyError on partial layout | processor.py `_wxy()` | `.get('x', 50)` / `.get('y', 75)` instead of direct key access |
-| `_lyt2` empty-dict crash | processor.py word_layouts loop | `if not _lyt2 or 'x' not in _lyt2 or 'y' not in _lyt2: continue` |
-| Unguarded `float()` on word timings | processor.py `_fts`/`_ws2`/`_we2` | Wrapped in `try/except (ValueError, TypeError)` with fallback to caption start/end |
-| Empty captions silently exported | backend/main.py `/api/export` | `400` raised if all captions are empty/whitespace |
-| Rate limit window off-by-one | backend/main.py export_timestamps filter | `>=` instead of `>` for 24h window |
-| Unknown template_id silent fallback | ExportPanel.jsx TEMPLATE_CANONICAL_STYLES | `console.warn` when `_tid` non-empty but not in map |
+| Shadow `\|\|` vs `??` bug | ExportPanel.jsx | All shadow numerics use `??` not `\|\|` — `0 \|\| 2 = 2` broke all zero-offset/zero-blur templates |
+| Glow on all words (Layer 0) | processor.py `_create_styled_ass` | `needs_per_word_glow` flag: suppresses `global_eff` on Layer 0; per-word glow only on Layer 2 active word |
+| t-9/t-12 lost glow | processor.py `needs_per_word_glow` | Added `secondary != primary` check — same-color templates use global Layer-0 glow |
+| Text element backgrounds in ASS | processor.py `_create_styled_ass` | Second ASS Style `TextBg` with `BorderStyle=3` in header; text elements reference it when `has_background=True` |
 
 ---
 
