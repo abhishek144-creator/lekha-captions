@@ -22,7 +22,7 @@ class PreviewExportParityTests(unittest.TestCase):
         r2 = self.client.post("/api/export-parity-signature", json=payload)
         self.assertEqual(r1.status_code, 200)
         self.assertEqual(r2.status_code, 200)
-        self.assertEqual(r1.json().get("signature"), r2.json().get("signature"))
+        self.assertEqual(r1.json()["signature"], r2.json()["signature"])
 
     def test_parity_signature_detects_change(self):
         payload_a = {
@@ -39,7 +39,7 @@ class PreviewExportParityTests(unittest.TestCase):
         rb = self.client.post("/api/export-parity-signature", json=payload_b)
         self.assertEqual(ra.status_code, 200)
         self.assertEqual(rb.status_code, 200)
-        self.assertNotEqual(ra.json().get("signature"), rb.json().get("signature"))
+        self.assertNotEqual(ra.json()["signature"], rb.json()["signature"])
 
 
 if __name__ == "__main__":

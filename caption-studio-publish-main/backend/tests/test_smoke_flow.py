@@ -67,14 +67,14 @@ class SmokeFlowTests(unittest.TestCase):
         self.assertTrue(export_data.get("success"))
         self.assertIn("export_job_id", export_data)
 
-    @patch.dict(os.environ, {"RAZORPAY_WEBHOOK_SECRET": "test-secret"})
+    @patch("main.RAZORPAY_WEBHOOK_SECRET", "test-secret")
     def test_payment_webhook_invalid_signature_smoke(self):
         res = self.client.post(
             "/api/razorpay-webhook",
             headers={"x-razorpay-signature": "invalid"},
             json={"event": "payment.captured", "payload": {}},
         )
-        self.assertIn(res.status_code, (400, 503))
+        self.assertEqual(res.status_code, 400)
 
 
 if __name__ == "__main__":
