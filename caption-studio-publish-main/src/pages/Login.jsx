@@ -120,7 +120,7 @@ export default function Login() {
 
                 <div className="mt-8 text-center text-sm text-gray-500">
                     By proceeding, you agree to the<br />
-                    <a href="#" className="text-[#F5A623] hover:underline">Terms of Service</a> and <a href="#" className="text-[#F5A623] hover:underline">Privacy Policy</a>
+                    <a href="/TermsAndConditions" className="text-[#F5A623] hover:underline">Terms of Service</a> and <a href="/TermsAndConditions" className="text-[#F5A623] hover:underline">Privacy Policy</a>
                 </div>
 
                 <div className="mt-10 text-center text-sm text-gray-400">

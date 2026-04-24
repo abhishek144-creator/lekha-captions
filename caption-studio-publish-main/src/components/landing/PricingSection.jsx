@@ -312,7 +312,7 @@ export default function PricingSection() {
                     ? (isInternational ? plan.yearlyUsdPrice : plan.yearlyInrPrice)
                     : (isInternational ? plan.monthlyUsdPrice : plan.monthlyInrPrice)}
                 </span>
-                <span className="text-gray-400">/mo</span>
+                <span className="text-gray-400">{billing === 'yearly' ? '/yr' : '/mo'}</span>
               </div>
               {billing === 'yearly' ? (
                 <p className="text-xs text-[#F5A623] mb-5">
