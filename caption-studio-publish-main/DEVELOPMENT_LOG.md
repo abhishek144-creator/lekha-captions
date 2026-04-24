@@ -25,11 +25,46 @@ This is the **Work Diary** for the Lekha Captions project.
 - [ ] **SidebarNav.jsx** — Update `getPlanDetails()` to map new `starter / creator / pro` tiers with gold color. Remove old purple gradient usage.
 - [ ] **Effects / Emphasis button** — Not working in `StyleControls.jsx` and `WordClickPopup.jsx`. Put effects section in a collapsible `+` icon block in both places. Brainstorm: emphasis effect = bold + scale(1.15) + color highlight + optional shadow/glow on word.
 - [ ] **Styling tab width** — Increase styling panel width to match caption tab width
-- [ ] **Set remaining env vars before deploy** — `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` (backend `.env` stubs already exist); `VITE_RAZORPAY_KEY_ID` (frontend `.env`); `ALLOWED_ORIGINS` (comma-separated prod domains). `CREDITS_HMAC_SECRET` and `DEV_MODE=false` are already set in `backend/.env`.
+- [ ] **Set remaining env vars before deploy** — `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` (backend `.env` stubs already exist); `VITE_RAZORPAY_KEY_ID` (frontend `.env`); `ALLOWED_ORIGINS` (comma-separated prod domains). `DEV_MODE=false` is already set. **`CREDITS_HMAC_SECRET` is now blank — generate a new secret before deploying** (`python -c "import secrets; print(secrets.token_hex(32))"`).
 - [ ] **Verify template export fidelity** — User to test all 26+15 templates and confirm exported video matches dashboard preview after Session 5 fixes
 - [ ] **Verify Text tab export** — Confirm text boxes added via Text tab (custom color, animation, position) appear correctly in exported video
 - [ ] **Verify FPS in export** — Test 24/30/60 fps selector in Export tab produces correct output video frame rates
 - [ ] **Verify zoom/transition animations** — Test zoom_in, zoom_out, fade_in, slide_up/down/left/right in Animate tab → Basic category work correctly in preview
+
+---
+
+### Session 12 — 2026-04-21
+
+**Theme:** Production hardening — P0/P1 security, race conditions, and event-loop blocking
+
+**Scope:** No new features. Security and reliability fixes only across `backend/main.py`, `backend/processor.py`, `backend/.env`.
+
+---
+
+#### Fixes — `backend/main.py`
+
+| # | Issue | Fix |
+|---|-------|-----|
+| P0 | **Missing `subprocess` import** — `upload_video` and `detect_language` would crash immediately at runtime with `NameError` | Added `import subprocess` to stdlib imports |
+| P0 | **Auth bypass in `process_video` and `detect_language`** — when `verify_token()` failed AND Firestore was unavailable, 401 was silently swallowed | Removed the `get_db() is not None` guard; now always raises 401 if token verification fails and `DEV_MODE=false` |
+| P0 | **Auth bypass in `export_video`** — same conditional guard pattern | Restructured: `decoded_token` → `uid` or `is_dev_token` → `uid="dev-local-user"` else `raise 401` |
+| P0 | **Export limit race condition** — two concurrent requests from same user both passed the 5/day check before either deducted | Added `_user_export_locks` dict + `_get_user_export_lock(uid)`. Entire check→render→deduct block wrapped in `try/finally` with per-user `asyncio.Lock` |
+| P1 | **Blocking promo expiry reset** — `user_ref.update(...)` inside async export handler blocked event loop | Wrapped in `_loop.run_in_executor` |
+| P1 | **Blocking Firestore in `verify_payment`** — `user_ref.get()`, `_topup_batch.commit()`, `_sub_batch.commit()` all synchronous in an `async def` | All three wrapped with `await _vp_loop.run_in_executor(None, ...)` |
+| P1 | **Blocking Firestore in `redeem_promo`** — four synchronous Firestore calls blocked the event loop | All four wrapped with `await _promo_loop.run_in_executor(None, ...)` |
+| P1 | **No style input validation** — `style: Dict[str, Any]` passed straight to ASS generation with no bounds checking | Added `ExportRequest.validated_style()` method: clamps 11 known numeric fields to safe ranges, whitelists `quality` string; export handler now calls `req.validated_style()` instead of `req.style` |
+
+#### Fixes — `backend/processor.py`
+
+| # | Issue | Fix |
+|---|-------|-----|
+| P1 | **Blocking `subprocess.run` in `burn_only`** — main FFmpeg call (5–30s) ran synchronously inside an `async def`, saturating the event loop | Added `import asyncio`; FFmpeg call now `await asyncio.get_running_loop().run_in_executor(None, lambda: subprocess.run(...))` |
+
+#### Fixes — `backend/.env`
+
+| # | Issue | Fix |
+|---|-------|-----|
+| P0 | **`CREDITS_HMAC_SECRET` hardcoded and committed** — anyone with repo access could forge credit signatures | Removed value; replaced with generation command comment. **Must generate a fresh secret before deploying.** |
 
 ---
 
