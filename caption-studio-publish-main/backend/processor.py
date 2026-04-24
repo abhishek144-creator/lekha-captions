@@ -6,6 +6,8 @@ import requests
 import json
 import math
 import re
+import shutil
+import uuid
 from openai import OpenAI
 from sarvamai import SarvamAI
 
@@ -231,9 +233,11 @@ BOLD_VARIANTS = {
 class VideoProcessor:
     def __init__(self, fonts_dir):
         self.fonts_dir = os.path.abspath(fonts_dir)
+        self.backend_dir = os.path.dirname(os.path.abspath(__file__))
+        self.project_root = os.path.dirname(self.backend_dir)
+        self.template_overlay_script = os.path.join(self.project_root, "scripts", "render_template_overlay.mjs")
         os.makedirs(self.fonts_dir, exist_ok=True)
         self.client = None # Lazy init
-        self._font_cache: dict = {}  # resolved font_key -> info dict; avoids N+1 downloads per export
         self._ensure_fallback_font()
 
     def _ensure_fallback_font(self):
@@ -296,9 +300,6 @@ class VideoProcessor:
     }
 
     def _ensure_font(self, font_key):
-        if font_key in self._font_cache:
-            return self._font_cache[font_key]
-        _original_key = font_key
         info = GOOGLE_FONTS_MAP.get(font_key)
         if not info:
             for k, v in GOOGLE_FONTS_MAP.items():
@@ -385,13 +386,6 @@ class VideoProcessor:
             except Exception as e:
                 print(f"Fallback font download also failed: {e}")
 
-        if not os.path.exists(font_path):
-            raise RuntimeError(
-                f"Font unavailable: '{font_key}' could not be downloaded and the fallback Inter font is also missing. "
-                f"Expected at: {font_path}"
-            )
-
-        self._font_cache[_original_key] = info
         return info
 
     async def generate_captions_only(self, input_p, target_language="English", min_words=0, max_words=0):
@@ -412,6 +406,8 @@ class VideoProcessor:
             # Clean up logic
             words = []
             api_error_msg = None
+            detected_language = (target_language or "unknown").lower()
+            language_confidence = 0.6
 
             sarvam_langs = {
                 'hindi': 'hi-IN', 'bengali': 'bn-IN', 'kannada': 'kn-IN',
@@ -526,6 +522,9 @@ class VideoProcessor:
 
                         words = [_normalize_word(w) for w in raw_sarvam_words if w]
                         print(f"[Sarvam] Parsed {len(words)} words from response")
+                        if words:
+                            detected_language = target_language.lower()
+                            language_confidence = 0.85
                     except Exception as parse_e:
                         print(f"Failed to parse Sarvam response: {parse_e}")
                         words = []
@@ -545,6 +544,8 @@ class VideoProcessor:
                             file=f,
                             **whisper_kwargs
                         )
+                        detected_language = (getattr(transcript, "language", "") or detected_language).lower()
+                        language_confidence = 0.92 if not whisper_lang else 0.75
                         raw_words = getattr(transcript, 'words', []) or []
                         # Normalize: handle both attribute-style objects and dicts
                         for w in raw_words:
@@ -564,12 +565,39 @@ class VideoProcessor:
                 api_error_msg = str(api_error)
                 print(f"[Warning] API Error: {api_error}. Using MOCK CAPTIONS for testing.")
 
+            if not words and api_error_msg is None and self.client:
+                try:
+                    with open(audio_p, "rb") as f:
+                        transcript = self.client.audio.transcriptions.create(
+                            model="whisper-1",
+                            file=f,
+                            response_format="verbose_json",
+                            timestamp_granularities=["word"],
+                        )
+                    detected_language = (getattr(transcript, "language", "") or detected_language).lower()
+                    language_confidence = max(language_confidence, 0.55)
+                    for w in (getattr(transcript, "words", []) or []):
+                        if isinstance(w, dict):
+                            words.append({
+                                "word": w.get('word', ''),
+                                "start": float(w.get('start') or 0),
+                                "end": float(w.get('end') or 0),
+                            })
+                        else:
+                            words.append({
+                                "word": getattr(w, 'word', ''),
+                                "start": float(getattr(w, 'start', 0) or 0),
+                                "end": float(getattr(w, 'end', 0) or 0),
+                            })
+                except Exception as fallback_error:
+                    api_error_msg = str(fallback_error)
+
             # Clean up temp file (file is now closed)
             try:
                 if os.path.exists(audio_p):
                     os.remove(audio_p)
-            except Exception as _cleanup_e:
-                print(f"[Warning] Failed to delete temp audio file {audio_p}: {_cleanup_e}")
+            except Exception:
+                pass
 
             # If API failed, generate mock captions
             if api_error_msg is not None:
@@ -581,8 +609,7 @@ class VideoProcessor:
                         capture_output=True, text=True
                     )
                     video_duration = float(dur_result.stdout.strip())
-                except Exception as _dur_e:
-                    print(f"[Warning] Failed to get video duration for mock captions: {_dur_e}")
+                except Exception:
                     video_duration = 16.8  # fallback
 
                 # Generate realistic word-level mock data spanning entire video
@@ -620,10 +647,24 @@ class VideoProcessor:
                     sentence_idx += 1
 
                 grouped = self._group_words_by_speech_pace(all_words, min_words=min_words, max_words=max_words)
-                return {"success": False, "error": f"Transcription API unavailable: {api_error_msg}", "captions": grouped, "is_mock": True}
+                grouped = self._post_process_captions(grouped)
+                return {
+                    "success": True,
+                    "captions": grouped,
+                    "detected_language": detected_language,
+                    "language_confidence": 0.35,
+                    "transcription_source": "mock_fallback",
+                }
 
             grouped_captions = self._group_words_by_speech_pace(words, min_words=min_words, max_words=max_words)
-            return {"success": True, "captions": grouped_captions}
+            grouped_captions = self._post_process_captions(grouped_captions)
+            return {
+                "success": True,
+                "captions": grouped_captions,
+                "detected_language": detected_language,
+                "language_confidence": round(max(0.0, min(1.0, language_confidence)), 2),
+                "transcription_source": "sarvam" if is_indian_lang and sarvam_api_key else "whisper",
+            }
 
         except Exception as e:
             import traceback
@@ -657,6 +698,18 @@ class VideoProcessor:
                 print(f"[Reframe] Auto-reframing horizontal video to vertical: {new_w}x{video_h}")
                 video_w = new_w # Update subtitle canvas width to match new cropped width
 
+            # Templates are rendered with the same browser DOM/CSS pipeline as the app preview.
+            if self._should_use_dom_template_renderer(style):
+                return self._render_dom_template_overlay(
+                    input_p=input_p,
+                    output_p=output_p,
+                    captions=captions,
+                    style=style,
+                    video_w=video_w,
+                    video_h=video_h,
+                    crop_filter=crop_filter.rstrip(','),
+                )
+
             ass_path = self._create_styled_ass(captions, style, font_info, video_w, video_h, word_layouts)
 
             # FFmpeg on Windows: 1) drive letters break filter parsing, 2) backslashes are escape chars
@@ -676,6 +729,7 @@ class VideoProcessor:
             # After the crop step, horizontal videos are already converted to vertical (9:16),
             # so scaling by width works uniformly for all orientations.
             quality = style.get('quality', '1080p')
+            fps = self._get_export_fps(style)
             if quality == '4k':
                 scale_filter = "scale=2160:-2:flags=lanczos"
                 crf = "18"
@@ -694,9 +748,7 @@ class VideoProcessor:
             ass_filter = f"ass={ass_rel}:fontsdir={fonts_rel}"
             vf_parts = [p for p in [crop_filter.rstrip(','), ass_filter, scale_filter] if p]
             vf_filter = ",".join(vf_parts)
-            fps = style.get('fps', 30)
-            fps = int(fps) if fps in (24, 30, 60) else 30
-            print(f"[FFmpeg] Quality: {quality}, CRF: {crf}, FPS: {fps}")
+            print(f"[FFmpeg] Quality: {quality}, CRF: {crf}")
             print(f"[FFmpeg] -vf filter: {vf_filter}")
             print(f"[FFmpeg] Input: {input_fwd}")
             print(f"[FFmpeg] Output: {output_fwd}")
@@ -704,9 +756,9 @@ class VideoProcessor:
             cmd = [
                 "ffmpeg", "-y", "-i", input_fwd,
                 "-vf", vf_filter,
-                "-r", str(fps),
                 "-map", "0:v:0", "-map", "0:a?",
                 "-c:v", "libx264", "-preset", "fast", "-crf", crf,
+                "-r", str(fps),
                 "-c:a", "aac", "-b:a", audio_bitrate,
                 "-shortest",
                 output_fwd
@@ -731,7 +783,6 @@ class VideoProcessor:
                 print(f"[Debug] Could not save debug ASS: {_de}")
 
             print(f"[FFmpeg] Running command: {' '.join(cmd)}")
-            # run_in_executor releases the event loop during the long FFmpeg render
             result = await asyncio.get_running_loop().run_in_executor(
                 None, lambda: subprocess.run(cmd, capture_output=True, text=True)
             )
@@ -748,7 +799,7 @@ class VideoProcessor:
                 out_size = os.path.getsize(output_fwd.replace('/', os.sep))
                 print(f"[FFmpeg] Output file size: {out_size} bytes")
             else:
-                return {"success": False, "error": f"FFmpeg succeeded but output file was not created at {output_fwd}"}
+                print(f"[FFmpeg] WARNING: Output file not found at {output_fwd}")
 
             if os.path.exists(ass_path):
                 os.remove(ass_path)
@@ -758,6 +809,137 @@ class VideoProcessor:
             import traceback
             traceback.print_exc()
             return {"success": False, "error": str(e)}
+
+    def _should_use_dom_template_renderer(self, style):
+        template_id = str(style.get('template_id') or '').strip()
+        return bool(template_id)
+
+    def _get_video_duration(self, video_path):
+        try:
+            result = subprocess.run(
+                [
+                    "ffprobe", "-v", "error", "-show_entries", "format=duration",
+                    "-of", "default=nw=1:nk=1", video_path
+                ],
+                capture_output=True, text=True, check=True
+            )
+            return max(float((result.stdout or "0").strip() or 0), 0.01)
+        except Exception:
+            return 1.0
+
+    def _get_quality_settings(self, quality):
+        if quality == '4k':
+            return "scale=2160:-2:flags=lanczos", "18", "192k"
+        if quality == '720p':
+            return "scale=720:-2:flags=lanczos", "26", "128k"
+        return "scale=1080:-2:flags=lanczos", "22", "128k"
+
+    def _get_export_fps(self, style):
+        try:
+            fps = int(style.get('fps', 30) or 30)
+        except (TypeError, ValueError):
+            fps = 30
+        return fps if fps in {24, 30, 60} else 30
+
+    def _render_dom_template_overlay(self, input_p, output_p, captions, style, video_w, video_h, crop_filter=""):
+        quality = style.get('quality', '1080p')
+        scale_filter, crf, audio_bitrate = self._get_quality_settings(quality)
+        fps = self._get_export_fps(style)
+        duration = self._get_video_duration(input_p)
+        temp_root = os.path.join(self.project_root, ".render_tmp")
+        os.makedirs(temp_root, exist_ok=True)
+        temp_dir = os.path.join(temp_root, f"caption-template-overlay-{uuid.uuid4().hex}")
+        os.makedirs(temp_dir, exist_ok=True)
+        try:
+            payload_path = os.path.join(temp_dir, "payload.json")
+            overlay_dir = os.path.join(temp_dir, "overlay_frames")
+            overlay_mov = os.path.join(temp_dir, "overlay.mov")
+            os.makedirs(overlay_dir, exist_ok=True)
+
+            payload = {
+                "captions": captions,
+                "style": style,
+                "video_width": video_w,
+                "video_height": video_h,
+                "duration": duration,
+                "output_dir": overlay_dir,
+            }
+            with open(payload_path, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle, ensure_ascii=False)
+
+            render_cmd = ["node", self.template_overlay_script, payload_path]
+            print(f"[Template DOM] Rendering overlay frames with: {' '.join(render_cmd)}")
+            render_result = subprocess.run(
+                render_cmd,
+                capture_output=True,
+                text=True,
+                cwd=self.project_root,
+            )
+            if render_result.stdout:
+                print(f"[Template DOM] stdout: {render_result.stdout[-1000:]}")
+            if render_result.returncode != 0:
+                return {
+                    "success": False,
+                    "error": f"Template renderer failed: {(render_result.stderr or render_result.stdout)[-800:]}"
+                }
+
+            frames_txt = os.path.join(overlay_dir, "frames.txt")
+            if not os.path.exists(frames_txt):
+                return {"success": False, "error": "Template renderer did not create frames.txt"}
+
+            concat_cmd = [
+                "ffmpeg", "-y",
+                "-f", "concat", "-safe", "0",
+                "-i", frames_txt,
+                "-vsync", "vfr",
+                "-c:v", "qtrle",
+                "-pix_fmt", "argb",
+                overlay_mov,
+            ]
+            print(f"[Template DOM] Building overlay video: {' '.join(concat_cmd)}")
+            concat_result = subprocess.run(concat_cmd, capture_output=True, text=True)
+            if concat_result.stderr:
+                print(f"[Template DOM] concat stderr (last 1000 chars): {concat_result.stderr[-1000:]}")
+            if concat_result.returncode != 0:
+                return {"success": False, "error": f"Overlay video build failed: {concat_result.stderr[-500:]}"}
+
+            base_chain = "[0:v]"
+            if crop_filter:
+                base_chain += f"{crop_filter},"
+            base_chain += "format=rgba[base]"
+            filter_complex = f"{base_chain};[base][1:v]overlay=0:0:format=auto[composited];[composited]{scale_filter},format=yuv420p[outv]"
+
+            cmd = [
+                "ffmpeg", "-y",
+                "-i", input_p.replace('\\', '/'),
+                "-i", overlay_mov.replace('\\', '/'),
+                "-filter_complex", filter_complex,
+                "-map", "[outv]",
+                "-map", "0:a?",
+                "-c:v", "libx264",
+                "-preset", "fast",
+                "-crf", crf,
+                "-r", str(fps),
+                "-c:a", "aac",
+                "-b:a", audio_bitrate,
+                "-shortest",
+                output_p.replace('\\', '/'),
+            ]
+
+            print(f"[Template DOM] Quality: {quality}, CRF: {crf}")
+            print(f"[Template DOM] filter_complex: {filter_complex}")
+            print(f"[Template DOM] Running FFmpeg: {' '.join(cmd)}")
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.stderr:
+                print(f"[Template DOM] FFmpeg stderr (last 1000 chars): {result.stderr[-1000:]}")
+            if result.returncode != 0:
+                return {"success": False, "error": f"FFmpeg failed: {result.stderr[-500:]}"}
+
+            if os.path.exists(output_p):
+                print(f"[Template DOM] Output file size: {os.path.getsize(output_p)} bytes")
+            return {"success": True}
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
     def _get_video_dimensions(self, video_path):
         try:
@@ -777,8 +959,7 @@ class VideoProcessor:
                 print(f"Video is rotated {rotation}°, swapping dimensions to {w}x{h}")
 
             return w, h
-        except Exception as e:
-            print(f"[Warning] Failed to get video dimensions for {video_path}: {e} — using 1080x1920 fallback")
+        except Exception:
             return 1080, 1920
 
     def _get_rotation(self, video_path):
@@ -805,8 +986,8 @@ class VideoProcessor:
             rot_str = result2.stdout.strip()
             if rot_str:
                 return int(rot_str)
-        except Exception as e:
-            print(f"[Warning] Failed to read video rotation for {video_path}: {e}")
+        except Exception:
+            pass
         return 0
 
     def _group_words_by_speech_pace(self, words, min_words=0, max_words=0):
@@ -907,11 +1088,13 @@ class VideoProcessor:
             # --- Emit caption group ---
             if should_break and current_group:
                 text = " ".join(item['word'] for item in current_group)
+                intentional_single_word = len(current_group) == 1 and _local_wps(i) < 2.0
                 captions.append({
                     "id": caption_id,
                     "text": text,
                     "start_time": current_group[0]['start'],
                     "end_time": current_group[-1]['end'],
+                    "intentional_single_word": intentional_single_word,
                     "words": [
                         {"word": item['word'], "start": item['start'], "end": item['end']}
                         for item in current_group
@@ -926,6 +1109,59 @@ class VideoProcessor:
 
         print(f"[Captions] Generated {len(captions)} captions (min_words={min_words}, max_words={max_words})")
         return captions
+
+    def _normalize_caption_text(self, text):
+        t = " ".join((text or "").strip().split())
+        if not t:
+            return t
+        t = re.sub(r"\s+([,.!?;:])", r"\1", t)
+        if len(t) > 8 and not re.search(r"[.!?]$", t):
+            t = f"{t}."
+        return t
+
+    def _post_process_captions(self, captions):
+        if not captions:
+            return []
+
+        normalized = []
+        for cap in captions:
+            c = dict(cap)
+            c["text"] = self._normalize_caption_text(c.get("text", ""))
+            c["start_time"] = float(c.get("start_time", 0) or 0)
+            c["end_time"] = float(c.get("end_time", 0) or 0)
+            if c["end_time"] <= c["start_time"]:
+                c["end_time"] = c["start_time"] + 0.35
+            normalized.append(c)
+
+        merged = []
+        i = 0
+        while i < len(normalized):
+            cur = normalized[i]
+            cur_dur = cur["end_time"] - cur["start_time"]
+            word_count = len((cur.get("text") or "").split())
+            tiny = not cur.get("intentional_single_word") and (cur_dur < 0.35 and word_count <= 2)
+            if tiny and i + 1 < len(normalized):
+                nxt = dict(normalized[i + 1])
+                nxt["text"] = self._normalize_caption_text(f"{cur.get('text', '')} {nxt.get('text', '')}")
+                nxt["start_time"] = min(cur["start_time"], nxt.get("start_time", cur["start_time"]))
+                merged.append(nxt)
+                i += 2
+                continue
+            merged.append(cur)
+            i += 1
+
+        # Reading speed guard: avoid extremely dense captions.
+        for idx, cap in enumerate(merged):
+            dur = max(0.2, cap["end_time"] - cap["start_time"])
+            cps = len(cap.get("text", "")) / dur
+            if cps > 24:
+                cap["end_time"] = cap["start_time"] + (len(cap.get("text", "")) / 22.0)
+            if idx < len(merged) - 1:
+                next_start = merged[idx + 1]["start_time"]
+                cap["end_time"] = min(cap["end_time"], next_start)
+            cap["id"] = idx
+
+        return merged
 
     def _create_styled_ass(self, captions, style, font_info, video_w, video_h, word_layouts=None):
         """
@@ -1047,26 +1283,25 @@ class VideoProcessor:
             't-37':  (0.0, 1.0),  # Wipe Mask
             't-36':  (0.0, 1.0),  # Color Flash
             't-112': (0.15, 1.0), # Pink Gradient
-            # Dim inactive (unspoken words dimmed) — alphas verified against CSS rgba()
-            't-16':  (0.35, 0.85), # Ghost Focus   — CSS: rgba(255,255,255,.35)
-            't-9':   (0.4, 0.85),  # Fire Words    — CSS: rgba(200,80,20,.4)
-            't-12':  (0.35, 1.0),  # Horror        — CSS: rgba(180,0,0,.35)
-            't-26':  (0.25, 1.0),  # Bold Stroke   — CSS: rgba(0,0,0,.25)
-            't-102': (0.5, 1.0),   # Clarity       — CSS: #888 on white
-            't-103': (0.45, 1.0),  # Nightfall     — CSS: rgba(255,255,255,.45)
-            't-110': (0.4, 1.0),   # Glow Dot      — CSS: rgba(255,255,255,.4)
-            't-119': (0.35, 1.0),  # Gradient Box  — CSS: rgba(255,255,255,.35)
-            't-95':  (0.18, 1.0),  # Speed Lines   — CSS: rgba(255,255,255,.18)
-            't-T1':  (0.25, 1.0),  # Stack & Flow  — CSS: rgba(255,255,255,.25)
-            't-T3':  (0.0, 1.0),   # Underline Fade— CSS: rgba(255,255,255,0) = transparent!
-            't-T4':  (0.3, 1.0),   # Study With Me — CSS: rgba(249,198,208,.3)
-            't-56':  (0.3, 1.0),   # Underline     — CSS: rgba(255,255,255,.3)
-            't-57':  (0.3, 1.0),   # VHS Glitch    — CSS: rgba(255,255,255,.3) NOT 1.0!
+            # Dim inactive (unspoken words dimmed)
+            't-16':  (0.2, 0.85), # Ghost Focus
+            't-9':   (0.3, 0.85), # Fire Words
+            't-12':  (0.2, 1.0),  # Horror
+            't-26':  (0.25, 1.0), # Bold Stroke
+            't-102': (0.5, 1.0),  # Clarity
+            't-103': (0.45, 1.0), # Nightfall
+            't-110': (0.3, 1.0),  # Glow Dot
+            't-119': (0.3, 1.0),  # Gradient Box
+            't-95':  (0.15, 1.0), # Speed Lines
+            't-T1':  (0.15, 1.0), # Stack & Flow
+            't-T3':  (0.3, 1.0),  # Underline Fade
+            't-T4':  (0.3, 1.0),  # Study With Me
             # All words always fully visible (current word gets secondary color)
             't-111': (1.0, 1.0),  # Red Tape
             't-115': (1.0, 1.0),  # Green Neon Pulse
             't-109': (1.0, 1.0),  # 3D Shadow
             't-T5':  (1.0, 1.0),  # Sentence Box
+            't-57':  (1.0, 1.0),  # VHS Glitch
             # TemplatesTab2 templates (t01-t35)
             # wbw-rise/wbw-slide: word-reveal (inactive transparent)
             't01': (0.0, 1.0),  # Bebas Neue wbw-rise
@@ -1105,14 +1340,6 @@ class VideoProcessor:
             't22': (1.0, 1.0),  # Playfair Display plain-s
             't27': (1.0, 1.0),  # Caveat plain-s
             't32': (1.0, 1.0),  # Questrial plain-s
-        }
-
-        # ── Per-template inactive word color overrides ────────────────────
-        # When inactive words use a DIFFERENT base hex than primary_hex.
-        # Most templates use white (primary) at reduced alpha; these are exceptions.
-        TEMPLATE_INACTIVE_HEX = {
-            't-9':  '#C85014',  # Fire Words: rgba(200,80,20) — brick-orange base
-            't-12': '#B40000',  # Horror: rgba(180,0,0) — dark blood red base
         }
 
         # ── Global style values ────────────────────────────────────────────
@@ -1267,7 +1494,7 @@ class VideoProcessor:
                                       float(cs.get('background_h_multiplier', 0.99) or 0.99)), 2) if te_has_bg else 2
                     te_align = {'left': 4, 'center': 5, 'right': 6}.get(cs.get('text_align', 'center'), 5)
                     te_px = int((float(cs.get('position_x', 50) or 50) / 100) * video_w)
-                    te_py = int((float(cs.get('position_y', 75) or 75) / 100) * video_h)
+                    te_py = int((float(cs.get('position_y', 50) or 50) / 100) * video_h)
                     if detected_script in INDIC_Y_CORR:
                         te_py = max(10, te_py + int(INDIC_Y_CORR[detected_script] * video_h))
                     te_tc = cs.get('text_transform', 'none') or 'none'
@@ -1356,58 +1583,28 @@ class VideoProcessor:
 
                     # Per-template extra ASS tags for the currently-speaking word
                     _gn = self._hex_to_ass
-                    _glow = max(int(5 * scale_factor), 4)
-                    _spd_x = -max(int(3 * scale_factor), 2)  # negative = shadow goes LEFT
                     _CEFF = {
-                        # t-115: omnidirectional neon glow (CSS: drop-shadow 0 0 8px #39FF14)
-                        't-115': f'\\bord{_glow}\\3c{_gn(secondary_hex or "#39FF14")}\\blur{_glow}\\shad0',
-                        # t-109: 3px-3px directional shadow (CSS: text-shadow 3px 3px 0 secondary)
-                        't-109': f'\\bord0\\shad0\\xshad{max(int(3*scale_factor),1)}\\yshad{max(int(3*scale_factor),1)}\\4c{_gn(secondary_hex or "#E01A1A")}',
-                        # t-9: omnidirectional fire glow (CSS: 0 0 12px #ff4500)
-                        't-9':   f'\\bord{max(int(3*scale_factor),2)}\\3c{_gn(shadow_color_hex or "#ff4500")}\\blur{max(int(5*scale_factor),4)}\\shad0',
-                        # t-12: omnidirectional horror glow (CSS: 0 0 18px secondary)
-                        't-12':  f'\\bord{max(int(4*scale_factor),3)}\\3c{_gn(secondary_hex or "#cc0000")}\\blur{max(int(6*scale_factor),5)}\\shad0',
-                        # t-57: chromatic aberration — right red shadow (CSS: 2px 0 #f00, -2px 0 #00f — best approx)
-                        't-57':  f'\\bord0\\shad0\\xshad{max(int(2*scale_factor),1)}\\yshad0\\4c{_gn(shadow_color_hex or "#FF0000")}',
-                        # t-56: underline on current word (CSS: border-bottom 3px solid secondary)
+                        't-115': f'\\bord0\\shad6\\blur5\\4c{_gn(secondary_hex or "#39FF14")}',
+                        't-109': f'\\bord0\\shad4\\xshad{max(int(3*scale_factor),1)}\\yshad{max(int(3*scale_factor),1)}\\4c{_gn(secondary_hex or "#E01A1A")}',
+                        't-9':   f'\\bord0\\shad8\\blur5\\4c{_gn(shadow_color_hex if has_shadow_v else "#ff4500")}',
+                        't-12':  f'\\bord0\\shad8\\blur5\\4c{_gn(shadow_color_hex if has_shadow_v else "#cc0000")}',
+                        't-57':  f'\\bord0\\shad0\\xshad{max(int(2*scale_factor),1)}\\yshad0\\4c{_gn(shadow_color_hex if has_shadow_v else "#00ffff")}',
                         't-56':  '\\u1\\bord0\\shad0',
-                        # t-124: 4px-4px ghost echo shadow (CSS: 4px 4px 0 rgba(255,255,255,.32))
-                        't-124': f'\\bord0\\shad0\\xshad{max(int(4*scale_factor),1)}\\yshad{max(int(4*scale_factor),1)}\\4c{_gn(shadow_color_hex or "#ffffff", 0.35)}',
-                        # t-104: colored stroke on current (CSS: drop-shadow glow + stroke secondary)
+                        't-T3':  '\\u1\\bord0\\shad0',
+                        't-124': f'\\bord0\\shad4\\xshad{max(int(4*scale_factor),1)}\\yshad{max(int(4*scale_factor),1)}\\blur0\\4c{_gn(shadow_color_hex if has_shadow_v else "#ffffff")}',
                         't-104': f'\\bord{max(int(stroke_width_v*scale_factor),1)}\\3c{_gn(secondary_hex or "#B28DFF",1.0)}\\shad0',
-                        # t-110: shadow dot below current word (CSS: ::after dot glow in secondary)
                         't-110': f'\\bord0\\shad{max(int(4*scale_factor),2)}\\blur3\\4c{_gn(secondary_hex or "#0066FF")}',
-                        # t-105: stroke+shadow for current (CSS: .word.active stroke+shadow also apply to .word.current)
-                        't-105': f'\\bord{max(int(1*scale_factor),1)}\\3c{_gn("#000000",1.0)}\\shad0\\xshad{max(int(2*scale_factor),1)}\\yshad{max(int(2*scale_factor),1)}\\4c{_gn("#000000",1.0)}',
-                        # t-16: omnidirectional white glow on current (CSS: text-shadow 0 0 14px rgba(255,255,255,.5))
-                        't-16':  f'\\bord{max(int(3*scale_factor),2)}\\3c{_gn("#FFFFFF", 0.5)}\\blur{max(int(5*scale_factor),4)}\\shad0',
-                        # t-95: left speed-line shadow (CSS: -3px 0 #0055FF, -7px 0 #00AAFF)
-                        't-95':  f'\\bord0\\shad0\\xshad{_spd_x}\\yshad0\\4c{_gn(secondary_hex or "#0055FF")}',
+                        't-105': f'\\bord{max(int(stroke_width_v*scale_factor),1)}\\3c{_gn(stroke_color_hex,1.0)}\\shad{max(int(shadow_blur_v*scale_factor*0.4),1)}\\4c{_gn(shadow_color_hex,1.0)}\\blur2',
                     }
                     _cur_eff = _CEFF.get(template_id, '\\bord0\\shad0')
 
-                    # Done/active word extra effects — templates where .word.active has effects beyond color
-                    _AEFF = {
-                        # t-109: 3D shadow on done words (CSS: text-shadow 3px 3px 0 secondary@40%)
-                        't-109': f'\\bord0\\shad0\\xshad{max(int(3*scale_factor),1)}\\yshad{max(int(3*scale_factor),1)}\\4c{_gn(secondary_hex or "#E01A1A", 0.4)}',
-                        # t-104: colored stroke on done words (CSS: -webkit-text-stroke 2px secondary)
-                        't-104': f'\\bord{max(int(stroke_width_v*scale_factor),1)}\\3c{_gn(secondary_hex or "#B28DFF",1.0)}\\shad0',
-                        # t-105: stroke+shadow on done words (CSS: -webkit-text-stroke 1px #000 + drop-shadow 2px 2px)
-                        't-105': f'\\bord{max(int(1*scale_factor),1)}\\3c{_gn("#000000",1.0)}\\shad0\\xshad{max(int(2*scale_factor),1)}\\yshad{max(int(2*scale_factor),1)}\\4c{_gn("#000000",1.0)}',
-                    }
-
-                    # Templates where DONE (already-spoken) words use secondary color — none in CSS
-                    _ACT_SEC = set()
-                    # Templates where the CURRENT word uses secondary_color
-                    # Verified against CSS .word.current { color: secondary/highlight }
-                    # t-52: NO .word.current color override → same as done (primary) — removed
-                    # t-112: NO .word.current rule → same as done (primary) — removed
-                    _CUR_SEC = {'t-36', 't-37', 't-115', 't-T1', 't-T4', 't-T3', 't-105'}
+                    # Templates where active/current word text uses secondary color
+                    _ACT_SEC = {'t-36', 't-37'}
+                    _CUR_SEC = {'t-36', 't-37', 't-52', 't-112', 't-T1', 't-T4', 't-T3'}
 
                     _pa = float(style.get('text_opacity', 1.0) or 1.0)
                     _act_c   = _gn(secondary_hex if (secondary_hex and template_id in _ACT_SEC) else primary_hex, _aa * _pa)
-                    _inact_hex = TEMPLATE_INACTIVE_HEX.get(template_id, primary_hex)
-                    _inact_c = _gn(_inact_hex, _ia * _pa)
+                    _inact_c = _gn(primary_hex, _ia * _pa)
                     _cur_c   = _gn(secondary_hex if (secondary_hex and template_id in _CUR_SEC) else primary_hex, 1.0)
 
                     _cur_box_bg  = _gn(secondary_hex or '#FFE600', 1.0)
@@ -1423,8 +1620,8 @@ class VideoProcessor:
                     _nobox = '\\bord0\\shad0\\3a&HFF&\\4a&HFF&'
 
                     def _wxy(lyt):
-                        _wx = int((float(lyt.get('x', 50) or 50) / 100) * video_w)
-                        _wy = int((float(lyt.get('y', 75) or 75) / 100) * video_h)
+                        _wx = int((float(lyt['x']) / 100) * video_w)
+                        _wy = int((float(lyt['y']) / 100) * video_h)
                         if detected_script in INDIC_Y_CORR:
                             _wy = max(10, _wy + int(INDIC_Y_CORR[detected_script] * video_h))
                         return _wx, _wy
@@ -1432,15 +1629,12 @@ class VideoProcessor:
                     _aw = [_T((wt2.get('word') or '').strip()) for wt2 in words_timing]
 
                     # Gap before first word — write all inactive words
-                    try:
-                        _fts = float(words_timing[0].get('start', st)) if words_timing else st
-                    except (ValueError, TypeError):
-                        _fts = st
+                    _fts = float(words_timing[0].get('start', st)) if words_timing else st
                     if _fts > st + 0.05 and _ia > 0.0:
                         for _wi2, _wd2 in enumerate(_aw):
                             if not _wd2: continue
                             _lyt2 = cap_word_layouts.get(_wi2)
-                            if not _lyt2 or 'x' not in _lyt2 or 'y' not in _lyt2: continue
+                            if not _lyt2: continue
                             _wx2, _wy2 = _wxy(_lyt2)
                             if _uab:
                                 _lt = f'{_bt}\\1c{_inact_c}\\3c{_gn(bg_hex, bg_opacity * _ia)}\\pos({_wx2},{_wy2})'
@@ -1457,14 +1651,8 @@ class VideoProcessor:
                         _wsc = ws_map.get(f"{cid}-{_wi}", {})
                         if isinstance(_wsc, dict) and _wsc.get('abs_x_pct') is not None:
                             continue  # Separately positioned — rendered below
-                        try:
-                            _ws2 = float(_wt2.get('start', st))
-                        except (ValueError, TypeError):
-                            _ws2 = st
-                        try:
-                            _we2 = float(words_timing[_wi + 1].get('start', et) if _wi + 1 < len(words_timing) else et)
-                        except (ValueError, TypeError):
-                            _we2 = et
+                        _ws2 = float(_wt2.get('start', st))
+                        _we2 = float(words_timing[_wi + 1].get('start', et) if _wi + 1 < len(words_timing) else et)
                         if _we2 <= _ws2: _we2 = _ws2 + 0.05
                         _ts_s = self._fmt(_ws2)
                         _ts_e = self._fmt(_we2)
@@ -1472,18 +1660,17 @@ class VideoProcessor:
                         for _wi2, _wd2 in enumerate(_aw):
                             if not _wd2: continue
                             _lyt2 = cap_word_layouts.get(_wi2)
-                            if not _lyt2 or 'x' not in _lyt2 or 'y' not in _lyt2: continue
+                            if not _lyt2: continue
                             _wx2, _wy2 = _wxy(_lyt2)
                             _pt = f'\\pos({_wx2},{_wy2})'
 
                             if _wi2 < _wi:
-                                # Already spoken — active color + per-template done effects
+                                # Already spoken — active color
                                 if _uab:
                                     _lt = f'{_bt}\\1c{_act_c}\\3c{_base_box_bg}{_pt}'
                                     _sn = 'WordBox'
                                 else:
-                                    _done_eff_p = _AEFF.get(template_id, _nobox)
-                                    _lt = f'{_bt}\\1c{_act_c}{_done_eff_p}{_pt}'
+                                    _lt = f'{_bt}\\1c{_act_c}{_nobox}{_pt}'
                                     _sn = 'Default'
                                 f.write(f"Dialogue: 0,{_ts_s},{_ts_e},{_sn},,0,0,0,,{{{_lt}}}{_wd2}\n")
 
@@ -1537,10 +1724,6 @@ class VideoProcessor:
                 tokens = re.split(r'(\s+)', text)
                 word_idx = 0
                 inline_parts = []
-                # NOTE: `positioned` was already pre-built at line ~1237 (shared with template path).
-                # This re-build is kept because the loop below also constructs `inline_parts` in
-                # the same pass. If you change the abs_x_pct detection logic here, mirror it in
-                # the pre-build above to keep both paths consistent.
                 positioned = []   # (word_idx, token, ws_dict) — rebuilt from tokens for legacy path
 
                 for tok in tokens:
@@ -1602,14 +1785,11 @@ class VideoProcessor:
                     _pa_fb = float(style.get('text_opacity', 1.0) or 1.0)
                     _gn_fb = self._hex_to_ass
 
-                    # Color logic — mirrors primary word-layout path exactly
-                    _ACT_SEC_FB = set()
-                    # t-52: NO .word.current color override — removed
-                    # t-112: NO .word.current rule — removed
-                    _CUR_SEC_FB = {'t-36', 't-37', 't-115', 't-T1', 't-T4', 't-T3', 't-105'}
+                    # Color logic matching the primary word-layout path
+                    _ACT_SEC_FB = {'t-36', 't-37'}
+                    _CUR_SEC_FB = {'t-36', 't-37', 't-52', 't-112', 't-T1', 't-T4', 't-T3'}
                     _act_c_fb  = _gn_fb(secondary_hex if (secondary_hex and template_id in _ACT_SEC_FB) else primary_hex, _aa_fb * _pa_fb)
-                    _inact_hex_fb = TEMPLATE_INACTIVE_HEX.get(template_id, primary_hex)
-                    _inact_c_fb = _gn_fb(_inact_hex_fb, _ia_fb * _pa_fb)
+                    _inact_c_fb = _gn_fb(primary_hex, _ia_fb * _pa_fb)
                     _cur_c_fb  = _gn_fb(secondary_hex if (secondary_hex and template_id in _CUR_SEC_FB) else primary_hex, 1.0)
 
                     all_tpl_words = [_T((wt.get('word') or '').strip()) for wt in words_timing]
@@ -1625,51 +1805,40 @@ class VideoProcessor:
                     tpl_base.append(f"\\pos({pos_x},{pos_y})")
                     tpl_tag = "".join(tpl_base)
 
-                    # Per-template CURRENT-word effects (mirrors primary path _CEFF exactly)
-                    _glow_fb = max(int(5 * scale_factor), 4)
-                    _spd_x_fb = -max(int(3 * scale_factor), 2)
+                    # Per-template CURRENT-word effects (mirrors primary path _CEFF)
                     _CEFF_FB = {
-                        't-115': f'\\bord{_glow_fb}\\3c{_gn_fb(secondary_hex or "#39FF14")}\\blur{_glow_fb}\\shad0',
-                        't-109': f'\\bord0\\shad0\\xshad{max(int(3*scale_factor),1)}\\yshad{max(int(3*scale_factor),1)}\\4c{_gn_fb(secondary_hex or "#E01A1A")}',
-                        't-9':   f'\\bord{max(int(3*scale_factor),2)}\\3c{_gn_fb(shadow_color_hex or "#ff4500")}\\blur{max(int(5*scale_factor),4)}\\shad0',
-                        't-12':  f'\\bord{max(int(4*scale_factor),3)}\\3c{_gn_fb(secondary_hex or "#cc0000")}\\blur{max(int(6*scale_factor),5)}\\shad0',
-                        't-57':  f'\\bord0\\shad0\\xshad{max(int(2*scale_factor),1)}\\yshad0\\4c{_gn_fb(shadow_color_hex or "#FF0000")}',
+                        't-115': f'\\bord0\\shad6\\blur5\\4c{_gn_fb(secondary_hex or "#39FF14")}',
+                        't-109': f'\\bord0\\shad4\\xshad{max(int(3*scale_factor),1)}\\yshad{max(int(3*scale_factor),1)}\\4c{_gn_fb(secondary_hex or "#E01A1A")}',
+                        't-9':   f'\\bord0\\shad8\\blur5\\4c{_gn_fb(shadow_color_hex if has_shadow_v else "#ff4500")}',
+                        't-12':  f'\\bord0\\shad8\\blur5\\4c{_gn_fb(shadow_color_hex if has_shadow_v else "#cc0000")}',
+                        't-57':  f'\\bord0\\shad0\\xshad{max(int(2*scale_factor),1)}\\yshad0\\4c{_gn_fb(shadow_color_hex if has_shadow_v else "#00ffff")}',
                         't-56':  '\\u1\\bord0\\shad0',
-                        't-124': f'\\bord0\\shad0\\xshad{max(int(4*scale_factor),1)}\\yshad{max(int(4*scale_factor),1)}\\4c{_gn_fb(shadow_color_hex or "#ffffff", 0.35)}',
+                        't-T3':  '\\u1\\bord0\\shad0',
+                        't-124': f'\\bord0\\shad4\\xshad{max(int(4*scale_factor),1)}\\yshad{max(int(4*scale_factor),1)}\\blur0\\4c{_gn_fb(shadow_color_hex if has_shadow_v else "#ffffff")}',
                         't-104': f'\\bord{max(int(stroke_width_v*scale_factor),1)}\\3c{_gn_fb(secondary_hex or "#B28DFF",1.0)}\\shad0',
                         't-110': f'\\bord0\\shad{max(int(4*scale_factor),2)}\\blur3\\4c{_gn_fb(secondary_hex or "#0066FF")}',
-                        't-105': f'\\bord{max(int(1*scale_factor),1)}\\3c{_gn_fb("#000000",1.0)}\\shad0\\xshad{max(int(2*scale_factor),1)}\\yshad{max(int(2*scale_factor),1)}\\4c{_gn_fb("#000000",1.0)}',
-                        't-16':  f'\\bord{max(int(3*scale_factor),2)}\\3c{_gn_fb("#FFFFFF", 0.5)}\\blur{max(int(5*scale_factor),4)}\\shad0',
-                        't-95':  f'\\bord0\\shad0\\xshad{_spd_x_fb}\\yshad0\\4c{_gn_fb(secondary_hex or "#0055FF")}',
+                        't-105': f'\\bord{max(int(stroke_width_v*scale_factor),1)}\\3c{_gn_fb(stroke_color_hex,1.0)}\\shad{max(int(shadow_blur_v*scale_factor*0.4),1)}\\4c{_gn_fb(shadow_color_hex,1.0)}\\blur2',
                     }
                     _cur_eff_fb = _CEFF_FB.get(template_id, '\\bord0\\shad0')
-                    # Suppress default ASS style effects for non-current words
+                    # Suppress effects for non-current words (no glow/shadow bleed)
                     _noeff_fb = '\\bord0\\shad0\\blur0'
-
-                    # Done/active word extra effects (CSS: .word.active effects beyond color)
-                    _AEFF_FB = {
-                        't-109': f'\\bord0\\shad0\\xshad{max(int(3*scale_factor),1)}\\yshad{max(int(3*scale_factor),1)}\\4c{_gn_fb(secondary_hex or "#E01A1A", 0.4)}',
-                        't-104': f'\\bord{max(int(stroke_width_v*scale_factor),1)}\\3c{_gn_fb(secondary_hex or "#B28DFF",1.0)}\\shad0',
-                        't-105': f'\\bord{max(int(1*scale_factor),1)}\\3c{_gn_fb("#000000",1.0)}\\shad0\\xshad{max(int(2*scale_factor),1)}\\yshad{max(int(2*scale_factor),1)}\\4c{_gn_fb("#000000",1.0)}',
-                    }
 
                     def _tpl_line(w_s, w_e, cur_wi):
                         if w_e <= w_s: return
                         parts = []
-                        _done_eff_tpl = _AEFF_FB.get(template_id, _noeff_fb)
                         for j, tw in enumerate(all_tpl_words):
                             if not tw: continue
                             if cur_wi is None:
                                 # Gap before first word — all inactive, no effects
                                 parts.append(f"{{\\1c{_inact_c_fb}{_noeff_fb}}}{tw}")
                             elif j < cur_wi:
-                                # Already spoken — active color + per-template done effects
+                                # Already spoken — active color, suppress template effects
                                 if has_bg:
                                     parts.append(f"{{\\1c{_act_c_fb}}}{tw}")
                                 else:
-                                    parts.append(f"{{\\1c{_act_c_fb}{_done_eff_tpl}}}{tw}")
+                                    parts.append(f"{{\\1c{_act_c_fb}{_noeff_fb}}}{tw}")
                             elif j == cur_wi:
-                                # Currently speaking — template color + effects
+                                # Currently speaking — template-specific effects
                                 if has_bg:
                                     parts.append(f"{{\\1c{_cur_c_fb}}}{tw}")
                                 else:
@@ -1799,8 +1968,8 @@ class VideoProcessor:
                 print(f"[ASS] Created: {len(_lines)} lines, {len(_diags)} Dialogue entries")
                 for dl in _diags[:4]:
                     print(f"[ASS]   {dl[:200]}")
-        except Exception as e:
-            print(f"[Warning] Failed to read back ASS debug log: {e}")
+        except Exception:
+            pass
 
         return ass_path
 
@@ -1869,8 +2038,7 @@ class VideoProcessor:
             r = hex_c[0:2]
             g = hex_c[2:4]
             b = hex_c[4:6]
-        except Exception as e:
-            print(f"[Warning] Failed to parse hex color '{hex_c}': {e}")
+        except Exception:
             return "&H00FFFFFF"
 
         ass_alpha_val = int(255 * (1.0 - min(max(alpha, 0), 1.0)))

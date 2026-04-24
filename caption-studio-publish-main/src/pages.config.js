@@ -47,14 +47,15 @@
  *
  * The mainPage value must match a key in the PAGES object exactly.
  */
-import Dashboard from './pages/Dashboard';
-import Home from './pages/Home';
-import Login from './pages/Login';
-import UserAccount from './pages/UserAccount';
-import Faq from './pages/Faq';
-import Help from './pages/Help';
-import Terms from './pages/Terms';
-import __Layout from './Layout.jsx';
+import Dashboard from './pages/Dashboard'
+import Home from './pages/Home'
+import Login from './pages/Login'
+import UserAccount from './pages/UserAccount'
+import Faq from './pages/Faq'
+import TermsAndConditions from './pages/TermsAndConditions'
+import HelpAndSupport from './pages/HelpAndSupport'
+import AdminOps from './pages/AdminOps'
+import __Layout from './Layout.jsx'
 
 
 export const PAGES = {
@@ -63,12 +64,13 @@ export const PAGES = {
     "login": Login,
     "UserAccount": UserAccount,
     "Faq": Faq,
-    "Help": Help,
-    "Terms": Terms,
+    "TermsAndConditions": TermsAndConditions,
+    "HelpAndSupport": HelpAndSupport,
+    "AdminOps": AdminOps,
 }
 
 export const pagesConfig = {
     mainPage: "Home",
     Pages: PAGES,
     Layout: __Layout,
-};
+}

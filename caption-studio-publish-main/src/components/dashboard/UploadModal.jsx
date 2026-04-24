@@ -17,6 +17,12 @@ import {
 } from "@/components/ui/select";
 import { Upload, Film, Sparkles, Globe, Palette, Loader2, Info, Wand2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { toast } from '@/components/ui/use-toast';
+import { apiRequest } from '@/lib/apiClient';
+import { notifyApiError } from '@/lib/notifyApiError';
+import { useAuth } from '@/lib/AuthContext';
+
+const MAX_UPLOAD_BYTES = 500 * 1024 * 1024; // Keep in sync with backend/main.py
 
 const indianLanguages = [
   { value: 'assamese', label: 'Assamese (অসমীয়া)' },
@@ -171,6 +177,7 @@ export default function UploadModal({
   onUpload,
   isUploading
 }) {
+  const { currentUser } = useAuth();
   const [dragActive, setDragActive] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const [language, setLanguage] = useState('auto');
@@ -181,6 +188,7 @@ export default function UploadModal({
   const [showDynamicInfo, setShowDynamicInfo] = useState(false);
   const [isDetecting, setIsDetecting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [detectedUpload, setDetectedUpload] = useState(null);
 
   // Reset modal to step 1 (upload page) whenever it opens
   useEffect(() => {
@@ -191,6 +199,7 @@ export default function UploadModal({
       setStyle('single_line');
       setWordsPerLine('dynamic');
       setFileSizeError(null);
+      setDetectedUpload(null);
     }
   }, [open]);
 
@@ -212,16 +221,17 @@ export default function UploadModal({
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const file = e.dataTransfer.files[0];
       if (file.type.startsWith('video/')) {
-        const maxSize = 100 * 1024 * 1024;
+        const maxSize = MAX_UPLOAD_BYTES;
         const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
 
         if (file.size > maxSize) {
-          setFileSizeError(`File size (${fileSizeMB}MB) exceeds 100MB limit.`);
+          setFileSizeError(`File size (${fileSizeMB}MB) exceeds 500MB limit.`);
           return;
         }
 
         setFileSizeError(null);
         setSelectedFile(file);
+        setDetectedUpload(null);
         setStep(2);
       }
     }
@@ -231,23 +241,30 @@ export default function UploadModal({
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
 
-      const maxSize = 100 * 1024 * 1024;
+      const maxSize = MAX_UPLOAD_BYTES;
       const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
 
       if (file.size > maxSize) {
-        setFileSizeError(`File size (${fileSizeMB}MB) exceeds 100MB limit.`);
+        setFileSizeError(`File size (${fileSizeMB}MB) exceeds 500MB limit.`);
         return;
       }
 
       setFileSizeError(null);
       setSelectedFile(file);
+      setDetectedUpload(null);
       setStep(2);
     }
   };
 
   const handleSubmit = () => {
     if (selectedFile) {
-      onUpload(selectedFile, { language, style, wordsPerLine });
+      onUpload(selectedFile, {
+        language,
+        style,
+        wordsPerLine,
+        preUploadedFileId: detectedUpload?.fileId,
+        preUploadedRawUrl: detectedUpload?.rawUrl
+      });
     }
   };
 
@@ -259,6 +276,7 @@ export default function UploadModal({
     setWordsPerLine('dynamic');
     setFileSizeError(null);
     setSearchQuery('');
+    setDetectedUpload(null);
   };
 
   // Language detection — uploads file first, then calls detect endpoint
@@ -266,23 +284,50 @@ export default function UploadModal({
     if (!selectedFile) return
     setIsDetecting(true)
     try {
-      // Upload file first to get file_id
-      const formData = new FormData()
-      formData.append('file', selectedFile)
-      const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData })
-      const uploadData = await uploadRes.json()
-      if (!uploadData.success) {
-        alert(uploadData.error || 'Upload failed for detection')
-        setIsDetecting(false)
-        return
+      const idToken = currentUser?.accessToken || await currentUser?.getIdToken?.() || ''
+      const fileSignature = `${selectedFile.name}-${selectedFile.size}-${selectedFile.lastModified}`
+      let uploadData = null
+
+      if (detectedUpload && detectedUpload.signature === fileSignature) {
+        uploadData = {
+          file_id: detectedUpload.fileId,
+          raw_url: detectedUpload.rawUrl,
+          success: true
+        }
+      } else {
+        // Upload file first to get file_id (reused later for Generate to avoid double upload)
+        const formData = new FormData()
+        formData.append('file', selectedFile)
+        uploadData = await apiRequest('/api/upload', {
+          method: 'POST',
+          body: formData,
+          dedupeKey: 'detect-upload',
+          cancelPrevious: true,
+        })
+        if (!uploadData.success) {
+          toast({
+            variant: 'destructive',
+            title: 'Upload failed for detection',
+            description: uploadData.error || 'Please try again.',
+          })
+          setIsDetecting(false)
+          return
+        }
+        setDetectedUpload({
+          signature: fileSignature,
+          fileId: uploadData.file_id,
+          rawUrl: uploadData.raw_url
+        })
       }
+
       // Call detect-language
-      const detectRes = await fetch('/api/detect-language', {
+      const detectData = await apiRequest('/api/detect-language', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ file_id: uploadData.file_id })
+        body: JSON.stringify({ file_id: uploadData.file_id, id_token: idToken }),
+        dedupeKey: 'detect-language',
+        cancelPrevious: true,
       })
-      const detectData = await detectRes.json()
       if (detectData.success && detectData.language) {
         // Try to match Whisper language code to our dropdown values
         const detected = detectData.language.toLowerCase()
@@ -297,14 +342,21 @@ export default function UploadModal({
         } else {
           // Fallback: set as-is if it's a valid value
           setLanguage(detected)
-          alert(`Detected language: ${detected}. Please verify in the dropdown.`)
+          toast({
+            title: 'Language detected',
+            description: `${detected}. Please verify in the dropdown.`,
+          })
         }
       } else {
-        alert('Could not detect language. Please select manually.')
+        toast({
+          variant: 'destructive',
+          title: 'Could not detect language',
+          description: 'Please select manually.',
+        })
       }
     } catch (err) {
       console.error('Language detection error:', err)
-      alert('Language detection failed. Please select manually.')
+      notifyApiError(err, 'Language detection failed')
     }
     setIsDetecting(false)
   };
@@ -371,8 +423,8 @@ export default function UploadModal({
                     <Film className="w-3 h-3" />
                     MP4, MOV, WebM
                   </span>
-                  <span>15-90 seconds</span>
-                  <span>Max 100MB</span>
+                  <span>Best for 15-180 seconds</span>
+                  <span>Max 500MB</span>
                 </div>
               </div>
 

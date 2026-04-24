@@ -1,13 +1,15 @@
 
+import { toast } from '@/components/ui/use-toast'
+
 const loadRazorpayScript = () => {
   return new Promise((resolve) => {
-    const script = document.createElement('script');
-    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-    script.onload = () => resolve(true);
-    script.onerror = () => resolve(false);
-    document.body.appendChild(script);
-  });
-};
+    const script = document.createElement('script')
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js'
+    script.onload = () => resolve(true)
+    script.onerror = () => resolve(false)
+    document.body.appendChild(script)
+  })
+}
 
 export const initiateRazorpayPayment = async ({
   amount,
@@ -19,16 +21,24 @@ export const initiateRazorpayPayment = async ({
   onSuccess,
   onFailure
 }) => {
-  const res = await loadRazorpayScript();
+  const res = await loadRazorpayScript()
 
   if (!res) {
-    alert('Razorpay SDK failed to load. Please check your internet connection.');
-    return;
+    toast({
+      variant: 'destructive',
+      title: 'Razorpay SDK failed to load',
+      description: 'Please check your internet connection.',
+    })
+    return
   }
 
   if (!keyId) {
-    alert('Payment configuration error. Please contact support.');
-    return;
+    toast({
+      variant: 'destructive',
+      title: 'Payment configuration error',
+      description: 'Please contact support.',
+    })
+    return
   }
 
   const options = {
@@ -45,7 +55,7 @@ export const initiateRazorpayPayment = async ({
         razorpay_order_id: response.razorpay_order_id,
         razorpay_signature: response.razorpay_signature,
         planId
-      });
+      })
     },
     prefill: {
       name: userName || '',
@@ -61,20 +71,20 @@ export const initiateRazorpayPayment = async ({
     modal: {
       ondismiss: function() {
         if (onFailure) {
-          onFailure('Payment cancelled by user');
+          onFailure('Payment cancelled by user')
         }
       }
     }
-  };
+  }
 
-  const paymentObject = new window.Razorpay(options);
+  const paymentObject = new window.Razorpay(options)
   
   // Add small delay to ensure proper initialization
   setTimeout(() => {
-    paymentObject.open();
-  }, 100);
-};
+    paymentObject.open()
+  }, 100)
+}
 
 export default function RazorpayPayment() {
-  return null;
+  return null
 }

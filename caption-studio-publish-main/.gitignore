@@ -24,15 +24,14 @@ backend/exports/
 backend/*.ass
 backend/output_frame.jpg
 
-# Log files
-*.log
+# Local logs and generated preview artifacts
+.claude/worktrees/
 backend/*.log
-backend/codex-backend.err.log
-backend/codex-backend.out.log
-codex-frontend.err.log
-codex-frontend.out.log
-vite.log
-
-# Local preview artifacts and downloaded fonts
-backend/fonts/
-preview*.png
+backend/*.err.log
+frontend-dev.log
+frontend-dev.err.log
+codex-latest-frontend.log
+flat_fonts/
+latest-preview-*.png
+test-tab*.png
+timing-check.png

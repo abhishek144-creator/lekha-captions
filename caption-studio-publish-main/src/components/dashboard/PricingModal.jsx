@@ -10,6 +10,9 @@ import { Button } from '@/components/ui/button'
 import { Check, Crown, Zap, Star, Loader2 } from 'lucide-react'
 import { auth } from '@/lib/firebase'
 import { useAuth } from '@/lib/AuthContext'
+import { toast } from '@/components/ui/use-toast'
+import { apiRequest } from '@/lib/apiClient'
+import { notifyApiError } from '@/lib/notifyApiError'
 
 const RAZORPAY_KEY_ID = import.meta.env.VITE_RAZORPAY_KEY_ID || ''
 
@@ -91,6 +94,13 @@ const TOPUP_MAP = {
 
 const TOPUP_PAISE = { topup_starter: 4900, topup_creator: 4900, topup_pro: 7900 }
 
+function createIdempotencyKey(scope, planId) {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return `${scope}:${planId}:${crypto.randomUUID()}`
+  }
+  return `${scope}:${planId}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`
+}
+
 export default function PricingModal({ isOpen, onClose, onSelectPlan, user, message, userData = null }) {
   const [processingPlan, setProcessingPlan] = useState(null)
   const [billing, setBilling] = useState('monthly')
@@ -110,14 +120,14 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
     try {
       await loadRazorpayScript()
       if (!window.Razorpay) {
-        alert('Payment system unavailable. Please refresh and try again.')
+        toast({ variant: 'destructive', title: 'Payment system unavailable', description: 'Please refresh and try again.' })
         setProcessingPlan(null)
         return
       }
 
       const currentUser = user || auth.currentUser
       if (!currentUser) {
-        alert('Please log in first to purchase a plan.')
+        toast({ variant: 'destructive', title: 'Login required', description: 'Please log in first to purchase a plan.' })
         setProcessingPlan(null)
         return
       }
@@ -125,15 +135,20 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
       const idToken = await currentUser.getIdToken()
       const planId = billing === 'yearly' ? `${plan.id}_yearly` : plan.id
       const amount = billing === 'yearly' ? plan.yearlyPaise : plan.monthlyPaise
+      const paymentAttemptKey = createIdempotencyKey('plan', planId)
 
       let orderData = { success: false, order: null, key_id: RAZORPAY_KEY_ID }
       try {
-        const orderRes = await fetch('/api/create-order', {
+        const parsed = await apiRequest('/api/create-order', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ plan_id: planId, id_token: idToken, currency: 'INR' }),
+          body: JSON.stringify({
+            plan_id: planId,
+            id_token: idToken,
+            currency: 'INR',
+            idempotency_key: paymentAttemptKey,
+          }),
         })
-        const parsed = await orderRes.json()
         if (parsed.success) orderData = parsed
         else if (!RAZORPAY_KEY_ID.startsWith('rzp_test_')) throw new Error(parsed.error || 'Failed to create order')
       } catch (fetchErr) {
@@ -151,7 +166,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
         order_id: orderData.order?.id,
         handler: async (response) => {
           try {
-            const verifyRes = await fetch('/api/verify-payment', {
+            const verifyData = await apiRequest('/api/verify-payment', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -160,18 +175,18 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
                 razorpay_signature: response.razorpay_signature,
                 id_token: idToken,
                 plan_id: planId,
+                idempotency_key: paymentAttemptKey,
               }),
             })
-            const verifyData = await verifyRes.json()
             if (verifyData.success) {
-              alert(`✅ Payment successful! ${verifyData.credits_added} credits added.`)
+              toast({ title: 'Payment successful', description: `${verifyData.credits_added} credits added.` })
               if (onSelectPlan) onSelectPlan(planId)
               window.location.reload()
             } else {
-              alert('Payment verification failed. Please contact support.')
+              toast({ variant: 'destructive', title: 'Payment verification failed', description: 'Please contact support.' })
             }
           } catch (e) {
-            alert('Error verifying payment.')
+            notifyApiError(e, 'Error verifying payment')
           } finally {
             setProcessingPlan(null)
           }
@@ -183,12 +198,12 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
 
       const rzp = new window.Razorpay(options)
       rzp.on('payment.failed', (resp) => {
-        alert(`❌ Payment failed: ${resp.error?.description || 'Unknown error'}`)
+        toast({ variant: 'destructive', title: 'Payment failed', description: resp.error?.description || 'Unknown error' })
         setProcessingPlan(null)
       })
       rzp.open()
     } catch (error) {
-      alert(`Error: ${error.message}`)
+      notifyApiError(error, 'Payment error')
       setProcessingPlan(null)
     }
   }
@@ -228,16 +243,29 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
     setProcessingPlan(topup.plan_id)
     try {
       await loadRazorpayScript()
-      if (!window.Razorpay) { alert('Payment system unavailable.'); setProcessingPlan(null); return }
+      if (!window.Razorpay) {
+        toast({ variant: 'destructive', title: 'Payment system unavailable' })
+        setProcessingPlan(null)
+        return
+      }
       const currentUser = user || auth.currentUser
-      if (!currentUser) { alert('Please log in first.'); setProcessingPlan(null); return }
+      if (!currentUser) {
+        toast({ variant: 'destructive', title: 'Login required', description: 'Please log in first.' })
+        setProcessingPlan(null)
+        return
+      }
       const idToken = await currentUser.getIdToken()
-      const orderRes = await fetch('/api/create-order', {
+      const paymentAttemptKey = createIdempotencyKey('topup', topup.plan_id)
+      const orderData = await apiRequest('/api/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plan_id: topup.plan_id, id_token: idToken, currency: 'INR' }),
+        body: JSON.stringify({
+          plan_id: topup.plan_id,
+          id_token: idToken,
+          currency: 'INR',
+          idempotency_key: paymentAttemptKey,
+        }),
       })
-      const orderData = await orderRes.json()
       if (!orderData.success) throw new Error(orderData.error || 'Failed to create top-up order')
       onClose()
       const amount = TOPUP_PAISE[topup.plan_id]
@@ -250,7 +278,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
         order_id: orderData.order?.id,
         handler: async (response) => {
           try {
-            const verifyRes = await fetch('/api/verify-payment', {
+            const verifyData = await apiRequest('/api/verify-payment', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -259,25 +287,30 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
                 razorpay_signature: response.razorpay_signature,
                 id_token: idToken,
                 plan_id: topup.plan_id,
+                idempotency_key: paymentAttemptKey,
               }),
             })
-            const verifyData = await verifyRes.json()
             if (verifyData.success) {
-              alert(`✅ Top-up successful! ${verifyData.credits_added} credits added.`)
+              toast({ title: 'Top-up successful', description: `${verifyData.credits_added} credits added.` })
               window.location.reload()
             } else {
-              alert('Top-up verification failed. Please contact support.')
+              toast({ variant: 'destructive', title: 'Top-up verification failed', description: 'Please contact support.' })
             }
-          } catch (e) { alert('Error verifying top-up.') }
+          } catch (e) { notifyApiError(e, 'Error verifying top-up') }
           finally { setProcessingPlan(null) }
         },
         prefill: { name: user?.displayName || '', email: user?.email || '' },
         theme: { color: '#F5A623' },
         modal: { ondismiss: () => setProcessingPlan(null) },
       }
-      new window.Razorpay(options).open()
+      const rzp = new window.Razorpay(options)
+      rzp.on('payment.failed', (resp) => {
+        toast({ variant: 'destructive', title: 'Top-up payment failed', description: resp.error?.description || 'Unknown error' })
+        setProcessingPlan(null)
+      })
+      rzp.open()
     } catch (error) {
-      alert(`Error: ${error.message}`)
+      notifyApiError(error, 'Top-up error')
       setProcessingPlan(null)
     }
   }
