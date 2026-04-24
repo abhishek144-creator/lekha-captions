@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react'
 import {
     auth,
     db,
@@ -11,23 +11,23 @@ import {
     doc,
     getDoc,
     setDoc
-} from '../lib/firebase';
+} from '../lib/firebase'
 
-const AuthContext = createContext();
+const AuthContext = createContext()
 
 export function useAuth() {
-    return useContext(AuthContext);
+    return useContext(AuthContext)
 }
 
 export function AuthProvider({ children }) {
-    const [currentUser, setCurrentUser] = useState(null);
-    const [userData, setUserData] = useState(null);
-    const [loading, setLoading] = useState(true);
-    const [authError, setAuthError] = useState(null);
+    const [currentUser, setCurrentUser] = useState(null)
+    const [userData, setUserData] = useState(null)
+    const [loading, setLoading] = useState(true)
+    const [authError, setAuthError] = useState(null)
 
     const syncUserRecord = async (user) => {
-        const userRef = doc(db, 'users', user.uid);
-        const userSnap = await getDoc(userRef);
+        const userRef = doc(db, 'users', user.uid)
+        const userSnap = await getDoc(userRef)
 
         if (!userSnap.exists()) {
             const newUserDoc = {
@@ -38,106 +38,106 @@ export function AuthProvider({ children }) {
                 subscription_tier: 'free',
                 subscription_expiry: null,
                 createdAt: new Date().toISOString()
-            };
-            await setDoc(userRef, newUserDoc);
-            setUserData(newUserDoc);
-            return newUserDoc;
+            }
+            await setDoc(userRef, newUserDoc)
+            setUserData(newUserDoc)
+            return newUserDoc
         }
 
-        const existingUserDoc = userSnap.data();
-        setUserData(existingUserDoc);
-        return existingUserDoc;
-    };
+        const existingUserDoc = userSnap.data()
+        setUserData(existingUserDoc)
+        return existingUserDoc
+    }
 
     const loginWithGoogle = async ({ preferRedirect = false } = {}) => {
         try {
-            setAuthError(null);
+            setAuthError(null)
 
             if (preferRedirect) {
-                await signInWithRedirect(auth, googleProvider);
-                return { redirected: true };
+                await signInWithRedirect(auth, googleProvider)
+                return { redirected: true }
             }
 
-            const result = await signInWithPopup(auth, googleProvider);
-            await syncUserRecord(result.user);
-            return result.user;
+            const result = await signInWithPopup(auth, googleProvider)
+            await syncUserRecord(result.user)
+            return result.user
         } catch (error) {
-            console.error('Google Sign In Error:', error);
+            console.error('Google Sign In Error:', error)
             const fallbackCodes = new Set([
                 'auth/popup-blocked',
                 'auth/popup-closed-by-user',
                 'auth/cancelled-popup-request',
-            ]);
+            ])
 
             if (fallbackCodes.has(error?.code)) {
-                await signInWithRedirect(auth, googleProvider);
-                return { redirected: true };
+                await signInWithRedirect(auth, googleProvider)
+                return { redirected: true }
             }
 
-            setAuthError(error);
-            throw error;
+            setAuthError(error)
+            throw error
         }
-    };
+    }
 
-    const logout = () => signOut(auth);
+    const logout = () => signOut(auth)
 
     useEffect(() => {
         if (!auth) {
-            setLoading(false);
-            return;
+            setLoading(false)
+            return
         }
 
         getRedirectResult(auth)
             .then((result) => {
                 if (result?.user) {
-                    return syncUserRecord(result.user);
+                    return syncUserRecord(result.user)
                 }
-                return null;
+                return null
             })
             .catch((error) => {
-                console.warn('Google redirect sign-in failed:', error.message);
-                setAuthError(error);
-            });
+                console.warn('Google redirect sign-in failed:', error.message)
+                setAuthError(error)
+            })
 
         try {
             const unsubscribe = onAuthStateChanged(auth, (user) => {
-                setCurrentUser(user);
-                setLoading(false);
-                setAuthError(null);
+                setCurrentUser(user)
+                setLoading(false)
+                setAuthError(null)
 
                 if (user) {
-                    const userRef = doc(db, 'users', user.uid);
+                    const userRef = doc(db, 'users', user.uid)
                     getDoc(userRef)
                         .then((userSnap) => {
                             if (userSnap.exists()) {
-                                setUserData(userSnap.data());
+                                setUserData(userSnap.data())
                             }
                         })
                         .catch((error) => {
-                            console.warn('Failed to fetch user data from Firestore:', error.message);
-                        });
+                            console.warn('Failed to fetch user data from Firestore:', error.message)
+                        })
                 } else {
-                    setUserData(null);
+                    setUserData(null)
                 }
-            });
+            })
 
-            return unsubscribe;
+            return unsubscribe
         } catch (error) {
-            console.error('Firebase Auth Init Error:', error);
-            setLoading(false);
-            setAuthError(error);
-            return () => {};
+            console.error('Firebase Auth Init Error:', error)
+            setLoading(false)
+            setAuthError(error)
+            return () => {}
         }
-    }, []);
+    }, [])
 
     const refreshUserData = async () => {
-        if (!currentUser) return;
-        const userRef = doc(db, 'users', currentUser.uid);
-        const userSnap = await getDoc(userRef);
+        if (!currentUser) return
+        const userRef = doc(db, 'users', currentUser.uid)
+        const userSnap = await getDoc(userRef)
         if (userSnap.exists()) {
-            setUserData(userSnap.data());
+            setUserData(userSnap.data())
         }
-    };
+    }
 
     const value = {
         currentUser,
@@ -153,11 +153,11 @@ export function AuthProvider({ children }) {
         navigateToLogin: () => {},
         checkAppState: () => {},
         appPublicSettings: null,
-    };
+    }
 
     return (
         <AuthContext.Provider value={value}>
             {children}
         </AuthContext.Provider>
-    );
+    )
 }
