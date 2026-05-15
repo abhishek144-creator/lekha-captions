@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { Upload, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -10,15 +10,15 @@ import VideoPlayer from '@/components/dashboard/VideoPlayer';
 import CaptionTimeline from '@/components/dashboard/CaptionTimeline';
 import CaptionEditor from '@/components/dashboard/CaptionEditor';
 import StyleControls from '@/components/dashboard/StyleControls';
-import TemplatesTab from '@/components/dashboard/TemplatesTab';
-import TemplatesTab2 from '@/components/dashboard/TemplatesTab2';
 import TextTab from '@/components/dashboard/TextTab';
 import AnimateTab from '@/components/dashboard/AnimateTab';
 import HistoryTab from '@/components/dashboard/HistoryTab';
+import LayersTab from '@/components/dashboard/LayersTab';
 import SidebarNav from '@/components/dashboard/SidebarNav';
 import UploadModal from '@/components/dashboard/UploadModal';
 import ExportPanel from '@/components/dashboard/ExportPanel';
 import PricingModal from '@/components/dashboard/PricingModal';
+import AdvancedTemplateLibrary from '@/components/dashboard/AdvancedTemplateLibrary';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { extractWaveformData } from '@/components/dashboard/audioUtils';
 import { autoLoadFontForText, loadGoogleFont } from '@/components/dashboard/fontUtils';
@@ -27,6 +27,7 @@ import { toast } from '@/components/ui/use-toast';
 import { apiRequest } from '@/lib/apiClient';
 import { notifyApiError } from '@/lib/notifyApiError';
 import { getClientContext, trackAnalytics } from '@/lib/analytics';
+import { featureFlags } from '@/lib/featureFlags';
 
 // Helper for retrying operations
 const retryOperation = async (operation, maxRetries = 3, delay = 1000) => {
@@ -43,8 +44,8 @@ const retryOperation = async (operation, maxRetries = 3, delay = 1000) => {
 
 const defaultCaptionStyle = {
   font_family: 'Inter',
-  font_size: 18,
-  font_weight: '500',
+  font_size: 17,
+  font_weight: '800',
   font_style: 'normal',
   line_spacing: 1.4,
   word_spacing: 1,
@@ -60,10 +61,10 @@ const defaultCaptionStyle = {
   has_background: true,
   background_opacity: 0.7,
   background_padding: 6,
-  background_h_multiplier: 0.99,
+  background_h_multiplier: 1.05,
   background_color: '#000000',
   has_stroke: false,
-  has_shadow: false,
+  has_shadow: true,
   has_animation: false,
   position: 'bottom',
   position_y: 75,
@@ -72,6 +73,35 @@ const defaultCaptionStyle = {
   auto_rotation: false,
   scale: 1
 };
+
+const LOCAL_DEV_BYPASS_TOKEN = 'mock-token';
+
+const normalizeCaptionStyle = (style = {}) => {
+  const merged = { ...defaultCaptionStyle, ...style };
+  if (!merged.template_id && Number(merged.font_size) <= 18 && String(merged.font_weight || '500') === '500') {
+    merged.font_size = defaultCaptionStyle.font_size;
+    merged.font_weight = defaultCaptionStyle.font_weight;
+    merged.has_shadow = true;
+  }
+  return merged;
+};
+
+const stripDetachedWordLayout = (wordStyles = {}) => Object.fromEntries(
+  Object.entries(wordStyles).map(([styleKey, styleValue]) => {
+    const nextStyle = { ...(styleValue || {}) };
+    delete nextStyle.x;
+    delete nextStyle.y;
+    delete nextStyle.x_pct;
+    delete nextStyle.y_pct;
+    delete nextStyle.abs_x_pct;
+    delete nextStyle.abs_y_pct;
+    delete nextStyle.boxWidth;
+    delete nextStyle.textScaleX;
+    delete nextStyle.rotation;
+    delete nextStyle.frozenFontSize;
+    return [styleKey, nextStyle];
+  }),
+);
 
 export default function Dashboard() {
   const { currentUser, userData, loginWithGoogle } = useAuth();
@@ -101,24 +131,19 @@ export default function Dashboard() {
 
   // Video canvas fullscreen & resizable timeline
   const [isVideoFullscreen, setIsVideoFullscreen] = useState(false);
-  const [timelineHeight, setTimelineHeight] = useState(135);
+  const [timelineHeight, setTimelineHeight] = useState(42);
+  const [isTimelineCollapsed, setIsTimelineCollapsed] = useState(true);
   const [dividerSnapping, setDividerSnapping] = useState(false); // visual snap feedback
   const timelineDividerRef = useRef(null);
   const isDraggingDivider = useRef(false);
   const dividerStartY = useRef(0);
-  const dividerStartHeight = useRef(135);
-  const defaultTimelineHeight = useRef(null); // captured once on mount
-
-  // Capture the default timeline height exactly once on mount
-  useEffect(() => {
-    defaultTimelineHeight.current = timelineHeight;
-
-  }, []);
+  const dividerStartHeight = useRef(204);
+  const defaultTimelineHeight = useRef(204);
 
   // Resizer snap positions (timeline height values)
   // SNAP_MAX_CANVAS is dynamic — matches the actual rendered default
-  const SNAP_BALANCED  = 220;
-  const SNAP_MAX_TIMELINE = 350;
+  const SNAP_BALANCED  = 148;
+  const SNAP_MAX_TIMELINE = 300;
   const SNAP_THRESHOLD = 20;     // px distance to trigger a snap
 
   const [captions, setCaptions] = useState([]);
@@ -138,18 +163,31 @@ export default function Dashboard() {
 
   // Floating Word Popup state
   const [wordPopup, setWordPopup] = useState(null);
+  const [wordPopupOpenCount, setWordPopupOpenCount] = useState(0);
 
   // Animation settings
   const [selectedWordForAnimation, setSelectedWordForAnimation] = useState(null);
 
   // Waveform data for timeline
   const [waveformData, setWaveformData] = useState(null);
+  const initialEditorStateRef = useRef(null);
 
   // Raw HTML5 video DOM element for native fast-scrubbing bypassing React renders
   const [videoElement, setVideoElement] = useState(null);
 
   // External Video Sync Signal
   const [seekSignal, setSeekSignal] = useState(null);
+
+  const snapshotEditorState = useCallback((overrides = {}) => ({
+    videoUrl,
+    captions: JSON.parse(JSON.stringify(overrides.captions ?? captions)),
+    captionStyle: JSON.parse(JSON.stringify(overrides.captionStyle ?? captionStyle)),
+    duration: overrides.duration ?? duration,
+    fileId: overrides.fileId ?? fileId,
+    originalFileName: overrides.originalFileName ?? originalFileName,
+    projectId: overrides.projectId ?? projectId,
+    settings: JSON.parse(JSON.stringify(overrides.settings ?? settings)),
+  }), [captionStyle, captions, duration, fileId, originalFileName, projectId, settings, videoUrl]);
 
   // Force a clean session natively on page load, unless navigating back from Account
   useEffect(() => {
@@ -162,12 +200,22 @@ export default function Dashboard() {
           const parsed = JSON.parse(savedState);
           if (parsed.videoUrl) setVideoUrl(parsed.videoUrl);
           if (parsed.captions) setCaptions(parsed.captions);
-          if (parsed.captionStyle) setCaptionStyle(parsed.captionStyle);
+          if (parsed.captionStyle) setCaptionStyle(normalizeCaptionStyle(parsed.captionStyle));
           if (parsed.projectId) setProjectId(parsed.projectId);
           if (parsed.duration) setDuration(parsed.duration);
           if (parsed.fileId) setFileId(parsed.fileId);
           if (parsed.originalFileName) setOriginalFileName(parsed.originalFileName);
           if (parsed.settings) setSettings(parsed.settings);
+          initialEditorStateRef.current = {
+            videoUrl: parsed.videoUrl || '',
+            captions: JSON.parse(JSON.stringify(parsed.captions || [])),
+            captionStyle: JSON.parse(JSON.stringify(normalizeCaptionStyle(parsed.captionStyle || defaultCaptionStyle))),
+            duration: parsed.duration || 0,
+            fileId: parsed.fileId || null,
+            originalFileName: parsed.originalFileName || '',
+            projectId: parsed.projectId || null,
+            settings: JSON.parse(JSON.stringify(parsed.settings || { language: 'english', style: 'viral_hook' })),
+          };
           setIsLoaded(true);
           return; // Skip wiping logic
         }
@@ -200,6 +248,56 @@ export default function Dashboard() {
   useEffect(() => {
     if (!videoUrl) setWordPopup(null);
   }, [videoUrl]);
+
+  useEffect(() => {
+    if (!wordPopup) return;
+
+    const targetId = wordPopup.type === 'element'
+      ? wordPopup.elementId
+      : wordPopup.caption?.id;
+    if (!targetId) {
+      setWordPopup(null);
+      return;
+    }
+
+    const activeTarget = captions.find(c => c.id === targetId);
+    if (!activeTarget) {
+      setWordPopup(null);
+      return;
+    }
+
+    const start = activeTarget.start_time ?? activeTarget.start ?? 0;
+    const end = activeTarget.end_time ?? activeTarget.end ?? start;
+    const stillInTime = currentTime >= start - 0.03 && currentTime <= end + 0.03;
+    if (!stillInTime) {
+      setWordPopup(null);
+    }
+  }, [captions, currentTime, wordPopup]);
+
+  useEffect(() => {
+    if (!wordPopup) return;
+
+    const handleOutsideWordEditPointerDown = (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+
+      if (
+        target.closest('.lekha-video-frame')
+        || target.closest('[data-selected-word-box="true"]')
+        || target.closest('[data-word-popup-panel="true"]')
+        || target.closest('[data-video-control]')
+      ) {
+        return;
+      }
+
+      setWordPopup(null);
+    };
+
+    document.addEventListener('pointerdown', handleOutsideWordEditPointerDown, true);
+    return () => {
+      document.removeEventListener('pointerdown', handleOutsideWordEditPointerDown, true);
+    };
+  }, [wordPopup]);
 
   // Auto-save to localStorage whenever state changes (debounced)
   useEffect(() => {
@@ -242,7 +340,8 @@ export default function Dashboard() {
     setIsGenerating(true);
 
     try {
-      const idToken = currentUser?.accessToken || await currentUser?.getIdToken?.() || '';
+      const signedInToken = currentUser?.accessToken || await currentUser?.getIdToken?.() || '';
+      const mediaAuthToken = signedInToken || (featureFlags.localDevAuthBypass ? LOCAL_DEV_BYPASS_TOKEN : '');
       let uploadData = null;
       if (uploadSettings?.preUploadedFileId && uploadSettings?.preUploadedRawUrl) {
         uploadData = {
@@ -262,10 +361,6 @@ export default function Dashboard() {
         if (!uploadData.success) throw new Error(uploadData.error || 'Upload failed');
         trackAnalytics('funnel.upload.success', getClientContext({ stage: 'upload', fileId: uploadData.file_id || '' }));
       }
-
-      setVideoUrl(uploadData.raw_url);
-      setFileId(uploadData.file_id);
-      setOriginalFileName(file.name);
 
       // Parse wordsPerLine range for backend (e.g., "1-2" → min=1, max=2)
       // "dynamic" (or unset) → min=2, max=5 so backend groups 2-5 words (not single-word captions)
@@ -291,7 +386,7 @@ export default function Dashboard() {
           language: 'auto',
           min_words: minWords,
           max_words: maxWordsVal,
-          id_token: idToken,
+          id_token: mediaAuthToken,
         }),
         dedupeKey: 'process-video',
         cancelPrevious: true,
@@ -311,7 +406,7 @@ export default function Dashboard() {
       const targetLang = uploadSettings?.language;
       if (targetLang && targetLang !== 'auto' && generatedCaptions.length > 0) {
         try {
-          const translateToken = idToken || currentUser?.accessToken || await currentUser?.getIdToken();
+          const translateToken = signedInToken || currentUser?.accessToken || await currentUser?.getIdToken();
           const translateData = await apiRequest('/api/translate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -337,6 +432,10 @@ export default function Dashboard() {
         }
       }
 
+      setVideoUrl(uploadData.raw_url);
+      setFileId(uploadData.file_id);
+      setOriginalFileName(file.name);
+
       // If style is 'double_line', merge consecutive caption pairs into 2-line captions
       const captionLines = uploadSettings?.style;
       if (captionLines === 'double_line' && generatedCaptions.length > 1) {
@@ -359,19 +458,34 @@ export default function Dashboard() {
 
       setCaptions(generatedCaptions);
 
+      let nextCaptionStyle = {
+        ...defaultCaptionStyle,
+        wordsPerLine: uploadSettings?.wordsPerLine || 'dynamic'
+      };
       if (generatedCaptions.length > 0) {
         const sampleText = generatedCaptions.map(c => c.text).join(' ');
         const { fontFamily, script, fontOptions } = await autoLoadFontForText(sampleText);
-        setCaptionStyle(prev => ({
-          ...prev,
+        nextCaptionStyle = {
+          ...nextCaptionStyle,
           font_family: fontFamily,
           detected_script: script,
           available_fonts: fontOptions?.map(f => f.name) || [],
-          wordsPerLine: uploadSettings?.wordsPerLine || 'dynamic'
-        }));
+        };
       }
+      setCaptionStyle(nextCaptionStyle);
 
-      setProjectId(`local_${Date.now()}`);
+      const nextProjectId = `local_${Date.now()}`;
+      setProjectId(nextProjectId);
+      initialEditorStateRef.current = {
+        videoUrl: uploadData.raw_url,
+        captions: JSON.parse(JSON.stringify(generatedCaptions)),
+        captionStyle: JSON.parse(JSON.stringify(nextCaptionStyle)),
+        duration: 0,
+        fileId: uploadData.file_id,
+        originalFileName: file.name,
+        projectId: nextProjectId,
+        settings: JSON.parse(JSON.stringify(uploadSettings)),
+      };
 
       try {
         const waveform = await extractWaveformData(uploadData.raw_url);
@@ -382,6 +496,14 @@ export default function Dashboard() {
 
     } catch (error) {
       console.error('Upload failed:', error);
+      setVideoUrl('');
+      setFileId(null);
+      setOriginalFileName('');
+      setCaptions([]);
+      setProjectId(null);
+      setDuration(0);
+      setCurrentTime(0);
+      setWaveformData(null);
       trackAnalytics('funnel.upload.failed', getClientContext({ stage: 'upload' }));
       notifyApiError(error, 'Failed to process video')
     } finally {
@@ -448,8 +570,14 @@ export default function Dashboard() {
         : `${wordPopup.caption?.id}-${wordPopup.wordIndex}`;
       const existingStyle = wordStyles[styleKey] || {};
       const updatedStyle = { ...existingStyle, [key]: value };
-      // When user explicitly sets fontSize, clear frozenFontSize so it doesn't override
-      if (key === 'fontSize') delete updatedStyle.frozenFontSize;
+      // Slider size changes should grow the word normally, not keep a narrow side-resize box.
+      if (key === 'fontSize') {
+        delete updatedStyle.frozenFontSize;
+        delete updatedStyle.boxWidth;
+        delete updatedStyle.textScaleX;
+      }
+      if (key === 'x') delete updatedStyle.x_pct;
+      if (key === 'y') delete updatedStyle.y_pct;
 
       return {
         ...c,
@@ -460,6 +588,7 @@ export default function Dashboard() {
       };
     }));
   };
+
   const handleApplyTemplate = async (templateStyle) => {
     // Hard Reset: properties that templates fully control are cleared before applying
     // so Template B never inherits BG, color, font, or animation from Template A.
@@ -467,10 +596,11 @@ export default function Dashboard() {
     const TEMPLATE_OWNED_RESET = {
       template_id: '',
       font_family: 'Inter',
-      font_size: 18,
-      font_weight: '500',
+      font_size: 17,
+      font_weight: '800',
       font_style: 'normal',
       text_color: '#ffffff',
+      text_opacity: 1,
       text_case: 'none',
       secondary_color: '',
       highlight_color: '',
@@ -482,7 +612,7 @@ export default function Dashboard() {
       has_stroke: false,
       stroke_color: '#000000',
       stroke_width: 1,
-      has_shadow: false,
+      has_shadow: true,
       shadow_color: '#000000',
       shadow_blur: 4,
       shadow_offset_x: 0,
@@ -490,14 +620,69 @@ export default function Dashboard() {
       show_inactive: undefined,
       position_y: 75,
     };
-    const merged = { ...captionStyle, ...TEMPLATE_OWNED_RESET, ...templateStyle };
+    const {
+      template_snapshot: _previousTemplateSnapshot,
+      template_applied_at: _previousTemplateAppliedAt,
+      ...templateStyleForSnapshot
+    } = templateStyle || {};
+    const templateSnapshot = templateStyleForSnapshot?.template_id
+      ? JSON.parse(JSON.stringify(templateStyleForSnapshot))
+      : null;
+    const merged = {
+      ...captionStyle,
+      ...TEMPLATE_OWNED_RESET,
+      ...templateStyleForSnapshot,
+      template_snapshot: templateSnapshot,
+      template_applied_at: templateSnapshot ? Date.now() : null,
+    };
+    const nextCaptions = captions.map(cap => {
+      if (!cap || cap.isTextElement) return cap;
+      if (!templateSnapshot) {
+        const { applied_template_style: _appliedTemplateStyle, template_id: _captionTemplateId, ...rest } = cap;
+        return rest;
+      }
+      return {
+        ...cap,
+        wordStyles: stripDetachedWordLayout(cap.wordStyles || {}),
+        template_id: templateSnapshot.template_id,
+        applied_template_style: templateSnapshot,
+      };
+    });
     // Load the template's font (if any) before applying so the browser has it
-    if (templateStyle?.font_family) {
-      loadGoogleFont(templateStyle.font_family, [300, 400, 500, 600, 700, 800]).catch(() => {});
+    if (templateStyleForSnapshot?.font_family) {
+      loadGoogleFont(templateStyleForSnapshot.font_family, [300, 400, 500, 600, 700, 800, 900]).catch(() => {});
     }
-    pushHistory(undefined, merged);
+    pushHistory(nextCaptions, merged);
   };
   const addToHistory = () => pushHistory(undefined, undefined);
+
+  const handleResetWordFontSize = useCallback(() => {
+    if (!wordPopup) return;
+    addToHistory();
+
+    setCaptions(prev => prev.map(c => {
+      const targetId = wordPopup.type === 'element' ? wordPopup.elementId : wordPopup.caption?.id;
+      if (c.id !== targetId) return c;
+
+      const wordStyles = c.wordStyles || {};
+      const styleKey = wordPopup.type === 'element'
+        ? `${wordPopup.elementId}-${wordPopup.wordIndex}`
+        : `${wordPopup.caption?.id}-${wordPopup.wordIndex}`;
+      const existingStyle = wordStyles[styleKey] || {};
+      const updatedStyle = { ...existingStyle };
+
+      delete updatedStyle.fontSize;
+      delete updatedStyle.frozenFontSize;
+
+      return {
+        ...c,
+        wordStyles: {
+          ...wordStyles,
+          [styleKey]: updatedStyle,
+        },
+      };
+    }));
+  }, [addToHistory, wordPopup]);
 
   const handleUndo = () => {
     if (historyIndex >= 0) {
@@ -532,9 +717,33 @@ export default function Dashboard() {
   }, [historyIndex, history]);
 
   const handleRefresh = () => {
-    // Clear localStorage and reload
-    localStorage.removeItem('captionEditorState');
-    window.location.reload();
+    const initialState = initialEditorStateRef.current || snapshotEditorState();
+
+    if (!initialState) {
+      handleNewProject();
+      return;
+    }
+
+    setWordPopup(null);
+    setIsPlaying(false);
+    setCurrentTime(0);
+    setSelectedCaptionId(null);
+    setIsVideoFullscreen(false);
+    setIsTimelineCollapsed(true);
+    setTimelineHeight(42);
+    setSettings(JSON.parse(JSON.stringify(initialState.settings)));
+    setVideoUrl(initialState.videoUrl || '');
+    setCaptions(JSON.parse(JSON.stringify(initialState.captions || [])));
+    setCaptionStyle(JSON.parse(JSON.stringify(initialState.captionStyle || defaultCaptionStyle)));
+    setProjectId(initialState.projectId || null);
+    setDuration(initialState.duration || 0);
+    setFileId(initialState.fileId || null);
+    setOriginalFileName(initialState.originalFileName || '');
+    setHistory([{
+      captions: JSON.parse(JSON.stringify(initialState.captions || [])),
+      captionStyle: JSON.parse(JSON.stringify(initialState.captionStyle || defaultCaptionStyle))
+    }]);
+    setHistoryIndex(0);
   };
 
   const handleNewProject = () => {
@@ -559,6 +768,14 @@ export default function Dashboard() {
     setIsPricingModalOpen(false);
   };
 
+  const openWordPopup = useCallback((popup) => {
+    setWordPopupOpenCount(prev => prev + 1);
+    setWordPopup({
+      ...popup,
+      _openKey: Date.now() + Math.random(),
+    });
+  }, []);
+
   // Initialize history when captions are first loaded (transition from empty → populated)
   useEffect(() => {
     if (captions.length > 0 && history.length === 0) {
@@ -570,6 +787,13 @@ export default function Dashboard() {
     }
 
   }, [captions.length, history.length]);
+
+  useEffect(() => {
+    if (!videoUrl || !captions.length) return;
+    if (initialEditorStateRef.current) return;
+
+    initialEditorStateRef.current = snapshotEditorState();
+  }, [captionStyle, captions.length, snapshotEditorState, videoUrl]);
 
   // Auto-Center: when the font changes (or 'None' is selected), load the new font and
   // trigger a style refresh so the preview re-measures word bounding boxes with the
@@ -590,7 +814,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="h-screen max-h-screen bg-[#0A0A0A] flex flex-col overflow-hidden">
+    <div className="h-screen max-h-screen bg-[#050505] flex flex-col overflow-hidden text-white">
       <DashboardHeader
         onUploadClick={() => setIsUploadModalOpen(true)}
         onExportClick={handleExportClick}
@@ -611,7 +835,7 @@ export default function Dashboard() {
       />
 
       {/* Main content */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden lekha-editor-shell">
         {isGenerating ? (
           // Generating state (checked before !videoUrl so re-uploading shows this)
 
@@ -688,113 +912,138 @@ export default function Dashboard() {
                 </div>
               </div>
             )}
-          <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
-            {/* Vertical Sidebar Navigation */}
-            <SidebarNav
-              activeTab={activeTab}
-              setActiveTab={setActiveTab}
-              user={currentUser}
-              onOpenPricing={(action) => {
-                if (action === 'logout') {
-                  // Handled by AuthContext logout
-                } else {
-                  setIsPricingModalOpen(true)
-                }
-              }}
-            />
-
-            {/* Left Panel - Content based on active tab */}
-            <div className="w-full lg:w-[340px] xl:w-[360px] bg-[#0F0F0F] border-r border-white/5 p-4 overflow-hidden">
-              {activeTab === 'captions' && (
-                <CaptionEditor
-                  captions={captions}
-                  setCaptions={updateCaptions}
-                  selectedCaptionId={selectedCaptionId}
-                  setSelectedCaptionId={setSelectedCaptionId}
-                  onSeek={handleSeek}
-                  onOpenWordPopup={(caption, wordIndex, position, word) => setWordPopup({ caption, wordIndex, position, word })}
-                  wordPopup={wordPopup}
+          <div className={`flex-1 overflow-hidden ${isVideoFullscreen ? 'relative p-0' : 'grid grid-cols-1 lg:grid-cols-[48px_285px_minmax(0,1fr)_285px] xl:grid-cols-[48px_300px_minmax(0,1fr)_300px] p-3 gap-3'}`}>
+            {!isVideoFullscreen && (
+              <>
+                {/* Vertical Sidebar Navigation */}
+                <SidebarNav
+                  activeTab={activeTab}
+                  setActiveTab={setActiveTab}
                   user={currentUser}
-                />
-              )}
-              {activeTab === 'text' && (
-                <TextTab
-                  captions={captions}
-                  setCaptions={updateCaptions}
-                  currentTime={currentTime}
-                  setSelectedCaptionId={setSelectedCaptionId}
-                />
-              )}
-              {activeTab === 'templates' && (
-                <TemplatesTab
-                  currentStyle={captionStyle}
-                  onApplyTemplate={handleApplyTemplate}
-                />
-              )}
-              {activeTab === 'animate' && (
-                <AnimateTab
-                  selectedWord={selectedWordForAnimation}
-                  selectedCaption={
-                    captions.find(c => c.id === selectedCaptionId) ||
-                    captions.find(c => currentTime >= c.start_time && currentTime <= c.end_time)
-                  }
-                  captions={captions}
-                  setCaptions={updateCaptions}
-                />
-              )}
-              {activeTab === 'history' && (
-                <HistoryTab user={currentUser} userData={userData} />
-              )}
-              {activeTab === 'templates2' && (
-                <TemplatesTab2
-                  currentStyle={captionStyle}
-                  onApplyTemplate={handleApplyTemplate}
-                />
-              )}
-            </div>
-
-            {/* Center Panel - Video Player & Timeline */}
-            <div className="flex-1 border-r border-white/5 px-2 py-1 flex flex-col overflow-hidden min-h-0" style={{ position: 'relative', zIndex: 50 }}>
-
-              <div className="flex-1 min-h-[380px] overflow-hidden">
-                <VideoPlayer
-                  videoUrl={videoUrl}
-                  currentTime={currentTime}
-                  setCurrentTime={setCurrentTime}
-                  seekSignal={seekSignal}
-                  isPlaying={isPlaying}
-                  setIsPlaying={setIsPlaying}
-                  captions={captions}
-                  setCaptions={updateCaptions}
-                  setCaptionsRaw={setCaptions}
-                  captionStyle={captionStyle}
-                  setCaptionStyle={updateCaptionStyle}
-                  setCaptionStyleRaw={setCaptionStyle}
-                  addToHistory={addToHistory}
-                  duration={duration}
-                  setDuration={setDuration}
-                  selectedCaptionId={selectedCaptionId}
-                  setSelectedCaptionId={setSelectedCaptionId}
-                  wordPopup={wordPopup}
-                  setWordPopup={setWordPopup}
-                  onVideoLoaded={async (videoEl) => {
-                    setVideoElement(videoEl);
-                    // Extract waveform when video loads
-                    if (videoEl && !waveformData) {
-                      const data = await extractWaveformData(videoEl, 400);
-                      if (data) setWaveformData(data);
+                  onOpenPricing={(action) => {
+                    if (action === 'logout') {
+                      // Handled by AuthContext logout 
+                    } else {
+                      setIsPricingModalOpen(true)
                     }
                   }}
-                  isVideoFullscreen={isVideoFullscreen}
-                  setIsVideoFullscreen={setIsVideoFullscreen}
                 />
+
+                {/* Left Panel - Content based on active tab */}
+                <div className="w-full rounded-[18px] lekha-panel lekha-panel-corners p-3 overflow-hidden min-h-0">
+                  {activeTab === 'captions' && (
+                    <CaptionEditor
+                      captions={captions}
+                      setCaptions={updateCaptions}
+                      selectedCaptionId={selectedCaptionId}
+                      setSelectedCaptionId={setSelectedCaptionId}
+                      onSeek={handleSeek}
+                      onOpenWordPopup={(caption, wordIndex, position, word) => openWordPopup({ caption, wordIndex, position, word })}
+                      wordPopup={wordPopup}
+                      user={currentUser}
+                    />
+                  )}
+                  {activeTab === 'text' && (
+                    <TextTab
+                      captions={captions}
+                      setCaptions={updateCaptions}
+                      currentTime={currentTime}
+                      setSelectedCaptionId={setSelectedCaptionId}
+                    />
+                  )}
+                  {activeTab === 'templates' && (
+                    <AdvancedTemplateLibrary
+                      currentStyle={captionStyle}
+                      onApplyTemplate={handleApplyTemplate}
+                      onBack={() => setActiveTab('captions')}
+                    />
+                  )}
+                  {activeTab === 'animate' && (
+                    <AnimateTab
+                      selectedWord={selectedWordForAnimation}
+                      selectedCaption={
+                        captions.find(c => c.id === selectedCaptionId) ||
+                        captions.find(c => currentTime >= c.start_time && currentTime <= c.end_time)
+                      }
+                      captions={captions}
+                      setCaptions={updateCaptions}
+                    />
+                  )}
+                  {activeTab === 'history' && (
+                    <HistoryTab user={currentUser} userData={userData} />
+                  )}
+                  {activeTab === 'layers' && (
+                    <LayersTab
+                      captions={captions}
+                      selectedCaptionId={selectedCaptionId}
+                      setSelectedCaptionId={setSelectedCaptionId}
+                      onSeek={handleSeek}
+                    />
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* Center Panel - Video Player & Timeline */}
+            <div className={`${isVideoFullscreen ? 'absolute inset-0 z-30 bg-[#050505] px-6 py-5' : 'px-1 py-3'} flex flex-col overflow-hidden min-h-0`} style={{ position: isVideoFullscreen ? 'absolute' : 'relative', zIndex: 50 }}>
+              {!isVideoFullscreen && (
+              <div className="relative z-10 shrink-0 flex items-center justify-between px-1 pb-2">
+                <div className="flex items-center gap-3">
+                  <span className="lekha-micro-label">Preview <span className="text-white">9:16</span></span>
+                  <span className="lekha-micro-label">FPS <span className="text-white">24</span></span>
+                  <span className="lekha-micro-label">Safe <span className="text-sky-200">On</span></span>
+                </div>
+                <div className="hidden sm:flex items-center gap-2">
+                  <span className="lekha-glass-chip rounded-md px-3 py-1 text-[10px] font-black text-white">100%</span>
+                  <span className="lekha-glass-chip rounded-md px-3 py-1 text-[10px] font-black text-white">FIT</span>
+                </div>
+              </div>
+              )}
+
+              <div
+                className="relative z-10 flex-1 min-h-0 overflow-y-auto overflow-x-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                style={{ paddingBottom: isVideoFullscreen || isTimelineCollapsed ? 0 : `${Math.max(72, timelineHeight - 24)}px` }}
+              >
+                <div className="transition-transform duration-200">
+                  <VideoPlayer
+                    videoUrl={videoUrl}
+                    currentTime={currentTime}
+                    setCurrentTime={setCurrentTime}
+                    seekSignal={seekSignal}
+                    isPlaying={isPlaying}
+                    setIsPlaying={setIsPlaying}
+                    captions={captions}
+                    setCaptions={updateCaptions}
+                    setCaptionsRaw={setCaptions}
+                    captionStyle={captionStyle}
+                    setCaptionStyle={updateCaptionStyle}
+                    setCaptionStyleRaw={setCaptionStyle}
+                    addToHistory={addToHistory}
+                    duration={duration}
+                    setDuration={setDuration}
+                    selectedCaptionId={selectedCaptionId}
+                    setSelectedCaptionId={setSelectedCaptionId}
+                    wordPopup={wordPopup}
+                    setWordPopup={openWordPopup}
+                    onVideoLoaded={async (videoEl) => {
+                      setVideoElement(videoEl);
+                      if (videoEl && !waveformData) {
+                        const data = await extractWaveformData(videoEl, 400);
+                        if (data) setWaveformData(data);
+                      }
+                    }}
+                    isVideoFullscreen={isVideoFullscreen}
+                    setIsVideoFullscreen={setIsVideoFullscreen}
+                  />
+                </div>
               </div>
 
               {/* Resizable Divider Bar (Premiere Pro style) */}
-              {!isVideoFullscreen && (
+              {!isVideoFullscreen && !isTimelineCollapsed && (
                 <div
                   ref={timelineDividerRef}
-                  className="h-1.5 flex-shrink-0 cursor-ns-resize flex items-center justify-center group relative"
+                  className="absolute left-0 right-0 z-[80] h-1.5 cursor-ns-resize flex items-center justify-center group"
+                  style={{ bottom: `${timelineHeight + 28}px` }}
                   onMouseDown={(e) => {
                     e.preventDefault();
                     isDraggingDivider.current = true;
@@ -828,7 +1077,10 @@ export default function Dashboard() {
                     document.addEventListener('mousemove', onMove);
                     document.addEventListener('mouseup', onUp);
                   }}
-                  onDoubleClick={() => setTimelineHeight(135)}
+                  onDoubleClick={() => {
+                    setIsTimelineCollapsed(true);
+                    setTimelineHeight(42);
+                  }}
                 >
                   {/* Divider line */}
                   <div className={`w-full h-px transition-colors ${dividerSnapping ? 'bg-yellow-400/60' : 'bg-white/5 group-hover:bg-white/15'}`} />
@@ -839,7 +1091,28 @@ export default function Dashboard() {
                 </div>
               )}
               {!isVideoFullscreen && (
-                <div style={{ height: `${timelineHeight}px`, flexShrink: 0, position: 'relative', zIndex: 1 }}>
+                <div
+                  style={{
+                    position: 'absolute',
+                    left: 0,
+                    right: 0,
+                    bottom: '20px',
+                    height: '42px',
+                    zIndex: 70,
+                    pointerEvents: 'none'
+                  }}
+                >
+                  <div
+                    style={{
+                      position: isTimelineCollapsed ? 'relative' : 'absolute',
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      height: `${isTimelineCollapsed ? 42 : timelineHeight}px`,
+                      zIndex: 70,
+                      pointerEvents: 'auto'
+                    }}
+                  >
                   <CaptionTimeline
                     captions={captions}
                     duration={duration}
@@ -855,23 +1128,34 @@ export default function Dashboard() {
                     isPlaying={isPlaying}
                     setIsPlaying={setIsPlaying}
                     timelineHeight={timelineHeight}
+                    collapsed={isTimelineCollapsed}
+                    onToggleCollapsed={() => {
+                      setIsTimelineCollapsed(prev => {
+                        const next = !prev;
+                        setTimelineHeight(next ? 42 : 204);
+                        return next;
+                      });
+                    }}
                   />
+                  </div>
                 </div>
               )}
             </div>
 
-            {/* Right Panel - Styling */}
-            <div className="w-full lg:w-[340px] xl:w-[360px] p-4 overflow-hidden">
-              <StyleControls
-                captionStyle={captionStyle}
-                setCaptionStyle={updateCaptionStyle}
-                setCaptionStyleRaw={setCaptionStyle}
-                addToHistory={addToHistory}
-                selectedCaption={captions.find(c => c.id === selectedCaptionId)}
-                captions={captions}
-                setCaptions={updateCaptions}
-              />
-            </div>
+            {!isVideoFullscreen && (
+              <div className="w-full overflow-hidden min-h-0">
+                <StyleControls
+                  captionStyle={captionStyle}
+                  setCaptionStyle={updateCaptionStyle}
+                  setCaptionStyleRaw={setCaptionStyle}
+                  addToHistory={addToHistory}
+                  selectedCaption={captions.find(c => c.id === selectedCaptionId)}
+                  captions={captions}
+                  setCaptions={updateCaptions}
+                  onApplyTemplate={handleApplyTemplate}
+                />
+              </div>
+            )}
           </div>
           </div>
         )}
@@ -881,10 +1165,11 @@ export default function Dashboard() {
       {wordPopup && (
         <>
           <div
-            className="fixed inset-0 z-[9998]"
+            className="pointer-events-none fixed inset-0 z-[9998]"
             onClick={() => setWordPopup(null)}
           />
           <WordClickPopup
+            key={wordPopup._openKey ?? wordPopupOpenCount}
             word={wordPopup.word}
           position={wordPopup.position}
           onStyleChange={handleWordStyleChange}
@@ -910,9 +1195,24 @@ export default function Dashboard() {
               const id = wordPopup.type === 'element' ? wordPopup.elementId : wordPopup.caption?.id;
               if (c.id !== id) return c;
               const ws = c.wordStyles || {};
-              return { ...c, wordStyles: { ...ws, [key]: { ...(ws[key] || {}), x: 0, y: 0 } } };
+              return {
+                ...c,
+                wordStyles: {
+                  ...ws,
+                  [key]: {
+                    ...(ws[key] || {}),
+                    x: 0,
+                    y: 0,
+                    x_pct: 0,
+                    y_pct: 0,
+                    abs_x_pct: 0,
+                    abs_y_pct: 0,
+                  }
+                }
+              };
             }));
           }}
+          onResetFontSize={handleResetWordFontSize}
           onHistoryRecord={addToHistory}
           videoContainerRef={null}
           isElementWord={wordPopup.type === 'element'}
@@ -928,21 +1228,19 @@ export default function Dashboard() {
         isUploading={isUploading}
       />
 
-      {isExportPanelOpen && (
-        <ErrorBoundary>
-          <ExportPanel
-            open={isExportPanelOpen}
-            onClose={() => setIsExportPanelOpen(false)}
-            captions={captions}
-            captionStyle={captionStyle}
-            videoUrl={videoUrl}
-            projectId={projectId}
-            fileId={fileId}
-            originalFileName={originalFileName}
-            onUpgradeClick={() => { setIsExportPanelOpen(false); setIsPricingModalOpen(true); }}
-          />
-        </ErrorBoundary>
-      )}
+      <ErrorBoundary>
+        <ExportPanel
+          open={isExportPanelOpen}
+          onClose={() => setIsExportPanelOpen(false)}
+          captions={captions}
+          captionStyle={captionStyle}
+          videoUrl={videoUrl}
+          projectId={projectId}
+          fileId={fileId}
+          originalFileName={originalFileName}
+          onUpgradeClick={() => { setIsExportPanelOpen(false); setIsPricingModalOpen(true); }}
+        />
+      </ErrorBoundary>
 
       <PricingModal
         isOpen={isPricingModalOpen}

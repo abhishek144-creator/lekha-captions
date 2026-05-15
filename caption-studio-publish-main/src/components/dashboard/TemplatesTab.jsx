@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Sparkles, Check, X, RotateCcw } from 'lucide-react';
 import { motion } from 'framer-motion';
 import '../../styles/captionTemplates.css';
@@ -170,10 +170,10 @@ const templates = [
 // Live preview words — shows done, active, done+imp states
 // word 1 "This" = done (already spoken), word 2 "IS" = done+imp (important spoken), word 3 "great" = active (current), word 4 "now" = upcoming
 const PREVIEW_WORDS = [
-  { text: 'This', classes: 'word active' },
-  { text: 'IS', classes: 'word active imp' },
-  { text: 'great', classes: 'word current' },
-  { text: 'now', classes: 'word' },
+  { text: 'This', important: false },
+  { text: 'IS', important: true },
+  { text: 'great', important: false },
+  { text: 'now', important: false },
 ];
 
 
@@ -299,6 +299,25 @@ const TemplateCustomizationPanel = ({ style, defaultTemplateStyle, onUpdate }) =
 
 export default function TemplatesTab({ currentStyle, onApplyTemplate }) {
   if (!onApplyTemplate) return null;
+  const [previewIndex, setPreviewIndex] = useState(0);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setPreviewIndex((current) => (current + 1) % PREVIEW_WORDS.length);
+    }, 700);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  const getPreviewWordClass = (word, index) => {
+    if (index < previewIndex) {
+      return `word active${word.important ? ' imp' : ''}`;
+    }
+    if (index === previewIndex) {
+      return `word current${word.important ? ' imp' : ''}`;
+    }
+    return `word${word.important ? ' imp' : ''}`;
+  };
 
   const handleClearTemplate = () => {
     // Full reset to original default state — clears all template AND custom overrides
@@ -382,7 +401,6 @@ export default function TemplatesTab({ currentStyle, onApplyTemplate }) {
                 }`}
               onClick={() => onApplyTemplate(template.style)}
             >
-              {/* ── LIVE CSS PREVIEW ── actual template classes applied */}
               <div
                 style={{
                   backgroundColor: template.bg,
@@ -400,13 +418,11 @@ export default function TemplatesTab({ currentStyle, onApplyTemplate }) {
               >
                 <span className="cap-text" style={{ display: 'inline-flex', gap: '2px', flexWrap: 'wrap', justifyContent: 'center' }}>
                   {PREVIEW_WORDS.map((w, i) => (
-                    <span key={i} className={w.classes}>{w.text}</span>
+                    <span key={`${template.id}-${previewIndex}-${i}`} className={getPreviewWordClass(w, i)}>{w.text}</span>
                   ))}
                 </span>
               </div>
 
-
-              {/* ── INFO ROW ── */}
               <div className="px-3 py-2 flex items-center justify-between">
                 <div>
                   <h3 className="text-sm text-white font-medium flex items-center gap-1.5">
@@ -424,22 +440,17 @@ export default function TemplatesTab({ currentStyle, onApplyTemplate }) {
                   </button>
                 )}
               </div>
-
-              {/* ── CUSTOMIZATION PANEL (ACTIVE ONLY) ── */}
-              {
-                isActive && (
-                  <div onClick={(e) => e.stopPropagation()} className="px-2 pb-2">
-                    <TemplateCustomizationPanel
-                      style={currentStyle}
-                      defaultTemplateStyle={template.style}
-                      onUpdate={(newStyleProps) => {
-                        onApplyTemplate({ ...currentStyle, ...newStyleProps });
-                      }}
-                    />
-                  </div>
-                )
-              }
-
+              {isActive && (
+                <div onClick={(e) => e.stopPropagation()} className="px-2 pb-2">
+                  <TemplateCustomizationPanel
+                    style={currentStyle}
+                    defaultTemplateStyle={template.style}
+                    onUpdate={(newStyleProps) => {
+                      onApplyTemplate({ ...currentStyle, ...newStyleProps });
+                    }}
+                  />
+                </div>
+              )}
             </motion.div>
           );
         })}

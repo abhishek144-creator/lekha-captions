@@ -10,12 +10,12 @@ python -m pip install uvicorn fastapi python-multipart
 
 echo.
 echo [2/3] Starting Backend Server...
-start "Caption Studio Backend" cmd /k "cd /d "%~dp0backend" && python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000"
+start "Caption Studio Backend" cmd /k "cd /d "%~dp0backend" && python -m uvicorn main:app --host 0.0.0.0 --port 8001"
 
 echo.
 echo [3/3] Starting Frontend Server...
 echo (You might need to run 'npm install' manually if this fails the first time)
-start "Caption Studio Frontend" cmd /k "cd /d "%~dp0" && npm run dev"
+start "Caption Studio Frontend" cmd /k "cd /d "%~dp0" && set VITE_BACKEND_PROXY_TARGET=http://localhost:8001&& npm run dev"
 
 echo.
 echo ===================================================

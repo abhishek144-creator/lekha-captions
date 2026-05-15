@@ -80,7 +80,7 @@ const categoryColors = {
 // Get all advanced animation values as flat array for quick check
 const allAdvancedValues = Object.values(advancedAnimationCategories).flat().map(a => a.value);
 
-export default function AnimateTab({ selectedCaption, captions, setCaptions }) {
+export default function AnimateTab({ selectedCaption, captions, setCaptions, basicOnly = false }) {
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const freshSelectedCaption = captions?.find(c => c.id === selectedCaption?.id) || selectedCaption;
@@ -112,44 +112,50 @@ export default function AnimateTab({ selectedCaption, captions, setCaptions }) {
   const isAdvancedActive = allAdvancedValues.includes(currentAnimation);
 
   return (
-    <div className="h-full overflow-y-auto pr-2 custom-scrollbar">
-      <h2 className="text-lg font-semibold text-white mb-6">Animate Line</h2>
+    <div className={`h-full overflow-y-auto custom-scrollbar ${basicOnly ? 'pr-1' : 'pr-2'}`}>
+      <h2 className={`${basicOnly ? 'text-base mb-4' : 'text-lg mb-6'} font-semibold text-white`}>Animate Line</h2>
 
       <div className="space-y-4">
-        {!freshSelectedCaption ? (
+        {!freshSelectedCaption && (
           <div className="p-4 rounded-lg bg-white/5 border border-white/10">
             <p className="text-sm text-gray-300">
               Select a caption or text element to apply animation.
             </p>
           </div>
-        ) : (
+        )}
+        {(freshSelectedCaption || basicOnly) && (
           <>
+            {freshSelectedCaption && (
             <div className="p-3 rounded-lg bg-white/5 border border-white/10">
               <p className="text-xs text-gray-400 mb-1">
                 {freshSelectedCaption.isTextElement ? 'Selected Text Element' : 'Selected Caption'}
               </p>
               <p className="text-sm text-white font-medium line-clamp-2">"{freshSelectedCaption.text}"</p>
             </div>
+            )}
 
             {/* ── GENERAL Animations ── */}
             <div>
-              <p className="text-xs text-gray-400 mb-3 uppercase tracking-wider">General</p>
-              <div className="grid grid-cols-3 gap-2">
+              <p className="text-xs text-gray-400 mb-3 uppercase tracking-wider">Basic Animations</p>
+              <div className={basicOnly ? 'grid grid-cols-2 gap-2' : 'grid grid-cols-3 gap-2'}>
                 {wordAnimations.map(anim => (
                   <button
                     key={anim.value}
                     onClick={() => handleAnimationSelect(anim.value)}
+                    disabled={!freshSelectedCaption}
                     className={`
-                      relative group overflow-hidden rounded-xl p-3 transition-all duration-300 border
+                      relative group overflow-hidden rounded-xl transition-all duration-300 border ${basicOnly ? 'p-2.5' : 'p-3'}
                       ${currentAnimation === anim.value && !isAdvancedActive
                         ? 'bg-white/10 border-white/30 shadow-[0_0_10px_rgba(255,255,255,0.08)]'
-                        : 'bg-zinc-900/50 border-white/5 hover:border-white/20 hover:bg-zinc-800/80'}
+                        : !freshSelectedCaption
+                          ? 'bg-zinc-900/30 border-white/5 opacity-70 cursor-not-allowed'
+                          : 'bg-zinc-900/50 border-white/5 hover:border-white/20 hover:bg-zinc-800/80'}
                     `}
                   >
                     <div className="absolute inset-0 bg-white/[0.03] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                     <div className="relative flex flex-col items-center gap-3">
                       <div className={`
-                        w-10 h-10 rounded-lg flex items-center justify-center backdrop-blur-md transition-all duration-300
+                        ${basicOnly ? 'w-8 h-8' : 'w-10 h-10'} rounded-lg flex items-center justify-center backdrop-blur-md transition-all duration-300
                         ${currentAnimation === anim.value && !isAdvancedActive
                           ? 'bg-white/20 shadow-lg shadow-white/10 scale-110'
                           : 'bg-white/5 group-hover:bg-white/10 group-hover:scale-105'}
@@ -166,6 +172,7 @@ export default function AnimateTab({ selectedCaption, captions, setCaptions }) {
             </div>
 
             {/* ── ADVANCED Animations (collapsible) ── */}
+            {!basicOnly && (
             <div className="border-t border-white/5 pt-3">
               <button
                 onClick={() => setShowAdvanced(v => !v)}
@@ -223,6 +230,7 @@ export default function AnimateTab({ selectedCaption, captions, setCaptions }) {
                 )}
               </AnimatePresence>
             </div>
+            )}
 
             {/* Speed Slider */}
             {currentAnimation !== 'none' && (
@@ -253,14 +261,14 @@ export default function AnimateTab({ selectedCaption, captions, setCaptions }) {
         )}
 
         {/* Info */}
-        <div className="mt-4 p-3 rounded-lg bg-white/[0.03] border border-white/8">
+        {!basicOnly && <div className="mt-4 p-3 rounded-lg bg-white/[0.03] border border-white/8">
           <p className="text-xs text-gray-400 mb-1">How it works</p>
           <p className="text-xs text-white leading-relaxed">
             Select an animation to apply it to the entire caption line.
             <br /><br />
             For single word animation, click on a single word &amp; use the floating word editor to animate specific words.
           </p>
-        </div>
+        </div>}
       </div>
     </div>
   );

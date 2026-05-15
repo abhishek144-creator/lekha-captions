@@ -19,6 +19,7 @@ function genId() {
 }
 
 const toastTimeouts = new Map();
+const toastAutoDismissTimeouts = new Map();
 
 const addToRemoveQueue = (toastId) => {
   if (toastTimeouts.has(toastId)) {
@@ -44,6 +45,14 @@ const _clearFromRemoveQueue = (toastId) => {
   }
 };
 
+const clearAutoDismissTimeout = (toastId) => {
+  const timeout = toastAutoDismissTimeouts.get(toastId);
+  if (timeout) {
+    clearTimeout(timeout);
+    toastAutoDismissTimeouts.delete(toastId);
+  }
+};
+
 export const reducer = (state, action) => {
   switch (action.type) {
     case actionTypes.ADD_TOAST:
@@ -62,6 +71,14 @@ export const reducer = (state, action) => {
 
     case actionTypes.DISMISS_TOAST: {
       const { toastId } = action;
+
+      if (toastId) {
+        clearAutoDismissTimeout(toastId);
+      } else {
+        state.toasts.forEach((toast) => {
+          clearAutoDismissTimeout(toast.id);
+        });
+      }
 
       // ! Side effects ! - This could be extracted into a dismissToast() action,
       // but I'll keep it here for simplicity
@@ -112,6 +129,7 @@ function dispatch(action) {
 
 function toast({ ...props }) {
   const id = genId();
+  const duration = Number(props.duration);
 
   const update = (props) =>
     dispatch({
@@ -133,6 +151,15 @@ function toast({ ...props }) {
       },
     },
   });
+
+  if (Number.isFinite(duration) && duration > 0) {
+    clearAutoDismissTimeout(id);
+    const timeout = setTimeout(() => {
+      toastAutoDismissTimeouts.delete(id);
+      dismiss();
+    }, duration);
+    toastAutoDismissTimeouts.set(id, timeout);
+  }
 
   return {
     id,

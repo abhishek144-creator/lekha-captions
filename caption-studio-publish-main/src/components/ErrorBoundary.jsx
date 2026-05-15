@@ -17,9 +17,10 @@ export class ErrorBoundary extends React.Component {
 
     render() {
         if (this.state.hasError) {
+            const label = this.props.label || 'the application';
             return (
-                <div style={{ padding: '20px', background: '#ff4d4f', color: 'white', borderRadius: '8px', zIndex: 9999, position: 'relative' }}>
-                    <h2>Something went wrong in ExportPanel.</h2>
+                <div style={{ padding: '20px', background: '#ff4d4f', color: 'white', borderRadius: '8px', zIndex: 9999, position: 'relative', margin: '20px' }}>
+                    <h2>Something went wrong in {label}.</h2>
                     <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', marginTop: '10px' }}>
                         {this.state.error && this.state.error.toString()}
                     </pre>

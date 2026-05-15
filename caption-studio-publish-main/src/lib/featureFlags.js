@@ -10,6 +10,7 @@ export const featureFlags = {
   canaryExportFlow: boolEnv("VITE_FF_CANARY_EXPORT_FLOW", false),
   analyticsDepth: boolEnv("VITE_FF_ANALYTICS_DEPTH", true),
   highDemandBanner: boolEnv("VITE_FF_HIGH_DEMAND_BANNER", true),
+  localDevAuthBypass: boolEnv("VITE_USE_DEV_AUTH_BYPASS", false),
 }
 
 export function isFeatureEnabled(flagName) {

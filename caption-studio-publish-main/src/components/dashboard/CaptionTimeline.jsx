@@ -2,15 +2,22 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
-import { ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { Play, Pause, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 
 // RESTORED COMPACT DIMENSIONS
 const TEXT_ROW_HEIGHT = 28;      // Increased from 22 for better visibility
 const TEXT_ROWS = 6;             // Keeps your 6 text layers
 const SPEECH_HEIGHT = 38;
-const WAVEFORM_HEIGHT = 48;
+const WAVEFORM_HEIGHT = 86;
 const TOTAL_CONTENT_HEIGHT = (TEXT_ROWS * TEXT_ROW_HEIGHT) + SPEECH_HEIGHT + WAVEFORM_HEIGHT + 16;
 const VISIBLE_HEIGHT = 135;
+const HEADER_HEIGHT = 24;
+const TEXT_TRACK_TOP = HEADER_HEIGHT + 12;
+const SPEECH_TRACK_TOP = TEXT_TRACK_TOP + (TEXT_ROWS * TEXT_ROW_HEIGHT) + 20;
+const AUDIO_TRACK_TOP = SPEECH_TRACK_TOP + SPEECH_HEIGHT + 18;
+const TIMELINE_CANVAS_HEIGHT = AUDIO_TRACK_TOP + WAVEFORM_HEIGHT + 8;
+const TRACK_LEFT = 48;
+const TRACK_RIGHT = 4;
 
 export default function CaptionTimeline({
   captions,
@@ -27,6 +34,8 @@ export default function CaptionTimeline({
   isPlaying = false,
   setIsPlaying = (_) => { },
   timelineHeight = 200,
+  collapsed = false,
+  onToggleCollapsed = () => {},
 }) {
   // Extract peak times from waveform for magnetic snapping
   const getWaveformPeaks = React.useCallback(() => {
@@ -59,7 +68,9 @@ export default function CaptionTimeline({
   const [scrollPos, setScrollPos] = useState(0);
   const timelineRef = useRef(null);
   const scrollContainerRef = useRef(null);
-  const defaultScrollTop = useRef(null); // captures the initial scroll position once on mount
+  const scrubBoundsRef = useRef(null);
+  const scrubRafRef = useRef(null);
+  const pendingScrubClientXRef = useRef(null);
 
   // Custom High-Performance Timeline Scrubbing state
   const isScrubbingRef = useRef(false);
@@ -84,43 +95,37 @@ export default function CaptionTimeline({
     return (time / duration) * 100;
   };
 
+  const formatTime = (seconds = 0) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
   const textElements = captions?.filter(c => c && c.isTextElement) || [];
   const regularCaptions = captions?.filter(c => c && !c.isTextElement) || [];
 
   // Assign text elements to rows (row 5 = bottom closest to speech, row 0 = top)
   const getTextElementRow = (index) => TEXT_ROWS - 1 - (index % TEXT_ROWS);
 
-  // Auto-scroll vertically to show text box + speech + waveform rows on mount
+  // Auto-scroll vertically so the timeline reopens with speech visible and only
+  // the lower half of the waveform showing by default.
   useEffect(() => {
-    if (scrollContainerRef.current) {
-      setTimeout(() => {
-        if (scrollContainerRef.current) {
-          // Scroll to show 1 text row above speech+waveform, not absolute bottom
-          const totalH = scrollContainerRef.current.scrollHeight;
-          const visibleH = scrollContainerRef.current.clientHeight;
-          // Leave 1 text row (TEXT_ROW_HEIGHT) visible above speech/audio
-          const targetScroll = Math.max(0, totalH - visibleH - TEXT_ROW_HEIGHT);
-          scrollContainerRef.current.scrollTop = targetScroll;
-          // Capture this as the hard floor — user cannot scroll down past here
-          defaultScrollTop.current = targetScroll;
-        }
-      }, 100);
-    }
-  }, []);
+    if (collapsed || !scrollContainerRef.current) return undefined;
 
-  // Clamp vertical scroll — prevent scrolling BELOW the default position
-  // (user can freely scroll UP to see text rows, but never past speech/audio layers)
-  useEffect(() => {
-    const el = scrollContainerRef.current;
-    if (!el) return;
-    const handleScroll = () => {
-      if (defaultScrollTop.current !== null && el.scrollTop > defaultScrollTop.current) {
-        el.scrollTop = defaultScrollTop.current;
-      }
-    };
-    el.addEventListener('scroll', handleScroll, { passive: false });
-    return () => el.removeEventListener('scroll', handleScroll);
-  }, []);
+    const timer = setTimeout(() => {
+      if (!scrollContainerRef.current) return;
+
+      const totalH = scrollContainerRef.current.scrollHeight;
+      const visibleH = scrollContainerRef.current.clientHeight;
+      const speechFirstTarget = Math.max(0, (AUDIO_TRACK_TOP + (WAVEFORM_HEIGHT * 0.52)) - visibleH);
+      const maxScroll = Math.max(0, totalH - visibleH);
+      const targetScroll = Math.min(maxScroll, speechFirstTarget);
+
+      scrollContainerRef.current.scrollTop = targetScroll;
+    }, 80);
+
+    return () => clearTimeout(timer);
+  }, [collapsed]);
 
   // Auto-pan timeline content to keep playhead visible (uses CSS transform, NOT scrollLeft)
   useEffect(() => {
@@ -157,8 +162,8 @@ export default function CaptionTimeline({
 
   // Global Magnetic Snapping Logic - Now includes waveform peaks!
   const getSnapTime = (targetTime, excludeElementId, allElements) => {
-    const SNAP_THRESHOLD = 0.25; // Threshold for "sticky" feel
-    const WAVEFORM_SNAP_THRESHOLD = 0.15; // Tighter snap for audio peaks
+    const SNAP_THRESHOLD = 0.1; // Keep dragging smooth while bounds prevent overlap
+    const WAVEFORM_SNAP_THRESHOLD = 0.05; // Lighter waveform magnetism
     let closestSnap = targetTime;
     let minDiff = SNAP_THRESHOLD;
     let snapped = false;
@@ -210,34 +215,65 @@ export default function CaptionTimeline({
     return { time: closestSnap, snapped, snapType };
   };
 
-  // Function to find collisions and get boundary for speech captions only
-  const getCollisionBounds = (element, allElements, type) => {
+  const getSpeechNeighbors = (element, allElements) => (
+    allElements
+      .filter(el => el.id !== element.id && !el.isTextElement)
+      .sort((a, b) => a.start_time - b.start_time)
+  );
+
+  const getMoveBounds = (element, allElements, proposedStart) => {
+    if (element.isTextElement) {
+      return { minStart: 0, maxStart: Math.max(0, duration - (element.end_time - element.start_time)) };
+    }
+
+    const durationOfElement = element.end_time - element.start_time;
+    const neighbors = getSpeechNeighbors(element, allElements);
+
+    let previous = null;
+    let next = null;
+
+    for (const other of neighbors) {
+      if (other.start_time <= proposedStart) previous = other;
+      if (other.start_time > proposedStart) {
+        next = other;
+        break;
+      }
+    }
+
+    const minStart = previous ? previous.end_time : 0;
+    const maxStart = next ? next.start_time - durationOfElement : duration - durationOfElement;
+    return { minStart, maxStart };
+  };
+
+  const getResizeBounds = (element, allElements, type) => {
     if (element.isTextElement) {
       return { minStart: 0, maxEnd: duration };
     }
 
-    const sameTrackElements = allElements.filter(el =>
-      el.id !== element.id && !el.isTextElement
-    );
+    const neighbors = getSpeechNeighbors(element, allElements);
+    const previous = [...neighbors].reverse().find(other => other.end_time <= element.start_time) || null;
+    const next = neighbors.find(other => other.start_time >= element.end_time) || null;
 
-    let minStart = 0;
-    let maxEnd = duration;
+    if (type === 'resize-left') {
+      return { minStart: previous ? previous.end_time : 0 };
+    }
 
-    sameTrackElements.forEach(other => {
-      if (type === 'move' || type === 'resize-left') {
-        if (other.end_time <= element.start_time) {
-          minStart = Math.max(minStart, other.end_time);
-        }
-      }
-      if (type === 'move' || type === 'resize-right') {
-        if (other.start_time >= element.end_time) {
-          maxEnd = Math.min(maxEnd, other.start_time);
-        }
-      }
-    });
+    if (type === 'resize-right') {
+      return { maxEnd: next ? next.start_time : duration };
+    }
 
-    return { minStart, maxEnd };
+    return { minStart: 0, maxEnd: duration };
   };
+
+  const updateScrubFromClientX = React.useCallback((clientX) => {
+    const bounds = scrubBoundsRef.current || timelineRef.current?.getBoundingClientRect();
+    if (!bounds || !duration) return;
+
+    const x = clientX - bounds.left;
+    const clampedX = Math.max(0, Math.min(x, bounds.width));
+    const percentage = clampedX / Math.max(1, bounds.width);
+    setLocalScrubTime(percentage * duration);
+  }, [duration]);
 
   const handleContainerMouseDown = (e) => {
     if (draggingElement) return;
@@ -251,14 +287,9 @@ export default function CaptionTimeline({
       wasPlayingRef.current = false;
     }
 
-    const innerRect = e.currentTarget.getBoundingClientRect();
-    const clickX = e.clientX - innerRect.left;
-    const clampedX = Math.max(0, Math.min(clickX, innerRect.width));
-    const percentage = clampedX / innerRect.width;
-    const newTime = percentage * duration;
-
-    setLocalScrubTime(newTime);
-    // Do NOT seek videoElement here — seeking on every mousedown/mousemove causes black frames.
+    scrubBoundsRef.current = e.currentTarget.getBoundingClientRect();
+    updateScrubFromClientX(e.clientX);
+    // Do NOT seek videoElement here - seeking on every mousedown/mousemove causes black frames.
     // Video seeks once on mouseup via onSeek below.
   };
 
@@ -274,20 +305,33 @@ export default function CaptionTimeline({
       } else {
         wasPlayingRef.current = false;
       }
+      scrubBoundsRef.current = e.currentTarget.getBoundingClientRect();
     }
 
-    const innerRect = e.currentTarget.getBoundingClientRect();
-    const moveX = e.clientX - innerRect.left;
-    const clampedX = Math.max(0, Math.min(moveX, innerRect.width));
-    const percentage = clampedX / innerRect.width;
-    const newTime = percentage * duration;
-
-    setLocalScrubTime(newTime);
-    // Do NOT seek videoElement here — same reason as mousedown above.
+    updateScrubFromClientX(e.clientX);
+    // Do NOT seek videoElement here - same reason as mousedown above.
   };
 
   useEffect(() => {
+    const handleMouseMoveGlobal = (e) => {
+      if (!isScrubbingRef.current) return;
+      pendingScrubClientXRef.current = e.clientX;
+      if (scrubRafRef.current) return;
+      scrubRafRef.current = requestAnimationFrame(() => {
+        scrubRafRef.current = null;
+        if (pendingScrubClientXRef.current !== null) {
+          updateScrubFromClientX(pendingScrubClientXRef.current);
+        }
+      });
+    };
+
     const handleMouseUpGlobal = () => {
+      if (scrubRafRef.current) {
+        cancelAnimationFrame(scrubRafRef.current);
+        scrubRafRef.current = null;
+      }
+      pendingScrubClientXRef.current = null;
+      scrubBoundsRef.current = null;
       if (isScrubbingRef.current) {
         isScrubbingRef.current = false;
 
@@ -304,9 +348,17 @@ export default function CaptionTimeline({
       }
     };
 
+    window.addEventListener('mousemove', handleMouseMoveGlobal);
     window.addEventListener('mouseup', handleMouseUpGlobal);
-    return () => window.removeEventListener('mouseup', handleMouseUpGlobal);
-  }, [onSeek, setIsPlaying]);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMoveGlobal);
+      window.removeEventListener('mouseup', handleMouseUpGlobal);
+      if (scrubRafRef.current) {
+        cancelAnimationFrame(scrubRafRef.current);
+        scrubRafRef.current = null;
+      }
+    };
+  }, [onSeek, setIsPlaying, updateScrubFromClientX]);
 
   const handleElementDragStart = (e, element, type) => {
     e.stopPropagation();
@@ -326,6 +378,7 @@ export default function CaptionTimeline({
     if (!rawSet) return;
 
     let rafId = null;
+    document.body.style.userSelect = 'none';
 
     const handleMouseMove = (e) => {
       if (rafId) cancelAnimationFrame(rafId);
@@ -339,7 +392,6 @@ export default function CaptionTimeline({
         rawSet(prev => prev.map(cap => {
           if (cap.id !== draggingElement.id) return cap;
 
-          const bounds = getCollisionBounds(cap, prev, dragType);
           const capDuration = cap.end_time - cap.start_time;
 
           if (dragType === 'move') {
@@ -352,8 +404,9 @@ export default function CaptionTimeline({
             if (snapped) setSnappedTime({ time: newStart, type: snapType });
             else setSnappedTime(null);
 
+            const bounds = getMoveBounds(cap, prev, newStart);
             newStart = Math.max(bounds.minStart, newStart);
-            newStart = Math.min(bounds.maxEnd - capDuration, newStart);
+            newStart = Math.min(bounds.maxStart, newStart);
             newStart = Math.max(0, Math.min(duration - capDuration, newStart));
 
             if (!cap.isTextElement) {
@@ -380,8 +433,9 @@ export default function CaptionTimeline({
             if (snapped) setSnappedTime({ time: newStart, type: snapType });
             else setSnappedTime(null);
 
+            const bounds = getResizeBounds(cap, prev, 'resize-left');
             newStart = Math.max(bounds.minStart, newStart);
-            newStart = Math.max(0, Math.min(cap.end_time - 0.1, newStart));
+            newStart = Math.max(0, Math.min(cap.end_time - 0.02, newStart));
             return { ...cap, start_time: newStart };
           } else if (dragType === 'resize-right') {
             let rawEnd = dragStartTime + deltaTime;
@@ -393,8 +447,9 @@ export default function CaptionTimeline({
             if (snapped) setSnappedTime({ time: newEnd, type: snapType });
             else setSnappedTime(null);
 
+            const bounds = getResizeBounds(cap, prev, 'resize-right');
             newEnd = Math.min(bounds.maxEnd, newEnd);
-            newEnd = Math.max(cap.start_time + 0.1, Math.min(duration, newEnd));
+            newEnd = Math.max(cap.start_time + 0.02, Math.min(duration, newEnd));
             return { ...cap, end_time: newEnd };
           }
 
@@ -424,6 +479,7 @@ export default function CaptionTimeline({
 
     return () => {
       if (rafId) cancelAnimationFrame(rafId);
+      document.body.style.userSelect = '';
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
@@ -438,362 +494,285 @@ export default function CaptionTimeline({
     }
   };
 
-  // Handle mouse wheel scroll
-  const handleWheel = (e) => {
-    e.preventDefault();
-    const maxScroll = Math.max(0, TOTAL_CONTENT_HEIGHT - VISIBLE_HEIGHT);
-    setScrollPos(prev => Math.max(0, Math.min(maxScroll, prev + e.deltaY * 0.5)));
-  };
+  const waveformBars = React.useMemo(() => {
+    const source = waveformData && waveformData.length > 0
+      ? waveformData
+      : Array.from({ length: 320 }).map((_, i) => Math.abs(Math.sin(i * 0.37) * Math.cos(i * 0.11)));
 
-  const maxScroll = Math.max(1, TOTAL_CONTENT_HEIGHT - VISIBLE_HEIGHT);
+    const targetCount = 420;
+    let sampled;
+
+    if (source.length <= targetCount) {
+      sampled = source;
+    } else {
+      const blockSize = source.length / targetCount;
+      sampled = Array.from({ length: targetCount }, (_, idx) => {
+        const start = Math.floor(idx * blockSize);
+        const end = Math.min(source.length, Math.floor((idx + 1) * blockSize));
+        let peak = 0;
+        for (let i = start; i < end; i += 1) {
+          peak = Math.max(peak, Math.abs(source[i] || 0));
+        }
+        return peak;
+      });
+    }
+
+    const maxPeak = sampled.reduce((max, value) => Math.max(max, Math.abs(value || 0)), 0.001);
+
+    return sampled.map((value, index) => {
+      const normalized = Math.min(1, Math.abs(value || 0) / maxPeak);
+      const previous = sampled[Math.max(0, index - 1)] || 0;
+      const next = sampled[Math.min(sampled.length - 1, index + 1)] || 0;
+      const smoothed = ((Math.abs(previous) + Math.abs(value || 0) + Math.abs(next)) / 3) / maxPeak;
+      return Math.max(0.18, Math.min(1, (normalized * 0.55) + (smoothed * 0.45)));
+    });
+  }, [waveformData]);
+
+  if (collapsed) {
+    return (
+      <button
+        type="button"
+        onClick={onToggleCollapsed}
+        className="w-full h-[38px] rounded-[18px] border border-white/10 bg-[#0d0d0d]/95 px-4 flex items-center justify-center gap-4 text-[9px] uppercase tracking-[0.22em] text-slate-500 shadow-[0_10px_28px_-20px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.04)] hover:border-white/15 hover:bg-[#111] transition-colors"
+        title="Expand timeline"
+      >
+        <span>48 kHz - Stereo</span>
+        <span className="h-3 w-px bg-white/10" />
+        <span className="inline-flex items-center self-center text-slate-300 text-xs leading-none">^</span>
+        <span className="font-bold text-white">Timeline</span>
+        <span className="h-3 w-px bg-white/10" />
+        <span>{captions?.length || 0} Elements</span>
+      </button>
+    );
+  }
 
   return (
-    <div className="flex flex-col shrink-0 border-t border-white/10 pt-2">
-      <div className="flex items-center justify-between mb-2 px-1">
-        <div className="flex items-center gap-2">
-          <h3 className="text-xs font-medium text-gray-400">Timeline</h3>
-          <span className="text-[10px] text-gray-500 hidden sm:inline">{captions?.length || 0} elements</span>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => onSeek(0)}
-            className="h-6 w-6 text-gray-400 hover:text-white border border-white/10"
-            title="Reset Playhead"
-          >
-            <RotateCcw className="w-3 h-3" />
-          </Button>
-          <div className="flex items-center gap-1.5 w-24 md:w-32">
-            <ZoomOut className="w-3 h-3 text-gray-500" />
-            <Slider
-              value={[zoom]}
-              min={1}
-              max={10}
-              step={0.1}
-              onValueChange={([val]) => setZoom(val)}
-              className="flex-1 cursor-ew-resize"
-            />
-            <ZoomIn className="w-3 h-3 text-gray-500" />
-          </div>
-        </div>
+    <div className="flex h-full shrink-0 overflow-hidden rounded-[18px] border border-white/10 bg-[#0d0d0d]/95 shadow-[0_12px_32px_-24px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.04)]">
+      <div className="w-12 shrink-0 border-r border-white/10 flex flex-col items-center justify-center gap-2 bg-black/10">
+        <button
+          type="button"
+          onClick={() => setIsPlaying(!isPlaying)}
+          className="h-9 w-9 rounded-full bg-white text-black flex items-center justify-center hover:bg-slate-200 transition-colors"
+          title={isPlaying ? 'Pause' : 'Play'}
+        >
+          {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
+        </button>
+        <button onClick={() => onSeek(Math.max(0, currentTime - 5))} className="rounded-md border border-white/10 px-2 py-1 text-[9px] text-slate-500 hover:text-white">-5s</button>
+        <button onClick={() => onSeek(Math.min(duration || currentTime, currentTime + 5))} className="rounded-md border border-white/10 px-2 py-1 text-[9px] text-slate-500 hover:text-white">+5s</button>
       </div>
 
-      <div className="flex gap-2" style={{ height: `${timelineHeight - 40}px` }}>
-        {/* Scrollable timeline container */}
+      <div className="min-w-0 flex h-full flex-1 flex-col px-3 py-2">
+        <button
+          type="button"
+          className="flex h-5 w-full items-center justify-between gap-3 text-left"
+          onClick={onToggleCollapsed}
+          title="Collapse timeline"
+        >
+          <span className="flex items-center gap-2">
+            <span className="hidden text-[8px] font-medium uppercase tracking-[0.14em] text-slate-500 sm:inline">48 kHz - Stereo</span>
+            <span className="hidden h-3 w-px bg-white/10 sm:block" />
+            <span className="inline-flex items-center self-center text-slate-400 text-xs leading-none">v</span>
+            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white">Timeline</span>
+            <span className="text-[9px] text-slate-600">{regularCaptions.length} elements</span>
+          </span>
+          <div className="flex min-w-0 items-center gap-3 text-[9px] text-slate-500">
+            <span className="font-mono text-sky-100">{formatTime(displayTime)} / {formatTime(duration || 0)}</span>
+            <button type="button" onClick={(e) => { e.stopPropagation(); setZoom(3); }} className="rounded-md p-1 hover:bg-white/5 hover:text-white" title="Reset zoom">
+              <RotateCcw className="h-3 w-3" />
+            </button>
+            <button type="button" onClick={(e) => { e.stopPropagation(); setZoom(z => Math.max(1, z - 0.5)); }} className="rounded-md p-1 hover:bg-white/5 hover:text-white" title="Zoom out">
+              <ZoomOut className="h-3 w-3" />
+            </button>
+            <div className="h-1 w-16 rounded-full bg-white/5">
+              <div className="h-full rounded-full bg-white/15" style={{ width: `${Math.min(100, Math.max(12, (zoom / 6) * 100))}%` }} />
+            </div>
+            <button type="button" onClick={(e) => { e.stopPropagation(); setZoom(z => Math.min(6, z + 0.5)); }} className="rounded-md p-1 hover:bg-white/5 hover:text-white" title="Zoom in">
+              <ZoomIn className="h-3 w-3" />
+            </button>
+          </div>
+        </button>
+
         <div
-          className="flex-1 overflow-hidden bg-[#161616] rounded-lg border border-white/5"
+          ref={scrollContainerRef}
+          className="relative mt-2 min-h-0 flex-1 overflow-y-auto overflow-x-auto rounded-xl border border-white/5 bg-[#121212] custom-scrollbar"
         >
           <div
-            ref={scrollContainerRef}
-            className="overflow-auto h-full pb-2 custom-scrollbar"
+            ref={timelineRef}
+            className="relative min-w-full cursor-pointer"
+            style={{
+              width: `${zoom * 100}%`,
+              height: `${TIMELINE_CANVAS_HEIGHT}px`,
+              transform: `translateX(-${panOffset}px)`
+            }}
+            onMouseDown={handleContainerMouseDown}
+            onMouseMove={handleContainerMouseMove}
           >
-            {/* Zoomed Inner Container */}
-            <div
-              ref={timelineRef}
-              className="relative cursor-pointer"
-              style={{
-                width: `${zoom * 100}%`,
-                minWidth: '100%',
-                height: `${TOTAL_CONTENT_HEIGHT}px`,
-                transform: `translateX(-${panOffset}px)`
-              }}
-              onMouseDown={handleContainerMouseDown}
-              onMouseMove={handleContainerMouseMove}
-            >
-              {/* Time markers background */}
-              <div className="absolute inset-0 pointer-events-none z-0">
-                {Array.from({ length: Math.ceil(5 * zoom) }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="absolute top-0 bottom-0 w-px bg-white/5"
-                    style={{ left: `${(i / Math.ceil(5 * zoom)) * 100}%` }}
-                  />
-                ))}
-              </div>
+            <div className="absolute left-0 right-0 top-0 h-7 border-b border-white/5 bg-black/20" />
+            <div className="absolute top-1 flex justify-between px-1 text-[8px] font-mono text-slate-600" style={{ left: `${TRACK_LEFT}px`, right: `${TRACK_RIGHT}px` }}>
+              {Array.from({ length: 8 }).map((_, i) => (
+                <span key={i}>{formatTime((duration || 0) * (i / 7))}</span>
+              ))}
+            </div>
 
-              {/* Playhead */}
-              <motion.div
-                className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-50 pointer-events-none"
-                style={{ left: `${getPositionPercentage(displayTime)}%` }}
-              >
-                <div className="absolute -top-0.5 left-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-red-500 rounded-full shadow-md border border-white/20" />
-              </motion.div>
-
-              {/* Snap Indicator Line - Green for waveform, Yellow for other */}
-              {snappedTime !== null && (
-                <div
-                  className={`absolute top-0 bottom-0 w-px z-50 pointer-events-none ${snappedTime.type === 'waveform'
-                    ? 'bg-violet-400 shadow-[0_0_12px_rgba(167,139,250,0.9)]'
-                    : 'bg-yellow-400 shadow-[0_0_8px_rgba(250,204,21,0.8)]'
-                    }`}
-                  style={{ left: `${getPositionPercentage(typeof snappedTime === 'object' ? snappedTime.time : snappedTime)}%` }}
-                />
-              )}
-
-              {/* Text Tracks (6 rows at top) */}
+            <div className="absolute left-2 top-[10px] z-10 w-[38px] text-[7px] font-semibold uppercase tracking-[0.16em] text-slate-500">Text</div>
+            <div className="absolute left-2 z-10 w-[38px] text-[7px] font-semibold uppercase tracking-[0.16em] text-slate-500" style={{ top: `${SPEECH_TRACK_TOP + 2}px` }}>Speech</div>
+            <div className="absolute left-2 z-10 w-[38px] text-[7px] font-semibold uppercase tracking-[0.16em] text-slate-500" style={{ top: `${AUDIO_TRACK_TOP + 2}px` }}>Audio</div>
+            {Array.from({ length: 8 }).map((_, i) => (
               <div
-                className="absolute left-0 right-0"
-                style={{ top: 0, height: `${TEXT_ROWS * TEXT_ROW_HEIGHT}px` }}
-              >
-                {/* Row backgrounds */}
-                {Array.from({ length: TEXT_ROWS }).map((_, rowIndex) => (
-                  <div
-                    key={`row-${rowIndex}`}
-                    className="absolute left-0 right-0 border-b border-blue-500/10"
+                key={`time-grid-${i}`}
+                className="absolute top-7 bottom-0 w-px bg-white/[0.05]"
+                style={{
+                  left: `calc(${TRACK_LEFT}px + ((100% - ${TRACK_LEFT + TRACK_RIGHT}px) * ${i / 7}))`
+                }}
+              />
+            ))}
+
+            <div
+              className="absolute border-y border-white/[0.05] bg-white/[0.01]"
+              style={{ left: `${TRACK_LEFT}px`, right: `${TRACK_RIGHT}px`, top: `${SPEECH_TRACK_TOP}px`, height: `${SPEECH_HEIGHT}px` }}
+            />
+            <div
+              className="absolute border-y border-white/[0.05] bg-white/[0.01]"
+              style={{ left: `${TRACK_LEFT}px`, right: `${TRACK_RIGHT}px`, top: `${AUDIO_TRACK_TOP}px`, height: `${WAVEFORM_HEIGHT}px` }}
+            />
+
+            {Array.from({ length: TEXT_ROWS }).map((_, rowIndex) => (
+              <div
+                key={`visible-row-${rowIndex}`}
+                className="absolute border-b border-white/[0.04]"
+                style={{
+                  left: `${TRACK_LEFT}px`,
+                  right: `${TRACK_RIGHT}px`,
+                  top: `${TEXT_TRACK_TOP + (rowIndex * TEXT_ROW_HEIGHT)}px`,
+                  height: `${TEXT_ROW_HEIGHT}px`,
+                  background: rowIndex % 2 === 0 ? 'rgba(255,255,255,0.015)' : 'transparent'
+                }}
+              />
+            ))}
+
+            {textElements.map((caption, idx) => {
+              const rowIndex = getTextElementRow(idx);
+              const left = getPositionPercentage(caption.start_time || 0);
+              const width = getPositionPercentage((caption.end_time || 0) - (caption.start_time || 0));
+              const isSelected = selectedCaptionId === caption.id;
+              return (
+                <motion.div
+                  key={caption.id}
+                  data-caption-block="true"
+                  initial={{ opacity: 0, scale: 0.96 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className={`absolute rounded-[5px] border px-2 text-[9px] font-semibold transition-colors ${
+                    isSelected
+                      ? 'border-sky-300/50 bg-sky-400/20 text-white'
+                      : 'border-white/10 bg-white/[0.08] text-slate-200 hover:bg-white/[0.12]'
+                  }`}
+                  style={{
+                    top: `${TEXT_TRACK_TOP + (rowIndex * TEXT_ROW_HEIGHT) + 4}px`,
+                    left: `${left}%`,
+                    width: `${Math.max(width, 8)}%`,
+                    height: `${TEXT_ROW_HEIGHT - 8}px`
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelectCaption(caption.id);
+                    onSeek(caption.start_time || 0);
+                  }}
+                >
+                  <div className="truncate leading-[18px]">{(caption.text || '').slice(0, 22)}</div>
+                </motion.div>
+              );
+            })}
+
+            <div className="absolute h-7" style={{ left: `${TRACK_LEFT}px`, right: `${TRACK_RIGHT}px`, top: `${SPEECH_TRACK_TOP}px` }}>
+              {regularCaptions.map((caption, index) => {
+                const isSelected = selectedCaptionId === caption.id;
+                const isActive = currentTime >= (caption.start_time || 0) && currentTime <= (caption.end_time || 0);
+                const isDraggingThis = draggingElement?.id === caption.id;
+                const left = getPositionPercentage(caption.start_time || 0);
+                const width = getPositionPercentage((caption.end_time || 0) - (caption.start_time || 0));
+                return (
+                  <button
+                    key={caption.id}
+                    data-caption-block="true"
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSelectCaption(caption.id);
+                      onSeek(caption.start_time || 0);
+                    }}
+                    onMouseDown={(e) => {
+                      if (setCaptions) {
+                        e.stopPropagation();
+                        handleElementDragStart(e, caption, 'move');
+                      }
+                    }}
+                    className={`absolute top-0 h-7 truncate rounded-[4px] border px-2 text-left text-[9px] font-semibold transition-colors cursor-grab active:cursor-grabbing ${
+                      isSelected || isActive
+                        ? 'border-[#6b7280] bg-[#333844] text-white'
+                        : 'border-[#4a4d59] bg-[#2a2d35] text-[#c7ccd7] hover:bg-[#313540] hover:text-[#f1f4fa]'
+                    }`}
                     style={{
-                      top: `${rowIndex * TEXT_ROW_HEIGHT}px`,
-                      height: `${TEXT_ROW_HEIGHT}px`,
-                      backgroundColor: rowIndex % 2 === 0 ? 'rgba(59, 130, 246, 0.02)' : 'transparent'
+                      left: `${left}%`,
+                      width: `${Math.max(width, 2)}%`,
+                      zIndex: isDraggingThis ? 80 : (isSelected ? 24 : 12),
+                      boxShadow: isDraggingThis ? '0 10px 24px rgba(0,0,0,0.35)' : 'none'
                     }}
                   >
-                    {rowIndex === 0 && (
-                      <div className="absolute left-1 top-0.5 text-[8px] text-blue-400/50 uppercase tracking-wider font-medium pointer-events-none">
-                        Text
-                      </div>
-                    )}
-                  </div>
-                ))}
-
-                {/* Text elements */}
-                {textElements.map((caption, idx) => {
-                  const rowIndex = getTextElementRow(idx);
-                  const left = getPositionPercentage(caption.start_time || 0);
-                  const width = getPositionPercentage((caption.end_time || 0) - (caption.start_time || 0));
-                  const isSelected = selectedCaptionId === caption.id;
-                  const topPos = rowIndex * TEXT_ROW_HEIGHT + 3;
-
-                  return (
-                    <motion.div
-                      key={caption.id}
-                      data-caption-block="true"
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      className={`absolute rounded transition-all border group cursor-move ${isSelected
-                        ? 'bg-blue-500/50 border-blue-400 z-20'
-                        : 'bg-blue-500/30 border-blue-500/40 hover:bg-blue-500/40 z-10'
-                        }`}
-                      style={{
-                        left: `${left}%`,
-                        width: `${Math.max(width, 2)}%`,
-                        top: `${topPos}px`,
-                        height: `${TEXT_ROW_HEIGHT - 6}px`
-                      }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onSelectCaption(caption.id);
-                      }}
+                    <span
+                      className="absolute inset-y-0 left-0 w-1.5 cursor-ew-resize rounded-l-[4px] bg-white/0 hover:bg-white/10"
                       onMouseDown={(e) => {
                         if (setCaptions) {
                           e.stopPropagation();
-                          e.preventDefault();
-                          handleElementDragStart(e, caption, 'move');
+                          handleElementDragStart(e, caption, 'resize-left');
                         }
                       }}
-                    >
-                      {setCaptions && (
-                        <>
-                          <div
-                            className="absolute left-0 top-0 bottom-0 w-2 bg-blue-400 opacity-0 group-hover:opacity-100 cursor-ew-resize z-30 rounded-l"
-                            onMouseDown={(e) => {
-                              e.stopPropagation();
-                              e.preventDefault();
-                              handleElementDragStart(e, caption, 'resize-left');
-                            }}
-                          />
-                          <div
-                            className="absolute right-0 top-0 bottom-0 w-2 bg-blue-400 opacity-0 group-hover:opacity-100 cursor-ew-resize z-30 rounded-r"
-                            onMouseDown={(e) => {
-                              e.stopPropagation();
-                              e.preventDefault();
-                              handleElementDragStart(e, caption, 'resize-right');
-                            }}
-                          />
-                          {/* Delete button */}
-                          <button
-                            className="absolute -top-2 -right-2 w-5 h-5 bg-zinc-900 border border-white/20 hover:border-red-500/50 hover:bg-red-500/10 rounded-full opacity-0 group-hover:opacity-100 z-40 flex items-center justify-center transition-all shadow-lg text-gray-400 hover:text-red-500"
-                            onClick={(e) => handleDeleteTextElement(e, caption.id)}
-                            title="Delete"
-                          >
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M18 6 6 18" /><path d="m6 6 12 12" />
-                            </svg>
-                          </button>
-                        </>
-                      )}
-                      <div className="px-1.5 truncate text-[10px] text-blue-100 pointer-events-none flex items-center h-full font-medium">
-                        {caption.text}
-                      </div>
-                    </motion.div>
-                  );
-                })}
-              </div>
-
-              {/* Divider line between text and speech */}
-              <div
-                className="absolute left-0 right-0 h-px bg-white/10"
-                style={{ top: `${TEXT_ROWS * TEXT_ROW_HEIGHT}px` }}
-              />
-
-              {/* Speech Track */}
-              <div
-                className="absolute left-0 right-0"
-                style={{ top: `${TEXT_ROWS * TEXT_ROW_HEIGHT}px`, height: `${SPEECH_HEIGHT + 8}px` }}
-              >
-                {/* Row label */}
-                <div className="absolute left-1 top-0.5 text-[8px] text-white/20 uppercase tracking-wider font-medium pointer-events-none z-10">
-                  Speech
-                </div>
-
-                {/* Background */}
-                <div className="absolute inset-0 bg-white/[0.03]" />
-
-                {/* Speech captions */}
-                <div className="absolute left-0 right-0" style={{ top: '12px', bottom: '4px' }}>
-                  {regularCaptions.map((caption) => {
-                    const left = getPositionPercentage(caption.start_time || 0);
-                    const width = getPositionPercentage((caption.end_time || 0) - (caption.start_time || 0));
-                    const isSelected = selectedCaptionId === caption.id;
-                    const isActive = currentTime >= (caption.start_time || 0) && currentTime <= (caption.end_time || 0);
-
-                    return (
-                      <motion.div
-                        key={caption.id}
-                        data-caption-block="true"
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        className={`absolute rounded-md transition-all border group cursor-move ${isSelected
-                          ? 'bg-white/20 border-white/50 z-20'
-                          : isActive
-                            ? 'bg-white/15 border-white/30 z-10'
-                            : 'bg-white/10 border-white/20 hover:bg-white/15 hover:border-white/30 z-10'
-                          }`}
-                        style={{
-                          left: `${left}%`,
-                          width: `${Math.max(width, 1)}%`,
-                          top: '0',
-                          height: `${SPEECH_HEIGHT - 4}px`,
-                          ...(isSelected ? { borderWidth: '1.5px' } : {})
-                        }}
-                        onClick={(e) => {
+                    />
+                    <span
+                      className="absolute inset-y-0 right-0 w-1.5 cursor-ew-resize rounded-r-[4px] bg-white/0 hover:bg-white/10"
+                      onMouseDown={(e) => {
+                        if (setCaptions) {
                           e.stopPropagation();
-                          onSelectCaption(caption.id);
-                        }}
-                        onMouseDown={(e) => {
-                          if (setCaptions) {
-                            e.stopPropagation();
-                            e.preventDefault();
-                            handleElementDragStart(e, caption, 'move');
-                          }
-                        }}
-                      >
-                        {setCaptions && (
-                          <>
-                            <div
-                              className="absolute left-0 top-0 bottom-0 w-2 bg-white/60 opacity-0 group-hover:opacity-100 cursor-ew-resize z-30 rounded-l"
-                              onMouseDown={(e) => {
-                                e.stopPropagation();
-                                e.preventDefault();
-                                handleElementDragStart(e, caption, 'resize-left');
-                              }}
-                            />
-                            <div
-                              className="absolute right-0 top-0 bottom-0 w-2 bg-white/60 opacity-0 group-hover:opacity-100 cursor-ew-resize z-30 rounded-r"
-                              onMouseDown={(e) => {
-                                e.stopPropagation();
-                                e.preventDefault();
-                                handleElementDragStart(e, caption, 'resize-right');
-                              }}
-                            />
-                          </>
-                        )}
-                        <div className={`px-2 truncate text-[10px] pointer-events-none flex items-center h-full ${isSelected ? 'text-white font-semibold' : 'text-white/80'}`}>
-                          {(caption.text || '').slice(0, 60)}
-                        </div>
-                      </motion.div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Audio Waveform Track */}
-              <div
-                className="absolute left-0 right-0"
-                style={{ top: `${TEXT_ROWS * TEXT_ROW_HEIGHT + SPEECH_HEIGHT + 8}px`, height: `${WAVEFORM_HEIGHT}px` }}
-              >
-                {/* Subtle top separator */}
-                <div className="absolute top-0 left-0 right-0 h-px bg-white/8" />
-
-                {/* Row label */}
-                <div className="absolute left-1 top-0.5 text-[8px] text-white/25 uppercase tracking-wider font-medium pointer-events-none z-10">
-                  Audio
-                </div>
-
-                {/* Waveform Visualization — professional white-bar style */}
-                <div className="absolute left-0 right-0 top-2.5 bottom-0.5 overflow-hidden">
-                  {waveformData && waveformData.length > 0 ? (
-                    <svg
-                      width="100%"
-                      height="100%"
-                      viewBox={`0 0 ${waveformData.length * 2} 100`}
-                      preserveAspectRatio="none"
-                    >
-                      {waveformData.map((amplitude, i) => {
-                        // Sharpen spikes: mild power curve to keep quiet parts visible
-                        const amp = Math.pow(Math.max(0, amplitude), 1.6)
-                        const barHeight = Math.max(2, amp * 94)
-                        const y = 50 - barHeight / 2
-                        // Taller bars are more opaque — quiet zones fade into background
-                        const opacity = 0.2 + amp * 0.8
-                        return (
-                          <rect
-                            key={i}
-                            x={i * 2}
-                            y={y}
-                            width={1.1}
-                            height={barHeight}
-                            fill="#FACC15"
-                            fillOpacity={opacity}
-                            rx={0.55}
-                          />
-                        )
-                      })}
-                    </svg>
-                  ) : (
-                    /* Placeholder: subtle white bars when no audio loaded */
-                    <svg
-                      width="100%"
-                      height="100%"
-                      viewBox="0 0 400 100"
-                      preserveAspectRatio="none"
-                    >
-                      {Array.from({ length: 200 }).map((_, i) => {
-                        // Natural-looking pseudo-random waveform shape
-                        const t = i / 200
-                        const wave = Math.sin(t * Math.PI * 8) * Math.sin(t * Math.PI * 2.3)
-                        const barHeight = Math.max(2, Math.abs(wave) * 70 + 3)
-                        const y = 50 - barHeight / 2
-                        const opacity = 0.08 + Math.abs(wave) * 0.15
-                        return (
-                          <rect
-                            key={i}
-                            x={i * 2}
-                            y={y}
-                            width={1.1}
-                            height={barHeight}
-                            fill="#FACC15"
-                            fillOpacity={opacity}
-                            rx={0.55}
-                          />
-                        )
-                      })}
-                    </svg>
-                  )}
-                </div>
-              </div>
-
+                          handleElementDragStart(e, caption, 'resize-right');
+                        }
+                      }}
+                    />
+                    <span className="block truncate px-1">
+                      {String(index + 1).padStart(2, '0')} {(caption.text || '').slice(0, 22)}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
+
+            <div className="absolute border-t border-white/5" style={{ left: `${TRACK_LEFT}px`, right: `${TRACK_RIGHT}px`, top: `${AUDIO_TRACK_TOP + 2}px`, height: `${WAVEFORM_HEIGHT}px` }}>
+              {waveformBars.map((amplitude, i) => {
+                const pct = i / Math.max(1, waveformBars.length - 1);
+                const barTime = pct * (duration || 0);
+                const h = Math.max(20, Math.min(WAVEFORM_HEIGHT - 6, Math.pow(Math.max(0.08, amplitude), 0.92) * (WAVEFORM_HEIGHT - 6)));
+                return (
+                  <span
+                    key={i}
+                    className="absolute rounded-full"
+                    style={{
+                      width: '2px',
+                      height: `${h}px`,
+                      left: `calc(${(i / waveformBars.length) * 100}% - 1px)`,
+                      top: `calc(50% - ${h / 2}px)`,
+                      backgroundColor: '#f7b12f',
+                      boxShadow: '0 0 0 1px rgba(247,177,47,0.05)',
+                      opacity: 0.98
+                    }}
+                  />
+                );
+              })}
+            </div>
+
+            <motion.div
+              className="absolute top-0 bottom-0 w-px bg-white z-50 pointer-events-none"
+              style={{ left: `${getPositionPercentage(displayTime)}%` }}
+            >
+              <div className="absolute -top-1 left-1/2 h-2 w-2 -translate-x-1/2 rounded-full bg-white" />
+            </motion.div>
           </div>
         </div>
 
