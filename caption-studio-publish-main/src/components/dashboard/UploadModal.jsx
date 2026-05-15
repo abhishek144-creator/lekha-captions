@@ -375,7 +375,7 @@ export default function UploadModal({
         onClose();
       }
     }}>
-      <DialogContent className="bg-zinc-900 border-white/10 text-white max-w-lg">
+      <DialogContent className="max-h-[92dvh] w-[calc(100vw-24px)] overflow-y-auto bg-zinc-900 border-white/10 text-white max-w-lg rounded-2xl">
         <DialogHeader>
           <DialogTitle className="text-xl font-semibold">
             {step === 1 ? 'Upload Video' : 'Caption Settings'}
@@ -391,7 +391,7 @@ export default function UploadModal({
               exit={{ opacity: 0, x: 20 }}
             >
               <div
-                className={`relative border-2 border-dashed rounded-xl p-8 text-center transition-all ${dragActive
+                className={`relative border-2 border-dashed rounded-xl p-5 sm:p-8 text-center transition-all ${dragActive
                   ? 'border-[#F5A623] bg-[#F5A623]/10'
                   : 'border-white/10 hover:border-white/20'
                   }`}
@@ -418,7 +418,7 @@ export default function UploadModal({
                   or click to browse
                 </p>
 
-                <div className="flex items-center justify-center gap-4 text-xs text-gray-600">
+                <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-4 text-xs text-gray-600">
                   <span className="flex items-center gap-1">
                     <Film className="w-3 h-3" />
                     MP4, MOV, WebM
