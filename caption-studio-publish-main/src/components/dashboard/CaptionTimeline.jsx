@@ -288,6 +288,7 @@ export default function CaptionTimeline({
     }
 
     scrubBoundsRef.current = e.currentTarget.getBoundingClientRect();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
     updateScrubFromClientX(e.clientX);
     // Do NOT seek videoElement here - seeking on every mousedown/mousemove causes black frames.
     // Video seeks once on mouseup via onSeek below.
@@ -350,9 +351,15 @@ export default function CaptionTimeline({
 
     window.addEventListener('mousemove', handleMouseMoveGlobal);
     window.addEventListener('mouseup', handleMouseUpGlobal);
+    window.addEventListener('pointermove', handleMouseMoveGlobal, { passive: false });
+    window.addEventListener('pointerup', handleMouseUpGlobal);
+    window.addEventListener('pointercancel', handleMouseUpGlobal);
     return () => {
       window.removeEventListener('mousemove', handleMouseMoveGlobal);
       window.removeEventListener('mouseup', handleMouseUpGlobal);
+      window.removeEventListener('pointermove', handleMouseMoveGlobal);
+      window.removeEventListener('pointerup', handleMouseUpGlobal);
+      window.removeEventListener('pointercancel', handleMouseUpGlobal);
       if (scrubRafRef.current) {
         cancelAnimationFrame(scrubRafRef.current);
         scrubRafRef.current = null;
@@ -476,12 +483,18 @@ export default function CaptionTimeline({
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('pointermove', handleMouseMove, { passive: false });
+    document.addEventListener('pointerup', handleMouseUp);
+    document.addEventListener('pointercancel', handleMouseUp);
 
     return () => {
       if (rafId) cancelAnimationFrame(rafId);
       document.body.style.userSelect = '';
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('pointermove', handleMouseMove);
+      document.removeEventListener('pointerup', handleMouseUp);
+      document.removeEventListener('pointercancel', handleMouseUp);
     };
   }, [draggingElement, dragType, dragStartX, dragStartTime, duration, setCaptionsRaw, setCaptions]);
 
@@ -598,14 +611,14 @@ export default function CaptionTimeline({
         >
           <div
             ref={timelineRef}
-            className="relative min-w-full cursor-pointer"
+            className="relative min-w-full touch-none select-none cursor-pointer"
             style={{
               width: `${zoom * 100}%`,
               height: `${TIMELINE_CANVAS_HEIGHT}px`,
               transform: `translateX(-${panOffset}px)`
             }}
-            onMouseDown={handleContainerMouseDown}
-            onMouseMove={handleContainerMouseMove}
+            onPointerDown={handleContainerMouseDown}
+            onPointerMove={handleContainerMouseMove}
           >
             <div className="absolute left-0 right-0 top-0 h-7 border-b border-white/5 bg-black/20" />
             <div className="absolute top-1 flex justify-between px-1 text-[8px] font-mono text-slate-600" style={{ left: `${TRACK_LEFT}px`, right: `${TRACK_RIGHT}px` }}>
@@ -700,7 +713,7 @@ export default function CaptionTimeline({
                       onSelectCaption(caption.id);
                       onSeek(caption.start_time || 0);
                     }}
-                    onMouseDown={(e) => {
+                    onPointerDown={(e) => {
                       if (setCaptions) {
                         e.stopPropagation();
                         handleElementDragStart(e, caption, 'move');
@@ -720,7 +733,7 @@ export default function CaptionTimeline({
                   >
                     <span
                       className="absolute inset-y-0 left-0 w-1.5 cursor-ew-resize rounded-l-[4px] bg-white/0 hover:bg-white/10"
-                      onMouseDown={(e) => {
+                      onPointerDown={(e) => {
                         if (setCaptions) {
                           e.stopPropagation();
                           handleElementDragStart(e, caption, 'resize-left');
@@ -729,7 +742,7 @@ export default function CaptionTimeline({
                     />
                     <span
                       className="absolute inset-y-0 right-0 w-1.5 cursor-ew-resize rounded-r-[4px] bg-white/0 hover:bg-white/10"
-                      onMouseDown={(e) => {
+                      onPointerDown={(e) => {
                         if (setCaptions) {
                           e.stopPropagation();
                           handleElementDragStart(e, caption, 'resize-right');
