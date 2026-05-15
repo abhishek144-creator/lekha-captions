@@ -2967,7 +2967,7 @@ export default function VideoPlayer({
           )}
         <div
           ref={videoContainerRef}
-          className={`lekha-video-frame relative aspect-[9/16] bg-black shadow-[0_35px_120px_rgba(0,0,0,0.72)] ${isVideoFullscreen ? 'h-auto max-h-[calc(100vh-92px)]' : 'h-full max-h-[calc(100vh-296px)]'}`}
+          className={`lekha-video-frame relative aspect-[9/16] bg-black shadow-[0_35px_120px_rgba(0,0,0,0.72)] ${isVideoFullscreen ? 'h-auto max-h-[calc(100dvh-92px)]' : 'h-full max-h-[calc(100dvh-360px)] md:max-h-[calc(100dvh-296px)]'}`}
             style={{
               transform: `translate(${canvasOffset.x}px, ${canvasOffset.y}px) scale(${canvasScale})`,
               transformOrigin: 'center center',

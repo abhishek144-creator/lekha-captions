@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Upload, Sparkles } from 'lucide-react';
+import { Upload, Sparkles, Captions, Clock3, Layers, Layout, SlidersHorizontal, Type } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -813,8 +813,127 @@ export default function Dashboard() {
     setIsExportPanelOpen(true);
   };
 
+  const renderEditorPanel = () => {
+    if (activeTab === 'captions') {
+      return (
+        <CaptionEditor
+          captions={captions}
+          setCaptions={updateCaptions}
+          selectedCaptionId={selectedCaptionId}
+          setSelectedCaptionId={setSelectedCaptionId}
+          onSeek={handleSeek}
+          onOpenWordPopup={(caption, wordIndex, position, word) => openWordPopup({ caption, wordIndex, position, word })}
+          wordPopup={wordPopup}
+          user={currentUser}
+        />
+      );
+    }
+
+    if (activeTab === 'text') {
+      return (
+        <TextTab
+          captions={captions}
+          setCaptions={updateCaptions}
+          currentTime={currentTime}
+          setSelectedCaptionId={setSelectedCaptionId}
+        />
+      );
+    }
+
+    if (activeTab === 'templates') {
+      return (
+        <AdvancedTemplateLibrary
+          currentStyle={captionStyle}
+          onApplyTemplate={handleApplyTemplate}
+          onBack={() => setActiveTab('captions')}
+        />
+      );
+    }
+
+    if (activeTab === 'animate') {
+      return (
+        <AnimateTab
+          selectedWord={selectedWordForAnimation}
+          selectedCaption={
+            captions.find(c => c.id === selectedCaptionId) ||
+            captions.find(c => currentTime >= c.start_time && currentTime <= c.end_time)
+          }
+          captions={captions}
+          setCaptions={updateCaptions}
+        />
+      );
+    }
+
+    if (activeTab === 'history') {
+      return <HistoryTab user={currentUser} userData={userData} />;
+    }
+
+    if (activeTab === 'layers') {
+      return (
+        <LayersTab
+          captions={captions}
+          selectedCaptionId={selectedCaptionId}
+          setSelectedCaptionId={setSelectedCaptionId}
+          onSeek={handleSeek}
+        />
+      );
+    }
+
+    return null;
+  };
+
+  const renderStylePanel = () => (
+    <StyleControls
+      captionStyle={captionStyle}
+      setCaptionStyle={updateCaptionStyle}
+      setCaptionStyleRaw={setCaptionStyle}
+      addToHistory={addToHistory}
+      selectedCaption={captions.find(c => c.id === selectedCaptionId)}
+      captions={captions}
+      setCaptions={updateCaptions}
+      onApplyTemplate={handleApplyTemplate}
+    />
+  );
+
+  const renderTimelinePanel = () => (
+    <CaptionTimeline
+      captions={captions}
+      duration={duration}
+      currentTime={currentTime}
+      selectedCaptionId={selectedCaptionId}
+      onSelectCaption={setSelectedCaptionId}
+      onSeek={handleSeek}
+      setCaptions={updateCaptions}
+      setCaptionsRaw={setCaptions}
+      addToHistory={addToHistory}
+      waveformData={waveformData}
+      videoElement={videoElement}
+      isPlaying={isPlaying}
+      setIsPlaying={setIsPlaying}
+      timelineHeight={timelineHeight}
+      collapsed={isTimelineCollapsed}
+      onToggleCollapsed={() => {
+        setIsTimelineCollapsed(prev => {
+          const next = !prev;
+          setTimelineHeight(next ? 42 : 204);
+          return next;
+        });
+      }}
+    />
+  );
+
+  const mobileTabs = [
+    { id: 'captions', label: 'Captions', icon: Captions },
+    { id: 'style', label: 'Style', icon: SlidersHorizontal },
+    { id: 'templates', label: 'Templates', icon: Layout },
+    { id: 'text', label: 'Text', icon: Type },
+    { id: 'animate', label: 'Animate', icon: Sparkles },
+    { id: 'layers', label: 'Layers', icon: Layers },
+    { id: 'timeline', label: 'Timeline', icon: Clock3 },
+  ];
+
   return (
-    <div className="h-screen max-h-screen bg-[#050505] flex flex-col overflow-hidden text-white">
+    <div className="h-[100dvh] max-h-[100dvh] bg-[#050505] flex flex-col overflow-hidden text-white">
       <DashboardHeader
         onUploadClick={() => setIsUploadModalOpen(true)}
         onExportClick={handleExportClick}
@@ -912,10 +1031,11 @@ export default function Dashboard() {
                 </div>
               </div>
             )}
-          <div className={`flex-1 overflow-hidden ${isVideoFullscreen ? 'relative p-0' : 'grid grid-cols-1 lg:grid-cols-[48px_285px_minmax(0,1fr)_285px] xl:grid-cols-[48px_300px_minmax(0,1fr)_300px] p-3 gap-3'}`}>
+          <div className={`flex-1 overflow-hidden ${isVideoFullscreen ? 'relative p-0' : 'flex flex-col md:grid md:grid-cols-[minmax(0,1fr)] lg:grid-cols-[48px_285px_minmax(0,1fr)_285px] xl:grid-cols-[48px_300px_minmax(0,1fr)_300px] p-2 md:p-3 gap-2 md:gap-3'}`}>
             {!isVideoFullscreen && (
               <>
                 {/* Vertical Sidebar Navigation */}
+                <div className="hidden lg:block min-h-0">
                 <SidebarNav
                   activeTab={activeTab}
                   setActiveTab={setActiveTab}
@@ -928,64 +1048,17 @@ export default function Dashboard() {
                     }
                   }}
                 />
+                </div>
 
                 {/* Left Panel - Content based on active tab */}
-                <div className="w-full rounded-[18px] lekha-panel lekha-panel-corners p-3 overflow-hidden min-h-0">
-                  {activeTab === 'captions' && (
-                    <CaptionEditor
-                      captions={captions}
-                      setCaptions={updateCaptions}
-                      selectedCaptionId={selectedCaptionId}
-                      setSelectedCaptionId={setSelectedCaptionId}
-                      onSeek={handleSeek}
-                      onOpenWordPopup={(caption, wordIndex, position, word) => openWordPopup({ caption, wordIndex, position, word })}
-                      wordPopup={wordPopup}
-                      user={currentUser}
-                    />
-                  )}
-                  {activeTab === 'text' && (
-                    <TextTab
-                      captions={captions}
-                      setCaptions={updateCaptions}
-                      currentTime={currentTime}
-                      setSelectedCaptionId={setSelectedCaptionId}
-                    />
-                  )}
-                  {activeTab === 'templates' && (
-                    <AdvancedTemplateLibrary
-                      currentStyle={captionStyle}
-                      onApplyTemplate={handleApplyTemplate}
-                      onBack={() => setActiveTab('captions')}
-                    />
-                  )}
-                  {activeTab === 'animate' && (
-                    <AnimateTab
-                      selectedWord={selectedWordForAnimation}
-                      selectedCaption={
-                        captions.find(c => c.id === selectedCaptionId) ||
-                        captions.find(c => currentTime >= c.start_time && currentTime <= c.end_time)
-                      }
-                      captions={captions}
-                      setCaptions={updateCaptions}
-                    />
-                  )}
-                  {activeTab === 'history' && (
-                    <HistoryTab user={currentUser} userData={userData} />
-                  )}
-                  {activeTab === 'layers' && (
-                    <LayersTab
-                      captions={captions}
-                      selectedCaptionId={selectedCaptionId}
-                      setSelectedCaptionId={setSelectedCaptionId}
-                      onSeek={handleSeek}
-                    />
-                  )}
+                <div className="hidden lg:block w-full rounded-[18px] lekha-panel lekha-panel-corners p-3 overflow-hidden min-h-0">
+                  {renderEditorPanel()}
                 </div>
               </>
             )}
 
             {/* Center Panel - Video Player & Timeline */}
-            <div className={`${isVideoFullscreen ? 'absolute inset-0 z-30 bg-[#050505] px-6 py-5' : 'px-1 py-3'} flex flex-col overflow-hidden min-h-0`} style={{ position: isVideoFullscreen ? 'absolute' : 'relative', zIndex: 50 }}>
+            <div className={`${isVideoFullscreen ? 'absolute inset-0 z-30 bg-[#050505] px-6 py-5' : 'flex-1 px-1 py-2 md:py-3'} flex flex-col overflow-hidden min-h-0`} style={{ position: isVideoFullscreen ? 'absolute' : 'relative', zIndex: 50 }}>
               {!isVideoFullscreen && (
               <div className="relative z-10 shrink-0 flex items-center justify-between px-1 pb-2">
                 <div className="flex items-center gap-3">
@@ -1042,7 +1115,7 @@ export default function Dashboard() {
               {!isVideoFullscreen && !isTimelineCollapsed && (
                 <div
                   ref={timelineDividerRef}
-                  className="absolute left-0 right-0 z-[80] h-1.5 cursor-ns-resize flex items-center justify-center group"
+                  className="absolute left-0 right-0 z-[80] hidden h-1.5 cursor-ns-resize items-center justify-center group lg:flex"
                   style={{ bottom: `${timelineHeight + 28}px` }}
                   onMouseDown={(e) => {
                     e.preventDefault();
@@ -1092,6 +1165,7 @@ export default function Dashboard() {
               )}
               {!isVideoFullscreen && (
                 <div
+                  className="hidden lg:block"
                   style={{
                     position: 'absolute',
                     left: 0,
@@ -1113,47 +1187,54 @@ export default function Dashboard() {
                       pointerEvents: 'auto'
                     }}
                   >
-                  <CaptionTimeline
-                    captions={captions}
-                    duration={duration}
-                    currentTime={currentTime}
-                    selectedCaptionId={selectedCaptionId}
-                    onSelectCaption={setSelectedCaptionId}
-                    onSeek={handleSeek}
-                    setCaptions={updateCaptions}
-                    setCaptionsRaw={setCaptions}
-                    addToHistory={addToHistory}
-                    waveformData={waveformData}
-                    videoElement={videoElement}
-                    isPlaying={isPlaying}
-                    setIsPlaying={setIsPlaying}
-                    timelineHeight={timelineHeight}
-                    collapsed={isTimelineCollapsed}
-                    onToggleCollapsed={() => {
-                      setIsTimelineCollapsed(prev => {
-                        const next = !prev;
-                        setTimelineHeight(next ? 42 : 204);
-                        return next;
-                      });
-                    }}
-                  />
+                  {renderTimelinePanel()}
                   </div>
                 </div>
               )}
             </div>
 
             {!isVideoFullscreen && (
-              <div className="w-full overflow-hidden min-h-0">
-                <StyleControls
-                  captionStyle={captionStyle}
-                  setCaptionStyle={updateCaptionStyle}
-                  setCaptionStyleRaw={setCaptionStyle}
-                  addToHistory={addToHistory}
-                  selectedCaption={captions.find(c => c.id === selectedCaptionId)}
-                  captions={captions}
-                  setCaptions={updateCaptions}
-                  onApplyTemplate={handleApplyTemplate}
-                />
+              <div className="hidden lg:block w-full overflow-hidden min-h-0">
+                {renderStylePanel()}
+              </div>
+            )}
+
+            {!isVideoFullscreen && (
+              <div className="lg:hidden shrink-0 overflow-hidden rounded-[22px] border border-white/10 bg-[#090909]/96 shadow-[0_-16px_50px_-35px_rgba(0,0,0,0.95)]">
+                <div className="flex gap-2 overflow-x-auto border-b border-white/10 px-2 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  {mobileTabs.map((tab) => {
+                    const Icon = tab.icon;
+                    const active = activeTab === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setActiveTab(tab.id)}
+                        className={`flex min-w-fit items-center gap-1.5 rounded-full border px-3 py-2 text-[11px] font-bold transition-colors ${
+                          active
+                            ? 'border-white/25 bg-white text-black'
+                            : 'border-white/10 bg-white/[0.03] text-slate-300 hover:bg-white/10'
+                        }`}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                        {tab.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="h-[34dvh] min-h-[210px] max-h-[390px] overflow-hidden p-2">
+                  {activeTab === 'style' ? (
+                    renderStylePanel()
+                  ) : activeTab === 'timeline' ? (
+                    <div className="h-full overflow-hidden rounded-[18px]">
+                      {renderTimelinePanel()}
+                    </div>
+                  ) : (
+                    <div className="h-full rounded-[18px] lekha-panel lekha-panel-corners p-3 overflow-hidden">
+                      {renderEditorPanel()}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>

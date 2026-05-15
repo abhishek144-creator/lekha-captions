@@ -40,6 +40,7 @@ export default function CaptionEditor({
 
   useEffect(() => {
     if (!user?.email) return;
+    if (window.matchMedia('(max-width: 767px)').matches) return;
     const key = `pro_tip_shown_${user.email}`;
     if (!localStorage.getItem(key)) {
       localStorage.setItem(key, 'true');

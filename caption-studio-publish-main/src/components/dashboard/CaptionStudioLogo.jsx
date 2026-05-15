@@ -65,7 +65,7 @@ export default function CaptionStudioLogo({ size = 'default', showText = true })
 
       {/* Text */}
       {showText && (
-        <span className={`${textSizes[size]} font-bold bg-gradient-to-r from-[#FFE566] via-[#F5A623] to-[#D4891A] bg-clip-text text-transparent`}>
+        <span className={`${textSizes[size]} hidden sm:inline font-bold bg-gradient-to-r from-[#FFE566] via-[#F5A623] to-[#D4891A] bg-clip-text text-transparent`}>
           Lekha Captions
         </span>
       )}
