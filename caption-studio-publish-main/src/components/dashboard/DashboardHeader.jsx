@@ -10,7 +10,8 @@ import {
   Loader2,
   Undo,
   Redo,
-  RotateCw
+  RotateCw,
+  Crown
 } from 'lucide-react';
 
 export default function DashboardHeader({
@@ -45,7 +46,7 @@ export default function DashboardHeader({
   })();
 
   return (
-    <header className="h-16 bg-zinc-950 border-b border-white/5 flex items-center justify-between px-4 lg:px-6">
+    <header className="h-14 bg-[#0a0a0a] border-b border-white/5 flex items-center justify-between px-4 lg:px-5 shadow-[0_1px_0_rgba(255,255,255,0.03)]">
       {/* Logo */}
       <div className="flex items-center gap-3">
         <Link to={createPageUrl('Home')} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
@@ -61,7 +62,7 @@ export default function DashboardHeader({
               <Button
                 onClick={onUpgradeClick}
                 size="sm"
-                className="mr-1 h-8 bg-white hover:bg-gray-100 text-black font-semibold rounded-[4px] px-3 flex items-center gap-1.5 transition-colors"
+                className="mr-1 h-8 bg-white hover:bg-gray-100 text-black font-semibold rounded-lg px-3 flex items-center gap-1.5 transition-colors"
               >
                 <Crown className="w-3.5 h-3.5 flex-shrink-0" />
                 <span className="hidden sm:inline text-[13px]">Upgrade</span>
@@ -73,7 +74,7 @@ export default function DashboardHeader({
               size="icon"
               onClick={onUndo}
               disabled={!canUndo}
-              className="h-8 w-8 text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-20 disabled:cursor-not-allowed transition-all"
+              className="h-8 w-8 rounded-full border border-white/5 text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-20 disabled:cursor-not-allowed transition-all"
               title="Undo"
             >
               <Undo className="w-4 h-4" />
@@ -84,17 +85,18 @@ export default function DashboardHeader({
               size="icon"
               onClick={onRedo}
               disabled={!canRedo}
-              className="h-8 w-8 text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-20 disabled:cursor-not-allowed transition-all"
+              className="h-8 w-8 rounded-full border border-white/5 text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-20 disabled:cursor-not-allowed transition-all"
               title="Redo"
             >
               <Redo className="w-4 h-4" />
             </Button>
 
             <Button
+              type="button"
               variant="ghost"
               size="icon"
               onClick={onRefresh}
-              className="h-8 w-8 text-gray-400 hover:text-white hover:bg-white/10 transition-all"
+              className="h-8 w-8 rounded-full border border-white/5 text-gray-400 hover:text-white hover:bg-white/10 transition-all"
               title="Reset to Original"
             >
               <RotateCw className="w-4 h-4" />
@@ -109,7 +111,7 @@ export default function DashboardHeader({
               onClick={onUploadClick}
               variant="ghost"
               size="sm"
-              className="text-gray-400 hover:text-white hover:bg-white/10"
+              className="h-8 rounded-lg border border-white/10 bg-white/[0.03] text-gray-200 hover:text-white hover:bg-white/10 font-semibold"
             >
               <Upload className="w-4 h-4 sm:mr-2" />
               <span className="hidden sm:inline">Upload New</span>
@@ -120,7 +122,7 @@ export default function DashboardHeader({
               variant="ghost"
               size="sm"
               disabled={isSaving}
-              className="text-gray-400 hover:text-white hover:bg-white/10"
+              className="h-8 rounded-lg border border-white/10 bg-white/[0.03] text-gray-200 hover:text-white hover:bg-white/10 font-semibold"
             >
               {isSaving ? (
                 <Loader2 className="w-4 h-4 animate-spin sm:mr-2" />
@@ -133,7 +135,7 @@ export default function DashboardHeader({
             <Button
               onClick={onExportClick}
               size="sm"
-              className="bg-white hover:bg-gray-100 text-black font-semibold rounded-[4px]"
+              className="h-8 bg-white hover:bg-gray-100 text-black font-semibold rounded-lg tracking-[0.18em] uppercase"
             >
               <Download className="w-4 h-4 sm:mr-2" />
               <span className="hidden sm:inline">Export</span>

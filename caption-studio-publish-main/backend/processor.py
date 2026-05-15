@@ -812,7 +812,9 @@ class VideoProcessor:
 
     def _should_use_dom_template_renderer(self, style):
         template_id = str(style.get('template_id') or '').strip()
-        return bool(template_id)
+        # Only no-hyphen advanced templates need DOM/CSS rendering. Regular
+        # presets like t-115 are handled by the ASS path with template effects.
+        return bool(re.fullmatch(r"t\d{2}", template_id))
 
     def _get_video_duration(self, video_path):
         try:
@@ -853,7 +855,6 @@ class VideoProcessor:
         try:
             payload_path = os.path.join(temp_dir, "payload.json")
             overlay_dir = os.path.join(temp_dir, "overlay_frames")
-            overlay_mov = os.path.join(temp_dir, "overlay.mov")
             os.makedirs(overlay_dir, exist_ok=True)
 
             payload = {
@@ -887,32 +888,17 @@ class VideoProcessor:
             if not os.path.exists(frames_txt):
                 return {"success": False, "error": "Template renderer did not create frames.txt"}
 
-            concat_cmd = [
-                "ffmpeg", "-y",
-                "-f", "concat", "-safe", "0",
-                "-i", frames_txt,
-                "-vsync", "vfr",
-                "-c:v", "qtrle",
-                "-pix_fmt", "argb",
-                overlay_mov,
-            ]
-            print(f"[Template DOM] Building overlay video: {' '.join(concat_cmd)}")
-            concat_result = subprocess.run(concat_cmd, capture_output=True, text=True)
-            if concat_result.stderr:
-                print(f"[Template DOM] concat stderr (last 1000 chars): {concat_result.stderr[-1000:]}")
-            if concat_result.returncode != 0:
-                return {"success": False, "error": f"Overlay video build failed: {concat_result.stderr[-500:]}"}
-
             base_chain = "[0:v]"
             if crop_filter:
                 base_chain += f"{crop_filter},"
             base_chain += "format=rgba[base]"
-            filter_complex = f"{base_chain};[base][1:v]overlay=0:0:format=auto[composited];[composited]{scale_filter},format=yuv420p[outv]"
+            filter_complex = f"{base_chain};[1:v]format=rgba[overlay];[base][overlay]overlay=0:0:format=auto[composited];[composited]{scale_filter},format=yuv420p[outv]"
 
             cmd = [
                 "ffmpeg", "-y",
                 "-i", input_p.replace('\\', '/'),
-                "-i", overlay_mov.replace('\\', '/'),
+                "-f", "concat", "-safe", "0",
+                "-i", frames_txt.replace('\\', '/'),
                 "-filter_complex", filter_complex,
                 "-map", "[outv]",
                 "-map", "0:a?",
@@ -1346,22 +1332,30 @@ class VideoProcessor:
         }
 
         # ── Global style values ────────────────────────────────────────────
+        def _num(value, default):
+            if value is None or value == "":
+                return default
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return default
+
         primary_hex = style.get('text_color', '#FFFFFF') or '#FFFFFF'
-        primary_ass = self._hex_to_ass(primary_hex, float(style.get('text_opacity', 1.0) or 1.0))
+        primary_ass = self._hex_to_ass(primary_hex, _num(style.get('text_opacity'), 1.0))
         has_bg = bool(style.get('has_background', False))
         bg_hex = style.get('background_color', '#000000') or '#000000'
-        bg_opacity = float(style.get('background_opacity', 0.7) or 0.7)
+        bg_opacity = _num(style.get('background_opacity'), 0.7)
         bg_ass = self._hex_to_ass(bg_hex, bg_opacity)
-        bg_padding = float(style.get('background_padding', 6) or 6)
-        bg_h_mult = float(style.get('background_h_multiplier', 0.99) or 0.99)
+        bg_padding = _num(style.get('background_padding'), 6)
+        bg_h_mult = _num(style.get('background_h_multiplier'), 0.99)
         has_stroke = bool(style.get('has_stroke', False))
         stroke_color_hex = style.get('stroke_color', '#000000') or '#000000'
-        stroke_width_v = float(style.get('stroke_width', 1) or 1)
+        stroke_width_v = _num(style.get('stroke_width'), 1)
         has_shadow_v = bool(style.get('has_shadow', False))
         shadow_color_hex = style.get('shadow_color', '#000000') or '#000000'
-        shadow_blur_v = float(style.get('shadow_blur', 4) or 4)
-        shadow_ox_v = float(style.get('shadow_offset_x', 0) or 0)
-        shadow_oy_v = float(style.get('shadow_offset_y', 2) or 2)
+        shadow_blur_v = _num(style.get('shadow_blur'), 4)
+        shadow_ox_v = _num(style.get('shadow_offset_x'), 0)
+        shadow_oy_v = _num(style.get('shadow_offset_y'), 2)
         bold_flag = 1 if (style.get('is_bold', False) or str(style.get('font_weight', '500') or '500') in ('bold', '700', '800', '900')) else 0
         italic_flag = 1 if (style.get('font_style', 'normal') or 'normal') == 'italic' else 0
         letter_spacing = int(float(style.get('letter_spacing', 0) or 0) * scale_factor)
@@ -1376,12 +1370,12 @@ class VideoProcessor:
         if show_inactive is None: show_inactive = True
         effect_type = (style.get('effect_type', 'none') or 'none')
         g_eff_props = {
-            'offset': float(style.get('effect_offset', 50) or 50),
-            'direction': float(style.get('effect_direction', -45) or -45),
-            'blur': float(style.get('effect_blur', 50) or 50),
-            'transparency': float(style.get('effect_transparency', 40) or 40),
-            'thickness': float(style.get('effect_thickness', 50) or 50),
-            'intensity': float(style.get('effect_intensity', 50) or 50),
+            'offset': _num(style.get('effect_offset'), 50),
+            'direction': _num(style.get('effect_direction'), -45),
+            'blur': _num(style.get('effect_blur'), 50),
+            'transparency': _num(style.get('effect_transparency'), 40),
+            'thickness': _num(style.get('effect_thickness'), 50),
+            'intensity': _num(style.get('effect_intensity'), 50),
             'color': style.get('effect_color', '#000000') or '#000000',
         }
         g_stroke_data = (has_stroke and not has_bg, stroke_width_v, stroke_color_hex)

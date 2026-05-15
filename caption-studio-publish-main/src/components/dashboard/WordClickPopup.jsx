@@ -19,7 +19,7 @@ import {
 import { Slider } from '@/components/ui/slider';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from '@/components/ui/switch';
-import { motion, useDragControls } from 'framer-motion';
+import { motion, useDragControls, useMotionValue } from 'framer-motion';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { FixedSizeList as List } from 'react-window';
 import { loadGoogleFont, detectScript, scriptFontMap } from './fontUtils';
@@ -108,8 +108,10 @@ const wordAnimations = [
   { value: 'tumble', label: 'Tumble' }
 ];
 
-export default function WordClickPopup({ word, position, onEdit, onClose, onResetPosition, currentStyle, onStyleChange, onHistoryRecord, videoContainerRef, isElementWord }) {
+export default function WordClickPopup({ word, position, onEdit, onClose, onResetPosition, onResetFontSize, currentStyle, onStyleChange, onHistoryRecord, videoContainerRef, isElementWord }) {
   const dragControls = useDragControls();
+  const dragX = useMotionValue(0);
+  const dragY = useMotionValue(0);
 
   // Local state for active tab - Font first as requested
   const [activeTab, setActiveTab] = useState('font');
@@ -145,12 +147,17 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
     return () => controller.abort()
   }, []);
 
+  React.useEffect(() => {
+    dragX.set(0);
+    dragY.set(0);
+  }, [word, position?.x, position?.y, dragX, dragY]);
+
   if (!position) return null;
 
   return (
     <>
       <div
-        className="fixed inset-0 z-[99998] bg-transparent"
+        className="pointer-events-none fixed inset-0 z-[99998] bg-transparent"
         onClick={(e) => {
           onClose();
         }}
@@ -162,11 +169,14 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
         dragListener={false}
         dragControls={dragControls}
         dragMomentum={false}
+        x={dragX}
+        y={dragY}
+        data-word-popup-panel="true"
         className="fixed z-[99999] bg-zinc-900 border border-white/10 rounded-xl shadow-2xl overflow-hidden w-[300px]"
         style={{
           position: 'fixed',
-          top: '80px',
-          right: '380px',
+          top: '124px',
+          right: '340px',
           zIndex: 99999,
           maxHeight: 'calc(100vh - 200px)',
           backgroundColor: 'rgba(24, 24, 27, 0.95)',
@@ -186,7 +196,7 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
             </div>
           </div>
           <div className="flex gap-2">
-            {((currentStyle.x !== undefined && currentStyle.x !== 0) || (currentStyle.y !== undefined && currentStyle.y !== 0)) && onResetPosition && (
+            {((currentStyle.x !== undefined && currentStyle.x !== 0) || (currentStyle.y !== undefined && currentStyle.y !== 0) || (currentStyle.abs_x_pct !== undefined && currentStyle.abs_x_pct !== 0) || (currentStyle.abs_y_pct !== undefined && currentStyle.abs_y_pct !== 0)) && onResetPosition && (
               <Button
                 variant="ghost"
                 size="icon"
@@ -340,9 +350,28 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
 
               {/* Font Size */}
               <div>
-                <div className="flex justify-between mb-1">
+                <div className="mb-1 flex items-center justify-between">
                   <label className="text-xs text-gray-500 uppercase tracking-wider">Size</label>
-                  <span className="text-xs text-white">{currentStyle.fontSize || 18}px</span>
+                  <div className="flex min-w-[64px] items-center justify-end gap-2">
+                    {onResetFontSize ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (typeof currentStyle.fontSize === 'number') {
+                            onResetFontSize();
+                          }
+                        }}
+                        className={`h-5 w-5 text-white hover:bg-white/10 hover:text-gray-200 ${typeof currentStyle.fontSize === 'number' ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
+                        title="Reset Font Size"
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                      </Button>
+                    ) : <span className="h-5 w-5" />}
+                    <span className="w-[38px] text-right text-xs tabular-nums text-white">{currentStyle.fontSize || 18}px</span>
+                  </div>
                 </div>
                 <Slider
                   value={[currentStyle.fontSize || 18]}

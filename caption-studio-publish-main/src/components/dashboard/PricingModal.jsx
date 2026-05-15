@@ -317,25 +317,25 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl bg-zinc-950 border-white/10 text-white">
+      <DialogContent className="max-w-[760px] bg-zinc-950 border-white/10 p-5 text-white">
         <DialogHeader>
-          <DialogTitle className="text-2xl text-white">Choose Your Plan</DialogTitle>
+          <DialogTitle className="text-lg text-white">Choose Your Plan</DialogTitle>
           <DialogDescription className="text-gray-400">
             Professional captions for every language and every creator
           </DialogDescription>
         </DialogHeader>
 
         {/* Billing Toggle */}
-        <div className="flex items-center gap-1 justify-center mt-2 bg-zinc-900 rounded-full p-1 w-fit mx-auto border border-white/10">
+        <div className="mt-2 flex w-fit items-center justify-center gap-1 rounded-full border border-white/10 bg-zinc-900 p-1 mx-auto">
           <button
             onClick={() => setBilling('monthly')}
-            className={`px-5 py-1.5 rounded-full text-sm font-medium transition-all ${billing === 'monthly' ? 'bg-white text-black' : 'text-gray-400 hover:text-white'}`}
+            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${billing === 'monthly' ? 'bg-white text-black' : 'text-gray-400 hover:text-white'}`}
           >
             Monthly
           </button>
           <button
             onClick={() => setBilling('yearly')}
-            className={`px-5 py-1.5 rounded-full text-sm font-medium transition-all flex items-center gap-1.5 ${billing === 'yearly' ? 'bg-white text-black' : 'text-gray-400 hover:text-white'}`}
+            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all flex items-center gap-1.5 ${billing === 'yearly' ? 'bg-white text-black' : 'text-gray-400 hover:text-white'}`}
           >
             Yearly
             <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded-full font-bold">−17%</span>
@@ -349,13 +349,13 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
           </div>
         )}
 
-        <div className="grid md:grid-cols-3 gap-4 mt-4">
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
           {plans.map(plan => {
             const Icon = plan.icon
             return (
               <div
                 key={plan.id}
-                className="relative rounded-xl p-5 transition-all cursor-pointer bg-zinc-900"
+                className="relative cursor-pointer rounded-xl bg-zinc-900 p-3.5 transition-all"
                 onClick={() => setSelectedPlan(plan.id)}
                 style={(plan.popular || selectedPlan === plan.id) ? {
                   background: 'linear-gradient(#18181b, #18181b) padding-box, linear-gradient(135deg, #BF953F 0%, #FCF6BA 45%, #B38728 70%, #AA771C 100%) border-box',
@@ -371,15 +371,15 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
                   </div>
                 )}
 
-                <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-3 ${plan.popular ? 'bg-white' : 'bg-white/10'}`}>
+                <div className={`w-9 h-9 rounded-lg flex items-center justify-center mb-2.5 ${plan.popular ? 'bg-white' : 'bg-white/10'}`}>
                   <Icon className="w-5 h-5 text-black" />
                 </div>
 
-                <h3 className="text-lg font-bold text-white mb-0.5">{plan.name}</h3>
+                <h3 className="text-base font-bold text-white mb-0.5">{plan.name}</h3>
                 <p className="text-xs text-gray-500 mb-3">{plan.description}</p>
 
                 <div className="flex items-baseline gap-1 mb-1">
-                  <span className="text-3xl font-bold text-white">
+                  <span className="text-[28px] font-bold text-white">
                     {billing === 'yearly' ? plan.yearlyPrice : plan.monthlyPrice}
                   </span>
                   <span className="text-gray-500 text-sm">/mo</span>
@@ -390,14 +390,14 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
                   <div className="mb-3" />
                 )}
 
-                <div className="flex items-center gap-2 mb-4 p-2 rounded-lg bg-white/5">
-                  <span className="text-xl font-bold text-white">{plan.credits}</span>
+                <div className="flex items-center gap-2 mb-3.5 rounded-lg bg-white/5 p-2">
+                  <span className="text-lg font-bold text-white">{plan.credits}</span>
                   <span className="text-xs text-gray-400">video credits / month</span>
                 </div>
 
-                <ul className="space-y-2 mb-5">
+                <ul className="mb-4.5 space-y-1.5">
                   {plan.features.map((f, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm">
+                    <li key={i} className="flex items-start gap-2 text-[13px]">
                       <Check className="w-3.5 h-3.5 text-[#F5A623] mt-0.5 shrink-0" />
                       <span className="text-gray-300">{f}</span>
                     </li>

@@ -16,7 +16,38 @@ const ADVANCED_TEMPLATE_VARIANTS = {
   t26: 'wbw-rise', t27: 'plain-s', t28: 'wbw-rise', t29: 'wbw-rise', t30: 'wbw-slide',
   t31: 'wbw-rise', t32: 'plain-s', t33: 'wbw-rise', t34: 'wbw-rise', t35: 'wbw-rise',
 };
+const ORIGINAL_TEMPLATE_BLOCK_TYPES = {
+  t11: ['styled', 'styled', 'plain', 'wbw-rise'],
+  t12: ['styled', 'styled', 'wbw-rise', 'wbw-slide'],
+  t13: ['styled', 'styled', 'wbw-rise', 'wbw-slide'],
+  t14: ['styled', 'styled', 'plain', 'wbw-rise'],
+  t15: ['styled', 'styled', 'wbw-rise', 'wbw-slide'],
+  t16: ['styled', 'styled', 'wbw-rise', 'wbw-slide'],
+  t17: ['styled', 'styled', 'plain', 'wbw-rise'],
+  t18: ['styled', 'styled', 'plain', 'wbw-rise'],
+  t19: ['styled', 'styled', 'wbw-rise', 'wbw-slide'],
+  t20: ['styled', 'styled', 'wbw-rise', 'wbw-slide'],
+  t21: ['styled', 'styled', 'wbw-rise', 'wbw-slide'],
+  t22: ['styled', 'styled', 'wbw-rise', 'wbw-slide'],
+  t23: ['styled', 'plain', 'plain', 'styled'],
+  t24: ['styled', 'styled', 'plain', 'wbw-rise'],
+  t25: ['styled', 'styled', 'wbw-rise', 'wbw-slide'],
+  t26: ['styled', 'styled', 'wbw-rise', 'wbw-slide'],
+  t27: ['styled', 'plain', 'plain', 'wbw-rise'],
+  t28: ['styled', 'styled', 'wbw-rise', 'wbw-slide'],
+  t29: ['styled', 'styled', 'wbw-rise', 'wbw-slide'],
+  t30: ['styled', 'plain', 'plain', 'plain'],
+  t31: ['styled', 'styled', 'plain', 'wbw-rise'],
+  t32: ['styled', 'styled', 'plain', 'wbw-rise'],
+  t33: ['styled', 'styled', 'plain', 'wbw-rise'],
+  t34: ['styled', 'styled', 'wbw-rise', 'wbw-slide'],
+  t35: ['styled', 'plain', 'plain', 'plain'],
+};
 const TEMPLATE_CANVAS_FONT_SCALE = 0.88;
+const ADVANCED_TEMPLATE_STYLED_ANIMATION_SECONDS = 1.35;
+const ADVANCED_TEMPLATE_WBW_BASE_SECONDS = 0.52;
+const ADVANCED_TEMPLATE_WBW_STAGGER_SECONDS = 0.065;
+const ADVANCED_TEMPLATE_WBW_TAIL_SECONDS = 0.42;
 
 function findChromeExecutable() {
   const candidates = [
@@ -47,11 +78,39 @@ function scaleTemplateFontSize(fontSize) {
   return Math.max(12, Math.round((fontSize || 18) * TEMPLATE_CANVAS_FONT_SCALE));
 }
 
+function getTemplateBlockType(templateId, blockIndex = 0) {
+  const blockTypes = ORIGINAL_TEMPLATE_BLOCK_TYPES[templateId];
+  if (!Array.isArray(blockTypes) || blockTypes.length === 0) return 'styled';
+  const normalized = ((Number(blockIndex) % blockTypes.length) + blockTypes.length) % blockTypes.length;
+  return blockTypes[normalized] || 'styled';
+}
+
+function getAdvancedTemplateAnimationWindow(blockType, captionDuration, wordCount = 1) {
+  if (blockType === 'plain') return 0;
+  const duration = Math.max(Number(captionDuration) || 0, 0);
+  if (blockType.startsWith('wbw')) {
+    const wbwWindow = ADVANCED_TEMPLATE_WBW_BASE_SECONDS
+      + (Math.max(0, wordCount - 1) * ADVANCED_TEMPLATE_WBW_STAGGER_SECONDS)
+      + ADVANCED_TEMPLATE_WBW_TAIL_SECONDS;
+    return Math.min(duration, Math.max(1.1, wbwWindow));
+  }
+  return Math.min(duration, ADVANCED_TEMPLATE_STYLED_ANIMATION_SECONDS);
+}
+
+function extractOriginalTemplateRuntimeCss(originalTemplateHtml) {
+  const style = originalTemplateHtml.match(/<style>([\s\S]*?)<\/style>/i)?.[1] || '';
+  const startToken = '/* ===== SENTENCE BLOCKS ===== */';
+  const start = style.indexOf(startToken);
+  return start >= 0 ? style.slice(start) : style;
+}
+
 function buildRuntimeScript() {
   return `
     const TEMPLATE_CANVAS_FONT_SCALE = ${TEMPLATE_CANVAS_FONT_SCALE};
+    const scaleExportPx = (value) =>
+      Math.max(1, Math.round((Number(value) || 0) * (window.__exportCanvasScale || 1)));
     const scaleTemplateFontSize = (fontSize) =>
-      Math.max(12, Math.round((fontSize || 18) * TEMPLATE_CANVAS_FONT_SCALE));
+      Math.max(12, scaleExportPx((fontSize || 18) * TEMPLATE_CANVAS_FONT_SCALE));
 
     const escapeHtml = (value = '') =>
       String(value)
@@ -105,6 +164,200 @@ function buildRuntimeScript() {
       return Math.max(0, Math.min(splitWords.length - 1, Math.floor((elapsed / duration) * splitWords.length)));
     };
 
+    const splitCaptionForTemplate = (text = '') => {
+      const words = String(text).trim().split(/\\s+/).filter(Boolean);
+      if (!words.length) return { top: '', hero: '', bottom: '', full: '' };
+      if (words.length === 1) return { top: '', hero: words[0], bottom: '', full: words[0] };
+      const heroIndex = Math.min(1, words.length - 1);
+      return {
+        top: words.slice(0, heroIndex).join(' '),
+        hero: words[heroIndex] || words[0],
+        bottom: words.slice(heroIndex + 1).join(' '),
+        full: words.join(' '),
+      };
+    };
+
+    const splitTemplateLines = (text = '', maxLines = 2) => {
+      const words = String(text).trim().split(/\\s+/).filter(Boolean);
+      if (!words.length) return [''];
+      const lineCount = Math.max(1, Math.min(maxLines, words.length));
+      const lines = Array.from({ length: lineCount }, () => []);
+      words.forEach((word, index) => {
+        lines[Math.min(lineCount - 1, Math.floor((index * lineCount) / words.length))].push(word);
+      });
+      return lines.map((line) => line.join(' ')).filter(Boolean);
+    };
+
+    const heroMarkup = (text, className = '') => {
+      const { top, hero, bottom, full } = splitCaptionForTemplate(text);
+      if (!full) return '';
+      if (!className || !hero) return escapeHtml(full);
+      return \`\${top ? \`\${escapeHtml(top)} \` : ''}<span class="\${className}">\${escapeHtml(hero)}</span>\${bottom ? \` \${escapeHtml(bottom)}\` : ''}\`;
+    };
+
+    const wbwMarkup = (text, variant = 'wbw-rise', impClass = 'imp-bold') => {
+      const { hero, full } = splitCaptionForTemplate(text);
+      if (!full) return '';
+      const tokens = full.split(/\\s+/).filter(Boolean).map((word) => ({ word }));
+      const heroIndex = Math.max(0, tokens.findIndex((token) => token.word === hero));
+      const words = tokens.map((token, index) => {
+        const style = \`--wbw-delay:\${index * 65}ms\`;
+        const isImp = index === heroIndex;
+        return \`\${index > 0 ? ' ' : ''}<span class="w\${isImp ? \` \${impClass}\` : ''} in" data-i="\${index}"\${isImp ? \` data-imp="true" data-imp-cls="\${impClass}"\` : ''} style="\${style}">\${escapeHtml(token.word)}</span>\`;
+      }).join('');
+      return \`<span class="\${variant} lekha-template-fit" data-type="\${variant}">\${words}</span>\`;
+    };
+
+    const originalTemplateBlockTypes = ${JSON.stringify(ORIGINAL_TEMPLATE_BLOCK_TYPES)};
+
+    const wrapOriginalTemplate = (templateId, blockClass, blockIndex, blockType, children, extraStyle = '') => \`
+      <span class="lekha-original-template \${templateId} \${templateId}-stage">
+        <span
+          class="sblock \${templateId}-block \${blockClass} lekha-applied-advanced-template"
+          data-template-block-index="\${blockIndex}"
+          data-template-block-type="\${blockType}"
+          style="opacity:0;transition:none;\${extraStyle}"
+        >\${children}</span>
+      </span>
+    \`;
+
+    const buildOriginalAdvancedTemplateMarkup = (templateId, text, blockIndex = 0) => {
+      const { top, hero, bottom, full } = splitCaptionForTemplate(text);
+      const blockTypes = originalTemplateBlockTypes[templateId] || ['styled'];
+      const normalized = ((blockIndex % blockTypes.length) + blockTypes.length) % blockTypes.length;
+      const blockType = blockTypes[normalized];
+      const lines2 = splitTemplateLines(full, 2);
+      const lines3 = splitTemplateLines(full, 3);
+      const upperFull = full.toUpperCase();
+      const lineSpans = (lines, cls, mapper = (line) => escapeHtml(line)) =>
+        lines.map((line, index) => \`<span class="\${cls}" style="animation-delay:\${index * 0.1}s">\${mapper(line, index)}</span>\`).join('');
+      const wrap = (blockClass, children, extraStyle = '') => wrapOriginalTemplate(templateId, blockClass, normalized, blockType, children, extraStyle);
+
+      switch (templateId) {
+        case 't11':
+          if (normalized === 1) return wrap('t11-b1', \`<span class="blur-txt lekha-template-fit">\${heroMarkup(full, 'imp-italic')}</span>\`);
+          if (normalized === 2) return wrap('t11-b2', \`<span class="lekha-template-fit">\${escapeHtml(full)}</span>\`);
+          if (normalized === 3) return wrap('t11-b3', wbwMarkup(full, 'wbw-rise', 'imp-gold'));
+          return wrap('t11-b0', \`<span class="cluster-wrap lekha-template-fit"><span class="cluster-row-top" style="text-align:right">\${escapeHtml(top || lines2[0] || '')}</span><span class="cluster-hl imp-gold">\${escapeHtml(hero)}</span><span class="cluster-row-bot" style="text-align:left">\${escapeHtml(bottom || lines2[1] || '')}</span></span>\`);
+        case 't12':
+          if (normalized === 1) return wrap('t12-b1', \`<span class="rise-unit lekha-template-fit">\${heroMarkup(full, 'imp-purple')}</span>\`);
+          if (normalized === 2) return wrap('t12-b2', wbwMarkup(full, 'wbw-rise', 'imp-italic'));
+          if (normalized === 3) return wrap('t12-b3', wbwMarkup(full, 'wbw-slide', 'imp-rose'));
+          return wrap('t12-b0', \`<span class="type-wrap lekha-template-fit">\${escapeHtml(full)}</span>\`);
+        case 't13':
+          if (normalized === 1) return wrap('t13-b1', \`<span class="ticker-txt lekha-template-fit">\${escapeHtml(upperFull)}</span>\`);
+          if (normalized === 2) return wrap('t13-b2', wbwMarkup(full, 'wbw-rise', 'imp-cyan'));
+          if (normalized === 3) return wrap('t13-b3', wbwMarkup(full, 'wbw-slide', 'imp-bold'));
+          return wrap('t13-b0', \`<span class="stamp-txt lekha-template-fit">\${escapeHtml(upperFull)}</span>\`);
+        case 't14':
+          if (normalized === 1) return wrap('t14-b1', \`<span class="drop-txt lekha-template-fit">\${heroMarkup(full, 'imp-gold')}</span>\`);
+          if (normalized === 2) return wrap('t14-b2', \`<span class="lekha-template-fit">\${escapeHtml(full)}</span>\`);
+          if (normalized === 3) return wrap('t14-b3', wbwMarkup(full, 'wbw-rise', 'imp-weight'));
+          return wrap('t14-b0', \`<span style="perspective:600px" class="lekha-template-fit">\${lineSpans(lines2, 'flip-line', (line, index) => index === lines2.length - 1 ? heroMarkup(line, 'imp-underline') : escapeHtml(line))}</span>\`);
+        case 't15':
+          if (normalized === 1) return wrap('t15-b1', \`<span class="pop-txt lekha-template-fit">\${escapeHtml(upperFull)}</span>\`);
+          if (normalized === 2) return wrap('t15-b2', wbwMarkup(full, 'wbw-rise', 'imp-bold'));
+          if (normalized === 3) return wrap('t15-b3', wbwMarkup(full, 'wbw-slide', 'imp-rose'));
+          return wrap('t15-b0', \`<span class="shake-in lekha-template-fit">\${escapeHtml(lines2[0] || '')}\${lines2[1] ? \`<br>\${heroMarkup(lines2[1], 'imp-rose')}\` : ''}</span>\`);
+        case 't16':
+          if (normalized === 1) return wrap('t16-b1', \`<span class="neon-line lekha-template-fit">\${escapeHtml(full)}</span>\`);
+          if (normalized === 2) return wrap('t16-b2', wbwMarkup(full, 'wbw-rise', 'imp-cyan'));
+          if (normalized === 3) return wrap('t16-b3', wbwMarkup(full, 'wbw-slide', 'imp-bold'));
+          return wrap('t16-b0', \`<span class="lekha-template-fit">\${lines3.map((line, index) => \`<span class="stack-line" \${index === lines3.length - 1 ? 'style="color:#fff;font-weight:900"' : ''}>\${String(index + 1).padStart(2, '0')}. \${index === lines3.length - 1 ? heroMarkup(line, 'imp-cyan') : escapeHtml(line)}</span>\`).join('')}</span>\`);
+        case 't17':
+          if (normalized === 1) return wrap('t17-b1', \`<span class="letter-snap-blk lekha-template-fit"><span class="snap-txt" style="font-family:'Space Mono',monospace;font-size:0.9rem;color:rgba(255,61,113,0.8)">\${escapeHtml(full)}</span></span>\`);
+          if (normalized === 2) return wrap('t17-b2', \`<span class="lekha-template-fit" style="color:rgba(255,255,255,0.4)">\${escapeHtml(full)}</span>\`);
+          if (normalized === 3) return wrap('t17-b3', wbwMarkup(full, 'wbw-rise', 'imp-flicker'));
+          return wrap('t17-b0', \`<span class="glitch-wrap lekha-template-fit" data-text="\${escapeHtml(upperFull)}">\${escapeHtml(upperFull)}</span>\`);
+        case 't18':
+          if (normalized === 1) return wrap('t18-b1', \`<span class="reveal-txt lekha-template-fit">\${heroMarkup(full, 'imp-purple')}</span>\`);
+          if (normalized === 2) return wrap('t18-b2', \`<span class="lekha-template-fit">\${escapeHtml(full)}</span>\`);
+          if (normalized === 3) return wrap('t18-b3', wbwMarkup(full, 'wbw-rise', 'imp-purple'));
+          return wrap('t18-b0', \`<span class="split-title lekha-template-fit"><span class="split-top">\${escapeHtml(top || lines2[0] || '')}</span><span class="split-bot">\${hero ? \`<span class="imp-purple">\${escapeHtml(hero)}</span>\` : escapeHtml(bottom || lines2[1] || '')}</span></span>\`);
+        case 't19':
+          if (normalized === 1) return wrap('t19-b1', \`<span class="rise-unit lekha-template-fit">\${heroMarkup(upperFull, 'imp-rose')}</span>\`);
+          if (normalized === 2) return wrap('t19-b2', wbwMarkup(full, 'wbw-rise', 'imp-bold'));
+          if (normalized === 3) return wrap('t19-b3', wbwMarkup(full, 'wbw-slide', 'imp-rose'));
+          return wrap('t19-b0', \`<span class="slash-wrap lekha-template-fit">\${escapeHtml(upperFull)}</span>\`);
+        case 't20':
+          if (normalized === 1) return wrap('t20-b1', \`<span class="impact-txt lekha-template-fit">\${heroMarkup(full, 'imp-green')}</span>\`);
+          if (normalized === 2) return wrap('t20-b2', wbwMarkup(full, 'wbw-rise', 'imp-bold'));
+          if (normalized === 3) return wrap('t20-b3', wbwMarkup(full, 'wbw-slide', 'imp-green'));
+          return wrap('t20-b0', \`<span class="neon-drop lekha-template-fit">\${escapeHtml(upperFull)}</span>\`);
+        case 't21':
+          if (normalized === 1) return wrap('t21-b1', \`<span class="space-txt lekha-template-fit">\${heroMarkup(full, 'imp-space')}</span>\`);
+          if (normalized === 2) return wrap('t21-b2', wbwMarkup(full, 'wbw-rise', 'imp-italic'));
+          if (normalized === 3) return wrap('t21-b3', wbwMarkup(full, 'wbw-slide', 'imp-weight'));
+          return wrap('t21-b0', \`<span class="vert-line"><span class="vert-line-inner">\${escapeHtml(upperFull)}</span></span>\`);
+        case 't22':
+          if (normalized === 1) return wrap('t22-b1', \`<span class="wave-txt lekha-template-fit">\${heroMarkup(full, 'imp-gold')}</span>\`);
+          if (normalized === 2) return wrap('t22-b2', wbwMarkup(full, 'wbw-rise', 'imp-italic'));
+          if (normalized === 3) return wrap('t22-b3', wbwMarkup(full, 'wbw-slide', 'imp-gold'));
+          return wrap('t22-b0', \`<span style="position:relative;display:inline-block" class="lekha-template-fit"><span class="karaoke-base">\${escapeHtml(full)}</span><span class="karaoke-fill">\${escapeHtml(full)}</span></span>\`);
+        case 't23':
+          if (normalized === 3) return wrap('t23-b3', \`<span class="punch-txt lekha-template-fit">\${heroMarkup(full, 'imp-gold')}</span>\`);
+          return wrap(\`t23-b\${normalized}\`, \`<span class="\${normalized === 0 ? 'setup-txt ' : ''}lekha-template-fit">\${escapeHtml(full)}</span>\`);
+        case 't24':
+          if (normalized === 1) return wrap('t24-b1', \`<span class="slow-rise lekha-template-fit">\${heroMarkup(full, 'imp-purple')}</span>\`);
+          if (normalized === 2) return wrap('t24-b2', \`<span class="lekha-template-fit">\${escapeHtml(full)}</span>\`);
+          if (normalized === 3) return wrap('t24-b3', wbwMarkup(full, 'wbw-rise', 'imp-purple'));
+          return wrap('t24-b0', \`<span class="redact-wrap lekha-template-fit">\${top ? \`\${escapeHtml(top)} \` : ''}<span class="redact-block">&nbsp;\${escapeHtml(hero)}&nbsp;</span>\${bottom ? \` \${escapeHtml(bottom)}\` : ''}</span>\`);
+        case 't25':
+          if (normalized === 1) return wrap('t25-b1', \`<span class="soft-rise lekha-template-fit">\${heroMarkup(full, 'imp-italic')}</span>\`);
+          if (normalized === 2) return wrap('t25-b2', wbwMarkup(full, 'wbw-rise', 'imp-rose'));
+          if (normalized === 3) return wrap('t25-b3', wbwMarkup(full, 'wbw-slide', 'imp-italic'));
+          return wrap('t25-b0', \`<span class="hand-txt lekha-template-fit">\${escapeHtml(lines2[0] || '')}\${lines2[1] ? \`<br>\${heroMarkup(lines2[1], 'imp-rose')}\` : ''}</span>\`);
+        case 't26':
+          if (normalized === 1) return wrap('t26-b1', \`<span class="fast-slide lekha-template-fit">\${heroMarkup(upperFull, 'imp-rose')}</span>\`);
+          if (normalized === 2) return wrap('t26-b2', wbwMarkup(full, 'wbw-rise', 'imp-bold'));
+          if (normalized === 3) return wrap('t26-b3', wbwMarkup(full, 'wbw-slide', 'imp-rose'));
+          return wrap('t26-b0', \`<span class="hard-txt lekha-template-fit">\${escapeHtml(upperFull)}</span>\`);
+        case 't27':
+          if (normalized === 1) return wrap('t27-b1', \`<span class="lekha-template-fit" style="font-family:'Exo 2',sans-serif;font-weight:700;color:rgba(0,229,255,0.6)">\${escapeHtml(full)}</span>\`);
+          if (normalized === 2) return wrap('t27-b2', \`<span class="lekha-template-fit">\${heroMarkup(full, 'imp-bold')}</span>\`);
+          if (normalized === 3) return wrap('t27-b3', wbwMarkup(full, 'wbw-rise', 'imp-cyan'));
+          return wrap('t27-b0', \`<span class="center-expand-txt lekha-template-fit">\${escapeHtml(upperFull)}</span>\`);
+        case 't28':
+          if (normalized === 1) return wrap('t28-b1', \`<span class="slow-fade lekha-template-fit">\${heroMarkup(full, 'imp-italic')}</span>\`);
+          if (normalized === 2) return wrap('t28-b2', wbwMarkup(full, 'wbw-rise', 'imp-italic'));
+          if (normalized === 3) return wrap('t28-b3', wbwMarkup(full, 'wbw-slide', 'imp-gold'));
+          return wrap('t28-b0', \`<span class="grain-txt lekha-template-fit">\${escapeHtml(lines2[0] || '')}\${lines2[1] ? \`<br>\${heroMarkup(lines2[1], 'imp-gold')}\` : ''}</span>\`);
+        case 't29':
+          if (normalized === 1) return wrap('t29-b1', \`<span class="hard-rise lekha-template-fit">\${heroMarkup(full, 'imp-rose')}</span>\`);
+          if (normalized === 2) return wrap('t29-b2', wbwMarkup(full, 'wbw-rise', 'imp-rose'));
+          if (normalized === 3) return wrap('t29-b3', wbwMarkup(full, 'wbw-slide', 'imp-bold'));
+          return wrap('t29-b0', \`<span class="slam-txt lekha-template-fit">\${escapeHtml(upperFull)}</span>\`);
+        case 't30':
+          if (normalized > 0) return wrap(\`t30-b\${normalized}\`, \`<span class="lekha-template-fit">\${normalized === 3 ? heroMarkup(full, 'imp-italic') : escapeHtml(full)}</span>\`);
+          return wrap('t30-b0', \`<span class="breathe-txt lekha-template-fit">\${escapeHtml(lines2[0] || '')}\${lines2[1] ? \`<br><span class="imp-italic">\${escapeHtml(lines2[1])}</span>\` : ''}</span>\`);
+        case 't31':
+          if (normalized === 1) return wrap('t31-b1', \`<span style="perspective:500px" class="lekha-template-fit"><span class="flip-line" style="font-family:'Playfair Display',serif">\${heroMarkup(full, 'imp-gold')}</span></span>\`);
+          if (normalized === 2) return wrap('t31-b2', \`<span class="lekha-template-fit">\${escapeHtml(full)}</span>\`);
+          if (normalized === 3) return wrap('t31-b3', wbwMarkup(full, 'wbw-rise', 'imp-gold'));
+          return wrap('t31-b0', \`<span class="stamp-text lekha-template-fit">\${escapeHtml(top || lines2[0] || full)}</span>\`);
+        case 't32':
+          if (normalized === 1) return wrap('t32-b1', \`<span style="perspective:500px" class="lekha-template-fit"><span class="flip-line" style="font-family:'Bodoni Moda',serif;font-style:italic">\${heroMarkup(full, 'imp-italic')}</span></span>\`);
+          if (normalized === 2) return wrap('t32-b2', \`<span class="lekha-template-fit">\${escapeHtml(full)}</span>\`);
+          if (normalized === 3) return wrap('t32-b3', wbwMarkup(full, 'wbw-rise', 'imp-purple'));
+          return wrap('t32-b0', \`<span style="font-style:italic" class="lekha-template-fit">\${lineSpans(lines2, 'ink-line', (line, index) => index === lines2.length - 1 ? heroMarkup(line, 'imp-purple') : escapeHtml(line))}</span>\`);
+        case 't33':
+          if (normalized === 1) return wrap('t33-b1', \`<span style="perspective:500px" class="lekha-template-fit"><span class="flip-line" style="font-family:'Noto Sans',sans-serif">\${heroMarkup(full, 'imp-cyan')}</span></span>\`);
+          if (normalized === 2) return wrap('t33-b2', \`<span class="lekha-template-fit">\${escapeHtml(full)}</span>\`);
+          if (normalized === 3) return wrap('t33-b3', wbwMarkup(full, 'wbw-rise', 'imp-bold'));
+          return wrap('t33-b0', \`<span class="doc-line lekha-template-fit">\${heroMarkup(full, 'imp-bold')}</span>\`);
+        case 't34':
+          if (normalized === 1) return wrap('t34-b1', \`<span class="pow-txt lekha-template-fit">\${heroMarkup(full, 'imp-cyan')}</span>\`);
+          if (normalized === 2) return wrap('t34-b2', wbwMarkup(full, 'wbw-rise', 'imp-bold'));
+          if (normalized === 3) return wrap('t34-b3', wbwMarkup(full, 'wbw-slide', 'imp-cyan'));
+          return wrap('t34-b0', \`<span class="speed-txt lekha-template-fit">\${escapeHtml(upperFull)}</span>\`);
+        case 't35':
+          if (normalized > 0) return wrap(\`t35-b\${normalized}\`, \`<span class="lekha-template-fit">\${normalized === 3 ? heroMarkup(full, 'imp-italic') : escapeHtml(full)}</span>\`);
+          return wrap('t35-b0', \`<span class="secret-txt lekha-template-fit">\${heroMarkup(full, 'imp-italic')}</span>\`);
+        default:
+          return '';
+      }
+    };
+
     const buildWordMeta = (caption) => {
       const splitWords = String(caption.text || '').split(/\\s+/).filter(Boolean);
       const styled = caption.word_styles || {};
@@ -116,6 +369,9 @@ function buildRuntimeScript() {
     };
 
     const buildTemplateMarkup = (caption, globalStyle, time) => {
+      const templateIndex = Number.isFinite(Number(caption.__templateIndex))
+        ? Number(caption.__templateIndex)
+        : Number(caption.__template_index || 0);
       const words = buildWordMeta(caption);
       const captionStart = Number(caption.start_time ?? 0);
       const captionEnd = Number(caption.end_time ?? captionStart);
@@ -125,7 +381,7 @@ function buildRuntimeScript() {
         ? Math.max(0, Math.min(words.length - 1, Math.floor((elapsed / captionDuration) * words.length)))
         : 0;
       const showInactive = globalStyle?.show_inactive !== false;
-      const wordSpacing = \`\${(globalStyle?.word_spacing ?? 1) * 2}px\`;
+      const wordSpacing = \`\${scaleExportPx((globalStyle?.word_spacing ?? 1) * 2)}px\`;
       const advancedTemplateVariants = ${JSON.stringify(ADVANCED_TEMPLATE_VARIANTS)};
       const isAdvancedTemplate = ${isAdvancedTemplateId.toString()}(globalStyle?.template_id);
       const wrapperClassName = isAdvancedTemplate
@@ -182,12 +438,31 @@ function buildRuntimeScript() {
         })
         .join('');
 
+      const hasAppliedTemplate = Boolean(globalStyle?.template_id);
       const styleVars = [
         \`--template-primary:\${globalStyle?.text_color || '#ffffff'}\`,
         \`--template-secondary:\${globalStyle?.secondary_color || '#000000'}\`,
-        \`--template-bg:\${globalStyle?.background_color || 'transparent'}\`,
+        \`--template-bg:\${hasAppliedTemplate ? 'transparent' : (globalStyle?.background_color || 'transparent')}\`,
         \`--template-highlight:\${globalStyle?.highlight_color || '#FFE600'}\`,
       ];
+
+      if (isAdvancedTemplate) {
+        return \`
+          <div class="template-caption-shell" style="\${styleVars.join(';')}">
+            <div class="\${globalStyle?.template_id || ''}">
+              <span class="\${globalStyle?.template_id || ''}" style="
+                font-family:'\${globalStyle?.font_family || 'Inter'}';
+                font-size:\${scaleTemplateFontSize(globalStyle?.font_size || 18)}px;
+                font-weight:\${globalStyle?.font_weight || '500'};
+                font-style:\${globalStyle?.font_style || 'normal'};
+                text-align:\${globalStyle?.text_align || 'center'};
+                letter-spacing:\${scaleExportPx(globalStyle?.letter_spacing || 0)}px;
+              ">\${buildOriginalAdvancedTemplateMarkup(globalStyle?.template_id, transformText(caption.text || '', globalStyle), templateIndex)}</span>
+            </div>
+            \${positionedWords}
+          </div>
+        \`;
+      }
 
       return \`
         <div class="template-caption-shell" style="\${styleVars.join(';')}">
@@ -198,7 +473,7 @@ function buildRuntimeScript() {
               font-weight:\${globalStyle?.font_weight || '500'};
               font-style:\${globalStyle?.font_style || 'normal'};
               text-align:\${globalStyle?.text_align || 'center'};
-              letter-spacing:\${globalStyle?.letter_spacing || 0}px;
+              letter-spacing:\${scaleExportPx(globalStyle?.letter_spacing || 0)}px;
             ">\${flowedWords}</span>
           </div>
           \${positionedWords}
@@ -210,7 +485,7 @@ function buildRuntimeScript() {
       const words = buildWordMeta(caption);
       const currentIndex = getCurrentWordIndex(caption, time);
       const showInactive = globalStyle?.show_inactive !== false;
-      const wordSpacing = \`\${(globalStyle?.word_spacing ?? 1) * 2}px\`;
+      const wordSpacing = \`\${scaleExportPx((globalStyle?.word_spacing ?? 1) * 2)}px\`;
 
       const wordMarkup = words
         .map((word, index) => {
@@ -221,7 +496,7 @@ function buildRuntimeScript() {
             'display:inline-block',
             'position:relative',
             \`font-family:"\${wordStyle.fontFamily || globalStyle?.font_family || 'Inter'}"\`,
-            \`font-size:\${wordStyle.fontSize || globalStyle?.font_size || 18}px\`,
+            \`font-size:\${scaleExportPx(wordStyle.fontSize || globalStyle?.font_size || 18)}px\`,
             \`font-weight:\${wordStyle.fontWeight || globalStyle?.font_weight || '500'}\`,
             \`font-style:\${wordStyle.fontStyle || globalStyle?.font_style || 'normal'}\`,
             \`color:\${baseColor}\`,
@@ -231,7 +506,7 @@ function buildRuntimeScript() {
           if (globalStyle?.has_shadow) inline.push(\`text-shadow:\${globalStyle.shadow_offset_x || 0}px \${globalStyle.shadow_offset_y || 2}px \${globalStyle.shadow_blur || 4}px \${globalStyle.shadow_color || '#000000'}\`);
           if (wordStyle.backgroundColor) {
             inline.push(\`background:\${rgbaFromHex(wordStyle.backgroundColor, wordStyle.backgroundOpacity ?? 0.6)}\`);
-            inline.push(\`padding:\${wordStyle.backgroundPadding || 2}px \${(wordStyle.backgroundPadding || 2) * 2}px\`);
+            inline.push(\`padding:\${scaleExportPx(wordStyle.backgroundPadding || 2)}px \${scaleExportPx((wordStyle.backgroundPadding || 2) * 2)}px\`);
             inline.push('border-radius:4px');
           }
           return \`<span data-word-key="\${word.key}" style="\${inline.join(';')}">\${escapeHtml(transformText(word.text, globalStyle))}</span>\`;
@@ -243,12 +518,12 @@ function buildRuntimeScript() {
         <div class="plain-caption-shell">
           <span class="cap-text" style="
             font-family:'\${globalStyle?.font_family || 'Inter'}';
-            font-size:\${globalStyle?.font_size || 18}px;
+            font-size:\${scaleExportPx(globalStyle?.font_size || 18)}px;
             font-weight:\${globalStyle?.font_weight || '500'};
             font-style:\${globalStyle?.font_style || 'normal'};
             text-align:\${globalStyle?.text_align || 'center'};
-            line-height:\${(globalStyle?.font_size || 18) * (globalStyle?.line_spacing || 1.4)}px;
-            \${globalStyle?.has_background ? \`background:\${rgbaFromHex(globalStyle.background_color || '#000000', globalStyle.background_opacity ?? 0.7)};padding:\${globalStyle.background_padding || 6}px \${(globalStyle.background_padding || 6) * 2}px;border-radius:8px;\` : ''}
+            line-height:\${scaleExportPx((globalStyle?.font_size || 18) * (globalStyle?.line_spacing || 1.4))}px;
+            \${globalStyle?.has_background && !globalStyle?.template_id ? \`background:\${rgbaFromHex(globalStyle.background_color || '#000000', globalStyle.background_opacity ?? 0.7)};padding:\${scaleExportPx(globalStyle.background_padding || 6)}px \${scaleExportPx((globalStyle.background_padding || 6) * 2)}px;border-radius:\${scaleExportPx(8)}px;\` : ''}
           ">\${wordMarkup}</span>
         </div>
       \`;
@@ -269,16 +544,67 @@ function buildRuntimeScript() {
             display:inline-block;
             white-space:pre-wrap;
             font-family:'\${custom.font_family || 'Inter'}';
-            font-size:\${custom.font_size || 18}px;
+            font-size:\${scaleExportPx(custom.font_size || 18)}px;
             font-weight:\${custom.font_weight || '500'};
             font-style:\${custom.font_style || 'normal'};
             color:\${custom.text_color || '#ffffff'};
-            \${custom.has_background ? \`background:\${rgbaFromHex(custom.background_color || '#000000', custom.background_opacity ?? 0.6)};padding:\${custom.padding || 8}px;border-radius:8px;\` : ''}
-            \${custom.has_stroke ? \`-webkit-text-stroke:\${custom.stroke_width || 1}px \${custom.stroke_color || '#000000'};\` : ''}
-            \${custom.has_shadow ? \`text-shadow:\${custom.shadow_offset_x || 0}px \${custom.shadow_offset_y || 2}px \${custom.shadow_blur || 4}px \${custom.shadow_color || '#000000'};\` : ''}
+            \${custom.has_background ? \`background:\${rgbaFromHex(custom.background_color || '#000000', custom.background_opacity ?? 0.6)};padding:\${scaleExportPx(custom.padding || 8)}px;border-radius:\${scaleExportPx(8)}px;\` : ''}
+            \${custom.has_stroke ? \`-webkit-text-stroke:\${scaleExportPx(custom.stroke_width || 1)}px \${custom.stroke_color || '#000000'};\` : ''}
+            \${custom.has_shadow ? \`text-shadow:\${scaleExportPx(custom.shadow_offset_x || 0)}px \${scaleExportPx(custom.shadow_offset_y || 2)}px \${scaleExportPx(custom.shadow_blur || 4)}px \${custom.shadow_color || '#000000'};\` : ''}
           ">\${escapeHtml(String(caption.text || '')).replace(/\\n/g, '<br/>')}</span>
         </div>
       \`;
+    };
+
+    const syncAdvancedTemplateExportScale = () => {
+      const targetFontPx = Number(window.__exportTemplateFontTargetPx || 0);
+      if (!targetFontPx) return;
+
+      document.querySelectorAll('.lekha-original-template').forEach((wrapper) => {
+        const block = wrapper.querySelector('.lekha-applied-advanced-template') || wrapper;
+        const currentFontPx = parseFloat(getComputedStyle(block).fontSize || '');
+        if (!Number.isFinite(currentFontPx) || currentFontPx <= 0) return;
+        const scale = Math.max(0.25, Math.min(8, targetFontPx / currentFontPx));
+        if (!Number.isFinite(scale) || Math.abs(scale - 1) < 0.01) return;
+        wrapper.style.transform = \`scale(\${scale})\`;
+        wrapper.style.transformOrigin = 'center center';
+      });
+    };
+
+    const resetAdvancedTemplateAnimations = () => {
+      const blocks = Array.from(document.querySelectorAll('.lekha-applied-advanced-template'));
+      blocks.forEach((block) => {
+        block.classList.remove('active');
+        block.style.transition = 'none';
+        block.style.opacity = '0';
+
+        block.querySelectorAll('.cluster-row-top, .cluster-hl, .cluster-row-bot').forEach((element) => {
+          element.classList.remove('active');
+          element.style.transition = 'none';
+        });
+      });
+      return blocks;
+    };
+
+    window.__activateTemplateAnimations = async () => {
+      const blocks = resetAdvancedTemplateAnimations();
+      if (!blocks.length) return;
+
+      void document.body.offsetHeight;
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+
+      blocks.forEach((block) => {
+        block.style.transition = 'opacity 280ms ease';
+        block.style.opacity = '1';
+        block.classList.add('active');
+
+        block.querySelectorAll('.cluster-row-top, .cluster-hl, .cluster-row-bot').forEach((element) => {
+          element.style.transition = '';
+          element.classList.add('active');
+        });
+      });
+
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     };
 
     window.__renderPayload = (payload, time) => {
@@ -293,6 +619,13 @@ function buildRuntimeScript() {
 
       root.innerHTML = activeCaptions.map((caption) => {
         if (caption.is_text_element) return buildTextElementMarkup(caption);
+        const templateCaptionIndex = Math.max(0, (payload.captions || []).findIndex((item) => item?.id === caption.id && !item?.is_text_element));
+        const captionWithTemplateIndex = {
+          ...caption,
+          __templateIndex: Number.isFinite(Number(caption.__templateIndex))
+            ? Number(caption.__templateIndex)
+            : templateCaptionIndex,
+        };
         const left = style.position_x ?? 50;
         const top = style.position_y ?? 75;
         const base = [
@@ -306,10 +639,11 @@ function buildRuntimeScript() {
           \`text-align:\${style.text_align || 'center'}\`,
         ];
         const inner = style.template_id
-          ? buildTemplateMarkup(caption, style, time)
-          : buildPlainCaptionMarkup(caption, style, time);
+          ? buildTemplateMarkup(captionWithTemplateIndex, style, time)
+          : buildPlainCaptionMarkup(captionWithTemplateIndex, style, time);
         return \`<div class="caption-anchor" style="\${base.join(';')}">\${inner}</div>\`;
       }).join('');
+      syncAdvancedTemplateExportScale();
     };
   `;
 }
@@ -320,12 +654,23 @@ async function main() {
     throw new Error('Missing payload JSON path');
   }
 
-  const payload = JSON.parse(await fs.readFile(payloadPath, 'utf8'));
+  const payload = JSON.parse((await fs.readFile(payloadPath, 'utf8')).replace(/^\uFEFF/, ''));
   const outputDir = payload.output_dir || path.join(projectRoot, 'tmp-overlay');
   await fs.mkdir(outputDir, { recursive: true });
 
   const captionCss = await fs.readFile(path.join(projectRoot, 'src', 'styles', 'captionTemplates.css'), 'utf8');
   const advancedCaptionCss = await fs.readFile(path.join(projectRoot, 'src', 'styles', 'captionTemplatesAdvanced.css'), 'utf8');
+  const originalTemplateHtml = await fs.readFile(path.join(projectRoot, 'src', 'assets', 'lekha-captions-T11-T35.html'), 'utf8');
+  const originalTemplateCss = extractOriginalTemplateRuntimeCss(originalTemplateHtml);
+  const previewWidth = Number(payload.style?.preview_width || 0);
+  const exportCssScale = Math.max(1, Math.min(8, Number(payload.video_width || 360) / (previewWidth || 360)));
+  const previewTemplateFontPx = Number(payload.style?.preview_template_font_px || 0);
+  const exportTemplateFontTargetPx = previewTemplateFontPx > 0
+    ? previewTemplateFontPx * exportCssScale
+    : 0;
+  const exportRootFontSize = Math.round(16 * exportCssScale);
+  const exportTemplateMaxWidth = Math.round(360 * exportCssScale);
+  console.log(`[Template DOM] sizing preview_width=${previewWidth || 'missing'} preview_template_font_px=${previewTemplateFontPx || 'missing'} video_width=${payload.video_width} css_scale=${exportCssScale.toFixed(4)} target_template_font_px=${exportTemplateFontTargetPx ? exportTemplateFontTargetPx.toFixed(2) : 'auto'}`);
   const runtimeCss = `
     html, body {
       margin: 0;
@@ -336,6 +681,7 @@ async function main() {
     }
     body {
       font-family: 'Inter', sans-serif;
+      font-size: ${exportRootFontSize}px;
     }
     #overlay-root {
       position: relative;
@@ -364,6 +710,127 @@ async function main() {
       pointer-events: none;
       white-space: pre;
     }
+    .lekha-original-template {
+      --gold: #d4af37;
+      --rose: #ff3d71;
+      --cyan: #00e5ff;
+      --green: #39ff14;
+      --purple: #a78bfa;
+      --white: #ffffff;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: auto;
+      max-width: min(82vw, ${exportTemplateMaxWidth}px);
+      color: #fff;
+      text-align: center;
+      pointer-events: none;
+    }
+    .lekha-original-template[class*='t'][class*='-stage'] {
+      background: transparent !important;
+      box-shadow: none !important;
+    }
+    .lekha-original-template .sblock {
+      position: relative !important;
+      inset: auto !important;
+      display: inline-flex !important;
+      width: auto !important;
+      min-width: 0 !important;
+      min-height: 0 !important;
+      opacity: 1;
+      padding: 0 !important;
+      overflow: visible !important;
+      white-space: normal;
+    }
+    .lekha-original-template .lekha-template-fit {
+      display: inline-block;
+      max-width: 100%;
+    }
+    .lekha-original-template .cluster-wrap {
+      align-items: stretch;
+    }
+    .lekha-original-template .t11-b0 .cluster-hl {
+      font-size: 0.72em !important;
+    }
+    .lekha-original-template .wbw-rise .w,
+    .lekha-original-template .wbw-slide .w {
+      opacity: 0;
+      display: inline-block;
+      transition: none;
+    }
+    .lekha-original-template .wbw-rise .w {
+      transform: translateY(20px);
+    }
+    .lekha-original-template .wbw-slide .w {
+      transform: translateX(-16px);
+    }
+    .lekha-original-template .active .wbw-rise .w.in,
+    .lekha-original-template .active .wbw-slide .w.in {
+      animation: lekhaTemplateWbwIn 320ms cubic-bezier(0.34, 1.2, 0.64, 1) forwards;
+      animation-delay: var(--wbw-delay, 0ms);
+    }
+    .lekha-original-template .active .wbw-rise .w[data-imp='true'].in,
+    .lekha-original-template .active .wbw-slide .w[data-imp='true'].in {
+      animation-duration: 440ms;
+    }
+    .lekha-original-template .lekha-applied-advanced-template.t22-block,
+    .lekha-original-template .lekha-applied-advanced-template.t28-block,
+    .lekha-original-template .lekha-applied-advanced-template.t22-block .wave-txt,
+    .lekha-original-template .lekha-applied-advanced-template.t28-block .grain-txt,
+    .lekha-original-template .lekha-applied-advanced-template.t28-block .slow-fade,
+    .lekha-original-template .lekha-applied-advanced-template.t22-block .w.in:not([data-imp='true']),
+    .lekha-original-template .lekha-applied-advanced-template.t28-block .w.in:not([data-imp='true']) {
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
+    }
+    .lekha-original-template .lekha-applied-advanced-template.active .karaoke-base {
+      color: var(--gold) !important;
+      -webkit-text-fill-color: var(--gold) !important;
+      opacity: 1 !important;
+    }
+    .lekha-original-template .imp-gold {
+      color: var(--gold) !important;
+      -webkit-text-fill-color: var(--gold) !important;
+    }
+    .lekha-original-template .imp-rose {
+      color: var(--rose) !important;
+      -webkit-text-fill-color: var(--rose) !important;
+    }
+    .lekha-original-template .imp-cyan {
+      color: var(--cyan) !important;
+      -webkit-text-fill-color: var(--cyan) !important;
+    }
+    .lekha-original-template .imp-purple {
+      color: var(--purple) !important;
+      -webkit-text-fill-color: var(--purple) !important;
+    }
+    .lekha-original-template .imp-green {
+      color: var(--green) !important;
+      -webkit-text-fill-color: var(--green) !important;
+    }
+    .lekha-original-template.t12-stage .imp-purple {
+      color: var(--rose) !important;
+      -webkit-text-fill-color: var(--rose) !important;
+    }
+    .lekha-original-template.t18-stage .imp-purple {
+      color: var(--gold) !important;
+      -webkit-text-fill-color: var(--gold) !important;
+    }
+    .lekha-original-template.t24-stage .imp-purple {
+      color: #f97316 !important;
+      -webkit-text-fill-color: #f97316 !important;
+    }
+    .lekha-original-template.t32-stage .imp-purple {
+      color: var(--cyan) !important;
+      -webkit-text-fill-color: var(--cyan) !important;
+    }
+    @keyframes lekhaTemplateWbwIn {
+      to {
+        opacity: 1;
+        transform: none;
+        clip-path: inset(0 0 0 0);
+      }
+    }
   `;
 
   const browser = await puppeteer.launch({
@@ -386,11 +853,13 @@ async function main() {
           <meta charset="utf-8" />
           <link rel="preconnect" href="https://fonts.googleapis.com">
           <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-          <link href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Archivo+Black&family=Bangers&family=Bebas+Neue&family=Bitter:wght@400;700&family=Bodoni+Moda:opsz,wght@6..96,400&family=Caveat:wght@400;700&family=Cinzel:wght@400;700;900&family=Cormorant+Garamond:ital,wght@0,300;0,600;1,300;1,600&family=Crimson+Text:ital,wght@0,400;0,600;1,400;1,600&family=Darker+Grotesque:wght@400;700;900&family=Dela+Gothic+One&family=DM+Serif+Display:ital@0;1&family=IBM+Plex+Mono:wght@400;700&family=Inter:wght@400;500;700;800;900&family=Josefin+Sans:wght@300;400;700&family=Lora:ital,wght@0,400;0,700;1,400;1,700&family=Montserrat:wght@400;500;700;800;900&family=Noto+Sans:wght@400;700;800;900&family=Oswald:wght@300;400;700&family=Overpass+Mono:wght@400;700&family=Permanent+Marker&family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=Questrial&family=Righteous&family=Silkscreen:wght@400;700&family=Special+Elite&family=Space+Mono:wght@400;700&family=Staatliches&family=Unbounded:wght@300;700;900&display=swap" rel="stylesheet">
+          <link href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Archivo+Black&family=Bangers&family=Bebas+Neue&family=Bitter:wght@400;700&family=Bodoni+Moda:opsz,wght@6..96,400;700&family=Bungee&family=Caveat:wght@400;700&family=Cinzel:wght@400;700;900&family=Cormorant+Garamond:ital,wght@0,300;0,600;0,700;1,300;1,600&family=Crimson+Text:ital,wght@0,400;0,600;1,400;1,600&family=Darker+Grotesque:wght@400;700;900&family=Dela+Gothic+One&family=DM+Serif+Display:ital@0;1&family=Exo+2:wght@400;700;900&family=IBM+Plex+Mono:wght@400;700&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;700;800;900&family=Josefin+Sans:wght@300;400;700&family=Libre+Baskerville:wght@400;700&family=Lora:ital,wght@0,400;0,700;1,400;1,700&family=Montserrat:wght@400;500;700;800;900&family=Noto+Sans:wght@400;600;700;800;900&family=Oswald:wght@300;400;600;700&family=Overpass+Mono:wght@400;700&family=Permanent+Marker&family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=Questrial&family=Righteous&family=Rubik:wght@400;700;900&family=Silkscreen:wght@400;700&family=Special+Elite&family=Space+Mono:wght@400;700&family=Spectral:ital,wght@0,400;0,600;1,400;1,600&family=Staatliches&family=Syne:wght@400;600;700;800&family=Teko:wght@400;600;700&family=Unbounded:wght@300;700;900&display=swap" rel="stylesheet">
           <style>${runtimeCss}</style>
         </head>
         <body>
           <div id="overlay-root"></div>
+          <script>window.__exportCanvasScale = ${JSON.stringify(exportCssScale)};</script>
+          <script>window.__exportTemplateFontTargetPx = ${JSON.stringify(exportTemplateFontTargetPx)};</script>
           <script>${buildRuntimeScript()}</script>
         </body>
       </html>
@@ -398,22 +867,76 @@ async function main() {
 
     await page.addStyleTag({ content: captionCss });
     await page.addStyleTag({ content: advancedCaptionCss });
+    await page.addStyleTag({ content: originalTemplateCss });
     await page.evaluate(() => document.fonts.ready);
 
     const segments = [];
     const points = new Set([0, Number(payload.duration || 0)]);
-    const templateUsesPreviewTiming = Boolean(payload.style?.template_id);
+    const templateId = String(payload.style?.template_id || '').trim();
+    const templateUsesPreviewTiming = isAdvancedTemplateId(templateId);
+    const defaultTemplateSampleFps = Math.min(24, Math.max(12, Number(payload.style?.fps || 30)));
+    const nonTextCaptions = (payload.captions || []).filter((caption) => !caption?.is_text_element);
+    const animatedCaptions = templateUsesPreviewTiming
+      ? nonTextCaptions.map((caption, fallbackIndex) => {
+          const start = Number(caption.start_time ?? 0);
+          const end = Number(caption.end_time ?? start);
+          const captionDuration = Math.max(end - start, 0);
+          const templateIndex = Number.isFinite(Number(caption.__templateIndex))
+            ? Number(caption.__templateIndex)
+            : fallbackIndex;
+          const blockType = getTemplateBlockType(templateId, templateIndex);
+          const splitWords = String(caption.text || '').split(/\s+/).filter(Boolean);
+          const wordCount = Math.max(splitWords.length, 1);
+          const animatedWindow = getAdvancedTemplateAnimationWindow(blockType, captionDuration, wordCount);
+          return {
+            caption,
+            start,
+            end,
+            wordCount,
+            blockType,
+            animatedWindow,
+          };
+        })
+      : [];
+    const totalAnimatedSeconds = animatedCaptions.reduce((sum, item) => sum + item.animatedWindow, 0);
+    const adaptiveTemplateSampleFps = templateUsesPreviewTiming
+      ? Math.max(
+          15,
+          Math.min(
+            defaultTemplateSampleFps,
+            totalAnimatedSeconds > 0 ? Math.floor(1200 / totalAnimatedSeconds) : defaultTemplateSampleFps,
+          ),
+        )
+      : defaultTemplateSampleFps;
+
     for (const caption of payload.captions || []) {
       const start = Number(caption.start_time ?? 0);
       const end = Number(caption.end_time ?? start);
       points.add(start);
       points.add(end);
       if (templateUsesPreviewTiming) {
+        if (caption?.is_text_element) continue;
+        const fallbackIndex = nonTextCaptions.findIndex((item) => item?.id === caption?.id);
+        const templateIndex = Number.isFinite(Number(caption.__templateIndex))
+          ? Number(caption.__templateIndex)
+          : Math.max(0, fallbackIndex);
+        const blockType = getTemplateBlockType(templateId, templateIndex);
         const splitWords = String(caption.text || '').split(/\s+/).filter(Boolean);
         const wordCount = Math.max(splitWords.length, 1);
-        const segmentDuration = Math.max(end - start, 0) / wordCount;
-        for (let index = 1; index < wordCount; index += 1) {
-          points.add(start + (segmentDuration * index));
+        if (blockType.startsWith('wbw')) {
+          const segmentDuration = Math.max(end - start, 0) / wordCount;
+          for (let index = 1; index < wordCount; index += 1) {
+            points.add(start + (segmentDuration * index));
+          }
+        }
+        const animationWindow = getAdvancedTemplateAnimationWindow(blockType, Math.max(end - start, 0), wordCount);
+        const animationEnd = Math.min(end, start + animationWindow);
+        for (
+          let sample = start + (1 / adaptiveTemplateSampleFps);
+          sample < animationEnd;
+          sample += (1 / adaptiveTemplateSampleFps)
+        ) {
+          points.add(sample);
         }
       } else {
         for (const word of caption.words || []) {
@@ -441,32 +964,102 @@ async function main() {
       segments.push({ start: 0, end: Math.max(Number(payload.duration || 1), 1), duration: Math.max(Number(payload.duration || 1), 1) });
     }
 
+    console.log(`[Template DOM] segments=${segments.length} template_timing=${templateUsesPreviewTiming} sample_fps=${adaptiveTemplateSampleFps}`);
+
     const frameLines = [];
+    const frameFiles = [];
     const lastIndex = segments.length - 1;
+    const blankFramePath = path.join(outputDir, 'frame-blank.png');
+
+    await page.evaluate(() => {
+      const root = document.getElementById('overlay-root');
+      if (root) root.innerHTML = '';
+    });
+    await page.screenshot({
+      path: blankFramePath,
+      omitBackground: true,
+    });
 
     for (let index = 0; index < segments.length; index += 1) {
       const segment = segments[index];
       const midpoint = segment.start + (segment.duration / 2);
-      const settleMs = Math.max(40, Math.min(180, Math.round(segment.duration * 600)));
       const framePath = path.join(outputDir, `frame-${String(index).padStart(5, '0')}.png`);
-
-      await page.evaluate(async (currentPayload, currentTime, currentSettleMs) => {
-        window.__renderPayload(currentPayload, currentTime);
-        await new Promise((resolve) => setTimeout(resolve, currentSettleMs));
-      }, payload, midpoint, settleMs);
-
-      await page.screenshot({
-        path: framePath,
-        omitBackground: true,
+      const hasActiveCaptions = (payload.captions || []).some((caption) => {
+        const start = Number(caption.start_time ?? 0);
+        const end = Number(caption.end_time ?? start);
+        return midpoint >= start && midpoint <= end;
       });
 
-      frameLines.push(`file '${toForwardSlash(framePath).replace(/'/g, "'\\''")}'`);
+      let renderedFramePath = blankFramePath;
+      if (hasActiveCaptions) {
+        await page.evaluate(async (currentPayload, currentTime) => {
+          window.__renderPayload(currentPayload, currentTime);
+          if (window.__activateTemplateAnimations) {
+            await window.__activateTemplateAnimations();
+          } else {
+            await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          }
+
+          const activeStarts = (currentPayload.captions || [])
+            .filter((caption) => {
+              const start = Number(caption.start_time ?? 0);
+              const end = Number(caption.end_time ?? start);
+              return !caption.is_text_element && currentTime >= start && currentTime <= end;
+            })
+            .map((caption) => Number(caption.start_time ?? currentTime));
+          const captionElapsedMs = Math.max(0, (currentTime - Math.min(currentTime, ...activeStarts)) * 1000);
+          document.getAnimations({ subtree: true }).forEach((animation) => {
+            try {
+              const timing = animation.effect?.getTiming?.() || {};
+              const delayMs = Number(timing.delay || 0);
+              const seekMs = Math.max(0, captionElapsedMs - delayMs);
+              animation.pause();
+              animation.currentTime = seekMs;
+            } catch {
+              // Some browser-managed animations cannot be seeked; leave them at their rendered state.
+            }
+          });
+          document.querySelectorAll('.lekha-applied-advanced-template.active').forEach((block) => {
+            const wbw = block.querySelector('.wbw-rise, .wbw-slide');
+            if (!wbw) return;
+            const isRise = wbw.classList.contains('wbw-rise');
+            wbw.querySelectorAll('.w').forEach((word) => {
+              const index = Number(word.dataset.i || 0);
+              const delayMs = index * 65;
+              const durationMs = 320;
+              const raw = (captionElapsedMs - delayMs) / durationMs;
+              const progress = Math.max(0, Math.min(1, raw));
+              const eased = 1 - Math.pow(1 - progress, 3);
+              word.style.animation = 'none';
+              word.style.transition = 'none';
+              word.style.opacity = String(eased);
+              if (progress >= 1) {
+                word.style.transform = 'none';
+              } else if (isRise) {
+                word.style.transform = `translateY(${20 * (1 - eased)}px)`;
+              } else {
+                word.style.transform = `translateX(${-16 * (1 - eased)}px)`;
+              }
+            });
+          });
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+        }, payload, midpoint);
+
+        await page.screenshot({
+          path: framePath,
+          omitBackground: true,
+        });
+        renderedFramePath = framePath;
+      }
+
+      frameFiles.push(renderedFramePath);
+      frameLines.push(`file '${toForwardSlash(renderedFramePath).replace(/'/g, "'\\''")}'`);
       if (index < lastIndex) {
         frameLines.push(`duration ${segment.duration.toFixed(6)}`);
       }
     }
 
-    const lastFramePath = path.join(outputDir, `frame-${String(lastIndex).padStart(5, '0')}.png`);
+    const lastFramePath = frameFiles[lastIndex] || blankFramePath;
     frameLines.push(`file '${toForwardSlash(lastFramePath).replace(/'/g, "'\\''")}'`);
 
     await fs.writeFile(path.join(outputDir, 'frames.txt'), `${frameLines.join('\n')}\n`, 'utf8');
