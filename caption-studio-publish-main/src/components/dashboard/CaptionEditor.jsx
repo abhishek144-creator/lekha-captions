@@ -5,11 +5,13 @@ import {
   Split,
   Trash2,
   Plus,
-  Clock,
   GripVertical,
   Edit3,
   Info,
-  X
+  Search,
+  X,
+  Copy,
+  MoreHorizontal
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -33,6 +35,8 @@ export default function CaptionEditor({
 }) {
   const selectedCaption = captions?.find(c => c.id === selectedCaptionId);
   const [showAutoTip, setShowAutoTip] = useState(false);
+  const [query, setQuery] = useState('');
+  const [editingCaptionId, setEditingCaptionId] = useState(null);
 
   useEffect(() => {
     if (!user?.email) return;
@@ -54,6 +58,25 @@ export default function CaptionEditor({
   const deleteCaption = (id) => {
     setCaptions(prev => prev.filter(c => c.id !== id));
     setSelectedCaptionId(null);
+    setEditingCaptionId(null);
+  };
+
+  const duplicateCaption = (caption) => {
+    if (!caption) return;
+    const clone = {
+      ...caption,
+      id: `${Date.now()}-duplicate`,
+      start_time: (caption.end_time || caption.start_time || 0) + 0.1,
+      end_time: (caption.end_time || caption.start_time || 0) + Math.max(0.1, (caption.end_time || 0) - (caption.start_time || 0)) + 0.1
+    };
+    setCaptions(prev => {
+      const index = prev.findIndex(c => c.id === caption.id);
+      if (index === -1) return [...prev, clone];
+      const next = [...prev];
+      next.splice(index + 1, 0, clone);
+      return next;
+    });
+    setSelectedCaptionId(clone.id);
   };
 
   const splitCaption = (id, cursorPosition) => {
@@ -115,53 +138,78 @@ export default function CaptionEditor({
 
 
 
+  const filteredCaptions = captions
+    ?.filter(cap => cap && cap.id && !cap.isTextElement)
+    ?.filter(cap => !query.trim() || (cap.text || '').toLowerCase().includes(query.toLowerCase()));
+
   return (
-    <div className="h-full flex flex-col">
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-lg font-semibold text-white">Captions</h2>
+    <div className="h-full flex flex-col relative z-10">
+      <span className="pointer-events-none absolute left-2 top-2 z-0 h-[18px] w-[18px] border-l border-t border-white/15" />
+      <span className="pointer-events-none absolute left-2 bottom-2 z-0 h-[18px] w-[18px] border-l border-b border-white/15" />
+      <div className="relative z-10 flex items-center justify-between mb-5 pl-3">
+        <div>
+          <p className="lekha-micro-label text-white">Captions</p>
+          <p className="text-[10px] text-slate-500 mt-1">{captions?.filter(cap => cap && !cap.isTextElement).length || 0} transcript items</p>
+        </div>
         <div className="flex items-center gap-1.5">
           <Button
             onClick={addCaption}
             size="sm"
             variant="outline"
-            className="border border-white/60 text-white bg-transparent hover:bg-white/10 h-8 px-2.5"
+            className="border border-white/15 text-white bg-white/[0.03] hover:bg-white/10 h-7 px-2.5 rounded-md"
           >
-            <Plus className="w-4 h-4 mr-1" />
+            <Plus className="w-3.5 h-3.5 mr-1" />
             Add
           </Button>
         </div>
       </div>
 
+      <div className="relative z-10 mb-4">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search transcript..."
+          className="w-full h-9 rounded-xl border border-white/10 bg-black/35 pl-9 pr-12 text-xs text-white placeholder:text-slate-600 outline-none focus:border-sky-300/40"
+        />
+        <span className="absolute right-2 top-1/2 -translate-y-1/2 rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[9px] font-mono text-slate-500">
+          Ctrl K
+        </span>
+      </div>
+
       {/* Caption list */}
-      <div className="flex-1 overflow-y-auto space-y-2 pr-2 custom-scrollbar">
+      <div className="relative z-10 flex-1 overflow-y-auto pr-1.5 pb-7 custom-scrollbar">
         <AnimatePresence>
-          {captions?.filter(cap => cap && cap.id && !cap.isTextElement).map((caption, index) => (
+          {filteredCaptions?.map((caption, index) => (
             <motion.div
               key={caption.id}
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 20 }}
-              className={`group rounded-xl border transition-all cursor-pointer overflow-hidden ${selectedCaptionId === caption.id
-                ? 'bg-[#0F0F12] border-[#F5A623]/30 shadow-2xl shadow-[#F5A623]/30'
-                : 'bg-white/[0.02] border-white/5 hover:border-white/10 hover:bg-white/[0.04]'
+              className={`group mb-2.5 rounded-sm border transition-all cursor-pointer overflow-hidden ${selectedCaptionId === caption.id
+                ? 'bg-white/[0.045] border-white/[0.08] shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]'
+                : 'border-transparent border-b-white/[0.075] hover:bg-white/[0.025]'
                 }`}
               onClick={() => {
                 setSelectedCaptionId(caption.id);
                 onSeek(caption.start_time);
               }}
             >
-              <div className="p-3">
-                <div className="flex items-start gap-2">
-                  <GripVertical className="w-4 h-4 text-gray-600 mt-1 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab" />
+              <div className="min-h-[78px] py-5 px-2.5">
+                <div className="flex items-start gap-3.5">
+                  <span className={`w-8 shrink-0 font-serif italic text-[28px] leading-none ${selectedCaptionId === caption.id ? 'text-sky-100' : 'text-slate-700'}`}>
+                    {String(index + 1).padStart(2, '0')}
+                  </span>
 
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-xs font-mono text-gray-500 bg-white/5 px-1.5 py-0.5 rounded">
-                        #{index + 1}
+                    <div className="flex items-center gap-2 mb-2.5 min-w-0">
+                      <span className="shrink-0 whitespace-nowrap text-[9px] font-mono text-slate-500 tracking-[0.08em]">
+                        {formatTime(caption.start_time || 0)} - {formatTime(caption.end_time || 0)}
+                      </span>
+                      <span className="shrink-0 whitespace-nowrap text-[9px] font-mono text-sky-200/80 bg-white/[0.04] border border-white/10 px-1.5 py-0.5 rounded">
+                        {Math.max(0.1, ((caption.end_time || 0) - (caption.start_time || 0))).toFixed(1)}s
                       </span>
                       <span className="text-xs text-gray-500 flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        {formatTime(caption.start_time || 0)} - {formatTime(caption.end_time || 0)}
                         <TooltipProvider>
                           <Tooltip open={index === 0 && showAutoTip ? true : undefined} delayDuration={300}>
                             <TooltipTrigger asChild>
@@ -201,7 +249,7 @@ export default function CaptionEditor({
                       </span>
                     </div>
 
-                    {selectedCaptionId === caption.id ? (
+                    {selectedCaptionId === caption.id && editingCaptionId === caption.id ? (
                       <div className="space-y-3">
                         {wordPopup && wordPopup.caption && wordPopup.caption.id === caption.id && (
                           <div className="flex items-center gap-2 mb-2 p-2 rounded bg-[#F5A623]/30 border border-[#F5A623]/30">
@@ -214,7 +262,7 @@ export default function CaptionEditor({
                         <Textarea
                           value={caption.text || ''}
                           onChange={(e) => updateCaption(caption.id, { text: e.target.value })}
-                          className="bg-black/50 border-white/10 text-white text-sm resize-none mb-3"
+                          className="bg-black/50 border-white/10 text-white text-sm resize-none mb-3 rounded-xl"
                           rows={3}
                           onClick={(e) => e.stopPropagation()}
                           placeholder="Enter caption text... (Press Enter for new line)"
@@ -258,6 +306,7 @@ export default function CaptionEditor({
                             size="sm"
                             onClick={(e) => {
                               e.stopPropagation();
+                              setEditingCaptionId(null);
                               splitCaption(caption.id);
                             }}
                             className="text-gray-400 hover:text-white text-xs h-7"
@@ -270,6 +319,7 @@ export default function CaptionEditor({
                             size="sm"
                             onClick={(e) => {
                               e.stopPropagation();
+                              setEditingCaptionId(null);
                               // Open floating popup for the first word of the caption
                               const firstWord = (caption.text || '').split(/\s+/)[0];
                               onOpenWordPopup(
@@ -300,9 +350,49 @@ export default function CaptionEditor({
 
                       </div>
                     ) : (
-                      <p className="text-white text-sm truncate">{caption.text || ''}</p>
+                      <>
+                        <p className="text-white text-[15px] font-semibold leading-snug line-clamp-2">{caption.text || ''}</p>
+                        {selectedCaptionId === caption.id && (
+                          <div className="mt-3 flex items-center gap-3 text-slate-500">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                duplicateCaption(caption);
+                              }}
+                              className="rounded-md p-1 hover:bg-white/5 hover:text-slate-200"
+                              title="Duplicate caption"
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteCaption(caption.id);
+                              }}
+                              className="rounded-md p-1 hover:bg-white/5 hover:text-red-300"
+                              title="Delete caption"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingCaptionId(caption.id);
+                              }}
+                              className="rounded-md p-1 hover:bg-white/5 hover:text-slate-200"
+                              title="Edit caption"
+                            >
+                              <MoreHorizontal className="h-4 w-4" />
+                            </button>
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
+                  <GripVertical className="w-4 h-4 text-gray-700 mt-1 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab" />
                 </div>
               </div>
             </motion.div>

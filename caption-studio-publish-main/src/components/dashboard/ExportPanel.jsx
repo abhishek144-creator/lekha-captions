@@ -54,45 +54,24 @@ const TEMPLATE_CANONICAL_STYLES = {
   't-T3':  { has_background: false, has_stroke: false, has_shadow: false },
   't-57':  { has_shadow: true, shadow_color: '#00ffff', shadow_blur: 0, shadow_offset_x: 2, shadow_offset_y: 0, has_background: false, has_stroke: false },
   't-37':  { has_background: false, has_stroke: false, has_shadow: false },
-  // TemplatesTab2 templates (t01–t35) — all use CSS-only visual effects,
-  // no background/stroke/shadow in their style definitions; reset to prevent
-  // style-bleed from previously applied templates.
-  't01': { has_background: false, has_stroke: false, has_shadow: false },
-  't02': { has_background: false, has_stroke: false, has_shadow: false },
-  't03': { has_background: false, has_stroke: false, has_shadow: false },
-  't04': { has_background: false, has_stroke: false, has_shadow: false },
-  't05': { has_background: false, has_stroke: false, has_shadow: false },
-  't06': { has_background: false, has_stroke: false, has_shadow: false },
-  't07': { has_background: false, has_stroke: false, has_shadow: false },
-  't08': { has_background: false, has_stroke: false, has_shadow: false },
-  't09': { has_background: false, has_stroke: false, has_shadow: false },
-  't10': { has_background: false, has_stroke: false, has_shadow: false },
-  't11': { has_background: false, has_stroke: false, has_shadow: false },
-  't12': { has_background: false, has_stroke: false, has_shadow: false },
-  't13': { has_background: false, has_stroke: false, has_shadow: false },
-  't14': { has_background: false, has_stroke: false, has_shadow: false },
-  't15': { has_background: false, has_stroke: false, has_shadow: false },
-  't16': { has_background: false, has_stroke: false, has_shadow: false },
-  't17': { has_background: false, has_stroke: false, has_shadow: false },
-  't18': { has_background: false, has_stroke: false, has_shadow: false },
-  't19': { has_background: false, has_stroke: false, has_shadow: false },
-  't20': { has_background: false, has_stroke: false, has_shadow: false },
-  't21': { has_background: false, has_stroke: false, has_shadow: false },
-  't22': { has_background: false, has_stroke: false, has_shadow: false },
-  't23': { has_background: false, has_stroke: false, has_shadow: false },
-  't24': { has_background: false, has_stroke: false, has_shadow: false },
-  't25': { has_background: false, has_stroke: false, has_shadow: false },
-  't26': { has_background: false, has_stroke: false, has_shadow: false },
-  't27': { has_background: false, has_stroke: false, has_shadow: false },
-  't28': { has_background: false, has_stroke: false, has_shadow: false },
-  't29': { has_background: false, has_stroke: false, has_shadow: false },
-  't30': { has_background: false, has_stroke: false, has_shadow: false },
-  't31': { has_background: false, has_stroke: false, has_shadow: false },
-  't32': { has_background: false, has_stroke: false, has_shadow: false },
-  't33': { has_background: false, has_stroke: false, has_shadow: false },
-  't34': { has_background: false, has_stroke: false, has_shadow: false },
-  't35': { has_background: false, has_stroke: false, has_shadow: false },
 };
+
+function isAdvancedTemplateId(templateId) {
+  return /^t\d{2}$/.test(String(templateId || ''));
+}
+
+function getMaxRenderedFontSize(root) {
+  if (!root) return 0;
+  const candidates = [root, ...root.querySelectorAll('*')];
+  let maxFontSize = 0;
+  candidates.forEach((node) => {
+    const fontSize = parseFloat(window.getComputedStyle(node).fontSize || '');
+    if (Number.isFinite(fontSize) && fontSize > maxFontSize) {
+      maxFontSize = fontSize;
+    }
+  });
+  return maxFontSize;
+}
 
 // Simple queue system to prevent server overload
 const exportQueue = {
@@ -139,6 +118,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
   const [exportExpiry, setExportExpiry] = useState(null);
   const exportInFlightRef = useRef(false);
   const exportAbortRef = useRef(null);
+  const backgroundNoticeShownRef = useRef(false);
 
   const throwIfAborted = (signal) => {
     if (signal?.aborted) throw new DOMException('Export cancelled', 'AbortError');
@@ -200,10 +180,6 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
     throw new Error('Export status check timed out. Please retry.');
   };
 
-  useEffect(() => () => {
-    exportAbortRef.current?.abort();
-  }, []);
-
   useEffect(() => {
     if (!isExporting || !waitStartTime) return;
 
@@ -263,6 +239,19 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
     downloadFile(text, 'captions.txt', 'text/plain');
   };
 
+  const handleSheetOpenChange = (nextOpen) => {
+    if (nextOpen) return;
+    if (!nextOpen && exportInFlightRef.current && !backgroundNoticeShownRef.current) {
+      backgroundNoticeShownRef.current = true;
+      toast({
+        title: 'Export still running',
+        description: 'You can keep editing. The video export will continue in the background.',
+        duration: 10000,
+      });
+    }
+    onClose?.();
+  };
+
   // Unlock for: free plan users with credits > 0, or active subscription users
   // If signed in but Firestore data hasn't loaded yet, default to unlocked (optimistic)
   const isPlanActive = (() => {
@@ -318,6 +307,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
 
     setIsExporting(true);
     exportInFlightRef.current = true;
+    backgroundNoticeShownRef.current = false;
     exportAbortRef.current?.abort();
     const exportController = new AbortController();
     exportAbortRef.current = exportController;
@@ -364,6 +354,9 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
       } else {
         renderH = ch; renderW = ch * vAspect; offsetX = (cw - renderW) / 2; offsetY = 0;
       }
+
+      const templateFontEl = container.querySelector('.lekha-applied-advanced-template');
+      const previewTemplateFontPx = getMaxRenderedFontSize(templateFontEl);
 
       const containerToVideo = (xPct, yPct) => {
         const xPx = (xPct / 100) * cw;
@@ -487,6 +480,19 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
         });
       }
 
+      const captionTemplateSnapshot = captions.find(c => c?.applied_template_style?.template_id)?.applied_template_style;
+      const styleTemplateSnapshot = captionStyle?.template_snapshot?.template_id
+        ? captionStyle.template_snapshot
+        : captionTemplateSnapshot;
+      const baseExportStyle = styleTemplateSnapshot?.template_id
+        ? { ...captionStyle, ...styleTemplateSnapshot }
+        : (captionStyle || {});
+      const templateOverride = TEMPLATE_CANONICAL_STYLES[baseExportStyle?.template_id || ''] || {};
+      const effectiveExportStyle = { ...baseExportStyle, ...templateOverride };
+      const activeTemplateSnapshot = styleTemplateSnapshot?.template_id
+        ? styleTemplateSnapshot
+        : (effectiveExportStyle?.template_id ? { ...effectiveExportStyle } : null);
+
       const exportData = {
         file_id: fileId,
         id_token: idToken || '',
@@ -499,8 +505,11 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
             text: cap.text,
             start_time: cap.start_time,
             end_time: cap.end_time,
+            __templateIndex: !isText ? captions.filter(c => c && !c.isTextElement).findIndex(c => c?.id === cap.id) : undefined,
             animation: cap.animation || 'none',
             is_text_element: !!isText,
+            template_id: !isText ? (cap.template_id || activeTemplateSnapshot?.template_id || effectiveExportStyle?.template_id || '') : '',
+            applied_template_style: !isText ? (cap.applied_template_style || activeTemplateSnapshot || null) : null,
             custom_style: isText ? (() => {
               const teVidPos = containerToVideo(cs.left ?? 50, cs.top ?? 50);
               return {
@@ -543,18 +552,16 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
         style: (() => {
           // Merge template canonical overrides — ensures correct has_shadow/has_stroke/has_background
           // even when the user's React state was set before these properties were added to the template def.
-          const _tid = captionStyle?.template_id || '';
-          const _tOverride = TEMPLATE_CANONICAL_STYLES[_tid] || {};
-          const _cs = { ...captionStyle, ..._tOverride };
+          const _cs = effectiveExportStyle;
           return {
           font_family: _cs?.font_family || 'Inter',
-          font_size: _cs?.font_size || 18,
-          font_weight: _cs?.font_weight || '500',
+          font_size: _cs?.font_size || 26,
+          font_weight: _cs?.font_weight || '800',
           font_style: _cs?.font_style || 'normal',
           line_spacing: _cs?.line_spacing || 1.4,
           text_color: _cs?.text_color || '#ffffff',
           text_gradient: _cs?.text_gradient || '',
-          text_opacity: _cs?.text_opacity ?? 1,
+          text_opacity: isAdvancedTemplateId(_cs?.template_id) ? 1 : (_cs?.text_opacity ?? 1),
           highlight_color: _cs?.highlight_color || '',
           highlight_gradient: _cs?.highlight_gradient || '',
           // Use explicit boolean — templates without bg set has_background:false after hard reset
@@ -589,12 +596,17 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
           letter_spacing: _cs?.letter_spacing || 0,
           word_spacing: _cs?.word_spacing || 1,
           background_padding: _cs?.background_padding ?? 6,
-          background_h_multiplier: _cs?.background_h_multiplier ?? 0.99,
+          background_h_multiplier: _cs?.background_h_multiplier ?? 1.05,
           // Template metadata — passed through so the backend knows the active template
           template_id: _cs?.template_id || '',
+          template_snapshot: activeTemplateSnapshot || null,
           secondary_color: _cs?.secondary_color || '',
-          show_inactive: captionStyle?.show_inactive !== false,
-          preview_height: renderH
+          show_inactive: _cs?.show_inactive !== false,
+          preview_width: renderW,
+          preview_height: renderH,
+          preview_container_width: cw,
+          preview_container_height: ch,
+          preview_template_font_px: Number.isFinite(previewTemplateFontPx) ? previewTemplateFontPx : 0
           };
         })(),
         word_layouts: wordLayouts
@@ -713,6 +725,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
     } finally {
       setIsExporting(false);
       exportInFlightRef.current = false;
+      backgroundNoticeShownRef.current = false;
       if (exportAbortRef.current === exportController) {
         exportAbortRef.current = null;
       }
@@ -768,7 +781,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
   ];
 
   return (
-    <Sheet open={open} onOpenChange={onClose}>
+    <Sheet open={open} onOpenChange={handleSheetOpenChange}>
       <SheetContent className="bg-zinc-900 border-white/10 text-white w-full sm:max-w-md">
         <SheetHeader>
           <SheetTitle className="text-xl font-semibold text-white">

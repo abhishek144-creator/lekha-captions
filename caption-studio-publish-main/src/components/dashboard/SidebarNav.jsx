@@ -1,5 +1,5 @@
 import React from 'react';
-import { Folder, Layout, Type, Sparkles, Video, Crown, LogOut } from 'lucide-react';
+import { Captions, Clock3, Layers, Layout, Type, Sparkles, Video, Crown, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
@@ -11,20 +11,16 @@ import {
 } from "@/components/ui/popover";
 
 const navItems = [
-  { id: 'captions', icon: Folder, label: 'Captions' },
+  { id: 'captions', icon: Captions, label: 'Captions' },
   { id: 'text', icon: Type, label: 'Text' },
   { id: 'animate', icon: Sparkles, label: 'Animate' },
   { id: 'templates', icon: Layout, label: 'Templates' },
-  { id: 'templates2', icon: Crown, label: 'Template 2' },
+  { id: 'layers', icon: Layers, label: 'Layers' },
+  { id: 'history', icon: Clock3, label: 'History' },
 ];
 
 export default function SidebarNav({ activeTab, setActiveTab, user, onOpenPricing }) {
   const { currentUser, userData, logout } = useAuth();
-
-  const getInitials = (name) => {
-    if (!name) return 'U';
-    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-  };
 
   const getPlanDetails = () => {
     const plan = userData?.subscription_tier || 'free'
@@ -39,7 +35,6 @@ export default function SidebarNav({ activeTab, setActiveTab, user, onOpenPricin
 
   const planDetails = getPlanDetails();
   const creditsLeft = userData?.credits_remaining ?? 0;
-  const isFreePlan = (userData?.subscription_tier || 'free') === 'free';
 
   const handleLogout = async () => {
     try {
@@ -52,43 +47,41 @@ export default function SidebarNav({ activeTab, setActiveTab, user, onOpenPricin
   };
 
   return (
-    <div className="w-[72px] bg-zinc-950 border-r border-white/5 flex flex-col items-center py-4 gap-1 h-full">
-      {navItems.map((item) => {
-        const Icon = item.icon;
-        const isActive = activeTab === item.id;
+    <div className="w-12 h-full relative flex flex-col items-center justify-center py-1">
+      <div className="w-12 bg-[#0f0f0f] border border-white/5 rounded-full flex flex-col items-center py-3 gap-1 self-center shadow-[0_12px_32px_-18px_rgba(0,0,0,0.9)]">
+        {navItems.map((item) => {
+          const Icon = item.icon;
+          const isActive = activeTab === item.id;
+          const isDisabled = item.disabled;
 
-        const isDisabled = item.disabled;
-
-        return (
-          <button
-            key={item.id}
-            onClick={() => !isDisabled && setActiveTab(item.id)}
-            disabled={isDisabled}
-            className={`w-full flex flex-col items-center justify-center py-3 px-2 transition-colors relative ${isActive
-              ? 'text-white'
-              : isDisabled
-                ? 'text-zinc-700 cursor-not-allowed'
-                : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/5'
-              }`}
-          >
-            {isActive && (
-              <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-8 rounded-r-full" style={{ background: 'linear-gradient(135deg, #BF953F 0%, #FCF6BA 45%, #B38728 70%, #AA771C 100%)' }} />
-            )}
-            <Icon className="w-5 h-5" />
-            <span className="text-[10px] mt-1.5 font-medium">{item.label}</span>
-          </button>
-        );
-      })}
-
-      {/* Spacer */}
-      <div className="flex-1" />
+          return (
+            <button
+              key={item.id}
+              onClick={() => !isDisabled && setActiveTab(item.id)}
+              disabled={isDisabled}
+              className={`w-9 h-9 flex items-center justify-center transition-colors relative rounded-full ${isActive
+                ? 'text-white'
+                : isDisabled
+                  ? 'text-zinc-700 cursor-not-allowed'
+                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/5'
+                }`}
+            >
+              {isActive && (
+                <div className="absolute inset-0 rounded-full bg-white/[0.06]" />
+              )}
+              <Icon className="w-4 h-4 relative z-10" />
+              <span className="sr-only">{item.label}</span>
+            </button>
+          );
+        })}
+      </div>
 
       {/* Bottom: Plan/User Info */}
       {currentUser && (
         <Popover>
           <PopoverTrigger asChild>
-            <button className="w-full flex flex-col items-center py-2 px-2 text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer gap-2">
-              <div className="w-full mx-2 px-2 py-2 rounded-lg bg-white/5 text-center">
+            <button className="absolute bottom-1 left-1/2 -translate-x-1/2 w-9 h-9 rounded-full border border-white/5 bg-[#0f0f0f] flex items-center justify-center text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer">
+              <div className="hidden">
                 <p className="text-[9px] text-gray-400 font-medium">{planDetails.name}</p>
                 <p className="text-[10px] text-white font-semibold mt-0.5">
                   {creditsLeft} of {planDetails.totalCredits}
@@ -98,10 +91,10 @@ export default function SidebarNav({ activeTab, setActiveTab, user, onOpenPricin
                 <img
                   src={currentUser.photoURL}
                   alt="Profile"
-                  className="w-9 h-9 rounded-full border-2 border-[#F5A623]/50"
+                  className="w-8 h-8 rounded-full border border-[#F5A623]/50"
                 />
               ) : (
-                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-zinc-700 to-zinc-500 flex items-center justify-center text-white text-xs font-bold">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-zinc-700 to-zinc-500 flex items-center justify-center text-white text-xs font-bold">
                   {(currentUser.displayName || currentUser.email || 'U').charAt(0).toUpperCase()}
                 </div>
               )}
@@ -124,7 +117,7 @@ export default function SidebarNav({ activeTab, setActiveTab, user, onOpenPricin
               </Button>
               <Link to={createPageUrl('UserAccount')} className="block">
                 <Button variant="ghost" size="sm" className="w-full justify-start text-gray-300 hover:text-white hover:bg-white/10">
-                  <span className="text-sm">⚙️ Manage Account</span>
+                  <span className="text-sm">Manage Account</span>
                 </Button>
               </Link>
               <Button
@@ -142,7 +135,7 @@ export default function SidebarNav({ activeTab, setActiveTab, user, onOpenPricin
       )}
 
       {!currentUser && (
-        <div className="w-full flex flex-col items-center py-2 px-2">
+        <div className="absolute bottom-1 left-1/2 -translate-x-1/2 w-9 h-9 rounded-full border border-white/5 bg-[#0f0f0f] flex items-center justify-center">
           <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center">
             <span className="text-zinc-500 text-xs font-medium">?</span>
           </div>

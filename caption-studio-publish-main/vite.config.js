@@ -2,6 +2,8 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 
+const backendTarget = process.env.VITE_BACKEND_PROXY_TARGET || 'http://localhost:8000'
+
 export default defineConfig({
   plugins: [react()],
   build: {
@@ -31,17 +33,17 @@ export default defineConfig({
     proxy: {
       // 1. Send API requests to Python
       '/api': {
-        target: 'http://localhost:8000',
+        target: backendTarget,
         changeOrigin: true,
       },
       // 2. Send Video requests to Python (FIXES BLACK SCREEN)
       '/uploads': {
-        target: 'http://localhost:8000',
+        target: backendTarget,
         changeOrigin: true,
       },
       // 3. Send Export requests to Python
       '/exports': {
-        target: 'http://localhost:8000',
+        target: backendTarget,
         changeOrigin: true,
       },
     }

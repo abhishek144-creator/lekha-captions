@@ -1059,6 +1059,7 @@ CACHE_DIR = os.path.abspath("cache")
 TRANSCRIPTION_CACHE_DIR = os.path.join(CACHE_DIR, "transcriptions")
 RENDER_CACHE_DIR = os.path.join(CACHE_DIR, "renders")
 DEAD_LETTER_DIR = os.path.join(CACHE_DIR, "dead_letter")
+EXPORT_RENDERER_VERSION = "2026-05-09-template-snapshot-debug-v3"
 
 for d in [UPLOAD_DIR, EXPORT_DIR, FONTS_DIR, CACHE_DIR, TRANSCRIPTION_CACHE_DIR, RENDER_CACHE_DIR, DEAD_LETTER_DIR]:
     os.makedirs(d, exist_ok=True)
@@ -1074,6 +1075,8 @@ class CaptionItem(BaseModel):
     animation: str = "none"
     is_text_element: bool = False
     custom_style: Optional[Dict[str, Any]] = None
+    template_id: str = ""
+    applied_template_style: Optional[Dict[str, Any]] = None
     word_styles: Dict[str, Any] = {}
     words: List[Any] = []
 
@@ -1193,6 +1196,58 @@ def _sanitize_export_request_payload(payload: Optional[Dict[str, Any]]) -> Dict[
     return sanitized
 
 
+def _write_last_export_request_debug(
+    *,
+    export_job_id: str,
+    file_id: str,
+    quality: str,
+    fps: int,
+    style: Dict[str, Any],
+    captions: List[Dict[str, Any]],
+    word_layouts: Dict[str, Any],
+) -> None:
+    """Write the last export request style so template handoff bugs are inspectable."""
+    try:
+        first_caption = next((c for c in captions if c and not c.get("is_text_element")), {})
+        should_use_dom = False
+        try:
+            should_use_dom = bool(processor._should_use_dom_template_renderer(style))
+        except Exception:
+            should_use_dom = False
+        debug_payload = {
+            "renderer_version": EXPORT_RENDERER_VERSION,
+            "export_job_id": export_job_id,
+            "file_id": file_id,
+            "quality": quality,
+            "fps": fps,
+            "style_template_id": style.get("template_id", ""),
+            "style_font_family": style.get("font_family", ""),
+            "style_font_size": style.get("font_size"),
+            "style_font_weight": style.get("font_weight"),
+            "style_secondary_color": style.get("secondary_color", ""),
+            "style_has_shadow": style.get("has_shadow"),
+            "style_shadow_blur": style.get("shadow_blur"),
+            "style_shadow_offset_x": style.get("shadow_offset_x"),
+            "style_shadow_offset_y": style.get("shadow_offset_y"),
+            "style_preview_width": style.get("preview_width"),
+            "style_preview_height": style.get("preview_height"),
+            "style_preview_container_width": style.get("preview_container_width"),
+            "style_preview_container_height": style.get("preview_container_height"),
+            "style_preview_template_font_px": style.get("preview_template_font_px"),
+            "style_template_snapshot": style.get("template_snapshot"),
+            "first_caption_template_id": first_caption.get("template_id", ""),
+            "first_caption_applied_template_style": first_caption.get("applied_template_style"),
+            "captions_count": len(captions),
+            "word_layout_count": len(word_layouts or {}),
+            "should_use_dom_template_renderer": should_use_dom,
+            "written_at": datetime.utcnow().isoformat() + "Z",
+        }
+        with open(os.path.join(CACHE_DIR, "last_export_request_debug.json"), "w", encoding="utf-8") as f:
+            json.dump(debug_payload, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        _json_log("warning", "last_export_request_debug_write_failed", error=str(e))
+
+
 def _extract_bearer_token(request: Request) -> str:
     auth_header = (request.headers.get("authorization") or "").strip()
     if auth_header.lower().startswith("bearer "):
@@ -1282,6 +1337,7 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
     # Reuse rendered artifact for identical request payload.
     media_hash = _compute_media_hash(input_path)
     request_hash = hashlib.sha256(json.dumps({
+        "renderer_version": EXPORT_RENDERER_VERSION,
         "media_hash": media_hash,
         "captions": captions,
         "style": req.style,
@@ -1291,10 +1347,20 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
     }, sort_keys=True).encode("utf-8")).hexdigest()
     cached_render_path = os.path.join(RENDER_CACHE_DIR, f"{request_hash}.mp4")
 
-    output_filename = f"export_{req.file_id}.mp4"
+    output_filename = f"export_{req.file_id}_{request_hash[:12]}.mp4"
     output_path = os.path.join(EXPORT_DIR, output_filename)
     queue_entered_at = time.time()
     _set_export_job(export_job_id, "queued", queue_entered_at=queue_entered_at)
+    style_with_quality = {**req.validated_style(), 'quality': preset["quality"], 'fps': preset["fps"]}
+    _write_last_export_request_debug(
+        export_job_id=export_job_id,
+        file_id=req.file_id,
+        quality=preset["quality"],
+        fps=preset["fps"],
+        style=style_with_quality,
+        captions=captions,
+        word_layouts=req.word_layouts,
+    )
 
     if os.path.exists(cached_render_path):
         shutil.copy2(cached_render_path, output_path)
@@ -1307,7 +1373,6 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
         queue_wait_ms = int((processing_started_at - queue_entered_at) * 1000)
         _set_export_job(export_job_id, "processing", processing_started_at=processing_started_at, queue_wait_ms=queue_wait_ms)
         _log(rid, f"Starting render now job={export_job_id}")
-        style_with_quality = {**req.validated_style(), 'quality': preset["quality"], 'fps': preset["fps"]}
         result = await processor.burn_only(input_path, output_path, captions, style_with_quality, req.word_layouts)
         if not result.get('success'):
             raise HTTPException(status_code=500, detail=result.get('error') or "Render failed")
