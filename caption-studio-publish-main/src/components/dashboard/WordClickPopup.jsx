@@ -153,6 +153,7 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
   }, [word, position?.x, position?.y, dragX, dragY]);
 
   if (!position) return null;
+  const isMobileViewport = typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches;
 
   return (
     <>
@@ -172,13 +173,16 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
         x={dragX}
         y={dragY}
         data-word-popup-panel="true"
-        className="fixed z-[99999] bg-zinc-900 border border-white/10 rounded-xl shadow-2xl overflow-hidden w-[300px]"
+        className="fixed z-[99999] bg-zinc-900 border border-white/10 rounded-xl shadow-2xl overflow-hidden w-[300px] max-w-[calc(100vw-24px)]"
         style={{
           position: 'fixed',
-          top: '124px',
-          right: '340px',
+          top: isMobileViewport ? 'auto' : '124px',
+          right: isMobileViewport ? '12px' : '340px',
+          bottom: isMobileViewport ? 'max(12px, env(safe-area-inset-bottom))' : 'auto',
+          left: isMobileViewport ? '12px' : 'auto',
+          width: isMobileViewport ? 'auto' : '300px',
           zIndex: 99999,
-          maxHeight: 'calc(100vh - 200px)',
+          maxHeight: isMobileViewport ? 'min(70dvh, 560px)' : 'calc(100vh - 200px)',
           backgroundColor: 'rgba(24, 24, 27, 0.95)',
           backdropFilter: 'blur(12px)',
         }}
@@ -249,7 +253,7 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
           </TabsList>
 
           <div
-            className="p-3 max-h-[calc(100vh-320px)] overflow-y-auto custom-scrollbar bg-zinc-950/95"
+            className="p-3 max-h-[min(54dvh,calc(100vh-320px))] overflow-y-auto custom-scrollbar bg-zinc-950/95"
             onPointerDown={(e) => e.stopPropagation()}
           >
 

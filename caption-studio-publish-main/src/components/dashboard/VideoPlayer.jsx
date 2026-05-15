@@ -129,7 +129,6 @@ function renderWbwText(text, variant = 'wbw-rise', impClass = 'imp-bold', active
     </span>
   );
 }
-
 function extractOriginalTemplateRuntimeCss() {
   const style = originalTemplateHtml.match(/<style>([\s\S]*?)<\/style>/i)?.[1] || '';
   const startToken = '/* ===== SENTENCE BLOCKS ===== */';
@@ -632,8 +631,6 @@ function computeWordEffectCSS(ws) {
     default: return {};
   }
 }
-
-
 // Memoized video element — prevents React from touching the <video> DOM node during
 // parent re-renders. Without this, re-renders from scrubbing/state changes cause the
 // browser to re-composite the video layer, which can show a black frame on some systems.
@@ -1333,7 +1330,7 @@ export default function VideoPlayer({
                         : (draggingWord?.captionId === caption.id && draggingWord?.wordIndex === wordIndex ? 'grabbing' : 'grab'),
                       animation: wordAnimation,
                     }}
-                    onMouseDown={detached ? undefined : (e) => handleWordMouseDown(e, caption, wordIndex, false, false, 'template')}
+                    onPointerDown={detached ? undefined : (e) => handleWordMouseDown(e, caption, wordIndex, false, false, 'template')}
                     onClick={(e) => {
                       if (detached || Date.now() - lastDragDropTime.current < 150) return;
                       if (setWordPopup) {
@@ -1451,7 +1448,7 @@ export default function VideoPlayer({
             } : {}),
             ...emphasisStyle,
           }}
-          onMouseDown={(e) => handleWordMouseDown(e, caption, wordIndex, false, true)}
+          onPointerDown={(e) => handleWordMouseDown(e, caption, wordIndex, false, true)}
           onClick={(e) => {
             if (Date.now() - lastDragDropTime.current < 150) return;
             if (setWordPopup) {
@@ -1645,6 +1642,7 @@ export default function VideoPlayer({
     if (!selectedDetachedWord || !setCaptions) return;
     e.preventDefault();
     e.stopPropagation();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
     if (addToHistory) addToHistory();
 
     const captionId = selectedDetachedWord.caption.id;
@@ -2020,6 +2018,7 @@ export default function VideoPlayer({
 
     e.preventDefault();
     e.stopPropagation();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
     if (addToHistory) addToHistory();
     setIsDragging(true);
     setDragStartY(e.clientY);
@@ -2032,6 +2031,7 @@ export default function VideoPlayer({
     if (!setCaptions || e.target.classList.contains('text-resize-handle')) return;
     e.preventDefault();
     e.stopPropagation();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
     if (addToHistory) addToHistory();
     setDraggedElementId(elementId);
     setElementDragStart({
@@ -2045,6 +2045,7 @@ export default function VideoPlayer({
   const handleTextElementResizeDown = (e, elementId, currentStyle) => {
     e.preventDefault();
     e.stopPropagation();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
     if (addToHistory) addToHistory();
     setResizedElementId(elementId);
     setElementResizeStart({
@@ -2061,6 +2062,7 @@ export default function VideoPlayer({
     if (!setCaptions) return;
     e.preventDefault();
     e.stopPropagation();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
 
     const customStyle = caption?.wordStyles?.[`${caption?.id}-${wordIndex}`] || {};
     const renderedOffset = getWordRenderOffset(customStyle);
@@ -2371,6 +2373,9 @@ export default function VideoPlayer({
     const handleNativeMouseUp = () => {
       document.removeEventListener('mousemove', handleNativeMouseMove);
       document.removeEventListener('mouseup', handleNativeMouseUp);
+      document.removeEventListener('pointermove', handleNativeMouseMove);
+      document.removeEventListener('pointerup', handleNativeMouseUp);
+      document.removeEventListener('pointercancel', handleNativeMouseUp);
       
       // Now perform the final React state update to save the new coordinates
       if (hasMoved) {
@@ -2464,11 +2469,15 @@ export default function VideoPlayer({
 
     document.addEventListener('mousemove', handleNativeMouseMove);
     document.addEventListener('mouseup', handleNativeMouseUp);
+    document.addEventListener('pointermove', handleNativeMouseMove, { passive: false });
+    document.addEventListener('pointerup', handleNativeMouseUp);
+    document.addEventListener('pointercancel', handleNativeMouseUp);
   }
 
   const handleResizeMouseDown = (e) => {
     e.preventDefault();
     e.stopPropagation();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
     if (addToHistory) addToHistory();
     const captionBox = e.currentTarget?.parentElement;
     const measuredWidth = captionBox?.getBoundingClientRect?.().width || captionWidth || 300;
@@ -2627,10 +2636,16 @@ export default function VideoPlayer({
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('pointermove', handleMouseMove, { passive: false });
+    document.addEventListener('pointerup', handleMouseUp);
+    document.addEventListener('pointercancel', handleMouseUp);
 
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('pointermove', handleMouseMove);
+      document.removeEventListener('pointerup', handleMouseUp);
+      document.removeEventListener('pointercancel', handleMouseUp);
     };
   }, [isDragging, dragStartY, dragStartPos, setCaptionStyle, setCaptions, draggedElementId, resizedElementId, elementDragStart, elementResizeStart]);
 
@@ -2674,10 +2689,16 @@ export default function VideoPlayer({
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('pointermove', handleMouseMove, { passive: false });
+    document.addEventListener('pointerup', handleMouseUp);
+    document.addEventListener('pointercancel', handleMouseUp);
 
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('pointermove', handleMouseMove);
+      document.removeEventListener('pointerup', handleMouseUp);
+      document.removeEventListener('pointercancel', handleMouseUp);
     };
   }, [isResizing, resizeDirection, resizeStartFontSize, resizeStartWidth, resizeStartX, resizeStartY, setCaptionStyle]);
 
@@ -2798,7 +2819,7 @@ export default function VideoPlayer({
           userSelect: 'none',
           pointerEvents: 'auto',
         }}
-        onMouseDown={(e) => {
+        onPointerDown={(e) => {
           e.preventDefault();
           e.stopPropagation();
           if (e.target.closest('.word-resize-handle')) return;
@@ -2813,7 +2834,7 @@ export default function VideoPlayer({
         <button
           type="button"
           className="absolute -right-4 -top-4 z-[96] flex h-6 w-6 items-center justify-center rounded-full border border-white/20 bg-[#141418] text-white/80 shadow-[0_8px_20px_-12px_rgba(0,0,0,0.95)] transition-colors hover:border-red-400/60 hover:bg-red-500/12 hover:text-red-300"
-          onMouseDown={(e) => {
+          onPointerDown={(e) => {
             e.preventDefault();
             e.stopPropagation();
           }}
@@ -2851,7 +2872,7 @@ export default function VideoPlayer({
         ].map((handle) => (
           <span
             key={handle.classes}
-            onMouseDown={handleDetachedWordResizeStart}
+            onPointerDown={handleDetachedWordResizeStart}
             onDragStart={(e) => e.preventDefault()}
             className={`word-resize-handle absolute z-[95] flex h-8 w-8 items-center justify-center rounded-full bg-transparent ${handle.classes}`}
             title="Resize word"
@@ -2871,7 +2892,7 @@ export default function VideoPlayer({
             <span
               className="flex h-6 w-6 items-center justify-center rounded-full border border-[#d8d2e8] bg-white text-[#4f4f5a] shadow-[0_2px_5px_rgba(15,15,20,0.16)] transition-transform hover:scale-105"
               style={{ cursor: 'grab' }}
-              onMouseDown={handleDetachedWordRotateStart}
+              onPointerDown={handleDetachedWordRotateStart}
               title="Rotate word"
               data-video-control
             >
@@ -2880,7 +2901,7 @@ export default function VideoPlayer({
             <span
               className="flex h-6 w-6 items-center justify-center rounded-full border border-[#d8d2e8] bg-white text-[#4f4f5a] shadow-[0_2px_5px_rgba(15,15,20,0.16)] transition-transform hover:scale-105"
               style={{ cursor: 'move' }}
-              onMouseDown={(e) => {
+              onPointerDown={(e) => {
                 const selectionBox = e.currentTarget.closest('[data-selected-word-box="true"]');
                 if (!selectionBox) return;
                 handleWordMouseDown({
@@ -2967,14 +2988,14 @@ export default function VideoPlayer({
           )}
         <div
           ref={videoContainerRef}
-          className={`lekha-video-frame relative aspect-[9/16] bg-black shadow-[0_35px_120px_rgba(0,0,0,0.72)] ${isVideoFullscreen ? 'h-auto max-h-[calc(100dvh-92px)]' : 'h-full max-h-[calc(100dvh-360px)] md:max-h-[calc(100dvh-296px)]'}`}
+          className={`lekha-video-frame relative aspect-[9/16] touch-none select-none bg-black shadow-[0_35px_120px_rgba(0,0,0,0.72)] ${isVideoFullscreen ? 'h-auto max-h-[calc(100dvh-92px)]' : 'h-full max-h-[calc(100dvh-360px)] md:max-h-[calc(100dvh-296px)]'}`}
             style={{
               transform: `translate(${canvasOffset.x}px, ${canvasOffset.y}px) scale(${canvasScale})`,
               transformOrigin: 'center center',
               transition: isCanvasPanning ? 'none' : 'transform 0.1s ease',
               cursor: activeCanvasTool === 'move' ? (isCanvasPanning ? 'grabbing' : 'grab') : 'default',
             }}
-            onMouseDown={handleCanvasMouseDown}
+            onPointerDown={handleCanvasMouseDown}
             onClick={handleVideoSurfaceClick}
           >
           {showLayoutGuides && (
@@ -3167,7 +3188,7 @@ export default function VideoPlayer({
                   zIndex: caption.isTextElement ? 20 : 10,
                   pointerEvents: setCaptionStyle ? 'auto' : 'none',
                 }}
-                onMouseDown={(e) => {
+                onPointerDown={(e) => {
                   e.stopPropagation();
                   if (setCaptionStyle && !isEditingThis && !hasDetachedWords) {
                     handleMouseDown(e);
@@ -3219,25 +3240,25 @@ export default function VideoPlayer({
                       <div
                         className="resize-handle absolute top-0 left-0 right-0 h-4 cursor-ns-resize opacity-0 group-hover:opacity-100 transition-opacity"
                         data-resize-edge="top"
-                        onMouseDown={handleResizeMouseDown}
+                        onPointerDown={handleResizeMouseDown}
                         style={{ background: 'linear-gradient(to bottom, rgba(168, 85, 247, 0.4), transparent)' }}
                       />
                       <div
                         className="resize-handle absolute left-0 top-0 bottom-0 w-4 cursor-ew-resize opacity-0 group-hover:opacity-100 transition-opacity"
                         data-resize-edge="left"
-                        onMouseDown={handleResizeMouseDown}
+                        onPointerDown={handleResizeMouseDown}
                         style={{ background: 'linear-gradient(to right, rgba(168, 85, 247, 0.4), transparent)' }}
                       />
                       <div
                         className="resize-handle absolute right-0 top-0 bottom-0 w-4 cursor-ew-resize opacity-0 group-hover:opacity-100 transition-opacity"
                         data-resize-edge="right"
-                        onMouseDown={handleResizeMouseDown}
+                        onPointerDown={handleResizeMouseDown}
                         style={{ background: 'linear-gradient(to left, rgba(168, 85, 247, 0.4), transparent)' }}
                       />
                       <div
                         className="resize-handle absolute bottom-0 right-0 w-6 h-6 opacity-0 group-hover:opacity-100 transition-opacity"
                         data-resize-edge="corner"
-                        onMouseDown={handleResizeMouseDown}
+                        onPointerDown={handleResizeMouseDown}
                         style={{
                           borderRight: '3px solid rgba(168, 85, 247, 0.7)',
                           borderBottom: '3px solid rgba(168, 85, 247, 0.7)',
@@ -3532,7 +3553,7 @@ export default function VideoPlayer({
                                 ? 'default'
                                 : (draggingWord?.captionId === caption.id && draggingWord?.wordIndex === wordIndex ? 'grabbing' : 'default'),
                             }}
-                            onMouseDown={detached ? undefined : (e) => handleWordMouseDown(e, caption, wordIndex)}
+                            onPointerDown={detached ? undefined : (e) => handleWordMouseDown(e, caption, wordIndex)}
                             onClick={(e) => {
                               if (Date.now() - lastDragDropTime.current < 150) return;
                               if (setWordPopup) {
@@ -3639,7 +3660,7 @@ export default function VideoPlayer({
                   padding: `${style.padding || 8}px`,
                   zIndex: style.zIndex || 50
                 }}
-                onMouseDown={(e) => {
+                onPointerDown={(e) => {
                   if (!isEditingThis) {
                     // Set this text element as selected
                     if (setSelectedCaptionId) setSelectedCaptionId(element.id);
@@ -3668,7 +3689,7 @@ export default function VideoPlayer({
                   <>
                     <div
                       className="text-resize-handle absolute -right-1 -bottom-1 w-6 h-6 bg-[#F5A623] rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-nwse-resize flex items-center justify-center shadow-lg"
-                      onMouseDown={(e) => handleTextElementResizeDown(e, element.id, style)}
+                      onPointerDown={(e) => handleTextElementResizeDown(e, element.id, style)}
                     >
                       <div className="w-3 h-3 border-r-2 border-b-2 border-white"></div>
                     </div>
@@ -3741,7 +3762,7 @@ export default function VideoPlayer({
                             height: `${(style.fontSize || 18) * 1.4}px`,
                             verticalAlign: 'top',
                           }}
-                          onMouseDown={(e) => handleWordMouseDown(e, element, wordIndex, true)}
+                          onPointerDown={(e) => handleWordMouseDown(e, element, wordIndex, true)}
                           onClick={(e) => {
                             if (Date.now() - lastDragDropTime.current < 150) return;
                             if (setWordPopup) {
@@ -4168,4 +4189,3 @@ export default function VideoPlayer({
     </>
   );
 }
-

@@ -782,7 +782,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
 
   return (
     <Sheet open={open} onOpenChange={handleSheetOpenChange}>
-      <SheetContent className="bg-zinc-900 border-white/10 text-white w-full sm:max-w-md">
+      <SheetContent className="bg-zinc-900 border-white/10 text-white w-full overflow-y-auto pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:max-w-md">
         <SheetHeader>
           <SheetTitle className="text-xl font-semibold text-white">
             Export
