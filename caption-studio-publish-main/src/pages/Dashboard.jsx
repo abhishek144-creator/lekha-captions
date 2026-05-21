@@ -19,7 +19,7 @@ import MobileDashboardDock from '@/components/dashboard/MobileDashboardDock';
 import UploadModal from '@/components/dashboard/UploadModal';
 import ExportPanel from '@/components/dashboard/ExportPanel';
 import PricingModal from '@/components/dashboard/PricingModal';
-import AdvancedTemplateLibrary from '@/components/dashboard/AdvancedTemplateLibrary';
+import SidebarTemplateGallery20 from '@/components/dashboard/SidebarTemplateGallery20';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { extractWaveformData } from '@/components/dashboard/audioUtils';
 import { autoLoadFontForText, loadGoogleFont } from '@/components/dashboard/fontUtils';
@@ -192,7 +192,8 @@ export default function Dashboard() {
 
   // Force a clean session natively on page load, unless navigating back from Account
   useEffect(() => {
-    const isNavigationRestore = location.state?.restoreSession;
+    const params = new URLSearchParams(window.location.search);
+    const isNavigationRestore = location.state?.restoreSession || params.get('restoreSession') === '1';
 
     if (isNavigationRestore) {
       try {
@@ -238,7 +239,6 @@ export default function Dashboard() {
     setIsUploadModalOpen(false);
 
     // Clean up URL parameters if they exist
-    const params = new URLSearchParams(window.location.search);
     if (params.get('action') || params.get('session_reset')) {
       window.history.replaceState({}, '', window.location.pathname);
     }
@@ -591,11 +591,19 @@ export default function Dashboard() {
   };
 
   const handleApplyTemplate = async (templateStyle) => {
+    console.log('[DEBUG handleApplyTemplate] called with:', JSON.stringify(templateStyle, null, 2))
     // Hard Reset: properties that templates fully control are cleared before applying
     // so Template B never inherits BG, color, font, or animation from Template A.
     // Non-template properties (line_spacing, shadow, effects, position) are preserved.
     const TEMPLATE_OWNED_RESET = {
       template_id: '',
+      template_20_id: '',
+      template_source: '',
+      template_class: '',
+      template_name: '',
+      template_layout: '',
+      template_effect: '',
+      template_markup: '',
       font_family: 'Inter',
       font_size: 17,
       font_weight: '800',
@@ -626,7 +634,11 @@ export default function Dashboard() {
       template_applied_at: _previousTemplateAppliedAt,
       ...templateStyleForSnapshot
     } = templateStyle || {};
-    const templateSnapshot = templateStyleForSnapshot?.template_id
+    const hasTemplateSelection = !!(
+      templateStyleForSnapshot?.template_id
+      || templateStyleForSnapshot?.template_20_id
+    );
+    const templateSnapshot = hasTemplateSelection
       ? JSON.parse(JSON.stringify(templateStyleForSnapshot))
       : null;
     const merged = {
@@ -639,13 +651,31 @@ export default function Dashboard() {
     const nextCaptions = captions.map(cap => {
       if (!cap || cap.isTextElement) return cap;
       if (!templateSnapshot) {
-        const { applied_template_style: _appliedTemplateStyle, template_id: _captionTemplateId, ...rest } = cap;
+        const {
+          applied_template_style: _appliedTemplateStyle,
+          template_id: _captionTemplateId,
+          template_20_id: _captionTemplate20Id,
+          template_source: _captionTemplateSource,
+          template_class: _captionTemplateClass,
+          template_name: _captionTemplateName,
+          template_layout: _captionTemplateLayout,
+          template_effect: _captionTemplateEffect,
+          template_markup: _captionTemplateMarkup,
+          ...rest
+        } = cap;
         return rest;
       }
       return {
         ...cap,
         wordStyles: stripDetachedWordLayout(cap.wordStyles || {}),
-        template_id: templateSnapshot.template_id,
+        template_id: templateSnapshot.template_id || '',
+        template_20_id: templateSnapshot.template_20_id || '',
+        template_source: templateSnapshot.template_source || '',
+        template_class: templateSnapshot.template_class || '',
+        template_name: templateSnapshot.template_name || '',
+        template_layout: templateSnapshot.template_layout || '',
+        template_effect: templateSnapshot.template_effect || '',
+        template_markup: templateSnapshot.template_markup || '',
         applied_template_style: templateSnapshot,
       };
     });
@@ -843,7 +873,7 @@ export default function Dashboard() {
 
     if (activeTab === 'templates') {
       return (
-        <AdvancedTemplateLibrary
+        <SidebarTemplateGallery20
           currentStyle={captionStyle}
           onApplyTemplate={handleApplyTemplate}
           onBack={() => setActiveTab('captions')}
