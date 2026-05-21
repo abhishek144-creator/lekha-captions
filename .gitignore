@@ -1,1 +1,17 @@
 .claude/worktrees/
+
+# Local runtime/cache output
+caption-studio-publish-main/cache/
+caption-studio-publish-main/backend/cache/
+caption-studio-publish-main/*.log
+caption-studio-publish-main/*.err.log
+
+# Local verification screenshots and temporary captures
+caption-studio-publish-main/codex-*.png
+caption-studio-publish-main/codex-*.jpg
+caption-studio-publish-main/tmp-*.png
+
+# Local dashboard extraction/backup artifacts
+caption-studio-publish-main/dashboard-backups/
+lekha_10_captemplates_batch06_cards.html
+lekha_cpt_throwaway_preview.html
