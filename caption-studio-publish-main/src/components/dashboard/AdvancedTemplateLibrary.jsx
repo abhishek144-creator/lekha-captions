@@ -8,7 +8,7 @@ const sanitizedOriginalTemplateHtml = originalTemplateHtml
   .replace(/\s+bis_skin_checked="[^"]*"/gi, '')
   .replace(/<!-- saved from url=.*?-->\s*/gi, '');
 
-const ADVANCED_TEMPLATE_PACK = [
+const FALLBACK_TEMPLATE_PACK = [
   { id: 't11', code: 'T11', name: 'Spiritual Awakening', formula: '3-Style', stageLabel: 'CLUSTER', mood: 'spiritual' },
   { id: 't12', code: 'T12', name: 'Intimate Confession', formula: '2-Style', stageLabel: 'TYPEWRITER', mood: 'intimate' },
   { id: 't13', code: 'T13', name: 'Startup Hustle', formula: '2-Style', stageLabel: 'STAMP IN', mood: 'hustle' },
@@ -62,6 +62,11 @@ const ADVANCED_TEMPLATE_STYLE = {
   t33: { font_family: 'Noto Sans', font_size: 23, font_weight: '700', secondary_color: '#00E5FF', text_color: '#FFFFFF' },
   t34: { font_family: 'Syne', font_size: 24, font_weight: '800', secondary_color: '#00E5FF', text_color: '#FFFFFF', text_case: 'uppercase' },
   t35: { font_family: 'Crimson Text', font_size: 24, font_style: 'italic', font_weight: '600', secondary_color: '#FFFFFF', text_color: '#DCD2DC' },
+  t36: { font_family: 'Inter', font_size: 23, font_weight: '800', secondary_color: '#D4AF37', text_color: '#FFFFFF' },
+  t37: { font_family: 'Rajdhani', font_size: 25, font_weight: '800', secondary_color: '#FFFFFF', text_color: '#FFFFFF', text_case: 'uppercase' },
+  t38: { font_family: 'Libre Baskerville', font_size: 23, font_weight: '700', secondary_color: '#D4AF37', text_color: '#FFFFFF' },
+  t39: { font_family: 'IBM Plex Mono', font_size: 22, font_weight: '700', secondary_color: '#FF3D71', text_color: '#FFFFFF', text_case: 'uppercase' },
+  t40: { font_family: 'Crimson Text', font_size: 24, font_weight: '600', secondary_color: '#D4AF37', text_color: '#FFFFFF' },
 };
 
 function buildAppliedTemplateStyle(template) {
@@ -79,7 +84,45 @@ function buildAppliedTemplateStyle(template) {
   };
 }
 
-const TEMPLATE_BLOCKS = {
+const BASIC_TEMPLATE_STYLE = {
+  't-106': { font_family: 'Noto Sans', font_size: 24, font_weight: '800', text_color: '#FFFFFF', has_shadow: true, shadow_color: '#000000', shadow_blur: 3, shadow_offset_x: 1, shadow_offset_y: 2 },
+  't-52': { font_family: 'Inter', font_size: 26, font_weight: '900', text_color: '#FFFFFF' },
+  't-T4': { font_family: 'Playfair Display', font_size: 24, font_style: 'italic', text_color: '#f9a8d4' },
+  't-WS1': { font_family: 'Raleway', font_size: 24, font_weight: '800', text_color: '#FFFFFF', secondary_color: '#FFE600', highlight_color: '#FFE600' },
+  't-115': { font_family: 'Noto Sans', font_size: 28, font_weight: '900', font_style: 'italic', text_color: '#FFFFFF', secondary_color: '#39FF14', has_shadow: true, shadow_color: '#39FF14', shadow_blur: 10, shadow_offset_x: 0, shadow_offset_y: 0 },
+  't-104': { font_family: 'Noto Sans', font_size: 26, font_weight: '900', text_color: '#FFFFFF', secondary_color: '#B28DFF', has_stroke: true, stroke_color: '#B28DFF', stroke_width: 2 },
+  't-109': { font_family: 'Noto Sans', font_size: 26, font_weight: '900', text_color: '#FFFFFF', secondary_color: '#E01A1A', has_shadow: true, shadow_color: '#E01A1A', shadow_offset_x: 3, shadow_offset_y: 3, shadow_blur: 0 },
+  't-95': { font_family: 'Montserrat', font_size: 30, text_color: '#FFFFFF', secondary_color: '#0055FF' },
+  't-102': { font_family: 'Noto Sans', font_size: 22, font_weight: '800', text_color: '#1F2022', secondary_color: '#1F2022', has_background: true, background_color: '#FFFFFF', background_opacity: 1, background_padding: 10 },
+  't-T5': { font_family: 'Montserrat', font_size: 24, font_weight: '800', font_style: 'italic', text_color: '#333333', has_background: true, background_color: '#ECF00F', background_opacity: 1, background_padding: 10 },
+  't-T6': { font_family: 'Montserrat', font_size: 24, font_weight: '800', font_style: 'italic', text_color: '#FFFFFF', secondary_color: '#FFFFFF', has_background: true, background_color: '#F97316', background_opacity: 1, background_padding: 8 },
+  't-103': { font_family: 'Noto Sans', font_size: 22, font_weight: '800', text_color: '#FFFFFF', has_background: true, background_color: '#1e1e1e', background_opacity: 0.85, background_padding: 10 },
+  't-QW1': { font_family: 'Raleway', font_size: 20, font_weight: '500', font_style: 'italic', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#FFFFFF' },
+  't-36': { font_family: 'Noto Sans', font_size: 26, font_weight: '900', text_color: '#FFFFFF', secondary_color: '#00ffb3' },
+  't-105': { font_family: 'Noto Sans', font_size: 24, font_weight: '800', text_color: '#FFFFFF', has_stroke: true, stroke_color: '#000000', stroke_width: 1, has_shadow: true, shadow_color: '#000000', shadow_blur: 2, shadow_offset_x: 2, shadow_offset_y: 2 },
+  't-124': { font_family: 'Inter', font_size: 26, font_weight: '900', text_color: '#FFFFFF', has_shadow: true, shadow_color: '#ffffff', shadow_offset_x: 4, shadow_offset_y: 4, shadow_blur: 0 },
+  't-110': { font_family: 'Noto Sans', font_size: 24, font_weight: '800', text_color: '#FFFFFF', secondary_color: '#0066FF' },
+  't-56': { font_family: 'Inter', font_size: 26, font_weight: '900', text_color: '#FFFFFF', secondary_color: '#0066FF' },
+  't-119': { font_family: 'Inter', font_size: 24, font_weight: '800', text_color: '#FFFFFF', secondary_color: '#00FFCC' },
+  't-12': { font_family: 'Special Elite', font_size: 22, text_color: '#cc0000', secondary_color: '#cc0000', has_shadow: true, shadow_color: '#cc0000', shadow_blur: 10, shadow_offset_x: 0, shadow_offset_y: 0 },
+};
+
+function buildAppliedBasicTemplateStyle(template) {
+  return {
+    template_id: template.id,
+    ...(BASIC_TEMPLATE_STYLE[template.id] || {}),
+    has_background: BASIC_TEMPLATE_STYLE[template.id]?.has_background || false,
+    has_shadow: BASIC_TEMPLATE_STYLE[template.id]?.has_shadow || false,
+    has_stroke: BASIC_TEMPLATE_STYLE[template.id]?.has_stroke || false,
+    show_inactive: true,
+    text_opacity: 1,
+    position_y: 75,
+    line_spacing: 1.25,
+    word_spacing: 1,
+  };
+}
+
+const FALLBACK_TEMPLATE_BLOCKS = {
   t11: [{ id: 't11-b0', type: 'styled', label: 'CLUSTER' }, { id: 't11-b1', type: 'styled', label: 'BLUR FOCUS' }, { id: 't11-b2', type: 'plain', label: 'PLAIN' }, { id: 't11-b3', type: 'wbw-rise', label: 'WBW RISE' }],
   t12: [{ id: 't12-b0', type: 'styled', label: 'TYPEWRITER' }, { id: 't12-b1', type: 'styled', label: 'SLIDE-UP' }, { id: 't12-b2', type: 'wbw-rise', label: 'WBW RISE' }, { id: 't12-b3', type: 'wbw-slide', label: 'WBW SLIDE' }],
   t13: [{ id: 't13-b0', type: 'styled', label: 'STAMP IN' }, { id: 't13-b1', type: 'styled', label: 'TICKER ROLL' }, { id: 't13-b2', type: 'wbw-rise', label: 'WBW RISE' }, { id: 't13-b3', type: 'wbw-slide', label: 'WBW SLIDE' }],
@@ -107,8 +150,28 @@ const TEMPLATE_BLOCKS = {
   t35: [{ id: 't35-b0', type: 'styled', label: 'SECRET REVEAL' }, { id: 't35-b1', type: 'plain', label: 'PLAIN' }, { id: 't35-b2', type: 'plain', label: 'PLAIN' }, { id: 't35-b3', type: 'plain', label: 'PLAIN' }],
 };
 
-function extractOriginalStyle() {
-  return sanitizedOriginalTemplateHtml.match(/<style>([\s\S]*?)<\/style>/i)?.[1] || '';
+const fallbackTemplateById = Object.fromEntries(FALLBACK_TEMPLATE_PACK.map((template) => [template.id, template]));
+
+function decodeHtmlEntities(value = '') {
+  return String(value)
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+}
+
+function stripHtml(value = '') {
+  return decodeHtmlEntities(String(value).replace(/<[^>]+>/g, '')).trim();
+}
+
+function extractTemplateOrder() {
+  const ids = Array.from(
+    sanitizedOriginalTemplateHtml.matchAll(/<div class="tcard" id="card-([^"]+)"/gi),
+    ([, id]) => id,
+  );
+  return ids.length ? ids : Object.keys(ADVANCED_TEMPLATE_STYLE);
 }
 
 function extractCardMarkup(templateId) {
@@ -120,6 +183,105 @@ function extractCardMarkup(templateId) {
     ),
   );
   return match?.[0]?.trim() || '';
+}
+
+function extractTemplateBlocks(cardMarkup, templateId) {
+  const matches = cardMarkup.matchAll(
+    /<div class="sblock[^"]*" id="([^"]+)"[^>]*data-type="([^"]+)"[^>]*data-label="([^"]+)"/gi,
+  );
+  const parsedBlocks = Array.from(matches, ([, id, type, label]) => ({ id, type, label }));
+  return parsedBlocks.length ? parsedBlocks : (FALLBACK_TEMPLATE_BLOCKS[templateId] || []);
+}
+
+function extractTemplateCard(templateId) {
+  const fallback = fallbackTemplateById[templateId] || {
+    id: templateId,
+    code: templateId.toUpperCase(),
+    name: templateId.toUpperCase(),
+    formula: '',
+    stageLabel: '',
+    mood: '',
+  };
+  const cardMarkup = extractCardMarkup(templateId);
+  if (!cardMarkup) {
+    return {
+      ...fallback,
+      blocks: FALLBACK_TEMPLATE_BLOCKS[templateId] || [],
+      cardMarkup: '',
+    };
+  }
+
+  const blocks = extractTemplateBlocks(cardMarkup, templateId);
+  const stageLabel = cardMarkup.match(/<span class="stage-type-label"[^>]*>([^<]+)<\/span>/i)?.[1]?.trim()
+    || blocks[0]?.label
+    || fallback.stageLabel;
+
+  return {
+    ...fallback,
+    code: decodeHtmlEntities(cardMarkup.match(/<span class="tcard-id">([^<]+)<\/span>/i)?.[1]?.trim() || fallback.code),
+    name: decodeHtmlEntities(cardMarkup.match(/<span class="tcard-name">([^<]+)<\/span>/i)?.[1]?.trim() || fallback.name),
+    formula: decodeHtmlEntities(cardMarkup.match(/<span class="formula-badge[^"]*">([^<]+)<\/span>/i)?.[1]?.trim() || fallback.formula),
+    mood: decodeHtmlEntities(cardMarkup.match(/<span class="tcard-mood">([^<]+)<\/span>/i)?.[1]?.trim() || fallback.mood),
+    stageLabel: decodeHtmlEntities(stageLabel),
+    blocks,
+    cardMarkup,
+  };
+}
+
+const ADVANCED_TEMPLATE_PACK = extractTemplateOrder().map(extractTemplateCard);
+const TEMPLATE_BLOCKS = Object.fromEntries(
+  ADVANCED_TEMPLATE_PACK.map((template) => [template.id, template.blocks || FALLBACK_TEMPLATE_BLOCKS[template.id] || []]),
+);
+
+function extractCompleteDiv(markup, startIndex) {
+  const tagPattern = /<\/?div\b[^>]*>/gi;
+  tagPattern.lastIndex = startIndex;
+  let depth = 0;
+  let match;
+
+  while ((match = tagPattern.exec(markup))) {
+    depth += match[0].startsWith('</') ? -1 : 1;
+    if (depth === 0) {
+      return markup.slice(startIndex, tagPattern.lastIndex);
+    }
+  }
+
+  return '';
+}
+
+function extractBasicTemplateCards() {
+  const cards = [];
+  const cardPattern = /<div class="btcard[^"]*"/gi;
+  let match;
+
+  while ((match = cardPattern.exec(sanitizedOriginalTemplateHtml))) {
+    const cardMarkup = extractCompleteDiv(sanitizedOriginalTemplateHtml, match.index);
+    const name = stripHtml(cardMarkup.match(/<div class="btcard-name">([\s\S]*?)<\/div>/i)?.[1] || '');
+    const desc = stripHtml(cardMarkup.match(/<div class="btcard-desc">([\s\S]*?)<\/div>/i)?.[1] || '');
+    const id = cardMarkup.match(/class="[^"]*\b(t-[^"\s]+)/i)?.[1];
+    const bg = cardMarkup.match(/<div class="btcard-preview"[^>]*style="[^"]*background\s*:\s*([^;"]+)/i)?.[1]?.trim() || '#111';
+
+    if (name && id) {
+      cards.push({
+        id,
+        code: id.replace(/^t-/, ''),
+        name,
+        desc,
+        bg,
+        cardMarkup,
+      });
+    }
+
+    cardPattern.lastIndex = match.index + Math.max(cardMarkup.length, 1);
+  }
+
+  return cards;
+}
+
+const BASIC_TEMPLATE_PACK = extractBasicTemplateCards();
+
+function extractOriginalStyle() {
+  return sanitizedOriginalTemplateHtml.match(/<style>([\s\S]*?)<\/style>/i)?.[1] || '';
 }
 
 const iframeOverrides = (templateId) => `
@@ -136,15 +298,15 @@ const iframeOverrides = (templateId) => `
       display: flex !important;
       width: 100% !important;
       min-width: 0 !important;
-      height: 216px !important;
-      border-radius: 0 !important;
-      background: transparent !important;
+      height: 280px !important;
+      border-radius: 12px !important;
+      background: #0e0e12 !important;
     }
     #card-${templateId} .tcard-meta {
       display: none !important;
     }
     #card-${templateId} .stage {
-      height: 182px !important;
+      height: 258px !important;
       border-radius: 0 !important;
     }
     #card-${templateId} .sblock {
@@ -160,9 +322,13 @@ const iframeOverrides = (templateId) => `
       z-index: 2 !important;
     }
     #card-${templateId} .prog-dots {
-      height: 34px !important;
-      padding: 12px 0 10px !important;
-      background: rgba(0,0,0,0.28) !important;
+      height: 22px !important;
+      padding: 5px 0 7px !important;
+      background: #0e0e12 !important;
+      border-top: 1px solid rgba(255,255,255,0.08) !important;
+    }
+    #card-${templateId} .prog-dots .dot {
+      cursor: pointer !important;
     }
     #card-${templateId} .stage-type-label {
       bottom: 9px !important;
@@ -302,6 +468,10 @@ function buildTemplatePreviewDoc(templateId) {
           block.querySelectorAll('.imp-underline').forEach((el) => {
             el.classList.remove('in');
           });
+          block.querySelectorAll('.kf-fill').forEach((fill) => {
+            fill.style.transition = 'none';
+            fill.style.clipPath = 'inset(0 100% 0 0)';
+          });
         }
 
         function animateWordsIn(block) {
@@ -379,6 +549,30 @@ function buildTemplatePreviewDoc(templateId) {
           });
         }
 
+        function animateKaraoke(block) {
+          const token = runToken;
+          const words = block.querySelectorAll('.kf-word');
+          const perWord = Math.round(HOLD / (words.length + 0.5));
+          words.forEach((word) => {
+            const fill = word.querySelector('.kf-fill');
+            if (!fill) return;
+            fill.style.transition = 'none';
+            fill.style.clipPath = 'inset(0 100% 0 0)';
+          });
+          words.forEach((word, index) => {
+            schedule(() => {
+              if (token !== runToken || !block.classList.contains('active')) return;
+              const fill = word.querySelector('.kf-fill');
+              if (!fill) return;
+              fill.style.transition = 'none';
+              fill.style.clipPath = 'inset(0 100% 0 0)';
+              void fill.offsetWidth;
+              fill.style.transition = 'clip-path ' + perWord + 'ms linear';
+              fill.style.clipPath = 'inset(0 0% 0 0)';
+            }, index * perWord);
+          });
+        }
+
         function enterBlock(blocks, index, label) {
           const block = blocks[index];
           if (!block) return;
@@ -392,12 +586,22 @@ function buildTemplatePreviewDoc(templateId) {
           void block.offsetHeight;
 
           const isPlain = block.dataset.type === 'plain';
-          const isWBW = block.dataset.type === 'wbw-rise' || block.dataset.type === 'wbw-slide';
+          const isWBW = block.dataset.type === 'wbw-rise' || block.dataset.type === 'wbw-slide' || block.dataset.type === 'wbw-seq' || block.dataset.type === 'wbw-seq-fade';
+          const isKaraoke = block.dataset.type === 'karaoke';
 
           if (isPlain) {
             block.style.transition = 'none';
             block.style.opacity = '1';
             block.classList.add('active');
+          } else if (isKaraoke) {
+            block.style.transition = 'none';
+            block.style.opacity = '1';
+            block.classList.add('active');
+            requestAnimationFrame(() => {
+              requestAnimationFrame(() => {
+                animateKaraoke(block);
+              });
+            });
           } else if (isWBW) {
             block.style.transition = 'none';
             block.style.opacity = '1';
@@ -449,10 +653,10 @@ function buildTemplatePreviewDoc(templateId) {
           });
         }
 
-        function runSequencer(blocks, dotsEl, labelEl) {
+        function runSequencer(blocks, dotsEl, labelEl, startIndex = 0) {
           clearPendingTimers();
           runToken += 1;
-          let current = 0;
+          let current = Math.max(0, Math.min(blocks.length - 1, startIndex));
           const token = runToken;
           function showNext() {
             if (token !== runToken) return;
@@ -468,7 +672,7 @@ function buildTemplatePreviewDoc(templateId) {
 
           enterBlock(blocks, current, labelEl);
           updateDots(dotsEl, current);
-          current = 1;
+          current = (current + 1) % blocks.length;
           schedule(showNext, HOLD);
           schedule(() => {
             if (token === runToken) enforceSingleBlock(blocks, activeBlockIndex);
@@ -484,7 +688,7 @@ function buildTemplatePreviewDoc(templateId) {
           el.style.opacity = '0';
           el.style.visibility = 'hidden';
           el.style.zIndex = '0';
-          el.querySelectorAll('.wbw-rise, .wbw-slide').forEach((wbwEl) => buildWBW(wbwEl));
+          el.querySelectorAll('.wbw-rise, .wbw-slide, .wbw-seq, .wbw-seq-fade').forEach((wbwEl) => buildWBW(wbwEl));
           return el;
         }).filter(Boolean);
         const dotsEl = document.getElementById('dots-${templateId}');
@@ -496,6 +700,25 @@ function buildTemplatePreviewDoc(templateId) {
         }
 
         if (blocks.length && dotsEl) {
+          if (!dotsEl.dataset.dotHandlersBound) {
+            dotsEl.dataset.dotHandlersBound = 'true';
+            dotsEl.querySelectorAll('.dot').forEach((dot, dotIndex) => {
+              dot.setAttribute('role', 'button');
+              dot.setAttribute('tabindex', '0');
+              dot.setAttribute('aria-label', 'Play caption line ' + (dotIndex + 1));
+              dot.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                runSequencer(blocks, dotsEl, labelEl, dotIndex);
+              });
+              dot.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  runSequencer(blocks, dotsEl, labelEl, dotIndex);
+                }
+              });
+            });
+          }
           runSequencer(blocks, dotsEl, labelEl);
           setInterval(() => enforceSingleBlock(blocks, activeBlockIndex), 250);
           window.addEventListener('pageshow', () => runSequencer(blocks, dotsEl, labelEl));
@@ -565,6 +788,202 @@ function buildTemplatePreviewDoc(templateId) {
   `;
 }
 
+const basicIframeOverrides = `
+  <style>
+    html, body {
+      width: 100%;
+      min-height: 0;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: transparent !important;
+    }
+    .btcard {
+      display: flex !important;
+      width: 100% !important;
+      min-width: 0 !important;
+      height: 280px !important;
+      border-radius: 12px !important;
+      background: #0e0e12 !important;
+      transform: none !important;
+      box-shadow: none !important;
+    }
+    .btcard-info {
+      display: none !important;
+    }
+    .btcard-preview {
+      height: 258px !important;
+      border-radius: 0 !important;
+    }
+    .bt-prog-dots {
+      height: 22px !important;
+      padding: 5px 0 7px !important;
+      background: #0e0e12 !important;
+      border-top: 1px solid rgba(255,255,255,0.08) !important;
+    }
+    .bt-prog-dots .dot {
+      cursor: pointer !important;
+    }
+  </style>
+`;
+
+function buildBasicTemplatePreviewDoc(template) {
+  const previewScript = `
+    <script>
+      (() => {
+        const card = document.querySelector('.btcard');
+        if (!card) return;
+
+        let idx = 2;
+        let currentBlock = -1;
+        const blocks = Array.from(card.querySelectorAll('.bt-cap-block'));
+        const dots = Array.from(card.querySelectorAll('.bt-prog-dots .dot'));
+        const wordCount = Math.max(1, card.querySelectorAll('.word[data-wi]').length);
+
+        function cls(wi, imp) {
+          let className = 'word' + (imp ? ' imp' : '');
+          if (wi <= idx) className += ' active';
+          if (wi === idx) className += ' current';
+          return className;
+        }
+
+        function activateWholeLine(blockIndex) {
+          card.querySelectorAll('.word[data-wi]').forEach((word) => {
+            if (word.closest('.cpt-wrap') || word.closest('.t-102') || word.closest('.t-103') || word.closest('.t-124')) return;
+            if (Math.floor(Number(word.dataset.wi || 0) / 4) === blockIndex) {
+              word.classList.add('active');
+            }
+          });
+        }
+
+        function triggerStickyWave(sblock) {
+          const words = Array.from(sblock.querySelectorAll('.sw-w'));
+          words.forEach((word) => {
+            word.style.opacity = '0.42';
+          });
+          words.forEach((word, wordIndex) => {
+            setTimeout(() => {
+              word.style.opacity = '1';
+            }, wordIndex * 210);
+          });
+        }
+
+        function animateBlock(block) {
+          block.querySelectorAll('.t-52 .word, .t-T4 .word, .t-106 .word, .t-T6 .word').forEach((word) => {
+            word.style.opacity = '';
+            word.style.transform = '';
+            word.style.transition = '';
+          });
+
+          block.querySelectorAll('.t-52, .t-T4, .t-106, .t-T6, .t-56').forEach((wrapper) => {
+            wrapper.querySelectorAll('.word').forEach((word) => {
+              word.classList.add('active');
+            });
+          });
+
+          block.querySelectorAll('.t-52').forEach((wrapper) => {
+            wrapper.style.transition = 'none';
+            wrapper.style.opacity = '0';
+            wrapper.style.transform = 'translateY(44px)';
+            setTimeout(() => {
+              wrapper.style.transition = 'transform 700ms cubic-bezier(0.22,1,0.36,1), opacity 400ms ease';
+              wrapper.style.opacity = '1';
+              wrapper.style.transform = 'none';
+            }, 30);
+          });
+
+          block.querySelectorAll('.t-106 .word, .t-T6 .word').forEach((word, wordIndex) => {
+            word.style.transition = 'none';
+            word.style.opacity = '0';
+            word.style.transform = 'translateY(20px)';
+            setTimeout(() => {
+              word.style.transition = 'opacity 280ms ease, transform 280ms cubic-bezier(0.34,1.2,0.64,1)';
+              word.style.opacity = '1';
+              word.style.transform = 'none';
+            }, 30 + (wordIndex * 65));
+            setTimeout(() => {
+              word.style.opacity = '1';
+              word.style.transform = 'none';
+            }, 520);
+          });
+
+          block.querySelectorAll('.t-WS1').forEach((wrapper) => {
+            wrapper.classList.remove('ws-enter', 'ws-done');
+            wrapper.querySelectorAll('.word').forEach((word, wordIndex) => {
+              word.style.transition = 'none';
+              word.style.animation = '';
+              word.style.opacity = '';
+              word.style.transform = '';
+              word.style.filter = 'none';
+              word.style.setProperty('--ws-delay', (90 + (wordIndex * 55)) + 'ms');
+            });
+            void wrapper.offsetWidth;
+            wrapper.classList.add('ws-enter');
+            setTimeout(() => {
+              wrapper.classList.remove('ws-enter');
+              wrapper.classList.add('ws-done');
+            }, 90 + (wrapper.querySelectorAll('.word').length * 55) + 360);
+          });
+
+          block.querySelectorAll('.sblock[data-type="sticky-wave"]').forEach(triggerStickyWave);
+        }
+
+        function setBlock(blockIndex) {
+          const blockChanged = blockIndex !== currentBlock;
+          currentBlock = blockIndex;
+          blocks.forEach((block, index) => {
+            const active = index === blockIndex;
+            block.style.display = active ? 'flex' : 'none';
+            block.classList.toggle('active', active);
+            block.classList.toggle('is-active', active);
+            if (active && blockChanged) animateBlock(block);
+          });
+          dots.forEach((dot, index) => {
+            dot.className = 'dot' + (index === blockIndex ? ' active' : '');
+          });
+        }
+
+        function tick() {
+          idx = (idx + 1) % wordCount;
+          card.querySelectorAll('.word[data-wi]').forEach((word) => {
+            word.className = cls(Number(word.dataset.wi || 0), word.dataset.imp === 'true');
+          });
+          const blockIndex = Math.max(0, Math.min(blocks.length - 1, Math.floor(idx / 4)));
+          setBlock(blockIndex);
+          activateWholeLine(blockIndex);
+        }
+
+        dots.forEach((dot, dotIndex) => {
+          dot.addEventListener('click', () => {
+            idx = Math.min((dotIndex * 4) + 2, wordCount - 1);
+            card.querySelectorAll('.word[data-wi]').forEach((word) => {
+              word.className = cls(Number(word.dataset.wi || 0), word.dataset.imp === 'true');
+            });
+            setBlock(dotIndex);
+            activateWholeLine(dotIndex);
+          });
+        });
+
+        setBlock(0);
+        activateWholeLine(0);
+        setInterval(tick, 700);
+      })();
+    </script>
+  `;
+
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+      <head>
+        <meta charset="UTF-8" />
+        <style>${extractOriginalStyle()}</style>
+        ${basicIframeOverrides}
+      </head>
+      <body>${template.cardMarkup}${previewScript}</body>
+    </html>
+  `;
+}
+
 function TemplatePreviewFrame({ template }) {
   const frameRef = useRef(null);
   const [instanceKey, setInstanceKey] = useState(0);
@@ -606,6 +1025,21 @@ function TemplatePreviewFrame({ template }) {
   );
 }
 
+function BasicTemplatePreviewFrame({ template }) {
+  const srcDoc = useMemo(() => buildBasicTemplatePreviewDoc(template), [template]);
+
+  return (
+    <div className="advanced-template-preview-frame">
+      <iframe
+        title={`${template.name} preview`}
+        srcDoc={srcDoc}
+        sandbox="allow-scripts"
+        scrolling="no"
+      />
+    </div>
+  );
+}
+
 export default function AdvancedTemplateLibrary({
   currentStyle,
   onApplyTemplate,
@@ -621,11 +1055,15 @@ export default function AdvancedTemplateLibrary({
             <p className="text-[10px] uppercase tracking-[0.32em] text-slate-400">Templates</p>
             <h2>Template Library</h2>
           </div>
-          <span>T11-T35</span>
+          <span>Source HTML</span>
         </div>
       )}
 
       <div className="flex-1 overflow-y-auto pr-1 space-y-3">
+        <div className="advanced-template-section-label">
+          <span>Advanced Templates</span>
+          <small>{ADVANCED_TEMPLATE_PACK.length}</small>
+        </div>
         {ADVANCED_TEMPLATE_PACK.map((template) => {
           const isActive = currentStyle?.template_id === template.id;
 
@@ -637,18 +1075,42 @@ export default function AdvancedTemplateLibrary({
               className={`advanced-template-card ${isActive ? 'is-active' : ''}`}
             >
               <TemplatePreviewFrame template={template} />
-
+              {isActive && <Check className="absolute right-2 top-2 z-10 h-3.5 w-3.5 text-[#ffb629]" />}
               <div className="advanced-template-card-body">
-                <div className="advanced-template-card-topline">
-                  <span>{template.code}</span>
-                  <span>{template.formula}</span>
-                  {isActive && <Check className="ml-auto h-3.5 w-3.5 text-[#ffb629]" />}
-                </div>
                 <div className="advanced-template-card-title">
-                  <Sparkles className={`h-3.5 w-3.5 shrink-0 ${isActive ? 'text-[#ffb629]' : 'text-slate-500'}`} />
+                  <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#ffb629]" />
                   <div className="min-w-0">
                     <p>{template.name}</p>
-                    <span>{template.mood} / {template.stageLabel}</span>
+                    {template.mood && <span>{template.mood}</span>}
+                  </div>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+
+        <div className="advanced-template-section-label">
+          <span>Basic Templates</span>
+          <small>{BASIC_TEMPLATE_PACK.length}</small>
+        </div>
+        {BASIC_TEMPLATE_PACK.map((template) => {
+          const isActive = currentStyle?.template_id === template.id;
+
+          return (
+            <button
+              key={`basic-${template.id}-${template.name}`}
+              type="button"
+              onClick={() => onApplyTemplate?.(buildAppliedBasicTemplateStyle(template))}
+              className={`advanced-template-card basic-template-card ${isActive ? 'is-active' : ''}`}
+            >
+              <BasicTemplatePreviewFrame template={template} />
+              {isActive && <Check className="absolute right-2 top-2 z-10 h-3.5 w-3.5 text-[#ffb629]" />}
+              <div className="advanced-template-card-body">
+                <div className="advanced-template-card-title">
+                  <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#ffb629]" />
+                  <div className="min-w-0">
+                    <p>{template.name}</p>
+                    {template.desc && <span>{template.desc}</span>}
                   </div>
                 </div>
               </div>

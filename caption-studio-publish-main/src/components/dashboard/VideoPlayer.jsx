@@ -7,6 +7,8 @@ import '../../styles/captionTemplates.css';
 import '../../styles/captionTemplatesAdvanced.css';
 import '../../styles/advancedTemplateLibrary.css';
 import originalTemplateHtml from '../../assets/lekha-captions-T11-T35.html?raw';
+import sidebarLegacyTemplateHtml from '../../assets/lekha-captions-20-templates.html?raw';
+import sidebarNewTemplateHtml from '../../assets/lekha-captions-49-templates.html?raw';
 
 const ADVANCED_TEMPLATE_VARIANTS = {
   t01: 'wbw-rise', t02: 'plain-s', t03: 'wbw-rise', t04: 'plain-s', t05: 'wbw-rise',
@@ -16,6 +18,7 @@ const ADVANCED_TEMPLATE_VARIANTS = {
   t21: 'wbw-rise', t22: 'wbw-rise', t23: 'wbw-rise', t24: 'wbw-rise', t25: 'wbw-slide',
   t26: 'wbw-rise', t27: 'plain-s', t28: 'wbw-rise', t29: 'wbw-rise', t30: 'wbw-slide',
   t31: 'wbw-rise', t32: 'plain-s', t33: 'wbw-rise', t34: 'wbw-rise', t35: 'wbw-rise',
+  t36: 'plain-s', t37: 'wbw-rise', t38: 'wbw-slide', t39: 'wbw-rise', t40: 'plain-s',
 };
 const TEMPLATE_CANVAS_FONT_SCALE = 0.88;
 const ORIGINAL_TEMPLATE_BLOCK_TYPES = {
@@ -32,7 +35,7 @@ const ORIGINAL_TEMPLATE_BLOCK_TYPES = {
   t21: ['styled', 'styled', 'wbw-rise', 'wbw-slide'],
   t22: ['styled', 'styled', 'wbw-rise', 'wbw-slide'],
   t23: ['styled', 'plain', 'plain', 'styled'],
-  t24: ['styled', 'styled', 'plain', 'wbw-rise'],
+  t24: ['wbw-rise', 'styled', 'plain', 'wbw-rise', 'karaoke'],
   t25: ['styled', 'styled', 'wbw-rise', 'wbw-slide'],
   t26: ['styled', 'styled', 'wbw-rise', 'wbw-slide'],
   t27: ['styled', 'plain', 'plain', 'wbw-rise'],
@@ -41,13 +44,22 @@ const ORIGINAL_TEMPLATE_BLOCK_TYPES = {
   t30: ['styled', 'plain', 'plain', 'plain'],
   t31: ['styled', 'styled', 'plain', 'wbw-rise'],
   t32: ['styled', 'styled', 'plain', 'wbw-rise'],
-  t33: ['styled', 'styled', 'plain', 'wbw-rise'],
+  t33: ['styled', 'wbw-seq-fade', 'karaoke', 'wbw-rise', 'styled'],
   t34: ['styled', 'styled', 'wbw-rise', 'wbw-slide'],
   t35: ['styled', 'plain', 'plain', 'plain'],
+  t36: ['karaoke', 'karaoke', 'karaoke'],
+  t37: ['styled', 'wbw-rise', 'styled', 'wbw-seq'],
+  t38: ['plain', 'wbw-slide', 'wbw-rise', 'wbw-seq-fade'],
+  t39: ['wbw-seq-fade', 'wbw-seq-fade', 'wbw-seq-fade', 'wbw-seq-fade'],
+  t40: ['styled', 'styled', 'plain', 'styled'],
 };
 
 function isAdvancedTemplateId(templateId) {
   return /^t\d{2}$/.test(String(templateId || ''));
+}
+
+function hasSidebarTemplateStyle(style) {
+  return !!style?.template_20_id;
 }
 
 function getTemplateWrapperClassName(templateId) {
@@ -55,8 +67,32 @@ function getTemplateWrapperClassName(templateId) {
   return templateId;
 }
 
+function getTemplateContainerStateClass(templateId) {
+  if (templateId === 't-WS1') return 'ws-done';
+  return '';
+}
+
 function getTemplateVariantClassName(templateId) {
   return ADVANCED_TEMPLATE_VARIANTS[templateId] || 'wbw-rise';
+}
+
+function isSourceBasicTemplateId(templateId) {
+  return [
+    't-106', 't-52', 't-T4', 't-WS1', 't-115',
+    't-104', 't-109', 't-95', 't-102', 't-T5',
+    't-T6', 't-103', 't-QW1', 't-36', 't-105',
+    't-124', 't-110', 't-56', 't-119', 't-12',
+  ].includes(String(templateId || ''));
+}
+
+function getBasicTemplateWordClassName(templateId, isPast, isCurrent, isEmphasis) {
+  return [
+    'word',
+    'active',
+    isPast ? 'done' : '',
+    isCurrent ? 'current' : '',
+    isEmphasis ? 'imp' : '',
+  ].filter(Boolean).join(' ');
 }
 
 function scaleTemplateFontSize(fontSize) {
@@ -87,6 +123,83 @@ function splitTemplateLines(text = '', maxLines = 2) {
     lines[Math.min(lineCount - 1, Math.floor((index * lineCount) / words.length))].push(word);
   });
   return lines.map(line => line.join(' ')).filter(Boolean);
+}
+
+function splitWordsIntoIndexedLines(words = [], maxLines = 2) {
+  if (!words.length) return [];
+  const lineCount = Math.max(1, Math.min(maxLines, words.length));
+  const lines = Array.from({ length: lineCount }, () => []);
+  words.forEach((word, wordIndex) => {
+    lines[Math.min(lineCount - 1, Math.floor((wordIndex * lineCount) / words.length))].push({ word, wordIndex });
+  });
+  return lines.filter(line => line.length);
+}
+
+function getSidebarTemplateLineCount(style = {}, wordCount = 0) {
+  const templateClass = String(style.template_class || style.template_20_id || '').toLowerCase();
+  const layout = style.template_layout || '';
+  if (wordCount <= 3) return 1;
+  if (layout === 'stack') return 3;
+  if (layout === 'plain') return Math.min(2, wordCount);
+  if (/^(a[145]|b[145]|c[1345]|d[12345]|t0[135789]|t1[1345]|v)/.test(templateClass)) return 3;
+  return 2;
+}
+
+function getSidebarTemplateMotion(style = {}) {
+  const templateClass = String(style.template_class || style.template_20_id || '').toLowerCase();
+  const templateEffect = String(style.template_effect || '').toLowerCase();
+  const motionKey = `${templateEffect} ${templateClass}`;
+  if (/flip|a1|t01|t11|v3/.test(motionKey)) return 'flip';
+  if (/slide|slider|a2|t03|t09|v4/.test(motionKey)) return 'slide';
+  if (/roll|a5|t14/.test(motionKey)) return 'roll';
+  if (/diag|d/.test(motionKey)) return 'diag';
+  if (/wipe|stencil/.test(motionKey)) return 'wipe';
+  if (/plain/.test(style.template_layout || '')) return 'fade';
+  return 'rise';
+}
+
+function getSidebarTemplateEntryState(motion = 'rise') {
+  switch (motion) {
+    case 'flip':
+      return {
+        opacity: 0,
+        transform: 'perspective(320px) rotateX(-90deg)',
+        transformOrigin: 'center bottom',
+      };
+    case 'slide':
+      return {
+        opacity: 0,
+        transform: 'translateX(-16px)',
+      };
+    case 'roll':
+      return {
+        opacity: 0,
+        transform: 'translateY(14px) rotate(-6deg)',
+        transformOrigin: 'left bottom',
+      };
+    case 'diag':
+      return {
+        opacity: 0,
+        transform: 'translate(-16px, 16px)',
+      };
+    case 'wipe':
+      return {
+        opacity: 1,
+        transform: 'none',
+        clipPath: 'inset(0 100% 0 0)',
+      };
+    case 'fade':
+      return {
+        opacity: 0,
+        transform: 'none',
+      };
+    case 'rise':
+    default:
+      return {
+        opacity: 0,
+        transform: 'translateY(20px)',
+      };
+  }
 }
 
 function renderTextWithHero(text, className = '') {
@@ -129,12 +242,323 @@ function renderWbwText(text, variant = 'wbw-rise', impClass = 'imp-bold', active
     </span>
   );
 }
+
+function renderKaraokeText(text) {
+  const { full } = splitCaptionForTemplate(text);
+  if (!full) return null;
+  const words = full.split(/\s+/).filter(Boolean);
+  const perWordDuration = Math.max(220, Math.round(1600 / Math.max(1, words.length)));
+
+  return (
+    <span className="kf-line lekha-template-fit">
+      {words.map((word, index) => (
+        <React.Fragment key={`${word}-${index}`}>
+          {index > 0 && ' '}
+          <span className="kf-word" style={{ '--kf-delay': `${index * perWordDuration}ms`, '--kf-duration': `${perWordDuration}ms` }}>
+            <span className="kf-base">{word}</span>
+            <span className="kf-fill">{word}</span>
+          </span>
+        </React.Fragment>
+      ))}
+    </span>
+  );
+}
 function extractOriginalTemplateRuntimeCss() {
   const style = originalTemplateHtml.match(/<style>([\s\S]*?)<\/style>/i)?.[1] || '';
   const startToken = '/* ===== SENTENCE BLOCKS ===== */';
   const start = style.indexOf(startToken);
   if (start < 0) return '';
   return style.slice(start);
+}
+
+function extractHtmlStyle(markup = '') {
+  return String(markup).match(/<style>([\s\S]*?)<\/style>/i)?.[1] || '';
+}
+
+function escapeTemplateText(value = '') {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function sanitizeAppliedTemplateMarkup(markup = '') {
+  return String(markup)
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/\s+bis_skin_checked="[^"]*"/gi, '');
+}
+
+function extractAppliedTemplateDiv(markup = '', startIndex = 0) {
+  const tagPattern = /<\/?div\b[^>]*>/gi;
+  tagPattern.lastIndex = startIndex;
+  let depth = 0;
+  let match;
+
+  while ((match = tagPattern.exec(markup))) {
+    depth += match[0].startsWith('</') ? -1 : 1;
+    if (depth === 0) return markup.slice(startIndex, tagPattern.lastIndex);
+  }
+
+  return '';
+}
+
+function findAppliedSidebarTemplateMarkup(captionStyle = {}) {
+  const className = String(captionStyle?.template_class || '').toLowerCase().replace(/[^a-z0-9-]/g, '')
+  if (!className) return ''
+  const source = captionStyle?.template_source === 'lekha-49'
+    ? sidebarNewTemplateHtml
+    : sidebarLegacyTemplateHtml
+  const cardClassToken = captionStyle?.template_source === 'lekha-49' ? 'lk-card' : 'card'
+  const pattern = new RegExp(`<div\\s+[^>]*class="(?=[^"]*\\b${cardClassToken}\\b)(?=[^"]*\\b${className}\\b)[^"]*"`, 'i')
+  const match = pattern.exec(source)
+  return match ? extractAppliedTemplateDiv(source, match.index) : ''
+}
+
+function buildAppliedSidebarTemplateDoc({ captionText = '', captionStyle = {}, previewScale = 1 }) {
+  const isNewTemplateSet = captionStyle?.template_source === 'lekha-49';
+  const sourceCss = isNewTemplateSet
+    ? extractHtmlStyle(sidebarNewTemplateHtml)
+    : extractHtmlStyle(sidebarLegacyTemplateHtml);
+  const cardMarkup = sanitizeAppliedTemplateMarkup(
+    captionStyle?.template_markup || findAppliedSidebarTemplateMarkup(captionStyle),
+  );
+  const fontSize = Math.max(12, Math.round((captionStyle?.font_size || 22) * previewScale));
+  const lineHeight = Number(captionStyle?.line_spacing || 1.25);
+
+  if (!cardMarkup) return '';
+
+  return `<!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <style>
+          ${sourceCss}
+
+          html, body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+            background: transparent !important;
+          }
+
+          body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+
+          .card,
+          .lk-card {
+            width: 100% !important;
+            height: 100% !important;
+            min-height: 0 !important;
+            aspect-ratio: auto !important;
+            border: 0 !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            overflow: visible !important;
+          }
+
+          .card-top,
+          .dots,
+          .lk-card-top,
+          .lk-dots,
+          .slbl,
+          .lk-lbl {
+            display: none !important;
+          }
+
+          .stage,
+          .lk-stage {
+            position: relative !important;
+            inset: auto !important;
+            width: 100% !important;
+            height: 100% !important;
+            min-height: 0 !important;
+            border: 0 !important;
+            background: transparent !important;
+            overflow: visible !important;
+          }
+
+          .sb,
+          .sblock {
+            position: absolute !important;
+            inset: 0 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            width: 100% !important;
+            height: 100% !important;
+            padding: 0 !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+            background: transparent !important;
+          }
+
+          .sb.active,
+          .sblock.active {
+            opacity: 1 !important;
+          }
+
+          .wbw,
+          .wbw-line,
+          .plain-s,
+          .sw-line,
+          .pr {
+            max-width: 92% !important;
+            color: ${captionStyle?.text_color || '#FFFFFF'} !important;
+            font-family: ${JSON.stringify(captionStyle?.font_family || 'Raleway')}, sans-serif !important;
+            font-size: ${fontSize}px !important;
+            font-weight: ${captionStyle?.font_weight || (isNewTemplateSet ? '400' : '300')} !important;
+            font-style: ${captionStyle?.font_style || 'normal'} !important;
+            line-height: ${lineHeight} !important;
+            text-align: center !important;
+            white-space: normal !important;
+          }
+
+          .wbw,
+          .wbw-line {
+            display: inline-block !important;
+          }
+
+          .w,
+          .wbw-word,
+          .sw,
+          .sw-w {
+            display: inline-block;
+          }
+        </style>
+      </head>
+      <body>
+        ${cardMarkup}
+        <script>
+          (() => {
+            const captionText = ${JSON.stringify(captionText)};
+            const words = captionText.trim().split(/\\s+/).filter(Boolean);
+            const wordHtml = (className) => words.map((word) => '<span class="' + className + '">' + ${JSON.stringify('')} + word.replace(/[&<>"']/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char])) + '</span>').join(' ');
+
+            function replaceWordByWord(container) {
+              if (!container || !words.length) return;
+              if (container.classList.contains('wbw-line')) {
+                const first = container.querySelector('.wbw-word');
+                const classes = first ? first.className.replace(/\\b(visible|anim)\\b/g, '').trim() : 'wbw-word normal';
+                container.innerHTML = wordHtml(classes || 'wbw-word normal');
+                return;
+              }
+              if (container.classList.contains('wbw')) {
+                const first = container.querySelector('.w');
+                const classes = first ? first.className.replace(/\\b(in|anim)\\b/g, '').trim() : 'w';
+                container.innerHTML = wordHtml(classes || 'w');
+              }
+            }
+
+            function replaceSticky(container) {
+              const stickyWords = Array.from(container.querySelectorAll('.sw-w'));
+              if (!stickyWords.length) return false;
+              container.innerHTML = words.map((word) => '<span class="sw-w">' + word.replace(/[&<>"']/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char])) + '</span>').join(' ');
+              return true;
+            }
+
+            function replacePositioned(block) {
+              const spans = Array.from(block.querySelectorAll('.sw'));
+              if (!spans.length) return false;
+              spans.forEach((span, index) => {
+                span.textContent = words[index] || '';
+                span.style.display = words[index] ? '' : 'none';
+              });
+              if (words.length > spans.length && spans[spans.length - 1]) {
+                spans[spans.length - 1].textContent = words.slice(spans.length - 1).join(' ');
+                spans[spans.length - 1].style.display = '';
+              }
+              return true;
+            }
+
+            function replacePlain(block) {
+              const plain = block.querySelector('.plain-s');
+              if (!plain) return false;
+              plain.textContent = captionText;
+              return true;
+            }
+
+            const blocks = Array.from(document.querySelectorAll('.sb, .sblock'));
+            blocks.forEach((block) => {
+              block.querySelectorAll('.wbw, .wbw-line').forEach(replaceWordByWord);
+              replaceSticky(block);
+              replacePositioned(block);
+              replacePlain(block);
+            });
+
+            const activeBlocks = blocks.length ? blocks : [document.body];
+            const dots = Array.from(document.querySelectorAll('.dots i, .lk-dots i'));
+            const WBW_STAGGER = ${isNewTemplateSet ? 160 : 120};
+            let current = 0;
+
+            function resetWord(word) {
+              word.classList.remove('visible', 'anim', 'in');
+              word.style.transition = 'none';
+              word.style.opacity = '';
+              word.style.transform = '';
+              word.style.clipPath = '';
+            }
+
+            function activateWords(block) {
+              const wordNodes = Array.from(block.querySelectorAll('.w, .wbw-word'));
+              wordNodes.forEach(resetWord);
+              void block.offsetWidth;
+              wordNodes.forEach((word, index) => {
+                word.style.transition = '';
+                setTimeout(() => {
+                  word.classList.add(word.classList.contains('wbw-word') ? 'visible' : 'in');
+                  if (/\\b(ns[23]-|imp-)/.test(word.className)) {
+                    word.classList.add('anim');
+                    setTimeout(() => word.classList.remove('anim'), 650);
+                  }
+                }, index * WBW_STAGGER);
+              });
+
+              const stickyWords = Array.from(block.querySelectorAll('.sw-w'));
+              stickyWords.forEach((word) => { word.style.opacity = '0.14'; });
+              stickyWords.forEach((word, index) => {
+                setTimeout(() => { word.style.opacity = '1'; }, index * 190);
+              });
+
+              block.querySelectorAll('.sw').forEach((element, index) => {
+                element.classList.remove('in');
+                element.style.transition = 'none';
+                void element.offsetWidth;
+                setTimeout(() => {
+                  element.style.transition = '';
+                  element.classList.add('in');
+                  element.style.opacity = '1';
+                  element.style.transform = 'none';
+                  element.style.clipPath = 'inset(0 0 0 0)';
+                }, index * 95);
+              });
+            }
+
+            function showPhase(index) {
+              activeBlocks.forEach((block) => block.classList.remove('active'));
+              const block = activeBlocks[index % activeBlocks.length];
+              if (!block) return;
+              block.classList.add('active');
+              activateWords(block);
+              dots.forEach((dot, dotIndex) => { dot.className = dotIndex === index ? 'on' : ''; });
+            }
+
+            showPhase(0);
+            if (activeBlocks.length > 1) {
+              setInterval(() => {
+                current = (current + 1) % activeBlocks.length;
+                showPhase(current);
+              }, 2600);
+            }
+          })();
+        </script>
+      </body>
+    </html>`;
 }
 
 function OriginalAdvancedTemplateStyles() {
@@ -192,13 +616,17 @@ function OriginalAdvancedTemplateStyles() {
         }
 
         .lekha-original-template .wbw-rise .w,
-        .lekha-original-template .wbw-slide .w {
+        .lekha-original-template .wbw-slide .w,
+        .lekha-original-template .wbw-seq .w,
+        .lekha-original-template .wbw-seq-fade .w {
           opacity: 0;
           display: inline-block;
           transition: none;
         }
 
-        .lekha-original-template .wbw-rise .w {
+        .lekha-original-template .wbw-rise .w,
+        .lekha-original-template .wbw-seq .w,
+        .lekha-original-template .wbw-seq-fade .w {
           transform: translateY(20px);
         }
 
@@ -207,13 +635,17 @@ function OriginalAdvancedTemplateStyles() {
         }
 
         .lekha-original-template .active .wbw-rise .w.in,
-        .lekha-original-template .active .wbw-slide .w.in {
+        .lekha-original-template .active .wbw-slide .w.in,
+        .lekha-original-template .active .wbw-seq .w.in,
+        .lekha-original-template .active .wbw-seq-fade .w.in {
           animation: lekhaTemplateWbwIn 320ms cubic-bezier(0.34, 1.2, 0.64, 1) forwards;
           animation-delay: var(--wbw-delay, 0ms);
         }
 
         .lekha-original-template .active .wbw-rise .w[data-imp='true'].in,
-        .lekha-original-template .active .wbw-slide .w[data-imp='true'].in {
+        .lekha-original-template .active .wbw-slide .w[data-imp='true'].in,
+        .lekha-original-template .active .wbw-seq .w[data-imp='true'].in,
+        .lekha-original-template .active .wbw-seq-fade .w[data-imp='true'].in {
           animation-duration: 440ms;
         }
 
@@ -228,10 +660,68 @@ function OriginalAdvancedTemplateStyles() {
           -webkit-text-fill-color: #ffffff !important;
         }
 
+        .lekha-original-template .kf-line {
+          display: inline-block;
+          max-width: 100%;
+          text-align: center;
+          white-space: normal;
+        }
+
+        .lekha-original-template .kf-word {
+          display: inline-block;
+          position: relative;
+          white-space: pre;
+        }
+
+        .lekha-original-template .kf-base {
+          display: block;
+          color: rgba(255, 255, 255, 0.25) !important;
+          -webkit-text-fill-color: rgba(255, 255, 255, 0.25) !important;
+        }
+
+        .lekha-original-template .kf-fill {
+          position: absolute;
+          inset: 0;
+          display: block;
+          color: var(--gold) !important;
+          -webkit-text-fill-color: var(--gold) !important;
+          clip-path: inset(0 100% 0 0);
+        }
+
+        .lekha-original-template .active .kf-fill {
+          animation: lekhaKaraokeFill var(--kf-duration, 360ms) linear forwards;
+          animation-delay: var(--kf-delay, 0ms);
+        }
+
+        .lekha-original-template .t24-b4 .kf-fill {
+          color: #fb923c !important;
+          -webkit-text-fill-color: #fb923c !important;
+        }
+
+        .lekha-original-template .t33-b2 .kf-fill {
+          color: #FFE600 !important;
+          -webkit-text-fill-color: #FFE600 !important;
+        }
+
+        .lekha-original-template .t36-b1 .kf-fill {
+          color: #22d3ee !important;
+          -webkit-text-fill-color: #22d3ee !important;
+        }
+
+        .lekha-original-template .t36-b2 .kf-fill {
+          color: #fb923c !important;
+          -webkit-text-fill-color: #fb923c !important;
+        }
+
         .lekha-original-template .lekha-applied-advanced-template.active .karaoke-base {
           color: var(--gold) !important;
           -webkit-text-fill-color: var(--gold) !important;
           opacity: 1 !important;
+        }
+
+        @keyframes lekhaKaraokeFill {
+          from { clip-path: inset(0 100% 0 0); }
+          to { clip-path: inset(0 0% 0 0); }
         }
 
         .lekha-original-template .imp-gold {
@@ -259,6 +749,40 @@ function OriginalAdvancedTemplateStyles() {
           -webkit-text-fill-color: var(--green) !important;
         }
 
+        .lekha-original-template.t21-stage,
+        .lekha-original-template.t21-stage *,
+        .lekha-original-template.t21-stage .w.in,
+        .lekha-original-template.t21-stage .imp-italic,
+        .lekha-original-template.t21-stage .imp-weight {
+          color: #ffffff !important;
+          -webkit-text-fill-color: #ffffff !important;
+          opacity: 1 !important;
+        }
+
+        .lekha-original-template.t37-stage .imp-green,
+        .lekha-original-template.t37-stage .w.in[data-imp='true'] {
+          color: #ffffff !important;
+          -webkit-text-fill-color: #ffffff !important;
+          text-shadow: 0 0 12px rgba(255,255,255,0.55) !important;
+        }
+
+        .t21 .word,
+        .t21 .word.active,
+        .t21 .word.current,
+        .t21 .word.done,
+        .t21 .word.imp {
+          color: #ffffff !important;
+          -webkit-text-fill-color: #ffffff !important;
+          opacity: 1 !important;
+        }
+
+        .t37 .word.current,
+        .t37 .word.imp.active,
+        .t37 .word.imp.current {
+          color: #ffffff !important;
+          -webkit-text-fill-color: #ffffff !important;
+        }
+
         .lekha-original-template.t12-stage .imp-purple {
           color: var(--rose) !important;
           -webkit-text-fill-color: var(--rose) !important;
@@ -284,6 +808,231 @@ function OriginalAdvancedTemplateStyles() {
         }
 
         @keyframes lekhaTemplateWbwIn {
+          to {
+            opacity: 1;
+            transform: none;
+            clip-path: inset(0 0 0 0);
+          }
+        }
+      `}
+    </style>
+  );
+}
+
+function SidebarSourceTemplateStyles() {
+  return (
+    <style>
+      {`
+        .lekha-sidebar-source-template {
+          --sidebar-source-accent: #FFE600;
+          --sidebar-source-muted: rgba(255, 255, 255, 0.58);
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: auto !important;
+          height: auto !important;
+          max-width: min(84vw, 430px);
+          min-width: 0 !important;
+          min-height: 0 !important;
+          aspect-ratio: auto !important;
+          overflow: visible !important;
+          border: 0 !important;
+          background: transparent !important;
+          box-shadow: none !important;
+          color: var(--sidebar-source-color, #fff);
+          text-align: center;
+          pointer-events: auto;
+        }
+
+        .lekha-sidebar-source-template .stage,
+        .lekha-sidebar-source-template .lk-stage {
+          position: relative !important;
+          inset: auto !important;
+          display: inline-flex !important;
+          align-items: center;
+          justify-content: center;
+          width: auto !important;
+          height: auto !important;
+          min-width: 0 !important;
+          min-height: 0 !important;
+          overflow: visible !important;
+          background: transparent !important;
+        }
+
+        .lekha-sidebar-source-template .sb,
+        .lekha-sidebar-source-template .sblock {
+          position: relative !important;
+          inset: auto !important;
+          display: inline-flex !important;
+          align-items: center;
+          justify-content: center;
+          width: auto !important;
+          height: auto !important;
+          min-width: 0 !important;
+          min-height: 0 !important;
+          padding: 0 !important;
+          opacity: 1 !important;
+          overflow: visible !important;
+          background: transparent !important;
+          pointer-events: auto;
+        }
+
+        .lekha-sidebar-source-template .wbw,
+        .lekha-sidebar-source-template .wbw-line {
+          display: inline-block;
+          max-width: min(84vw, 430px);
+          line-height: var(--sidebar-source-line-height, 1.25);
+          text-align: center;
+          white-space: normal;
+        }
+
+        .lekha-sidebar-source-template .w,
+        .lekha-sidebar-source-template .wbw-word {
+          display: inline-block;
+          vertical-align: baseline;
+          color: inherit;
+          -webkit-text-fill-color: currentColor;
+          opacity: 0;
+          transform: translateY(22px);
+          transform-origin: center center;
+          clip-path: inset(0 0 0 0);
+          animation: lekhaSidebarSourceWordIn var(--sidebar-source-word-duration, 330ms) cubic-bezier(0.22, 1, 0.36, 1) both;
+          animation-delay: var(--sidebar-source-word-delay, 0ms);
+          will-change: transform, opacity, clip-path;
+        }
+
+        .lekha-sidebar-source-template .wbw.wrise .w,
+        .lekha-sidebar-source-template .wbw-line.wrise .wbw-word {
+          transform: translateY(22px);
+        }
+
+        .lekha-sidebar-source-template .wbw.wslide .w,
+        .lekha-sidebar-source-template .wbw-line.wslide .wbw-word {
+          transform: translateX(-26px);
+        }
+
+        .lekha-sidebar-source-template .wbw.wslider .w,
+        .lekha-sidebar-source-template .wbw-line.wslider .wbw-word {
+          transform: translateX(26px);
+        }
+
+        .lekha-sidebar-source-template .wbw.wroll .w,
+        .lekha-sidebar-source-template .wbw-line.wroll .wbw-word {
+          transform: translateY(14px) rotate(-6deg);
+          transform-origin: left bottom;
+        }
+
+        .lekha-sidebar-source-template .wbw.wwipe .w,
+        .lekha-sidebar-source-template .wbw-line.wwipe .wbw-word {
+          opacity: 1;
+          transform: none;
+          clip-path: inset(0 100% 0 0);
+        }
+
+        .lekha-sidebar-source-template .wbw.wwipeup .w,
+        .lekha-sidebar-source-template .wbw-line.wwipeup .wbw-word {
+          opacity: 1;
+          transform: none;
+          clip-path: inset(100% 0 0 0);
+        }
+
+        .lekha-sidebar-source-template .wbw.wfade .w,
+        .lekha-sidebar-source-template .wbw-line.wfade .wbw-word {
+          transform: none;
+        }
+
+        .lekha-sidebar-source-template .wbw.wscale .w,
+        .lekha-sidebar-source-template .wbw-line.wscale .wbw-word {
+          transform: scale(0.5);
+        }
+
+        .lekha-sidebar-source-template .wbw.wflip,
+        .lekha-sidebar-source-template .wbw-line.wflip {
+          perspective: 320px;
+        }
+
+        .lekha-sidebar-source-template .wbw.wflip .w,
+        .lekha-sidebar-source-template .wbw-line.wflip .wbw-word {
+          transform: rotateX(-80deg);
+          transform-origin: center bottom;
+        }
+
+        .lekha-sidebar-source-template .wbw.wbounce .w,
+        .lekha-sidebar-source-template .wbw-line.wbounce .wbw-word {
+          transform: translateY(-22px);
+        }
+
+        .lekha-sidebar-source-template .wbw.wdiag .w,
+        .lekha-sidebar-source-template .wbw-line.wdiag .wbw-word {
+          transform: translate(-16px, 16px);
+        }
+
+        .lekha-sidebar-source-template .wbw.wexpand .w,
+        .lekha-sidebar-source-template .wbw-line.wexpand .wbw-word {
+          transform: scaleX(0.15);
+          transform-origin: center;
+        }
+
+        .lekha-sidebar-source-template .wbw.wskew .w,
+        .lekha-sidebar-source-template .wbw-line.wskew .wbw-word {
+          transform: skewX(-18deg) translateX(-12px);
+        }
+
+        .lekha-sidebar-source-template .wbw.wstencil .w,
+        .lekha-sidebar-source-template .wbw-line.wstencil .wbw-word {
+          opacity: 1;
+          transform: none;
+          clip-path: inset(0 50% 0 50%);
+        }
+
+        .lekha-sidebar-source-template .wbw.wlift .w,
+        .lekha-sidebar-source-template .wbw-line.wlift .wbw-word {
+          transform: translateY(-22px);
+        }
+
+        .lekha-sidebar-source-template .w.in,
+        .lekha-sidebar-source-template .wbw-word.visible {
+          opacity: 1;
+        }
+
+        .lekha-sidebar-source-template .w.is-current,
+        .lekha-sidebar-source-template .wbw-word.is-current {
+          color: var(--sidebar-source-accent);
+          -webkit-text-fill-color: currentColor;
+        }
+
+        .lekha-sidebar-source-template .w.is-emphasis,
+        .lekha-sidebar-source-template .wbw-word.is-emphasis,
+        .lekha-sidebar-source-template .imp-gold,
+        .lekha-sidebar-source-template .ns2-gold,
+        .lekha-sidebar-source-template .ns3-gold {
+          color: var(--sidebar-source-accent) !important;
+          -webkit-text-fill-color: currentColor !important;
+          text-shadow: 0 0 14px color-mix(in srgb, var(--sidebar-source-accent) 48%, transparent);
+        }
+
+        .lekha-sidebar-source-template .ns2-rose,
+        .lekha-sidebar-source-template .ns3-rose,
+        .lekha-sidebar-source-template .imp-rose {
+          color: #ff3d71 !important;
+          -webkit-text-fill-color: currentColor !important;
+        }
+
+        .lekha-sidebar-source-template .ns2-cyan,
+        .lekha-sidebar-source-template .ns3-cyan,
+        .lekha-sidebar-source-template .imp-cyan {
+          color: #00e5ff !important;
+          -webkit-text-fill-color: currentColor !important;
+        }
+
+        .lekha-sidebar-source-template .ns2-purple,
+        .lekha-sidebar-source-template .ns3-purple,
+        .lekha-sidebar-source-template .imp-purple {
+          color: #a78bfa !important;
+          -webkit-text-fill-color: currentColor !important;
+        }
+
+        @keyframes lekhaSidebarSourceWordIn {
           to {
             opacity: 1;
             transform: none;
@@ -429,12 +1178,7 @@ function renderOriginalTemplateCaption(templateId, text, active = true, blockInd
       if (normalizedBlockIndex === 1) return wrap('t22-b1', <span className="wave-txt lekha-template-fit">{renderTextWithHero(full, 'imp-gold')}</span>);
       if (normalizedBlockIndex === 2) return wrap('t22-b2', renderWbwText(full, 'wbw-rise', 'imp-italic', active));
       if (normalizedBlockIndex === 3) return wrap('t22-b3', renderWbwText(full, 'wbw-slide', 'imp-gold', active));
-      return wrap('t22-b0', (
-        <span style={{ position: 'relative', display: 'inline-block' }} className="lekha-template-fit">
-          <span className="karaoke-base">{full}</span>
-          <span className="karaoke-fill">{full}</span>
-        </span>
-      ));
+      return wrap('t22-b0', renderKaraokeText(full));
     case 't23':
       if (normalizedBlockIndex === 1) return wrap('t23-b1', <span className="lekha-template-fit">{full}</span>);
       if (normalizedBlockIndex === 2) return wrap('t23-b2', <span className="lekha-template-fit">{full}</span>);
@@ -444,12 +1188,9 @@ function renderOriginalTemplateCaption(templateId, text, active = true, blockInd
       if (normalizedBlockIndex === 1) return wrap('t24-b1', <span className="slow-rise lekha-template-fit">{renderTextWithHero(full, 'imp-purple')}</span>);
       if (normalizedBlockIndex === 2) return wrap('t24-b2', <span className="lekha-template-fit">{full}</span>);
       if (normalizedBlockIndex === 3) return wrap('t24-b3', renderWbwText(full, 'wbw-rise', 'imp-purple', active));
+      if (normalizedBlockIndex === 4) return wrap('t24-b4', renderKaraokeText(full));
       return wrap('t24-b0', (
-        <span className="redact-wrap lekha-template-fit">
-          {top && `${top} `}
-          <span className="redact-block">&nbsp;{hero}&nbsp;</span>
-          {bottom && ` ${bottom}`}
-        </span>
+        renderWbwText(full, 'wbw-rise', 'imp-orange', active)
       ));
     case 't25':
       if (normalizedBlockIndex === 1) return wrap('t25-b1', <span className="soft-rise lekha-template-fit">{renderTextWithHero(full, 'imp-italic')}</span>);
@@ -510,9 +1251,10 @@ function renderOriginalTemplateCaption(templateId, text, active = true, blockInd
         </span>
       ));
     case 't33':
-      if (normalizedBlockIndex === 1) return wrap('t33-b1', <span style={{ perspective: '500px' }} className="lekha-template-fit"><span className="flip-line" style={{ fontFamily: "'Noto Sans', sans-serif" }}>{renderTextWithHero(full, 'imp-cyan')}</span></span>);
-      if (normalizedBlockIndex === 2) return wrap('t33-b2', <span className="lekha-template-fit">{full}</span>);
+      if (normalizedBlockIndex === 1) return wrap('t33-b1', renderWbwText(full, 'wbw-seq-fade', 'imp-cyan', active));
+      if (normalizedBlockIndex === 2) return wrap('t33-b2', renderKaraokeText(full));
       if (normalizedBlockIndex === 3) return wrap('t33-b3', renderWbwText(full, 'wbw-rise', 'imp-bold', active));
+      if (normalizedBlockIndex === 4) return wrap('t33-b4', <span style={{ perspective: '500px' }} className="lekha-template-fit"><span className="flip-line" style={{ fontFamily: "'Noto Sans', sans-serif" }}>{renderTextWithHero(full, 'imp-cyan')}</span></span>);
       return wrap('t33-b0', <span className="doc-line lekha-template-fit">{renderTextWithHero(full, 'imp-bold')}</span>);
     case 't34':
       if (normalizedBlockIndex === 1) return wrap('t34-b1', <span className="pow-txt lekha-template-fit">{renderTextWithHero(full, 'imp-cyan')}</span>);
@@ -522,6 +1264,35 @@ function renderOriginalTemplateCaption(templateId, text, active = true, blockInd
     case 't35':
       if (normalizedBlockIndex > 0) return wrap(`t35-b${normalizedBlockIndex}`, <span className="lekha-template-fit">{normalizedBlockIndex === 3 ? renderTextWithHero(full, 'imp-italic') : full}</span>);
       return wrap('t35-b0', <span className="secret-txt lekha-template-fit">{renderTextWithHero(full, 'imp-italic')}</span>);
+    case 't36':
+      return wrap(`t36-b${normalizedBlockIndex}`, renderKaraokeText(full));
+    case 't37':
+      if (normalizedBlockIndex === 1) return wrap('t37-b1', renderWbwText(full, 'wbw-rise', 'imp-green', active));
+      if (normalizedBlockIndex === 2) return wrap('t37-b2', <span className="neon-expand lekha-template-fit">{upperFull}</span>);
+      if (normalizedBlockIndex === 3) return wrap('t37-b3', renderWbwText(full, 'wbw-seq', 'imp-green', active));
+      return wrap('t37-b0', <span className="neon-pulse lekha-template-fit">{upperFull}</span>);
+    case 't38':
+      if (normalizedBlockIndex === 1) return wrap('t38-b1', renderWbwText(full, 'wbw-slide', 'imp-italic', active));
+      if (normalizedBlockIndex === 2) return wrap('t38-b2', renderWbwText(full, 'wbw-rise', 'imp-underline', active));
+      if (normalizedBlockIndex === 3) return wrap('t38-b3', renderWbwText(full, 'wbw-seq-fade', 'imp-italic', active));
+      return wrap('t38-b0', (
+        <span className="lekha-template-fit">
+          {lines2.map((line, index) => (
+            <span key={`${line}-${index}`} className="flip-line">
+              {index === lines2.length - 1 ? renderTextWithHero(line, 'imp-italic') : line}
+            </span>
+          ))}
+        </span>
+      ));
+    case 't39':
+      return wrap(`t39-b${normalizedBlockIndex}`, renderWbwText(full, 'wbw-seq-fade', normalizedBlockIndex % 2 ? 'imp-rose' : 'imp-gold', active));
+    case 't40':
+      if (normalizedBlockIndex === 2) return wrap('t40-b2', <span className="lekha-template-fit">{full}</span>);
+      return wrap(`t40-b${normalizedBlockIndex}`, (
+        <span className="lekha-template-fit">
+          {lines2[0]}{lines2[1] && <><br />{renderTextWithHero(lines2[1], normalizedBlockIndex === 3 ? 'imp-gold' : 'imp-italic')}</>}
+        </span>
+      ));
     default:
       return null;
   }
@@ -1355,6 +2126,105 @@ export default function VideoPlayer({
                 </React.Fragment>
               );
             })}
+          </span>
+        </span>
+      </span>
+    );
+  };
+
+  const renderAppliedSidebarTemplateCaption = (caption) => {
+    const words = String(caption.text || '').trim().split(/\s+/).filter(Boolean);
+    if (!words.length) return null;
+
+    const templateDoc = buildAppliedSidebarTemplateDoc({
+      captionText: caption.text || '',
+      captionStyle,
+      previewScale: previewRenderScale,
+    })
+    console.log('[DEBUG renderAppliedSidebarTemplateCaption] templateDoc length:', templateDoc.length)
+
+    if (templateDoc) {
+      return (
+        <span
+          key={`${caption.id}-${captionStyle?.template_20_id || 'sidebar-template'}-${caption.text}`}
+          className="lekha-sidebar-applied-template-shell"
+          data-template-id={captionStyle?.template_20_id || undefined}
+          data-template-source={captionStyle?.template_source || undefined}
+          style={{
+            display: 'inline-block',
+            width: `${Math.round(430 * previewRenderScale)}px`,
+            height: `${Math.round(190 * previewRenderScale)}px`,
+            maxWidth: '84vw',
+            overflow: 'visible',
+            pointerEvents: 'none',
+            transform: `scale(${captionStyle?.scale || 1})`,
+            transformOrigin: 'center center',
+          }}
+        >
+          <iframe
+            title={`${captionStyle?.template_name || captionStyle?.template_20_id || 'Template'} applied caption`}
+            srcDoc={templateDoc}
+            scrolling="no"
+            style={{
+              width: '100%',
+              height: '100%',
+              border: 0,
+              overflow: 'visible',
+              background: 'transparent',
+              pointerEvents: 'none',
+            }}
+          />
+        </span>
+      );
+    }
+
+    const isNewTemplateSet = captionStyle?.template_source === 'lekha-49';
+    const templateClass = String(captionStyle?.template_class || captionStyle?.template_20_id || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
+    const templateEffect = String(captionStyle?.template_effect || (isNewTemplateSet ? 'wrise' : 'wfade')).toLowerCase().replace(/[^a-z0-9-]/g, '');
+    const baseColor = captionStyle?.text_color || '#FFFFFF';
+    const baseFontSize = (captionStyle?.font_size || 22) * previewRenderScale;
+
+    return (
+      <span
+        key={`${caption.id}-${captionStyle?.template_20_id || 'sidebar-template'}-${caption.text}`}
+        className={isNewTemplateSet ? `lekha-sidebar-source-template lk-card ${templateClass}` : `lekha-sidebar-source-template card ${templateClass}`}
+        data-template-id={captionStyle?.template_20_id || undefined}
+        data-template-source={captionStyle?.template_source || undefined}
+        style={{
+          '--sidebar-source-accent': captionStyle?.secondary_color || captionStyle?.highlight_color || '#FFE600',
+          '--sidebar-source-color': baseColor,
+          '--sidebar-source-line-height': captionStyle?.line_spacing || 1.25,
+          color: baseColor,
+          fontFamily: captionStyle?.font_family || 'Raleway',
+          fontSize: `${baseFontSize}px`,
+          fontWeight: captionStyle?.font_weight || (isNewTemplateSet ? '400' : '300'),
+          fontStyle: captionStyle?.font_style || 'normal',
+          lineHeight: captionStyle?.line_spacing || 1.25,
+          letterSpacing: captionStyle?.letter_spacing ? `${captionStyle.letter_spacing * previewRenderScale}px` : undefined,
+          textAlign: 'center',
+          textTransform: captionStyle?.text_case && captionStyle.text_case !== 'none' ? captionStyle.text_case : undefined,
+          opacity: captionStyle?.text_opacity ?? 1,
+          transform: `scale(${captionStyle?.scale || 1})`,
+          transformOrigin: 'center center',
+        }}
+      >
+        <span className={isNewTemplateSet ? 'lk-stage' : 'stage'}>
+          <span className={isNewTemplateSet ? 'sblock active' : 'sb active'}>
+            <span className={isNewTemplateSet ? `wbw-line ${templateEffect}` : `wbw ${templateEffect}`}>
+              {words.map((word, wordIndex, arr) => (
+                <React.Fragment key={`${caption.id}-${wordIndex}-sidebar-fallback`}>
+                  <span
+                    className={isNewTemplateSet ? 'wbw-word normal visible' : 'w in'}
+                    style={{
+                      '--sidebar-source-word-delay': `${wordIndex * 58}ms`,
+                    }}
+                  >
+                    {word}
+                  </span>
+                  {wordIndex < arr.length - 1 ? ' ' : ''}
+                </React.Fragment>
+              ))}
+            </span>
           </span>
         </span>
       </span>
@@ -2928,6 +3798,8 @@ export default function VideoPlayer({
 
   return (
     <>
+    <OriginalAdvancedTemplateStyles />
+    <SidebarSourceTemplateStyles />
     <div className={`flex flex-col h-full ${isVideoFullscreen ? 'bg-black px-2 py-2' : ''}`}>
       {/* Video container with 9:16 aspect ratio for mobile preview */}
       <div className={`relative flex-1 rounded-xl overflow-visible flex items-center justify-center min-h-0 ${isVideoFullscreen ? 'pt-0 pb-2' : 'pt-4 pb-3'}`}>
@@ -3201,7 +4073,7 @@ export default function VideoPlayer({
                 }}
               >
                 <div
-                  className={`rounded-lg border-2 border-solid ${selectedCaptionId === caption.id && !hasDetachedWords ? 'border-white/40' : 'border-transparent'} relative ${isDragging ? 'cursor-grabbing' : isEditingThis ? 'cursor-text' : setCaptionStyle && !hasDetachedWords ? 'cursor-grab' : ''} ${!hasDetachedWords ? 'group' : ''} ${captionStyle?.template_id || ''}`}
+                  className={`rounded-lg border-2 border-solid ${selectedCaptionId === caption.id && !hasDetachedWords ? 'border-white/40' : 'border-transparent'} relative ${isDragging ? 'cursor-grabbing' : isEditingThis ? 'cursor-text' : setCaptionStyle && !hasDetachedWords ? 'cursor-grab' : ''} ${!hasDetachedWords ? 'group' : ''} ${captionStyle?.template_id || ''} ${getTemplateContainerStateClass(captionStyle?.template_id)}`}
                   style={{
                     backgroundColor: 'transparent',
                     padding: '0px',
@@ -3213,12 +4085,12 @@ export default function VideoPlayer({
                     pointerEvents: 'auto',
                     '--template-primary': captionStyle?.text_color || '#ffffff',
                     '--template-secondary': captionStyle?.secondary_color || '#000000',
-                    '--template-bg': captionStyle?.template_id ? 'transparent' : (captionStyle?.background_color || 'transparent'),
+                    '--template-bg': captionStyle?.background_color || 'transparent',
                     '--template-highlight': captionStyle?.highlight_color || '#FFE600',
                   }}
                 >
                   {/* Background layer — padding expands equally above and below the text */}
-                  {captionStyle?.has_background && !hasDetachedWords && !captionStyle?.template_id && (
+                  {captionStyle?.has_background && !hasDetachedWords && (!captionStyle?.template_id || isSourceBasicTemplateId(captionStyle?.template_id)) && (
                     <div
                       style={{
                         position: 'absolute',
@@ -3309,6 +4181,8 @@ export default function VideoPlayer({
                     >
                       {editText}
                     </div>
+                  ) : (() => { console.log('[DEBUG rendering path]', { hasSidebar: hasSidebarTemplateStyle(captionStyle), template_id: captionStyle?.template_id, template_20_id: captionStyle?.template_20_id }); return false })() ? null : hasSidebarTemplateStyle(captionStyle) ? (
+                    renderAppliedSidebarTemplateCaption(caption)
                   ) : captionStyle?.template_id ? (
                     // Template rendering: simple word spans with CSS class states for template effects
                     <span
@@ -3359,15 +4233,37 @@ export default function VideoPlayer({
                         // Compute which word index is currently being spoken
                         const currentIdx = getCaptionCurrentWordIndex(caption, wordCount);
 
+                        if (captionStyle?.template_id === 't-QW1') {
+                          return (
+                            <span className="sblock t-QW1">
+                              <span className="sw-line v32-sw">
+                                {words.map((word, wordIndex) => (
+                                  <span
+                                    key={wordIndex}
+                                    className="sw-w"
+                                    style={{ opacity: 1 }}
+                                  >
+                                    {word}
+                                  </span>
+                                ))}
+                              </span>
+                            </span>
+                          );
+                        }
+
                         const renderedWords = words.map((word, wordIndex, arr) => {
                           const isPast    = wordIndex < currentIdx;
                           const isCurrent = wordIndex === currentIdx;
 
                           const wordStyle = caption.wordStyles?.[`${caption.id}-${wordIndex}`] || {};
-                          let cls = 'word';
-                          if (isCurrent) cls += ' current active';
-                          else if (isPast) cls += ' active done';
-                          if (wordStyle?.isEmphasis) cls += ' imp';
+                          let cls = isSourceBasicTemplateId(captionStyle?.template_id)
+                            ? getBasicTemplateWordClassName(captionStyle.template_id, isPast, isCurrent, wordStyle?.isEmphasis)
+                            : 'word';
+                          if (!isSourceBasicTemplateId(captionStyle?.template_id)) {
+                            if (isCurrent) cls += ' current active';
+                            else if (isPast) cls += ' active done';
+                            if (wordStyle?.isEmphasis) cls += ' imp';
+                          }
                           if (isAdvancedTemplate) {
                             const shouldShowAdvancedWord = captionStyle?.show_inactive !== false || !isPlaying || isPast || isCurrent;
                             cls = ['w', shouldShowAdvancedWord ? 'in' : '', wordStyle?.isEmphasis ? 'imp-bold' : '']
@@ -3456,11 +4352,13 @@ export default function VideoPlayer({
                           };
                         })(),
                         // Add background or highlight if configured
-                        ...(captionStyle?.highlight_gradient ? {
-                          backgroundImage: captionStyle.highlight_gradient
-                        } : captionStyle?.highlight_color ? {
-                          backgroundColor: captionStyle.highlight_color
-                        } : {}),
+                        ...(!hasSidebarTemplateStyle(captionStyle) ? (
+                          captionStyle?.highlight_gradient ? {
+                            backgroundImage: captionStyle.highlight_gradient
+                          } : captionStyle?.highlight_color ? {
+                            backgroundColor: captionStyle.highlight_color
+                          } : {}
+                        ) : {}),
                         // Global text gradient
                         ...(captionStyle?.text_gradient ? {
                           backgroundImage: captionStyle.text_gradient,
@@ -3471,7 +4369,13 @@ export default function VideoPlayer({
                         } : {})
                       }}
                     >
-                      {caption.text.split(' ').map((word, wordIndex, arr) => {
+                      {(() => {
+                        const sidebarTemplateActive = hasSidebarTemplateStyle(captionStyle);
+                        const sidebarWords = caption.text.split(' ');
+                        const sidebarCurrentIdx = getCaptionCurrentWordIndex(caption, sidebarWords.length);
+                        const sidebarAccent = captionStyle?.secondary_color || '#FFE600';
+
+                        return sidebarWords.map((word, wordIndex, arr) => {
                         // Word-by-word mode: compute current word index from timing
                         if (shouldRevealSequentially(caption)) {
                           const currentIdx = getCaptionCurrentWordIndex(caption, arr.length)
@@ -3487,6 +4391,8 @@ export default function VideoPlayer({
                         const { x: renderOffsetX, y: renderOffsetY, isPositioned } = getWordRenderOffset(ws);
                         const detached = isWordDetached(ws);
                         const layoutFontSize = baseFontSize;
+                        const isPastSidebarWord = sidebarTemplateActive && wordIndex < sidebarCurrentIdx;
+                        const isCurrentSidebarWord = sidebarTemplateActive && wordIndex === sidebarCurrentIdx;
                         if (detached) {
                           return (
                             <span
@@ -3531,6 +4437,11 @@ export default function VideoPlayer({
                           color: ws.color || emphasisAccent,
                           fontSize: `${Math.round(wordFontSize * 1.2)}px`,
                           textShadow: `0 0 18px ${emphasisAccent}99, 0 0 6px ${emphasisAccent}66`,
+                        } : {};
+                        const sidebarWordStyle = sidebarTemplateActive ? {
+                          color: ws.color || (isCurrentSidebarWord ? sidebarAccent : (captionStyle?.text_color || '#ffffff')),
+                          opacity: isCurrentSidebarWord ? 1 : (isPastSidebarWord ? 0.96 : 0.46),
+                          textShadow: isCurrentSidebarWord ? `0 0 18px ${sidebarAccent}33` : undefined,
                         } : {};
 
 
@@ -3585,11 +4496,11 @@ export default function VideoPlayer({
                                 position: 'absolute',
                                 top: '50%',
                                 left: '50%',
-                                transform: 'translate(-50%, -50%)',
+                                transform: isCurrentSidebarWord ? 'translate(-50%, -50%) scale(1.03)' : 'translate(-50%, -50%)',
                                 whiteSpace: 'nowrap',
                                 fontFamily: ws.fontFamily || 'inherit',
                                 fontSize: `${wordFontSize}px`,
-                                fontWeight: ws.fontWeight || 'inherit',
+                                fontWeight: ws.fontWeight || (isCurrentSidebarWord ? (captionStyle?.font_weight || '700') : 'inherit'),
                                 fontStyle: ws.fontStyle || 'inherit',
                                 textDecoration: ws.textDecoration || 'inherit',
                                 textTransform: ws.textTransform || undefined,
@@ -3600,8 +4511,9 @@ export default function VideoPlayer({
                                   WebkitTextFillColor: 'transparent',
                                   color: 'transparent',
                                 } : {
-                                  color: ws.color || 'inherit',
+                                  color: ws.color || sidebarWordStyle.color || 'inherit',
                                 }),
+                                ...(sidebarTemplateActive ? sidebarWordStyle : {}),
                                 ...(ws.backgroundColor ? {
                                   backgroundColor: `rgba(${parseInt(ws.backgroundColor.slice(1,3),16)}, ${parseInt(ws.backgroundColor.slice(3,5),16)}, ${parseInt(ws.backgroundColor.slice(5,7),16)}, ${ws.backgroundOpacity ?? 0.6})`,
                                   borderRadius: '3px',
@@ -3622,7 +4534,8 @@ export default function VideoPlayer({
                             </span>
                           </span>
                         );
-                      })}
+                      });
+                      })()}
                     </span>
                   )}
                 </div>

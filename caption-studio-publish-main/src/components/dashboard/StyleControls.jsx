@@ -15,7 +15,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { FixedSizeList as List } from 'react-window';
 import { detectScript, scriptFontMap, loadGoogleFont } from './fontUtils';
 import AnimateTab from './AnimateTab';
-import TemplatesTab from './TemplatesTab';
+import AdvancedTemplateLibrary from './AdvancedTemplateLibrary';
 import {
   AlignLeft,
   AlignCenter,
@@ -389,7 +389,12 @@ export default function StyleControls({
 
       {activePanelTab === 'templates' ? (
         <div className="flex-1 min-h-0 p-4">
-          <TemplatesTab currentStyle={captionStyle} onApplyTemplate={onApplyTemplate} compact />
+          <AdvancedTemplateLibrary
+            currentStyle={captionStyle}
+            onApplyTemplate={onApplyTemplate}
+            showHeader={false}
+            showBackButton={false}
+          />
         </div>
       ) : activePanelTab === 'animate' ? (
         <div className="flex-1 min-h-0 p-4">
