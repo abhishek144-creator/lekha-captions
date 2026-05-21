@@ -1,0 +1,1239 @@
+<!DOCTYPE html>
+<!-- saved from url=(0058)http://127.0.0.1:8765/v6%20%E2%80%94%2020%20Templates.html -->
+<html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lekha Captions â€” 20 Templates</title>
+<link href="./Lekha Captions  20 Templates._files/css2" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#07070a;color:#fff;font-family:'Noto Sans',sans-serif;min-height:100vh;padding:24px 16px 60px}
+
+/* â”€â”€ PAGE STRUCTURE â”€â”€ */
+.page-hdr{text-align:center;margin-bottom:40px;padding-top:8px}
+.page-hdr h1{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:7px;text-transform:uppercase;color:#444;font-weight:400}
+.sec-hdr{text-align:center;margin:44px 0 20px;padding:16px 0;border-top:1px solid rgba(255,255,255,0.04)}
+.sec-hdr h2{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:6px;text-transform:uppercase;color:#555}
+.sec-hdr b{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:#999;margin-left:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px;max-width:1480px;margin:0 auto}
+
+/* â”€â”€ CARD â”€â”€ */
+.card{background:#0e0e12;border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,0.03)}
+.card-top{display:flex;align-items:center;justify-content:space-between;padding:11px 15px}
+.cid{font-family:'IBM Plex Mono',monospace;font-size:9px;color:#444;letter-spacing:1px}
+.cnm{font-family:'Syne',sans-serif;font-size:11px;font-weight:700;color:#bbb;margin-left:5px}
+.badges{display:flex;gap:5px}
+.bg{font-family:'IBM Plex Mono',monospace;font-size:7px;letter-spacing:1px;text-transform:uppercase;padding:2px 6px;border-radius:3px;border:1px solid rgba(255,255,255,0.05);color:#555}
+.bg.m{color:#c4a030;border-color:rgba(196,160,48,0.12)}
+.bg.s1{color:#7ab8f5;border-color:rgba(122,184,245,0.12)}
+.bg.s2{color:#a0d0a0;border-color:rgba(160,208,160,0.12)}
+.bg.s3{color:#e0a0d0;border-color:rgba(224,160,208,0.12)}
+.bg.s4{color:#f0c080;border-color:rgba(240,192,128,0.12)}
+
+/* â”€â”€ STAGE â”€â”€ */
+.stage{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden}
+.slbl{position:absolute;top:8px;left:11px;font-family:'IBM Plex Mono',monospace;font-size:7px;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.1);z-index:5;pointer-events:none}
+.sb{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;padding:14px}
+.sb.active{opacity:1;pointer-events:auto}
+.dots{display:flex;gap:4px;justify-content:center;padding:7px 0 10px}
+.dots i{width:4px;height:4px;border-radius:50%;background:rgba(255,255,255,0.07);transition:all 0.3s;font-style:normal;display:inline-block;cursor:pointer}
+.dots i.on{background:#fff;transform:scale(1.4)}
+
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   PLAIN STATIC SENTENCES
+â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+.plain-s{text-align:center;line-height:1.7}
+.plain-s .imp{font-weight:700;color:#fff}
+
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   WBW NORMAL SENTENCES
+   Rule: display:inline-block. Spaces from text nodes.
+â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+.wbw{text-align:center;line-height:1.7}
+.wbw .w{display:inline-block;opacity:0;vertical-align:baseline}
+/* WBW initial states â€” no rotate animations */
+.wbw.wrise .w{transform:translateY(22px)}
+.wbw.wslide .w{transform:translateX(-26px)}
+.wbw.wslider .w{transform:translateX(26px)}
+.wbw.wroll .w{transform:translateY(14px) rotate(-6deg);transform-origin:left bottom}
+.wbw.wwipe .w{clip-path:inset(0 100% 0 0);opacity:1}
+.wbw.wwipeup .w{clip-path:inset(100% 0 0 0);opacity:1}
+.wbw.wfade .w{transform:none}
+.wbw.wscale .w{transform:scale(0.5)}
+.wbw.wflip .w{transform:rotateX(-80deg);transform-origin:center bottom}
+.wbw.wbounce .w{transform:translateY(-22px)}
+.wbw.wdiag .w{transform:translate(-16px,16px)}
+.wbw.wexpand .w{transform:scaleX(0.15);transform-origin:center}
+.wbw.wskew .w{transform:skewX(-18deg) translateX(-12px)}
+.wbw.wstencil .w{clip-path:inset(0 50% 0 50%);opacity:1}
+.wbw.wlift .w{transform:translateY(-22px)}
+
+/* IMP word treatments */
+.w.imp-bold{font-weight:900;color:#fff}
+.w.imp-gold{font-weight:900;color:#d4af37;text-shadow:0 0 12px rgba(212,175,55,0.22)}
+.w.imp-rose{font-weight:900;color:#ff3d71;text-shadow:0 0 12px rgba(255,61,113,0.22)}
+.w.imp-cyan{font-weight:900;color:#00e5ff;text-shadow:0 0 12px rgba(0,229,255,0.22)}
+.w.imp-green{font-weight:900;color:#39ff14;text-shadow:0 0 12px rgba(57,255,20,0.22)}
+.w.imp-purple{font-weight:700;color:#a78bfa;font-style:italic;text-shadow:0 0 12px rgba(167,139,250,0.18)}
+.w.imp-italic{font-weight:700;color:#fff;font-style:italic}
+.w.imp-weight{font-weight:900;color:#fff}
+.w.imp-underline{font-weight:700;color:#fff;position:relative}
+.w.imp-underline::after{content:'';position:absolute;bottom:-2px;left:0;width:0;height:2px;background:#d4af37;transition:width 0.42s 0.08s ease}
+.w.imp-underline.in::after{width:100%}
+.w.imp-box{font-weight:700;color:#fff;padding:0 7px;border-radius:3px;transition:background 0.1s 0.1s}
+.w.imp-box.in{background:rgba(255,59,48,0.22)}
+.w.imp-space{font-weight:700;color:#fff;letter-spacing:0.18em}
+.w.imp-flicker{font-weight:900;color:#fff}
+.w.imp-flicker.fx{animation:wFlk 0.28s 1}
+@keyframes wFlk{0%{opacity:1}20%{opacity:0}40%{opacity:1}60%{opacity:0}80%{opacity:1}100%{opacity:1}}
+.w.imp-typewrite{font-weight:900;color:#fff;border-right:2px solid transparent}
+.w.imp-typewrite.fx{animation:twC 0.5s steps(2) 2}
+@keyframes twC{0%{border-right-color:#fff}50%{border-right-color:transparent}100%{border-right-color:#fff}}
+.w.imp-stamp{font-weight:900;color:#fff}
+
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   CREATIVELY PLACED POSITIONS
+   .sw = inline-block. Spaces = text nodes.
+â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+.sw{display:inline-block;opacity:0}
+.sw.neon-y{color:#FFE600;text-shadow:0 0 18px rgba(255,230,0,0.32)}
+.sw.neon-c{color:#00e5ff;text-shadow:0 0 18px rgba(0,229,255,0.32)}
+.sw.neon-g{color:#39ff14;text-shadow:0 0 18px rgba(57,255,20,0.32)}
+.sw.neon-r{color:#ff3d71;text-shadow:0 0 16px rgba(255,61,113,0.28)}
+.sw.neon-p{color:#a78bfa;text-shadow:0 0 14px rgba(167,139,250,0.22)}
+
+/* â”€â”€ POS31 DUO FLOW â€” thin label above large hero â”€â”€ */
+.pos31{display:inline-flex;flex-direction:column;align-items:flex-start;gap:0;text-align:left;padding-left:5%}
+.pos31 .pr{display:block;white-space:nowrap}
+.pos31 .pr.sm{font-family:'DM Sans',sans-serif;font-size:clamp(11px,2vw,16px);font-weight:300;color:rgba(255,255,255,0.68);line-height:1.5}
+.pos31 .pr.hero{font-family:'Archivo Black',sans-serif;font-size:clamp(34px,7vw,60px);font-weight:900;color:#fff;line-height:0.88;letter-spacing:-0.025em}
+.pos31 .pr.tail{font-family:'DM Sans',sans-serif;font-size:clamp(11px,1.8vw,14px);font-weight:300;color:rgba(255,255,255,0.4);line-height:1.5;margin-top:5px}
+.pos31b{display:inline-flex;flex-direction:column;align-items:flex-start;gap:0;text-align:left;padding-left:5%}
+.pos31b .pr{display:block;white-space:nowrap}
+.pos31b .pr.sm{font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(12px,2.2vw,17px);font-weight:400;color:rgba(255,255,255,0.5);line-height:1.5}
+.pos31b .pr.hero{font-family:'Gloock',serif;font-size:clamp(30px,6.5vw,54px);font-weight:700;color:#fff;line-height:0.88;letter-spacing:-0.015em}
+.pos31b .pr.tail{font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(11px,1.9vw,14px);color:rgba(255,255,255,0.35);line-height:1.5;margin-top:5px}
+.pos31c{display:inline-flex;flex-direction:column;align-items:flex-start;gap:0;text-align:left;padding-left:5%}
+.pos31c .pr{display:block;white-space:nowrap}
+.pos31c .pr.sm{font-family:'DM Mono',monospace;font-size:clamp(10px,1.8vw,13px);font-weight:300;color:rgba(255,255,255,0.45);line-height:1.6;letter-spacing:0.06em}
+.pos31c .pr.hero{font-family:'Archivo Black',sans-serif;font-size:clamp(32px,6.5vw,58px);font-weight:900;color:#fff;line-height:0.88;letter-spacing:-0.025em}
+.pos31d{display:inline-flex;flex-direction:column;align-items:flex-end;gap:0;text-align:right;padding-right:5%}
+.pos31d .pr{display:block;white-space:nowrap}
+.pos31d .pr.sm{font-family:'DM Sans',sans-serif;font-size:clamp(11px,2vw,15px);font-weight:300;color:rgba(255,255,255,0.52);line-height:1.5}
+.pos31d .pr.hero{font-family:'Archivo Black',sans-serif;font-size:clamp(32px,6.5vw,56px);font-weight:900;color:#fff;line-height:0.88;letter-spacing:-0.025em}
+
+/* â”€â”€ POSITION LAYOUT STRUCTURES â”€â”€ */
+.pos1{display:inline-flex;flex-direction:column;align-items:flex-end;gap:0}
+.pos1 .pr{display:block;white-space:nowrap;line-height:1.2}
+.pos3{display:inline-flex;flex-direction:column;align-items:flex-end;gap:0;line-height:1.0}
+.pos3 .pr{display:block;white-space:nowrap;line-height:1.15}
+.pos5{display:inline-flex;flex-direction:column;align-items:flex-start;gap:0;line-height:1.0}
+.pos5 .pr{display:block;white-space:nowrap;line-height:1.2}
+.pos6{display:inline-flex;flex-direction:column;align-items:center;gap:0;line-height:1.0}
+.pos6 .pr{display:block;white-space:nowrap;text-align:center;line-height:1.2}
+.pos7{display:inline-flex;flex-direction:column;align-items:stretch;gap:0}
+.pos7 .pr{display:block;white-space:nowrap;line-height:1.15}
+.pos9{display:inline-flex;flex-direction:column;align-items:flex-start;gap:0}
+.pos9 .pr{display:block;white-space:nowrap;line-height:1.2}
+.pos11{display:inline-flex;flex-direction:column;align-items:center;gap:0}
+.pos11 .pr{display:block;white-space:nowrap;text-align:center;line-height:1.2}
+.pos14{display:block;text-align:center;line-height:1.0;max-width:92%;width:92%}
+.pos15{display:inline-flex;flex-direction:column;align-items:flex-start;gap:0;margin-left:5%}
+.pos15 .pr{display:block;white-space:nowrap;line-height:1.25}
+.pos17{display:block;text-align:center;line-height:1.7;max-width:94%;width:94%}
+.pos19{display:inline-flex;flex-direction:column;align-items:flex-end;gap:0;margin-right:5%}
+.pos19 .pr{display:block;white-space:nowrap;line-height:1.3}
+.pos21{display:inline-flex;flex-direction:column;align-items:center;gap:0}
+.pos21 .pr{display:block;white-space:nowrap;text-align:center;line-height:1.25}
+.pos22{display:block;text-align:center;line-height:1.7;max-width:94%;width:94%}
+.pos23{display:block;text-align:center;line-height:1.0;max-width:92%;width:92%}
+.pos25{display:inline-flex;flex-direction:column;align-items:flex-start;gap:0;margin-left:4%}
+.pos25 .pr{display:block;white-space:nowrap;line-height:1.3}
+.pos27{display:inline-flex;flex-direction:column;align-items:flex-start;gap:0;margin-left:5%}
+.pos27 .pr{display:block;white-space:nowrap;line-height:1.25}
+.pos29{display:inline-flex;flex-direction:column;align-items:flex-end;gap:0}
+.pos29 .pr{display:block;white-space:nowrap;text-align:right;line-height:1.15}
+.pos30{display:inline-flex;flex-direction:column;align-items:center;gap:0}
+.pos30 .pr{display:block;white-space:nowrap;text-align:center;line-height:1.1}
+
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   PER-TEMPLATE TYPOGRAPHY + STAGE COLORS
+â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+/* A1 â€” The Vigil â€” Minimal */
+.a1 .stage{background:#080808}
+.a1 .pos3{font-family:'Raleway',sans-serif;font-weight:300;font-size:clamp(14px,2.8vw,22px);color:rgba(255,255,255,0.6);letter-spacing:2px}
+.a1 .wbw{font-family:'Raleway',sans-serif;font-size:16px;font-weight:300;color:rgba(255,255,255,0.5)}
+.a1 .plain-s{font-family:'Raleway',sans-serif;font-size:15px;font-weight:300;color:rgba(255,255,255,0.28);letter-spacing:1px}
+
+/* A2 â€” The Current â€” Energy */
+.a2 .stage{background:#060a0c}
+.a2 .pos14{font-family:'Anton',sans-serif;font-size:clamp(32px,6vw,54px);color:#fff;letter-spacing:2px;text-transform:uppercase}
+.a2 .wbw{font-family:'Anton',sans-serif;font-size:17px;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:1px}
+.a2 .plain-s{font-family:'Anton',sans-serif;font-size:14px;color:rgba(255,255,255,0.28);text-transform:uppercase;letter-spacing:2px}
+
+/* A3 â€” The Drift â€” Lofi */
+.a3 .stage{background:#09090b}
+.a3 .wbw{font-family:'Gloock',serif;font-style:italic;font-size:18px;color:rgba(255,255,255,0.45)}
+.a3 .plain-s{font-family:'Gloock',serif;font-style:italic;font-size:16px;color:rgba(255,255,255,0.28)}
+
+/* A4 â€” The Dispatch â€” Editorial */
+.a4 .stage{background:#080a06}
+.a4 .pos9{font-family:'Bitter',serif}
+.a4 .pos9 .pr.l1{font-size:clamp(13px,2.4vw,18px);font-weight:400;color:rgba(255,255,255,0.52);padding-left:0}
+.a4 .pos9 .pr.l2{font-size:clamp(13px,2.4vw,18px);font-weight:400;color:rgba(255,255,255,0.72);padding-left:20px}
+.a4 .pos9 .pr.l3{font-size:clamp(14px,2.7vw,20px);font-weight:700;color:#fff;padding-left:40px}
+.a4 .wbw{font-family:'Bitter',serif;font-size:17px;color:rgba(255,255,255,0.5)}
+.a4 .plain-s{font-family:'Bitter',serif;font-size:16px;color:rgba(255,255,255,0.3)}
+
+/* A5 â€” The Oracle â€” Poetic */
+.a5 .stage{background:#080a08}
+.a5 .wbw{font-family:'Gloock',serif;font-style:italic;font-size:19px;color:rgba(255,255,255,0.5)}
+.a5 .plain-s{font-family:'Gloock',serif;font-style:italic;font-size:18px;color:rgba(255,255,255,0.3)}
+
+/* B1 â€” The Ruin â€” Dark Poetry */
+.b1 .stage{background:#050808}
+.b1 .pos1{font-family:'Bodoni Moda',serif}
+.b1 .pos1 .pr.sm{font-size:12px;font-style:italic;letter-spacing:1px;color:rgba(255,255,255,0.35)}
+.b1 .pos1 .pr.hero{font-size:clamp(38px,7.5vw,62px);font-weight:900;font-style:italic;color:#fff;line-height:0.88}
+.b1 .pos1 .pr.sub{font-size:11px;letter-spacing:2px;font-style:italic;color:rgba(255,255,255,0.22)}
+.b1 .pos22{font-family:'Bodoni Moda',serif;font-style:italic;font-size:clamp(15px,2.7vw,21px);color:rgba(255,255,255,0.4)}
+.b1 .wbw{font-family:'Bodoni Moda',serif;font-size:17px;font-style:italic;color:rgba(255,255,255,0.5)}
+.b1 .plain-s{font-family:'Bodoni Moda',serif;font-size:16px;font-style:italic;color:rgba(255,255,255,0.28)}
+
+/* B2 â€” The Stage â€” Drama */
+.b2 .stage{background:#080511}
+.b2 .pos19{font-family:'Cormorant Garamond',serif}
+.b2 .pos19 .pr.script{font-size:clamp(26px,5vw,44px);font-weight:300;font-style:italic;color:rgba(255,255,255,0.55)}
+.b2 .pos19 .pr.sans{font-family:'Syne',sans-serif;font-size:clamp(18px,3.5vw,28px);font-weight:800;color:#fff;text-transform:uppercase;letter-spacing:2px}
+.b2 .pos30{font-family:'Syne',sans-serif}
+.b2 .pos30 .pr{font-weight:800;font-size:clamp(16px,3.2vw,26px);color:#fff;text-transform:uppercase;letter-spacing:3px}
+.b2 .wbw{font-family:'Cormorant Garamond',serif;font-size:19px;font-style:italic;color:rgba(255,255,255,0.5)}
+.b2 .plain-s{font-family:'Syne',sans-serif;font-size:14px;font-weight:400;color:rgba(255,255,255,0.28);letter-spacing:3px;text-transform:uppercase}
+
+/* B3 â€” The Signal â€” Sci-Fi */
+.b3 .stage{background:#04060a}
+.b3 .pos21{font-family:'Oxanium',sans-serif}
+.b3 .pos21 .pr.l1,.b3 .pos21 .pr.l2,.b3 .pos21 .pr.l3{font-size:13px;letter-spacing:2px;color:rgba(255,255,255,0.42)}
+.b3 .pos21 .pr.hero{font-size:clamp(22px,4.5vw,36px);font-weight:700;color:#39ff14;text-shadow:0 0 22px rgba(57,255,20,0.3)}
+.b3 .wbw{font-family:'Oxanium',sans-serif;font-size:16px;color:rgba(255,255,255,0.45)}
+.b3 .plain-s{font-family:'IBM Plex Mono',monospace;font-size:13px;color:rgba(255,255,255,0.28);letter-spacing:1px}
+
+/* B4 â€” The Verdict â€” Legal Drama */
+.b4 .stage{background:#060608}
+.b4 .pos5{font-family:'Spectral',serif}
+.b4 .pos5 .pr.sm{font-size:11px;letter-spacing:3px;font-style:italic;color:rgba(255,255,255,0.38)}
+.b4 .pos5 .pr.hero{font-size:clamp(26px,5.2vw,44px);font-weight:700;color:#fff;line-height:0.9}
+.b4 .pos29{font-family:'Spectral',serif}
+.b4 .pos29 .pr{font-size:clamp(12px,2.2vw,16px);font-weight:700;color:rgba(255,255,255,0.72)}
+.b4 .wbw{font-family:'Spectral',serif;font-size:17px;color:rgba(255,255,255,0.5)}
+.b4 .plain-s{font-family:'IBM Plex Mono',monospace;font-size:13px;color:rgba(255,255,255,0.28);letter-spacing:0.5px}
+
+/* B5 â€” The Voltage â€” Cyberpunk */
+.b5 .stage{background:#050408}
+.b5 .pos11{font-family:'Bebas Neue',sans-serif}
+.b5 .pos11 .pr.sm{font-size:clamp(11px,2vw,15px);letter-spacing:4px;color:rgba(255,255,255,0.35)}
+.b5 .pos11 .pr.hero{font-size:clamp(34px,6.5vw,55px);letter-spacing:2px}
+.b5 .pos17{font-family:'Bebas Neue',sans-serif;font-size:clamp(14px,2.8vw,22px);letter-spacing:3px}
+.b5 .wbw{font-family:'Chakra Petch',sans-serif;font-size:15px;color:rgba(255,255,255,0.5);text-transform:uppercase}
+.b5 .plain-s{font-family:'IBM Plex Mono',monospace;font-size:13px;color:rgba(255,255,255,0.28)}
+
+/* C1 â€” The Uprising â€” Rebellion */
+.c1 .stage{background:#060408}
+.c1 .pos6{font-family:'Oswald',sans-serif}
+.c1 .pos6 .pr.sm{font-weight:300;font-size:12px;letter-spacing:4px;text-transform:uppercase;color:rgba(255,255,255,0.28)}
+.c1 .pos6 .pr.hero{font-weight:700;font-size:clamp(40px,7.5vw,64px);text-transform:uppercase}
+.c1 .pos3{font-family:'Oswald',sans-serif;font-weight:300;font-size:clamp(13px,2.4vw,19px);color:rgba(255,255,255,0.65);letter-spacing:3px;text-transform:uppercase}
+.c1 .pos29{font-family:'Oswald',sans-serif}
+.c1 .pos29 .pr{font-size:clamp(11px,2.1vw,16px);font-weight:700;color:rgba(255,255,255,0.72);text-transform:uppercase;letter-spacing:2px}
+.c1 .wbw{font-family:'Oswald',sans-serif;font-size:16px;color:rgba(255,255,255,0.5)}
+.c1 .plain-s{font-family:'DM Sans',sans-serif;font-size:14px;color:rgba(255,255,255,0.28);letter-spacing:1px}
+
+/* C2 â€” The Archive â€” Thriller */
+.c2 .stage{background:#040507}
+.c2 .pos27{font-family:'Cinzel',serif}
+.c2 .pos27 .pr.l1{font-size:clamp(12px,2.1vw,16px);font-weight:700;color:rgba(255,255,255,0.72)}
+.c2 .pos27 .pr.l2{font-size:11px;font-style:italic;font-family:'DM Serif Display',serif;color:rgba(255,255,255,0.28)}
+.c2 .pos27 .pr.l3{font-size:clamp(13px,2.4vw,18px);font-weight:700;color:rgba(255,255,255,0.9)}
+.c2 .pos22{font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(12px,2.2vw,16px);color:rgba(255,255,255,0.32)}
+.c2 .wbw{font-family:'Cinzel',serif;font-size:14px;color:rgba(255,255,255,0.48);letter-spacing:1px}
+.c2 .plain-s{font-family:'DM Mono',monospace;font-size:13px;color:rgba(255,255,255,0.28);letter-spacing:0.5px}
+
+/* C3 â€” The Ember â€” Literary */
+.c3 .stage{background:#0a0806}
+.c3 .pos1{font-family:'Bodoni Moda',serif}
+.c3 .pos1 .pr.sm{font-size:11px;font-style:italic;letter-spacing:2px;color:rgba(255,255,255,0.35)}
+.c3 .pos1 .pr.hero{font-size:clamp(38px,7.5vw,64px);font-weight:900;font-style:italic;color:#fff;line-height:0.88}
+.c3 .pos15{font-family:'Gloock',serif}
+.c3 .pos15 .pr.sm{font-size:clamp(13px,2.3vw,17px);font-weight:400;font-style:italic;color:rgba(255,255,255,0.5)}
+.c3 .pos15 .pr.hero{font-size:clamp(18px,3.5vw,28px);font-weight:700;color:#fff}
+.c3 .wbw{font-family:'Gloock',serif;font-size:18px;color:rgba(255,255,255,0.5)}
+.c3 .plain-s{font-family:'Gloock',serif;font-size:17px;font-style:italic;color:rgba(255,255,255,0.28)}
+
+/* C4 â€” The Score â€” Music */
+.c4 .stage{background:#060809}
+.c4 .pos25{font-family:'Playfair Display',serif}
+.c4 .pos25 .pr.sm{font-size:clamp(22px,4.5vw,38px);font-weight:700;font-style:italic;color:rgba(255,255,255,0.58)}
+.c4 .pos25 .pr.hero{font-size:clamp(13px,2.2vw,17px);font-weight:300;font-family:'Raleway',sans-serif;color:rgba(255,255,255,0.48);letter-spacing:1px}
+.c4 .pos30{font-family:'Teko',sans-serif}
+.c4 .pos30 .pr{font-weight:700;font-size:clamp(18px,3.5vw,28px);color:#fff;letter-spacing:3px;text-transform:uppercase}
+.c4 .pos14{font-family:'Teko',sans-serif;font-size:clamp(28px,5.5vw,46px);font-weight:700;letter-spacing:4px;text-transform:uppercase;color:#fff}
+.c4 .wbw{font-family:'Raleway',sans-serif;font-size:17px;font-style:italic;color:rgba(255,255,255,0.5)}
+.c4 .plain-s{font-family:'Raleway',sans-serif;font-size:16px;font-style:italic;color:rgba(255,255,255,0.3)}
+
+/* C5 â€” The Vessel â€” Spiritual */
+.c5 .stage{background:#050608}
+.c5 .pos21{font-family:'Cormorant Garamond',serif;font-style:italic}
+.c5 .pos21 .pr.l1,.c5 .pos21 .pr.l2,.c5 .pos21 .pr.l3{font-size:clamp(12px,2.1vw,16px);font-weight:300;color:rgba(255,255,255,0.4);letter-spacing:0.5px}
+.c5 .pos21 .pr.hero{font-size:clamp(20px,4vw,32px);font-weight:700;font-style:italic}
+.c5 .pos5{font-family:'Italiana',sans-serif}
+.c5 .pos5 .pr.sm{font-size:11px;letter-spacing:3px;text-transform:uppercase;color:rgba(255,255,255,0.32)}
+.c5 .pos5 .pr.hero{font-size:clamp(24px,4.8vw,40px);font-weight:400;color:#fff}
+.c5 .wbw{font-family:'Cormorant Garamond',serif;font-size:19px;font-style:italic;color:rgba(255,255,255,0.5)}
+.c5 .plain-s{font-family:'Italiana',sans-serif;font-size:18px;color:rgba(255,255,255,0.3)}
+
+/* D1 â€” The Titan â€” Motivation */
+.d1 .stage{background:#050505}
+.d1 .pos14{font-family:'Unbounded',sans-serif;font-size:clamp(34px,6.8vw,58px);font-weight:900;letter-spacing:-0.02em;color:#fff}
+.d1 .pos7{font-family:'Unbounded',sans-serif}
+.d1 .pos7 .pr.left{font-size:10px;font-weight:300;letter-spacing:3px;text-transform:uppercase;color:rgba(255,255,255,0.32);text-align:left}
+.d1 .pos7 .pr.hero{font-size:clamp(42px,8vw,70px);font-weight:900;line-height:0.88;color:#39ff14;text-shadow:0 0 28px rgba(57,255,20,0.3);text-align:center}
+.d1 .pos7 .pr.right{font-size:10px;font-weight:300;letter-spacing:3px;text-transform:uppercase;color:rgba(255,255,255,0.28);text-align:right}
+.d1 .wbw{font-family:'Unbounded',sans-serif;font-size:12px;font-weight:300;color:rgba(255,255,255,0.42);letter-spacing:0.02em}
+.d1 .plain-s{font-family:'DM Mono',monospace;font-size:12px;color:rgba(255,255,255,0.25);letter-spacing:0.5px}
+
+/* D2 â€” The Chronicle â€” Documentary */
+.d2 .stage{background:#060708}
+.d2 .pos9{font-family:'Spectral',serif}
+.d2 .pos9 .pr.l1{font-size:clamp(12px,2.2vw,16px);font-weight:400;color:rgba(255,255,255,0.52)}
+.d2 .pos9 .pr.l2{font-size:clamp(12px,2.2vw,16px);font-weight:400;color:rgba(255,255,255,0.7);padding-left:18px}
+.d2 .pos9 .pr.l3{font-size:clamp(13px,2.5vw,18px);font-weight:700;color:#fff;padding-left:36px}
+.d2 .pos22{font-family:'Spectral',serif;font-style:italic;font-size:clamp(12px,2.2vw,15px);color:rgba(255,255,255,0.32)}
+.d2 .wbw{font-family:'Spectral',serif;font-size:17px;color:rgba(255,255,255,0.5)}
+.d2 .plain-s{font-family:'IBM Plex Mono',monospace;font-size:12px;color:rgba(255,255,255,0.25);letter-spacing:0.5px}
+
+/* D3 â€” The Break â€” Sci-Fi */
+.d3 .stage{background:#040508}
+.d3 .pos11{font-family:'Oxanium',sans-serif}
+.d3 .pos11 .pr.sm{font-size:12px;letter-spacing:3px;color:rgba(255,255,255,0.38)}
+.d3 .pos11 .pr.hero{font-size:clamp(28px,5.5vw,46px);font-weight:700}
+.d3 .pos21{font-family:'Oxanium',sans-serif}
+.d3 .pos21 .pr.l1,.d3 .pos21 .pr.l2,.d3 .pos21 .pr.l3{font-size:13px;letter-spacing:1px;color:rgba(255,255,255,0.42)}
+.d3 .pos21 .pr.hero{font-size:clamp(22px,4.5vw,36px);font-weight:700;color:#39ff14;text-shadow:0 0 22px rgba(57,255,20,0.28)}
+.d3 .wbw{font-family:'Oxanium',sans-serif;font-size:15px;color:rgba(255,255,255,0.42)}
+.d3 .plain-s{font-family:'Major Mono Display',monospace;font-size:11px;color:rgba(255,255,255,0.25);text-transform:lowercase;letter-spacing:1px}
+
+/* D4 â€” The Descent â€” Thriller */
+.d4 .stage{background:#050406}
+.d4 .pos27{font-family:'Cinzel',serif}
+.d4 .pos27 .pr.l1{font-size:clamp(12px,2.2vw,17px);font-weight:700;color:rgba(255,255,255,0.72)}
+.d4 .pos27 .pr.l2{font-size:11px;font-style:italic;font-family:'DM Serif Display',serif;color:rgba(255,255,255,0.28)}
+.d4 .pos27 .pr.l3{font-size:clamp(13px,2.5vw,19px);font-weight:700;color:rgba(255,255,255,0.92)}
+.d4 .pos3{font-family:'Cinzel',serif;font-weight:700;font-size:clamp(12px,2.2vw,17px);color:rgba(255,255,255,0.62);letter-spacing:1px}
+.d4 .pos5{font-family:'Cinzel',serif}
+.d4 .pos5 .pr.sm{font-size:10px;letter-spacing:3px;color:rgba(255,255,255,0.28)}
+.d4 .pos5 .pr.hero{font-size:clamp(20px,4vw,32px);font-weight:900;color:#fff}
+.d4 .wbw{font-family:'DM Serif Display',serif;font-style:italic;font-size:17px;color:rgba(255,255,255,0.5)}
+.d4 .plain-s{font-family:'DM Serif Display',serif;font-style:italic;font-size:15px;color:rgba(255,255,255,0.28)}
+
+/* D5 â€” The Legacy â€” Inspirational */
+.d5 .stage{background:#060508}
+.d5 .pos21{font-family:'Fraunces',serif;font-style:italic}
+.d5 .pos21 .pr.l1,.d5 .pos21 .pr.l2,.d5 .pos21 .pr.l3{font-size:clamp(12px,2.1vw,16px);font-weight:300;color:rgba(255,255,255,0.38);letter-spacing:0.5px}
+.d5 .pos21 .pr.hero{font-size:clamp(22px,4.5vw,36px);font-weight:700;font-style:italic}
+.d5 .pos6{font-family:'Fraunces',serif}
+.d5 .pos6 .pr.sm{font-size:12px;font-weight:300;letter-spacing:2px;color:rgba(255,255,255,0.32)}
+.d5 .pos6 .pr.hero{font-size:clamp(36px,7vw,58px);font-weight:700;font-style:italic;color:#fff;line-height:0.9}
+.d5 .wbw{font-family:'Fraunces',serif;font-size:18px;font-style:italic;color:rgba(255,255,255,0.5)}
+.d5 .plain-s{font-family:'Fraunces',serif;font-size:17px;font-style:italic;color:rgba(255,255,255,0.28)}
+
+/* Caption normalization */
+.stage .plain-s,
+.stage .wbw,
+.stage .w,
+.stage .sw,
+.stage .pr,
+.stage .pr.sm,
+.stage .pr.hero,
+.stage .pr.sub,
+.stage .pr.tail,
+.stage .pr.l1,
+.stage .pr.l2,
+.stage .pr.l3,
+.stage .pr.left,
+.stage .pr.right,
+.stage .pr.script,
+.stage .pr.sans{
+  color:#fff !important;
+  text-shadow:none !important;
+}
+
+.stage .w[class*="imp-"],
+.stage .plain-s .imp,
+.stage .sw.neon-y,
+.stage .sw.neon-c,
+.stage .sw.neon-g,
+.stage .sw.neon-r,
+.stage .sw.neon-p{
+  color:#fff !important;
+  text-shadow:none !important;
+  font-size:0.78em !important;
+}
+
+.stage .w.imp-underline::after{
+  background:#fff !important;
+}
+
+.stage .w.imp-box.in{
+  background:transparent !important;
+}
+</style>
+</head>
+<body data-new-gr-c-s-check-loaded="14.1137.0" data-gr-ext-installed="">
+<div class="page-hdr"><h1>Lekha Captions â€” Smart Caption Template System â€” 20 Templates</h1></div>
+
+<div class="sec-hdr"><h2>1-STYLE</h2><b>5 Templates</b></div>
+<div class="grid" id="g1"><div class="card a1"><div class="card-top"><div><span class="cid">A1</span><span class="cnm"> Â· The Vigil</span></div><div class="badges"><span class="bg m">Minimal</span><span class="bg s1">1-STYLE</span></div></div><div class="stage" data-ti="0"><span class="slbl">Flip + Gold IMP</span><div class="sb" data-si="0" style="opacity: 0;"><div class="pos3"><div class="pr"><span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">some</span> <span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">things</span></div><div class="pr"><span class="sw" data-anim="slide-l" style="transition: none; transform: translateX(-28px); opacity: 0;">take</span> <span class="sw" data-anim="slide-l" style="transition: none; transform: translateX(-28px); opacity: 0;">longer</span></div><div class="pr"><span class="sw" data-anim="wipe" style="transition: none; opacity: 1; transform: none; clip-path: inset(0px 100% 0px 0px);">than</span> <span class="sw" data-anim="wipe" style="transition: none; opacity: 1; transform: none; clip-path: inset(0px 100% 0px 0px);">planned.</span></div></div></div><div class="sb" data-si="1" style="opacity: 0;"><div class="wbw wfade"><span class="w" style="transition: none; transform: none; opacity: 0;">Keep</span> <span class="w imp-flicker" style="transition: none; transform: none; opacity: 0;">showing</span> <span class="w" style="transition: none; transform: none; opacity: 0;">up</span> <span class="w" style="transition: none; transform: none; opacity: 0;">anyway.</span></div></div><div class="sb" data-si="2" style="opacity: 0;"><div class="plain-s">the work doesn't care about your feelings.</div></div><div class="sb active" data-si="3" style="opacity: 1; transition: none;"><div class="wbw wflip"><span class="w in" style="transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1), opacity 240ms; transform: rotateX(0deg); opacity: 1; transform-origin: center bottom;">One</span> <span class="w in" style="transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1), opacity 240ms; transform: rotateX(0deg); opacity: 1; transform-origin: center bottom;">more</span> <span class="w imp-gold" style="transition: none; transform: none; opacity: 1; transform-origin: center bottom; clip-path: inset(0px 100% 0px 0px);">day.</span></div></div></div><div class="dots" data-ti="0"><i class=""></i><i class=""></i><i class=""></i><i class="on"></i></div></div><div class="card a2"><div class="card-top"><div><span class="cid">A2</span><span class="cnm"> Â· The Current</span></div><div class="badges"><span class="bg m">Energy</span><span class="bg s1">1-STYLE</span></div></div><div class="stage" data-ti="1"><span class="slbl">Skew + Cyan IMP</span><div class="sb" data-si="0" style="opacity: 0;"><div class="wbw wbounce"><span class="w" style="transition: none; transform: translateY(-22px); opacity: 0;">EVERYTHING</span> <span class="w" style="transition: none; transform: translateY(-22px); opacity: 0;">YOU</span> <span class="w imp-typewrite" style="transition: none; transform: translateY(-22px); opacity: 0;">KNOW</span> <span class="w" style="transition: none; transform: translateY(-22px); opacity: 0;">CHANGES</span> <span class="w" style="transition: none; transform: translateY(-22px); opacity: 0;">TODAY.</span></div></div><div class="sb" data-si="1" style="opacity: 0;"><div class="pos14"><span class="sw" data-anim="pop" style="transition: none; transform: scale(0.82); opacity: 0;">ADAPT.</span></div></div><div class="sb" data-si="2" style="opacity: 0;"><div class="plain-s">or get left behind in the noise.</div></div><div class="sb active" data-si="3" style="opacity: 1; transition: none;"><div class="wbw wskew"><span class="w in" style="transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1), opacity 240ms; transform: skewX(0deg) translateX(0px); opacity: 1;">you</span> <span class="w in" style="transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1), opacity 240ms; transform: skewX(0deg) translateX(0px); opacity: 1;">were</span> <span class="w in" style="transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1), opacity 240ms; transform: skewX(0deg) translateX(0px); opacity: 1;">built</span> <span class="w" style="transition: none; transform: skewX(-18deg) translateX(-12px); opacity: 0;">for</span> <span class="w imp-cyan" style="transition: none; transform: skewX(-18deg) translateX(-12px); opacity: 0;">this.</span></div></div></div><div class="dots" data-ti="1"><i class=""></i><i class=""></i><i class=""></i><i class="on"></i></div></div><div class="card a3"><div class="card-top"><div><span class="cid">A3</span><span class="cnm"> Â· The Drift</span></div><div class="badges"><span class="bg m">Lofi</span><span class="bg s1">1-STYLE</span></div></div><div class="stage" data-ti="2"><span class="slbl">Expand + Gold IMP</span><div class="sb" data-si="0" style="opacity: 0;"><div class="pos31b"><div class="pr sm"><span class="sw" data-anim="slide-slow" style="transition: none; transform: translateX(-32px); opacity: 0;">the</span> <span class="sw" data-anim="slide-slow" style="transition: none; transform: translateX(-32px); opacity: 0;">playlist</span> <span class="sw" data-anim="slide-slow" style="transition: none; transform: translateX(-32px); opacity: 0;">knows</span></div><div class="pr hero"><span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">silence.</span></div><div class="pr tail"><span class="sw" data-anim="fade" style="transition: none; transform: none; opacity: 0;">let</span> <span class="sw" data-anim="fade" style="transition: none; transform: none; opacity: 0;">it</span> <span class="sw" data-anim="fade" style="transition: none; transform: none; opacity: 0;">drift.</span></div></div></div><div class="sb" data-si="1" style="opacity: 0;"><div class="wbw wdiag"><span class="w" style="transition: none; transform: translate(-16px, 16px); opacity: 0;">thoughts</span> <span class="w" style="transition: none; transform: translate(-16px, 16px); opacity: 0;">untangle</span> <span class="w imp-rose" style="transition: none; transform: translate(-16px, 16px); opacity: 0;">slowly.</span></div></div><div class="sb" data-si="2" style="opacity: 0;"><div class="plain-s">let the hour breathe.</div></div><div class="sb active" data-si="3" style="opacity: 1; transition: none;"><div class="wbw wexpand"><span class="w in" style="transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1), opacity 240ms; transform: scaleX(1); opacity: 1; transform-origin: center center;">this</span> <span class="w in" style="transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1), opacity 240ms; transform: scaleX(1); opacity: 1; transform-origin: center center;">moment</span> <span class="w in" style="transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1), opacity 240ms; transform: scaleX(1); opacity: 1; transform-origin: center center;">belongs</span> <span class="w" style="transition: none; transform: scaleX(0.15); opacity: 0; transform-origin: center center;">to</span> <span class="w imp-gold" style="transition: none; transform: none; opacity: 1; transform-origin: center center; clip-path: inset(0px 100% 0px 0px);">no one.</span></div></div></div><div class="dots" data-ti="2"><i class=""></i><i class=""></i><i class=""></i><i class="on"></i></div></div><div class="card a4"><div class="card-top"><div><span class="cid">A4</span><span class="cnm"> Â· The Dispatch</span></div><div class="badges"><span class="bg m">Editorial</span><span class="bg s1">1-STYLE</span></div></div><div class="stage" data-ti="3"><span class="slbl">Scale + Rose IMP</span><div class="sb" data-si="0" style="opacity: 0;"><div class="pos9"><div class="pr l1"><span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">the</span> <span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">story</span> <span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">they</span></div><div class="pr l2"><span class="sw" data-anim="diagonal-wipe" style="transition: none; opacity: 1; transform: none; clip-path: polygon(0px 0px, 0px 0px, 0px 100%, 0px 100%);">refused</span> <span class="sw" data-anim="diagonal-wipe" style="transition: none; opacity: 1; transform: none; clip-path: polygon(0px 0px, 0px 0px, 0px 100%, 0px 100%);">to</span> <span class="sw" data-anim="diagonal-wipe" style="transition: none; opacity: 1; transform: none; clip-path: polygon(0px 0px, 0px 0px, 0px 100%, 0px 100%);">print</span></div><div class="pr l3"><span class="sw" data-anim="wipe" style="transition: none; opacity: 1; transform: none; clip-path: inset(0px 100% 0px 0px);">WAS</span> <span class="sw" data-anim="wipe" style="transition: none; opacity: 1; transform: none; clip-path: inset(0px 100% 0px 0px);">THE</span> <span class="sw" data-anim="wipe" style="transition: none; opacity: 1; transform: none; clip-path: inset(0px 100% 0px 0px);">ONE.</span></div></div></div><div class="sb" data-si="1" style="opacity: 0;"><div class="wbw wwipe"><span class="w" style="transition: none; transform: none; opacity: 1; clip-path: inset(0px 100% 0px 0px);">Truth</span> <span class="w" style="transition: none; transform: none; opacity: 1; clip-path: inset(0px 100% 0px 0px);">costs</span> <span class="w imp-italic" style="transition: none; transform: none; opacity: 1; clip-path: inset(0px 100% 0px 0px);">something.</span></div></div><div class="sb" data-si="2" style="opacity: 0;"><div class="wbw wscale"><span class="w" style="transition: none; transform: scale(0.5); opacity: 0;">The</span> <span class="w" style="transition: none; transform: scale(0.5); opacity: 0;">price</span> <span class="w" style="transition: none; transform: scale(0.5); opacity: 0;">was</span> <span class="w imp-rose" style="transition: none; transform: scale(0.5); opacity: 0;">always</span> <span class="w" style="transition: none; transform: scale(0.5); opacity: 0;">silence.</span></div></div><div class="sb" data-si="3" style="opacity: 0;"><div class="plain-s">Pay it or keep quiet.</div></div></div><div class="dots" data-ti="3"><i class=""></i><i class=""></i><i class="on"></i><i class=""></i></div></div><div class="card a5"><div class="card-top"><div><span class="cid">A5</span><span class="cnm"> Â· The Oracle</span></div><div class="badges"><span class="bg m">Poetic</span><span class="bg s1">1-STYLE</span></div></div><div class="stage" data-ti="4"><span class="slbl">Roll + Rose IMP</span><div class="sb" data-si="0" style="opacity: 0;"><div class="pos31"><div class="pr sm"><span class="sw" data-anim="slide-slow" style="transition: none; transform: translateX(-32px); opacity: 0;">what</span> <span class="sw" data-anim="slide-slow" style="transition: none; transform: translateX(-32px); opacity: 0;">you</span> <span class="sw" data-anim="slide-slow" style="transition: none; transform: translateX(-32px); opacity: 0;">seek</span></div><div class="pr hero"><span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">seeks</span> <span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">you.</span></div></div></div><div class="sb" data-si="1" style="opacity: 0;"><div class="plain-s">This is not coincidence.</div></div><div class="sb" data-si="2" style="opacity: 0;"><div class="wbw wrise"><span class="w" style="transition: none; transform: translateY(22px); opacity: 0;">The</span> <span class="w" style="transition: none; transform: translateY(22px); opacity: 0;">universe</span> <span class="w" style="transition: none; transform: translateY(22px); opacity: 0;">is</span> <span class="w imp-flicker" style="transition: none; transform: translateY(22px); opacity: 0;">patient.</span></div></div><div class="sb active" data-si="3" style="opacity: 1; transition: none;"><div class="wbw wroll"><span class="w in" style="transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1), opacity 240ms; transform: translateY(0px) rotate(0deg); opacity: 1; transform-origin: left bottom;">Trust</span> <span class="w in" style="transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1), opacity 240ms; transform: translateY(0px) rotate(0deg); opacity: 1; transform-origin: left bottom;">the</span> <span class="w imp-rose" style="transition: none; transform: none; opacity: 1; transform-origin: left bottom; clip-path: polygon(0px 0px, 0px 0px, 0px 100%, 0px 100%);">long</span> <span class="w" style="transition: none; transform: translateY(14px) rotate(-6deg); opacity: 0; transform-origin: left bottom;">way</span> <span class="w" style="transition: none; transform: translateY(14px) rotate(-6deg); opacity: 0; transform-origin: left bottom;">home.</span></div></div></div><div class="dots" data-ti="4"><i class=""></i><i class=""></i><i class=""></i><i class="on"></i></div></div></div>
+<div class="sec-hdr"><h2>2-STYLE</h2><b>5 Templates</b></div>
+<div class="grid" id="g2"><div class="card b1"><div class="card-top"><div><span class="cid">B1</span><span class="cnm"> Â· The Ruin</span></div><div class="badges"><span class="bg m">Dark Poetry</span><span class="bg s2">2-STYLE</span></div></div><div class="stage" data-ti="5"><span class="slbl">Lift + Purple IMP</span><div class="sb active" data-si="0" style="opacity: 0; transition: opacity 360ms;"><div class="wbw wlift"><span class="w in" style="transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1), opacity 240ms; transform: translateY(0px); opacity: 1;">Beautiful</span> <span class="w in" style="transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1), opacity 240ms; transform: translateY(0px); opacity: 1;">things</span> <span class="w imp-purple in" style="transition: transform 440ms cubic-bezier(0.22, 1, 0.36, 1), opacity 360ms; transform: rotateX(0deg); opacity: 1; transform-origin: center bottom;">decay.</span></div></div><div class="sb" data-si="1" style="opacity: 0;"><div class="pos1"><div class="pr sm"><span class="sw" data-anim="fade" style="transition: none; transform: none; opacity: 0;">beautiful</span> <span class="sw" data-anim="fade" style="transition: none; transform: none; opacity: 0;">things</span></div><div class="pr hero"><span class="sw" data-anim="pop" style="transition: none; transform: scale(0.82); opacity: 0;">DECAY.</span></div><div class="pr sub"><span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">always</span> <span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">do.</span></div></div></div><div class="sb" data-si="2" style="opacity: 0;"><div class="plain-s">ruin is just beauty at its most honest.</div></div><div class="sb" data-si="3" style="opacity: 0;"><div class="pos22"><span class="sw" data-anim="fade" style="transition: none; transform: none; opacity: 0;">the</span> <span class="sw" data-anim="fade" style="transition: none; transform: none; opacity: 0;">bones</span> <span class="sw" data-anim="fade" style="transition: none; transform: none; opacity: 0;">of</span> <span class="sw" data-anim="fade" style="transition: none; transform: none; opacity: 0;">what</span> <span class="sw" data-anim="fade" style="transition: none; transform: none; opacity: 0;">once</span> <span class="sw" data-anim="fade" style="transition: none; transform: none; opacity: 0;">was.</span></div></div><div class="sb" data-si="4" style="opacity: 0;"><div class="wbw wrise"><span class="w" style="transition: none; transform: translateY(22px); opacity: 0;">Something</span> <span class="w" style="transition: none; transform: translateY(22px); opacity: 0;">still</span> <span class="w imp-gold" style="transition: none; transform: translateY(22px); opacity: 0;">lives</span> <span class="w" style="transition: none; transform: translateY(22px); opacity: 0;">in</span> <span class="w" style="transition: none; transform: translateY(22px); opacity: 0;">the</span> <span class="w" style="transition: none; transform: translateY(22px); opacity: 0;">wreckage.</span></div></div></div><div class="dots" data-ti="5"><i class="on"></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i></div></div><div class="card b2"><div class="card-top"><div><span class="cid">B2</span><span class="cnm"> Â· The Stage</span></div><div class="badges"><span class="bg m">Drama</span><span class="bg s2">2-STYLE</span></div></div><div class="stage" data-ti="6"><span class="slbl">Script-Sans Right</span><div class="sb active" data-si="0" style="opacity: 0; transition: opacity 360ms;"><div class="pos19"><div class="pr script"><span class="sw in" data-anim="fade" style="transition: opacity 380ms; transform: none; opacity: 1;">enter.</span></div><div class="pr sans"><span class="sw in" data-anim="rise" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: translateY(0px); opacity: 1;">STAGE</span> <span class="sw in" data-anim="rise" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: translateY(0px); opacity: 1;">LEFT.</span></div></div></div><div class="sb" data-si="1" style="opacity: 0;"><div class="wbw wwipeup"><span class="w" style="transition: none; transform: none; opacity: 1; clip-path: inset(100% 0px 0px);">Every</span> <span class="w imp-italic" style="transition: none; transform: none; opacity: 1; clip-path: inset(100% 0px 0px);">entrance</span> <span class="w" style="transition: none; transform: none; opacity: 1; clip-path: inset(100% 0px 0px);">rewrites</span> <span class="w" style="transition: none; transform: none; opacity: 1; clip-path: inset(100% 0px 0px);">the</span> <span class="w" style="transition: none; transform: none; opacity: 1; clip-path: inset(100% 0px 0px);">scene.</span></div></div><div class="sb" data-si="2" style="opacity: 0;"><div class="plain-s">the audience decides nothing.</div></div><div class="sb" data-si="3" style="opacity: 0;"><div class="pos30"><div class="pr"><span class="sw" data-anim="wipe" style="transition: none; opacity: 1; transform: none; clip-path: inset(0px 100% 0px 0px);">ACT</span> <span class="sw" data-anim="wipe" style="transition: none; opacity: 1; transform: none; clip-path: inset(0px 100% 0px 0px);">NOW.</span></div><div class="pr"><span class="sw" data-anim="wipe" style="transition: none; opacity: 1; transform: none; clip-path: inset(0px 100% 0px 0px);">PERFORM</span> <span class="sw" data-anim="wipe" style="transition: none; opacity: 1; transform: none; clip-path: inset(0px 100% 0px 0px);">ALWAYS.</span></div></div></div><div class="sb" data-si="4" style="opacity: 0;"><div class="wbw wslide"><span class="w" style="transition: none; transform: translateX(-26px); opacity: 0;">Curtain</span> <span class="w" style="transition: none; transform: translateX(-26px); opacity: 0;">falls</span> <span class="w" style="transition: none; transform: translateX(-26px); opacity: 0;">on</span> <span class="w imp-purple" style="transition: none; transform: translateX(-26px); opacity: 0;">no one.</span></div></div></div><div class="dots" data-ti="6"><i class="on"></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i></div></div><div class="card b3"><div class="card-top"><div><span class="cid">B3</span><span class="cnm"> Â· The Signal</span></div><div class="badges"><span class="bg m">Sci-Fi</span><span class="bg s2">2-STYLE</span></div></div><div class="stage" data-ti="7"><span class="slbl">Flip + Gold IMP</span><div class="sb active" data-si="0" style="opacity: 0; transition: opacity 360ms;"><div class="wbw wflip"><span class="w in" style="transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1), opacity 240ms; transform: rotateX(0deg); opacity: 1; transform-origin: center bottom;">you</span> <span class="w in" style="transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1), opacity 240ms; transform: rotateX(0deg); opacity: 1; transform-origin: center bottom;">were</span> <span class="w in" style="transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1), opacity 240ms; transform: rotateX(0deg); opacity: 1; transform-origin: center bottom;">never</span> <span class="w imp-gold in" style="transition: clip-path 440ms cubic-bezier(0.22, 1, 0.36, 1); transform: none; opacity: 1; transform-origin: center bottom; clip-path: inset(0px);">lost.</span></div></div><div class="sb" data-si="1" style="opacity: 0;"><div class="pos31c"><div class="pr sm"><span class="sw" data-anim="slide-slow" style="transition: none; transform: translateX(-32px); opacity: 0;">signal</span> <span class="sw" data-anim="slide-slow" style="transition: none; transform: translateX(-32px); opacity: 0;">received</span></div><div class="pr hero"><span class="sw" data-anim="pop" style="transition: none; transform: scale(0.82); opacity: 0;">FOUND.</span></div></div></div><div class="sb" data-si="2" style="opacity: 0;"><div class="plain-s">across time. across static.</div></div><div class="sb" data-si="3" style="opacity: 0;"><div class="pos21"><div class="pr l1"><span class="sw" data-anim="fade" style="transition: none; transform: none; opacity: 0;">the</span> <span class="sw" data-anim="fade" style="transition: none; transform: none; opacity: 0;">message</span></div><div class="pr l2"><span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">was</span> <span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">always</span></div><div class="pr l3"><span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">transmitted</span> <span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">for</span></div><div class="pr hero"><span class="sw neon-g" data-anim="pop" style="transition: none; transform: scale(0.82); opacity: 0;">YOU.</span></div></div></div><div class="sb" data-si="4" style="opacity: 0;"><div class="wbw wdiag"><span class="w" style="transition: none; transform: translate(-16px, 16px); opacity: 0;">coordinates</span> <span class="w imp-cyan" style="transition: none; transform: translate(-16px, 16px); opacity: 0;">locked.</span></div></div></div><div class="dots" data-ti="7"><i class="on"></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i></div></div><div class="card b4"><div class="card-top"><div><span class="cid">B4</span><span class="cnm"> Â· The Verdict</span></div><div class="badges"><span class="bg m">Legal Drama</span><span class="bg s2">2-STYLE</span></div></div><div class="stage" data-ti="8"><span class="slbl">Stencil + Bold IMP</span><div class="sb active" data-si="0" style="opacity: 0; transition: opacity 360ms;"><div class="wbw wstencil"><span class="w in" style="transition: clip-path 280ms cubic-bezier(0.22, 1, 0.36, 1); transform: none; opacity: 1; clip-path: inset(0px);">EVIDENCE:</span> <span class="w in" style="transition: clip-path 280ms cubic-bezier(0.22, 1, 0.36, 1); transform: none; opacity: 1; clip-path: inset(0px);">THEY</span> <span class="w imp-bold in" style="transition: transform 440ms cubic-bezier(0.22, 1, 0.36, 1), opacity 380ms; transform: translateY(0px); opacity: 1; clip-path: inset(0px 50%);">KNEW.</span></div></div><div class="sb" data-si="1" style="opacity: 0;"><div class="pos5"><div class="pr sm"><span class="sw" data-anim="fade" style="transition: none; transform: none; opacity: 0;">they</span> <span class="sw" data-anim="fade" style="transition: none; transform: none; opacity: 0;">knew</span></div><div class="pr hero"><span class="sw" data-anim="pop" style="transition: none; transform: scale(0.82); opacity: 0;">ALL</span> <span class="sw" data-anim="pop" style="transition: none; transform: scale(0.82); opacity: 0;">ALONG.</span></div></div></div><div class="sb" data-si="2" style="opacity: 0;"><div class="wbw wwipe"><span class="w" style="transition: none; transform: none; opacity: 1; clip-path: inset(0px 100% 0px 0px);">The</span> <span class="w" style="transition: none; transform: none; opacity: 1; clip-path: inset(0px 100% 0px 0px);">verdict</span> <span class="w" style="transition: none; transform: none; opacity: 1; clip-path: inset(0px 100% 0px 0px);">was</span> <span class="w imp-underline" style="transition: none; transform: none; opacity: 1; clip-path: inset(0px 100% 0px 0px);">written</span> <span class="w" style="transition: none; transform: none; opacity: 1; clip-path: inset(0px 100% 0px 0px);">already.</span></div></div><div class="sb" data-si="3" style="opacity: 0;"><div class="pos29"><div class="pr"><span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">SENTENCE:</span></div><div class="pr"><span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">COMPLICIT.</span></div><div class="pr"><span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">ADMITTED.</span></div><div class="pr"><span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">AWARE.</span></div></div></div><div class="sb" data-si="4" style="opacity: 0;"><div class="plain-s">truth has a paper trail.</div></div></div><div class="dots" data-ti="8"><i class="on"></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i></div></div><div class="card b5"><div class="card-top"><div><span class="cid">B5</span><span class="cnm"> Â· The Voltage</span></div><div class="badges"><span class="bg m">Cyberpunk</span><span class="bg s2">2-STYLE</span></div></div><div class="stage" data-ti="9"><span class="slbl">Flip + Bold IMP</span><div class="sb active" data-si="0" style="opacity: 0; transition: opacity 360ms;"><div class="wbw wflip"><span class="w in" style="transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1), opacity 240ms; transform: rotateX(0deg); opacity: 1; transform-origin: center bottom;">REWRITE</span> <span class="w in" style="transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1), opacity 240ms; transform: rotateX(0deg); opacity: 1; transform-origin: center bottom;">EVERY</span> <span class="w imp-bold in" style="transition: transform 440ms cubic-bezier(0.22, 1, 0.36, 1), opacity 380ms; transform: translateY(0px); opacity: 1; transform-origin: center bottom;">RULE.</span></div></div><div class="sb" data-si="1" style="opacity: 0;"><div class="pos11"><div class="pr sm"><span class="sw neon-y" data-anim="fade" style="transition: none; transform: none; opacity: 0;">OVERRIDE.</span></div><div class="pr hero"><span class="sw neon-c" data-anim="pop" style="transition: none; transform: scale(0.82); opacity: 0;">SYSTEM.</span></div><div class="pr sm"><span class="sw neon-y" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">BREACH.</span></div></div></div><div class="sb" data-si="2" style="opacity: 0;"><div class="plain-s">the old rules were written for the old world.</div></div><div class="sb" data-si="3" style="opacity: 0;"><div class="pos17"><span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">HACK</span> <span class="sw neon-c" data-anim="wipe" style="transition: none; opacity: 1; transform: none; clip-path: inset(0px 100% 0px 0px);">THE</span> <span class="sw neon-y" data-anim="pop" style="transition: none; transform: scale(0.82); opacity: 0;">SEQUENCE.</span></div></div><div class="sb" data-si="4" style="opacity: 0;"><div class="wbw wdiag"><span class="w" style="transition: none; transform: translate(-16px, 16px); opacity: 0;">you</span> <span class="w" style="transition: none; transform: translate(-16px, 16px); opacity: 0;">are</span> <span class="w" style="transition: none; transform: translate(-16px, 16px); opacity: 0;">the</span> <span class="w imp-cyan" style="transition: none; transform: translate(-16px, 16px); opacity: 0;">signal.</span></div></div></div><div class="dots" data-ti="9"><i class="on"></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i></div></div></div>
+<div class="sec-hdr"><h2>3-STYLE</h2><b>5 Templates</b></div>
+<div class="grid" id="g3"><div class="card c1"><div class="card-top"><div><span class="cid">C1</span><span class="cnm"> Â· The Uprising</span></div><div class="badges"><span class="bg m">Rebellion</span><span class="bg s3">3-STYLE</span></div></div><div class="stage" data-ti="10"><span class="slbl">Mid Explosion</span><div class="sb active" data-si="0" style="opacity: 0; transition: opacity 360ms;"><div class="pos6"><div class="pr sm"><span class="sw in" data-anim="fade" style="transition: opacity 380ms; transform: none; opacity: 1;">what</span> <span class="sw in" data-anim="fade" style="transition: opacity 380ms; transform: none; opacity: 1;">they</span> <span class="sw in" data-anim="fade" style="transition: opacity 380ms; transform: none; opacity: 1;">built</span></div><div class="pr hero"><span class="sw neon-r in" data-anim="lift" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: translateY(0px); opacity: 1;">AGAINST</span> <span class="sw neon-r in" data-anim="lift" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: translateY(0px); opacity: 1;">US.</span></div><div class="pr sm"><span class="sw in" data-anim="rise" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: translateY(0px); opacity: 1;">is</span> <span class="sw in" data-anim="rise" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: translateY(0px); opacity: 1;">becoming</span></div></div></div><div class="sb" data-si="1" style="opacity: 0;"><div class="wbw wlift"><span class="w" style="transition: none; transform: translateY(-22px); opacity: 0;">We</span> <span class="w imp-green" style="transition: none; transform: translateY(-22px); opacity: 0;">became</span> <span class="w" style="transition: none; transform: translateY(-22px); opacity: 0;">the</span> <span class="w" style="transition: none; transform: translateY(-22px); opacity: 0;">thing</span> <span class="w" style="transition: none; transform: translateY(-22px); opacity: 0;">they</span> <span class="w" style="transition: none; transform: translateY(-22px); opacity: 0;">feared.</span></div></div><div class="sb" data-si="2" style="opacity: 0;"><div class="plain-s">every movement starts with one refusal.</div></div><div class="sb" data-si="3" style="opacity: 0;"><div class="pos3"><div class="pr"><span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">stand</span></div><div class="pr"><span class="sw" data-anim="slide-l" style="transition: none; transform: translateX(-28px); opacity: 0;">united</span></div><div class="pr"><span class="sw" data-anim="wipe" style="transition: none; opacity: 1; transform: none; clip-path: inset(0px 100% 0px 0px);">RISE.</span></div></div></div><div class="sb" data-si="4" style="opacity: 0;"><div class="pos29"><div class="pr"><span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">MARCH.</span></div><div class="pr"><span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">DEMAND.</span></div><div class="pr"><span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">TAKE.</span></div><div class="pr"><span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">KEEP.</span></div></div></div></div><div class="dots" data-ti="10"><i class="on"></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i></div></div><div class="card c2"><div class="card-top"><div><span class="cid">C2</span><span class="cnm"> Â· The Archive</span></div><div class="badges"><span class="bg m">Thriller</span><span class="bg s3">3-STYLE</span></div></div><div class="stage" data-ti="11"><span class="slbl">Hybrid Triple Left</span><div class="sb active" data-si="0" style="opacity: 0; transition: opacity 360ms;"><div class="pos27"><div class="pr l1"><span class="sw in" data-anim="slide-l" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: translateY(0px); opacity: 1;">They</span> <span class="sw in" data-anim="slide-l" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: translateY(0px); opacity: 1;">know</span> <span class="sw in" data-anim="slide-l" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: translateY(0px); opacity: 1;">your</span> <span class="sw in" data-anim="slide-l" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: translateY(0px); opacity: 1;">name.</span></div><div class="pr l2"><span class="sw in" data-anim="fade" style="transition: opacity 380ms; transform: none; opacity: 1;">classified.</span> <span class="sw in" data-anim="fade" style="transition: opacity 380ms; transform: none; opacity: 1;">redacted.</span></div><div class="pr l3"><span class="sw in" data-anim="diagonal-wipe" style="transition: clip-path 300ms cubic-bezier(0.22, 1, 0.36, 1); opacity: 1; transform: none; clip-path: polygon(0px 0px, 100% 0px, 100% 100%, 0px 100%);">AND</span> <span class="sw in" data-anim="diagonal-wipe" style="transition: clip-path 300ms cubic-bezier(0.22, 1, 0.36, 1); opacity: 1; transform: none; clip-path: polygon(0px 0px, 100% 0px, 100% 100%, 0px 100%);">THEY</span> <span class="sw in" data-anim="diagonal-wipe" style="transition: clip-path 300ms cubic-bezier(0.22, 1, 0.36, 1); opacity: 1; transform: none; clip-path: polygon(0px 0px, 100% 0px, 100% 100%, 0px 100%);">WATCH.</span></div></div></div><div class="sb" data-si="1" style="opacity: 0;"><div class="wbw wflip"><span class="w" style="transition: none; transform: rotateX(-80deg); opacity: 0; transform-origin: center bottom;">The</span> <span class="w" style="transition: none; transform: rotateX(-80deg); opacity: 0; transform-origin: center bottom;">door</span> <span class="w" style="transition: none; transform: rotateX(-80deg); opacity: 0; transform-origin: center bottom;">has</span> <span class="w" style="transition: none; transform: rotateX(-80deg); opacity: 0; transform-origin: center bottom;">been</span> <span class="w imp-typewrite" style="transition: none; transform: rotateX(-80deg); opacity: 0; transform-origin: center bottom;">unlocked.</span></div></div><div class="sb" data-si="2" style="opacity: 0;"><div class="pos31c"><div class="pr sm"><span class="sw" data-anim="slide-slow" style="transition: none; transform: translateX(-32px); opacity: 0;">subject</span> <span class="sw" data-anim="slide-slow" style="transition: none; transform: translateX(-32px); opacity: 0;">identified</span></div><div class="pr hero"><span class="sw" data-anim="lift" style="transition: none; transform: translateY(-16px); opacity: 0;">YOU.</span></div></div></div><div class="sb" data-si="3" style="opacity: 0;"><div class="plain-s">run or stay. both have consequences.</div></div><div class="sb" data-si="4" style="opacity: 0;"><div class="pos22"><span class="sw" data-anim="fade" style="transition: none; transform: none; opacity: 0;">they've</span> <span class="sw" data-anim="fade" style="transition: none; transform: none; opacity: 0;">been</span> <span class="sw" data-anim="fade" style="transition: none; transform: none; opacity: 0;">watching</span> <span class="sw" data-anim="fade" style="transition: none; transform: none; opacity: 0;">since</span> <span class="sw" data-anim="fade" style="transition: none; transform: none; opacity: 0;">the</span> <span class="sw" data-anim="fade" style="transition: none; transform: none; opacity: 0;">beginning.</span></div></div></div><div class="dots" data-ti="11"><i class="on"></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i></div></div><div class="card c3"><div class="card-top"><div><span class="cid">C3</span><span class="cnm"> Â· The Ember</span></div><div class="badges"><span class="bg m">Literary</span><span class="bg s3">3-STYLE</span></div></div><div class="stage" data-ti="12"><span class="slbl">Serif Explosion</span><div class="sb active" data-si="0" style="opacity: 0; transition: opacity 360ms;"><div class="pos1"><div class="pr sm"><span class="sw in" data-anim="fade" style="transition: opacity 380ms; transform: none; opacity: 1;">it</span> <span class="sw in" data-anim="fade" style="transition: opacity 380ms; transform: none; opacity: 1;">began</span> <span class="sw in" data-anim="fade" style="transition: opacity 380ms; transform: none; opacity: 1;">with</span></div><div class="pr hero"><span class="sw in" data-anim="pop" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: scale(1); opacity: 1;">GRIEF.</span></div><div class="pr sm"><span class="sw in" data-anim="rise" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: translateY(0px); opacity: 1;">became</span> <span class="sw in" data-anim="rise" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: translateY(0px); opacity: 1;">everything</span> <span class="sw in" data-anim="rise" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: translateY(0px); opacity: 1;">else</span></div></div></div><div class="sb" data-si="1" style="opacity: 0;"><div class="wbw wdiag"><span class="w" style="transition: none; transform: translate(-16px, 16px); opacity: 0;">The</span> <span class="w" style="transition: none; transform: translate(-16px, 16px); opacity: 0;">body</span> <span class="w imp-gold" style="transition: none; transform: translate(-16px, 16px); opacity: 0;">remembers</span> <span class="w" style="transition: none; transform: translate(-16px, 16px); opacity: 0;">what</span> <span class="w" style="transition: none; transform: translate(-16px, 16px); opacity: 0;">the</span> <span class="w" style="transition: none; transform: translate(-16px, 16px); opacity: 0;">mind</span> <span class="w" style="transition: none; transform: translate(-16px, 16px); opacity: 0;">forgets.</span></div></div><div class="sb" data-si="2" style="opacity: 0;"><div class="plain-s">every scar a timestamp.</div></div><div class="sb" data-si="3" style="opacity: 0;"><div class="pos31b"><div class="pr sm"><span class="sw" data-anim="slide-slow" style="transition: none; transform: translateX(-32px); opacity: 0;">what</span> <span class="sw" data-anim="slide-slow" style="transition: none; transform: translateX(-32px); opacity: 0;">remains</span> <span class="sw" data-anim="slide-slow" style="transition: none; transform: translateX(-32px); opacity: 0;">after</span></div><div class="pr hero"><span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">is</span> <span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">the</span> <span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">story.</span></div></div></div><div class="sb" data-si="4" style="opacity: 0;"><div class="pos15"><div class="pr sm"><span class="sw" data-anim="fade" style="transition: none; transform: none; opacity: 0;">dated.</span> <span class="sw" data-anim="fade" style="transition: none; transform: none; opacity: 0;">filed.</span></div><div class="pr hero"><span class="sw" data-anim="pop" style="transition: none; transform: scale(0.82); opacity: 0;">KEPT.</span></div></div></div></div><div class="dots" data-ti="12"><i class="on"></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i></div></div><div class="card c4"><div class="card-top"><div><span class="cid">C4</span><span class="cnm"> Â· The Score</span></div><div class="badges"><span class="bg m">Music</span><span class="bg s3">3-STYLE</span></div></div><div class="stage" data-ti="13"><span class="slbl">Left Flow Hybrid</span><div class="sb active" data-si="0" style="opacity: 0; transition: opacity 360ms;"><div class="pos25"><div class="pr sm"><span class="sw in" data-anim="fade" style="transition: opacity 380ms; transform: none; opacity: 1;">one</span> <span class="sw in" data-anim="fade" style="transition: opacity 380ms; transform: none; opacity: 1;">note.</span></div><div class="pr hero"><span class="sw in" data-anim="slide-l" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: translateY(0px); opacity: 1;">that</span> <span class="sw in" data-anim="slide-l" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: translateY(0px); opacity: 1;">is</span> <span class="sw in" data-anim="slide-l" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: translateY(0px); opacity: 1;">all</span> <span class="sw in" data-anim="slide-l" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: translateY(0px); opacity: 1;">it</span> <span class="sw in" data-anim="slide-l" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: translateY(0px); opacity: 1;">takes.</span></div></div></div><div class="sb" data-si="1" style="opacity: 0;"><div class="wbw wstencil"><span class="w" style="transition: none; transform: none; opacity: 1; clip-path: inset(0px 50%);">The</span> <span class="w imp-gold" style="transition: none; transform: none; opacity: 1; clip-path: inset(0px 50%);">melody</span> <span class="w" style="transition: none; transform: none; opacity: 1; clip-path: inset(0px 50%);">was</span> <span class="w" style="transition: none; transform: none; opacity: 1; clip-path: inset(0px 50%);">always</span> <span class="w" style="transition: none; transform: none; opacity: 1; clip-path: inset(0px 50%);">inside</span> <span class="w" style="transition: none; transform: none; opacity: 1; clip-path: inset(0px 50%);">you.</span></div></div><div class="sb" data-si="2" style="opacity: 0;"><div class="plain-s">silence is also a note.</div></div><div class="sb" data-si="3" style="opacity: 0;"><div class="pos30"><div class="pr"><span class="sw" data-anim="wipe" style="transition: none; opacity: 1; transform: none; clip-path: inset(0px 100% 0px 0px);">PLAY</span> <span class="sw" data-anim="wipe" style="transition: none; opacity: 1; transform: none; clip-path: inset(0px 100% 0px 0px);">IT.</span></div><div class="pr"><span class="sw" data-anim="wipe" style="transition: none; opacity: 1; transform: none; clip-path: inset(0px 100% 0px 0px);">FEEL</span> <span class="sw" data-anim="wipe" style="transition: none; opacity: 1; transform: none; clip-path: inset(0px 100% 0px 0px);">IT.</span></div></div></div><div class="sb" data-si="4" style="opacity: 0;"><div class="pos14"><span class="sw" data-anim="pop" style="transition: none; transform: scale(0.82); opacity: 0;">LISTEN.</span></div></div></div><div class="dots" data-ti="13"><i class="on"></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i></div></div><div class="card c5"><div class="card-top"><div><span class="cid">C5</span><span class="cnm"> Â· The Vessel</span></div><div class="badges"><span class="bg m">Spiritual</span><span class="bg s3">3-STYLE</span></div></div><div class="stage" data-ti="14"><span class="slbl">Quad Neon Italic</span><div class="sb active" data-si="0" style="opacity: 0; transition: opacity 360ms;"><div class="pos21"><div class="pr l1"><span class="sw in" data-anim="fade" style="transition: opacity 380ms; transform: none; opacity: 1;">in</span> <span class="sw in" data-anim="fade" style="transition: opacity 380ms; transform: none; opacity: 1;">the</span> <span class="sw in" data-anim="fade" style="transition: opacity 380ms; transform: none; opacity: 1;">vastness</span></div><div class="pr l2"><span class="sw in" data-anim="rise" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: translateY(0px); opacity: 1;">one</span> <span class="sw in" data-anim="rise" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: translateY(0px); opacity: 1;">small</span> <span class="sw in" data-anim="rise" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: translateY(0px); opacity: 1;">light</span></div><div class="pr l3"><span class="sw in" data-anim="rise" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: translateY(0px); opacity: 1;">burning</span> <span class="sw in" data-anim="rise" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: translateY(0px); opacity: 1;">precisely</span></div><div class="pr hero"><span class="sw neon-p in" data-anim="pop" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: scale(1); opacity: 1;">FOR</span> <span class="sw neon-p in" data-anim="pop" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: scale(1); opacity: 1;">YOU.</span></div></div></div><div class="sb" data-si="1" style="opacity: 0;"><div class="wbw wrise"><span class="w" style="transition: none; transform: translateY(22px); opacity: 0;">placed</span> <span class="w" style="transition: none; transform: translateY(22px); opacity: 0;">here</span> <span class="w imp-flicker" style="transition: none; transform: translateY(22px); opacity: 0;">on purpose.</span></div></div><div class="sb" data-si="2" style="opacity: 0;"><div class="plain-s">you are not random.</div></div><div class="sb" data-si="3" style="opacity: 0;"><div class="pos31b"><div class="pr sm"><span class="sw" data-anim="slide-slow" style="transition: none; transform: translateX(-32px); opacity: 0;">designed</span> <span class="sw" data-anim="slide-slow" style="transition: none; transform: translateX(-32px); opacity: 0;">with</span></div><div class="pr hero"><span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">INTENTION.</span></div></div></div><div class="sb" data-si="4" style="opacity: 0;"><div class="pos5"><div class="pr sm"><span class="sw" data-anim="fade" style="transition: none; transform: none; opacity: 0;">every</span> <span class="sw" data-anim="fade" style="transition: none; transform: none; opacity: 0;">detail</span></div><div class="pr hero"><span class="sw" data-anim="pop" style="transition: none; transform: scale(0.82); opacity: 0;">DELIBERATE.</span></div></div></div></div><div class="dots" data-ti="14"><i class="on"></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i></div></div></div>
+<div class="sec-hdr"><h2>4-STYLE</h2><b>5 Templates</b></div>
+<div class="grid" id="g4"><div class="card d1"><div class="card-top"><div><span class="cid">D1</span><span class="cnm"> Â· The Titan</span></div><div class="badges"><span class="bg m">Motivation</span><span class="bg s4">4-STYLE</span></div></div><div class="stage" data-ti="15"><span class="slbl">Mid Impact</span><div class="sb active" data-si="0" style="opacity: 0; transition: opacity 360ms;"><div class="pos14"><span class="sw in" data-anim="pop" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: scale(1); opacity: 1;">RISE.</span></div></div><div class="sb" data-si="1" style="opacity: 0;"><div class="plain-s">that word has no power here. action does.</div></div><div class="sb" data-si="2" style="opacity: 0;"><div class="pos7"><div class="pr left"><span class="sw" data-anim="fade" style="transition: none; transform: none; opacity: 0;">what</span> <span class="sw" data-anim="fade" style="transition: none; transform: none; opacity: 0;">they</span> <span class="sw" data-anim="fade" style="transition: none; transform: none; opacity: 0;">see</span> <span class="sw" data-anim="fade" style="transition: none; transform: none; opacity: 0;">now</span></div><div class="pr hero"><span class="sw neon-g" data-anim="pop" style="transition: none; transform: scale(0.82); opacity: 0;">PROOF.</span></div><div class="pr right"><span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">of</span> <span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">everything</span> <span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">they</span> <span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">doubted</span></div></div></div><div class="sb" data-si="3" style="opacity: 0;"><div class="wbw wrise"><span class="w" style="transition: none; transform: translateY(22px); opacity: 0;">built</span> <span class="w" style="transition: none; transform: translateY(22px); opacity: 0;">it</span> <span class="w imp-underline" style="transition: none; transform: translateY(22px); opacity: 0;">brick</span> <span class="w" style="transition: none; transform: translateY(22px); opacity: 0;">by</span> <span class="w" style="transition: none; transform: translateY(22px); opacity: 0;">brick.</span></div></div><div class="sb" data-si="4" style="opacity: 0;"><div class="pos31"><div class="pr sm"><span class="sw" data-anim="slide-slow" style="transition: none; transform: translateX(-32px); opacity: 0;">unstoppable</span> <span class="sw" data-anim="slide-slow" style="transition: none; transform: translateX(-32px); opacity: 0;">was</span> <span class="sw" data-anim="slide-slow" style="transition: none; transform: translateX(-32px); opacity: 0;">never</span></div><div class="pr hero"><span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">a</span> <span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">trait.</span></div></div></div></div><div class="dots" data-ti="15"><i class="on"></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i></div></div><div class="card d2"><div class="card-top"><div><span class="cid">D2</span><span class="cnm"> Â· The Chronicle</span></div><div class="badges"><span class="bg m">Documentary</span><span class="bg s4">4-STYLE</span></div></div><div class="stage" data-ti="16"><span class="slbl">Left Cascade</span><div class="sb active" data-si="0" style="opacity: 0; transition: opacity 360ms;"><div class="pos9"><div class="pr l1"><span class="sw in" data-anim="rise" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: translateY(0px); opacity: 1;">the</span> <span class="sw in" data-anim="rise" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: translateY(0px); opacity: 1;">record</span> <span class="sw in" data-anim="rise" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: translateY(0px); opacity: 1;">shows</span></div><div class="pr l2"><span class="sw in" data-anim="diagonal-wipe" style="transition: clip-path 300ms cubic-bezier(0.22, 1, 0.36, 1); opacity: 1; transform: none; clip-path: polygon(0px 0px, 100% 0px, 100% 100%, 0px 100%);">they</span> <span class="sw in" data-anim="diagonal-wipe" style="transition: clip-path 300ms cubic-bezier(0.22, 1, 0.36, 1); opacity: 1; transform: none; clip-path: polygon(0px 0px, 100% 0px, 100% 100%, 0px 100%);">lied</span></div><div class="pr l3"><span class="sw in" data-anim="wipe" style="transition: clip-path 300ms cubic-bezier(0.22, 1, 0.36, 1); opacity: 1; transform: none; clip-path: inset(0px);">TO</span> <span class="sw in" data-anim="wipe" style="transition: clip-path 300ms cubic-bezier(0.22, 1, 0.36, 1); opacity: 1; transform: none; clip-path: inset(0px);">EVERYONE.</span></div></div></div><div class="sb" data-si="1" style="opacity: 0;"><div class="pos22"><span class="sw" data-anim="fade" style="transition: none; transform: none; opacity: 0;">documented.</span> <span class="sw" data-anim="fade" style="transition: none; transform: none; opacity: 0;">verified.</span> <span class="sw" data-anim="fade" style="transition: none; transform: none; opacity: 0;">undeniable.</span></div></div><div class="sb" data-si="2" style="opacity: 0;"><div class="wbw wfade"><span class="w" style="transition: none; transform: none; opacity: 0;">truth</span> <span class="w" style="transition: none; transform: none; opacity: 0;">has</span> <span class="w" style="transition: none; transform: none; opacity: 0;">a</span> <span class="w imp-gold" style="transition: none; transform: none; opacity: 0;">timestamp.</span></div></div><div class="sb" data-si="3" style="opacity: 0;"><div class="plain-s">archives don't forget. ever.</div></div><div class="sb" data-si="4" style="opacity: 0;"><div class="pos31c"><div class="pr sm"><span class="sw" data-anim="slide-slow" style="transition: none; transform: translateX(-32px); opacity: 0;">for</span> <span class="sw" data-anim="slide-slow" style="transition: none; transform: translateX(-32px); opacity: 0;">the</span> <span class="sw" data-anim="slide-slow" style="transition: none; transform: translateX(-32px); opacity: 0;">record:</span></div><div class="pr hero"><span class="sw" data-anim="pop" style="transition: none; transform: scale(0.82); opacity: 0;">KNOWN.</span></div></div></div></div><div class="dots" data-ti="16"><i class="on"></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i></div></div><div class="card d3"><div class="card-top"><div><span class="cid">D3</span><span class="cnm"> Â· The Break</span></div><div class="badges"><span class="bg m">Sci-Fi</span><span class="bg s4">4-STYLE</span></div></div><div class="stage" data-ti="17"><span class="slbl">Triline Neon</span><div class="sb active" data-si="0" style="opacity: 0; transition: opacity 360ms;"><div class="pos11"><div class="pr sm"><span class="sw neon-c in" data-anim="pop" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: scale(1); opacity: 1;">TRANSMISSION</span></div><div class="pr hero"><span class="sw in" data-anim="lift" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: translateY(0px); opacity: 1;">RECEIVED.</span></div><div class="pr sm"><span class="sw in" data-anim="rise" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: translateY(0px); opacity: 1;">DATA</span> <span class="sw in" data-anim="rise" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: translateY(0px); opacity: 1;">UNLOCKED.</span></div></div></div><div class="sb" data-si="1" style="opacity: 0;"><div class="plain-s">across static. across time.</div></div><div class="sb" data-si="2" style="opacity: 0;"><div class="pos21"><div class="pr l1"><span class="sw" data-anim="fade" style="transition: none; transform: none; opacity: 0;">the</span> <span class="sw" data-anim="fade" style="transition: none; transform: none; opacity: 0;">message</span></div><div class="pr l2"><span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">was</span> <span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">always</span></div><div class="pr l3"><span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">transmitted</span> <span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">for</span></div><div class="pr hero"><span class="sw neon-g" data-anim="pop" style="transition: none; transform: scale(0.82); opacity: 0;">YOU.</span></div></div></div><div class="sb" data-si="3" style="opacity: 0;"><div class="wbw wdiag"><span class="w" style="transition: none; transform: translate(-16px, 16px); opacity: 0;">you</span> <span class="w" style="transition: none; transform: translate(-16px, 16px); opacity: 0;">were</span> <span class="w" style="transition: none; transform: translate(-16px, 16px); opacity: 0;">never</span> <span class="w imp-gold" style="transition: none; transform: translate(-16px, 16px); opacity: 0;">lost.</span></div></div><div class="sb" data-si="4" style="opacity: 0;"><div class="pos31c"><div class="pr sm"><span class="sw" data-anim="slide-slow" style="transition: none; transform: translateX(-32px); opacity: 0;">coordinates:</span></div><div class="pr hero"><span class="sw" data-anim="pop" style="transition: none; transform: scale(0.82); opacity: 0;">FOUND.</span></div></div></div></div><div class="dots" data-ti="17"><i class="on"></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i></div></div><div class="card d4"><div class="card-top"><div><span class="cid">D4</span><span class="cnm"> Â· The Descent</span></div><div class="badges"><span class="bg m">Thriller</span><span class="bg s4">4-STYLE</span></div></div><div class="stage" data-ti="18"><span class="slbl">Hybrid Triple Left</span><div class="sb active" data-si="0" style="opacity: 0; transition: opacity 360ms;"><div class="pos27"><div class="pr l1"><span class="sw in" data-anim="slide-l" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: translateY(0px); opacity: 1;">I</span> <span class="sw in" data-anim="slide-l" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: translateY(0px); opacity: 1;">knew</span> <span class="sw in" data-anim="slide-l" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: translateY(0px); opacity: 1;">the</span> <span class="sw in" data-anim="slide-l" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: translateY(0px); opacity: 1;">truth.</span></div><div class="pr l2"><span class="sw in" data-anim="fade" style="transition: opacity 380ms; transform: none; opacity: 1;">before</span> <span class="sw in" data-anim="fade" style="transition: opacity 380ms; transform: none; opacity: 1;">they</span> <span class="sw in" data-anim="fade" style="transition: opacity 380ms; transform: none; opacity: 1;">told</span> <span class="sw in" data-anim="fade" style="transition: opacity 380ms; transform: none; opacity: 1;">me</span></div><div class="pr l3"><span class="sw in" data-anim="diagonal-wipe" style="transition: clip-path 300ms cubic-bezier(0.22, 1, 0.36, 1); opacity: 1; transform: none; clip-path: polygon(0px 0px, 100% 0px, 100% 100%, 0px 100%);">AND</span> <span class="sw in" data-anim="diagonal-wipe" style="transition: clip-path 300ms cubic-bezier(0.22, 1, 0.36, 1); opacity: 1; transform: none; clip-path: polygon(0px 0px, 100% 0px, 100% 100%, 0px 100%);">I</span> <span class="sw in" data-anim="diagonal-wipe" style="transition: clip-path 300ms cubic-bezier(0.22, 1, 0.36, 1); opacity: 1; transform: none; clip-path: polygon(0px 0px, 100% 0px, 100% 100%, 0px 100%);">SAID</span> <span class="sw in" data-anim="diagonal-wipe" style="transition: clip-path 300ms cubic-bezier(0.22, 1, 0.36, 1); opacity: 1; transform: none; clip-path: polygon(0px 0px, 100% 0px, 100% 100%, 0px 100%);">NOTHING.</span></div></div></div><div class="sb" data-si="1" style="opacity: 0;"><div class="wbw wlift"><span class="w imp-italic" style="transition: none; transform: translateY(-22px); opacity: 0;">Silence</span> <span class="w" style="transition: none; transform: translateY(-22px); opacity: 0;">was</span> <span class="w" style="transition: none; transform: translateY(-22px); opacity: 0;">its</span> <span class="w" style="transition: none; transform: translateY(-22px); opacity: 0;">own</span> <span class="w" style="transition: none; transform: translateY(-22px); opacity: 0;">kind</span> <span class="w" style="transition: none; transform: translateY(-22px); opacity: 0;">of</span> <span class="w" style="transition: none; transform: translateY(-22px); opacity: 0;">lie.</span></div></div><div class="sb" data-si="2" style="opacity: 0;"><div class="pos31c"><div class="pr sm"><span class="sw" data-anim="slide-slow" style="transition: none; transform: translateX(-32px); opacity: 0;">the</span> <span class="sw" data-anim="slide-slow" style="transition: none; transform: translateX(-32px); opacity: 0;">moment</span> <span class="sw" data-anim="slide-slow" style="transition: none; transform: translateX(-32px); opacity: 0;">I</span> <span class="sw" data-anim="slide-slow" style="transition: none; transform: translateX(-32px); opacity: 0;">stayed</span></div><div class="pr hero"><span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">quiet.</span></div></div></div><div class="sb" data-si="3" style="opacity: 0;"><div class="plain-s">every word unsaid leaves a mark.</div></div><div class="sb" data-si="4" style="opacity: 0;"><div class="pos5"><div class="pr sm"><span class="sw" data-anim="fade" style="transition: none; transform: none; opacity: 0;">speak</span></div><div class="pr hero"><span class="sw" data-anim="pop" style="transition: none; transform: scale(0.82); opacity: 0;">while</span> <span class="sw" data-anim="pop" style="transition: none; transform: scale(0.82); opacity: 0;">you</span> <span class="sw" data-anim="pop" style="transition: none; transform: scale(0.82); opacity: 0;">can.</span></div></div></div></div><div class="dots" data-ti="18"><i class="on"></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i></div></div><div class="card d5"><div class="card-top"><div><span class="cid">D5</span><span class="cnm"> Â· The Legacy</span></div><div class="badges"><span class="bg m">Inspirational</span><span class="bg s4">4-STYLE</span></div></div><div class="stage" data-ti="19"><span class="slbl">Quad Neon Italic</span><div class="sb active" data-si="0" style="opacity: 0; transition: opacity 360ms;"><div class="pos21"><div class="pr l1"><span class="sw in" data-anim="fade" style="transition: opacity 380ms; transform: none; opacity: 1;">they</span> <span class="sw in" data-anim="fade" style="transition: opacity 380ms; transform: none; opacity: 1;">passed</span> <span class="sw in" data-anim="fade" style="transition: opacity 380ms; transform: none; opacity: 1;">it</span> <span class="sw in" data-anim="fade" style="transition: opacity 380ms; transform: none; opacity: 1;">down</span></div><div class="pr l2"><span class="sw in" data-anim="rise" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: translateY(0px); opacity: 1;">quietly</span></div><div class="pr l3"><span class="sw in" data-anim="rise" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: translateY(0px); opacity: 1;">without</span> <span class="sw in" data-anim="rise" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: translateY(0px); opacity: 1;">ceremony</span></div><div class="pr hero"><span class="sw neon-p in" data-anim="pop" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: scale(1); opacity: 1;">FOR</span> <span class="sw neon-p in" data-anim="pop" style="transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms; transform: scale(1); opacity: 1;">YOU.</span></div></div></div><div class="sb" data-si="1" style="opacity: 0;"><div class="plain-s">a name is a promise across generations.</div></div><div class="sb" data-si="2" style="opacity: 0;"><div class="wbw wbounce"><span class="w" style="transition: none; transform: translateY(-22px); opacity: 0;">carry</span> <span class="w" style="transition: none; transform: translateY(-22px); opacity: 0;">it</span> <span class="w" style="transition: none; transform: translateY(-22px); opacity: 0;">with</span> <span class="w imp-gold" style="transition: none; transform: translateY(-22px); opacity: 0;">intention.</span></div></div><div class="sb" data-si="3" style="opacity: 0;"><div class="pos31b"><div class="pr sm"><span class="sw" data-anim="slide-slow" style="transition: none; transform: translateX(-32px); opacity: 0;">built</span> <span class="sw" data-anim="slide-slow" style="transition: none; transform: translateX(-32px); opacity: 0;">by</span> <span class="sw" data-anim="slide-slow" style="transition: none; transform: translateX(-32px); opacity: 0;">those</span> <span class="sw" data-anim="slide-slow" style="transition: none; transform: translateX(-32px); opacity: 0;">who</span></div><div class="pr hero"><span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">came</span> <span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">before.</span></div></div></div><div class="sb" data-si="4" style="opacity: 0;"><div class="pos6"><div class="pr sm"><span class="sw" data-anim="fade" style="transition: none; transform: none; opacity: 0;">honor</span> <span class="sw" data-anim="fade" style="transition: none; transform: none; opacity: 0;">it.</span></div><div class="pr hero"><span class="sw" data-anim="lift" style="transition: none; transform: translateY(-16px); opacity: 0;">BUILD</span> <span class="sw" data-anim="lift" style="transition: none; transform: translateY(-16px); opacity: 0;">ON</span> <span class="sw" data-anim="lift" style="transition: none; transform: translateY(-16px); opacity: 0;">IT.</span></div><div class="pr sm"><span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">leave</span> <span class="sw" data-anim="rise" style="transition: none; transform: translateY(20px); opacity: 0;">more.</span></div></div></div></div><div class="dots" data-ti="19"><i class="on"></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i></div></div></div>
+
+<script>
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// HELPERS
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+function buildWBW(text, wbwClass){
+  var parts = [];
+  var regex = /\{([^:}]+):([^}]+)\}|(\S+)/g;
+  var m, first = true;
+  while((m = regex.exec(text)) !== null){
+    if(!first) parts.push(' ');
+    first = false;
+    if(m[1]) parts.push('<span class="w ' + m[1] + '">' + m[2] + '</span>');
+    else      parts.push('<span class="w">' + m[3] + '</span>');
+  }
+  return '<div class="wbw ' + wbwClass + '">' + parts.join('') + '</div>';
+}
+
+function row(text, anim, extraClass){
+  var ec = extraClass || '';
+  var words = text.split(' ');
+  var parts = [];
+  words.forEach(function(w, i){
+    if(i > 0) parts.push(' ');
+    parts.push('<span class="sw ' + ec + '" data-anim="' + anim + '">' + w + '</span>');
+  });
+  return parts.join('');
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// TEMPLATE DATA â€” 20 Templates (5 per style)
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+var T = [
+
+// â•â•â•â•â•â•â•â•â•â•â•â• 1-STYLE â•â•â•â•â•â•â•â•â•â•â•â•
+
+// A1 â€” The Vigil | Minimal | Pos 3 (Triline Equal Stack)
+// F1: Pos â†’ WBW(wfade) â†’ Plain â†’ WBW(wflip)
+{id:'A1',nm:'The Vigil',mood:'Minimal',fm:'1-STYLE',sc:'a1',grid:'g1',ss:[
+{t:'pos',lbl:'Triline Stack',h:
+  '<div class="pos3">'
+  +'<div class="pr">'+row('some things','rise')+'</div>'
+  +'<div class="pr">'+row('take longer','slide-l')+'</div>'
+  +'<div class="pr">'+row('than planned.','wipe')+'</div>'
+  +'</div>'
+},
+{t:'wbw',lbl:'Fade + Flicker IMP',h: buildWBW('Keep {imp-flicker:showing} up anyway.','wfade')},
+{t:'plain',lbl:'Plain',h:'<div class="plain-s">the work doesn\'t care about your feelings.</div>'},
+{t:'wbw',lbl:'Flip + Gold IMP',h: buildWBW('One more {imp-gold:day.}','wflip')}
+]},
+
+// A2 â€” The Current | Energy | Pos 14 (Mid Impact â€” uses pop)
+// F2: WBW(wbounce) â†’ Pos â†’ Plain â†’ WBW(wskew)
+{id:'A2',nm:'The Current',mood:'Energy',fm:'1-STYLE',sc:'a2',grid:'g1',ss:[
+{t:'wbw',lbl:'Bounce + Typewrite IMP',h: buildWBW('EVERYTHING YOU {imp-typewrite:KNOW} CHANGES TODAY.','wbounce')},
+{t:'pos',lbl:'Mid Impact',h:
+  '<div class="pos14">'+row('ADAPT.','pop')+'</div>'
+},
+{t:'plain',lbl:'Plain',h:'<div class="plain-s">or get left behind in the noise.</div>'},
+{t:'wbw',lbl:'Skew + Cyan IMP',h: buildWBW('you were built for {imp-cyan:this.}','wskew')}
+]},
+
+// A3 â€” The Drift | Lofi | Pos 31b (Duo Flow Serif)
+// F1: Pos â†’ WBW(wdiag) â†’ Plain â†’ WBW(wexpand)
+{id:'A3',nm:'The Drift',mood:'Lofi',fm:'1-STYLE',sc:'a3',grid:'g1',ss:[
+{t:'pos',lbl:'Duo Flow',h:
+  '<div class="pos31b">'
+  +'<div class="pr sm">'+row('the playlist knows','slide-slow')+'</div>'
+  +'<div class="pr hero">'+row('silence.','rise')+'</div>'
+  +'<div class="pr tail">'+row('let it drift.','fade')+'</div>'
+  +'</div>'
+},
+{t:'wbw',lbl:'Diagonal + Rose IMP',h: buildWBW('thoughts untangle {imp-rose:slowly.}','wdiag')},
+{t:'plain',lbl:'Plain',h:'<div class="plain-s">let the hour breathe.</div>'},
+{t:'wbw',lbl:'Expand + Gold IMP',h: buildWBW('this moment belongs to {imp-gold:no one.}','wexpand')}
+]},
+
+// A4 â€” The Dispatch | Editorial | Pos 9 (Left Cascade Indent)
+// F3: Pos â†’ WBW(wwipe) â†’ WBW(wscale) â†’ Plain
+{id:'A4',nm:'The Dispatch',mood:'Editorial',fm:'1-STYLE',sc:'a4',grid:'g1',ss:[
+{t:'pos',lbl:'Left Cascade',h:
+  '<div class="pos9">'
+  +'<div class="pr l1">'+row('the story they','rise')+'</div>'
+  +'<div class="pr l2">'+row('refused to print','diagonal-wipe')+'</div>'
+  +'<div class="pr l3">'+row('WAS THE ONE.','wipe')+'</div>'
+  +'</div>'
+},
+{t:'wbw',lbl:'Wipe + Italic IMP',h: buildWBW('Truth costs {imp-italic:something.}','wwipe')},
+{t:'wbw',lbl:'Scale + Rose IMP',h: buildWBW('The price was {imp-rose:always} silence.','wscale')},
+{t:'plain',lbl:'Plain',h:'<div class="plain-s">Pay it or keep quiet.</div>'}
+]},
+
+// A5 â€” The Oracle | Poetic | Pos 31 (Duo Flow Sans)
+// F5: Pos â†’ Plain â†’ WBW(wrise) â†’ WBW(wroll)
+{id:'A5',nm:'The Oracle',mood:'Poetic',fm:'1-STYLE',sc:'a5',grid:'g1',ss:[
+{t:'pos',lbl:'Duo Flow',h:
+  '<div class="pos31">'
+  +'<div class="pr sm">'+row('what you seek','slide-slow')+'</div>'
+  +'<div class="pr hero">'+row('seeks you.','rise')+'</div>'
+  +'</div>'
+},
+{t:'plain',lbl:'Plain',h:'<div class="plain-s">This is not coincidence.</div>'},
+{t:'wbw',lbl:'Rise + Flicker IMP',h: buildWBW('The universe is {imp-flicker:patient.}','wrise')},
+{t:'wbw',lbl:'Roll + Rose IMP',h: buildWBW('Trust the {imp-rose:long} way home.','wroll')}
+]},
+
+// â•â•â•â•â•â•â•â•â•â•â•â• 2-STYLE â•â•â•â•â•â•â•â•â•â•â•â•
+
+// B1 â€” The Ruin | Dark Poetry | Pos 1 (Serif Explosion) + Pos 22 (Whisper Center)
+// F2: WBW(wlift) â†’ PosA â†’ Plain â†’ PosB â†’ WBW(wrise)
+{id:'B1',nm:'The Ruin',mood:'Dark Poetry',fm:'2-STYLE',sc:'b1',grid:'g2',ss:[
+{t:'wbw',lbl:'Lift + Purple IMP',h: buildWBW('Beautiful things {imp-purple:decay.}','wlift')},
+{t:'pos',lbl:'Serif Explosion',h:
+  '<div class="pos1">'
+  +'<div class="pr sm">'+row('beautiful things','fade')+'</div>'
+  +'<div class="pr hero">'+row('DECAY.','pop')+'</div>'
+  +'<div class="pr sub">'+row('always do.','rise')+'</div>'
+  +'</div>'
+},
+{t:'plain',lbl:'Plain',h:'<div class="plain-s">ruin is just beauty at its most honest.</div>'},
+{t:'pos',lbl:'Serif Whisper',h:
+  '<div class="pos22">'+row('the bones of what once was.','fade')+'</div>'
+},
+{t:'wbw',lbl:'Rise + Gold IMP',h: buildWBW('Something still {imp-gold:lives} in the wreckage.','wrise')}
+]},
+
+// B2 â€” The Stage | Drama | Pos 19 (Script-Sans Right) + Pos 30 (Dual Impact)
+// F1: PosA â†’ WBW(wwipeup) â†’ Plain â†’ PosB â†’ WBW(wslide)
+{id:'B2',nm:'The Stage',mood:'Drama',fm:'2-STYLE',sc:'b2',grid:'g2',ss:[
+{t:'pos',lbl:'Script-Sans Right',h:
+  '<div class="pos19">'
+  +'<div class="pr script">'+row('enter.','fade')+'</div>'
+  +'<div class="pr sans">'+row('STAGE LEFT.','rise')+'</div>'
+  +'</div>'
+},
+{t:'wbw',lbl:'WipeUp + Italic IMP',h: buildWBW('Every {imp-italic:entrance} rewrites the scene.','wwipeup')},
+{t:'plain',lbl:'Plain',h:'<div class="plain-s">the audience decides nothing.</div>'},
+{t:'pos',lbl:'Dual Impact',h:
+  '<div class="pos30">'
+  +'<div class="pr">'+row('ACT NOW.','wipe')+'</div>'
+  +'<div class="pr">'+row('PERFORM ALWAYS.','wipe')+'</div>'
+  +'</div>'
+},
+{t:'wbw',lbl:'Slide + Purple IMP',h: buildWBW('Curtain falls on {imp-purple:no one.}','wslide')}
+]},
+
+// B3 â€” The Signal | Sci-Fi | Pos 31c (Duo Flow Mono) + Pos 21 (Quad Neon Italic)
+// F3: WBW(wflip) â†’ PosA â†’ Plain â†’ PosB â†’ WBW(wdiag)
+{id:'B3',nm:'The Signal',mood:'Sci-Fi',fm:'2-STYLE',sc:'b3',grid:'g2',ss:[
+{t:'wbw',lbl:'Flip + Gold IMP',h: buildWBW('you were never {imp-gold:lost.}','wflip')},
+{t:'pos',lbl:'Duo Flow Mono',h:
+  '<div class="pos31c">'
+  +'<div class="pr sm">'+row('signal received','slide-slow')+'</div>'
+  +'<div class="pr hero">'+row('FOUND.','pop')+'</div>'
+  +'</div>'
+},
+{t:'plain',lbl:'Plain',h:'<div class="plain-s">across time. across static.</div>'},
+{t:'pos',lbl:'Quad Neon',h:
+  '<div class="pos21">'
+  +'<div class="pr l1">'+row('the message','fade')+'</div>'
+  +'<div class="pr l2">'+row('was always','rise')+'</div>'
+  +'<div class="pr l3">'+row('transmitted for','rise')+'</div>'
+  +'<div class="pr hero">'+row('YOU.','pop','neon-g')+'</div>'
+  +'</div>'
+},
+{t:'wbw',lbl:'Diagonal + Cyan IMP',h: buildWBW('coordinates {imp-cyan:locked.}','wdiag')}
+]},
+
+// B4 â€” The Verdict | Legal Drama | Pos 5 (Crown Label) + Pos 29 (Right Block Bold)
+// F6: WBW(wstencil) â†’ PosA â†’ WBW(wwipe) â†’ PosB â†’ Plain
+{id:'B4',nm:'The Verdict',mood:'Legal Drama',fm:'2-STYLE',sc:'b4',grid:'g2',ss:[
+{t:'wbw',lbl:'Stencil + Bold IMP',h: buildWBW('EVIDENCE: THEY {imp-bold:KNEW.}','wstencil')},
+{t:'pos',lbl:'Crown Label',h:
+  '<div class="pos5">'
+  +'<div class="pr sm">'+row('they knew','fade')+'</div>'
+  +'<div class="pr hero">'+row('ALL ALONG.','pop')+'</div>'
+  +'</div>'
+},
+{t:'wbw',lbl:'Wipe + Underline IMP',h: buildWBW('The verdict was {imp-underline:written} already.','wwipe')},
+{t:'pos',lbl:'Right Block Bold',h:
+  '<div class="pos29">'
+  +'<div class="pr">'+row('SENTENCE:','rise')+'</div>'
+  +'<div class="pr">'+row('COMPLICIT.','rise')+'</div>'
+  +'<div class="pr">'+row('ADMITTED.','rise')+'</div>'
+  +'<div class="pr">'+row('AWARE.','rise')+'</div>'
+  +'</div>'
+},
+{t:'plain',lbl:'Plain',h:'<div class="plain-s">truth has a paper trail.</div>'}
+]},
+
+// B5 â€” The Voltage | Cyberpunk | Pos 11 (Triline Neon) + Pos 17 (Inline Pop Mixed)
+// F2: WBW(wflip) â†’ PosA â†’ Plain â†’ PosB â†’ WBW(wdiag)
+{id:'B5',nm:'The Voltage',mood:'Cyberpunk',fm:'2-STYLE',sc:'b5',grid:'g2',ss:[
+{t:'wbw',lbl:'Flip + Bold IMP',h: buildWBW('REWRITE EVERY {imp-bold:RULE.}','wflip')},
+{t:'pos',lbl:'Triline Neon',h:
+  '<div class="pos11">'
+  +'<div class="pr sm">'+row('OVERRIDE.','fade','neon-y')+'</div>'
+  +'<div class="pr hero">'+row('SYSTEM.','pop','neon-c')+'</div>'
+  +'<div class="pr sm">'+row('BREACH.','rise','neon-y')+'</div>'
+  +'</div>'
+},
+{t:'plain',lbl:'Plain',h:'<div class="plain-s">the old rules were written for the old world.</div>'},
+{t:'pos',lbl:'Inline Pop Mixed',h:
+  '<div class="pos17">'
+  +row('HACK','rise')+' '+row('THE','wipe','neon-c')+' '+row('SEQUENCE.','pop','neon-y')
+  +'</div>'
+},
+{t:'wbw',lbl:'Diagonal + Cyan IMP',h: buildWBW('you are the {imp-cyan:signal.}','wdiag')}
+]},
+
+// â•â•â•â•â•â•â•â•â•â•â•â• 3-STYLE â•â•â•â•â•â•â•â•â•â•â•â•
+
+// C1 â€” The Uprising | Rebellion | Pos 6 + Pos 3 + Pos 29
+// F1: PosA â†’ WBW(wlift) â†’ Plain â†’ PosB â†’ PosC
+{id:'C1',nm:'The Uprising',mood:'Rebellion',fm:'3-STYLE',sc:'c1',grid:'g3',ss:[
+{t:'pos',lbl:'Mid Explosion',h:
+  '<div class="pos6">'
+  +'<div class="pr sm">'+row('what they built','fade')+'</div>'
+  +'<div class="pr hero">'+row('AGAINST US.','lift','neon-r')+'</div>'
+  +'<div class="pr sm">'+row('is becoming','rise')+'</div>'
+  +'</div>'
+},
+{t:'wbw',lbl:'Lift + Green IMP',h: buildWBW('We {imp-green:became} the thing they feared.','wlift')},
+{t:'plain',lbl:'Plain',h:'<div class="plain-s">every movement starts with one refusal.</div>'},
+{t:'pos',lbl:'Triline Stack',h:
+  '<div class="pos3">'
+  +'<div class="pr">'+row('stand','rise')+'</div>'
+  +'<div class="pr">'+row('united','slide-l')+'</div>'
+  +'<div class="pr">'+row('RISE.','wipe')+'</div>'
+  +'</div>'
+},
+{t:'pos',lbl:'Right Block Bold',h:
+  '<div class="pos29">'
+  +'<div class="pr">'+row('MARCH.','rise')+'</div>'
+  +'<div class="pr">'+row('DEMAND.','rise')+'</div>'
+  +'<div class="pr">'+row('TAKE.','rise')+'</div>'
+  +'<div class="pr">'+row('KEEP.','rise')+'</div>'
+  +'</div>'
+}
+]},
+
+// C2 â€” The Archive | Thriller | Pos 27 + Pos 31c + Pos 22
+// F3: PosA â†’ WBW(wflip) â†’ PosB â†’ Plain â†’ PosC
+{id:'C2',nm:'The Archive',mood:'Thriller',fm:'3-STYLE',sc:'c2',grid:'g3',ss:[
+{t:'pos',lbl:'Hybrid Triple Left',h:
+  '<div class="pos27">'
+  +'<div class="pr l1">'+row('They know your name.','slide-l')+'</div>'
+  +'<div class="pr l2">'+row('classified. redacted.','fade')+'</div>'
+  +'<div class="pr l3">'+row('AND THEY WATCH.','diagonal-wipe')+'</div>'
+  +'</div>'
+},
+{t:'wbw',lbl:'Flip + Typewrite IMP',h: buildWBW('The door has been {imp-typewrite:unlocked.}','wflip')},
+{t:'pos',lbl:'Duo Flow Mono',h:
+  '<div class="pos31c">'
+  +'<div class="pr sm">'+row('subject identified','slide-slow')+'</div>'
+  +'<div class="pr hero">'+row('YOU.','lift')+'</div>'
+  +'</div>'
+},
+{t:'plain',lbl:'Plain',h:'<div class="plain-s">run or stay. both have consequences.</div>'},
+{t:'pos',lbl:'Serif Whisper',h:
+  '<div class="pos22">'+row('they\'ve been watching since the beginning.','fade')+'</div>'
+}
+]},
+
+// C3 â€” The Ember | Literary | Pos 1 + Pos 31b + Pos 15
+// F2: PosA â†’ WBW(wdiag) â†’ Plain â†’ PosB â†’ PosC
+{id:'C3',nm:'The Ember',mood:'Literary',fm:'3-STYLE',sc:'c3',grid:'g3',ss:[
+{t:'pos',lbl:'Serif Explosion',h:
+  '<div class="pos1">'
+  +'<div class="pr sm">'+row('it began with','fade')+'</div>'
+  +'<div class="pr hero">'+row('GRIEF.','pop')+'</div>'
+  +'<div class="pr sm">'+row('became everything else','rise')+'</div>'
+  +'</div>'
+},
+{t:'wbw',lbl:'Diagonal + Gold IMP',h: buildWBW('The body {imp-gold:remembers} what the mind forgets.','wdiag')},
+{t:'plain',lbl:'Plain',h:'<div class="plain-s">every scar a timestamp.</div>'},
+{t:'pos',lbl:'Duo Flow Serif',h:
+  '<div class="pos31b">'
+  +'<div class="pr sm">'+row('what remains after','slide-slow')+'</div>'
+  +'<div class="pr hero">'+row('is the story.','rise')+'</div>'
+  +'</div>'
+},
+{t:'pos',lbl:'Flat Left Duo',h:
+  '<div class="pos15">'
+  +'<div class="pr sm">'+row('dated. filed.','fade')+'</div>'
+  +'<div class="pr hero">'+row('KEPT.','pop')+'</div>'
+  +'</div>'
+}
+]},
+
+// C4 â€” The Score | Music | Pos 25 + Pos 30 + Pos 14
+// F4: PosA â†’ WBW(wstencil) â†’ Plain â†’ PosB â†’ PosC
+{id:'C4',nm:'The Score',mood:'Music',fm:'3-STYLE',sc:'c4',grid:'g3',ss:[
+{t:'pos',lbl:'Left Flow Hybrid',h:
+  '<div class="pos25">'
+  +'<div class="pr sm">'+row('one note.','fade')+'</div>'
+  +'<div class="pr hero">'+row('that is all it takes.','slide-l')+'</div>'
+  +'</div>'
+},
+{t:'wbw',lbl:'Stencil + Gold IMP',h: buildWBW('The {imp-gold:melody} was always inside you.','wstencil')},
+{t:'plain',lbl:'Plain',h:'<div class="plain-s">silence is also a note.</div>'},
+{t:'pos',lbl:'Dual Impact',h:
+  '<div class="pos30">'
+  +'<div class="pr">'+row('PLAY IT.','wipe')+'</div>'
+  +'<div class="pr">'+row('FEEL IT.','wipe')+'</div>'
+  +'</div>'
+},
+{t:'pos',lbl:'Mid Impact',h:
+  '<div class="pos14">'+row('LISTEN.','pop')+'</div>'
+}
+]},
+
+// C5 â€” The Vessel | Spiritual | Pos 21 + Pos 31b + Pos 5
+// F5: PosA â†’ WBW(wrise) â†’ Plain â†’ PosB â†’ PosC
+{id:'C5',nm:'The Vessel',mood:'Spiritual',fm:'3-STYLE',sc:'c5',grid:'g3',ss:[
+{t:'pos',lbl:'Quad Neon Italic',h:
+  '<div class="pos21">'
+  +'<div class="pr l1">'+row('in the vastness','fade')+'</div>'
+  +'<div class="pr l2">'+row('one small light','rise')+'</div>'
+  +'<div class="pr l3">'+row('burning precisely','rise')+'</div>'
+  +'<div class="pr hero">'+row('FOR YOU.','pop','neon-p')+'</div>'
+  +'</div>'
+},
+{t:'wbw',lbl:'Rise + Flicker IMP',h: buildWBW('placed here {imp-flicker:on purpose.}','wrise')},
+{t:'plain',lbl:'Plain',h:'<div class="plain-s">you are not random.</div>'},
+{t:'pos',lbl:'Duo Flow Serif',h:
+  '<div class="pos31b">'
+  +'<div class="pr sm">'+row('designed with','slide-slow')+'</div>'
+  +'<div class="pr hero">'+row('INTENTION.','rise')+'</div>'
+  +'</div>'
+},
+{t:'pos',lbl:'Crown Label',h:
+  '<div class="pos5">'
+  +'<div class="pr sm">'+row('every detail','fade')+'</div>'
+  +'<div class="pr hero">'+row('DELIBERATE.','pop')+'</div>'
+  +'</div>'
+}
+]},
+
+// â•â•â•â•â•â•â•â•â•â•â•â• 4-STYLE â•â•â•â•â•â•â•â•â•â•â•â•
+
+// D1 â€” The Titan | Motivation | Pos 14 + Pos 7 + Pos 31
+// F1: PosA â†’ Plain â†’ PosB â†’ WBW(wrise) â†’ PosC
+{id:'D1',nm:'The Titan',mood:'Motivation',fm:'4-STYLE',sc:'d1',grid:'g4',ss:[
+{t:'pos',lbl:'Mid Impact',h:
+  '<div class="pos14">'+row('RISE.','pop')+'</div>'
+},
+{t:'plain',lbl:'Plain',h:'<div class="plain-s">that word has no power here. action does.</div>'},
+{t:'pos',lbl:'Neon Giant',h:
+  '<div class="pos7">'
+  +'<div class="pr left">'+row('what they see now','fade')+'</div>'
+  +'<div class="pr hero">'+row('PROOF.','pop','neon-g')+'</div>'
+  +'<div class="pr right">'+row('of everything they doubted','rise')+'</div>'
+  +'</div>'
+},
+{t:'wbw',lbl:'Rise + Underline IMP',h: buildWBW('built it {imp-underline:brick} by brick.','wrise')},
+{t:'pos',lbl:'Duo Flow',h:
+  '<div class="pos31">'
+  +'<div class="pr sm">'+row('unstoppable was never','slide-slow')+'</div>'
+  +'<div class="pr hero">'+row('a trait.','rise')+'</div>'
+  +'</div>'
+}
+]},
+
+// D2 â€” The Chronicle | Documentary | Pos 9 + Pos 22 + Pos 31c
+// F2: PosA â†’ PosB â†’ WBW(wfade) â†’ Plain â†’ PosC
+{id:'D2',nm:'The Chronicle',mood:'Documentary',fm:'4-STYLE',sc:'d2',grid:'g4',ss:[
+{t:'pos',lbl:'Left Cascade',h:
+  '<div class="pos9">'
+  +'<div class="pr l1">'+row('the record shows','rise')+'</div>'
+  +'<div class="pr l2">'+row('they lied','diagonal-wipe')+'</div>'
+  +'<div class="pr l3">'+row('TO EVERYONE.','wipe')+'</div>'
+  +'</div>'
+},
+{t:'pos',lbl:'Serif Whisper',h:
+  '<div class="pos22">'+row('documented. verified. undeniable.','fade')+'</div>'
+},
+{t:'wbw',lbl:'Fade + Gold IMP',h: buildWBW('truth has a {imp-gold:timestamp.}','wfade')},
+{t:'plain',lbl:'Plain',h:'<div class="plain-s">archives don\'t forget. ever.</div>'},
+{t:'pos',lbl:'Duo Flow Mono',h:
+  '<div class="pos31c">'
+  +'<div class="pr sm">'+row('for the record:','slide-slow')+'</div>'
+  +'<div class="pr hero">'+row('KNOWN.','pop')+'</div>'
+  +'</div>'
+}
+]},
+
+// D3 â€” The Break | Sci-Fi | Pos 11 + Pos 21 + Pos 31c
+// F3: PosA â†’ Plain â†’ PosB â†’ WBW(wdiag) â†’ PosC
+{id:'D3',nm:'The Break',mood:'Sci-Fi',fm:'4-STYLE',sc:'d3',grid:'g4',ss:[
+{t:'pos',lbl:'Triline Neon',h:
+  '<div class="pos11">'
+  +'<div class="pr sm">'+row('TRANSMISSION','pop','neon-c')+'</div>'
+  +'<div class="pr hero">'+row('RECEIVED.','lift')+'</div>'
+  +'<div class="pr sm">'+row('DATA UNLOCKED.','rise')+'</div>'
+  +'</div>'
+},
+{t:'plain',lbl:'Plain',h:'<div class="plain-s">across static. across time.</div>'},
+{t:'pos',lbl:'Quad Neon',h:
+  '<div class="pos21">'
+  +'<div class="pr l1">'+row('the message','fade')+'</div>'
+  +'<div class="pr l2">'+row('was always','rise')+'</div>'
+  +'<div class="pr l3">'+row('transmitted for','rise')+'</div>'
+  +'<div class="pr hero">'+row('YOU.','pop','neon-g')+'</div>'
+  +'</div>'
+},
+{t:'wbw',lbl:'Diagonal + Gold IMP',h: buildWBW('you were never {imp-gold:lost.}','wdiag')},
+{t:'pos',lbl:'Duo Flow Mono',h:
+  '<div class="pos31c">'
+  +'<div class="pr sm">'+row('coordinates:','slide-slow')+'</div>'
+  +'<div class="pr hero">'+row('FOUND.','pop')+'</div>'
+  +'</div>'
+}
+]},
+
+// D4 â€” The Descent | Thriller | Pos 27 + Pos 31c + Pos 3 + Pos 5
+// F4: PosA â†’ WBW(wlift) â†’ PosB â†’ Plain â†’ PosC
+{id:'D4',nm:'The Descent',mood:'Thriller',fm:'4-STYLE',sc:'d4',grid:'g4',ss:[
+{t:'pos',lbl:'Hybrid Triple Left',h:
+  '<div class="pos27">'
+  +'<div class="pr l1">'+row('I knew the truth.','slide-l')+'</div>'
+  +'<div class="pr l2">'+row('before they told me','fade')+'</div>'
+  +'<div class="pr l3">'+row('AND I SAID NOTHING.','diagonal-wipe')+'</div>'
+  +'</div>'
+},
+{t:'wbw',lbl:'Lift + Italic IMP',h: buildWBW('{imp-italic:Silence} was its own kind of lie.','wlift')},
+{t:'pos',lbl:'Duo Flow Mono',h:
+  '<div class="pos31c">'
+  +'<div class="pr sm">'+row('the moment I stayed','slide-slow')+'</div>'
+  +'<div class="pr hero">'+row('quiet.','rise')+'</div>'
+  +'</div>'
+},
+{t:'plain',lbl:'Plain',h:'<div class="plain-s">every word unsaid leaves a mark.</div>'},
+{t:'pos',lbl:'Crown Label',h:
+  '<div class="pos5">'
+  +'<div class="pr sm">'+row('speak','fade')+'</div>'
+  +'<div class="pr hero">'+row('while you can.','pop')+'</div>'
+  +'</div>'
+}
+]},
+
+// D5 â€” The Legacy | Inspirational | Pos 21 + Pos 31b + Pos 6
+// F5: PosA â†’ Plain â†’ WBW(wbounce) â†’ PosB â†’ PosC
+{id:'D5',nm:'The Legacy',mood:'Inspirational',fm:'4-STYLE',sc:'d5',grid:'g4',ss:[
+{t:'pos',lbl:'Quad Neon Italic',h:
+  '<div class="pos21">'
+  +'<div class="pr l1">'+row('they passed it down','fade')+'</div>'
+  +'<div class="pr l2">'+row('quietly','rise')+'</div>'
+  +'<div class="pr l3">'+row('without ceremony','rise')+'</div>'
+  +'<div class="pr hero">'+row('FOR YOU.','pop','neon-p')+'</div>'
+  +'</div>'
+},
+{t:'plain',lbl:'Plain',h:'<div class="plain-s">a name is a promise across generations.</div>'},
+{t:'wbw',lbl:'Bounce + Gold IMP',h: buildWBW('carry it with {imp-gold:intention.}','wbounce')},
+{t:'pos',lbl:'Duo Flow Serif',h:
+  '<div class="pos31b">'
+  +'<div class="pr sm">'+row('built by those who','slide-slow')+'</div>'
+  +'<div class="pr hero">'+row('came before.','rise')+'</div>'
+  +'</div>'
+},
+{t:'pos',lbl:'Mid Explosion',h:
+  '<div class="pos6">'
+  +'<div class="pr sm">'+row('honor it.','fade')+'</div>'
+  +'<div class="pr hero">'+row('BUILD ON IT.','lift')+'</div>'
+  +'<div class="pr sm">'+row('leave more.','rise')+'</div>'
+  +'</div>'
+}
+]}
+
+]; // end T
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// BUILD CARDS
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+T.forEach(function(tpl, ti){
+  var fmClass = tpl.fm === '1-STYLE' ? 's1' : tpl.fm === '2-STYLE' ? 's2' : tpl.fm === '3-STYLE' ? 's3' : 's4';
+  var gEl = document.getElementById(tpl.grid);
+  var c = document.createElement('div');
+  c.className = 'card ' + tpl.sc;
+  c.innerHTML =
+    '<div class="card-top">'
+      + '<div><span class="cid">' + tpl.id + '</span><span class="cnm"> Â· ' + tpl.nm + '</span></div>'
+      + '<div class="badges"><span class="bg m">' + tpl.mood + '</span><span class="bg ' + fmClass + '">' + tpl.fm + '</span></div>'
+    + '</div>'
+    + '<div class="stage" data-ti="' + ti + '">'
+      + '<span class="slbl">' + tpl.ss[0].lbl + '</span>'
+      + tpl.ss.map(function(s, si){ return '<div class="sb" data-si="' + si + '">' + s.h + '</div>'; }).join('')
+    + '</div>'
+    + '<div class="dots" data-ti="' + ti + '">'
+      + tpl.ss.map(function(){ return '<i></i>'; }).join('')
+    + '</div>';
+  gEl.appendChild(c);
+});
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// WBW ANIMATION ENGINE
+// Animations: NO slam, NO elastic, NO rotate-in/wrotatein
+// New: wlift (gentle drop from above), pop, lift, drift in IMP
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+var WBW_DELAY = 65, WBW_DUR = 280;
+var WBW_CLASSES = ['wrise','wslide','wslider','wroll','wwipe','wwipeup','wfade','wscale','wflip','wbounce','wdiag','wexpand','wskew','wstencil','wlift'];
+
+// IMP class â†’ animation type (no slam, elastic, rotate-in)
+var IMP_ANIMS = {
+  'imp-bold':'drop','imp-gold':'wipe','imp-rose':'diagonal-wipe','imp-cyan':'skew-snap',
+  'imp-green':'pop','imp-purple':'roll','imp-italic':'lift','imp-weight':'stamp',
+  'imp-underline':'wipe-up','imp-box':'drift','imp-space':'stencil',
+  'imp-flicker':'flicker','imp-typewrite':'typewrite','imp-stamp':'stamp'
+};
+
+function wbwInitWord(w) {
+  var p = w.parentElement;
+  w.style.transition = 'none';
+  w.style.clipPath = ''; w.style.transformOrigin = ''; w.style.filter = '';
+  if(p.classList.contains('wrise'))    { w.style.transform='translateY(22px)'; w.style.opacity='0'; }
+  else if(p.classList.contains('wslide'))  { w.style.transform='translateX(-26px)'; w.style.opacity='0'; }
+  else if(p.classList.contains('wslider')) { w.style.transform='translateX(26px)'; w.style.opacity='0'; }
+  else if(p.classList.contains('wroll'))   { w.style.transform='translateY(14px) rotate(-6deg)'; w.style.transformOrigin='left bottom'; w.style.opacity='0'; }
+  else if(p.classList.contains('wwipe'))   { w.style.clipPath='inset(0 100% 0 0)'; w.style.transform='none'; w.style.opacity='1'; }
+  else if(p.classList.contains('wwipeup')) { w.style.clipPath='inset(100% 0 0 0)'; w.style.transform='none'; w.style.opacity='1'; }
+  else if(p.classList.contains('wfade'))   { w.style.transform='none'; w.style.opacity='0'; }
+  else if(p.classList.contains('wscale'))  { w.style.transform='scale(0.5)'; w.style.opacity='0'; }
+  else if(p.classList.contains('wflip'))   { w.style.transform='rotateX(-80deg)'; w.style.transformOrigin='center bottom'; w.style.opacity='0'; }
+  else if(p.classList.contains('wbounce')) { w.style.transform='translateY(-22px)'; w.style.opacity='0'; }
+  else if(p.classList.contains('wdiag'))   { w.style.transform='translate(-16px,16px)'; w.style.opacity='0'; }
+  else if(p.classList.contains('wexpand')) { w.style.transform='scaleX(0.15)'; w.style.transformOrigin='center'; w.style.opacity='0'; }
+  else if(p.classList.contains('wskew'))   { w.style.transform='skewX(-18deg) translateX(-12px)'; w.style.opacity='0'; }
+  else if(p.classList.contains('wstencil')){ w.style.clipPath='inset(0 50% 0 50%)'; w.style.transform='none'; w.style.opacity='1'; }
+  else if(p.classList.contains('wlift'))   { w.style.transform='translateY(-22px)'; w.style.opacity='0'; }
+  else { w.style.transform='translateY(22px)'; w.style.opacity='0'; }
+}
+
+function wbwAnimWord(w, delay) {
+  var p = w.parentElement;
+  var ease = 'cubic-bezier(0.22,1,0.36,1)';
+  setTimeout(function(){
+    if(p.classList.contains('wwipe')||p.classList.contains('wwipeup')||p.classList.contains('wstencil')){
+      w.style.transition = 'clip-path '+WBW_DUR+'ms '+ease;
+      w.style.clipPath = 'inset(0 0 0 0)';
+    } else if(p.classList.contains('wfade')){
+      w.style.transition = 'opacity '+(WBW_DUR+80)+'ms ease';
+      w.style.opacity = '1';
+    } else if(p.classList.contains('wflip')){
+      w.style.transition = 'transform '+WBW_DUR+'ms '+ease+', opacity '+(WBW_DUR-40)+'ms ease';
+      w.style.transform = 'rotateX(0)'; w.style.opacity = '1';
+    } else if(p.classList.contains('wscale')){
+      w.style.transition = 'transform '+WBW_DUR+'ms '+ease+', opacity '+(WBW_DUR-40)+'ms ease';
+      w.style.transform = 'scale(1)'; w.style.opacity = '1';
+    } else if(p.classList.contains('wexpand')){
+      w.style.transition = 'transform '+WBW_DUR+'ms '+ease+', opacity '+(WBW_DUR-40)+'ms ease';
+      w.style.transform = 'scaleX(1)'; w.style.opacity = '1';
+    } else if(p.classList.contains('wroll')){
+      w.style.transition = 'transform '+(WBW_DUR+40)+'ms '+ease+', opacity '+(WBW_DUR-40)+'ms ease';
+      w.style.transform = 'translateY(0) rotate(0)'; w.style.opacity = '1';
+    } else {
+      var target = p.classList.contains('wskew') ? 'skewX(0) translateX(0)'
+        : p.classList.contains('wdiag') ? 'translate(0,0)'
+        : 'translateY(0)';
+      w.style.transition = 'transform '+WBW_DUR+'ms '+ease+', opacity '+(WBW_DUR-40)+'ms ease';
+      w.style.transform = target; w.style.opacity = '1';
+    }
+    w.classList.add('in');
+  }, delay);
+}
+
+function wbwAnimIMP(w, i, delay) {
+  var impType = null;
+  for(var cls in IMP_ANIMS){ if(w.classList.contains(cls)){ impType = IMP_ANIMS[cls]; break; } }
+  if(!impType) return false;
+  var d = delay + 120, dur = WBW_DUR + 160;
+  var ease = 'cubic-bezier(0.22,1,0.36,1)';
+  w.style.transition = 'none';
+  if(impType==='wipe'){        w.style.clipPath='inset(0 100% 0 0)'; w.style.opacity='1'; w.style.transform='none'; void w.offsetHeight; setTimeout(function(){ w.style.transition='clip-path '+dur+'ms '+ease; w.style.clipPath='inset(0 0 0 0)'; w.classList.add('in'); }, d); }
+  else if(impType==='wipe-up'){ w.style.clipPath='inset(100% 0 0 0)'; w.style.opacity='1'; w.style.transform='none'; void w.offsetHeight; setTimeout(function(){ w.style.transition='clip-path '+dur+'ms '+ease; w.style.clipPath='inset(0 0 0 0)'; w.classList.add('in'); }, d); }
+  else if(impType==='diagonal-wipe'){ w.style.clipPath='polygon(0 0,0 0,0 100%,0 100%)'; w.style.opacity='1'; w.style.transform='none'; void w.offsetHeight; setTimeout(function(){ w.style.transition='clip-path '+dur+'ms '+ease; w.style.clipPath='polygon(0 0,100% 0,100% 100%,0 100%)'; w.classList.add('in'); }, d); }
+  else if(impType==='stencil'){ w.style.clipPath='inset(0 50% 0 50%)'; w.style.opacity='1'; w.style.transform='none'; void w.offsetHeight; setTimeout(function(){ w.style.transition='clip-path '+dur+'ms '+ease; w.style.clipPath='inset(0 0 0 0)'; w.classList.add('in'); }, d); }
+  else if(impType==='skew-snap'){ w.style.transform='skewX(-18deg) translateX(-12px)'; w.style.opacity='0'; void w.offsetHeight; setTimeout(function(){ w.style.transition='transform '+dur+'ms '+ease+', opacity '+(dur-60)+'ms ease'; w.style.transform='skewX(0) translateX(0)'; w.style.opacity='1'; w.classList.add('in'); }, d); }
+  else if(impType==='roll'){    w.style.transformOrigin='center bottom'; w.style.transform='rotateX(-90deg)'; w.style.opacity='0'; void w.offsetHeight; setTimeout(function(){ w.style.transition='transform '+dur+'ms '+ease+', opacity '+(dur-80)+'ms ease'; w.style.transform='rotateX(0)'; w.style.opacity='1'; w.classList.add('in'); }, d); }
+  else if(impType==='drop'){    w.style.transform='translateY(-30px)'; w.style.opacity='0'; void w.offsetHeight; setTimeout(function(){ w.style.transition='transform '+dur+'ms '+ease+', opacity '+(dur-60)+'ms ease'; w.style.transform='translateY(0)'; w.style.opacity='1'; w.classList.add('in'); }, d); }
+  else if(impType==='pop'){     w.style.transform='scale(0.82)'; w.style.opacity='0'; void w.offsetHeight; setTimeout(function(){ w.style.transition='transform '+dur+'ms '+ease+', opacity '+(dur-60)+'ms ease'; w.style.transform='scale(1)'; w.style.opacity='1'; w.classList.add('in'); }, d); }
+  else if(impType==='lift'){    w.style.transform='translateY(-20px)'; w.style.opacity='0'; void w.offsetHeight; setTimeout(function(){ w.style.transition='transform '+dur+'ms '+ease+', opacity '+(dur-60)+'ms ease'; w.style.transform='translateY(0)'; w.style.opacity='1'; w.classList.add('in'); }, d); }
+  else if(impType==='drift'){   w.style.transform='translateX(-12px) translateY(8px)'; w.style.opacity='0'; void w.offsetHeight; setTimeout(function(){ w.style.transition='transform '+(dur+30)+'ms '+ease+', opacity '+(dur-60)+'ms ease'; w.style.transform='translateX(0) translateY(0)'; w.style.opacity='1'; w.classList.add('in'); }, d); }
+  else if(impType==='stamp'){   w.style.transform='scale(1.3)'; w.style.opacity='0'; void w.offsetHeight; setTimeout(function(){ w.style.transition='none'; w.style.opacity='1'; w.style.transform='scale(1.3)'; setTimeout(function(){ w.style.transition='transform 180ms '+ease; w.style.transform='scale(1)'; w.classList.add('in'); }, 60); }, d); }
+  else if(impType==='typewrite'){ w.style.transform='none'; w.style.opacity='0'; void w.offsetHeight; setTimeout(function(){ w.style.transition='opacity '+WBW_DUR+'ms ease'; w.style.opacity='1'; w.classList.add('in'); setTimeout(function(){ w.classList.add('fx'); }, WBW_DUR+50); }, d); }
+  else if(impType==='flicker'){  w.style.transform='none'; w.style.opacity='0'; void w.offsetHeight; setTimeout(function(){ w.style.transition='opacity 40ms'; w.style.opacity='1'; w.classList.add('in'); setTimeout(function(){ w.classList.add('fx'); }, 50); }, d); }
+  return true;
+}
+
+function animateWBW(block) {
+  var sel = WBW_CLASSES.map(function(c){ return '.'+c+' .w'; }).join(',');
+  var words = block.querySelectorAll(sel);
+  if(!words.length) return;
+  words.forEach(function(w){ wbwInitWord(w); });
+  void block.offsetHeight;
+  words.forEach(function(w, i){
+    var isIMP = wbwAnimIMP(w, i, i * WBW_DELAY);
+    if(!isIMP) wbwAnimWord(w, i * WBW_DELAY);
+  });
+}
+
+function resetWBW(block) {
+  var sel = WBW_CLASSES.map(function(c){ return '.'+c+' .w'; }).join(',');
+  block.querySelectorAll(sel).forEach(function(w){
+    w.classList.remove('in','fx');
+    wbwInitWord(w);
+  });
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// POSITION WORD ANIMATION ENGINE
+// New animations: pop, lift, drift (replace slam, elastic, rotate-in)
+// Bounce keeps ease (no physics overshoot)
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+var POS_STAGGER = 220, POS_DUR = 300;
+
+function posInitWord(w) {
+  var anim = w.dataset.anim || 'rise';
+  w.style.transition = 'none'; w.style.clipPath = ''; w.style.transformOrigin = '';
+  switch(anim) {
+    case 'rise':       w.style.transform='translateY(20px)'; w.style.opacity='0'; break;
+    case 'drop':       w.style.transform='translateY(-28px)'; w.style.opacity='0'; break;
+    case 'fade':       w.style.transform='none'; w.style.opacity='0'; break;
+    case 'slide-l':    w.style.transform='translateX(-28px)'; w.style.opacity='0'; break;
+    case 'slide-r':    w.style.transform='translateX(28px)'; w.style.opacity='0'; break;
+    case 'slide-slow': w.style.transform='translateX(-32px)'; w.style.opacity='0'; break;
+    case 'pop':        w.style.transform='scale(0.82)'; w.style.opacity='0'; break;
+    case 'lift':       w.style.transform='translateY(-16px)'; w.style.opacity='0'; break;
+    case 'drift':      w.style.transform='translateX(-12px) translateY(8px)'; w.style.opacity='0'; break;
+    case 'bounce':     w.style.transform='translateY(-20px)'; w.style.opacity='0'; break;
+    case 'wipe':       w.style.clipPath='inset(0 100% 0 0)'; w.style.opacity='1'; w.style.transform='none'; break;
+    case 'wipe-up':    w.style.clipPath='inset(100% 0 0 0)'; w.style.opacity='1'; w.style.transform='none'; break;
+    case 'stencil':    w.style.clipPath='inset(0 50% 0 50%)'; w.style.opacity='1'; w.style.transform='none'; break;
+    case 'diagonal-wipe': w.style.clipPath='polygon(0 0,0 0,0 100%,0 100%)'; w.style.opacity='1'; w.style.transform='none'; break;
+    case 'skew-snap':  w.style.transform='skewX(-18deg) translateX(-12px)'; w.style.opacity='0'; break;
+    case 'expand':     w.style.transform='scaleX(0.1)'; w.style.transformOrigin='center'; w.style.opacity='0'; break;
+    case 'diagonal':   w.style.transform='translate(-20px,20px)'; w.style.opacity='0'; break;
+    default:           w.style.transform='translateY(20px)'; w.style.opacity='0'; break;
+  }
+}
+
+function posAnimWord(w, delay) {
+  var anim = w.dataset.anim || 'rise';
+  var ease = 'cubic-bezier(0.22,1,0.36,1)';
+  var dur = POS_DUR;
+  setTimeout(function(){
+    switch(anim) {
+      case 'wipe': case 'wipe-up': case 'stencil':
+        w.style.transition = 'clip-path '+dur+'ms '+ease;
+        w.style.clipPath = 'inset(0 0 0 0)'; break;
+      case 'diagonal-wipe':
+        w.style.transition = 'clip-path '+dur+'ms '+ease;
+        w.style.clipPath = 'polygon(0 0,100% 0,100% 100%,0 100%)'; break;
+      case 'fade':
+        w.style.transition = 'opacity '+(dur+80)+'ms ease';
+        w.style.opacity = '1'; break;
+      case 'pop':
+        w.style.transition = 'transform '+dur+'ms '+ease+', opacity '+(dur-40)+'ms ease';
+        w.style.transform = 'scale(1)'; w.style.opacity = '1'; break;
+      case 'lift':
+        w.style.transition = 'transform '+dur+'ms '+ease+', opacity '+(dur-40)+'ms ease';
+        w.style.transform = 'translateY(0)'; w.style.opacity = '1'; break;
+      case 'drift':
+        w.style.transition = 'transform '+(dur+30)+'ms '+ease+', opacity '+(dur-40)+'ms ease';
+        w.style.transform = 'translateX(0) translateY(0)'; w.style.opacity = '1'; break;
+      case 'bounce':
+        w.style.transition = 'transform '+(dur+60)+'ms '+ease+', opacity '+(dur-40)+'ms ease';
+        w.style.transform = 'translateY(0)'; w.style.opacity = '1'; break;
+      case 'skew-snap':
+        w.style.transition = 'transform '+dur+'ms '+ease+', opacity '+(dur-40)+'ms ease';
+        w.style.transform = 'skewX(0) translateX(0)'; w.style.opacity = '1'; break;
+      case 'expand':
+        w.style.transition = 'transform '+dur+'ms '+ease+', opacity '+(dur-40)+'ms ease';
+        w.style.transform = 'scaleX(1)'; w.style.opacity = '1'; break;
+      case 'slide-slow':
+        w.style.transition = 'transform 750ms cubic-bezier(0.16,1,0.3,1), opacity 550ms ease';
+        w.style.transform = 'translateX(0)'; w.style.opacity = '1'; break;
+      default:
+        w.style.transition = 'transform '+dur+'ms '+ease+', opacity '+(dur-40)+'ms ease';
+        w.style.transform = anim==='diagonal' ? 'translate(0,0)' : 'translateY(0)';
+        w.style.opacity = '1'; break;
+    }
+    w.classList.add('in');
+  }, delay);
+}
+
+function animatePosWords(block) {
+  var words = block.querySelectorAll('.sw');
+  if(!words.length) return;
+  words.forEach(function(w){ posInitWord(w); });
+  void block.offsetHeight;
+  words.forEach(function(w, i){ posAnimWord(w, i * POS_STAGGER); });
+}
+
+function resetPosWords(block) {
+  block.querySelectorAll('.sw').forEach(function(w){
+    w.classList.remove('in');
+    posInitWord(w);
+  });
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// SEQUENCER ENGINE
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+var HOLD = 2800, EXIT_MS = 360, ENTER_MS = 280, GAP = 40;
+
+function resetBlock(bl) {
+  bl.classList.remove('active');
+  bl.style.cssText = 'opacity:0';
+  resetWBW(bl);
+  resetPosWords(bl);
+}
+
+function enterBlock(bl, sData) {
+  resetBlock(bl); void bl.offsetHeight;
+  if(sData.t === 'plain') {
+    bl.style.transition = 'none'; bl.style.opacity = '1'; bl.classList.add('active');
+  } else if(sData.t === 'wbw') {
+    bl.style.transition = 'none'; bl.style.opacity = '1'; bl.classList.add('active');
+    requestAnimationFrame(function(){ requestAnimationFrame(function(){ animateWBW(bl); }); });
+  } else if(sData.t === 'pos') {
+    bl.style.transition = 'none'; bl.style.opacity = '1'; bl.classList.add('active');
+    requestAnimationFrame(function(){ requestAnimationFrame(function(){ animatePosWords(bl); }); });
+  } else {
+    bl.style.transition = 'opacity '+ENTER_MS+'ms ease';
+    requestAnimationFrame(function(){ bl.style.opacity = '1'; bl.classList.add('active'); });
+  }
+}
+
+function exitBlock(bl, sData, cb) {
+  if(sData.t === 'plain') {
+    bl.style.transition = 'none'; bl.style.opacity = '0';
+    requestAnimationFrame(function(){ bl.classList.remove('active'); bl.style.cssText = 'opacity:0'; setTimeout(cb, GAP); });
+  } else {
+    bl.style.transition = 'opacity '+EXIT_MS+'ms ease'; bl.style.opacity = '0';
+    setTimeout(function(){ bl.classList.remove('active'); bl.style.cssText = 'opacity:0'; resetWBW(bl); resetPosWords(bl); setTimeout(cb, GAP); }, EXIT_MS);
+  }
+}
+
+// â”€â”€ RUNNER â”€â”€
+var runners = [];
+document.querySelectorAll('.stage').forEach(function(stage){
+  var ti = parseInt(stage.dataset.ti);
+  var tpl = T[ti];
+  var blocks = stage.querySelectorAll('.sb');
+  var dotsEl = document.querySelector('.dots[data-ti="'+ti+'"]');
+  var dots = dotsEl ? dotsEl.querySelectorAll('i') : [];
+  var lbl = stage.querySelector('.slbl');
+  var cur = 0, timer = null, paused = false;
+
+  function clearTimer() {
+    if(timer){
+      clearTimeout(timer);
+      timer = null;
+    }
+  }
+
+  function scheduleNext() {
+    clearTimer();
+    if(!paused) timer = setTimeout(cycle, HOLD);
+  }
+
+  function show(idx) {
+    dots.forEach(function(d, i){ d.classList.toggle('on', i === idx); });
+    if(lbl) lbl.textContent = tpl.ss[idx].lbl;
+    enterBlock(blocks[idx], tpl.ss[idx]);
+  }
+  function cycle() {
+    if(paused) return;
+    exitBlock(blocks[cur], tpl.ss[cur], function(){
+      if(paused) return;
+      cur = (cur + 1) % tpl.ss.length;
+      show(cur);
+      scheduleNext();
+    });
+  }
+  function jumpTo(idx) {
+    if(idx === cur) {
+      blocks.forEach(function(bl){ resetBlock(bl); });
+      show(cur);
+      scheduleNext();
+      return;
+    }
+    clearTimer();
+    exitBlock(blocks[cur], tpl.ss[cur], function(){
+      if(paused) return;
+      cur = idx;
+      blocks.forEach(function(bl, blIdx){
+        if(blIdx !== cur) resetBlock(bl);
+      });
+      show(cur);
+      scheduleNext();
+    });
+  }
+  function pause() { paused = true; clearTimer(); }
+  function resume() { paused = false; blocks.forEach(function(bl){ resetBlock(bl); }); show(cur); scheduleNext(); }
+
+  dots.forEach(function(dot, idx){
+    dot.addEventListener('click', function(){
+      paused = false;
+      jumpTo(idx);
+    });
+  });
+
+  runners.push({ pause: pause, resume: resume });
+  show(0);
+  scheduleNext();
+});
+
+document.addEventListener('visibilitychange', function(){
+  if(document.hidden) runners.forEach(function(r){ r.pause(); });
+  else setTimeout(function(){ runners.forEach(function(r){ r.resume(); }); }, 100);
+});
+</script>
+
+
+
+
+</body><grammarly-desktop-integration data-grammarly-shadow-root="true"><template shadowrootmode="open"><style>
+      div.grammarly-desktop-integration {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+        -moz-user-select: none;
+        -webkit-user-select: none;
+        -ms-user-select:none;
+        user-select:none;
+      }
+
+      div.grammarly-desktop-integration:before {
+        content: attr(data-content);
+      }
+    </style><div aria-label="grammarly-integration" role="group" tabindex="-1" class="grammarly-desktop-integration" data-content="{&quot;mode&quot;:&quot;full&quot;,&quot;isActive&quot;:true,&quot;isUserDisabled&quot;:false}"></div></template></grammarly-desktop-integration></html>
