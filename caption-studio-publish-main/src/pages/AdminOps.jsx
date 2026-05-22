@@ -1,4 +1,5 @@
 import React, { useState } from "react"
+import { Navigate } from "react-router-dom"
 import { useAuth } from "@/lib/AuthContext"
 import { apiRequest } from "@/lib/apiClient"
 import { notifyApiError } from "@/lib/notifyApiError"
@@ -6,9 +7,14 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 export default function AdminOps() {
-  const { currentUser } = useAuth()
+  const { currentUser, userData } = useAuth()
   const [loading, setLoading] = useState(false)
   const [output, setOutput] = useState(null)
+
+  const isAdmin = userData?.role === "admin" || userData?.roles?.includes("admin")
+  if (!currentUser || !isAdmin) {
+    return <Navigate to="/Dashboard" replace />
+  }
 
   const run = async (path, body = {}) => {
     setLoading(true)
