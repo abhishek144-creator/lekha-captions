@@ -86,6 +86,9 @@ const exportQueue = {
   currentCount: 0,
 
   add(exportFn) {
+    if (this.queue.length >= 50) {
+      return Promise.reject(new Error('Export queue is full. Please wait for current exports to finish.'));
+    }
     return new Promise((resolve, reject) => {
       this.queue.push({ fn: exportFn, resolve, reject });
       this.processNext();

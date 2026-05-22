@@ -27,6 +27,7 @@ import math
 from google.cloud import firestore
 import mimetypes
 import logging
+import pathlib
 import re
 import shlex
 
@@ -158,9 +159,12 @@ async def request_logging_middleware(request: Request, call_next):
     return response
 
 # Initialize Razorpay Client (Keys will be read from environment variables)
+_IS_PRODUCTION = os.environ.get("ENV", "").strip().lower() == "production"
 RAZORPAY_KEY_ID = os.environ.get("RAZORPAY_KEY_ID", "")
 RAZORPAY_KEY_SECRET = os.environ.get("RAZORPAY_KEY_SECRET", "")
 RAZORPAY_WEBHOOK_SECRET = os.environ.get("RAZORPAY_WEBHOOK_SECRET", "")
+if _IS_PRODUCTION and not RAZORPAY_WEBHOOK_SECRET:
+    raise RuntimeError("RAZORPAY_WEBHOOK_SECRET must be set in production (ENV=production).")
 rzp_client = None
 if RAZORPAY_AVAILABLE and RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET:
     rzp_client = _razorpay_module.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
@@ -244,6 +248,8 @@ ENFORCE_TENANT_ISOLATION = os.environ.get("ENFORCE_TENANT_ISOLATION", "0") == "1
 ENABLE_PROGRESSIVE_DELIVERY = os.environ.get("ENABLE_PROGRESSIVE_DELIVERY", "1") == "1"
 REQUIRE_PAYMENT_IDEMPOTENCY = os.environ.get("REQUIRE_PAYMENT_IDEMPOTENCY", "1") == "1"
 DEBUG_MODE_ENABLED = os.environ.get("DEBUG_MODE", "").strip().lower() not in ("", "0", "false", "no", "off")
+if _IS_PRODUCTION and DEBUG_MODE_ENABLED:
+    raise RuntimeError("DEBUG_MODE must not be enabled in production (ENV=production). Set DEBUG_MODE=false or unset it.")
 SLO_EXPORT_SUCCESS_TARGET = float(os.environ.get("SLO_EXPORT_SUCCESS_TARGET", "0.98"))
 SLO_PROCESS_SUCCESS_TARGET = float(os.environ.get("SLO_PROCESS_SUCCESS_TARGET", "0.98"))
 SLO_EXPORT_P95_MS_TARGET = int(os.environ.get("SLO_EXPORT_P95_MS_TARGET", "180000"))
@@ -421,6 +427,9 @@ PROMO_RATE_LIMIT = 5      # max promo redemptions per hour per IP
 
 _translate_rate: Dict[str, list] = {}
 TRANSLATE_RATE_LIMIT = 20  # max translation attempts per hour per IP
+
+_process_rate: Dict[str, list] = {}
+PROCESS_RATE_LIMIT = 20   # max transcription attempts per hour per IP
 
 PLAN_EXPORT_PRESETS = {
     "free": {"max_quality": "1080p", "fps_options": {24, 30}},
@@ -1477,11 +1486,14 @@ def run_export_job_task(export_job_id: str, req_payload: Dict[str, Any], uid: st
     finally:
         _release_export_slot(uid)
 
-# Debug endpoint: view the last exported ASS file (only in DEBUG_MODE)
+# Debug endpoint: view the last exported ASS file (only in DEBUG_MODE, requires auth)
 @app.get("/api/debug/last-ass")
-async def get_last_ass():
-    if not os.environ.get("DEBUG_MODE"):
+async def get_last_ass(request: Request):
+    if not DEBUG_MODE_ENABLED:
         raise HTTPException(status_code=404, detail="Not found")
+    id_token = (request.headers.get("Authorization") or "").removeprefix("Bearer ").strip()
+    if not id_token or not verify_token(id_token):
+        raise HTTPException(status_code=401, detail="Authentication required")
     ass_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "last_export_debug.ass")
     if not os.path.exists(ass_path):
         return {"error": "No debug ASS file found. Export a video first."}
@@ -1533,7 +1545,8 @@ async def upload_video(file: UploadFile = File(...), request: Request = None, re
                 _track_event("upload_rejected_rate_limited")
                 return {"success": False, "error": "Too many uploads. Please wait before trying again."}
 
-        file_ext = file.filename.split('.')[-1].lower() if '.' in file.filename else ''
+        safe_name = os.path.basename(file.filename or "")
+        file_ext = pathlib.Path(safe_name).suffix.lstrip(".").lower()
         if _is_content_safety_blocked(file.filename or ""):
             _track_event("upload_rejected_content_safety")
             return {"success": False, "error": "Upload blocked by content safety policy."}
@@ -1598,9 +1611,15 @@ async def upload_video(file: UploadFile = File(...), request: Request = None, re
         return {"success": False, "error": str(e)}
 
 @app.post("/api/process")
-async def process_video(req: ProcessRequest):
+async def process_video(req: ProcessRequest, request: Request, response: Response):
     # Auth — same dev-mode bypass as /api/export
     _authenticate_media_request(req.id_token, req.org_id)
+    client_ip = request.client.host if request.client else "unknown"
+    allowed, retry_after, remaining = _check_rate(_process_rate, client_ip, PROCESS_RATE_LIMIT)
+    _apply_rate_headers(response, PROCESS_RATE_LIMIT, remaining, retry_after)
+    if not allowed:
+        _track_event("process_rejected_rate_limited")
+        raise HTTPException(status_code=429, detail="Too many transcription requests. Please wait before trying again.")
     if not _validate_file_id(req.file_id):
         raise HTTPException(status_code=400, detail="Invalid file_id")
     input_path = _safe_find_upload(req.file_id)
@@ -2540,6 +2559,8 @@ async def redeem_promo(req: RedeemPromoRequest, request: Request, response: Resp
         promo = code_doc.to_dict() or {}
         if promo.get("is_used"):
             raise HTTPException(status_code=400, detail="Invalid or already used code")
+        if promo.get("plan_id") not in PLAN_PRICING:
+            raise HTTPException(status_code=400, detail="Promo code references an invalid plan")
 
         user_doc = user_ref.get(transaction=txn)
         user_email = user_doc.to_dict().get("email", "") if user_doc.exists else ""
