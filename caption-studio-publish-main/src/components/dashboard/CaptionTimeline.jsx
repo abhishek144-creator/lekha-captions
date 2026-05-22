@@ -691,7 +691,7 @@ export default function CaptionTimeline({
                     onSeek(caption.start_time || 0);
                   }}
                 >
-                  <div className="truncate leading-[18px]">{(caption.text || '').slice(0, 22)}</div>
+                  <div className="truncate leading-[18px]">{(caption.text || '').slice(0, 38)}</div>
                 </motion.div>
               );
             })}
@@ -750,7 +750,7 @@ export default function CaptionTimeline({
                       }}
                     />
                     <span className="block truncate px-1">
-                      {String(index + 1).padStart(2, '0')} {(caption.text || '').slice(0, 22)}
+                      {String(index + 1).padStart(2, '0')} {(caption.text || '').slice(0, 38)}
                     </span>
                   </button>
                 );

@@ -289,7 +289,7 @@ function extractNewCards() {
         mood: badges[0] || '',
         formula: badges[1] || '',
         cardClass,
-        cardMarkup: stripPreviewRuntimeState(cardMarkup),
+        cardMarkup: stripPreviewRuntimeState(cardMarkup, true),
         format: 'lk',
       });
     }
@@ -476,7 +476,7 @@ function buildPreviewDoc(template) {
             }
             .lk-card {
               display: grid !important;
-              grid-template-rows: 1fr 22px !important;
+              grid-template-rows: 1fr !important;
               width: 100% !important;
               height: 280px !important;
               border-radius: 12px !important;
@@ -512,7 +512,7 @@ function buildPreviewDoc(template) {
               opacity: 0;
             }
             .lk-dots {
-              display: flex !important;
+              display: none !important;
               align-items: center !important;
               justify-content: center !important;
               gap: 5px !important;
@@ -1156,7 +1156,7 @@ function buildPreviewDoc(template) {
           }
           .card {
             display: grid !important;
-            grid-template-rows: 1fr 22px !important;
+            grid-template-rows: 1fr !important;
             width: 100% !important;
             height: 280px !important;
             border-radius: 12px !important;
@@ -1179,7 +1179,7 @@ function buildPreviewDoc(template) {
             visibility: visible;
           }
           .dots {
-            display: flex !important;
+            display: none !important;
             align-items: center !important;
             justify-content: center !important;
             gap: 5px !important;

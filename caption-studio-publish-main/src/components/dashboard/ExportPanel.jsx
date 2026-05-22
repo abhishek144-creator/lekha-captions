@@ -8,10 +8,15 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from '@/components/ui/button';
 import {
+  ArrowDownToLine,
+  BadgeCheck,
+  Clock3,
+  Crown,
   FileText,
   FileJson,
   Video,
-  Lock
+  Lock,
+  Sparkles
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from '@/components/ui/use-toast';
@@ -480,18 +485,19 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
         });
       }
 
-      const captionTemplateSnapshot = captions.find(c => c?.applied_template_style?.template_id)?.applied_template_style;
-      const styleTemplateSnapshot = captionStyle?.template_snapshot?.template_id
+      const hasTemplateIdentity = (style = {}) => !!(style?.template_id || style?.template_20_id);
+      const captionTemplateSnapshot = captions.find(c => hasTemplateIdentity(c?.applied_template_style))?.applied_template_style;
+      const styleTemplateSnapshot = hasTemplateIdentity(captionStyle?.template_snapshot)
         ? captionStyle.template_snapshot
         : captionTemplateSnapshot;
-      const baseExportStyle = styleTemplateSnapshot?.template_id
+      const baseExportStyle = hasTemplateIdentity(styleTemplateSnapshot)
         ? { ...captionStyle, ...styleTemplateSnapshot }
         : (captionStyle || {});
       const templateOverride = TEMPLATE_CANONICAL_STYLES[baseExportStyle?.template_id || ''] || {};
       const effectiveExportStyle = { ...baseExportStyle, ...templateOverride };
-      const activeTemplateSnapshot = styleTemplateSnapshot?.template_id
+      const activeTemplateSnapshot = hasTemplateIdentity(styleTemplateSnapshot)
         ? styleTemplateSnapshot
-        : (effectiveExportStyle?.template_id ? { ...effectiveExportStyle } : null);
+        : (hasTemplateIdentity(effectiveExportStyle) ? { ...effectiveExportStyle } : null);
 
       const exportData = {
         file_id: fileId,
@@ -509,6 +515,13 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
             animation: cap.animation || 'none',
             is_text_element: !!isText,
             template_id: !isText ? (cap.template_id || activeTemplateSnapshot?.template_id || effectiveExportStyle?.template_id || '') : '',
+            template_20_id: !isText ? (cap.template_20_id || activeTemplateSnapshot?.template_20_id || effectiveExportStyle?.template_20_id || '') : '',
+            template_source: !isText ? (cap.template_source || activeTemplateSnapshot?.template_source || effectiveExportStyle?.template_source || '') : '',
+            template_class: !isText ? (cap.template_class || activeTemplateSnapshot?.template_class || effectiveExportStyle?.template_class || '') : '',
+            template_name: !isText ? (cap.template_name || activeTemplateSnapshot?.template_name || effectiveExportStyle?.template_name || '') : '',
+            template_layout: !isText ? (cap.template_layout || activeTemplateSnapshot?.template_layout || effectiveExportStyle?.template_layout || '') : '',
+            template_effect: !isText ? (cap.template_effect || activeTemplateSnapshot?.template_effect || effectiveExportStyle?.template_effect || '') : '',
+            template_markup: !isText ? (cap.template_markup || activeTemplateSnapshot?.template_markup || effectiveExportStyle?.template_markup || '') : '',
             applied_template_style: !isText ? (cap.applied_template_style || activeTemplateSnapshot || null) : null,
             custom_style: isText ? (() => {
               const teVidPos = containerToVideo(cs.left ?? 50, cs.top ?? 50);
@@ -599,6 +612,13 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
           background_h_multiplier: _cs?.background_h_multiplier ?? 1.05,
           // Template metadata — passed through so the backend knows the active template
           template_id: _cs?.template_id || '',
+          template_20_id: _cs?.template_20_id || '',
+          template_source: _cs?.template_source || '',
+          template_class: _cs?.template_class || '',
+          template_name: _cs?.template_name || '',
+          template_layout: _cs?.template_layout || '',
+          template_effect: _cs?.template_effect || '',
+          template_markup: _cs?.template_markup || '',
           template_snapshot: activeTemplateSnapshot || null,
           secondary_color: _cs?.secondary_color || '',
           show_inactive: _cs?.show_inactive !== false,
@@ -739,8 +759,8 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
   const exportOptions = [
     {
       icon: Video,
-      title: 'Export Video (4K)',
-      description: 'Ultra HD MP4 render',
+      title: '4K Ultra HD',
+      description: 'Highest detail MP4 render',
       action: () => handleExportVideo('4k'),
       gradient: 'from-rose-500 to-pink-600',
       requiresPlan: true,
@@ -748,77 +768,110 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
     },
     {
       icon: Video,
-      title: 'Export Video (1080p)',
-      description: 'High quality MP4 render',
+      title: '1080p Full HD',
+      description: 'Recommended for social uploads',
       action: () => handleExportVideo('1080p'),
       gradient: 'from-orange-500 to-red-500',
       requiresPlan: true
     },
     {
       icon: Video,
-      title: 'Export Video (720p)',
-      description: 'Standard HD MP4 render',
+      title: '720p HD',
+      description: 'Fast preview-quality export',
       action: () => handleExportVideo('720p'),
       gradient: 'from-yellow-500 to-orange-500',
       requiresPlan: true
     },
     {
       icon: FileText,
-      title: 'SRT File',
-      description: 'Standard subtitle format',
+      title: 'SRT subtitles',
+      description: 'Timeline-ready subtitle file',
       action: handleDownloadSRT,
       gradient: 'from-zinc-600 to-zinc-400',
       requiresPlan: false
     },
     {
       icon: FileJson,
-      title: 'Plain Text',
-      description: 'Just the caption text',
+      title: 'Plain text',
+      description: 'Clean transcript copy',
       action: handleDownloadText,
       gradient: 'from-blue-500 to-cyan-500',
       requiresPlan: false
     },
   ];
 
+  const captionCount = captions?.filter(cap => cap && !cap.isTextElement)?.length || 0;
+  const textLayerCount = captions?.filter(cap => cap?.isTextElement)?.length || 0;
+  const planLabel = userData?.subscription_tier
+    ? userData.subscription_tier.replace(/_/g, ' ')
+    : isSignedIn
+      ? 'free'
+      : 'guest';
+
   return (
     <Sheet open={open} onOpenChange={handleSheetOpenChange}>
-      <SheetContent className="bg-zinc-900 border-white/10 text-white w-full overflow-y-auto pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:max-w-md">
-        <SheetHeader>
-          <SheetTitle className="text-xl font-semibold text-white">
-            Export
-          </SheetTitle>
-          <p className="text-sm text-gray-500 mt-1">Choose your export format below</p>
+      <SheetContent className="bg-[#080808] border-white/10 text-white w-full overflow-y-auto pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:max-w-[520px]">
+        <SheetHeader className="relative overflow-hidden rounded-[28px] border border-white/10 bg-gradient-to-br from-white/[0.09] to-white/[0.025] p-5 text-left">
+          <div className="absolute -right-16 -top-16 h-44 w-44 rounded-full bg-[#f5a623]/20 blur-3xl" />
+          <div className="relative">
+            <div className="flex items-center justify-between gap-3">
+              <div className="w-11 h-11 rounded-2xl bg-[#f5a623]/15 border border-[#f5a623]/25 flex items-center justify-center">
+                <ArrowDownToLine className="w-5 h-5 text-[#f5a623]" />
+              </div>
+              <span className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-[10px] uppercase tracking-[0.22em] text-gray-300">
+                {planLabel}
+              </span>
+            </div>
+            <SheetTitle className="mt-4 text-2xl font-black text-white tracking-tight">
+              Export your video
+            </SheetTitle>
+            <p className="text-sm text-gray-400 mt-1">Choose a render quality or download caption files for editing elsewhere.</p>
+            <div className="grid grid-cols-3 gap-2 mt-5">
+              <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
+                <p className="text-[10px] uppercase tracking-wider text-gray-500">Captions</p>
+                <p className="text-lg font-black">{captionCount}</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
+                <p className="text-[10px] uppercase tracking-wider text-gray-500">Text layers</p>
+                <p className="text-lg font-black">{textLayerCount}</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
+                <p className="text-[10px] uppercase tracking-wider text-gray-500">Status</p>
+                <p className="text-lg font-black">{isPlanActive ? 'Ready' : 'Locked'}</p>
+              </div>
+            </div>
+          </div>
         </SheetHeader>
 
         {isExporting ? (
-          <div className="mt-8 p-6 rounded-xl bg-white/[0.03] border border-white/10 text-center space-y-4 relative overflow-hidden">
+          <div className="mt-5 p-6 rounded-[28px] bg-white/[0.035] border border-white/10 text-center space-y-5 relative overflow-hidden">
             {/* Subtle glow animation */}
             <div className="absolute inset-0 pointer-events-none">
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 bg-white/5 rounded-full blur-3xl animate-pulse"></div>
+              <div className="absolute top-1/2 left-1/2 h-44 w-44 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#f5a623]/10 blur-3xl animate-pulse"></div>
             </div>
 
             <div className="relative z-10">
-              <div className="relative w-16 h-16 mx-auto">
-                <div className="absolute inset-0 rounded-full border-2 border-white/10"></div>
-                <div className="absolute inset-0 rounded-full border-t-2 border-white/60 animate-spin"></div>
-                <div className="absolute inset-0 rounded-full border-r-2 border-white/20 animate-spin" style={{ animationDuration: '1.5s' }}></div>
+              <div className="relative w-20 h-20 mx-auto">
+                <div className="absolute inset-0 rounded-full border border-white/10"></div>
+                <div className="absolute inset-1 rounded-full border-t-2 border-[#f5a623] animate-spin"></div>
+                <div className="absolute inset-3 rounded-full border-r-2 border-white/40 animate-spin" style={{ animationDuration: '1.6s' }}></div>
                 <div className="absolute inset-0 flex items-center justify-center text-xs font-bold text-white">
                   {Math.round(progress)}%
                 </div>
               </div>
 
               <div className="mt-4">
-                <h3 className="text-lg font-medium text-white mb-1">Rendering Video</h3>
-                <p className="text-sm text-gray-400 animate-pulse">{statusMessage}</p>
+                <h3 className="text-xl font-black text-white mb-1">Rendering your video</h3>
+                <p className="text-sm text-gray-400 animate-pulse">{statusMessage || 'Preparing render...'}</p>
                 {showServerBusy && (
                   <p className="text-xs text-amber-400 mt-2 animate-pulse">
-                    High demand right now • render may take up to ~2 minutes
+                    High demand right now - render may take up to about 2 minutes.
                   </p>
                 )}
               </div>
 
               <div className="relative mt-4">
-                <Progress value={progress} className="h-2 bg-zinc-700" indicatorClassName="bg-white" />
+                <Progress value={progress} className="h-2.5 bg-zinc-800" indicatorClassName="bg-[#f5a623]" />
                 {/* Shimmer effect on progress bar */}
                 <div className="absolute inset-0 overflow-hidden rounded-full">
                   <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
@@ -833,40 +886,46 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
             `}</style>
           </div>
         ) : (
-          <div className="mt-6 space-y-3">
-            {/* Not signed in → Sign up prompt */}
+          <div className="mt-5 space-y-5">
+            {/* Not signed in: Sign up prompt */}
             {!isSignedIn && (
-              <div className="p-4 rounded-xl bg-white/5 border border-white/10 text-center mb-4">
+              <div className="p-4 rounded-2xl bg-white/[0.05] border border-white/10 text-center">
                 <Lock className="w-8 h-8 text-white/60 mx-auto mb-2" />
-                <p className="text-sm text-white font-medium mb-1">Sign up to export</p>
-                <p className="text-xs text-gray-400 mb-3">Create a free account to get 3 free export credits</p>
+                <p className="text-sm text-white font-bold mb-1">Sign up to export</p>
+                <p className="text-xs text-gray-400 mb-3">Create a free account to get 3 export credits.</p>
                 <button
                   onClick={() => window.location.href = '/login'}
-                  className="w-full py-2 rounded-lg bg-white hover:bg-gray-100 text-black text-sm font-semibold transition-colors"
+                  className="w-full py-2.5 rounded-xl bg-white hover:bg-gray-100 text-black text-sm font-bold transition-colors"
                 >
                   Sign up free
                 </button>
               </div>
             )}
-            {/* Signed in but no credits / plan expired → Upgrade prompt */}
+            {/* Signed in but no credits / plan expired: Upgrade prompt */}
             {isSignedIn && !isPlanActive && (
-              <div className="p-3 rounded-xl bg-yellow-500/10 border border-yellow-500/20 flex items-center gap-3 mb-4">
+              <div className="p-4 rounded-2xl bg-yellow-500/10 border border-yellow-500/20 flex items-center gap-3">
                 <Lock className="w-4 h-4 text-yellow-400 shrink-0" />
                 <div className="flex-1">
-                  <p className="text-sm text-yellow-300 font-medium">Plan expired or no credits</p>
+                  <p className="text-sm text-yellow-300 font-bold">Plan expired or no credits</p>
                   <p className="text-xs text-yellow-400/70">Upgrade to export your captions</p>
                 </div>
                 <Button
                   size="sm"
                   onClick={onUpgradeClick}
-                  className="bg-yellow-500 hover:bg-yellow-400 text-black text-xs font-semibold shrink-0"
+                  className="bg-yellow-500 hover:bg-yellow-400 text-black text-xs font-bold shrink-0 rounded-xl"
                 >
                   Upgrade
                 </Button>
               </div>
             )}
             {/* Video exports */}
-            <p className="text-[11px] text-gray-500 uppercase tracking-wider font-medium px-1">Video Export</p>
+            <div className="flex items-center justify-between px-1">
+              <div>
+                <p className="text-[11px] text-gray-500 uppercase tracking-[0.22em] font-bold">Video Export</p>
+                <p className="text-xs text-gray-500 mt-1">Burn captions into your video.</p>
+              </div>
+              <Sparkles className="w-4 h-4 text-[#f5a623]" />
+            </div>
             {exportOptions.filter(o => o.requiresPlan).map((option, idx) => {
               const isLocked = !isPlanActive || (option.requiresPro && !is4kAllowed);
               const lockReason = !isPlanActive ? 'Requires active plan' : (option.requiresPro && !is4kAllowed) ? 'Creator or Pro plan required' : null;
@@ -877,26 +936,34 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: idx * 0.07 }}
                   onClick={isLocked ? onUpgradeClick : option.action}
-                  className={`w-full p-4 rounded-xl border transition-all flex items-center gap-4 group ${isLocked
-                    ? 'bg-white/[0.01] border-white/5 opacity-60 cursor-not-allowed'
-                    : 'bg-white/[0.02] border-white/5 hover:bg-white/[0.04] hover:border-white/15 cursor-pointer'
+                  className={`w-full p-4 rounded-2xl border transition-all flex items-center gap-4 group text-left ${isLocked
+                    ? 'bg-white/[0.025] border-white/8 opacity-70'
+                    : 'bg-white/[0.045] border-white/10 hover:bg-white/[0.075] hover:border-[#f5a623]/35 cursor-pointer'
                     }`}
                 >
-                  <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${option.gradient} p-0.5 ${isLocked ? 'opacity-50' : ''}`}>
-                    <div className="w-full h-full rounded-xl bg-zinc-900 flex items-center justify-center group-hover:bg-zinc-800 transition-colors">
+                  <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${option.gradient} p-0.5 ${isLocked ? 'opacity-50' : ''}`}>
+                    <div className="w-full h-full rounded-2xl bg-[#101010] flex items-center justify-center group-hover:bg-[#181818] transition-colors">
                       {isLocked ? <Lock className="w-5 h-5 text-gray-400" /> : <option.icon className="w-5 h-5 text-white" />}
                     </div>
                   </div>
-                  <div className="text-left flex-1">
-                    <p className={`font-medium ${isLocked ? 'text-gray-500' : 'text-white'}`}>{option.title}</p>
+                  <div className="text-left flex-1 min-w-0">
+                    <p className={`font-black ${isLocked ? 'text-gray-500' : 'text-white'}`}>{option.title}</p>
                     <p className="text-sm text-gray-500">{isLocked ? lockReason : option.description}</p>
                   </div>
+                  {!isLocked && <BadgeCheck className="w-5 h-5 text-emerald-400" />}
+                  {isLocked && option.requiresPro && <Crown className="w-5 h-5 text-[#f5a623]" />}
                 </motion.button>
               );
             })}
 
             {/* Caption file exports */}
-            <p className="text-[11px] text-gray-500 uppercase tracking-wider font-medium px-1 pt-2">Caption Files</p>
+            <div className="flex items-center justify-between px-1 pt-1">
+              <div>
+                <p className="text-[11px] text-gray-500 uppercase tracking-[0.22em] font-bold">Caption Files</p>
+                <p className="text-xs text-gray-500 mt-1">Download subtitles without rendering video.</p>
+              </div>
+              <Clock3 className="w-4 h-4 text-gray-500" />
+            </div>
             {exportOptions.filter(o => !o.requiresPlan).map((option, idx) => (
               <motion.button
                 key={idx}
@@ -904,15 +971,15 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: (idx + 3) * 0.07 }}
                 onClick={option.action}
-                className="w-full p-4 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.04] hover:border-white/15 transition-all flex items-center gap-4 group cursor-pointer"
+                className="w-full p-4 rounded-2xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.07] hover:border-white/20 transition-all flex items-center gap-4 group cursor-pointer"
               >
-                <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${option.gradient} p-0.5`}>
-                  <div className="w-full h-full rounded-xl bg-zinc-900 flex items-center justify-center group-hover:bg-zinc-800 transition-colors">
+                <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${option.gradient} p-0.5`}>
+                  <div className="w-full h-full rounded-2xl bg-[#101010] flex items-center justify-center group-hover:bg-[#181818] transition-colors">
                     <option.icon className="w-5 h-5 text-white" />
                   </div>
                 </div>
                 <div className="text-left flex-1">
-                  <p className="font-medium text-white">{option.title}</p>
+                  <p className="font-black text-white">{option.title}</p>
                   <p className="text-sm text-gray-500">{option.description}</p>
                 </div>
               </motion.button>
@@ -920,17 +987,21 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
           </div>
         )}
 
-        {/* Caption count */}
-        <div className="mt-6 p-4 rounded-xl bg-white/[0.03] border border-white/10">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-400">Total Captions</span>
-            <span className="text-lg font-bold text-white">{captions?.length || 0}</span>
+        <div className="mt-5 p-4 rounded-2xl bg-white/[0.03] border border-white/10">
+          <div className="flex items-start gap-3">
+            <BadgeCheck className="w-5 h-5 text-emerald-400 mt-0.5" />
+            <div>
+              <p className="text-sm font-bold text-white">Export checklist</p>
+              <p className="text-xs text-gray-500 mt-1">
+                Captions, text layers, templates, and timing are packaged into the export request.
+              </p>
+            </div>
           </div>
         </div>
 
         {/* Export expiry notice */}
         {exportExpiry && (
-          <div className="mt-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
+          <div className="mt-3 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20">
             <p className="text-xs text-amber-300">
               Download link valid for <span className="font-semibold">{exportExpiry.hours} hours</span>. Save your exported video before it expires.
             </p>

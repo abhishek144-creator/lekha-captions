@@ -14,7 +14,12 @@ import { toast } from '@/components/ui/use-toast'
 import { apiRequest } from '@/lib/apiClient'
 import { notifyApiError } from '@/lib/notifyApiError'
 
-const RAZORPAY_KEY_ID = import.meta.env.VITE_RAZORPAY_KEY_ID || ''
+const DEV_FALLBACK_RAZORPAY_KEY_ID =
+  (import.meta.env.DEV || import.meta.env.VITE_USE_DEV_AUTH_BYPASS === '1')
+    ? 'rzp_test_RJWsOLmZ6GL27m'
+    : ''
+const RAZORPAY_KEY_ID = import.meta.env.VITE_RAZORPAY_KEY_ID || DEV_FALLBACK_RAZORPAY_KEY_ID
+const LOCAL_DEV_BYPASS_TOKEN = 'mock-token'
 
 const loadRazorpayScript = () => new Promise((resolve, reject) => {
   if (window.Razorpay) { resolve(true); return }
@@ -132,43 +137,81 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
         return
       }
 
-      const idToken = await currentUser.getIdToken()
+      const idToken = typeof currentUser.getIdToken === 'function'
+        ? await currentUser.getIdToken(true)
+        : ''
       const planId = billing === 'yearly' ? `${plan.id}_yearly` : plan.id
       const amount = billing === 'yearly' ? plan.yearlyPaise : plan.monthlyPaise
       const paymentAttemptKey = createIdempotencyKey('plan', planId)
 
+      const createOrder = async (token) => apiRequest('/api/create-order', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          plan_id: planId,
+          id_token: token,
+          currency: 'INR',
+          idempotency_key: paymentAttemptKey,
+        }),
+      })
+
       let orderData = { success: false, order: null, key_id: RAZORPAY_KEY_ID }
       try {
-        const parsed = await apiRequest('/api/create-order', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            plan_id: planId,
-            id_token: idToken,
-            currency: 'INR',
-            idempotency_key: paymentAttemptKey,
-          }),
-        })
+        const parsed = await createOrder(idToken)
         if (parsed.success) orderData = parsed
-        else if (!RAZORPAY_KEY_ID.startsWith('rzp_test_')) throw new Error(parsed.error || 'Failed to create order')
+        else throw new Error(parsed.error || 'Failed to create order')
       } catch (fetchErr) {
-        if (!RAZORPAY_KEY_ID.startsWith('rzp_test_')) throw fetchErr
+        const isDevBypassEnabled = import.meta.env.DEV || import.meta.env.VITE_USE_DEV_AUTH_BYPASS === '1'
+        const isAuthFailure = /authentication token/i.test(fetchErr?.message || '')
+
+        if (isDevBypassEnabled && isAuthFailure) {
+          try {
+            const retryParsed = await createOrder(LOCAL_DEV_BYPASS_TOKEN)
+            if (retryParsed.success) {
+              orderData = retryParsed
+            } else {
+              throw new Error(retryParsed.error || 'Failed to create dev order')
+            }
+          } catch (retryErr) {
+            console.warn('Dev bypass order creation failed, opening direct Razorpay checkout', retryErr)
+            if (!RAZORPAY_KEY_ID) throw retryErr
+          }
+        } else {
+          console.warn('Backend order creation failed, opening direct Razorpay checkout', fetchErr)
+          if (!RAZORPAY_KEY_ID) throw fetchErr
+        }
       }
 
       onClose()
 
+      const hasBackendOrder = Boolean(orderData.order?.id)
       const options = {
         key: orderData.key_id || RAZORPAY_KEY_ID,
         amount: orderData.order?.amount || amount,
         currency: 'INR',
         name: 'Lekha Captions',
         description: `${plan.name} Plan${billing === 'yearly' ? ' · Yearly' : ''}`,
-        order_id: orderData.order?.id,
+        ...(hasBackendOrder ? { order_id: orderData.order.id } : {}),
         handler: async (response) => {
+          if (!hasBackendOrder) {
+            toast({
+              title: 'Payment started',
+              description: 'Checkout opened without backend order verification. Please contact support if credits are not added automatically.',
+            })
+            setProcessingPlan(null)
+            return
+          }
+
           try {
             const verifyData = await apiRequest('/api/verify-payment', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${idToken}`,
+              },
               body: JSON.stringify({
                 razorpay_order_id: response.razorpay_order_id,
                 razorpay_payment_id: response.razorpay_payment_id,
@@ -254,11 +297,14 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
         setProcessingPlan(null)
         return
       }
-      const idToken = await currentUser.getIdToken()
+      const idToken = await currentUser.getIdToken(true)
       const paymentAttemptKey = createIdempotencyKey('topup', topup.plan_id)
       const orderData = await apiRequest('/api/create-order', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
         body: JSON.stringify({
           plan_id: topup.plan_id,
           id_token: idToken,
@@ -280,7 +326,10 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
           try {
             const verifyData = await apiRequest('/api/verify-payment', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${idToken}`,
+              },
               body: JSON.stringify({
                 razorpay_order_id: response.razorpay_order_id,
                 razorpay_payment_id: response.razorpay_payment_id,
@@ -317,7 +366,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-[760px] bg-zinc-950 border-white/10 p-5 text-white">
+      <DialogContent className="max-w-[860px] bg-zinc-950 border-white/10 p-6 text-white">
         <DialogHeader>
           <DialogTitle className="text-lg text-white">Choose Your Plan</DialogTitle>
           <DialogDescription className="text-gray-400">
@@ -349,14 +398,17 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
           </div>
         )}
 
-        <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <div className="mt-5 grid gap-4 md:grid-cols-3">
           {plans.map(plan => {
             const Icon = plan.icon
             return (
               <div
                 key={plan.id}
-                className="relative cursor-pointer rounded-xl bg-zinc-900 p-3.5 transition-all"
-                onClick={() => setSelectedPlan(plan.id)}
+                className="relative cursor-pointer rounded-xl bg-zinc-900 px-4 pb-4 pt-5 transition-all"
+                onClick={() => {
+                  setSelectedPlan(plan.id)
+                  if (!processingPlan) handlePayment(plan)
+                }}
                 style={(plan.popular || selectedPlan === plan.id) ? {
                   background: 'linear-gradient(#18181b, #18181b) padding-box, linear-gradient(135deg, #BF953F 0%, #FCF6BA 45%, #B38728 70%, #AA771C 100%) border-box',
                   border: '2px solid transparent',
@@ -364,8 +416,8 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
                 } : { border: '1px solid rgba(255,255,255,0.1)' }}
               >
                 {plan.popular && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                    <span className="text-black text-xs font-bold px-3 py-1 rounded-full" style={{ background: 'linear-gradient(135deg, #BF953F 0%, #FCF6BA 45%, #B38728 70%, #AA771C 100%)' }}>
+                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
+                    <span className="inline-flex whitespace-nowrap leading-none text-black text-[11px] font-bold px-3.5 py-1.5 rounded-full shadow-[0_6px_18px_rgba(0,0,0,0.18)]" style={{ background: 'linear-gradient(135deg, #BF953F 0%, #FCF6BA 45%, #B38728 70%, #AA771C 100%)' }}>
                       MOST POPULAR
                     </span>
                   </div>
@@ -405,7 +457,10 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
                 </ul>
 
                 <Button
-                  onClick={() => handlePayment(plan)}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handlePayment(plan)
+                  }}
                   disabled={processingPlan === plan.id}
                   className={`w-full font-semibold rounded-[4px] ${plan.popular
                     ? 'bg-white hover:bg-gray-100 text-black'
@@ -441,7 +496,10 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
                   </p>
                 </div>
                 <Button
-                  onClick={() => handleTopup(topup)}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleTopup(topup)
+                  }}
                   disabled={processingPlan === topup.plan_id}
                   className="shrink-0 bg-white/10 hover:bg-white/20 text-white font-semibold"
                 >
