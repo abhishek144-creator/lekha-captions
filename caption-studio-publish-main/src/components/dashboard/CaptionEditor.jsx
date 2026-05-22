@@ -116,19 +116,23 @@ export default function CaptionEditor({
     setCaptions(newCaptions);
   };
 
-  const addCaption = () => {
-    const lastCaption = captions && captions.length > 0 ? captions[captions.length - 1] : null;
-    const newStart = lastCaption ? (lastCaption.end_time || 0) + 0.5 : 0;
+  const addCaptions = (count = 1) => {
+    const safeCount = Math.max(1, Number(count) || 1);
+    const timelineCaptions = (captions || []).filter(cap => cap && !cap.isTextElement);
+    const lastCaption = timelineCaptions.length > 0 ? timelineCaptions[timelineCaptions.length - 1] : null;
+    const newCaptions = Array.from({ length: safeCount }, (_, index) => {
+      const baseStart = lastCaption ? (lastCaption.end_time || 0) + 0.5 : 0;
+      const start_time = baseStart + (index * 2.5);
+      return {
+        id: `${Date.now()}-${index}`,
+        text: `Fresh caption card ${timelineCaptions.length + index + 1} uses six clear words.`,
+        start_time,
+        end_time: start_time + 2
+      };
+    });
 
-    const newCaption = {
-      id: `${Date.now()}`,
-      text: 'New caption',
-      start_time: newStart,
-      end_time: newStart + 2
-    };
-
-    setCaptions([...(captions || []), newCaption]);
-    setSelectedCaptionId(newCaption.id);
+    setCaptions([...(captions || []), ...newCaptions]);
+    setSelectedCaptionId(newCaptions[newCaptions.length - 1].id);
   };
 
   const formatTime = (seconds) => {
@@ -154,13 +158,22 @@ export default function CaptionEditor({
         </div>
         <div className="flex items-center gap-1.5">
           <Button
-            onClick={addCaption}
+            onClick={() => addCaptions(1)}
             size="sm"
             variant="outline"
             className="border border-white/15 text-white bg-white/[0.03] hover:bg-white/10 h-7 px-2.5 rounded-md"
           >
             <Plus className="w-3.5 h-3.5 mr-1" />
             Add
+          </Button>
+          <Button
+            onClick={() => addCaptions(5)}
+            size="sm"
+            variant="outline"
+            className="border border-white/15 text-white bg-white/[0.03] hover:bg-white/10 h-7 px-2.5 rounded-md"
+          >
+            <Plus className="w-3.5 h-3.5 mr-1" />
+            Add 5
           </Button>
         </div>
       </div>
@@ -196,7 +209,7 @@ export default function CaptionEditor({
                 onSeek(caption.start_time);
               }}
             >
-              <div className="min-h-[78px] py-5 px-2.5">
+              <div className="min-h-[92px] py-5 px-2.5">
                 <div className="flex items-start gap-3.5">
                   <span className={`w-8 shrink-0 font-serif italic text-[28px] leading-none ${selectedCaptionId === caption.id ? 'text-sky-100' : 'text-slate-700'}`}>
                     {String(index + 1).padStart(2, '0')}
@@ -352,7 +365,7 @@ export default function CaptionEditor({
                       </div>
                     ) : (
                       <>
-                        <p className="text-white text-[15px] font-semibold leading-snug line-clamp-2">{caption.text || ''}</p>
+                        <p className="text-white text-[15px] font-semibold leading-snug line-clamp-3">{caption.text || ''}</p>
                         {selectedCaptionId === caption.id && (
                           <div className="mt-3 flex items-center gap-3 text-slate-500">
                             <button

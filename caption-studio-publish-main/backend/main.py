@@ -1059,7 +1059,7 @@ CACHE_DIR = os.path.abspath("cache")
 TRANSCRIPTION_CACHE_DIR = os.path.join(CACHE_DIR, "transcriptions")
 RENDER_CACHE_DIR = os.path.join(CACHE_DIR, "renders")
 DEAD_LETTER_DIR = os.path.join(CACHE_DIR, "dead_letter")
-EXPORT_RENDERER_VERSION = "2026-05-09-template-snapshot-debug-v3"
+EXPORT_RENDERER_VERSION = "2026-05-22-sidebar-template-dom-v5"
 
 for d in [UPLOAD_DIR, EXPORT_DIR, FONTS_DIR, CACHE_DIR, TRANSCRIPTION_CACHE_DIR, RENDER_CACHE_DIR, DEAD_LETTER_DIR]:
     os.makedirs(d, exist_ok=True)
@@ -1076,6 +1076,13 @@ class CaptionItem(BaseModel):
     is_text_element: bool = False
     custom_style: Optional[Dict[str, Any]] = None
     template_id: str = ""
+    template_20_id: str = ""
+    template_source: str = ""
+    template_class: str = ""
+    template_name: str = ""
+    template_layout: str = ""
+    template_effect: str = ""
+    template_markup: str = ""
     applied_template_style: Optional[Dict[str, Any]] = None
     word_styles: Dict[str, Any] = {}
     words: List[Any] = []
@@ -1221,6 +1228,7 @@ def _write_last_export_request_debug(
             "quality": quality,
             "fps": fps,
             "style_template_id": style.get("template_id", ""),
+            "style_template_20_id": style.get("template_20_id", ""),
             "style_font_family": style.get("font_family", ""),
             "style_font_size": style.get("font_size"),
             "style_font_weight": style.get("font_weight"),
@@ -1236,6 +1244,7 @@ def _write_last_export_request_debug(
             "style_preview_template_font_px": style.get("preview_template_font_px"),
             "style_template_snapshot": style.get("template_snapshot"),
             "first_caption_template_id": first_caption.get("template_id", ""),
+            "first_caption_template_20_id": first_caption.get("template_20_id", ""),
             "first_caption_applied_template_style": first_caption.get("applied_template_style"),
             "captions_count": len(captions),
             "word_layout_count": len(word_layouts or {}),

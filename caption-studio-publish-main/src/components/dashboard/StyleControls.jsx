@@ -171,6 +171,7 @@ export default function StyleControls({
   const [showHighlightGradient, setShowHighlightGradient] = useState(false);
   const [showTextSolid, setShowTextSolid] = useState(false);
   const [showHighlightSolid, setShowHighlightSolid] = useState(false);
+  const showBackgroundControls = false;
   const [fontPopoverOpen, setFontPopoverOpen] = useState(false)
   const [effectsOpen, setEffectsOpen] = useState(false)
   const [activePanelTab, setActivePanelTab] = useState('style')
@@ -1170,6 +1171,7 @@ export default function StyleControls({
         </div>
 
         {/* ── 4. BACKGROUND ─────────────────────────── */}
+        {showBackgroundControls && (
         <div className="space-y-7 pt-8 border-t border-white/5">
           <h3 className="text-[9px] font-medium text-slate-400">BACKGROUND</h3>
 
@@ -1297,6 +1299,7 @@ export default function StyleControls({
             </>
           )}
         </div>
+        )}
 
         {/* ── 5. EFFECTS ────────────────────────────── */}
         <div className="space-y-7 pt-8 border-t border-white/5">

@@ -612,39 +612,46 @@ class VideoProcessor:
                 except Exception:
                     video_duration = 16.8  # fallback
 
-                # Generate realistic word-level mock data spanning entire video
+                # Generate phrase-sized mock data spanning the entire video.
                 mock_sentences = [
-                    ["This", "is", "a", "caption", "test."],
-                    ["Checking", "highlight", "colors."],
-                    ["Background", "thickness", "should", "work."],
-                    ["Dynamic", "pacing"],
-                    ["adapts", "to", "the", "speed", "of"],
-                    ["speech."],
-                    ["Fast", "words", "group", "together", "naturally."],
-                    ["Slow"],
-                    ["dramatic."],
-                    ["One", "two", "three."],
-                    ["Export", "this", "video."],
-                    ["Verify", "timing."],
-                    ["Captions", "match", "audio."],
-                    ["Perfect", "sync."],
-                    ["Every", "word", "counts."],
+                    ["This", "caption", "tests", "template", "motion."],
+                    ["Preview", "timing", "must", "match", "export."],
+                    ["Every", "card", "keeps", "its", "layout."],
+                    ["Left", "templates", "apply", "without", "drifting."],
+                    ["Main", "captions", "stay", "inside", "frame."],
+                    ["Animated", "words", "enter", "with", "rhythm."],
+                    ["Highlight", "colors", "remain", "perfectly", "aligned."],
+                    ["Export", "renders", "the", "same", "result."],
+                    ["Phrase", "groups", "feel", "easy", "reading."],
+                    ["Timeline", "cards", "show", "clear", "sentences."],
+                    ["Template", "spacing", "works", "with", "phrases."],
+                    ["Browser", "preview", "matches", "caption", "layer."],
+                    ["Each", "sentence", "uses", "enough", "words."],
+                    ["No", "caption", "falls", "outside", "video."],
+                    ["Motion", "effects", "restart", "on", "selection."],
+                    ["Styled", "text", "keeps", "source", "classes."],
+                    ["Phrase", "timing", "covers", "the", "clip."],
+                    ["Export", "frames", "preserve", "template", "behavior."],
+                    ["Caption", "cards", "now", "reach", "twenty."],
+                    ["Final", "checks", "confirm", "matching", "templates."],
                 ]
 
-                # Distribute sentences across video duration
                 all_words = []
-                cursor = 0.2  # small initial offset
-                sentence_idx = 0
-                while cursor < video_duration - 0.5:
-                    sentence = mock_sentences[sentence_idx % len(mock_sentences)]
+                usable_duration = max(2.0, video_duration - 0.4)
+                slot_duration = usable_duration / len(mock_sentences)
+                for sentence_idx, sentence in enumerate(mock_sentences):
+                    slot_start = 0.2 + sentence_idx * slot_duration
+                    slot_end = min(video_duration - 0.05, slot_start + slot_duration * 0.9)
+                    word_gap = min(0.04, slot_duration * 0.04)
+                    word_dur = max(
+                        0.045,
+                        (slot_end - slot_start - (word_gap * (len(sentence) - 1))) / max(1, len(sentence))
+                    )
+                    cursor = slot_start
                     for word in sentence:
-                        word_dur = 0.25 + len(word) * 0.04
-                        if cursor + word_dur > video_duration:
-                            break
-                        all_words.append({"word": word, "start": round(cursor, 3), "end": round(cursor + word_dur, 3)})
-                        cursor += word_dur + 0.05
-                    cursor += 0.3
-                    sentence_idx += 1
+                        end = min(slot_end, cursor + word_dur)
+                        all_words.append({"word": word, "start": round(cursor, 3), "end": round(end, 3)})
+                        cursor = end + word_gap
 
                 grouped = self._group_words_by_speech_pace(all_words, min_words=min_words, max_words=max_words)
                 grouped = self._post_process_captions(grouped)
@@ -812,6 +819,9 @@ class VideoProcessor:
 
     def _should_use_dom_template_renderer(self, style):
         template_id = str(style.get('template_id') or '').strip()
+        template_20_id = str(style.get('template_20_id') or '').strip()
+        if template_20_id:
+            return True
         # Only no-hyphen advanced templates need DOM/CSS rendering. Regular
         # presets like t-115 are handled by the ASS path with template effects.
         return bool(re.fullmatch(r"t\d{2}", template_id))

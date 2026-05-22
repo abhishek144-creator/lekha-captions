@@ -21,6 +21,8 @@ const ADVANCED_TEMPLATE_VARIANTS = {
   t36: 'plain-s', t37: 'wbw-rise', t38: 'wbw-slide', t39: 'wbw-rise', t40: 'plain-s',
 };
 const TEMPLATE_CANVAS_FONT_SCALE = 0.88;
+const SIDEBAR_TEMPLATE_APPLIED_WIDTH_CAP = 320;
+const SIDEBAR_TEMPLATE_APPLIED_HEIGHT_CAP = 280;
 const ORIGINAL_TEMPLATE_BLOCK_TYPES = {
   t11: ['styled', 'styled', 'plain', 'wbw-rise'],
   t12: ['styled', 'styled', 'wbw-rise', 'wbw-slide'],
@@ -284,10 +286,57 @@ function escapeTemplateText(value = '') {
     .replace(/'/g, '&#39;');
 }
 
-function sanitizeAppliedTemplateMarkup(markup = '') {
+function getBalancedCaptionBreakIndex(text = '') {
+  const words = String(text).trim().split(/\s+/).filter(Boolean);
+  if (words.length < 4) return -1;
+
+  let bestIndex = -1;
+  let bestScore = Number.POSITIVE_INFINITY;
+
+  for (let i = 2; i <= words.length - 2; i += 1) {
+    const firstLine = words.slice(0, i).join(' ');
+    const secondLine = words.slice(i).join(' ');
+    const lineLengthGap = Math.abs(firstLine.length - secondLine.length);
+    const longestLine = Math.max(firstLine.length, secondLine.length);
+    const score = (lineLengthGap * 2) + longestLine;
+
+    if (score < bestScore) {
+      bestScore = score;
+      bestIndex = i;
+    }
+  }
+
+  return bestIndex;
+}
+
+function sanitizeTemplateInlineStyle(styleValue = '') {
+  const allowedDeclarations = String(styleValue)
+    .split(';')
+    .map((declaration) => declaration.trim())
+    .filter(Boolean)
+    .filter((declaration) => {
+      const [property = '', rawValue = ''] = declaration.split(':');
+      const value = rawValue.trim();
+      return property.trim().toLowerCase() === 'animation-delay'
+        && /^-?\d*\.?\d+(m?s)$/i.test(value);
+    });
+  return allowedDeclarations.length ? ` style="${allowedDeclarations.join(';')}"` : '';
+}
+
+function sanitizeAppliedTemplateMarkup(markup = '', preserveInlineStyles = false) {
   return String(markup)
     .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/\s+bis_skin_checked="[^"]*"/gi, '');
+    .replace(/\s+bis_skin_checked="[^"]*"/gi, '')
+    .replace(/\sstyle="([^"]*)"/gi, preserveInlineStyles ? (_, styleValue) => sanitizeTemplateInlineStyle(styleValue) : '')
+    .replace(/\sclass="([^"]*)"/gi, (_, classValue) => {
+      const cleanedClassValue = String(classValue)
+        .split(/\s+/)
+        .filter((className) => className && !['active', 'visible', 'anim', 'on', 'in'].includes(className))
+        .join(' ');
+      return cleanedClassValue ? ` class="${cleanedClassValue}"` : '';
+    })
+    .replace(/\s+data-ti="[^"]*"/gi, '')
+    .replace(/\s+data-si="[^"]*"/gi, '');
 }
 
 function extractAppliedTemplateDiv(markup = '', startIndex = 0) {
@@ -316,6 +365,279 @@ function findAppliedSidebarTemplateMarkup(captionStyle = {}) {
   return match ? extractAppliedTemplateDiv(source, match.index) : ''
 }
 
+function buildAppliedSidebarTemplateScript({ captionText = '', isNewTemplateSet = false }) {
+  return `
+    <script>
+      (() => {
+        const captionText = ${JSON.stringify(captionText)};
+        const words = captionText.trim().split(/\\s+/).filter(Boolean);
+        const activeBlocks = Array.from(document.querySelectorAll('.sb, .sblock'));
+        const dots = Array.from(document.querySelectorAll('.dots i, .lk-dots i'));
+        const WBW_STAGGER = ${isNewTemplateSet ? 160 : 120};
+        let current = 0;
+
+        function escapeHtml(value) {
+          return String(value).replace(/[&<>"']/g, (char) => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+          }[char]));
+        }
+
+        function cleanClassName(value, fallback) {
+          const cleaned = String(value || '')
+            .split(/\\s+/)
+            .filter((className) => className && !['active', 'visible', 'anim', 'on', 'in'].includes(className))
+            .join(' ');
+          return cleaned || fallback;
+        }
+
+        function mappedTemplateClass(sourceClasses, index, total, fallback) {
+          if (!sourceClasses.length) return fallback;
+          if (total <= 1) return sourceClasses[0] || fallback;
+          const sourceIndex = Math.min(
+            sourceClasses.length - 1,
+            Math.round((index * (sourceClasses.length - 1)) / Math.max(1, total - 1))
+          );
+          return sourceClasses[sourceIndex] || fallback;
+        }
+
+        function splitWordsForSlots(slotCount) {
+          if (!words.length || !slotCount) return [];
+          const slots = Array.from({ length: slotCount }, () => []);
+          words.forEach((word, index) => {
+            slots[Math.min(slotCount - 1, Math.floor((index * slotCount) / words.length))].push(word);
+          });
+          return slots.map((slot) => slot.join(' '));
+        }
+
+        function replaceWordByWord(container) {
+          if (!container || !words.length) return false;
+          const isNewWbw = container.classList.contains('wbw-line');
+          const selector = isNewWbw ? '.wbw-word' : '.w';
+          const fallback = isNewWbw ? 'wbw-word normal' : 'w';
+          const sourceClasses = Array.from(container.querySelectorAll(selector))
+            .map((word) => cleanClassName(word.className, fallback));
+
+          container.innerHTML = words.map((word, index) => (
+            '<span class="' + mappedTemplateClass(sourceClasses, index, words.length, fallback) + '">' + escapeHtml(word) + '</span>'
+          )).join(' ');
+          return true;
+        }
+
+        function replaceSticky(container) {
+          const stickyWords = Array.from(container.querySelectorAll('.sw-w'));
+          if (!stickyWords.length || !words.length) return false;
+          const sourceClasses = stickyWords.map((word) => cleanClassName(word.className, 'sw-w'));
+          container.innerHTML = words.map((word, index) => (
+            '<span class="' + mappedTemplateClass(sourceClasses, index, words.length, 'sw-w') + '">' + escapeHtml(word) + '</span>'
+          )).join(' ');
+          return true;
+        }
+
+        function replacePositioned(block) {
+          const spans = Array.from(block.querySelectorAll('.sw'));
+          if (!spans.length || !words.length) return false;
+          const chunks = splitWordsForSlots(spans.length);
+          spans.forEach((span, index) => {
+            const text = chunks[index] || '';
+            span.textContent = text;
+            span.style.display = text ? '' : 'none';
+          });
+          return true;
+        }
+
+        function replacePlain(block) {
+          const plain = Array.from(block.querySelectorAll('.plain-s'))
+            .find((element) => !element.classList.contains('wbw') && !element.classList.contains('wbw-line'));
+          if (!plain || !words.length) return false;
+          plain.textContent = captionText;
+          return true;
+        }
+
+        function replaceTemplateText(block) {
+          block.querySelectorAll('.wbw, .wbw-line').forEach(replaceWordByWord);
+          block.querySelectorAll('.sw-line').forEach(replaceSticky);
+          replacePositioned(block);
+          replacePlain(block);
+        }
+
+        function getWordMotion(parent) {
+          const classes = parent ? parent.classList : { contains: () => false };
+          if (classes.contains('wslide') || classes.contains('wbw-slide')) return { transform: 'translateX(-26px)', opacity: '0' };
+          if (classes.contains('wslider')) return { transform: 'translateX(26px)', opacity: '0' };
+          if (classes.contains('wroll')) return { transform: 'translateY(14px) rotate(-6deg)', opacity: '0', origin: 'left bottom' };
+          if (classes.contains('wwipe')) return { transform: 'none', opacity: '1', clipPath: 'inset(0 100% 0 0)' };
+          if (classes.contains('wwipeup')) return { transform: 'none', opacity: '1', clipPath: 'inset(100% 0 0 0)' };
+          if (classes.contains('wfade')) return { transform: 'none', opacity: '0' };
+          if (classes.contains('wscale')) return { transform: 'scale(0.5)', opacity: '0' };
+          if (classes.contains('wflip')) return { transform: 'rotateX(-80deg)', opacity: '0', origin: 'center bottom' };
+          if (classes.contains('wbounce')) return { transform: 'translateY(-22px)', opacity: '0' };
+          if (classes.contains('wdiag')) return { transform: 'translate(-16px,16px)', opacity: '0' };
+          if (classes.contains('wexpand')) return { transform: 'scaleX(0.15)', opacity: '0', origin: 'center' };
+          if (classes.contains('wskew')) return { transform: 'skewX(-18deg) translateX(-12px)', opacity: '0' };
+          if (classes.contains('wstencil')) return { transform: 'none', opacity: '1', clipPath: 'inset(0 50% 0 50%)' };
+          if (classes.contains('wlift')) return { transform: 'translateY(-22px)', opacity: '0' };
+          return { transform: 'translateY(22px)', opacity: '0' };
+        }
+
+        function resetWord(word) {
+          const motion = getWordMotion(word.parentElement);
+          word.classList.remove('visible', 'anim', 'in');
+          word.style.transition = 'none';
+          word.style.opacity = motion.opacity;
+          word.style.transform = motion.transform;
+          word.style.clipPath = motion.clipPath || '';
+          word.style.transformOrigin = motion.origin || '';
+        }
+
+        function animateWords(block) {
+          const wordNodes = Array.from(block.querySelectorAll('.w, .wbw-word'));
+          wordNodes.forEach(resetWord);
+          void block.offsetWidth;
+          wordNodes.forEach((word, index) => {
+            const motion = getWordMotion(word.parentElement);
+            const usesClip = !!motion.clipPath;
+            const duration = /\\b(imp-|ns[23]-)/.test(word.className) ? 440 : 320;
+            setTimeout(() => {
+              word.style.transition = usesClip
+                ? 'clip-path ' + duration + 'ms cubic-bezier(0.22,1,0.36,1)'
+                : 'transform ' + duration + 'ms cubic-bezier(0.22,1,0.36,1), opacity ' + Math.max(240, duration - 60) + 'ms ease';
+              word.style.opacity = '1';
+              word.style.transform = 'none';
+              word.style.clipPath = 'inset(0 0 0 0)';
+              word.classList.add(word.classList.contains('wbw-word') ? 'visible' : 'in');
+              if (/\\b(ns[23]-|imp-)/.test(word.className)) {
+                word.classList.add('anim');
+                setTimeout(() => word.classList.remove('anim'), 680);
+              }
+            }, index * WBW_STAGGER);
+          });
+        }
+
+        function getSwMotion(element) {
+          const key = element.dataset.anim || Array.from(element.classList).find((className) => (
+            /^(rise|slide-l|slide-r|slide-slow|fade|wipe|reveal-up|diagonal-wipe|pop|zoom-out|rotate-in|roll|forge|unfold)$/.test(className)
+          )) || 'fade';
+          if (/slide-l|slide-slow/.test(key)) return { transform: 'translateX(-28px)', opacity: '0' };
+          if (/slide-r/.test(key)) return { transform: 'translateX(28px)', opacity: '0' };
+          if (/rise/.test(key)) return { transform: 'translateY(20px)', opacity: '0' };
+          if (/pop|zoom-out/.test(key)) return { transform: 'scale(0.82)', opacity: '0' };
+          if (/rotate|roll/.test(key)) return { transform: 'rotateX(-80deg)', opacity: '0', origin: 'center bottom' };
+          if (/wipe|reveal|forge|unfold|diagonal/.test(key)) return { transform: 'none', opacity: '1', clipPath: /diagonal/.test(key) ? 'polygon(0 0,0 0,0 100%,0 100%)' : 'inset(0 100% 0 0)' };
+          return { transform: 'none', opacity: '0' };
+        }
+
+        function resetSw(element) {
+          const motion = getSwMotion(element);
+          element.classList.remove('in');
+          element.style.transition = 'none';
+          element.style.opacity = motion.opacity;
+          element.style.transform = motion.transform;
+          element.style.transformOrigin = motion.origin || '';
+          element.style.clipPath = motion.clipPath || '';
+        }
+
+        function animatePositioned(block) {
+          const swNodes = Array.from(block.querySelectorAll('.sw'));
+          swNodes.forEach(resetSw);
+          void block.offsetWidth;
+          swNodes.forEach((element, index) => {
+            setTimeout(() => {
+              element.style.transition = 'transform 360ms cubic-bezier(0.22,1,0.36,1), opacity 320ms ease, clip-path 420ms cubic-bezier(0.22,1,0.36,1)';
+              element.style.opacity = '1';
+              element.style.transform = 'none';
+              element.style.clipPath = 'inset(0 0 0 0)';
+              element.classList.add('in');
+            }, index * 120);
+          });
+        }
+
+        function animateSticky(block) {
+          const stickyWords = Array.from(block.querySelectorAll('.sw-w'));
+          stickyWords.forEach((word) => { word.style.opacity = '0.14'; });
+          stickyWords.forEach((word, index) => {
+            setTimeout(() => { word.style.opacity = '1'; }, index * 190);
+          });
+        }
+
+        function restartNewTemplateCssAnimations(block) {
+          block.querySelectorAll('.sw').forEach((element) => {
+            const clone = element.cloneNode(true);
+            element.parentNode.replaceChild(clone, element);
+          });
+
+          const words = Array.from(block.querySelectorAll('.wbw-word'));
+          words.forEach((word) => {
+            word.style.transition = 'none';
+            word.classList.remove('visible', 'anim');
+          });
+          void block.offsetWidth;
+          words.forEach((word) => { word.style.transition = ''; });
+          words.forEach((word, index) => {
+            setTimeout(() => {
+              word.classList.add('visible');
+              if (/\\bns[23]-/.test(word.className)) {
+                word.classList.add('anim');
+                setTimeout(() => word.classList.remove('anim'), 650);
+              }
+            }, index * WBW_STAGGER);
+          });
+
+          animateSticky(block);
+        }
+
+        function hideBlock(block) {
+          block.classList.remove('active');
+          block.style.opacity = '0';
+          block.style.visibility = 'hidden';
+          block.style.zIndex = '0';
+          if (${isNewTemplateSet}) {
+            block.querySelectorAll('.wbw-word').forEach((word) => {
+              word.style.transition = 'none';
+              word.classList.remove('visible', 'anim');
+            });
+            block.querySelectorAll('.sw-w').forEach((word) => { word.style.opacity = '0.14'; });
+            return;
+          }
+          block.querySelectorAll('.w, .wbw-word').forEach(resetWord);
+          block.querySelectorAll('.sw').forEach(resetSw);
+        }
+
+        function showPhase(index) {
+          if (!activeBlocks.length) return;
+          activeBlocks.forEach(hideBlock);
+          const block = activeBlocks[index % activeBlocks.length];
+          if (!block) return;
+          block.style.visibility = 'visible';
+          block.style.zIndex = '2';
+          block.style.opacity = '1';
+          block.classList.add('active');
+          if (${isNewTemplateSet}) {
+            restartNewTemplateCssAnimations(block);
+          } else {
+            animateWords(block);
+            animatePositioned(block);
+            animateSticky(block);
+          }
+          dots.forEach((dot, dotIndex) => { dot.className = dotIndex === index ? 'on' : ''; });
+        }
+
+        activeBlocks.forEach(replaceTemplateText);
+        showPhase(0);
+        if (activeBlocks.length > 1) {
+          setInterval(() => {
+            current = (current + 1) % activeBlocks.length;
+            showPhase(current);
+          }, Number(activeBlocks[0]?.dataset?.dur || ${isNewTemplateSet ? 3200 : 2800}));
+        }
+      })();
+    </script>
+  `;
+}
+
 function buildAppliedSidebarTemplateDoc({ captionText = '', captionStyle = {}, previewScale = 1 }) {
   const isNewTemplateSet = captionStyle?.template_source === 'lekha-49';
   const sourceCss = isNewTemplateSet
@@ -323,11 +645,11 @@ function buildAppliedSidebarTemplateDoc({ captionText = '', captionStyle = {}, p
     : extractHtmlStyle(sidebarLegacyTemplateHtml);
   const cardMarkup = sanitizeAppliedTemplateMarkup(
     captionStyle?.template_markup || findAppliedSidebarTemplateMarkup(captionStyle),
+    isNewTemplateSet,
   );
-  const fontSize = Math.max(12, Math.round((captionStyle?.font_size || 22) * previewScale));
-  const lineHeight = Number(captionStyle?.line_spacing || 1.25);
 
   if (!cardMarkup) return '';
+  const runtimeScript = buildAppliedSidebarTemplateScript({ captionText, isNewTemplateSet });
 
   return `<!doctype html>
     <html>
@@ -359,7 +681,13 @@ function buildAppliedSidebarTemplateDoc({ captionText = '', captionStyle = {}, p
             border: 0 !important;
             background: transparent !important;
             box-shadow: none !important;
-            overflow: visible !important;
+            overflow: hidden !important;
+            display: block !important;
+          }
+
+          .lk-card {
+            display: grid !important;
+            grid-template-rows: 1fr !important;
           }
 
           .card-top,
@@ -367,7 +695,9 @@ function buildAppliedSidebarTemplateDoc({ captionText = '', captionStyle = {}, p
           .lk-card-top,
           .lk-dots,
           .slbl,
-          .lk-lbl {
+          .lk-lbl,
+          .stage-lbl,
+          .lk-phase-chip {
             display: none !important;
           }
 
@@ -380,48 +710,27 @@ function buildAppliedSidebarTemplateDoc({ captionText = '', captionStyle = {}, p
             min-height: 0 !important;
             border: 0 !important;
             background: transparent !important;
-            overflow: visible !important;
+            overflow: hidden !important;
+          }
+
+          .card[class] .stage,
+          .lk-card[class] .lk-stage {
+            background: transparent !important;
+            box-shadow: none !important;
           }
 
           .sb,
           .sblock {
-            position: absolute !important;
-            inset: 0 !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            width: 100% !important;
-            height: 100% !important;
-            padding: 0 !important;
             opacity: 0 !important;
             pointer-events: none !important;
             background: transparent !important;
+            visibility: hidden;
           }
 
           .sb.active,
           .sblock.active {
             opacity: 1 !important;
-          }
-
-          .wbw,
-          .wbw-line,
-          .plain-s,
-          .sw-line,
-          .pr {
-            max-width: 92% !important;
-            color: ${captionStyle?.text_color || '#FFFFFF'} !important;
-            font-family: ${JSON.stringify(captionStyle?.font_family || 'Raleway')}, sans-serif !important;
-            font-size: ${fontSize}px !important;
-            font-weight: ${captionStyle?.font_weight || (isNewTemplateSet ? '400' : '300')} !important;
-            font-style: ${captionStyle?.font_style || 'normal'} !important;
-            line-height: ${lineHeight} !important;
-            text-align: center !important;
-            white-space: normal !important;
-          }
-
-          .wbw,
-          .wbw-line {
-            display: inline-block !important;
+            visibility: visible;
           }
 
           .w,
@@ -429,134 +738,14 @@ function buildAppliedSidebarTemplateDoc({ captionText = '', captionStyle = {}, p
           .sw,
           .sw-w {
             display: inline-block;
+            backface-visibility: hidden;
+            will-change: transform, opacity, clip-path;
           }
         </style>
       </head>
       <body>
         ${cardMarkup}
-        <script>
-          (() => {
-            const captionText = ${JSON.stringify(captionText)};
-            const words = captionText.trim().split(/\\s+/).filter(Boolean);
-            const wordHtml = (className) => words.map((word) => '<span class="' + className + '">' + ${JSON.stringify('')} + word.replace(/[&<>"']/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char])) + '</span>').join(' ');
-
-            function replaceWordByWord(container) {
-              if (!container || !words.length) return;
-              if (container.classList.contains('wbw-line')) {
-                const first = container.querySelector('.wbw-word');
-                const classes = first ? first.className.replace(/\\b(visible|anim)\\b/g, '').trim() : 'wbw-word normal';
-                container.innerHTML = wordHtml(classes || 'wbw-word normal');
-                return;
-              }
-              if (container.classList.contains('wbw')) {
-                const first = container.querySelector('.w');
-                const classes = first ? first.className.replace(/\\b(in|anim)\\b/g, '').trim() : 'w';
-                container.innerHTML = wordHtml(classes || 'w');
-              }
-            }
-
-            function replaceSticky(container) {
-              const stickyWords = Array.from(container.querySelectorAll('.sw-w'));
-              if (!stickyWords.length) return false;
-              container.innerHTML = words.map((word) => '<span class="sw-w">' + word.replace(/[&<>"']/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char])) + '</span>').join(' ');
-              return true;
-            }
-
-            function replacePositioned(block) {
-              const spans = Array.from(block.querySelectorAll('.sw'));
-              if (!spans.length) return false;
-              spans.forEach((span, index) => {
-                span.textContent = words[index] || '';
-                span.style.display = words[index] ? '' : 'none';
-              });
-              if (words.length > spans.length && spans[spans.length - 1]) {
-                spans[spans.length - 1].textContent = words.slice(spans.length - 1).join(' ');
-                spans[spans.length - 1].style.display = '';
-              }
-              return true;
-            }
-
-            function replacePlain(block) {
-              const plain = block.querySelector('.plain-s');
-              if (!plain) return false;
-              plain.textContent = captionText;
-              return true;
-            }
-
-            const blocks = Array.from(document.querySelectorAll('.sb, .sblock'));
-            blocks.forEach((block) => {
-              block.querySelectorAll('.wbw, .wbw-line').forEach(replaceWordByWord);
-              replaceSticky(block);
-              replacePositioned(block);
-              replacePlain(block);
-            });
-
-            const activeBlocks = blocks.length ? blocks : [document.body];
-            const dots = Array.from(document.querySelectorAll('.dots i, .lk-dots i'));
-            const WBW_STAGGER = ${isNewTemplateSet ? 160 : 120};
-            let current = 0;
-
-            function resetWord(word) {
-              word.classList.remove('visible', 'anim', 'in');
-              word.style.transition = 'none';
-              word.style.opacity = '';
-              word.style.transform = '';
-              word.style.clipPath = '';
-            }
-
-            function activateWords(block) {
-              const wordNodes = Array.from(block.querySelectorAll('.w, .wbw-word'));
-              wordNodes.forEach(resetWord);
-              void block.offsetWidth;
-              wordNodes.forEach((word, index) => {
-                word.style.transition = '';
-                setTimeout(() => {
-                  word.classList.add(word.classList.contains('wbw-word') ? 'visible' : 'in');
-                  if (/\\b(ns[23]-|imp-)/.test(word.className)) {
-                    word.classList.add('anim');
-                    setTimeout(() => word.classList.remove('anim'), 650);
-                  }
-                }, index * WBW_STAGGER);
-              });
-
-              const stickyWords = Array.from(block.querySelectorAll('.sw-w'));
-              stickyWords.forEach((word) => { word.style.opacity = '0.14'; });
-              stickyWords.forEach((word, index) => {
-                setTimeout(() => { word.style.opacity = '1'; }, index * 190);
-              });
-
-              block.querySelectorAll('.sw').forEach((element, index) => {
-                element.classList.remove('in');
-                element.style.transition = 'none';
-                void element.offsetWidth;
-                setTimeout(() => {
-                  element.style.transition = '';
-                  element.classList.add('in');
-                  element.style.opacity = '1';
-                  element.style.transform = 'none';
-                  element.style.clipPath = 'inset(0 0 0 0)';
-                }, index * 95);
-              });
-            }
-
-            function showPhase(index) {
-              activeBlocks.forEach((block) => block.classList.remove('active'));
-              const block = activeBlocks[index % activeBlocks.length];
-              if (!block) return;
-              block.classList.add('active');
-              activateWords(block);
-              dots.forEach((dot, dotIndex) => { dot.className = dotIndex === index ? 'on' : ''; });
-            }
-
-            showPhase(0);
-            if (activeBlocks.length > 1) {
-              setInterval(() => {
-                current = (current + 1) % activeBlocks.length;
-                showPhase(current);
-              }, 2600);
-            }
-          })();
-        </script>
+        ${runtimeScript}
       </body>
     </html>`;
 }
@@ -1467,7 +1656,7 @@ export default function VideoPlayer({
   const [draggedElementId, setDraggedElementId] = useState(null);
   const [resizedElementId, setResizedElementId] = useState(null);
   const [elementDragStart, setElementDragStart] = useState({ x: 0, y: 0, initialTop: 0, initialLeft: 0 });
-  const [elementResizeStart, setElementResizeStart] = useState({ x: 0, initialWidth: 0, initialFontSize: 0 });
+  const [elementResizeStart, setElementResizeStart] = useState({ x: 0, y: 0, initialWidth: 0, initialFontSize: 0, minWidth: 150, direction: 'right' });
 
   // const [wordPopup, setWordPopup] = useState(null); // Lifted to Dashboard
   const [isResizing, setIsResizing] = useState(false);
@@ -1495,6 +1684,7 @@ export default function VideoPlayer({
   // { hLines: [pct], vLines: [pct] } — percent values to draw guide lines
   const [snapGuides, setSnapGuides] = useState({ hLines: [], vLines: [] });
   const [cptWordGuides, setCptWordGuides] = useState([]);
+  const selectionHandleClass = 'absolute z-50 h-3 w-3 rounded-full border border-[#b76cff] bg-white shadow-[0_0_0_1px_rgba(255,255,255,0.7)]';
 
   // ── Canvas zoom (Ctrl+Scroll) ───────────────────────────────────────────
   const [canvasScale, setCanvasScale] = useState(1);
@@ -1506,6 +1696,11 @@ export default function VideoPlayer({
   const canvasPanStartRef = useRef({ x: 0, y: 0, originX: 0, originY: 0 });
   const fitCanvasSizeRef = useRef({ width: 0, height: 0 });
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
+
+  const clearActiveSelection = useCallback(() => {
+    if (setSelectedCaptionId) setSelectedCaptionId(null);
+    if (setWordPopup) setWordPopup(null);
+  }, [setSelectedCaptionId, setWordPopup]);
 
   const getWordRenderOffset = useCallback((wordStyle = {}) => {
     const width = canvasSize.width || videoContainerRef.current?.offsetWidth || 0;
@@ -1728,8 +1923,9 @@ export default function VideoPlayer({
       return;
     }
 
+    clearActiveSelection();
     handleVideoSurfaceToggle();
-  }, [draggingWord, handleVideoSurfaceToggle]);
+  }, [clearActiveSelection, draggingWord, handleVideoSurfaceToggle]);
 
   const handleCanvasToolClick = useCallback((tool, e) => {
     e.stopPropagation();
@@ -1876,6 +2072,21 @@ export default function VideoPlayer({
   const displayBackgroundWidthMultiplier = Math.max(0.94, captionStyle?.background_h_multiplier || 1);
   const displayCaptionPadY = Math.max(1, Math.round((captionStyle?.background_padding || 6) * 0.55));
   const displayCaptionPadX = 6;
+
+  const getTextElementDisplayMetrics = (style = {}) => ({
+    backgroundPadding: Math.max(1, Math.round(((style.padding ?? 6) || 6) * 0.58)),
+    backgroundWidthMultiplier: Math.max(0.94, style.backgroundHMultiplier || 1.05),
+    textPadY: Math.max(1, Math.round(((style.padding ?? 6) || 6) * 0.55)),
+    textPadX: 6,
+  });
+
+  const getTextElementEffectCSS = (style = {}) => {
+    const effectStyles = computeEffectCSS(style);
+    return {
+      textShadow: effectStyles.textShadow || (style.hasShadow && !style.textGradient ? `${style.shadowOffsetX || 0}px ${style.shadowOffsetY || 2}px ${style.shadowBlur || 4}px ${style.shadowColor || 'rgba(0,0,0,0.8)'}` : undefined),
+      WebkitTextStroke: effectStyles.WebkitTextStroke || (style.hasStroke === true && !style.textGradient ? `${style.strokeWidth || 0.5}px ${style.strokeColor || '#000000'}` : '0px transparent'),
+    };
+  };
 
   // Word-level animations — keyframes include translate(-50%,-50%) centering so they
   // don't override the inner span's centering transform.
@@ -2135,13 +2346,22 @@ export default function VideoPlayer({
   const renderAppliedSidebarTemplateCaption = (caption) => {
     const words = String(caption.text || '').trim().split(/\s+/).filter(Boolean);
     if (!words.length) return null;
+    const frameWidth = canvasSize.width || videoContainerRef.current?.offsetWidth || 240;
+    const frameHeight = canvasSize.height || videoContainerRef.current?.offsetHeight || 426;
+    const shellWidth = Math.max(
+      160,
+      Math.min(frameWidth * 0.94, SIDEBAR_TEMPLATE_APPLIED_WIDTH_CAP * previewRenderScale),
+    );
+    const shellHeight = Math.max(
+      120,
+      Math.min(frameHeight * 0.56, SIDEBAR_TEMPLATE_APPLIED_HEIGHT_CAP * previewRenderScale),
+    );
 
     const templateDoc = buildAppliedSidebarTemplateDoc({
       captionText: caption.text || '',
       captionStyle,
       previewScale: previewRenderScale,
     })
-    console.log('[DEBUG renderAppliedSidebarTemplateCaption] templateDoc length:', templateDoc.length)
 
     if (templateDoc) {
       return (
@@ -2151,14 +2371,15 @@ export default function VideoPlayer({
           data-template-id={captionStyle?.template_20_id || undefined}
           data-template-source={captionStyle?.template_source || undefined}
           style={{
-            display: 'inline-block',
-            width: `${Math.round(430 * previewRenderScale)}px`,
-            height: `${Math.round(190 * previewRenderScale)}px`,
-            maxWidth: '84vw',
-            overflow: 'visible',
+            display: 'block',
+            width: `${Math.round(shellWidth)}px`,
+            height: `${Math.round(shellHeight)}px`,
+            maxWidth: '94%',
+            overflow: 'hidden',
             pointerEvents: 'none',
             transform: `scale(${captionStyle?.scale || 1})`,
             transformOrigin: 'center center',
+            background: 'transparent',
           }}
         >
           <iframe
@@ -2169,7 +2390,7 @@ export default function VideoPlayer({
               width: '100%',
               height: '100%',
               border: 0,
-              overflow: 'visible',
+              overflow: 'hidden',
               background: 'transparent',
               pointerEvents: 'none',
             }}
@@ -2898,7 +3119,13 @@ export default function VideoPlayer({
   };
 
   const handleTextElementMouseDown = (e, elementId, currentStyle) => {
-    if (!setCaptions || e.target.classList.contains('text-resize-handle')) return;
+    if (
+      !setCaptions
+      || e.target.classList.contains('text-resize-handle')
+      || e.target.closest('button')
+      || e.target.closest('[data-word-key]')
+      || e.target.closest('[contenteditable="true"]')
+    ) return;
     e.preventDefault();
     e.stopPropagation();
     e.currentTarget.setPointerCapture?.(e.pointerId);
@@ -2920,8 +3147,11 @@ export default function VideoPlayer({
     setResizedElementId(elementId);
     setElementResizeStart({
       x: e.clientX,
+      y: e.clientY,
       initialWidth: currentStyle.width || 300,
-      initialFontSize: currentStyle.fontSize || 18
+      initialFontSize: currentStyle.fontSize || 18,
+      minWidth: currentStyle.minWidth || 150,
+      direction: e.currentTarget?.dataset?.resizeEdge || 'right',
     });
   };
 
@@ -3225,7 +3455,13 @@ export default function VideoPlayer({
       setCptWordGuides(localCptSnap.guides);
       
       // Directly manipulate the DOM for zero-latency dragging
-      if (dragState.isDetached) {
+      if (dragState.isElement) {
+        dragPreviewElement.style.setProperty(
+          'transform',
+          `translate(${newX}px, ${newY}px)`,
+          'important'
+        );
+      } else if (dragState.isDetached) {
         dragPreviewElement.style.setProperty(
           'transform',
           `translate(-50%, -50%) translate(${adjustedDeltaX}px, ${adjustedDeltaY}px)${customStyle.rotation ? ` rotate(${customStyle.rotation}deg)` : ''}`,
@@ -3321,10 +3557,17 @@ export default function VideoPlayer({
           }));
 
           requestAnimationFrame(() => {
-            dragPreviewElement.style.setProperty(
-              'transform',
-              `translate(-50%, -50%)${customStyle.rotation ? ` rotate(${customStyle.rotation}deg)` : ''}`
-            );
+            if (dragState.isElement) {
+              dragPreviewElement.style.setProperty(
+                'transform',
+                `translate(${finalCoords.x}px, ${finalCoords.y}px)`
+              );
+            } else {
+              dragPreviewElement.style.setProperty(
+                'transform',
+                `translate(-50%, -50%)${customStyle.rotation ? ` rotate(${customStyle.rotation}deg)` : ''}`
+              );
+            }
           });
         }
         
@@ -3350,7 +3593,7 @@ export default function VideoPlayer({
     e.currentTarget.setPointerCapture?.(e.pointerId);
     if (addToHistory) addToHistory();
     const captionBox = e.currentTarget?.parentElement;
-    const measuredWidth = captionBox?.getBoundingClientRect?.().width || captionWidth || 300;
+    const measuredWidth = captionStyle?.boxWidth || captionBox?.getBoundingClientRect?.().width || captionWidth || 300;
     setIsResizing(true);
     setResizeStartX(e.clientX);
     setResizeStartY(e.clientY);
@@ -3475,11 +3718,37 @@ export default function VideoPlayer({
       // 4. Handle Text Element Resize
       if (resizedElementId && setCaptions) {
         const deltaX = e.clientX - elementResizeStart.x;
-        let newWidth = elementResizeStart.initialWidth + deltaX;
-        newWidth = Math.max(150, Math.min(600, newWidth));
+        const deltaY = e.clientY - elementResizeStart.y;
+        const resizeDelta = (() => {
+          switch (elementResizeStart.direction) {
+            case 'left':
+              return -deltaX;
+            case 'top':
+              return -deltaY;
+            case 'bottom':
+              return deltaY;
+            case 'top-left':
+              return Math.abs(deltaX) >= Math.abs(deltaY) ? -deltaX : -deltaY;
+            case 'top-right':
+              return Math.abs(deltaX) >= Math.abs(deltaY) ? deltaX : -deltaY;
+            case 'bottom-left':
+              return Math.abs(deltaX) >= Math.abs(deltaY) ? -deltaX : deltaY;
+            case 'bottom-right':
+            case 'corner':
+              return Math.abs(deltaX) >= Math.abs(deltaY) ? deltaX : deltaY;
+            case 'right':
+            default:
+              return deltaX;
+          }
+        })();
 
-        const widthRatio = newWidth / elementResizeStart.initialWidth;
-        let newFontSize = Math.round(elementResizeStart.initialFontSize * widthRatio);
+        const isHorizontalFrameResize = ['left', 'right'].includes(elementResizeStart.direction);
+        const minFrameWidth = isHorizontalFrameResize ? 28 : Math.min(elementResizeStart.minWidth || 150, 80);
+        let newWidth = elementResizeStart.initialWidth + resizeDelta;
+        newWidth = Math.max(minFrameWidth, Math.min(600, newWidth));
+
+        const widthRatio = newWidth / Math.max(elementResizeStart.initialWidth, 1);
+        let newFontSize = elementResizeStart.initialFontSize * widthRatio;
         newFontSize = Math.max(12, Math.min(60, newFontSize));
 
         const captionUpdater = setCaptionsRaw || setCaptions;
@@ -3490,7 +3759,7 @@ export default function VideoPlayer({
             customStyle: {
               ...c.customStyle,
               width: newWidth,
-              fontSize: newFontSize
+              ...(isHorizontalFrameResize ? {} : { fontSize: newFontSize })
             }
           };
         }));
@@ -3531,6 +3800,15 @@ export default function VideoPlayer({
             return -deltaX;
           case 'top':
             return -deltaY;
+          case 'bottom':
+            return deltaY;
+          case 'top-left':
+            return Math.abs(deltaX) >= Math.abs(deltaY) ? -deltaX : -deltaY;
+          case 'top-right':
+            return Math.abs(deltaX) >= Math.abs(deltaY) ? deltaX : -deltaY;
+          case 'bottom-left':
+            return Math.abs(deltaX) >= Math.abs(deltaY) ? -deltaX : deltaY;
+          case 'bottom-right':
           case 'corner':
             return Math.abs(deltaX) >= Math.abs(deltaY) ? deltaX : deltaY;
           case 'right':
@@ -3539,18 +3817,24 @@ export default function VideoPlayer({
         }
       })();
 
+      const isHorizontalFrameResize = ['left', 'right'].includes(resizeDirection);
+      const minFrameWidth = isHorizontalFrameResize ? 180 : 80;
       let newWidth = resizeStartWidth + resizeDelta;
-      newWidth = Math.max(150, Math.min(600, newWidth));
+      newWidth = Math.max(minFrameWidth, Math.min(600, newWidth));
 
       // Calculate proportional font size change
       const safeStartWidth = Math.max(resizeStartWidth, 1);
       const widthRatio = newWidth / safeStartWidth;
-      let newFontSize = Math.round(resizeStartFontSize * widthRatio);
+      let newFontSize = resizeStartFontSize * widthRatio;
       newFontSize = Math.max(12, Math.min(60, newFontSize));
 
       setCaptionWidth(newWidth);
       const styleUpdater = setCaptionStyleRaw || setCaptionStyle;
-      styleUpdater(prev => ({ ...prev, font_size: newFontSize }));
+      styleUpdater(prev => ({
+        ...prev,
+        boxWidth: newWidth,
+        ...(isHorizontalFrameResize ? {} : { font_size: newFontSize })
+      }));
     };
 
     const handleMouseUp = () => {
@@ -3849,6 +4133,14 @@ export default function VideoPlayer({
         <div
           className={`relative inline-flex overflow-visible ${isVideoFullscreen ? 'scale-[1.02]' : ''}`}
           style={{ transition: 'transform 0.1s ease' }}
+          onClick={(e) => {
+            const target = e.target;
+            if (!(target instanceof Element)) return;
+            if (target.closest('[data-caption-layer], [data-text-element-layer], [data-word-key], .resize-handle, .text-resize-handle, [data-video-control], button, input, textarea, select, [role="button"], [contenteditable="true"]')) {
+              return;
+            }
+            clearActiveSelection();
+          }}
         >
           {showCornerGuides && (
             <div className="pointer-events-none absolute -inset-[14px] z-[65]">
@@ -4037,6 +4329,12 @@ export default function VideoPlayer({
           {activeCaptions.map((caption) => {
             const isEditingThis = isEditing === caption.id;
             const hasDetachedWords = captionHasDetachedWords(caption);
+            const isSidebarTemplate = hasSidebarTemplateStyle(captionStyle);
+            const shouldWrapCaption = !isSidebarTemplate && !captionStyle?.template_id;
+            const autoWrapMaxWidth = Math.max(
+              220,
+              Math.min(360, (canvasSize.width || videoContainerRef.current?.offsetWidth || 240) * 0.94)
+            );
             const templateCaptionIndex = Math.max(0, captions.findIndex(c => c?.id === caption.id && !c?.isTextElement));
             // Text elements are positioned higher or custom, but for now we'll use same style
             // We should probably allow separate positioning for text elements in future, but keeping simple for now
@@ -4051,8 +4349,18 @@ export default function VideoPlayer({
               <div
                 key={caption.id}
                 ref={captionRef}
-                className={`absolute px-3 flex justify-center ${setCaptionStyle && !isEditingThis && !hasDetachedWords ? 'cursor-move' : ''}`}
-                style={{
+                data-caption-layer="true"
+                className={isSidebarTemplate
+                  ? 'absolute flex justify-center'
+                  : `absolute px-3 flex justify-center ${setCaptionStyle && !isEditingThis && !hasDetachedWords ? 'cursor-move' : ''}`}
+                style={isSidebarTemplate ? {
+                  top: `${captionStyle?.position_y ?? 75}%`,
+                  left: '50%',
+                  width: '100%',
+                  transform: 'translate(-50%, -50%)',
+                  zIndex: caption.isTextElement ? 20 : 10,
+                  pointerEvents: setCaptionStyle ? 'auto' : 'none',
+                } : {
                   ...getPositionStyle(),
                   // If it's a text element, maybe offset it slightly or allow it to be distinct?
                   // For now, they share the same position setting which allows dragging ONE changes ALL.
@@ -4062,27 +4370,36 @@ export default function VideoPlayer({
                 }}
                 onPointerDown={(e) => {
                   e.stopPropagation();
-                  if (setCaptionStyle && !isEditingThis && !hasDetachedWords) {
+                  if (setSelectedCaptionId) setSelectedCaptionId(caption.id);
+                  if (setCaptionStyle && !isEditingThis && !hasDetachedWords && !isSidebarTemplate) {
                     handleMouseDown(e);
                   }
                 }}
-                onClick={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (setSelectedCaptionId) setSelectedCaptionId(caption.id);
+                }}
                 onDoubleClick={(e) => {
                   e.stopPropagation();
                   handleCaptionDoubleClick(e, caption);
                 }}
               >
                 <div
-                  className={`rounded-lg border-2 border-solid ${selectedCaptionId === caption.id && !hasDetachedWords ? 'border-white/40' : 'border-transparent'} relative ${isDragging ? 'cursor-grabbing' : isEditingThis ? 'cursor-text' : setCaptionStyle && !hasDetachedWords ? 'cursor-grab' : ''} ${!hasDetachedWords ? 'group' : ''} ${captionStyle?.template_id || ''} ${getTemplateContainerStateClass(captionStyle?.template_id)}`}
+                  className={`border border-solid ${selectedCaptionId === caption.id && !hasDetachedWords && !isSidebarTemplate ? 'border-[#b76cff]' : 'border-transparent hover:border-[#b76cff]'} relative ${isSidebarTemplate ? '' : isDragging ? 'cursor-grabbing' : isEditingThis ? 'cursor-text' : setCaptionStyle && !hasDetachedWords ? 'cursor-grab' : ''} ${!hasDetachedWords && !isSidebarTemplate ? 'group' : ''} ${captionStyle?.template_id || ''} ${getTemplateContainerStateClass(captionStyle?.template_id)}`}
                   style={{
                     backgroundColor: 'transparent',
                     padding: '0px',
                     textAlign: captionStyle?.text_align || 'center',
-                    width: 'fit-content',
-                    maxWidth: '90vw',
+                    width: isSidebarTemplate ? '100%' : shouldWrapCaption ? 'max-content' : 'fit-content',
+                    maxWidth: isSidebarTemplate
+                      ? '100%'
+                      : shouldWrapCaption
+                        ? `${autoWrapMaxWidth}px`
+                        : '90vw',
                     position: 'relative',
-                    display: 'inline-block',
-                    pointerEvents: 'auto',
+                    display: isSidebarTemplate ? 'flex' : 'inline-block',
+                    justifyContent: isSidebarTemplate ? 'center' : undefined,
+                    pointerEvents: isSidebarTemplate ? 'none' : 'auto',
                     '--template-primary': captionStyle?.text_color || '#ffffff',
                     '--template-secondary': captionStyle?.secondary_color || '#000000',
                     '--template-bg': captionStyle?.background_color || 'transparent',
@@ -4090,7 +4407,7 @@ export default function VideoPlayer({
                   }}
                 >
                   {/* Background layer — padding expands equally above and below the text */}
-                  {captionStyle?.has_background && !hasDetachedWords && (!captionStyle?.template_id || isSourceBasicTemplateId(captionStyle?.template_id)) && (
+                  {false && captionStyle?.has_background && !hasDetachedWords && !isSidebarTemplate && (!captionStyle?.template_id || isSourceBasicTemplateId(captionStyle?.template_id)) && (
                     <div
                       style={{
                         position: 'absolute',
@@ -4107,36 +4424,26 @@ export default function VideoPlayer({
                   )}
 
                   {/* Resize handles for regular captions */}
-                  {setCaptionStyle && !isEditingThis && !hasDetachedWords && (
+                  {setCaptionStyle && !isEditingThis && !hasDetachedWords && !isSidebarTemplate && (
                     <>
-                      <div
-                        className="resize-handle absolute top-0 left-0 right-0 h-4 cursor-ns-resize opacity-0 group-hover:opacity-100 transition-opacity"
-                        data-resize-edge="top"
-                        onPointerDown={handleResizeMouseDown}
-                        style={{ background: 'linear-gradient(to bottom, rgba(168, 85, 247, 0.4), transparent)' }}
-                      />
-                      <div
-                        className="resize-handle absolute left-0 top-0 bottom-0 w-4 cursor-ew-resize opacity-0 group-hover:opacity-100 transition-opacity"
-                        data-resize-edge="left"
-                        onPointerDown={handleResizeMouseDown}
-                        style={{ background: 'linear-gradient(to right, rgba(168, 85, 247, 0.4), transparent)' }}
-                      />
-                      <div
-                        className="resize-handle absolute right-0 top-0 bottom-0 w-4 cursor-ew-resize opacity-0 group-hover:opacity-100 transition-opacity"
-                        data-resize-edge="right"
-                        onPointerDown={handleResizeMouseDown}
-                        style={{ background: 'linear-gradient(to left, rgba(168, 85, 247, 0.4), transparent)' }}
-                      />
-                      <div
-                        className="resize-handle absolute bottom-0 right-0 w-6 h-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                        data-resize-edge="corner"
-                        onPointerDown={handleResizeMouseDown}
-                        style={{
-                          borderRight: '3px solid rgba(168, 85, 247, 0.7)',
-                          borderBottom: '3px solid rgba(168, 85, 247, 0.7)',
-                          cursor: 'nwse-resize'
-                        }}
-                      />
+                      {[
+                        ['top-left', 'left-0 top-0 -translate-x-1/2 -translate-y-1/2 cursor-nwse-resize'],
+                        ['top', 'left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 cursor-ns-resize'],
+                        ['top-right', 'right-0 top-0 -translate-y-1/2 translate-x-1/2 cursor-nesw-resize'],
+                        ['left', 'left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize'],
+                        ['right', 'right-0 top-1/2 -translate-y-1/2 translate-x-1/2 cursor-ew-resize'],
+                        ['bottom-left', 'bottom-0 left-0 -translate-x-1/2 translate-y-1/2 cursor-nesw-resize'],
+                        ['bottom', 'bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 cursor-ns-resize'],
+                        ['bottom-right', 'bottom-0 right-0 translate-x-1/2 translate-y-1/2 cursor-nwse-resize'],
+                      ].map(([edge, positionClass]) => (
+                        <div
+                          key={edge}
+                          className={`resize-handle ${selectionHandleClass} ${positionClass} transition-opacity ${selectedCaptionId === caption.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                          data-resize-edge={edge}
+                          onPointerDown={handleResizeMouseDown}
+                          style={{ touchAction: 'none' }}
+                        />
+                      ))}
                     </>
                   )}
 
@@ -4162,7 +4469,8 @@ export default function VideoPlayer({
                         opacity: captionStyle?.text_opacity || 1,
                         transform: `scale(${captionStyle?.scale || 1})`,
                         padding: hasDetachedWords ? '0px' : `${displayCaptionPadY}px ${displayCaptionPadX}px`,
-                        whiteSpace: 'nowrap',
+                        whiteSpace: shouldWrapCaption ? 'normal' : 'nowrap',
+                        wordBreak: 'normal',
                         ...(captionStyle?.text_gradient ? {
                           backgroundImage: captionStyle.text_gradient,
                           WebkitBackgroundClip: 'text',
@@ -4175,13 +4483,13 @@ export default function VideoPlayer({
                         }),
                         textTransform: captionStyle?.text_case && captionStyle.text_case !== 'none' ? captionStyle.text_case : undefined,
                         width: '100%',
-                        minWidth: '200px',
+                        minWidth: shouldWrapCaption ? '0px' : '200px',
                         minHeight: '60px'
                       }}
                     >
                       {editText}
                     </div>
-                  ) : (() => { console.log('[DEBUG rendering path]', { hasSidebar: hasSidebarTemplateStyle(captionStyle), template_id: captionStyle?.template_id, template_20_id: captionStyle?.template_20_id }); return false })() ? null : hasSidebarTemplateStyle(captionStyle) ? (
+                  ) : hasSidebarTemplateStyle(captionStyle) ? (
                     renderAppliedSidebarTemplateCaption(caption)
                   ) : captionStyle?.template_id ? (
                     // Template rendering: simple word spans with CSS class states for template effects
@@ -4207,7 +4515,8 @@ export default function VideoPlayer({
                           ? undefined
                           : `${(captionStyle?.word_spacing ?? 0) * previewRenderScale}px`,
                         textTransform: captionStyle?.text_case && captionStyle.text_case !== 'none' ? captionStyle.text_case : undefined,
-                        whiteSpace: 'nowrap',
+                        whiteSpace: shouldWrapCaption ? 'normal' : 'nowrap',
+                        wordBreak: 'normal',
                         padding: hasDetachedWords ? '0px' : undefined,
                         animation: caption.animation && caption.animation !== 'none' ? getAnimationStyle(caption.animation, caption.animationSpeed) : 'none',
                       }}
@@ -4342,7 +4651,8 @@ export default function VideoPlayer({
                         padding: hasDetachedWords ? '0px' : `${displayCaptionPadY}px ${displayCaptionPadX}px`,
                         position: 'relative',
                         zIndex: 10,
-                        whiteSpace: 'nowrap',
+                        whiteSpace: shouldWrapCaption ? 'normal' : 'nowrap',
+                        wordBreak: 'normal',
                         // Add shadow/stroke if configured
                         ...(() => {
                           const efx = computeEffectCSS(captionStyle);
@@ -4445,7 +4755,7 @@ export default function VideoPlayer({
                         } : {};
 
 
-                        return (
+                        const wordNode = (
                           <span
                             key={wordIndex}
                             data-word-key={`${caption.id}-${wordIndex}`}
@@ -4534,6 +4844,8 @@ export default function VideoPlayer({
                             </span>
                           </span>
                         );
+
+                        return wordNode;
                       });
                       })()}
                     </span>
@@ -4549,7 +4861,8 @@ export default function VideoPlayer({
           {activeTextElements.map((element) => {
             const style = element.customStyle || {};
             const isEditingThis = isEditing === element.id;
-            const isSelected = selectedCaptionId === element.id;
+            const textElementMetrics = getTextElementDisplayMetrics(style);
+            const textElementEffects = getTextElementEffectCSS(style);
 
             const handleDeleteElement = (e) => {
               e.stopPropagation();
@@ -4562,15 +4875,13 @@ export default function VideoPlayer({
             return (
               <div
                 key={element.id}
-                className={`absolute ${isSelected ? 'ring-2 ring-[#F5A623]' : ''} ${draggedElementId === element.id ? 'cursor-grabbing' : 'cursor-grab'} group`}
+                data-text-element-layer="true"
+                className={`absolute group ${draggedElementId === element.id ? 'cursor-grabbing' : 'cursor-grab'}`}
                 style={{
                   top: `${style.top || 50}%`,
                   left: `${style.left || 50}%`,
                   transform: 'translate(-50%, -50%)',
                   width: `${style.width || 300}px`,
-                  backgroundColor: (style.hasBackground !== false) ? (style.backgroundColor ? `rgba(${parseInt(style.backgroundColor.slice(1, 3), 16)}, ${parseInt(style.backgroundColor.slice(3, 5), 16)}, ${parseInt(style.backgroundColor.slice(5, 7), 16)}, ${style.backgroundOpacity || 0.6})` : `rgba(0, 0, 0, ${style.backgroundOpacity ?? 0.7})`) : 'transparent',
-                  borderRadius: `${style.borderRadius || 8}px`,
-                  padding: `${style.padding || 8}px`,
                   zIndex: style.zIndex || 50
                 }}
                 onPointerDown={(e) => {
@@ -4586,6 +4897,36 @@ export default function VideoPlayer({
                 }}
                 onDoubleClick={(e) => handleCaptionDoubleClick(e, element)}
               >
+                <div
+                  className={`border border-solid ${selectedCaptionId === element.id ? 'border-[#b76cff]' : 'border-transparent hover:border-[#b76cff]'} relative ${draggedElementId === element.id ? 'cursor-grabbing' : isEditingThis ? 'cursor-text' : 'cursor-grab'}`}
+                  style={{
+                    width: '100%',
+                    backgroundColor: 'transparent',
+                    padding: '0px',
+                    textAlign: style.textAlign || 'center',
+                    maxWidth: '90vw',
+                    position: 'relative',
+                    display: 'inline-block',
+                  }}
+                >
+                  {style.hasBackground !== false && element.type !== 'textbox' && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: `-${textElementMetrics.backgroundPadding}px`,
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        zIndex: -1,
+                        backgroundColor: style.backgroundColor
+                          ? `rgba(${parseInt(style.backgroundColor.slice(1, 3), 16)}, ${parseInt(style.backgroundColor.slice(3, 5), 16)}, ${parseInt(style.backgroundColor.slice(5, 7), 16)}, ${style.backgroundOpacity ?? 0.7})`
+                          : `rgba(0, 0, 0, ${style.backgroundOpacity ?? 0.7})`,
+                        borderRadius: `${style.borderRadius || 6}px`,
+                        width: `${100 * textElementMetrics.backgroundWidthMultiplier}%`,
+                        height: `calc(100% + ${2 * textElementMetrics.backgroundPadding}px)`,
+                      }}
+                    />
+                  )}
+
                 {/* Delete button - always visible on hover */}
                 {!isEditingThis && (
                   <button
@@ -4600,12 +4941,24 @@ export default function VideoPlayer({
                 {/* Resize handles - show for all active text elements */}
                 {!isEditingThis && (
                   <>
-                    <div
-                      className="text-resize-handle absolute -right-1 -bottom-1 w-6 h-6 bg-[#F5A623] rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-nwse-resize flex items-center justify-center shadow-lg"
-                      onPointerDown={(e) => handleTextElementResizeDown(e, element.id, style)}
-                    >
-                      <div className="w-3 h-3 border-r-2 border-b-2 border-white"></div>
-                    </div>
+                    {[
+                      ['top-left', 'left-0 top-0 -translate-x-1/2 -translate-y-1/2 cursor-nwse-resize'],
+                      ['top', 'left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 cursor-ns-resize'],
+                      ['top-right', 'right-0 top-0 -translate-y-1/2 translate-x-1/2 cursor-nesw-resize'],
+                      ['left', 'left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize'],
+                      ['right', 'right-0 top-1/2 -translate-y-1/2 translate-x-1/2 cursor-ew-resize'],
+                      ['bottom-left', 'bottom-0 left-0 -translate-x-1/2 translate-y-1/2 cursor-nesw-resize'],
+                      ['bottom', 'bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 cursor-ns-resize'],
+                      ['bottom-right', 'bottom-0 right-0 translate-x-1/2 translate-y-1/2 cursor-nwse-resize'],
+                    ].map(([edge, positionClass]) => (
+                      <div
+                        key={edge}
+                        className={`text-resize-handle ${selectionHandleClass} ${positionClass} transition-opacity ${selectedCaptionId === element.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                        data-resize-edge={edge}
+                        onPointerDown={(e) => handleTextElementResizeDown(e, element.id, style)}
+                        style={{ touchAction: 'none' }}
+                      />
+                    ))}
                   </>
                 )}
 
@@ -4617,19 +4970,35 @@ export default function VideoPlayer({
                     onInput={handleEditInput}
                     onBlur={() => handleEditComplete(element.id)}
                     onKeyDown={handleEditKeyDown}
-                    className="bg-transparent border-none outline-none"
+                    className="bg-transparent border-none outline-none text-center relative z-10"
                     style={{
                       fontFamily: style.fontFamily || 'Inter',
                       fontSize: `${(style.fontSize || 18) * previewRenderScale}px`,
-                      color: style.color || '#ffffff',
                       textAlign: style.textAlign || 'center',
-                      fontWeight: style.fontWeight || 'normal',
+                      fontWeight: style.fontWeight || '800',
                       fontStyle: style.fontStyle || 'normal',
                       textDecoration: style.textDecoration || 'none',
                       textTransform: style.textTransform || 'none',
-                      letterSpacing: style.letterSpacing ? `${style.letterSpacing}px` : undefined,
-                      lineHeight: 1.4,
-                      minHeight: '40px'
+                      letterSpacing: style.letterSpacing ? `${style.letterSpacing * previewRenderScale}px` : '0px',
+                      wordSpacing: `${(style.wordSpacing ?? 0) * previewRenderScale}px`,
+                      lineHeight: style.lineSpacing || 1.4,
+                      opacity: style.textOpacity ?? 1,
+                      transform: `scale(${style.scale || 1})`,
+                      padding: `${textElementMetrics.textPadY}px ${textElementMetrics.textPadX}px`,
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-all',
+                      minHeight: '40px',
+                      ...textElementEffects,
+                      ...(style.textGradient ? {
+                        backgroundImage: style.textGradient,
+                        WebkitBackgroundClip: 'text',
+                        backgroundClip: 'text',
+                        WebkitTextFillColor: 'transparent',
+                        color: 'transparent',
+                        display: 'block',
+                      } : {
+                        color: style.color || '#ffffff',
+                      }),
                     }}
                   >
                     {editText}
@@ -4642,15 +5011,32 @@ export default function VideoPlayer({
                       fontSize: `${(style.fontSize || 18) * previewRenderScale}px`,
                       textAlign: style.textAlign || 'center',
                       textTransform: style.textTransform || 'none',
-                      letterSpacing: style.letterSpacing ? `${style.letterSpacing}px` : undefined,
-                      lineHeight: 1.4,
+                      fontWeight: style.fontWeight || '800',
+                      fontStyle: style.fontStyle || 'normal',
+                      letterSpacing: style.letterSpacing ? `${style.letterSpacing * previewRenderScale}px` : '0px',
+                      wordSpacing: `${(style.wordSpacing ?? 0) * previewRenderScale}px`,
+                      lineHeight: style.lineSpacing || 1.4,
+                      textDecoration: style.textDecoration || 'none',
+                      opacity: style.textOpacity ?? 1,
+                      transform: `scale(${style.scale || 1})`,
+                      padding: `${textElementMetrics.textPadY}px ${textElementMetrics.textPadX}px`,
                       whiteSpace: 'pre-wrap',
-                      wordBreak: 'break-word',
-                      animation: element.animation && element.animation !== 'none' ? getAnimationStyle(element.animation) : 'none'
+                      wordBreak: 'break-all',
+                      animation: element.animation && element.animation !== 'none' ? getAnimationStyle(element.animation) : 'none',
+                      ...textElementEffects,
+                      ...(style.textGradient ? {
+                        backgroundImage: style.textGradient,
+                        WebkitBackgroundClip: 'text',
+                        backgroundClip: 'text',
+                        WebkitTextFillColor: 'transparent',
+                        color: 'transparent',
+                      } : {
+                        color: style.color || '#ffffff',
+                      }),
                     }}
                   >
                     {/* Render words individually with per-word styling */}
-                    {(element.text || '').split(/(\s+|\n)/).map((part, i) => {
+                    {Number(style.width || 0) < 80 ? (element.text || '') : (element.text || '').split(/(\s+|\n)/).map((part, i) => {
                       if (part === '\n') return <br key={i} />;
                       if (part.match(/^\s+$/)) return <span key={i}>{part}</span>;
 
@@ -4778,6 +5164,7 @@ export default function VideoPlayer({
                     })}
                   </div>
                 )}
+              </div>
               </div>
             );
           })}
