@@ -4336,6 +4336,17 @@ export default function VideoPlayer({
               Math.min(360, (canvasSize.width || videoContainerRef.current?.offsetWidth || 240) * 0.94)
             );
             const templateCaptionIndex = Math.max(0, captions.findIndex(c => c?.id === caption.id && !c?.isTextElement));
+            const handleDeleteCaptionLine = (e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              if (!setCaptions) return;
+              if (addToHistory) addToHistory();
+              const captionUpdater = setCaptionsRaw || setCaptions;
+              captionUpdater(prev => prev.filter(c => c.id !== caption.id));
+              if (setSelectedCaptionId && selectedCaptionId === caption.id) {
+                setSelectedCaptionId(null);
+              }
+            };
             // Text elements are positioned higher or custom, but for now we'll use same style
             // We should probably allow separate positioning for text elements in future, but keeping simple for now
             // or we use captionStyle but offset it if it's a text element? 
@@ -4421,6 +4432,22 @@ export default function VideoPlayer({
                         height: `calc(100% + ${2 * displayBackgroundPadding}px)`,
                       }}
                     />
+                  )}
+
+                  {/* Delete button for the selected/hovered main caption line */}
+                  {setCaptions && !isEditingThis && !hasDetachedWords && !isSidebarTemplate && (
+                    <button
+                      type="button"
+                      className={`absolute -top-2.5 -right-2.5 w-6 h-6 bg-zinc-900 border border-white/20 hover:border-red-500/50 hover:bg-red-500/10 rounded-full transition-all z-50 flex items-center justify-center shadow-xl text-gray-400 hover:text-red-500 ${selectedCaptionId === caption.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                      onPointerDown={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                      }}
+                      onClick={handleDeleteCaptionLine}
+                      title="Delete caption line"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
                   )}
 
                   {/* Resize handles for regular captions */}
