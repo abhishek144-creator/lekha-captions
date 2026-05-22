@@ -129,7 +129,8 @@ function dispatch(action) {
 
 function toast({ ...props }) {
   const id = genId();
-  const duration = Number(props.duration);
+  const defaultDuration = props.variant === "destructive" ? 5000 : undefined;
+  const duration = Number.isFinite(Number(props.duration)) ? Number(props.duration) : defaultDuration;
 
   const update = (props) =>
     dispatch({

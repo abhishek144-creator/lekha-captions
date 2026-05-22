@@ -572,6 +572,7 @@ export default function UploadModal({
                     <SelectItem value="1-2" className="text-white hover:bg-white/10">1-2 words (Punchy)</SelectItem>
                     <SelectItem value="2-3" className="text-white hover:bg-white/10">2-3 words (Standard)</SelectItem>
                     <SelectItem value="3-5" className="text-white hover:bg-white/10">3-5 words (Long)</SelectItem>
+                    <SelectItem value="5-6" className="text-white hover:bg-white/10">5-6 words (Template fit)</SelectItem>
                     <SelectItem value="dynamic" className="text-white hover:bg-white/10">
                       Dynamic (Auto) - Recommended
                     </SelectItem>
@@ -586,9 +587,9 @@ export default function UploadModal({
                   >
                     <p className="font-semibold text-[#F5A623]">How Dynamic (Auto) works:</p>
                     <p>Syncs captions to the exact millisecond of each spoken word using audio timestamps.</p>
-                    <p>Shows 1-3 words at a time by default for maximum readability.</p>
-                    <p>If 4-5 words are spoken quickly as a phrase, it shows the full phrase together.</p>
-                    <p>Single punchy words appear alone, perfectly timed to the audio beat.</p>
+                    <p>Shows 5-6 word phrases by default so animated templates keep their intended layout.</p>
+                    <p>Uses phrase-sized chunks unless punctuation or a long silence creates a natural break.</p>
+                    <p>For punchier captions, choose a shorter fixed range before generating.</p>
                   </motion.div>
                 )}
               </div>

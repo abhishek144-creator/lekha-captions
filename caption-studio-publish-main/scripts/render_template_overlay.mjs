@@ -104,6 +104,10 @@ function extractOriginalTemplateRuntimeCss(originalTemplateHtml) {
   return start >= 0 ? style.slice(start) : style;
 }
 
+function extractHtmlStyle(markup = '') {
+  return String(markup).match(/<style>([\s\S]*?)<\/style>/i)?.[1] || '';
+}
+
 function buildRuntimeScript() {
   return `
     const TEMPLATE_CANVAS_FONT_SCALE = ${TEMPLATE_CANVAS_FONT_SCALE};
@@ -481,6 +485,255 @@ function buildRuntimeScript() {
       \`;
     };
 
+    const sanitizeSidebarInlineStyle = (styleValue = '') => {
+      const allowed = String(styleValue)
+        .split(';')
+        .map((declaration) => declaration.trim())
+        .filter(Boolean)
+        .filter((declaration) => {
+          const parts = declaration.split(':');
+          const property = String(parts.shift() || '').trim().toLowerCase();
+          const value = parts.join(':').trim();
+          return property === 'animation-delay' && /^-?\\d*\\.?\\d+(m?s)$/i.test(value);
+        });
+      return allowed.length ? ' style="' + allowed.join(';') + '"' : '';
+    };
+
+    const sanitizeSidebarTemplateMarkup = (markup = '', preserveInlineStyles = false) => String(markup)
+      .replace(/<script[\\s\\S]*?<\\/script>/gi, '')
+      .replace(/\\s+bis_skin_checked="[^"]*"/gi, '')
+      .replace(/\\sstyle="([^"]*)"/gi, preserveInlineStyles ? (_, styleValue) => sanitizeSidebarInlineStyle(styleValue) : '')
+      .replace(/\\sclass="([^"]*)"/gi, (_, classValue) => {
+        const cleanedClassValue = String(classValue)
+          .split(/\\s+/)
+          .filter((className) => className && !['active', 'visible', 'anim', 'on', 'in'].includes(className))
+          .join(' ');
+        return cleanedClassValue ? ' class="' + cleanedClassValue + '"' : '';
+      })
+      .replace(/\\s+data-ti="[^"]*"/gi, '')
+      .replace(/\\s+data-si="[^"]*"/gi, '');
+
+    const cleanSidebarClassName = (value, fallback) => {
+      const cleaned = String(value || '')
+        .split(/\\s+/)
+        .filter((className) => className && !['active', 'visible', 'anim', 'on', 'in'].includes(className))
+        .join(' ');
+      return cleaned || fallback;
+    };
+
+    const mappedSidebarClassName = (sourceClasses, index, total, fallback) => {
+      if (!sourceClasses.length) return fallback;
+      if (total <= 1) return sourceClasses[0] || fallback;
+      const sourceIndex = Math.min(
+        sourceClasses.length - 1,
+        Math.round((index * (sourceClasses.length - 1)) / Math.max(1, total - 1)),
+      );
+      return sourceClasses[sourceIndex] || fallback;
+    };
+
+    const splitSidebarWordsForSlots = (words, slotCount) => {
+      if (!words.length || !slotCount) return [];
+      const slots = Array.from({ length: slotCount }, () => []);
+      words.forEach((word, index) => {
+        slots[Math.min(slotCount - 1, Math.floor((index * slotCount) / words.length))].push(word);
+      });
+      return slots.map((slot) => slot.join(' '));
+    };
+
+    const replaceSidebarWordByWord = (container, words) => {
+      if (!container || !words.length) return false;
+      const isNewWbw = container.classList.contains('wbw-line');
+      const selector = isNewWbw ? '.wbw-word' : '.w';
+      const fallback = isNewWbw ? 'wbw-word normal' : 'w';
+      const sourceClasses = Array.from(container.querySelectorAll(selector))
+        .map((word) => cleanSidebarClassName(word.className, fallback));
+      container.innerHTML = words.map((word, index) => (
+        '<span class="' + mappedSidebarClassName(sourceClasses, index, words.length, fallback) + '">' + escapeHtml(word) + '</span>'
+      )).join(' ');
+      return true;
+    };
+
+    const replaceSidebarSticky = (container, words) => {
+      const stickyWords = Array.from(container.querySelectorAll('.sw-w'));
+      if (!stickyWords.length || !words.length) return false;
+      const sourceClasses = stickyWords.map((word) => cleanSidebarClassName(word.className, 'sw-w'));
+      container.innerHTML = words.map((word, index) => (
+        '<span class="' + mappedSidebarClassName(sourceClasses, index, words.length, 'sw-w') + '">' + escapeHtml(word) + '</span>'
+      )).join(' ');
+      return true;
+    };
+
+    const replaceSidebarPositioned = (block, words) => {
+      const spans = Array.from(block.querySelectorAll('.sw'));
+      if (!spans.length || !words.length) return false;
+      const chunks = splitSidebarWordsForSlots(words, spans.length);
+      spans.forEach((span, index) => {
+        const text = chunks[index] || '';
+        span.textContent = text;
+        span.style.display = text ? '' : 'none';
+      });
+      return true;
+    };
+
+    const replaceSidebarPlain = (block, captionText) => {
+      const plain = Array.from(block.querySelectorAll('.plain-s'))
+        .find((element) => !element.classList.contains('wbw') && !element.classList.contains('wbw-line'));
+      if (!plain || !captionText) return false;
+      plain.textContent = captionText;
+      return true;
+    };
+
+    const replaceSidebarTemplateText = (block, captionText) => {
+      const words = String(captionText || '').trim().split(/\\s+/).filter(Boolean);
+      block.querySelectorAll('.wbw, .wbw-line').forEach((container) => replaceSidebarWordByWord(container, words));
+      block.querySelectorAll('.sw-line').forEach((container) => replaceSidebarSticky(container, words));
+      replaceSidebarPositioned(block, words);
+      replaceSidebarPlain(block, captionText);
+    };
+
+    const getSidebarWordMotion = (parent) => {
+      const classes = parent ? parent.classList : { contains: () => false };
+      if (classes.contains('wslide') || classes.contains('wbw-slide')) return { transform: 'translateX(-26px)', opacity: '0' };
+      if (classes.contains('wslider')) return { transform: 'translateX(26px)', opacity: '0' };
+      if (classes.contains('wroll')) return { transform: 'translateY(14px) rotate(-6deg)', opacity: '0', origin: 'left bottom' };
+      if (classes.contains('wwipe')) return { transform: 'none', opacity: '1', clipPath: 'inset(0 100% 0 0)' };
+      if (classes.contains('wwipeup')) return { transform: 'none', opacity: '1', clipPath: 'inset(100% 0 0 0)' };
+      if (classes.contains('wfade')) return { transform: 'none', opacity: '0' };
+      if (classes.contains('wscale')) return { transform: 'scale(0.5)', opacity: '0' };
+      if (classes.contains('wflip')) return { transform: 'rotateX(-80deg)', opacity: '0', origin: 'center bottom' };
+      if (classes.contains('wbounce')) return { transform: 'translateY(-22px)', opacity: '0' };
+      if (classes.contains('wdiag')) return { transform: 'translate(-16px, 16px)', opacity: '0' };
+      if (classes.contains('wexpand')) return { transform: 'scaleX(0.15)', opacity: '0', origin: 'center' };
+      if (classes.contains('wskew')) return { transform: 'skewX(-18deg) translateX(-12px)', opacity: '0' };
+      if (classes.contains('wstencil')) return { transform: 'none', opacity: '1', clipPath: 'inset(0 50% 0 50%)' };
+      if (classes.contains('wlift')) return { transform: 'translateY(-22px)', opacity: '0' };
+      return { transform: 'translateY(22px)', opacity: '0' };
+    };
+
+    const getSidebarSwMotion = (element) => {
+      const key = element.dataset.anim || Array.from(element.classList).find((className) => (
+        /^(rise|slide-l|slide-r|slide-slow|fade|wipe|reveal-up|diagonal-wipe|pop|zoom-out|rotate-in|roll|forge|unfold)$/.test(className)
+      )) || 'fade';
+      if (/slide-l|slide-slow/.test(key)) return { transform: 'translateX(-28px)', opacity: '0' };
+      if (/slide-r/.test(key)) return { transform: 'translateX(28px)', opacity: '0' };
+      if (/rise/.test(key)) return { transform: 'translateY(20px)', opacity: '0' };
+      if (/pop|zoom-out/.test(key)) return { transform: 'scale(0.82)', opacity: '0' };
+      if (/rotate|roll/.test(key)) return { transform: 'rotateX(-80deg)', opacity: '0', origin: 'center bottom' };
+      if (/wipe|reveal|forge|unfold|diagonal/.test(key)) return { transform: 'none', opacity: '1', clipPath: /diagonal/.test(key) ? 'polygon(0 0, 0 0, 0 100%, 0 100%)' : 'inset(0 100% 0 0)' };
+      return { transform: 'none', opacity: '0' };
+    };
+
+    const chooseSidebarPhase = (blocks, elapsedMs, fallbackDuration) => {
+      if (!blocks.length) return { block: null, index: 0, phaseStartMs: 0 };
+      const durations = blocks.map((block) => Math.max(700, Number(block.dataset.dur || fallbackDuration || 2800)));
+      const cycleMs = durations.reduce((sum, value) => sum + value, 0) || fallbackDuration || 2800;
+      let cursor = ((elapsedMs % cycleMs) + cycleMs) % cycleMs;
+      let phaseStartMs = elapsedMs - cursor;
+      for (let index = 0; index < blocks.length; index += 1) {
+        if (cursor < durations[index]) return { block: blocks[index], index, phaseStartMs };
+        cursor -= durations[index];
+        phaseStartMs += durations[index];
+      }
+      return { block: blocks[0], index: 0, phaseStartMs: 0 };
+    };
+
+    const parseSidebarAnimationDelayMs = (value = '') => {
+      const match = String(value || '').trim().match(/^(-?\\d*\\.?\\d+)(ms|s)$/i);
+      if (!match) return 0;
+      const amount = Number(match[1]);
+      if (!Number.isFinite(amount)) return 0;
+      return match[2].toLowerCase() === 's' ? amount * 1000 : amount;
+    };
+
+    const activateSidebarTemplateShells = (root, time) => {
+      root.querySelectorAll('.lekha-sidebar-export-template-shell').forEach((shell) => {
+        const captionText = shell.dataset.captionText || '';
+        const captionStart = Number(shell.dataset.captionStart || 0);
+        const isNewTemplateSet = shell.dataset.templateSource === 'lekha-49';
+        const elapsedMs = Math.max(0, (time - captionStart) * 1000);
+        const fallbackDuration = isNewTemplateSet ? 3200 : 2800;
+        const wordStagger = isNewTemplateSet ? 160 : 120;
+        const blocks = Array.from(shell.querySelectorAll('.sb, .sblock'));
+        const dots = Array.from(shell.querySelectorAll('.dots i, .lk-dots i'));
+
+        blocks.forEach((block) => {
+          replaceSidebarTemplateText(block, captionText);
+          block.classList.remove('active');
+          block.style.opacity = '0';
+          block.style.visibility = 'hidden';
+          block.style.zIndex = '0';
+          block.querySelectorAll('.w, .wbw-word').forEach((word) => {
+            const motion = getSidebarWordMotion(word.parentElement);
+            word.classList.remove('visible', 'anim', 'in');
+            word.classList.remove('sidebar-export-word-anim');
+            word.style.setProperty('--sidebar-export-initial-transform', motion.transform || 'none');
+            word.style.setProperty('--sidebar-export-initial-opacity', motion.opacity || '0');
+            word.style.setProperty('--sidebar-export-initial-clip', motion.clipPath || 'inset(0 0 0 0)');
+            word.style.transformOrigin = motion.origin || '';
+          });
+          block.querySelectorAll('.sw').forEach((element) => {
+            element.classList.remove('in', 'sidebar-export-sw-anim');
+            if (!isNewTemplateSet) {
+              const motion = getSidebarSwMotion(element);
+              element.style.setProperty('--sidebar-export-initial-transform', motion.transform || 'none');
+              element.style.setProperty('--sidebar-export-initial-opacity', motion.opacity || '0');
+              element.style.setProperty('--sidebar-export-initial-clip', motion.clipPath || 'inset(0 0 0 0)');
+              element.style.transformOrigin = motion.origin || '';
+            }
+          });
+          block.querySelectorAll('.sw-w').forEach((word) => {
+            word.style.opacity = '0.14';
+          });
+        });
+
+        const phase = chooseSidebarPhase(blocks, elapsedMs, fallbackDuration);
+        if (!phase.block) return;
+        phase.block.style.visibility = 'visible';
+        phase.block.style.zIndex = '2';
+        phase.block.style.opacity = '1';
+        phase.block.classList.add('active');
+        dots.forEach((dot, dotIndex) => {
+          dot.className = dotIndex === phase.index ? 'on' : '';
+        });
+
+        phase.block.querySelectorAll('.w, .wbw-word').forEach((word, index) => {
+          const duration = /\\b(imp-|ns[23]-)/.test(word.className) ? 440 : 320;
+          word.style.setProperty('--sidebar-export-word-duration', duration + 'ms');
+          word.style.setProperty('--sidebar-export-word-delay', (phase.phaseStartMs + index * wordStagger) + 'ms');
+          word.classList.add('sidebar-export-word-anim');
+        });
+        phase.block.querySelectorAll('.sw').forEach((element, index) => {
+          if (isNewTemplateSet) {
+            const sourceDelayMs = parseSidebarAnimationDelayMs(element.style.animationDelay || '0s');
+            element.style.animationDelay = (phase.phaseStartMs + sourceDelayMs) + 'ms';
+          } else {
+            element.style.setProperty('--sidebar-export-word-duration', '420ms');
+            element.style.setProperty('--sidebar-export-word-delay', (phase.phaseStartMs + index * 120) + 'ms');
+            element.classList.add('sidebar-export-sw-anim');
+          }
+        });
+        phase.block.querySelectorAll('.sw-w').forEach((word, index) => {
+          word.style.setProperty('--sidebar-export-word-delay', (phase.phaseStartMs + index * 190) + 'ms');
+          word.classList.add('sidebar-export-sticky-anim');
+        });
+      });
+    };
+
+    const buildSidebarTemplateMarkup = (caption, globalStyle) => {
+      const appliedStyle = caption.applied_template_style || {};
+      const templateMarkup = sanitizeSidebarTemplateMarkup(
+        caption.template_markup || appliedStyle.template_markup || globalStyle?.template_markup || '',
+        (caption.template_source || appliedStyle.template_source || globalStyle?.template_source || '') === 'lekha-49',
+      );
+      if (!templateMarkup) return '';
+      return '<div class="lekha-sidebar-export-template-shell"'
+        + ' data-caption-id="' + escapeHtml(caption.id || '') + '"'
+        + ' data-caption-text="' + escapeHtml(transformText(caption.text || '', globalStyle)) + '"'
+        + ' data-caption-start="' + Number(caption.start_time || 0) + '"'
+        + ' data-template-source="' + escapeHtml(caption.template_source || appliedStyle.template_source || globalStyle?.template_source || '') + '"'
+        + '>' + templateMarkup + '</div>';
+    };
+
     const buildPlainCaptionMarkup = (caption, globalStyle, time) => {
       const words = buildWordMeta(caption);
       const currentIndex = getCurrentWordIndex(caption, time);
@@ -628,21 +881,37 @@ function buildRuntimeScript() {
         };
         const left = style.position_x ?? 50;
         const top = style.position_y ?? 75;
-        const base = [
-          'position:absolute',
-          \`left:\${left}%\`,
-          \`top:\${top}%\`,
-          'transform:translate(-50%, -50%)',
-          'pointer-events:none',
-          'width:max-content',
-          'max-width:90%',
-          \`text-align:\${style.text_align || 'center'}\`,
-        ];
-        const inner = style.template_id
+        const isSidebarTemplate = Boolean(style.template_20_id);
+        const base = isSidebarTemplate
+          ? [
+              'position:absolute',
+              'left:0',
+              \`top:\${top}%\`,
+              'transform:translateY(-50%)',
+              'pointer-events:none',
+              'width:100%',
+              'display:flex',
+              'justify-content:center',
+              \`text-align:\${style.text_align || 'center'}\`,
+            ]
+          : [
+              'position:absolute',
+              \`left:\${left}%\`,
+              \`top:\${top}%\`,
+              'transform:translate(-50%, -50%)',
+              'pointer-events:none',
+              'width:max-content',
+              'max-width:90%',
+              \`text-align:\${style.text_align || 'center'}\`,
+            ];
+        const inner = isSidebarTemplate
+          ? buildSidebarTemplateMarkup(captionWithTemplateIndex, style)
+          : style.template_id
           ? buildTemplateMarkup(captionWithTemplateIndex, style, time)
           : buildPlainCaptionMarkup(captionWithTemplateIndex, style, time);
         return \`<div class="caption-anchor" style="\${base.join(';')}">\${inner}</div>\`;
       }).join('');
+      activateSidebarTemplateShells(root, time);
       syncAdvancedTemplateExportScale();
     };
   `;
@@ -662,6 +931,11 @@ async function main() {
   const advancedCaptionCss = await fs.readFile(path.join(projectRoot, 'src', 'styles', 'captionTemplatesAdvanced.css'), 'utf8');
   const originalTemplateHtml = await fs.readFile(path.join(projectRoot, 'src', 'assets', 'lekha-captions-T11-T35.html'), 'utf8');
   const originalTemplateCss = extractOriginalTemplateRuntimeCss(originalTemplateHtml);
+  const hasSidebarTemplate = Boolean(payload.style?.template_20_id);
+  const sidebarTemplateHtml = hasSidebarTemplate
+    ? await fs.readFile(path.join(projectRoot, 'src', 'assets', payload.style?.template_source === 'lekha-49' ? 'lekha-captions-49-templates.html' : 'lekha-captions-20-templates.html'), 'utf8')
+    : '';
+  const sidebarTemplateCss = hasSidebarTemplate ? extractHtmlStyle(sidebarTemplateHtml) : '';
   const previewWidth = Number(payload.style?.preview_width || 0);
   const exportCssScale = Math.max(1, Math.min(8, Number(payload.video_width || 360) / (previewWidth || 360)));
   const previewTemplateFontPx = Number(payload.style?.preview_template_font_px || 0);
@@ -670,8 +944,12 @@ async function main() {
     : 0;
   const exportRootFontSize = Math.round(16 * exportCssScale);
   const exportTemplateMaxWidth = Math.round(360 * exportCssScale);
+  const exportSidebarWidth = Math.round(Math.max(160, Math.min(Number(payload.video_width || 360) * 0.94, 320 * exportCssScale)));
+  const exportSidebarHeight = Math.round(Math.max(120, Math.min(Number(payload.video_height || 640) * 0.56, 280 * exportCssScale)));
   console.log(`[Template DOM] sizing preview_width=${previewWidth || 'missing'} preview_template_font_px=${previewTemplateFontPx || 'missing'} video_width=${payload.video_width} css_scale=${exportCssScale.toFixed(4)} target_template_font_px=${exportTemplateFontTargetPx ? exportTemplateFontTargetPx.toFixed(2) : 'auto'}`);
   const runtimeCss = `
+    ${sidebarTemplateCss}
+
     html, body {
       margin: 0;
       width: 100%;
@@ -695,6 +973,93 @@ async function main() {
       position: relative;
       display: inline-block;
       max-width: 100%;
+    }
+    .lekha-sidebar-export-template-shell {
+      display: block;
+      width: ${exportSidebarWidth}px;
+      height: ${exportSidebarHeight}px;
+      max-width: 94%;
+      overflow: hidden;
+      background: transparent !important;
+      pointer-events: none;
+      color: #fff;
+    }
+    .lekha-sidebar-export-template-shell .card,
+    .lekha-sidebar-export-template-shell .lk-card {
+      display: block !important;
+      width: 100% !important;
+      height: 100% !important;
+      min-height: 0 !important;
+      aspect-ratio: auto !important;
+      border: 0 !important;
+      border-radius: 0 !important;
+      box-shadow: none !important;
+      background: transparent !important;
+      overflow: hidden !important;
+    }
+    .lekha-sidebar-export-template-shell .lk-card {
+      display: grid !important;
+      grid-template-rows: 1fr !important;
+    }
+    .lekha-sidebar-export-template-shell .card-top,
+    .lekha-sidebar-export-template-shell .dots,
+    .lekha-sidebar-export-template-shell .lk-card-top,
+    .lekha-sidebar-export-template-shell .lk-dots,
+    .lekha-sidebar-export-template-shell .slbl,
+    .lekha-sidebar-export-template-shell .lk-lbl,
+    .lekha-sidebar-export-template-shell .stage-lbl,
+    .lekha-sidebar-export-template-shell .lk-phase-chip {
+      display: none !important;
+    }
+    .lekha-sidebar-export-template-shell .stage,
+    .lekha-sidebar-export-template-shell .lk-stage {
+      position: relative !important;
+      inset: auto !important;
+      width: 100% !important;
+      height: 100% !important;
+      min-height: 0 !important;
+      border: 0 !important;
+      box-shadow: none !important;
+      background: transparent !important;
+      overflow: hidden !important;
+    }
+    .lekha-sidebar-export-template-shell .card[class] .stage,
+    .lekha-sidebar-export-template-shell .lk-card[class] .lk-stage {
+      background: transparent !important;
+      box-shadow: none !important;
+    }
+    .lekha-sidebar-export-template-shell .sb,
+    .lekha-sidebar-export-template-shell .sblock {
+      opacity: 0 !important;
+      pointer-events: none !important;
+      background: transparent !important;
+      visibility: hidden;
+    }
+    .lekha-sidebar-export-template-shell .sb.active,
+    .lekha-sidebar-export-template-shell .sblock.active {
+      opacity: 1 !important;
+      visibility: visible;
+    }
+    .lekha-sidebar-export-template-shell .w,
+    .lekha-sidebar-export-template-shell .wbw-word,
+    .lekha-sidebar-export-template-shell .sw,
+    .lekha-sidebar-export-template-shell .sw-w {
+      display: inline-block;
+      backface-visibility: hidden;
+      will-change: transform, opacity, clip-path;
+    }
+    .lekha-sidebar-export-template-shell .sidebar-export-word-anim,
+    .lekha-sidebar-export-template-shell .sidebar-export-sw-anim {
+      animation-name: lekhaSidebarExportWordIn;
+      animation-duration: var(--sidebar-export-word-duration, 320ms);
+      animation-delay: var(--sidebar-export-word-delay, 0ms);
+      animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+      animation-fill-mode: both;
+      animation-play-state: running;
+    }
+    .lekha-sidebar-export-template-shell .sidebar-export-sticky-anim {
+      animation: lekhaSidebarExportStickyIn 240ms ease both;
+      animation-delay: var(--sidebar-export-word-delay, 0ms);
     }
     .cap-text,
     .plain-s,
@@ -831,6 +1196,22 @@ async function main() {
         clip-path: inset(0 0 0 0);
       }
     }
+    @keyframes lekhaSidebarExportWordIn {
+      from {
+        opacity: var(--sidebar-export-initial-opacity, 0);
+        transform: var(--sidebar-export-initial-transform, translateY(22px));
+        clip-path: var(--sidebar-export-initial-clip, inset(0 0 0 0));
+      }
+      to {
+        opacity: 1;
+        transform: none;
+        clip-path: inset(0 0 0 0);
+      }
+    }
+    @keyframes lekhaSidebarExportStickyIn {
+      from { opacity: 0.14; }
+      to { opacity: 1; }
+    }
   `;
 
   const browser = await puppeteer.launch({
@@ -873,7 +1254,9 @@ async function main() {
     const segments = [];
     const points = new Set([0, Number(payload.duration || 0)]);
     const templateId = String(payload.style?.template_id || '').trim();
+    const sidebarTemplateId = String(payload.style?.template_20_id || '').trim();
     const templateUsesPreviewTiming = isAdvancedTemplateId(templateId);
+    const templateUsesSidebarTiming = Boolean(sidebarTemplateId);
     const defaultTemplateSampleFps = Math.min(24, Math.max(12, Number(payload.style?.fps || 30)));
     const nonTextCaptions = (payload.captions || []).filter((caption) => !caption?.is_text_element);
     const animatedCaptions = templateUsesPreviewTiming
@@ -936,7 +1319,44 @@ async function main() {
           sample < animationEnd;
           sample += (1 / adaptiveTemplateSampleFps)
         ) {
-          points.add(sample);
+            points.add(sample);
+        }
+      } else if (templateUsesSidebarTiming) {
+        if (caption?.is_text_element) continue;
+        const sidebarSampleFps = Math.min(12, defaultTemplateSampleFps);
+        const markup = String(
+          caption?.template_markup
+          || caption?.applied_template_style?.template_markup
+          || payload.style?.template_markup
+          || '',
+        );
+        const blockDurations = Array.from(markup.matchAll(/data-dur="(\d+)"/gi), (match) => Number(match[1]))
+          .filter((value) => Number.isFinite(value) && value > 0);
+        const fallbackDurationMs = payload.style?.template_source === 'lekha-49' ? 3200 : 2800;
+        const durationsMs = blockDurations.length ? blockDurations : [fallbackDurationMs];
+        const wordCount = Math.max(1, String(caption.text || '').trim().split(/\s+/).filter(Boolean).length);
+        const wordStaggerSeconds = payload.style?.template_source === 'lekha-49' ? 0.16 : 0.12;
+        let phaseStart = start;
+        let phaseIndex = 0;
+        while (phaseStart < end - 0.001) {
+          const phaseDurationSeconds = Math.max(0.7, durationsMs[phaseIndex % durationsMs.length] / 1000);
+          const phaseEnd = Math.min(end, phaseStart + phaseDurationSeconds);
+          const animationWindowSeconds = Math.min(
+            phaseEnd - phaseStart,
+            0.55 + (wordCount * wordStaggerSeconds) + 0.55,
+          );
+          const animationEnd = Math.min(phaseEnd, phaseStart + Math.max(0.7, animationWindowSeconds));
+          points.add(phaseStart);
+          points.add(phaseEnd);
+          for (
+            let sample = phaseStart + (1 / sidebarSampleFps);
+            sample < animationEnd;
+            sample += (1 / sidebarSampleFps)
+          ) {
+            points.add(sample);
+          }
+          phaseStart = phaseEnd;
+          phaseIndex += 1;
         }
       } else {
         for (const word of caption.words || []) {
@@ -964,7 +1384,7 @@ async function main() {
       segments.push({ start: 0, end: Math.max(Number(payload.duration || 1), 1), duration: Math.max(Number(payload.duration || 1), 1) });
     }
 
-    console.log(`[Template DOM] segments=${segments.length} template_timing=${templateUsesPreviewTiming} sample_fps=${adaptiveTemplateSampleFps}`);
+    console.log(`[Template DOM] segments=${segments.length} template_timing=${templateUsesPreviewTiming} sidebar_timing=${templateUsesSidebarTiming} sample_fps=${adaptiveTemplateSampleFps}`);
 
     const frameLines = [];
     const frameFiles = [];

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Upload, Sparkles, Captions, Clock3, Layers, Layout, SlidersHorizontal, Type } from 'lucide-react';
+import { Upload, Sparkles, Captions, Clock3, Layers, Layout, SlidersHorizontal, Type, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -59,7 +59,7 @@ const defaultCaptionStyle = {
   text_opacity: 1,
   highlight_color: '',
   highlight_gradient: '',
-  has_background: true,
+  has_background: false,
   background_opacity: 0.7,
   background_padding: 6,
   background_h_multiplier: 1.05,
@@ -76,6 +76,9 @@ const defaultCaptionStyle = {
 };
 
 const LOCAL_DEV_BYPASS_TOKEN = 'mock-token';
+const GENERATING_SCREEN_MIN_MS = 10000;
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const normalizeCaptionStyle = (style = {}) => {
   const merged = { ...defaultCaptionStyle, ...style };
@@ -114,6 +117,7 @@ export default function Dashboard() {
   const [isPlanExpiredModalOpen, setIsPlanExpiredModalOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generationStartedAt, setGenerationStartedAt] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
@@ -178,6 +182,7 @@ export default function Dashboard() {
 
   // External Video Sync Signal
   const [seekSignal, setSeekSignal] = useState(null);
+  const [generationTicker, setGenerationTicker] = useState(0);
 
   const snapshotEditorState = useCallback((overrides = {}) => ({
     videoUrl,
@@ -251,6 +256,19 @@ export default function Dashboard() {
   }, [videoUrl]);
 
   useEffect(() => {
+    if (!isGenerating) {
+      setGenerationTicker(0);
+      return undefined;
+    }
+
+    const timer = window.setInterval(() => {
+      setGenerationTicker(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [isGenerating]);
+
+  useEffect(() => {
     if (!wordPopup) return;
 
     const targetId = wordPopup.type === 'element'
@@ -300,6 +318,35 @@ export default function Dashboard() {
     };
   }, [wordPopup]);
 
+  useEffect(() => {
+    const handleGlobalSelectionClear = (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+
+      if (
+        target.closest('[data-caption-layer="true"]')
+        || target.closest('[data-text-element-layer="true"]')
+        || target.closest('.resize-handle')
+        || target.closest('.text-resize-handle')
+        || target.closest('[data-selected-word-box="true"]')
+        || target.closest('[data-word-popup-panel="true"]')
+        || target.closest('[data-video-control]')
+        || target.closest('[contenteditable="true"]')
+        || target.closest('[data-word-key]')
+      ) {
+        return;
+      }
+
+      setSelectedCaptionId(null);
+      setWordPopup(null);
+    };
+
+    document.addEventListener('pointerdown', handleGlobalSelectionClear, true);
+    return () => {
+      document.removeEventListener('pointerdown', handleGlobalSelectionClear, true);
+    };
+  }, []);
+
   // Auto-save to localStorage whenever state changes (debounced)
   useEffect(() => {
     if (!isLoaded) return;
@@ -339,6 +386,8 @@ export default function Dashboard() {
     setSettings(uploadSettings);
     setIsUploadModalOpen(false);
     setIsGenerating(true);
+    const generationStart = Date.now();
+    setGenerationStartedAt(generationStart);
 
     try {
       const signedInToken = currentUser?.accessToken || await currentUser?.getIdToken?.() || '';
@@ -363,9 +412,9 @@ export default function Dashboard() {
         trackAnalytics('funnel.upload.success', getClientContext({ stage: 'upload', fileId: uploadData.file_id || '' }));
       }
 
-      // Parse wordsPerLine range for backend (e.g., "1-2" → min=1, max=2)
-      // "dynamic" (or unset) → min=2, max=5 so backend groups 2-5 words (not single-word captions)
-      let minWords = 2, maxWordsVal = 5;
+      // Parse wordsPerLine range for backend (e.g., "1-2" -> min=1, max=2).
+      // "dynamic" (or unset) -> min=5, max=6 so animated templates receive full phrases.
+      let minWords = 5, maxWordsVal = 6;
       const wpl = uploadSettings?.wordsPerLine;
       if (wpl && wpl !== 'dynamic') {
         const rangeParts = wpl.split('-').map(Number);
@@ -508,8 +557,14 @@ export default function Dashboard() {
       trackAnalytics('funnel.upload.failed', getClientContext({ stage: 'upload' }));
       notifyApiError(error, 'Failed to process video')
     } finally {
+      const elapsedMs = Date.now() - generationStart;
+      const remainingMinDurationMs = Math.max(0, GENERATING_SCREEN_MIN_MS - elapsedMs);
+      if (remainingMinDurationMs > 0) {
+        await sleep(remainingMinDurationMs);
+      }
       setIsUploading(false);
       setIsGenerating(false);
+      setGenerationStartedAt(null);
     }
   };
 
@@ -591,7 +646,6 @@ export default function Dashboard() {
   };
 
   const handleApplyTemplate = async (templateStyle) => {
-    console.log('[DEBUG handleApplyTemplate] called with:', JSON.stringify(templateStyle, null, 2))
     // Hard Reset: properties that templates fully control are cleared before applying
     // so Template B never inherits BG, color, font, or animation from Template A.
     // Non-template properties (line_spacing, shadow, effects, position) are preserved.
@@ -867,6 +921,7 @@ export default function Dashboard() {
           setCaptions={updateCaptions}
           currentTime={currentTime}
           setSelectedCaptionId={setSelectedCaptionId}
+          captionStyle={captionStyle}
         />
       );
     }
@@ -953,6 +1008,79 @@ export default function Dashboard() {
     />
   );
 
+  const generationElapsedSeconds = generationStartedAt
+    ? Math.max(0, Math.floor(((generationTicker || Date.now()) - generationStartedAt) / 1000))
+    : 0;
+  const renderGeneratingState = () => {
+    const step2Ready = generationElapsedSeconds >= 3;
+    const step3Ready = generationElapsedSeconds >= 6;
+    const step4Ready = generationElapsedSeconds >= 9;
+    const progressSteps = [
+      { label: 'Generating captions with AI', status: step2Ready ? 'complete' : 'active' },
+      { label: 'Preparing emoji suggestions', status: step3Ready ? 'complete' : step2Ready ? 'active' : 'upcoming' },
+      { label: 'Highlighting important words', status: step4Ready ? 'complete' : step3Ready ? 'active' : 'upcoming' },
+      { label: 'Creating caption animations', status: step4Ready ? 'active' : 'upcoming' },
+    ];
+
+    return (
+      <div className="h-full flex items-center justify-center p-6">
+        <motion.div
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="w-full max-w-[460px] rounded-[20px] bg-transparent"
+        >
+          <div className="px-4 py-6 sm:px-6 sm:py-8">
+            <div className="flex items-start gap-4">
+              <div className="mt-1 flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/[0.04] ring-1 ring-white/10">
+                <Sparkles className="h-5 w-5 text-[#f6a54b] animate-pulse" />
+              </div>
+              <div>
+                <h2 className="text-[30px] leading-[1.25] font-medium text-white">
+                  Lekha Captions is working...
+                </h2>
+                <p className="mt-2 text-sm text-slate-400">
+                  We're preparing your captions now.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-10 space-y-4">
+              {progressSteps.map((step, index) => {
+                const isComplete = step.status === 'complete';
+                const isActive = step.status === 'active';
+
+                return (
+                  <motion.div
+                    key={step.label}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                    className="flex items-center gap-3"
+                  >
+                    <span className={`flex h-5 w-5 shrink-0 items-center justify-center ${
+                      isActive || isComplete ? 'text-[#f6a54b]' : 'text-slate-500'
+                    }`}>
+                      {isComplete ? (
+                        <Check className="h-4 w-4" strokeWidth={3} />
+                      ) : isActive ? (
+                        <span className="h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                      ) : (
+                        <span className="h-4 w-4 rounded-full border border-current" />
+                      )}
+                    </span>
+                    <span className={`${isActive || isComplete ? 'text-[#f0a156]' : 'text-slate-400'} text-[17px]`}>
+                      {step.label}
+                    </span>
+                  </motion.div>
+                );
+              })}
+            </div>
+          </div>
+        </motion.div>
+      </div>
+    );
+  };
+
   const mobileTabs = [
     { id: 'captions', label: 'Captions', icon: Captions },
     { id: 'style', label: 'Style', icon: SlidersHorizontal },
@@ -987,35 +1115,7 @@ export default function Dashboard() {
       {/* Main content */}
       <div className="flex-1 overflow-hidden lekha-editor-shell">
         {isGenerating ? (
-          // Generating state (checked before !videoUrl so re-uploading shows this)
-
-          <div className="h-full flex items-center justify-center p-6">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="text-center"
-            >
-              <div className="w-20 h-20 rounded-full bg-yellow-500/10 flex items-center justify-center mx-auto mb-6">
-                <Sparkles className="w-8 h-8 text-yellow-400 animate-pulse" />
-              </div>
-              <h2 className="text-xl font-semibold text-white mb-2">
-                Generating Captions...
-              </h2>
-              <p className="text-gray-500">
-                Lekha Captions is analyzing your video and creating perfect captions
-              </p>
-              <div className="mt-6 flex items-center justify-center gap-1">
-                {[0, 1, 2].map((i) => (
-                  <motion.div
-                    key={i}
-                    className="w-2 h-2 rounded-full bg-white/40"
-                    animate={{ opacity: [0.3, 1, 0.3] }}
-                    transition={{ duration: 1, repeat: Infinity, delay: i * 0.2 }}
-                  />
-                ))}
-              </div>
-            </motion.div>
-          </div>
+          renderGeneratingState()
         ) : !videoUrl ? (
           <div className="h-full flex items-center justify-center p-6">
             <motion.div

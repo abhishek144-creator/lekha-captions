@@ -2,7 +2,76 @@ import React from 'react';
 import { Type } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 
-export default function TextTab({ captions, setCaptions, currentTime, setSelectedCaptionId }) {
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
+const buildCaptionMatchedTextElement = ({ activeSpeechCaption, currentTime, captionStyle }) => {
+  const seedText = 'Add a short headline';
+  const fontSize = clamp(Number(captionStyle?.font_size) || 18, 20, 24);
+  const longestLineLength = seedText.length;
+  const estimatedWidth = clamp(
+    Math.round((longestLineLength * fontSize * 0.58) + 44),
+    220,
+    320,
+  );
+
+  const startTime = activeSpeechCaption ? activeSpeechCaption.start_time : (currentTime || 0);
+  const endTime = activeSpeechCaption ? activeSpeechCaption.end_time : (startTime + 3);
+
+  return {
+    id: `text-${Date.now()}-${Math.random()}`,
+    text: seedText,
+    start_time: startTime,
+    end_time: endTime,
+    type: 'textbox',
+    isTextElement: true,
+    customStyle: {
+      top: clamp((captionStyle?.position_y ?? 75) - 16, 12, 82),
+      left: captionStyle?.position_x ?? 50,
+      width: estimatedWidth,
+      fontSize,
+      backgroundColor: captionStyle?.background_color || '#000000',
+      backgroundOpacity: captionStyle?.background_opacity ?? 0.7,
+      color: captionStyle?.text_color || '#ffffff',
+      borderRadius: 6,
+      padding: captionStyle?.background_padding ?? 6,
+      textAlign: captionStyle?.text_align || 'center',
+      fontFamily: captionStyle?.font_family || 'Inter',
+      fontWeight: captionStyle?.font_weight || '800',
+      fontStyle: captionStyle?.font_style || 'normal',
+      textDecoration: captionStyle?.text_decoration || 'none',
+      textTransform: captionStyle?.text_case && captionStyle.text_case !== 'none' ? captionStyle.text_case : 'none',
+      letterSpacing: captionStyle?.letter_spacing ?? 0,
+      lineSpacing: captionStyle?.line_spacing ?? 1.4,
+      wordSpacing: captionStyle?.word_spacing ?? 0,
+      textOpacity: captionStyle?.text_opacity ?? 1,
+      textGradient: captionStyle?.text_gradient || '',
+      highlightColor: captionStyle?.highlight_color || '',
+      highlightGradient: captionStyle?.highlight_gradient || '',
+      hasBackground: false,
+      backgroundHMultiplier: captionStyle?.background_h_multiplier ?? 1.05,
+      hasShadow: captionStyle?.has_shadow !== false,
+      shadowColor: captionStyle?.shadow_color || 'rgba(0,0,0,0.8)',
+      shadowBlur: captionStyle?.shadow_blur ?? 4,
+      shadowOffsetX: captionStyle?.shadow_offset_x ?? 0,
+      shadowOffsetY: captionStyle?.shadow_offset_y ?? 2,
+      hasStroke: captionStyle?.has_stroke === true,
+      strokeWidth: captionStyle?.stroke_width ?? 0.5,
+      strokeColor: captionStyle?.stroke_color || '#000000',
+      scale: captionStyle?.scale ?? 1,
+      effect_type: captionStyle?.effect_type || 'none',
+      effect_color: captionStyle?.effect_color || '#000000',
+      effect_blur: captionStyle?.effect_blur ?? 50,
+      effect_offset: captionStyle?.effect_offset ?? 50,
+      effect_direction: captionStyle?.effect_direction ?? -45,
+      effect_transparency: captionStyle?.effect_transparency ?? 40,
+      effect_thickness: captionStyle?.effect_thickness ?? 50,
+      minWidth: 220,
+      zIndex: 50,
+    }
+  };
+};
+
+export default function TextTab({ captions, setCaptions, currentTime, setSelectedCaptionId, captionStyle }) {
   const addTextElement = (type) => {
     // Check limit
     const activeTextCount = captions.filter(c => c.isTextElement).length;
@@ -19,6 +88,18 @@ export default function TextTab({ captions, setCaptions, currentTime, setSelecte
 
     // Alignment Logic: Match speech caption below or default to 3s
     const activeSpeechCaption = captions.find(c => !c.isTextElement && currentTime >= c.start_time && currentTime < c.end_time);
+    if (type === 'textbox') {
+      const newCaption = buildCaptionMatchedTextElement({
+        activeSpeechCaption,
+        currentTime,
+        captionStyle,
+      });
+
+      setCaptions([...captions, newCaption]);
+      if (setSelectedCaptionId) setSelectedCaptionId(newCaption.id);
+      return;
+    }
+
     const startTime = activeSpeechCaption ? activeSpeechCaption.start_time : (currentTime || 0);
     const endTime = activeSpeechCaption ? activeSpeechCaption.end_time : (startTime + 3);
 
