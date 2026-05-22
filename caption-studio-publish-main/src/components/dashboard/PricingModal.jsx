@@ -103,7 +103,13 @@ function createIdempotencyKey(scope, planId) {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return `${scope}:${planId}:${crypto.randomUUID()}`
   }
-  return `${scope}:${planId}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    const arr = new Uint8Array(8)
+    crypto.getRandomValues(arr)
+    const hex = Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('')
+    return `${scope}:${planId}:${hex}`
+  }
+  return `${scope}:${planId}:${Date.now()}`
 }
 
 export default function PricingModal({ isOpen, onClose, onSelectPlan, user, message, userData = null }) {
@@ -253,6 +259,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
 
   const handlePromoRedeem = async () => {
     if (!promoCode.trim()) return
+    if (promoCode.trim().length > 50) return
     setPromoLoading(true)
     setPromoStatus(null)
     try {
