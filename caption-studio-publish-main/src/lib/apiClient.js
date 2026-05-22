@@ -58,6 +58,9 @@ export async function apiRequest(url, options = {}) {
   }
 
   if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      window.dispatchEvent(new CustomEvent("auth:logout", { detail: { reason: "token_expired", status: response.status } }))
+    }
     const message =
       data?.detail ||
       data?.error ||

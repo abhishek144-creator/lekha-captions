@@ -341,13 +341,15 @@ class VideoProcessor:
                     match = re.search(r'url\((.*?\.ttf)\)', r_css.text)
                     if match:
                         ttf_url = match.group(1)
-                        # Create dynamic info object
-                        info = {
-                            "ass_name": font_key,
-                            "file": f"{font_key.replace(' ', '')}-Regular.ttf",
-                            "url": ttf_url
-                        }
-                        print(f"Dynamically resolved Google Font '{font_key}' -> {ttf_url}")
+                        if not ttf_url.startswith('https://fonts.gstatic.com/'):
+                            print(f"Rejected untrusted font URL for '{font_key}': {ttf_url}")
+                        else:
+                            info = {
+                                "ass_name": font_key,
+                                "file": f"{font_key.replace(' ', '')}-Regular.ttf",
+                                "url": ttf_url
+                            }
+                            print(f"Dynamically resolved Google Font '{font_key}' -> {ttf_url}")
             except Exception as e:
                 print(f"Dynamic font resolution failed for {font_key}: {e}")
 
