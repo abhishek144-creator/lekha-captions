@@ -1,5 +1,16 @@
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from dotenv import load_dotenv
-load_dotenv()
+backend_dir = os.path.dirname(os.path.abspath(__file__))
+root_dir = os.path.dirname(backend_dir)
+env_local = os.path.join(root_dir, ".env.local")
+env_base = os.path.join(root_dir, ".env")
+if os.path.exists(env_local):
+    load_dotenv(dotenv_path=env_local)
+if os.path.exists(env_base):
+    load_dotenv(dotenv_path=env_base)
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Response
 from fastapi.responses import FileResponse, JSONResponse

@@ -92,7 +92,7 @@ export default function WordStyleMenu({ position, onApply, onClose, detectedScri
       <Button
         size="sm"
         onClick={handleApply}
-        className="w-full bg-[#F5A623] hover:bg-[#F5A623]"
+        className="w-full bg-gradient-to-r from-[#FFE566] to-[#F5A623] hover:from-[#F5A623] hover:to-[#D4891A] text-black font-semibold shadow-md shadow-amber-500/10"
       >
         Apply
       </Button>

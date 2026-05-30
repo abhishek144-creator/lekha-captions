@@ -298,7 +298,6 @@ const TemplateCustomizationPanel = ({ style, defaultTemplateStyle, onUpdate }) =
 };
 
 export default function TemplatesTab({ currentStyle, onApplyTemplate }) {
-  if (!onApplyTemplate) return null;
   const [previewIndex, setPreviewIndex] = useState(0);
 
   useEffect(() => {
@@ -308,6 +307,8 @@ export default function TemplatesTab({ currentStyle, onApplyTemplate }) {
 
     return () => window.clearInterval(intervalId);
   }, []);
+
+  if (!onApplyTemplate) return null;
 
   const getPreviewWordClass = (word, index) => {
     if (index < previewIndex) {
