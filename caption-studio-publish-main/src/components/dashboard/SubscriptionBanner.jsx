@@ -57,7 +57,7 @@ export default function SubscriptionBanner({ user, onUpgrade }) {
           </div>
           <Button
             onClick={onUpgrade}
-            className="bg-white text-[#F5A623] hover:bg-gray-100"
+            className="bg-gradient-to-r from-[#FFE566] to-[#F5A623] hover:from-[#F5A623] hover:to-[#D4891A] text-black font-semibold"
           >
             <Crown className="w-4 h-4 mr-2" />
             Upgrade Now
@@ -108,7 +108,7 @@ export default function SubscriptionBanner({ user, onUpgrade }) {
           onClick={onUpgrade}
           variant="outline"
           size="sm"
-          className="border-white/20 text-white hover:bg-white/10 bg-[#F5A623] hover:bg-[#D4891A] border-[#F5A623]"
+          className="bg-gradient-to-r from-[#FFE566] to-[#F5A623] hover:from-[#F5A623] hover:to-[#D4891A] text-black font-semibold border-none"
         >
           Manage Plan
         </Button>

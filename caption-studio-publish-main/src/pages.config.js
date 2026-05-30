@@ -47,16 +47,17 @@
  *
  * The mainPage value must match a key in the PAGES object exactly.
  */
-import Dashboard from './pages/Dashboard'
-import Home from './pages/Home'
-import Login from './pages/Login'
-import UserAccount from './pages/UserAccount'
-import Faq from './pages/Faq'
-import TermsAndConditions from './pages/TermsAndConditions'
-import HelpAndSupport from './pages/HelpAndSupport'
-import AdminOps from './pages/AdminOps'
+import { lazy } from 'react'
 import __Layout from './Layout.jsx'
 
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Home = lazy(() => import('./pages/Home'))
+const Login = lazy(() => import('./pages/Login'))
+const UserAccount = lazy(() => import('./pages/UserAccount'))
+const Faq = lazy(() => import('./pages/Faq'))
+const TermsAndConditions = lazy(() => import('./pages/TermsAndConditions'))
+const HelpAndSupport = lazy(() => import('./pages/HelpAndSupport'))
+const AdminOps = lazy(() => import('./pages/AdminOps'))
 
 export const PAGES = {
     "Dashboard": Dashboard,

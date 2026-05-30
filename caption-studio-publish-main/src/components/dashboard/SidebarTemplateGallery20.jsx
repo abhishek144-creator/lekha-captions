@@ -12,8 +12,14 @@ function sanitizeTemplateHtml(value = '') {
 
 const sanitizedLegacyTemplateHtml = sanitizeTemplateHtml(legacyTemplateHtml);
 const sanitizedNewTemplateHtml = sanitizeTemplateHtml(newTemplateHtml);
-const legacyTemplateCss = legacyTemplateHtml.match(/<style>([\s\S]*?)<\/style>/i)?.[1] || '';
-const newTemplateCss = newTemplateHtml.match(/<style>([\s\S]*?)<\/style>/i)?.[1] || '';
+const legacyTemplateCss = (() => {
+  const matches = [...legacyTemplateHtml.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)];
+  return matches.map(m => m[1]).join('\n');
+})();
+const newTemplateCss = (() => {
+  const matches = [...newTemplateHtml.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)];
+  return matches.map(m => m[1]).join('\n');
+})();
 
 const VIGIL_BASE_TEMPLATE_STYLE = {
   font_family: 'Raleway',
@@ -128,7 +134,8 @@ function stripPreviewRuntimeState(markup = '', preserveInlineStyles = false) {
 }
 
 function extractOriginalStyle(markup) {
-  return String(markup).match(/<style>([\s\S]*?)<\/style>/i)?.[1] || '';
+  const matches = [...String(markup).matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)];
+  return matches.map(m => m[1]).join('\n');
 }
 
 function escapeRegExp(value = '') {

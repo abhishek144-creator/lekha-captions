@@ -11,12 +11,11 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (!id.includes('node_modules')) return
+          if (id.includes('firebase')) return 'vendor-firebase'
           if (id.includes('@radix-ui') || id.includes('lucide-react')) return 'vendor-ui'
           if (id.includes('@tanstack/react-query')) return 'vendor-query'
           if (id.includes('framer-motion')) return 'vendor-motion'
-          if (id.includes('react') || id.includes('scheduler')) return 'vendor-react'
-          if (id.includes('firebase')) return 'vendor-firebase'
-          return 'vendor-misc'
+          if (id.includes('react') || id.includes('scheduler') || id.includes('prop-types')) return 'vendor-react'
         },
       },
     },

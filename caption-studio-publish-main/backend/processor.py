@@ -400,16 +400,21 @@ class VideoProcessor:
                 except Exception as e:
                     print(f"[Warning] OpenAI Init Warning: {e}. Proceeding to mock fallback.")
             
-            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as _tf:
-                audio_p = _tf.name
-            subprocess.run(["ffmpeg", "-y", "-i", input_p, "-vn", "-ar", "16000", "-ac", "1", audio_p],
-                           check=True, capture_output=True)
-
-            # Clean up logic
+            # Clean up logic & variable initialization
             words = []
             api_error_msg = None
             detected_language = (target_language or "unknown").lower()
             language_confidence = 0.6
+            audio_p = None
+
+            try:
+                with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as _tf:
+                    audio_p = _tf.name
+                subprocess.run(["ffmpeg", "-y", "-i", input_p, "-vn", "-ar", "16000", "-ac", "1", audio_p],
+                               check=True, capture_output=True)
+            except Exception as ffmpeg_e:
+                print(f"[Warning] FFmpeg audio extraction failed (might have no audio): {ffmpeg_e}")
+                api_error_msg = f"Audio extraction failed: {ffmpeg_e}"
 
             sarvam_langs = {
                 'hindi': 'hi-IN', 'bengali': 'bn-IN', 'kannada': 'kn-IN',
@@ -470,6 +475,8 @@ class VideoProcessor:
             sarvam_api_key = os.environ.get("SARVAM_API_KEY")
 
             try:
+                if api_error_msg is not None:
+                    raise Exception(api_error_msg)
                 if is_indian_lang and sarvam_api_key:
                     # Assuming 'file_name' and 'logger' are available or can be mocked for this context
                     # For this specific change, we'll just add the print statements.
@@ -596,7 +603,7 @@ class VideoProcessor:
 
             # Clean up temp file (file is now closed)
             try:
-                if os.path.exists(audio_p):
+                if audio_p and os.path.exists(audio_p):
                     os.remove(audio_p)
             except Exception:
                 pass
