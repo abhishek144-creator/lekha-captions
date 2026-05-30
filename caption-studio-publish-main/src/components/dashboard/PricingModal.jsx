@@ -14,10 +14,7 @@ import { toast } from '@/components/ui/use-toast'
 import { apiRequest } from '@/lib/apiClient'
 import { notifyApiError } from '@/lib/notifyApiError'
 
-const DEV_FALLBACK_RAZORPAY_KEY_ID =
-  (import.meta.env.DEV || import.meta.env.VITE_USE_DEV_AUTH_BYPASS === '1')
-    ? 'rzp_test_RJWsOLmZ6GL27m'
-    : ''
+const DEV_FALLBACK_RAZORPAY_KEY_ID = ''
 const RAZORPAY_KEY_ID = import.meta.env.VITE_RAZORPAY_KEY_ID || DEV_FALLBACK_RAZORPAY_KEY_ID
 const LOCAL_DEV_BYPASS_TOKEN = 'mock-token'
 
@@ -193,9 +190,14 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
 
       onClose()
 
+      const keyToUse = orderData.key_id || RAZORPAY_KEY_ID
+      if (!keyToUse) {
+        throw new Error('Razorpay payment key is not set. Please configure VITE_RAZORPAY_KEY_ID.')
+      }
+
       const hasBackendOrder = Boolean(orderData.order?.id)
       const options = {
-        key: orderData.key_id || RAZORPAY_KEY_ID,
+        key: keyToUse,
         amount: orderData.order?.amount || amount,
         currency: 'INR',
         name: 'Lekha Captions',
@@ -321,9 +323,13 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
       })
       if (!orderData.success) throw new Error(orderData.error || 'Failed to create top-up order')
       onClose()
+      const keyToUse = orderData.key_id || RAZORPAY_KEY_ID
+      if (!keyToUse) {
+        throw new Error('Razorpay payment key is not set. Please configure VITE_RAZORPAY_KEY_ID.')
+      }
       const amount = TOPUP_PAISE[topup.plan_id]
       const options = {
-        key: orderData.key_id || RAZORPAY_KEY_ID,
+        key: keyToUse,
         amount: orderData.order?.amount || amount,
         currency: 'INR',
         name: 'Lekha Captions',

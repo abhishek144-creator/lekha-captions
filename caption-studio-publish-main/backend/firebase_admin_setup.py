@@ -51,32 +51,24 @@ def init_firebase():
 # Initialize on import
 init_firebase()
 
-def get_db():
+def verify_token(id_token: str):
     try:
-        return firestore.client()
-    except ValueError:
-        init_firebase()
-        if not firebase_admin._apps:
-            return None
-        return firestore.client()
-
-def verify_token(token: str):
-    """
-    Verifies a Firebase ID token.
-    Returns the decoded token (a dict containing user info like uid, email) if valid.
-    Returns None if verification fails.
-    """
-    try:
-        decoded_token = auth.verify_id_token(token)
+        decoded_token = auth.verify_id_token(id_token)
         return decoded_token
     except Exception as e:
         print(f"Token verification failed: {e}")
         return None
 
-def get_storage_bucket():
-    """Returns the Firebase Storage bucket, or None if not configured."""
+def get_db():
     try:
-        if not STORAGE_BUCKET or fb_storage is None:
+        return firestore.client()
+    except Exception as e:
+        print(f"Firestore not available: {e}")
+        return None
+
+def get_storage_bucket():
+    try:
+        if fb_storage is None:
             return None
         return fb_storage.bucket()
     except Exception as e:

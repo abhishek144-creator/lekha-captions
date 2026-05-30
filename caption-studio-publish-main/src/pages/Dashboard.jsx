@@ -1021,59 +1021,118 @@ export default function Dashboard() {
       { label: 'Highlighting important words', status: step4Ready ? 'complete' : step3Ready ? 'active' : 'upcoming' },
       { label: 'Creating caption animations', status: step4Ready ? 'active' : 'upcoming' },
     ];
+    const completedSteps = progressSteps.filter((step) => step.status === 'complete').length;
+    const hasActiveStep = progressSteps.some((step) => step.status === 'active');
+    const progressPercent = Math.min(
+      96,
+      Math.round(((completedSteps + (hasActiveStep ? 0.65 : 0)) / progressSteps.length) * 100),
+    );
+    const elapsedMinutes = String(Math.floor(generationElapsedSeconds / 60)).padStart(2, '0');
+    const elapsedSeconds = String(generationElapsedSeconds % 60).padStart(2, '0');
 
     return (
-      <div className="h-full flex items-center justify-center p-6">
+      <div className="relative flex h-full items-center justify-center overflow-hidden bg-[#050505] p-5">
+        <div className="absolute inset-x-0 top-0 h-px bg-white/[0.06]" />
         <motion.div
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
-          className="w-full max-w-[460px] rounded-[20px] bg-transparent"
+          className="relative w-full max-w-[560px]"
         >
-          <div className="px-4 py-6 sm:px-6 sm:py-8">
-            <div className="flex items-start gap-4">
-              <div className="mt-1 flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/[0.04] ring-1 ring-white/10">
-                <Sparkles className="h-5 w-5 text-[#f6a54b] animate-pulse" />
+          <div className="px-5 py-4 sm:px-7">
+            <div className="flex items-center justify-between gap-3 text-zinc-400">
+              <div className="inline-flex items-center gap-2 text-[10px] font-semibold uppercase text-[#ffd7a4]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#f6a54b] shadow-[0_0_14px_rgba(246,165,75,0.9)]" />
+                Processing
               </div>
-              <div>
-                <h2 className="text-[30px] leading-[1.25] font-medium text-white">
+              <div className="inline-flex items-center gap-2 text-xs font-medium">
+                <Clock3 className="h-3.5 w-3.5 text-[#f6a54b]" />
+                {elapsedMinutes}:{elapsedSeconds}
+              </div>
+            </div>
+          </div>
+
+          <div className="px-5 py-6 sm:px-7 sm:py-8">
+            <div className="flex items-start gap-4">
+              <div className="relative mt-1 flex h-[52px] w-[52px] shrink-0 items-center justify-center">
+                <motion.span
+                  animate={{ scale: [1, 1.35, 1], opacity: [0.5, 0, 0.5] }}
+                  transition={{ duration: 2, repeat: Infinity, ease: 'easeOut' }}
+                  className="absolute inset-0 rounded-full border border-[#f6a54b]/25"
+                />
+                <Sparkles className="relative h-6 w-6 text-[#f6a54b]" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-[30px] font-semibold leading-[1.12] text-white sm:text-[36px]">
                   Lekha Captions is working...
                 </h2>
-                <p className="mt-2 text-sm text-slate-400">
-                  We're preparing your captions now.
+                <p className="mt-3 max-w-[410px] text-sm leading-6 text-zinc-400">
+                  We are preparing your captions and building the timeline for your first preview.
                 </p>
               </div>
             </div>
 
-            <div className="mt-10 space-y-4">
-              {progressSteps.map((step, index) => {
-                const isComplete = step.status === 'complete';
-                const isActive = step.status === 'active';
+            <div className="mt-7 px-1">
+              <p className="text-xs font-medium text-zinc-400">
+                Step {Math.min(completedSteps + 1, progressSteps.length)} of {progressSteps.length}
+              </p>
+            </div>
 
-                return (
-                  <motion.div
-                    key={step.label}
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.05 }}
-                    className="flex items-center gap-3"
-                  >
-                    <span className={`flex h-5 w-5 shrink-0 items-center justify-center ${
-                      isActive || isComplete ? 'text-[#f6a54b]' : 'text-slate-500'
-                    }`}>
-                      {isComplete ? (
-                        <Check className="h-4 w-4" strokeWidth={3} />
-                      ) : isActive ? (
-                        <span className="h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin" />
-                      ) : (
-                        <span className="h-4 w-4 rounded-full border border-current" />
-                      )}
-                    </span>
-                    <span className={`${isActive || isComplete ? 'text-[#f0a156]' : 'text-slate-400'} text-[17px]`}>
-                      {step.label}
-                    </span>
-                  </motion.div>
-                );
-              })}
+            <div className="mt-6 px-1">
+              <div className="space-y-3">
+                {progressSteps.map((step, index) => {
+                  const isComplete = step.status === 'complete';
+                  const isActive = step.status === 'active';
+
+                  return (
+                    <motion.div
+                      key={step.label}
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: index * 0.05 }}
+                      className="grid grid-cols-[30px_1fr] gap-3"
+                    >
+                      <div className="relative flex justify-center">
+                        {index < progressSteps.length - 1 && (
+                          <span className={`absolute top-8 h-[calc(100%+12px)] w-px ${
+                            isComplete ? 'bg-[#f6a54b]/55' : 'bg-white/[0.12]'
+                          }`} />
+                        )}
+                        <span className={`relative flex h-7 w-7 items-center justify-center rounded-full border ${
+                          isComplete
+                            ? 'border-[#f6a54b]/70 text-[#ffd7a4]'
+                            : isActive
+                              ? 'border-[#f6a54b]/70 text-[#ffd7a4]'
+                              : 'border-white/[0.16] text-zinc-500'
+                        }`}>
+                          {isComplete ? (
+                            <Check className="h-3.5 w-3.5" strokeWidth={3} />
+                          ) : isActive ? (
+                            <span className="h-3.5 w-3.5 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                          ) : (
+                            <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                          )}
+                        </span>
+                      </div>
+                      <div className="pb-2">
+                        <p className={`text-sm font-medium ${
+                          isActive || isComplete ? 'text-white' : 'text-zinc-500'
+                        }`}>
+                          {step.label}
+                        </p>
+                        <p className={`mt-1 text-[11px] uppercase ${
+                          isComplete
+                            ? 'text-[#ffd7a4]'
+                            : isActive
+                              ? 'text-[#ffd7a4]'
+                              : 'text-zinc-600'
+                        }`}>
+                          {isComplete ? 'Complete' : isActive ? 'Now processing' : 'Next'}
+                        </p>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </motion.div>

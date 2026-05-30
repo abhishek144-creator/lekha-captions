@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { createPageUrl } from '@/utils'
 import CaptionStudioLogo from '@/components/dashboard/CaptionStudioLogo'
-import { Mail, MessageCircle, FileText, ExternalLink } from 'lucide-react'
+import { Mail, MessageCircle, FileText } from 'lucide-react'
 
 export default function Help() {
   const [submitted, setSubmitted] = useState(false)
