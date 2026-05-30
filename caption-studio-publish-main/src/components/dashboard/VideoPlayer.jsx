@@ -532,6 +532,10 @@ function buildAppliedSidebarTemplateScript({ captionText = '', isNewTemplateSet 
           word.style.transition = isPlaying
             ? (usesClip ? 'clip-path ' + dur + 'ms cubic-bezier(0.22,1,0.36,1)' : 'transform ' + dur + 'ms cubic-bezier(0.22,1,0.36,1), opacity ' + Math.max(240, dur - 60) + 'ms ease')
             : 'none';
+          // The 49-set ('lekha-49') drives entrances with named CSS @keyframes (cpFade,
+          // cpRise, ...) on .sw/.wbw-word. Those animations win over inline opacity, so a
+          // settled word stays at opacity:0 unless we also clear the CSS animation.
+          word.style.animation = 'none';
           word.style.opacity = '1';
           word.style.transform = 'none';
           word.style.clipPath = 'inset(0 0 0 0)';
@@ -540,6 +544,7 @@ function buildAppliedSidebarTemplateScript({ captionText = '', isNewTemplateSet 
 
         function triggerSwEl(el, isPlaying) {
           el.style.transition = isPlaying ? 'transform 360ms cubic-bezier(0.22,1,0.36,1), opacity 320ms ease, clip-path 420ms cubic-bezier(0.22,1,0.36,1)' : 'none';
+          el.style.animation = 'none';
           el.style.opacity = '1';
           el.style.transform = 'none';
           el.style.clipPath = 'inset(0 0 0 0)';
@@ -1645,7 +1650,10 @@ const AppliedTemplateIframe = React.memo(function AppliedTemplateIframe({ templa
 
   React.useEffect(() => {
     if (iframeRef.current) {
-      iframeRef.current.srcDoc = templateDoc;
+      // Must use the lowercase `srcdoc` attribute. The `srcDoc` property does not
+      // exist on HTMLIFrameElement, so assigning to it left the frame on about:blank
+      // and the applied template rendered nothing.
+      iframeRef.current.setAttribute('srcdoc', templateDoc);
     }
   }, [templateDoc]);
 
