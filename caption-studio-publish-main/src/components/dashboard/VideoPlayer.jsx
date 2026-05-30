@@ -595,6 +595,16 @@ function buildAppliedSidebarTemplateScript({ captionText = '', isNewTemplateSet 
           if (!block) return;
           block.style.visibility = 'visible'; block.style.zIndex = '2'; block.style.opacity = '1'; block.classList.add('active');
 
+          // Paused (editor) state: render the active phase fully settled so the caption
+          // always matches the preview card's resting look instead of staying hidden.
+          if (!isPlaying) {
+            Array.from(block.querySelectorAll('.w, .wbw-word')).forEach(function(word) { triggerWord(word, false); });
+            Array.from(block.querySelectorAll('.sw')).forEach(function(el) { triggerSwEl(el, false); });
+            Array.from(block.querySelectorAll('.sw-w')).forEach(function(w) { w.style.transition = 'none'; w.style.opacity = '1'; });
+            dots.forEach(function(dot, i) { dot.className = i === activePhaseIndex ? 'on' : ''; });
+            return;
+          }
+
           var elapsedInPhase = totalPhases > 1 ? (elapsedMs % phaseDuration) : elapsedMs;
           if (!triggeredWords[activePhaseIndex]) triggeredWords[activePhaseIndex] = {};
           if (!triggeredSw[activePhaseIndex]) triggeredSw[activePhaseIndex] = {};
