@@ -354,27 +354,26 @@ function extractAppliedTemplateDiv(markup = '', startIndex = 0) {
 }
 
 function findAppliedSidebarTemplateMarkup(captionStyle = {}) {
-  const className = String(captionStyle?.template_class || '').toLowerCase().replace(/[^a-z0-9-]/g, '')
-  if (!className) return ''
+  const className = String(captionStyle?.template_class || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
+  if (!className) return '';
   const source = captionStyle?.template_source === 'lekha-49'
     ? sidebarNewTemplateHtml
-    : sidebarLegacyTemplateHtml
-  const cardClassToken = captionStyle?.template_source === 'lekha-49' ? 'lk-card' : 'card'
-  const pattern = new RegExp(`<div\\s+[^>]*class="(?=[^"]*\\b${cardClassToken}\\b)(?=[^"]*\\b${className}\\b)[^"]*"`, 'i')
-  const match = pattern.exec(source)
-  return match ? extractAppliedTemplateDiv(source, match.index) : ''
+    : sidebarLegacyTemplateHtml;
+  const cardClassToken = captionStyle?.template_source === 'lekha-49' ? 'lk-card' : 'card';
+  const start = source.indexOf(`class="${cardClassToken}`);
+  if (start < 0) return '';
+  return extractAppliedTemplateDiv(source, start);
 }
 
 function buildAppliedSidebarTemplateScript({ captionText = '', isNewTemplateSet = false }) {
   return `
     <script>
       (() => {
-        const captionText = ${JSON.stringify(captionText)};
-        const words = captionText.trim().split(/\\s+/).filter(Boolean);
+        let captionText = ${JSON.stringify(captionText)};
+        let words = captionText.trim().split(/\\s+/).filter(Boolean);
         const activeBlocks = Array.from(document.querySelectorAll('.sb, .sblock'));
         const dots = Array.from(document.querySelectorAll('.dots i, .lk-dots i'));
         const WBW_STAGGER = ${isNewTemplateSet ? 160 : 120};
-        let current = 0;
 
         function escapeHtml(value) {
           return String(value).replace(/[&<>"']/g, (char) => ({
@@ -483,40 +482,6 @@ function buildAppliedSidebarTemplateScript({ captionText = '', isNewTemplateSet 
           return { transform: 'translateY(22px)', opacity: '0' };
         }
 
-        function resetWord(word) {
-          const motion = getWordMotion(word.parentElement);
-          word.classList.remove('visible', 'anim', 'in');
-          word.style.transition = 'none';
-          word.style.opacity = motion.opacity;
-          word.style.transform = motion.transform;
-          word.style.clipPath = motion.clipPath || '';
-          word.style.transformOrigin = motion.origin || '';
-        }
-
-        function animateWords(block) {
-          const wordNodes = Array.from(block.querySelectorAll('.w, .wbw-word'));
-          wordNodes.forEach(resetWord);
-          void block.offsetWidth;
-          wordNodes.forEach((word, index) => {
-            const motion = getWordMotion(word.parentElement);
-            const usesClip = !!motion.clipPath;
-            const duration = /\\b(imp-|ns[23]-)/.test(word.className) ? 440 : 320;
-            setTimeout(() => {
-              word.style.transition = usesClip
-                ? 'clip-path ' + duration + 'ms cubic-bezier(0.22,1,0.36,1)'
-                : 'transform ' + duration + 'ms cubic-bezier(0.22,1,0.36,1), opacity ' + Math.max(240, duration - 60) + 'ms ease';
-              word.style.opacity = '1';
-              word.style.transform = 'none';
-              word.style.clipPath = 'inset(0 0 0 0)';
-              word.classList.add(word.classList.contains('wbw-word') ? 'visible' : 'in');
-              if (/\\b(ns[23]-|imp-)/.test(word.className)) {
-                word.classList.add('anim');
-                setTimeout(() => word.classList.remove('anim'), 680);
-              }
-            }, index * WBW_STAGGER);
-          });
-        }
-
         function getSwMotion(element) {
           const key = element.dataset.anim || Array.from(element.classList).find((className) => (
             /^(rise|slide-l|slide-r|slide-slow|fade|wipe|reveal-up|diagonal-wipe|pop|zoom-out|rotate-in|roll|forge|unfold)$/.test(className)
@@ -530,109 +495,151 @@ function buildAppliedSidebarTemplateScript({ captionText = '', isNewTemplateSet 
           return { transform: 'none', opacity: '0' };
         }
 
-        function resetSw(element) {
-          const motion = getSwMotion(element);
-          element.classList.remove('in');
-          element.style.transition = 'none';
-          element.style.opacity = motion.opacity;
-          element.style.transform = motion.transform;
-          element.style.transformOrigin = motion.origin || '';
-          element.style.clipPath = motion.clipPath || '';
+        activeBlocks.forEach(replaceTemplateText);
+
+        // --- Reset helpers ---
+        function resetWord(word) {
+          const m = getWordMotion(word.parentElement);
+          word.classList.remove('visible', 'anim', 'in');
+          word.style.transition = 'none';
+          word.style.opacity = m.opacity;
+          word.style.transform = m.transform;
+          word.style.clipPath = m.clipPath || '';
+          word.style.transformOrigin = m.origin || '';
         }
 
-        function animatePositioned(block) {
-          const swNodes = Array.from(block.querySelectorAll('.sw'));
-          swNodes.forEach(resetSw);
-          void block.offsetWidth;
-          swNodes.forEach((element, index) => {
-            setTimeout(() => {
-              element.style.transition = 'transform 360ms cubic-bezier(0.22,1,0.36,1), opacity 320ms ease, clip-path 420ms cubic-bezier(0.22,1,0.36,1)';
-              element.style.opacity = '1';
-              element.style.transform = 'none';
-              element.style.clipPath = 'inset(0 0 0 0)';
-              element.classList.add('in');
-            }, index * 120);
-          });
+        // State: track which elements have already been animated per phase
+        var triggeredWords = {};
+        var triggeredSw = {};
+        var triggeredSww = {};
+        var lastPhaseIdx = -1;
+
+        function resetSw(el) {
+          const m = getSwMotion(el);
+          el.classList.remove('in');
+          el.style.transition = 'none';
+          el.style.opacity = m.opacity;
+          el.style.transform = m.transform;
+          el.style.transformOrigin = m.origin || '';
+          el.style.clipPath = m.clipPath || '';
         }
 
-        function animateSticky(block) {
-          const stickyWords = Array.from(block.querySelectorAll('.sw-w'));
-          stickyWords.forEach((word) => { word.style.opacity = '0.14'; });
-          stickyWords.forEach((word, index) => {
-            setTimeout(() => { word.style.opacity = '1'; }, index * 190);
-          });
+        // One-shot trigger helpers (fire transition only the FIRST time)
+        function triggerWord(word, isPlaying) {
+          const m = getWordMotion(word.parentElement);
+          const usesClip = !!m.clipPath;
+          const dur = /\b(imp-|ns[23]-)/.test(word.className) ? 440 : 320;
+          word.style.transition = isPlaying
+            ? (usesClip ? 'clip-path ' + dur + 'ms cubic-bezier(0.22,1,0.36,1)' : 'transform ' + dur + 'ms cubic-bezier(0.22,1,0.36,1), opacity ' + Math.max(240, dur - 60) + 'ms ease')
+            : 'none';
+          word.style.opacity = '1';
+          word.style.transform = 'none';
+          word.style.clipPath = 'inset(0 0 0 0)';
+          word.classList.add(word.classList.contains('wbw-word') ? 'visible' : 'in');
         }
 
-        function restartNewTemplateCssAnimations(block) {
-          block.querySelectorAll('.sw').forEach((element) => {
-            const clone = element.cloneNode(true);
-            element.parentNode.replaceChild(clone, element);
-          });
-
-          const words = Array.from(block.querySelectorAll('.wbw-word'));
-          words.forEach((word) => {
-            word.style.transition = 'none';
-            word.classList.remove('visible', 'anim');
-          });
-          void block.offsetWidth;
-          words.forEach((word) => { word.style.transition = ''; });
-          words.forEach((word, index) => {
-            setTimeout(() => {
-              word.classList.add('visible');
-              if (/\\bns[23]-/.test(word.className)) {
-                word.classList.add('anim');
-                setTimeout(() => word.classList.remove('anim'), 650);
-              }
-            }, index * WBW_STAGGER);
-          });
-
-          animateSticky(block);
+        function triggerSwEl(el, isPlaying) {
+          el.style.transition = isPlaying ? 'transform 360ms cubic-bezier(0.22,1,0.36,1), opacity 320ms ease, clip-path 420ms cubic-bezier(0.22,1,0.36,1)' : 'none';
+          el.style.opacity = '1';
+          el.style.transform = 'none';
+          el.style.clipPath = 'inset(0 0 0 0)';
+          el.classList.add('in');
         }
 
-        function hideBlock(block) {
+        function resetPhase(block) {
           block.classList.remove('active');
           block.style.opacity = '0';
           block.style.visibility = 'hidden';
           block.style.zIndex = '0';
-          if (${isNewTemplateSet}) {
-            block.querySelectorAll('.wbw-word').forEach((word) => {
-              word.style.transition = 'none';
-              word.classList.remove('visible', 'anim');
-            });
-            block.querySelectorAll('.sw-w').forEach((word) => { word.style.opacity = '0.14'; });
-            return;
-          }
           block.querySelectorAll('.w, .wbw-word').forEach(resetWord);
           block.querySelectorAll('.sw').forEach(resetSw);
+          block.querySelectorAll('.sw-w').forEach(function(w) { w.style.opacity = '0.14'; });
         }
 
-        function showPhase(index) {
-          if (!activeBlocks.length) return;
-          activeBlocks.forEach(hideBlock);
-          const block = activeBlocks[index % activeBlocks.length];
-          if (!block) return;
-          block.style.visibility = 'visible';
-          block.style.zIndex = '2';
-          block.style.opacity = '1';
-          block.classList.add('active');
-          if (${isNewTemplateSet}) {
-            restartNewTemplateCssAnimations(block);
-          } else {
-            animateWords(block);
-            animatePositioned(block);
-            animateSticky(block);
+        window.addEventListener('message', function(event) {
+          var msg = event.data;
+          if (!msg || msg.type !== 'sync') return;
+
+          if (msg.captionText !== undefined && msg.captionText !== captionText) {
+            captionText = msg.captionText;
+            words = captionText.trim().split(/\s+/).filter(Boolean);
+            activeBlocks.forEach(replaceTemplateText);
+            triggeredWords = {}; triggeredSw = {}; triggeredSww = {};
+            lastPhaseIdx = -1;
           }
-          dots.forEach((dot, dotIndex) => { dot.className = dotIndex === index ? 'on' : ''; });
-        }
 
-        activeBlocks.forEach(replaceTemplateText);
-        showPhase(0);
-        if (activeBlocks.length > 1) {
-          setInterval(() => {
-            current = (current + 1) % activeBlocks.length;
-            showPhase(current);
-          }, Number(activeBlocks[0]?.dataset?.dur || ${isNewTemplateSet ? 3200 : 2800}));
-        }
+          var currentTime = msg.currentTime;
+          var isPlaying = msg.isPlaying;
+          var startTime = msg.startTime;
+          if (isPlaying) { document.body.classList.remove('paused'); } else { document.body.classList.add('paused'); }
+
+          var elapsedMs = Math.max(0, (currentTime - startTime) * 1000);
+          var phaseDuration = Number(activeBlocks[0] && activeBlocks[0].dataset && activeBlocks[0].dataset.dur ? activeBlocks[0].dataset.dur : (${isNewTemplateSet} ? 3200 : 2800));
+          var totalPhases = activeBlocks.length;
+          var activePhaseIndex = totalPhases > 1 ? (Math.floor(elapsedMs / phaseDuration) % totalPhases) : 0;
+
+          if (activePhaseIndex !== lastPhaseIdx) {
+            activeBlocks.forEach(function(b, i) { if (i !== activePhaseIndex) resetPhase(b); });
+            triggeredWords = {}; triggeredSw = {}; triggeredSww = {};
+            lastPhaseIdx = activePhaseIndex;
+            var nb = activeBlocks[activePhaseIndex];
+            if (nb) {
+              nb.style.visibility = 'visible'; nb.style.zIndex = '2'; nb.style.opacity = '1'; nb.classList.add('active');
+              nb.querySelectorAll('.w, .wbw-word').forEach(resetWord);
+              nb.querySelectorAll('.sw').forEach(resetSw);
+              nb.querySelectorAll('.sw-w').forEach(function(w) { w.style.opacity = '0.14'; });
+            }
+          }
+
+          var block = activeBlocks[activePhaseIndex];
+          if (!block) return;
+          block.style.visibility = 'visible'; block.style.zIndex = '2'; block.style.opacity = '1'; block.classList.add('active');
+
+          var elapsedInPhase = totalPhases > 1 ? (elapsedMs % phaseDuration) : elapsedMs;
+          if (!triggeredWords[activePhaseIndex]) triggeredWords[activePhaseIndex] = {};
+          if (!triggeredSw[activePhaseIndex]) triggeredSw[activePhaseIndex] = {};
+          if (!triggeredSww[activePhaseIndex]) triggeredSww[activePhaseIndex] = {};
+
+          Array.from(block.querySelectorAll('.w, .wbw-word')).forEach(function(word, i) {
+            if (elapsedInPhase >= i * WBW_STAGGER) {
+              if (!triggeredWords[activePhaseIndex][i]) {
+                triggerWord(word, isPlaying);
+                triggeredWords[activePhaseIndex][i] = true;
+                if (/\b(ns[23]-|imp-)/.test(word.className)) {
+                  word.classList.add('anim');
+                  setTimeout(function() { word.classList.remove('anim'); }, 680);
+                }
+              }
+            } else if (triggeredWords[activePhaseIndex][i]) {
+              delete triggeredWords[activePhaseIndex][i];
+              resetWord(word);
+            }
+          });
+
+          Array.from(block.querySelectorAll('.sw')).forEach(function(el, i) {
+            if (elapsedInPhase >= i * 120) {
+              if (!triggeredSw[activePhaseIndex][i]) { triggerSwEl(el, isPlaying); triggeredSw[activePhaseIndex][i] = true; }
+            } else if (triggeredSw[activePhaseIndex][i]) {
+              delete triggeredSw[activePhaseIndex][i]; resetSw(el);
+            }
+          });
+
+          Array.from(block.querySelectorAll('.sw-w')).forEach(function(w, i) {
+            if (elapsedInPhase >= i * 190) {
+              if (!triggeredSww[activePhaseIndex][i]) {
+                w.style.transition = isPlaying ? 'opacity 200ms ease' : 'none';
+                w.style.opacity = '1';
+                triggeredSww[activePhaseIndex][i] = true;
+              }
+            } else if (triggeredSww[activePhaseIndex][i]) {
+              delete triggeredSww[activePhaseIndex][i]; w.style.opacity = '0.14';
+            }
+          });
+
+          dots.forEach(function(dot, i) { dot.className = i === activePhaseIndex ? 'on' : ''; });
+        });
+
+        window.parent.postMessage({ type: 'ready' }, '*');
       })();
     </script>
   `;
@@ -740,6 +747,12 @@ function buildAppliedSidebarTemplateDoc({ captionText = '', captionStyle = {}, p
             display: inline-block;
             backface-visibility: hidden;
             will-change: transform, opacity, clip-path;
+          }
+
+          body.paused *,
+          body.paused {
+            animation-play-state: paused !important;
+            transition: none !important;
           }
         </style>
       </head>
@@ -1617,6 +1630,32 @@ const MemoizedVideo = React.memo(function MemoizedVideo({ videoRef, videoUrl, on
   return prev.videoUrl === next.videoUrl;
 });
 
+const AppliedTemplateIframe = React.memo(function AppliedTemplateIframe({ templateDoc, title }) {
+  const iframeRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (iframeRef.current) {
+      iframeRef.current.srcDoc = templateDoc;
+    }
+  }, [templateDoc]);
+
+  return (
+    <iframe
+      ref={iframeRef}
+      title={title}
+      scrolling="no"
+      style={{
+        width: '100%',
+        height: '100%',
+        border: 0,
+        overflow: 'hidden',
+        background: 'transparent',
+        pointerEvents: 'none',
+      }}
+    />
+  );
+});
+
 export default function VideoPlayer({
   videoUrl,
   currentTime,
@@ -1677,6 +1716,8 @@ export default function VideoPlayer({
   const lastDragDropTime = useRef(0);
   const wordResizeActiveRef = useRef(false);
   const inputRef = useRef(null);
+  // Cache the sidebar template iframe srcDoc to avoid reloading iframe on caption text change
+  const sidebarTemplateDocRef = useRef({ templateId: null, doc: '' });
   // Blocks handleTimeUpdate from propagating to Dashboard while user is dragging
   const isScrubbingRef = useRef(false);
 
@@ -1869,6 +1910,131 @@ export default function VideoPlayer({
       videoRef.current.currentTime = seekSignal;
     }
   }, [seekSignal]);
+
+  // Listen for 'ready' message from template iframes and reply with the initial sync state
+  useEffect(() => {
+    const handleIframeReady = (event) => {
+      if (event.data?.type === 'ready') {
+        const videoContainer = videoContainerRef.current || videoRef.current?.parentElement;
+        if (!videoContainer) return;
+        const iframes = videoContainer.querySelectorAll('iframe');
+        iframes.forEach((iframe) => {
+          if (iframe.contentWindow === event.source) {
+            const activeCaption = getActiveCaptions().find(c => !c.isTextElement);
+            iframe.contentWindow.postMessage({
+              type: 'sync',
+              currentTime,
+              isPlaying,
+              startTime: activeCaption ? activeCaption.start_time : currentTime,
+              endTime: activeCaption ? activeCaption.end_time : currentTime,
+              captionText: activeCaption ? (activeCaption.text || '') : ''
+            }, '*');
+          }
+        });
+      }
+    };
+    window.addEventListener('message', handleIframeReady);
+    return () => {
+      window.removeEventListener('message', handleIframeReady);
+    };
+  }, [currentTime, isPlaying, captions]);
+
+  // ── rAF loop: send 60fps sync to template iframes while playing ─────────
+  // When paused, React state changes still fire the static effect above.
+  // When playing we need sub-4fps resolution for word-by-word animations,
+  // so we bypass React state and read videoRef.current.currentTime directly.
+  const iframeSyncRafRef = useRef(null);
+  const captionsRef = useRef(captions);
+  captionsRef.current = captions;
+  const isPlayingRef = useRef(isPlaying);
+  isPlayingRef.current = isPlaying;
+
+  useEffect(() => {
+    function buildSyncMsg(t) {
+      const caps = captionsRef.current || [];
+      const activeCaption = caps.find(
+        c => c && !c.isTextElement &&
+          typeof c.start_time === 'number' &&
+          typeof c.end_time === 'number' &&
+          t >= c.start_time && t <= c.end_time
+      );
+      return {
+        type: 'sync',
+        currentTime: t,
+        isPlaying: isPlayingRef.current,
+        startTime: activeCaption ? activeCaption.start_time : t,
+        endTime: activeCaption ? activeCaption.end_time : t,
+        captionText: activeCaption ? (activeCaption.text || '') : '',
+      };
+    }
+
+    function tick() {
+      if (!isPlayingRef.current) {
+        iframeSyncRafRef.current = null;
+        return;
+      }
+      const videoEl = videoRef.current;
+      const videoContainer = videoContainerRef.current || videoEl?.parentElement;
+      if (videoEl && videoContainer) {
+        const t = videoEl.currentTime;
+        const iframes = videoContainer.querySelectorAll('iframe');
+        if (iframes.length > 0) {
+          const msg = buildSyncMsg(t);
+          iframes.forEach(iframe => iframe.contentWindow?.postMessage(msg, '*'));
+        }
+      }
+      iframeSyncRafRef.current = requestAnimationFrame(tick);
+    }
+
+    if (isPlaying) {
+      // cancel any existing loop then start fresh
+      if (iframeSyncRafRef.current) cancelAnimationFrame(iframeSyncRafRef.current);
+      iframeSyncRafRef.current = requestAnimationFrame(tick);
+    } else {
+      if (iframeSyncRafRef.current) {
+        cancelAnimationFrame(iframeSyncRafRef.current);
+        iframeSyncRafRef.current = null;
+      }
+    }
+
+    return () => {
+      if (iframeSyncRafRef.current) {
+        cancelAnimationFrame(iframeSyncRafRef.current);
+        iframeSyncRafRef.current = null;
+      }
+    };
+  }, [isPlaying]);
+
+  // When paused, send sync updates to template iframes if time, play state, or captions change.
+  // This ensures the template updates its visual state immediately during seeking or edits.
+  useEffect(() => {
+    if (!isPlaying) {
+      const videoEl = videoRef.current;
+      const videoContainer = videoContainerRef.current || videoEl?.parentElement;
+      if (videoContainer) {
+        const iframes = videoContainer.querySelectorAll('iframe');
+        if (iframes.length > 0) {
+          const caps = captions || [];
+          const activeCaption = caps.find(
+            c => c && !c.isTextElement &&
+              typeof c.start_time === 'number' &&
+              typeof c.end_time === 'number' &&
+              currentTime >= c.start_time && currentTime <= c.end_time
+          );
+          const msg = {
+            type: 'sync',
+            currentTime,
+            isPlaying: false,
+            startTime: activeCaption ? activeCaption.start_time : currentTime,
+            endTime: activeCaption ? activeCaption.end_time : currentTime,
+            captionText: activeCaption ? (activeCaption.text || '') : '',
+          };
+          iframes.forEach(iframe => iframe.contentWindow?.postMessage(msg, '*'));
+        }
+      }
+    }
+  }, [currentTime, isPlaying, captions]);
+
 
   // Stable refs for callbacks passed to MemoizedVideo — these MUST not change reference
   // between renders, otherwise React.memo comparison would need to track them.
@@ -2344,8 +2510,8 @@ export default function VideoPlayer({
   };
 
   const renderAppliedSidebarTemplateCaption = (caption) => {
-    const words = String(caption.text || '').trim().split(/\s+/).filter(Boolean);
-    if (!words.length) return null;
+    const words = String(caption?.text || '').trim().split(/\s+/).filter(Boolean);
+    const hasText = words.length > 0;
     const frameWidth = canvasSize.width || videoContainerRef.current?.offsetWidth || 240;
     const frameHeight = canvasSize.height || videoContainerRef.current?.offsetHeight || 426;
     const shellWidth = Math.max(
@@ -2357,21 +2523,33 @@ export default function VideoPlayer({
       Math.min(frameHeight * 0.56, SIDEBAR_TEMPLATE_APPLIED_HEIGHT_CAP * previewRenderScale),
     );
 
-    const templateDoc = buildAppliedSidebarTemplateDoc({
-      captionText: caption.text || '',
-      captionStyle,
-      previewScale: previewRenderScale,
-    })
+    // Memoize the template doc: only rebuild when template style changes, NOT when caption text changes.
+    // Text updates during playback are handled via postMessage sync.
+    const currentTemplateId = captionStyle?.template_20_id || '';
+    const currentTemplateSource = captionStyle?.template_source || '';
+    const currentTemplateMarkup = captionStyle?.template_markup || '';
+    const templateCacheKey = `${currentTemplateId}-${currentTemplateSource}-${currentTemplateMarkup}`;
+    let templateDoc;
+    if (sidebarTemplateDocRef.current.templateId === templateCacheKey) {
+      templateDoc = sidebarTemplateDocRef.current.doc;
+    } else {
+      templateDoc = buildAppliedSidebarTemplateDoc({
+        captionText: caption?.text || '',
+        captionStyle,
+        previewScale: previewRenderScale,
+      });
+      sidebarTemplateDocRef.current = { templateId: templateCacheKey, doc: templateDoc };
+    }
 
     if (templateDoc) {
       return (
         <span
-          key={`${caption.id}-${captionStyle?.template_20_id || 'sidebar-template'}-${caption.text}`}
+          key={`sidebar-template-${captionStyle?.template_20_id || 'active'}`}
           className="lekha-sidebar-applied-template-shell"
           data-template-id={captionStyle?.template_20_id || undefined}
           data-template-source={captionStyle?.template_source || undefined}
           style={{
-            display: 'block',
+            display: hasText ? 'block' : 'none',
             width: `${Math.round(shellWidth)}px`,
             height: `${Math.round(shellHeight)}px`,
             maxWidth: '94%',
@@ -2382,18 +2560,9 @@ export default function VideoPlayer({
             background: 'transparent',
           }}
         >
-          <iframe
+          <AppliedTemplateIframe
             title={`${captionStyle?.template_name || captionStyle?.template_20_id || 'Template'} applied caption`}
-            srcDoc={templateDoc}
-            scrolling="no"
-            style={{
-              width: '100%',
-              height: '100%',
-              border: 0,
-              overflow: 'hidden',
-              background: 'transparent',
-              pointerEvents: 'none',
-            }}
+            templateDoc={templateDoc}
           />
         </span>
       );
@@ -2407,7 +2576,7 @@ export default function VideoPlayer({
 
     return (
       <span
-        key={`${caption.id}-${captionStyle?.template_20_id || 'sidebar-template'}-${caption.text}`}
+        key={`sidebar-template-${captionStyle?.template_20_id || 'active'}-fallback`}
         className={isNewTemplateSet ? `lekha-sidebar-source-template lk-card ${templateClass}` : `lekha-sidebar-source-template card ${templateClass}`}
         data-template-id={captionStyle?.template_20_id || undefined}
         data-template-source={captionStyle?.template_source || undefined}
@@ -2427,13 +2596,14 @@ export default function VideoPlayer({
           opacity: captionStyle?.text_opacity ?? 1,
           transform: `scale(${captionStyle?.scale || 1})`,
           transformOrigin: 'center center',
+          display: hasText ? 'inline-block' : 'none',
         }}
       >
         <span className={isNewTemplateSet ? 'lk-stage' : 'stage'}>
           <span className={isNewTemplateSet ? 'sblock active' : 'sb active'}>
             <span className={isNewTemplateSet ? `wbw-line ${templateEffect}` : `wbw ${templateEffect}`}>
               {words.map((word, wordIndex, arr) => (
-                <React.Fragment key={`${caption.id}-${wordIndex}-sidebar-fallback`}>
+                <React.Fragment key={`sidebar-fallback-${wordIndex}`}>
                   <span
                     className={isNewTemplateSet ? 'wbw-word normal visible' : 'w in'}
                     style={{
@@ -2442,7 +2612,7 @@ export default function VideoPlayer({
                   >
                     {word}
                   </span>
-                  {wordIndex < arr.length - 1 ? ' ' : ''}
+                  {wordIndex < arr.length - 1 && ' '}
                 </React.Fragment>
               ))}
             </span>
@@ -3119,12 +3289,15 @@ export default function VideoPlayer({
   };
 
   const handleTextElementMouseDown = (e, elementId, currentStyle) => {
+    const isMoveBtn = e.target.closest('.text-element-move-btn');
     if (
       !setCaptions
-      || e.target.classList.contains('text-resize-handle')
-      || e.target.closest('button')
-      || e.target.closest('[data-word-key]')
-      || e.target.closest('[contenteditable="true"]')
+      || (!isMoveBtn && (
+        e.target.classList.contains('text-resize-handle')
+        || e.target.closest('button')
+        || e.target.closest('[data-word-key]')
+        || e.target.closest('[contenteditable="true"]')
+      ))
     ) return;
     e.preventDefault();
     e.stopPropagation();
@@ -3145,14 +3318,67 @@ export default function VideoPlayer({
     e.currentTarget.setPointerCapture?.(e.pointerId);
     if (addToHistory) addToHistory();
     setResizedElementId(elementId);
+    const measuredWidth = currentStyle.width || 300;
     setElementResizeStart({
       x: e.clientX,
       y: e.clientY,
-      initialWidth: currentStyle.width || 300,
+      initialWidth: measuredWidth,
       initialFontSize: currentStyle.fontSize || 18,
-      minWidth: currentStyle.minWidth || 150,
+      minWidth: currentStyle.minWidth || 40,
       direction: e.currentTarget?.dataset?.resizeEdge || 'right',
     });
+  };
+
+  const handleTextElementRotateStart = (e, elementId, currentStyle) => {
+    if (!setCaptions) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    if (addToHistory) addToHistory();
+
+    const elementBox = e.currentTarget.closest('[data-text-element-layer="true"]');
+    const rect = elementBox?.getBoundingClientRect();
+    if (!rect) return;
+
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    
+    const startAngle = Math.atan2(e.clientY - centerY, e.clientX - centerX);
+    const initialRotation = currentStyle.rotation || 0;
+
+    const handleRotateMove = (moveEvent) => {
+      moveEvent.preventDefault();
+      const currentAngle = Math.atan2(moveEvent.clientY - centerY, moveEvent.clientX - centerX);
+      const angleDiff = currentAngle - startAngle;
+      let nextRotation = Math.round(initialRotation + (angleDiff * 180 / Math.PI));
+      
+      if (moveEvent.shiftKey) {
+        nextRotation = Math.round(nextRotation / 15) * 15;
+      }
+
+      setCaptions(prev => prev.map(c => {
+        if (c.id !== elementId) return c;
+        return {
+          ...c,
+          customStyle: {
+            ...c.customStyle,
+            rotation: nextRotation
+          }
+        };
+      }));
+    };
+
+    const handleRotateEnd = () => {
+      document.removeEventListener('mousemove', handleRotateMove);
+      document.removeEventListener('mouseup', handleRotateEnd);
+      document.removeEventListener('pointermove', handleRotateMove);
+      document.removeEventListener('pointerup', handleRotateEnd);
+    };
+
+    document.addEventListener('mousemove', handleRotateMove);
+    document.addEventListener('mouseup', handleRotateEnd);
+    document.addEventListener('pointermove', handleRotateMove, { passive: false });
+    document.addEventListener('pointerup', handleRotateEnd);
   };
 
   // ✅ ZERO-LATENCY NATIVE DRAG HANDLER
@@ -3592,8 +3818,7 @@ export default function VideoPlayer({
     e.stopPropagation();
     e.currentTarget.setPointerCapture?.(e.pointerId);
     if (addToHistory) addToHistory();
-    const captionBox = e.currentTarget?.parentElement;
-    const measuredWidth = captionStyle?.boxWidth || captionBox?.getBoundingClientRect?.().width || captionWidth || 300;
+    const measuredWidth = captionStyle?.boxWidth || 300;
     setIsResizing(true);
     setResizeStartX(e.clientX);
     setResizeStartY(e.clientY);
@@ -3744,7 +3969,8 @@ export default function VideoPlayer({
 
         const isHorizontalFrameResize = ['left', 'right'].includes(elementResizeStart.direction);
         const minFrameWidth = isHorizontalFrameResize ? 28 : Math.min(elementResizeStart.minWidth || 150, 80);
-        let newWidth = elementResizeStart.initialWidth + resizeDelta;
+        const unscaledDelta = resizeDelta / Math.max(previewRenderScale, 0.001);
+        let newWidth = elementResizeStart.initialWidth + (isHorizontalFrameResize ? unscaledDelta * 2 : unscaledDelta);
         newWidth = Math.max(minFrameWidth, Math.min(600, newWidth));
 
         const widthRatio = newWidth / Math.max(elementResizeStart.initialWidth, 1);
@@ -3786,7 +4012,7 @@ export default function VideoPlayer({
       document.removeEventListener('pointerup', handleMouseUp);
       document.removeEventListener('pointercancel', handleMouseUp);
     };
-  }, [isDragging, dragStartY, dragStartPos, setCaptionStyle, setCaptions, draggedElementId, resizedElementId, elementDragStart, elementResizeStart]);
+  }, [isDragging, dragStartY, dragStartPos, setCaptionStyle, setCaptions, draggedElementId, resizedElementId, elementDragStart, elementResizeStart, previewRenderScale]);
 
   useEffect(() => {
     if (!isResizing || !setCaptionStyle) return;
@@ -3819,7 +4045,8 @@ export default function VideoPlayer({
 
       const isHorizontalFrameResize = ['left', 'right'].includes(resizeDirection);
       const minFrameWidth = isHorizontalFrameResize ? 180 : 80;
-      let newWidth = resizeStartWidth + resizeDelta;
+      const unscaledDelta = resizeDelta / Math.max(previewRenderScale, 0.001);
+      let newWidth = resizeStartWidth + (isHorizontalFrameResize ? unscaledDelta * 2 : unscaledDelta);
       newWidth = Math.max(minFrameWidth, Math.min(600, newWidth));
 
       // Calculate proportional font size change
@@ -3854,7 +4081,7 @@ export default function VideoPlayer({
       document.removeEventListener('pointerup', handleMouseUp);
       document.removeEventListener('pointercancel', handleMouseUp);
     };
-  }, [isResizing, resizeDirection, resizeStartFontSize, resizeStartWidth, resizeStartX, resizeStartY, setCaptionStyle]);
+  }, [isResizing, resizeDirection, resizeStartFontSize, resizeStartWidth, resizeStartX, resizeStartY, setCaptionStyle, previewRenderScale]);
 
   const selectedDetachedWordViewport = (() => {
     if (!selectedDetachedWord || typeof window === 'undefined') return null;
@@ -4330,6 +4557,9 @@ export default function VideoPlayer({
             const isEditingThis = isEditing === caption.id;
             const hasDetachedWords = captionHasDetachedWords(caption);
             const isSidebarTemplate = hasSidebarTemplateStyle(captionStyle);
+            if (isSidebarTemplate && !caption.isTextElement) {
+              return null;
+            }
             const shouldWrapCaption = !isSidebarTemplate && !captionStyle?.template_id;
             const autoWrapMaxWidth = Math.max(
               220,
@@ -4401,12 +4631,16 @@ export default function VideoPlayer({
                     backgroundColor: 'transparent',
                     padding: '0px',
                     textAlign: captionStyle?.text_align || 'center',
-                    width: isSidebarTemplate ? '100%' : shouldWrapCaption ? 'max-content' : 'fit-content',
+                    width: isSidebarTemplate 
+                      ? '100%' 
+                      : captionStyle?.boxWidth 
+                        ? `${captionStyle.boxWidth * previewRenderScale}px` 
+                        : (shouldWrapCaption ? 'max-content' : 'fit-content'),
                     maxWidth: isSidebarTemplate
                       ? '100%'
-                      : shouldWrapCaption
-                        ? `${autoWrapMaxWidth}px`
-                        : '90vw',
+                      : captionStyle?.boxWidth 
+                        ? undefined 
+                        : (shouldWrapCaption ? `${autoWrapMaxWidth}px` : '90vw'),
                     position: 'relative',
                     display: isSidebarTemplate ? 'flex' : 'inline-block',
                     justifyContent: isSidebarTemplate ? 'center' : undefined,
@@ -4496,7 +4730,7 @@ export default function VideoPlayer({
                         opacity: captionStyle?.text_opacity || 1,
                         transform: `scale(${captionStyle?.scale || 1})`,
                         padding: hasDetachedWords ? '0px' : `${displayCaptionPadY}px ${displayCaptionPadX}px`,
-                        whiteSpace: shouldWrapCaption ? 'normal' : 'nowrap',
+                        whiteSpace: (shouldWrapCaption || captionStyle?.boxWidth) ? 'normal' : 'nowrap',
                         wordBreak: 'normal',
                         ...(captionStyle?.text_gradient ? {
                           backgroundImage: captionStyle.text_gradient,
@@ -4542,7 +4776,7 @@ export default function VideoPlayer({
                           ? undefined
                           : `${(captionStyle?.word_spacing ?? 0) * previewRenderScale}px`,
                         textTransform: captionStyle?.text_case && captionStyle.text_case !== 'none' ? captionStyle.text_case : undefined,
-                        whiteSpace: shouldWrapCaption ? 'normal' : 'nowrap',
+                        whiteSpace: (shouldWrapCaption || captionStyle?.boxWidth) ? 'normal' : 'nowrap',
                         wordBreak: 'normal',
                         padding: hasDetachedWords ? '0px' : undefined,
                         animation: caption.animation && caption.animation !== 'none' ? getAnimationStyle(caption.animation, caption.animationSpeed) : 'none',
@@ -4678,7 +4912,7 @@ export default function VideoPlayer({
                         padding: hasDetachedWords ? '0px' : `${displayCaptionPadY}px ${displayCaptionPadX}px`,
                         position: 'relative',
                         zIndex: 10,
-                        whiteSpace: shouldWrapCaption ? 'normal' : 'nowrap',
+                        whiteSpace: (shouldWrapCaption || captionStyle?.boxWidth) ? 'normal' : 'nowrap',
                         wordBreak: 'normal',
                         // Add shadow/stroke if configured
                         ...(() => {
@@ -4882,6 +5116,24 @@ export default function VideoPlayer({
             );
           })}
 
+          {/* Main Caption Sidebar Template Overlay */}
+          {hasSidebarTemplateStyle(captionStyle) && (
+            <div
+              data-caption-layer="true"
+              className="absolute flex justify-center"
+              style={{
+                top: `${captionStyle?.position_y ?? 75}%`,
+                left: '50%',
+                width: '100%',
+                transform: 'translate(-50%, -50%)',
+                zIndex: 10,
+                pointerEvents: setCaptionStyle ? 'auto' : 'none',
+              }}
+            >
+              {renderAppliedSidebarTemplateCaption(activeCaptions.find(c => !c.isTextElement))}
+            </div>
+          )}
+
           {detachedCaptionWordOverlays}
 
           {/* Text Elements (render above captions) */}
@@ -4907,8 +5159,9 @@ export default function VideoPlayer({
                 style={{
                   top: `${style.top || 50}%`,
                   left: `${style.left || 50}%`,
-                  transform: 'translate(-50%, -50%)',
-                  width: `${style.width || 300}px`,
+                  transform: `translate(-50%, -50%)${style.rotation ? ` rotate(${style.rotation}deg)` : ''}`,
+                  transformOrigin: 'center center',
+                  width: `${(style.width || 300) * previewRenderScale}px`,
                   zIndex: style.zIndex || 50
                 }}
                 onPointerDown={(e) => {
@@ -4969,18 +5222,16 @@ export default function VideoPlayer({
                 {!isEditingThis && (
                   <>
                     {[
-                      ['top-left', 'left-0 top-0 -translate-x-1/2 -translate-y-1/2 cursor-nwse-resize'],
-                      ['top', 'left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 cursor-ns-resize'],
-                      ['top-right', 'right-0 top-0 -translate-y-1/2 translate-x-1/2 cursor-nesw-resize'],
-                      ['left', 'left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize'],
-                      ['right', 'right-0 top-1/2 -translate-y-1/2 translate-x-1/2 cursor-ew-resize'],
-                      ['bottom-left', 'bottom-0 left-0 -translate-x-1/2 translate-y-1/2 cursor-nesw-resize'],
-                      ['bottom', 'bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 cursor-ns-resize'],
-                      ['bottom-right', 'bottom-0 right-0 translate-x-1/2 translate-y-1/2 cursor-nwse-resize'],
-                    ].map(([edge, positionClass]) => (
+                      ['top-left', 'left-0 top-0 -translate-x-1/2 -translate-y-1/2 cursor-nwse-resize w-3 h-3 rounded-full'],
+                      ['top-right', 'right-0 top-0 -translate-y-1/2 translate-x-1/2 cursor-nesw-resize w-3 h-3 rounded-full'],
+                      ['bottom-left', 'bottom-0 left-0 -translate-x-1/2 translate-y-1/2 cursor-nesw-resize w-3 h-3 rounded-full'],
+                      ['bottom-right', 'bottom-0 right-0 translate-x-1/2 translate-y-1/2 cursor-nwse-resize w-3 h-3 rounded-full'],
+                      ['left', 'left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize w-2 h-4.5 rounded-full'],
+                      ['right', 'right-0 top-1/2 -translate-y-1/2 translate-x-1/2 cursor-ew-resize w-2 h-4.5 rounded-full'],
+                    ].map(([edge, positionAndShapeClass]) => (
                       <div
                         key={edge}
-                        className={`text-resize-handle ${selectionHandleClass} ${positionClass} transition-opacity ${selectedCaptionId === element.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                        className={`text-resize-handle absolute z-50 border border-[#b76cff] bg-white shadow-[0_0_0_1px_rgba(255,255,255,0.7)] ${positionAndShapeClass} transition-opacity ${selectedCaptionId === element.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
                         data-resize-edge={edge}
                         onPointerDown={(e) => handleTextElementResizeDown(e, element.id, style)}
                         style={{ touchAction: 'none' }}
@@ -5191,6 +5442,35 @@ export default function VideoPlayer({
                     })}
                   </div>
                 )}
+              {/* Action buttons below the bounding box */}
+              {selectedCaptionId === element.id && !isEditingThis && (
+                <div
+                  className="absolute left-1/2 top-full z-50 mt-3.5 flex -translate-x-1/2 items-center gap-2"
+                  style={{ pointerEvents: 'auto' }}
+                  data-video-control
+                >
+                  <span
+                    className="flex h-6 w-6 items-center justify-center rounded-full border border-[#d8d2e8] bg-white text-[#4f4f5a] shadow-[0_2px_5px_rgba(15,15,20,0.16)] transition-transform hover:scale-105"
+                    style={{ cursor: 'grab' }}
+                    onPointerDown={(e) => handleTextElementRotateStart(e, element.id, style)}
+                    title="Rotate text"
+                    data-video-control
+                  >
+                    <RotateCw className="h-3.5 w-3.5 text-[#4f4f5a]" strokeWidth={2} />
+                  </span>
+                  <span
+                    className="text-element-move-btn flex h-6 w-6 items-center justify-center rounded-full border border-[#d8d2e8] bg-white text-[#4f4f5a] shadow-[0_2px_5px_rgba(15,15,20,0.16)] transition-transform hover:scale-105"
+                    style={{ cursor: 'move' }}
+                    onPointerDown={(e) => {
+                      handleTextElementMouseDown(e, element.id, style);
+                    }}
+                    title="Move text"
+                    data-video-control
+                  >
+                    <Move className="h-3.5 w-3.5 text-[#4f4f5a]" strokeWidth={2} />
+                  </span>
+                </div>
+              )}
               </div>
               </div>
             );

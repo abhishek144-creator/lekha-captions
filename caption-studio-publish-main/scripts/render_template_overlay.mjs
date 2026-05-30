@@ -105,7 +105,8 @@ function extractOriginalTemplateRuntimeCss(originalTemplateHtml) {
 }
 
 function extractHtmlStyle(markup = '') {
-  return String(markup).match(/<style>([\s\S]*?)<\/style>/i)?.[1] || '';
+  const matches = [...String(markup).matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)];
+  return matches.map(m => m[1]).join('\n');
 }
 
 function buildRuntimeScript() {

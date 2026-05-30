@@ -4,7 +4,7 @@ import CaptionStudioLogo from '@/components/dashboard/CaptionStudioLogo'
 
 export default function Footer() {
   return (
-    <footer className="py-12 bg-[#111111] border-t border-[#1A1A1A]">
+    <footer className="py-12 bg-[#111111] border-t border-[#F5A623]/20">
       <div className="max-w-6xl mx-auto px-6">
         <div className="flex flex-col md:flex-row justify-between items-start gap-10 mb-10">
           {/* Brand */}
@@ -35,7 +35,7 @@ export default function Footer() {
           </div>
         </div>
 
-        <div className="border-t border-[#1A1A1A] pt-6 flex flex-col md:flex-row justify-between items-center gap-3">
+        <div className="border-t border-[#F5A623]/20 pt-6 flex flex-col md:flex-row justify-between items-center gap-3">
           <p className="text-[#949494]/70 text-sm">© {new Date().getFullYear()} Lekha Captions. All rights reserved.</p>
           <p className="text-[#949494] text-sm">Built for every language, every creator 🌍</p>
         </div>

@@ -9,5 +9,6 @@ export function notifyApiError(error, title = "Request failed") {
     variant: "destructive",
     title,
     description: getApiErrorMessage(error),
+    duration: 10000,
   })
 }

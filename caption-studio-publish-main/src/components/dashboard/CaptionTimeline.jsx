@@ -1,7 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Slider } from '@/components/ui/slider';
-import { Button } from '@/components/ui/button';
 import { Play, Pause, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 
 // RESTORED COMPACT DIMENSIONS
@@ -771,9 +769,9 @@ export default function CaptionTimeline({
                       height: `${h}px`,
                       left: `calc(${(i / waveformBars.length) * 100}% - 1px)`,
                       top: `calc(50% - ${h / 2}px)`,
-                      backgroundColor: '#f7b12f',
-                      boxShadow: '0 0 0 1px rgba(247,177,47,0.05)',
-                      opacity: 0.98
+                      backgroundColor: '#ffffff',
+                      boxShadow: 'none',
+                      opacity: 0.15 + amplitude * 0.83
                     }}
                   />
                 );
