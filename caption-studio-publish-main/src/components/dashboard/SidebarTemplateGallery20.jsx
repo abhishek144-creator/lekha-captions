@@ -1238,6 +1238,7 @@ function TemplatePreviewFrame({ template }) {
         srcDoc={srcDoc}
         sandbox="allow-scripts"
         scrolling="no"
+        style={{ pointerEvents: 'none' }}
       />
     </div>
   );
