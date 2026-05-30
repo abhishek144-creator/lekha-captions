@@ -155,6 +155,28 @@ export default function Dashboard() {
   const [selectedCaptionId, setSelectedCaptionId] = useState(null);
   const [captionStyle, setCaptionStyle] = useState(defaultCaptionStyle);
 
+  // DEV-ONLY seed: load a sample video + Hindi captions instantly for verifying
+  // template rendering without the upload/transcribe flow. Activate with ?devseed=1.
+  // Guarded by import.meta.env.DEV so it is dropped from production builds.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    if (typeof window === 'undefined') return;
+    if (!new URLSearchParams(window.location.search).has('devseed')) return;
+    const mkWords = (pairs) => pairs.map(([w, s, e]) => ({ word: w, text: w, start: s, end: e }));
+    setVideoUrl('/uploads/devseed.mp4');
+    setDuration(12);
+    setFileId('devseed');
+    setCaptions([
+      { id: 'seed-0', text: 'सपने वही जो सच हों', start_time: 0.2, end_time: 3.6, position_x: 50, position_y: null, wordStyles: {},
+        words: mkWords([['सपने', 0.2, 1.0], ['वही', 1.0, 1.7], ['जो', 1.7, 2.3], ['सच', 2.3, 3.0], ['हों', 3.0, 3.6]]) },
+      { id: 'seed-1', text: 'मेहनत कभी बेकार नहीं जाती', start_time: 3.8, end_time: 7.6, position_x: 50, position_y: null, wordStyles: {},
+        words: mkWords([['मेहनत', 3.8, 4.6], ['कभी', 4.6, 5.2], ['बेकार', 5.2, 6.0], ['नहीं', 6.0, 6.7], ['जाती', 6.7, 7.6]]) },
+      { id: 'seed-2', text: 'आज खुद पर यकीन करो', start_time: 7.8, end_time: 11.6, position_x: 50, position_y: null, wordStyles: {},
+        words: mkWords([['आज', 7.8, 8.5], ['खुद', 8.5, 9.2], ['पर', 9.2, 9.8], ['यकीन', 9.8, 10.6], ['करो', 10.6, 11.6]]) },
+    ]);
+    setIsLoaded(true);
+  }, []);
+
   const [projectId, setProjectId] = useState(null);
   const [settings, setSettings] = useState({ language: 'english', style: 'viral_hook' });
   const [isLoaded, setIsLoaded] = useState(false);
@@ -198,6 +220,11 @@ export default function Dashboard() {
   // Force a clean session natively on page load, unless navigating back from Account
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    // DEV-ONLY: let the ?devseed effect own the session; don't wipe it here.
+    if (import.meta.env.DEV && params.has('devseed')) {
+      setIsLoaded(true);
+      return;
+    }
     const isNavigationRestore = location.state?.restoreSession || params.get('restoreSession') === '1';
 
     if (isNavigationRestore) {
