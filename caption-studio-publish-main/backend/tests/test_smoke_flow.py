@@ -23,7 +23,7 @@ class SmokeFlowTests(unittest.TestCase):
     def test_upload_process_export_smoke(self, mock_safe_find, mock_export_core, mock_process, _verify_token, _probe, _scan):
         # 1) Upload
         files = {"file": ("sample.mp4", io.BytesIO(b"fake-video"), "video/mp4")}
-        upload_res = self.client.post("/api/upload", files=files)
+        upload_res = self.client.post("/api/upload", files=files, headers={"Authorization": "Bearer token-123"})
         self.assertEqual(upload_res.status_code, 200)
         upload_data = upload_res.json()
         self.assertTrue(upload_data.get("success"))

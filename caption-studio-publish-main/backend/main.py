@@ -15,13 +15,14 @@ if os.path.exists(env_base):
 from fastapi import FastAPI, UploadFile, File, HTTPException, Response
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import shutil
 import os
 import uuid
 import urllib.request
+import urllib.parse
 import json
+import base64
 from datetime import datetime, timedelta, date, timezone
 from dateutil.relativedelta import relativedelta
 from typing import List, Dict, Any, Optional
@@ -108,9 +109,17 @@ def _send_alert(text: str):
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        urllib.request.urlopen(req, timeout=5)
+        _urlopen_https_only(req, timeout=5)
     except Exception as e:
         _json_log("warning", "alert_webhook_failed", error=str(e))
+
+
+def _urlopen_https_only(req, timeout: int = 5):
+    url = getattr(req, "full_url", str(req))
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme != "https":
+        raise ValueError("Only https URLs are allowed for outbound requests")
+    return urllib.request.urlopen(req, timeout=timeout)  # nosec B310
 
 @app.middleware("http")
 async def request_logging_middleware(request: Request, call_next):
@@ -176,6 +185,9 @@ RAZORPAY_KEY_SECRET = os.environ.get("RAZORPAY_KEY_SECRET", "")
 RAZORPAY_WEBHOOK_SECRET = os.environ.get("RAZORPAY_WEBHOOK_SECRET", "")
 if _IS_PRODUCTION and not RAZORPAY_WEBHOOK_SECRET:
     raise RuntimeError("RAZORPAY_WEBHOOK_SECRET must be set in production (ENV=production).")
+MEDIA_URL_SIGNING_SECRET = os.environ.get("MEDIA_URL_SIGNING_SECRET", "").strip() or RAZORPAY_WEBHOOK_SECRET
+if _IS_PRODUCTION and not MEDIA_URL_SIGNING_SECRET:
+    raise RuntimeError("MEDIA_URL_SIGNING_SECRET must be set in production (ENV=production).")
 rzp_client = None
 if RAZORPAY_AVAILABLE and RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET:
     rzp_client = _razorpay_module.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
@@ -186,46 +198,46 @@ elif RAZORPAY_AVAILABLE:
 PLAN_PRICING = {
     # Monthly plans
     'starter': {
-        'inr_paise': 9900, 'usd_cents': 99,
+        'inr_paise': 29900, 'usd_cents': 399,
         'credits': 15, 'days': 30,
         'daily_limit': 3, 'max_video_seconds': 120,
         'export_retention_hours': 2, 'tier': 'starter',
     },
     'creator': {
-        'inr_paise': 19900, 'usd_cents': 199,
+        'inr_paise': 49900, 'usd_cents': 499,
         'credits': 45, 'days': 30,
         'daily_limit': 5, 'max_video_seconds': 180,
         'export_retention_hours': 24, 'tier': 'creator',
     },
     'pro': {
-        'inr_paise': 39900, 'usd_cents': 399,
-        'credits': 100, 'days': 30,
+        'inr_paise': 79900, 'usd_cents': 599,
+        'credits': 120, 'days': 30,
         'daily_limit': None, 'max_video_seconds': 180,
         'export_retention_hours': 72, 'tier': 'pro',
     },
     # Yearly plans (billed as single charge, 365 days)
     'starter_yearly': {
-        'inr_paise': 99900, 'usd_cents': 999,
-        'credits': 15, 'days': 365,
+        'inr_paise': 250000, 'usd_cents': 3999,
+        'credits': 180, 'days': 365,
         'daily_limit': 3, 'max_video_seconds': 120,
         'export_retention_hours': 2, 'tier': 'starter_yearly',
     },
     'creator_yearly': {
-        'inr_paise': 199900, 'usd_cents': 1999,
-        'credits': 45, 'days': 365,
+        'inr_paise': 450000, 'usd_cents': 4999,
+        'credits': 540, 'days': 365,
         'daily_limit': 5, 'max_video_seconds': 180,
         'export_retention_hours': 24, 'tier': 'creator_yearly',
     },
     'pro_yearly': {
-        'inr_paise': 399900, 'usd_cents': 3999,
-        'credits': 100, 'days': 365,
+        'inr_paise': 650000, 'usd_cents': 5999,
+        'credits': 1440, 'days': 365,
         'daily_limit': None, 'max_video_seconds': 180,
         'export_retention_hours': 72, 'tier': 'pro_yearly',
     },
     # Top-up packs (add credits only, no tier/expiry change)
-    'topup_starter': {'inr_paise': 4900, 'credits': 10, 'is_topup': True, 'allowed_tier': 'starter'},
-    'topup_creator': {'inr_paise': 4900, 'credits': 15, 'is_topup': True, 'allowed_tier': 'creator'},
-    'topup_pro':     {'inr_paise': 7900, 'credits': 25, 'is_topup': True, 'allowed_tier': 'pro'},
+    'topup_starter': {'inr_paise': 9900, 'credits': 10, 'is_topup': True, 'allowed_tier': 'starter'},
+    'topup_creator': {'inr_paise': 9900, 'credits': 15, 'is_topup': True, 'allowed_tier': 'creator'},
+    'topup_pro':     {'inr_paise': 14900, 'credits': 25, 'is_topup': True, 'allowed_tier': 'pro'},
 }
 
 # Semaphore to limit concurrent renders to 2. This creates a queue invisible to the user!
@@ -233,12 +245,15 @@ render_semaphore = asyncio.Semaphore(2)
 MAX_CONCURRENT_EXPORTS_PER_USER = 1
 EXPORT_FAILURE_LIMIT = 5
 EXPORT_FAILURE_WINDOW = 15 * 60
+DISABLE_EXPORT_FAILURE_RATE_LIMIT = os.environ.get("DISABLE_EXPORT_FAILURE_RATE_LIMIT", "0") == "1"
+DISABLE_EXPORT_DAILY_LIMIT = os.environ.get("DISABLE_EXPORT_DAILY_LIMIT", "0") == "1"
 
 # In-memory operational state (swap for Redis in multi-instance deployments)
 _export_jobs: Dict[str, Dict[str, Any]] = {}
 _export_idempotency: Dict[str, Dict[str, Any]] = {}
 _active_exports_by_user: Dict[str, int] = {}
 _export_failures: Dict[str, list] = {}
+_upload_owners: Dict[str, str] = {}
 
 # Global APScheduler reference (None if apscheduler not installed)
 scheduler = AsyncIOScheduler() if SCHEDULER_AVAILABLE else None
@@ -258,6 +273,11 @@ DEPRECATION_SUNSET_DATE = os.environ.get("DEPRECATION_SUNSET_DATE", "2026-12-31"
 ENFORCE_TENANT_ISOLATION = os.environ.get("ENFORCE_TENANT_ISOLATION", "0") == "1"
 ENABLE_PROGRESSIVE_DELIVERY = os.environ.get("ENABLE_PROGRESSIVE_DELIVERY", "1") == "1"
 REQUIRE_PAYMENT_IDEMPOTENCY = os.environ.get("REQUIRE_PAYMENT_IDEMPOTENCY", "1") == "1"
+# Rate limiting and payment idempotency fall back to per-process in-memory state
+# when Redis is absent. That is unsafe across multiple instances (limits become
+# per-instance and bypassable), so production requires Redis unless this escape
+# hatch is set for a deliberate single-instance deployment.
+ALLOW_INMEMORY_STATE = os.environ.get("ALLOW_INMEMORY_STATE", "0") == "1"
 DEBUG_MODE_ENABLED = os.environ.get("DEBUG_MODE", "").strip().lower() not in ("", "0", "false", "no", "off")
 if _IS_PRODUCTION and DEBUG_MODE_ENABLED:
     raise RuntimeError("DEBUG_MODE must not be enabled in production (ENV=production). Set DEBUG_MODE=false or unset it.")
@@ -282,6 +302,14 @@ if REDIS_AVAILABLE and REDIS_URL:
     except Exception as e:
         _redis_client = None
         _json_log("warning", "redis_connection_failed", error=str(e))
+
+if _IS_PRODUCTION and _redis_client is None and not ALLOW_INMEMORY_STATE:
+    raise RuntimeError(
+        "Redis is required in production (ENV=production) for cross-instance rate "
+        "limiting and payment idempotency. Set REDIS_URL to a reachable Redis "
+        "instance, or set ALLOW_INMEMORY_STATE=1 to explicitly run a single "
+        "instance with in-memory state."
+    )
 
 _export_queue = None
 if DURABLE_QUEUE_ENABLED and _redis_client is not None and RQ_AVAILABLE:
@@ -417,6 +445,11 @@ ALLOWED_ORIGINS = [o.strip() for o in _origins_env.split(",") if o.strip()] if _
     "http://127.0.0.1:3000",
     "http://127.0.0.1:5000",
 ]
+if _IS_PRODUCTION:
+    if not _origins_env:
+        raise RuntimeError("ALLOWED_ORIGINS must be set in production (ENV=production).")
+    if any(origin == "*" for origin in ALLOWED_ORIGINS):
+        raise RuntimeError("Wildcard CORS origins are not allowed in production.")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -694,7 +727,7 @@ def _maybe_alert_failure_ratio(window_key: str, success_count: int, failure_coun
                 headers={"Content-Type": "application/json"},
                 method="POST",
             )
-            urllib.request.urlopen(req, timeout=5)
+            _urlopen_https_only(req, timeout=5)
         except Exception as e:
             _json_log("warning", "alert_webhook_failed", error=str(e))
 
@@ -947,10 +980,12 @@ def _evaluate_export_policy(user_data: Dict[str, Any], now_ts: float):
             return False, "PLAN_EXPIRED: Your plan has expired and you have no credits left. Please renew to continue exporting.", recent_exports
         return False, "UPGRADE_REQUIRED: You have no credits remaining. Please upgrade your plan to continue exporting.", recent_exports
 
-    # Respect tier-based daily limit where configured, with a safe default for free/dev users.
-    daily_limit = PLAN_PRICING.get(tier, {}).get('daily_limit', 5)
-    if daily_limit is not None and len(recent_exports) >= int(daily_limit):
-        return False, f"Limit reached: You can only export {daily_limit} videos per 24 hours.", recent_exports
+    # Temporary escape hatch during export debugging: keep credit checks, but do not
+    # block local verification on daily export quota until parity issues are closed.
+    if not DISABLE_EXPORT_DAILY_LIMIT:
+        daily_limit = PLAN_PRICING.get(tier, {}).get('daily_limit', 5)
+        if daily_limit is not None and len(recent_exports) >= int(daily_limit):
+            return False, f"Limit reached: You can only export {daily_limit} videos per 24 hours.", recent_exports
 
     return True, "", recent_exports
 
@@ -985,6 +1020,101 @@ def _safe_find_upload(file_id: str) -> Optional[str]:
             if candidate.startswith(real_dir + os.sep):
                 return os.path.join(UPLOAD_DIR, f)
     return None
+
+
+def _remember_upload_owner(file_id: str, uid: str):
+    if not file_id or not uid:
+        return
+    _upload_owners[file_id] = uid
+    if _redis_client is not None:
+        try:
+            _redis_client.setex(f"upload_owner:{file_id}", 24 * 3600, uid)
+        except Exception:
+            pass
+    db = get_db()
+    if db:
+        try:
+            db.collection("uploads").document(file_id).set({
+                "file_id": file_id,
+                "uid": uid,
+                "created_at": datetime.utcnow().isoformat() + "Z",
+            }, merge=True)
+        except Exception as e:
+            _json_log("warning", "upload_owner_persist_failed", file_id=file_id, uid=uid, error=str(e))
+
+
+def _assert_upload_owner(file_id: str, uid: str):
+    if not file_id or not uid:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    owner = _upload_owners.get(file_id)
+    if not owner and _redis_client is not None:
+        try:
+            owner = _redis_client.get(f"upload_owner:{file_id}") or ""
+        except Exception:
+            owner = ""
+    if not owner:
+        db = get_db()
+        if db:
+            try:
+                snap = db.collection("uploads").document(file_id).get()
+                if snap.exists:
+                    owner = (snap.to_dict() or {}).get("uid", "")
+            except Exception:
+                owner = ""
+    if owner and owner != uid:
+        raise HTTPException(status_code=403, detail="You do not have access to this upload")
+
+
+def _media_token_signature(payload_b64: str) -> str:
+    secret = (MEDIA_URL_SIGNING_SECRET or "local-dev-media-signing-secret").encode("utf-8")
+    return hmac.new(secret, payload_b64.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def _create_media_token(payload: Dict[str, Any]) -> str:
+    payload_b64 = base64.urlsafe_b64encode(
+        json.dumps(payload, separators=(",", ":"), default=str).encode("utf-8")
+    ).decode("ascii").rstrip("=")
+    return f"{payload_b64}.{_media_token_signature(payload_b64)}"
+
+
+def _verify_media_token(token: str, expected_kind: str) -> Dict[str, Any]:
+    try:
+        payload_b64, supplied_sig = (token or "").split(".", 1)
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid media token")
+    expected_sig = _media_token_signature(payload_b64)
+    if not supplied_sig or not hmac.compare_digest(expected_sig, supplied_sig):
+        raise HTTPException(status_code=401, detail="Invalid media token")
+    try:
+        padded = payload_b64 + ("=" * (-len(payload_b64) % 4))
+        payload = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8"))
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid media token")
+    if payload.get("kind") != expected_kind:
+        raise HTTPException(status_code=403, detail="Media token is not valid for this resource")
+    if int(payload.get("exp", 0) or 0) < int(time.time()):
+        raise HTTPException(status_code=401, detail="Media token expired")
+    return payload
+
+
+def _signed_upload_url(file_id: str, uid: str, ttl_seconds: int = 6 * 3600) -> str:
+    token = _create_media_token({
+        "kind": "upload",
+        "uid": uid,
+        "file_id": file_id,
+        "exp": int(time.time() + ttl_seconds),
+    })
+    return f"/api/media/upload/{file_id}?token={token}"
+
+
+def _signed_export_url(filename: str, uid: str, ttl_seconds: int) -> str:
+    token = _create_media_token({
+        "kind": "export",
+        "uid": uid,
+        "filename": filename,
+        "exp": int(time.time() + max(ttl_seconds, 60)),
+    })
+    return f"/api/media/export/{filename}?token={token}"
 
 
 def _compute_media_hash(file_path: str) -> str:
@@ -1079,7 +1209,7 @@ CACHE_DIR = os.path.abspath("cache")
 TRANSCRIPTION_CACHE_DIR = os.path.join(CACHE_DIR, "transcriptions")
 RENDER_CACHE_DIR = os.path.join(CACHE_DIR, "renders")
 DEAD_LETTER_DIR = os.path.join(CACHE_DIR, "dead_letter")
-EXPORT_RENDERER_VERSION = "2026-05-22-sidebar-template-dom-v5"
+EXPORT_RENDERER_VERSION = "2026-06-15-semantic-emphasis-color-parity-v17"
 
 for d in [UPLOAD_DIR, EXPORT_DIR, FONTS_DIR, CACHE_DIR, TRANSCRIPTION_CACHE_DIR, RENDER_CACHE_DIR, DEAD_LETTER_DIR]:
     os.makedirs(d, exist_ok=True)
@@ -1088,6 +1218,8 @@ for d in [UPLOAD_DIR, EXPORT_DIR, FONTS_DIR, CACHE_DIR, TRANSCRIPTION_CACHE_DIR,
 processor = VideoProcessor(FONTS_DIR)
 
 class CaptionItem(BaseModel):
+    model_config = {"populate_by_name": True}
+
     id: Any
     text: str
     start_time: float
@@ -1106,12 +1238,20 @@ class CaptionItem(BaseModel):
     applied_template_style: Optional[Dict[str, Any]] = None
     word_styles: Dict[str, Any] = {}
     words: List[Any] = []
+    template_index: Optional[int] = Field(default=None, alias="__templateIndex")
+    template_phase_index: Optional[int] = None
+    imp_word_index: int = -1
+    emphasis_color: str = ""
+    emotional_mode: str = ""
+    audio_emotion_metrics: Optional[Dict[str, Any]] = None
 
 class ExportRequest(BaseModel):
     file_id: str
     captions: List[CaptionItem]
     style: Dict[str, Any] = {}
     word_layouts: Dict[str, Any] = {}
+    waveform_data: List[float] = Field(default_factory=list)
+    duration: float = 0
     id_token: str = ""  # Firebase Auth Token (optional — bypassed in dev mode)
     idempotency_key: str = ""
     quality: str = "1080p"  # Export quality: "4k", "1080p", "720p"
@@ -1266,6 +1406,17 @@ def _write_last_export_request_debug(
             "first_caption_template_id": first_caption.get("template_id", ""),
             "first_caption_template_20_id": first_caption.get("template_20_id", ""),
             "first_caption_applied_template_style": first_caption.get("applied_template_style"),
+            "first_caption_imp_word_index": first_caption.get("imp_word_index", -1),
+            "first_caption_emphasis_color": first_caption.get("emphasis_color", ""),
+            "caption_emphasis_colors": [
+                {
+                    "id": caption.get("id"),
+                    "imp_word_index": caption.get("imp_word_index", -1),
+                    "emphasis_color": caption.get("emphasis_color", ""),
+                }
+                for caption in captions
+                if caption and not caption.get("is_text_element")
+            ],
             "captions_count": len(captions),
             "word_layout_count": len(word_layouts or {}),
             "should_use_dom_template_renderer": should_use_dom,
@@ -1319,7 +1470,7 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
         if not user_doc.exists:
             _log(rid, f"User {uid} missing in Firestore; auto-creating defaults")
             default_user = {
-                'credits_remaining': 100,
+                'credits_remaining': 3,
                 'subscription_tier': 'free',
                 'export_timestamps': [],
                 'created_at': time.time(),
@@ -1358,11 +1509,12 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
 
     if not _validate_file_id(req.file_id):
         raise HTTPException(status_code=400, detail="Invalid file_id")
+    _assert_upload_owner(req.file_id, uid)
     input_path = _safe_find_upload(req.file_id)
     if not input_path:
         raise HTTPException(status_code=404, detail="Video not found")
 
-    captions = [c.dict() for c in req.captions]
+    captions = [c.model_dump(by_alias=True) for c in req.captions]
     # Reuse rendered artifact for identical request payload.
     media_hash = _compute_media_hash(input_path)
     request_hash = hashlib.sha256(json.dumps({
@@ -1413,26 +1565,32 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
             pass
 
     _set_export_job(export_job_id, "finalizing")
-    video_url = f"/exports/{output_filename}"
+    # Serve local exports through signed same-origin media URLs so the browser can
+    # fetch them without exposing the exports directory publicly. Firebase remains
+    # the durable history/sharing destination when upload succeeds.
+    video_url = ""
     firebase_url = None
     try:
         remote_path = f"exports/{uid}/{output_filename}"
         firebase_url = upload_to_firebase_storage(output_path, remote_path, "video/mp4")
-        if firebase_url:
-            video_url = firebase_url
-            try:
-                os.remove(output_path)
-            except Exception:
-                pass
     except Exception as e:
         _log(rid, f"Firebase upload failed, using local export: {e}")
+
+    retention_hours = 2
+    if db_available and user_data:
+        current_tier = user_data.get('subscription_tier', 'free')
+        if current_tier in PLAN_PRICING:
+            retention_hours = PLAN_PRICING[current_tier].get('export_retention_hours', 2)
+
+    expires_at = (datetime.utcnow() + timedelta(hours=retention_hours)).isoformat() + "Z"
+    video_url = _signed_export_url(output_filename, uid, retention_hours * 3600)
 
     if db_available and user_ref is not None:
         recent_exports.append(now)
         history_item = {
             "id": req.file_id,
             "filename": output_filename,
-            "url": video_url,
+            "url": firebase_url or video_url,
             "createdAt": now * 1000,
             "firebase_path": f"exports/{uid}/{output_filename}" if firebase_url else None
         }
@@ -1447,13 +1605,6 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
             'history': current_history
         })
 
-    retention_hours = 2
-    if db_available and user_data:
-        current_tier = user_data.get('subscription_tier', 'free')
-        if current_tier in PLAN_PRICING:
-            retention_hours = PLAN_PRICING[current_tier].get('export_retention_hours', 2)
-
-    expires_at = (datetime.utcnow() + timedelta(hours=retention_hours)).isoformat() + "Z"
     payload = {
         "success": True,
         "video_url": video_url,
@@ -1527,7 +1678,7 @@ async def get_google_fonts():
             'https://fonts.google.com/metadata/fonts',
             headers={'User-Agent': 'Mozilla/5.0'}
         )
-        with urllib.request.urlopen(req) as res:
+        with _urlopen_https_only(req, timeout=10) as res:
             raw_data = res.read().decode('utf-8')
             # The API often prefixes with )]}' for security
             if raw_data.startswith(")]}'"):
@@ -1548,6 +1699,9 @@ async def get_google_fonts():
 async def upload_video(file: UploadFile = File(...), request: Request = None, response: Response = None):
     try:
         rid = _request_id(request)
+        token = _extract_bearer_token(request) if request else ""
+        decoded_token = _authenticate_media_request(token)
+        uid = (decoded_token.get("uid") or "").strip() or "unknown-user"
         if request:
             client_ip = request.client.host if request.client else "unknown"
             allowed, retry_after, remaining = _check_rate(_upload_rate, client_ip, UPLOAD_RATE_LIMIT, UPLOAD_RATE_WINDOW)
@@ -1567,7 +1721,8 @@ async def upload_video(file: UploadFile = File(...), request: Request = None, re
 
         content_type = (file.content_type or "").lower()
         guessed_type, _ = mimetypes.guess_type(file.filename or "")
-        if content_type and not any(content_type.startswith(p) for p in ALLOWED_CONTENT_PREFIXES):
+        # application/octet-stream is a generic browser fallback — treat extension check as authoritative
+        if content_type and content_type != "application/octet-stream" and not any(content_type.startswith(p) for p in ALLOWED_CONTENT_PREFIXES):
             _track_event("upload_rejected_content_type", {"content_type": content_type})
             return {"success": False, "error": f"Unsupported MIME type: {content_type}"}
         if guessed_type and not any(guessed_type.startswith(p) for p in ALLOWED_CONTENT_PREFIXES):
@@ -1579,16 +1734,33 @@ async def upload_video(file: UploadFile = File(...), request: Request = None, re
             _track_event("upload_rejected_too_large", {"content_length": content_length})
             return {"success": False, "error": "File too large. Maximum 500MB allowed."}
 
-        content = await file.read()
-        if len(content) > MAX_UPLOAD_BYTES:
-            _track_event("upload_rejected_too_large", {"content_length": len(content)})
-            return {"success": False, "error": "File too large. Maximum 500MB allowed."}
-
         file_id = str(uuid.uuid4())
         file_path = os.path.join(UPLOAD_DIR, f"{file_id}.{file_ext}")
+        # Stream to disk in chunks rather than buffering the whole file in RAM —
+        # a 500MB read per request is a memory-pressure DoS under concurrency.
+        # Enforce the size cap as we write so an oversized (or content-length-spoofed)
+        # body is aborted early instead of fully consumed.
+        bytes_written = 0
+        too_large = False
+        UPLOAD_CHUNK_SIZE = 1024 * 1024  # 1 MB
         with open(file_path, "wb") as buffer:
-            buffer.write(content)
-        _log(rid, f"Upload accepted file_id={file_id} ext={file_ext} bytes={len(content)}")
+            while True:
+                chunk = await file.read(UPLOAD_CHUNK_SIZE)
+                if not chunk:
+                    break
+                bytes_written += len(chunk)
+                if bytes_written > MAX_UPLOAD_BYTES:
+                    too_large = True
+                    break
+                buffer.write(chunk)
+        if too_large:
+            try:
+                os.remove(file_path)
+            except Exception:
+                pass
+            _track_event("upload_rejected_too_large", {"content_length": bytes_written})
+            return {"success": False, "error": "File too large. Maximum 500MB allowed."}
+        _log(rid, f"Upload accepted file_id={file_id} ext={file_ext} bytes={bytes_written}")
         if not _scan_upload_for_threat(file_path):
             try:
                 os.remove(file_path)
@@ -1615,8 +1787,11 @@ async def upload_video(file: UploadFile = File(...), request: Request = None, re
             return {"success": False, "error": f"Video is {duration:.0f}s. Maximum allowed is {max_seconds // 60} minutes."}
 
         _track_event("upload_success", {"ext": file_ext})
-        _audit_action("upload_success", metadata={"file_id": file_id, "ext": file_ext, "duration": duration})
-        return {"success": True, "file_id": file_id, "raw_url": f"/uploads/{file_id}.{file_ext}"}
+        _remember_upload_owner(file_id, uid)
+        _audit_action("upload_success", uid, {"file_id": file_id, "ext": file_ext, "duration": duration})
+        return {"success": True, "file_id": file_id, "raw_url": _signed_upload_url(file_id, uid)}
+    except HTTPException:
+        raise
     except Exception as e:
         _track_event("upload_failed", {"error": str(e)})
         return {"success": False, "error": str(e)}
@@ -1624,7 +1799,8 @@ async def upload_video(file: UploadFile = File(...), request: Request = None, re
 @app.post("/api/process")
 async def process_video(req: ProcessRequest, request: Request, response: Response):
     # Auth — same dev-mode bypass as /api/export
-    _authenticate_media_request(req.id_token, req.org_id)
+    decoded_token = _authenticate_media_request(req.id_token, req.org_id)
+    uid = (decoded_token.get("uid") or "").strip() or "unknown-user"
     client_ip = request.client.host if request.client else "unknown"
     allowed, retry_after, remaining = _check_rate(_process_rate, client_ip, PROCESS_RATE_LIMIT)
     _apply_rate_headers(response, PROCESS_RATE_LIMIT, remaining, retry_after)
@@ -1633,6 +1809,7 @@ async def process_video(req: ProcessRequest, request: Request, response: Respons
         raise HTTPException(status_code=429, detail="Too many transcription requests. Please wait before trying again.")
     if not _validate_file_id(req.file_id):
         raise HTTPException(status_code=400, detail="Invalid file_id")
+    _assert_upload_owner(req.file_id, uid)
     input_path = _safe_find_upload(req.file_id)
     if not input_path:
         _track_event("process_failed_not_found")
@@ -1694,13 +1871,15 @@ async def export_video(req: ExportRequest, request: Request, response: Response)
     if decoded_token.get("_dev_mode"):
         _log(rid, "Using explicit debug auth bypass token")
 
-    # Lightweight abuse control for repeated failing exports (failure-only budget).
-    now_ts = time.time()
-    recent_failures = _get_recent_export_failures(uid)
-    if len(recent_failures) >= EXPORT_FAILURE_LIMIT:
-        retry_after = max(1, int(EXPORT_FAILURE_WINDOW - (now_ts - min(recent_failures))))
-        response.headers["Retry-After"] = str(retry_after)
-        raise HTTPException(status_code=429, detail="Too many failed export attempts. Please retry after a short wait.")
+    # Temporary escape hatch while export parity issues are under active repair:
+    # keep concurrent-export protection, but allow retries even after repeated failures.
+    if not DISABLE_EXPORT_FAILURE_RATE_LIMIT:
+        now_ts = time.time()
+        recent_failures = _get_recent_export_failures(uid)
+        if len(recent_failures) >= EXPORT_FAILURE_LIMIT:
+            retry_after = max(1, int(EXPORT_FAILURE_WINDOW - (now_ts - min(recent_failures))))
+            response.headers["Retry-After"] = str(retry_after)
+            raise HTTPException(status_code=429, detail="Too many failed export attempts. Please retry after a short wait.")
 
     # Idempotency key support to prevent duplicate renders/charges.
     raw_idem = (req.idempotency_key or request.headers.get("x-idempotency-key") or "").strip()
@@ -1727,7 +1906,7 @@ async def export_video(req: ExportRequest, request: Request, response: Response)
         raise HTTPException(status_code=429, detail="Another export is already running for this account. Please wait.")
 
     export_job_id = str(uuid.uuid4())
-    safe_request_snapshot = _sanitize_export_request_payload(req.model_dump())
+    safe_request_snapshot = _sanitize_export_request_payload(req.model_dump(by_alias=True))
     _set_export_job(
         export_job_id,
         "queued",
@@ -2157,6 +2336,24 @@ def _apply_successful_payment(uid: str, plan_id: str, payment_id: str, order_id:
     if not plan_config:
         raise HTTPException(status_code=400, detail=f"Unknown plan: {plan_id}")
 
+    # SECURITY: bind the granted plan to the amount actually paid. Without this a
+    # client could pay for a cheap plan, then echo an expensive plan_id at
+    # verify-time and receive the higher tier / more credits. The signature check
+    # only proves the payment matches its order — it does not bind the plan.
+    expected_minor = plan_config.get('usd_cents') if (currency or '').upper() == 'USD' else plan_config.get('inr_paise')
+    if expected_minor is None or int(amount_minor or 0) != int(expected_minor):
+        _json_log(
+            "warning",
+            "payment_amount_plan_mismatch",
+            uid=uid,
+            plan_id=plan_id,
+            currency=currency,
+            amount_minor=int(amount_minor or 0),
+            expected_minor=expected_minor,
+            source=source,
+        )
+        raise HTTPException(status_code=400, detail="Payment amount does not match the selected plan.")
+
     db = get_db()
     if not db:
         raise HTTPException(status_code=500, detail="Database not initialized")
@@ -2321,8 +2518,8 @@ async def create_order(req: CreateOrderRequest, request: Request, response: Resp
         return payload
     except Exception as e:
         _payment_idem_set(pay_idem_key, {"status": "failed", "ts": time.time(), "error": str(e)})
-        print(f"Razorpay Order Error: {e}")
-        return {"success": False, "error": str(e)}
+        _json_log("error", "razorpay_order_create_failed", uid=uid, plan_id=req.plan_id, error=str(e))
+        return {"success": False, "error": "Payment order could not be created. Please try again."}
 
 @app.post("/api/verify-payment")
 async def verify_payment(req: VerifyPaymentRequest, request: Request, response: Response):
@@ -2358,7 +2555,8 @@ async def verify_payment(req: VerifyPaymentRequest, request: Request, response: 
         raise HTTPException(status_code=400, detail="Payment verification failed")
     _payment_idem_set(pay_idem_key, {"status": "in_progress", "ts": time.time()})
 
-    # Resolve plan from echoed plan_id (most reliable) then fall back to amount matching
+    # Resolve plan from echoed plan_id, then prove the live Razorpay payment/order
+    # actually match that plan before granting credits.
     plan_config = PLAN_PRICING.get(req.plan_id) if req.plan_id else None
     currency_paid = "INR"
     amount_paid_minor = plan_config.get("inr_paise", 0) if plan_config else 0
@@ -2370,6 +2568,62 @@ async def verify_payment(req: VerifyPaymentRequest, request: Request, response: 
     except Exception as e:
         raise HTTPException(status_code=502, detail="Unable to verify payment with Razorpay") from e
 
+    payment_order_id = (payment_live.get("order_id") or "").strip()
+    if payment_order_id != req.razorpay_order_id:
+        _json_log(
+            "warning",
+            "payment_order_mismatch",
+            uid=uid,
+            submitted_order_id=req.razorpay_order_id,
+            live_order_id=payment_order_id,
+            payment_id=req.razorpay_payment_id,
+        )
+        raise HTTPException(status_code=400, detail="Payment does not match the submitted order.")
+
+    payment_status = (payment_live.get("status") or "").lower()
+    if payment_status != "captured":
+        _json_log(
+            "warning",
+            "payment_not_captured",
+            uid=uid,
+            order_id=req.razorpay_order_id,
+            payment_id=req.razorpay_payment_id,
+            status=payment_status,
+        )
+        raise HTTPException(status_code=400, detail="Payment is not captured yet.")
+
+    try:
+        order_live = rzp_client.order.fetch(req.razorpay_order_id)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail="Unable to verify payment order with Razorpay") from e
+
+    order_amount = int(order_live.get("amount", 0) or 0)
+    order_currency = (order_live.get("currency") or "").upper()
+    if order_amount != int(amount_paid_minor or 0) or order_currency != (currency_paid or "").upper():
+        _json_log(
+            "warning",
+            "payment_order_amount_mismatch",
+            uid=uid,
+            order_id=req.razorpay_order_id,
+            payment_id=req.razorpay_payment_id,
+            order_amount=order_amount,
+            payment_amount=int(amount_paid_minor or 0),
+            order_currency=order_currency,
+            payment_currency=currency_paid,
+        )
+        raise HTTPException(status_code=400, detail="Payment order amount does not match the captured payment.")
+
+    order_notes = order_live.get("notes") or {}
+    order_uid = (order_notes.get("uid") or "").strip()
+    order_plan_id = (order_notes.get("plan_id") or "").strip()
+    if order_uid and order_uid != uid:
+        raise HTTPException(status_code=403, detail="Payment order belongs to a different user.")
+    if order_plan_id and req.plan_id and order_plan_id != req.plan_id:
+        raise HTTPException(status_code=400, detail="Payment order does not match the selected plan.")
+
+    if not req.plan_id and order_plan_id:
+        req.plan_id = order_plan_id
+        plan_config = PLAN_PRICING.get(req.plan_id)
     if not plan_config:
         req.plan_id = _resolve_plan_from_amount_currency(int(amount_paid_minor or 0), currency_paid) or ""
         plan_config = PLAN_PRICING.get(req.plan_id)
@@ -2696,9 +2950,11 @@ class DetectLanguageRequest(BaseModel):
 @app.post("/api/detect-language")
 async def detect_language(req: DetectLanguageRequest):
     # Auth — same dev-mode bypass as /api/export
-    _authenticate_media_request(req.id_token, req.org_id)
+    decoded_token = _authenticate_media_request(req.id_token, req.org_id)
+    uid = (decoded_token.get("uid") or "").strip() or "unknown-user"
     if not _validate_file_id(req.file_id):
         raise HTTPException(status_code=400, detail="Invalid file_id")
+    _assert_upload_owner(req.file_id, uid)
     input_path = _safe_find_upload(req.file_id)
     if not input_path:
         _track_event("detect_language_failed_not_found")
@@ -2850,9 +3106,31 @@ async def delete_user_file(req: DeleteFileRequest):
     _audit_action("delete_file_success", uid, {"file_id": req.file_id})
     return {"success": True}
 
-app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
-app.mount("/exports", StaticFiles(directory=EXPORT_DIR), name="exports")
+@app.get("/api/media/upload/{file_id}")
+async def serve_uploaded_media(file_id: str, token: str = ""):
+    payload = _verify_media_token(token, "upload")
+    if payload.get("file_id") != file_id:
+        raise HTTPException(status_code=403, detail="Media token does not match this upload")
+    path = _safe_find_upload(file_id)
+    if not path or not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Upload not found")
+    media_type = mimetypes.guess_type(path)[0] or "application/octet-stream"
+    return FileResponse(path, media_type=media_type)
+
+
+@app.get("/api/media/export/{filename}")
+async def serve_exported_media(filename: str, token: str = ""):
+    if not re.match(r"^export_[a-f0-9-]{36}_[a-f0-9]{12}\.mp4$", filename or ""):
+        raise HTTPException(status_code=400, detail="Invalid export filename")
+    payload = _verify_media_token(token, "export")
+    if payload.get("filename") != filename:
+        raise HTTPException(status_code=403, detail="Media token does not match this export")
+    real_export_dir = os.path.realpath(EXPORT_DIR)
+    path = os.path.realpath(os.path.join(EXPORT_DIR, filename))
+    if not path.startswith(real_export_dir + os.sep) or not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="Export not found")
+    return FileResponse(path, media_type="video/mp4", filename=filename)
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host=os.environ.get("BACKEND_HOST", "127.0.0.1"), port=8000)
