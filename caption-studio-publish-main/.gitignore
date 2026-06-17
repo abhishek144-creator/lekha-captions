@@ -7,6 +7,8 @@ dist/
 __pycache__/
 venv/
 backend/service-account.json
+backend/cache/
+cache/
 
 # CRITICAL: Space Hogs (To reach 30MB)
 backend/uploads/
@@ -35,3 +37,19 @@ flat_fonts/
 latest-preview-*.png
 test-tab*.png
 timing-check.png
+.render_tmp/
+export-check-*.png
+tmp-headless-dashboard.png
+codex-*.png
+codex-*.jpg
+codex-*.log
+codex-*.err.log
+frontend*.log
+frontend*.err.log
+vite*.log
+vite*.err.log
+backend_stdout.log
+backend_stderr.log
+build.log
+build_error.txt
+build_trace*.txt
