@@ -300,6 +300,7 @@ export default function UploadModal({
         formData.append('file', selectedFile)
         uploadData = await apiRequest('/api/upload', {
           method: 'POST',
+          headers: idToken ? { Authorization: `Bearer ${idToken}` } : {},
           body: formData,
           dedupeKey: 'detect-upload',
           cancelPrevious: true,

@@ -69,7 +69,7 @@ export default function HeroSection() {
               {[
                 { value: '115+', label: 'Languages Supported' },
                 { value: '25+', label: 'Caption Styles' },
-                { value: '120–180s', label: 'Shorts & Reels Sweet Spot' },
+                { value: '120-180s', label: 'Shorts & Reels Sweet Spot' },
               ].map((stat, idx) => (
                 <motion.div
                   key={idx}

@@ -24,6 +24,7 @@ import { apiRequest } from '@/lib/apiClient';
 import { notifyApiError } from '@/lib/notifyApiError';
 import { getClientContext, trackAnalytics } from '@/lib/analytics';
 import { isFeatureEnabled } from '@/lib/featureFlags';
+import { buildEmotionalCaptionPlan } from './emotionalTemplateUtils';
 
 import { Progress } from "@/components/ui/progress";
 
@@ -113,7 +114,7 @@ const exportQueue = {
   }
 };
 
-export default function ExportPanel({ open, onClose, captions, captionStyle, videoUrl, projectId, fileId, originalFileName, onUpgradeClick }) {
+export default function ExportPanel({ open, onClose, captions, captionStyle, waveformData, duration, videoUrl, projectId, fileId, originalFileName, onUpgradeClick }) {
   const { currentUser, userData } = useAuth();
   // Use auth context directly for consistent, up-to-date auth & credit checks
   const isSignedIn = !!currentUser;
@@ -363,7 +364,9 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
         renderH = ch; renderW = ch * vAspect; offsetX = (cw - renderW) / 2; offsetY = 0;
       }
 
-      const templateFontEl = container.querySelector('.lekha-applied-advanced-template');
+      const templateFontEl = container.querySelector(
+        '.lekha-applied-advanced-template, .lekha-sidebar-source-template',
+      );
       const previewTemplateFontPx = getMaxRenderedFontSize(templateFontEl);
 
       const containerToVideo = (xPct, yPct) => {
@@ -501,6 +504,20 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
       const activeTemplateSnapshot = hasTemplateIdentity(styleTemplateSnapshot)
         ? styleTemplateSnapshot
         : (hasTemplateIdentity(effectiveExportStyle) ? { ...effectiveExportStyle } : null);
+      const activeTemplateValue = (caption, key, fallback = '') => (
+        activeTemplateSnapshot?.[key]
+        ?? effectiveExportStyle?.[key]
+        ?? caption?.[key]
+        ?? fallback
+      );
+      const exportEmotionalById = new Map(
+        buildEmotionalCaptionPlan(
+          captions,
+          waveformData,
+          duration,
+          activeTemplateSnapshot?.template_markup || effectiveExportStyle?.template_markup || '',
+        ).map((entry) => [entry.captionId, entry]),
+      );
 
       const exportData = {
         file_id: fileId,
@@ -509,23 +526,29 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
         captions: captions.filter(c => c && c.text).map(cap => {
           const isText = cap.isTextElement;
           const cs = cap.customStyle || {};
+          const emotional = exportEmotionalById.get(cap.id);
           return {
             id: cap.id,
             text: cap.text,
             start_time: cap.start_time,
             end_time: cap.end_time,
             __templateIndex: !isText ? captions.filter(c => c && !c.isTextElement).findIndex(c => c?.id === cap.id) : undefined,
-            animation: cap.animation || 'none',
+            animation: !isText && activeTemplateSnapshot ? 'none' : (cap.animation || 'none'),
             is_text_element: !!isText,
-            template_id: !isText ? (cap.template_id || activeTemplateSnapshot?.template_id || effectiveExportStyle?.template_id || '') : '',
-            template_20_id: !isText ? (cap.template_20_id || activeTemplateSnapshot?.template_20_id || effectiveExportStyle?.template_20_id || '') : '',
-            template_source: !isText ? (cap.template_source || activeTemplateSnapshot?.template_source || effectiveExportStyle?.template_source || '') : '',
-            template_class: !isText ? (cap.template_class || activeTemplateSnapshot?.template_class || effectiveExportStyle?.template_class || '') : '',
-            template_name: !isText ? (cap.template_name || activeTemplateSnapshot?.template_name || effectiveExportStyle?.template_name || '') : '',
-            template_layout: !isText ? (cap.template_layout || activeTemplateSnapshot?.template_layout || effectiveExportStyle?.template_layout || '') : '',
-            template_effect: !isText ? (cap.template_effect || activeTemplateSnapshot?.template_effect || effectiveExportStyle?.template_effect || '') : '',
-            template_markup: !isText ? (cap.template_markup || activeTemplateSnapshot?.template_markup || effectiveExportStyle?.template_markup || '') : '',
-            applied_template_style: !isText ? (cap.applied_template_style || activeTemplateSnapshot || null) : null,
+            template_id: !isText ? activeTemplateValue(cap, 'template_id') : '',
+            template_20_id: !isText ? activeTemplateValue(cap, 'template_20_id') : '',
+            template_source: !isText ? activeTemplateValue(cap, 'template_source') : '',
+            template_class: !isText ? activeTemplateValue(cap, 'template_class') : '',
+            template_name: !isText ? activeTemplateValue(cap, 'template_name') : '',
+            template_layout: !isText ? activeTemplateValue(cap, 'template_layout') : '',
+            template_effect: !isText ? activeTemplateValue(cap, 'template_effect') : '',
+            template_markup: !isText ? activeTemplateValue(cap, 'template_markup') : '',
+            applied_template_style: !isText ? (activeTemplateSnapshot || cap.applied_template_style || null) : null,
+            emotional_mode: !isText ? (cap.emotional_mode || emotional?.mode || 'normal') : '',
+            template_phase_index: !isText ? Number(emotional?.phaseIndex ?? cap.__templateIndex ?? cap.template_phase_index ?? 0) : 0,
+            imp_word_index: !isText ? Number(emotional?.impWordIndex ?? cap.imp_word_index ?? -1) : -1,
+            emphasis_color: !isText ? (emotional?.emphasisColor || cap.emphasis_color || '') : '',
+            audio_emotion_metrics: !isText ? (cap.audio_emotion_metrics || emotional?.audio || null) : null,
             custom_style: isText ? (() => {
               const teVidPos = containerToVideo(cs.left ?? 50, cs.top ?? 50);
               return {
@@ -565,6 +588,8 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, vid
             words: cap.words || []
           };
         }),
+        waveform_data: waveformData || [],
+        duration: duration || 0,
         style: (() => {
           // Merge template canonical overrides — ensures correct has_shadow/has_stroke/has_background
           // even when the user's React state was set before these properties were added to the template def.
