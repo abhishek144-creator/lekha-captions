@@ -17,21 +17,73 @@ class ApiContractTests(unittest.TestCase):
         self.client = TestClient(app)
         main._export_jobs.clear()
         main._active_exports_by_user.clear()
+        main._payment_idempotency.clear()
+        main._upload_owners.clear()
+        main._payment_rate.clear()
+        main._upload_rate.clear()
+        main._process_rate.clear()
+        main._translate_rate.clear()
 
     def tearDown(self):
         main._export_jobs.clear()
         main._active_exports_by_user.clear()
+        main._payment_idempotency.clear()
+        main._upload_owners.clear()
+        main._payment_rate.clear()
+        main._upload_rate.clear()
+        main._process_rate.clear()
+        main._translate_rate.clear()
+
+    def test_export_rate_limits_enabled_by_default(self):
+        self.assertFalse(main.DISABLE_EXPORT_FAILURE_RATE_LIMIT)
+        self.assertFalse(main.DISABLE_EXPORT_DAILY_LIMIT)
+
+    def test_media_tokens_reject_tampering_expiry_and_wrong_kind(self):
+        token = main._create_media_token({
+            "kind": "upload",
+            "uid": "media-user",
+            "file_id": "file-1",
+            "exp": 4102444800,
+        })
+
+        self.assertEqual(main._verify_media_token(token, "upload")["uid"], "media-user")
+
+        tampered = f"{token[:-1]}{'0' if token[-1] != '0' else '1'}"
+        with self.assertRaises(Exception):
+            main._verify_media_token(tampered, "upload")
+
+        with self.assertRaises(Exception):
+            main._verify_media_token(token, "export")
+
+        expired = main._create_media_token({
+            "kind": "upload",
+            "uid": "media-user",
+            "file_id": "file-1",
+            "exp": 1,
+        })
+        with self.assertRaises(Exception):
+            main._verify_media_token(expired, "upload")
 
     @patch("main._scan_upload_for_threat", return_value=True)
     @patch("main._probe_media", return_value={"format": {"duration": 12.3}, "streams": [{"codec_type": "video"}]})
-    def test_upload_contract(self, _probe, _scan):
+    @patch("main.verify_token", return_value={"uid": "upload-user"})
+    def test_upload_contract(self, _verify_token, _probe, _scan):
         files = {"file": ("sample.mp4", io.BytesIO(b"fake-bytes"), "video/mp4")}
-        res = self.client.post("/api/upload", files=files)
+        res = self.client.post("/api/upload", files=files, headers={"Authorization": "Bearer token-123"})
         self.assertEqual(res.status_code, 200)
         data = res.json()
         self.assertIn("success", data)
         self.assertIn("file_id", data)
         self.assertIn("raw_url", data)
+        self.assertTrue(data["raw_url"].startswith("/api/media/upload/"))
+
+        media_res = self.client.get(data["raw_url"])
+        self.assertEqual(media_res.status_code, 200)
+
+    def test_upload_requires_auth(self):
+        files = {"file": ("sample.mp4", io.BytesIO(b"fake-bytes"), "video/mp4")}
+        res = self.client.post("/api/upload", files=files)
+        self.assertEqual(res.status_code, 401)
 
     @patch("main.verify_token", return_value={"uid": "process-user"})
     @patch("main.processor.generate_captions_only", new_callable=AsyncMock)
@@ -224,6 +276,76 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(res.status_code, 502)
         self.assertIn("detail", res.json())
 
+    @patch("main.verify_token", return_value={"uid": "payment-user"})
+    def test_verify_payment_rejects_uncaptured_payment(self, _verify_token):
+        fake_client = SimpleNamespace(
+            utility=SimpleNamespace(verify_payment_signature=lambda params: True),
+            payment=SimpleNamespace(fetch=lambda payment_id: {
+                "id": payment_id,
+                "order_id": "order_123",
+                "status": "authorized",
+                "amount": 29900,
+                "currency": "INR",
+            }),
+            order=SimpleNamespace(fetch=lambda order_id: {
+                "id": order_id,
+                "amount": 29900,
+                "currency": "INR",
+                "notes": {"uid": "payment-user", "plan_id": "starter"},
+            }),
+        )
+
+        with patch.object(main, "rzp_client", fake_client), patch.object(main, "RAZORPAY_AVAILABLE", True):
+            res = self.client.post(
+                "/api/verify-payment",
+                json={
+                    "razorpay_order_id": "order_123",
+                    "razorpay_payment_id": "pay_123",
+                    "razorpay_signature": "sig_123",
+                    "id_token": "token_123",
+                    "plan_id": "starter",
+                    "idempotency_key": "idem_uncaptured",
+                },
+            )
+
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("not captured", res.json()["detail"])
+
+    @patch("main.verify_token", return_value={"uid": "payment-user"})
+    def test_verify_payment_rejects_plan_mismatch_with_order_notes(self, _verify_token):
+        fake_client = SimpleNamespace(
+            utility=SimpleNamespace(verify_payment_signature=lambda params: True),
+            payment=SimpleNamespace(fetch=lambda payment_id: {
+                "id": payment_id,
+                "order_id": "order_123",
+                "status": "captured",
+                "amount": 29900,
+                "currency": "INR",
+            }),
+            order=SimpleNamespace(fetch=lambda order_id: {
+                "id": order_id,
+                "amount": 29900,
+                "currency": "INR",
+                "notes": {"uid": "payment-user", "plan_id": "starter"},
+            }),
+        )
+
+        with patch.object(main, "rzp_client", fake_client), patch.object(main, "RAZORPAY_AVAILABLE", True):
+            res = self.client.post(
+                "/api/verify-payment",
+                json={
+                    "razorpay_order_id": "order_123",
+                    "razorpay_payment_id": "pay_123",
+                    "razorpay_signature": "sig_123",
+                    "id_token": "token_123",
+                    "plan_id": "pro",
+                    "idempotency_key": "idem_plan_mismatch",
+                },
+            )
+
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("selected plan", res.json()["detail"])
+
     @patch("main.verify_token", return_value=None)
     def test_translate_requires_auth(self, _verify_token):
         res = self.client.post(
@@ -311,6 +433,33 @@ class ApiContractTests(unittest.TestCase):
     def test_create_order_requires_auth(self):
         res = self.client.post("/api/create-order", json={"plan_id": "starter", "id_token": "invalid-token", "currency": "INR"})
         self.assertEqual(res.status_code, 401)
+
+    @patch("main.verify_token", return_value={"uid": "payment-user"})
+    def test_create_order_idempotency_replays_without_duplicate_order(self, _verify_token):
+        calls = []
+
+        class FakeOrderApi:
+            def create(self, data):
+                calls.append(data)
+                return {"id": "order_123", **data}
+
+        fake_client = SimpleNamespace(order=FakeOrderApi())
+
+        with patch.object(main, "rzp_client", fake_client), patch.object(main, "RAZORPAY_AVAILABLE", True):
+            payload = {
+                "plan_id": "starter",
+                "id_token": "token-123",
+                "currency": "INR",
+                "idempotency_key": "same-order-key",
+            }
+            res_first = self.client.post("/api/create-order", json=payload)
+            res_second = self.client.post("/api/create-order", json=payload)
+
+        self.assertEqual(res_first.status_code, 200)
+        self.assertEqual(res_second.status_code, 200)
+        self.assertEqual(len(calls), 1)
+        self.assertTrue(res_second.json().get("idempotent_replay"))
+        self.assertEqual(res_first.json()["order"]["id"], res_second.json()["order"]["id"])
 
     def test_api_version_contract(self):
         res = self.client.get("/api/version")
