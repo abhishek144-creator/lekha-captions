@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+﻿import React, { useState, useEffect } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -28,12 +28,22 @@ const loadRazorpayScript = () => new Promise((resolve, reject) => {
   document.head.appendChild(s)
 })
 
+function getDiscountPercent(monthlyMinor, yearlyMinor) {
+  const baseline = monthlyMinor * 12
+  if (!baseline || !yearlyMinor) return 0
+  return Math.round((1 - (yearlyMinor / baseline)) * 100)
+}
+
+function formatInrPrice(minor) {
+  return String(Math.round(minor / 100))
+}
+
 const plans = [
   {
     id: 'starter',
     name: 'Starter',
-    monthlyPrice: '₹99', yearlyPrice: '₹999',
-    monthlyPaise: 9900, yearlyPaise: 99900,
+    monthlyPrice: '299', yearlyPrice: '2500',
+    monthlyPaise: 29900, yearlyPaise: 250000,
     credits: 15,
     icon: Zap,
     description: 'Perfect for getting started',
@@ -41,7 +51,7 @@ const plans = [
       '15 video credits / month',
       'Max 2 min per video',
       'Max 3 videos / day',
-      'No watermark · 25+ styles',
+      'No watermark Â· 25+ styles',
       'All 115+ languages',
       '2 hr download link',
     ],
@@ -49,8 +59,8 @@ const plans = [
   {
     id: 'creator',
     name: 'Creator',
-    monthlyPrice: '₹199', yearlyPrice: '₹1,999',
-    monthlyPaise: 19900, yearlyPaise: 199900,
+    monthlyPrice: '499', yearlyPrice: '4500',
+    monthlyPaise: 49900, yearlyPaise: 450000,
     credits: 45,
     icon: Crown,
     description: 'Best value for serious creators',
@@ -59,7 +69,7 @@ const plans = [
       '45 video credits / month',
       'Max 3 min per video',
       'Max 5 videos / day',
-      'No watermark · 25+ styles',
+      'No watermark Â· 25+ styles',
       'All 115+ languages',
       'Translation feature',
       '24 hr download link',
@@ -68,16 +78,16 @@ const plans = [
   {
     id: 'pro',
     name: 'Pro',
-    monthlyPrice: '₹399', yearlyPrice: '₹3,999',
-    monthlyPaise: 39900, yearlyPaise: 399900,
-    credits: 100,
+    monthlyPrice: '799', yearlyPrice: '6500',
+    monthlyPaise: 79900, yearlyPaise: 650000,
+    credits: 120,
     icon: Star,
     description: 'For power users & teams',
     features: [
-      '100 video credits / month',
+      '120 video credits / month',
       'Max 3 min per video',
       'Unlimited videos / day',
-      'No watermark · 25+ styles',
+      'No watermark Â· 25+ styles',
       'All 115+ languages',
       'Translation + API access',
       '72 hr download link',
@@ -85,16 +95,31 @@ const plans = [
   },
 ]
 
-const TOPUP_MAP = {
-  starter: { plan_id: 'topup_starter', credits: 10, price: '₹49' },
-  starter_yearly: { plan_id: 'topup_starter', credits: 10, price: '₹49' },
-  creator: { plan_id: 'topup_creator', credits: 15, price: '₹49' },
-  creator_yearly: { plan_id: 'topup_creator', credits: 15, price: '₹49' },
-  pro: { plan_id: 'topup_pro', credits: 25, price: '₹79' },
-  pro_yearly: { plan_id: 'topup_pro', credits: 25, price: '₹79' },
+const YEARLY_CREDIT_MULTIPLIER = 12
+
+function getPlanCredits(plan, billing) {
+  return billing === 'yearly' ? plan.credits * YEARLY_CREDIT_MULTIPLIER : plan.credits
 }
 
-const TOPUP_PAISE = { topup_starter: 4900, topup_creator: 4900, topup_pro: 7900 }
+function getCreditPeriodLabel(billing) {
+  return billing === 'yearly' ? 'year' : 'month'
+}
+
+function getPlanFeatures(plan, billing) {
+  const creditsLabel = `${getPlanCredits(plan, billing)} video credits / ${getCreditPeriodLabel(billing)}`
+  return [creditsLabel, ...plan.features.slice(1)]
+}
+
+const TOPUP_MAP = {
+  starter: { plan_id: 'topup_starter', credits: 10, price: '99' },
+  starter_yearly: { plan_id: 'topup_starter', credits: 10, price: '99' },
+  creator: { plan_id: 'topup_creator', credits: 15, price: '99' },
+  creator_yearly: { plan_id: 'topup_creator', credits: 15, price: '99' },
+  pro: { plan_id: 'topup_pro', credits: 25, price: '149' },
+  pro_yearly: { plan_id: 'topup_pro', credits: 25, price: '149' },
+}
+
+const TOPUP_PAISE = { topup_starter: 9900, topup_creator: 9900, topup_pro: 14900 }
 
 function createIdempotencyKey(scope, planId) {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -116,6 +141,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
   const [promoCode, setPromoCode] = useState('')
   const [promoStatus, setPromoStatus] = useState(null)
   const [promoLoading, setPromoLoading] = useState(false)
+  const maxYearlyDiscount = Math.max(...plans.map((plan) => getDiscountPercent(plan.monthlyPaise, plan.yearlyPaise)))
 
   const { refreshUserData } = useAuth()
 
@@ -161,10 +187,10 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
         }),
       })
 
-      let orderData = { success: false, order: null, key_id: RAZORPAY_KEY_ID }
+      let orderData = null
       try {
         const parsed = await createOrder(idToken)
-        if (parsed.success) orderData = parsed
+        if (parsed.success && parsed.order?.id) orderData = parsed
         else throw new Error(parsed.error || 'Failed to create order')
       } catch (fetchErr) {
         const isDevBypassEnabled = import.meta.env.DEV || import.meta.env.VITE_USE_DEV_AUTH_BYPASS === '1'
@@ -173,19 +199,23 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
         if (isDevBypassEnabled && isAuthFailure) {
           try {
             const retryParsed = await createOrder(LOCAL_DEV_BYPASS_TOKEN)
-            if (retryParsed.success) {
+            if (retryParsed.success && retryParsed.order?.id) {
               orderData = retryParsed
             } else {
               throw new Error(retryParsed.error || 'Failed to create dev order')
             }
           } catch (retryErr) {
-            console.warn('Dev bypass order creation failed, opening direct Razorpay checkout', retryErr)
-            if (!RAZORPAY_KEY_ID) throw retryErr
+            console.warn('Dev bypass order creation failed', retryErr)
+            throw retryErr
           }
         } else {
-          console.warn('Backend order creation failed, opening direct Razorpay checkout', fetchErr)
-          if (!RAZORPAY_KEY_ID) throw fetchErr
+          console.warn('Backend order creation failed', fetchErr)
+          throw fetchErr
         }
+      }
+
+      if (!orderData?.order?.id) {
+        throw new Error('Unable to create a secure payment order. Please try again.')
       }
 
       onClose()
@@ -195,24 +225,14 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
         throw new Error('Razorpay payment key is not set. Please configure VITE_RAZORPAY_KEY_ID.')
       }
 
-      const hasBackendOrder = Boolean(orderData.order?.id)
       const options = {
         key: keyToUse,
-        amount: orderData.order?.amount || amount,
+        amount: orderData.order.amount || amount,
         currency: 'INR',
         name: 'Lekha Captions',
-        description: `${plan.name} Plan${billing === 'yearly' ? ' · Yearly' : ''}`,
-        ...(hasBackendOrder ? { order_id: orderData.order.id } : {}),
+        description: `${plan.name} Plan${billing === 'yearly' ? ' Â· Yearly' : ''}`,
+        order_id: orderData.order.id,
         handler: async (response) => {
-          if (!hasBackendOrder) {
-            toast({
-              title: 'Payment started',
-              description: 'Checkout opened without backend order verification. Please contact support if credits are not added automatically.',
-            })
-            setProcessingPlan(null)
-            return
-          }
-
           try {
             const verifyData = await apiRequest('/api/verify-payment', {
               method: 'POST',
@@ -280,7 +300,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
       if (!res.ok) throw new Error(data.detail || 'Redemption failed')
       setPromoStatus({
         type: 'success',
-        message: `🎉 Promo activated! Your ${data.plan} plan is free until ${data.expires}`,
+        message: `ðŸŽ‰ Promo activated! Your ${data.plan} plan is free until ${data.expires}`,
       })
       setPromoCode('')
       await refreshUserData()
@@ -322,6 +342,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
         }),
       })
       if (!orderData.success) throw new Error(orderData.error || 'Failed to create top-up order')
+      if (!orderData.order?.id) throw new Error('Unable to create a secure top-up order. Please try again.')
       onClose()
       const keyToUse = orderData.key_id || RAZORPAY_KEY_ID
       if (!keyToUse) {
@@ -330,11 +351,11 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
       const amount = TOPUP_PAISE[topup.plan_id]
       const options = {
         key: keyToUse,
-        amount: orderData.order?.amount || amount,
+        amount: orderData.order.amount || amount,
         currency: 'INR',
         name: 'Lekha Captions',
-        description: `Top-up · ${topup.credits} credits`,
-        order_id: orderData.order?.id,
+        description: `Top-up Â· ${topup.credits} credits`,
+        order_id: orderData.order.id,
         handler: async (response) => {
           try {
             const verifyData = await apiRequest('/api/verify-payment', {
@@ -400,7 +421,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
             className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all flex items-center gap-1.5 ${billing === 'yearly' ? 'bg-white text-black' : 'text-gray-400 hover:text-white'}`}
           >
             Yearly
-            <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded-full font-bold">−17%</span>
+            <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded-full font-bold">Save up to {maxYearlyDiscount}%</span>
           </button>
         </div>
 
@@ -417,7 +438,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
             return (
               <div
                 key={plan.id}
-                className="relative cursor-pointer rounded-xl bg-zinc-900 px-4 pb-4 pt-5 transition-all"
+                className="relative flex flex-col cursor-pointer rounded-xl bg-zinc-900 px-4 pb-4 pt-5 transition-all"
                 onClick={() => {
                   setSelectedPlan(plan.id)
                   if (!processingPlan) handlePayment(plan)
@@ -445,23 +466,23 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
 
                 <div className="flex items-baseline gap-1 mb-1">
                   <span className="text-[28px] font-bold text-white">
-                    {billing === 'yearly' ? plan.yearlyPrice : plan.monthlyPrice}
+                    {billing === 'yearly' ? formatInrPrice(plan.yearlyPaise) : formatInrPrice(plan.monthlyPaise)}
                   </span>
-                  <span className="text-gray-500 text-sm">/mo</span>
+                  <span className="text-gray-500 text-sm">{billing === 'yearly' ? '/yr' : '/mo'}</span>
                 </div>
                 {billing === 'yearly' ? (
-                  <p className="text-xs text-[#F5A623] mb-3">₹{plan.yearlyPaise / 100} billed yearly</p>
+                  <p className="text-xs text-[#F5A623] mb-3">{formatInrPrice(plan.yearlyPaise)} billed yearly - ~{getDiscountPercent(plan.monthlyPaise, plan.yearlyPaise)}% off</p>
                 ) : (
                   <div className="mb-3" />
                 )}
 
                 <div className="flex items-center gap-2 mb-3.5 rounded-lg bg-white/5 p-2">
-                  <span className="text-lg font-bold text-white">{plan.credits}</span>
-                  <span className="text-xs text-gray-400">video credits / month</span>
+                  <span className="text-lg font-bold text-white">{getPlanCredits(plan, billing)}</span>
+                  <span className="text-xs text-gray-400">video credits / {getCreditPeriodLabel(billing)}</span>
                 </div>
 
-                <ul className="mb-4.5 space-y-1.5">
-                  {plan.features.map((f, i) => (
+                <ul className="mb-6 flex-1 space-y-1.5">
+                  {getPlanFeatures(plan, billing).map((f, i) => (
                     <li key={i} className="flex items-start gap-2 text-[13px]">
                       <Check className="w-3.5 h-3.5 text-[#F5A623] mt-0.5 shrink-0" />
                       <span className="text-gray-300">{f}</span>
@@ -475,7 +496,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
                     handlePayment(plan)
                   }}
                   disabled={processingPlan === plan.id}
-                  className={`w-full font-semibold rounded-[4px] ${plan.popular
+                  className={`mt-auto w-full py-5 font-semibold rounded-[4px] ${plan.popular
                     ? 'bg-white hover:bg-gray-100 text-black'
                     : 'bg-white/10 hover:bg-white/20 text-white border border-white/20'
                   }`}
@@ -505,7 +526,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
                 <div>
                   <p className="text-sm font-semibold text-white mb-0.5">Need more credits?</p>
                   <p className="text-xs text-gray-400">
-                    Add {topup.credits} credits to your current plan for {topup.price} — no plan change.
+                    Add {topup.credits} credits to your current plan for {topup.price} - no plan change.
                   </p>
                 </div>
                 <Button
@@ -519,7 +540,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
                   {processingPlan === topup.plan_id ? (
                     <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Processing...</>
                   ) : (
-                    `Top Up · ${topup.price}`
+                    `Top Up Â· ${topup.price}`
                   )}
                 </Button>
               </div>
@@ -555,7 +576,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
         </div>
 
         <p className="text-xs text-gray-600 text-center mt-3">
-          Credits deducted only after successful export · Secure payments via Razorpay
+          Credits deducted only after successful export Â· Secure payments via Razorpay
         </p>
       </DialogContent>
     </Dialog>
