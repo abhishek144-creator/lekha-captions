@@ -1,4 +1,7 @@
 .claude/worktrees/
+.claude/*.lock
+.claude/settings.local.json
+screen-check*.png
 
 # Local runtime/cache output
 caption-studio-publish-main/cache/
