@@ -561,3 +561,85 @@ export function getAllFontsForScript(script) {
   const fonts = scriptFontMap[script] || scriptFontMap.latin;
   return fonts.map(f => f.name);
 }
+
+// ── Devanagari template-font mapping ────────────────────────────────────────
+// The 69 sidebar templates carry a Latin display font (Bodoni Moda, Bebas Neue,
+// Oxanium, IBM Plex Mono, …) as their visual identity. Those families have NO
+// Devanagari glyphs, so on Hindi/Marathi captions they silently fall back to a
+// default font — which is why applying a template looked like "nothing happened"
+// on Indic text. Map each Latin family to a Devanagari font of similar character
+// so the template's typographic feel actually shows on Hindi.
+// Spread the templates across as many of the 25 Devanagari faces as possible so
+// they stay visually DISTINCT on Hindi. Devanagari has far fewer display faces
+// than Latin, so an earlier version collapsed ~40 Latin families onto ~10
+// Devanagari ones (the whole didone family → Rozha One, every serif → Eczar/
+// Martel, every condensed cap → Teko) — which made dozens of templates look
+// identical on Hindi captions. Each Latin family below is matched to a
+// Devanagari face of similar character, choosing a *different* face wherever the
+// Devanagari catalogue allows it. (Mono is the one unavoidable bottleneck: Karma
+// is the only monospaced-feeling Devanagari face, so every mono maps to it.)
+const LATIN_TO_DEVANAGARI_FONT = {
+  // Monospace / typewriter — Karma is the only mono-flavoured Devanagari face
+  'IBM Plex Mono': 'Karma', 'Space Mono': 'Karma', 'Special Elite': 'Karma', 'Courier Prime': 'Karma',
+
+  // Techno / futurist geometric
+  'Oxanium': 'Rajdhani', 'Orbitron': 'Rajdhani', 'Exo 2': 'Rajdhani',
+  'Syne': 'Yantramanav',
+
+  // Clean geometric / humanist sans
+  'Raleway': 'Mukta', 'Josefin Sans': 'Mukta',
+  'Montserrat': 'Poppins', 'Poppins': 'Poppins', 'Inter': 'Poppins',
+  'DM Sans': 'Hind',
+
+  // Condensed / gothic / impact caps
+  'Anton': 'Teko', 'Antonio': 'Teko',
+  'Bebas Neue': 'Khand', 'Barlow Condensed': 'Khand',
+  'Oswald': 'Rajdhani',
+  'Archivo Black': 'Yantramanav',
+
+  // High-contrast / Didone display serif
+  'Bodoni Moda': 'Rozha One',
+  'Playfair Display': 'Inknut Antiqua',
+  'Gloock': 'Rhodium Libre',
+  'DM Serif Display': 'Vesper Libre',
+  'Cinzel': 'Arya',
+  'Abril Fatface': 'Shrikhand',
+
+  // Editorial / body serif
+  'Cormorant Garamond': 'Eczar',
+  'EB Garamond': 'Kurale',
+  'Libre Baskerville': 'Sumana',
+  'Spectral': 'Sura',
+  'Lora': 'Martel', 'Merriweather': 'Martel', 'Noto Serif': 'Martel',
+  'Bitter': 'Sahitya',
+
+  // Script / handwriting
+  'Caveat': 'Kalam', 'Pacifico': 'Kalam', 'Dancing Script': 'Kalam',
+};
+
+function devanagariFallbackFor(font) {
+  const f = String(font || '');
+  if (/mono|courier|typewriter|plex mono|special elite/i.test(f)) return 'Karma';
+  if (/oxanium|orbitron|syne|techno|exo/i.test(f)) return 'Rajdhani';
+  if (/antonio|anton/i.test(f)) return 'Teko';
+  if (/archivo black|black|heavy|ultra/i.test(f)) return 'Yantramanav';
+  if (/condensed|narrow|oswald|bebas|barlow|impact|khand|teko/i.test(f)) return 'Khand';
+  if (/cinzel|trajan|titling/i.test(f)) return 'Arya';
+  if (/playfair|abril|fatface/i.test(f)) return 'Inknut Antiqua';
+  if (/bodoni|didot|gloock/i.test(f)) return 'Rozha One';
+  if (/dm serif|rozha|fat/i.test(f)) return 'Vesper Libre';
+  if (/serif|garamond|baskerville|georgia|times|lora|bitter|merriweather|cormorant|spectral|noto serif/i.test(f)) return 'Eczar';
+  if (/script|hand|caveat|pacifico|dancing|brush/i.test(f)) return 'Kalam';
+  return 'Noto Sans';
+}
+
+// Return a font family that can actually render `text`. If the text is Devanagari
+// and `fontFamily` is a Latin-only family, swap to a matching Devanagari font.
+// Latin text (or already-Devanagari families) pass through unchanged.
+export function resolveScriptFont(fontFamily, text) {
+  if (!text || detectScript(text) !== 'devanagari') return fontFamily || 'Noto Sans';
+  if (!fontFamily) return 'Noto Sans';
+  const devNames = scriptFontMap.devanagari.map((f) => f.name);
+  if (devNames.includes(fontFamily)) return fontFamily;
+  return LATIN_TO_DEVANAGARI_FONT[fontFamily] || devanagariFallbackFor(fontFamily);
+}
