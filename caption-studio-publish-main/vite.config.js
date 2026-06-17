@@ -35,16 +35,6 @@ export default defineConfig({
         target: backendTarget,
         changeOrigin: true,
       },
-      // 2. Send Video requests to Python (FIXES BLACK SCREEN)
-      '/uploads': {
-        target: backendTarget,
-        changeOrigin: true,
-      },
-      // 3. Send Export requests to Python
-      '/exports': {
-        target: backendTarget,
-        changeOrigin: true,
-      },
     }
   }
 })

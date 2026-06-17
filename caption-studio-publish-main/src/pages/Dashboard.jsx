@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { Suspense, lazy, useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { Upload, Sparkles, Captions, Clock3, Layers, Layout, SlidersHorizontal, Type, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -6,29 +6,43 @@ import { useNavigate, useLocation } from 'react-router-dom';
 
 import { useAuth } from '@/lib/AuthContext';
 import DashboardHeader from '@/components/dashboard/DashboardHeader';
-import VideoPlayer from '@/components/dashboard/VideoPlayer';
-import CaptionTimeline from '@/components/dashboard/CaptionTimeline';
-import CaptionEditor from '@/components/dashboard/CaptionEditor';
-import StyleControls from '@/components/dashboard/StyleControls';
-import TextTab from '@/components/dashboard/TextTab';
-import AnimateTab from '@/components/dashboard/AnimateTab';
-import HistoryTab from '@/components/dashboard/HistoryTab';
-import LayersTab from '@/components/dashboard/LayersTab';
 import SidebarNav from '@/components/dashboard/SidebarNav';
 import MobileDashboardDock from '@/components/dashboard/MobileDashboardDock';
-import UploadModal from '@/components/dashboard/UploadModal';
-import ExportPanel from '@/components/dashboard/ExportPanel';
-import PricingModal from '@/components/dashboard/PricingModal';
-import SidebarTemplateGallery20 from '@/components/dashboard/SidebarTemplateGallery20';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { extractWaveformData } from '@/components/dashboard/audioUtils';
-import { autoLoadFontForText, loadGoogleFont } from '@/components/dashboard/fontUtils';
-import WordClickPopup from '@/components/dashboard/WordClickPopup';
+import { autoLoadFontForText, loadGoogleFont, resolveScriptFont } from '@/components/dashboard/fontUtils';
+import { buildEmotionalCaptionPlan, EMOTIONAL_TEMPLATE_TIMING } from '@/components/dashboard/emotionalTemplateUtils';
 import { toast } from '@/components/ui/use-toast';
 import { apiRequest } from '@/lib/apiClient';
 import { notifyApiError } from '@/lib/notifyApiError';
 import { getClientContext, trackAnalytics } from '@/lib/analytics';
 import { featureFlags } from '@/lib/featureFlags';
+
+const VideoPlayer = lazy(() => import('@/components/dashboard/VideoPlayer'));
+const CaptionTimeline = lazy(() => import('@/components/dashboard/CaptionTimeline'));
+const CaptionEditor = lazy(() => import('@/components/dashboard/CaptionEditor'));
+const StyleControls = lazy(() => import('@/components/dashboard/StyleControls'));
+const TextTab = lazy(() => import('@/components/dashboard/TextTab'));
+const AnimateTab = lazy(() => import('@/components/dashboard/AnimateTab'));
+const HistoryTab = lazy(() => import('@/components/dashboard/HistoryTab'));
+const LayersTab = lazy(() => import('@/components/dashboard/LayersTab'));
+const UploadModal = lazy(() => import('@/components/dashboard/UploadModal'));
+const ExportPanel = lazy(() => import('@/components/dashboard/ExportPanel'));
+const PricingModal = lazy(() => import('@/components/dashboard/PricingModal'));
+const SidebarTemplateGallery20 = lazy(() => import('@/components/dashboard/SidebarTemplateGallery20'));
+const WordClickPopup = lazy(() => import('@/components/dashboard/WordClickPopup'));
+
+const PanelLoadingFallback = ({ label = 'Loading...' }) => (
+  <div className="flex h-full min-h-[160px] items-center justify-center rounded-[14px] border border-white/[0.06] bg-white/[0.02] text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
+    {label}
+  </div>
+);
+
+const VideoLoadingFallback = () => (
+  <div className="flex h-full min-h-[360px] items-center justify-center rounded-[18px] bg-black">
+    <div className="h-9 w-9 animate-spin rounded-full border-4 border-white/15 border-t-white" />
+  </div>
+);
 
 // Helper for retrying operations
 const retryOperation = async (operation, maxRetries = 3, delay = 1000) => {
@@ -103,6 +117,10 @@ const stripDetachedWordLayout = (wordStyles = {}) => Object.fromEntries(
     delete nextStyle.textScaleX;
     delete nextStyle.rotation;
     delete nextStyle.frozenFontSize;
+    // Authored templates own entrance motion. Keeping a previous per-word
+    // animation here forces multiple templates through the same generic effect.
+    delete nextStyle.animation;
+    delete nextStyle.animationSpeed;
     return [styleKey, nextStyle];
   }),
 );
@@ -163,16 +181,20 @@ export default function Dashboard() {
     if (typeof window === 'undefined') return;
     if (!new URLSearchParams(window.location.search).has('devseed')) return;
     const mkWords = (pairs) => pairs.map(([w, s, e]) => ({ word: w, text: w, start: s, end: e }));
-    setVideoUrl('/uploads/devseed.mp4');
+    setVideoUrl('/uploads/6e7cb4d2-0b2e-472d-91c4-fa8dae2eb30a.mov');
     setDuration(12);
     setFileId('devseed');
     setCaptions([
-      { id: 'seed-0', text: 'सपने वही जो सच हों', start_time: 0.2, end_time: 3.6, position_x: 50, position_y: null, wordStyles: {},
-        words: mkWords([['सपने', 0.2, 1.0], ['वही', 1.0, 1.7], ['जो', 1.7, 2.3], ['सच', 2.3, 3.0], ['हों', 3.0, 3.6]]) },
-      { id: 'seed-1', text: 'मेहनत कभी बेकार नहीं जाती', start_time: 3.8, end_time: 7.6, position_x: 50, position_y: null, wordStyles: {},
-        words: mkWords([['मेहनत', 3.8, 4.6], ['कभी', 4.6, 5.2], ['बेकार', 5.2, 6.0], ['नहीं', 6.0, 6.7], ['जाती', 6.7, 7.6]]) },
-      { id: 'seed-2', text: 'आज खुद पर यकीन करो', start_time: 7.8, end_time: 11.6, position_x: 50, position_y: null, wordStyles: {},
-        words: mkWords([['आज', 7.8, 8.5], ['खुद', 8.5, 9.2], ['पर', 9.2, 9.8], ['यकीन', 9.8, 10.6], ['करो', 10.6, 11.6]]) },
+      { id: 'seed-hindi-0', text: 'ये आपको पढ़ना है', start_time: 0, end_time: 2.3, position_x: 50, position_y: null, wordStyles: {},
+        words: mkWords([['ये', 0, 0.5], ['आपको', 0.5, 1.1], ['पढ़ना', 1.1, 1.8], ['है', 1.8, 2.3]]) },
+      { id: 'seed-hindi-1', text: 'मुंबई की अपनी कहानी', start_time: 2.4, end_time: 4.7, position_x: 50, position_y: null, wordStyles: {},
+        words: mkWords([['मुंबई', 2.4, 3.0], ['की', 3.0, 3.4], ['अपनी', 3.4, 4.0], ['कहानी', 4.0, 4.7]]) },
+      { id: 'seed-hindi-2', text: 'हर शब्द अलग असर', start_time: 4.8, end_time: 7.1, position_x: 50, position_y: null, wordStyles: {},
+        words: mkWords([['हर', 4.8, 5.3], ['शब्द', 5.3, 5.9], ['अलग', 5.9, 6.5], ['असर', 6.5, 7.1]]) },
+      { id: 'seed-hindi-3', text: 'धीरे धीरे सामने आता', start_time: 7.2, end_time: 9.5, position_x: 50, position_y: null, wordStyles: {},
+        words: mkWords([['धीरे', 7.2, 7.8], ['धीरे', 7.8, 8.3], ['सामने', 8.3, 8.9], ['आता', 8.9, 9.5]]) },
+      { id: 'seed-hindi-4', text: 'और याद रह जाता है', start_time: 9.6, end_time: 12, position_x: 50, position_y: null, wordStyles: {},
+        words: mkWords([['और', 9.6, 10.0], ['याद', 10.0, 10.5], ['रह', 10.5, 10.9], ['जाता', 10.9, 11.5], ['है', 11.5, 12]]) },
     ]);
     setIsLoaded(true);
   }, []);
@@ -431,6 +453,7 @@ export default function Dashboard() {
         formData.append('file', file);
         uploadData = await apiRequest('/api/upload', {
           method: 'POST',
+          headers: mediaAuthToken ? { Authorization: `Bearer ${mediaAuthToken}` } : {},
           body: formData,
           dedupeKey: 'upload-video',
           cancelPrevious: true,
@@ -695,7 +718,7 @@ export default function Dashboard() {
       secondary_color: '',
       highlight_color: '',
       highlight_gradient: '',
-      has_background: false,
+      has_background: true,
       background_color: '#000000',
       background_opacity: 0.7,
       background_padding: 6,
@@ -720,7 +743,11 @@ export default function Dashboard() {
       || templateStyleForSnapshot?.template_20_id
     );
     const templateSnapshot = hasTemplateSelection
-      ? JSON.parse(JSON.stringify(templateStyleForSnapshot))
+      ? JSON.parse(JSON.stringify({
+        ...templateStyleForSnapshot,
+        emotional_intelligence: true,
+        emotional_timing: EMOTIONAL_TEMPLATE_TIMING,
+      }))
       : null;
     const merged = {
       ...captionStyle,
@@ -729,6 +756,35 @@ export default function Dashboard() {
       template_snapshot: templateSnapshot,
       template_applied_at: templateSnapshot ? Date.now() : null,
     };
+    // Indic-script safety net: a template's Latin display font (Bodoni, Bebas Neue,
+    // Oxanium, …) has no Devanagari glyphs, so on Hindi/Marathi captions it silently
+    // falls back to a default face and the template looks like it "didn't apply".
+    // Swap in a Devanagari font of matching character so the template visibly lands.
+    //
+    // IMPORTANT: do NOT decide this from the *dominant* script of all captions joined.
+    // A project can be Latin-dominant overall (English hooks, numbers, @handles, 8+
+    // mixed elements) yet still contain Hindi caption lines. Aggregate detection then
+    // returns 'latin', the Latin template font is kept, and every Hindi line renders in
+    // a glyphless fallback = "template not applied / plain white". Instead remap as soon
+    // as ANY non-text caption needs a different (script-appropriate) face. resolveScriptFont
+    // is a no-op on captions that don't need swapping, so the first one that DOES need it
+    // (e.g. the Hindi line) wins. Render-time per-caption resolution in VideoPlayer still
+    // handles genuinely mixed projects line-by-line; this just makes the stored font (and
+    // the font we eagerly load) correct for the script actually present.
+    let _mappedFont = merged.font_family
+    if (merged.font_family) {
+      for (const c of captions) {
+        if (!c || c.isTextElement) continue
+        const m = resolveScriptFont(merged.font_family, String(c.text || ''))
+        if (m && m !== merged.font_family) { _mappedFont = m; break }
+      }
+      if (_mappedFont !== merged.font_family) merged.font_family = _mappedFont
+      if (templateSnapshot) templateSnapshot.font_family = merged.font_family
+    }
+    const emotionalPlan = templateSnapshot
+      ? buildEmotionalCaptionPlan(captions, waveformData, duration, templateSnapshot.template_markup)
+      : [];
+    const emotionalByCaptionId = new Map(emotionalPlan.map((entry) => [entry.captionId, entry]));
     const nextCaptions = captions.map(cap => {
       if (!cap || cap.isTextElement) return cap;
       if (!templateSnapshot) {
@@ -742,13 +798,21 @@ export default function Dashboard() {
           template_layout: _captionTemplateLayout,
           template_effect: _captionTemplateEffect,
           template_markup: _captionTemplateMarkup,
+          emotional_mode: _emotionalMode,
+          template_phase_index: _templatePhaseIndex,
+          imp_word_index: _impWordIndex,
+          emphasis_color: _emphasisColor,
+          audio_emotion_metrics: _audioEmotionMetrics,
           ...rest
         } = cap;
         return rest;
       }
+      const emotional = emotionalByCaptionId.get(cap.id);
       return {
         ...cap,
         wordStyles: stripDetachedWordLayout(cap.wordStyles || {}),
+        animation: 'none',
+        animationSpeed: 1,
         template_id: templateSnapshot.template_id || '',
         template_20_id: templateSnapshot.template_20_id || '',
         template_source: templateSnapshot.template_source || '',
@@ -758,11 +822,17 @@ export default function Dashboard() {
         template_effect: templateSnapshot.template_effect || '',
         template_markup: templateSnapshot.template_markup || '',
         applied_template_style: templateSnapshot,
+        emotional_mode: emotional?.mode || 'normal',
+        template_phase_index: emotional?.phaseIndex ?? 0,
+        imp_word_index: emotional?.impWordIndex ?? -1,
+        emphasis_color: emotional?.emphasisColor || '',
+        audio_emotion_metrics: emotional?.audio || null,
       };
     });
-    // Load the template's font (if any) before applying so the browser has it
-    if (templateStyleForSnapshot?.font_family) {
-      loadGoogleFont(templateStyleForSnapshot.font_family, [300, 400, 500, 600, 700, 800, 900]).catch(() => {});
+    // Load the font that will actually render (merged.font_family — already remapped
+    // to a Devanagari family above when the captions are Indic) so it's ready on apply.
+    if (merged.font_family) {
+      loadGoogleFont(merged.font_family, [300, 400, 500, 600, 700, 800, 900]).catch(() => {});
     }
     pushHistory(nextCaptions, merged);
   };
@@ -928,67 +998,81 @@ export default function Dashboard() {
   const renderEditorPanel = () => {
     if (activeTab === 'captions') {
       return (
-        <CaptionEditor
-          captions={captions}
-          setCaptions={updateCaptions}
-          selectedCaptionId={selectedCaptionId}
-          setSelectedCaptionId={setSelectedCaptionId}
-          onSeek={handleSeek}
-          onOpenWordPopup={(caption, wordIndex, position, word) => openWordPopup({ caption, wordIndex, position, word })}
-          wordPopup={wordPopup}
-          user={currentUser}
-        />
+        <Suspense fallback={<PanelLoadingFallback label="Loading captions" />}>
+          <CaptionEditor
+            captions={captions}
+            setCaptions={updateCaptions}
+            selectedCaptionId={selectedCaptionId}
+            setSelectedCaptionId={setSelectedCaptionId}
+            onSeek={handleSeek}
+            onOpenWordPopup={(caption, wordIndex, position, word) => openWordPopup({ caption, wordIndex, position, word })}
+            wordPopup={wordPopup}
+            user={currentUser}
+          />
+        </Suspense>
       );
     }
 
     if (activeTab === 'text') {
       return (
-        <TextTab
-          captions={captions}
-          setCaptions={updateCaptions}
-          currentTime={currentTime}
-          setSelectedCaptionId={setSelectedCaptionId}
-          captionStyle={captionStyle}
-        />
+        <Suspense fallback={<PanelLoadingFallback label="Loading text tools" />}>
+          <TextTab
+            captions={captions}
+            setCaptions={updateCaptions}
+            currentTime={currentTime}
+            setSelectedCaptionId={setSelectedCaptionId}
+            captionStyle={captionStyle}
+          />
+        </Suspense>
       );
     }
 
     if (activeTab === 'templates') {
       return (
-        <SidebarTemplateGallery20
-          currentStyle={captionStyle}
-          onApplyTemplate={handleApplyTemplate}
-          onBack={() => setActiveTab('captions')}
-        />
+        <Suspense fallback={<PanelLoadingFallback label="Loading templates" />}>
+          <SidebarTemplateGallery20
+            currentStyle={captionStyle}
+            onApplyTemplate={handleApplyTemplate}
+            onBack={() => setActiveTab('captions')}
+          />
+        </Suspense>
       );
     }
 
     if (activeTab === 'animate') {
       return (
-        <AnimateTab
-          selectedWord={selectedWordForAnimation}
-          selectedCaption={
-            captions.find(c => c.id === selectedCaptionId) ||
-            captions.find(c => currentTime >= c.start_time && currentTime <= c.end_time)
-          }
-          captions={captions}
-          setCaptions={updateCaptions}
-        />
+        <Suspense fallback={<PanelLoadingFallback label="Loading animation" />}>
+          <AnimateTab
+            selectedWord={selectedWordForAnimation}
+            selectedCaption={
+              captions.find(c => c.id === selectedCaptionId) ||
+              captions.find(c => currentTime >= c.start_time && currentTime <= c.end_time)
+            }
+            captions={captions}
+            setCaptions={updateCaptions}
+          />
+        </Suspense>
       );
     }
 
     if (activeTab === 'history') {
-      return <HistoryTab user={currentUser} userData={userData} />;
+      return (
+        <Suspense fallback={<PanelLoadingFallback label="Loading history" />}>
+          <HistoryTab user={currentUser} userData={userData} />
+        </Suspense>
+      );
     }
 
     if (activeTab === 'layers') {
       return (
-        <LayersTab
-          captions={captions}
-          selectedCaptionId={selectedCaptionId}
-          setSelectedCaptionId={setSelectedCaptionId}
-          onSeek={handleSeek}
-        />
+        <Suspense fallback={<PanelLoadingFallback label="Loading layers" />}>
+          <LayersTab
+            captions={captions}
+            selectedCaptionId={selectedCaptionId}
+            setSelectedCaptionId={setSelectedCaptionId}
+            onSeek={handleSeek}
+          />
+        </Suspense>
       );
     }
 
@@ -996,43 +1080,47 @@ export default function Dashboard() {
   };
 
   const renderStylePanel = () => (
-    <StyleControls
-      captionStyle={captionStyle}
-      setCaptionStyle={updateCaptionStyle}
-      setCaptionStyleRaw={setCaptionStyle}
-      addToHistory={addToHistory}
-      selectedCaption={captions.find(c => c.id === selectedCaptionId)}
-      captions={captions}
-      setCaptions={updateCaptions}
-      onApplyTemplate={handleApplyTemplate}
-    />
+    <Suspense fallback={<PanelLoadingFallback label="Loading style tools" />}>
+      <StyleControls
+        captionStyle={captionStyle}
+        setCaptionStyle={updateCaptionStyle}
+        setCaptionStyleRaw={setCaptionStyle}
+        addToHistory={addToHistory}
+        selectedCaption={captions.find(c => c.id === selectedCaptionId)}
+        captions={captions}
+        setCaptions={updateCaptions}
+        onApplyTemplate={handleApplyTemplate}
+      />
+    </Suspense>
   );
 
   const renderTimelinePanel = () => (
-    <CaptionTimeline
-      captions={captions}
-      duration={duration}
-      currentTime={currentTime}
-      selectedCaptionId={selectedCaptionId}
-      onSelectCaption={setSelectedCaptionId}
-      onSeek={handleSeek}
-      setCaptions={updateCaptions}
-      setCaptionsRaw={setCaptions}
-      addToHistory={addToHistory}
-      waveformData={waveformData}
-      videoElement={videoElement}
-      isPlaying={isPlaying}
-      setIsPlaying={setIsPlaying}
-      timelineHeight={timelineHeight}
-      collapsed={isTimelineCollapsed}
-      onToggleCollapsed={() => {
-        setIsTimelineCollapsed(prev => {
-          const next = !prev;
-          setTimelineHeight(next ? 42 : 204);
-          return next;
-        });
-      }}
-    />
+    <Suspense fallback={<PanelLoadingFallback label="Loading timeline" />}>
+      <CaptionTimeline
+        captions={captions}
+        duration={duration}
+        currentTime={currentTime}
+        selectedCaptionId={selectedCaptionId}
+        onSelectCaption={setSelectedCaptionId}
+        onSeek={handleSeek}
+        setCaptions={updateCaptions}
+        setCaptionsRaw={setCaptions}
+        addToHistory={addToHistory}
+        waveformData={waveformData}
+        videoElement={videoElement}
+        isPlaying={isPlaying}
+        setIsPlaying={setIsPlaying}
+        timelineHeight={timelineHeight}
+        collapsed={isTimelineCollapsed}
+        onToggleCollapsed={() => {
+          setIsTimelineCollapsed(prev => {
+            const next = !prev;
+            setTimelineHeight(next ? 42 : 204);
+            return next;
+          });
+        }}
+      />
+    </Suspense>
   );
 
   const generationElapsedSeconds = generationStartedAt
@@ -1043,10 +1131,10 @@ export default function Dashboard() {
     const step3Ready = generationElapsedSeconds >= 6;
     const step4Ready = generationElapsedSeconds >= 9;
     const progressSteps = [
-      { label: 'Generating captions with AI', status: step2Ready ? 'complete' : 'active' },
-      { label: 'Preparing emoji suggestions', status: step3Ready ? 'complete' : step2Ready ? 'active' : 'upcoming' },
-      { label: 'Highlighting important words', status: step4Ready ? 'complete' : step3Ready ? 'active' : 'upcoming' },
-      { label: 'Creating caption animations', status: step4Ready ? 'active' : 'upcoming' },
+      { label: 'Transcribing your audio', status: step2Ready ? 'complete' : 'active' },
+      { label: 'Syncing word-level timing', status: step3Ready ? 'complete' : step2Ready ? 'active' : 'upcoming' },
+      { label: 'Highlighting key moments', status: step4Ready ? 'complete' : step3Ready ? 'active' : 'upcoming' },
+      { label: 'Rendering your preview', status: step4Ready ? 'active' : 'upcoming' },
     ];
     const completedSteps = progressSteps.filter((step) => step.status === 'complete').length;
     const hasActiveStep = progressSteps.some((step) => step.status === 'active');
@@ -1090,10 +1178,10 @@ export default function Dashboard() {
               </div>
               <div className="min-w-0">
                 <h2 className="text-[30px] font-semibold leading-[1.12] text-white sm:text-[36px]">
-                  Lekha Captions is working...
+                  Crafting your captions
                 </h2>
                 <p className="mt-3 max-w-[410px] text-sm leading-6 text-zinc-400">
-                  We are preparing your captions and building the timeline for your first preview.
+                  Lekha is transcribing your audio, syncing each word to the timeline, and styling your first preview.
                 </p>
               </div>
             </div>
@@ -1237,7 +1325,7 @@ export default function Dashboard() {
               <div className="px-4 pt-2 shrink-0">
                 <div className="flex items-center justify-between gap-3 bg-white/5 border border-white/15 rounded-xl px-4 py-2.5">
                   <p className="text-sm text-white font-medium">
-                    ⚡ Running low? Add {userData.subscription_tier.startsWith('pro') ? '25' : userData.subscription_tier.startsWith('creator') ? '15' : '10'} credits for {userData.subscription_tier.startsWith('pro') ? '₹79' : '₹49'} — no plan change needed.
+                    Low credits? Add {userData.subscription_tier.startsWith('pro') ? '25' : userData.subscription_tier.startsWith('creator') ? '15' : '10'} credits for {userData.subscription_tier.startsWith('pro') ? 'Rs 79' : 'Rs 49'} - no plan change needed.
                   </p>
                   <button
                     onClick={() => setIsPricingModalOpen(true)}
@@ -1295,36 +1383,39 @@ export default function Dashboard() {
                 style={{ paddingBottom: isVideoFullscreen || isTimelineCollapsed ? 0 : `${Math.max(72, timelineHeight - 24)}px` }}
               >
                 <div className="transition-transform duration-200">
-                  <VideoPlayer
-                    videoUrl={videoUrl}
-                    currentTime={currentTime}
-                    setCurrentTime={setCurrentTime}
-                    seekSignal={seekSignal}
-                    isPlaying={isPlaying}
-                    setIsPlaying={setIsPlaying}
-                    captions={captions}
-                    setCaptions={updateCaptions}
-                    setCaptionsRaw={setCaptions}
-                    captionStyle={captionStyle}
-                    setCaptionStyle={updateCaptionStyle}
-                    setCaptionStyleRaw={setCaptionStyle}
-                    addToHistory={addToHistory}
-                    duration={duration}
-                    setDuration={setDuration}
-                    selectedCaptionId={selectedCaptionId}
-                    setSelectedCaptionId={setSelectedCaptionId}
-                    wordPopup={wordPopup}
-                    setWordPopup={openWordPopup}
-                    onVideoLoaded={async (videoEl) => {
-                      setVideoElement(videoEl);
-                      if (videoEl && !waveformData) {
-                        const data = await extractWaveformData(videoEl, 400);
-                        if (data) setWaveformData(data);
-                      }
-                    }}
-                    isVideoFullscreen={isVideoFullscreen}
-                    setIsVideoFullscreen={setIsVideoFullscreen}
-                  />
+                  <Suspense fallback={<VideoLoadingFallback />}>
+                    <VideoPlayer
+                      videoUrl={videoUrl}
+                      currentTime={currentTime}
+                      setCurrentTime={setCurrentTime}
+                      seekSignal={seekSignal}
+                      isPlaying={isPlaying}
+                      setIsPlaying={setIsPlaying}
+                      captions={captions}
+                      waveformData={waveformData}
+                      setCaptions={updateCaptions}
+                      setCaptionsRaw={setCaptions}
+                      captionStyle={captionStyle}
+                      setCaptionStyle={updateCaptionStyle}
+                      setCaptionStyleRaw={setCaptionStyle}
+                      addToHistory={addToHistory}
+                      duration={duration}
+                      setDuration={setDuration}
+                      selectedCaptionId={selectedCaptionId}
+                      setSelectedCaptionId={setSelectedCaptionId}
+                      wordPopup={wordPopup}
+                      setWordPopup={openWordPopup}
+                      onVideoLoaded={async (videoEl) => {
+                        setVideoElement(videoEl);
+                        if (videoEl && !waveformData) {
+                          const data = await extractWaveformData(videoEl, 400);
+                          if (data) setWaveformData(data);
+                        }
+                      }}
+                      isVideoFullscreen={isVideoFullscreen}
+                      setIsVideoFullscreen={setIsVideoFullscreen}
+                    />
+                  </Suspense>
                 </div>
               </div>
 
@@ -1431,95 +1522,111 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Word Click Popup — fixed at Dashboard root, above EVERYTHING including navbar */}
+      {/* Word Click Popup: fixed at Dashboard root, above EVERYTHING including navbar */}
       {wordPopup && (
         <>
           <div
             className="pointer-events-none fixed inset-0 z-[9998]"
             onClick={() => setWordPopup(null)}
           />
-          <WordClickPopup
-            key={wordPopup._openKey ?? wordPopupOpenCount}
-            word={wordPopup.word}
-          position={wordPopup.position}
-          onStyleChange={handleWordStyleChange}
-          currentStyle={(() => {
-            const c = captions.find(cap =>
-              wordPopup.type === 'element'
-                ? cap.id === wordPopup.elementId
-                : cap.id === wordPopup.caption?.id
-            );
-            const key = wordPopup.type === 'element'
-              ? `${wordPopup.elementId}-${wordPopup.wordIndex}`
-              : `${wordPopup.caption?.id}-${wordPopup.wordIndex}`;
-            return c?.wordStyles?.[key] || {};
-          })()}
-          onEdit={() => setWordPopup(null)}
-          onClose={() => setWordPopup(null)}
-          onResetPosition={() => {
-            if (addToHistory) addToHistory();
-            const key = wordPopup.type === 'element'
-              ? `${wordPopup.elementId}-${wordPopup.wordIndex}`
-              : `${wordPopup.caption?.id}-${wordPopup.wordIndex}`;
-            setCaptions(prev => prev.map(c => {
-              const id = wordPopup.type === 'element' ? wordPopup.elementId : wordPopup.caption?.id;
-              if (c.id !== id) return c;
-              const ws = c.wordStyles || {};
-              return {
-                ...c,
-                wordStyles: {
-                  ...ws,
-                  [key]: {
-                    ...(ws[key] || {}),
-                    x: 0,
-                    y: 0,
-                    x_pct: 0,
-                    y_pct: 0,
-                    abs_x_pct: 0,
-                    abs_y_pct: 0,
-                  }
-                }
-              };
-            }));
-          }}
-          onResetFontSize={handleResetWordFontSize}
-          onHistoryRecord={addToHistory}
-          videoContainerRef={null}
-          isElementWord={wordPopup.type === 'element'}
-        />
+          <Suspense fallback={null}>
+            <WordClickPopup
+              key={wordPopup._openKey ?? wordPopupOpenCount}
+              word={wordPopup.word}
+              position={wordPopup.position}
+              onStyleChange={handleWordStyleChange}
+              currentStyle={(() => {
+                const c = captions.find(cap =>
+                  wordPopup.type === 'element'
+                    ? cap.id === wordPopup.elementId
+                    : cap.id === wordPopup.caption?.id
+                );
+                const key = wordPopup.type === 'element'
+                  ? `${wordPopup.elementId}-${wordPopup.wordIndex}`
+                  : `${wordPopup.caption?.id}-${wordPopup.wordIndex}`;
+                return c?.wordStyles?.[key] || {};
+              })()}
+              onEdit={() => setWordPopup(null)}
+              onClose={() => setWordPopup(null)}
+              onResetPosition={() => {
+                if (addToHistory) addToHistory();
+                const key = wordPopup.type === 'element'
+                  ? `${wordPopup.elementId}-${wordPopup.wordIndex}`
+                  : `${wordPopup.caption?.id}-${wordPopup.wordIndex}`;
+                setCaptions(prev => prev.map(c => {
+                  const id = wordPopup.type === 'element' ? wordPopup.elementId : wordPopup.caption?.id;
+                  if (c.id !== id) return c;
+                  const ws = c.wordStyles || {};
+                  return {
+                    ...c,
+                    wordStyles: {
+                      ...ws,
+                      [key]: {
+                        ...(ws[key] || {}),
+                        x: 0,
+                        y: 0,
+                        x_pct: 0,
+                        y_pct: 0,
+                        abs_x_pct: 0,
+                        abs_y_pct: 0,
+                      }
+                    }
+                  };
+                }));
+              }}
+              onResetFontSize={handleResetWordFontSize}
+              onHistoryRecord={addToHistory}
+              videoContainerRef={null}
+              isElementWord={wordPopup.type === 'element'}
+            />
+          </Suspense>
         </>
       )}
 
       {/* Modals */}
-      <UploadModal
-        open={isUploadModalOpen}
-        onClose={() => setIsUploadModalOpen(false)}
-        onUpload={handleUpload}
-        isUploading={isUploading}
-      />
+      {isUploadModalOpen && (
+        <Suspense fallback={null}>
+          <UploadModal
+            open={isUploadModalOpen}
+            onClose={() => setIsUploadModalOpen(false)}
+            onUpload={handleUpload}
+            isUploading={isUploading}
+          />
+        </Suspense>
+      )}
 
-      <ErrorBoundary>
-        <ExportPanel
-          open={isExportPanelOpen}
-          onClose={() => setIsExportPanelOpen(false)}
-          captions={captions}
-          captionStyle={captionStyle}
-          videoUrl={videoUrl}
-          projectId={projectId}
-          fileId={fileId}
-          originalFileName={originalFileName}
-          onUpgradeClick={() => { setIsExportPanelOpen(false); setIsPricingModalOpen(true); }}
-        />
-      </ErrorBoundary>
+      {isExportPanelOpen && (
+        <ErrorBoundary>
+          <Suspense fallback={null}>
+            <ExportPanel
+              open={isExportPanelOpen}
+              onClose={() => setIsExportPanelOpen(false)}
+              captions={captions}
+              captionStyle={captionStyle}
+              waveformData={waveformData}
+              duration={duration}
+              videoUrl={videoUrl}
+              projectId={projectId}
+              fileId={fileId}
+              originalFileName={originalFileName}
+              onUpgradeClick={() => { setIsExportPanelOpen(false); setIsPricingModalOpen(true); }}
+            />
+          </Suspense>
+        </ErrorBoundary>
+      )}
 
-      <PricingModal
-        isOpen={isPricingModalOpen}
-        onClose={() => { setIsPricingModalOpen(false); setPricingMessage(''); }}
-        onSelectPlan={handleSelectPlan}
-        user={currentUser}
-        message={pricingMessage}
-        userData={userData}
-      />
+      {isPricingModalOpen && (
+        <Suspense fallback={null}>
+          <PricingModal
+            isOpen={isPricingModalOpen}
+            onClose={() => { setIsPricingModalOpen(false); setPricingMessage(''); }}
+            onSelectPlan={handleSelectPlan}
+            user={currentUser}
+            message={pricingMessage}
+            userData={userData}
+          />
+        </Suspense>
+      )}
 
       {/* Plan Expired Modal */}
       {isPlanExpiredModalOpen && (
