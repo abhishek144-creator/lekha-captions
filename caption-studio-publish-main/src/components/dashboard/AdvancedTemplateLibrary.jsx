@@ -1,6 +1,13 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo } from 'react';
+import { useLazyVisible } from './useLazyVisible';
 import { Check, Sparkles } from 'lucide-react';
 import originalTemplateHtml from '../../assets/lekha-captions-T11-T35.html?raw';
+import {
+  ADVANCED_IMP_ENTRANCES,
+  ADVANCED_TEMPLATE_RUNTIME_CSS,
+  ADVANCED_TEMPLATE_TIMING,
+  ORIGINAL_TEMPLATE_BLOCKS,
+} from './templateMotionConfig';
 import '../../styles/advancedTemplateLibrary.css';
 
 const sanitizedOriginalTemplateHtml = originalTemplateHtml
@@ -72,6 +79,12 @@ const ADVANCED_TEMPLATE_STYLE = {
 function buildAppliedTemplateStyle(template) {
   return {
     template_id: template.id,
+    template_source: 'lekha-advanced',
+    template_class: `tcard ${template.id}`,
+    template_name: template.name || template.id,
+    template_layout: template.blocks?.[0]?.type || 'styled',
+    template_effect: template.blocks?.[0]?.label || '',
+    template_markup: template.cardMarkup || '',
     ...(ADVANCED_TEMPLATE_STYLE[template.id] || {}),
     has_background: false,
     has_shadow: false,
@@ -110,6 +123,12 @@ const BASIC_TEMPLATE_STYLE = {
 function buildAppliedBasicTemplateStyle(template) {
   return {
     template_id: template.id,
+    template_source: 'lekha-basic',
+    template_class: `btcard ${template.id}`,
+    template_name: template.name || template.id,
+    template_layout: 'word-sequence',
+    template_effect: template.desc || '',
+    template_markup: template.cardMarkup || '',
     ...(BASIC_TEMPLATE_STYLE[template.id] || {}),
     has_background: BASIC_TEMPLATE_STYLE[template.id]?.has_background || false,
     has_shadow: BASIC_TEMPLATE_STYLE[template.id]?.has_shadow || false,
@@ -122,7 +141,7 @@ function buildAppliedBasicTemplateStyle(template) {
   };
 }
 
-const FALLBACK_TEMPLATE_BLOCKS = {
+const SOURCE_FALLBACK_TEMPLATE_BLOCKS = {
   t11: [{ id: 't11-b0', type: 'styled', label: 'CLUSTER' }, { id: 't11-b1', type: 'styled', label: 'BLUR FOCUS' }, { id: 't11-b2', type: 'plain', label: 'PLAIN' }, { id: 't11-b3', type: 'wbw-rise', label: 'WBW RISE' }],
   t12: [{ id: 't12-b0', type: 'styled', label: 'TYPEWRITER' }, { id: 't12-b1', type: 'styled', label: 'SLIDE-UP' }, { id: 't12-b2', type: 'wbw-rise', label: 'WBW RISE' }, { id: 't12-b3', type: 'wbw-slide', label: 'WBW SLIDE' }],
   t13: [{ id: 't13-b0', type: 'styled', label: 'STAMP IN' }, { id: 't13-b1', type: 'styled', label: 'TICKER ROLL' }, { id: 't13-b2', type: 'wbw-rise', label: 'WBW RISE' }, { id: 't13-b3', type: 'wbw-slide', label: 'WBW SLIDE' }],
@@ -149,6 +168,17 @@ const FALLBACK_TEMPLATE_BLOCKS = {
   t34: [{ id: 't34-b0', type: 'styled', label: 'SPEED IN' }, { id: 't34-b1', type: 'styled', label: 'POW POP' }, { id: 't34-b2', type: 'wbw-rise', label: 'WBW RISE' }, { id: 't34-b3', type: 'wbw-slide', label: 'WBW SLIDE' }],
   t35: [{ id: 't35-b0', type: 'styled', label: 'SECRET REVEAL' }, { id: 't35-b1', type: 'plain', label: 'PLAIN' }, { id: 't35-b2', type: 'plain', label: 'PLAIN' }, { id: 't35-b3', type: 'plain', label: 'PLAIN' }],
 };
+
+const FALLBACK_TEMPLATE_BLOCKS = Object.fromEntries(
+  Object.entries(ORIGINAL_TEMPLATE_BLOCKS).map(([templateId, blocks]) => [
+    templateId,
+    blocks.map((block, index) => ({
+      id: `${templateId}-b${index}`,
+      type: block.type,
+      label: block.label || SOURCE_FALLBACK_TEMPLATE_BLOCKS[templateId]?.[index]?.label || '',
+    })),
+  ]),
+);
 
 const fallbackTemplateById = Object.fromEntries(FALLBACK_TEMPLATE_PACK.map((template) => [template.id, template]));
 
@@ -286,6 +316,8 @@ function extractOriginalStyle() {
 
 const iframeOverrides = (templateId) => `
   <style>
+    ${ADVANCED_TEMPLATE_RUNTIME_CSS}
+
     html, body {
       width: 100%;
       min-height: 0;
@@ -356,26 +388,14 @@ function buildTemplatePreviewDoc(templateId) {
   const previewScript = `
     <script>
       (() => {
-        const HOLD = 2700;
-        const EXIT = 360;
-        const ENTER = 280;
-        const GAP = 38;
+        const HOLD = ${ADVANCED_TEMPLATE_TIMING.holdMs};
+        const EXIT = ${ADVANCED_TEMPLATE_TIMING.exitMs};
+        const ENTER = ${ADVANCED_TEMPLATE_TIMING.enterMs};
+        const GAP = ${ADVANCED_TEMPLATE_TIMING.gapMs};
         let runToken = 0;
         let activeBlockIndex = 0;
         let pendingTimers = [];
-        const IMP_ENTRANCES = {
-          'imp-gold': 'opposite-slide',
-          'imp-rose': 'wipe',
-          'imp-cyan': 'opposite',
-          'imp-purple': 'roll',
-          'imp-underline': 'wipe-up',
-          'imp-italic': 'opposite-slide',
-          'imp-bold': 'opposite',
-          'imp-green': 'opposite-slide',
-          'imp-weight': 'roll',
-          'imp-space': 'wipe',
-          'imp-flicker': 'opposite',
-        };
+        const IMP_ENTRANCES = ${JSON.stringify(ADVANCED_IMP_ENTRANCES)};
 
         function schedule(callback, delay) {
           const timer = setTimeout(() => {
@@ -476,26 +496,75 @@ function buildTemplatePreviewDoc(templateId) {
 
         function animateWordsIn(block) {
           const token = runToken;
-          const type = block.querySelector('.wbw-rise') ? 'rise' : 'slide';
+          const wordLine = block.querySelector('.wbw-rise, .wbw-seq-flip, .wbw-seq-fade, .wbw-seq, .wbw-slide');
+          const type = !wordLine
+            ? 'slide'
+            : wordLine.classList.contains('wbw-rise')
+              ? 'rise'
+              : wordLine.classList.contains('wbw-seq-flip')
+                ? 'seq-flip'
+                : wordLine.classList.contains('wbw-seq-fade')
+                  ? 'seq-fade'
+                  : wordLine.classList.contains('wbw-seq')
+                    ? 'seq'
+                    : 'slide';
+          const isSeq = type === 'seq' || type === 'seq-flip' || type === 'seq-fade';
+          const stagger = isSeq
+            ? ${ADVANCED_TEMPLATE_TIMING.sequentialStaggerMs}
+            : ${ADVANCED_TEMPLATE_TIMING.wordStaggerMs};
           const words = block.querySelectorAll('.w');
           words.forEach((word) => {
             word.classList.remove('in', 'fx');
             word.style.opacity = '0';
-            if (!word.dataset.imp) {
-              word.style.transform = type === 'rise' ? 'translateY(20px)' : 'translateX(-16px)';
+            word.style.clipPath = '';
+            word.style.transformOrigin = '';
+            if (type === 'rise') word.style.transform = 'translateY(20px)';
+            else if (type === 'slide' && !word.dataset.imp) word.style.transform = 'translateX(-16px)';
+            else if (type === 'seq') word.style.transform = 'scale(0.82)';
+            else if (type === 'seq-fade') word.style.transform = 'none';
+            else if (type === 'seq-flip') {
+              word.style.transform = 'perspective(320px) rotateX(-90deg)';
+              word.style.transformOrigin = 'center bottom';
             }
           });
           void block.offsetHeight;
 
-          words.forEach((word) => {
+          words.forEach((word, fallbackIndex) => {
             const isImp = !!word.dataset.imp;
             const impCls = word.dataset.impCls || '';
-            const delay = isImp ? (parseInt(word.dataset.i, 10) * 65) + 120 : parseInt(word.dataset.i, 10) * 65;
-            const dur = isImp ? 440 : 280;
-            const entrance = isImp ? (IMP_ENTRANCES[impCls] || 'opposite') : null;
+            const parsedIndex = parseInt(word.dataset.i, 10);
+            const index = Number.isFinite(parsedIndex) ? parsedIndex : fallbackIndex;
+            const delay = isSeq
+              ? index * stagger
+              : (index * stagger) + (isImp ? ${ADVANCED_TEMPLATE_TIMING.emphasisDelayMs} : 0);
+            const dur = isSeq
+              ? ${ADVANCED_TEMPLATE_TIMING.sequentialDurationMs}
+              : isImp
+                ? ${ADVANCED_TEMPLATE_TIMING.emphasisDurationMs}
+                : ${ADVANCED_TEMPLATE_TIMING.wordDurationMs};
+            const entrance = !isSeq && isImp ? (IMP_ENTRANCES[impCls] || 'opposite') : null;
 
             schedule(() => {
               if (token !== runToken || !block.classList.contains('active')) return;
+              if (isSeq) {
+                requestAnimationFrame(() => {
+                  requestAnimationFrame(() => {
+                    if (token !== runToken || !block.classList.contains('active')) return;
+                    if (type === 'seq-fade') {
+                      word.style.transition = 'opacity ' + dur + 'ms ease';
+                    } else {
+                      word.style.transition = 'opacity ' + dur + 'ms ease, transform ' + dur + 'ms cubic-bezier(0.34,1.4,0.64,1)';
+                      word.style.transform = type === 'seq-flip'
+                        ? 'perspective(320px) rotateX(0)'
+                        : 'scale(1)';
+                    }
+                    word.style.opacity = '1';
+                    word.classList.add('in');
+                  });
+                });
+                return;
+              }
+
               if (isImp) {
                 let initTransform = '';
                 let initClip = '';
@@ -586,7 +655,11 @@ function buildTemplatePreviewDoc(templateId) {
           void block.offsetHeight;
 
           const isPlain = block.dataset.type === 'plain';
-          const isWBW = block.dataset.type === 'wbw-rise' || block.dataset.type === 'wbw-slide' || block.dataset.type === 'wbw-seq' || block.dataset.type === 'wbw-seq-fade';
+          const isWBW = block.dataset.type === 'wbw-rise'
+            || block.dataset.type === 'wbw-slide'
+            || block.dataset.type === 'wbw-seq'
+            || block.dataset.type === 'wbw-seq-flip'
+            || block.dataset.type === 'wbw-seq-fade';
           const isKaraoke = block.dataset.type === 'karaoke';
 
           if (isPlain) {
@@ -688,7 +761,7 @@ function buildTemplatePreviewDoc(templateId) {
           el.style.opacity = '0';
           el.style.visibility = 'hidden';
           el.style.zIndex = '0';
-          el.querySelectorAll('.wbw-rise, .wbw-slide, .wbw-seq, .wbw-seq-fade').forEach((wbwEl) => buildWBW(wbwEl));
+          el.querySelectorAll('.wbw-rise, .wbw-slide, .wbw-seq, .wbw-seq-flip, .wbw-seq-fade').forEach((wbwEl) => buildWBW(wbwEl));
           return el;
         }).filter(Boolean);
         const dotsEl = document.getElementById('dots-${templateId}');
@@ -985,57 +1058,41 @@ function buildBasicTemplatePreviewDoc(template) {
 }
 
 function TemplatePreviewFrame({ template }) {
-  const frameRef = useRef(null);
-  const [instanceKey, setInstanceKey] = useState(0);
-  const wasVisibleRef = useRef(false);
-
-  useEffect(() => {
-    const node = frameRef.current;
-    if (!node || typeof IntersectionObserver === 'undefined') return undefined;
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        const isVisible = Boolean(entry?.isIntersecting) && (entry?.intersectionRatio || 0) > 0.35;
-        if (isVisible && !wasVisibleRef.current) {
-          setInstanceKey((current) => current + 1);
-        }
-        wasVisibleRef.current = isVisible;
-      },
-      {
-        threshold: [0, 0.35, 0.6],
-      }
-    );
-
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, []);
-
-  const srcDoc = useMemo(() => buildTemplatePreviewDoc(template.id), [template.id, instanceKey]);
+  // Lazy-mount the script-running preview iframe once the card scrolls into
+  // view — see useLazyVisible.
+  const [frameRef, shown] = useLazyVisible();
+  const srcDoc = useMemo(() => (shown ? buildTemplatePreviewDoc(template.id) : ''), [template.id, shown]);
 
   return (
     <div ref={frameRef} className="advanced-template-preview-frame">
-      <iframe
-        key={`${template.id}-${instanceKey}`}
-        title={`${template.code} preview`}
-        srcDoc={srcDoc}
-        sandbox="allow-scripts"
-        scrolling="no"
-      />
+      {shown && (
+        <iframe
+          title={`${template.code} preview`}
+          srcDoc={srcDoc}
+          sandbox="allow-scripts"
+          scrolling="no"
+          style={{ pointerEvents: 'none' }}
+        />
+      )}
     </div>
   );
 }
 
 function BasicTemplatePreviewFrame({ template }) {
-  const srcDoc = useMemo(() => buildBasicTemplatePreviewDoc(template), [template]);
+  const [containerRef, shown] = useLazyVisible();
+  const srcDoc = useMemo(() => (shown ? buildBasicTemplatePreviewDoc(template) : ''), [template, shown]);
 
   return (
-    <div className="advanced-template-preview-frame">
-      <iframe
-        title={`${template.name} preview`}
-        srcDoc={srcDoc}
-        sandbox="allow-scripts"
-        scrolling="no"
-      />
+    <div ref={containerRef} className="advanced-template-preview-frame">
+      {shown && (
+        <iframe
+          title={`${template.name} preview`}
+          srcDoc={srcDoc}
+          sandbox="allow-scripts"
+          scrolling="no"
+          style={{ pointerEvents: 'none' }}
+        />
+      )}
     </div>
   );
 }
@@ -1071,6 +1128,9 @@ export default function AdvancedTemplateLibrary({
             <button
               key={template.id}
               type="button"
+              data-template-card-id={template.id}
+              data-template-kind="advanced"
+              aria-pressed={isActive}
               onClick={() => onApplyTemplate?.(buildAppliedTemplateStyle(template))}
               className={`advanced-template-card ${isActive ? 'is-active' : ''}`}
             >
@@ -1100,6 +1160,9 @@ export default function AdvancedTemplateLibrary({
             <button
               key={`basic-${template.id}-${template.name}`}
               type="button"
+              data-template-card-id={template.id}
+              data-template-kind="basic"
+              aria-pressed={isActive}
               onClick={() => onApplyTemplate?.(buildAppliedBasicTemplateStyle(template))}
               className={`advanced-template-card basic-template-card ${isActive ? 'is-active' : ''}`}
             >

@@ -1,5 +1,6 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Check, Sparkles, X } from 'lucide-react';
+import { useLazyVisible } from './useLazyVisible';
 import legacyTemplateHtml from '../../assets/lekha-captions-20-templates.html?raw';
 import newTemplateHtml from '../../assets/lekha-captions-49-templates.html?raw';
 
@@ -68,17 +69,23 @@ const DUPLICATE_TEMPLATE_RENAMES = {
   'V4.8': 'The Sway',
 };
 
+// Only 3 bright accent colors are allowed: yellow, green, red.
+// Every legacy color name now resolves to one of these three bright values
+// so applied templates never show pale/washed-out accents.
+const BRIGHT_YELLOW = '#FFE600';
+const BRIGHT_GREEN = '#22FF66';
+const BRIGHT_RED = '#FF2E2E';
 const TEMPLATE_ACCENT_COLOR_MAP = {
-  gold: '#D4AF37',
-  rose: '#FF3D71',
-  cyan: '#00E5FF',
-  green: '#39FF14',
-  purple: '#A78BFA',
-  orange: '#FB923C',
-  blue: '#3B82F6',
-  pink: '#FF4FA3',
-  red: '#FF5A5A',
-  yellow: '#FFE600',
+  gold: BRIGHT_YELLOW,
+  yellow: BRIGHT_YELLOW,
+  orange: BRIGHT_YELLOW,
+  green: BRIGHT_GREEN,
+  cyan: BRIGHT_GREEN,
+  blue: BRIGHT_GREEN,
+  red: BRIGHT_RED,
+  rose: BRIGHT_RED,
+  pink: BRIGHT_RED,
+  purple: BRIGHT_RED,
 };
 
 function decodeHtmlEntities(value = '') {
@@ -334,11 +341,31 @@ const NEW_TEMPLATE_CARDS = Array.from(
   }, new Map()).values(),
 );
 
-const TEMPLATE_CARDS = [...LEGACY_TEMPLATE_CARDS, ...NEW_TEMPLATE_CARDS];
+// Left-side gallery now shows ONLY the 20 original templates. The 49-template
+// (lekha-49 / format:'lk') set is intentionally excluded — see templateSections.
+const TEMPLATE_CARDS = [...LEGACY_TEMPLATE_CARDS];
 const TOTAL_TEMPLATE_COUNT = TEMPLATE_CARDS.length;
+const TEMPLATE_PREVIEW_PROGRESS_EVENT = 'lekha-sidebar-template-preview-progress';
 const EXTRACTED_TEMPLATE_STYLE_MAP = Object.fromEntries(
   TEMPLATE_CARDS.map((template) => [template.id, extractTemplateStyleFromPreview(template)]),
 );
+
+function getTemplatePreviewDotCount(template) {
+  const markup = String(template?.cardMarkup || '');
+  const legacyDotsSection = markup.match(/<div[^>]*class="[^"]*\blk-dots\b[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
+  const modernDotsSection = markup.match(/<div[^>]*class="[^"]*\bdots\b[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
+  const dotSource = legacyDotsSection?.[1] || modernDotsSection?.[1] || '';
+  const dotMatches = dotSource.match(/<(?:i|span)\b[^>]*>/gi);
+  const blockMatches = markup.match(/class="[^"]*\b(?:sb|sblock)\b[^"]*"/gi);
+
+  if (Array.isArray(dotMatches) && dotMatches.length > 0) {
+    return dotMatches.length;
+  }
+  if (Array.isArray(blockMatches) && blockMatches.length > 0) {
+    return blockMatches.length;
+  }
+  return 0;
+}
 
 function buildTemplateStyle(template) {
   const extractedStyle = EXTRACTED_TEMPLATE_STYLE_MAP[template.id] || {};
@@ -346,7 +373,7 @@ function buildTemplateStyle(template) {
     || (Object.keys(extractedStyle).length ? extractedStyle : NEW_TEMPLATE_STYLE_FALLBACK);
 
   return {
-    template_id: '',
+    template_id: `sidebar-${template.id}`,
     template_20_id: template.id,
     template_source: template.format === 'lk' ? 'lekha-49' : 'lekha-20',
     template_class: template.cardClass || '',
@@ -367,6 +394,7 @@ function buildTemplateStyle(template) {
 }
 
 function buildPreviewDoc(template) {
+  const previewTemplateId = JSON.stringify(template.id);
   if (template.format === 'lk') {
     const previewScript = `
       <script>
@@ -379,6 +407,19 @@ function buildPreviewDoc(template) {
           const WBW_STAGGER = 160;
           let current = 0;
           let timer = null;
+
+          function emitProgress(index) {
+            try {
+              window.parent.postMessage({
+                type: '${TEMPLATE_PREVIEW_PROGRESS_EVENT}',
+                templateId: ${previewTemplateId},
+                activeIndex: index,
+                total: Math.max(dots.length, sblocks.length),
+              }, '*');
+            } catch (error) {
+              void error;
+            }
+          }
 
           function triggerStickyWave(sblock) {
             const words = sblock.querySelectorAll('.sw-w');
@@ -427,6 +468,7 @@ function buildPreviewDoc(template) {
             dots.forEach((dot, dotIndex) => {
               dot.className = dotIndex === index ? 'on' : '';
             });
+            emitProgress(index);
           }
 
           function scheduleNext(fromIndex) {
@@ -493,7 +535,7 @@ function buildPreviewDoc(template) {
             }
             .lk-stage {
               aspect-ratio: auto !important;
-              height: auto !important;
+              height: 280px !important;
               min-height: 0 !important;
               overflow: hidden !important;
             }
@@ -520,13 +562,6 @@ function buildPreviewDoc(template) {
             }
             .lk-dots {
               display: none !important;
-              align-items: center !important;
-              justify-content: center !important;
-              gap: 5px !important;
-              min-height: 22px !important;
-              padding: 5px 0 7px !important;
-              background: #0e0e12 !important;
-              border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
             }
             .lk-dots i {
               width: 5px !important;
@@ -636,6 +671,19 @@ function buildPreviewDoc(template) {
             };
         let currentIndex = 0;
         let timer = null;
+
+        function emitProgress(index) {
+          try {
+            window.parent.postMessage({
+              type: '${TEMPLATE_PREVIEW_PROGRESS_EVENT}',
+              templateId: ${previewTemplateId},
+              activeIndex: index,
+              total: Math.max(dots.length, blocks.length),
+            }, '*');
+          } catch (error) {
+            void error;
+          }
+        }
 
         function getBlockType(block) {
           if (block.querySelector('.plain-s')) return 'plain';
@@ -1075,6 +1123,7 @@ function buildPreviewDoc(template) {
             }
           });
           dots.forEach((dot, dotIndex) => dot.classList.toggle('on', dotIndex === index));
+          emitProgress(index);
           if (label) {
             const nextLabel = block.dataset.label
               || (block.querySelector('.plain-s') ? 'Plain' : '')
@@ -1173,7 +1222,7 @@ function buildPreviewDoc(template) {
           }
           .stage {
             aspect-ratio: auto !important;
-            height: auto !important;
+            height: 280px !important;
             min-height: 0 !important;
             overflow: hidden !important;
           }
@@ -1187,13 +1236,6 @@ function buildPreviewDoc(template) {
           }
           .dots {
             display: none !important;
-            align-items: center !important;
-            justify-content: center !important;
-            gap: 5px !important;
-            min-height: 22px !important;
-            padding: 5px 0 7px !important;
-            background: #0e0e12 !important;
-            border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
           }
           .dots i {
             width: 5px !important;
@@ -1228,19 +1270,88 @@ function buildPreviewDoc(template) {
   `;
 }
 
-function TemplatePreviewFrame({ template }) {
-  const srcDoc = useMemo(() => buildPreviewDoc(template), [template]);
+function TemplatePreviewFrame({ template, onProgressChange }) {
+  // Lazy-mount the (script-running) preview iframe only once its card scrolls
+  // into view - see useLazyVisible for why this matters.
+  const [containerRef, shown] = useLazyVisible();
+  const srcDoc = useMemo(() => (shown ? buildPreviewDoc(template) : ''), [template, shown]);
+
+  useEffect(() => {
+    if (!shown) return undefined;
+
+    const handleMessage = (event) => {
+      const data = event?.data;
+      if (!data || data.type !== TEMPLATE_PREVIEW_PROGRESS_EVENT || data.templateId !== template.id) {
+        return;
+      }
+      onProgressChange?.({
+        activeIndex: Number.isFinite(data.activeIndex) ? data.activeIndex : 0,
+        total: Number.isFinite(data.total) ? data.total : 0,
+      });
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [shown, template.id, onProgressChange]);
 
   return (
-    <div className="advanced-template-preview-frame sidebar-template-preview-frame">
-      <iframe
-        title={`${template.id} preview`}
-        srcDoc={srcDoc}
-        sandbox="allow-scripts"
-        scrolling="no"
-        style={{ pointerEvents: 'none' }}
-      />
+    <div ref={containerRef} className="advanced-template-preview-frame sidebar-template-preview-frame">
+      {shown && (
+        <iframe
+          title={`${template.id} preview`}
+          srcDoc={srcDoc}
+          sandbox="allow-scripts"
+          scrolling="no"
+          style={{ pointerEvents: 'none' }}
+        />
+      )}
     </div>
+  );
+}
+
+function TemplateCardButton({ template, isActive, onApplyTemplate }) {
+  const baseDotCount = useMemo(() => getTemplatePreviewDotCount(template), [template]);
+  const [previewProgress, setPreviewProgress] = useState({
+    activeIndex: 0,
+    total: baseDotCount,
+  });
+  const totalDots = Math.max(baseDotCount, previewProgress?.total || 0);
+  const activeDotIndex = Math.min(previewProgress?.activeIndex || 0, Math.max(totalDots - 1, 0));
+
+  return (
+    <button
+      type="button"
+      data-template-card-id={template.id}
+      aria-pressed={isActive}
+      onClick={() => onApplyTemplate(template)}
+      className={`advanced-template-card ${isActive ? 'is-active' : ''}`}
+    >
+      <TemplatePreviewFrame template={template} onProgressChange={setPreviewProgress} />
+      {isActive && <Check className="absolute right-2 top-2 z-10 h-3.5 w-3.5 text-[#ffb629]" />}
+      <div className="advanced-template-card-body">
+        <div className="advanced-template-card-title">
+          <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#ffb629]" />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-2">
+              <p className="truncate">{(template.displayName || template.name).replace(/^[^A-Za-z]+/, '')}</p>
+              {totalDots > 0 && (
+                <div className="flex shrink-0 items-center gap-1.5" aria-hidden="true">
+                  {Array.from({ length: totalDots }).map((_, index) => (
+                    <span
+                      key={`${template.id}-dot-${index}`}
+                      className={`h-[5px] w-[5px] rounded-full transition-all ${
+                        index === activeDotIndex ? 'scale-125 bg-white' : 'bg-white/25'
+                      }`}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+            {template.mood && <span>{template.mood}</span>}
+          </div>
+        </div>
+      </div>
+    </button>
   );
 }
 
@@ -1248,8 +1359,10 @@ export default function SidebarTemplateGallery20({ currentStyle, onApplyTemplate
   const activeTemplateId = currentStyle?.template_20_id || '';
   const templateSections = [
     { id: 'original-20', title: '20 Templates', templates: LEGACY_TEMPLATE_CARDS },
-    { id: 'new-49', title: '49 Templates', templates: NEW_TEMPLATE_CARDS },
   ];
+  const applyTemplate = (template) => {
+    onApplyTemplate?.(buildTemplateStyle(template));
+  };
 
   return (
     <div className="sidebar-template-gallery h-full flex flex-col text-white">
@@ -1257,8 +1370,8 @@ export default function SidebarTemplateGallery20({ currentStyle, onApplyTemplate
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <p className="text-[9px] uppercase tracking-[0.28em] text-slate-500">Templates</p>
-            <h2 className="text-xs font-semibold leading-tight text-white/92">{TOTAL_TEMPLATE_COUNT} Template Set</h2>
-            <p className="mt-0.5 text-[10px] leading-tight text-slate-400">20 original + all {NEW_TEMPLATE_CARDS.length} templates from the 49-template file</p>
+            <h2 className="text-xs font-semibold leading-tight text-white/92">{TOTAL_TEMPLATE_COUNT} Templates</h2>
+            <p className="mt-0.5 text-[10px] leading-tight text-slate-400">Lekha original template set</p>
           </div>
           <button
             type="button"
@@ -1288,24 +1401,12 @@ export default function SidebarTemplateGallery20({ currentStyle, onApplyTemplate
               const isActive = activeTemplateId === template.id;
 
               return (
-                <button
+                <TemplateCardButton
                   key={template.id}
-                  type="button"
-                  onClick={() => onApplyTemplate?.(buildTemplateStyle(template))}
-                  className={`advanced-template-card ${isActive ? 'is-active' : ''}`}
-                >
-                  <TemplatePreviewFrame template={template} />
-                  {isActive && <Check className="absolute right-2 top-2 z-10 h-3.5 w-3.5 text-[#ffb629]" />}
-                  <div className="advanced-template-card-body">
-                    <div className="advanced-template-card-title">
-                      <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#ffb629]" />
-                      <div className="min-w-0">
-                        <p>{(template.displayName || template.name).replace(/^[^A-Za-z]+/, '')}</p>
-                        {template.mood && <span>{template.mood}</span>}
-                      </div>
-                    </div>
-                  </div>
-                </button>
+                  template={template}
+                  isActive={isActive}
+                  onApplyTemplate={applyTemplate}
+                />
               );
             })}
           </div>

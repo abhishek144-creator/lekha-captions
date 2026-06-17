@@ -3,6 +3,23 @@ import { createPortal } from 'react-dom';
 import { Play, Pause, Volume2, VolumeX, X, Maximize2, Minimize2, ZoomIn, ZoomOut, RotateCcw, Grid2X2, Move, RotateCw, Trash2 } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
+import { resolveScriptFont, loadGoogleFont } from './fontUtils';
+import { buildEmotionalCaptionPlan, EMOTIONAL_TEMPLATE_TIMING } from './emotionalTemplateUtils';
+import {
+  ADVANCED_IMP_ENTRANCES,
+  ADVANCED_TEMPLATE_RUNTIME_CSS,
+  ADVANCED_TEMPLATE_TIMING,
+  LEGACY_IMP_ANIMS,
+  LEGACY_TEMPLATE_TIMING,
+  LEGACY_WBW_CLASSES,
+  ORIGINAL_TEMPLATE_BLOCK_TYPES,
+  getOriginalTemplateBlockType,
+  normalizeTemplatePhaseIndex,
+} from './templateMotionConfig';
+import {
+  extractAdvancedTemplateBlockMarkup,
+  extractAdvancedTemplateCardMarkup,
+} from './advancedTemplateSourceUtils';
 import '../../styles/captionTemplates.css';
 import '../../styles/captionTemplatesAdvanced.css';
 import '../../styles/advancedTemplateLibrary.css';
@@ -23,45 +40,13 @@ const ADVANCED_TEMPLATE_VARIANTS = {
 const TEMPLATE_CANVAS_FONT_SCALE = 0.88;
 const SIDEBAR_TEMPLATE_APPLIED_WIDTH_CAP = 320;
 const SIDEBAR_TEMPLATE_APPLIED_HEIGHT_CAP = 280;
-const ORIGINAL_TEMPLATE_BLOCK_TYPES = {
-  t11: ['styled', 'styled', 'plain', 'wbw-rise'],
-  t12: ['styled', 'styled', 'wbw-rise', 'wbw-slide'],
-  t13: ['styled', 'styled', 'wbw-rise', 'wbw-slide'],
-  t14: ['styled', 'styled', 'plain', 'wbw-rise'],
-  t15: ['styled', 'styled', 'wbw-rise', 'wbw-slide'],
-  t16: ['styled', 'styled', 'wbw-rise', 'wbw-slide'],
-  t17: ['styled', 'styled', 'plain', 'wbw-rise'],
-  t18: ['styled', 'styled', 'plain', 'wbw-rise'],
-  t19: ['styled', 'styled', 'wbw-rise', 'wbw-slide'],
-  t20: ['styled', 'styled', 'wbw-rise', 'wbw-slide'],
-  t21: ['styled', 'styled', 'wbw-rise', 'wbw-slide'],
-  t22: ['styled', 'styled', 'wbw-rise', 'wbw-slide'],
-  t23: ['styled', 'plain', 'plain', 'styled'],
-  t24: ['wbw-rise', 'styled', 'plain', 'wbw-rise', 'karaoke'],
-  t25: ['styled', 'styled', 'wbw-rise', 'wbw-slide'],
-  t26: ['styled', 'styled', 'wbw-rise', 'wbw-slide'],
-  t27: ['styled', 'plain', 'plain', 'wbw-rise'],
-  t28: ['styled', 'styled', 'wbw-rise', 'wbw-slide'],
-  t29: ['styled', 'styled', 'wbw-rise', 'wbw-slide'],
-  t30: ['styled', 'plain', 'plain', 'plain'],
-  t31: ['styled', 'styled', 'plain', 'wbw-rise'],
-  t32: ['styled', 'styled', 'plain', 'wbw-rise'],
-  t33: ['styled', 'wbw-seq-fade', 'karaoke', 'wbw-rise', 'styled'],
-  t34: ['styled', 'styled', 'wbw-rise', 'wbw-slide'],
-  t35: ['styled', 'plain', 'plain', 'plain'],
-  t36: ['karaoke', 'karaoke', 'karaoke'],
-  t37: ['styled', 'wbw-rise', 'styled', 'wbw-seq'],
-  t38: ['plain', 'wbw-slide', 'wbw-rise', 'wbw-seq-fade'],
-  t39: ['wbw-seq-fade', 'wbw-seq-fade', 'wbw-seq-fade', 'wbw-seq-fade'],
-  t40: ['styled', 'styled', 'plain', 'styled'],
-};
 
 function isAdvancedTemplateId(templateId) {
   return /^t\d{2}$/.test(String(templateId || ''));
 }
 
-function hasSidebarTemplateStyle(style) {
-  return !!style?.template_20_id;
+function hasSidebarTemplateStyle(captionStyle) {
+  return !!captionStyle?.template_20_id || String(captionStyle?.template_id || '').startsWith('sidebar-')
 }
 
 function getTemplateWrapperClassName(templateId) {
@@ -249,7 +234,9 @@ function renderKaraokeText(text) {
   const { full } = splitCaptionForTemplate(text);
   if (!full) return null;
   const words = full.split(/\s+/).filter(Boolean);
-  const perWordDuration = Math.max(220, Math.round(1600 / Math.max(1, words.length)));
+  const perWordDuration = Math.round(
+    ADVANCED_TEMPLATE_TIMING.holdMs / (words.length + 0.5),
+  );
 
   return (
     <span className="kf-line lekha-template-fit">
@@ -326,8 +313,14 @@ function sanitizeTemplateInlineStyle(styleValue = '') {
 function sanitizeAppliedTemplateMarkup(markup = '', preserveInlineStyles = false) {
   return String(markup)
     .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<(?:iframe|object|embed|link|meta|base|form|input|button|textarea|select)\b[\s\S]*?<\/(?:iframe|object|embed|link|meta|base|form|input|button|textarea|select)>/gi, '')
+    .replace(/<(?:iframe|object|embed|link|meta|base|form|input|button|textarea|select)\b[^>]*\/?>/gi, '')
     .replace(/\s+bis_skin_checked="[^"]*"/gi, '')
+    .replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/\s+(?:href|src|xlink:href)\s*=\s*(["'])\s*(?:javascript:|data:text\/html)[\s\S]*?\1/gi, '')
     .replace(/\sstyle="([^"]*)"/gi, preserveInlineStyles ? (_, styleValue) => sanitizeTemplateInlineStyle(styleValue) : '')
+    .replace(/\sstyle='([^']*)'/gi, preserveInlineStyles ? (_, styleValue) => sanitizeTemplateInlineStyle(styleValue) : '')
     .replace(/\sclass="([^"]*)"/gi, (_, classValue) => {
       const cleanedClassValue = String(classValue)
         .split(/\s+/)
@@ -360,9 +353,1031 @@ function findAppliedSidebarTemplateMarkup(captionStyle = {}) {
     ? sidebarNewTemplateHtml
     : sidebarLegacyTemplateHtml;
   const cardClassToken = captionStyle?.template_source === 'lekha-49' ? 'lk-card' : 'card';
-  const start = source.indexOf(`class="${cardClassToken}`);
+  // Match the SPECIFIC template's card (class="lk-card t07"), not just the first lk-card.
+  const scoped = source.indexOf(`class="${cardClassToken} ${className}"`);
+  const start = scoped >= 0 ? scoped : source.indexOf(`class="${cardClassToken}`);
   if (start < 0) return '';
   return extractAppliedTemplateDiv(source, start);
+}
+
+// ── In-page applied-template rendering (Phase 1) ─────────────────────────────
+// Render the FULL template design (creative text placement + per-word animation
+// classes) IN-PAGE — the same look the gallery preview card shows — by injecting
+// the caption's words into the template's own markup and styling it with the
+// template's own CSS. We do this in-page (not in an <iframe>) so ExportPanel can
+// still read per-word DOM boxes for the burned-in animation export.
+//
+// The word→slot injection mirrors buildAppliedSidebarTemplateScript (the disabled
+// iframe engine): every slot type the templates use is filled —
+//   • word-by-word lines (.wbw-line .wbw-word / .wbw .w)
+//   • sticky-wave lines (.sw-line .sw-w)
+//   • positioned rows (.pos* .pr .sw, distributed across rows)
+//   • plain lines (.plain-s)
+// while preserving the template's creative per-word classes (accents like
+// ns2-rose, hero rows, motion flavor) via _astMappedClass.
+function _astEscape(value) {
+  return String(value).replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[ch]));
+}
+
+function _astCleanClass(value, fallback) {
+  const cleaned = String(value || '')
+    .split(/\s+/)
+    .filter((c) => c && !['active', 'visible', 'anim', 'on', 'in'].includes(c))
+    .join(' ');
+  return cleaned || fallback;
+}
+
+function _astMappedClass(sourceClasses, index, total, fallback) {
+  if (!sourceClasses.length) return fallback;
+  if (total <= 1) return sourceClasses[0] || fallback;
+  const si = Math.min(
+    sourceClasses.length - 1,
+    Math.round((index * (sourceClasses.length - 1)) / Math.max(1, total - 1)),
+  );
+  return sourceClasses[si] || fallback;
+}
+
+function _astSplitForSlots(words, slotCount) {
+  if (!words.length || !slotCount) return [];
+  const slots = Array.from({ length: slotCount }, () => []);
+  words.forEach((w, i) => {
+    slots[Math.min(slotCount - 1, Math.floor((i * slotCount) / words.length))].push(w);
+  });
+  return slots.map((s) => s.join(' '));
+}
+
+const _astImpClassPattern = /\b(?:imp-[\w-]+|ns[23]-[\w-]+)\b/g;
+const _astImpClassTestPattern = /\b(?:imp-[\w-]+|ns[23]-[\w-]+)\b/;
+
+function _astReplaceWBW(container, words, settled, impWordIndex = -1) {
+  if (!container || !words.length) return;
+  const isNewWbw = container.classList.contains('wbw-line');
+  const selector = isNewWbw ? '.wbw-word' : '.w';
+  const fallback = isNewWbw ? 'wbw-word normal' : 'w';
+  const visCls = settled ? (isNewWbw ? ' visible' : ' in') : '';
+  const sourceClasses = Array.from(container.querySelectorAll(selector))
+    .map((w) => _astCleanClass(w.className, fallback));
+  const sourceImpIndex = sourceClasses.findIndex((className) => _astImpClassTestPattern.test(className));
+  const sourceImpClass = sourceImpIndex >= 0
+    ? sourceClasses[sourceImpIndex].match(_astImpClassTestPattern)?.[0] || ''
+    : '';
+  const targetImpIndex = impWordIndex;
+  container.innerHTML = words
+    .map((w, i) => {
+      const mapped = _astMappedClass(sourceClasses, i, words.length, fallback)
+        .replace(_astImpClassPattern, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      const isEmphasis = i === targetImpIndex;
+      const impClass = isEmphasis && sourceImpClass ? ` ${sourceImpClass}` : '';
+      const emphasisClass = isEmphasis ? ' is-emphasis' : '';
+      return `<span class="${mapped || fallback}${impClass}${emphasisClass}${visCls}" data-w="${i}">${_astEscape(w)}</span>`;
+    })
+    .join(' ');
+}
+
+function _astReplaceSticky(container, words, settled, impWordIndex) {
+  const stickies = Array.from(container.querySelectorAll('.sw-w'));
+  if (!stickies.length || !words.length) return;
+  const sourceClasses = stickies.map((w) => _astCleanClass(w.className, 'sw-w'));
+  const vis = settled ? ' in' : '';
+  container.innerHTML = words
+    .map((w, i) => `<span class="${_astMappedClass(sourceClasses, i, words.length, 'sw-w')}${i === impWordIndex ? ' is-emphasis' : ''}${vis}" data-w="${i}" style="${settled ? 'opacity:1' : ''}">${_astEscape(w)}</span>`)
+    .join(' ');
+}
+
+function _astReplacePositioned(block, words, impWordIndex) {
+  const spans = Array.from(block.querySelectorAll('.sw'));
+  if (!spans.length || !words.length) return;
+  const rows = Array.from(new Set(spans.map((span) => span.parentElement).filter(Boolean)));
+  const sourceByRow = rows.map((row) => Array.from(row.querySelectorAll(':scope > .sw')));
+  const totalSourceSlots = sourceByRow.reduce((sum, rowSpans) => sum + rowSpans.length, 0);
+  let wordCursor = 0;
+
+  sourceByRow.forEach((rowSpans, rowIndex) => {
+    const row = rows[rowIndex];
+    const remainingRows = sourceByRow.length - rowIndex - 1;
+    const proportional = Math.round((rowSpans.length / Math.max(1, totalSourceSlots)) * words.length);
+    const rowWordCount = rowIndex === sourceByRow.length - 1
+      ? words.length - wordCursor
+      : Math.max(1, Math.min(words.length - wordCursor - remainingRows, proportional));
+    const rowWords = words.slice(wordCursor, wordCursor + rowWordCount);
+    const sourceClasses = rowSpans.map((span) => _astCleanClass(span.className, 'sw'));
+    const sourceAnims = rowSpans.map((span) => span.getAttribute('data-anim') || 'rise');
+    row.textContent = '';
+    rowWords.forEach((word, localIndex) => {
+      if (localIndex > 0) row.appendChild(block.ownerDocument.createTextNode(' '));
+      const span = block.ownerDocument.createElement('span');
+      const wordIndex = wordCursor + localIndex;
+      span.className = `${_astMappedClass(sourceClasses, localIndex, rowWords.length, 'sw')}${wordIndex === impWordIndex ? ' is-emphasis' : ''}`;
+      span.setAttribute('data-anim', _astMappedClass(sourceAnims, localIndex, rowWords.length, 'rise'));
+      span.setAttribute('data-w', String(wordIndex));
+      span.textContent = word;
+      row.appendChild(span);
+    });
+    wordCursor += rowWordCount;
+  });
+}
+
+function _astReplacePlain(block, words, captionText, impWordIndex) {
+  const plain = Array.from(block.querySelectorAll('.plain-s'))
+    .find((el) => !el.classList.contains('wbw') && !el.classList.contains('wbw-line'));
+  if (!plain || !words.length) return;
+  plain.textContent = '';
+  words.forEach((word, index) => {
+    if (index > 0) plain.appendChild(block.ownerDocument.createTextNode(' '));
+    if (index === impWordIndex) {
+      const span = block.ownerDocument.createElement('span');
+      span.className = 'is-emphasis';
+      span.setAttribute('data-w', String(index));
+      span.textContent = word;
+      plain.appendChild(span);
+    } else {
+      plain.appendChild(block.ownerDocument.createTextNode(word));
+    }
+  });
+}
+
+function _astFillBlock(block, words, captionText, settled, impWordIndex) {
+  block.querySelectorAll('.wbw, .wbw-line').forEach((c) => _astReplaceWBW(c, words, settled, impWordIndex));
+  block.querySelectorAll('.sw-line').forEach((c) => _astReplaceSticky(c, words, settled, impWordIndex));
+  _astReplacePositioned(block, words, impWordIndex);
+  _astReplacePlain(block, words, captionText, impWordIndex);
+}
+
+// Build the in-page HTML for one active phase of the applied template, with the
+// caption's words injected. `activePhase` selects which .sblock to show (templates
+// are multi-phase showcases; for an applied caption we show one phase at a time,
+// cycling on the caption's own clock). `settled` reveals all words immediately
+// (paused/editor look); when false the words start hidden so the entrance
+// animation can play them in.
+const _appliedInlineCache = new Map();
+const _appliedMarkupSignatureCache = new Map();
+function getAppliedTemplateMarkupSignature(markup = '') {
+  const source = String(markup || '');
+  if (_appliedMarkupSignatureCache.has(source)) return _appliedMarkupSignatureCache.get(source);
+  let hash = 2166136261;
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  const signature = `${source.length}:${(hash >>> 0).toString(36)}`;
+  if (_appliedMarkupSignatureCache.size > 100) _appliedMarkupSignatureCache.clear();
+  _appliedMarkupSignatureCache.set(source, signature);
+  return signature;
+}
+
+function buildAppliedSidebarTemplateInline(captionText, captionStyle, { activePhase = 0, settled = true, impWordIndex = -1 } = {}) {
+  // Memoize the (expensive) markup lookup + DOMParser + word-injection on a key of the
+  // inputs that actually change the output. renderAppliedSidebarTemplateCaption runs
+  // on every VideoPlayer render (frequent — currentTime ticks, etc.); re-parsing the
+  // markup each time would peg the CPU and freeze the renderer. Compute everything
+  // (incl. the asset scan in findAppliedSidebarTemplateMarkup) ONLY on cache miss.
+  const rawMarkup = captionStyle?.template_markup || findAppliedSidebarTemplateMarkup(captionStyle);
+  const cacheKey = `${captionStyle?.template_id || ''}|${captionStyle?.template_20_id || ''}|${captionStyle?.template_source || ''}|${captionStyle?.template_class || ''}|${captionStyle?.template_effect || ''}|${getAppliedTemplateMarkupSignature(rawMarkup)}|${activePhase}|${settled ? 1 : 0}|${impWordIndex}|${captionText || ''}`;
+  if (_appliedInlineCache.has(cacheKey)) return _appliedInlineCache.get(cacheKey);
+  const isNew = captionStyle?.template_source === 'lekha-49';
+  const result = _buildAppliedSidebarTemplateInlineUncached(rawMarkup, isNew, captionText, activePhase, settled, impWordIndex);
+  if (_appliedInlineCache.size > 400) _appliedInlineCache.clear();
+  _appliedInlineCache.set(cacheKey, result);
+  return result;
+}
+
+function _buildAppliedSidebarTemplateInlineUncached(rawMarkup, isNew, captionText, activePhase, settled, impWordIndex) {
+  const markup = sanitizeAppliedTemplateMarkup(rawMarkup, isNew);
+  if (!markup || typeof DOMParser === 'undefined') return null;
+  const words = String(captionText || '').trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return null;
+
+  let doc;
+  try {
+    doc = new DOMParser().parseFromString(markup, 'text/html');
+  } catch {
+    return null;
+  }
+  const card = doc.querySelector('.lk-card, .card');
+  if (!card) return null;
+
+  // Drop the gallery chrome (id/name/badges/dots) — only the stage renders.
+  card.querySelectorAll('.lk-card-top, .card-top, .lk-dots, .dots, .lk-cid, .lk-cnm, .lk-badge, .cid, .cnm, .bg')
+    .forEach((el) => el.remove());
+
+  const blocks = Array.from(card.querySelectorAll('.sblock, .sb'));
+  if (!blocks.length) return null;
+  const phase = ((activePhase % blocks.length) + blocks.length) % blocks.length;
+  blocks.forEach((b, i) => {
+    _astFillBlock(b, words, captionText, settled, impWordIndex);
+    b.classList.toggle('active', i === phase);
+    b.style.visibility = i === phase ? 'visible' : 'hidden';
+    b.style.opacity = i === phase ? '1' : '0';
+    b.style.position = i === phase ? 'relative' : 'absolute';
+  });
+
+  return card.outerHTML;
+}
+
+// How many animated phases a template has (so the caption can cycle through them
+// on its own clock the way the preview card does). Memoized per template — called
+// on every render, and the asset scan/regex is not free.
+const _appliedPhaseCache = new Map();
+function countAppliedTemplatePhases(captionStyle = {}) {
+  const rawMarkup = captionStyle?.template_markup || findAppliedSidebarTemplateMarkup(captionStyle);
+  const key = `${captionStyle?.template_id || ''}|${captionStyle?.template_20_id || ''}|${captionStyle?.template_source || ''}|${captionStyle?.template_class || ''}|${captionStyle?.template_effect || ''}|${getAppliedTemplateMarkupSignature(rawMarkup)}`;
+  if (_appliedPhaseCache.has(key)) return _appliedPhaseCache.get(key);
+  const isNew = captionStyle?.template_source === 'lekha-49';
+  const markup = sanitizeAppliedTemplateMarkup(rawMarkup, isNew);
+  const matches = markup ? markup.match(/class="[^"]*\b(sblock|sb)\b/g) : null;
+  const count = Math.max(1, matches ? matches.length : 1);
+  if (_appliedPhaseCache.size > 200) _appliedPhaseCache.clear();
+  _appliedPhaseCache.set(key, count);
+  return count;
+}
+
+// The 69-set templates' own CSS (extracted from the HTML assets), minus the
+// document-level resets (html/body/*/.lk-grid) that would corrupt the host app.
+// Injected globally once; the template classes (.lk-card/.sw/.wbw-word/.pos*/…)
+// don't appear anywhere else in-page (the gallery renders them inside iframes),
+// so this is effectively scoped in practice. Host-sizing overrides below undo the
+// fixed card/stage box so the design renders as a transparent caption overlay.
+const _appliedTemplateCssCache = new Map();
+function extractAppliedTemplateCss(source = 'lekha-20') {
+  if (_appliedTemplateCssCache.has(source)) return _appliedTemplateCssCache.get(source);
+  const raw = source === 'lekha-49'
+    ? extractHtmlStyle(sidebarNewTemplateHtml)
+    : extractHtmlStyle(sidebarLegacyTemplateHtml);
+  const stripped = raw.replace(
+    /(^|\})\s*(?:html|body|\*|:root|\.lk-grid|\.grid)\b[^{}]*\{[^}]*\}/gi,
+    '$1',
+  );
+  _appliedTemplateCssCache.set(source, stripped);
+  return stripped;
+}
+
+const APPLIED_TEMPLATE_HOST_OVERRIDES = `
+  .lekha-applied-template-host {
+    display: inline-block;
+    width: min(100%, var(--applied-template-width, 280px));
+    max-width: min(100%, 320px);
+  }
+  .lekha-applied-template-host .lk-card,
+  .lekha-applied-template-host .card {
+    width: 100% !important;
+    border: 0 !important; background: transparent !important;
+    box-shadow: none !important; border-radius: 0 !important; padding: 0 !important;
+    margin: 0 !important; display: block !important; overflow: visible !important;
+  }
+  .lekha-applied-template-host .lk-stage,
+  .lekha-applied-template-host .stage {
+    position: relative !important; inset: auto !important;
+    background: transparent !important; box-shadow: none !important; border: 0 !important;
+    overflow: visible !important; padding: 0 !important; margin: 0 !important; display: block !important;
+    width: 100% !important;
+  }
+  .lekha-applied-template-host .lk-card-top,
+  .lekha-applied-template-host .card-top,
+  .lekha-applied-template-host .lk-dots,
+  .lekha-applied-template-host .dots,
+  .lekha-applied-template-host .slbl,
+  .lekha-applied-template-host .lk-lbl,
+  .lekha-applied-template-host .stage-lbl,
+  .lekha-applied-template-host .lk-phase-chip { display: none !important; }
+  /* Inherit the host's resolved (Devanagari-aware) font instead of the template's
+     Latin display face, which has no Hindi glyphs. */
+  .lekha-applied-template-host .sw,
+  .lekha-applied-template-host .wbw-word,
+  .lekha-applied-template-host .sw-w,
+  .lekha-applied-template-host .w,
+  .lekha-applied-template-host .plain-s,
+  .lekha-applied-template-host .wbw,
+  .lekha-applied-template-host .wbw-line,
+  .lekha-applied-template-host [class^='pos'],
+  .lekha-applied-template-host [class*=' pos'] {
+    font-family: var(--sidebar-source-font, inherit) !important;
+  }
+  .lekha-applied-template-host:not([data-applied-template-animated="true"]) .sb.active .w,
+  .lekha-applied-template-host:not([data-applied-template-animated="true"]) .sb.active .w.in,
+  .lekha-applied-template-host:not([data-applied-template-animated="true"]) .sb.active .sw,
+  .lekha-applied-template-host:not([data-applied-template-animated="true"]) .sb.active .wbw-word,
+  .lekha-applied-template-host:not([data-applied-template-animated="true"]) .sb.active .wbw-word.visible,
+  .lekha-applied-template-host:not([data-applied-template-animated="true"]) .sblock.active .wbw-word,
+  .lekha-applied-template-host:not([data-applied-template-animated="true"]) .sblock.active .wbw-word.visible,
+  .lekha-applied-template-host:not([data-applied-template-animated="true"]) .sblock.active .sw-w,
+  .lekha-applied-template-host:not([data-applied-template-animated="true"]) .sblock.active .sw {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+    clip-path: inset(0 0 0 0) !important;
+  }
+  /* Paused editing uses the fully settled frame. This is also a race-proof
+     fallback for a pause that lands while a wipe/roll transition is in flight. */
+  .lekha-applied-template-host[data-applied-template-paused="true"] .sb.active .w,
+  .lekha-applied-template-host[data-applied-template-paused="true"] .sb.active .sw,
+  .lekha-applied-template-host[data-applied-template-paused="true"] .sb.active .wbw-word,
+  .lekha-applied-template-host[data-applied-template-paused="true"] .sblock.active .wbw-word,
+  .lekha-applied-template-host[data-applied-template-paused="true"] .sblock.active .sw-w,
+  .lekha-applied-template-host[data-applied-template-paused="true"] .sblock.active .sw {
+    animation: none !important;
+    transition: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+    clip-path: inset(0 0 0 0) !important;
+    overflow: visible !important;
+  }
+  /* Force emphasis / highlighted words visible during active playback so the
+     JS animation engine timing can never leave voids in the caption line.
+     Non-emphasis words are handled identically so a missed selector or race
+     between play() and the stagger timers cannot hide any word. */
+  .lekha-applied-template-host .sb.active .w,
+  .lekha-applied-template-host .sb.active .wbw-word,
+  .lekha-applied-template-host .sblock.active .w,
+  .lekha-applied-template-host .sblock.active .wbw-word,
+  .lekha-applied-template-host .sblock.active .sw-w {
+    opacity: 1 !important;
+    animation: none !important;
+  }
+  /* Indic glyphs extend farther above/below the Latin metrics used by these
+     source templates. Give their reveal boxes breathing room so matras are not
+     shaved off by a clip-path animation. */
+  .lekha-applied-template-host .w,
+  .lekha-applied-template-host .wbw-word,
+  .lekha-applied-template-host .sw,
+  .lekha-applied-template-host .sw-w {
+    overflow: visible !important;
+    padding-block: 0.18em;
+    margin-block: 0;
+  }
+  .lekha-applied-template-host .w:not(:last-child),
+  .lekha-applied-template-host .wbw-word:not(:last-child),
+  .lekha-applied-template-host .sw:not(:last-child),
+  .lekha-applied-template-host .sw-w:not(:last-child) {
+    margin-inline-end: 0.12em;
+  }
+  /* Flowing word lines laid out with flex/grid drop the literal space between
+     word spans (whitespace-only text nodes are not flex items), so Devanagari
+     words ended up touching. A column gap restores the inter-word spacing and is
+     inert on non-flex lines, so normally-spaced lines are left unchanged. */
+  .lekha-applied-template-host .wbw,
+  .lekha-applied-template-host .wbw-line,
+  .lekha-applied-template-host .sw-line,
+  .lekha-applied-template-host .lekha-sidebar-source-line {
+    column-gap: 0.28em;
+  }
+  /* Emphasis must not change line geometry. The gallery previews use the same
+     safeguard; keeping the selected word at inherited metrics prevents Indic
+     words from dropping onto a separate baseline in preview and export. */
+  .lekha-applied-template-host .is-emphasis {
+    display: inline-block !important;
+    font-size: inherit !important;
+    line-height: inherit !important;
+    vertical-align: baseline !important;
+    color: var(--sidebar-emphasis-accent, #FFE600) !important;
+    -webkit-text-fill-color: var(--sidebar-emphasis-accent, #FFE600) !important;
+  }
+`;
+
+function AppliedSidebarTemplateStyles({ source = 'lekha-20' }) {
+  const css = React.useMemo(() => `${extractAppliedTemplateCss(source)}\n${APPLIED_TEMPLATE_HOST_OVERRIDES}`, [source]);
+  return <style>{css}</style>;
+}
+
+const APPLIED_WBW_CLASSES = [
+  ...LEGACY_WBW_CLASSES,
+  'wbw-rise', 'wbw-slide', 'wbw-seq', 'wbw-seq-flip', 'wbw-seq-fade',
+];
+
+const APPLIED_LEGACY_TEMPLATE_TIMING = LEGACY_TEMPLATE_TIMING;
+const APPLIED_IMP_ANIMS = LEGACY_IMP_ANIMS;
+
+function AppliedSidebarTemplateSourceRenderer({
+  html,
+  captionId,
+  captionText,
+  effectiveStyle,
+  resolvedFont,
+  fontSize,
+  currentTime = 0,
+  isPlaying = false,
+  startTime = 0,
+  endTime = 0,
+  phaseOffset = 0,
+  emphasisColor = '',
+}) {
+  const hostRef = useRef(null);
+  const runnerRef = useRef(null);
+  const playbackControlRef = useRef({ currentTime, isPlaying });
+  const playStateRef = useRef({ currentTime, isPlaying, startTime, endTime });
+  playStateRef.current = { currentTime, isPlaying, startTime, endTime };
+  const configuredAccent = String(emphasisColor || effectiveStyle?.secondary_color || effectiveStyle?.highlight_color || '').trim();
+  const textColor = String(effectiveStyle?.text_color || '#FFFFFF').trim();
+  const emphasisAccent = configuredAccent && configuredAccent.toLowerCase() !== textColor.toLowerCase()
+    ? configuredAccent
+    : '#FFE600';
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return undefined;
+
+    const timers = new Set();
+    const rafs = new Set();
+    const setTimer = (fn, delay) => {
+      const id = window.setTimeout(() => {
+        timers.delete(id);
+        fn();
+      }, delay);
+      timers.add(id);
+      return id;
+    };
+    const raf = (fn) => {
+      const id = window.requestAnimationFrame(() => {
+        rafs.delete(id);
+        fn();
+      });
+      rafs.add(id);
+      return id;
+    };
+
+    const sourceTiming = effectiveStyle?.template_source === 'lekha-49'
+      ? {
+          wordStaggerMs: EMOTIONAL_TEMPLATE_TIMING.wordStaggerMs,
+          wordDurationMs: EMOTIONAL_TEMPLATE_TIMING.supportDurationMs,
+          positionedWordStaggerMs: EMOTIONAL_TEMPLATE_TIMING.positionedWordStaggerMs,
+          positionedWordDurationMs: EMOTIONAL_TEMPLATE_TIMING.supportDurationMs,
+          holdMs: EMOTIONAL_TEMPLATE_TIMING.holdMs,
+          exitMs: EMOTIONAL_TEMPLATE_TIMING.exitMs,
+          gapMs: EMOTIONAL_TEMPLATE_TIMING.gapMs,
+        }
+      : APPLIED_LEGACY_TEMPLATE_TIMING;
+    const WBW_DELAY = sourceTiming.wordStaggerMs;
+    const WBW_DUR = sourceTiming.wordDurationMs;
+    const POS_STAGGER = sourceTiming.positionedWordStaggerMs;
+    const POS_DUR = sourceTiming.positionedWordDurationMs;
+    const ease = 'cubic-bezier(0.22,1,0.36,1)';
+
+    const wbwSelector = APPLIED_WBW_CLASSES.map((c) => `.${c} .w, .${c} .wbw-word`).join(',');
+
+    const wbwInitWord = (word) => {
+      const parent = word.parentElement;
+      word.style.transition = 'none';
+      word.style.animation = 'none';
+      word.style.clipPath = '';
+      word.style.transformOrigin = '';
+      word.style.filter = '';
+      if (!parent) {
+        word.style.transform = 'translateY(22px)';
+        word.style.opacity = '0';
+        return;
+      }
+      if (parent.classList.contains('wrise') || parent.classList.contains('wbw-rise') || parent.classList.contains('wbw-seq') || parent.classList.contains('wbw-seq-fade')) { word.style.transform = 'translateY(22px)'; word.style.opacity = '0'; }
+      else if (parent.classList.contains('wslide') || parent.classList.contains('wbw-slide')) { word.style.transform = 'translateX(-26px)'; word.style.opacity = '0'; }
+      else if (parent.classList.contains('wslider')) { word.style.transform = 'translateX(26px)'; word.style.opacity = '0'; }
+      else if (parent.classList.contains('wroll')) { word.style.transform = 'translateY(14px) rotate(-6deg)'; word.style.transformOrigin = 'left bottom'; word.style.opacity = '0'; }
+      else if (parent.classList.contains('wwipe')) { word.style.clipPath = 'inset(0 100% 0 0)'; word.style.transform = 'none'; word.style.opacity = '1'; }
+      else if (parent.classList.contains('wwipeup')) { word.style.clipPath = 'inset(100% 0 0 0)'; word.style.transform = 'none'; word.style.opacity = '1'; }
+      else if (parent.classList.contains('wfade')) { word.style.transform = 'none'; word.style.opacity = '0'; }
+      else if (parent.classList.contains('wscale')) { word.style.transform = 'scale(0.5)'; word.style.opacity = '0'; }
+      else if (parent.classList.contains('wflip')) { word.style.transform = 'rotateX(-80deg)'; word.style.transformOrigin = 'center bottom'; word.style.opacity = '0'; }
+      else if (parent.classList.contains('wbounce')) { word.style.transform = 'translateY(-22px)'; word.style.opacity = '0'; }
+      else if (parent.classList.contains('wdiag')) { word.style.transform = 'translate(-16px,16px)'; word.style.opacity = '0'; }
+      else if (parent.classList.contains('wexpand')) { word.style.transform = 'scaleX(0.15)'; word.style.transformOrigin = 'center'; word.style.opacity = '0'; }
+      else if (parent.classList.contains('wskew')) { word.style.transform = 'skewX(-18deg) translateX(-12px)'; word.style.opacity = '0'; }
+      else if (parent.classList.contains('wstencil')) { word.style.clipPath = 'inset(0 50% 0 50%)'; word.style.transform = 'none'; word.style.opacity = '1'; }
+      else if (parent.classList.contains('wlift')) { word.style.transform = 'translateY(-22px)'; word.style.opacity = '0'; }
+      else { word.style.transform = 'translateY(22px)'; word.style.opacity = '0'; }
+    };
+
+    const wbwAnimWord = (word, delay) => {
+      const parent = word.parentElement;
+      setTimer(() => {
+        let transition = `transform ${WBW_DUR}ms ${ease}, opacity ${WBW_DUR - 40}ms ease`;
+        if (parent?.classList.contains('wwipe') || parent?.classList.contains('wwipeup') || parent?.classList.contains('wstencil')) {
+          transition = `clip-path ${WBW_DUR}ms ${ease}`;
+        }
+        word.style.animation = 'none';
+        word.style.transition = transition;
+        word.style.transform = 'none';
+        word.style.opacity = '1';
+        word.style.clipPath = 'inset(0 0 0 0)';
+        word.classList.add('in', 'visible');
+        word.dataset.appliedVisible = 'true';
+      }, delay);
+    };
+
+    const wbwAnimImp = (word, index, delay) => {
+      let impType = null;
+      Object.entries(APPLIED_IMP_ANIMS).some(([className, anim]) => {
+        if (word.classList.contains(className)) {
+          impType = anim;
+          return true;
+        }
+        return false;
+      });
+      if (!impType) return false;
+      const d = delay + 120;
+      const dur = WBW_DUR + 160;
+      word.style.transition = 'none';
+      // Kill any CSS keyframe animation on the imp/ns class so the JS-driven
+      // reveal (inline opacity/transform/clip) is authoritative during playback.
+      // Without this, the class's CSS animation overrides the inline opacity:1
+      // and the emphasized word stays invisible mid-play — a "void" in the line
+      // that only appears once paused (pause already clears animation in settle).
+      word.style.animation = 'none';
+      const revealClip = (clipStart, clipEnd) => {
+        word.style.clipPath = clipStart;
+        word.style.opacity = '1';
+        word.style.transform = 'none';
+        void word.offsetHeight;
+        setTimer(() => {
+          word.style.transition = `clip-path ${dur}ms ${ease}`;
+          word.style.clipPath = clipEnd;
+          word.classList.add('in', 'visible');
+        }, d);
+      };
+      if (impType === 'wipe') revealClip('inset(0 100% 0 0)', 'inset(0 0 0 0)');
+      else if (impType === 'wipe-up') revealClip('inset(100% 0 0 0)', 'inset(0 0 0 0)');
+      else if (impType === 'diagonal-wipe') revealClip('polygon(0 0,0 0,0 100%,0 100%)', 'polygon(0 0,100% 0,100% 100%,0 100%)');
+      else if (impType === 'stencil') revealClip('inset(0 50% 0 50%)', 'inset(0 0 0 0)');
+      else {
+        if (impType === 'skew-snap') { word.style.transform = 'skewX(-18deg) translateX(-12px)'; word.style.opacity = '0'; }
+        else if (impType === 'roll') { word.style.transformOrigin = 'center bottom'; word.style.transform = 'rotateX(-90deg)'; word.style.opacity = '0'; }
+        else if (impType === 'drop') { word.style.transform = 'translateY(-30px)'; word.style.opacity = '0'; }
+        else if (impType === 'pop') { word.style.transform = 'scale(0.82)'; word.style.opacity = '0'; }
+        else if (impType === 'lift') { word.style.transform = 'translateY(-20px)'; word.style.opacity = '0'; }
+        else if (impType === 'drift') { word.style.transform = 'translateX(-12px) translateY(8px)'; word.style.opacity = '0'; }
+        else if (impType === 'stamp') { word.style.transform = 'scale(1.3)'; word.style.opacity = '0'; }
+        else if (impType === 'typewrite' || impType === 'flicker') { word.style.transform = 'none'; word.style.opacity = '0'; }
+        void word.offsetHeight;
+        setTimer(() => {
+          if (impType === 'stamp') {
+            word.style.transition = 'none';
+            word.style.opacity = '1';
+            word.style.transform = 'scale(1.3)';
+            setTimer(() => {
+              word.style.transition = `transform 180ms ${ease}`;
+              word.style.transform = 'scale(1)';
+              word.classList.add('in', 'visible');
+            }, 60);
+          } else if (impType === 'typewrite' || impType === 'flicker') {
+            word.style.transition = `opacity ${impType === 'flicker' ? 40 : WBW_DUR}ms ease`;
+            word.style.opacity = '1';
+            word.classList.add('in', 'visible');
+            setTimer(() => word.classList.add('fx'), impType === 'flicker' ? 50 : WBW_DUR + 50);
+          } else {
+            const target = impType === 'skew-snap'
+              ? 'skewX(0) translateX(0)'
+              : impType === 'roll'
+                ? 'rotateX(0)'
+                : impType === 'pop'
+                  ? 'scale(1)'
+                  : impType === 'drift'
+                    ? 'translateX(0) translateY(0)'
+                    : 'translateY(0)';
+            const transformDuration = impType === 'drift' ? dur + 30 : dur;
+            const opacityDuration = impType === 'roll' ? dur - 80 : dur - 60;
+            word.style.transition = `transform ${transformDuration}ms ${ease}, opacity ${opacityDuration}ms ease`;
+            word.style.transform = target;
+            word.style.opacity = '1';
+            word.classList.add('in', 'visible');
+          }
+          word.dataset.appliedVisible = 'true';
+        }, d);
+      }
+      return true;
+    };
+
+    const animateWBW = (block) => {
+      const words = Array.from(block.querySelectorAll(wbwSelector));
+      if (!words.length) return;
+      words.forEach((word) => wbwInitWord(word));
+      void block.offsetHeight;
+      words.forEach((word, index) => {
+        const isImp = wbwAnimImp(word, index, index * WBW_DELAY);
+        if (!isImp) wbwAnimWord(word, index * WBW_DELAY);
+      });
+    };
+
+    const resetWBW = (block) => {
+      block.querySelectorAll(wbwSelector).forEach((word) => {
+        word.classList.remove('in', 'visible', 'fx');
+        word.dataset.appliedVisible = 'false';
+        wbwInitWord(word);
+      });
+    };
+
+    const posInitWord = (word) => {
+      const anim = word.dataset.anim || 'rise';
+      word.style.transition = 'none';
+      word.style.clipPath = '';
+      word.style.transformOrigin = '';
+      switch (anim) {
+        case 'rise': word.style.transform = 'translateY(20px)'; word.style.opacity = '0'; break;
+        case 'drop': word.style.transform = 'translateY(-28px)'; word.style.opacity = '0'; break;
+        case 'fade': word.style.transform = 'none'; word.style.opacity = '0'; break;
+        case 'slide-l': word.style.transform = 'translateX(-28px)'; word.style.opacity = '0'; break;
+        case 'slide-r': word.style.transform = 'translateX(28px)'; word.style.opacity = '0'; break;
+        case 'slide-slow': word.style.transform = 'translateX(-32px)'; word.style.opacity = '0'; break;
+        case 'pop': word.style.transform = 'scale(0.82)'; word.style.opacity = '0'; break;
+        case 'lift': word.style.transform = 'translateY(-16px)'; word.style.opacity = '0'; break;
+        case 'drift': word.style.transform = 'translateX(-12px) translateY(8px)'; word.style.opacity = '0'; break;
+        case 'bounce': word.style.transform = 'translateY(-20px)'; word.style.opacity = '0'; break;
+        case 'wipe': word.style.clipPath = 'inset(0 100% 0 0)'; word.style.opacity = '1'; word.style.transform = 'none'; break;
+        case 'wipe-up': word.style.clipPath = 'inset(100% 0 0 0)'; word.style.opacity = '1'; word.style.transform = 'none'; break;
+        case 'stencil': word.style.clipPath = 'inset(0 50% 0 50%)'; word.style.opacity = '1'; word.style.transform = 'none'; break;
+        case 'diagonal-wipe': word.style.clipPath = 'polygon(0 0,0 0,0 100%,0 100%)'; word.style.opacity = '1'; word.style.transform = 'none'; break;
+        case 'roll': word.style.transform = 'translateY(12px) rotate(-6deg)'; word.style.opacity = '0'; word.style.transformOrigin = 'left bottom'; break;
+        case 'skew-snap': word.style.transform = 'skewX(-18deg) translateX(-10px)'; word.style.opacity = '0'; break;
+        case 'expand': word.style.transform = 'scaleX(0.1)'; word.style.transformOrigin = 'center'; word.style.opacity = '0'; break;
+        case 'diagonal': word.style.transform = 'translate(-12px,12px)'; word.style.opacity = '0'; break;
+        default: word.style.transform = 'translateY(20px)'; word.style.opacity = '0'; break;
+      }
+    };
+
+    const posAnimWord = (word, delay) => {
+      setTimer(() => {
+        const anim = word.dataset.anim || 'rise';
+        let transition = `transform ${POS_DUR}ms ${ease}, opacity ${POS_DUR - 40}ms ease`;
+        if (anim === 'wipe' || anim === 'wipe-up' || anim === 'stencil') {
+          transition = `clip-path ${POS_DUR}ms ${ease}`;
+        } else if (anim === 'diagonal-wipe') {
+          transition = `clip-path ${POS_DUR}ms ${ease}`;
+        } else if (anim === 'slide-slow') {
+          transition = 'transform 750ms cubic-bezier(0.16,1,0.3,1), opacity 550ms ease';
+        }
+        word.style.transition = transition;
+        word.style.transform = 'none';
+        word.style.opacity = '1';
+        word.style.clipPath = anim === 'diagonal-wipe'
+          ? 'polygon(0 0,100% 0,100% 100%,0 100%)'
+          : 'inset(0 0 0 0)';
+        word.classList.add('in', 'visible');
+        word.dataset.appliedVisible = 'true';
+      }, delay);
+    };
+
+    const animatePosWords = (block) => {
+      const words = Array.from(block.querySelectorAll('.sw, .sw-w'));
+      if (!words.length) return;
+      words.forEach((word) => posInitWord(word));
+      void block.offsetHeight;
+      words.forEach((word, index) => posAnimWord(word, index * POS_STAGGER));
+    };
+
+    const resetPosWords = (block) => {
+      block.querySelectorAll('.sw, .sw-w').forEach((word) => {
+        word.classList.remove('in', 'visible');
+        word.dataset.appliedVisible = 'false';
+        posInitWord(word);
+      });
+    };
+
+    // 'plain' blocks are a single .plain-s line of text nodes with the highlighted
+    // word wrapped in a bare <span class="is-emphasis"> (no .w/.sw class), so the
+    // word-by-word and positioned engines never touch them and the highlight sat
+    // static — "not moving" relative to the gallery preview. Animate just the
+    // emphasis span (the context text nodes can't be animated individually).
+    const plainImpInit = (word) => {
+      word.style.transition = 'none';
+      word.style.animation = 'none';
+      word.style.transformOrigin = 'center bottom';
+      word.style.display = 'inline-block';
+      word.style.transform = 'translateY(18px)';
+      word.style.opacity = '0';
+    };
+
+    const animatePlain = (block) => {
+      const imps = Array.from(block.querySelectorAll('.plain-s .is-emphasis'));
+      if (!imps.length) return;
+      imps.forEach(plainImpInit);
+      void block.offsetHeight;
+      imps.forEach((word, index) => {
+        setTimer(() => {
+          word.style.transition = `transform ${WBW_DUR + 120}ms ${ease}, opacity ${WBW_DUR}ms ease`;
+          word.style.transform = 'none';
+          word.style.opacity = '1';
+          word.classList.add('in', 'visible');
+          word.dataset.appliedVisible = 'true';
+        }, 140 + index * WBW_DELAY);
+      });
+    };
+
+    const resetPlain = (block) => {
+      block.querySelectorAll('.plain-s .is-emphasis').forEach((word) => {
+        word.classList.remove('in', 'visible');
+        word.dataset.appliedVisible = 'false';
+        plainImpInit(word);
+      });
+    };
+
+    // Pause/seek must always land the highlight visible (it was reset hidden above)
+    // so the paused frame matches export — never leave a void.
+    const settlePlainWord = (word) => {
+      word.style.animation = 'none';
+      word.style.transition = 'none';
+      word.style.transform = 'none';
+      word.style.opacity = '1';
+      word.style.display = 'inline-block';
+      word.classList.add('in', 'visible');
+      word.dataset.appliedVisible = 'true';
+    };
+
+    // The accent colour should land on the word the template renders BOLD (the
+    // larger / heavier "hero" word), not on an independently-guessed semantic
+    // word — otherwise the highlight colours the wrong/unimportant word. Detect
+    // the bold tier by computed size (then weight) and paint only those words;
+    // if there is no distinct bold tier, leave the build-time semantic emphasis
+    // untouched (so plain/uniform lines fall back to the important-word guess,
+    // and lines with neither simply get no colour).
+    const clearHeroEmphasis = (block) => {
+      block.querySelectorAll('[data-hero-emphasis="true"]').forEach((el) => {
+        el.style.color = '';
+        el.style.webkitTextFillColor = '';
+        delete el.dataset.heroEmphasis;
+      });
+    };
+
+    const recolorEmphasisToHero = (block) => {
+      const atoms = Array.from(block.querySelectorAll('.w, .wbw-word, .sw, .sw-w'));
+      if (atoms.length < 2) return false;
+      const measure = atoms.map((el) => {
+        const cs = window.getComputedStyle(el);
+        return { el, fs: parseFloat(cs.fontSize) || 0, fw: parseInt(cs.fontWeight, 10) || 400 };
+      });
+      const sizes = measure.map((m) => m.fs).filter((v) => v > 0);
+      if (sizes.length < 2) return false;
+      const maxFs = Math.max(...sizes);
+      const minFs = Math.min(...sizes);
+      let heroEls = [];
+      if (maxFs >= minFs * 1.18) {
+        // A distinct larger size tier = the hero row / bold word(s).
+        heroEls = measure.filter((m) => m.fs >= maxFs - 0.5).map((m) => m.el);
+      } else {
+        // Uniform size: fall back to a clear font-weight tier (bold vs regular).
+        const weights = measure.map((m) => m.fw);
+        const maxFw = Math.max(...weights);
+        const minFw = Math.min(...weights);
+        if (maxFw >= 700 && maxFw - minFw >= 200) {
+          heroEls = measure.filter((m) => m.fw >= maxFw - 50).map((m) => m.el);
+        }
+      }
+      // No bold tier, or everything is "hero" — keep the semantic emphasis as-is.
+      if (!heroEls.length || heroEls.length === atoms.length) return false;
+      // Drop the build-time semantic colour, then paint the bold word(s).
+      atoms.forEach((el) => {
+        if (el.classList.contains('is-emphasis')) {
+          el.classList.remove('is-emphasis');
+          el.style.color = '';
+          el.style.webkitTextFillColor = '';
+        }
+      });
+      heroEls.forEach((el) => {
+        el.style.color = emphasisAccent;
+        el.style.webkitTextFillColor = emphasisAccent;
+        el.dataset.heroEmphasis = 'true';
+      });
+      return true;
+    };
+
+    const getBlockType = (block) => {
+      if (block.querySelector('.wbw, .wbw-line')) return 'wbw';
+      if (block.querySelector('.sw, .sw-w')) return 'pos';
+      return 'plain';
+    };
+
+    const resetBlock = (block) => {
+      block.classList.remove('active');
+      block.style.transition = 'none';
+      block.style.opacity = '0';
+      block.style.visibility = 'hidden';
+      block.style.position = 'absolute';
+      block.style.pointerEvents = 'none';
+      resetWBW(block);
+      resetPosWords(block);
+      resetPlain(block);
+      clearHeroEmphasis(block);
+    };
+
+    const enterBlock = (block) => {
+      const type = getBlockType(block);
+      resetBlock(block);
+      void block.offsetHeight;
+      block.style.visibility = 'visible';
+      block.style.position = 'relative';
+      block.style.transition = 'none';
+      block.style.opacity = '1';
+      block.style.pointerEvents = 'auto';
+      block.classList.add('active');
+      if (type === 'wbw') {
+        raf(() => raf(() => animateWBW(block)));
+      } else if (type === 'pos') {
+        raf(() => raf(() => animatePosWords(block)));
+      } else {
+        raf(() => raf(() => animatePlain(block)));
+      }
+      raf(() => raf(() => recolorEmphasisToHero(block)));
+    };
+
+    const blocks = Array.from(host.querySelectorAll('.sb, .sblock'));
+    if (!blocks.length) return undefined;
+
+    const selectedPhaseIndex = ((Number(phaseOffset) % blocks.length) + blocks.length) % blocks.length;
+    const selectedBlock = blocks[selectedPhaseIndex];
+
+    const settleWBWWord = (word) => {
+      const parent = word.parentElement;
+      const usesClip = parent?.classList.contains('wwipe')
+        || parent?.classList.contains('wwipeup')
+        || parent?.classList.contains('wstencil');
+      word.style.animation = 'none';
+      word.style.transition = 'none';
+      word.style.opacity = '1';
+      word.style.clipPath = 'inset(0 0 0 0)';
+      word.style.transform = 'none';
+      word.classList.add('in', 'visible');
+      if (/\b(imp-|ns[23]-)/.test(word.className)) {
+        word.classList.add('anim', 'fx');
+      }
+      word.dataset.appliedVisible = 'true';
+    };
+
+    const settlePosWord = (word) => {
+      const anim = word.dataset.anim || 'rise';
+      word.style.animation = 'none';
+      word.style.transition = 'none';
+      word.style.opacity = '1';
+      word.style.clipPath = anim === 'diagonal-wipe'
+        ? 'polygon(0 0,100% 0,100% 100%,0 100%)'
+        : 'inset(0 0 0 0)';
+      word.style.transform = 'none';
+      word.classList.add('in', 'visible');
+      word.dataset.appliedVisible = 'true';
+    };
+
+    const clearScheduledWork = () => {
+      timers.forEach((timer) => window.clearTimeout(timer));
+      rafs.forEach((frame) => window.cancelAnimationFrame(frame));
+      timers.clear();
+      rafs.clear();
+    };
+
+    const preparePhase = () => {
+      blocks.forEach((block, index) => {
+        resetBlock(block);
+        block.dataset.appliedActivePhase = index === selectedPhaseIndex ? 'true' : 'false';
+      });
+    };
+
+    const play = () => {
+      clearScheduledWork();
+      host.dataset.appliedTemplatePaused = 'false';
+      host.dataset.appliedAnimationRun = String(Number(host.dataset.appliedAnimationRun || 0) + 1);
+      preparePhase();
+      enterBlock(selectedBlock);
+    };
+
+    const pause = () => {
+      clearScheduledWork();
+      host.dataset.appliedTemplatePaused = 'true';
+      preparePhase();
+      selectedBlock.style.visibility = 'visible';
+      selectedBlock.style.position = 'relative';
+      selectedBlock.style.pointerEvents = 'auto';
+      selectedBlock.style.transition = 'none';
+      selectedBlock.style.opacity = '1';
+      selectedBlock.classList.add('active');
+      selectedBlock.querySelectorAll(wbwSelector).forEach(settleWBWWord);
+      selectedBlock.querySelectorAll('.sw, .sw-w').forEach(settlePosWord);
+      selectedBlock.querySelectorAll('.plain-s .is-emphasis').forEach(settlePlainWord);
+      recolorEmphasisToHero(selectedBlock);
+    };
+
+    runnerRef.current = { play, pause };
+    if (playStateRef.current.isPlaying) play();
+    else pause();
+
+    return () => {
+      clearScheduledWork();
+      runnerRef.current = null;
+    };
+  }, [html, captionId, captionText, effectiveStyle?.template_20_id, effectiveStyle?.template_source, phaseOffset]);
+
+  useEffect(() => {
+    const runner = runnerRef.current;
+    if (!runner) return;
+    const previous = playbackControlRef.current;
+    const timeDelta = Math.abs(Number(currentTime || 0) - Number(previous.currentTime || 0));
+    const seeked = previous.isPlaying && isPlaying && timeDelta > 0.75;
+    if (!isPlaying) runner.pause();
+    else if (!previous.isPlaying || seeked) runner.play();
+    playbackControlRef.current = { currentTime, isPlaying };
+  }, [currentTime, isPlaying, startTime, endTime]);
+
+  return (
+    <span
+      ref={hostRef}
+      key={`applied-sidebar-source-${captionId || 'active'}-${effectiveStyle?.template_20_id || 'tpl'}-${captionText}`}
+      className="lekha-applied-template-host"
+      data-applied-template-id={effectiveStyle?.template_20_id || ''}
+      data-applied-template-source={effectiveStyle?.template_source || 'lekha-20'}
+      data-applied-template-renderer="source-html"
+      data-applied-template-animated="true"
+      data-emotional-mode={effectiveStyle?.emotional_mode || ''}
+      data-template-phase-index={phaseOffset}
+      data-applied-template-paused={isPlaying ? 'false' : 'true'}
+      style={{
+        '--sidebar-source-color': effectiveStyle?.text_color || '#FFFFFF',
+        '--sidebar-source-accent': effectiveStyle?.secondary_color || '#FFE600',
+        '--sidebar-emphasis-accent': emphasisAccent,
+        '--sidebar-source-line-height': effectiveStyle?.line_spacing || 1.25,
+        '--sidebar-source-font': resolvedFont,
+        '--applied-template-width': '100%',
+        color: effectiveStyle?.text_color || '#FFFFFF',
+        fontFamily: resolvedFont,
+        fontSize: `${fontSize}px`,
+        fontWeight: effectiveStyle?.font_weight || '300',
+        fontStyle: effectiveStyle?.font_style || 'normal',
+        textTransform: effectiveStyle?.text_case && effectiveStyle.text_case !== 'none' ? effectiveStyle.text_case : undefined,
+        lineHeight: effectiveStyle?.line_spacing || 1.25,
+        opacity: effectiveStyle?.text_opacity ?? 1,
+        textAlign: 'center',
+      }}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
+}
+
+let _shadowCssCache = null
+function getShadowTemplateCss() {
+  if (_shadowCssCache !== null) return _shadowCssCache
+  _shadowCssCache = `
+    :host { display: inline-block; max-width: min(94%, 460px); color: inherit; font-family: inherit; }
+    ${extractAppliedTemplateCss('lekha-20')}
+    ${APPLIED_TEMPLATE_HOST_OVERRIDES.replace(/\.lekha-applied-template-host/g, ':host')}
+    .card, .lk-card {
+      width: min(84vw, 430px) !important;
+      border: 0 !important; background: transparent !important;
+      box-shadow: none !important; border-radius: 0 !important; padding: 0 !important;
+      margin: 0 !important; display: block !important; overflow: visible !important;
+    }
+    .stage, .lk-stage {
+      position: relative !important; inset: auto !important;
+      background: transparent !important; box-shadow: none !important; border: 0 !important;
+      overflow: visible !important; padding: 0 !important; margin: 0 !important; display: block !important;
+    }
+    .card-top, .lk-card-top, .dots, .lk-dots { display: none !important; }
+    .sb, .sblock {
+      position: relative !important; inset: auto !important;
+      display: flex !important; align-items: center; justify-content: center;
+      width: auto !important; height: auto !important; min-height: 0 !important;
+      padding: 0 !important; overflow: visible !important;
+      background: transparent !important;
+    }
+    .sb:not(.active), .sblock:not(.active) { display: none !important; }
+    .sb.active, .sblock.active { opacity: 1 !important; pointer-events: auto; }
+    .w.in, .wbw-word.visible, .sw-w.in, .sw.in {
+      opacity: 1 !important; transform: none !important; clip-path: none !important;
+    }
+    .w, .wbw-word, .sw-w { font-family: inherit !important; }
+  `
+  return _shadowCssCache
+}
+
+function ShadowTemplateRenderer({ html, captionStyle, captionText, captionId, scale }) {
+  const hostRef = useRef(null)
+  const shadowRef = useRef(null)
+
+  const resolvedFont = resolveScriptFont(captionStyle?.font_family, captionText) || captionStyle?.font_family || 'Raleway'
+
+  useEffect(() => {
+    if (!hostRef.current) return
+    if (!shadowRef.current) {
+      shadowRef.current = hostRef.current.attachShadow({ mode: 'open' })
+    }
+    const shadow = shadowRef.current
+    const fontLink = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(resolvedFont)}:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap`
+    shadow.innerHTML = `<link rel="stylesheet" href="${fontLink}"><style>${getShadowTemplateCss()}</style>${html || ''}`
+  }, [html, resolvedFont])
+
+  const fontSize = (captionStyle?.font_size || 22) * (scale || 1)
+
+  return (
+    <div
+      ref={hostRef}
+      data-shadow-template={captionStyle?.template_20_id || ''}
+      style={{
+        display: 'inline-block',
+        color: captionStyle?.text_color || '#FFFFFF',
+        fontFamily: resolvedFont,
+        fontSize: `${fontSize}px`,
+        fontWeight: captionStyle?.font_weight || '300',
+        fontStyle: captionStyle?.font_style || 'normal',
+        textTransform: captionStyle?.text_case && captionStyle.text_case !== 'none' ? captionStyle.text_case : undefined,
+        lineHeight: captionStyle?.line_spacing || 1.25,
+        opacity: captionStyle?.text_opacity ?? 1,
+        textAlign: 'center',
+      }}
+    />
+  )
 }
 
 function buildAppliedSidebarTemplateScript({ captionText = '', isNewTemplateSet = false }) {
@@ -783,6 +1798,7 @@ function OriginalAdvancedTemplateStyles() {
     <style>
       {`
         ${extractOriginalTemplateRuntimeCss()}
+        ${ADVANCED_TEMPLATE_RUNTIME_CSS}
 
         .lekha-original-template {
           --gold: #d4af37;
@@ -813,7 +1829,7 @@ function OriginalAdvancedTemplateStyles() {
           width: auto !important;
           min-width: 0 !important;
           min-height: 0 !important;
-          opacity: 1 !important;
+          opacity: 1;
           padding: 0 !important;
           overflow: visible !important;
           white-space: normal;
@@ -1103,6 +2119,15 @@ function SidebarSourceTemplateStyles() {
           white-space: normal;
         }
 
+        .lekha-sidebar-source-template .lekha-sidebar-source-line {
+          display: block;
+          white-space: normal;
+        }
+
+        .lekha-sidebar-source-template .lekha-sidebar-source-line + .lekha-sidebar-source-line {
+          margin-top: 0.02em;
+        }
+
         .lekha-sidebar-source-template .w,
         .lekha-sidebar-source-template .wbw-word {
           display: inline-block;
@@ -1261,14 +2286,235 @@ function SidebarSourceTemplateStyles() {
   );
 }
 
+const _advancedSourceMarkupCache = new Map();
+
+function getAppliedAdvancedCardMarkup(templateId, templateMarkup = '') {
+  const suppliedMarkup = String(templateMarkup || '');
+  if (suppliedMarkup.includes(`id="card-${templateId}"`) || suppliedMarkup.includes(`id='card-${templateId}'`)) {
+    return suppliedMarkup;
+  }
+  return extractAdvancedTemplateCardMarkup(originalTemplateHtml, templateId);
+}
+
+function cleanAppliedAdvancedSourceElement(element) {
+  if (!element) return;
+  element.querySelectorAll('script, style, iframe, object, embed, link, meta, base, form, input, button, textarea, select')
+    .forEach((node) => node.remove());
+  const nodes = [element, ...element.querySelectorAll('*')];
+  nodes.forEach((node) => {
+    Array.from(node.attributes || []).forEach((attribute) => {
+      const attrName = String(attribute.name || '');
+      const attrValue = String(attribute.value || '').trim().toLowerCase();
+      if (
+        /^bis_/i.test(attrName)
+        || /^__processed_/i.test(attrName)
+        || /^on/i.test(attrName)
+        || ((attrName === 'href' || attrName === 'src' || attrName === 'xlink:href')
+          && (attrValue.startsWith('javascript:') || attrValue.startsWith('data:text/html')))
+      ) {
+        node.removeAttribute(attribute.name);
+      }
+    });
+    node.className = String(node.className || '')
+      .split(/\s+/)
+      .filter((className) => className && !['active', 'visible', 'anim', 'on', 'in', 'fx'].includes(className))
+      .join(' ');
+    if (node.style) {
+      Array.from(node.style).forEach((property) => {
+        const value = node.style.getPropertyValue(property).toLowerCase();
+        if (value.includes('url(') || value.includes('expression(') || value.includes('javascript:')) {
+          node.style.removeProperty(property);
+        }
+      });
+      [
+        'animation', 'clip-path', 'filter', 'opacity', 'transform', 'transform-origin',
+        'transition', 'visibility', 'z-index',
+      ].forEach((property) => node.style.removeProperty(property));
+    }
+  });
+}
+
+function replaceAppliedAdvancedWbw(container, words, impWordIndex = -1, emphasisColor = '') {
+  if (!container || !words.length) return;
+  const sourceWords = Array.from(container.querySelectorAll('.w'));
+  const sourceClasses = sourceWords.map((word) => _astCleanClass(word.className, 'w'));
+  const sourceImpIndex = sourceWords.findIndex((word) => (
+    word.dataset.imp === 'true' || _astImpClassTestPattern.test(word.className)
+  ));
+  const sourceImpClass = sourceImpIndex >= 0
+    ? sourceWords[sourceImpIndex].dataset.impCls
+      || sourceClasses[sourceImpIndex].match(_astImpClassTestPattern)?.[0]
+      || ''
+    : '';
+  const targetImpIndex = impWordIndex;
+
+  container.textContent = '';
+  container.dataset.text = words.join(' ');
+  words.forEach((word, index) => {
+    const span = container.ownerDocument.createElement('span');
+    const mappedClass = _astMappedClass(sourceClasses, index, words.length, 'w')
+      .replace(_astImpClassPattern, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const isImp = index === targetImpIndex;
+    span.className = `${mappedClass || 'w'}${isImp && sourceImpClass ? ` ${sourceImpClass}` : ''}${isImp ? ' is-emphasis' : ''}`;
+    span.dataset.i = String(index);
+    if (isImp) {
+      span.dataset.imp = 'true';
+      span.dataset.impCls = sourceImpClass;
+      if (emphasisColor) {
+        span.style.setProperty('color', emphasisColor, 'important');
+        span.style.setProperty('-webkit-text-fill-color', emphasisColor, 'important');
+      }
+    }
+    if (index < words.length - 1) {
+      span.style.setProperty('margin-right', '0.24em', 'important');
+    }
+    span.textContent = word;
+    container.appendChild(span);
+  });
+}
+
+function replaceAppliedAdvancedKaraoke(container, words) {
+  if (!container || !words.length) return;
+  container.textContent = '';
+  words.forEach((word, index) => {
+    if (index > 0) container.appendChild(container.ownerDocument.createTextNode(' '));
+    const wrapper = container.ownerDocument.createElement('span');
+    wrapper.className = 'kf-word';
+    const base = container.ownerDocument.createElement('span');
+    base.className = 'kf-base';
+    base.textContent = word;
+    const fill = container.ownerDocument.createElement('span');
+    fill.className = 'kf-fill';
+    fill.textContent = word;
+    wrapper.append(base, fill);
+    container.appendChild(wrapper);
+  });
+}
+
+function collectAppliedAdvancedTextNodes(root) {
+  const textNodes = [];
+  const visit = (node) => {
+    Array.from(node.childNodes || []).forEach((child) => {
+      if (child.nodeType === 3) {
+        if (/[\p{L}\p{N}]/u.test(child.nodeValue || '')) textNodes.push(child);
+        else if (String(child.nodeValue || '').trim()) child.nodeValue = '';
+        return;
+      }
+      if (child.nodeType === 1) visit(child);
+    });
+  };
+  visit(root);
+  return textNodes;
+}
+
+function replaceAppliedAdvancedStyledText(block, words, captionText) {
+  const slots = collectAppliedAdvancedTextNodes(block);
+  if (!slots.length) {
+    block.textContent = captionText;
+    return;
+  }
+
+  const weightedSlots = [];
+  slots.forEach((slot, slotIndex) => {
+    const sourceWordCount = Math.max(1, String(slot.nodeValue || '').trim().split(/\s+/).filter(Boolean).length);
+    for (let index = 0; index < sourceWordCount; index += 1) weightedSlots.push(slotIndex);
+  });
+  const assigned = slots.map(() => []);
+  words.forEach((word, wordIndex) => {
+    const sourcePosition = words.length <= 1
+      ? 0
+      : Math.round((wordIndex * Math.max(0, weightedSlots.length - 1)) / Math.max(1, words.length - 1));
+    assigned[weightedSlots[sourcePosition] ?? 0].push(word);
+  });
+  slots.forEach((slot, slotIndex) => {
+    const source = String(slot.nodeValue || '');
+    const leading = /^\s/.test(source) ? ' ' : '';
+    const trailing = /\s$/.test(source) ? ' ' : '';
+    slot.nodeValue = assigned[slotIndex].length
+      ? `${leading}${assigned[slotIndex].join(' ')}${trailing}`
+      : '';
+  });
+  block.querySelectorAll('[data-text]').forEach((element) => {
+    element.setAttribute('data-text', captionText);
+  });
+}
+
+function buildAppliedAdvancedTemplateInline(
+  templateId,
+  captionText,
+  blockIndex = 0,
+  templateMarkup = '',
+  impWordIndex = -1,
+  emphasisColor = '',
+) {
+  const normalizedBlockIndex = normalizeTemplatePhaseIndex(templateId, blockIndex);
+  const cardMarkup = getAppliedAdvancedCardMarkup(templateId, templateMarkup);
+  const cacheKey = [
+    templateId,
+    normalizedBlockIndex,
+    impWordIndex,
+    emphasisColor,
+    getAppliedTemplateMarkupSignature(cardMarkup),
+    captionText,
+  ].join('|');
+  if (_advancedSourceMarkupCache.has(cacheKey)) return _advancedSourceMarkupCache.get(cacheKey);
+  if (!cardMarkup || typeof DOMParser === 'undefined') return '';
+
+  const sourceBlock = extractAdvancedTemplateBlockMarkup(cardMarkup, templateId, normalizedBlockIndex);
+  if (!sourceBlock) return '';
+
+  let doc;
+  try {
+    doc = new DOMParser().parseFromString(sourceBlock, 'text/html');
+  } catch {
+    return '';
+  }
+  const block = doc.querySelector('.sblock');
+  const words = String(captionText || '').trim().split(/\s+/).filter(Boolean);
+  if (!block || !words.length) return '';
+
+  cleanAppliedAdvancedSourceElement(block);
+  const blockType = block.dataset.type || getOriginalTemplateBlockType(templateId, normalizedBlockIndex);
+  block.classList.add(
+    `${templateId}-block`,
+    'active',
+    'lekha-applied-advanced-template',
+    'lekha-advanced-source-block',
+  );
+  block.dataset.templateBlockIndex = String(normalizedBlockIndex);
+  block.dataset.templateBlockType = blockType;
+  block.style.opacity = '1';
+  block.style.visibility = 'visible';
+
+  const wbwContainers = Array.from(block.querySelectorAll(
+    '.wbw-rise, .wbw-slide, .wbw-seq, .wbw-seq-fade, .wbw-seq-flip',
+  ));
+  if (wbwContainers.length) {
+    wbwContainers.forEach((container) => replaceAppliedAdvancedWbw(container, words, impWordIndex, emphasisColor));
+  } else {
+    const karaokeContainers = Array.from(block.querySelectorAll('.kf-line'));
+    if (karaokeContainers.length) {
+      karaokeContainers.forEach((container) => replaceAppliedAdvancedKaraoke(container, words));
+    } else {
+      replaceAppliedAdvancedStyledText(block, words, captionText);
+    }
+  }
+
+  const result = block.outerHTML;
+  if (_advancedSourceMarkupCache.size > 500) _advancedSourceMarkupCache.clear();
+  _advancedSourceMarkupCache.set(cacheKey, result);
+  return result;
+}
+
 function renderOriginalTemplateCaption(templateId, text, active = true, blockIndex = 0) {
   const { top, hero, bottom, full } = splitCaptionForTemplate(text);
   const blockTypes = ORIGINAL_TEMPLATE_BLOCK_TYPES[templateId] || ['styled'];
-  const normalizedBlockIndex = ((blockIndex % blockTypes.length) + blockTypes.length) % blockTypes.length;
+  const normalizedBlockIndex = normalizeTemplatePhaseIndex(templateId, blockIndex);
   const blockType = blockTypes[normalizedBlockIndex];
   const activeClass = active ? ' active' : '';
   const lines2 = splitTemplateLines(full, 2);
-  const lines3 = splitTemplateLines(full, 3);
   const upperFull = full.toUpperCase();
 
   const wrap = (blockClass, children, extraStyle = {}) => (
@@ -1276,6 +2522,7 @@ function renderOriginalTemplateCaption(templateId, text, active = true, blockInd
       <OriginalAdvancedTemplateStyles />
       <span className={`lekha-original-template ${templateId} ${templateId}-stage`}>
         <span
+          id={`${templateId}-b${normalizedBlockIndex}`}
           className={`sblock ${templateId}-block ${blockClass}${activeClass} lekha-applied-advanced-template`}
           data-template-block-index={normalizedBlockIndex}
           data-template-block-type={blockType}
@@ -1296,24 +2543,18 @@ function renderOriginalTemplateCaption(templateId, text, active = true, blockInd
       if (normalizedBlockIndex === 1) return wrap('t11-b1', <span className="blur-txt lekha-template-fit">{renderTextWithHero(full, 'imp-italic')}</span>);
       if (normalizedBlockIndex === 2) return wrap('t11-b2', <span className="lekha-template-fit">{full}</span>);
       if (normalizedBlockIndex === 3) return wrap('t11-b3', renderWbwText(full, 'wbw-rise', 'imp-gold', active));
-      return wrap('t11-b0', (
-        <span className="cluster-wrap lekha-template-fit">
-          <span className={`cluster-row-top${active ? ' active' : ''}`} style={{ textAlign: 'right' }}>{top || lines2[0]}</span>
-          <span className={`cluster-hl imp-gold${active ? ' active' : ''}`}>{hero}</span>
-          <span className={`cluster-row-bot${active ? ' active' : ''}`} style={{ textAlign: 'left' }}>{bottom || lines2[1] || ''}</span>
-        </span>
-      ));
+      return wrap('t11-b0', renderWbwText(full, 'wbw-seq-fade', 'imp-gold', active));
     }
     case 't12':
       if (normalizedBlockIndex === 1) return wrap('t12-b1', <span className="rise-unit lekha-template-fit">{renderTextWithHero(full, 'imp-purple')}</span>);
       if (normalizedBlockIndex === 2) return wrap('t12-b2', renderWbwText(full, 'wbw-rise', 'imp-italic', active));
       if (normalizedBlockIndex === 3) return wrap('t12-b3', renderWbwText(full, 'wbw-slide', 'imp-rose', active));
-      return wrap('t12-b0', <span className="type-wrap lekha-template-fit">{full}</span>);
+      return wrap('t12-b0', renderWbwText(full, 'wbw-seq-fade', 'imp-purple', active));
     case 't13':
       if (normalizedBlockIndex === 1) return wrap('t13-b1', <span className="ticker-txt lekha-template-fit">{upperFull}</span>);
       if (normalizedBlockIndex === 2) return wrap('t13-b2', renderWbwText(full, 'wbw-rise', 'imp-cyan', active));
-      if (normalizedBlockIndex === 3) return wrap('t13-b3', renderWbwText(full, 'wbw-slide', 'imp-bold', active));
-      return wrap('t13-b0', <span className="stamp-txt lekha-template-fit">{upperFull}</span>);
+      if (normalizedBlockIndex === 3) return wrap('t13-b3', renderWbwText(full, 'wbw-seq-fade', 'imp-bold', active));
+      return wrap('t13-b0', <span className="slide-crash lekha-template-fit">{upperFull}</span>);
     case 't14':
       if (normalizedBlockIndex === 1) return wrap('t14-b1', <span className="drop-txt lekha-template-fit">{renderTextWithHero(full, 'imp-gold')}</span>);
       if (normalizedBlockIndex === 2) return wrap('t14-b2', <span className="lekha-template-fit">{full}</span>);
@@ -1330,7 +2571,7 @@ function renderOriginalTemplateCaption(templateId, text, active = true, blockInd
     case 't15':
       if (normalizedBlockIndex === 1) return wrap('t15-b1', <span className="pop-txt lekha-template-fit">{upperFull}</span>);
       if (normalizedBlockIndex === 2) return wrap('t15-b2', renderWbwText(full, 'wbw-rise', 'imp-bold', active));
-      if (normalizedBlockIndex === 3) return wrap('t15-b3', renderWbwText(full, 'wbw-slide', 'imp-rose', active));
+      if (normalizedBlockIndex === 3) return wrap('t15-b3', renderWbwText(full, 'wbw-seq-fade', 'imp-rose', active));
       return wrap('t15-b0', (
         <span className="shake-in lekha-template-fit">
           {lines2[0]}{lines2[1] && <><br />{renderTextWithHero(lines2[1], 'imp-rose')}</>}
@@ -1342,19 +2583,7 @@ function renderOriginalTemplateCaption(templateId, text, active = true, blockInd
       }
       if (normalizedBlockIndex === 2) return wrap('t16-b2', renderWbwText(full, 'wbw-rise', 'imp-cyan', active));
       if (normalizedBlockIndex === 3) return wrap('t16-b3', renderWbwText(full, 'wbw-slide', 'imp-bold', active));
-      return wrap('t16-b0', (
-        <span className="lekha-template-fit">
-          {lines3.map((line, index) => (
-            <span
-              key={`${line}-${index}`}
-              className="stack-line"
-              style={index === lines3.length - 1 ? { color: '#fff', fontWeight: 900 } : undefined}
-            >
-              {String(index + 1).padStart(2, '0')}. {index === lines3.length - 1 ? renderTextWithHero(line, 'imp-cyan') : line}
-            </span>
-          ))}
-        </span>
-      ));
+      return wrap('t16-b0', renderWbwText(full, 'wbw-rise', 'imp-bold', active));
     case 't17':
       if (normalizedBlockIndex === 1) {
         return wrap('t17-b1', (
@@ -1372,29 +2601,31 @@ function renderOriginalTemplateCaption(templateId, text, active = true, blockInd
       if (normalizedBlockIndex === 3) return wrap('t18-b3', renderWbwText(full, 'wbw-rise', 'imp-purple', active));
       return wrap('t18-b0', (
         <span className="split-title lekha-template-fit">
-          <span className="split-top">{top || lines2[0] || ''}</span>
-          <span className="split-bot">{hero ? <span className="imp-purple">{hero}</span> : (bottom || lines2[1] || '')}</span>
+          <span className="split-top">{lines2[0] || full}</span>
+          <span className="split-bot">
+            {lines2[1] ? renderTextWithHero(lines2[1], 'imp-purple') : ''}
+          </span>
         </span>
       ));
     case 't19':
       if (normalizedBlockIndex === 1) return wrap('t19-b1', <span className="rise-unit lekha-template-fit">{renderTextWithHero(upperFull, 'imp-rose')}</span>);
       if (normalizedBlockIndex === 2) return wrap('t19-b2', renderWbwText(full, 'wbw-rise', 'imp-bold', active));
-      if (normalizedBlockIndex === 3) return wrap('t19-b3', renderWbwText(full, 'wbw-slide', 'imp-rose', active));
+      if (normalizedBlockIndex === 3) return wrap('t19-b3', renderWbwText(full, 'wbw-seq-fade', 'imp-rose', active));
       return wrap('t19-b0', <span className="slash-wrap lekha-template-fit">{upperFull}</span>);
     case 't20':
       if (normalizedBlockIndex === 1) return wrap('t20-b1', <span className="impact-txt lekha-template-fit">{renderTextWithHero(full, 'imp-green')}</span>);
       if (normalizedBlockIndex === 2) return wrap('t20-b2', renderWbwText(full, 'wbw-rise', 'imp-bold', active));
-      if (normalizedBlockIndex === 3) return wrap('t20-b3', renderWbwText(full, 'wbw-slide', 'imp-green', active));
-      return wrap('t20-b0', <span className="neon-drop lekha-template-fit">{upperFull}</span>);
+      if (normalizedBlockIndex === 3) return wrap('t20-b3', renderWbwText(full, 'wbw-seq-fade', 'imp-green', active));
+      return wrap('t20-b0', <span className="impact-slide lekha-template-fit">{upperFull}</span>);
     case 't21':
-      if (normalizedBlockIndex === 1) return wrap('t21-b1', <span className="space-txt lekha-template-fit">{renderTextWithHero(full, 'imp-space')}</span>);
+      if (normalizedBlockIndex === 1) return wrap('t21-b1', renderWbwText(full, 'wbw-seq-fade', 'imp-space', active));
       if (normalizedBlockIndex === 2) return wrap('t21-b2', renderWbwText(full, 'wbw-rise', 'imp-italic', active));
       if (normalizedBlockIndex === 3) return wrap('t21-b3', renderWbwText(full, 'wbw-slide', 'imp-weight', active));
       return wrap('t21-b0', <span className="vert-line"><span className="vert-line-inner">{upperFull}</span></span>);
     case 't22':
       if (normalizedBlockIndex === 1) return wrap('t22-b1', <span className="wave-txt lekha-template-fit">{renderTextWithHero(full, 'imp-gold')}</span>);
       if (normalizedBlockIndex === 2) return wrap('t22-b2', renderWbwText(full, 'wbw-rise', 'imp-italic', active));
-      if (normalizedBlockIndex === 3) return wrap('t22-b3', renderWbwText(full, 'wbw-slide', 'imp-gold', active));
+      if (normalizedBlockIndex === 3) return wrap('t22-b3', renderWbwText(full, 'wbw-seq-fade', 'imp-gold', active));
       return wrap('t22-b0', renderKaraokeText(full));
     case 't23':
       if (normalizedBlockIndex === 1) return wrap('t23-b1', <span className="lekha-template-fit">{full}</span>);
@@ -1421,7 +2652,7 @@ function renderOriginalTemplateCaption(templateId, text, active = true, blockInd
     case 't26':
       if (normalizedBlockIndex === 1) return wrap('t26-b1', <span className="fast-slide lekha-template-fit">{renderTextWithHero(upperFull, 'imp-rose')}</span>);
       if (normalizedBlockIndex === 2) return wrap('t26-b2', renderWbwText(full, 'wbw-rise', 'imp-bold', active));
-      if (normalizedBlockIndex === 3) return wrap('t26-b3', renderWbwText(full, 'wbw-slide', 'imp-rose', active));
+      if (normalizedBlockIndex === 3) return wrap('t26-b3', renderWbwText(full, 'wbw-seq-fade', 'imp-rose', active));
       return wrap('t26-b0', <span className="hard-txt lekha-template-fit">{upperFull}</span>);
     case 't27':
       if (normalizedBlockIndex === 1) return wrap('t27-b1', <span className="lekha-template-fit" style={{ fontFamily: "'Exo 2', sans-serif", fontWeight: 700, color: 'rgba(0,229,255,0.6)' }}>{full}</span>);
@@ -1431,7 +2662,7 @@ function renderOriginalTemplateCaption(templateId, text, active = true, blockInd
     case 't28':
       if (normalizedBlockIndex === 1) return wrap('t28-b1', <span className="slow-fade lekha-template-fit">{renderTextWithHero(full, 'imp-italic')}</span>);
       if (normalizedBlockIndex === 2) return wrap('t28-b2', renderWbwText(full, 'wbw-rise', 'imp-italic', active));
-      if (normalizedBlockIndex === 3) return wrap('t28-b3', renderWbwText(full, 'wbw-slide', 'imp-gold', active));
+      if (normalizedBlockIndex === 3) return wrap('t28-b3', renderWbwText(full, 'wbw-seq-fade', 'imp-gold', active));
       return wrap('t28-b0', (
         <span className="grain-txt lekha-template-fit">
           {lines2[0]}{lines2[1] && <><br />{renderTextWithHero(lines2[1], 'imp-gold')}</>}
@@ -1440,8 +2671,8 @@ function renderOriginalTemplateCaption(templateId, text, active = true, blockInd
     case 't29':
       if (normalizedBlockIndex === 1) return wrap('t29-b1', <span className="hard-rise lekha-template-fit">{renderTextWithHero(full, 'imp-rose')}</span>);
       if (normalizedBlockIndex === 2) return wrap('t29-b2', renderWbwText(full, 'wbw-rise', 'imp-rose', active));
-      if (normalizedBlockIndex === 3) return wrap('t29-b3', renderWbwText(full, 'wbw-slide', 'imp-bold', active));
-      return wrap('t29-b0', <span className="slam-txt lekha-template-fit">{upperFull}</span>);
+      if (normalizedBlockIndex === 3) return wrap('t29-b3', <span className="battle-slide lekha-template-fit">{upperFull}</span>);
+      return wrap('t29-b0', <span className="battle-slide lekha-template-fit">{upperFull}</span>);
     case 't30':
       if (normalizedBlockIndex > 0) return wrap(`t30-b${normalizedBlockIndex}`, <span className="lekha-template-fit">{normalizedBlockIndex === 3 ? renderTextWithHero(full, 'imp-italic') : full}</span>);
       return wrap('t30-b0', (
@@ -1450,14 +2681,16 @@ function renderOriginalTemplateCaption(templateId, text, active = true, blockInd
         </span>
       ));
     case 't31':
-      if (normalizedBlockIndex === 1) return wrap('t31-b1', <span style={{ perspective: '500px' }} className="lekha-template-fit"><span className="flip-line" style={{ fontFamily: "'Playfair Display', serif" }}>{renderTextWithHero(full, 'imp-gold')}</span></span>);
+      if (normalizedBlockIndex === 1) return wrap('t31-b1', renderWbwText(full, 'wbw-seq-fade', 'imp-gold', active));
       if (normalizedBlockIndex === 2) return wrap('t31-b2', <span className="lekha-template-fit">{full}</span>);
       if (normalizedBlockIndex === 3) return wrap('t31-b3', renderWbwText(full, 'wbw-rise', 'imp-gold', active));
-      return wrap('t31-b0', <span className="stamp-text lekha-template-fit">{top || lines2[0] || full}</span>);
+      if (normalizedBlockIndex === 4) return wrap('t31-b4', <span style={{ perspective: '500px' }} className="lekha-template-fit"><span className="flip-line" style={{ fontFamily: "'Playfair Display', serif" }}>{renderTextWithHero(full, 'imp-gold')}</span></span>);
+      return wrap('t31-b0', <span className="stamp-text lekha-template-fit">{full}</span>);
     case 't32':
       if (normalizedBlockIndex === 1) return wrap('t32-b1', <span style={{ perspective: '500px' }} className="lekha-template-fit"><span className="flip-line" style={{ fontFamily: "'Bodoni Moda', serif", fontStyle: 'italic' }}>{renderTextWithHero(full, 'imp-italic')}</span></span>);
       if (normalizedBlockIndex === 2) return wrap('t32-b2', <span className="lekha-template-fit">{full}</span>);
       if (normalizedBlockIndex === 3) return wrap('t32-b3', renderWbwText(full, 'wbw-rise', 'imp-purple', active));
+      if (normalizedBlockIndex === 4) return wrap('t32-b4', renderWbwText(full, 'wbw-seq-fade', 'imp-purple', active));
       return wrap('t32-b0', (
         <span style={{ fontStyle: 'italic' }} className="lekha-template-fit">
           {lines2.map((line, index) => (
@@ -1477,7 +2710,7 @@ function renderOriginalTemplateCaption(templateId, text, active = true, blockInd
       if (normalizedBlockIndex === 1) return wrap('t34-b1', <span className="pow-txt lekha-template-fit">{renderTextWithHero(full, 'imp-cyan')}</span>);
       if (normalizedBlockIndex === 2) return wrap('t34-b2', renderWbwText(full, 'wbw-rise', 'imp-bold', active));
       if (normalizedBlockIndex === 3) return wrap('t34-b3', renderWbwText(full, 'wbw-slide', 'imp-cyan', active));
-      return wrap('t34-b0', <span className="speed-txt lekha-template-fit">{upperFull}</span>);
+      return wrap('t34-b0', renderWbwText(full, 'wbw-seq-fade', 'imp-bold', active));
     case 't35':
       if (normalizedBlockIndex > 0) return wrap(`t35-b${normalizedBlockIndex}`, <span className="lekha-template-fit">{normalizedBlockIndex === 3 ? renderTextWithHero(full, 'imp-italic') : full}</span>);
       return wrap('t35-b0', <span className="secret-txt lekha-template-fit">{renderTextWithHero(full, 'imp-italic')}</span>);
@@ -1492,59 +2725,260 @@ function renderOriginalTemplateCaption(templateId, text, active = true, blockInd
       if (normalizedBlockIndex === 1) return wrap('t38-b1', renderWbwText(full, 'wbw-slide', 'imp-italic', active));
       if (normalizedBlockIndex === 2) return wrap('t38-b2', renderWbwText(full, 'wbw-rise', 'imp-underline', active));
       if (normalizedBlockIndex === 3) return wrap('t38-b3', renderWbwText(full, 'wbw-seq-fade', 'imp-italic', active));
-      return wrap('t38-b0', (
-        <span className="lekha-template-fit">
-          {lines2.map((line, index) => (
-            <span key={`${line}-${index}`} className="flip-line">
-              {index === lines2.length - 1 ? renderTextWithHero(line, 'imp-italic') : line}
-            </span>
-          ))}
-        </span>
-      ));
+      return wrap('t38-b0', <span className="lekha-template-fit">{full}</span>);
     case 't39':
       return wrap(`t39-b${normalizedBlockIndex}`, renderWbwText(full, 'wbw-seq-fade', normalizedBlockIndex % 2 ? 'imp-rose' : 'imp-gold', active));
     case 't40':
       if (normalizedBlockIndex === 2) return wrap('t40-b2', <span className="lekha-template-fit">{full}</span>);
-      return wrap(`t40-b${normalizedBlockIndex}`, (
-        <span className="lekha-template-fit">
-          {lines2[0]}{lines2[1] && <><br />{renderTextWithHero(lines2[1], normalizedBlockIndex === 3 ? 'imp-gold' : 'imp-italic')}</>}
-        </span>
-      ));
+      return wrap(`t40-b${normalizedBlockIndex}`, <span className="lekha-template-fit">{full}</span>);
     default:
       return null;
   }
 }
 
-function AppliedAdvancedTemplateCaption({ templateId, text, blockIndex = 0 }) {
-  const [active, setActive] = useState(false);
+function clampTemplateProgress(value) {
+  return Math.max(0, Math.min(1, Number(value) || 0));
+}
+
+function advancedEaseOut(progress) {
+  const normalized = clampTemplateProgress(progress);
+  return 1 - Math.pow(1 - normalized, 3);
+}
+
+function applyAdvancedWbwFrame(block, blockType, elapsedMs, settled) {
+  const sequential = ['wbw-seq', 'wbw-seq-fade', 'wbw-seq-flip'].includes(blockType);
+  const words = Array.from(block.querySelectorAll('.w'));
+
+  words.forEach((word, fallbackIndex) => {
+    const index = Number.isFinite(Number(word.dataset.i)) ? Number(word.dataset.i) : fallbackIndex;
+    const isImp = word.dataset.imp === 'true';
+    const impClass = word.dataset.impCls || '';
+    const delay = sequential
+      ? index * ADVANCED_TEMPLATE_TIMING.sequentialStaggerMs
+      : (index * ADVANCED_TEMPLATE_TIMING.wordStaggerMs)
+        + (isImp ? ADVANCED_TEMPLATE_TIMING.emphasisDelayMs : 0);
+    const duration = sequential
+      ? ADVANCED_TEMPLATE_TIMING.sequentialDurationMs
+      : isImp
+        ? ADVANCED_TEMPLATE_TIMING.emphasisDurationMs
+        : ADVANCED_TEMPLATE_TIMING.wordDurationMs;
+    const progress = settled ? 1 : clampTemplateProgress((elapsedMs - delay) / duration);
+    const eased = advancedEaseOut(progress);
+
+    word.style.animation = 'none';
+    word.style.transition = 'none';
+    word.style.opacity = String(progress);
+    word.style.clipPath = '';
+    word.style.transformOrigin = '';
+
+    if (sequential) {
+      if (blockType === 'wbw-seq-fade') {
+        word.style.transform = 'none';
+      } else if (blockType === 'wbw-seq-flip') {
+        word.style.transform = `perspective(320px) rotateX(${-90 * (1 - eased)}deg)`;
+        word.style.transformOrigin = 'center bottom';
+      } else {
+        word.style.transform = `scale(${0.82 + (0.18 * eased)})`;
+      }
+    } else if (isImp) {
+      const entrance = ADVANCED_IMP_ENTRANCES[impClass] || 'opposite';
+      const effect = entrance === 'opposite'
+        ? (blockType === 'wbw-rise' ? 'opposite-slide' : 'opposite-rise')
+        : entrance;
+      if (effect === 'wipe') {
+        word.style.opacity = '1';
+        word.style.transform = 'none';
+        word.style.clipPath = `inset(0 ${(1 - eased) * 100}% 0 0)`;
+      } else if (effect === 'wipe-up') {
+        word.style.opacity = '1';
+        word.style.transform = 'none';
+        word.style.clipPath = `inset(${(1 - eased) * 100}% 0 0 0)`;
+      } else if (effect === 'roll') {
+        word.style.transform = `rotateX(${-90 * (1 - eased)}deg)`;
+        word.style.transformOrigin = 'center bottom';
+      } else if (effect === 'opposite-slide') {
+        word.style.transform = `translateX(${-28 * (1 - eased)}px)`;
+      } else {
+        word.style.transform = `translateY(${28 * (1 - eased)}px)`;
+      }
+    } else if (blockType === 'wbw-slide') {
+      word.style.transform = `translateX(${-16 * (1 - eased)}px)`;
+    } else {
+      word.style.transform = `translateY(${20 * (1 - eased)}px)`;
+    }
+
+    word.classList.toggle('in', progress > 0);
+    word.classList.toggle('fx', progress >= 1 && impClass === 'imp-flicker');
+  });
+}
+
+function applyAdvancedKaraokeFrame(block, elapsedMs, settled) {
+  const words = Array.from(block.querySelectorAll('.kf-word'));
+  const perWord = ADVANCED_TEMPLATE_TIMING.holdMs / Math.max(1, words.length + 0.5);
+
+  words.forEach((word, index) => {
+    const fill = word.querySelector('.kf-fill');
+    if (!fill) return;
+    const progress = settled
+      ? 1
+      : clampTemplateProgress((elapsedMs - (index * perWord)) / perWord);
+    fill.style.animation = 'none';
+    fill.style.transition = 'none';
+    fill.style.clipPath = `inset(0 ${(1 - progress) * 100}% 0 0)`;
+  });
+}
+
+function syncAdvancedCssAnimations(block, elapsedMs, settled) {
+  const targetTime = settled ? ADVANCED_TEMPLATE_TIMING.styledDurationMs : Math.max(0, elapsedMs);
+  block.getAnimations({ subtree: true }).forEach((animation) => {
+    try {
+      const timing = animation.effect?.getComputedTiming?.() || {};
+      const duration = Number(timing.duration || 0);
+      const iterations = Number(timing.iterations || 1);
+      const finiteIterations = Number.isFinite(iterations);
+      const computedEndTime = Number(timing.endTime);
+      const activeDuration = Number.isFinite(computedEndTime)
+        ? computedEndTime
+        : duration * (finiteIterations ? iterations : 1);
+      const animationTime = settled
+        ? activeDuration
+        : finiteIterations
+          ? Math.min(targetTime, activeDuration)
+          : duration > 0
+            ? targetTime % duration
+            : targetTime;
+      animation.pause();
+      animation.currentTime = Math.max(0, animationTime);
+    } catch {
+      // Browser-managed pseudo-element animations are not always seekable.
+    }
+  });
+}
+
+function AppliedAdvancedTemplateCaption({
+  templateId,
+  text,
+  blockIndex = 0,
+  templateMarkup = '',
+  impWordIndex = -1,
+  emphasisColor = '',
+  currentTime = 0,
+  isPlaying = false,
+  startTime = 0,
+  endTime = 0,
+}) {
+  const hostRef = useRef(null);
+  const runnerRef = useRef(null);
+  const playbackControlRef = useRef({ currentTime, isPlaying });
+  const playStateRef = useRef({ currentTime, isPlaying, startTime, endTime });
+  playStateRef.current = { currentTime, isPlaying, startTime, endTime };
+  const sourceMarkup = buildAppliedAdvancedTemplateInline(
+    templateId,
+    text,
+    blockIndex,
+    templateMarkup,
+    impWordIndex,
+    emphasisColor,
+  );
 
   useEffect(() => {
-    setActive(false);
-    const raf = typeof requestAnimationFrame === 'function'
-      ? requestAnimationFrame
-      : (callback) => setTimeout(callback, 16);
-    const cancel = typeof cancelAnimationFrame === 'function'
-      ? cancelAnimationFrame
-      : clearTimeout;
+    const host = hostRef.current;
+    const block = host?.querySelector('.lekha-applied-advanced-template');
+    if (!block) return undefined;
 
-    let frameTwo;
-    const frameOne = raf(() => {
-      frameTwo = raf(() => setActive(true));
+    let rafId = null;
+    let startedAt = 0;
+    const blockType = block.dataset.templateBlockType
+      || getOriginalTemplateBlockType(templateId, blockIndex);
+    block.classList.add('active');
+    block.style.opacity = '1';
+    block.style.visibility = 'visible';
+
+    const syncToElapsed = (elapsedMs, playing) => {
+      const settled = !playing;
+      block.dataset.templatePaused = settled ? 'true' : 'false';
+
+      if (String(blockType).startsWith('wbw-')) {
+        applyAdvancedWbwFrame(block, blockType, elapsedMs, settled);
+      } else if (blockType === 'karaoke') {
+        applyAdvancedKaraokeFrame(block, elapsedMs, settled);
+      } else if (blockType === 'styled') {
+        syncAdvancedCssAnimations(block, elapsedMs, settled);
+      }
+    };
+
+    const stop = () => {
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+    };
+
+    const tick = () => {
+      if (!playStateRef.current.isPlaying) {
+        stop();
+        return;
+      }
+      syncToElapsed(Math.max(0, window.performance.now() - startedAt), true);
+      rafId = window.requestAnimationFrame(tick);
+    };
+
+    const play = () => {
+      stop();
+      startedAt = window.performance.now();
+      block.dataset.templateAnimationRun = String(Number(block.dataset.templateAnimationRun || 0) + 1);
+      syncToElapsed(0, true);
+      rafId = window.requestAnimationFrame(tick);
+    };
+
+    const pause = () => {
+      stop();
+      syncToElapsed(ADVANCED_TEMPLATE_TIMING.holdMs, false);
+    };
+
+    const initialFrame = window.requestAnimationFrame(() => {
+      if (playStateRef.current.isPlaying) play();
+      else pause();
     });
 
+    runnerRef.current = { play, pause };
     return () => {
-      cancel(frameOne);
-      if (frameTwo) cancel(frameTwo);
+      window.cancelAnimationFrame(initialFrame);
+      stop();
+      runnerRef.current = null;
     };
   }, [templateId, text, blockIndex]);
 
-  return renderOriginalTemplateCaption(templateId, text, active, blockIndex);
-}
+  useEffect(() => {
+    const runner = runnerRef.current;
+    if (!runner) return;
+    const previous = playbackControlRef.current;
+    const timeDelta = Math.abs(Number(currentTime || 0) - Number(previous.currentTime || 0));
+    const seeked = previous.isPlaying && isPlaying && timeDelta > 0.75;
+    if (!isPlaying) runner.pause();
+    else if (!previous.isPlaying || seeked) runner.play();
+    playbackControlRef.current = { currentTime, isPlaying };
+  }, [currentTime, isPlaying, startTime, endTime]);
 
-function getOriginalTemplateBlockType(templateId, blockIndex = 0) {
-  const blockTypes = ORIGINAL_TEMPLATE_BLOCK_TYPES[templateId] || ['styled'];
-  const normalizedBlockIndex = ((blockIndex % blockTypes.length) + blockTypes.length) % blockTypes.length;
-  return blockTypes[normalizedBlockIndex] || 'styled';
+  return (
+    <span
+      ref={hostRef}
+      className="lekha-advanced-template-runtime"
+      data-advanced-template-id={templateId}
+      data-template-phase-index={normalizeTemplatePhaseIndex(templateId, blockIndex)}
+      data-template-renderer={sourceMarkup ? 'source' : 'fallback'}
+      style={{ display: 'contents' }}
+    >
+      {sourceMarkup ? (
+        <>
+          <OriginalAdvancedTemplateStyles />
+          <span className={`lekha-original-template ${templateId} ${templateId}-stage`}>
+            <span dangerouslySetInnerHTML={{ __html: sourceMarkup }} />
+          </span>
+        </>
+      ) : renderOriginalTemplateCaption(templateId, text, true, blockIndex)}
+    </span>
+  );
 }
 
 // --- Effect CSS helper ---
@@ -1682,6 +3116,7 @@ export default function VideoPlayer({
   isPlaying,
   setIsPlaying,
   captions,
+  waveformData,
   captionStyle,
   duration,
   setDuration,
@@ -1723,6 +3158,13 @@ export default function VideoPlayer({
   const [resizeStartFontSize, setResizeStartFontSize] = useState(18);
   const [captionWidth, setCaptionWidth] = useState(300);
   const [resizeDirection, setResizeDirection] = useState('right');
+  const emotionalCaptionPlan = React.useMemo(() => {
+    const markup = captionStyle?.template_markup || captionStyle?.template_snapshot?.template_markup || '';
+    return new Map(
+      buildEmotionalCaptionPlan(captions, waveformData, duration, markup)
+        .map((entry) => [entry.captionId, entry]),
+    );
+  }, [captions, waveformData, duration, captionStyle?.template_markup, captionStyle?.template_snapshot?.template_markup]);
 
   // Word dragging state (for both captions and text elements)
   const [draggingWord, setDraggingWord] = useState(null); // { captionId, wordIndex, startX, startY, initialX, initialY, isElement }
@@ -2052,6 +3494,31 @@ export default function VideoPlayer({
       }
     }
   }, [currentTime, isPlaying, captions]);
+
+  // Load the font that is ACTUALLY rendered. The caption font is resolved
+  // per-caption at render time via resolveScriptFont(font, caption.text) — so a
+  // template's Latin family becomes a Devanagari face on Hindi text. handleApplyTemplate
+  // only loads the aggregate-resolved family, which can differ from a given caption's
+  // resolved family (mixed-script projects) or fail silently. When the rendered face
+  // was never loaded the browser swaps in a fallback and the template looks "not
+  // applied / plain" even though the panel shows the right font. Loading exactly what
+  // we render — base family plus every per-caption resolved family — closes that gap.
+  useEffect(() => {
+    const baseFamily = captionStyle?.font_family;
+    const families = new Set(baseFamily ? [baseFamily] : []);
+    (captions || []).forEach((cap) => {
+      if (cap && !cap.isTextElement) {
+        const captionFamily = captionStyle?.font_family || cap?.applied_template_style?.font_family;
+        if (captionFamily) {
+          families.add(captionFamily);
+          families.add(resolveScriptFont(captionFamily, cap.text));
+        }
+      }
+    });
+    families.forEach((family) => {
+      if (family) loadGoogleFont(family, [300, 400, 500, 600, 700, 800, 900]).catch(() => {});
+    });
+  }, [captionStyle?.font_family, captionStyle?.template_20_id, captions]);
 
 
   // Stable refs for callbacks passed to MemoizedVideo — these MUST not change reference
@@ -2427,13 +3894,10 @@ export default function VideoPlayer({
     if (!isAdvancedTemplateId(captionStyle?.template_id)) return false;
     if ((draggingWord && draggingWord.captionId === caption.id) || wordPopup?.caption?.id === caption.id) return true;
     const wordStyles = caption.wordStyles || {};
-    const blockType = getOriginalTemplateBlockType(captionStyle?.template_id, blockIndex);
     return Object.values(wordStyles).some((ws = {}) => (
       isWordDetached(ws)
       || Math.abs(ws.x_pct || 0) > 0.01
       || Math.abs(ws.y_pct || 0) > 0.01
-      || (blockType === 'wbw-rise' && ws.animation === 'rise')
-      || (blockType === 'wbw-slide' && ws.animation === 'slideLeft')
     ));
   };
 
@@ -2452,7 +3916,8 @@ export default function VideoPlayer({
     const templateId = captionStyle?.template_id;
     const blockType = getOriginalTemplateBlockType(templateId, blockIndex);
     const blockClass = `${templateId}-b${blockIndex}`;
-    const variantClass = blockType === 'wbw-slide' ? 'wbw-slide' : 'wbw-rise';
+    const isWbwBlock = blockType.startsWith('wbw-');
+    const variantClass = isWbwBlock ? blockType : '';
 
     return (
       <span className={`lekha-original-template ${templateId} ${templateId}-stage`}>
@@ -2462,7 +3927,7 @@ export default function VideoPlayer({
           data-template-block-type={blockType}
           style={{ opacity: 1, transition: 'opacity 280ms ease' }}
         >
-          <span className={blockType === 'wbw-rise' || blockType === 'wbw-slide' ? `${variantClass} lekha-template-fit` : 'lekha-template-fit'}>
+          <span className={isWbwBlock ? `${variantClass} lekha-template-fit` : 'lekha-template-fit'}>
             {words.map((word, wordIndex, arr) => {
               if (shouldRevealSequentially(caption) && wordIndex > currentIdx) return null;
 
@@ -2474,7 +3939,7 @@ export default function VideoPlayer({
                 ? getWordAnimationStyle(ws.animation, ws.animationSpeed || 1)
                 : 'none';
               const wordClassName = [
-                blockType === 'wbw-rise' || blockType === 'wbw-slide' ? 'w in' : 'template-editable-word',
+                isWbwBlock ? 'w in' : 'template-editable-word',
                 ws.isEmphasis ? 'imp-bold' : '',
                 isSelected ? 'ring-2 ring-[#F5A623] rounded-sm' : '',
               ].filter(Boolean).join(' ');
@@ -2527,118 +3992,164 @@ export default function VideoPlayer({
     );
   };
 
-  const renderAppliedSidebarTemplateCaption = (caption) => {
-    const words = String(caption?.text || '').trim().split(/\s+/).filter(Boolean);
-    const hasText = words.length > 0;
-    const frameWidth = canvasSize.width || videoContainerRef.current?.offsetWidth || 240;
-    const frameHeight = canvasSize.height || videoContainerRef.current?.offsetHeight || 426;
-    const shellWidth = Math.max(
-      160,
-      Math.min(frameWidth * 0.94, SIDEBAR_TEMPLATE_APPLIED_WIDTH_CAP * previewRenderScale),
-    );
-    const shellHeight = Math.max(
-      120,
-      Math.min(frameHeight * 0.56, SIDEBAR_TEMPLATE_APPLIED_HEIGHT_CAP * previewRenderScale),
-    );
+  const renderAppliedSidebarTemplateCaption = (caption, templateCaptionIndex = 0) => {
+    const text = String(caption?.text || '').trim()
+    if (!text) return null
 
-    // Memoize the template doc: only rebuild when template style changes, NOT when caption text changes.
-    // Text updates during playback are handled via postMessage sync.
-    const currentTemplateId = captionStyle?.template_20_id || '';
-    const currentTemplateSource = captionStyle?.template_source || '';
-    const currentTemplateMarkup = captionStyle?.template_markup || '';
-    const templateCacheKey = `${currentTemplateId}-${currentTemplateSource}-${currentTemplateMarkup}`;
-    let templateDoc;
-    if (sidebarTemplateDocRef.current.templateId === templateCacheKey) {
-      templateDoc = sidebarTemplateDocRef.current.doc;
-    } else {
-      templateDoc = buildAppliedSidebarTemplateDoc({
-        captionText: caption?.text || '',
-        captionStyle,
-        previewScale: previewRenderScale,
-      });
-      sidebarTemplateDocRef.current = { templateId: templateCacheKey, doc: templateDoc };
+    const appliedStyle = caption?.applied_template_style || {}
+    const globalHasSidebarTemplate = hasSidebarTemplateStyle(captionStyle)
+    const styleBase = globalHasSidebarTemplate
+      ? { ...appliedStyle, ...captionStyle }
+      : { ...captionStyle, ...appliedStyle }
+    const templateValue = (key, fallback = '') => (
+      globalHasSidebarTemplate
+        ? (styleBase?.[key] ?? fallback)
+        : (caption?.[key] ?? styleBase?.[key] ?? fallback)
+    )
+    const effectiveStyle = {
+      ...styleBase,
+      template_id: templateValue('template_id'),
+      template_20_id: templateValue('template_20_id'),
+      template_source: templateValue('template_source', 'lekha-20'),
+      template_class: templateValue('template_class'),
+      template_name: templateValue('template_name'),
+      template_layout: templateValue('template_layout'),
+      template_effect: templateValue('template_effect'),
+      emotional_mode: caption?.emotional_mode || emotionalCaptionPlan.get(caption?.id)?.mode || 'normal',
+      font_family: styleBase.font_family || 'Raleway',
+      font_size: styleBase.font_size || 22,
+      font_weight: styleBase.font_weight || '300',
+      font_style: styleBase.font_style || 'normal',
+      text_color: styleBase.text_color || '#FFFFFF',
+      text_opacity: styleBase.text_opacity ?? 1,
+      text_case: styleBase.text_case || 'none',
+      line_spacing: styleBase.line_spacing || 1.25,
+      secondary_color: styleBase.secondary_color || '#FFE600',
     }
+    const resolvedFont = resolveScriptFont(effectiveStyle?.font_family, text) || effectiveStyle?.font_family || 'Raleway'
+    const fontSize = (effectiveStyle?.font_size || 22) * previewRenderScale
+    const emotional = emotionalCaptionPlan.get(caption?.id)
+    const phaseCount = countAppliedTemplatePhases(effectiveStyle)
+    // Caption order is the canonical phase source. This repairs old projects
+    // where every caption was previously persisted with template_phase_index=0.
+    const selectedPhase = Math.max(0, templateCaptionIndex) % phaseCount
+    const impWordIndex = Number(emotional?.impWordIndex ?? caption?.imp_word_index ?? -1)
+    const emphasisColor = emotional?.emphasisColor || caption?.emphasis_color || ''
+    const templateHtml = buildAppliedSidebarTemplateInline(
+      text,
+      effectiveStyle,
+      { activePhase: selectedPhase, settled: false, impWordIndex },
+    )
 
-    if (templateDoc) {
+    if (templateHtml) {
       return (
-        <span
-          key={`sidebar-template-${captionStyle?.template_20_id || 'active'}`}
-          className="lekha-sidebar-applied-template-shell"
-          data-template-id={captionStyle?.template_20_id || undefined}
-          data-template-source={captionStyle?.template_source || undefined}
-          style={{
-            display: hasText ? 'block' : 'none',
-            width: `${Math.round(shellWidth)}px`,
-            height: `${Math.round(shellHeight)}px`,
-            maxWidth: '94%',
-            overflow: 'hidden',
-            pointerEvents: 'none',
-            transform: `scale(${captionStyle?.scale || 1})`,
-            transformOrigin: 'center center',
-            background: 'transparent',
-          }}
-        >
-          <AppliedTemplateIframe
-            title={`${captionStyle?.template_name || captionStyle?.template_20_id || 'Template'} applied caption`}
-            templateDoc={templateDoc}
+        <>
+          <AppliedSidebarTemplateStyles source={effectiveStyle?.template_source || 'lekha-20'} />
+          <AppliedSidebarTemplateSourceRenderer
+            html={templateHtml}
+            captionId={caption?.id}
+            captionText={text}
+            effectiveStyle={effectiveStyle}
+            resolvedFont={resolvedFont}
+            fontSize={fontSize}
+            currentTime={currentTime}
+            isPlaying={isPlaying}
+            startTime={caption?.start_time || 0}
+            endTime={caption?.end_time || caption?.start_time || 0}
+            phaseOffset={selectedPhase}
+            emphasisColor={emphasisColor}
           />
-        </span>
-      );
+        </>
+      )
     }
 
-    const isNewTemplateSet = captionStyle?.template_source === 'lekha-49';
-    const templateClass = String(captionStyle?.template_class || captionStyle?.template_20_id || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
-    const templateEffect = String(captionStyle?.template_effect || (isNewTemplateSet ? 'wrise' : 'wfade')).toLowerCase().replace(/[^a-z0-9-]/g, '');
-    const baseColor = captionStyle?.text_color || '#FFFFFF';
-    const baseFontSize = (captionStyle?.font_size || 22) * previewRenderScale;
+    const words = text.split(/\s+/).filter(Boolean)
+    const currentIdx = getCaptionCurrentWordIndex(caption, words.length)
+    const lineCount = getSidebarTemplateLineCount(effectiveStyle, words.length)
+    const lines = splitWordsIntoIndexedLines(words, lineCount)
+    const motion = getSidebarTemplateMotion(effectiveStyle)
+    const motionClass = `w${motion}`
+    const accentColor = effectiveStyle?.secondary_color || '#FFE600'
+    const primaryColor = effectiveStyle?.text_color || '#FFFFFF'
+    const templateClass = effectiveStyle?.template_class || effectiveStyle?.template_20_id || ''
 
     return (
-      <span
-        key={`sidebar-template-${captionStyle?.template_20_id || 'active'}-fallback`}
-        className={isNewTemplateSet ? `lekha-sidebar-source-template lk-card ${templateClass}` : `lekha-sidebar-source-template card ${templateClass}`}
-        data-template-id={captionStyle?.template_20_id || undefined}
-        data-template-source={captionStyle?.template_source || undefined}
-        style={{
-          '--sidebar-source-accent': captionStyle?.secondary_color || captionStyle?.highlight_color || '#FFE600',
-          '--sidebar-source-color': baseColor,
-          '--sidebar-source-line-height': captionStyle?.line_spacing || 1.25,
-          color: baseColor,
-          fontFamily: captionStyle?.font_family || 'Raleway',
-          fontSize: `${baseFontSize}px`,
-          fontWeight: captionStyle?.font_weight || (isNewTemplateSet ? '400' : '300'),
-          fontStyle: captionStyle?.font_style || 'normal',
-          lineHeight: captionStyle?.line_spacing || 1.25,
-          letterSpacing: captionStyle?.letter_spacing ? `${captionStyle.letter_spacing * previewRenderScale}px` : undefined,
-          textAlign: 'center',
-          textTransform: captionStyle?.text_case && captionStyle.text_case !== 'none' ? captionStyle.text_case : undefined,
-          opacity: captionStyle?.text_opacity ?? 1,
-          transform: `scale(${captionStyle?.scale || 1})`,
-          transformOrigin: 'center center',
-          display: hasText ? 'inline-block' : 'none',
-        }}
-      >
-        <span className={isNewTemplateSet ? 'lk-stage' : 'stage'}>
-          <span className={isNewTemplateSet ? 'sblock active' : 'sb active'}>
-            <span className={isNewTemplateSet ? `wbw-line ${templateEffect}` : `wbw ${templateEffect}`}>
-              {words.map((word, wordIndex, arr) => (
-                <React.Fragment key={`sidebar-fallback-${wordIndex}`}>
-                  <span
-                    className={isNewTemplateSet ? 'wbw-word normal visible' : 'w in'}
-                    style={{
-                      '--sidebar-source-word-delay': `${wordIndex * 58}ms`,
-                    }}
-                  >
-                    {word}
+      <>
+        <SidebarSourceTemplateStyles />
+        <span
+          key={`applied-sidebar-tpl-${caption?.id || 'active'}-${effectiveStyle?.template_20_id || 'tpl'}-${text}`}
+          className={`lekha-applied-template-host lekha-sidebar-source-template lekha-sidebar-applied-react ${templateClass}`}
+          data-applied-template-id={effectiveStyle?.template_20_id || ''}
+          data-applied-template-source={effectiveStyle?.template_source || 'lekha-20'}
+          data-applied-template-layout={effectiveStyle?.template_layout || 'word-by-word'}
+          data-applied-template-motion={motion}
+          style={{
+            '--sidebar-source-color': effectiveStyle?.text_color || '#FFFFFF',
+            '--sidebar-source-accent': accentColor,
+            '--sidebar-source-line-height': effectiveStyle?.line_spacing || 1.25,
+            color: primaryColor,
+            fontFamily: resolvedFont,
+            fontSize: `${fontSize}px`,
+            fontWeight: effectiveStyle?.font_weight || '300',
+            fontStyle: effectiveStyle?.font_style || 'normal',
+            textTransform: effectiveStyle?.text_case && effectiveStyle.text_case !== 'none' ? effectiveStyle.text_case : undefined,
+            lineHeight: effectiveStyle?.line_spacing || 1.25,
+            opacity: effectiveStyle?.text_opacity ?? 1,
+            textAlign: 'center',
+          }}
+        >
+          <span className="stage">
+            <span className="sb active">
+              <span className={`wbw-line ${motionClass}`} data-template-effect={effectiveStyle?.template_effect || ''}>
+                {lines.map((line, lineIndex) => (
+                  <span className="lekha-sidebar-source-line" key={`${caption?.id || 'caption'}-line-${lineIndex}`}>
+                    {line.map(({ word, wordIndex }, localIndex) => {
+                      if (shouldRevealSequentially(caption) && wordIndex > currentIdx) return null
+                      const styleKey = `${caption.id}-${wordIndex}`
+                      const ws = caption.wordStyles?.[styleKey] || {}
+                      const isCurrent = wordIndex === currentIdx
+                      const isPast = wordIndex < currentIdx
+                      return (
+                        <React.Fragment key={styleKey}>
+                          {localIndex > 0 && ' '}
+                          <span
+                            className={[
+                              'wbw-word',
+                              isCurrent ? 'is-current' : '',
+                              ws.isEmphasis ? 'is-emphasis' : '',
+                            ].filter(Boolean).join(' ')}
+                            data-word-key={styleKey}
+                            data-sidebar-word-state={isCurrent ? 'current' : isPast ? 'past' : 'future'}
+                            style={{
+                              '--sidebar-source-word-delay': `${Math.min(wordIndex, 8) * 70}ms`,
+                              opacity: 1,
+                              animation: 'none',
+                              color: ws.color || (isCurrent ? accentColor : primaryColor),
+                              fontFamily: ws.fontFamily || 'inherit',
+                              fontWeight: ws.fontWeight || (isCurrent ? effectiveStyle?.font_weight || '700' : 'inherit'),
+                              fontStyle: ws.fontStyle || 'inherit',
+                              textDecoration: ws.textDecoration || 'inherit',
+                              textTransform: ws.textTransform || undefined,
+                              textShadow: isCurrent
+                                ? `0 0 16px ${accentColor}55`
+                                : undefined,
+                              ...computeWordEffectCSS(ws),
+                            }}
+                          >
+                            {renderWordTextContent(word, ws, 'inherit')}
+                          </span>
+                        </React.Fragment>
+                      )
+                    })}
                   </span>
-                  {wordIndex < arr.length - 1 && ' '}
-                </React.Fragment>
-              ))}
+                ))}
+              </span>
             </span>
           </span>
         </span>
-      </span>
-    );
-  };
+      </>
+    )
+  }
 
   const detachedCaptionWordOverlays = activeCaptions.flatMap((caption) => {
     const words = caption.text.split(' ');
@@ -4329,6 +5840,9 @@ export default function VideoPlayer({
     <>
     <OriginalAdvancedTemplateStyles />
     <SidebarSourceTemplateStyles />
+    {/* <AppliedSidebarTemplateStyles /> — disabled: injecting both full template
+        stylesheets globally caused a style-recalc freeze. Re-enable only with
+        scoped/iframe-isolated CSS. */}
     <div className={`flex flex-col h-full ${isVideoFullscreen ? 'bg-black px-2 py-2' : ''}`}>
       {/* Video container with 9:16 aspect ratio for mobile preview */}
       <div className={`relative flex-1 rounded-xl overflow-visible flex items-center justify-center min-h-0 ${isVideoFullscreen ? 'pt-0 pb-2' : 'pt-4 pb-3'}`}>
@@ -4574,16 +6088,19 @@ export default function VideoPlayer({
           {activeCaptions.map((caption) => {
             const isEditingThis = isEditing === caption.id;
             const hasDetachedWords = captionHasDetachedWords(caption);
-            const isSidebarTemplate = hasSidebarTemplateStyle(captionStyle);
-            if (isSidebarTemplate && !caption.isTextElement) {
-              return null;
-            }
+            const hasGlobalSidebarTemplate = hasSidebarTemplateStyle(captionStyle);
+            const isSidebarTemplate = hasGlobalSidebarTemplate
+              || hasSidebarTemplateStyle(caption?.applied_template_style)
+              || !!caption?.template_20_id;
             const shouldWrapCaption = !isSidebarTemplate && !captionStyle?.template_id;
             const autoWrapMaxWidth = Math.max(
               220,
               Math.min(360, (canvasSize.width || videoContainerRef.current?.offsetWidth || 240) * 0.94)
             );
-            const templateCaptionIndex = Math.max(0, captions.findIndex(c => c?.id === caption.id && !c?.isTextElement));
+            const templateCaptionIndex = Math.max(
+              0,
+              captions.filter(c => c && !c.isTextElement).findIndex(c => c.id === caption.id),
+            );
             const handleDeleteCaptionLine = (e) => {
               e.stopPropagation();
               e.preventDefault();
@@ -4610,7 +6127,7 @@ export default function VideoPlayer({
                 ref={captionRef}
                 data-caption-layer="true"
                 className={isSidebarTemplate
-                  ? 'absolute flex justify-center'
+                  ? `absolute flex justify-center ${setCaptionStyle && !isEditingThis && !hasDetachedWords ? 'cursor-move' : ''}`
                   : `absolute px-3 flex justify-center ${setCaptionStyle && !isEditingThis && !hasDetachedWords ? 'cursor-move' : ''}`}
                 style={isSidebarTemplate ? {
                   top: `${captionStyle?.position_y ?? 75}%`,
@@ -4630,7 +6147,7 @@ export default function VideoPlayer({
                 onPointerDown={(e) => {
                   e.stopPropagation();
                   if (setSelectedCaptionId) setSelectedCaptionId(caption.id);
-                  if (setCaptionStyle && !isEditingThis && !hasDetachedWords && !isSidebarTemplate) {
+                  if (setCaptionStyle && !isEditingThis && !hasDetachedWords) {
                     handleMouseDown(e);
                   }
                 }}
@@ -4644,7 +6161,7 @@ export default function VideoPlayer({
                 }}
               >
                 <div
-                  className={`border border-solid ${selectedCaptionId === caption.id && !hasDetachedWords && !isSidebarTemplate ? 'border-[#b76cff]' : 'border-transparent hover:border-[#b76cff]'} relative ${isSidebarTemplate ? '' : isDragging ? 'cursor-grabbing' : isEditingThis ? 'cursor-text' : setCaptionStyle && !hasDetachedWords ? 'cursor-grab' : ''} ${!hasDetachedWords && !isSidebarTemplate ? 'group' : ''} ${captionStyle?.template_id || ''} ${getTemplateContainerStateClass(captionStyle?.template_id)}`}
+                  className={`border border-solid ${selectedCaptionId === caption.id && !hasDetachedWords ? 'border-[#b76cff]' : 'border-transparent hover:border-[#b76cff]'} relative ${isSidebarTemplate ? (isEditingThis ? 'cursor-text' : 'cursor-pointer') : isDragging ? 'cursor-grabbing' : isEditingThis ? 'cursor-text' : setCaptionStyle && !hasDetachedWords ? 'cursor-grab' : ''} ${!hasDetachedWords ? 'group' : ''} ${captionStyle?.template_id || ''} ${getTemplateContainerStateClass(captionStyle?.template_id)}`}
                   style={{
                     backgroundColor: 'transparent',
                     padding: '0px',
@@ -4662,7 +6179,11 @@ export default function VideoPlayer({
                     position: 'relative',
                     display: isSidebarTemplate ? 'flex' : 'inline-block',
                     justifyContent: isSidebarTemplate ? 'center' : undefined,
-                    pointerEvents: isSidebarTemplate ? 'none' : 'auto',
+                    // Template captions keep pointer events so the caption box is
+                    // selectable / hoverable / double-click editable like a normal
+                    // caption. Words inside are display-only spans, so this does not
+                    // interfere with the template's time-based animations.
+                    pointerEvents: 'auto',
                     '--template-primary': captionStyle?.text_color || '#ffffff',
                     '--template-secondary': captionStyle?.secondary_color || '#000000',
                     '--template-bg': captionStyle?.background_color || 'transparent',
@@ -4670,7 +6191,7 @@ export default function VideoPlayer({
                   }}
                 >
                   {/* Background layer — padding expands equally above and below the text */}
-                  {false && captionStyle?.has_background && !hasDetachedWords && !isSidebarTemplate && (!captionStyle?.template_id || isSourceBasicTemplateId(captionStyle?.template_id)) && (
+                  {captionStyle?.has_background && !hasDetachedWords && (
                     <div
                       style={{
                         position: 'absolute',
@@ -4687,7 +6208,7 @@ export default function VideoPlayer({
                   )}
 
                   {/* Delete button for the selected/hovered main caption line */}
-                  {setCaptions && !isEditingThis && !hasDetachedWords && !isSidebarTemplate && (
+                  {setCaptions && !isEditingThis && !hasDetachedWords && (
                     <button
                       type="button"
                       className={`absolute -top-2.5 -right-2.5 w-6 h-6 bg-zinc-900 border border-white/20 hover:border-red-500/50 hover:bg-red-500/10 rounded-full transition-all z-50 flex items-center justify-center shadow-xl text-gray-400 hover:text-red-500 ${selectedCaptionId === caption.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
@@ -4702,8 +6223,8 @@ export default function VideoPlayer({
                     </button>
                   )}
 
-                  {/* Resize handles for regular captions */}
-                  {setCaptionStyle && !isEditingThis && !hasDetachedWords && !isSidebarTemplate && (
+                  {/* Resize handles — shown for regular and templated captions alike */}
+                  {setCaptionStyle && !isEditingThis && !hasDetachedWords && (
                     <>
                       {[
                         ['top-left', 'left-0 top-0 -translate-x-1/2 -translate-y-1/2 cursor-nwse-resize'],
@@ -4768,8 +6289,8 @@ export default function VideoPlayer({
                     >
                       {editText}
                     </div>
-                  ) : hasSidebarTemplateStyle(captionStyle) ? (
-                    renderAppliedSidebarTemplateCaption(caption)
+                  ) : isSidebarTemplate ? (
+                    renderAppliedSidebarTemplateCaption(caption, templateCaptionIndex)
                   ) : captionStyle?.template_id ? (
                     // Template rendering: simple word spans with CSS class states for template effects
                     <span
@@ -4797,7 +6318,9 @@ export default function VideoPlayer({
                         whiteSpace: (shouldWrapCaption || captionStyle?.boxWidth) ? 'normal' : 'nowrap',
                         wordBreak: 'normal',
                         padding: hasDetachedWords ? '0px' : undefined,
-                        animation: caption.animation && caption.animation !== 'none' ? getAnimationStyle(caption.animation, caption.animationSpeed) : 'none',
+                        // Template markup/classes own motion. A generic caption
+                        // animation here masks the differences between templates.
+                        animation: 'none',
                       }}
                     >
                       {(() => {
@@ -4811,6 +6334,18 @@ export default function VideoPlayer({
                               templateId={captionStyle.template_id}
                               text={caption.text}
                               blockIndex={templateCaptionIndex}
+                              templateMarkup={
+                                caption?.applied_template_style?.template_markup
+                                || caption?.template_markup
+                                || captionStyle?.template_markup
+                                || ''
+                              }
+                              impWordIndex={Number(emotionalCaptionPlan.get(caption?.id)?.impWordIndex ?? caption?.imp_word_index ?? -1)}
+                              emphasisColor={emotionalCaptionPlan.get(caption?.id)?.emphasisColor || caption?.emphasis_color || ''}
+                              currentTime={currentTime}
+                              isPlaying={isPlaying}
+                              startTime={caption.start_time || caption.start || 0}
+                              endTime={caption.end_time || caption.end || caption.start_time || 0}
                             />
                           );
                         }
@@ -4941,7 +6476,7 @@ export default function VideoPlayer({
                           };
                         })(),
                         // Add background or highlight if configured
-                        ...(!hasSidebarTemplateStyle(captionStyle) ? (
+                        ...(!isSidebarTemplate ? (
                           captionStyle?.highlight_gradient ? {
                             backgroundImage: captionStyle.highlight_gradient
                           } : captionStyle?.highlight_color ? {
@@ -5133,24 +6668,6 @@ export default function VideoPlayer({
               </div>
             );
           })}
-
-          {/* Main Caption Sidebar Template Overlay */}
-          {hasSidebarTemplateStyle(captionStyle) && (
-            <div
-              data-caption-layer="true"
-              className="absolute flex justify-center"
-              style={{
-                top: `${captionStyle?.position_y ?? 75}%`,
-                left: '50%',
-                width: '100%',
-                transform: 'translate(-50%, -50%)',
-                zIndex: 10,
-                pointerEvents: setCaptionStyle ? 'auto' : 'none',
-              }}
-            >
-              {renderAppliedSidebarTemplateCaption(activeCaptions.find(c => !c.isTextElement))}
-            </div>
-          )}
 
           {detachedCaptionWordOverlays}
 
