@@ -33,6 +33,86 @@ This is the **Work Diary** for the Lekha Captions project.
 
 ---
 
+### Session 13 — 2026-06-09
+
+**Theme:** Template highlight colors → 3 bright colors, editable text box on template captions, upload MIME fix, and a permanent reference for how templates get applied.
+
+---
+
+#### 🔑 REFERENCE — How templates get applied (read this first if "templates not applying")
+
+This is the canonical map of the template pipeline. If a template ever stops
+applying, walk these stages in order — the break is almost always one of them.
+
+**1. Two template families, two galleries**
+- **LEFT gallery — the 69-set** (`SidebarTemplateGallery20.jsx`): sets
+  `template_20_id` + `template_source` + `template_class` + `template_layout` +
+  `template_markup` + `secondary_color`. This is the family in the screenshots.
+- **RIGHT inspector** (`AdvancedTemplateLibrary.jsx`): sets `template_id` only.
+
+**2. Style extraction (left family)** — `extractTemplateStyleFromPreview()` in
+`SidebarTemplateGallery20.jsx` reads the template's CSS rule (font, size, weight,
+color, letter-spacing) and `extractAccentColorFromMarkup()` derives the accent
+from the markup class (e.g. `ns3-green`, `imp-pink`) via `TEMPLATE_ACCENT_COLOR_MAP`
+→ becomes `secondary_color`.
+
+**3. Apply** — `Dashboard.handleApplyTemplate()`:
+  - resets `TEMPLATE_OWNED_RESET` props first (so Template B never inherits
+    Template A's bg/color/font),
+  - merges the extracted template style into `captionStyle`,
+  - runs `resolveScriptFont(fontFamily, text)` (`fontUtils.jsx`) to remap the
+    Latin display font to a matching **Devanagari** font when the caption is
+    Hindi (CRITICAL — a Latin-only font is invisible on Devanagari and looks
+    like "template not applied"). Always test templates on Hindi text.
+
+**4. Render (in-page, NOT iframe)** — `VideoPlayer.jsx`:
+  - `hasSidebarTemplateStyle(captionStyle)` → true when `template_20_id` exists
+    or `template_id` starts with `sidebar-`. This + `caption.template_20_id`
+    sets `isSidebarTemplate`.
+  - `isSidebarTemplate` → `renderAppliedSidebarTemplateCaption()` renders the
+    template as in-page React spans (the old `<iframe srcdoc>` overlay is dead).
+  - Per-word emphasis: `selectSemanticEmphasis()` (`emotionalTemplateUtils.js`)
+    picks the strongest non-stop-word in each caption and colors it from
+    `EMPHASIS_COLORS`. That color is passed down as the `emphasisColor` prop.
+  - Template accent renders as the `--sidebar-source-accent` CSS var (=
+    `secondary_color`); text color as `--sidebar-source-color`.
+
+**5. Export** — `ExportPanel.jsx` captures DOM word positions → `POST /api/export`
+→ backend `_create_styled_ass` → FFmpeg burn (ASS, not CSS).
+
+**Common break points:** (a) `secondary_color`/`emphasisColor` equals the text
+color → highlight invisible; (b) Devanagari font not remapped → looks unstyled;
+(c) `hasSidebarTemplateStyle` returns false because `template_20_id` got dropped
+on merge → falls back to plain rendering.
+
+---
+
+#### Changes this session
+
+| # | Area | Change |
+|---|------|--------|
+| 1 | **Highlight palette → 3 bright colors** | `EMPHASIS_COLORS` (`emotionalTemplateUtils.js`) reduced from 6 pastel colors to **3 bright**: yellow `#FFE600`, green `#22FF66`, red `#FF2E2E`. This is the per-word cycling highlight seen in the preview. |
+| 1b | **Template accent map → 3 bright colors** | `TEMPLATE_ACCENT_COLOR_MAP` (`SidebarTemplateGallery20.jsx`) now collapses every legacy color name (gold/rose/cyan/purple/orange/blue/pink…) onto the same 3 bright values, so applied-template accents are never pale. Warm→yellow, green/cyan/blue→green, red/rose/pink/purple→red. |
+| 2 | **Editable text box on template captions** | `VideoPlayer.jsx` caption overlay: template (sidebar) captions now show the same selectable/hover purple border as normal captions, use `pointerEvents:auto`, and are double-click editable (the existing `handleCaptionDoubleClick` → `isEditing` → contentEditable path already worked; it just had no visible affordance). Dragging/resizing/delete remain disabled for templates on purpose, to avoid shifting template layout. |
+| 3 | **Upload MIME fix** | `backend/main.py` upload handler: browsers send `application/octet-stream` for some videos; the extension check is now authoritative and that generic type is no longer rejected ("Failed to process video"). |
+| 4 | **Export word spacing** | `scripts/render_template_overlay.mjs` — added `column-gap: 0.28em` to `.lekha-sidebar-export-template-shell .wbw`, `.wbw-line`, `.sw-line`. Root cause: flex containers drop whitespace text nodes between word spans, causing Devanagari words to touch. Mirrors the preview fix in `VideoPlayer.jsx` `APPLIED_TEMPLATE_HOST_OVERRIDES`. |
+| 5 | **Export hero word recolor** | `scripts/render_template_overlay.mjs` — added `getComputedStyle`-based hero-recolor IIFE inside `activateSidebarTemplateShells()`. Detects bold tier (≥18% font-size gap or ≥700 weight with ≥200 gap from minimum), moves `emphasisAccent` from `.is-emphasis` to the hero words, resets `.is-emphasis` to `captionTextColor`. Mirrors `recolorEmphasisToHero()` from `VideoPlayer.jsx`. |
+
+**Did NOT touch:** template structure, typography, animation timing, the apply
+pipeline, or `renderAppliedSidebarTemplateCaption`. Only color *values* and the
+caption-box interaction affordance changed.
+
+---
+
+#### Follow-up fixes (same session)
+
+| # | Symptom | Root cause | Fix |
+|---|---------|-----------|-----|
+| 4 | **Emphasized word disappears mid-playback** leaving a "void"/gap between words in the line; the word reappears when the video is paused; export is fine. | The emphasized word is the only word that runs through `wbwAnimImp` (`AppliedSidebarTemplateSourceRenderer` in `VideoPlayer.jsx`). On **pause**, `settleWBWWord` sets `word.style.animation = 'none'` — but during **playback** `wbwAnimImp` never cleared the CSS `animation`, so the `imp-`/`ns2-`/`ns3-` class's CSS keyframe overrode the JS inline `opacity:1` reveal and the word stayed invisible. Export is unaffected because export renders via the backend ASS path, not this animation. | Added `word.style.animation = 'none'` at the start of `wbwAnimImp` so the JS-driven reveal (opacity/transform/clip) is authoritative during playback — identical to what the pause/settle path already does. |
+| 5 | **Template caption not editable on canvas like a normal caption** | Sidebar-template captions had the selection border, hover border, pointer events and group-hover all gated behind `!isSidebarTemplate`; the inner container was `pointerEvents:none`. The double-click→edit path (`handleCaptionDoubleClick` → `isEditing` → contentEditable) was always shared and never template-guarded — it just had no visible affordance. | In the caption overlay (`VideoPlayer.jsx` ~line 6013): template captions now show the same purple selection/hover border, use `pointerEvents:auto`, and are double-click editable. Drag/resize/delete remain disabled for templates on purpose (would shift template layout). **Note:** this could only be verified after the backend was brought back up — earlier "Failed to fetch" was the backend process being down, so no template state could be reached to test. |
+
+---
+
 ### Session 12 — 2026-04-21
 
 **Theme:** Production hardening — P0/P1 security, race conditions, and event-loop blocking
@@ -564,3 +644,92 @@ Full security review of the codebase was requested. 15 issues found and categori
 
 **Files changed:** `package.json`, `backend/main.py`, `.gitignore`
 **Files deleted:** `backend/test2.py`, `backend/test_export.py`, `backend/debug_export.py`
+
+---
+
+### Session 11 — 2026-06-09
+
+**Theme:** Pricing refresh, processing-screen rewrite, security/production-readiness pass, and a deep fix for applied-template caption rendering (highlight motion + word spacing).
+
+---
+
+#### 1. Pricing update (monthly raised, yearly added)
+
+New plan prices — **must stay in sync across all three locations** (the backend is the source of truth for the charged amount; the frontend only displays):
+
+| Plan | Monthly | Yearly (= 10× monthly, 2 months free ≈ −17%) | USD/mo | USD/yr |
+|------|---------|-----------|--------|--------|
+| Starter | ₹299 | ₹2,990 | $3.99 | $39.99 |
+| Creator | ₹399 | ₹3,990 | $4.99 | $49.99 |
+| Pro | ₹499 | ₹4,990 | $5.99 | $59.99 |
+
+- `src/components/dashboard/PricingModal.jsx` — in-app upgrade modal `plans[]`; also fixed a display bug (yearly showed the annual total labeled `/mo` → now `/yr`).
+- `src/components/landing/PricingSection.jsx` — landing `plans[]` (INR + USD); badge corrected `-20%` → `-17%` to match the real discount.
+- `backend/main.py` `PLAN_PRICING` — `inr_paise`/`usd_cents` for all 6 plan keys. New amounts are all unique, so the amount→plan reconciliation (`_resolve_plan_from_amount_currency`) cannot collide.
+
+#### 2. Processing screen recreated (`src/pages/Dashboard.jsx`, `renderGeneratingState`)
+
+- Heading "Lekha Captions is working…" → **"Crafting your captions"**; subtitle rewritten.
+- Step list rewritten to describe the real pipeline; **removed "Preparing emoji suggestions"**, replaced with "Syncing word-level timing": *Transcribing your audio → Syncing word-level timing → Highlighting key moments → Rendering your preview*.
+
+#### 3. Security / production-readiness (`backend/main.py`)
+
+- **BLOCKER fixed — payment plan spoofing.** `verify_payment` trusted the client-echoed `plan_id` to grant tier/credits and never checked it against the amount actually paid → pay for Starter (₹299), echo `plan_id:"pro"`, receive Pro/100 credits. Added a central amount↔plan binding in `_apply_successful_payment` (asserts paid minor units == plan's `usd_cents`/`inr_paise` for the currency, logs `payment_amount_plan_mismatch`). Covers client-verify, webhook, and reconcile paths.
+- **Require Redis in production.** Rate limiting + payment idempotency already had Redis with in-memory fallback, but nothing forced Redis in prod → multi-instance deploys silently used per-instance state (bypassable). Added a boot guard: `ENV=production` + no reachable Redis raises at startup, unless `ALLOW_INMEMORY_STATE=1` (escape hatch for deliberate single-instance).
+- **Streaming upload.** `upload_video` read the whole file (up to 500 MB) into RAM via `await file.read()` → memory-pressure DoS under concurrency. Switched to 1 MB chunked streaming to disk, enforcing the size cap mid-stream (oversized/content-length-spoofed bodies abort early; Windows-safe cleanup).
+- Verdict given to user: ship-ready **after** the payment fix; in-memory state + upload buffering were scaling concerns, now closed.
+
+#### 4. Applied-template caption rendering (`src/components/dashboard/VideoPlayer.jsx`) — the main debugging arc
+
+Context: left/sidebar templates render through the in-page `AppliedSidebarTemplateSourceRenderer` (host class `lekha-applied-template-host`, `data-applied-template-animated="true"`). It is a JS reimplementation of the gallery card's animation, driven by `play()`/`pause()` via `runnerRef`. Block types: **wbw** (`.wbw`/`.wbw-line`, words `.w`/`.wbw-word`), **pos/sticky** (`.sw`/`.sw-w`), **plain** (`.plain-s` text nodes + a bare `<span class="is-emphasis">`).
+
+- **Highlight "void" during playback — attempted CSS fix, then REVERTED.** First broadened the force-visible safety rule (`APPLIED_TEMPLATE_HOST_OVERRIDES`) to also force `.sw`/`.sb.active .sw-w` to `opacity:1 !important`. This **flattened the intentional dimmed-context look** (`.sw-w` context words sit at `opacity:0.14`; only the active word reveals) → applied caption stopped matching the gallery card. **Reverted to the exact original rule.** LESSON: never force-override opacity across all word classes in the applied host — the `.sb` vs `.sblock` selector split encodes per-template-type intent.
+- **Real fix — "highlighted words not moving in some lines."** Root cause: `enterBlock` only animated `wbw` and `pos` blocks; **`plain` blocks got no animation** → their highlighted word was static. Added an additive plain-block path: `plainImpInit` / `animatePlain` (rise+fade the `.plain-s .is-emphasis` span on play) / `resetPlain` (phase prep) / `settlePlainWord` (always lands visible on pause/seek — no void), wired into `enterBlock`, `resetBlock`, and `pause()`. Scoped to `.plain-s .is-emphasis` only → wbw/pos templates untouched. (Caveat: plain emphasis carries no motion hint in the applied markup, so it uses a default rise+fade; can be mapped per-template if an exact card motion is needed.)
+- **Touching words (no space between Devanagari words in some lines).** Cause: each line path joins word spans with a literal space (`.join(' ')`), but **flex/grid line containers drop whitespace-only text nodes**, leaving only `margin-inline-end:0.12em` → words touch. (Touching ⟹ the line is flex, since non-flex lines keep the join-space.) Added `column-gap:0.28em` to flow-line containers (`.wbw`, `.wbw-line`, `.sw-line`, `.lekha-sidebar-source-line`) — restores spacing on flex lines, inert on non-flex lines (no over-spacing elsewhere).
+- **Selection frame for templated captions** (user-requested parity with normal captions). Removed the `!isSidebarTemplate` gate at the drag-enable, delete-button, and resize-handles spots (plus added the `cursor-move` class) so a selected templated caption shows the bordered box + 8 handles + delete (X) and can be moved. These handlers act on caption position / the captions array only — template word rendering is untouched. (Horizontal move/resize is constrained by the template's full-width centered layout, which was deliberately not changed.)
+- **Hero word recolor — preview** (`recolorEmphasisToHero(block)` in `VideoPlayer.jsx`). The accent colour was landing on the `.is-emphasis` word even when the template's visually dominant word is a different, bolder/larger one. Added a `getComputedStyle`-based detector: a "bold tier" exists if some word's font-size is ≥18% larger than the smallest, or its font-weight is ≥700 with a ≥200 gap. If found, the accent colour moves from `.is-emphasis` to the hero word(s); `.is-emphasis` resets to the caption text colour. Wired into `enterBlock` (double-rAF, after layout) and `pause()`.
+
+#### 5. Export-side parity fixes (`scripts/render_template_overlay.mjs`)
+
+The Puppeteer export renderer for templated captions had the same two rendering bugs as the preview — fixed identically so exported frames match the canvas:
+
+- **Fix: Export word spacing.** Added `column-gap: 0.28em` to `.lekha-sidebar-export-template-shell .wbw`, `.wbw-line`, `.sw-line`. Root cause: flex containers drop whitespace text nodes — same as the preview fix.
+- **Fix: Export hero word recolor.** Added a `getComputedStyle`-based hero-recolor IIFE in `activateSidebarTemplateShells()`, after the existing `.is-emphasis` color loop. Detects the bold tier (≥18% font-size gap, or ≥700 weight with ≥200 gap), resets `.is-emphasis` to `captionTextColor`, and applies `emphasisAccent` to the hero elements. Mirrors `recolorEmphasisToHero()` from `VideoPlayer.jsx`.
+
+---
+
+**Files changed:** `src/components/dashboard/PricingModal.jsx`, `src/components/landing/PricingSection.jsx`, `backend/main.py`, `src/pages/Dashboard.jsx`, `src/components/dashboard/VideoPlayer.jsx`, `scripts/render_template_overlay.mjs`
+
+**Verification notes:** Pricing confirmed live on the landing page (monthly + yearly). `backend/main.py` import-checked with new `PLAN_PRICING`. `VideoPlayer.jsx` esbuild-parses clean after each change. The template playback/animation changes must be visually confirmed in a **real browser** — the automated preview throttles video so the mid-playback states (void, plain-block motion) can't be reproduced there.
+
+**Env var added:** `ALLOW_INMEMORY_STATE` (default off) — set to `1` only to run a deliberate single-instance production deploy without Redis.
+
+---
+
+### Session 12 — 2026-06-09
+
+**Theme:** Full preview ↔ export parity audit for applied left-side (69-set) templates. Line-by-line comparison of `VideoPlayer.jsx` (`APPLIED_TEMPLATE_HOST_OVERRIDES` + `AppliedSidebarTemplateSourceRenderer`) vs `scripts/render_template_overlay.mjs` (export shell CSS + `activateSidebarTemplateShells()`). Every gap fixed toward the preview as reference (the preview is what the user approves visually).
+
+#### Export-side gaps fixed (`scripts/render_template_overlay.mjs`)
+
+1. **`.plain-s` flex hijack.** The page-level rule `.cap-text, .plain-s, .wbw-rise, .wbw-slide { display:inline-flex; … line-height:1.2 }` (written for plain captions + right-side originals) leaked into sidebar shells. inline-flex drops the whitespace text nodes around the `.is-emphasis` span (→ emphasis word touches neighbours in export) and 1.2 squeezed the source line-heights (1.55/1.7). Scoped the `.plain-s/.wbw-rise/.wbw-slide` selectors under `.lekha-original-template`; shells now use the template source's own text flow — same as preview.
+2. **Per-word colour/weight flatten removed.** The activate function force-set `font-weight` + `color` (`!important`) on every injected word. The preview resolves these via inheritance + the template's class CSS — the force flattened dimmed-context alphas (e.g. rgba(255,255,255,0.5) support rows) and bold hero tiers (e.g. `.pr.hero` 900/#39ff14), and made the weight-based hero-recolor detection impossible in export (all weights equal). Removed; the shell now mirrors the preview host's inline style instead (added `color`, `font-style`, `line-height`, `opacity` to the shell builder — `font-family`/`font-weight` were already there).
+3. **Hero demote now matches preview.** When the bold-tier recolor fires, preview *removes* `is-emphasis` (word falls back to its source imp-class colour); export was forcing `captionTextColor !important` onto it. Export now removes the class + clears the inline accent (and the inline `font-size/line-height/vertical-align` it had set), exactly like `recolorEmphasisToHero`.
+4. **lekha-49 timing.** Export used legacy timing (65ms stagger, 280/440ms durations) for both sources; preview uses `EMOTIONAL_TEMPLATE_TIMING` for lekha-49 (280ms stagger, 380/540ms durations, 240ms positioned stagger). Export now branches on `isNewTemplateSet` with values interpolated from the same config modules. Sticky word anim also aligned: 240ms `ease` → 300ms (`positionedWordDurationMs`) with the preview's cubic-bezier.
+5. **Clipping parity.** Shell + `.stage` `overflow:hidden` → `visible` (preview never crops — Devanagari matras/descenders and entrance motion paint freely); `.card`/`.lk-card` + stage get `padding:0 !important; margin:0 !important` like the preview host overrides.
+
+#### Preview-side sync (`src/components/dashboard/VideoPlayer.jsx`)
+
+- Font-family override for positioned containers: explicit `.pos1…pos31c` list → `[class^='pos'], [class*=' pos']` (the export already used the attribute form; list form would silently miss any pos class not enumerated).
+- Hide-rule additions `.lk-lbl, .stage-lbl, .lk-phase-chip` (export already hid them; inert if absent from markup).
+
+#### Guard script updated (`scripts/check-template-motion-parity.mjs`)
+
+The script previously asserted the per-word colour/weight force as a feature ("words can still inherit thin source weights/low-alpha colors"). That contract is inverted now: the checks fail if the force *re-appears*, and require the shell to mirror the preview host inline `color`/`line-height`. Rationale recorded in the script.
+
+#### Known intentional divergences (documented, not "fixed")
+
+- **Mid-entrance mechanics differ by design:** preview uses JS transitions + a force-visible CSS rule during playback (anti-void, session 11); export uses CSS keyframes seeked via `Animation.currentTime`. Settled frames match; the per-word reveal order/timing now matches; the in-flight easing of clip/transform may differ subtly per frame.
+- **lekha-49 positioned (`.sw`) rows:** export preserves the source CSS animations (re-based via `animationDelay`); preview replaces them with generic JS motions. Left as-is — both land on the same settled frame.
+
+**Files changed:** `scripts/render_template_overlay.mjs`, `src/components/dashboard/VideoPlayer.jsx`, `scripts/check-template-motion-parity.mjs`, `DEVELOPMENT_LOG.md` (also retro-filled Session 11 with the two export-side fixes + preview hero-recolor entry).
