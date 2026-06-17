@@ -5,7 +5,7 @@ import unittest
 from fastapi.testclient import TestClient
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from main import app
+from main import ExportRequest, app, processor
 
 
 class PreviewExportParityTests(unittest.TestCase):
@@ -40,6 +40,40 @@ class PreviewExportParityTests(unittest.TestCase):
         self.assertEqual(ra.status_code, 200)
         self.assertEqual(rb.status_code, 200)
         self.assertNotEqual(ra.json()["signature"], rb.json()["signature"])
+
+    def test_export_caption_template_sequence_metadata_survives_round_trip(self):
+        request = ExportRequest(
+            file_id="template-sequence",
+            captions=[
+                {
+                    "id": "caption-2",
+                    "text": "Every line is different",
+                    "start_time": 2.4,
+                    "end_time": 4.7,
+                    "__templateIndex": 2,
+                    "template_phase_index": 2,
+                    "imp_word_index": 1,
+                    "emotional_mode": "styled",
+                    "audio_emotion_metrics": {"energy": 0.72},
+                }
+            ],
+        )
+
+        payload = request.model_dump(by_alias=True)
+        caption = payload["captions"][0]
+        self.assertEqual(caption["__templateIndex"], 2)
+        self.assertEqual(caption["template_phase_index"], 2)
+        self.assertEqual(caption["imp_word_index"], 1)
+        self.assertEqual(caption["emotional_mode"], "styled")
+        self.assertEqual(caption["audio_emotion_metrics"], {"energy": 0.72})
+
+        replay_payload = ExportRequest(**payload).model_dump(by_alias=True)
+        self.assertEqual(replay_payload["captions"][0]["__templateIndex"], 2)
+
+    def test_dom_renderer_accepts_both_template_tabs(self):
+        self.assertTrue(processor._should_use_dom_template_renderer({"template_20_id": "A5"}))
+        self.assertTrue(processor._should_use_dom_template_renderer({"template_id": "t38"}))
+        self.assertFalse(processor._should_use_dom_template_renderer({"template_id": "t-115"}))
 
 
 if __name__ == "__main__":
