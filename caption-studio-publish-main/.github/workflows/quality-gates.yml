@@ -5,6 +5,10 @@ on:
     branches: ["**"]
   pull_request:
 
+defaults:
+  run:
+    working-directory: caption-studio-publish-main
+
 jobs:
   frontend:
     runs-on: ubuntu-latest
@@ -14,6 +18,7 @@ jobs:
         with:
           node-version: 20
       - run: npm ci
+      - run: npm run test:template-parity
       - run: npm run ci:frontend
       - run: npm run security:audit || true
 
