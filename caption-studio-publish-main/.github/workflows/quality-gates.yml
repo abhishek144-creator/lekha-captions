@@ -19,6 +19,7 @@ jobs:
           node-version: 20
       - run: npm ci
       - run: npm run test:template-parity
+      - run: npm run release:check
       - run: npm run ci:frontend
       - run: npm run security:audit || true
 
