@@ -25,11 +25,11 @@ const PLAN_LIMITS = {
   free_plan: { totalCredits: 3, name: 'Free' },
   free: { totalCredits: 3, name: 'Free' },
   starter: { totalCredits: 15, name: 'Starter' },
-  starter_yearly: { totalCredits: 15, name: 'Starter (Yearly)' },
+  starter_yearly: { totalCredits: 180, name: 'Starter (Yearly)' },
   creator: { totalCredits: 45, name: 'Creator' },
-  creator_yearly: { totalCredits: 45, name: 'Creator (Yearly)' },
-  pro: { totalCredits: 100, name: 'Pro' },
-  pro_yearly: { totalCredits: 100, name: 'Pro (Yearly)' },
+  creator_yearly: { totalCredits: 540, name: 'Creator (Yearly)' },
+  pro: { totalCredits: 120, name: 'Pro' },
+  pro_yearly: { totalCredits: 1440, name: 'Pro (Yearly)' },
 }
 
 export default function UserAccount() {
