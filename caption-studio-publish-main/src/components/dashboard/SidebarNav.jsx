@@ -25,11 +25,11 @@ export default function SidebarNav({ activeTab, setActiveTab, user, onOpenPricin
   const getPlanDetails = () => {
     const plan = userData?.subscription_tier || 'free'
     if (plan === 'starter' || plan === 'starter_yearly')
-      return { name: 'Starter', icon: <Crown className="w-4 h-4" />, totalCredits: 15 }
+      return { name: 'Starter', icon: <Crown className="w-4 h-4" />, totalCredits: plan === 'starter_yearly' ? 180 : 15 }
     if (plan === 'creator' || plan === 'creator_yearly')
-      return { name: 'Creator', icon: <Crown className="w-4 h-4" />, totalCredits: 45 }
+      return { name: 'Creator', icon: <Crown className="w-4 h-4" />, totalCredits: plan === 'creator_yearly' ? 540 : 45 }
     if (plan === 'pro' || plan === 'pro_yearly')
-      return { name: 'Pro', icon: <Crown className="w-4 h-4" />, totalCredits: 100 }
+      return { name: 'Pro', icon: <Crown className="w-4 h-4" />, totalCredits: plan === 'pro_yearly' ? 1200 : 100 }
     return { name: 'Free', icon: <Video className="w-4 h-4" />, totalCredits: 3 }
   }
 
