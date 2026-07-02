@@ -47,6 +47,9 @@ The template pipeline has four contracts that must stay aligned:
   frame with opacity, transform, and clip-path restored.
 - Resolve fonts per caption script so Indic text does not fall back to an unrelated
   system font or get clipped.
+- For `Startup Hustle` (`t13`), long or non-Latin first-line captions need a compact
+  preview/export path. Do not keep `slide-crash` and `ticker` in forced single-line
+  mode for those cases.
 
 ### Key implementation locations
 
@@ -55,6 +58,8 @@ The template pipeline has four contracts that must stay aligned:
 - `src/components/dashboard/SidebarTemplateGallery20.jsx`: authored left-side previews.
 - `src/components/dashboard/emotionalTemplateUtils.js`: caption-order phase plan.
 - `src/components/dashboard/templateMotionConfig.js`: shared timing and effect mappings.
+- `scripts/render_template_overlay.mjs`: export runtime CSS and original-template
+  block reconstruction.
 
 ## Export Failure: Template Missing or Static
 
@@ -218,6 +223,60 @@ weight even though neighboring phases inherit the selected weight correctly.
 - Invalidate old cached renders with renderer version
   `2026-06-08-template-export-phase-weight-v13`.
 
+## Export Failure: Right-Side Advanced Templates Do Not Match Preview
+
+### Symptoms
+
+- Right-side Styling templates such as Karaoke Fill, Witness, Spiritual
+  Awakening, and Literary Echo looked correct in preview but exported with much
+  smaller text.
+- Some advanced exports missed the first rendered line or looked partially
+  hidden.
+- Fixes appeared to work for one template but not others because exported MP4s
+  still showed stale output.
+
+### Root causes
+
+- Advanced export sizing relied on font-size fallback when preview template box
+  measurements were missing, which produced tiny output for authored right-side
+  layouts.
+- The export DOM rebuild did not fully preserve preview line slots, hidden-slot
+  filtering, and emphasis span structure for every advanced template.
+- Some advanced blocks could remain hidden at capture time because the export
+  renderer did not force the settled visible state after seeking animation.
+- Successful old renders could be returned again from export cache or browser
+  media cache, making fresh renderer fixes appear ineffective.
+
+### Durable fix
+
+- Measure the largest visible applied template host in `ExportPanel.jsx` and
+  send `preview_template_box_width_px` and `preview_template_box_height_px` for
+  right-side templates.
+- In `render_template_overlay.mjs`, scale advanced templates to the preview box
+  target instead of relying on `font-size` only.
+- Preserve multi-line slot assignment, hidden-slot filtering, and
+  `.is-emphasis` span generation in both preview and export advanced renderers
+  so every line and highlighted word matches the dashboard preview.
+- After animation seeking, force active advanced blocks visible before frame
+  capture.
+- Use the same advanced timing compression helpers in preview and export so
+  spoken lines and effect pacing stay aligned.
+- Bypass stale render-cache reuse for template exports, add a cache-busting
+  value to signed export URLs, and serve exported media with `Cache-Control:
+  no-store`.
+- Increment `EXPORT_RENDERER_VERSION` whenever advanced template export sizing
+  or timing changes.
+
+### Verification
+
+- Renderer version:
+  `2026-06-18-advanced-template-size-parity-v18`.
+- Template parity check passed for all advanced templates.
+- `Literary Echo` direct renderer verification switched from
+  `target_box=auto` to `target_box=512.62x197.77`.
+- Frame inspection confirmed a rendered advanced caption bounding box of
+  `334x302` on a `1080x1920` export frame, replacing the earlier tiny output.
+
 ### Verification
 
 - The affected C1 fourth caption changed from the source's thin `300` weight to
@@ -281,3 +340,48 @@ default yellow accent.
 - Direct DOM export frames rendered different captions in bright red, cyan, and
   neon green rather than collapsing every highlight to yellow.
 - Verification frames are under `.render_tmp/color-parity-v17/`.
+
+## Export Failure: Recreated Templates Still Export a Static Line
+
+### Symptoms
+
+- For the recreated-animation templates (Spiritual Awakening, Startup Hustle,
+  Motivation Stack, Cinematic Chapter, Philosophical Twist, Love Letter,
+  Street / Raw, Battle Cry, Newspaper Headline, Documentary, Anime Energy), one
+  phase still appeared static in the exported video even though the editor
+  preview animated it.
+- The same line looked broken across all of those templates.
+
+### Root cause
+
+- The animation recreation (formerly `plain` phases rebuilt as `wbw-rise` for
+  `t11`/`t18`/`t24`/`t31`, plus the styled-phase motion work) landed in
+  `templateMotionConfig.js`, `VideoPlayer.jsx`, and `render_template_overlay.mjs`
+  but `EXPORT_RENDERER_VERSION` was not incremented.
+- `EXPORT_RENDERER_VERSION` is part of the export `request_hash`
+  (`backend/main.py`), which keys `cache/renders/<hash>.mp4`. An identical
+  template + caption re-export therefore returned the **pre-recreation** cached
+  MP4 — the one where that line was still a static `plain` block — making the
+  fixed code look ineffective.
+- Fresh renders were already correct: direct overlay renders animate every phase
+  (verified for English and Devanagari captions, across `wbw`, `styled`,
+  `wbw-seq-fade`, and `karaoke` phase types).
+
+### Durable fix
+
+- Increment `EXPORT_RENDERER_VERSION` to
+  `2026-06-28-recreated-advanced-template-animation-cache-bust-v20` so stale
+  cached exports can no longer be returned, including any local v19 exports
+  generated before the backend process reloaded the recreated animation code.
+- Extend `GOAL_ADVANCED_TEMPLATE_IDS` in `scripts/check-template-export-parity.mjs`
+  to cover all eleven recreated templates so the `goal-right-phases`
+  motion-critical guard fails if any of their phases stop animating in export.
+
+### Verification
+
+- `node scripts/check-template-export-parity.mjs --scope=goal-right-phases`
+  passed for all 47 phases (11 templates); every phase reported real
+  frame-to-frame motion.
+- `node scripts/check-template-motion-parity.mjs` passed.
+- Note: the backend must reload/restart to pick up the new
+  `EXPORT_RENDERER_VERSION`.

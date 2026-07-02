@@ -53,3 +53,7 @@ backend_stderr.log
 build.log
 build_error.txt
 build_trace*.txt
+
+# runtime-downloaded fonts and local scratch
+backend/fonts/
+tmp/

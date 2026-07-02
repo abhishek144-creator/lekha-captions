@@ -119,12 +119,12 @@
 }
 
 .t-109 .word.imp.active {
-   color: var(--template-highlight, #FFE600) !important;
+   color: var(--template-highlight, #DDAA03) !important;
    text-shadow: 3px 3px 0 var(--template-secondary, #FF4500) !important
 }
 
 .t-109 .word.imp.current {
-   color: var(--template-highlight, #FFE600) !important;
+   color: var(--template-highlight, #DDAA03) !important;
    text-shadow: 3px 3px 0 var(--template-secondary, #FF4500) !important
 }
 
@@ -232,11 +232,11 @@
 }
 
 .t-36 .word.imp.active {
-   color: var(--template-highlight, #FFE600) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 .t-36 .word.imp.current {
-   color: var(--template-highlight, #FFE600) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 /* ══════════════════════════════════════════
@@ -263,15 +263,15 @@
 }
 
 .t-105 .word.current {
-   color: var(--template-highlight, #FFE600) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 .t-105 .word.imp.active {
-   color: var(--template-highlight, #FFE600) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 .t-105 .word.imp.current {
-   color: var(--template-highlight, #FFE600) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 /* ══════════════════════════════════════════
@@ -302,11 +302,11 @@
 }
 
 .t-9 .word.imp.active {
-   color: var(--template-highlight, #FFE600) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 .t-9 .word.imp.current {
-   color: var(--template-highlight, #FFE600) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 /* ══════════════════════════════════════════
@@ -335,12 +335,12 @@
 }
 
 .t-124 .word.imp.active {
-   color: var(--template-highlight, #FFE600) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 .t-124 .word.imp.current {
-   color: var(--template-highlight, #FFE600) !important;
-   text-shadow: 4px 4px 0 rgba(255, 210, 0, .28) !important
+   color: var(--template-highlight, #DDAA03) !important;
+   text-shadow: 4px 4px 0 rgba(221, 170, 3, .28) !important
 }
 
 /* ══════════════════════════════════════════
@@ -369,12 +369,12 @@
 }
 
 .t-16 .word.imp.active {
-   color: var(--template-highlight, #FFE600) !important;
+   color: var(--template-highlight, #DDAA03) !important;
    filter: blur(0)
 }
 
 .t-16 .word.imp.current {
-   color: var(--template-highlight, #FFE600) !important;
+   color: var(--template-highlight, #DDAA03) !important;
    filter: blur(0)
 }
 
@@ -410,7 +410,7 @@
 }
 
 .t-110 .word.imp.active {
-   color: var(--template-highlight, #FFE600) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 .t-110 .word.current {
@@ -418,7 +418,7 @@
 }
 
 .t-110 .word.imp.current {
-   color: var(--template-highlight, #FFE600) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 .t-110 .word.imp.current::after {
@@ -464,7 +464,7 @@
 
 .t-119 .word.imp.active {
    color: #1a1a1a !important;
-   background: rgba(255, 230, 0, .78) !important;
+   background: rgba(221, 170, 3, .78) !important;
    padding: 2px 6px;
    border-radius: 4px;
    -webkit-text-fill-color: #1a1a1a !important
@@ -472,7 +472,7 @@
 
 .t-119 .word.imp.current {
    color: #1a1a1a !important;
-   background: rgba(255, 230, 0, .78) !important;
+   background: rgba(221, 170, 3, .78) !important;
    padding: 2px 6px;
    border-radius: 4px;
    -webkit-text-fill-color: #1a1a1a !important
@@ -503,11 +503,11 @@
 }
 
 .t-12 .word.imp.active {
-   color: var(--template-highlight, #FFE600) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 .t-12 .word.imp.current {
-   color: var(--template-highlight, #FFE600) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 /* ══════════════════════════════════════════
@@ -529,7 +529,7 @@
 }
 
 .t-106 .word.imp.active {
-   color: var(--template-highlight, #FFE600) !important;
+   color: var(--template-highlight, #DDAA03) !important;
    filter: drop-shadow(1px 2px 3px rgba(0, 0, 0, .8))
 }
 
@@ -539,7 +539,7 @@
 }
 
 .t-106 .word.imp.current {
-   color: var(--template-highlight, #FFE600) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 /* ══════════════════════════════════════════
@@ -565,7 +565,7 @@
 }
 
 .t-52 .word.imp.active {
-   color: var(--template-highlight, #FFE600) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 .t-52 .word.imp.current {
@@ -592,7 +592,7 @@
 }
 
 .t-103 .word.imp.active {
-   color: var(--template-highlight, #FFE600) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 .t-103 .word.current {
@@ -600,7 +600,7 @@
 }
 
 .t-103 .word.imp.current {
-   color: var(--template-highlight, #FFE600) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 /* ══════════════════════════════════════════
@@ -624,7 +624,7 @@
 }
 
 .t-112 .word.imp.active {
-   background: linear-gradient(90deg, var(--template-highlight, #FFE600), #FF007F) !important;
+   background: linear-gradient(90deg, var(--template-highlight, #DDAA03), #FF007F) !important;
    -webkit-background-clip: text !important;
    background-clip: text !important;
    -webkit-text-fill-color: transparent !important;
@@ -640,7 +640,7 @@
 }
 
 .t-112 .word.imp.current {
-   background: linear-gradient(90deg, var(--template-highlight, #FFE600), #FF007F) !important;
+   background: linear-gradient(90deg, var(--template-highlight, #DDAA03), #FF007F) !important;
    -webkit-background-clip: text !important;
    background-clip: text !important;
    -webkit-text-fill-color: transparent !important;
@@ -674,12 +674,12 @@
 }
 
 .t-104 .word.imp.active {
-   color: var(--template-highlight, #FFE600) !important;
+   color: var(--template-highlight, #DDAA03) !important;
    -webkit-text-stroke: 2px rgba(178, 141, 255, .5) !important
 }
 
 .t-104 .word.imp.current {
-   color: var(--template-highlight, #FFE600) !important;
+   color: var(--template-highlight, #DDAA03) !important;
    -webkit-text-stroke: 2px var(--template-secondary, #B28DFF) !important
 }
 
@@ -740,7 +740,7 @@
    display: inline-block;
    width: auto;
    max-width: 90%;
-   background: #FFE600;
+   background: #DDAA03;
    color: #111;
    border-radius: 10px;
    padding: 8px 12px;
@@ -784,15 +784,15 @@
 }
 
 .t-95 .word.imp.active {
-   color: #FFE600
+   color: #DDAA03
 }
 
 .t-95 .word.imp.current {
-   color: #FFE600
+   color: #DDAA03
 }
 
 .t-95 .word.imp.done {
-   color: #FFE600
+   color: #DDAA03
 }
 
 /* ══════════════════════════════════════════
@@ -842,11 +842,13 @@
 }
 
 .t-T4 .word {
-   color: rgba(249, 198, 208, 0) !important
+   color: rgba(255, 255, 255, 0) !important;
+   display: inline-block !important;
+   will-change: transform, opacity
 }
 
 .t-T4 .word.active {
-   color: #f9c6d0 !important
+   color: #ffffff !important
 }
 
 .t-T4 .word.imp.active {
@@ -854,13 +856,65 @@
 }
 
 .t-T4 .word.current {
-   color: #f9c6d0 !important;
+   color: #ffffff !important;
    animation: fadeUp .65s ease-out both
 }
 
 .t-T4 .word.imp.current {
    color: var(--template-primary, #fff) !important;
    animation: fadeUp .65s ease-out both
+}
+
+.t-T4.study-word-slide-preview .word,
+.t-T4.study-word-slide-preview .word.active,
+.t-T4.study-word-slide-preview .word.current,
+.t-T4.study-word-slide-preview .word.imp.active,
+.t-T4.study-word-slide-preview .word.imp.current {
+   color: #ffffff !important;
+   animation: wordSlideIn 0.32s cubic-bezier(0.34, 1.4, 0.64, 1) both !important;
+   animation-delay: var(--ws-delay, 90ms) !important
+}
+
+.t-T4.study-line-0 {
+   animation: basicWordSlideFromLeft 0.42s cubic-bezier(0.22, 1, 0.36, 1) both !important;
+   animation-delay: 0ms !important
+}
+
+.t-T4.study-line-2 {
+   animation: wordRiseInFromBottom 0.38s cubic-bezier(0.34, 1.2, 0.64, 1) both !important;
+   animation-delay: 0ms !important
+}
+
+.t-T4.study-line-0 .cap-text.has-manual-lines,
+.t-T4.study-line-2 .cap-text.has-manual-lines,
+.t-T4.study-line-0 .basic-manual-line,
+.t-T4.study-line-1 .basic-manual-line,
+.t-T4.study-line-2 .basic-manual-line {
+   animation: none !important;
+   transform: none !important;
+   opacity: 1 !important
+}
+
+.t-T4.study-line-0 .cap-text:not(.has-manual-lines),
+.t-T4.study-line-0 .basic-manual-line-0 {
+   color: #ffffff !important;
+   animation: none !important;
+   transform: none !important
+}
+
+.t-T4.study-line-2 .cap-text:not(.has-manual-lines),
+.t-T4.study-line-2 .basic-manual-line-2 {
+   color: #ffffff !important;
+   animation: none !important;
+   transform: none !important
+}
+
+.t-T4.study-line-0 .word,
+.t-T4.study-line-2 .word,
+.t-T4.study-line-0 .basic-manual-line-0 .word,
+.t-T4.study-line-2 .basic-manual-line-2 .word {
+   animation: none !important;
+   transform: none !important
 }
 
 /* ══════════════════════════════════════════
@@ -885,12 +939,12 @@
 }
 
 .t-56 .word.imp.active {
-   color: var(--template-highlight, #FFE600) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 .t-56 .word.imp.current {
-   color: var(--template-highlight, #FFE600) !important;
-   border-bottom: 3px solid var(--template-highlight, #FFE600)
+   color: var(--template-highlight, #DDAA03) !important;
+   border-bottom: 3px solid var(--template-highlight, #DDAA03)
 }
 
 /* ══════════════════════════════════════════
@@ -956,11 +1010,11 @@
 }
 
 .t-57 .word.imp.active {
-   color: var(--template-highlight, #FFE600) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 .t-57 .word.imp.current {
-   color: var(--template-highlight, #FFE600) !important;
+   color: var(--template-highlight, #DDAA03) !important;
    animation: flickerOn .18s both;
    text-shadow: 2px 0 0 #f00, -2px 0 0 #00f !important
 }
@@ -991,11 +1045,11 @@
 }
 
 .t-37 .word.imp.active {
-   color: var(--template-highlight, #FFE600) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 .t-37 .word.imp.current {
-   color: var(--template-highlight, #FFE600) !important;
+   color: var(--template-highlight, #DDAA03) !important;
    filter: drop-shadow(2px 2px 0 rgba(0, 0, 0, .9));
    animation: wipeIn .2s linear both
 }
@@ -1261,7 +1315,7 @@
 }
 
 .t-p3 .word.imp.active {
-   color: var(--template-highlight, #FFE600) !important;
+   color: var(--template-highlight, #DDAA03) !important;
    text-shadow: 3px 3px 0 #000 !important
 }
 
@@ -1283,8 +1337,8 @@
 }
 
 .t-p4 .word.imp.active {
-   color: #FFFF00 !important;
-   text-shadow: 2px 2px 0 #555500 !important
+   color: #DDAA03 !important;
+   text-shadow: 2px 2px 0 rgba(221, 170, 3, .42) !important
 }
 
 /* ── P5. Minimal Zen ── */
@@ -1319,7 +1373,7 @@
 }
 
 .t-p6 .word.active {
-   color: var(--template-highlight, #FFE600) !important;
+   color: var(--template-highlight, #DDAA03) !important;
    animation: comicSlam .25s ease-out both;
    -webkit-text-stroke: 2.5px #000 !important;
    paint-order: stroke fill;
@@ -1329,7 +1383,7 @@
 .t-p6 .word.imp.active {
    color: #FF3366 !important;
    -webkit-text-stroke: 2.5px #000 !important;
-   text-shadow: 4px 4px 0 var(--template-highlight, #FFE600) !important
+   text-shadow: 4px 4px 0 var(--template-highlight, #DDAA03) !important
 }
 
 /* ── P7. Typewriter ── */
@@ -1368,8 +1422,8 @@
 }
 
 .t-p8 .word.imp.active {
-   color: #FFD700 !important;
-   text-shadow: 0 0 15px rgba(255, 215, 0, .6) !important
+   color: #DDAA03 !important;
+   text-shadow: 0 0 15px rgba(221, 170, 3, .6) !important
 }
 
 /* ── P9. Ice Crystal ── */
@@ -1509,8 +1563,8 @@
 }
 
 .t-p14 .word.imp.active {
-   color: #FFD700 !important;
-   text-shadow: 0 0 15px rgba(255, 215, 0, .5) !important
+   color: #DDAA03 !important;
+   text-shadow: 0 0 15px rgba(221, 170, 3, .5) !important
 }
 
 /* ── P15. Candy Pop ── */
@@ -1532,7 +1586,7 @@
 }
 
 .t-p15 .word.imp.active {
-   color: var(--template-highlight, #FFE600) !important;
+   color: var(--template-highlight, #DDAA03) !important;
    -webkit-text-stroke: 2px #fff !important;
    text-shadow: 3px 3px 0 #FF6FCF !important
 }
@@ -1579,4 +1633,509 @@
 
 .t-115 .word.imp.done {
    color: #39FF14;
+}
+
+/* Applied Basic templates mirror the right-panel preview. */
+.lekha-basic-template-fit {
+   box-sizing: border-box;
+   width: auto;
+   max-width: 100%;
+   white-space: normal !important;
+   overflow-wrap: anywhere;
+   word-break: normal;
+}
+
+.lekha-basic-template-fit .word {
+   max-width: 100%;
+   white-space: normal;
+   overflow-wrap: anywhere;
+   vertical-align: baseline;
+}
+
+@keyframes wordSlideIn {
+   0% {
+      transform: translateX(22px);
+      opacity: 0;
+   }
+
+   65% {
+      transform: translateX(-3px);
+      opacity: 1;
+   }
+
+   100% {
+      transform: translateX(0);
+      opacity: 1;
+   }
+}
+
+@keyframes wordSlideInReverse {
+   0% {
+      transform: translateX(-22px);
+      opacity: 0;
+   }
+
+   65% {
+      transform: translateX(3px);
+      opacity: 1;
+   }
+
+   100% {
+      transform: translateX(0);
+      opacity: 1;
+   }
+}
+
+@keyframes wordRiseInFromBottom {
+   0% {
+      transform: translateY(24px);
+      opacity: 0;
+   }
+
+   65% {
+      transform: translateY(-2px);
+      opacity: 1;
+   }
+
+   100% {
+      transform: translateY(0);
+      opacity: 1;
+   }
+}
+
+.t-WS1 .cap-text {
+   font-family: 'Raleway', sans-serif !important;
+   font-weight: 800;
+   font-size: 20px;
+}
+
+.t-WS1 .word {
+   color: var(--template-primary, #fff) !important;
+   transform: translateX(22px);
+   opacity: 0;
+   display: inline-block !important;
+   filter: drop-shadow(1px 2px 3px rgba(0, 0, 0, .8));
+}
+
+.t-WS1 .word.active {
+   color: var(--template-primary, #fff) !important;
+   transition: none !important;
+}
+
+.t-WS1 .word.current {
+   color: var(--template-primary, #fff) !important;
+   animation: none !important;
+}
+
+.t-WS1 .word.imp.active,
+.t-WS1 .word.imp.current {
+   color: var(--template-highlight, #DDAA03) !important;
+}
+
+.t-WS1.ws-enter .word,
+.t-WS1.ws-enter .word.active,
+.t-WS1.ws-enter .word.current,
+.t-WS1.ws-enter .word.imp.active,
+.t-WS1.ws-enter .word.imp.current {
+   animation: wordSlideIn 0.32s cubic-bezier(0.34, 1.4, 0.64, 1) both !important;
+   animation-delay: var(--ws-delay, 90ms) !important;
+}
+
+.t-WS1.ws-enter.ws-line-1 .word,
+.t-WS1.ws-enter.ws-line-1 .word.active,
+.t-WS1.ws-enter.ws-line-1 .word.current,
+.t-WS1.ws-enter.ws-line-1 .word.imp.active,
+.t-WS1.ws-enter.ws-line-1 .word.imp.current {
+   animation: wordSlideInReverse 0.32s cubic-bezier(0.34, 1.4, 0.64, 1) both !important;
+   animation-delay: var(--ws-delay, 90ms) !important;
+}
+
+.t-WS1.ws-enter.ws-line-2 .word,
+.t-WS1.ws-enter.ws-line-2 .word.active,
+.t-WS1.ws-enter.ws-line-2 .word.current,
+.t-WS1.ws-enter.ws-line-2 .word.imp.active,
+.t-WS1.ws-enter.ws-line-2 .word.imp.current {
+   animation: wordRiseInFromBottom 0.38s cubic-bezier(0.34, 1.2, 0.64, 1) both !important;
+   animation-delay: var(--ws-delay, 90ms) !important;
+}
+
+.t-WS1.ws-done .word {
+   opacity: 1 !important;
+   transform: translateX(0) !important;
+   animation: none !important;
+}
+
+.lekha-applied-basic-template-host.t-T6 .t-T6 {
+   display: inline-block;
+   width: fit-content !important;
+   max-width: 100%;
+   min-width: 0;
+   background: var(--template-bg, #f97316);
+   border-radius: 5px;
+   padding: calc(3px * var(--applied-basic-scale, 1)) calc(5px * var(--applied-basic-scale, 1)) !important;
+   box-shadow: 0 calc(5px * var(--applied-basic-scale, 1)) calc(14px * var(--applied-basic-scale, 1)) rgba(249, 115, 22, .28);
+}
+
+.lekha-applied-basic-template-host.t-T6 .t-T6 .lekha-basic-template-fit {
+   width: auto;
+   max-width: 100%;
+   background: transparent !important;
+   border-radius: 0;
+   padding: 0 !important;
+   box-shadow: none !important;
+}
+
+.t-T6 .word {
+   margin: 0 !important;
+}
+
+.t-T6 .word.active,
+.t-T6 .word.current {
+   color: var(--template-primary, #fff) !important;
+}
+
+.t-QW1 {
+   position: relative !important;
+   inset: auto !important;
+   opacity: 1 !important;
+   width: 100%;
+   min-height: 0;
+   display: flex;
+   align-items: center;
+   justify-content: center;
+   padding: 0 !important;
+}
+
+.t-QW1 .sw-line {
+   display: flex;
+   flex-wrap: wrap;
+   justify-content: center;
+   gap: 0 5px;
+   width: min(250px, 100%);
+   max-width: 100%;
+   box-sizing: border-box;
+   line-height: 1.45;
+   padding: 0;
+   background: transparent;
+   border-radius: 0;
+}
+
+.t-QW1 .v32-sw {
+   font-family: 'Raleway', sans-serif;
+   font-weight: 500;
+   font-style: italic;
+   font-size: 17px;
+   color: #fff;
+}
+
+.t-QW1 .sw-w {
+   display: inline-block;
+   margin-right: 0;
+   opacity: 0.42;
+   transition: opacity 0.22s ease;
+   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.75);
+}
+
+@keyframes basicTemplateLineIn {
+   from {
+      opacity: 0;
+      transform: translateY(10px) scale(0.98);
+   }
+
+   to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+   }
+}
+
+@keyframes basicWordRiseIn {
+   from {
+      opacity: 0;
+      transform: translateY(20px);
+   }
+
+   to {
+      opacity: 1;
+      transform: translateY(0);
+   }
+}
+
+@keyframes basicLightStreakIn {
+   from {
+      opacity: 0;
+      transform: translateY(44px);
+   }
+
+   to {
+      opacity: 1;
+      transform: translateY(0);
+   }
+}
+
+@keyframes basicSentenceRiseIn {
+   from {
+      opacity: 0;
+      transform: translateY(42px);
+   }
+
+   to {
+      opacity: 1;
+      transform: translateY(0);
+   }
+}
+
+@keyframes basicWordSlideFromLeft {
+   from {
+      opacity: 0;
+      transform: translateX(-38px);
+   }
+
+   to {
+      opacity: 1;
+      transform: translateX(0);
+   }
+}
+
+@keyframes basicWordSlideFromRight {
+   from {
+      opacity: 0;
+      transform: translateX(38px);
+   }
+
+   to {
+      opacity: 1;
+      transform: translateX(0);
+   }
+}
+
+@keyframes basicWordRiseFromBottom {
+   from {
+      opacity: 0;
+      transform: translateY(24px);
+   }
+
+   to {
+      opacity: 1;
+      transform: translateY(0);
+   }
+}
+
+@keyframes basicCurrentPop {
+   0% {
+      transform: translateY(7px) scale(0.94);
+   }
+
+   72% {
+      transform: translateY(-2px) scale(1.05);
+   }
+
+   100% {
+      transform: translateY(0) scale(1);
+   }
+}
+
+@keyframes basicPulseGlow {
+   0% {
+      transform: scale(0.96);
+      filter: drop-shadow(2px 2px 2px rgba(0, 0, 0, .9));
+   }
+
+   55% {
+      transform: scale(1.08);
+   }
+
+   100% {
+      transform: scale(1);
+   }
+}
+
+@keyframes basicSpeedKick {
+   0% {
+      transform: translateX(-8px) skewX(-12deg);
+      opacity: 0.45;
+   }
+
+   100% {
+      transform: translateX(0) skewX(-12deg);
+      opacity: 1;
+   }
+}
+
+@keyframes basicQuietWave {
+   0% {
+      opacity: 0.42;
+      transform: translateY(5px);
+   }
+
+   60% {
+      opacity: 1;
+      transform: translateY(-1px);
+   }
+
+   100% {
+      opacity: 1;
+      transform: translateY(0);
+   }
+}
+
+.lekha-applied-basic-template-host .lekha-basic-template-animated .word.imp,
+.lekha-applied-basic-template-host .lekha-basic-template-animated .sw-w.imp {
+   color: inherit !important;
+   -webkit-text-fill-color: currentColor !important;
+}
+
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-106 .lekha-basic-template-animated .word.active,
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T6 .lekha-basic-template-animated .word.active {
+   animation: basicWordRiseIn 0.28s cubic-bezier(0.34, 1.2, 0.64, 1) both !important;
+   animation-delay: var(--basic-word-delay, 0ms) !important;
+}
+
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-52 .bt-cap-block.basic-phase-0 .lekha-basic-template-animated {
+   animation: basicSentenceRiseIn 0.7s cubic-bezier(0.22, 1, 0.36, 1) both !important;
+}
+
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-52 .bt-cap-block.basic-phase-1 .lekha-basic-template-animated .word.active {
+   animation: basicWordSlideFromLeft 0.42s cubic-bezier(0.22, 1, 0.36, 1) both !important;
+   animation-delay: var(--basic-word-delay, 0ms) !important;
+}
+
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-52 .bt-cap-block.basic-phase-2 .lekha-basic-template-animated .word.active {
+   animation: basicWordSlideFromRight 0.42s cubic-bezier(0.22, 1, 0.36, 1) both !important;
+   animation-delay: var(--basic-word-delay, 0ms) !important;
+}
+
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .bt-cap-block.basic-phase-0 .lekha-basic-template-animated,
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .bt-cap-block.basic-phase-2 .lekha-basic-template-animated,
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .lekha-basic-template-animated.has-manual-lines .basic-manual-line {
+   animation: none !important;
+   transform: none !important;
+   opacity: 1 !important
+}
+
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .lekha-basic-template-animated .word {
+   animation: none !important;
+   transform: none !important;
+}
+
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .t-T4.study-line-0 {
+   animation: basicWordSlideFromLeft 0.42s cubic-bezier(0.22, 1, 0.36, 1) both !important;
+   animation-delay: 0ms !important;
+}
+
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .t-T4.study-line-2 {
+   animation: wordRiseInFromBottom 0.38s cubic-bezier(0.34, 1.2, 0.64, 1) both !important;
+   animation-delay: 0ms !important;
+}
+
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .bt-cap-block.basic-phase-0 .lekha-basic-template-animated,
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .lekha-basic-template-animated.has-manual-lines .basic-manual-line-0 {
+   color: #ffffff !important;
+   animation: none !important;
+   transform: none !important;
+}
+
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .bt-cap-block.basic-phase-0 .lekha-basic-template-animated .word,
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .bt-cap-block.basic-phase-0 .lekha-basic-template-animated .word.active,
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .bt-cap-block.basic-phase-0 .lekha-basic-template-animated .word.current,
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .bt-cap-block.basic-phase-0 .lekha-basic-template-animated .word.imp.active,
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .bt-cap-block.basic-phase-0 .lekha-basic-template-animated .word.imp.current {
+   color: #ffffff !important;
+   animation: none !important;
+   transform: none !important;
+}
+
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .bt-cap-block.basic-phase-1 .lekha-basic-template-animated .word,
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .bt-cap-block.basic-phase-1 .lekha-basic-template-animated .word.active,
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .bt-cap-block.basic-phase-1 .lekha-basic-template-animated .word.current,
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .bt-cap-block.basic-phase-1 .lekha-basic-template-animated .word.imp.active,
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .bt-cap-block.basic-phase-1 .lekha-basic-template-animated .word.imp.current {
+   color: #ffffff !important;
+   animation: wordSlideIn 0.32s cubic-bezier(0.34, 1.4, 0.64, 1) both !important;
+   animation-delay: var(--ws-delay, var(--basic-word-delay, 0ms)) !important;
+}
+
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .bt-cap-block.basic-phase-2 .lekha-basic-template-animated .word,
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .bt-cap-block.basic-phase-2 .lekha-basic-template-animated .word.active,
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .bt-cap-block.basic-phase-2 .lekha-basic-template-animated .word.current,
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .bt-cap-block.basic-phase-2 .lekha-basic-template-animated .word.imp.active,
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .bt-cap-block.basic-phase-2 .lekha-basic-template-animated .word.imp.current {
+   color: #ffffff !important;
+   animation: none !important;
+   transform: none !important;
+}
+
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .lekha-basic-template-animated.has-manual-lines {
+   animation: none !important;
+}
+
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .lekha-basic-template-animated.has-manual-lines .basic-manual-line-0 .word,
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .lekha-basic-template-animated.has-manual-lines .basic-manual-line-0 .word.active,
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .lekha-basic-template-animated.has-manual-lines .basic-manual-line-0 .word.current {
+   color: #ffffff !important;
+   animation: none !important;
+   transform: none !important;
+}
+
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .lekha-basic-template-animated.has-manual-lines .basic-manual-line-1 .word,
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .lekha-basic-template-animated.has-manual-lines .basic-manual-line-1 .word.active,
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .lekha-basic-template-animated.has-manual-lines .basic-manual-line-1 .word.current {
+   color: #ffffff !important;
+   animation: wordSlideIn 0.32s cubic-bezier(0.34, 1.4, 0.64, 1) both !important;
+   animation-delay: var(--ws-delay, var(--basic-word-delay, 0ms)) !important;
+}
+
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .lekha-basic-template-animated.has-manual-lines .basic-manual-line-2 .word,
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .lekha-basic-template-animated.has-manual-lines .basic-manual-line-2 .word.active,
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .lekha-basic-template-animated.has-manual-lines .basic-manual-line-2 .word.current {
+   color: #ffffff !important;
+   animation: none !important;
+   transform: none !important;
+}
+
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .bt-cap-block.basic-phase-2 .lekha-basic-template-animated,
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .lekha-basic-template-animated.has-manual-lines .basic-manual-line-2 {
+   color: #ffffff !important;
+   animation: none !important;
+   transform: none !important;
+}
+
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-WS1 .bt-cap-block.basic-phase-0 .lekha-basic-template-animated .word,
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-WS1 .bt-cap-block.basic-phase-0 .lekha-basic-template-animated .word.active,
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-WS1 .bt-cap-block.basic-phase-0 .lekha-basic-template-animated .word.current,
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-WS1 .lekha-basic-template-animated.has-manual-lines .basic-manual-line-0 .word,
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-WS1 .lekha-basic-template-animated.has-manual-lines .basic-manual-line-0 .word.active,
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-WS1 .lekha-basic-template-animated.has-manual-lines .basic-manual-line-0 .word.current {
+   animation: wordSlideIn 0.32s cubic-bezier(0.34, 1.4, 0.64, 1) both !important;
+   animation-delay: var(--ws-delay, var(--basic-word-delay, 0ms)) !important;
+}
+
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-WS1 .bt-cap-block.basic-phase-1 .lekha-basic-template-animated .word,
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-WS1 .bt-cap-block.basic-phase-1 .lekha-basic-template-animated .word.active,
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-WS1 .bt-cap-block.basic-phase-1 .lekha-basic-template-animated .word.current,
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-WS1 .lekha-basic-template-animated.has-manual-lines .basic-manual-line-1 .word,
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-WS1 .lekha-basic-template-animated.has-manual-lines .basic-manual-line-1 .word.active,
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-WS1 .lekha-basic-template-animated.has-manual-lines .basic-manual-line-1 .word.current {
+   animation: wordSlideInReverse 0.32s cubic-bezier(0.34, 1.4, 0.64, 1) both !important;
+   animation-delay: var(--ws-delay, var(--basic-word-delay, 0ms)) !important;
+}
+
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-WS1 .bt-cap-block.basic-phase-2 .lekha-basic-template-animated .word,
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-WS1 .bt-cap-block.basic-phase-2 .lekha-basic-template-animated .word.active,
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-WS1 .bt-cap-block.basic-phase-2 .lekha-basic-template-animated .word.current,
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-WS1 .lekha-basic-template-animated.has-manual-lines .basic-manual-line-2 .word,
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-WS1 .lekha-basic-template-animated.has-manual-lines .basic-manual-line-2 .word.active,
+.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-WS1 .lekha-basic-template-animated.has-manual-lines .basic-manual-line-2 .word.current {
+   animation: wordRiseInFromBottom 0.38s cubic-bezier(0.34, 1.2, 0.64, 1) both !important;
+   animation-delay: var(--ws-delay, var(--basic-word-delay, 0ms)) !important;
+}
+
+.t-QW1 .sw-w.active,
+.t-QW1 .sw-w.done {
+   opacity: 1;
+}
+
+.t-QW1 .sw-w.current {
+   animation: none !important;
+   transform: none !important;
+   animation-delay: var(--basic-word-delay, 0ms);
 }

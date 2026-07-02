@@ -26,7 +26,14 @@ VITE_BASE44_APP_ID=cbef744a8545c389ef439ea6
 VITE_BASE44_APP_BASE_URL=https://my-to-do-list-81bfaad7.base44.app
 ```
 
-Run the app: `npm run dev`
+Run the full local app: `npm run dev`
+
+This starts both services:
+
+- Frontend: `http://localhost:3000`
+- Backend API: `http://127.0.0.1:8000`
+
+On Windows you can also double-click `start_app.bat`. Use `npm run dev:frontend` only when the Python backend is already running.
 
 **Publish your changes**
 
@@ -42,6 +49,7 @@ Support: [https://app.base44.com/support](https://app.base44.com/support)
 
 - Frontend guarded build: `npm run build:guarded`
 - Frontend CI bundle/lint checks: `npm run ci:frontend`
+- Full template parity audit: `npm run test:templates:all`
 - Backend smoke tests: `python -m unittest backend.tests.test_api_contracts backend.tests.test_smoke_flow`
 - Load smoke: `python scripts/load_smoke.py --base-url http://localhost:8000`
 

@@ -34,9 +34,9 @@ class ApiContractTests(unittest.TestCase):
         main._process_rate.clear()
         main._translate_rate.clear()
 
-    def test_export_rate_limits_enabled_by_default(self):
-        self.assertFalse(main.DISABLE_EXPORT_FAILURE_RATE_LIMIT)
-        self.assertFalse(main.DISABLE_EXPORT_DAILY_LIMIT)
+    def test_export_rate_limits_disabled_by_default(self):
+        self.assertTrue(main.DISABLE_EXPORT_FAILURE_RATE_LIMIT)
+        self.assertTrue(main.DISABLE_EXPORT_DAILY_LIMIT)
 
     def test_media_tokens_reject_tampering_expiry_and_wrong_kind(self):
         token = main._create_media_token({
@@ -109,6 +109,21 @@ class ApiContractTests(unittest.TestCase):
             json={"file_id": "123e4567-e89b-12d3-a456-426614174000", "language": "english", "id_token": ""},
         )
         self.assertEqual(res.status_code, 401)
+
+    @patch("main.processor.generate_captions_only", new_callable=AsyncMock)
+    @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
+    def test_process_accepts_local_dev_bypass_token(self, _safe_find, mock_process):
+        mock_process.return_value = {"success": True, "captions": [{"id": 1, "text": "hello", "start_time": 0, "end_time": 1}]}
+        res = self.client.post(
+            "/api/process",
+            json={
+                "file_id": "123e4567-e89b-12d3-a456-426614174000",
+                "language": "english",
+                "id_token": "mock-token",
+            },
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.json().get("success"))
 
     def test_export_requires_auth(self):
         res = self.client.post(

@@ -245,8 +245,19 @@ render_semaphore = asyncio.Semaphore(2)
 MAX_CONCURRENT_EXPORTS_PER_USER = 1
 EXPORT_FAILURE_LIMIT = 5
 EXPORT_FAILURE_WINDOW = 15 * 60
-DISABLE_EXPORT_FAILURE_RATE_LIMIT = os.environ.get("DISABLE_EXPORT_FAILURE_RATE_LIMIT", "0") == "1"
-DISABLE_EXPORT_DAILY_LIMIT = os.environ.get("DISABLE_EXPORT_DAILY_LIMIT", "0") == "1"
+DISABLE_EXPORT_FAILURE_RATE_LIMIT = os.environ.get("DISABLE_EXPORT_FAILURE_RATE_LIMIT", "1") == "1"
+# Export retry and daily quota throttles are disabled by default. Credits and
+# concurrent-export protection remain separate controls.
+DISABLE_EXPORT_DAILY_LIMIT = os.environ.get(
+    "DISABLE_EXPORT_DAILY_LIMIT",
+    "1",
+) == "1"
+# TESTING PHASE ONLY: local/dev exports should not be blocked by credits.
+# Restore before deploy by setting DISABLE_EXPORT_CREDIT_LIMIT=0 or removing this default.
+DISABLE_EXPORT_CREDIT_LIMIT = os.environ.get(
+    "DISABLE_EXPORT_CREDIT_LIMIT",
+    "0" if _IS_PRODUCTION else "1",
+) == "1"
 
 # In-memory operational state (swap for Redis in multi-instance deployments)
 _export_jobs: Dict[str, Dict[str, Any]] = {}
@@ -281,6 +292,10 @@ ALLOW_INMEMORY_STATE = os.environ.get("ALLOW_INMEMORY_STATE", "0") == "1"
 DEBUG_MODE_ENABLED = os.environ.get("DEBUG_MODE", "").strip().lower() not in ("", "0", "false", "no", "off")
 if _IS_PRODUCTION and DEBUG_MODE_ENABLED:
     raise RuntimeError("DEBUG_MODE must not be enabled in production (ENV=production). Set DEBUG_MODE=false or unset it.")
+LOCAL_DEV_AUTH_BYPASS_ENABLED = os.environ.get(
+    "LOCAL_DEV_AUTH_BYPASS",
+    "0" if _IS_PRODUCTION else "1",
+).strip().lower() not in ("", "0", "false", "no", "off")
 SLO_EXPORT_SUCCESS_TARGET = float(os.environ.get("SLO_EXPORT_SUCCESS_TARGET", "0.98"))
 SLO_PROCESS_SUCCESS_TARGET = float(os.environ.get("SLO_PROCESS_SUCCESS_TARGET", "0.98"))
 SLO_EXPORT_P95_MS_TARGET = int(os.environ.get("SLO_EXPORT_P95_MS_TARGET", "180000"))
@@ -647,7 +662,7 @@ def _tenant_id_from_token(decoded_token: Optional[Dict[str, Any]]) -> str:
     return (decoded_token.get("org_id") or decoded_token.get("tenant_id") or "").strip()
 
 def _is_explicit_dev_auth_token(id_token: str) -> bool:
-    return DEBUG_MODE_ENABLED and (id_token or "").strip() == "mock-token"
+    return (DEBUG_MODE_ENABLED or LOCAL_DEV_AUTH_BYPASS_ENABLED) and (id_token or "").strip() == "mock-token"
 
 def _authenticate_media_request(id_token: str, org_id: str = "") -> Dict[str, Any]:
     token = (id_token or "").strip()
@@ -975,7 +990,7 @@ def _evaluate_export_policy(user_data: Dict[str, Any], now_ts: float):
         except Exception:
             pass
 
-    if credits <= 0:
+    if credits <= 0 and not DISABLE_EXPORT_CREDIT_LIMIT:
         if tier != 'free' and plan_time_expired:
             return False, "PLAN_EXPIRED: Your plan has expired and you have no credits left. Please renew to continue exporting.", recent_exports
         return False, "UPGRADE_REQUIRED: You have no credits remaining. Please upgrade your plan to continue exporting.", recent_exports
@@ -1107,14 +1122,15 @@ def _signed_upload_url(file_id: str, uid: str, ttl_seconds: int = 6 * 3600) -> s
     return f"/api/media/upload/{file_id}?token={token}"
 
 
-def _signed_export_url(filename: str, uid: str, ttl_seconds: int) -> str:
+def _signed_export_url(filename: str, uid: str, ttl_seconds: int, cache_bust: str = "") -> str:
     token = _create_media_token({
         "kind": "export",
         "uid": uid,
         "filename": filename,
         "exp": int(time.time() + max(ttl_seconds, 60)),
     })
-    return f"/api/media/export/{filename}?token={token}"
+    suffix = f"&v={cache_bust}" if cache_bust else ""
+    return f"/api/media/export/{filename}?token={token}{suffix}"
 
 
 def _compute_media_hash(file_path: str) -> str:
@@ -1181,7 +1197,7 @@ def _normalize_tier_name(tier: str) -> str:
 
 
 def _resolve_export_preset(tier: str, requested_quality: str, requested_fps: int) -> Dict[str, Any]:
-    normalized = _normalize_tier_name(tier)
+    normalized = "pro" if DISABLE_EXPORT_CREDIT_LIMIT else _normalize_tier_name(tier)
     preset = PLAN_EXPORT_PRESETS.get(normalized, PLAN_EXPORT_PRESETS["free"])
 
     req_quality = (requested_quality or "1080p").lower()
@@ -1209,7 +1225,7 @@ CACHE_DIR = os.path.abspath("cache")
 TRANSCRIPTION_CACHE_DIR = os.path.join(CACHE_DIR, "transcriptions")
 RENDER_CACHE_DIR = os.path.join(CACHE_DIR, "renders")
 DEAD_LETTER_DIR = os.path.join(CACHE_DIR, "dead_letter")
-EXPORT_RENDERER_VERSION = "2026-06-15-semantic-emphasis-color-parity-v17"
+EXPORT_RENDERER_VERSION = "2026-07-02-t17-word-size-floor-parity-v32"
 
 for d in [UPLOAD_DIR, EXPORT_DIR, FONTS_DIR, CACHE_DIR, TRANSCRIPTION_CACHE_DIR, RENDER_CACHE_DIR, DEAD_LETTER_DIR]:
     os.makedirs(d, exist_ok=True)
@@ -1319,6 +1335,11 @@ class ProcessRequest(BaseModel):
     min_words: int = 0
     max_words: int = 0
     id_token: str = ""  # Firebase Auth Token (optional — bypassed in dev mode)
+    org_id: str = ""
+
+class MediaUrlRequest(BaseModel):
+    file_id: str
+    id_token: str = ""
     org_id: str = ""
 
 class TranslateRequest(BaseModel):
@@ -1527,6 +1548,15 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
         "fps": preset["fps"],
     }, sort_keys=True).encode("utf-8")).hexdigest()
     cached_render_path = os.path.join(RENDER_CACHE_DIR, f"{request_hash}.mp4")
+    template_export_active = bool(
+        req.style.get("template_id")
+        or req.style.get("template_20_id")
+        or any(
+            (caption.get("template_id") or caption.get("template_20_id") or caption.get("applied_template_style"))
+            for caption in captions
+            if caption and not caption.get("is_text_element")
+        )
+    )
 
     output_filename = f"export_{req.file_id}_{request_hash[:12]}.mp4"
     output_path = os.path.join(EXPORT_DIR, output_filename)
@@ -1543,7 +1573,7 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
         word_layouts=req.word_layouts,
     )
 
-    if os.path.exists(cached_render_path):
+    if os.path.exists(cached_render_path) and not template_export_active:
         shutil.copy2(cached_render_path, output_path)
         render_finished_at = time.time()
         processing_started_at = queue_entered_at
@@ -1559,10 +1589,11 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
             raise HTTPException(status_code=500, detail=result.get('error') or "Render failed")
         render_finished_at = time.time()
         render_ms = int((render_finished_at - processing_started_at) * 1000)
-        try:
-            shutil.copy2(output_path, cached_render_path)
-        except Exception:
-            pass
+        if not template_export_active:
+            try:
+                shutil.copy2(output_path, cached_render_path)
+            except Exception:
+                pass
 
     _set_export_job(export_job_id, "finalizing")
     # Serve local exports through signed same-origin media URLs so the browser can
@@ -1583,10 +1614,11 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
             retention_hours = PLAN_PRICING[current_tier].get('export_retention_hours', 2)
 
     expires_at = (datetime.utcnow() + timedelta(hours=retention_hours)).isoformat() + "Z"
-    video_url = _signed_export_url(output_filename, uid, retention_hours * 3600)
+    video_url = _signed_export_url(output_filename, uid, retention_hours * 3600, export_job_id[:8])
 
     if db_available and user_ref is not None:
-        recent_exports.append(now)
+        if not DISABLE_EXPORT_DAILY_LIMIT:
+            recent_exports.append(now)
         history_item = {
             "id": req.file_id,
             "filename": output_filename,
@@ -1599,11 +1631,12 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
         if len(current_history) > 5:
             current_history = current_history[:5]
 
-        user_ref.update({
-            'credits_remaining': max(0, credits - 1),
-            'export_timestamps': recent_exports,
-            'history': current_history
-        })
+        user_update = {'history': current_history}
+        if not DISABLE_EXPORT_CREDIT_LIMIT:
+            user_update['credits_remaining'] = max(0, credits - 1)
+        if not DISABLE_EXPORT_DAILY_LIMIT:
+            user_update['export_timestamps'] = recent_exports
+        user_ref.update(user_update)
 
     payload = {
         "success": True,
@@ -2095,6 +2128,14 @@ async def api_version():
         "min_supported_version": API_MIN_SUPPORTED_VERSION,
         "sunset_date": DEPRECATION_SUNSET_DATE,
         "progressive_delivery_enabled": ENABLE_PROGRESSIVE_DELIVERY,
+    }
+
+@app.get("/api/health")
+async def api_health():
+    return {
+        "success": True,
+        "ready": True,
+        "version": API_CURRENT_VERSION,
     }
 
 @app.get("/api/v1/version")
@@ -3118,6 +3159,19 @@ async def serve_uploaded_media(file_id: str, token: str = ""):
     return FileResponse(path, media_type=media_type)
 
 
+@app.post("/api/media/upload-url")
+async def refresh_uploaded_media_url(req: MediaUrlRequest):
+    decoded_token = _authenticate_media_request(req.id_token, req.org_id)
+    uid = (decoded_token.get("uid") or "").strip() or "unknown-user"
+    if not _validate_file_id(req.file_id):
+        raise HTTPException(status_code=400, detail="Invalid file_id")
+    _assert_upload_owner(req.file_id, uid)
+    path = _safe_find_upload(req.file_id)
+    if not path or not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Upload not found")
+    return {"success": True, "raw_url": _signed_upload_url(req.file_id, uid)}
+
+
 @app.get("/api/media/export/{filename}")
 async def serve_exported_media(filename: str, token: str = ""):
     if not re.match(r"^export_[a-f0-9-]{36}_[a-f0-9]{12}\.mp4$", filename or ""):
@@ -3129,7 +3183,12 @@ async def serve_exported_media(filename: str, token: str = ""):
     path = os.path.realpath(os.path.join(EXPORT_DIR, filename))
     if not path.startswith(real_export_dir + os.sep) or not os.path.isfile(path):
         raise HTTPException(status_code=404, detail="Export not found")
-    return FileResponse(path, media_type="video/mp4", filename=filename)
+    return FileResponse(
+        path,
+        media_type="video/mp4",
+        filename=filename,
+        headers={"Cache-Control": "no-store, max-age=0"},
+    )
 
 if __name__ == "__main__":
     import uvicorn
