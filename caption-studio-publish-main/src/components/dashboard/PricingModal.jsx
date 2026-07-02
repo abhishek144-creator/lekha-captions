@@ -17,6 +17,9 @@ import { notifyApiError } from '@/lib/notifyApiError'
 const DEV_FALLBACK_RAZORPAY_KEY_ID = ''
 const RAZORPAY_KEY_ID = import.meta.env.VITE_RAZORPAY_KEY_ID || DEV_FALLBACK_RAZORPAY_KEY_ID
 const LOCAL_DEV_BYPASS_TOKEN = 'mock-token'
+// TESTING PHASE ONLY: plan buttons should not depend on Razorpay while export
+// and caption parity are being tested. Restore before deploy by setting this off.
+const DISABLE_PAYMENT_FOR_TESTING = import.meta.env.DEV || import.meta.env.VITE_DISABLE_EXPORT_LIMITS === '1'
 
 const loadRazorpayScript = () => new Promise((resolve, reject) => {
   if (window.Razorpay) { resolve(true); return }
@@ -146,12 +149,25 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
   const { refreshUserData } = useAuth()
 
   useEffect(() => {
+    if (DISABLE_PAYMENT_FOR_TESTING) return
     loadRazorpayScript().catch(() => {})
   }, [])
 
   const handlePayment = async (plan) => {
     setProcessingPlan(plan.id)
     try {
+      const planId = billing === 'yearly' ? `${plan.id}_yearly` : plan.id
+      if (DISABLE_PAYMENT_FOR_TESTING) {
+        toast({
+          title: 'Testing mode plan activated',
+          description: `${plan.name} selected without payment. Restore payment before deploy.`,
+        })
+        if (onSelectPlan) onSelectPlan(planId)
+        await refreshUserData?.()
+        onClose()
+        setProcessingPlan(null)
+        return
+      }
       await loadRazorpayScript()
       if (!window.Razorpay) {
         toast({ variant: 'destructive', title: 'Payment system unavailable', description: 'Please refresh and try again.' })
@@ -169,7 +185,6 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
       const idToken = typeof currentUser.getIdToken === 'function'
         ? await currentUser.getIdToken(true)
         : ''
-      const planId = billing === 'yearly' ? `${plan.id}_yearly` : plan.id
       const amount = billing === 'yearly' ? plan.yearlyPaise : plan.monthlyPaise
       const paymentAttemptKey = createIdempotencyKey('plan', planId)
 
@@ -291,13 +306,11 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
         return
       }
       const idToken = await currentUser.getIdToken()
-      const res = await fetch('/api/redeem-promo', {
+      const data = await apiRequest('/api/redeem-promo', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id_token: idToken, code: promoCode.trim() }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.detail || 'Redemption failed')
       setPromoStatus({
         type: 'success',
         message: `ðŸŽ‰ Promo activated! Your ${data.plan} plan is free until ${data.expires}`,
@@ -305,7 +318,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
       setPromoCode('')
       await refreshUserData()
     } catch (err) {
-      setPromoStatus({ type: 'error', message: err.message })
+      setPromoStatus({ type: 'error', message: err.message || 'Redemption failed' })
     } finally {
       setPromoLoading(false)
     }
@@ -314,6 +327,16 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
   const handleTopup = async (topup) => {
     setProcessingPlan(topup.plan_id)
     try {
+      if (DISABLE_PAYMENT_FOR_TESTING) {
+        toast({
+          title: 'Testing mode top-up activated',
+          description: `${topup.credits} test credits selected without payment.`,
+        })
+        await refreshUserData?.()
+        onClose()
+        setProcessingPlan(null)
+        return
+      }
       await loadRazorpayScript()
       if (!window.Razorpay) {
         toast({ variant: 'destructive', title: 'Payment system unavailable' })

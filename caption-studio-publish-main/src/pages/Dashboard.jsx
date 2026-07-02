@@ -16,7 +16,7 @@ import { toast } from '@/components/ui/use-toast';
 import { apiRequest } from '@/lib/apiClient';
 import { notifyApiError } from '@/lib/notifyApiError';
 import { getClientContext, trackAnalytics } from '@/lib/analytics';
-import { featureFlags } from '@/lib/featureFlags';
+import { getEffectiveAuthToken } from '@/lib/devAuth';
 
 const VideoPlayer = lazy(() => import('@/components/dashboard/VideoPlayer'));
 const CaptionTimeline = lazy(() => import('@/components/dashboard/CaptionTimeline'));
@@ -89,7 +89,6 @@ const defaultCaptionStyle = {
   scale: 1
 };
 
-const LOCAL_DEV_BYPASS_TOKEN = 'mock-token';
 const GENERATING_SCREEN_MIN_MS = 10000;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -220,6 +219,7 @@ export default function Dashboard() {
   // Waveform data for timeline
   const [waveformData, setWaveformData] = useState(null);
   const initialEditorStateRef = useRef(null);
+  const mediaRefreshInFlightRef = useRef(false);
 
   // Raw HTML5 video DOM element for native fast-scrubbing bypassing React renders
   const [videoElement, setVideoElement] = useState(null);
@@ -439,8 +439,7 @@ export default function Dashboard() {
     setGenerationStartedAt(generationStart);
 
     try {
-      const signedInToken = currentUser?.accessToken || await currentUser?.getIdToken?.() || '';
-      const mediaAuthToken = signedInToken || (featureFlags.localDevAuthBypass ? LOCAL_DEV_BYPASS_TOKEN : '');
+      const mediaAuthToken = await getEffectiveAuthToken(currentUser);
       let uploadData = null;
       if (uploadSettings?.preUploadedFileId && uploadSettings?.preUploadedRawUrl) {
         uploadData = {
@@ -506,7 +505,7 @@ export default function Dashboard() {
       const targetLang = uploadSettings?.language;
       if (targetLang && targetLang !== 'auto' && generatedCaptions.length > 0) {
         try {
-          const translateToken = signedInToken || currentUser?.accessToken || await currentUser?.getIdToken();
+          const translateToken = await getEffectiveAuthToken(currentUser);
           const translateData = await apiRequest('/api/translate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -639,6 +638,40 @@ export default function Dashboard() {
     setSeekSignal(time);
   };
 
+  const refreshVideoPlaybackUrl = useCallback(async (event) => {
+    if (!fileId || mediaRefreshInFlightRef.current) return;
+
+    const videoEl = event?.currentTarget || event?.target || null;
+    const resumeAt = Number(videoEl?.currentTime || currentTime || 0);
+    const shouldResume = Boolean(isPlaying);
+    mediaRefreshInFlightRef.current = true;
+
+    try {
+      const mediaAuthToken = await getEffectiveAuthToken(currentUser);
+      const data = await apiRequest('/api/media/upload-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          file_id: fileId,
+          id_token: mediaAuthToken || '',
+        }),
+        dedupeKey: 'refresh-upload-media-url',
+        cancelPrevious: true,
+      });
+
+      if (data?.success && data.raw_url && data.raw_url !== videoUrl) {
+        setVideoUrl(data.raw_url);
+        setCurrentTime(resumeAt);
+        setSeekSignal(resumeAt);
+        if (shouldResume) setIsPlaying(true);
+      }
+    } catch (error) {
+      console.warn('Failed to refresh video playback URL:', error);
+    } finally {
+      mediaRefreshInFlightRef.current = false;
+    }
+  }, [currentTime, currentUser, fileId, isPlaying, videoUrl]);
+
   // Push current state to history, then apply new state
   const pushHistory = (newCaptions, newStyle) => {
     const snapshot = {
@@ -697,8 +730,8 @@ export default function Dashboard() {
 
   const handleApplyTemplate = async (templateStyle) => {
     // Hard Reset: properties that templates fully control are cleared before applying
-    // so Template B never inherits BG, color, font, or animation from Template A.
-    // Non-template properties (line_spacing, shadow, effects, position) are preserved.
+    // so Template B never inherits BG, color, font, spacing, phase, or animation
+    // from Template A. Non-template properties (effects, position_x) are preserved.
     const TEMPLATE_OWNED_RESET = {
       template_id: '',
       template_20_id: '',
@@ -708,16 +741,30 @@ export default function Dashboard() {
       template_layout: '',
       template_effect: '',
       template_markup: '',
+      template_color_customized: false,
+      // Both galleries set these (the left set extracts letter/line spacing
+      // from its authored CSS; the advanced pack sets line/word spacing and a
+      // default phase index), so they are template-owned and must reset too —
+      // otherwise Template B inherits Template A's spacing or phase selection.
+      template_phase_index: 0,
+      letter_spacing: 0,
+      line_spacing: defaultCaptionStyle.line_spacing,
+      word_spacing: defaultCaptionStyle.word_spacing,
       font_family: 'Inter',
       font_size: 17,
       font_weight: '800',
       font_style: 'normal',
       text_color: '#ffffff',
+      text_gradient: '',
       text_opacity: 1,
       text_case: 'none',
       secondary_color: '',
       highlight_color: '',
       highlight_gradient: '',
+      emphasis_color: '',
+      karaoke_color_1: '',
+      karaoke_color_2: '',
+      karaoke_color_3: '',
       has_background: true,
       background_color: '#000000',
       background_opacity: 0.7,
@@ -731,6 +778,7 @@ export default function Dashboard() {
       shadow_offset_x: 0,
       shadow_offset_y: 2,
       show_inactive: undefined,
+      display_mode: 'sentence',
       position_y: 75,
     };
     const {
@@ -808,6 +856,14 @@ export default function Dashboard() {
         return rest;
       }
       const emotional = emotionalByCaptionId.get(cap.id);
+      const templatePhaseIndex = templateSnapshot.template_id === 't17'
+        ? 1
+        : emotional?.phaseIndex ?? 0;
+      const templateEmphasisColor = templateSnapshot.highlight_color
+        || templateSnapshot.emphasis_color
+        || templateSnapshot.secondary_color
+        || emotional?.emphasisColor
+        || '';
       return {
         ...cap,
         wordStyles: stripDetachedWordLayout(cap.wordStyles || {}),
@@ -823,9 +879,9 @@ export default function Dashboard() {
         template_markup: templateSnapshot.template_markup || '',
         applied_template_style: templateSnapshot,
         emotional_mode: emotional?.mode || 'normal',
-        template_phase_index: emotional?.phaseIndex ?? 0,
+        template_phase_index: templatePhaseIndex,
         imp_word_index: emotional?.impWordIndex ?? -1,
-        emphasis_color: emotional?.emphasisColor || '',
+        emphasis_color: templateEmphasisColor,
         audio_emotion_metrics: emotional?.audio || null,
       };
     });
@@ -942,10 +998,10 @@ export default function Dashboard() {
   };
 
   const handleSelectPlan = async (planId) => {
-    // This would integrate with payment gateway
+    localStorage.setItem('captionStudioTestPlan', planId);
     toast({
-      title: 'Payment integration coming soon',
-      description: `Selected plan: ${planId}`,
+      title: 'Testing mode plan selected',
+      description: `${planId} is active for local testing. Restore payment before deploy.`,
     });
     setIsPricingModalOpen(false);
   };
@@ -1142,8 +1198,6 @@ export default function Dashboard() {
       96,
       Math.round(((completedSteps + (hasActiveStep ? 0.65 : 0)) / progressSteps.length) * 100),
     );
-    const elapsedMinutes = String(Math.floor(generationElapsedSeconds / 60)).padStart(2, '0');
-    const elapsedSeconds = String(generationElapsedSeconds % 60).padStart(2, '0');
 
     return (
       <div className="relative flex h-full items-center justify-center overflow-hidden bg-[#050505] p-5">
@@ -1158,10 +1212,6 @@ export default function Dashboard() {
               <div className="inline-flex items-center gap-2 text-[10px] font-semibold uppercase text-[#ffd7a4]">
                 <span className="h-1.5 w-1.5 rounded-full bg-[#f6a54b] shadow-[0_0_14px_rgba(246,165,75,0.9)]" />
                 Processing
-              </div>
-              <div className="inline-flex items-center gap-2 text-xs font-medium">
-                <Clock3 className="h-3.5 w-3.5 text-[#f6a54b]" />
-                {elapsedMinutes}:{elapsedSeconds}
               </div>
             </div>
           </div>
@@ -1412,6 +1462,7 @@ export default function Dashboard() {
                           if (data) setWaveformData(data);
                         }
                       }}
+                      onVideoError={refreshVideoPlaybackUrl}
                       isVideoFullscreen={isVideoFullscreen}
                       setIsVideoFullscreen={setIsVideoFullscreen}
                     />
