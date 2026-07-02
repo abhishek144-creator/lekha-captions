@@ -21,6 +21,7 @@ import { toast } from '@/components/ui/use-toast';
 import { apiRequest } from '@/lib/apiClient';
 import { notifyApiError } from '@/lib/notifyApiError';
 import { useAuth } from '@/lib/AuthContext';
+import { getEffectiveAuthToken } from '@/lib/devAuth';
 
 const MAX_UPLOAD_BYTES = 500 * 1024 * 1024; // Keep in sync with backend/main.py
 
@@ -284,7 +285,7 @@ export default function UploadModal({
     if (!selectedFile) return
     setIsDetecting(true)
     try {
-      const idToken = currentUser?.accessToken || await currentUser?.getIdToken?.() || ''
+      const idToken = await getEffectiveAuthToken(currentUser)
       const fileSignature = `${selectedFile.name}-${selectedFile.size}-${selectedFile.lastModified}`
       let uploadData = null
 

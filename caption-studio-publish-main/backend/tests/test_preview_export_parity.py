@@ -5,7 +5,7 @@ import unittest
 from fastapi.testclient import TestClient
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from main import ExportRequest, app, processor
+from main import ExportRequest, app, processor, _evaluate_export_policy, _resolve_export_preset
 
 
 class PreviewExportParityTests(unittest.TestCase):
@@ -73,7 +73,20 @@ class PreviewExportParityTests(unittest.TestCase):
     def test_dom_renderer_accepts_both_template_tabs(self):
         self.assertTrue(processor._should_use_dom_template_renderer({"template_20_id": "A5"}))
         self.assertTrue(processor._should_use_dom_template_renderer({"template_id": "t38"}))
-        self.assertFalse(processor._should_use_dom_template_renderer({"template_id": "t-115"}))
+        self.assertTrue(processor._should_use_dom_template_renderer({"template_id": "t-115"}))
+
+    def test_local_testing_bypasses_credit_and_quality_limits(self):
+        allowed, error, _ = _evaluate_export_policy(
+            {"credits_remaining": 0, "subscription_tier": "free", "export_timestamps": [9999999999]},
+            10000000000,
+        )
+        self.assertTrue(allowed)
+        self.assertEqual(error, "")
+
+        preset = _resolve_export_preset("free", "4k", 60)
+        self.assertEqual(preset["tier"], "pro")
+        self.assertEqual(preset["quality"], "4k")
+        self.assertEqual(preset["fps"], 60)
 
 
 if __name__ == "__main__":

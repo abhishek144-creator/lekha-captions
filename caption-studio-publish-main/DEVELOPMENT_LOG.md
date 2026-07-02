@@ -733,3 +733,80 @@ The script previously asserted the per-word colour/weight force as a feature ("w
 - **lekha-49 positioned (`.sw`) rows:** export preserves the source CSS animations (re-based via `animationDelay`); preview replaces them with generic JS motions. Left as-is — both land on the same settled frame.
 
 **Files changed:** `scripts/render_template_overlay.mjs`, `src/components/dashboard/VideoPlayer.jsx`, `scripts/check-template-motion-parity.mjs`, `DEVELOPMENT_LOG.md` (also retro-filled Session 11 with the two export-side fixes + preview hero-recolor entry).
+
+---
+
+### Session 15 — 2026-06-18
+
+**Theme:** Right-side advanced template export parity — preview and MP4 now match
+
+Right-side Styling templates could look correct in the dashboard preview but
+export with tiny captions, missing first lines, or missing emphasis highlights.
+The misleading part was that some fixes appeared ineffective because the backend
+could still return a stale cached MP4.
+
+**Durable fix summary**
+
+- `ExportPanel.jsx` now measures the largest visible advanced template host and
+  sends preview box width and height with the export request.
+- `render_template_overlay.mjs` now scales advanced templates to that preview
+  box target, preserves line-slot structure, filters hidden slots, and rebuilds
+  `.is-emphasis` spans so export matches preview line-for-line.
+- Advanced export seeking now forces active blocks visible before frame capture,
+  which prevents first-line loss on templates like `Literary Echo`.
+- `templateMotionConfig.js` and `VideoPlayer.jsx` now share the faster advanced
+  timing path so the effect pacing stays closer to speech.
+- `backend/main.py` now bypasses stale render-cache reuse for template exports,
+  appends a cache-bust token to signed export URLs, serves exported media with
+  `Cache-Control: no-store`, and bumped renderer version to
+  `2026-06-18-advanced-template-size-parity-v18`.
+
+**How to recognize it again**
+
+- Preview looks right but only exported MP4 is tiny or missing the first line.
+- Backend debug snapshot shows `preview_template_box_width_px: 0` for a right-side
+  template.
+- Renderer log prints `target_box=auto` for an advanced template export.
+- Re-export keeps producing the same wrong result even after code changes.
+
+**Fast verification**
+
+- `npm run test:template-parity`
+- `npm run build`
+- `python -m unittest backend.tests.test_api_contracts -v`
+- Confirm advanced export renderer logs a real target box, not `auto`
+
+### Session 16 - 2026-06-18
+
+**Theme:** `Startup Hustle` dull line traced to a motion mismatch
+
+One `Startup Hustle` line could still look washed out even after the white-color
+overrides because the fourth block was not actually using the same motion family
+everywhere. The source fallback map treated it as `WBW SLIDE`, but the original
+template preview/export path still rendered it as `wbw-seq-fade`, which keeps a
+fade-style word reveal and can make a line look dim mid-playback.
+
+**Durable fix summary**
+
+- `VideoPlayer.jsx` now renders `t13-b3` with `wbw-slide` instead of
+  `wbw-seq-fade`.
+- `render_template_overlay.mjs` mirrors that same `t13-b3` motion change for
+  exported video renders.
+- `templateMotionConfig.js` now advertises the fourth `Startup Hustle` block as
+  `WBW SLIDE`, matching the actual runtime behavior.
+
+**How to recognize it again**
+
+- Only `Startup Hustle` still looks faded while similar right-side templates are
+  already bright white.
+- The issue is most visible on the fourth block/line while the selected word is
+  fine but the rest of the line feels greyed or dull.
+- Preview and export both show the same washed-out line, which points to motion
+  logic rather than export-only sizing/parity.
+
+**Fast verification**
+
+- `npm run lint`
+- `npm run build`
+- In the dashboard, apply `Startup Hustle` and watch the fourth block: the line
+  should stay bright instead of fading through a muted state.

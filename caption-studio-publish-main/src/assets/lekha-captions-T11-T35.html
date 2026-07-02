@@ -188,8 +188,22 @@ body {
 /* Template-scoped purple overrides */
 .t12-stage .imp-purple { color: var(--rose); }
 .t18-stage .imp-purple { color: var(--gold); }
+.t19-stage .imp-bold { color: var(--rose); }
 .t24-stage .imp-purple { color: #f97316; }
+.t25-stage .imp-italic { color: var(--rose); }
+.t26-stage .imp-rose,
+.t26-stage .imp-bold { color: #f97316; }
+.t27-stage .imp-cyan,
+.t27-stage .imp-bold { color: #fff; }
+.t29-stage .imp-rose { color: #f97316; }
 .t32-stage .imp-purple { color: var(--cyan); }
+.t37-stage .imp-green,
+.t37-stage .imp-cyan,
+.t37-stage .w[data-imp="true"] {
+  color: #fff;
+  -webkit-text-fill-color: #fff;
+  -webkit-text-stroke: 0 transparent; text-shadow: none;
+}
 .imp-italic{ font-weight: 700; color: #fff; font-style: italic; }
 .imp-underline {
   font-weight: 700;
@@ -456,21 +470,19 @@ body {
   letter-spacing: 0.04em;
 }
 
-/* Shake-in for T15-b0 */
+/* Surge-in for T15-b0 */
 .t15-b0 .shake-in {
   opacity: 0;
-  transform: translateX(-4px);
+  transform: translateY(24px) scale(0.94);
+  filter: blur(6px);
 }
 .t15-b0.active .shake-in {
-  animation: shakeEntry 0.5s ease forwards;
+  animation: stormSurgeIn 0.46s cubic-bezier(0.22,1,0.36,1) forwards;
 }
-@keyframes shakeEntry {
-  0%   { opacity: 0; transform: translateX(-4px); }
-  20%  { opacity: 1; transform: translateX(4px); }
-  40%  { transform: translateX(-3px); }
-  60%  { transform: translateX(2px); }
-  80%  { transform: translateX(-1px); }
-  100% { opacity: 1; transform: translateX(0); }
+@keyframes stormSurgeIn {
+  0%   { opacity: 0; transform: translateY(24px) scale(0.94); filter: blur(6px); }
+  65%  { opacity: 1; transform: translateY(-2px) scale(1.02); filter: blur(0); }
+  100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
 }
 
 /* Center Pop for T15-b1 */
@@ -589,7 +601,7 @@ body {
   font-family: 'Cinzel', serif;
   font-size: 0.9rem;
   line-height: 1.7;
-  color: rgba(212,175,55,0.9);
+  color: #fff;
   text-align: center;
   max-width: 280px;
   letter-spacing: 0.06em;
@@ -602,7 +614,7 @@ body {
   font-family: 'Cinzel', serif;
   font-size: 0.82rem;
   letter-spacing: 0.18em;
-  color: rgba(212,175,55,0.85);
+  color: rgba(255,255,255,0.92);
   text-transform: uppercase;
   display: block;
   opacity: 0;
@@ -660,7 +672,7 @@ body {
   clip-path: inset(0 100% 0 0);
   font-family: 'Archivo Black', sans-serif;
   font-size: 1.3rem;
-  color: var(--rose);
+  color: #fff;
 }
 .t19-b0.active .slash-wrap {
   animation: slashReveal 0.4s cubic-bezier(0.4,0,0.2,1) forwards;
@@ -926,7 +938,7 @@ body {
   font-size: 1.1rem;
   font-style: italic;
   line-height: 1.75;
-  color: rgba(255,255,255,0.9);
+  color: #fff;
   max-width: 270px;
   text-align: center;
 }
@@ -1079,7 +1091,7 @@ body {
   font-size: 2.2rem;
   font-weight: 700;
   text-transform: uppercase;
-  color: var(--rose);
+  color: #f97316;
   letter-spacing: 0.04em;
   opacity: 0;
   transform: translateX(-70px);
@@ -1359,12 +1371,14 @@ body {
   white-space: nowrap;
   clip-path: inset(0 100% 0 0);
 }
-#t36-b0 .kf-fill { color: #FFE234; }
-#t36-b1 .kf-fill { color: #22d3ee; }
-#t36-b2 .kf-fill { color: #fb923c; }
+#t36-b0 .kf-fill { color: var(--template-karaoke-1, #DDAA03); }
+#t36-b1 .kf-fill { color: var(--template-karaoke-2, #22d3ee); }
+#t36-b2 .kf-fill { color: var(--template-karaoke-3, #fb923c); }
+#t22-b0 .kf-word,
+#t22-b0 .kf-base { color: #FFFFFF; }
 #t22-b0 .kf-fill { color: var(--gold); }
 #t24-b4 .kf-fill { color: #fb923c; }
-#t33-b2 .kf-fill { color: #FFE600; }
+#t33-b2 .kf-fill { color: var(--template-highlight, var(--template-secondary, #EE17DC)); }
 
 /* ===== T37 â€” NEON RISE ===== */
 .t37-stage { background: #040a0a; }
@@ -1375,7 +1389,7 @@ body {
   color: var(--cyan);
   text-align: center;
   max-width: 280px;
-  text-shadow: 0 0 6px rgba(0,229,255,0.5), 0 0 12px rgba(0,229,255,0.25);
+  text-shadow: none;
 }
 
 /* Neon pulse entrance for T37-b0 */
@@ -1388,8 +1402,8 @@ body {
 }
 @keyframes neonPulseOn {
   0%   { opacity: 0; text-shadow: none; }
-  55%  { opacity: 1; text-shadow: 0 0 20px rgba(0,229,255,1), 0 0 40px rgba(0,229,255,0.7); }
-  100% { opacity: 1; text-shadow: 0 0 8px rgba(0,229,255,0.7), 0 0 18px rgba(0,229,255,0.35); }
+  55%  { opacity: 1; text-shadow: none; }
+  100% { opacity: 1; text-shadow: none; }
 }
 
 /* Neon center expand for T37-b2 */
@@ -1398,7 +1412,7 @@ body {
   clip-path: inset(0 50% 0 50%);
   white-space: nowrap;
   letter-spacing: 0.08em;
-  text-shadow: 0 0 10px rgba(0,229,255,0.9), 0 0 22px rgba(0,229,255,0.45);
+  text-shadow: none;
 }
 .t37-b2.active .neon-expand {
   animation: neonCenterExpand 0.52s cubic-bezier(0.4,0,0.2,1) forwards;
@@ -1546,6 +1560,20 @@ body {
   65%  { transform: translateX(-3px); opacity: 1; }
   100% { transform: translateX(0); opacity: 1; }
 }
+@keyframes wordSlideInReverse {
+  0%   { transform: translateX(-22px); opacity: 0; }
+  65%  { transform: translateX(3px); opacity: 1; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+@keyframes basicWordSlideFromLeft {
+  0%   { transform: translateX(-38px); opacity: 0; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+@keyframes wordRiseInFromBottom {
+  0%   { transform: translateY(24px); opacity: 0; }
+  65%  { transform: translateY(-2px); opacity: 1; }
+  100% { transform: translateY(0); opacity: 1; }
+}
 .t-WS1 .cap-text { font-family: 'Raleway', sans-serif !important; font-weight: 800; font-size: 20px; }
 .t-WS1 .word {
   color: var(--template-primary, #fff) !important;
@@ -1562,14 +1590,30 @@ body {
   color: var(--template-primary, #fff) !important;
   animation: none !important;
 }
-.t-WS1 .word.imp.active { color: var(--template-highlight, #FFE600) !important; }
-.t-WS1 .word.imp.current { color: var(--template-highlight, #FFE600) !important; }
+.t-WS1 .word.imp.active { color: var(--template-highlight, #DDAA03) !important; }
+.t-WS1 .word.imp.current { color: var(--template-highlight, #DDAA03) !important; }
 .t-WS1.ws-enter .word,
 .t-WS1.ws-enter .word.active,
 .t-WS1.ws-enter .word.current,
 .t-WS1.ws-enter .word.imp.active,
 .t-WS1.ws-enter .word.imp.current {
   animation: wordSlideIn 0.32s cubic-bezier(0.34,1.4,0.64,1) both !important;
+  animation-delay: var(--ws-delay, 90ms) !important;
+}
+.t-WS1.ws-enter.ws-line-1 .word,
+.t-WS1.ws-enter.ws-line-1 .word.active,
+.t-WS1.ws-enter.ws-line-1 .word.current,
+.t-WS1.ws-enter.ws-line-1 .word.imp.active,
+.t-WS1.ws-enter.ws-line-1 .word.imp.current {
+  animation: wordSlideInReverse 0.32s cubic-bezier(0.34,1.4,0.64,1) both !important;
+  animation-delay: var(--ws-delay, 90ms) !important;
+}
+.t-WS1.ws-enter.ws-line-2 .word,
+.t-WS1.ws-enter.ws-line-2 .word.active,
+.t-WS1.ws-enter.ws-line-2 .word.current,
+.t-WS1.ws-enter.ws-line-2 .word.imp.active,
+.t-WS1.ws-enter.ws-line-2 .word.imp.current {
+  animation: wordRiseInFromBottom 0.38s cubic-bezier(0.34,1.2,0.64,1) both !important;
   animation-delay: var(--ws-delay, 90ms) !important;
 }
 .t-WS1.ws-done .word {
@@ -1814,11 +1858,11 @@ body {
 }
 
 .t-36 .word.imp.active {
-   color: var(--template-highlight, #FFE600) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 .t-36 .word.imp.current {
-   color: var(--template-highlight, #FFE600) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -1845,15 +1889,15 @@ body {
 }
 
 .t-105 .word.current {
-   color: var(--template-highlight, #FFE600) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 .t-105 .word.imp.active {
-   color: var(--template-highlight, #FFE600) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 .t-105 .word.imp.current {
-   color: var(--template-highlight, #FFE600) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -1884,11 +1928,11 @@ body {
 }
 
 .t-9 .word.imp.active {
-   color: var(--template-highlight, #FFE600) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 .t-9 .word.imp.current {
-   color: var(--template-highlight, #FFE600) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -1917,12 +1961,12 @@ body {
 }
 
 .t-124 .word.imp.active {
-   color: var(--template-highlight, #FFE600) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 .t-124 .word.imp.current {
-   color: var(--template-highlight, #FFE600) !important;
-   text-shadow: 4px 4px 0 rgba(255, 210, 0, .28) !important
+   color: var(--template-highlight, #DDAA03) !important;
+   text-shadow: 4px 4px 0 rgba(221, 170, 3, .28) !important
 }
 
 /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -1951,12 +1995,12 @@ body {
 }
 
 .t-16 .word.imp.active {
-   color: var(--template-highlight, #FFE600) !important;
+   color: var(--template-highlight, #DDAA03) !important;
    filter: blur(0)
 }
 
 .t-16 .word.imp.current {
-   color: var(--template-highlight, #FFE600) !important;
+   color: var(--template-highlight, #DDAA03) !important;
    filter: blur(0)
 }
 
@@ -1992,7 +2036,7 @@ body {
 }
 
 .t-110 .word.imp.active {
-   color: var(--template-highlight, #FFE600) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 .t-110 .word.current {
@@ -2000,7 +2044,7 @@ body {
 }
 
 .t-110 .word.imp.current {
-   color: var(--template-highlight, #FFE600) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 .t-110 .word.imp.current::after {
@@ -2046,7 +2090,7 @@ body {
 
 .t-119 .word.imp.active {
    color: #1a1a1a !important;
-   background: rgba(255, 230, 0, .78) !important;
+   background: rgba(221, 170, 3, .78) !important;
    padding: 2px 3px;
    border-radius: 4px;
    -webkit-text-fill-color: #1a1a1a !important
@@ -2054,7 +2098,7 @@ body {
 
 .t-119 .word.imp.current {
    color: #1a1a1a !important;
-   background: rgba(255, 230, 0, .78) !important;
+   background: rgba(221, 170, 3, .78) !important;
    padding: 2px 3px;
    border-radius: 4px;
    -webkit-text-fill-color: #1a1a1a !important
@@ -2085,11 +2129,11 @@ body {
 }
 
 .t-12 .word.imp.active {
-   color: var(--template-highlight, #FFE600) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 .t-12 .word.imp.current {
-   color: var(--template-highlight, #FFE600) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -2111,7 +2155,7 @@ body {
 }
 
 .t-106 .word.imp.active {
-   color: var(--template-highlight, #FFE600) !important;
+   color: var(--template-highlight, #DDAA03) !important;
    filter: drop-shadow(1px 2px 3px rgba(0, 0, 0, .8))
 }
 
@@ -2121,7 +2165,7 @@ body {
 }
 
 .t-106 .word.imp.current {
-   color: var(--template-highlight, #FFE600) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -2147,7 +2191,7 @@ body {
 }
 
 .t-52 .word.imp.active {
-   color: var(--template-highlight, #FFE600) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 .t-52 .word.imp.current {
@@ -2174,7 +2218,7 @@ body {
 }
 
 .t-103 .word.imp.active {
-   color: var(--template-highlight, #FFE600) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 .t-103 .word.current {
@@ -2182,7 +2226,7 @@ body {
 }
 
 .t-103 .word.imp.current {
-   color: var(--template-highlight, #FFE600) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -2276,7 +2320,7 @@ body {
 }
 
 .t-112 .word.imp.active {
-   background: linear-gradient(90deg, var(--template-highlight, #FFE600), #FF007F) !important;
+   background: linear-gradient(90deg, var(--template-highlight, #DDAA03), #FF007F) !important;
    -webkit-background-clip: text !important;
    background-clip: text !important;
    -webkit-text-fill-color: transparent !important;
@@ -2292,7 +2336,7 @@ body {
 }
 
 .t-112 .word.imp.current {
-   background: linear-gradient(90deg, var(--template-highlight, #FFE600), #FF007F) !important;
+   background: linear-gradient(90deg, var(--template-highlight, #DDAA03), #FF007F) !important;
    -webkit-background-clip: text !important;
    background-clip: text !important;
    -webkit-text-fill-color: transparent !important;
@@ -2326,12 +2370,12 @@ body {
 }
 
 .t-104 .word.imp.active {
-   color: var(--template-highlight, #FFE600) !important;
+   color: var(--template-highlight, #DDAA03) !important;
    -webkit-text-stroke: 2px rgba(178, 141, 255, .5) !important
 }
 
 .t-104 .word.imp.current {
-   color: var(--template-highlight, #FFE600) !important;
+   color: var(--template-highlight, #DDAA03) !important;
    -webkit-text-stroke: 2px var(--template-secondary, #B28DFF) !important
 }
 
@@ -2392,7 +2436,7 @@ body {
    display: inline-block;
    width: auto;
    max-width: 90%;
-   background: #FFE600;
+   background: #DDAA03;
    color: #111;
    border-radius: 10px;
    padding: 8px 12px;
@@ -2436,15 +2480,15 @@ body {
 }
 
 .t-95 .word.imp.active {
-   color: #FFE600
+   color: #DDAA03
 }
 
 .t-95 .word.imp.current {
-   color: #FFE600
+   color: #DDAA03
 }
 
 .t-95 .word.imp.done {
-   color: #FFE600
+   color: #DDAA03
 }
 
 /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -2495,7 +2539,9 @@ body {
 }
 
 .t-T4 .word {
-   color: rgba(249, 198, 208, 0) !important
+   color: rgba(255, 255, 255, 0) !important;
+   display: inline-block !important;
+   will-change: transform, opacity
 }
 
 .t-T4 .word.active {
@@ -2519,14 +2565,56 @@ body {
    animation: none
 }
 
-@keyframes studyLineSlide {
-   from { transform: translateX(-36px); }
-   to { transform: translateX(0); }
+.t-T4.study-word-slide-preview .word,
+.t-T4.study-word-slide-preview .word.active,
+.t-T4.study-word-slide-preview .word.current,
+.t-T4.study-word-slide-preview .word.imp.active,
+.t-T4.study-word-slide-preview .word.imp.current {
+   color: #ffffff !important;
+   animation: wordSlideIn 0.32s cubic-bezier(0.34,1.4,0.64,1) both !important;
+   animation-delay: var(--ws-delay, 90ms) !important
 }
 
-.bt-cap-block[style*="flex"] .t-T4 {
-   opacity: 1 !important;
-   animation: studyLineSlide 620ms cubic-bezier(0.22,1,0.36,1) both
+.t-T4.study-line-0 {
+   animation: basicWordSlideFromLeft 0.42s cubic-bezier(0.22,1,0.36,1) both !important;
+   animation-delay: 0ms !important
+}
+
+.t-T4.study-line-2 {
+   animation: wordRiseInFromBottom 0.38s cubic-bezier(0.34,1.2,0.64,1) both !important;
+   animation-delay: 0ms !important
+}
+
+.t-T4.study-line-0 .cap-text.has-manual-lines,
+.t-T4.study-line-2 .cap-text.has-manual-lines,
+.t-T4.study-line-0 .basic-manual-line,
+.t-T4.study-line-1 .basic-manual-line,
+.t-T4.study-line-2 .basic-manual-line {
+   animation: none !important;
+   transform: none !important;
+   opacity: 1 !important
+}
+
+.t-T4.study-line-0 .cap-text:not(.has-manual-lines),
+.t-T4.study-line-0 .basic-manual-line-0 {
+   color: #ffffff !important;
+   animation: none !important;
+   transform: none !important
+}
+
+.t-T4.study-line-2 .cap-text:not(.has-manual-lines),
+.t-T4.study-line-2 .basic-manual-line-2 {
+   color: #ffffff !important;
+   animation: none !important;
+   transform: none !important
+}
+
+.t-T4.study-line-0 .word,
+.t-T4.study-line-2 .word,
+.t-T4.study-line-0 .basic-manual-line-0 .word,
+.t-T4.study-line-2 .basic-manual-line-2 .word {
+   animation: none !important;
+   transform: none !important
 }
 
 /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -2559,12 +2647,12 @@ body {
 }
 
 .t-56 .word.imp.active {
-   color: var(--template-highlight, #FFE600) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 .t-56 .word.imp.current {
-   color: var(--template-highlight, #FFE600) !important;
-   border-bottom: 3px solid var(--template-highlight, #FFE600)
+   color: var(--template-highlight, #DDAA03) !important;
+   border-bottom: 3px solid var(--template-highlight, #DDAA03)
 }
 
 .t-T6 {
@@ -2669,11 +2757,11 @@ body {
 }
 
 .t-57 .word.imp.active {
-   color: var(--template-highlight, #FFE600) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 .t-57 .word.imp.current {
-   color: var(--template-highlight, #FFE600) !important;
+   color: var(--template-highlight, #DDAA03) !important;
    animation: flickerOn .18s both;
    text-shadow: 2px 0 0 #f00, -2px 0 0 #00f !important
 }
@@ -2704,11 +2792,11 @@ body {
 }
 
 .t-37 .word.imp.active {
-   color: var(--template-highlight, #FFE600) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 .t-37 .word.imp.current {
-   color: var(--template-highlight, #FFE600) !important;
+   color: var(--template-highlight, #DDAA03) !important;
    filter: drop-shadow(2px 2px 0 rgba(0, 0, 0, .9));
    animation: wipeIn .2s linear both
 }
@@ -2974,7 +3062,7 @@ body {
 }
 
 .t-p3 .word.imp.active {
-   color: var(--template-highlight, #FFE600) !important;
+   color: var(--template-highlight, #DDAA03) !important;
    text-shadow: 3px 3px 0 #000 !important
 }
 
@@ -2996,7 +3084,7 @@ body {
 }
 
 .t-p4 .word.imp.active {
-   color: #FFFF00 !important;
+   color: #DDAA03 !important;
    text-shadow: 2px 2px 0 #555500 !important
 }
 
@@ -3032,7 +3120,7 @@ body {
 }
 
 .t-p6 .word.active {
-   color: var(--template-highlight, #FFE600) !important;
+   color: var(--template-highlight, #DDAA03) !important;
    animation: comicSlam .25s ease-out both;
    -webkit-text-stroke: 2.5px #000 !important;
    paint-order: stroke fill;
@@ -3042,7 +3130,7 @@ body {
 .t-p6 .word.imp.active {
    color: #FF3366 !important;
    -webkit-text-stroke: 2.5px #000 !important;
-   text-shadow: 4px 4px 0 var(--template-highlight, #FFE600) !important
+   text-shadow: 4px 4px 0 var(--template-highlight, #DDAA03) !important
 }
 
 /* â”€â”€ P7. Typewriter â”€â”€ */
@@ -3081,8 +3169,8 @@ body {
 }
 
 .t-p8 .word.imp.active {
-   color: #FFD700 !important;
-   text-shadow: 0 0 15px rgba(255, 215, 0, .6) !important
+   color: #DDAA03 !important;
+   text-shadow: 0 0 15px rgba(221, 170, 3, .6) !important
 }
 
 /* â”€â”€ P9. Ice Crystal â”€â”€ */
@@ -3222,8 +3310,8 @@ body {
 }
 
 .t-p14 .word.imp.active {
-   color: #FFD700 !important;
-   text-shadow: 0 0 15px rgba(255, 215, 0, .5) !important
+   color: #DDAA03 !important;
+   text-shadow: 0 0 15px rgba(221, 170, 3, .5) !important
 }
 
 /* â”€â”€ P15. Candy Pop â”€â”€ */
@@ -3245,7 +3333,7 @@ body {
 }
 
 .t-p15 .word.imp.active {
-   color: var(--template-highlight, #FFE600) !important;
+   color: var(--template-highlight, #DDAA03) !important;
    -webkit-text-stroke: 2px #fff !important;
    text-shadow: 3px 3px 0 #FF6FCF !important
 }
@@ -3379,7 +3467,7 @@ body {
 .btcard-preview .cpt-wrap .word.current { color: #fff !important; }
 .btcard-preview .t-36 .cpt-wrap .word.current,
 .btcard-preview .t-36 .cpt-wrap .word.active.current {
-  color: var(--template-secondary, #FFE600) !important;
+  color: var(--template-secondary, #DDAA03) !important;
   filter: drop-shadow(2px 2px 0 rgba(0,0,0,.9)) !important;
 }
 
@@ -3401,7 +3489,7 @@ body {
 .t-LAB1 .cpt-row-sm { gap: 4px; line-height: 1.2; }
 
 /* Per-block accent colors ï¿½ each line gets a different highlight */
-.t-LAB1 .cpt-lg { color: var(--lab-accent, #FFE600) !important; }
+.t-LAB1 .cpt-lg { color: var(--lab-accent, #DDAA03) !important; }
 
 /* CPT word reveal animation: words pop in sequentially */
 @keyframes labWordPop {
@@ -3415,8 +3503,8 @@ body {
   animation: labWordPop 0.42s cubic-bezier(0.34,1.56,0.64,1) both;
 }
 .btcard-preview .t-LAB1 .cpt-wrap .word.current.cpt-lg {
-  color: var(--lab-accent, #FFE600) !important;
-  text-shadow: 0 3px 14px rgba(255,230,0,0.35);
+  color: var(--lab-accent, #DDAA03) !important;
+  text-shadow: 0 3px 14px rgba(221,170,3,0.35);
 }
 
 /* Right-anchor "labelled" caption rows */
@@ -3564,7 +3652,7 @@ body {
         <span class="wbw-slide" data-text="Silence has its own {imp-italic:grammar}."><span class="w" data-i="0" style="opacity: 0;">Silence</span> <span class="w" data-i="1" style="opacity: 0;">has</span> <span class="w" data-i="2" style="opacity: 0;">its</span> <span class="w" data-i="3" style="opacity: 0;">own</span> <span class="w imp-italic" data-i="4" data-imp="true" data-imp-cls="imp-italic" style="opacity: 0;">grammar</span><span class="w" data-i="5" style="opacity: 0;">.</span></span>
       </div>
       <div class="sblock t38-block" id="t38-b2" data-type="wbw-rise" data-label="WBW RISE" bis_skin_checked="1" style="transition: none; opacity: 0;">
-        <span class="wbw-rise" data-text="Write the words {imp-underline:only} you know."><span class="w" data-i="0" style="opacity: 0;">Write</span> <span class="w" data-i="1" style="opacity: 0;">the</span> <span class="w" data-i="2" style="opacity: 0;">words</span> <span class="w imp-underline" data-i="3" data-imp="true" data-imp-cls="imp-underline" style="opacity: 0;">only</span> <span class="w" data-i="4" style="opacity: 0;">you</span> <span class="w" data-i="5" style="opacity: 0;">know.</span></span>
+        <span class="wbw-rise" data-text="Write the words {imp-gold:only} you know."><span class="w" data-i="0" style="opacity: 0;">Write</span> <span class="w" data-i="1" style="opacity: 0;">the</span> <span class="w" data-i="2" style="opacity: 0;">words</span> <span class="w imp-gold" data-i="3" data-imp="true" data-imp-cls="imp-gold" style="opacity: 0;">only</span> <span class="w" data-i="4" style="opacity: 0;">you</span> <span class="w" data-i="5" style="opacity: 0;">know.</span></span>
       </div>
       <div class="sblock t38-block" id="t38-b3" data-type="wbw-seq-fade" data-label="WBW SEQ FADE" bis_skin_checked="1" style="transition: none; opacity: 0;">
         <span class="wbw-seq-fade" data-text="Every unwritten page {imp-italic:breathes} still."><span class="w" data-i="0" style="opacity: 0;">Every</span> <span class="w" data-i="1" style="opacity: 0;">unwritten</span> <span class="w" data-i="2" style="opacity: 0;">page</span> <span class="w imp-italic" data-i="3" data-imp="true" data-imp-cls="imp-italic" style="opacity: 0;">breathes</span> <span class="w" data-i="4" style="opacity: 0;">still.</span></span>
@@ -3722,8 +3810,8 @@ body {
       <div class="sblock t11-block t11-b1" id="t11-b1" data-type="styled" data-label="BLUR FOCUS" bis_skin_checked="1" style="transition: none; opacity: 0;">
         <span class="blur-txt">The soul speaks in <span class="imp-italic">silence</span>.</span>
       </div>
-      <div class="sblock t11-block" id="t11-b2" data-type="plain" data-label="PLAIN" style="transition: none; opacity: 0;" bis_skin_checked="1">
-        <span>every answer lives within you.</span>
+      <div class="sblock t11-block" id="t11-b2" data-type="wbw-rise" data-label="RECREATED RISE" style="transition: none; opacity: 0;" bis_skin_checked="1">
+        <span class="wbw-rise" data-text="every {imp-gold:answer} lives within you."><span class="w" data-i="0" style="opacity: 0;">every</span> <span class="w imp-gold" data-i="1" data-imp="true" data-imp-cls="imp-gold" style="opacity: 0;">answer</span> <span class="w" data-i="2" style="opacity: 0;">lives</span> <span class="w" data-i="3" style="opacity: 0;">within</span> <span class="w" data-i="4" style="opacity: 0;">you.</span></span>
       </div>
       <div class="sblock t11-block t11-b3" id="t11-b3" data-type="wbw-rise" data-label="WBW RISE" bis_skin_checked="1" style="transition: none; opacity: 0;">
         <span class="wbw-rise" data-text="Still your mind and {imp-gold:listen}."><span class="w" data-i="0" style="opacity: 0;">Still</span> <span class="w" data-i="1" style="opacity: 0;">your</span> <span class="w" data-i="2" style="opacity: 0;">mind</span> <span class="w" data-i="3" style="opacity: 0;">and</span> <span class="w imp-gold" data-i="4" data-imp="true" data-imp-cls="imp-gold" style="opacity: 0;">listen</span><span class="w" data-i="5" style="opacity: 0;">.</span></span>
@@ -3830,12 +3918,12 @@ body {
   <div class="tcard" id="card-t15" bis_skin_checked="1">
     <div class="tcard-meta" bis_skin_checked="1">
       <span class="tcard-id">T15</span>
-      <span class="tcard-name">Storm &amp; Drama</span>
+      <span class="tcard-name">Storm Surge</span>
       <span class="tcard-mood">storm</span>
       <span class="formula-badge f2">2-Style</span>
     </div>
     <div class="stage t15-stage" id="stage-t15" bis_skin_checked="1">
-      <div class="sblock t15-block t15-b0" id="t15-b0" data-type="styled" data-label="SHAKE-IN" bis_skin_checked="1" style="transition: none; opacity: 0;">
+      <div class="sblock t15-block t15-b0" id="t15-b0" data-type="styled" data-label="SURGE IN" bis_skin_checked="1" style="transition: none; opacity: 0;">
         <div class="shake-in" bis_skin_checked="1">THE <span class="imp-rose">STORM</span><br>IS COMING.</div>
       </div>
       <div class="sblock t15-block t15-b1" id="t15-b1" data-type="styled" data-label="CENTER POP" bis_skin_checked="1" style="transition: none; opacity: 0;">
@@ -3847,7 +3935,7 @@ body {
       <div class="sblock t15-block" id="t15-b3" data-type="wbw-seq-fade" data-label="WBW SEQ FADE" bis_skin_checked="1" style="transition: none; opacity: 0;">
         <span class="wbw-seq-fade" data-text="Brace for the {imp-rose:truth}."><span class="w" data-i="0" style="opacity: 0;">Brace</span> <span class="w" data-i="1" style="opacity: 0;">for</span> <span class="w" data-i="2" style="opacity: 0;">the</span> <span class="w imp-rose" data-i="3" data-imp="true" data-imp-cls="imp-rose" style="opacity: 0;">truth</span><span class="w" data-i="4" style="opacity: 0;">.</span></span>
       </div>
-      <span class="stage-type-label" id="t15-label">SHAKE-IN</span>
+      <span class="stage-type-label" id="t15-label">SURGE IN</span>
     </div>
     <div class="prog-dots" id="dots-t15" bis_skin_checked="1">
       <div class="dot active" bis_skin_checked="1"></div><div class="dot" bis_skin_checked="1"></div>
@@ -3933,8 +4021,8 @@ body {
       <div class="sblock t18-block t18-b1" id="t18-b1" data-type="styled" data-label="FADE REVEAL" bis_skin_checked="1" style="transition: none; opacity: 0;">
         <div class="reveal-txt" bis_skin_checked="1">Some stories don't end.<br>They <span class="imp-purple">echo</span>.</div>
       </div>
-      <div class="sblock t18-block" id="t18-b2" data-type="plain" data-label="PLAIN" bis_skin_checked="1" style="transition: none; opacity: 0;">
-        <span>You were there. You remember.</span>
+      <div class="sblock t18-block" id="t18-b2" data-type="wbw-rise" data-label="RECREATED RISE" bis_skin_checked="1" style="transition: none; opacity: 0;">
+        <span class="wbw-rise" data-text="You were {imp-purple:there}. You remember."><span class="w" data-i="0" style="opacity: 0;">You</span> <span class="w" data-i="1" style="opacity: 0;">were</span> <span class="w imp-purple" data-i="2" data-imp="true" data-imp-cls="imp-purple" style="opacity: 0;">there.</span> <span class="w" data-i="3" style="opacity: 0;">You</span> <span class="w" data-i="4" style="opacity: 0;">remember.</span></span>
       </div>
       <div class="sblock t18-block" id="t18-b3" data-type="wbw-rise" data-label="WBW RISE" bis_skin_checked="1" style="transition: none; opacity: 0;">
         <span class="wbw-rise" data-text="The camera {imp-purple:never} lies."><span class="w" data-i="0" style="opacity: 0;">The</span> <span class="w" data-i="1" style="opacity: 0;">camera</span> <span class="w imp-purple" data-i="2" data-imp="true" data-imp-cls="imp-purple" style="opacity: 0;">never</span> <span class="w" data-i="3" style="opacity: 0;">lies.</span></span>
@@ -4060,7 +4148,7 @@ body {
         <span>At 2pm. On the couch.</span>
       </div>
       <div class="sblock t23-block t23-b3" id="t23-b3" data-type="styled" data-label="PUNCH POP" bis_skin_checked="1" style="transition: none; opacity: 0;">
-        <div class="punch-txt" bis_skin_checked="1">Eating <span class="imp-gold">chaat</span>.</div>
+        <div class="punch-txt" bis_skin_checked="1">Eating <span class="imp-bold">chaat</span>.</div>
       </div>
       <span class="stage-type-label" id="t23-label">SLIDE-RIGHT</span>
     </div>
@@ -4085,20 +4173,14 @@ body {
       <div class="sblock t24-block t24-b1" id="t24-b1" data-type="styled" data-label="SLOW RISE" bis_skin_checked="1" style="transition: none; opacity: 0;">
         <div class="slow-rise" bis_skin_checked="1">But you kept <span class="imp-purple">looking</span> outward.</div>
       </div>
-      <div class="sblock t24-block" id="t24-b2" data-type="plain" data-label="PLAIN" bis_skin_checked="1" style="transition: none; opacity: 0;">
-        <span>The map was always yours.</span>
+      <div class="sblock t24-block" id="t24-b2" data-type="wbw-rise" data-label="RECREATED RISE" bis_skin_checked="1" style="transition: none; opacity: 0;">
+        <span class="wbw-rise" data-text="The map was {imp-orange:always} yours."><span class="w" data-i="0" style="opacity: 0;">The</span> <span class="w" data-i="1" style="opacity: 0;">map</span> <span class="w" data-i="2" style="opacity: 0;">was</span> <span class="w imp-orange" data-i="3" data-imp="true" data-imp-cls="imp-orange" style="opacity: 0;">always</span> <span class="w" data-i="4" style="opacity: 0;">yours.</span></span>
       </div>
       <div class="sblock t24-block" id="t24-b3" data-type="wbw-rise" data-label="WBW RISE" bis_skin_checked="1" style="transition: none; opacity: 0;">
         <span class="wbw-rise" data-text="Stop searching. Start {imp-purple:remembering}."><span class="w" data-i="0" style="opacity: 0;">Stop</span> <span class="w" data-i="1" style="opacity: 0;">searching.</span> <span class="w" data-i="2" style="opacity: 0;">Start</span> <span class="w imp-purple" data-i="3" data-imp="true" data-imp-cls="imp-purple" style="opacity: 0;">remembering</span><span class="w" data-i="4" style="opacity: 0;">.</span></span>
       </div>
-      <div class="sblock t24-block" id="t24-b4" data-type="karaoke" data-label="KARAOKE" bis_skin_checked="1" style="transition: none; opacity: 0;">
-        <span class="kf-line">
-          <span class="kf-word"><span class="kf-base">Look</span><span class="kf-fill" style="transition: none; clip-path: inset(0px 100% 0px 0px);">Look</span></span>
-          <span class="kf-word"><span class="kf-base">within.</span><span class="kf-fill" style="transition: none; clip-path: inset(0px 100% 0px 0px);">within.</span></span>
-          <span class="kf-word"><span class="kf-base">The</span><span class="kf-fill" style="transition: none; clip-path: inset(0px 100% 0px 0px);">The</span></span>
-          <span class="kf-word"><span class="kf-base">door</span><span class="kf-fill" style="transition: none; clip-path: inset(0px 100% 0px 0px);">door</span></span>
-          <span class="kf-word"><span class="kf-base">opens.</span><span class="kf-fill" style="transition: none; clip-path: inset(0px 100% 0px 0px);">opens.</span></span>
-        </span>
+      <div class="sblock t24-block" id="t24-b4" data-type="wbw-rise" data-label="INNER REVEAL" bis_skin_checked="1" style="transition: none; opacity: 0;">
+        <span class="wbw-rise" data-text="Look within. The door opens."><span class="w" data-i="0" style="opacity: 0;">Look</span> <span class="w" data-i="1" style="opacity: 0;">within.</span> <span class="w" data-i="2" style="opacity: 0;">The</span> <span class="w" data-i="3" style="opacity: 0;">door</span> <span class="w" data-i="4" style="opacity: 0;">opens.</span></span>
       </div>
       <span class="stage-type-label" id="t24-label">WBW RISE</span>
     </div>
@@ -4297,8 +4379,8 @@ body {
       <div class="sblock t31-block t31-b1" id="t31-b1" data-type="wbw-seq-fade" data-label="WBW SEQ FADE" bis_skin_checked="1" style="transition: opacity 360ms; opacity: 0;">
         <span class="wbw-seq-fade" data-text="The headline writes itself."><span class="w" data-i="0" style="opacity: 0;">The</span> <span class="w" data-i="1" style="opacity: 0;">headline</span> <span class="w" data-i="2" style="opacity: 0;">writes</span> <span class="w" data-i="3" style="opacity: 0;">itself.</span></span>
       </div>
-      <div class="sblock t31-block" id="t31-b2" data-type="plain" data-label="PLAIN" bis_skin_checked="1" style="transition: none; opacity: 0;">
-        <span>Except those who were watching.</span>
+      <div class="sblock t31-block" id="t31-b2" data-type="wbw-rise" data-label="RECREATED RISE" bis_skin_checked="1" style="transition: none; opacity: 0;">
+        <span class="wbw-rise" data-text="Except those who were {imp-gold:watching}."><span class="w" data-i="0" style="opacity: 0;">Except</span> <span class="w" data-i="1" style="opacity: 0;">those</span> <span class="w" data-i="2" style="opacity: 0;">who</span> <span class="w" data-i="3" style="opacity: 0;">were</span> <span class="w imp-gold" data-i="4" data-imp="true" data-imp-cls="imp-gold" style="opacity: 0;">watching.</span></span>
       </div>
       <div class="sblock t31-block" id="t31-b3" data-type="wbw-rise" data-label="WBW RISE" bis_skin_checked="1" style="transition: opacity 360ms; opacity: 0;">
         <span class="wbw-rise" data-text="Pay {imp-gold:attention}. It matters now."><span class="w" data-i="0" style="opacity: 0;">Pay</span> <span class="w imp-gold" data-i="1" data-imp="true" data-imp-cls="imp-gold" style="opacity: 0;">attention</span><span class="w" data-i="2" style="opacity: 0;">.</span> <span class="w" data-i="3" style="opacity: 0;">It</span> <span class="w" data-i="4" style="opacity: 0;">matters</span> <span class="w" data-i="5" style="opacity: 0;">now.</span></span>
@@ -4924,7 +5006,7 @@ const templates = [
     blocks: [
       { id: 't11-b0', type: 'wbw-seq-fade', label: 'WBW SEQ FADE' },
       { id: 't11-b1', type: 'styled', label: 'BLUR FOCUS' },
-      { id: 't11-b2', type: 'plain',  label: 'PLAIN' },
+      { id: 't11-b2', type: 'wbw-rise',  label: 'RECREATED RISE' },
       { id: 't11-b3', type: 'wbw-rise', label: 'WBW RISE' },
     ]
   },
@@ -4958,7 +5040,7 @@ const templates = [
   {
     id: 't15',
     blocks: [
-      { id: 't15-b0', type: 'styled', label: 'SHAKE-IN' },
+      { id: 't15-b0', type: 'styled', label: 'SURGE IN' },
       { id: 't15-b1', type: 'styled', label: 'CENTER POP' },
       { id: 't15-b2', type: 'wbw-rise', label: 'WBW RISE' },
       { id: 't15-b3', type: 'wbw-seq-fade', label: 'WBW SEQ FADE' },
@@ -4987,7 +5069,7 @@ const templates = [
     blocks: [
       { id: 't18-b0', type: 'styled', label: 'SPLIT TITLE' },
       { id: 't18-b1', type: 'styled', label: 'FADE REVEAL' },
-      { id: 't18-b2', type: 'plain',  label: 'PLAIN' },
+      { id: 't18-b2', type: 'wbw-rise',  label: 'RECREATED RISE' },
       { id: 't18-b3', type: 'wbw-rise', label: 'WBW RISE' },
     ]
   },
@@ -5032,9 +5114,9 @@ const templates = [
     blocks: [
       { id: 't24-b0', type: 'wbw-rise', label: 'WBW RISE' },
       { id: 't24-b1', type: 'styled', label: 'SLOW RISE' },
-      { id: 't24-b2', type: 'plain',  label: 'PLAIN' },
+      { id: 't24-b2', type: 'wbw-rise',  label: 'RECREATED RISE' },
       { id: 't24-b3', type: 'wbw-rise', label: 'WBW RISE' },
-      { id: 't24-b4', type: 'karaoke', label: 'KARAOKE' },
+      { id: 't24-b4', type: 'wbw-rise', label: 'INNER REVEAL' },
     ]
   },
   {
@@ -5096,7 +5178,7 @@ const templates = [
     blocks: [
       { id: 't31-b0', type: 'styled', label: 'TYPEWRITER' },
       { id: 't31-b1', type: 'wbw-seq-fade', label: 'WBW SEQ FADE' },
-      { id: 't31-b2', type: 'plain',  label: 'PLAIN' },
+      { id: 't31-b2', type: 'wbw-rise',  label: 'RECREATED RISE' },
       { id: 't31-b3', type: 'wbw-rise', label: 'WBW RISE' },
       { id: 't31-b4', type: 'styled', label: '3D FLIP' },
     ]
@@ -5220,24 +5302,24 @@ observer.observe(t11b0, { attributes: true });
   <h2 class="bt-heading">Basic Templates</h2>
   <p class="bt-subheading">23 caption styles - yellow = important word</p>
   <div class="bt-grid">
-    <div class="btcard"><div class="btcard-preview" style="background:#111"><div class="bt-cap-stack"><div class="bt-cap-block" style="display: none;"><div class="t-106" style="--template-primary:#FFFFFF;--template-secondary:#FFFFFF;--template-highlight:#FFE600;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="0" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">This</span><span class="word active" data-wi="1" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">IS</span><span class="word active" data-wi="2" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">great</span><span class="word active" data-wi="3" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">now</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-106" style="--template-primary:#FFFFFF;--template-secondary:#FFFFFF;--template-highlight:#FFE600;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="4" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">and</span><span class="word active" data-wi="5" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">it</span><span class="word active" data-wi="6" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">feels</span><span class="word active" data-wi="7" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">right</span></span></div></div><div class="bt-cap-block" style="display: flex;"><div class="t-106" style="--template-primary:#FFFFFF;--template-secondary:#FFFFFF;--template-highlight:#FFE600;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="8" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">every</span><span class="word active" data-wi="9" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">single</span><span class="word active current" data-wi="10" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">time</span><span class="word active" data-wi="11" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">yeah</span></span></div></div></div></div><div class="bt-prog-dots"><div class="dot"></div><div class="dot"></div><div class="dot active"></div></div><div class="btcard-info"><div class="btcard-name">Iman</div><div class="btcard-desc">Words hidden until spoken ï¿½ clean reveal</div></div></div>
-    <div class="btcard"><div class="btcard-preview" style="background:#111"><div class="bt-cap-stack"><div class="bt-cap-block" style="display: none;"><div class="t-52" style="--template-primary: #FFFFFF; --template-secondary: #FFFFFF; --template-highlight: #FFE600; --template-bg: transparent; transition: transform 700ms cubic-bezier(0.22, 1, 0.36, 1), opacity 400ms; opacity: 1; transform: none;"><span class="cap-text" style="font-family:&#39;Inter&#39;,sans-serif;font-weight:900;"><span class="word active" data-wi="0" data-imp="false">This</span><span class="word active" data-wi="1" data-imp="false">IS</span><span class="word active" data-wi="2" data-imp="false">great</span><span class="word active" data-wi="3" data-imp="false">now</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-52" style="--template-primary: #FFFFFF; --template-secondary: #FFFFFF; --template-highlight: #FFE600; --template-bg: transparent; transition: transform 700ms cubic-bezier(0.22, 1, 0.36, 1), opacity 400ms; opacity: 1; transform: none;"><span class="cap-text" style="font-family:&#39;Inter&#39;,sans-serif;font-weight:900;"><span class="word active" data-wi="4" data-imp="false">and</span><span class="word active" data-wi="5" data-imp="false">it</span><span class="word active" data-wi="6" data-imp="false">feels</span><span class="word active" data-wi="7" data-imp="false">right</span></span></div></div><div class="bt-cap-block" style="display: flex;"><div class="t-52" style="--template-primary: #FFFFFF; --template-secondary: #FFFFFF; --template-highlight: #FFE600; --template-bg: transparent; transition: transform 700ms cubic-bezier(0.22, 1, 0.36, 1), opacity 400ms; opacity: 1; transform: none;"><span class="cap-text" style="font-family:&#39;Inter&#39;,sans-serif;font-weight:900;"><span class="word active" data-wi="8" data-imp="false">every</span><span class="word active" data-wi="9" data-imp="false">single</span><span class="word active current" data-wi="10" data-imp="false">time</span><span class="word active" data-wi="11" data-imp="false">yeah</span></span></div></div></div></div><div class="bt-prog-dots"><div class="dot"></div><div class="dot"></div><div class="dot active"></div></div><div class="btcard-info"><div class="btcard-name">Light Streak</div><div class="btcard-desc">Words rise into view as spoken</div></div></div>
-    <div class="btcard"><div class="btcard-preview" style="background:#111"><div class="bt-cap-stack"><div class="bt-cap-block" style="display: none;"><div class="t-T4" style="--template-primary: #f9a8d4; --template-secondary: #f9a8d4; --template-highlight: #FFE600; --template-bg: transparent; transition: transform 700ms cubic-bezier(0.22, 1, 0.36, 1), opacity 400ms; opacity: 1; transform: none;"><span class="cap-text" style="font-family:&#39;Playfair Display&#39;,sans-serif;font-weight:700;font-style:italic;"><span class="word active" data-wi="0" data-imp="false">This</span><span class="word active" data-wi="1" data-imp="false">IS</span><span class="word active" data-wi="2" data-imp="false">great</span><span class="word active" data-wi="3" data-imp="false">now</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-T4" style="--template-primary: #f9a8d4; --template-secondary: #f9a8d4; --template-highlight: #FFE600; --template-bg: transparent; transition: transform 700ms cubic-bezier(0.22, 1, 0.36, 1), opacity 400ms; opacity: 1; transform: none;"><span class="cap-text" style="font-family:&#39;Playfair Display&#39;,sans-serif;font-weight:700;font-style:italic;"><span class="word active" data-wi="4" data-imp="false">and</span><span class="word active" data-wi="5" data-imp="false">it</span><span class="word active" data-wi="6" data-imp="false">feels</span><span class="word active" data-wi="7" data-imp="false">right</span></span></div></div><div class="bt-cap-block" style="display: flex;"><div class="t-T4" style="--template-primary: #f9a8d4; --template-secondary: #f9a8d4; --template-highlight: #FFE600; --template-bg: transparent; transition: transform 700ms cubic-bezier(0.22, 1, 0.36, 1), opacity 400ms; opacity: 1; transform: none;"><span class="cap-text" style="font-family:&#39;Playfair Display&#39;,sans-serif;font-weight:700;font-style:italic;"><span class="word active" data-wi="8" data-imp="false">every</span><span class="word active" data-wi="9" data-imp="false">single</span><span class="word active current" data-wi="10" data-imp="false">time</span><span class="word active" data-wi="11" data-imp="false">yeah</span></span></div></div></div></div><div class="bt-prog-dots"><div class="dot"></div><div class="dot"></div><div class="dot active"></div></div><div class="btcard-info"><div class="btcard-name">Study With Me</div><div class="btcard-desc">Soft pink italic serif on dark bg</div></div></div>
-    <div class="btcard"><div class="btcard-preview" style="background:#0d1117"><div class="bt-cap-stack"><div class="bt-cap-block" style="display: none;"><div class="t-WS1 ws-done" style="--template-primary:#FFFFFF;--template-secondary:#FFFFFF;--template-highlight:#FFE600;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Raleway&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="0" data-imp="false" style="transition: none; filter: none; --ws-delay: 90ms;">This</span><span class="word active" data-wi="1" data-imp="false" style="transition: none; filter: none; --ws-delay: 145ms;">IS</span><span class="word active" data-wi="2" data-imp="false" style="transition: none; filter: none; --ws-delay: 200ms;">great</span><span class="word active" data-wi="3" data-imp="false" style="transition: none; filter: none; --ws-delay: 255ms;">now</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-WS1 ws-done" style="--template-primary:#FFFFFF;--template-secondary:#FFFFFF;--template-highlight:#FFE600;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Raleway&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="4" data-imp="false" style="transition: none; filter: none; --ws-delay: 90ms;">and</span><span class="word active" data-wi="5" data-imp="false" style="transition: none; filter: none; --ws-delay: 145ms;">it</span><span class="word active" data-wi="6" data-imp="false" style="transition: none; filter: none; --ws-delay: 200ms;">feels</span><span class="word active" data-wi="7" data-imp="false" style="transition: none; filter: none; --ws-delay: 255ms;">right</span></span></div></div><div class="bt-cap-block" style="display: flex;"><div class="t-WS1 ws-done" style="--template-primary:#FFFFFF;--template-secondary:#FFFFFF;--template-highlight:#FFE600;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Raleway&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="8" data-imp="false" style="transition: none; filter: none; --ws-delay: 90ms;">every</span><span class="word active" data-wi="9" data-imp="false" style="transition: none; filter: none; --ws-delay: 145ms;">single</span><span class="word active current" data-wi="10" data-imp="false" style="transition: none; filter: none; --ws-delay: 200ms;">time</span><span class="word active" data-wi="11" data-imp="false" style="transition: none; filter: none; --ws-delay: 255ms;">yeah</span></span></div></div></div></div><div class="bt-prog-dots"><div class="dot"></div><div class="dot"></div><div class="dot active"></div></div><div class="btcard-info"><div class="btcard-name">Word Slide</div><div class="btcard-desc">Iman-style reveal with a sideways slide</div></div></div>
-    <div class="btcard"><div class="btcard-preview" style="background:#111"><div class="bt-cap-stack"><div class="bt-cap-block" style="display: none;"><div class="t-115" style="--template-primary:#FFFFFF;--template-secondary:#39FF14;--template-highlight:#FFE600;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:900;font-style:italic;"><span class="word active" data-wi="0" data-imp="false">This</span><span class="word active" data-wi="1" data-imp="false">IS</span><span class="word active" data-wi="2" data-imp="false">great</span><span class="word active" data-wi="3" data-imp="false">now</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-115" style="--template-primary:#FFFFFF;--template-secondary:#39FF14;--template-highlight:#FFE600;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:900;font-style:italic;"><span class="word active" data-wi="4" data-imp="false">and</span><span class="word active" data-wi="5" data-imp="false">it</span><span class="word active" data-wi="6" data-imp="false">feels</span><span class="word active" data-wi="7" data-imp="false">right</span></span></div></div><div class="bt-cap-block" style="display: flex;"><div class="t-115" style="--template-primary:#FFFFFF;--template-secondary:#39FF14;--template-highlight:#FFE600;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:900;font-style:italic;"><span class="word active" data-wi="8" data-imp="false">every</span><span class="word active" data-wi="9" data-imp="false">single</span><span class="word active current" data-wi="10" data-imp="false">time</span><span class="word active" data-wi="11" data-imp="false">yeah</span></span></div></div></div></div><div class="bt-prog-dots"><div class="dot"></div><div class="dot"></div><div class="dot active"></div></div><div class="btcard-info"><div class="btcard-name">Green Neon Pulse</div><div class="btcard-desc">White text with pulsing green active glow</div></div></div>
-    <div class="btcard"><div class="btcard-preview" style="background:#111"><div class="bt-cap-stack"><div class="bt-cap-block" style="display: none;"><div class="t-104" style="--template-primary:#FFFFFF;--template-secondary:#2563EB;--template-highlight:#FFE600;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:900;"><span class="word active" data-wi="0" data-imp="false">This</span><span class="word active" data-wi="1" data-imp="false">IS</span><span class="word active" data-wi="2" data-imp="false">great</span><span class="word active" data-wi="3" data-imp="false">now</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-104" style="--template-primary:#FFFFFF;--template-secondary:#2563EB;--template-highlight:#FFE600;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:900;"><span class="word active" data-wi="4" data-imp="false">and</span><span class="word active" data-wi="5" data-imp="false">it</span><span class="word active" data-wi="6" data-imp="false">feels</span><span class="word active" data-wi="7" data-imp="false">right</span></span></div></div><div class="bt-cap-block" style="display: flex;"><div class="t-104" style="--template-primary:#FFFFFF;--template-secondary:#2563EB;--template-highlight:#FFE600;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:900;"><span class="word active" data-wi="8" data-imp="false">every</span><span class="word active" data-wi="9" data-imp="false">single</span><span class="word active current" data-wi="10" data-imp="false">time</span><span class="word active" data-wi="11" data-imp="false">yeah</span></span></div></div></div></div><div class="bt-prog-dots"><div class="dot"></div><div class="dot"></div><div class="dot active"></div></div><div class="btcard-info"><div class="btcard-name">Pulse</div><div class="btcard-desc">White text with purple stroke glow</div></div></div>
-    <div class="btcard"><div class="btcard-preview" style="background:#1a1a1a"><div class="bt-cap-stack"><div class="bt-cap-block" style="display: none;"><div class="t-109" style="--template-primary:#FFFFFF;--template-secondary:#E01A1A;--template-highlight:#FFE600;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:900;"><span class="word active" data-wi="0" data-imp="false">This</span><span class="word active" data-wi="1" data-imp="false">IS</span><span class="word active" data-wi="2" data-imp="false">great</span><span class="word active" data-wi="3" data-imp="false">now</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-109" style="--template-primary:#FFFFFF;--template-secondary:#E01A1A;--template-highlight:#FFE600;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:900;"><span class="word active" data-wi="4" data-imp="false">and</span><span class="word active" data-wi="5" data-imp="false">it</span><span class="word active" data-wi="6" data-imp="false">feels</span><span class="word active" data-wi="7" data-imp="false">right</span></span></div></div><div class="bt-cap-block" style="display: flex;"><div class="t-109" style="--template-primary:#FFFFFF;--template-secondary:#E01A1A;--template-highlight:#FFE600;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:900;"><span class="word active" data-wi="8" data-imp="false">every</span><span class="word active" data-wi="9" data-imp="false">single</span><span class="word active current" data-wi="10" data-imp="false">time</span><span class="word active" data-wi="11" data-imp="false">yeah</span></span></div></div></div></div><div class="bt-prog-dots"><div class="dot"></div><div class="dot"></div><div class="dot active"></div></div><div class="btcard-info"><div class="btcard-name">3D Shadow</div><div class="btcard-desc">White text with bold orange 3D shadow on active</div></div></div>
-    <div class="btcard"><div class="btcard-preview" style="background:#111"><div class="bt-cap-stack"><div class="bt-cap-block" style="display: none;"><div class="t-95" style="--template-primary:#FFFFFF;--template-secondary:#0055FF;--template-highlight:#FFE600;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Montserrat&#39;,sans-serif;font-weight:700;"><span class="word active" data-wi="0" data-imp="false">This</span><span class="word active" data-wi="1" data-imp="false">IS</span><span class="word active" data-wi="2" data-imp="false">great</span><span class="word active" data-wi="3" data-imp="false">now</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-95" style="--template-primary:#FFFFFF;--template-secondary:#0055FF;--template-highlight:#FFE600;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Montserrat&#39;,sans-serif;font-weight:700;"><span class="word active" data-wi="4" data-imp="false">and</span><span class="word active" data-wi="5" data-imp="false">it</span><span class="word active" data-wi="6" data-imp="false">feels</span><span class="word active" data-wi="7" data-imp="false">right</span></span></div></div><div class="bt-cap-block" style="display: flex;"><div class="t-95" style="--template-primary:#FFFFFF;--template-secondary:#0055FF;--template-highlight:#FFE600;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Montserrat&#39;,sans-serif;font-weight:700;"><span class="word active" data-wi="8" data-imp="false">every</span><span class="word active" data-wi="9" data-imp="false">single</span><span class="word active current" data-wi="10" data-imp="false">time</span><span class="word active" data-wi="11" data-imp="false">yeah</span></span></div></div></div></div><div class="bt-prog-dots"><div class="dot"></div><div class="dot"></div><div class="dot active"></div></div><div class="btcard-info"><div class="btcard-name">Speed Lines</div><div class="btcard-desc">Skewed font with blue speed streaks</div></div></div>
+    <div class="btcard"><div class="btcard-preview" style="background:#111"><div class="bt-cap-stack"><div class="bt-cap-block" style="display: none;"><div class="t-106" style="--template-primary:#FFFFFF;--template-secondary:#FFFFFF;--template-highlight:#DDAA03;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="0" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">This</span><span class="word active" data-wi="1" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">IS</span><span class="word active" data-wi="2" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">great</span><span class="word active" data-wi="3" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">now</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-106" style="--template-primary:#FFFFFF;--template-secondary:#FFFFFF;--template-highlight:#DDAA03;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="4" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">and</span><span class="word active" data-wi="5" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">it</span><span class="word active" data-wi="6" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">feels</span><span class="word active" data-wi="7" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">right</span></span></div></div><div class="bt-cap-block" style="display: flex;"><div class="t-106" style="--template-primary:#FFFFFF;--template-secondary:#FFFFFF;--template-highlight:#DDAA03;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="8" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">every</span><span class="word active" data-wi="9" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">single</span><span class="word active current" data-wi="10" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">time</span><span class="word active" data-wi="11" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">yeah</span></span></div></div></div></div><div class="bt-prog-dots"><div class="dot"></div><div class="dot"></div><div class="dot active"></div></div><div class="btcard-info"><div class="btcard-name">Iman</div><div class="btcard-desc">Words hidden until spoken ï¿½ clean reveal</div></div></div>
+    <div class="btcard"><div class="btcard-preview" style="background:#111"><div class="bt-cap-stack"><div class="bt-cap-block" style="display: none;"><div class="t-52" style="--template-primary: #FFFFFF; --template-secondary: #FFFFFF; --template-highlight: #DDAA03; --template-bg: transparent; transition: transform 700ms cubic-bezier(0.22, 1, 0.36, 1), opacity 400ms; opacity: 1; transform: none;"><span class="cap-text" style="font-family:&#39;Inter&#39;,sans-serif;font-weight:900;"><span class="word active" data-wi="0" data-imp="false">This</span><span class="word active" data-wi="1" data-imp="false">IS</span><span class="word active" data-wi="2" data-imp="false">great</span><span class="word active" data-wi="3" data-imp="false">now</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-52" style="--template-primary: #FFFFFF; --template-secondary: #FFFFFF; --template-highlight: #DDAA03; --template-bg: transparent; transition: transform 700ms cubic-bezier(0.22, 1, 0.36, 1), opacity 400ms; opacity: 1; transform: none;"><span class="cap-text" style="font-family:&#39;Inter&#39;,sans-serif;font-weight:900;"><span class="word active" data-wi="4" data-imp="false">and</span><span class="word active" data-wi="5" data-imp="false">it</span><span class="word active" data-wi="6" data-imp="false">feels</span><span class="word active" data-wi="7" data-imp="false">right</span></span></div></div><div class="bt-cap-block" style="display: flex;"><div class="t-52" style="--template-primary: #FFFFFF; --template-secondary: #FFFFFF; --template-highlight: #DDAA03; --template-bg: transparent; transition: transform 700ms cubic-bezier(0.22, 1, 0.36, 1), opacity 400ms; opacity: 1; transform: none;"><span class="cap-text" style="font-family:&#39;Inter&#39;,sans-serif;font-weight:900;"><span class="word active" data-wi="8" data-imp="false">every</span><span class="word active" data-wi="9" data-imp="false">single</span><span class="word active current" data-wi="10" data-imp="false">time</span><span class="word active" data-wi="11" data-imp="false">yeah</span></span></div></div></div></div><div class="bt-prog-dots"><div class="dot"></div><div class="dot"></div><div class="dot active"></div></div><div class="btcard-info"><div class="btcard-name">Light Streak</div><div class="btcard-desc">Words rise into view as spoken</div></div></div>
+        <div class="btcard"><div class="btcard-preview" style="background:#1a0e14"><div class="bt-cap-stack"><div class="bt-cap-block" style="display: flex;"><div class="t-T4" style="--template-primary:#FFFFFF;--template-secondary:#FFFFFF;--template-highlight:#DDAA03;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Playfair Display&#39;,sans-serif;font-weight:700;font-style:italic;"><span class="word active" data-wi="0" data-imp="false">This</span><span class="word active" data-wi="1" data-imp="false">IS</span><span class="word active" data-wi="2" data-imp="false">great</span><span class="word active" data-wi="3" data-imp="false">now</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-T4" style="--template-primary:#FFFFFF;--template-secondary:#FFFFFF;--template-highlight:#DDAA03;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Playfair Display&#39;,sans-serif;font-weight:700;font-style:italic;"><span class="word active" data-wi="4" data-imp="false" style="--ws-delay:90ms">and</span><span class="word active" data-wi="5" data-imp="false" style="--ws-delay:145ms">it</span><span class="word active" data-wi="6" data-imp="false" style="--ws-delay:200ms">feels</span><span class="word active" data-wi="7" data-imp="false" style="--ws-delay:255ms">right</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-T4" style="--template-primary:#FFFFFF;--template-secondary:#FFFFFF;--template-highlight:#DDAA03;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Playfair Display&#39;,sans-serif;font-weight:700;font-style:italic;"><span class="word active" data-wi="8" data-imp="false">every</span><span class="word active" data-wi="9" data-imp="false">single</span><span class="word active current" data-wi="10" data-imp="false">time</span><span class="word active" data-wi="11" data-imp="false">yeah</span></span></div></div></div></div><div class="bt-prog-dots"><div class="dot active"></div><div class="dot"></div><div class="dot"></div></div><div class="btcard-info"><div class="btcard-name">Study With Me</div><div class="btcard-desc">White italic serif with Word Slide on line two</div></div></div>
+        <div class="btcard"><div class="btcard-preview" style="background:#0d1117"><div class="bt-cap-stack"><div class="bt-cap-block" style="display: flex;"><div class="t-WS1" style="--template-primary:#FFFFFF;--template-secondary:#FFFFFF;--template-highlight:#DDAA03;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Raleway&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="0" data-imp="false" style="--ws-delay:90ms">This</span><span class="word active" data-wi="1" data-imp="false" style="--ws-delay:145ms">IS</span><span class="word active" data-wi="2" data-imp="false" style="--ws-delay:200ms">great</span><span class="word active" data-wi="3" data-imp="false" style="--ws-delay:255ms">now</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-WS1" style="--template-primary:#FFFFFF;--template-secondary:#FFFFFF;--template-highlight:#DDAA03;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Raleway&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="4" data-imp="false" style="--ws-delay:90ms">and</span><span class="word active" data-wi="5" data-imp="false" style="--ws-delay:145ms">it</span><span class="word active" data-wi="6" data-imp="false" style="--ws-delay:200ms">feels</span><span class="word active" data-wi="7" data-imp="false" style="--ws-delay:255ms">right</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-WS1" style="--template-primary:#FFFFFF;--template-secondary:#FFFFFF;--template-highlight:#DDAA03;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Raleway&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="8" data-imp="false" style="--ws-delay:90ms">every</span><span class="word active" data-wi="9" data-imp="false" style="--ws-delay:145ms">single</span><span class="word active current" data-wi="10" data-imp="false" style="--ws-delay:200ms">time</span><span class="word active" data-wi="11" data-imp="false" style="--ws-delay:255ms">yeah</span></span></div></div></div></div><div class="bt-prog-dots"><div class="dot active"></div><div class="dot"></div><div class="dot"></div></div><div class="btcard-info"><div class="btcard-name">Word Slide</div><div class="btcard-desc">Words slide in together with a slight stagger</div></div></div>
+    <div class="btcard"><div class="btcard-preview" style="background:#111"><div class="bt-cap-stack"><div class="bt-cap-block" style="display: none;"><div class="t-115" style="--template-primary:#FFFFFF;--template-secondary:#39FF14;--template-highlight:#DDAA03;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:900;font-style:italic;"><span class="word active" data-wi="0" data-imp="false">This</span><span class="word active" data-wi="1" data-imp="false">IS</span><span class="word active" data-wi="2" data-imp="false">great</span><span class="word active" data-wi="3" data-imp="false">now</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-115" style="--template-primary:#FFFFFF;--template-secondary:#39FF14;--template-highlight:#DDAA03;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:900;font-style:italic;"><span class="word active" data-wi="4" data-imp="false">and</span><span class="word active" data-wi="5" data-imp="false">it</span><span class="word active" data-wi="6" data-imp="false">feels</span><span class="word active" data-wi="7" data-imp="false">right</span></span></div></div><div class="bt-cap-block" style="display: flex;"><div class="t-115" style="--template-primary:#FFFFFF;--template-secondary:#39FF14;--template-highlight:#DDAA03;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:900;font-style:italic;"><span class="word active" data-wi="8" data-imp="false">every</span><span class="word active" data-wi="9" data-imp="false">single</span><span class="word active current" data-wi="10" data-imp="false">time</span><span class="word active" data-wi="11" data-imp="false">yeah</span></span></div></div></div></div><div class="bt-prog-dots"><div class="dot"></div><div class="dot"></div><div class="dot active"></div></div><div class="btcard-info"><div class="btcard-name">Green Neon Pulse</div><div class="btcard-desc">White text with pulsing green active glow</div></div></div>
+    <div class="btcard"><div class="btcard-preview" style="background:#111"><div class="bt-cap-stack"><div class="bt-cap-block" style="display: none;"><div class="t-104" style="--template-primary:#FFFFFF;--template-secondary:#2563EB;--template-highlight:#DDAA03;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:900;"><span class="word active" data-wi="0" data-imp="false">This</span><span class="word active" data-wi="1" data-imp="false">IS</span><span class="word active" data-wi="2" data-imp="false">great</span><span class="word active" data-wi="3" data-imp="false">now</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-104" style="--template-primary:#FFFFFF;--template-secondary:#2563EB;--template-highlight:#DDAA03;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:900;"><span class="word active" data-wi="4" data-imp="false">and</span><span class="word active" data-wi="5" data-imp="false">it</span><span class="word active" data-wi="6" data-imp="false">feels</span><span class="word active" data-wi="7" data-imp="false">right</span></span></div></div><div class="bt-cap-block" style="display: flex;"><div class="t-104" style="--template-primary:#FFFFFF;--template-secondary:#2563EB;--template-highlight:#DDAA03;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:900;"><span class="word active" data-wi="8" data-imp="false">every</span><span class="word active" data-wi="9" data-imp="false">single</span><span class="word active current" data-wi="10" data-imp="false">time</span><span class="word active" data-wi="11" data-imp="false">yeah</span></span></div></div></div></div><div class="bt-prog-dots"><div class="dot"></div><div class="dot"></div><div class="dot active"></div></div><div class="btcard-info"><div class="btcard-name">Pulse</div><div class="btcard-desc">White text with purple stroke glow</div></div></div>
+    <div class="btcard"><div class="btcard-preview" style="background:#1a1a1a"><div class="bt-cap-stack"><div class="bt-cap-block" style="display: none;"><div class="t-109" style="--template-primary:#FFFFFF;--template-secondary:#E01A1A;--template-highlight:#DDAA03;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:900;"><span class="word active" data-wi="0" data-imp="false">This</span><span class="word active" data-wi="1" data-imp="false">IS</span><span class="word active" data-wi="2" data-imp="false">great</span><span class="word active" data-wi="3" data-imp="false">now</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-109" style="--template-primary:#FFFFFF;--template-secondary:#E01A1A;--template-highlight:#DDAA03;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:900;"><span class="word active" data-wi="4" data-imp="false">and</span><span class="word active" data-wi="5" data-imp="false">it</span><span class="word active" data-wi="6" data-imp="false">feels</span><span class="word active" data-wi="7" data-imp="false">right</span></span></div></div><div class="bt-cap-block" style="display: flex;"><div class="t-109" style="--template-primary:#FFFFFF;--template-secondary:#E01A1A;--template-highlight:#DDAA03;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:900;"><span class="word active" data-wi="8" data-imp="false">every</span><span class="word active" data-wi="9" data-imp="false">single</span><span class="word active current" data-wi="10" data-imp="false">time</span><span class="word active" data-wi="11" data-imp="false">yeah</span></span></div></div></div></div><div class="bt-prog-dots"><div class="dot"></div><div class="dot"></div><div class="dot active"></div></div><div class="btcard-info"><div class="btcard-name">3D Shadow</div><div class="btcard-desc">White text with bold orange 3D shadow on active</div></div></div>
+    <div class="btcard"><div class="btcard-preview" style="background:#111"><div class="bt-cap-stack"><div class="bt-cap-block" style="display: none;"><div class="t-95" style="--template-primary:#FFFFFF;--template-secondary:#0055FF;--template-highlight:#DDAA03;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Montserrat&#39;,sans-serif;font-weight:700;"><span class="word active" data-wi="0" data-imp="false">This</span><span class="word active" data-wi="1" data-imp="false">IS</span><span class="word active" data-wi="2" data-imp="false">great</span><span class="word active" data-wi="3" data-imp="false">now</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-95" style="--template-primary:#FFFFFF;--template-secondary:#0055FF;--template-highlight:#DDAA03;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Montserrat&#39;,sans-serif;font-weight:700;"><span class="word active" data-wi="4" data-imp="false">and</span><span class="word active" data-wi="5" data-imp="false">it</span><span class="word active" data-wi="6" data-imp="false">feels</span><span class="word active" data-wi="7" data-imp="false">right</span></span></div></div><div class="bt-cap-block" style="display: flex;"><div class="t-95" style="--template-primary:#FFFFFF;--template-secondary:#0055FF;--template-highlight:#DDAA03;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Montserrat&#39;,sans-serif;font-weight:700;"><span class="word active" data-wi="8" data-imp="false">every</span><span class="word active" data-wi="9" data-imp="false">single</span><span class="word active current" data-wi="10" data-imp="false">time</span><span class="word active" data-wi="11" data-imp="false">yeah</span></span></div></div></div></div><div class="bt-prog-dots"><div class="dot"></div><div class="dot"></div><div class="dot active"></div></div><div class="btcard-info"><div class="btcard-name">Speed Lines</div><div class="btcard-desc">Skewed font with blue speed streaks</div></div></div>
     <div class="btcard"><div class="btcard-preview" style="background:#111"><div class="bt-cap-stack"><div class="bt-cap-block" style="display: none;"><div class="t-102" style="--template-primary:#1F2022;--template-secondary:#1F2022;--template-highlight:#b07d00;--template-bg:#E8E8E8;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="0" data-imp="false">This</span><span class="word active" data-wi="1" data-imp="false">IS</span><span class="word active" data-wi="2" data-imp="false">great</span><span class="word active" data-wi="3" data-imp="false">now</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-102" style="--template-primary:#1F2022;--template-secondary:#1F2022;--template-highlight:#b07d00;--template-bg:#E8E8E8;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="4" data-imp="false">and</span><span class="word active" data-wi="5" data-imp="false">it</span><span class="word active" data-wi="6" data-imp="false">feels</span><span class="word active" data-wi="7" data-imp="false">right</span></span></div></div><div class="bt-cap-block" style="display: flex;"><div class="t-102" style="--template-primary:#1F2022;--template-secondary:#1F2022;--template-highlight:#b07d00;--template-bg:#E8E8E8;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="8" data-imp="false">every</span><span class="word active" data-wi="9" data-imp="false">single</span><span class="word active current" data-wi="10" data-imp="false">time</span><span class="word" data-wi="11" data-imp="false">yeah</span></span></div></div></div></div><div class="bt-prog-dots"><div class="dot"></div><div class="dot"></div><div class="dot active"></div></div><div class="btcard-info"><div class="btcard-name">Clarity</div><div class="btcard-desc">Clean light bg, dark readable text</div></div></div>
-    <div class="btcard"><div class="btcard-preview" style="background:#111"><div class="bt-cap-stack"><div class="bt-cap-block" style="display: none;"><div class="t-T5" style="--template-primary:#ffffff;--template-secondary:#ffffff;--template-highlight:#FFE600;--template-bg:#BEFF00;"><span class="cap-text" style="font-family:&#39;Montserrat&#39;,sans-serif;font-weight:800;font-style:italic;"><span class="word active" data-wi="0" data-imp="false">This</span><span class="word active" data-wi="1" data-imp="false">IS</span><span class="word active" data-wi="2" data-imp="false">great</span><span class="word active" data-wi="3" data-imp="false">now</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-T5" style="--template-primary:#ffffff;--template-secondary:#ffffff;--template-highlight:#FFE600;--template-bg:#BEFF00;"><span class="cap-text" style="font-family:&#39;Montserrat&#39;,sans-serif;font-weight:800;font-style:italic;"><span class="word active" data-wi="4" data-imp="false">and</span><span class="word active" data-wi="5" data-imp="false">it</span><span class="word active" data-wi="6" data-imp="false">feels</span><span class="word active" data-wi="7" data-imp="false">right</span></span></div></div><div class="bt-cap-block" style="display: flex;"><div class="t-T5" style="--template-primary:#ffffff;--template-secondary:#ffffff;--template-highlight:#FFE600;--template-bg:#BEFF00;"><span class="cap-text" style="font-family:&#39;Montserrat&#39;,sans-serif;font-weight:800;font-style:italic;"><span class="word active" data-wi="8" data-imp="false">every</span><span class="word active" data-wi="9" data-imp="false">single</span><span class="word active current" data-wi="10" data-imp="false">time</span><span class="word active" data-wi="11" data-imp="false">yeah</span></span></div></div></div></div><div class="bt-prog-dots"><div class="dot"></div><div class="dot"></div><div class="dot active"></div></div><div class="btcard-info"><div class="btcard-name">Sentence Box</div><div class="btcard-desc">Deep yellow pad box for all words</div></div></div>
-    <div class="btcard"><div class="btcard-preview" style="background:#111"><div class="bt-cap-stack"><div class="bt-cap-block" style="display: none;"><div class="t-T6" style="--template-primary:#ffffff;--template-secondary:#ffffff;--template-highlight:#FFE600;--template-bg:#f97316;"><span class="cap-text" style="font-family:&#39;Montserrat&#39;,sans-serif;font-weight:800;font-style:italic;"><span class="word active" data-wi="0" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">This</span><span class="word active" data-wi="1" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">IS</span><span class="word active" data-wi="2" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">great</span><span class="word active" data-wi="3" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">now</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-T6" style="--template-primary:#ffffff;--template-secondary:#ffffff;--template-highlight:#FFE600;--template-bg:#f97316;"><span class="cap-text" style="font-family:&#39;Montserrat&#39;,sans-serif;font-weight:800;font-style:italic;"><span class="word active" data-wi="4" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">and</span><span class="word active" data-wi="5" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">it</span><span class="word active" data-wi="6" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">feels</span><span class="word active" data-wi="7" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">right</span></span></div></div><div class="bt-cap-block" style="display: flex;"><div class="t-T6" style="--template-primary:#ffffff;--template-secondary:#ffffff;--template-highlight:#FFE600;--template-bg:#f97316;"><span class="cap-text" style="font-family:&#39;Montserrat&#39;,sans-serif;font-weight:800;font-style:italic;"><span class="word active" data-wi="8" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">every</span><span class="word active" data-wi="9" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">single</span><span class="word active current" data-wi="10" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">time</span><span class="word active" data-wi="11" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">yeah</span></span></div></div></div></div><div class="bt-prog-dots"><div class="dot"></div><div class="dot"></div><div class="dot active"></div></div><div class="btcard-info"><div class="btcard-name">Orange Box</div><div class="btcard-desc">Orange box with Iman word-reveal</div></div></div>
-    <div class="btcard"><div class="btcard-preview" style="background:#1e1e1e"><div class="bt-cap-stack"><div class="bt-cap-block" style="display: none;"><div class="t-103" style="--template-primary:#FFFFFF;--template-secondary:#FFFFFF;--template-highlight:#FFE600;--template-bg:rgba(30,30,30,0.85);"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="0" data-imp="false">This</span><span class="word active" data-wi="1" data-imp="false">IS</span><span class="word active" data-wi="2" data-imp="false">great</span><span class="word active" data-wi="3" data-imp="false">now</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-103" style="--template-primary:#FFFFFF;--template-secondary:#FFFFFF;--template-highlight:#FFE600;--template-bg:rgba(30,30,30,0.85);"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="4" data-imp="false">and</span><span class="word active" data-wi="5" data-imp="false">it</span><span class="word active" data-wi="6" data-imp="false">feels</span><span class="word active" data-wi="7" data-imp="false">right</span></span></div></div><div class="bt-cap-block" style="display: flex;"><div class="t-103" style="--template-primary:#FFFFFF;--template-secondary:#FFFFFF;--template-highlight:#FFE600;--template-bg:rgba(30,30,30,0.85);"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="8" data-imp="false">every</span><span class="word active" data-wi="9" data-imp="false">single</span><span class="word active current" data-wi="10" data-imp="false">time</span><span class="word" data-wi="11" data-imp="false">yeah</span></span></div></div></div></div><div class="bt-prog-dots"><div class="dot"></div><div class="dot"></div><div class="dot active"></div></div><div class="btcard-info"><div class="btcard-name">Nightfall</div><div class="btcard-desc">Muted words on dark bg, spotlight on speak</div></div></div>
+    <div class="btcard"><div class="btcard-preview" style="background:#111"><div class="bt-cap-stack"><div class="bt-cap-block" style="display: none;"><div class="t-T5" style="--template-primary:#ffffff;--template-secondary:#ffffff;--template-highlight:#DDAA03;--template-bg:#BEFF00;"><span class="cap-text" style="font-family:&#39;Montserrat&#39;,sans-serif;font-weight:800;font-style:italic;"><span class="word active" data-wi="0" data-imp="false">This</span><span class="word active" data-wi="1" data-imp="false">IS</span><span class="word active" data-wi="2" data-imp="false">great</span><span class="word active" data-wi="3" data-imp="false">now</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-T5" style="--template-primary:#ffffff;--template-secondary:#ffffff;--template-highlight:#DDAA03;--template-bg:#BEFF00;"><span class="cap-text" style="font-family:&#39;Montserrat&#39;,sans-serif;font-weight:800;font-style:italic;"><span class="word active" data-wi="4" data-imp="false">and</span><span class="word active" data-wi="5" data-imp="false">it</span><span class="word active" data-wi="6" data-imp="false">feels</span><span class="word active" data-wi="7" data-imp="false">right</span></span></div></div><div class="bt-cap-block" style="display: flex;"><div class="t-T5" style="--template-primary:#ffffff;--template-secondary:#ffffff;--template-highlight:#DDAA03;--template-bg:#BEFF00;"><span class="cap-text" style="font-family:&#39;Montserrat&#39;,sans-serif;font-weight:800;font-style:italic;"><span class="word active" data-wi="8" data-imp="false">every</span><span class="word active" data-wi="9" data-imp="false">single</span><span class="word active current" data-wi="10" data-imp="false">time</span><span class="word active" data-wi="11" data-imp="false">yeah</span></span></div></div></div></div><div class="bt-prog-dots"><div class="dot"></div><div class="dot"></div><div class="dot active"></div></div><div class="btcard-info"><div class="btcard-name">Sentence Box</div><div class="btcard-desc">Deep yellow pad box for all words</div></div></div>
+    <div class="btcard"><div class="btcard-preview" style="background:#111"><div class="bt-cap-stack"><div class="bt-cap-block" style="display: none;"><div class="t-T6" style="--template-primary:#ffffff;--template-secondary:#ffffff;--template-highlight:#DDAA03;--template-bg:#f97316;"><span class="cap-text" style="font-family:&#39;Montserrat&#39;,sans-serif;font-weight:800;font-style:italic;"><span class="word active" data-wi="0" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">This</span><span class="word active" data-wi="1" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">IS</span><span class="word active" data-wi="2" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">great</span><span class="word active" data-wi="3" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">now</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-T6" style="--template-primary:#ffffff;--template-secondary:#ffffff;--template-highlight:#DDAA03;--template-bg:#f97316;"><span class="cap-text" style="font-family:&#39;Montserrat&#39;,sans-serif;font-weight:800;font-style:italic;"><span class="word active" data-wi="4" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">and</span><span class="word active" data-wi="5" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">it</span><span class="word active" data-wi="6" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">feels</span><span class="word active" data-wi="7" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">right</span></span></div></div><div class="bt-cap-block" style="display: flex;"><div class="t-T6" style="--template-primary:#ffffff;--template-secondary:#ffffff;--template-highlight:#DDAA03;--template-bg:#f97316;"><span class="cap-text" style="font-family:&#39;Montserrat&#39;,sans-serif;font-weight:800;font-style:italic;"><span class="word active" data-wi="8" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">every</span><span class="word active" data-wi="9" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">single</span><span class="word active current" data-wi="10" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">time</span><span class="word active" data-wi="11" data-imp="false" style="transition: opacity 280ms, transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1); opacity: 1; transform: none;">yeah</span></span></div></div></div></div><div class="bt-prog-dots"><div class="dot"></div><div class="dot"></div><div class="dot active"></div></div><div class="btcard-info"><div class="btcard-name">Orange Box</div><div class="btcard-desc">Orange box with Iman word-reveal</div></div></div>
+    <div class="btcard"><div class="btcard-preview" style="background:#1e1e1e"><div class="bt-cap-stack"><div class="bt-cap-block" style="display: none;"><div class="t-103" style="--template-primary:#FFFFFF;--template-secondary:#FFFFFF;--template-highlight:#DDAA03;--template-bg:rgba(30,30,30,0.85);"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="0" data-imp="false">This</span><span class="word active" data-wi="1" data-imp="false">IS</span><span class="word active" data-wi="2" data-imp="false">great</span><span class="word active" data-wi="3" data-imp="false">now</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-103" style="--template-primary:#FFFFFF;--template-secondary:#FFFFFF;--template-highlight:#DDAA03;--template-bg:rgba(30,30,30,0.85);"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="4" data-imp="false">and</span><span class="word active" data-wi="5" data-imp="false">it</span><span class="word active" data-wi="6" data-imp="false">feels</span><span class="word active" data-wi="7" data-imp="false">right</span></span></div></div><div class="bt-cap-block" style="display: flex;"><div class="t-103" style="--template-primary:#FFFFFF;--template-secondary:#FFFFFF;--template-highlight:#DDAA03;--template-bg:rgba(30,30,30,0.85);"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="8" data-imp="false">every</span><span class="word active" data-wi="9" data-imp="false">single</span><span class="word active current" data-wi="10" data-imp="false">time</span><span class="word" data-wi="11" data-imp="false">yeah</span></span></div></div></div></div><div class="bt-prog-dots"><div class="dot"></div><div class="dot"></div><div class="dot active"></div></div><div class="btcard-info"><div class="btcard-name">Nightfall</div><div class="btcard-desc">Muted words on dark bg, spotlight on speak</div></div></div>
     <div class="btcard sticky-wave-card"><div class="btcard-preview" style="background:#121416"><div class="bt-cap-stack"><div class="bt-cap-block" style="display: none;"><div class="sblock t-QW1" data-dur="4400" data-type="sticky-wave"><div class="sw-line v32-sw"><span class="sw-w" style="opacity: 1;">silence</span><span class="sw-w" style="opacity: 1;">gets</span><span class="sw-w" style="opacity: 1;">heavy</span></div></div></div><div class="bt-cap-block" style="display: none;"><div class="sblock t-QW1" data-dur="4400" data-type="sticky-wave"><div class="sw-line v32-sw"><span class="sw-w" style="opacity: 1;">thoughts</span><span class="sw-w" style="opacity: 1;">turn</span><span class="sw-w" style="opacity: 1;">inward</span></div></div></div><div class="bt-cap-block" style="display: flex;"><div class="sblock t-QW1" data-dur="4400" data-type="sticky-wave"><div class="sw-line v32-sw"><span class="sw-w" style="opacity: 1;">the</span><span class="sw-w" style="opacity: 1;">mind</span><span class="sw-w" style="opacity: 1;">creates</span><span class="sw-w" style="opacity: 1;">every</span><span class="sw-w" style="opacity: 1;">prison</span><span class="sw-w" style="opacity: 1;">it</span><span class="sw-w" style="opacity: 1;">lives</span><span class="sw-w" style="opacity: 1;">in.</span></div></div></div></div></div><div class="bt-prog-dots"><div class="dot"></div><div class="dot"></div><div class="dot active"></div></div><div class="btcard-info"><div class="btcard-name">The Quiet V3.2</div><div class="btcard-desc">Sticky-wave words brighten one by one</div></div></div>
-        <div class="btcard"><div class="btcard-preview" style="background:#111"><div class="bt-cap-stack"><div class="bt-cap-block" style="display: none;"><div class="t-36" style="--template-primary:#FFFFFF;--template-secondary:#FFE600;--template-highlight:#FFE600;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:900;"><span class="word active" data-wi="0" data-imp="false">This</span><span class="word active" data-wi="1" data-imp="false">IS</span><span class="word active" data-wi="2" data-imp="false">great</span><span class="word active" data-wi="3" data-imp="false">now</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-36" style="--template-primary:#FFFFFF;--template-secondary:#F97316;--template-highlight:#F97316;--template-bg:transparent;"><div class="cpt-wrap" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:900;"><div class="cpt-row-sm"><span class="word active" data-wi="4" data-imp="false">be in the</span></div><div class="cpt-row-lg"><span class="word active" data-wi="5" data-imp="false">present</span></div><span class="word active" data-wi="6" data-imp="false" style="font-size:0;line-height:0;opacity:0;position:absolute;"></span><span class="word active" data-wi="7" data-imp="false" style="font-size:0;line-height:0;opacity:0;position:absolute;"></span></div></div></div><div class="bt-cap-block" style="display: flex;"><div class="t-36" style="--template-primary:#FFFFFF;--template-secondary:#39FF14;--template-highlight:#39FF14;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:900;"><span class="word active" data-wi="8" data-imp="false">every</span><span class="word active" data-wi="9" data-imp="false">single</span><span class="word active current" data-wi="10" data-imp="false">time</span><span class="word active" data-wi="11" data-imp="false">yeah</span></span></div></div></div></div><div class="bt-prog-dots"><div class="dot"></div><div class="dot"></div><div class="dot active"></div></div><div class="btcard-info"><div class="btcard-name">Color Flash</div><div class="btcard-desc">Yellow / Orange CPT / Green flash per line</div></div></div><div class="btcard"><div class="btcard-preview" style="background:#111"><div class="bt-cap-stack"><div class="bt-cap-block" style="display: none;"><div class="t-105" style="--template-primary:#FFFFFF;--template-secondary:#FFE600;--template-highlight:#FFE600;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="0" data-imp="false">This</span><span class="word active" data-wi="1" data-imp="false">IS</span><span class="word active" data-wi="2" data-imp="false">great</span><span class="word active" data-wi="3" data-imp="false">now</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-105" style="--template-primary:#FFFFFF;--template-secondary:#FFE600;--template-highlight:#FFE600;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="4" data-imp="false">and</span><span class="word active" data-wi="5" data-imp="false">it</span><span class="word active" data-wi="6" data-imp="false">feels</span><span class="word active" data-wi="7" data-imp="false">right</span></span></div></div><div class="bt-cap-block" style="display: flex;"><div class="t-105" style="--template-primary:#FFFFFF;--template-secondary:#FFE600;--template-highlight:#FFE600;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="8" data-imp="false">every</span><span class="word active" data-wi="9" data-imp="false">single</span><span class="word active current" data-wi="10" data-imp="false">time</span><span class="word active" data-wi="11" data-imp="false">yeah</span></span></div></div></div></div><div class="bt-prog-dots"><div class="dot"></div><div class="dot"></div><div class="dot active"></div></div><div class="btcard-info"><div class="btcard-name">Daze</div><div class="btcard-desc">White stroked, yellow glow on speak</div></div></div>
-    <div class="btcard"><div class="btcard-preview" style="background:#111"><div class="bt-cap-stack"><div class="bt-cap-block" style="display: none;"><div class="t-124" style="--template-primary:#FFFFFF;--template-secondary:#FFFFFF;--template-highlight:#FFE600;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Inter&#39;,sans-serif;font-weight:900;"><span class="word active" data-wi="0" data-imp="false">This</span><span class="word active" data-wi="1" data-imp="false">IS</span><span class="word active" data-wi="2" data-imp="false">great</span><span class="word active" data-wi="3" data-imp="false">now</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-124" style="--template-primary:#FFFFFF;--template-secondary:#FFFFFF;--template-highlight:#FFE600;--template-bg:transparent;"><div class="cpt-wrap cpt-wrap-right" style="font-family:&#39;Inter&#39;,sans-serif;font-weight:900;"><div class="cpt-row-sm cpt-row-sm-right"><span class="word active" data-wi="4" data-imp="false">the point is</span></div><div class="cpt-row-lg cpt-row-lg-center"><span class="word active" data-wi="5" data-imp="false">simple</span></div><div class="cpt-row-sm cpt-row-sm-right"><span class="word active" data-wi="6" data-imp="false">do it.</span></div><span class="word active" data-wi="7" data-imp="false" style="font-size:0;line-height:0;opacity:0;position:absolute;"></span></div></div></div><div class="bt-cap-block" style="display: flex;"><div class="t-124" style="--template-primary:#FFFFFF;--template-secondary:#FFFFFF;--template-highlight:#FFE600;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Inter&#39;,sans-serif;font-weight:900;"><span class="word active" data-wi="8" data-imp="false">every</span><span class="word active" data-wi="9" data-imp="false">single</span><span class="word active current" data-wi="10" data-imp="false">time</span><span class="word" data-wi="11" data-imp="false">yeah</span></span></div></div></div></div><div class="bt-prog-dots"><div class="dot"></div><div class="dot"></div><div class="dot active"></div></div><div class="btcard-info"><div class="btcard-name">Ghost Echo</div><div class="btcard-desc">Reference pinch CPT with ghosted repeat trail</div></div></div><div class="btcard"><div class="btcard-preview" style="background:#111"><div class="bt-cap-stack"><div class="bt-cap-block" style="display: none;"><div class="t-110" style="--template-primary:#FFFFFF;--template-secondary:#0066FF;--template-highlight:#FFE600;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="0" data-imp="false">This</span><span class="word active" data-wi="1" data-imp="false">is</span><span class="word active" data-wi="2" data-imp="false">great</span><span class="word active" data-wi="3" data-imp="false">now</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-110" style="--template-primary:#FFFFFF;--template-secondary:#0066FF;--template-highlight:#FFE600;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="4" data-imp="false">and</span><span class="word active" data-wi="5" data-imp="false">it</span><span class="word active" data-wi="6" data-imp="false">feels</span><span class="word active" data-wi="7" data-imp="false">right</span></span></div></div><div class="bt-cap-block" style="display: flex;"><div class="t-110" style="--template-primary:#FFFFFF;--template-secondary:#0066FF;--template-highlight:#FFE600;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="8" data-imp="false">every</span><span class="word active" data-wi="9" data-imp="false">single</span><span class="word active current" data-wi="10" data-imp="false">time</span><span class="word active" data-wi="11" data-imp="false">yeah</span></span></div></div></div></div><div class="bt-prog-dots"><div class="dot"></div><div class="dot"></div><div class="dot active"></div></div><div class="btcard-info"><div class="btcard-name">Glow Dot</div><div class="btcard-desc">Glowing dot under active word</div></div></div>
-    <div class="btcard"><div class="btcard-preview" style="background:#111"><div class="bt-cap-stack"><div class="bt-cap-block" style="display: none;"><div class="t-56" style="--template-primary:#FFFFFF;--template-secondary:#0066FF;--template-highlight:#FFE600;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Inter&#39;,sans-serif;font-weight:900;"><span class="word active" data-wi="0" data-imp="false">This</span><span class="word active" data-wi="1" data-imp="false">IS</span><span class="word active" data-wi="2" data-imp="false">great</span><span class="word active" data-wi="3" data-imp="false">now</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-56" style="--template-primary:#FFFFFF;--template-secondary:#0066FF;--template-highlight:#FFE600;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Inter&#39;,sans-serif;font-weight:900;"><span class="word active" data-wi="4" data-imp="false">and</span><span class="word active" data-wi="5" data-imp="false">it</span><span class="word active" data-wi="6" data-imp="false">feels</span><span class="word active" data-wi="7" data-imp="false">right</span></span></div></div><div class="bt-cap-block" style="display: flex;"><div class="t-56" style="--template-primary:#FFFFFF;--template-secondary:#0066FF;--template-highlight:#FFE600;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Inter&#39;,sans-serif;font-weight:900;"><span class="word active" data-wi="8" data-imp="false">every</span><span class="word active" data-wi="9" data-imp="false">single</span><span class="word active current" data-wi="10" data-imp="false">time</span><span class="word active" data-wi="11" data-imp="false">yeah</span></span></div></div></div></div><div class="bt-prog-dots"><div class="dot"></div><div class="dot"></div><div class="dot active"></div></div><div class="btcard-info"><div class="btcard-name">Underline</div><div class="btcard-desc">Active word gets a blue bottom border</div></div></div>
-    <div class="btcard"><div class="btcard-preview" style="background:#111"><div class="bt-cap-stack"><div class="bt-cap-block" style="display: none;"><div class="t-119" style="--template-primary:#FFFFFF;--template-secondary:#00FFCC;--template-highlight:#FFE600;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Inter&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="0" data-imp="false">This</span><span class="word active" data-wi="1" data-imp="false">IS</span><span class="word active" data-wi="2" data-imp="false">great</span><span class="word active" data-wi="3" data-imp="false">now</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-119" style="--template-primary:#FFFFFF;--template-secondary:#00FFCC;--template-highlight:#FFE600;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Inter&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="4" data-imp="false">and</span><span class="word active" data-wi="5" data-imp="false">it</span><span class="word active" data-wi="6" data-imp="false">feels</span><span class="word active" data-wi="7" data-imp="false">right</span></span></div></div><div class="bt-cap-block" style="display: flex;"><div class="t-119" style="--template-primary:#FFFFFF;--template-secondary:#00FFCC;--template-highlight:#FFE600;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Inter&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="8" data-imp="false">every</span><span class="word active" data-wi="9" data-imp="false">single</span><span class="word active current" data-wi="10" data-imp="false">time</span><span class="word active" data-wi="11" data-imp="false">yeah</span></span></div></div></div></div><div class="bt-prog-dots"><div class="dot"></div><div class="dot"></div><div class="dot active"></div></div><div class="btcard-info"><div class="btcard-name">Gradient Box</div><div class="btcard-desc">Active word gets blue-cyan gradient box</div></div></div>
-    <div class="btcard"><div class="btcard-preview" style="background:#000"><div class="bt-cap-stack"><div class="bt-cap-block" style="display: none;"><div class="t-12" style="--template-primary:#cc0000;--template-secondary:#cc0000;--template-highlight:#FFE600;--template-bg:#000;"><span class="cap-text" style="font-family:&#39;Special Elite&#39;,sans-serif;font-weight:400;"><span class="word active" data-wi="0" data-imp="false">This</span><span class="word active" data-wi="1" data-imp="false">IS</span><span class="word active" data-wi="2" data-imp="false">great</span><span class="word active" data-wi="3" data-imp="false">now</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-12" style="--template-primary:#cc0000;--template-secondary:#cc0000;--template-highlight:#FFE600;--template-bg:#000;"><span class="cap-text" style="font-family:&#39;Special Elite&#39;,sans-serif;font-weight:400;"><span class="word active" data-wi="4" data-imp="false">and</span><span class="word active" data-wi="5" data-imp="false">it</span><span class="word active" data-wi="6" data-imp="false">feels</span><span class="word active" data-wi="7" data-imp="false">right</span></span></div></div><div class="bt-cap-block" style="display: flex;"><div class="t-12" style="--template-primary:#cc0000;--template-secondary:#cc0000;--template-highlight:#FFE600;--template-bg:#000;"><span class="cap-text" style="font-family:&#39;Special Elite&#39;,sans-serif;font-weight:400;"><span class="word active" data-wi="8" data-imp="false">every</span><span class="word active" data-wi="9" data-imp="false">single</span><span class="word active current" data-wi="10" data-imp="false">time</span><span class="word active" data-wi="11" data-imp="false">yeah</span></span></div></div></div></div><div class="bt-prog-dots"><div class="dot"></div><div class="dot"></div><div class="dot active"></div></div><div class="btcard-info"><div class="btcard-name">Horror</div><div class="btcard-desc">Typewriter font, blood-red glow</div></div></div>
+        <div class="btcard"><div class="btcard-preview" style="background:#111"><div class="bt-cap-stack"><div class="bt-cap-block" style="display: none;"><div class="t-36" style="--template-primary:#FFFFFF;--template-secondary:#DDAA03;--template-highlight:#DDAA03;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:900;"><span class="word active" data-wi="0" data-imp="false">This</span><span class="word active" data-wi="1" data-imp="false">IS</span><span class="word active" data-wi="2" data-imp="false">great</span><span class="word active" data-wi="3" data-imp="false">now</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-36" style="--template-primary:#FFFFFF;--template-secondary:#F97316;--template-highlight:#F97316;--template-bg:transparent;"><div class="cpt-wrap" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:900;"><div class="cpt-row-sm"><span class="word active" data-wi="4" data-imp="false">be in the</span></div><div class="cpt-row-lg"><span class="word active" data-wi="5" data-imp="false">present</span></div><span class="word active" data-wi="6" data-imp="false" style="font-size:0;line-height:0;opacity:0;position:absolute;"></span><span class="word active" data-wi="7" data-imp="false" style="font-size:0;line-height:0;opacity:0;position:absolute;"></span></div></div></div><div class="bt-cap-block" style="display: flex;"><div class="t-36" style="--template-primary:#FFFFFF;--template-secondary:#39FF14;--template-highlight:#39FF14;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:900;"><span class="word active" data-wi="8" data-imp="false">every</span><span class="word active" data-wi="9" data-imp="false">single</span><span class="word active current" data-wi="10" data-imp="false">time</span><span class="word active" data-wi="11" data-imp="false">yeah</span></span></div></div></div></div><div class="bt-prog-dots"><div class="dot"></div><div class="dot"></div><div class="dot active"></div></div><div class="btcard-info"><div class="btcard-name">Color Flash</div><div class="btcard-desc">Yellow / Orange CPT / Green flash per line</div></div></div><div class="btcard"><div class="btcard-preview" style="background:#111"><div class="bt-cap-stack"><div class="bt-cap-block" style="display: none;"><div class="t-105" style="--template-primary:#FFFFFF;--template-secondary:#DDAA03;--template-highlight:#DDAA03;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="0" data-imp="false">This</span><span class="word active" data-wi="1" data-imp="false">IS</span><span class="word active" data-wi="2" data-imp="false">great</span><span class="word active" data-wi="3" data-imp="false">now</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-105" style="--template-primary:#FFFFFF;--template-secondary:#DDAA03;--template-highlight:#DDAA03;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="4" data-imp="false">and</span><span class="word active" data-wi="5" data-imp="false">it</span><span class="word active" data-wi="6" data-imp="false">feels</span><span class="word active" data-wi="7" data-imp="false">right</span></span></div></div><div class="bt-cap-block" style="display: flex;"><div class="t-105" style="--template-primary:#FFFFFF;--template-secondary:#DDAA03;--template-highlight:#DDAA03;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="8" data-imp="false">every</span><span class="word active" data-wi="9" data-imp="false">single</span><span class="word active current" data-wi="10" data-imp="false">time</span><span class="word active" data-wi="11" data-imp="false">yeah</span></span></div></div></div></div><div class="bt-prog-dots"><div class="dot"></div><div class="dot"></div><div class="dot active"></div></div><div class="btcard-info"><div class="btcard-name">Daze</div><div class="btcard-desc">White stroked, yellow glow on speak</div></div></div>
+    <div class="btcard"><div class="btcard-preview" style="background:#111"><div class="bt-cap-stack"><div class="bt-cap-block" style="display: none;"><div class="t-124" style="--template-primary:#FFFFFF;--template-secondary:#FFFFFF;--template-highlight:#DDAA03;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Inter&#39;,sans-serif;font-weight:900;"><span class="word active" data-wi="0" data-imp="false">This</span><span class="word active" data-wi="1" data-imp="false">IS</span><span class="word active" data-wi="2" data-imp="false">great</span><span class="word active" data-wi="3" data-imp="false">now</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-124" style="--template-primary:#FFFFFF;--template-secondary:#FFFFFF;--template-highlight:#DDAA03;--template-bg:transparent;"><div class="cpt-wrap cpt-wrap-right" style="font-family:&#39;Inter&#39;,sans-serif;font-weight:900;"><div class="cpt-row-sm cpt-row-sm-right"><span class="word active" data-wi="4" data-imp="false">the point is</span></div><div class="cpt-row-lg cpt-row-lg-center"><span class="word active" data-wi="5" data-imp="false">simple</span></div><div class="cpt-row-sm cpt-row-sm-right"><span class="word active" data-wi="6" data-imp="false">do it.</span></div><span class="word active" data-wi="7" data-imp="false" style="font-size:0;line-height:0;opacity:0;position:absolute;"></span></div></div></div><div class="bt-cap-block" style="display: flex;"><div class="t-124" style="--template-primary:#FFFFFF;--template-secondary:#FFFFFF;--template-highlight:#DDAA03;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Inter&#39;,sans-serif;font-weight:900;"><span class="word active" data-wi="8" data-imp="false">every</span><span class="word active" data-wi="9" data-imp="false">single</span><span class="word active current" data-wi="10" data-imp="false">time</span><span class="word" data-wi="11" data-imp="false">yeah</span></span></div></div></div></div><div class="bt-prog-dots"><div class="dot"></div><div class="dot"></div><div class="dot active"></div></div><div class="btcard-info"><div class="btcard-name">Ghost Echo</div><div class="btcard-desc">Reference pinch CPT with ghosted repeat trail</div></div></div><div class="btcard"><div class="btcard-preview" style="background:#111"><div class="bt-cap-stack"><div class="bt-cap-block" style="display: none;"><div class="t-110" style="--template-primary:#FFFFFF;--template-secondary:#0066FF;--template-highlight:#DDAA03;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="0" data-imp="false">This</span><span class="word active" data-wi="1" data-imp="false">is</span><span class="word active" data-wi="2" data-imp="false">great</span><span class="word active" data-wi="3" data-imp="false">now</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-110" style="--template-primary:#FFFFFF;--template-secondary:#0066FF;--template-highlight:#DDAA03;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="4" data-imp="false">and</span><span class="word active" data-wi="5" data-imp="false">it</span><span class="word active" data-wi="6" data-imp="false">feels</span><span class="word active" data-wi="7" data-imp="false">right</span></span></div></div><div class="bt-cap-block" style="display: flex;"><div class="t-110" style="--template-primary:#FFFFFF;--template-secondary:#0066FF;--template-highlight:#DDAA03;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Noto Sans&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="8" data-imp="false">every</span><span class="word active" data-wi="9" data-imp="false">single</span><span class="word active current" data-wi="10" data-imp="false">time</span><span class="word active" data-wi="11" data-imp="false">yeah</span></span></div></div></div></div><div class="bt-prog-dots"><div class="dot"></div><div class="dot"></div><div class="dot active"></div></div><div class="btcard-info"><div class="btcard-name">Glow Dot</div><div class="btcard-desc">Glowing dot under active word</div></div></div>
+    <div class="btcard"><div class="btcard-preview" style="background:#111"><div class="bt-cap-stack"><div class="bt-cap-block" style="display: none;"><div class="t-56" style="--template-primary:#FFFFFF;--template-secondary:#0066FF;--template-highlight:#DDAA03;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Inter&#39;,sans-serif;font-weight:900;"><span class="word active" data-wi="0" data-imp="false">This</span><span class="word active" data-wi="1" data-imp="false">IS</span><span class="word active" data-wi="2" data-imp="false">great</span><span class="word active" data-wi="3" data-imp="false">now</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-56" style="--template-primary:#FFFFFF;--template-secondary:#0066FF;--template-highlight:#DDAA03;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Inter&#39;,sans-serif;font-weight:900;"><span class="word active" data-wi="4" data-imp="false">and</span><span class="word active" data-wi="5" data-imp="false">it</span><span class="word active" data-wi="6" data-imp="false">feels</span><span class="word active" data-wi="7" data-imp="false">right</span></span></div></div><div class="bt-cap-block" style="display: flex;"><div class="t-56" style="--template-primary:#FFFFFF;--template-secondary:#0066FF;--template-highlight:#DDAA03;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Inter&#39;,sans-serif;font-weight:900;"><span class="word active" data-wi="8" data-imp="false">every</span><span class="word active" data-wi="9" data-imp="false">single</span><span class="word active current" data-wi="10" data-imp="false">time</span><span class="word active" data-wi="11" data-imp="false">yeah</span></span></div></div></div></div><div class="bt-prog-dots"><div class="dot"></div><div class="dot"></div><div class="dot active"></div></div><div class="btcard-info"><div class="btcard-name">Underline</div><div class="btcard-desc">Active word gets a blue bottom border</div></div></div>
+    <div class="btcard"><div class="btcard-preview" style="background:#111"><div class="bt-cap-stack"><div class="bt-cap-block" style="display: none;"><div class="t-119" style="--template-primary:#FFFFFF;--template-secondary:#00FFCC;--template-highlight:#DDAA03;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Inter&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="0" data-imp="false">This</span><span class="word active" data-wi="1" data-imp="false">IS</span><span class="word active" data-wi="2" data-imp="false">great</span><span class="word active" data-wi="3" data-imp="false">now</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-119" style="--template-primary:#FFFFFF;--template-secondary:#00FFCC;--template-highlight:#DDAA03;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Inter&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="4" data-imp="false">and</span><span class="word active" data-wi="5" data-imp="false">it</span><span class="word active" data-wi="6" data-imp="false">feels</span><span class="word active" data-wi="7" data-imp="false">right</span></span></div></div><div class="bt-cap-block" style="display: flex;"><div class="t-119" style="--template-primary:#FFFFFF;--template-secondary:#00FFCC;--template-highlight:#DDAA03;--template-bg:transparent;"><span class="cap-text" style="font-family:&#39;Inter&#39;,sans-serif;font-weight:800;"><span class="word active" data-wi="8" data-imp="false">every</span><span class="word active" data-wi="9" data-imp="false">single</span><span class="word active current" data-wi="10" data-imp="false">time</span><span class="word active" data-wi="11" data-imp="false">yeah</span></span></div></div></div></div><div class="bt-prog-dots"><div class="dot"></div><div class="dot"></div><div class="dot active"></div></div><div class="btcard-info"><div class="btcard-name">Gradient Box</div><div class="btcard-desc">Active word gets blue-cyan gradient box</div></div></div>
+    <div class="btcard"><div class="btcard-preview" style="background:#000"><div class="bt-cap-stack"><div class="bt-cap-block" style="display: none;"><div class="t-12" style="--template-primary:#cc0000;--template-secondary:#cc0000;--template-highlight:#DDAA03;--template-bg:#000;"><span class="cap-text" style="font-family:&#39;Special Elite&#39;,sans-serif;font-weight:400;"><span class="word active" data-wi="0" data-imp="false">This</span><span class="word active" data-wi="1" data-imp="false">IS</span><span class="word active" data-wi="2" data-imp="false">great</span><span class="word active" data-wi="3" data-imp="false">now</span></span></div></div><div class="bt-cap-block" style="display: none;"><div class="t-12" style="--template-primary:#cc0000;--template-secondary:#cc0000;--template-highlight:#DDAA03;--template-bg:#000;"><span class="cap-text" style="font-family:&#39;Special Elite&#39;,sans-serif;font-weight:400;"><span class="word active" data-wi="4" data-imp="false">and</span><span class="word active" data-wi="5" data-imp="false">it</span><span class="word active" data-wi="6" data-imp="false">feels</span><span class="word active" data-wi="7" data-imp="false">right</span></span></div></div><div class="bt-cap-block" style="display: flex;"><div class="t-12" style="--template-primary:#cc0000;--template-secondary:#cc0000;--template-highlight:#DDAA03;--template-bg:#000;"><span class="cap-text" style="font-family:&#39;Special Elite&#39;,sans-serif;font-weight:400;"><span class="word active" data-wi="8" data-imp="false">every</span><span class="word active" data-wi="9" data-imp="false">single</span><span class="word active current" data-wi="10" data-imp="false">time</span><span class="word active" data-wi="11" data-imp="false">yeah</span></span></div></div></div></div><div class="bt-prog-dots"><div class="dot"></div><div class="dot"></div><div class="dot active"></div></div><div class="btcard-info"><div class="btcard-name">Horror</div><div class="btcard-desc">Typewriter font, blood-red glow</div></div></div>
     
     
     
@@ -5303,10 +5385,12 @@ observer.observe(t11b0, { attributes: true });
     });
   }
   function animateBlock(bl) {
+    var phaseIndex = Array.prototype.indexOf.call(bl.parentNode ? bl.parentNode.children : [], bl);
     bl.querySelectorAll('.t-52 .word, .t-T4 .word, .t-106 .word, .t-T6 .word').forEach(function(w) {
       w.style.opacity = '';
       w.style.transform = '';
       w.style.transition = '';
+      w.style.animation = '';
     });
     bl.querySelectorAll('.t-52, .t-T4, .t-106, .t-T6, .t-56').forEach(function(wrapper) {
       wrapper.querySelectorAll('.word').forEach(function(w) {
@@ -5314,14 +5398,60 @@ observer.observe(t11b0, { attributes: true });
       });
     });
     bl.querySelectorAll('.t-52').forEach(function(wrapper) {
+      if (phaseIndex === 0) {
+        wrapper.style.transition = 'none';
+        wrapper.style.opacity = '0';
+        wrapper.style.transform = 'translateY(44px)';
+        setTimeout(function() {
+          wrapper.style.transition = 'transform 700ms cubic-bezier(0.22,1,0.36,1), opacity 400ms ease';
+          wrapper.style.opacity = '1';
+          wrapper.style.transform = 'none';
+        }, 30);
+        return;
+      }
+      wrapper.querySelectorAll('.word').forEach(function(w, i) {
+        w.style.transition = 'none';
+        w.style.opacity = '0';
+        w.style.transform = phaseIndex === 1 ? 'translateX(-38px)' : 'translateX(38px)';
+        setTimeout(function() {
+          w.style.transition = 'opacity 420ms ease, transform 420ms cubic-bezier(0.22,1,0.36,1)';
+          w.style.opacity = '1';
+          w.style.transform = 'none';
+        }, 30 + (i * 65));
+      });
+    });
+    bl.querySelectorAll('.t-T4').forEach(function(wrapper) {
+      wrapper.classList.remove('study-line-0', 'study-line-1', 'study-line-2', 'study-word-slide-preview');
       wrapper.style.transition = 'none';
-      wrapper.style.opacity = '0';
-      wrapper.style.transform = 'translateY(44px)';
-      setTimeout(function() {
-        wrapper.style.transition = 'transform 700ms cubic-bezier(0.22,1,0.36,1), opacity 400ms ease';
+      wrapper.style.animation = 'none';
+      wrapper.style.opacity = phaseIndex === 1 ? '1' : '0';
+      wrapper.style.transform = phaseIndex === 0 ? 'translateX(-38px)' : phaseIndex === 2 ? 'translateY(24px)' : 'none';
+      wrapper.querySelectorAll('.cap-text, .basic-manual-line, .word').forEach(function(node) {
+        node.style.transition = '';
+        node.style.animation = '';
+        node.style.opacity = '';
+        node.style.transform = '';
+      });
+      wrapper.querySelectorAll('.word').forEach(function(w, i) {
+        if (phaseIndex === 1) {
+          w.style.setProperty('--ws-delay', (90 + (i * 55)) + 'ms');
+        } else {
+          w.style.removeProperty('--ws-delay');
+        }
+        w.style.removeProperty('--basic-word-delay');
+      });
+      void wrapper.offsetWidth;
+      wrapper.classList.add('study-line-' + phaseIndex);
+      wrapper.classList.toggle('study-word-slide-preview', phaseIndex === 1);
+      if (phaseIndex === 0) {
+        wrapper.style.animation = 'basicWordSlideFromLeft 0.42s cubic-bezier(0.22,1,0.36,1) both';
+      } else if (phaseIndex === 2) {
+        wrapper.style.animation = 'wordRiseInFromBottom 0.38s cubic-bezier(0.34,1.2,0.64,1) both';
+      } else {
+        wrapper.style.animation = 'none';
         wrapper.style.opacity = '1';
         wrapper.style.transform = 'none';
-      }, 30);
+      }
     });
     bl.querySelectorAll('.t-106 .word, .t-T6 .word').forEach(function(w, i) {
       w.style.transition = 'none';
@@ -5352,7 +5482,7 @@ observer.observe(t11b0, { attributes: true });
       }, 520);
     });
     bl.querySelectorAll('.t-WS1').forEach(function(wrapper) {
-      wrapper.classList.remove('ws-enter', 'ws-done');
+      wrapper.classList.remove('ws-enter', 'ws-done', 'ws-line-0', 'ws-line-1', 'ws-line-2');
       wrapper.querySelectorAll('.word').forEach(function(w, i) {
         w.style.transition = 'none';
         w.style.animation = '';
@@ -5362,11 +5492,7 @@ observer.observe(t11b0, { attributes: true });
         w.style.setProperty('--ws-delay', (90 + (i * 55)) + 'ms');
       });
       void wrapper.offsetWidth;
-      wrapper.classList.add('ws-enter');
-      setTimeout(function() {
-        wrapper.classList.remove('ws-enter');
-        wrapper.classList.add('ws-done');
-      }, 90 + (wrapper.querySelectorAll('.word').length * 55) + 360);
+      wrapper.classList.add('ws-enter', 'ws-line-' + phaseIndex);
     });
     bl.querySelectorAll('.sblock[data-type="sticky-wave"]').forEach(function(sblock) {
       triggerStickyWave(sblock);
