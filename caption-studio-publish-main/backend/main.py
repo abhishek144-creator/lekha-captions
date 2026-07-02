@@ -296,6 +296,11 @@ LOCAL_DEV_AUTH_BYPASS_ENABLED = os.environ.get(
     "LOCAL_DEV_AUTH_BYPASS",
     "0" if _IS_PRODUCTION else "1",
 ).strip().lower() not in ("", "0", "false", "no", "off")
+if _IS_PRODUCTION and LOCAL_DEV_AUTH_BYPASS_ENABLED:
+    raise RuntimeError(
+        "LOCAL_DEV_AUTH_BYPASS must not be enabled in production (ENV=production): "
+        "it accepts the mock-token auth bypass. Unset it or set it to 0."
+    )
 SLO_EXPORT_SUCCESS_TARGET = float(os.environ.get("SLO_EXPORT_SUCCESS_TARGET", "0.98"))
 SLO_PROCESS_SUCCESS_TARGET = float(os.environ.get("SLO_PROCESS_SUCCESS_TARGET", "0.98"))
 SLO_EXPORT_P95_MS_TARGET = int(os.environ.get("SLO_EXPORT_P95_MS_TARGET", "180000"))
