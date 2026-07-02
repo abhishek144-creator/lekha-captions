@@ -5,10 +5,12 @@ import { fileURLToPath } from 'url';
 import puppeteer from 'puppeteer';
 import {
   ADVANCED_IMP_ENTRANCES,
+  ADVANCED_TEMPLATE_EMPHASIS_COLORS,
   ADVANCED_TEMPLATE_RUNTIME_CSS,
   ADVANCED_TEMPLATE_TIMING,
   LEGACY_TEMPLATE_TIMING,
   ORIGINAL_TEMPLATE_BLOCK_TYPES,
+  RECREATED_ADVANCED_TEMPLATE_IDS,
   getAdvancedAnimationWindowMs,
   getOriginalTemplateBlockType,
 } from '../src/components/dashboard/templateMotionConfig.js';
@@ -19,7 +21,13 @@ import {
   buildEmotionalCaptionPlan,
   EMOTIONAL_TEMPLATE_TIMING,
 } from '../src/components/dashboard/emotionalTemplateUtils.js';
-
+import {
+  SOURCE_BASIC_TEMPLATE_IDS,
+  isSourceBasicTemplateId,
+  findAppliedBasicTemplateMarkup,
+  APPLIED_BASIC_TEMPLATE_HOST_OVERRIDES,
+  APPLIED_BASIC_TEMPLATE_FONT_SCALE,
+} from '../src/components/dashboard/basicTemplateInline.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '..');
@@ -66,6 +74,35 @@ function scaleTemplateFontSize(fontSize) {
   return Math.max(12, Math.round((fontSize || 18) * TEMPLATE_CANVAS_FONT_SCALE));
 }
 
+function estimateAdvancedPreviewTemplateBox(payload, previewWidth = 0) {
+  if (!isAdvancedTemplateId(payload?.style?.template_id)) {
+    return { width: 0, height: 0 };
+  }
+
+  const fontSize = Math.max(16, Number(payload?.style?.font_size || 23));
+  const lineSpacing = Math.max(1, Number(payload?.style?.line_spacing || 1.25));
+  const maxPreviewWidth = Math.max(180, Number(previewWidth || 0) || 314);
+  const firstCaption = (payload?.captions || []).find((caption) => caption && !caption.is_text_element);
+  const words = String(firstCaption?.text || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  const lineCount = words.length >= 3 ? 2 : 1;
+  const midpoint = Math.ceil(words.length / lineCount);
+  const lines = lineCount === 1
+    ? [words.join(' ')]
+    : [words.slice(0, midpoint).join(' '), words.slice(midpoint).join(' ')];
+  const maxLineLength = Math.max(
+    6,
+    ...lines.map((line) => Array.from(line || '').length),
+  );
+
+  return {
+    width: Math.min(maxPreviewWidth * 0.82, Math.max(fontSize * 4.8, maxLineLength * fontSize * 0.72)),
+    height: Math.max(fontSize * lineSpacing, fontSize * lineSpacing * lineCount),
+  };
+}
+
 function getTemplateBlockType(templateId, blockIndex = 0) {
   return getOriginalTemplateBlockType(templateId, blockIndex);
 }
@@ -94,6 +131,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       Math.max(1, Math.round((Number(value) || 0) * (window.__exportCanvasScale || 1)));
     const scaleTemplateFontSize = (fontSize) =>
       Math.max(12, scaleExportPx((fontSize || 18) * TEMPLATE_CANVAS_FONT_SCALE));
+    const APPLIED_BASIC_EXPORT_FONT_SCALE = ${JSON.stringify(APPLIED_BASIC_TEMPLATE_FONT_SCALE)};
 
     const escapeHtml = (value = '') =>
       String(value)
@@ -147,6 +185,16 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       return Math.max(0, Math.min(splitWords.length - 1, Math.floor((elapsed / duration) * splitWords.length)));
     };
 
+    const resolveAdvancedTemplatePhaseIndex = (caption, fallbackIndex = 0) => {
+      const storedPhaseIndex = Number(caption?.template_phase_index);
+      if (Number.isFinite(storedPhaseIndex)) return storedPhaseIndex;
+      const templateIndex = Number(caption?.__templateIndex);
+      if (Number.isFinite(templateIndex)) return templateIndex;
+      const legacyTemplateIndex = Number(caption?.__template_index);
+      if (Number.isFinite(legacyTemplateIndex)) return legacyTemplateIndex;
+      return Math.max(0, Number(fallbackIndex) || 0);
+    };
+
     const splitCaptionForTemplate = (text = '') => {
       const words = String(text).trim().split(/\\s+/).filter(Boolean);
       if (!words.length) return { top: '', hero: '', bottom: '', full: '' };
@@ -171,6 +219,75 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       return lines.map((line) => line.join(' ')).filter(Boolean);
     };
 
+    const resolveTemplatePreviewLines = (text = '', preferredLines = [], maxLines = 2) => {
+      const normalizedPreferred = Array.isArray(preferredLines)
+        ? preferredLines.map((line) => String(line || '').replace(/\\s+/g, ' ').trim()).filter(Boolean)
+        : [];
+      if (normalizedPreferred.length > 0) {
+        const requestedWords = normalizedPreferred.flatMap((line) => line.split(/\\s+/).filter(Boolean));
+        const actualWords = String(text).trim().split(/\\s+/).filter(Boolean);
+        const sameWords = requestedWords.length === actualWords.length
+          && requestedWords.every((word, index) => word === actualWords[index]);
+        if (sameWords) return normalizedPreferred;
+      }
+      return splitTemplateLines(text, maxLines);
+    };
+
+    const splitBattleCryTokens = (tokens = []) => {
+      if (!tokens.length) return [];
+      if (tokens.length <= 3) return [tokens.map((token, wordIndex) => ({ ...token, wordIndex }))];
+      const firstLineCount = Math.max(2, Math.min(tokens.length - 1, Math.ceil(tokens.length * 0.66)));
+      return [
+        tokens.slice(0, firstLineCount).map((token, wordIndex) => ({ ...token, wordIndex })),
+        tokens.slice(firstLineCount).map((token, localIndex) => ({
+          ...token,
+          wordIndex: firstLineCount + localIndex,
+        })),
+      ].filter((line) => line.length);
+    };
+
+    const splitCompactIndexedLines = (tokens = [], preferredLines = []) => {
+      const normalizedPreferred = Array.isArray(preferredLines)
+        ? preferredLines.map((line) => String(line || '').replace(/\\s+/g, ' ').trim()).filter(Boolean)
+        : [];
+      if (normalizedPreferred.length > 1) {
+        const preferredWords = normalizedPreferred.flatMap((line) => line.split(/\\s+/).filter(Boolean));
+        const tokenWords = tokens.map((token) => token.word);
+        const sameWords = preferredWords.length === tokenWords.length
+          && preferredWords.every((word, index) => word === tokenWords[index]);
+        if (sameWords) {
+          let cursor = 0;
+          return normalizedPreferred.map((lineText) => {
+            const count = lineText.split(/\\s+/).filter(Boolean).length;
+            const line = tokens.slice(cursor, cursor + count).map((token, localIndex) => ({
+              ...token,
+              wordIndex: cursor + localIndex,
+            }));
+            cursor += count;
+            return line;
+          }).filter((line) => line.length);
+        }
+      }
+
+      if (!tokens.length) return [];
+      if (tokens.length <= 3) return [tokens.map((token, wordIndex) => ({ ...token, wordIndex }))];
+      const firstLineCount = Math.max(2, Math.min(tokens.length - 1, Math.ceil(tokens.length * 0.66)));
+      return [
+        tokens.slice(0, firstLineCount).map((token, wordIndex) => ({ ...token, wordIndex })),
+        tokens.slice(firstLineCount).map((token, localIndex) => ({
+          ...token,
+          wordIndex: firstLineCount + localIndex,
+        })),
+      ].filter((line) => line.length);
+    };
+
+    const shouldCompactTemplateLine = (text = '') => {
+      const value = String(text || '').trim();
+      if (!value) return false;
+      return value.length > 22
+        || /[\p{Script=Arabic}\p{Script=Bengali}\p{Script=Devanagari}\p{Script=Gujarati}\p{Script=Gurmukhi}\p{Script=Han}\p{Script=Hiragana}\p{Script=Kannada}\p{Script=Katakana}\p{Script=Malayalam}\p{Script=Oriya}\p{Script=Tamil}\p{Script=Telugu}\p{Script=Thai}]/u.test(value);
+    };
+
     const heroMarkup = (text, className = '') => {
       const { top, hero, bottom, full } = splitCaptionForTemplate(text);
       if (!full) return '';
@@ -178,17 +295,55 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       return \`\${top ? \`\${escapeHtml(top)} \` : ''}<span class="\${className}">\${escapeHtml(hero)}</span>\${bottom ? \` \${escapeHtml(bottom)}\` : ''}\`;
     };
 
-    const wbwMarkup = (text, variant = 'wbw-rise', impClass = 'imp-bold') => {
+    const wbwMarkup = (text, variant = 'wbw-rise', impClass = 'imp-bold', options = {}) => {
       const { hero, full } = splitCaptionForTemplate(text);
       if (!full) return '';
       const tokens = full.split(/\\s+/).filter(Boolean).map((word) => ({ word }));
       const heroIndex = Math.max(0, tokens.findIndex((token) => token.word === hero));
+      const lineMotion = String(options.motion || '');
+      const lineClassName = String(options.lineClassName || '');
+      const lineMotionAttr = lineMotion ? \` data-line-motion="\${escapeHtml(lineMotion)}"\` : '';
+      const outerClass = \`\${variant} lekha-template-fit\${lineClassName ? \` \${lineClassName}\` : ''}\`;
+      const indexedLines = options.compactLines
+        ? splitCompactIndexedLines(tokens, options.lineTexts)
+        : [];
+      if (indexedLines.length > 1) {
+        const markup = indexedLines.map((line) => {
+          const lineWords = line.map((token, localIndex) => {
+            const style = \`--wbw-delay:\${token.wordIndex * 65}ms\`;
+            const isImp = token.wordIndex === heroIndex;
+            return \`\${localIndex > 0 ? ' ' : ''}<span class="w\${isImp ? \` \${impClass}\` : ''} in" data-i="\${token.wordIndex}"\${lineMotionAttr}\${isImp ? \` data-imp="true" data-imp-cls="\${impClass}"\` : ''} style="\${style}">\${escapeHtml(token.word)}</span>\`;
+          }).join('');
+          return \`<span class="lekha-template-preview-line">\${lineWords}</span>\`;
+        }).join('');
+        return \`<span class="\${outerClass} lekha-template-preview-lines" data-type="\${variant}"\${lineMotionAttr}>\${markup}</span>\`;
+      }
       const words = tokens.map((token, index) => {
         const style = \`--wbw-delay:\${index * 65}ms\`;
         const isImp = index === heroIndex;
-        return \`\${index > 0 ? ' ' : ''}<span class="w\${isImp ? \` \${impClass}\` : ''} in" data-i="\${index}"\${isImp ? \` data-imp="true" data-imp-cls="\${impClass}"\` : ''} style="\${style}">\${escapeHtml(token.word)}</span>\`;
+        return \`\${index > 0 ? ' ' : ''}<span class="w\${isImp ? \` \${impClass}\` : ''} in" data-i="\${index}"\${lineMotionAttr}\${isImp ? \` data-imp="true" data-imp-cls="\${impClass}"\` : ''} style="\${style}">\${escapeHtml(token.word)}</span>\`;
       }).join('');
-      return \`<span class="\${variant} lekha-template-fit" data-type="\${variant}">\${words}</span>\`;
+      return \`<span class="\${outerClass}" data-type="\${variant}"\${lineMotionAttr}>\${words}</span>\`;
+    };
+
+    const battleCryWbwMarkup = (text, variant = 'wbw-rise', impClass = 'imp-rose') => {
+      const { hero, full } = splitCaptionForTemplate(text);
+      if (!full) return '';
+      const tokens = full.split(/\\s+/).filter(Boolean).map((word) => ({ word }));
+      const heroIndex = Math.max(0, tokens.findIndex((token) => token.word === hero));
+      const lines = splitBattleCryTokens(tokens);
+      const markup = lines.map((line, lineIndex) => {
+        const lineMotion = lineIndex % 2 === 0 ? 'wbw-slide' : 'wbw-rise';
+        const battleMotion = lineIndex % 2 === 0 ? 'sweep-left' : 'lift-up';
+        const lineDelay = lineIndex * 170;
+        const lineWords = line.map((token, localIndex) => {
+          const isImp = token.wordIndex === heroIndex;
+          const style = \`--wbw-delay:\${(localIndex * 58) + lineDelay}ms\`;
+          return \`\${localIndex > 0 ? ' ' : ''}<span class="w\${isImp ? \` \${impClass} is-emphasis\` : ''} in" data-i="\${token.wordIndex}" data-line-motion="\${lineMotion}" data-line-delay="\${lineDelay}" data-battle-motion="\${battleMotion}" data-battle-index="\${localIndex}"\${isImp ? \` data-imp="true" data-imp-cls="\${impClass}"\` : ''} style="\${style}">\${escapeHtml(token.word)}</span>\`;
+        }).join('');
+        return \`<span class="lekha-template-preview-line battle-line-\${lineIndex + 1} \${lineMotion} battle-\${battleMotion}" data-battle-line="\${lineIndex}" data-line-motion="\${lineMotion}" data-battle-motion="\${battleMotion}">\${lineWords}</span>\`;
+      }).join('');
+      return \`<span class="\${variant} lekha-template-fit lekha-template-preview-lines battle-lines" data-type="\${variant}">\${markup}</span>\`;
     };
 
     const karaokeMarkup = (text) => {
@@ -234,7 +389,20 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       return sourceClasses[sourceIndex] || fallback;
     };
 
+    const ADVANCED_TEMPLATE_EMPHASIS_COLORS = ${JSON.stringify(ADVANCED_TEMPLATE_EMPHASIS_COLORS)};
+    const resolveAdvancedTemplateEmphasisColor = (templateId, emphasisColor = '', blockIndex = -1) => {
+      const normalizedId = String(templateId || '').trim();
+      if (normalizedId === 't23' && Number(blockIndex) === 3) {
+        return '#ffffff';
+      }
+      if (emphasisColor) {
+        return emphasisColor;
+      }
+      return ADVANCED_TEMPLATE_EMPHASIS_COLORS[normalizedId] || '';
+    };
+
     const replaceAdvancedSourceWbw = (container, words, impWordIndex, emphasisColor) => {
+      const doc = container.ownerDocument || document;
       const sourceWords = Array.from(container.querySelectorAll('.w'));
       const sourceClasses = sourceWords.map((word) => String(word.className || 'w'));
       const impPattern = /\\bimp-[\\w-]+\\b/;
@@ -249,8 +417,10 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       const targetImpIndex = impWordIndex;
       container.textContent = '';
       container.dataset.text = words.join(' ');
-      words.forEach((word, index) => {
-        const span = document.createElement('span');
+      container.classList.remove('lekha-template-preview-lines');
+
+      const createWordSpan = (word, index, isLastInLine) => {
+        const span = doc.createElement('span');
         const mapped = mapAdvancedSourceClass(sourceClasses, index, words.length, 'w')
           .replace(/\\bimp-[\\w-]+\\b/g, '')
           .replace(/\\s+/g, ' ')
@@ -266,11 +436,15 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
             span.style.setProperty('-webkit-text-fill-color', emphasisColor, 'important');
           }
         }
-        if (index < words.length - 1) {
+        if (!isLastInLine) {
           span.style.setProperty('margin-right', '0.24em', 'important');
         }
         span.textContent = word;
-        container.appendChild(span);
+        return span;
+      };
+
+      words.forEach((word, index) => {
+        container.appendChild(createWordSpan(word, index, index === words.length - 1));
       });
     };
 
@@ -293,10 +467,28 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
 
     const collectAdvancedSourceTextNodes = (root) => {
       const textNodes = [];
+      const isHiddenTextNode = (node) => {
+        let element = node?.parentElement;
+        while (element && element !== root.parentElement) {
+          const style = String(element.getAttribute?.('style') || '').toLowerCase();
+          if (
+            element.hidden
+            || element.getAttribute?.('aria-hidden') === 'true'
+            || /display\\s*:\\s*none/.test(style)
+            || /visibility\\s*:\\s*hidden/.test(style)
+            || /font-size\\s*:\\s*0(?:\\.0+)?(?:px|rem|em|%)?(?:\\s*(?:;|$))/.test(style)
+            || /line-height\\s*:\\s*0(?:\\.0+)?(?:px|rem|em|%)?(?:\\s*(?:;|$))/.test(style)
+          ) {
+            return true;
+          }
+          element = element.parentElement;
+        }
+        return false;
+      };
       const visit = (node) => {
         Array.from(node.childNodes || []).forEach((child) => {
           if (child.nodeType === 3) {
-            if (/[\\p{L}\\p{N}]/u.test(child.nodeValue || '')) textNodes.push(child);
+            if (/[\\p{L}\\p{N}]/u.test(child.nodeValue || '') && !isHiddenTextNode(child)) textNodes.push(child);
             else if (String(child.nodeValue || '').trim()) child.nodeValue = '';
           } else if (child.nodeType === 1) {
             visit(child);
@@ -307,41 +499,322 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       return textNodes;
     };
 
-    const replaceAdvancedSourceStyledText = (block, words, captionText) => {
+    const assignAdvancedWordsToSlots = (words, slotCount) => {
+      const assigned = Array.from({ length: Math.max(0, slotCount) }, () => []);
+      if (!words.length || !assigned.length) return assigned;
+
+      words.forEach((word, wordIndex) => {
+        const slotIndex = words.length <= 1 || assigned.length <= 1
+          ? 0
+          : Math.min(
+            assigned.length - 1,
+            Math.round((wordIndex * (assigned.length - 1)) / Math.max(1, words.length - 1)),
+          );
+        assigned[slotIndex].push({ word, wordIndex });
+      });
+
+      assigned.forEach((slot, slotIndex) => {
+        if (slot.length) return;
+        let donorIndex = -1;
+        let donorDistance = Infinity;
+        assigned.forEach((candidate, candidateIndex) => {
+          if (candidate.length <= 1) return;
+          const distance = Math.abs(candidateIndex - slotIndex);
+          if (distance < donorDistance) {
+            donorDistance = distance;
+            donorIndex = candidateIndex;
+          }
+        });
+        if (donorIndex < 0) return;
+        const donor = assigned[donorIndex];
+        const moved = donorIndex < slotIndex ? donor.pop() : donor.shift();
+        if (moved) slot.push(moved);
+      });
+
+      return assigned;
+    };
+
+    const advancedSourceImpPattern = /\\b(?:imp-[\\w-]+|ns[23]-[\\w-]+)\\b/;
+
+    const getAdvancedSourceImpClass = (block) => {
+      const className = Array.from(block.querySelectorAll('*'))
+        .map((element) => element.className || '')
+        .find((value) => advancedSourceImpPattern.test(String(value)));
+      return String(className || '').match(advancedSourceImpPattern)?.[0] || 'imp-gold';
+    };
+
+    const findAdvancedSlotImpWrapper = (slot, block) => {
+      let element = slot?.parentElement;
+      while (element && element !== block) {
+        if (advancedSourceImpPattern.test(String(element.className || ''))) return element;
+        element = element.parentElement;
+      }
+      return null;
+    };
+
+    const replaceAdvancedTextSlot = (slot, assignedWords, impWordIndex, impClass, emphasisColor, block) => {
+      const doc = slot.ownerDocument;
+      const source = String(slot.nodeValue || '');
+      const leading = /^\\s/.test(source) ? ' ' : '';
+      const trailing = /\\s$/.test(source) ? ' ' : '';
+      const replacementTarget = impWordIndex >= 0
+        ? findAdvancedSlotImpWrapper(slot, block)
+        : null;
+      const fragment = doc.createDocumentFragment();
+      if (leading) fragment.appendChild(doc.createTextNode(leading));
+      assignedWords.forEach(({ word, wordIndex }, localIndex) => {
+        if (localIndex > 0) fragment.appendChild(doc.createTextNode(' '));
+        if (wordIndex === impWordIndex) {
+          const span = doc.createElement('span');
+          span.className = impClass + ' is-emphasis';
+          span.dataset.w = String(wordIndex);
+          span.dataset.imp = 'true';
+          span.dataset.impCls = impClass;
+          if (emphasisColor) {
+            span.style.setProperty('color', emphasisColor, 'important');
+            span.style.setProperty('-webkit-text-fill-color', emphasisColor, 'important');
+          }
+          span.textContent = word;
+          fragment.appendChild(span);
+        } else {
+          fragment.appendChild(doc.createTextNode(word));
+        }
+      });
+      if (trailing) fragment.appendChild(doc.createTextNode(trailing));
+      if (replacementTarget?.parentNode) {
+        replacementTarget.parentNode.replaceChild(fragment, replacementTarget);
+      } else {
+        slot.parentNode?.replaceChild(fragment, slot);
+      }
+    };
+
+    const findAdvancedSourceImpSlotIndex = (slots, block) => {
+      if (!Array.isArray(slots) || !slots.length || !block) return -1;
+      return slots.findIndex((slot) => !!findAdvancedSlotImpWrapper(slot, block));
+    };
+
+    const ensureAdvancedSourceImpSlotHasWord = (assigned, impSlotIndex) => {
+      if (!Array.isArray(assigned) || impSlotIndex < 0 || impSlotIndex >= assigned.length) return;
+      if (assigned[impSlotIndex]?.length) return;
+
+      let donorIndex = -1;
+      let donorDistance = Infinity;
+      assigned.forEach((slot, slotIndex) => {
+        if (!slot.length || slotIndex === impSlotIndex) return;
+        const distance = Math.abs(slotIndex - impSlotIndex);
+        if (distance < donorDistance) {
+          donorIndex = slotIndex;
+          donorDistance = distance;
+        }
+      });
+      if (donorIndex < 0) return;
+
+      const donor = assigned[donorIndex];
+      const moved = donorIndex < impSlotIndex ? donor.pop() : donor.shift();
+      if (moved) assigned[impSlotIndex].push(moved);
+    };
+
+    const replaceAdvancedSourceStyledText = (block, words, captionText, impWordIndex = -1, emphasisColor = '') => {
       const slots = collectAdvancedSourceTextNodes(block);
       if (!slots.length) {
         block.textContent = captionText;
         return;
       }
-      const weightedSlots = [];
+      const assigned = assignAdvancedWordsToSlots(words, slots.length);
+      const sourceImpSlotIndex = findAdvancedSourceImpSlotIndex(slots, block);
+      ensureAdvancedSourceImpSlotHasWord(assigned, sourceImpSlotIndex);
+      const impClass = getAdvancedSourceImpClass(block);
       slots.forEach((slot, slotIndex) => {
-        const count = Math.max(1, String(slot.nodeValue || '').trim().split(/\\s+/).filter(Boolean).length);
-        for (let index = 0; index < count; index += 1) weightedSlots.push(slotIndex);
-      });
-      const assigned = slots.map(() => []);
-      words.forEach((word, wordIndex) => {
-        const sourcePosition = words.length <= 1
-          ? 0
-          : Math.round((wordIndex * Math.max(0, weightedSlots.length - 1)) / Math.max(1, words.length - 1));
-        assigned[weightedSlots[sourcePosition] ?? 0].push(word);
-      });
-      slots.forEach((slot, slotIndex) => {
-        const source = String(slot.nodeValue || '');
-        const leading = /^\\s/.test(source) ? ' ' : '';
-        const trailing = /\\s$/.test(source) ? ' ' : '';
-        slot.nodeValue = assigned[slotIndex].length
-          ? leading + assigned[slotIndex].join(' ') + trailing
-          : '';
+        if (assigned[slotIndex].length) {
+          replaceAdvancedTextSlot(slot, assigned[slotIndex], impWordIndex, impClass, emphasisColor, block);
+        } else {
+          slot.nodeValue = '';
+        }
       });
       block.querySelectorAll('[data-text]').forEach((element) => {
         element.setAttribute('data-text', captionText);
       });
     };
 
-    const buildCanonicalAdvancedTemplateMarkup = (templateId, text, blockIndex = 0, impWordIndex = -1, emphasisColor = '') => {
+    const shouldSuppressStyledSemanticEmphasis = (templateId, blockType, block) => (
+      templateId === 't17' && !!block?.querySelector?.('.snap-txt')
+    );
+
+    const normalizeAdvancedSourceStyledBlock = (block, templateId, blockIndex, captionText = '', previewLineTexts = []) => {
+      const rebuildSplitText = (container, lines, impClass = '') => {
+        if (!container || !Array.isArray(lines) || !lines.length) return;
+        const doc = container.ownerDocument || document;
+        container.textContent = '';
+        container.appendChild(doc.createTextNode(lines[0] || ''));
+        if (lines[1]) {
+          container.appendChild(doc.createElement('br'));
+          if (impClass) {
+            const span = doc.createElement('span');
+            span.className = impClass + ' is-emphasis';
+            span.dataset.imp = 'true';
+            span.dataset.impCls = impClass;
+            span.textContent = lines[1];
+            container.appendChild(span);
+          } else {
+            container.appendChild(doc.createTextNode(lines[1]));
+          }
+        }
+      };
+
+      if (templateId === 't15' && blockIndex === 0) {
+        const line = block.querySelector('.shake-in');
+        if (line) {
+          rebuildSplitText(line, splitTemplateLines(captionText, 2), getAdvancedSourceImpClass(block));
+          line.classList.add('lekha-template-fit');
+        }
+        return;
+      }
+
+      if (templateId === 't17' && blockIndex === 1) {
+        const snapText = block.querySelector('.snap-txt');
+        if (snapText) {
+          snapText.style.setProperty('display', 'inline-block', 'important');
+          snapText.style.setProperty('opacity', '1', 'important');
+          snapText.style.setProperty('filter', 'none', 'important');
+          snapText.style.setProperty('transform', 'none', 'important');
+          snapText.style.setProperty('letter-spacing', '0.04em', 'important');
+          snapText.style.setProperty('color', '#ff3d71', 'important');
+          snapText.style.setProperty('-webkit-text-fill-color', '#ff3d71', 'important');
+          snapText.style.setProperty('text-shadow', '0 1px 8px rgba(0,0,0,0.82), 0 0 2px rgba(0,0,0,0.92), 0 0 16px rgba(255,61,113,0.22)', 'important');
+          snapText.style.setProperty('animation', 'none', 'important');
+          snapText.style.setProperty('transition', 'none', 'important');
+          [snapText, ...snapText.querySelectorAll('*')].forEach((node) => {
+            node.style.setProperty('color', '#ff3d71', 'important');
+            node.style.setProperty('-webkit-text-fill-color', '#ff3d71', 'important');
+          });
+        }
+        return;
+      }
+
+      if (templateId === 't18' && blockIndex === 0) {
+        const lines = splitTemplateLines(captionText, 2);
+        const splitTitle = block.querySelector('.split-title');
+        if (splitTitle) {
+          const doc = splitTitle.ownerDocument || document;
+          splitTitle.textContent = '';
+          const top = doc.createElement('span');
+          top.className = 'split-top';
+          top.textContent = lines[0] || captionText;
+          splitTitle.appendChild(top);
+          const bottom = doc.createElement('span');
+          bottom.className = 'split-bot';
+          if (lines[1]) {
+            const imp = doc.createElement('span');
+            imp.className = 'imp-purple is-emphasis';
+            imp.dataset.imp = 'true';
+            imp.dataset.impCls = 'imp-purple';
+            imp.textContent = lines[1];
+            bottom.appendChild(imp);
+          }
+          splitTitle.appendChild(bottom);
+          splitTitle.classList.add('lekha-template-fit');
+        }
+        return;
+      }
+
+      if (templateId === 't38' && blockIndex === 0) {
+        const line = block.querySelector('span');
+        if (line) {
+          const lines = resolveTemplatePreviewLines(captionText, previewLineTexts, 2);
+          const doc = line.ownerDocument || document;
+          line.textContent = '';
+          line.classList.add('lekha-template-fit', 'lekha-template-preview-lines');
+          lines.forEach((lineText, index) => {
+            if (index > 0) line.appendChild(doc.createElement('br'));
+            line.appendChild(doc.createTextNode(lineText));
+          });
+        }
+        return;
+      }
+
+      if (templateId !== 't13' || !shouldCompactTemplateLine(captionText)) return;
+
+      const selector = blockIndex === 0
+        ? '.slide-crash'
+        : blockIndex === 1
+          ? '.ticker-txt'
+          : '';
+      if (!selector) return;
+
+      const line = block.querySelector(selector);
+      if (!line) return;
+
+      line.classList.add('lekha-template-fit', 't13-compact-line');
+      line.style.setProperty('text-transform', 'none', 'important');
+    };
+
+    const originalTemplateBlockTypes = ${JSON.stringify(ORIGINAL_TEMPLATE_BLOCK_TYPES)};
+    const recreatedAdvancedTemplateIds = new Set(${JSON.stringify(RECREATED_ADVANCED_TEMPLATE_IDS)});
+    const RECREATED_ADVANCED_WBW_PHASES = {
+      t11: { 2: 'imp-gold' },
+      t18: { 2: 'imp-purple' },
+      t24: { 2: 'imp-orange' },
+      t31: { 2: 'imp-gold' },
+    };
+    const getRecreatedAdvancedWbwImpClass = (templateId, blockIndex) =>
+      RECREATED_ADVANCED_WBW_PHASES[String(templateId || '')]?.[Number(blockIndex)] || '';
+    const shouldRecreateAdvancedWbwPhase = (templateId, blockIndex) =>
+      Boolean(getRecreatedAdvancedWbwImpClass(templateId, blockIndex));
+    const rebuildAdvancedWbwRiseBlock = (
+      block,
+      words,
+      impWordIndex = -1,
+      emphasisColor = '',
+      templateId = '',
+      blockIndex = 0,
+    ) => {
+      if (!block || !words.length || !shouldRecreateAdvancedWbwPhase(templateId, blockIndex)) return;
+      const doc = block.ownerDocument;
+      const impClass = getRecreatedAdvancedWbwImpClass(templateId, blockIndex);
+      const targetImpIndex = Number.isFinite(Number(impWordIndex)) && Number(impWordIndex) >= 0
+        ? Math.min(words.length - 1, Number(impWordIndex))
+        : Math.min(1, words.length - 1);
+      block.textContent = '';
+      const line = doc.createElement('span');
+      line.className = 'wbw-rise lekha-template-fit';
+      line.dataset.type = 'wbw-rise';
+      words.forEach((word, index) => {
+        if (index > 0) line.appendChild(doc.createTextNode(' '));
+        const span = doc.createElement('span');
+        const isImp = index === targetImpIndex;
+        span.className = 'w' + (isImp ? ' ' + impClass + ' is-emphasis' : '');
+        span.dataset.i = String(index);
+        if (isImp) {
+          span.dataset.imp = 'true';
+          span.dataset.impCls = impClass;
+          if (emphasisColor) {
+            span.style.setProperty('color', emphasisColor, 'important');
+            span.style.setProperty('-webkit-text-fill-color', emphasisColor, 'important');
+          }
+        }
+        if (index < words.length - 1) {
+          span.style.setProperty('margin-right', '0.24em', 'important');
+        }
+        span.textContent = word;
+        line.appendChild(span);
+      });
+      block.appendChild(line);
+    };
+
+    const buildCanonicalAdvancedTemplateMarkup = (
+      templateId,
+      text,
+      blockIndex = 0,
+      impWordIndex = -1,
+      emphasisColor = '',
+      previewLineTexts = [],
+    ) => {
+      if (recreatedAdvancedTemplateIds.has(String(templateId || '').trim())) return '';
+
       const blocks = advancedTemplateBlockMarkup[templateId] || [];
       if (!blocks.length) return '';
       const normalized = ((Number(blockIndex || 0) % blocks.length) + blocks.length) % blocks.length;
+      const resolvedEmphasisColor = resolveAdvancedTemplateEmphasisColor(templateId, emphasisColor, normalized);
       const sourceMarkup = blocks[normalized] || '';
       if (!sourceMarkup) return '';
       const doc = new DOMParser().parseFromString(sourceMarkup, 'text/html');
@@ -350,35 +823,72 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       if (!block || !words.length) return '';
 
       cleanAdvancedSourceElement(block);
-      const blockType = block.dataset.type || 'styled';
+      const blockType = originalTemplateBlockTypes[templateId]?.[normalized] || block.dataset.type || 'styled';
       block.classList.add(templateId + '-block', 'lekha-applied-advanced-template', 'lekha-advanced-source-block');
       block.dataset.templateBlockIndex = String(normalized);
       block.dataset.templateBlockType = blockType;
       block.style.opacity = '0';
       block.style.transition = 'none';
+      rebuildAdvancedWbwRiseBlock(block, words, impWordIndex, resolvedEmphasisColor, templateId, normalized);
 
       const wbwContainers = Array.from(block.querySelectorAll(
         '.wbw-rise, .wbw-slide, .wbw-seq, .wbw-seq-fade, .wbw-seq-flip',
       ));
       if (wbwContainers.length) {
-        wbwContainers.forEach((container) => replaceAdvancedSourceWbw(container, words, impWordIndex, emphasisColor));
+        wbwContainers.forEach((container) => replaceAdvancedSourceWbw(container, words, impWordIndex, resolvedEmphasisColor));
       } else {
         const karaokeContainers = Array.from(block.querySelectorAll('.kf-line'));
         if (karaokeContainers.length) {
           karaokeContainers.forEach((container) => replaceAdvancedSourceKaraoke(container, words));
         } else {
-          replaceAdvancedSourceStyledText(block, words, text);
+          const suppressSemanticEmphasis = shouldSuppressStyledSemanticEmphasis(templateId, blockType, block);
+          replaceAdvancedSourceStyledText(
+            block,
+            words,
+            text,
+            suppressSemanticEmphasis ? -1 : impWordIndex,
+            suppressSemanticEmphasis ? '' : resolvedEmphasisColor,
+          );
         }
       }
+
+      normalizeAdvancedSourceStyledBlock(block, templateId, normalized, text, previewLineTexts);
 
       return '<span class="lekha-original-template ' + templateId + ' ' + templateId + '-stage">'
         + block.outerHTML
         + '</span>';
     };
 
-    const originalTemplateBlockTypes = ${JSON.stringify(ORIGINAL_TEMPLATE_BLOCK_TYPES)};
     window.__advancedTemplateTiming = ${JSON.stringify(ADVANCED_TEMPLATE_TIMING)};
     window.__advancedImpEntrances = ${JSON.stringify(ADVANCED_IMP_ENTRANCES)};
+    window.__getAdvancedPlaybackElapsedMs = (blockType, wordCount, captionDurationMs, rawElapsedMs) => {
+      const timing = window.__advancedTemplateTiming || {};
+      const getWindow = () => {
+        if (blockType === 'plain') return 0;
+        if (blockType === 'karaoke') return Number(timing.holdMs || 1650);
+        if (String(blockType || '').startsWith('wbw-')) {
+          const sequential = blockType === 'wbw-seq'
+            || blockType === 'wbw-seq-fade'
+            || blockType === 'wbw-seq-flip';
+          const stagger = sequential
+            ? Number(timing.sequentialStaggerMs || 145)
+            : Number(timing.wordStaggerMs || 45);
+          const duration = sequential
+            ? Number(timing.sequentialDurationMs || 180)
+            : Number(timing.emphasisDurationMs || 300);
+          return (Math.max(0, Number(wordCount || 1) - 1) * stagger) + duration;
+        }
+        return Number(timing.styledDurationMs || 850);
+      };
+      const naturalWindowMs = getWindow();
+      if (!naturalWindowMs) return 0;
+      const durationMs = Math.max(0, Number(captionDurationMs) || 0);
+      const targetWindowMs = durationMs > 0
+        ? Math.max(220, Math.min(naturalWindowMs, durationMs * 0.78))
+        : naturalWindowMs;
+      const elapsedMs = Math.max(0, Number(rawElapsedMs) || 0);
+      return Math.min(naturalWindowMs, elapsedMs * (naturalWindowMs / targetWindowMs));
+    };
 
     const wrapOriginalTemplate = (templateId, blockClass, blockIndex, blockType, children, extraStyle = '') => \`
       <span class="lekha-original-template \${templateId} \${templateId}-stage">
@@ -392,13 +902,21 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       </span>
     \`;
 
-    const buildOriginalAdvancedTemplateMarkup = (templateId, text, blockIndex = 0) => {
+    const buildOriginalAdvancedTemplateMarkup = (templateId, text, blockIndex = 0, previewLineTexts = []) => {
       const { top, hero, bottom, full } = splitCaptionForTemplate(text);
       const blockTypes = originalTemplateBlockTypes[templateId] || ['styled'];
       const normalized = ((blockIndex % blockTypes.length) + blockTypes.length) % blockTypes.length;
       const blockType = blockTypes[normalized];
       const lines2 = splitTemplateLines(full, 2);
+      const resolvedPreviewLines = resolveTemplatePreviewLines(full, previewLineTexts, 2);
+      const compactLines2 = splitCompactIndexedLines(
+        full.split(/\\s+/).filter(Boolean).map((word) => ({ word })),
+        previewLineTexts,
+      ).map((line) => line.map((token) => token.word).join(' '));
       const upperFull = full.toUpperCase();
+      const compactFull = shouldCompactTemplateLine(full);
+      const t13LineClass = compactFull ? 'lekha-template-fit t13-compact-line' : 'lekha-template-fit';
+      const t13LineText = compactFull ? full : upperFull;
       const lineSpans = (lines, cls, mapper = (line) => escapeHtml(line)) =>
         lines.map((line, index) => \`<span class="\${cls}" style="animation-delay:\${index * 0.1}s">\${mapper(line, index)}</span>\`).join('');
       const wrap = (blockClass, children, extraStyle = '') => wrapOriginalTemplate(templateId, blockClass, normalized, blockType, children, extraStyle);
@@ -406,7 +924,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       switch (templateId) {
         case 't11':
           if (normalized === 1) return wrap('t11-b1', \`<span class="blur-txt lekha-template-fit">\${heroMarkup(full, 'imp-italic')}</span>\`);
-          if (normalized === 2) return wrap('t11-b2', \`<span class="lekha-template-fit">\${escapeHtml(full)}</span>\`);
+          if (normalized === 2) return wrap('t11-b2', wbwMarkup(full, 'wbw-rise', 'imp-gold'));
           if (normalized === 3) return wrap('t11-b3', wbwMarkup(full, 'wbw-rise', 'imp-gold'));
           return wrap('t11-b0', wbwMarkup(full, 'wbw-seq-fade', 'imp-gold'));
         case 't12':
@@ -415,10 +933,10 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           if (normalized === 3) return wrap('t12-b3', wbwMarkup(full, 'wbw-slide', 'imp-rose'));
           return wrap('t12-b0', wbwMarkup(full, 'wbw-seq-fade', 'imp-purple'));
         case 't13':
-          if (normalized === 1) return wrap('t13-b1', \`<span class="ticker-txt lekha-template-fit">\${escapeHtml(upperFull)}</span>\`);
-          if (normalized === 2) return wrap('t13-b2', wbwMarkup(full, 'wbw-rise', 'imp-cyan'));
+          if (normalized === 1) return wrap('t13-b1', wbwMarkup(full, 'wbw-slide', 'imp-bold'));
+          if (normalized === 2) return wrap('t13-b2', wbwMarkup(full, 'wbw-rise', 'imp-bold'));
           if (normalized === 3) return wrap('t13-b3', wbwMarkup(full, 'wbw-seq-fade', 'imp-bold'));
-          return wrap('t13-b0', \`<span class="slide-crash lekha-template-fit">\${escapeHtml(upperFull)}</span>\`);
+          return wrap('t13-b0', wbwMarkup(full, 'wbw-rise', 'imp-bold'));
         case 't14':
           if (normalized === 1) return wrap('t14-b1', \`<span class="drop-txt lekha-template-fit">\${heroMarkup(full, 'imp-gold')}</span>\`);
           if (normalized === 2) return wrap('t14-b2', \`<span class="lekha-template-fit">\${escapeHtml(full)}</span>\`);
@@ -430,20 +948,20 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           if (normalized === 3) return wrap('t15-b3', wbwMarkup(full, 'wbw-seq-fade', 'imp-rose'));
           return wrap('t15-b0', \`<span class="shake-in lekha-template-fit">\${escapeHtml(lines2[0] || '')}\${lines2[1] ? \`<br>\${heroMarkup(lines2[1], 'imp-rose')}\` : ''}</span>\`);
         case 't16':
-          if (normalized === 1) return wrap('t16-b1', \`<span class="neon-line lekha-template-fit">\${escapeHtml(full)}</span>\`);
-          if (normalized === 2) return wrap('t16-b2', wbwMarkup(full, 'wbw-rise', 'imp-cyan'));
-          if (normalized === 3) return wrap('t16-b3', wbwMarkup(full, 'wbw-slide', 'imp-bold'));
-          return wrap('t16-b0', wbwMarkup(full, 'wbw-rise', 'imp-bold'));
+          if (normalized === 1) return wrap('t16-b1', wbwMarkup(full, 'wbw-rise', 'imp-bold', { motion: 't16-neon', lineClassName: 't16-neon-words' }));
+          if (normalized === 2) return wrap('t16-b2', wbwMarkup(full, 'wbw-rise', 'imp-bold', { motion: 't16-diagonal', lineClassName: 't16-diagonal-words' }));
+          if (normalized === 3) return wrap('t16-b3', wbwMarkup(full, 'wbw-slide', 'imp-bold', { motion: 't16-impact', lineClassName: 't16-impact-words' }));
+          return wrap('t16-b0', wbwMarkup(full, 'wbw-rise', 'imp-bold', { motion: 't16-stack', lineClassName: 't16-stack-words' }));
         case 't17':
-          if (normalized === 1) return wrap('t17-b1', \`<span class="letter-snap-blk lekha-template-fit"><span class="snap-txt" style="font-family:'Space Mono',monospace;font-size:0.9rem;color:rgba(255,61,113,0.8)">\${escapeHtml(full)}</span></span>\`);
-          if (normalized === 2) return wrap('t17-b2', \`<span class="lekha-template-fit" style="color:rgba(255,255,255,0.4)">\${escapeHtml(full)}</span>\`);
-          if (normalized === 3) return wrap('t17-b3', wbwMarkup(full, 'wbw-rise', 'imp-flicker'));
-          return wrap('t17-b0', \`<span class="glitch-wrap lekha-template-fit" data-text="\${escapeHtml(upperFull)}">\${escapeHtml(upperFull)}</span>\`);
+          if (normalized === 1) return wrap('t17-b1', wbwMarkup(full, 'wbw-rise', 'imp-rose'));
+          if (normalized === 2) return wrap('t17-b2', wbwMarkup(full, 'wbw-slide', 'imp-rose'));
+          if (normalized === 3) return wrap('t17-b3', wbwMarkup(full, 'wbw-rise', 'imp-rose'));
+          return wrap('t17-b0', wbwMarkup(full, 'wbw-seq-fade', 'imp-rose'));
         case 't18':
           if (normalized === 1) return wrap('t18-b1', \`<span class="reveal-txt lekha-template-fit">\${heroMarkup(full, 'imp-purple')}</span>\`);
-          if (normalized === 2) return wrap('t18-b2', \`<span class="lekha-template-fit">\${escapeHtml(full)}</span>\`);
+          if (normalized === 2) return wrap('t18-b2', wbwMarkup(full, 'wbw-rise', 'imp-purple'));
           if (normalized === 3) return wrap('t18-b3', wbwMarkup(full, 'wbw-rise', 'imp-purple'));
-          return wrap('t18-b0', \`<span class="split-title lekha-template-fit"><span class="split-top">\${escapeHtml(lines2[0] || full)}</span><span class="split-bot">\${lines2[1] ? heroMarkup(lines2[1], 'imp-purple') : ''}</span></span>\`);
+          return wrap('t18-b0', \`<span class="split-title lekha-template-fit"><span class="split-top">\${escapeHtml(resolvedPreviewLines[0] || full)}</span><span class="split-bot">\${resolvedPreviewLines[1] ? heroMarkup(resolvedPreviewLines[1], 'imp-purple') : ''}</span></span>\`);
         case 't19':
           if (normalized === 1) return wrap('t19-b1', \`<span class="rise-unit lekha-template-fit">\${heroMarkup(upperFull, 'imp-rose')}</span>\`);
           if (normalized === 2) return wrap('t19-b2', wbwMarkup(full, 'wbw-rise', 'imp-bold'));
@@ -465,48 +983,48 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           if (normalized === 3) return wrap('t22-b3', wbwMarkup(full, 'wbw-seq-fade', 'imp-gold'));
           return wrap('t22-b0', karaokeMarkup(full));
         case 't23':
-          if (normalized === 3) return wrap('t23-b3', \`<span class="punch-txt lekha-template-fit">\${heroMarkup(full, 'imp-gold')}</span>\`);
+          if (normalized === 3) return wrap('t23-b3', \`<span class="punch-txt lekha-template-fit">\${heroMarkup(full, 'imp-bold')}</span>\`);
           return wrap(\`t23-b\${normalized}\`, \`<span class="\${normalized === 0 ? 'setup-txt ' : ''}lekha-template-fit">\${escapeHtml(full)}</span>\`);
         case 't24':
-          if (normalized === 1) return wrap('t24-b1', \`<span class="slow-rise lekha-template-fit">\${heroMarkup(full, 'imp-purple')}</span>\`);
-          if (normalized === 2) return wrap('t24-b2', \`<span class="lekha-template-fit">\${escapeHtml(full)}</span>\`);
-          if (normalized === 3) return wrap('t24-b3', wbwMarkup(full, 'wbw-rise', 'imp-purple'));
-          if (normalized === 4) return wrap('t24-b4', karaokeMarkup(full));
-          return wrap('t24-b0', wbwMarkup(full, 'wbw-rise', 'imp-orange'));
+          if (normalized === 1) return wrap('t24-b1', wbwMarkup(full, 'wbw-rise', 'imp-orange', { motion: 't24-drift', lineClassName: 't24-drift-line', compactLines: true, lineTexts: previewLineTexts }));
+          if (normalized === 2) return wrap('t24-b2', wbwMarkup(full, 'wbw-slide', 'imp-orange', { motion: 't24-slide', lineClassName: 't24-slide-line', compactLines: true, lineTexts: previewLineTexts }));
+          if (normalized === 3) return wrap('t24-b3', wbwMarkup(full, 'wbw-rise', 'imp-purple', { motion: 't24-stamp', lineClassName: 't24-stamp-line', compactLines: true, lineTexts: previewLineTexts }));
+          if (normalized === 4) return wrap('t24-b4', wbwMarkup(full, 'wbw-rise', 'imp-orange', { motion: 't24-inner', lineClassName: 't24-inner-line', compactLines: true, lineTexts: previewLineTexts }));
+          return wrap('t24-b0', wbwMarkup(full, 'wbw-rise', 'imp-orange', { motion: 't24-wipe', lineClassName: 't24-wipe-line', compactLines: true, lineTexts: previewLineTexts }));
         case 't25':
-          if (normalized === 1) return wrap('t25-b1', \`<span class="soft-rise lekha-template-fit">\${heroMarkup(full, 'imp-italic')}</span>\`);
-          if (normalized === 2) return wrap('t25-b2', wbwMarkup(full, 'wbw-rise', 'imp-rose'));
-          if (normalized === 3) return wrap('t25-b3', wbwMarkup(full, 'wbw-slide', 'imp-italic'));
-          return wrap('t25-b0', \`<span class="hand-txt lekha-template-fit">\${escapeHtml(lines2[0] || '')}\${lines2[1] ? \`<br>\${heroMarkup(lines2[1], 'imp-rose')}\` : ''}</span>\`);
+          if (normalized === 1) return wrap('t25-b1', \`<span class="soft-rise lekha-template-fit lekha-template-preview-lines">\${compactLines2.map((line, index) => \`<span class="lekha-template-preview-line">\${index === compactLines2.length - 1 ? heroMarkup(line, 'imp-italic') : escapeHtml(line)}</span>\`).join('')}</span>\`);
+          if (normalized === 2) return wrap('t25-b2', wbwMarkup(full, 'wbw-rise', 'imp-rose', { compactLines: true, lineTexts: previewLineTexts }));
+          if (normalized === 3) return wrap('t25-b3', wbwMarkup(full, 'wbw-slide', 'imp-italic', { compactLines: true, lineTexts: previewLineTexts }));
+          return wrap('t25-b0', \`<span class="hand-txt lekha-template-fit lekha-template-preview-lines">\${compactLines2.map((line, index) => \`<span class="lekha-template-preview-line">\${index === compactLines2.length - 1 ? heroMarkup(line, 'imp-rose') : escapeHtml(line)}</span>\`).join('')}</span>\`);
         case 't26':
-          if (normalized === 1) return wrap('t26-b1', \`<span class="fast-slide lekha-template-fit">\${heroMarkup(upperFull, 'imp-rose')}</span>\`);
-          if (normalized === 2) return wrap('t26-b2', wbwMarkup(full, 'wbw-rise', 'imp-bold'));
-          if (normalized === 3) return wrap('t26-b3', wbwMarkup(full, 'wbw-seq-fade', 'imp-rose'));
-          return wrap('t26-b0', \`<span class="hard-txt lekha-template-fit">\${escapeHtml(upperFull)}</span>\`);
+          if (normalized === 1) return wrap('t26-b1', wbwMarkup(upperFull, 'wbw-slide', 'imp-rose', { motion: 't26-snap', lineClassName: 't26-snap-line' }));
+          if (normalized === 2) return wrap('t26-b2', wbwMarkup(full, 'wbw-rise', 'imp-bold', { motion: 't26-kick', lineClassName: 't26-kick-line' }));
+          if (normalized === 3) return wrap('t26-b3', wbwMarkup(full, 'wbw-seq-fade', 'imp-rose', { motion: 't26-tag', lineClassName: 't26-tag-line' }));
+          return wrap('t26-b0', wbwMarkup(upperFull, 'wbw-rise', 'imp-rose', { motion: 't26-shutter', lineClassName: 't26-shutter-line' }));
         case 't27':
-          if (normalized === 1) return wrap('t27-b1', \`<span class="lekha-template-fit" style="font-family:'Exo 2',sans-serif;font-weight:700;color:rgba(0,229,255,0.6)">\${escapeHtml(full)}</span>\`);
+          if (normalized === 1) return wrap('t27-b1', \`<span class="lekha-template-fit" style="font-family:'Exo 2',sans-serif;font-weight:700;color:rgba(0,229,255,0.8)">\${escapeHtml(full)}</span>\`);
           if (normalized === 2) return wrap('t27-b2', \`<span class="lekha-template-fit">\${heroMarkup(full, 'imp-bold')}</span>\`);
           if (normalized === 3) return wrap('t27-b3', wbwMarkup(full, 'wbw-rise', 'imp-cyan'));
           return wrap('t27-b0', \`<span class="center-expand-txt lekha-template-fit">\${escapeHtml(upperFull)}</span>\`);
         case 't28':
-          if (normalized === 1) return wrap('t28-b1', \`<span class="slow-fade lekha-template-fit">\${heroMarkup(full, 'imp-italic')}</span>\`);
-          if (normalized === 2) return wrap('t28-b2', wbwMarkup(full, 'wbw-rise', 'imp-italic'));
+          if (normalized === 1) return wrap('t28-b1', \`<span class="slow-fade lekha-template-fit">\${heroMarkup(full, 'imp-gold')}</span>\`);
+          if (normalized === 2) return wrap('t28-b2', wbwMarkup(full, 'wbw-rise', 'imp-gold'));
           if (normalized === 3) return wrap('t28-b3', wbwMarkup(full, 'wbw-seq-fade', 'imp-gold'));
           return wrap('t28-b0', \`<span class="grain-txt lekha-template-fit">\${escapeHtml(lines2[0] || '')}\${lines2[1] ? \`<br>\${heroMarkup(lines2[1], 'imp-gold')}\` : ''}</span>\`);
         case 't29':
-          if (normalized === 1) return wrap('t29-b1', \`<span class="hard-rise lekha-template-fit">\${heroMarkup(full, 'imp-rose')}</span>\`);
-          if (normalized === 2) return wrap('t29-b2', wbwMarkup(full, 'wbw-rise', 'imp-rose'));
-          if (normalized === 3) return wrap('t29-b3', \`<span class="battle-slide lekha-template-fit">\${escapeHtml(upperFull)}</span>\`);
-          return wrap('t29-b0', \`<span class="battle-slide lekha-template-fit">\${escapeHtml(upperFull)}</span>\`);
+          if (normalized === 1) return wrap('t29-b1', wbwMarkup(full, 'wbw-rise', 'imp-rose', { motion: 't29-recoil', lineClassName: 't29-recoil-line' }));
+          if (normalized === 2) return wrap('t29-b2', wbwMarkup(full, 'wbw-slide', 'imp-rose', { motion: 't29-charge', lineClassName: 't29-charge-line' }));
+          if (normalized === 3) return wrap('t29-b3', wbwMarkup(full, 'wbw-seq-fade', 'imp-rose', { motion: 't29-clamp', lineClassName: 't29-clamp-line' }));
+          return wrap('t29-b0', wbwMarkup(full, 'wbw-rise', 'imp-rose', { motion: 't29-shutter', lineClassName: 't29-shutter-line' }));
         case 't30':
           if (normalized > 0) return wrap(\`t30-b\${normalized}\`, \`<span class="lekha-template-fit">\${normalized === 3 ? heroMarkup(full, 'imp-italic') : escapeHtml(full)}</span>\`);
           return wrap('t30-b0', \`<span class="breathe-txt lekha-template-fit">\${escapeHtml(lines2[0] || '')}\${lines2[1] ? \`<br><span class="imp-italic">\${escapeHtml(lines2[1])}</span>\` : ''}</span>\`);
         case 't31':
           if (normalized === 1) return wrap('t31-b1', wbwMarkup(full, 'wbw-seq-fade', 'imp-gold'));
-          if (normalized === 2) return wrap('t31-b2', \`<span class="lekha-template-fit">\${escapeHtml(full)}</span>\`);
+          if (normalized === 2) return wrap('t31-b2', wbwMarkup(full, 'wbw-rise', 'imp-gold'));
           if (normalized === 3) return wrap('t31-b3', wbwMarkup(full, 'wbw-rise', 'imp-gold'));
           if (normalized === 4) return wrap('t31-b4', \`<span style="perspective:500px" class="lekha-template-fit"><span class="flip-line" style="font-family:'Playfair Display',serif">\${heroMarkup(full, 'imp-gold')}</span></span>\`);
-          return wrap('t31-b0', \`<span class="stamp-text lekha-template-fit">\${escapeHtml(full)}</span>\`);
+          return wrap('t31-b0', wbwMarkup(full, 'wbw-seq-fade', 'imp-gold'));
         case 't32':
           if (normalized === 1) return wrap('t32-b1', \`<span style="perspective:500px" class="lekha-template-fit"><span class="flip-line" style="font-family:'Bodoni Moda',serif;font-style:italic">\${heroMarkup(full, 'imp-italic')}</span></span>\`);
           if (normalized === 2) return wrap('t32-b2', \`<span class="lekha-template-fit">\${escapeHtml(full)}</span>\`);
@@ -518,7 +1036,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           if (normalized === 2) return wrap('t33-b2', karaokeMarkup(full));
           if (normalized === 3) return wrap('t33-b3', wbwMarkup(full, 'wbw-rise', 'imp-bold'));
           if (normalized === 4) return wrap('t33-b4', \`<span style="perspective:500px" class="lekha-template-fit"><span class="flip-line" style="font-family:'Noto Sans',sans-serif">\${heroMarkup(full, 'imp-cyan')}</span></span>\`);
-          return wrap('t33-b0', \`<span class="doc-line lekha-template-fit">\${heroMarkup(full, 'imp-bold')}</span>\`);
+          return wrap('t33-b0', \`<span class="doc-line lekha-template-fit">\${lineSpans(lines2, '', (line) => line.includes(hero) ? heroMarkup(line, 'imp-cyan') : escapeHtml(line))}</span>\`);
         case 't34':
           if (normalized === 1) return wrap('t34-b1', \`<span class="pow-txt lekha-template-fit">\${heroMarkup(full, 'imp-cyan')}</span>\`);
           if (normalized === 2) return wrap('t34-b2', wbwMarkup(full, 'wbw-rise', 'imp-bold'));
@@ -536,9 +1054,9 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           return wrap('t37-b0', \`<span class="neon-pulse lekha-template-fit">\${escapeHtml(upperFull)}</span>\`);
         case 't38':
           if (normalized === 1) return wrap('t38-b1', wbwMarkup(full, 'wbw-slide', 'imp-italic'));
-          if (normalized === 2) return wrap('t38-b2', wbwMarkup(full, 'wbw-rise', 'imp-underline'));
+          if (normalized === 2) return wrap('t38-b2', wbwMarkup(full, 'wbw-rise', 'imp-gold'));
           if (normalized === 3) return wrap('t38-b3', wbwMarkup(full, 'wbw-seq-fade', 'imp-italic'));
-          return wrap('t38-b0', \`<span class="lekha-template-fit">\${escapeHtml(full)}</span>\`);
+          return wrap('t38-b0', \`<span class="lekha-template-fit lekha-template-preview-lines">\${resolvedPreviewLines.map((line) => escapeHtml(line)).join('<br>')}</span>\`);
         case 't39':
           return wrap(\`t39-b\${normalized}\`, wbwMarkup(full, 'wbw-seq-fade', normalized % 2 ? 'imp-rose' : 'imp-gold'));
         case 't40':
@@ -559,10 +1077,77 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       }));
     };
 
-    const buildTemplateMarkup = (caption, globalStyle, time) => {
-      const templateIndex = Number.isFinite(Number(caption.__templateIndex))
+    // Right-side "Basic" templates — render the authored .btcard source markup
+    // (with the caption's words injected at the active phase) exactly like the
+    // canvas preview. The shared builder (window.__basicTpl) and per-template
+    // markup (window.__basicTemplateMarkupMap) are injected before this script.
+    const buildBasicTemplateCaptionMarkup = (caption, globalStyle, time) => {
+      const templateId = String(globalStyle?.template_id || '').trim();
+      const rawMarkup = (window.__basicTemplateMarkupMap || {})[templateId] || '';
+      const text = String(caption?.text || '').trim();
+      if (!rawMarkup || !text || !window.__basicTpl) {
+        return buildTemplateMarkup(caption, globalStyle, time);
+      }
+      const words = text.split(/\\s+/).filter(Boolean);
+      const phaseCount = window.__basicTpl.countAppliedBasicTemplatePhasesFromMarkup(rawMarkup);
+      const templateCaptionIndex = Number.isFinite(Number(caption.__templateIndex))
         ? Number(caption.__templateIndex)
-        : Number(caption.__template_index || 0);
+        : 0;
+      const selectedPhase = ((templateCaptionIndex % phaseCount) + phaseCount) % phaseCount;
+      const currentIndex = window.__basicTpl.getAppliedBasicCurrentWordIndex
+        ? window.__basicTpl.getAppliedBasicCurrentWordIndex(caption, time, words.length)
+        : getCurrentWordIndex(caption, time);
+      const html = window.__basicTpl.buildAppliedBasicTemplateInlineFromMarkup(
+        rawMarkup,
+        templateId,
+        text,
+        { activePhase: selectedPhase },
+      );
+      if (!html) return buildTemplateMarkup(caption, globalStyle, time);
+      const textCase = globalStyle?.text_case && globalStyle.text_case !== 'none'
+        ? globalStyle.text_case
+        : '';
+      const hostStyle = [
+        \`--template-primary:\${globalStyle?.text_color || '#ffffff'}\`,
+        \`--template-secondary:\${globalStyle?.secondary_color || '#000000'}\`,
+        \`--template-bg:\${globalStyle?.background_color || 'transparent'}\`,
+        \`--template-highlight:\${globalStyle?.highlight_color || globalStyle?.emphasis_color || globalStyle?.secondary_color || '#DDAA03'}\`,
+        \`--template-karaoke-1:\${globalStyle?.karaoke_color_1 || globalStyle?.highlight_color || globalStyle?.emphasis_color || globalStyle?.secondary_color || '#DDAA03'}\`,
+        \`--template-karaoke-2:\${globalStyle?.karaoke_color_2 || '#22D3EE'}\`,
+        \`--template-karaoke-3:\${globalStyle?.karaoke_color_3 || '#FB923C'}\`,
+        \`--applied-basic-scale:\${Number(window.__exportCanvasScale || 1) || 1}\`,
+        \`color:\${globalStyle?.text_color || '#ffffff'}\`,
+        \`font-family:'\${globalStyle?.font_family || 'Inter'}'\`,
+        \`font-size:\${Math.max(12, Math.round(scaleTemplateFontSize(globalStyle?.font_size || 22) * APPLIED_BASIC_EXPORT_FONT_SCALE))}px\`,
+        \`font-weight:\${globalStyle?.font_weight || '800'}\`,
+        \`font-style:\${globalStyle?.font_style || 'normal'}\`,
+        \`line-height:\${globalStyle?.line_spacing || 1.25}\`,
+        textCase ? \`text-transform:\${textCase}\` : '',
+      ].filter(Boolean).join(';');
+      return \`<span class="lekha-applied-basic-template-host lekha-basic-template-fit lekha-basic-template-enter-once \${templateId}" \`
+        + \`data-applied-template-id="\${templateId}" data-applied-template-source="lekha-basic" \`
+        + \`data-export-measure="basic-template" data-export-caption-id="\${escapeHtml(caption?.id || '')}" \`
+        + \`data-caption-start="\${Number(caption?.start_time ?? 0)}" data-caption-end="\${Number(caption?.end_time ?? caption?.start_time ?? 0)}" \`
+        + \`data-basic-current-index="\${currentIndex}" data-basic-word-count="\${words.length}" \`
+        + \`style="\${hostStyle}">\${html}</span>\`;
+    };
+
+    const activateBasicTemplates = (root) => {
+      if (!window.__basicTpl || !window.__basicTpl.updateAppliedBasicTemplateWordState) return;
+      root.querySelectorAll('.lekha-applied-basic-template-host').forEach((host) => {
+        const currentIndex = Number(host.getAttribute('data-basic-current-index')) || 0;
+        const wordCount = Number(host.getAttribute('data-basic-word-count')) || 1;
+        const templateId = host.getAttribute('data-applied-template-id') || '';
+        window.__basicTpl.updateAppliedBasicTemplateWordState(host, currentIndex, wordCount, templateId);
+      });
+    };
+
+    const buildTemplateMarkup = (caption, globalStyle, time) => {
+      const templateIndex = /^t\\d{2}$/.test(String(globalStyle?.template_id || ''))
+        ? resolveAdvancedTemplatePhaseIndex(caption, caption.__templateIndex ?? caption.__template_index ?? 0)
+        : Number.isFinite(Number(caption.__templateIndex))
+          ? Number(caption.__templateIndex)
+          : Number(caption.__template_index || 0);
       const words = buildWordMeta(caption);
       const captionStart = Number(caption.start_time ?? 0);
       const captionEnd = Number(caption.end_time ?? captionStart);
@@ -609,7 +1194,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         .filter(Boolean)
         .join('');
 
-      const positionedWords = words
+      const positionedWords = isAdvancedTemplate ? '' : words
         .filter((word) => word.style?.abs_x_pct !== undefined && word.style?.abs_y_pct !== undefined)
         .map((word) => {
           const inline = [
@@ -630,39 +1215,51 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         .join('');
 
       const hasAppliedTemplate = Boolean(globalStyle?.template_id);
+      const templatePrimaryColor = globalStyle?.template_id === 't36'
+        ? '#ffffff'
+        : (globalStyle?.text_color || '#ffffff');
       const styleVars = [
-        \`--template-primary:\${globalStyle?.text_color || '#ffffff'}\`,
+        \`--template-primary:\${templatePrimaryColor}\`,
         \`--template-secondary:\${globalStyle?.secondary_color || '#000000'}\`,
         \`--template-bg:\${hasAppliedTemplate ? 'transparent' : (globalStyle?.background_color || 'transparent')}\`,
-        \`--template-highlight:\${globalStyle?.highlight_color || '#FFE600'}\`,
+        \`--template-highlight:\${globalStyle?.highlight_color || globalStyle?.emphasis_color || globalStyle?.secondary_color || '#DDAA03'}\`,
+        \`--template-karaoke-1:\${globalStyle?.karaoke_color_1 || globalStyle?.highlight_color || globalStyle?.emphasis_color || globalStyle?.secondary_color || '#DDAA03'}\`,
+        \`--template-karaoke-2:\${globalStyle?.karaoke_color_2 || '#22D3EE'}\`,
+        \`--template-karaoke-3:\${globalStyle?.karaoke_color_3 || '#FB923C'}\`,
       ];
 
       if (isAdvancedTemplate) {
+        const previewLineTexts = Array.isArray(caption?.preview_template_line_texts)
+          && caption.preview_template_line_texts.length > 0
+          ? caption.preview_template_line_texts
+          : globalStyle?.preview_template_line_texts;
         return \`
           <div
-            class="template-caption-shell"
+            class="template-caption-shell \${globalStyle?.template_color_customized ? 'is-color-customized' : ''}"
             data-caption-start="\${captionStart}"
             data-caption-end="\${captionEnd}"
             style="\${styleVars.join(';')}"
           >
             <div class="\${globalStyle?.template_id || ''}">
-              <span class="\${globalStyle?.template_id || ''}" style="
+        <span class="\${globalStyle?.template_id || ''}" style="
                 font-family:'\${globalStyle?.font_family || 'Inter'}';
-                font-size:\${scaleTemplateFontSize(globalStyle?.font_size || 18)}px;
                 font-weight:\${globalStyle?.font_weight || '500'};
                 font-style:\${globalStyle?.font_style || 'normal'};
                 text-align:\${globalStyle?.text_align || 'center'};
-                letter-spacing:\${scaleExportPx(globalStyle?.letter_spacing || 0)}px;
               ">\${buildCanonicalAdvancedTemplateMarkup(
                 globalStyle?.template_id,
                 transformText(caption.text || '', globalStyle),
                 templateIndex,
                 Number(caption.imp_word_index ?? -1),
-                caption.emphasis_color || '',
+                globalStyle?.template_color_customized
+                  ? (caption.emphasis_color || globalStyle?.highlight_color || globalStyle?.emphasis_color || globalStyle?.secondary_color || '')
+                  : '',
+                previewLineTexts,
               ) || buildOriginalAdvancedTemplateMarkup(
                 globalStyle?.template_id,
                 transformText(caption.text || '', globalStyle),
                 templateIndex,
+                previewLineTexts,
               )}</span>
             </div>
             \${positionedWords}
@@ -733,6 +1330,22 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       return sourceClasses[sourceIndex] || fallback;
     };
 
+    const resolveSidebarTargetImpIndex = (sourceImpIndex, sourceCount, targetCount, requestedIndex) => {
+      const requested = Number(requestedIndex);
+      if (Number.isFinite(requested) && requested >= 0 && requested < targetCount) {
+        return requested;
+      }
+      if (sourceImpIndex < 0 || sourceCount <= 0 || targetCount <= 0) return -1;
+      if (sourceCount === 1 || targetCount === 1) return 0;
+      return Math.max(
+        0,
+        Math.min(
+          targetCount - 1,
+          Math.round((sourceImpIndex * (targetCount - 1)) / Math.max(1, sourceCount - 1)),
+        ),
+      );
+    };
+
     const splitSidebarWordsForSlots = (words, slotCount) => {
       if (!words.length || !slotCount) return [];
       const slots = Array.from({ length: slotCount }, () => []);
@@ -752,7 +1365,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       const impPattern = /\\b(?:imp-[\\w-]+|ns[23]-[\\w-]+)\\b/;
       const sourceImpIndex = sourceClasses.findIndex((className) => impPattern.test(className));
       const impClass = sourceImpIndex >= 0 ? sourceClasses[sourceImpIndex].match(impPattern)?.[0] || '' : '';
-      const targetImpIndex = impWordIndex;
+      const targetImpIndex = resolveSidebarTargetImpIndex(sourceImpIndex, sourceClasses.length, words.length, impWordIndex);
       container.innerHTML = words.map((word, index) => {
         const mapped = mappedSidebarClassName(sourceClasses, index, words.length, fallback)
           .replace(/\\b(?:imp-[\\w-]+|ns[23]-[\\w-]+)\\b/g, '')
@@ -769,8 +1382,11 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       const stickyWords = Array.from(container.querySelectorAll('.sw-w'));
       if (!stickyWords.length || !words.length) return false;
       const sourceClasses = stickyWords.map((word) => cleanSidebarClassName(word.className, 'sw-w'));
+      const impPattern = /\\b(?:imp-[\\w-]+|ns[23]-[\\w-]+)\\b/;
+      const sourceImpIndex = sourceClasses.findIndex((className) => impPattern.test(className));
+      const targetImpIndex = resolveSidebarTargetImpIndex(sourceImpIndex, sourceClasses.length, words.length, impWordIndex);
       container.innerHTML = words.map((word, index) => (
-        '<span data-export-caption-text="true" class="' + mappedSidebarClassName(sourceClasses, index, words.length, 'sw-w') + (index === impWordIndex ? ' is-emphasis' : '') + '">' + escapeHtml(word) + '</span>'
+        '<span data-export-caption-text="true" class="' + mappedSidebarClassName(sourceClasses, index, words.length, 'sw-w') + (index === targetImpIndex ? ' is-emphasis' : '') + '">' + escapeHtml(word) + '</span>'
       )).join(' ');
       return true;
     };
@@ -859,6 +1475,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       if (wordClasses.contains('imp-typewrite') || wordClasses.contains('imp-flicker')) return { transform: 'none', opacity: '0' };
       const parent = word?.parentElement;
       const classes = parent ? parent.classList : { contains: () => false };
+      if (classes.contains('wrise')) return { transform: 'translateY(22px)', opacity: '0' };
       if (classes.contains('wslide') || classes.contains('wbw-slide')) return { transform: 'translateX(-26px)', opacity: '0' };
       if (classes.contains('wslider')) return { transform: 'translateX(26px)', opacity: '0' };
       if (classes.contains('wroll')) return { transform: 'translateY(14px) rotate(-6deg)', opacity: '0', origin: 'left bottom' };
@@ -967,8 +1584,6 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         phase.block.style.visibility = 'visible';
         phase.block.style.zIndex = '2';
         phase.block.style.opacity = '1';
-        phase.block.style.transform = 'scale(' + Number(window.__exportCanvasScale || 1) + ')';
-        phase.block.style.transformOrigin = 'center center';
         phase.block.classList.add('active');
         // Parity with the live preview: word colour/weight come from inheritance
         // (the shell's inline style mirrors the preview host) plus the template's
@@ -978,7 +1593,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         // detection below.
         const emphasisAccent = getComputedStyle(shell)
           .getPropertyValue('--sidebar-emphasis-accent')
-          .trim() || '#FFE600';
+          .trim() || '#DDAA03';
         phase.block.querySelectorAll('.is-emphasis').forEach((word) => {
           word.style.setProperty('font-size', 'inherit', 'important');
           word.style.setProperty('line-height', 'inherit', 'important');
@@ -1092,9 +1707,10 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         + '--sidebar-emphasis-accent:' + escapeHtml((() => {
           const configured = String(caption.emphasis_color || appliedStyle.secondary_color || globalStyle?.secondary_color || appliedStyle.highlight_color || globalStyle?.highlight_color || '').trim();
           const textColor = String(appliedStyle.text_color || globalStyle?.text_color || '#FFFFFF').trim();
-          return configured && configured.toLowerCase() !== textColor.toLowerCase() ? configured : '#FFE600';
+          return configured && configured.toLowerCase() !== textColor.toLowerCase() ? configured : '#DDAA03';
         })()) + ';'
         + 'font-family:\\'' + escapeHtml(appliedStyle.font_family || globalStyle?.font_family || 'Inter') + '\\';'
+        + 'font-size:' + scaleExportPx(appliedStyle.font_size || globalStyle?.font_size || 22) + 'px;'
         + 'font-weight:' + escapeHtml(appliedStyle.font_weight || globalStyle?.font_weight || '300') + ';'
         // Mirror the preview host's inline style so inherited text properties
         // resolve identically in both renderers.
@@ -1111,8 +1727,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       const showInactive = globalStyle?.show_inactive !== false;
       const wordSpacing = \`\${scaleExportPx((globalStyle?.word_spacing ?? 1) * 2)}px\`;
 
-      const wordMarkup = words
-        .map((word, index) => {
+      const renderPlainWord = (word, index, isLastInLine = false) => {
           if (!showInactive && index > currentIndex) return '';
           const wordStyle = word.style || {};
           const baseColor = wordStyle.color || globalStyle?.text_color || '#ffffff';
@@ -1124,7 +1739,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
             \`font-weight:\${wordStyle.fontWeight || globalStyle?.font_weight || '500'}\`,
             \`font-style:\${wordStyle.fontStyle || globalStyle?.font_style || 'normal'}\`,
             \`color:\${baseColor}\`,
-            index < words.length - 1 ? \`margin-right:\${wordSpacing}\` : '',
+            !isLastInLine ? \`margin-right:\${wordSpacing}\` : '',
           ].filter(Boolean);
           if (globalStyle?.has_stroke) inline.push(\`-webkit-text-stroke:\${globalStyle.stroke_width || 1}px \${globalStyle.stroke_color || '#000000'}\`);
           if (globalStyle?.has_shadow) inline.push(\`text-shadow:\${globalStyle.shadow_offset_x || 0}px \${globalStyle.shadow_offset_y || 2}px \${globalStyle.shadow_blur || 4}px \${globalStyle.shadow_color || '#000000'}\`);
@@ -1134,9 +1749,23 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
             inline.push('border-radius:4px');
           }
           return \`<span data-word-key="\${word.key}" style="\${inline.join(';')}">\${escapeHtml(transformText(word.text, globalStyle))}</span>\`;
-        })
-        .filter(Boolean)
-        .join('');
+      };
+
+      let wordCursor = 0;
+      const sourceLines = String(caption.text || '')
+        .replace(/\\r\\n/g, '\\n')
+        .split('\\n')
+        .map((line) => line.trim().split(/\\s+/).filter(Boolean));
+      const wordMarkup = sourceLines.map((lineWords) => {
+        if (!lineWords.length) return '<span style="display:block;min-height:1em"></span>';
+        const lineMarkup = lineWords.map((_, lineWordIndex) => {
+          const word = words[wordCursor];
+          const wordIndex = wordCursor;
+          wordCursor += 1;
+          return word ? renderPlainWord(word, wordIndex, lineWordIndex === lineWords.length - 1) : '';
+        }).filter(Boolean).join('');
+        return \`<span style="display:block">\${lineMarkup}</span>\`;
+      }).join('');
 
       return \`
         <div class="plain-caption-shell">
@@ -1147,6 +1776,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
             font-style:\${globalStyle?.font_style || 'normal'};
             text-align:\${globalStyle?.text_align || 'center'};
             line-height:\${scaleExportPx((globalStyle?.font_size || 18) * (globalStyle?.line_spacing || 1.4))}px;
+            white-space:pre-wrap;
             \${globalStyle?.has_background && !globalStyle?.template_id ? \`background:\${rgbaFromHex(globalStyle.background_color || '#000000', globalStyle.background_opacity ?? 0.7)};padding:\${scaleExportPx(globalStyle.background_padding || 6)}px \${scaleExportPx((globalStyle.background_padding || 6) * 2)}px;border-radius:\${scaleExportPx(8)}px;\` : ''}
           ">\${wordMarkup}</span>
         </div>
@@ -1180,21 +1810,6 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       \`;
     };
 
-    const syncAdvancedTemplateExportScale = () => {
-      const targetFontPx = Number(window.__exportTemplateFontTargetPx || 0);
-      if (!targetFontPx) return;
-
-      document.querySelectorAll('.lekha-original-template').forEach((wrapper) => {
-        const block = wrapper.querySelector('.lekha-applied-advanced-template') || wrapper;
-        const currentFontPx = parseFloat(getComputedStyle(block).fontSize || '');
-        if (!Number.isFinite(currentFontPx) || currentFontPx <= 0) return;
-        const scale = Math.max(0.25, Math.min(8, targetFontPx / currentFontPx));
-        if (!Number.isFinite(scale) || Math.abs(scale - 1) < 0.01) return;
-        wrapper.style.transform = \`scale(\${scale})\`;
-        wrapper.style.transformOrigin = 'center center';
-      });
-    };
-
     const resetAdvancedTemplateAnimations = () => {
       const blocks = Array.from(document.querySelectorAll('.lekha-applied-advanced-template'));
       blocks.forEach((block) => {
@@ -1209,6 +1824,112 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       });
       return blocks;
     };
+
+    const normalizeLineText = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
+
+    const collectStyledLineTokens = (container) => {
+      const tokens = [];
+      const impPattern = /\\b(?:imp-[\\w-]+|is-emphasis)\\b/;
+      const visit = (node, inheritedClassName = '') => {
+        if (node.nodeType === 3) {
+          String(node.nodeValue || '').split(/\\s+/).filter(Boolean).forEach((word) => {
+            tokens.push({ text: word, className: inheritedClassName });
+          });
+          return;
+        }
+        if (node.nodeType !== 1) return;
+        const className = String(node.className || '');
+        const nextClassName = impPattern.test(className)
+          ? className
+          : inheritedClassName;
+        Array.from(node.childNodes || []).forEach((child) => visit(child, nextClassName));
+      };
+      visit(container);
+      return tokens;
+    };
+
+    const applyPreviewTextLineBreaks = (container, lineTexts) => {
+      const tokens = collectStyledLineTokens(container);
+      if (!tokens.length) return;
+      const requestedWords = lineTexts.flatMap((line) => line.split(/\\s+/).filter(Boolean));
+      if (requestedWords.length !== tokens.length) return;
+      const sameWords = requestedWords.every((word, index) => word === normalizeLineText(tokens[index]?.text));
+      if (!sameWords) return;
+
+      const fragment = document.createDocumentFragment();
+      let cursor = 0;
+      lineTexts.forEach((lineText) => {
+        const line = document.createElement('span');
+        line.className = 'lekha-template-preview-line';
+        const lineWords = lineText.split(/\\s+/).filter(Boolean);
+        lineWords.forEach((_, lineWordIndex) => {
+          const token = tokens[cursor];
+          if (!token) return;
+          if (lineWordIndex > 0) line.appendChild(document.createTextNode(' '));
+          if (token.className) {
+            const span = document.createElement('span');
+            span.className = token.className;
+            span.textContent = token.text;
+            line.appendChild(span);
+          } else {
+            line.appendChild(document.createTextNode(token.text));
+          }
+          cursor += 1;
+        });
+        fragment.appendChild(line);
+      });
+      container.classList.add('lekha-template-preview-lines');
+      container.replaceChildren(fragment);
+    };
+
+    const applyPreviewTemplateLineBreaks = (root, style) => {
+      const lineTexts = Array.isArray(style?.preview_template_line_texts)
+        ? style.preview_template_line_texts.map(normalizeLineText).filter(Boolean)
+        : [];
+      if (!lineTexts.length) return;
+      const textContainers = Array.from(root.querySelectorAll(
+        '.lekha-original-template .hand-txt, '
+        + '.lekha-original-template .soft-rise, '
+        + '.lekha-original-template .slow-rise',
+      ));
+      textContainers.forEach((container) => applyPreviewTextLineBreaks(container, lineTexts));
+
+      const containers = Array.from(root.querySelectorAll(
+        '.lekha-original-template .wbw-rise, '
+        + '.lekha-original-template .wbw-slide, '
+        + '.lekha-original-template .wbw-seq, '
+        + '.lekha-original-template .wbw-seq-fade, '
+        + '.lekha-original-template .wbw-seq-flip',
+      ));
+      containers.forEach((container) => {
+        const words = Array.from(container.querySelectorAll('.w, .kf-word'));
+        if (!words.length) return;
+        const existingTexts = words.map((word) => normalizeLineText(word.textContent));
+        const requestedWords = lineTexts.flatMap((line) => line.split(/\\s+/).filter(Boolean));
+        if (requestedWords.length !== words.length) return;
+        const sameWords = requestedWords.every((word, index) => word === existingTexts[index]);
+        if (!sameWords) return;
+
+        const fragment = document.createDocumentFragment();
+        let cursor = 0;
+        lineTexts.forEach((lineText) => {
+          const line = document.createElement('span');
+          line.className = 'lekha-template-preview-line';
+          const lineWords = lineText.split(/\\s+/).filter(Boolean);
+          lineWords.forEach((_, lineWordIndex) => {
+            if (!words[cursor]) return;
+            if (lineWordIndex > 0) line.appendChild(document.createTextNode(' '));
+            line.appendChild(words[cursor]);
+            cursor += 1;
+          });
+          fragment.appendChild(line);
+        });
+        container.classList.add('lekha-template-preview-lines');
+        container.replaceChildren(fragment);
+      });
+    };
+
+    const syncTemplateExportScale = () => {};
 
     window.__activateTemplateAnimations = async () => {
       const blocks = resetAdvancedTemplateAnimations();
@@ -1235,13 +1956,41 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       const root = document.getElementById('overlay-root');
       if (!root) return;
       const style = payload.style || {};
+      const resolveCaptionTemplateStyle = (caption) => {
+        if (!caption || caption.is_text_element) return style;
+        const appliedStyle = caption.applied_template_style || {};
+        return {
+          ...style,
+          ...appliedStyle,
+          template_id: caption.template_id || appliedStyle.template_id || style.template_id || '',
+          template_20_id: caption.template_20_id || appliedStyle.template_20_id || style.template_20_id || '',
+          template_source: caption.template_source || appliedStyle.template_source || style.template_source || '',
+          template_class: caption.template_class || appliedStyle.template_class || style.template_class || '',
+          template_name: caption.template_name || appliedStyle.template_name || style.template_name || '',
+          template_layout: caption.template_layout || appliedStyle.template_layout || style.template_layout || '',
+          template_effect: caption.template_effect || appliedStyle.template_effect || style.template_effect || '',
+          template_markup: caption.template_markup || appliedStyle.template_markup || style.template_markup || '',
+          text_color: caption.text_color || appliedStyle.text_color || style.text_color || '#ffffff',
+          secondary_color: caption.secondary_color || appliedStyle.secondary_color || style.secondary_color || '',
+          highlight_color: caption.highlight_color || appliedStyle.highlight_color || style.highlight_color || '',
+          emphasis_color: caption.emphasis_color || appliedStyle.emphasis_color || style.emphasis_color || '',
+          karaoke_color_1: caption.karaoke_color_1 || appliedStyle.karaoke_color_1 || style.karaoke_color_1 || '',
+          karaoke_color_2: caption.karaoke_color_2 || appliedStyle.karaoke_color_2 || style.karaoke_color_2 || '',
+          karaoke_color_3: caption.karaoke_color_3 || appliedStyle.karaoke_color_3 || style.karaoke_color_3 || '',
+          template_color_customized: Boolean(
+            caption.template_color_customized
+            || appliedStyle.template_color_customized
+            || style.template_color_customized
+          ),
+        };
+      };
       const activeCaptions = (payload.captions || []).filter((caption) => {
         const start = Number(caption.start_time ?? 0);
         const end = Number(caption.end_time ?? start);
-        return time >= start && time <= end;
+        return time >= start && time < end;
       });
 
-      root.innerHTML = activeCaptions.map((caption) => {
+      root.innerHTML = activeCaptions.map((caption, activeIndex) => {
         if (caption.is_text_element) return buildTextElementMarkup(caption);
         const templateCaptionIndex = Math.max(
           0,
@@ -1255,9 +2004,10 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
             ? Number(caption.__templateIndex)
             : templateCaptionIndex,
         };
-        const left = style.position_x ?? 50;
-        const top = style.position_y ?? 75;
-        const isSidebarTemplate = Boolean(style.template_20_id);
+        const renderStyle = resolveCaptionTemplateStyle(captionWithTemplateIndex);
+        const left = renderStyle.position_x ?? style.position_x ?? 50;
+        const top = renderStyle.position_y ?? style.position_y ?? 75;
+        const isSidebarTemplate = Boolean(renderStyle.template_20_id);
         const base = isSidebarTemplate
           ? [
               'position:absolute',
@@ -1268,7 +2018,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
               'width:100%',
               'display:flex',
               'justify-content:center',
-              \`text-align:\${style.text_align || 'center'}\`,
+              \`text-align:\${renderStyle.text_align || style.text_align || 'center'}\`,
             ]
           : [
               'position:absolute',
@@ -1278,17 +2028,57 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
               'pointer-events:none',
               'width:max-content',
               'max-width:90%',
-              \`text-align:\${style.text_align || 'center'}\`,
+              \`text-align:\${renderStyle.text_align || style.text_align || 'center'}\`,
             ];
+        const isBasicTemplate = Boolean(
+          window.__basicTpl
+          && window.__basicTpl.isSourceBasicTemplateId
+          && window.__basicTpl.isSourceBasicTemplateId(renderStyle.template_id),
+        );
         const inner = isSidebarTemplate
-          ? buildSidebarTemplateMarkup(captionWithTemplateIndex, style)
-          : style.template_id
-          ? buildTemplateMarkup(captionWithTemplateIndex, style, time)
-          : buildPlainCaptionMarkup(captionWithTemplateIndex, style, time);
-        return \`<div class="caption-anchor" style="\${base.join(';')}">\${inner}</div>\`;
+          ? buildSidebarTemplateMarkup(captionWithTemplateIndex, renderStyle)
+          : isBasicTemplate
+          ? buildBasicTemplateCaptionMarkup(captionWithTemplateIndex, renderStyle, time)
+          : renderStyle.template_id
+          ? buildTemplateMarkup(captionWithTemplateIndex, renderStyle, time)
+          : buildPlainCaptionMarkup(captionWithTemplateIndex, renderStyle, time);
+        return \`<div class="caption-anchor" data-caption-render-index="\${activeIndex}" style="\${base.join(';')}">\${inner}</div>\`;
       }).join('');
+      activeCaptions.forEach((caption, activeIndex) => {
+        const anchor = root.querySelector(\`[data-caption-render-index="\${activeIndex}"]\`);
+        if (!anchor) return;
+        const templateCaptionIndex = Math.max(
+          0,
+          (payload.captions || [])
+            .filter((item) => item && !item.is_text_element)
+            .findIndex((item) => item.id === caption.id),
+        );
+        const captionWithTemplateIndex = {
+          ...caption,
+          __templateIndex: Number.isFinite(Number(caption.__templateIndex))
+            ? Number(caption.__templateIndex)
+            : templateCaptionIndex,
+        };
+        const renderStyle = resolveCaptionTemplateStyle(captionWithTemplateIndex);
+        const captionLineTexts = Array.isArray(caption?.preview_template_line_texts)
+          && caption.preview_template_line_texts.length > 0
+          ? caption.preview_template_line_texts
+          : style.preview_template_line_texts;
+        const renderedTemplateId = String(renderStyle?.template_id || '').trim();
+        const shouldReplayPreviewLineBreaks =
+          !recreatedAdvancedTemplateIds.has(renderedTemplateId)
+          || renderedTemplateId === 't24'
+          || renderedTemplateId === 't25'
+          || renderedTemplateId === 't29';
+        if (shouldReplayPreviewLineBreaks) {
+          applyPreviewTemplateLineBreaks(anchor, {
+            ...style,
+            preview_template_line_texts: captionLineTexts,
+          });
+        }
+      });
       activateSidebarTemplateShells(root, time);
-      syncAdvancedTemplateExportScale();
+      activateBasicTemplates(root);
     };
   `;
 }
@@ -1312,8 +2102,17 @@ async function main() {
     if (!caption || caption.is_text_element) return;
     const canonical = canonicalEmphasisByCaptionId.get(String(caption.id));
     if (!canonical) return;
+    const appliedStyle = caption.applied_template_style || payload.style || {};
+    const templateEmphasisColor = appliedStyle.highlight_color
+      || appliedStyle.emphasis_color
+      || appliedStyle.secondary_color
+      || payload.style?.highlight_color
+      || payload.style?.emphasis_color
+      || payload.style?.secondary_color
+      || canonical.emphasisColor
+      || '';
     caption.imp_word_index = canonical.impWordIndex;
-    caption.emphasis_color = canonical.emphasisColor;
+    caption.emphasis_color = templateEmphasisColor;
   });
   const firstTemplateCaption = (payload.captions || []).find((caption) => (
     !caption?.is_text_element
@@ -1385,6 +2184,41 @@ async function main() {
     originalTemplateHtml,
     ORIGINAL_TEMPLATE_BLOCK_TYPES,
   );
+
+  // Right-side "Basic" templates (Iman, Green Neon Pulse, 3D Shadow, …) render
+  // in the preview through their authored `.btcard` source markup. Render the
+  // SAME markup here so the burned video matches the canvas. The builder is
+  // shared (basicTemplateInline.js) and injected into the page so the per-frame
+  // word injection runs through the exact preview code path.
+  const basicTemplateIdsInUse = new Set(
+    [
+      payload.style?.template_id,
+      ...(payload.captions || []).flatMap((caption) => [
+        caption?.template_id,
+        caption?.applied_template_style?.template_id,
+      ]),
+    ]
+      .map((id) => String(id || '').trim())
+      .filter((id) => isSourceBasicTemplateId(id)),
+  );
+  const hasBasicTemplate = basicTemplateIdsInUse.size > 0;
+  const basicTemplateMarkupMap = {};
+  for (const templateId of basicTemplateIdsInUse) {
+    basicTemplateMarkupMap[templateId] = findAppliedBasicTemplateMarkup(
+      originalTemplateHtml,
+      { template_id: templateId },
+    );
+  }
+  const basicTemplateInlineSource = hasBasicTemplate
+    ? (await fs.readFile(
+        path.join(projectRoot, 'src', 'components', 'dashboard', 'basicTemplateInline.js'),
+        'utf8',
+      ))
+        // Convert the ES module to a classic page script: drop the `export`
+        // keyword from every declaration. The trailing `window.__basicTpl`
+        // assignment then exposes the builder to the per-frame render loop.
+        .replace(/^\s*export\s+/gm, '')
+    : '';
   const hasSidebarTemplate = Boolean(payload.style?.template_20_id);
   const sidebarTemplateHtml = hasSidebarTemplate
     ? await fs.readFile(path.join(projectRoot, 'src', 'assets', payload.style?.template_source === 'lekha-49' ? 'lekha-captions-49-templates.html' : 'lekha-captions-20-templates.html'), 'utf8')
@@ -1392,12 +2226,45 @@ async function main() {
   const sidebarTemplateCss = hasSidebarTemplate ? extractHtmlStyle(sidebarTemplateHtml) : '';
   const previewWidth = Number(payload.style?.preview_width || 0);
   const exportCssScale = Math.max(1, Math.min(8, Number(payload.video_width || 360) / (previewWidth || 360)));
-  const previewTemplateFontPx = Number(payload.style?.preview_template_font_px || 0);
-  const exportTemplateFontTargetPx = previewTemplateFontPx > 0
-    ? previewTemplateFontPx * exportCssScale
+  const hasAdvancedTemplate = isAdvancedTemplateId(payload.style?.template_id);
+  const fallbackAdvancedPreviewBox = estimateAdvancedPreviewTemplateBox(payload, previewWidth);
+  const measuredPreviewTemplateBoxWidthPx = Number(payload.style?.preview_template_box_width_px || 0);
+  const measuredPreviewTemplateBoxHeightPx = Number(payload.style?.preview_template_box_height_px || 0);
+  const previewTemplateBoxWidthPx = measuredPreviewTemplateBoxWidthPx
+    || fallbackAdvancedPreviewBox.width;
+  const previewTemplateBoxHeightPx = measuredPreviewTemplateBoxHeightPx
+    || fallbackAdvancedPreviewBox.height;
+  const measuredPreviewTemplateFontPx = Number(payload.style?.preview_template_font_px || 0);
+  const configuredTemplateFontPx = Number(payload.style?.font_size || 0);
+  const previewTemplateFontFloorPx = configuredTemplateFontPx > 0
+    ? Math.max(12, Math.round(configuredTemplateFontPx * 0.88))
     : 0;
+  const previewTemplateFontPx = measuredPreviewTemplateFontPx > 0
+    ? measuredPreviewTemplateFontPx
+    : previewTemplateFontFloorPx;
+  const fallbackTemplateFontPx = hasAdvancedTemplate
+    ? Number(payload.style?.font_size || 0)
+    : 0;
+  const exportTemplateBoxTargetWidthPx = previewTemplateBoxWidthPx > 0
+    ? previewTemplateBoxWidthPx * exportCssScale
+    : 0;
+  const exportTemplateBoxTargetHeightPx = previewTemplateBoxHeightPx > 0
+    ? previewTemplateBoxHeightPx * exportCssScale
+    : 0;
+  const exportTemplateFontTargetPx = (previewTemplateFontPx > 0 ? previewTemplateFontPx : fallbackTemplateFontPx) > 0
+    ? (previewTemplateFontPx > 0 ? previewTemplateFontPx : fallbackTemplateFontPx) * exportCssScale
+    : 0;
+  const exportAdvancedTemplateFontPx = Math.max(
+    12,
+    Math.round(exportTemplateFontTargetPx || scaleTemplateFontSize(payload.style?.font_size || 22) * exportCssScale),
+  );
   const exportRootFontSize = Math.round(16 * exportCssScale);
   const exportTemplateMaxWidth = Math.round(360 * exportCssScale);
+  const exportMeasuredAdvancedTemplateWidthPx = hasAdvancedTemplate && measuredPreviewTemplateBoxWidthPx > 0
+    ? Math.max(1, Math.round(measuredPreviewTemplateBoxWidthPx * exportCssScale))
+    : 0;
+  const exportT24TemplateMaxWidthPx = exportMeasuredAdvancedTemplateWidthPx
+    || Math.round(Math.min(exportTemplateMaxWidth, 260 * exportCssScale));
   const exportSidebarWidth = Math.round(Math.max(160, Math.min(Number(payload.video_width || 360) * 0.94, 320 * exportCssScale)));
   const exportSidebarHeight = Math.round(Math.max(120, Math.min(Number(payload.video_height || 640) * 0.56, 280 * exportCssScale)));
   const exportFontFamilies = new Set([
@@ -1413,7 +2280,7 @@ async function main() {
       return `<link href="https://fonts.googleapis.com/css2?family=${family}:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">`;
     })
     .join('\n');
-  console.log(`[Template DOM] sizing preview_width=${previewWidth || 'missing'} preview_template_font_px=${previewTemplateFontPx || 'missing'} video_width=${payload.video_width} css_scale=${exportCssScale.toFixed(4)} target_template_font_px=${exportTemplateFontTargetPx ? exportTemplateFontTargetPx.toFixed(2) : 'auto'}`);
+  console.log(`[Template DOM] sizing preview_width=${previewWidth || 'missing'} video_width=${payload.video_width} css_scale=${exportCssScale.toFixed(4)} target_box=${exportTemplateBoxTargetWidthPx ? `${exportTemplateBoxTargetWidthPx.toFixed(2)}x${exportTemplateBoxTargetHeightPx.toFixed(2)}` : 'auto'}`);
   const runtimeCss = `
     ${sidebarTemplateCss}
     ${ADVANCED_TEMPLATE_RUNTIME_CSS}
@@ -1424,6 +2291,7 @@ async function main() {
       height: 100%;
       background: transparent !important;
       overflow: hidden;
+      font-size: ${exportRootFontSize}px;
     }
     body {
       font-family: 'Inter', sans-serif;
@@ -1513,6 +2381,18 @@ async function main() {
     .lekha-sidebar-export-template-shell [class*=' pos'] {
       font-family: var(--sidebar-source-font, inherit) !important;
     }
+    .lekha-sidebar-export-template-shell .sw,
+    .lekha-sidebar-export-template-shell .wbw-word,
+    .lekha-sidebar-export-template-shell .sw-w,
+    .lekha-sidebar-export-template-shell .w,
+    .lekha-sidebar-export-template-shell .plain-s,
+    .lekha-sidebar-export-template-shell .wbw,
+    .lekha-sidebar-export-template-shell .wbw-line,
+    .lekha-sidebar-export-template-shell [class^='pos'],
+    .lekha-sidebar-export-template-shell [class*=' pos'] {
+      font-size: inherit !important;
+      line-height: inherit !important;
+    }
     .lekha-sidebar-export-template-shell .sb,
     .lekha-sidebar-export-template-shell .sblock {
       opacity: 0 !important;
@@ -1556,8 +2436,21 @@ async function main() {
       font-size: inherit !important;
       line-height: inherit !important;
       vertical-align: baseline !important;
-      color: var(--sidebar-emphasis-accent, #FFE600) !important;
-      -webkit-text-fill-color: var(--sidebar-emphasis-accent, #FFE600) !important;
+      color: var(--sidebar-emphasis-accent, #DDAA03) !important;
+      -webkit-text-fill-color: var(--sidebar-emphasis-accent, #DDAA03) !important;
+    }
+    .lekha-sidebar-export-template-shell .stage .w[class*='imp-'],
+    .lekha-sidebar-export-template-shell .stage .w[class*='ns2-'],
+    .lekha-sidebar-export-template-shell .stage .w[class*='ns3-'],
+    .lekha-sidebar-export-template-shell .stage .wbw-word[class*='imp-'],
+    .lekha-sidebar-export-template-shell .stage .wbw-word[class*='ns2-'],
+    .lekha-sidebar-export-template-shell .stage .wbw-word[class*='ns3-'] {
+      display: inline-block !important;
+      font-size: inherit !important;
+      line-height: inherit !important;
+      overflow: visible !important;
+      padding-block: 0.18em !important;
+      vertical-align: baseline !important;
     }
     .lekha-sidebar-export-template-shell .sidebar-export-word-anim,
     .lekha-sidebar-export-template-shell .sidebar-export-sw-anim {
@@ -1588,6 +2481,8 @@ async function main() {
       flex-wrap: wrap;
       justify-content: center;
       align-items: center;
+      column-gap: 0.24em;
+      row-gap: 0.08em;
       line-height: 1.2;
     }
     .export-positioned-word {
@@ -1604,7 +2499,7 @@ async function main() {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: auto;
+      width: ${exportMeasuredAdvancedTemplateWidthPx ? `${exportMeasuredAdvancedTemplateWidthPx}px` : 'auto'};
       max-width: min(82vw, ${exportTemplateMaxWidth}px);
       color: #fff;
       text-align: center;
@@ -1625,37 +2520,270 @@ async function main() {
       padding: 0 !important;
       overflow: visible !important;
       white-space: normal;
+      max-width: 100% !important;
+    }
+    .lekha-original-template .lekha-applied-advanced-template {
+      font-size: ${exportAdvancedTemplateFontPx}px;
     }
     .lekha-original-template .lekha-template-fit {
       display: inline-block;
       max-width: 100%;
     }
+    .lekha-original-template:is(
+      .t11-stage,
+      .t13-stage,
+      .t16-stage,
+      .t17-stage,
+      .t24-stage
+    ) .wbw-rise,
+    .lekha-original-template:is(
+      .t11-stage,
+      .t13-stage,
+      .t16-stage,
+      .t17-stage,
+      .t24-stage
+    ) .wbw-slide,
+    .lekha-original-template:is(
+      .t11-stage,
+      .t13-stage,
+      .t16-stage,
+      .t17-stage,
+      .t24-stage
+    ) .wbw-seq-fade {
+      flex-wrap: nowrap !important;
+      white-space: nowrap !important;
+    }
+    .lekha-original-template.t29-stage .lekha-applied-advanced-template,
+    .lekha-original-template.t29-stage .lekha-template-fit {
+      max-width: min(84vw, 11.5em) !important;
+      white-space: normal !important;
+      overflow-wrap: anywhere !important;
+      word-break: normal !important;
+      line-height: 1.12 !important;
+      font-size: min(${exportAdvancedTemplateFontPx}px, 26px) !important;
+    }
+    .lekha-original-template.t29-stage .wbw-rise,
+    .lekha-original-template.t29-stage .wbw-slide {
+      flex-wrap: wrap !important;
+      row-gap: 0.04em !important;
+    }
+    .lekha-original-template .wbw-rise,
+    .lekha-original-template .wbw-slide,
+    .lekha-original-template .wbw-seq,
+    .lekha-original-template .wbw-seq-fade,
+    .lekha-original-template .wbw-seq-flip {
+      max-width: 100%;
+      white-space: normal;
+    }
+    .lekha-original-template .lekha-template-preview-lines {
+      display: block !important;
+      text-align: center !important;
+      line-height: 1.2 !important;
+    }
+    .lekha-original-template .lekha-template-preview-line {
+      display: block !important;
+      white-space: nowrap !important;
+      text-align: center !important;
+    }
     .lekha-original-template .cluster-wrap {
       align-items: stretch;
     }
-    .lekha-original-template .t11-b0 .cluster-hl {
-      font-size: 0.72em !important;
+    .lekha-original-template.t11-stage .lekha-applied-advanced-template,
+    .lekha-original-template.t11-stage .lekha-template-fit,
+    .lekha-original-template.t11-stage .lekha-template-preview-lines,
+    .lekha-original-template.t11-stage .lekha-template-preview-line,
+    .lekha-original-template.t11-stage .wbw-rise,
+    .lekha-original-template.t11-stage .wbw-slide,
+    .lekha-original-template.t11-stage .wbw-seq-fade,
+    .lekha-original-template.t11-stage .w,
+    .lekha-original-template.t11-stage .cluster-row-top,
+    .lekha-original-template.t11-stage .cluster-row-bot,
+    .lekha-original-template.t11-stage .cluster-hl,
+    .lekha-original-template.t11-stage .blur-txt {
+      font-size: 1em !important;
+      line-height: 1.28 !important;
+    }
+
+    .lekha-original-template.t11-stage .t11-b0 .cluster-row-top,
+    .lekha-original-template.t11-stage .t11-b0 .cluster-row-bot,
+    .lekha-original-template.t11-stage .t11-b1,
+    .lekha-original-template.t11-stage .t11-b1 .blur-txt,
+    .lekha-original-template.t11-stage .t11-b2,
+    .lekha-original-template.t11-stage .t11-b2 .lekha-template-fit,
+    .lekha-original-template.t11-stage .t11-b3 .w.in:not([data-imp='true']) {
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
+      opacity: 1 !important;
+    }
+    .lekha-original-template.t13-stage .t13-b0 .slide-crash,
+    .lekha-original-template.t13-stage .t13-b1 .ticker-txt,
+    .lekha-original-template.t13-stage .w.in {
+      font-family: 'IBM Plex Mono', monospace !important;
+      font-weight: 700 !important;
+      color: #f97316 !important;
+      -webkit-text-fill-color: #f97316 !important;
+      opacity: 1 !important;
+    }
+    .lekha-original-template.t13-stage .t13-b2 .w.in:not([data-imp='true']),
+    .lekha-original-template.t13-stage .t13-b3 .w.in:not([data-imp='true']) {
+      color: #f97316 !important;
+      -webkit-text-fill-color: #f97316 !important;
+      opacity: 1 !important;
+    }
+    .lekha-original-template.t13-stage .imp-cyan,
+    .lekha-original-template.t13-stage .imp-bold,
+    .lekha-original-template.t13-stage .w.in[data-imp='true'],
+    .lekha-original-template.t13-stage .w[data-hero-emphasis='true'],
+    .lekha-original-template.t13-stage .slide-crash .is-emphasis,
+    .lekha-original-template.t13-stage .ticker-txt .is-emphasis {
+      font-weight: 900 !important;
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
+      opacity: 1 !important;
+      text-shadow: 0 0 12px rgba(255,255,255,0.35) !important;
+    }
+    .lekha-original-template.t13-stage .t13-b0 .slide-crash.t13-compact-line,
+    .lekha-original-template.t13-stage .t13-b1 .ticker-txt.t13-compact-line {
+      display: inline-block !important;
+      max-width: min(100%, 11.5em) !important;
+      white-space: normal !important;
+      overflow-wrap: anywhere !important;
+      word-break: break-word !important;
+      line-height: 1.18 !important;
+      letter-spacing: 0.02em !important;
+      text-align: center !important;
+      text-transform: none !important;
+    }
+    .lekha-original-template.t13-stage .t13-b0 .slide-crash.t13-compact-line {
+      font-size: 1.12rem !important;
+    }
+    .lekha-original-template.t13-stage .t13-b1 .ticker-txt.t13-compact-line {
+      font-size: 0.98rem !important;
+    }
+    .lekha-original-template.t14-stage .t14-block,
+    .lekha-original-template.t14-stage .t14-b0 .flip-line,
+    .lekha-original-template.t14-stage .t14-b1 .drop-txt,
+    .lekha-original-template.t14-stage .t14-b2,
+    .lekha-original-template.t14-stage .t14-b2 span,
+    .lekha-original-template.t14-stage .t14-b3 .w.in:not([data-imp='true']) {
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
+      opacity: 1 !important;
+    }
+    .lekha-original-template.t14-stage .t14-block,
+    .lekha-original-template.t14-stage .t14-b0,
+    .lekha-original-template.t14-stage .t14-b1,
+    .lekha-original-template.t14-stage .t14-b2,
+    .lekha-original-template.t14-stage .t14-b3 {
+      font-size: ${exportAdvancedTemplateFontPx}px !important;
+      line-height: 1.38 !important;
+    }
+    .lekha-original-template.t16-stage .t16-block,
+    .lekha-original-template.t16-stage .neon-line,
+    .lekha-original-template.t16-stage .wbw-rise,
+    .lekha-original-template.t16-stage .wbw-slide {
+      font-size: ${exportAdvancedTemplateFontPx}px !important;
+      line-height: 1.3 !important;
+    }
+    .lekha-original-template:is(
+      .t11-stage,
+      .t13-stage,
+      .t14-stage,
+      .t16-stage,
+      .t17-stage,
+      .t18-stage,
+      .t19-stage,
+      .t22-stage,
+      .t24-stage,
+      .t25-stage,
+      .t26-stage,
+      .t27-stage,
+      .t29-stage,
+      .t31-stage,
+      .t33-stage,
+      .t34-stage
+    ) .lekha-template-fit:not(.t13-compact-line),
+    .lekha-original-template:is(
+      .t11-stage,
+      .t13-stage,
+      .t14-stage,
+      .t16-stage,
+      .t17-stage,
+      .t18-stage,
+      .t19-stage,
+      .t22-stage,
+      .t24-stage,
+      .t25-stage,
+      .t26-stage,
+      .t27-stage,
+      .t29-stage,
+      .t31-stage,
+      .t33-stage,
+      .t34-stage
+    ) .w.in,
+    .lekha-original-template:is(
+      .t22-stage,
+      .t24-stage,
+      .t33-stage
+    ) .kf-line,
+    .lekha-original-template.t15-stage .shake-in,
+    .lekha-original-template.t22-stage .wave-txt,
+    .lekha-original-template.t24-stage .redact-wrap,
+    .lekha-original-template.t25-stage .hand-txt,
+    .lekha-original-template.t25-stage .soft-rise,
+    .lekha-original-template.t26-stage .hard-txt,
+    .lekha-original-template.t26-stage .fast-slide,
+    .lekha-original-template.t29-stage .battle-slide,
+    .lekha-original-template.t29-stage .hard-rise,
+    .lekha-original-template.t31-stage .stamp-text,
+    .lekha-original-template.t33-stage .doc-line,
+    .lekha-original-template.t34-stage .pow-txt {
+      font-size: ${exportAdvancedTemplateFontPx}px !important;
+      line-height: 1.32 !important;
     }
     .lekha-original-template .wbw-rise .w,
-    .lekha-original-template .wbw-slide .w {
+    .lekha-original-template .wbw-slide .w,
+    .lekha-original-template .wbw-seq .w,
+    .lekha-original-template .wbw-seq-fade .w {
       opacity: 0;
       display: inline-block;
       transition: none;
     }
-    .lekha-original-template .wbw-rise .w {
+    .lekha-original-template .wbw-rise .w,
+    .lekha-original-template .wbw-seq .w,
+    .lekha-original-template .wbw-seq-fade .w {
       transform: translateY(20px);
     }
     .lekha-original-template .wbw-slide .w {
       transform: translateX(-16px);
     }
     .lekha-original-template .active .wbw-rise .w.in,
-    .lekha-original-template .active .wbw-slide .w.in {
+    .lekha-original-template .active .wbw-slide .w.in,
+    .lekha-original-template .active .wbw-seq .w.in,
+    .lekha-original-template .active .wbw-seq-fade .w.in {
       animation: lekhaTemplateWbwIn 320ms cubic-bezier(0.34, 1.2, 0.64, 1) forwards;
       animation-delay: var(--wbw-delay, 0ms);
     }
     .lekha-original-template .active .wbw-rise .w[data-imp='true'].in,
-    .lekha-original-template .active .wbw-slide .w[data-imp='true'].in {
+    .lekha-original-template .active .wbw-slide .w[data-imp='true'].in,
+    .lekha-original-template .active .wbw-seq .w[data-imp='true'].in,
+    .lekha-original-template .active .wbw-seq-fade .w[data-imp='true'].in {
       animation-duration: 440ms;
+    }
+    .lekha-original-template.t29-stage .battle-sweep-left .w {
+      transform: translateX(-34px);
+    }
+    .lekha-original-template.t29-stage .battle-lift-up .w {
+      transform: translateY(28px);
+    }
+    .lekha-original-template.t29-stage .active .battle-sweep-left .w.in,
+    .lekha-original-template.t29-stage .active .battle-lift-up .w.in {
+      animation: lekhaTemplateWbwIn 360ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      animation-delay: var(--wbw-delay, 0ms);
+    }
+    .lekha-original-template.t29-stage .active .battle-sweep-left .w[data-imp='true'].in,
+    .lekha-original-template.t29-stage .active .battle-lift-up .w[data-imp='true'].in {
+      animation-duration: 400ms;
     }
     .lekha-original-template .lekha-applied-advanced-template.t22-block,
     .lekha-original-template .lekha-applied-advanced-template.t28-block,
@@ -1692,21 +2820,783 @@ async function main() {
       color: var(--green) !important;
       -webkit-text-fill-color: var(--green) !important;
     }
+    .lekha-original-template .is-emphasis {
+      color: var(--template-secondary, var(--gold)) !important;
+      -webkit-text-fill-color: currentColor !important;
+      font-weight: 900;
+      text-shadow: 0 0 14px color-mix(in srgb, currentColor 48%, transparent);
+    }
+    .lekha-original-template.t14-stage .imp-gold,
+    .lekha-original-template.t14-stage .is-emphasis {
+      color: #D4AF37 !important;
+      -webkit-text-fill-color: #D4AF37 !important;
+      opacity: 1 !important;
+      text-shadow: 0 1px 8px rgba(0,0,0,0.55), 0 0 14px rgba(212,175,55,0.36) !important;
+    }
+    .lekha-original-template.t14-stage .imp-underline {
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
+      position: relative !important;
+      opacity: 1 !important;
+    }
+    .lekha-original-template.t14-stage .imp-underline::after {
+      content: '' !important;
+      position: absolute !important;
+      left: 0 !important;
+      bottom: -2px !important;
+      width: 100% !important;
+      height: max(2px, 0.08em) !important;
+      background: #D4AF37 !important;
+      display: block !important;
+      opacity: 1 !important;
+      clip-path: inset(0 0 0 0) !important;
+    }
+    .lekha-original-template.t38-stage .imp-underline,
+    .lekha-original-template.t38-stage .w[data-imp='true'].imp-underline {
+      position: relative !important;
+      display: inline-block !important;
+      font-weight: 900 !important;
+      color: var(--template-secondary, var(--gold, #d4af37)) !important;
+      -webkit-text-fill-color: currentColor !important;
+      text-shadow: 0 0 14px color-mix(in srgb, currentColor 48%, transparent) !important;
+      overflow: visible !important;
+    }
+    .lekha-original-template.t38-stage .imp-underline::after,
+    .lekha-original-template.t38-stage .w[data-imp='true'].imp-underline::after {
+      content: '' !important;
+      position: absolute !important;
+      left: 0 !important;
+      bottom: -2px !important;
+      width: 100% !important;
+      height: max(2px, 0.08em) !important;
+      background: var(--gold, #d4af37) !important;
+      display: block !important;
+      opacity: 1 !important;
+      clip-path: inset(0 0 0 0) !important;
+    }
+    .lekha-original-template.t16-stage .t16-block,
+    .lekha-original-template.t16-stage .neon-line {
+      color: var(--cyan) !important;
+      -webkit-text-fill-color: var(--cyan) !important;
+      opacity: 1 !important;
+    }
+    .lekha-original-template.t16-stage .wbw-rise .w,
+    .lekha-original-template.t16-stage .wbw-slide .w {
+      color: var(--cyan) !important;
+      -webkit-text-fill-color: var(--cyan) !important;
+    }
+    .lekha-original-template.t16-stage .w[data-imp='true'],
+    .lekha-original-template.t16-stage .imp-bold,
+    .lekha-original-template.t16-stage .is-emphasis {
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
+    }
+    .lekha-original-template.t16-stage .imp-bold:not(.w),
+    .lekha-original-template.t16-stage .is-emphasis:not(.w) {
+      opacity: 1 !important;
+    }
     .lekha-original-template.t12-stage .imp-purple {
       color: var(--rose) !important;
       -webkit-text-fill-color: var(--rose) !important;
+    }
+    .lekha-original-template.t15-stage .t15-block,
+    .lekha-original-template.t15-stage .shake-in,
+    .lekha-original-template.t15-stage .pop-txt,
+    .lekha-original-template.t15-stage .w.in:not([data-imp='true']) {
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
+      opacity: 1 !important;
+    }
+    .lekha-original-template.t15-stage .imp-rose,
+    .lekha-original-template.t15-stage .imp-bold,
+    .lekha-original-template.t15-stage .w.in[data-imp='true'],
+    .lekha-original-template.t15-stage .w[data-hero-emphasis='true'] {
+      color: var(--rose) !important;
+      -webkit-text-fill-color: var(--rose) !important;
+      opacity: 1 !important;
+    }
+    .lekha-original-template.t15-stage .shake-in {
+      line-height: 1.48 !important;
+    }
+    .lekha-original-template.t17-stage .t17-block,
+    .lekha-original-template.t17-stage .t17-b2 .lekha-template-fit,
+    .lekha-original-template.t17-stage .w.in:not([data-imp='true']) {
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
+      opacity: 1 !important;
+    }
+    .lekha-original-template.t17-stage .glitch-wrap,
+    .lekha-original-template.t17-stage .t17-b0 .lekha-template-fit,
+    .lekha-original-template.t17-stage .t17-b2 .lekha-template-fit,
+    .lekha-original-template.t17-stage .wbw-rise .w.in,
+    .lekha-original-template.t17-stage .wbw-slide .w.in,
+    .lekha-original-template.t17-stage .wbw-seq-fade .w.in {
+      font-size: max(${exportAdvancedTemplateFontPx}px, 20px) !important;
+      line-height: 1.32 !important;
+    }
+    .lekha-original-template.t17-stage .imp-flicker,
+    .lekha-original-template.t17-stage .w.in[data-imp='true'],
+    .lekha-original-template.t17-stage .w[data-hero-emphasis='true'] {
+      color: #ff3d71 !important;
+      -webkit-text-fill-color: #ff3d71 !important;
+      opacity: 1 !important;
+    }
+    .lekha-original-template.t17-stage .letter-snap-blk,
+    .lekha-original-template.t17-stage .snap-txt {
+      opacity: 1 !important;
+      filter: none !important;
+    }
+    .lekha-original-template.t17-stage .snap-txt,
+    .lekha-original-template.t17-stage .snap-txt * {
+      color: #ff3d71 !important;
+      -webkit-text-fill-color: #ff3d71 !important;
+      text-shadow: 0 1px 8px rgba(0,0,0,0.82), 0 0 2px rgba(0,0,0,0.92), 0 0 16px rgba(255,61,113,0.22) !important;
     }
     .lekha-original-template.t18-stage .imp-purple {
       color: var(--gold) !important;
       -webkit-text-fill-color: var(--gold) !important;
     }
+    .lekha-original-template.t18-stage .t18-block {
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
+      opacity: 1 !important;
+      text-align: center !important;
+      letter-spacing: 0.06em !important;
+    }
+    .lekha-original-template.t18-stage .split-title {
+      display: inline-block !important;
+      text-align: center !important;
+      font-size: max(1em, 1.65rem) !important;
+      line-height: 1.2 !important;
+    }
+    .lekha-original-template.t18-stage .split-top {
+      display: block !important;
+      color: rgba(255,255,255,0.92) !important;
+      -webkit-text-fill-color: rgba(255,255,255,0.92) !important;
+      font-size: 0.5em !important;
+      letter-spacing: 0.18em !important;
+      text-transform: uppercase !important;
+    }
+    .lekha-original-template.t18-stage .split-bot {
+      display: block !important;
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
+      font-size: 1em !important;
+      font-weight: 700 !important;
+      letter-spacing: 0.08em !important;
+      text-transform: uppercase !important;
+    }
+    .lekha-original-template.t18-stage .split-bot .imp-purple,
+    .lekha-original-template.t18-stage .reveal-txt .imp-purple,
+    .lekha-original-template.t18-stage .w.in[data-imp='true'] {
+      color: var(--gold) !important;
+      -webkit-text-fill-color: var(--gold) !important;
+      opacity: 1 !important;
+    }
+    .lekha-original-template.t18-stage .reveal-txt,
+    .lekha-original-template.t18-stage .t18-b2 .lekha-template-fit,
+    .lekha-original-template.t18-stage .w.in:not([data-imp='true']) {
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
+      filter: none !important;
+    }
+    .lekha-original-template.t19-stage .t19-block,
+    .lekha-original-template.t19-stage .lekha-applied-advanced-template,
+    .lekha-original-template.t19-stage .lekha-template-fit,
+    .lekha-original-template.t19-stage .wbw-rise,
+    .lekha-original-template.t19-stage .wbw-seq-fade,
+    .lekha-original-template.t19-stage .rise-unit,
+    .lekha-original-template.t19-stage .slash-wrap,
+    .lekha-original-template.t19-stage .w,
+    .lekha-original-template.t19-stage .w.in:not([data-imp='true']) {
+      font-family: 'Archivo Black', sans-serif !important;
+      font-size: ${exportAdvancedTemplateFontPx}px !important;
+      font-weight: 900 !important;
+      line-height: 1.32 !important;
+      letter-spacing: 0.02em !important;
+      text-transform: uppercase !important;
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
+      opacity: 1 !important;
+    }
+    .lekha-original-template.t19-stage .imp-rose,
+    .lekha-original-template.t19-stage .imp-bold,
+    .lekha-original-template.t19-stage .w.in[data-imp='true'],
+    .lekha-original-template.t19-stage .w[data-hero-emphasis='true'] {
+      color: var(--rose) !important;
+      -webkit-text-fill-color: var(--rose) !important;
+      font-size: ${exportAdvancedTemplateFontPx}px !important;
+      opacity: 1 !important;
+    }
+    .lekha-original-template.t19-stage .wbw-rise,
+    .lekha-original-template.t19-stage .wbw-seq-fade {
+      display: inline-flex !important;
+      flex-wrap: wrap !important;
+      justify-content: center !important;
+      max-width: min(100%, 12em) !important;
+      white-space: normal !important;
+      overflow-wrap: normal !important;
+      word-break: normal !important;
+    }
+    .lekha-original-template.t22-stage .t22-block,
+    .lekha-original-template.t22-stage .wave-txt,
+    .lekha-original-template.t22-stage .kf-line,
+    .lekha-original-template.t22-stage .w.in:not([data-imp='true']) {
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
+      -webkit-text-stroke: 0 transparent !important;
+      text-shadow: none !important;
+      opacity: 1 !important;
+    }
+    .lekha-original-template.t22-stage .kf-base {
+      color: var(--template-highlight, var(--template-secondary, var(--gold))) !important;
+      -webkit-text-fill-color: var(--template-highlight, var(--template-secondary, var(--gold))) !important;
+      -webkit-text-stroke: 0 transparent !important;
+      text-shadow: none !important;
+      paint-order: fill !important;
+      opacity: 1 !important;
+    }
+    .lekha-original-template.t22-stage .imp-gold,
+    .lekha-original-template.t22-stage .imp-italic,
+    .lekha-original-template.t22-stage .kf-fill,
+    .lekha-original-template.t22-stage .w.in[data-imp='true'],
+    .lekha-original-template.t22-stage .w[data-hero-emphasis='true'] {
+      color: var(--template-highlight, var(--template-secondary, var(--gold))) !important;
+      -webkit-text-fill-color: var(--template-highlight, var(--template-secondary, var(--gold))) !important;
+      -webkit-text-stroke: 0 transparent !important;
+      text-shadow: none !important;
+      paint-order: fill !important;
+      opacity: 1 !important;
+    }
+    .lekha-original-template .kf-line {
+      display: inline-block !important;
+      max-width: 100% !important;
+      text-align: center !important;
+      white-space: normal !important;
+    }
+    .lekha-original-template .kf-word {
+      display: inline-block !important;
+      position: relative !important;
+      white-space: pre !important;
+    }
+    .lekha-original-template .kf-base {
+      display: block !important;
+      color: rgba(255, 255, 255, 0.25) !important;
+      -webkit-text-fill-color: rgba(255, 255, 255, 0.25) !important;
+    }
+    .lekha-original-template .kf-fill {
+      position: absolute !important;
+      inset: 0 !important;
+      display: block !important;
+      color: var(--gold) !important;
+      -webkit-text-fill-color: var(--gold) !important;
+      clip-path: inset(0 100% 0 0);
+    }
+    .lekha-original-template .active .kf-fill {
+      animation: lekhaKaraokeFill var(--kf-duration, 360ms) linear forwards;
+      animation-delay: var(--kf-delay, 0ms);
+    }
+    .lekha-original-template .t24-b4 .kf-fill {
+      color: #fb923c !important;
+      -webkit-text-fill-color: #fb923c !important;
+    }
+    .lekha-original-template .t33-b2 .kf-fill {
+      color: var(--template-highlight, var(--template-secondary, #ee17dc)) !important;
+      -webkit-text-fill-color: var(--template-highlight, var(--template-secondary, #ee17dc)) !important;
+    }
+    .lekha-original-template .t33-b2 .kf-base {
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
+      opacity: 1 !important;
+      text-shadow: none !important;
+    }
+    .lekha-original-template.t36-stage .t36-b0 .kf-fill {
+      color: var(--template-karaoke-1, var(--template-highlight, #DDAA03)) !important;
+      -webkit-text-fill-color: var(--template-karaoke-1, var(--template-highlight, #DDAA03)) !important;
+    }
+    .lekha-original-template.t36-stage .t36-b1 .kf-fill {
+      color: var(--template-karaoke-2, #22D3EE) !important;
+      -webkit-text-fill-color: var(--template-karaoke-2, #22D3EE) !important;
+    }
+    .lekha-original-template.t36-stage .t36-b2 .kf-fill {
+      color: var(--template-karaoke-3, #FB923C) !important;
+      -webkit-text-fill-color: var(--template-karaoke-3, #FB923C) !important;
+    }
+    .lekha-original-template.t23-stage .t23-b3 .imp-bold,
+    .lekha-original-template.t23-stage .t23-b3 .imp-gold,
+    .lekha-original-template.t23-stage .t23-b3 .is-emphasis {
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
+      text-shadow: 0 1px 8px rgba(0,0,0,0.55), 0 0 12px rgba(255,255,255,0.36) !important;
+    }
     .lekha-original-template.t24-stage .imp-purple {
       color: #f97316 !important;
       -webkit-text-fill-color: #f97316 !important;
     }
+    .lekha-original-template.t24-stage .t24-block,
+    .lekha-original-template.t24-stage .lekha-applied-advanced-template,
+    .lekha-original-template.t24-stage .lekha-template-fit {
+      font-size: min(${exportAdvancedTemplateFontPx}px, 20px) !important;
+      line-height: 1.28 !important;
+      max-width: min(100%, ${exportT24TemplateMaxWidthPx}px) !important;
+      white-space: normal !important;
+      overflow-wrap: normal !important;
+      word-break: normal !important;
+      text-align: center !important;
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
+      opacity: 1 !important;
+    }
+
+    .lekha-original-template.t24-stage {
+      width: auto !important;
+      max-width: min(82vw, ${exportT24TemplateMaxWidthPx}px) !important;
+    }
+
+    .lekha-original-template.t24-stage .wbw-rise,
+    .lekha-original-template.t24-stage .wbw-slide,
+    .lekha-original-template.t24-stage .wbw-seq-fade,
+    .lekha-original-template.t24-stage .kf-line,
+    .lekha-original-template.t24-stage .slow-rise,
+    .lekha-original-template.t24-stage .rw {
+      display: inline-flex !important;
+      flex-wrap: wrap !important;
+      align-items: baseline !important;
+      justify-content: center !important;
+      column-gap: 0.28em !important;
+      row-gap: 0.12em !important;
+      max-width: min(100%, ${exportT24TemplateMaxWidthPx}px) !important;
+      text-align: center !important;
+    }
+
+    .lekha-original-template.t24-stage .lekha-template-preview-lines {
+      display: block !important;
+      line-height: 1.28 !important;
+      max-width: min(100%, ${exportT24TemplateMaxWidthPx}px) !important;
+      text-align: center !important;
+    }
+
+    .lekha-original-template.t24-stage .lekha-template-preview-line {
+      display: block !important;
+      white-space: nowrap !important;
+      line-height: 1.28 !important;
+      text-align: center !important;
+    }
+
+    .lekha-original-template.t24-stage .w,
+    .lekha-original-template.t24-stage .w.in:not([data-imp='true']) {
+      display: inline-block !important;
+      margin-right: 0 !important;
+      font-size: 1em !important;
+      line-height: 1.28 !important;
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
+      opacity: 1 !important;
+    }
+    .lekha-original-template.t24-stage .redact-block,
+    .lekha-original-template.t24-stage .imp-purple,
+    .lekha-original-template.t24-stage .imp-orange,
+    .lekha-original-template.t24-stage .w.in[data-imp='true'],
+    .lekha-original-template.t24-stage .w[data-hero-emphasis='true'] {
+      color: #f97316 !important;
+      -webkit-text-fill-color: #f97316 !important;
+      opacity: 1 !important;
+    }
+    .lekha-original-template.t24-stage .slow-rise {
+      font-size: min(${exportAdvancedTemplateFontPx}px, 20px) !important;
+      line-height: 1.28 !important;
+    }
+    .lekha-original-template.t25-stage .t25-block,
+    .lekha-original-template.t25-stage .lekha-applied-advanced-template,
+    .lekha-original-template.t25-stage .lekha-template-fit,
+    .lekha-original-template.t25-stage .hand-txt,
+    .lekha-original-template.t25-stage .soft-rise,
+    .lekha-original-template.t25-stage .wbw-rise,
+    .lekha-original-template.t25-stage .wbw-slide,
+    .lekha-original-template.t25-stage .w.in:not([data-imp='true']) {
+      max-width: min(100%, 13em) !important;
+      white-space: normal !important;
+      overflow-wrap: normal !important;
+      word-break: normal !important;
+      text-align: center !important;
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
+      opacity: 1 !important;
+    }
+    .lekha-original-template.t25-stage .hand-txt,
+    .lekha-original-template.t25-stage .soft-rise {
+      display: inline-block !important;
+      line-height: 1.55 !important;
+    }
+
+    .lekha-original-template.t25-stage .lekha-template-preview-lines {
+      display: block !important;
+      line-height: 1.55 !important;
+      max-width: min(100%, 13em) !important;
+      text-align: center !important;
+    }
+
+    .lekha-original-template.t25-stage .lekha-template-preview-line {
+      display: block !important;
+      white-space: nowrap !important;
+      line-height: 1.55 !important;
+      text-align: center !important;
+    }
+
+    .lekha-original-template.t25-stage .wbw-rise,
+    .lekha-original-template.t25-stage .wbw-slide {
+      display: inline-flex !important;
+      flex-wrap: wrap !important;
+      align-items: baseline !important;
+      justify-content: center !important;
+      column-gap: 0.28em !important;
+      row-gap: 0.12em !important;
+    }
+    .lekha-original-template.t25-stage .w {
+      margin-right: 0 !important;
+    }
+    .lekha-original-template.t25-stage .imp-italic,
+    .lekha-original-template.t25-stage .imp-rose,
+    .lekha-original-template.t25-stage .w.in[data-imp='true'],
+    .lekha-original-template.t25-stage .w[data-hero-emphasis='true'] {
+      color: var(--template-highlight, var(--template-secondary, var(--rose, #ff3d71))) !important;
+      -webkit-text-fill-color: var(--template-highlight, var(--template-secondary, var(--rose, #ff3d71))) !important;
+      opacity: 1 !important;
+    }
+    .lekha-original-template.t26-stage .t26-block,
+    .lekha-original-template.t26-stage .lekha-applied-advanced-template,
+    .lekha-original-template.t26-stage .lekha-template-fit,
+    .lekha-original-template.t26-stage .wbw-rise,
+    .lekha-original-template.t26-stage .wbw-slide,
+    .lekha-original-template.t26-stage .wbw-seq-fade,
+    .lekha-original-template.t26-stage .w,
+    .lekha-original-template.t26-stage .hard-txt,
+    .lekha-original-template.t26-stage .fast-slide,
+    .lekha-original-template.t26-stage .w.in:not([data-imp='true']) {
+      max-width: min(100%, 11.5em) !important;
+      white-space: normal !important;
+      text-align: center !important;
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
+      opacity: 1 !important;
+    }
+    .lekha-original-template.t26-stage .wbw-rise,
+    .lekha-original-template.t26-stage .wbw-slide,
+    .lekha-original-template.t26-stage .wbw-seq-fade {
+      display: inline-flex !important;
+      flex-wrap: wrap !important;
+      justify-content: center !important;
+    }
+    .lekha-original-template.t26-stage .imp-rose,
+    .lekha-original-template.t26-stage .imp-bold,
+    .lekha-original-template.t26-stage .w.in[data-imp='true'],
+    .lekha-original-template.t26-stage .w[data-hero-emphasis='true'] {
+      color: var(--template-highlight, var(--template-secondary, #15f5f9)) !important;
+      -webkit-text-fill-color: var(--template-highlight, var(--template-secondary, #15f5f9)) !important;
+      opacity: 1 !important;
+    }
+    .lekha-original-template.t27-stage .t27-block,
+    .lekha-original-template.t27-stage .center-expand-txt,
+    .lekha-original-template.t27-stage .t27-b1 .lekha-template-fit,
+    .lekha-original-template.t27-stage .w.in:not([data-imp='true']) {
+      color: var(--cyan) !important;
+      -webkit-text-fill-color: var(--cyan) !important;
+      opacity: 1 !important;
+    }
+    .lekha-original-template.t27-stage .imp-cyan,
+    .lekha-original-template.t27-stage .imp-bold,
+    .lekha-original-template.t27-stage .t27-b2 .lekha-template-fit,
+    .lekha-original-template.t27-stage .w.in[data-imp='true'],
+    .lekha-original-template.t27-stage .w[data-hero-emphasis='true'] {
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
+      opacity: 1 !important;
+    }
+    .lekha-original-template.t27-stage #t27-b1,
+    .lekha-original-template.t27-stage #t27-b1 span,
+    .lekha-original-template.t27-stage .t27-b1 .lekha-template-fit {
+      font-size: max(${exportAdvancedTemplateFontPx}px, 20px) !important;
+      color: var(--cyan) !important;
+      -webkit-text-fill-color: var(--cyan) !important;
+      opacity: 1 !important;
+    }
+    .lekha-original-template.t28-stage .t28-block,
+    .lekha-original-template.t28-stage .lekha-applied-advanced-template,
+    .lekha-original-template.t28-stage .lekha-template-fit,
+    .lekha-original-template.t28-stage .grain-txt,
+    .lekha-original-template.t28-stage .slow-fade,
+    .lekha-original-template.t28-stage .wbw-rise,
+    .lekha-original-template.t28-stage .wbw-seq-fade,
+    .lekha-original-template.t28-stage .w {
+      font-family: 'Bitter', serif !important;
+      font-size: ${exportAdvancedTemplateFontPx}px !important;
+      line-height: 1.48 !important;
+      color: rgba(255,255,255,0.92) !important;
+      -webkit-text-fill-color: rgba(255,255,255,0.92) !important;
+      opacity: 1 !important;
+      max-width: min(100%, 13em) !important;
+      white-space: normal !important;
+      text-align: center !important;
+    }
+    .lekha-original-template.t28-stage .imp-gold,
+    .lekha-original-template.t28-stage .imp-italic,
+    .lekha-original-template.t28-stage .w.in[data-imp='true'],
+    .lekha-original-template.t28-stage .w[data-hero-emphasis='true'] {
+      color: var(--template-highlight, var(--template-secondary, #86de02)) !important;
+      -webkit-text-fill-color: var(--template-highlight, var(--template-secondary, #86de02)) !important;
+      opacity: 1 !important;
+    }
+    .lekha-original-template.t29-stage .t29-block,
+    .lekha-original-template.t29-stage .hard-rise,
+    .lekha-original-template.t29-stage .w,
+    .lekha-original-template.t29-stage .w.in:not([data-imp='true']),
+      .lekha-original-template.t29-stage .lekha-template-fit {
+      font-family: 'Teko', sans-serif !important;
+      font-size: ${exportAdvancedTemplateFontPx}px !important;
+      font-weight: 700 !important;
+      line-height: 1.02 !important;
+      letter-spacing: 0.035em !important;
+      text-transform: uppercase !important;
+      max-width: min(100%, 10.5em) !important;
+      white-space: normal !important;
+      overflow-wrap: normal !important;
+      word-break: normal !important;
+      text-align: center !important;
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
+      opacity: 1 !important;
+    }
+    .lekha-original-template.t29-stage .battle-slide,
+    .lekha-original-template.t29-stage .imp-rose,
+    .lekha-original-template.t29-stage .w.in[data-imp='true'],
+    .lekha-original-template.t29-stage .w[data-hero-emphasis='true'] {
+      color: var(--template-highlight, var(--template-secondary, #f97316)) !important;
+      -webkit-text-fill-color: var(--template-highlight, var(--template-secondary, #f97316)) !important;
+      opacity: 1 !important;
+      text-shadow: 0 0 12px rgba(249,115,22,0.28) !important;
+    }
+    .lekha-original-template.t29-stage .wbw-rise,
+    .lekha-original-template.t29-stage .wbw-slide,
+    .lekha-original-template.t29-stage .wbw-seq-fade {
+      display: inline-flex !important;
+      flex-wrap: wrap !important;
+      justify-content: center !important;
+      column-gap: 0.14em !important;
+      row-gap: 0 !important;
+    }
+    .lekha-original-template.t30-stage .t30-block,
+    .lekha-original-template.t30-stage .lekha-applied-advanced-template,
+    .lekha-original-template.t30-stage .lekha-template-fit,
+    .lekha-original-template.t30-stage .breathe-txt {
+      font-family: 'Cormorant Garamond', serif !important;
+      font-size: ${exportAdvancedTemplateFontPx}px !important;
+      font-style: italic !important;
+      font-weight: 600 !important;
+      line-height: 1.62 !important;
+      max-width: min(100%, 13em) !important;
+      white-space: normal !important;
+      text-align: center !important;
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
+      opacity: 1 !important;
+    }
+    .lekha-original-template.t30-stage .imp-italic {
+      color: #b4d2c8 !important;
+      -webkit-text-fill-color: #b4d2c8 !important;
+    }
+    .lekha-original-template.t31-stage .t31-block,
+    .lekha-original-template.t31-stage .stamp-text,
+    .lekha-original-template.t31-stage .flip-line,
+    .lekha-original-template.t31-stage .t31-b2 .lekha-template-fit,
+    .lekha-original-template.t31-stage .w.in:not([data-imp='true']) {
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
+      opacity: 1 !important;
+    }
+    .lekha-original-template.t31-stage .imp-gold,
+    .lekha-original-template.t31-stage .w.in[data-imp='true'],
+    .lekha-original-template.t31-stage .w[data-hero-emphasis='true'] {
+      color: var(--gold) !important;
+      -webkit-text-fill-color: var(--gold) !important;
+      opacity: 1 !important;
+    }
+    .lekha-original-template.t33-stage .t33-block,
+    .lekha-original-template.t33-stage .lekha-applied-advanced-template,
+    .lekha-original-template.t33-stage .lekha-template-fit,
+    .lekha-original-template.t33-stage .doc-line,
+    .lekha-original-template.t33-stage .w,
+    .lekha-original-template.t33-stage .w.in:not([data-imp='true']) {
+      font-family: 'Noto Sans', sans-serif !important;
+      font-size: ${exportAdvancedTemplateFontPx}px !important;
+      font-weight: 700 !important;
+      line-height: 1.32 !important;
+      text-align: center !important;
+      max-width: min(100%, 13em) !important;
+      white-space: normal !important;
+      overflow-wrap: normal !important;
+      word-break: normal !important;
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
+      opacity: 1 !important;
+    }
+
+    .lekha-original-template.t33-stage .wbw-rise,
+    .lekha-original-template.t33-stage .wbw-slide,
+    .lekha-original-template.t33-stage .wbw-seq-fade {
+      display: inline-flex !important;
+      flex-wrap: wrap !important;
+      align-items: baseline !important;
+      justify-content: center !important;
+      column-gap: 0.24em !important;
+      row-gap: 0.04em !important;
+      max-width: min(100%, 13em) !important;
+      white-space: normal !important;
+    }
+    .lekha-original-template.t33-stage .imp-cyan,
+    .lekha-original-template.t33-stage .imp-bold,
+    .lekha-original-template.t33-stage .w.in[data-imp='true'],
+    .lekha-original-template.t33-stage .w[data-hero-emphasis='true'] {
+      color: var(--template-highlight, var(--template-secondary, #00e5ff)) !important;
+      -webkit-text-fill-color: var(--template-highlight, var(--template-secondary, #00e5ff)) !important;
+      opacity: 1 !important;
+    }
+    .lekha-original-template.t34-stage .t34-block,
+    .lekha-original-template.t34-stage .pow-txt,
+    .lekha-original-template.t34-stage .w.in:not([data-imp='true']) {
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
+      opacity: 1 !important;
+    }
+    .lekha-original-template.t34-stage .imp-cyan,
+    .lekha-original-template.t34-stage .imp-bold,
+    .lekha-original-template.t34-stage .w.in[data-imp='true'],
+    .lekha-original-template.t34-stage .w[data-hero-emphasis='true'] {
+      color: var(--template-highlight, var(--template-secondary, #f97316)) !important;
+      -webkit-text-fill-color: var(--template-highlight, var(--template-secondary, #f97316)) !important;
+      opacity: 1 !important;
+    }
+    .lekha-original-template.t34-stage .pow-txt {
+      font-size: max(${exportAdvancedTemplateFontPx}px, 22px) !important;
+      line-height: 1.28 !important;
+    }
     .lekha-original-template.t32-stage .imp-purple {
       color: var(--cyan) !important;
       -webkit-text-fill-color: var(--cyan) !important;
+    }
+    .lekha-original-template.t37-stage .t37-block,
+    .lekha-original-template.t37-stage .neon-pulse,
+    .lekha-original-template.t37-stage .neon-expand,
+    .lekha-original-template.t37-stage .w.in:not([data-imp='true']) {
+      color: var(--template-primary, #e1da09) !important;
+      -webkit-text-fill-color: var(--template-primary, #e1da09) !important;
+      -webkit-text-stroke: 0 transparent !important;
+      text-shadow: none !important;
+      opacity: 1 !important;
+    }
+    .lekha-original-template.t37-stage .imp-green,
+    .lekha-original-template.t37-stage .w.in[data-imp='true'] {
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
+      -webkit-text-stroke: 0 transparent !important;
+      text-shadow: none !important;
+    }
+    .template-caption-shell.is-color-customized .lekha-original-template {
+      --gold: var(--template-secondary, #d4af37);
+      --rose: var(--template-secondary, #ff3d71);
+      --cyan: var(--template-secondary, #f97316);
+      --green: var(--template-secondary, #39ff14);
+      --purple: var(--template-secondary, #a78bfa);
+      color: var(--template-primary, #ffffff) !important;
+    }
+    .template-caption-shell.is-color-customized .lekha-original-template .lekha-applied-advanced-template,
+    .template-caption-shell.is-color-customized .lekha-original-template .lekha-template-fit,
+    .template-caption-shell.is-color-customized .lekha-original-template .w.in:not([data-imp='true']),
+    .template-caption-shell.is-color-customized .lekha-original-template .kf-base,
+    .template-caption-shell.is-color-customized .lekha-original-template .cluster-row-top,
+    .template-caption-shell.is-color-customized .lekha-original-template .cluster-row-bot,
+    .template-caption-shell.is-color-customized .lekha-original-template .blur-txt {
+      color: var(--template-primary, #ffffff) !important;
+      -webkit-text-fill-color: var(--template-primary, #ffffff) !important;
+    }
+    .template-caption-shell.is-color-customized .lekha-original-template .is-emphasis,
+    .template-caption-shell.is-color-customized .lekha-original-template [data-imp='true'],
+    .template-caption-shell.is-color-customized .lekha-original-template .w.in[data-imp='true'],
+    .template-caption-shell.is-color-customized .lekha-original-template [data-hero-emphasis='true'],
+    .template-caption-shell.is-color-customized .lekha-original-template .imp-gold,
+    .template-caption-shell.is-color-customized .lekha-original-template .imp-rose,
+    .template-caption-shell.is-color-customized .lekha-original-template .imp-cyan,
+    .template-caption-shell.is-color-customized .lekha-original-template .imp-purple,
+    .template-caption-shell.is-color-customized .lekha-original-template .imp-green,
+    .template-caption-shell.is-color-customized .lekha-original-template .imp-orange,
+    .template-caption-shell.is-color-customized .lekha-original-template .imp-bold,
+    .template-caption-shell.is-color-customized .lekha-original-template .imp-italic,
+    .template-caption-shell.is-color-customized .lekha-original-template .imp-weight,
+    .template-caption-shell.is-color-customized .lekha-original-template .imp-space,
+    .template-caption-shell.is-color-customized .lekha-original-template .imp-flicker,
+    .template-caption-shell.is-color-customized .lekha-original-template .imp-underline {
+      color: var(--template-highlight, var(--template-secondary, #d4af37)) !important;
+      -webkit-text-fill-color: var(--template-highlight, var(--template-secondary, #d4af37)) !important;
+    }
+    .template-caption-shell.is-color-customized .lekha-original-template.t22-stage .kf-base,
+    .template-caption-shell.is-color-customized .lekha-original-template.t22-stage .kf-fill,
+    .template-caption-shell.is-color-customized .lekha-original-template.t22-stage .imp-gold,
+    .template-caption-shell.is-color-customized .lekha-original-template.t22-stage .w.in[data-imp='true'],
+    .template-caption-shell.is-color-customized .lekha-original-template.t22-stage .w[data-hero-emphasis='true'] {
+      color: var(--template-highlight, var(--template-secondary, #d4af37)) !important;
+      -webkit-text-fill-color: var(--template-highlight, var(--template-secondary, #d4af37)) !important;
+      -webkit-text-stroke: 0 transparent !important;
+      text-shadow: none !important;
+      paint-order: fill !important;
+      opacity: 1 !important;
+    }
+    .template-caption-shell .lekha-original-template.t36-stage .t36-b0 .kf-fill,
+    .template-caption-shell.is-color-customized .lekha-original-template.t36-stage .t36-b0 .kf-fill {
+      color: var(--template-karaoke-1, var(--template-highlight, #DDAA03)) !important;
+      -webkit-text-fill-color: var(--template-karaoke-1, var(--template-highlight, #DDAA03)) !important;
+    }
+    .template-caption-shell .lekha-original-template.t36-stage .kf-base,
+    .template-caption-shell.is-color-customized .lekha-original-template.t36-stage .kf-base {
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
+      opacity: 1 !important;
+      text-shadow: none !important;
+    }
+    .template-caption-shell .lekha-original-template.t36-stage .t36-b1 .kf-fill,
+    .template-caption-shell.is-color-customized .lekha-original-template.t36-stage .t36-b1 .kf-fill {
+      color: var(--template-karaoke-2, #22D3EE) !important;
+      -webkit-text-fill-color: var(--template-karaoke-2, #22D3EE) !important;
+    }
+    .template-caption-shell .lekha-original-template.t36-stage .t36-b2 .kf-fill,
+    .template-caption-shell.is-color-customized .lekha-original-template.t36-stage .t36-b2 .kf-fill {
+      color: var(--template-karaoke-3, #FB923C) !important;
+      -webkit-text-fill-color: var(--template-karaoke-3, #FB923C) !important;
+    }
+    .template-caption-shell.is-color-customized .lekha-original-template .imp-underline::after,
+    .template-caption-shell.is-color-customized .lekha-original-template .w[data-imp='true'].imp-underline::after {
+      background: var(--template-highlight, var(--template-secondary, #d4af37)) !important;
+    }
+    .template-caption-shell .lekha-original-template.t37-stage .imp-green,
+    .template-caption-shell .lekha-original-template.t37-stage .w.in[data-imp='true'],
+    .template-caption-shell.is-color-customized .lekha-original-template.t37-stage .imp-green,
+    .template-caption-shell.is-color-customized .lekha-original-template.t37-stage .w.in[data-imp='true'] {
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
+      -webkit-text-stroke: 0 transparent !important;
+      text-shadow: none !important;
+    }
+    .template-caption-shell .lekha-original-template.t23-stage .t23-b3 .imp-bold,
+    .template-caption-shell .lekha-original-template.t23-stage .t23-b3 .imp-gold,
+    .template-caption-shell .lekha-original-template.t23-stage .t23-b3 .is-emphasis,
+    .template-caption-shell.is-color-customized .lekha-original-template.t23-stage .t23-b3 .imp-bold,
+    .template-caption-shell.is-color-customized .lekha-original-template.t23-stage .t23-b3 .imp-gold,
+    .template-caption-shell.is-color-customized .lekha-original-template.t23-stage .t23-b3 .is-emphasis {
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
+      text-shadow: 0 1px 8px rgba(0,0,0,0.55), 0 0 12px rgba(255,255,255,0.36) !important;
+    }
+    @keyframes lekhaKaraokeFill {
+      from { clip-path: inset(0 100% 0 0); }
+      to { clip-path: inset(0 0% 0 0); }
     }
     @keyframes lekhaTemplateWbwIn {
       to {
@@ -1768,7 +3658,8 @@ async function main() {
         <body>
           <div id="overlay-root"></div>
           <script>window.__exportCanvasScale = ${JSON.stringify(exportCssScale)};</script>
-          <script>window.__exportTemplateFontTargetPx = ${JSON.stringify(exportTemplateFontTargetPx)};</script>
+          <script>window.__basicTemplateMarkupMap = ${JSON.stringify(basicTemplateMarkupMap)};</script>
+          ${basicTemplateInlineSource ? `<script>${basicTemplateInlineSource}</script>` : ''}
           <script>${buildRuntimeScript(advancedTemplateBlockMarkup)}</script>
         </body>
       </html>
@@ -1777,14 +3668,18 @@ async function main() {
     await page.addStyleTag({ content: captionCss });
     await page.addStyleTag({ content: advancedCaptionCss });
     await page.addStyleTag({ content: originalTemplateCss });
+    if (hasBasicTemplate) {
+      await page.addStyleTag({ content: APPLIED_BASIC_TEMPLATE_HOST_OVERRIDES });
+    }
     await page.evaluate(() => document.fonts.ready);
 
     const segments = [];
     const points = new Set([0, Number(payload.duration || 0)]);
     const templateId = String(payload.style?.template_id || '').trim();
     const sidebarTemplateId = String(payload.style?.template_20_id || '').trim();
-    const templateUsesPreviewTiming = isAdvancedTemplateId(templateId);
-    const templateUsesSidebarTiming = Boolean(sidebarTemplateId);
+      const templateUsesPreviewTiming = isAdvancedTemplateId(templateId);
+      const templateUsesSidebarTiming = Boolean(sidebarTemplateId);
+      const templateUsesBasicTiming = SOURCE_BASIC_TEMPLATE_IDS.includes(templateId);
     const defaultTemplateSampleFps = Math.max(24, Math.min(60, Number(payload.style?.fps || 30)));
     const nonTextCaptions = (payload.captions || []).filter((caption) => !caption?.is_text_element);
     const adaptiveTemplateSampleFps = defaultTemplateSampleFps;
@@ -1797,9 +3692,12 @@ async function main() {
       if (templateUsesPreviewTiming) {
         if (caption?.is_text_element) continue;
         const fallbackIndex = nonTextCaptions.findIndex((item) => item?.id === caption?.id);
-        const templateIndex = Number.isFinite(Number(caption.__templateIndex))
-          ? Number(caption.__templateIndex)
-          : Math.max(0, fallbackIndex);
+        const storedPhaseIndex = Number(caption.template_phase_index);
+        const templateIndex = Number.isFinite(storedPhaseIndex)
+          ? storedPhaseIndex
+          : Number.isFinite(Number(caption.__templateIndex))
+            ? Number(caption.__templateIndex)
+            : Math.max(0, fallbackIndex);
         const blockType = getTemplateBlockType(templateId, templateIndex);
         const splitWords = String(caption.text || '').split(/\s+/).filter(Boolean);
         const wordCount = Math.max(splitWords.length, 1);
@@ -1833,6 +3731,30 @@ async function main() {
           let sample = start + (1 / sidebarSampleFps);
           sample < animationEnd;
           sample += (1 / sidebarSampleFps)
+        ) {
+          points.add(sample);
+        }
+      } else if (templateUsesBasicTiming) {
+        if (caption?.is_text_element) continue;
+        const splitWords = String(caption.text || '').split(/\s+/).filter(Boolean);
+        const wordCount = Math.max(1, splitWords.length);
+        for (const word of caption.words || []) {
+          const wordStart = Number(word?.start ?? start);
+          const wordEnd = Number(word?.end ?? wordStart);
+          if (Number.isFinite(wordStart)) points.add(wordStart);
+          if (Number.isFinite(wordEnd)) points.add(wordEnd);
+        }
+        const delaySeconds = templateId === 't-WS1' || templateId === 't-T4' ? 0.055 : 0.065;
+        const durationSeconds = templateId === 't-WS1' || templateId === 't-T4' ? 0.32 : 0.28;
+        const animationWindowSeconds = Math.min(
+          Math.max(0, end - start),
+          0.09 + (Math.max(0, wordCount - 1) * delaySeconds) + durationSeconds,
+        );
+        const animationEnd = Math.min(end, start + animationWindowSeconds);
+        for (
+          let sample = start + (1 / defaultTemplateSampleFps);
+          sample < animationEnd;
+          sample += (1 / defaultTemplateSampleFps)
         ) {
           points.add(sample);
         }
@@ -1880,12 +3802,16 @@ async function main() {
 
     for (let index = 0; index < segments.length; index += 1) {
       const segment = segments[index];
-      const midpoint = segment.start + (segment.duration / 2);
+      const sampleOffset = Math.min(
+        Math.max(0, segment.duration / 2),
+        1 / (adaptiveTemplateSampleFps * 2),
+      );
+      const renderTime = Math.min(segment.end - 0.0005, segment.start + sampleOffset);
       const framePath = path.join(outputDir, `frame-${String(index).padStart(5, '0')}.png`);
       const hasActiveCaptions = (payload.captions || []).some((caption) => {
         const start = Number(caption.start_time ?? 0);
         const end = Number(caption.end_time ?? start);
-        return midpoint >= start && midpoint <= end;
+        return renderTime >= start && renderTime < end;
       });
 
       let renderedFramePath = blankFramePath;
@@ -1902,34 +3828,99 @@ async function main() {
             try {
               const target = animation.effect?.target?.element || animation.effect?.target;
               const shell = target?.closest?.(
-                '.template-caption-shell, .lekha-sidebar-export-template-shell',
+                '.template-caption-shell, .lekha-sidebar-export-template-shell, .lekha-applied-basic-template-host',
               );
               const captionStart = Number(shell?.dataset?.captionStart || 0);
+              const captionEnd = Number(shell?.dataset?.captionEnd || captionStart);
               const captionElapsedMs = Math.max(0, (currentTime - captionStart) * 1000);
+              const block = target?.closest?.('.lekha-applied-advanced-template');
+              const blockType = block?.dataset?.templateBlockType || 'styled';
+              const wordCount = block
+                ? Math.max(
+                    1,
+                    block.querySelectorAll('.w, .kf-word').length
+                      || String(block.textContent || '').trim().split(/\s+/).filter(Boolean).length,
+                  )
+                : 1;
+              const animationElapsedMs = block && window.__getAdvancedPlaybackElapsedMs
+                ? window.__getAdvancedPlaybackElapsedMs(
+                    blockType,
+                    wordCount,
+                    Math.max(0, (captionEnd - captionStart) * 1000),
+                    captionElapsedMs,
+                  )
+                : captionElapsedMs;
               animation.pause();
-              animation.currentTime = captionElapsedMs;
+              animation.currentTime = animationElapsedMs;
             } catch {
               // Some browser-managed animations cannot be seeked; leave them at their rendered state.
             }
           });
           document.querySelectorAll('.lekha-applied-advanced-template.active').forEach((block) => {
+            block.style.transition = 'none';
+            block.style.opacity = '1';
+            block.style.visibility = 'visible';
+
             const shell = block.closest('.template-caption-shell');
             const captionStart = Number(shell?.dataset?.captionStart || 0);
+            const captionEnd = Number(shell?.dataset?.captionEnd || captionStart);
             const captionElapsedMs = Math.max(0, (currentTime - captionStart) * 1000);
             const blockType = block.dataset.templateBlockType || 'styled';
             const timing = window.__advancedTemplateTiming || {};
             const clamp = (value) => Math.max(0, Math.min(1, Number(value) || 0));
+            const easeOut = (value) => 1 - Math.pow(1 - clamp(value), 3);
+            const setImportant = (element, property, value) => {
+              element?.style?.setProperty?.(property, value, 'important');
+            };
+            const wordCount = Math.max(
+              1,
+              block.querySelectorAll('.w, .kf-word').length
+                || String(block.textContent || '').trim().split(/\s+/).filter(Boolean).length,
+            );
+            const animationElapsedMs = window.__getAdvancedPlaybackElapsedMs
+              ? window.__getAdvancedPlaybackElapsedMs(
+                  blockType,
+                  wordCount,
+                  Math.max(0, (captionEnd - captionStart) * 1000),
+                  captionElapsedMs,
+                )
+              : captionElapsedMs;
 
             if (blockType === 'karaoke') {
               const words = Array.from(block.querySelectorAll('.kf-word'));
-              const perWord = Number(timing.holdMs || 2700) / Math.max(1, words.length + 0.5);
+              const perWord = Number(timing.holdMs || 1650) / Math.max(1, words.length + 0.5);
               words.forEach((word, index) => {
                 const fill = word.querySelector('.kf-fill');
                 if (!fill) return;
-                const progress = clamp((captionElapsedMs - (index * perWord)) / perWord);
+                const progress = clamp((animationElapsedMs - (index * perWord)) / perWord);
                 fill.style.animation = 'none';
                 fill.style.transition = 'none';
                 fill.style.clipPath = `inset(0 ${(1 - progress) * 100}% 0 0)`;
+              });
+              return;
+            }
+
+            if (blockType === 'styled') {
+              const styledDurationMs = block.classList.contains('t25-b0')
+                ? 700
+                : block.classList.contains('t25-b1')
+                  ? 500
+                  : Number(timing.styledDurationMs || 850);
+              const progress = clamp(animationElapsedMs / Math.max(1, styledDurationMs));
+              const eased = easeOut(progress);
+              block.querySelectorAll('.hand-txt').forEach((element) => {
+                setImportant(element, 'animation', 'none');
+                setImportant(element, 'transition', 'none');
+                setImportant(element, 'opacity', String(progress));
+                setImportant(element, 'transform', `translateX(${12 * (1 - eased)}px) rotate(${0.5 * (1 - eased)}deg)`);
+                setImportant(element, 'filter', `blur(${2 * (1 - eased)}px)`);
+              });
+              block.querySelectorAll('.soft-rise').forEach((element) => {
+                setImportant(element, 'animation', 'none');
+                setImportant(element, 'transition', 'none');
+                setImportant(element, 'opacity', String(progress));
+                setImportant(element, 'transform', `translateY(${8 * (1 - eased)}px)`);
+                setImportant(element, 'filter', 'none');
               });
               return;
             }
@@ -1943,64 +3934,131 @@ async function main() {
               const index = Number.isFinite(parsedIndex) ? parsedIndex : fallbackIndex;
               const isImp = word.dataset.imp === 'true';
               const impClass = word.dataset.impCls || '';
+              const wordBlockType = word.dataset.lineMotion || blockType;
+              const lineDelayMs = Number(word.dataset.lineDelay || 0);
+              const battleMotion = word.dataset.battleMotion || '';
+              const battleIndex = Number.isFinite(Number(word.dataset.battleIndex))
+                ? Number(word.dataset.battleIndex)
+                : index;
               const delayMs = sequential
-                ? index * Number(timing.sequentialStaggerMs || 380)
-                : (index * Number(timing.wordStaggerMs || 65))
-                  + (isImp ? Number(timing.emphasisDelayMs || 120) : 0);
+                ? index * Number(timing.sequentialStaggerMs || 145)
+                : battleMotion
+                  ? (battleIndex * 58) + lineDelayMs + (isImp ? 24 : 0)
+                  : (index * Number(timing.wordStaggerMs || 45))
+                  + (isImp ? Number(timing.emphasisDelayMs || 60) : 0)
+                  + lineDelayMs;
               const durationMs = sequential
-                ? Number(timing.sequentialDurationMs || 220)
-                : isImp
-                  ? Number(timing.emphasisDurationMs || 440)
-                  : Number(timing.wordDurationMs || 280);
-              const progress = clamp((captionElapsedMs - delayMs) / durationMs);
+                ? Number(timing.sequentialDurationMs || 180)
+                : battleMotion
+                  ? (isImp ? 380 : 320)
+                  : isImp
+                  ? Number(timing.emphasisDurationMs || 300)
+                  : Number(timing.wordDurationMs || 210);
+              const progress = clamp((animationElapsedMs - delayMs) / durationMs);
               const eased = 1 - Math.pow(1 - progress, 3);
-              word.style.animation = 'none';
-              word.style.transition = 'none';
-              word.style.opacity = String(progress);
-              word.style.clipPath = '';
-              word.style.transformOrigin = '';
+              setImportant(word, 'animation', 'none');
+              setImportant(word, 'transition', 'none');
+              setImportant(word, 'opacity', String(progress));
+              setImportant(word, 'clip-path', 'none');
+              setImportant(word, 'transform-origin', 'initial');
+              setImportant(word, 'filter', 'none');
+              setImportant(word, 'text-shadow', 'none');
 
-              if (sequential) {
+              if (battleMotion === 'sweep-left') {
+                setImportant(word, 'transform', `translateX(${-34 * (1 - eased)}px)`);
+              } else if (battleMotion === 'lift-up') {
+                setImportant(word, 'transform', `translateY(${28 * (1 - eased)}px)`);
+              } else if (sequential) {
                 if (blockType === 'wbw-seq-fade') {
-                  word.style.transform = 'none';
+                  setImportant(word, 'transform', 'none');
                 } else if (blockType === 'wbw-seq-flip') {
-                  word.style.transform = `perspective(320px) rotateX(${-90 * (1 - eased)}deg)`;
-                  word.style.transformOrigin = 'center bottom';
+                  setImportant(word, 'transform', `perspective(320px) rotateX(${-90 * (1 - eased)}deg)`);
+                  setImportant(word, 'transform-origin', 'center bottom');
                 } else {
-                  word.style.transform = `scale(${0.82 + (0.18 * eased)})`;
+                  setImportant(word, 'transform', `scale(${0.82 + (0.18 * eased)})`);
                 }
+              } else if (wordBlockType === 't16-stack') {
+                setImportant(word, 'transform', `translateY(${24 * (1 - eased)}px) scale(${0.92 + (0.08 * eased)})`);
+                setImportant(word, 'filter', `blur(${4 * (1 - eased)}px)`);
+              } else if (wordBlockType === 't16-neon') {
+                setImportant(word, 'transform', `scale(${0.86 + (0.14 * eased)})`);
+                setImportant(word, 'filter', `brightness(${0.75 + (0.25 * eased)})`);
+                setImportant(word, 'text-shadow', `0 0 ${4 + (12 * eased)}px rgba(0,229,255,${0.25 + (0.35 * eased)})`);
+              } else if (wordBlockType === 't16-diagonal') {
+                setImportant(word, 'transform', `translate(${28 * (1 - eased)}px, ${-20 * (1 - eased)}px) rotate(${-4 * (1 - eased)}deg)`);
+              } else if (wordBlockType === 't16-impact') {
+                setImportant(word, 'transform', `translateX(${-36 * (1 - eased)}px) scale(${1 + (0.1 * (1 - eased))})`);
+              } else if (wordBlockType === 't24-wipe') {
+                setImportant(word, 'opacity', '1');
+                setImportant(word, 'transform', `translateY(${10 * (1 - eased)}px)`);
+                setImportant(word, 'clip-path', `inset(${(1 - eased) * 100}% 0 0 0)`);
+              } else if (wordBlockType === 't24-drift') {
+                setImportant(word, 'transform', `translate(${6 * (1 - eased)}px, ${10 * (1 - eased)}px) rotate(${1 * (1 - eased)}deg)`);
+                setImportant(word, 'filter', `blur(${2 * (1 - eased)}px)`);
+              } else if (wordBlockType === 't24-slide') {
+                setImportant(word, 'transform', `translateX(${-14 * (1 - eased)}px)`);
+              } else if (wordBlockType === 't24-stamp') {
+                setImportant(word, 'transform', `scale(${1.08 - (0.08 * eased)})`);
+                setImportant(word, 'text-shadow', `0 0 ${7 * eased}px rgba(249,115,22,${0.2 + (0.18 * eased)})`);
+              } else if (wordBlockType === 't24-inner') {
+                setImportant(word, 'transform', `translateY(${8 * (1 - eased)}px) scale(${0.94 + (0.06 * eased)})`);
+                setImportant(word, 'filter', `blur(${2 * (1 - eased)}px)`);
+              } else if (wordBlockType === 't26-shutter') {
+                setImportant(word, 'opacity', progress > 0.08 ? '1' : '0');
+                setImportant(word, 'transform', `translateY(${18 * (1 - eased)}px) skewX(${-8 * (1 - eased)}deg)`);
+                setImportant(word, 'clip-path', `inset(0 0 ${(1 - eased) * 100}% 0)`);
+              } else if (wordBlockType === 't26-snap') {
+                setImportant(word, 'transform', `translateX(${-32 * (1 - eased)}px) rotate(${-3 * (1 - eased)}deg)`);
+              } else if (wordBlockType === 't26-kick') {
+                setImportant(word, 'transform', `translate(${18 * (1 - eased)}px, ${-16 * (1 - eased)}px) scale(${1 + (0.08 * (1 - eased))})`);
+              } else if (wordBlockType === 't26-tag') {
+                setImportant(word, 'transform', `scale(${0.82 + (0.18 * eased)})`);
+                setImportant(word, 'filter', `contrast(${0.75 + (0.25 * eased)})`);
+              } else if (wordBlockType === 't29-shutter') {
+                setImportant(word, 'opacity', progress > 0.12 ? '1' : '0');
+                setImportant(word, 'transform', `scaleX(${0.72 + (0.28 * eased)}) translateY(${14 * (1 - eased)}px)`);
+                setImportant(word, 'clip-path', `inset(0 ${(1 - eased) * 48}% 0 ${(1 - eased) * 48}%)`);
+              } else if (wordBlockType === 't29-recoil') {
+                setImportant(word, 'transform', `translateY(${-22 * (1 - eased)}px) scale(${1.14 - (0.14 * eased)})`);
+              } else if (wordBlockType === 't29-charge') {
+                setImportant(word, 'transform', `translate(${36 * (1 - eased)}px, ${-10 * (1 - eased)}px) skewX(${-10 * (1 - eased)}deg)`);
+              } else if (wordBlockType === 't29-clamp') {
+                setImportant(word, 'transform', `scaleY(${0.72 + (0.28 * eased)})`);
+                setImportant(word, 'clip-path', `inset(${(1 - eased) * 42}% 0 ${(1 - eased) * 42}% 0)`);
               } else if (isImp) {
                 const entrance = window.__advancedImpEntrances?.[impClass] || 'opposite';
                 const effect = entrance === 'opposite'
-                  ? (blockType === 'wbw-rise' ? 'opposite-slide' : 'opposite-rise')
+                  ? (wordBlockType === 'wbw-rise' ? 'opposite-slide' : 'opposite-rise')
                   : entrance;
                 if (effect === 'wipe') {
-                  word.style.opacity = '1';
-                  word.style.transform = 'none';
-                  word.style.clipPath = `inset(0 ${(1 - eased) * 100}% 0 0)`;
+                  setImportant(word, 'opacity', '1');
+                  setImportant(word, 'transform', 'none');
+                  setImportant(word, 'clip-path', `inset(0 ${(1 - eased) * 100}% 0 0)`);
                 } else if (effect === 'wipe-up') {
-                  word.style.opacity = '1';
-                  word.style.transform = 'none';
-                  word.style.clipPath = `inset(${(1 - eased) * 100}% 0 0 0)`;
+                  setImportant(word, 'opacity', '1');
+                  setImportant(word, 'transform', 'none');
+                  setImportant(word, 'clip-path', impClass === 'imp-underline'
+                    ? 'inset(0 0 0 0)'
+                    : `inset(${(1 - eased) * 100}% 0 0 0)`);
                 } else if (effect === 'roll') {
-                  word.style.transform = `rotateX(${-90 * (1 - eased)}deg)`;
-                  word.style.transformOrigin = 'center bottom';
+                  setImportant(word, 'transform', `rotateX(${-90 * (1 - eased)}deg)`);
+                  setImportant(word, 'transform-origin', 'center bottom');
                 } else if (effect === 'opposite-slide') {
-                  word.style.transform = `translateX(${-28 * (1 - eased)}px)`;
+                  setImportant(word, 'transform', `translateX(${-28 * (1 - eased)}px)`);
                 } else {
-                  word.style.transform = `translateY(${28 * (1 - eased)}px)`;
+                  setImportant(word, 'transform', `translateY(${28 * (1 - eased)}px)`);
                 }
-              } else if (blockType === 'wbw-rise') {
-                word.style.transform = `translateY(${20 * (1 - eased)}px)`;
+              } else if (wordBlockType === 'wbw-slide') {
+                setImportant(word, 'transform', `translateX(${-16 * (1 - eased)}px)`);
               } else {
-                word.style.transform = `translateX(${-16 * (1 - eased)}px)`;
+                setImportant(word, 'transform', `translateY(${20 * (1 - eased)}px)`);
               }
               word.classList.toggle('in', progress > 0);
               word.classList.toggle('fx', progress >= 1 && impClass === 'imp-flicker');
             });
           });
           await new Promise((resolve) => requestAnimationFrame(resolve));
-        }, payload, midpoint);
+        }, payload, renderTime);
 
         await page.screenshot({
           path: framePath,
@@ -2014,6 +4072,44 @@ async function main() {
       if (index < lastIndex) {
         frameLines.push(`duration ${segment.duration.toFixed(6)}`);
       }
+    }
+
+    if (process.env.TEMPLATE_OVERLAY_DEBUG === '1') {
+      const debugInfo = await page.evaluate(() => {
+        const word = document.querySelector('.lekha-original-template .w');
+        const container = word ? word.parentElement : null;
+        const block = document.querySelector('.lekha-original-template .sblock, .lekha-original-template [class*="-block"]');
+        const describe = (el) => el ? {
+          tag: el.tagName,
+          className: String(el.className),
+          fontSize: getComputedStyle(el).fontSize,
+          fontFamily: getComputedStyle(el).fontFamily,
+          transform: getComputedStyle(el).transform,
+        } : null;
+        const fontRules = [];
+        if (word) {
+          for (const sheet of document.styleSheets) {
+            let rules = [];
+            try { rules = sheet.cssRules || []; } catch { continue; }
+            for (const rule of rules) {
+              if (!rule.selectorText || !rule.style || !rule.style.fontSize) continue;
+              try {
+                if (word.matches(rule.selectorText)) {
+                  fontRules.push({ selector: rule.selectorText, fontSize: rule.style.fontSize, priority: rule.style.getPropertyPriority('font-size') });
+                }
+              } catch { /* invalid selector for matches() */ }
+            }
+          }
+        }
+        return {
+          word: describe(word),
+          container: describe(container),
+          block: describe(block),
+          fontRules,
+          shellHtml: (document.querySelector('.template-caption-shell')?.outerHTML || '').slice(0, 600),
+        };
+      });
+      console.log('[Template DOM debug]', JSON.stringify(debugInfo, null, 2));
     }
 
     const lastFramePath = frameFiles[lastIndex] || blankFramePath;

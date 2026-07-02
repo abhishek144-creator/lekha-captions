@@ -1,15 +1,15 @@
 export const ADVANCED_TEMPLATE_TIMING = Object.freeze({
-  holdMs: 2700,
-  enterMs: 280,
-  exitMs: 360,
-  gapMs: 38,
-  wordStaggerMs: 65,
-  wordDurationMs: 280,
-  emphasisDelayMs: 120,
-  emphasisDurationMs: 440,
-  sequentialStaggerMs: 380,
-  sequentialDurationMs: 220,
-  styledDurationMs: 1350,
+  holdMs: 1650,
+  enterMs: 200,
+  exitMs: 260,
+  gapMs: 24,
+  wordStaggerMs: 45,
+  wordDurationMs: 210,
+  emphasisDelayMs: 60,
+  emphasisDurationMs: 300,
+  sequentialStaggerMs: 145,
+  sequentialDurationMs: 180,
+  styledDurationMs: 850,
 });
 
 export const LEGACY_TEMPLATE_TIMING = Object.freeze({
@@ -59,6 +59,57 @@ export const ADVANCED_IMP_ENTRANCES = Object.freeze({
   'imp-flicker': 'opposite',
 });
 
+// One canonical default accent per advanced template. This is shared by the
+// template library, canvas preview, and export so the customization picker does
+// not drift from what the template actually renders.
+export const ADVANCED_TEMPLATE_EMPHASIS_COLORS = Object.freeze({
+  t11: '#D4AF37',
+  t12: '#FF3D71',
+  t13: '#FFFFFF',
+  t14: '#D4AF37',
+  t15: '#FF3D71',
+  t16: '#FFFFFF',
+  t17: '#FF3D71',
+  t18: '#D4AF37',
+  t19: '#FF3D71',
+  t20: '#39FF14',
+  t21: '#FFFFFF',
+  t22: '#DDAA03',
+  t23: '#D4AF37',
+  t24: '#F97316',
+  t25: '#FF3D71',
+  t26: '#F97316',
+  t27: '#FFFFFF',
+  t28: '#86DE02',
+  t29: '#F97316',
+  t30: '#FFFFFF',
+  t31: '#D4AF37',
+  t32: '#00E5FF',
+  t33: '#EE17DC',
+  t34: '#15F5F9',
+  t35: '#FFFFFF',
+  t36: '#DDAA03',
+  t37: '#FFFFFF',
+  t38: '#D4AF37',
+  t39: '#FF3D71',
+  t40: '#F2072B',
+});
+
+export const RECREATED_ADVANCED_TEMPLATE_IDS = Object.freeze([
+  't11', // Spiritual Awakening
+  't13', // Startup Hustle
+  't16', // Motivation Stack
+  't17', // Horror / Tension
+  't18', // Cinematic Chapter
+  't24', // Philosophical Twist
+  't25', // Love Letter
+  't26', // Street / Raw
+  't29', // Battle Cry
+  't31', // Newspaper Headline
+  't33', // Documentary
+  't34', // Anime Energy
+]);
+
 // The authored HTML contains four styled phases whose labels and markup are
 // correct but whose CSS selectors are missing or point at an older phase ID.
 // Keep the repair shared by gallery previews, the editor, and export.
@@ -100,11 +151,80 @@ export const ADVANCED_TEMPLATE_RUNTIME_CSS = `
     animation: punchPop 0.4s cubic-bezier(0.34,1.7,0.64,1) 0.2s forwards;
   }
 
+  .t23-b3 .punch-txt .imp-bold,
+  .t23-b3 .punch-txt .imp-gold,
+  .t23-b3 .punch-txt .is-emphasis {
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+    text-shadow: 0 1px 8px rgba(0,0,0,0.55), 0 0 12px rgba(255,255,255,0.36);
+  }
+
+  .t24-stage .wbw-rise,
+  .t24-stage .wbw-slide,
+  .t24-stage .wbw-seq-fade {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: center;
+    column-gap: 0.28em;
+    row-gap: 0.12em;
+    max-width: min(100%, 9.8em);
+    white-space: normal;
+    overflow-wrap: normal;
+    word-break: normal;
+    text-align: center;
+  }
+
+  .t25-stage .hand-txt,
+  .t25-stage .soft-rise,
+  .t25-stage .wbw-rise,
+  .t25-stage .wbw-slide {
+    max-width: min(100%, 13em);
+    white-space: normal;
+    overflow-wrap: normal;
+    word-break: normal;
+    text-align: center;
+  }
+
+  .t25-stage .wbw-rise,
+  .t25-stage .wbw-slide {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: center;
+    column-gap: 0.28em;
+    row-gap: 0.12em;
+  }
+
+  .t25-stage .w {
+    margin-right: 0;
+  }
+
+  .t25-stage .imp-italic,
+  .t25-stage .imp-rose,
+  .t25-stage .w[data-imp='true'],
+  .t25-stage .is-emphasis {
+    color: var(--template-highlight, var(--template-secondary, var(--rose, #ff3d71))) !important;
+    -webkit-text-fill-color: var(--template-highlight, var(--template-secondary, var(--rose, #ff3d71))) !important;
+  }
+
   .t31-b4,
   .t32-b1,
   .t33-b4 {
     perspective: 600px;
   }
+
+  .t29-stage .active .wbw-rise .w.in,
+  .t29-stage .active .wbw-slide .w.in {
+    animation: lekhaTemplateWbwIn 360ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    animation-delay: var(--wbw-delay, 0ms);
+  }
+
+  .t29-stage .active .wbw-rise .w[data-imp='true'].in,
+  .t29-stage .active .wbw-slide .w[data-imp='true'].in {
+    animation-duration: 420ms;
+  }
+
   .t31-b4 .flip-line,
   .t32-b1 .flip-line,
   .t33-b4 .flip-line {
@@ -124,7 +244,7 @@ export const ORIGINAL_TEMPLATE_BLOCKS = Object.freeze({
   t11: [
     { type: 'wbw-seq-fade', label: 'WBW SEQ FADE' },
     { type: 'styled', label: 'BLUR FOCUS' },
-    { type: 'plain', label: 'PLAIN' },
+    { type: 'wbw-rise', label: 'RECREATED RISE' },
     { type: 'wbw-rise', label: 'WBW RISE' },
   ],
   t12: [
@@ -134,8 +254,8 @@ export const ORIGINAL_TEMPLATE_BLOCKS = Object.freeze({
     { type: 'wbw-slide', label: 'WBW SLIDE' },
   ],
   t13: [
-    { type: 'styled', label: 'STAMP IN' },
-    { type: 'styled', label: 'TICKER ROLL' },
+    { type: 'wbw-rise', label: 'RECREATED STARTUP RISE' },
+    { type: 'wbw-slide', label: 'RECREATED STARTUP SLIDE' },
     { type: 'wbw-rise', label: 'WBW RISE' },
     { type: 'wbw-seq-fade', label: 'WBW SEQ FADE' },
   ],
@@ -146,27 +266,27 @@ export const ORIGINAL_TEMPLATE_BLOCKS = Object.freeze({
     { type: 'wbw-rise', label: 'WBW RISE' },
   ],
   t15: [
-    { type: 'styled', label: 'SHAKE-IN' },
+    { type: 'styled', label: 'SURGE IN' },
     { type: 'styled', label: 'CENTER POP' },
     { type: 'wbw-rise', label: 'WBW RISE' },
     { type: 'wbw-seq-fade', label: 'WBW SEQ FADE' },
   ],
   t16: [
-    { type: 'wbw-rise', label: 'WBW RISE' },
-    { type: 'styled', label: 'NEON FLICKER' },
-    { type: 'wbw-rise', label: 'WBW RISE' },
-    { type: 'wbw-slide', label: 'WBW SLIDE' },
+    { type: 'wbw-rise', label: 'STACK LIFT' },
+    { type: 'wbw-rise', label: 'NEON SNAP' },
+    { type: 'wbw-rise', label: 'DIAGONAL LIFT' },
+    { type: 'wbw-slide', label: 'SIDE IMPACT' },
   ],
   t17: [
-    { type: 'styled', label: 'GLITCH' },
-    { type: 'styled', label: 'LETTER SNAP' },
-    { type: 'plain', label: 'PLAIN' },
+    { type: 'wbw-seq-fade', label: 'RECREATED HORROR FADE' },
+    { type: 'wbw-rise', label: 'RECREATED HORROR RISE' },
+    { type: 'wbw-slide', label: 'RECREATED HORROR SLIDE' },
     { type: 'wbw-rise', label: 'WBW RISE' },
   ],
   t18: [
     { type: 'styled', label: 'SPLIT TITLE' },
     { type: 'styled', label: 'FADE REVEAL' },
-    { type: 'plain', label: 'PLAIN' },
+    { type: 'wbw-rise', label: 'RECREATED RISE' },
     { type: 'wbw-rise', label: 'WBW RISE' },
   ],
   t19: [
@@ -200,11 +320,11 @@ export const ORIGINAL_TEMPLATE_BLOCKS = Object.freeze({
     { type: 'styled', label: 'PUNCH POP' },
   ],
   t24: [
-    { type: 'wbw-rise', label: 'WBW RISE' },
-    { type: 'styled', label: 'SLOW RISE' },
-    { type: 'plain', label: 'PLAIN' },
-    { type: 'wbw-rise', label: 'WBW RISE' },
-    { type: 'karaoke', label: 'KARAOKE' },
+    { type: 'wbw-rise', label: 'SOFT WIPE' },
+    { type: 'wbw-rise', label: 'THOUGHT DRIFT' },
+    { type: 'wbw-slide', label: 'MAP SLIDE' },
+    { type: 'wbw-rise', label: 'MEMORY STAMP' },
+    { type: 'wbw-rise', label: 'INNER REVEAL' },
   ],
   t25: [
     { type: 'styled', label: 'HANDWRITE' },
@@ -213,10 +333,10 @@ export const ORIGINAL_TEMPLATE_BLOCKS = Object.freeze({
     { type: 'wbw-slide', label: 'WBW SLIDE' },
   ],
   t26: [
-    { type: 'styled', label: 'HARD CUT' },
-    { type: 'styled', label: 'FAST SLIDE' },
-    { type: 'wbw-rise', label: 'WBW RISE' },
-    { type: 'wbw-seq-fade', label: 'WBW SEQ FADE' },
+    { type: 'wbw-rise', label: 'RAW SHUTTER' },
+    { type: 'wbw-slide', label: 'STREET SNAP' },
+    { type: 'wbw-rise', label: 'CONCRETE KICK' },
+    { type: 'wbw-seq-fade', label: 'TAG FADE' },
   ],
   t27: [
     { type: 'styled', label: 'CENTER EXPAND' },
@@ -231,10 +351,10 @@ export const ORIGINAL_TEMPLATE_BLOCKS = Object.freeze({
     { type: 'wbw-seq-fade', label: 'WBW SEQ FADE' },
   ],
   t29: [
-    { type: 'styled', label: 'SLAM' },
-    { type: 'styled', label: 'HARD RISE' },
-    { type: 'wbw-rise', label: 'WBW RISE' },
-    { type: 'styled', label: 'SLIDE' },
+    { type: 'wbw-rise', label: 'SHUTTER PUNCH' },
+    { type: 'wbw-rise', label: 'RECOIL LIFT' },
+    { type: 'wbw-slide', label: 'DIAGONAL CHARGE' },
+    { type: 'wbw-seq-fade', label: 'CLAMP SNAP' },
   ],
   t30: [
     { type: 'styled', label: 'BREATHE' },
@@ -243,9 +363,9 @@ export const ORIGINAL_TEMPLATE_BLOCKS = Object.freeze({
     { type: 'plain', label: 'PLAIN' },
   ],
   t31: [
-    { type: 'styled', label: 'TYPEWRITER' },
+    { type: 'wbw-seq-fade', label: 'RECREATED HEADLINE TYPE' },
     { type: 'wbw-seq-fade', label: 'WBW SEQ FADE' },
-    { type: 'plain', label: 'PLAIN' },
+    { type: 'wbw-rise', label: 'RECREATED RISE' },
     { type: 'wbw-rise', label: 'WBW RISE' },
     { type: 'styled', label: '3D FLIP' },
   ],
@@ -347,4 +467,22 @@ export function getAdvancedAnimationWindowMs(blockType, wordCount = 1) {
     return (Math.max(0, Number(wordCount) - 1) * stagger) + duration;
   }
   return ADVANCED_TEMPLATE_TIMING.styledDurationMs;
+}
+
+export function getAdvancedPlaybackElapsedMs(
+  blockType,
+  wordCount = 1,
+  captionDurationMs = 0,
+  rawElapsedMs = 0,
+) {
+  const naturalWindowMs = getAdvancedAnimationWindowMs(blockType, wordCount);
+  if (!naturalWindowMs) return 0;
+
+  const durationMs = Math.max(0, Number(captionDurationMs) || 0);
+  const targetWindowMs = durationMs > 0
+    ? Math.max(220, Math.min(naturalWindowMs, durationMs * 0.78))
+    : naturalWindowMs;
+  const elapsedMs = Math.max(0, Number(rawElapsedMs) || 0);
+
+  return Math.min(naturalWindowMs, elapsedMs * (naturalWindowMs / targetWindowMs));
 }

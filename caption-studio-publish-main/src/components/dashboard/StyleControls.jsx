@@ -16,6 +16,7 @@ import { FixedSizeList as List } from 'react-window';
 import { detectScript, scriptFontMap, loadGoogleFont } from './fontUtils';
 import AnimateTab from './AnimateTab';
 import AdvancedTemplateLibrary from './AdvancedTemplateLibrary';
+import { apiRequest } from '@/lib/apiClient';
 import {
   AlignLeft,
   AlignCenter,
@@ -126,8 +127,7 @@ export default function StyleControls({
     // Pre-fetch complete Google Fonts list for suggestions
     const fetchFullGoogleFonts = async () => {
       try {
-        const res = await fetch('/api/fonts');
-        const data = await res.json();
+        const data = await apiRequest('/api/fonts');
         if (data.fonts && data.fonts.length > 0) {
           setGoogleFontsList(data.fonts.map(f => ({ value: f.family, label: f.family })));
         }
@@ -256,6 +256,16 @@ export default function StyleControls({
 
     // Default: update global captionStyle (main captions)
     if (!captionStyle) return;
+    const marksTemplateColorCustomized = [
+      'text_color',
+      'secondary_color',
+      'highlight_color',
+      'highlight_gradient',
+      'background_color',
+      'karaoke_color_1',
+      'karaoke_color_2',
+      'karaoke_color_3',
+    ].includes(key) && /^t\d+$/i.test(String(captionStyle?.template_id || ''));
 
     // When font size changes for main captions, scale displaced word offsets proportionally
     if (key === 'font_size' && captions && setCaptions) {
@@ -282,9 +292,17 @@ export default function StyleControls({
       }
     }
     if (skipHistory && setCaptionStyleRaw) {
-      setCaptionStyleRaw(prev => ({ ...prev, [key]: value }));
+      setCaptionStyleRaw(prev => ({
+        ...prev,
+        [key]: value,
+        ...(marksTemplateColorCustomized ? { template_color_customized: true } : {}),
+      }));
     } else if (setCaptionStyle) {
-      setCaptionStyle(prev => ({ ...prev, [key]: value }));
+      setCaptionStyle(prev => ({
+        ...prev,
+        [key]: value,
+        ...(marksTemplateColorCustomized ? { template_color_customized: true } : {}),
+      }));
     }
   };
 

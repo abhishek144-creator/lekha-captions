@@ -69,23 +69,27 @@ const DUPLICATE_TEMPLATE_RENAMES = {
   'V4.8': 'The Sway',
 };
 
-// Only 3 bright accent colors are allowed: yellow, green, red.
-// Every legacy color name now resolves to one of these three bright values
-// so applied templates never show pale/washed-out accents.
-const BRIGHT_YELLOW = '#FFE600';
+// Preserve the authored template accent families so the template thumbnail,
+// canvas preview, and exported overlay do not drift from one another.
+const BRIGHT_YELLOW = '#DDAA03';
 const BRIGHT_GREEN = '#22FF66';
 const BRIGHT_RED = '#FF2E2E';
+const BRIGHT_CYAN = '#00E5FF';
+const BRIGHT_BLUE = '#0066FF';
+const BRIGHT_ORANGE = '#F97316';
+const BRIGHT_ROSE = '#FF3D71';
+const BRIGHT_PURPLE = '#A78BFA';
 const TEMPLATE_ACCENT_COLOR_MAP = {
   gold: BRIGHT_YELLOW,
   yellow: BRIGHT_YELLOW,
-  orange: BRIGHT_YELLOW,
+  orange: BRIGHT_ORANGE,
   green: BRIGHT_GREEN,
-  cyan: BRIGHT_GREEN,
-  blue: BRIGHT_GREEN,
+  cyan: BRIGHT_CYAN,
+  blue: BRIGHT_BLUE,
   red: BRIGHT_RED,
-  rose: BRIGHT_RED,
-  pink: BRIGHT_RED,
-  purple: BRIGHT_RED,
+  rose: BRIGHT_ROSE,
+  pink: BRIGHT_ROSE,
+  purple: BRIGHT_PURPLE,
 };
 
 function decodeHtmlEntities(value = '') {
@@ -194,8 +198,12 @@ function normalizeColorValue(value = '') {
 }
 
 function extractAccentColorFromMarkup(markup = '') {
-  const match = String(markup).match(/\b(?:ns\d+|imp|neon)-([a-z]+)\b/i);
-  return match?.[1] ? (TEMPLATE_ACCENT_COLOR_MAP[match[1].toLowerCase()] || '') : '';
+  const match = String(markup).match(/\b(ns\d+|imp|neon)-([a-z]+)\b/i);
+  if (!match?.[2]) return '';
+  const family = match[1].toLowerCase();
+  const colorName = match[2].toLowerCase();
+  if (family.startsWith('ns') && colorName === 'rose') return '#FF6B1A';
+  return TEMPLATE_ACCENT_COLOR_MAP[colorName] || '';
 }
 
 function extractTemplateStyleFromPreview(template) {
@@ -341,13 +349,14 @@ const NEW_TEMPLATE_CARDS = Array.from(
   }, new Map()).values(),
 );
 
-// Left-side gallery now shows ONLY the 20 original templates. The 49-template
-// (lekha-49 / format:'lk') set is intentionally excluded — see templateSections.
-const TEMPLATE_CARDS = [...LEGACY_TEMPLATE_CARDS];
+// Keep both left-side sets in the selectable catalog: the original 20 plus the
+// newer 49-template pack.
+const TEMPLATE_CARDS = [...LEGACY_TEMPLATE_CARDS, ...NEW_TEMPLATE_CARDS];
 const TOTAL_TEMPLATE_COUNT = TEMPLATE_CARDS.length;
 const TEMPLATE_PREVIEW_PROGRESS_EVENT = 'lekha-sidebar-template-preview-progress';
+const getTemplateStyleKey = (template) => `${template?.format || 'legacy'}::${template?.id || ''}`;
 const EXTRACTED_TEMPLATE_STYLE_MAP = Object.fromEntries(
-  TEMPLATE_CARDS.map((template) => [template.id, extractTemplateStyleFromPreview(template)]),
+  TEMPLATE_CARDS.map((template) => [getTemplateStyleKey(template), extractTemplateStyleFromPreview(template)]),
 );
 
 function getTemplatePreviewDotCount(template) {
@@ -368,7 +377,7 @@ function getTemplatePreviewDotCount(template) {
 }
 
 function buildTemplateStyle(template) {
-  const extractedStyle = EXTRACTED_TEMPLATE_STYLE_MAP[template.id] || {};
+  const extractedStyle = EXTRACTED_TEMPLATE_STYLE_MAP[getTemplateStyleKey(template)] || {};
   const baseStyle = TEMPLATE_STYLE_MAP[template.id]
     || (Object.keys(extractedStyle).length ? extractedStyle : NEW_TEMPLATE_STYLE_FALLBACK);
 
@@ -1359,6 +1368,7 @@ export default function SidebarTemplateGallery20({ currentStyle, onApplyTemplate
   const activeTemplateId = currentStyle?.template_20_id || '';
   const templateSections = [
     { id: 'original-20', title: '20 Templates', templates: LEGACY_TEMPLATE_CARDS },
+    { id: 'new-49', title: '49 Templates', templates: NEW_TEMPLATE_CARDS },
   ];
   const applyTemplate = (template) => {
     onApplyTemplate?.(buildTemplateStyle(template));
@@ -1371,7 +1381,7 @@ export default function SidebarTemplateGallery20({ currentStyle, onApplyTemplate
           <div className="min-w-0">
             <p className="text-[9px] uppercase tracking-[0.28em] text-slate-500">Templates</p>
             <h2 className="text-xs font-semibold leading-tight text-white/92">{TOTAL_TEMPLATE_COUNT} Templates</h2>
-            <p className="mt-0.5 text-[10px] leading-tight text-slate-400">Lekha original template set</p>
+            <p className="mt-0.5 text-[10px] leading-tight text-slate-400">Lekha template sets</p>
           </div>
           <button
             type="button"

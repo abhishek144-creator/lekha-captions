@@ -8,16 +8,6 @@ export const EMOTIONAL_TEMPLATE_TIMING = Object.freeze({
   supportDurationMs: 380,
 });
 
-// Bright accents that remain legible over mixed video backgrounds.
-// Purple is intentionally excluded.
-const EMPHASIS_COLORS = Object.freeze([
-  '#00E5FF', // electric cyan
-  '#39FF14', // neon green
-  '#FF3B30', // bright red
-  '#FF8A00', // vivid orange
-  '#FFE600', // bright yellow
-]);
-
 const EMPHASIS_STOP_WORDS = new Set([
   'a', 'an', 'and', 'are', 'as', 'at', 'be', 'been', 'being', 'but', 'by',
   'do', 'does', 'for', 'from', 'had', 'has', 'have', 'he', 'her', 'here',
@@ -28,11 +18,11 @@ const EMPHASIS_STOP_WORDS = new Set([
   'why', 'will', 'with', 'you', 'your',
   'और', 'या', 'पर', 'पे', 'से', 'को', 'का', 'की', 'के', 'में', 'तक', 'तो',
   'ही', 'भी', 'ने', 'लिए', 'कि', 'जो', 'वो', 'यह', 'ये', 'वह', 'वे', 'मैं',
-  'हम', 'आप', 'तुम', 'मुझे', 'मेरे', 'मेरा', 'मेरी', 'हमारा', 'हमारी',
-  'आपका', 'आपकी', 'आपको', 'उनका', 'उनकी', 'उनको', 'इस', 'उस', 'इन', 'उन',
-  'है', 'हैं', 'था', 'थे', 'थी', 'हो', 'होगा', 'होगी', 'होंगे', 'रहा',
-  'रही', 'रहे', 'कर', 'करके', 'किया', 'करना', 'नहीं', 'ना', 'मत', 'बस',
-  'अब', 'तब', 'यहाँ', 'वहाँ', 'कहाँ', 'क्यों', 'कैसे', 'क्या',
+  'हम', 'आप', 'तुम', 'मुझे', 'मेरे', 'मेरा', 'मेरी', 'हमारा', 'हमारी', 'आपका', 'आपकी', 'आपको',
+  'उनका', 'उनकी', 'उनको', 'इस', 'उस', 'इन', 'उन', 'है', 'हैं', 'था', 'थे', 'थी',
+  'हो', 'होगा', 'होगी', 'होंगे', 'रहा', 'रही', 'रहे', 'कर', 'करके', 'किया', 'करना', 'नहीं',
+  'ना', 'मत', 'बस', 'अब', 'तब', 'यहाँ', 'वहाँ', 'कहाँ', 'क्यों', 'कैसे', 'क्या', 'आज',
+  'कल',
 ]);
 
 function normalizeEmphasisWord(word = '') {
@@ -46,23 +36,23 @@ function countLettersAndNumbers(word = '') {
   return Array.from(word.matchAll(/[\p{L}\p{M}\p{N}]/gu)).length;
 }
 
-function stableColorForWord(word = '') {
-  let hash = 2166136261;
-  for (const char of Array.from(word)) {
-    hash ^= char.codePointAt(0);
-    hash = Math.imul(hash, 16777619);
-  }
-  return EMPHASIS_COLORS[(hash >>> 0) % EMPHASIS_COLORS.length];
-}
-
 function selectSemanticEmphasis(words = [], audioImpWordIndex = -1) {
   let best = null;
+  let fallback = null;
   words.forEach((rawWord, index) => {
     const word = normalizeEmphasisWord(rawWord);
-    if (!word || EMPHASIS_STOP_WORDS.has(word)) return;
+    if (!word) return;
 
     const length = countLettersAndNumbers(word);
     const isNumber = /^\p{N}+(?:[.,]\p{N}+)*$/u.test(word);
+    if (
+      !fallback
+      || length > fallback.length
+      || (index === audioImpWordIndex && fallback.index !== audioImpWordIndex)
+    ) {
+      fallback = { index, word, length };
+    }
+    if (EMPHASIS_STOP_WORDS.has(word)) return;
     if (!isNumber && length < 3) return;
 
     let score = Math.min(4.5, length * 0.72);
@@ -73,12 +63,20 @@ function selectSemanticEmphasis(words = [], audioImpWordIndex = -1) {
     if (!best || score > best.score) best = { index, score, word };
   });
 
+  // Emphasis color is intentionally left empty: each template supplies its own
+  // single theme color (via its imp-* class / sidebar accent, pinned in
+  // resolveAdvancedTemplateEmphasisColor). This keeps one consistent highlight
+  // color per template instead of a per-word rotating palette.
   if (!best || best.score < 2.35) {
-    return { impWordIndex: -1, emphasisColor: '' };
+    if (!fallback) return { impWordIndex: -1, emphasisColor: '' };
+    return {
+      impWordIndex: fallback.index,
+      emphasisColor: '',
+    };
   }
   return {
     impWordIndex: best.index,
-    emphasisColor: stableColorForWord(best.word),
+    emphasisColor: '',
   };
 }
 
@@ -148,7 +146,7 @@ function extractCompleteDiv(markup, startIndex) {
 export function getTemplatePhaseTypes(markup = '') {
   const source = String(markup || '');
   const phases = [];
-  const blockPattern = /<div class="[^"]*\b(?:sb|sblock)\b[^"]*"/gi;
+  const blockPattern = /<div class="[^"]*\b(?:sb|sblock|bt-cap-block)\b[^"]*"/gi;
   let match;
   while ((match = blockPattern.exec(source))) {
     const block = extractCompleteDiv(source, match.index);

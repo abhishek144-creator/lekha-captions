@@ -826,14 +826,30 @@ class VideoProcessor:
             traceback.print_exc()
             return {"success": False, "error": str(e)}
 
+    # Right-side "Basic" templates whose preview renders the authored `.btcard`
+    # source markup (Iman, Light Streak, Green Neon Pulse, 3D Shadow, Pulse,
+    # Horror, …). These must export through the DOM/CSS overlay so the burned
+    # video matches the canvas — the ASS approximation cannot reproduce their
+    # creative word layout / per-word motion. Keep in sync with
+    # SOURCE_BASIC_TEMPLATE_IDS in src/components/dashboard/basicTemplateInline.js.
+    _SOURCE_BASIC_TEMPLATE_IDS = {
+        't-106', 't-52', 't-T4', 't-WS1', 't-115',
+        't-104', 't-109', 't-95', 't-102', 't-T5',
+        't-T6', 't-103', 't-QW1', 't-36', 't-105',
+        't-124', 't-110', 't-56', 't-119', 't-12',
+    }
+
     def _should_use_dom_template_renderer(self, style):
         template_id = str(style.get('template_id') or '').strip()
         template_20_id = str(style.get('template_20_id') or '').strip()
         if template_20_id:
             return True
-        # Only no-hyphen advanced templates need DOM/CSS rendering. Regular
-        # presets like t-115 are handled by the ASS path with template effects.
-        return bool(re.fullmatch(r"t\d{2}", template_id))
+        # No-hyphen advanced templates (t11–t40) need DOM/CSS rendering.
+        if re.fullmatch(r"t\d{2}", template_id):
+            return True
+        # Source-markup Basic templates render their `.btcard` design in the
+        # preview, so they export through the same DOM overlay for parity.
+        return template_id in self._SOURCE_BASIC_TEMPLATE_IDS
 
     def _get_video_duration(self, video_path):
         try:
@@ -1191,7 +1207,13 @@ class VideoProcessor:
         if preview_h < 50:
             preview_h = 400
         scale_factor = video_h / preview_h
-        scaled_size = max(int(base_size * scale_factor), 20)
+        preview_font_px = 0.0
+        try:
+            preview_font_px = float(style.get('preview_template_font_px') or 0)
+        except (TypeError, ValueError):
+            preview_font_px = 0.0
+        font_size_source = preview_font_px if preview_font_px > 0 else base_size
+        scaled_size = max(int(font_size_source * scale_factor), 20)
 
         # ── Effect/stroke/shadow override tag builder ──────────────────────
         def _get_effect_tags(eff_type, base_color_hex, stroke_data, shadow_data, eff_props):
@@ -1623,7 +1645,7 @@ class VideoProcessor:
                     _inact_c = _gn(primary_hex, _ia * _pa)
                     _cur_c   = _gn(secondary_hex if (secondary_hex and template_id in _CUR_SEC) else primary_hex, 1.0)
 
-                    _cur_box_bg  = _gn(secondary_hex or '#FFE600', 1.0)
+                    _cur_box_bg  = _gn(secondary_hex or '#DDAA03', 1.0)
                     _base_box_bg = _gn(bg_hex, bg_opacity)
 
                     # Base tags shared by every word line (no position/color — added per word)

@@ -1,9 +1,11 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo, useRef } from 'react';
 import { useLazyVisible } from './useLazyVisible';
-import { Check, Sparkles } from 'lucide-react';
+import { Check, RotateCcw, Sparkles } from 'lucide-react';
 import originalTemplateHtml from '../../assets/lekha-captions-T11-T35.html?raw';
+import { findAppliedBasicTemplateMarkup } from './basicTemplateInline.js';
 import {
   ADVANCED_IMP_ENTRANCES,
+  ADVANCED_TEMPLATE_EMPHASIS_COLORS,
   ADVANCED_TEMPLATE_RUNTIME_CSS,
   ADVANCED_TEMPLATE_TIMING,
   ORIGINAL_TEMPLATE_BLOCKS,
@@ -15,14 +17,15 @@ const sanitizedOriginalTemplateHtml = originalTemplateHtml
   .replace(/\s+bis_skin_checked="[^"]*"/gi, '')
   .replace(/<!-- saved from url=.*?-->\s*/gi, '');
 
+const REMOVED_ADVANCED_TEMPLATE_IDS = new Set(['t17']);
+
 const FALLBACK_TEMPLATE_PACK = [
   { id: 't11', code: 'T11', name: 'Spiritual Awakening', formula: '3-Style', stageLabel: 'CLUSTER', mood: 'spiritual' },
   { id: 't12', code: 'T12', name: 'Intimate Confession', formula: '2-Style', stageLabel: 'TYPEWRITER', mood: 'intimate' },
   { id: 't13', code: 'T13', name: 'Startup Hustle', formula: '2-Style', stageLabel: 'STAMP IN', mood: 'hustle' },
   { id: 't14', code: 'T14', name: 'Literary Weight', formula: '3-Style', stageLabel: '3D FLIP', mood: 'literary' },
-  { id: 't15', code: 'T15', name: 'Storm & Drama', formula: '2-Style', stageLabel: 'SHAKE-IN', mood: 'storm' },
+  { id: 't15', code: 'T15', name: 'Storm Surge', formula: '2-Style', stageLabel: 'SURGE IN', mood: 'storm' },
   { id: 't16', code: 'T16', name: 'Motivation Stack', formula: '2-Style', stageLabel: 'STACK RISE', mood: 'countdown' },
-  { id: 't17', code: 'T17', name: 'Horror / Tension', formula: '3-Style', stageLabel: 'GLITCH', mood: 'horror' },
   { id: 't18', code: 'T18', name: 'Cinematic Chapter', formula: '3-Style', stageLabel: 'SPLIT TITLE', mood: 'cinematic' },
   { id: 't19', code: 'T19', name: 'Defiance', formula: '2-Style', stageLabel: 'SLASH WIPE', mood: 'rebellion' },
   { id: 't20', code: 'T20', name: 'Impact / Gravity', formula: '2-Style', stageLabel: 'NEON DROP', mood: 'impact' },
@@ -45,45 +48,118 @@ const FALLBACK_TEMPLATE_PACK = [
 
 const ADVANCED_TEMPLATE_STYLE = {
   t11: { font_family: 'Cormorant Garamond', font_size: 24, font_weight: '700', secondary_color: '#D4AF37', text_color: '#E8DFC8' },
-  t12: { font_family: 'Lora', font_size: 24, font_style: 'italic', font_weight: '700', secondary_color: '#A78BFA', text_color: '#E0D9F0' },
-  t13: { font_family: 'IBM Plex Mono', font_size: 23, font_weight: '700', secondary_color: '#00E5FF', text_color: '#B0F0F0', text_case: 'uppercase' },
+  t12: { font_family: 'Lora', font_size: 24, font_style: 'italic', font_weight: '700', secondary_color: '#FF3D71', highlight_color: '#FF3D71', emphasis_color: '#FF3D71', text_color: '#FFFFFF' },
+  t13: { font_family: 'IBM Plex Mono', font_size: 23, font_weight: '700', secondary_color: '#FFFFFF', text_color: '#F97316', text_case: 'uppercase' },
   t14: { font_family: 'Libre Baskerville', font_size: 23, font_weight: '700', secondary_color: '#D4AF37', text_color: '#E8E0D0' },
   t15: { font_family: 'Oswald', font_size: 26, font_weight: '700', secondary_color: '#FF3D71', text_color: '#FFFFFF', text_case: 'uppercase' },
-  t16: { font_family: 'Unbounded', font_size: 22, font_weight: '900', secondary_color: '#00E5FF', text_color: '#FFFFFF', text_case: 'uppercase' },
-  t17: { font_family: 'Space Mono', font_size: 23, font_weight: '700', secondary_color: '#FF3D71', text_color: '#FFFFFF', text_case: 'uppercase' },
-  t18: { font_family: 'Cinzel', font_size: 23, font_weight: '700', secondary_color: '#A78BFA', text_color: '#FFFFFF' },
+  t16: { font_family: 'Unbounded', font_size: 22, font_weight: '900', secondary_color: '#FFFFFF', highlight_color: '#FFFFFF', emphasis_color: '#FFFFFF', text_color: '#00E5FF', text_case: 'uppercase' },
+  t17: { font_family: 'Space Mono', font_size: 23, font_weight: '700', secondary_color: '#FF3D71', highlight_color: '#FF3D71', emphasis_color: '#FF3D71', text_color: '#FFFFFF', text_case: 'uppercase' },
+  t18: { font_family: 'Cinzel', font_size: 23, font_weight: '700', secondary_color: '#D4AF37', text_color: '#FFFFFF' },
   t19: { font_family: 'Archivo Black', font_size: 25, font_weight: '900', secondary_color: '#FF3D71', text_color: '#FFFFFF', text_case: 'uppercase' },
   t20: { font_family: 'Dela Gothic One', font_size: 24, font_weight: '900', secondary_color: '#39FF14', text_color: '#FFFFFF', text_case: 'uppercase' },
   t21: { font_family: 'Josefin Sans', font_size: 24, font_weight: '700', secondary_color: '#FFFFFF', text_color: '#FFFFFF', text_case: 'uppercase' },
-  t22: { font_family: 'DM Serif Display', font_size: 24, font_weight: '700', secondary_color: '#D4AF37', text_color: '#D4C8FF' },
+  t22: { font_family: 'DM Serif Display', font_size: 24, font_weight: '700', secondary_color: '#DDAA03', highlight_color: '#DDAA03', emphasis_color: '#DDAA03', text_color: '#FFFFFF' },
   t23: { font_family: 'Rubik', font_size: 24, font_weight: '700', secondary_color: '#D4AF37', text_color: '#F0F0E0' },
-  t24: { font_family: 'Spectral', font_size: 23, font_weight: '600', secondary_color: '#A78BFA', text_color: '#D8D0E8' },
-  t25: { font_family: 'Instrument Serif', font_size: 25, font_style: 'italic', font_weight: '700', secondary_color: '#FF3D71', text_color: '#F0D8DC' },
-  t26: { font_family: 'Bungee', font_size: 24, font_weight: '900', secondary_color: '#FF3D71', text_color: '#FFFFFF', text_case: 'uppercase' },
-  t27: { font_family: 'Exo 2', font_size: 23, font_weight: '700', secondary_color: '#00E5FF', text_color: '#00E5FF', text_case: 'uppercase' },
-  t28: { font_family: 'Bitter', font_size: 23, font_weight: '700', secondary_color: '#D4AF37', text_color: '#D8CBB8' },
-  t29: { font_family: 'Teko', font_size: 30, font_weight: '700', secondary_color: '#FF3D71', text_color: '#FFFFFF', text_case: 'uppercase' },
+  t24: { font_family: 'Spectral', font_size: 23, font_weight: '600', secondary_color: '#F97316', text_color: '#FFFFFF' },
+  t25: { font_family: 'Instrument Serif', font_size: 25, font_style: 'italic', font_weight: '700', secondary_color: '#FF3D71', text_color: '#FFFFFF' },
+  t26: { font_family: 'Bungee', font_size: 24, font_weight: '900', secondary_color: '#F97316', text_color: '#FFFFFF', text_case: 'uppercase' },
+  t27: { font_family: 'Exo 2', font_size: 23, font_weight: '700', secondary_color: '#FFFFFF', text_color: '#00E5FF', text_case: 'uppercase' },
+  t28: { font_family: 'Bitter', font_size: 23, font_weight: '700', secondary_color: '#86DE02', highlight_color: '#86DE02', emphasis_color: '#86DE02', text_color: '#D8CBB8' },
+  t29: { font_family: 'Teko', font_size: 24, font_weight: '700', secondary_color: '#F97316', text_color: '#FFFFFF', text_case: 'uppercase' },
   t30: { font_family: 'Cormorant Garamond', font_size: 24, font_style: 'italic', font_weight: '600', secondary_color: '#FFFFFF', text_color: '#B4D2C8' },
   t31: { font_family: 'Playfair Display', font_size: 27, font_weight: '700', secondary_color: '#D4AF37', text_color: '#FFFFFF' },
-  t32: { font_family: 'Bodoni Moda', font_size: 23, font_style: 'italic', font_weight: '700', secondary_color: '#A78BFA', text_color: '#D0CEE8' },
-  t33: { font_family: 'Noto Sans', font_size: 23, font_weight: '700', secondary_color: '#00E5FF', text_color: '#FFFFFF' },
-  t34: { font_family: 'Syne', font_size: 24, font_weight: '800', secondary_color: '#00E5FF', text_color: '#FFFFFF', text_case: 'uppercase' },
+  t32: { font_family: 'Bodoni Moda', font_size: 23, font_style: 'italic', font_weight: '700', secondary_color: '#00E5FF', highlight_color: '#00E5FF', emphasis_color: '#00E5FF', text_color: '#D0CEE8' },
+  t33: { font_family: 'Noto Sans', font_size: 23, font_weight: '700', secondary_color: '#EE17DC', highlight_color: '#EE17DC', emphasis_color: '#EE17DC', text_color: '#FFFFFF' },
+  t34: { font_family: 'Syne', font_size: 24, font_weight: '800', secondary_color: '#15F5F9', highlight_color: '#15F5F9', emphasis_color: '#15F5F9', text_color: '#FFFFFF', text_case: 'uppercase' },
   t35: { font_family: 'Crimson Text', font_size: 24, font_style: 'italic', font_weight: '600', secondary_color: '#FFFFFF', text_color: '#DCD2DC' },
-  t36: { font_family: 'Inter', font_size: 23, font_weight: '800', secondary_color: '#D4AF37', text_color: '#FFFFFF' },
-  t37: { font_family: 'Rajdhani', font_size: 25, font_weight: '800', secondary_color: '#FFFFFF', text_color: '#FFFFFF', text_case: 'uppercase' },
+  t36: { font_family: 'Inter', font_size: 23, font_weight: '800', secondary_color: '#DDAA03', highlight_color: '#DDAA03', emphasis_color: '#DDAA03', karaoke_color_1: '#DDAA03', karaoke_color_2: '#22D3EE', karaoke_color_3: '#FB923C', text_color: '#FFFFFF' },
+  t37: { font_family: 'Rajdhani', font_size: 25, font_weight: '800', secondary_color: '#FFFFFF', highlight_color: '#FFFFFF', emphasis_color: '#FFFFFF', text_color: '#E1DA09', text_case: 'uppercase' },
   t38: { font_family: 'Libre Baskerville', font_size: 23, font_weight: '700', secondary_color: '#D4AF37', text_color: '#FFFFFF' },
   t39: { font_family: 'IBM Plex Mono', font_size: 22, font_weight: '700', secondary_color: '#FF3D71', text_color: '#FFFFFF', text_case: 'uppercase' },
-  t40: { font_family: 'Crimson Text', font_size: 24, font_weight: '600', secondary_color: '#D4AF37', text_color: '#FFFFFF' },
+  t40: { font_family: 'Crimson Text', font_size: 24, font_weight: '600', secondary_color: '#F2072B', highlight_color: '#F2072B', emphasis_color: '#F2072B', text_color: '#FFFFFF' },
 };
 
+function resolveAdvancedTemplateEmphasisColor(templateId, emphasisColor = '', blockIndex = -1) {
+  const normalizedId = String(templateId || '').trim();
+  if (normalizedId === 't23' && Number(blockIndex) === 3) {
+    return '#ffffff';
+  }
+  return emphasisColor || ADVANCED_TEMPLATE_EMPHASIS_COLORS[normalizedId] || '';
+}
+
+function normalizeColor(value, fallback = '#FFFFFF') {
+  const raw = String(value || '').trim();
+  if (/^#[0-9a-f]{6}$/i.test(raw)) return raw.toUpperCase();
+  if (/^#[0-9a-f]{3}$/i.test(raw)) {
+    return `#${raw[1]}${raw[1]}${raw[2]}${raw[2]}${raw[3]}${raw[3]}`.toUpperCase();
+  }
+  return fallback.toUpperCase();
+}
+
+function getTemplatePalette(style = {}, defaults = {}) {
+  const templateId = String(style.template_id || defaults.template_id || '').trim();
+  const isCustomized = Boolean(style.template_color_customized || defaults.template_color_customized);
+  const sourceAccent = !isCustomized ? ADVANCED_TEMPLATE_EMPHASIS_COLORS[templateId] : '';
+  const sourceText = templateId === 't36'
+    ? '#FFFFFF'
+    : (!isCustomized && templateId === 't12' ? '#FFFFFF' : '');
+  const configuredAccent = style.highlight_color
+    || style.emphasis_color
+    || style.secondary_color
+    || defaults.highlight_color
+    || defaults.emphasis_color
+    || defaults.secondary_color;
+  const text = normalizeColor(sourceText || style.text_color || defaults.text_color, '#FFFFFF');
+  const accent = normalizeColor(
+    isCustomized ? configuredAccent : (sourceAccent || configuredAccent),
+    '#D4AF37',
+  );
+  const background = normalizeColor(style.background_color || defaults.background_color, '#0E0E12');
+  return { text, accent, background };
+}
+
+function getTemplateCustomizationPatch(field, color, currentStyle = {}) {
+  const nextColor = normalizeColor(color);
+  if (field === 'text') {
+    return { text_color: nextColor, text_gradient: '', template_color_customized: true };
+  }
+  if (field === 'accent') {
+    return {
+      secondary_color: nextColor,
+      highlight_color: nextColor,
+      highlight_gradient: '',
+      emphasis_color: nextColor,
+      template_color_customized: true,
+      ...(currentStyle.has_stroke ? { stroke_color: nextColor } : {}),
+      ...(currentStyle.has_shadow ? { shadow_color: nextColor } : {}),
+    };
+  }
+  if (field === 'background') return { background_color: nextColor, has_background: true, template_color_customized: true };
+  if (field === 'karaoke1') return {
+    karaoke_color_1: nextColor,
+    secondary_color: nextColor,
+    highlight_color: nextColor,
+    emphasis_color: nextColor,
+    highlight_gradient: '',
+    template_color_customized: true,
+  };
+  if (field === 'karaoke2') return { karaoke_color_2: nextColor, template_color_customized: true };
+  if (field === 'karaoke3') return { karaoke_color_3: nextColor, template_color_customized: true };
+  return {};
+}
+
 function buildAppliedTemplateStyle(template) {
+  const defaultBlockIndex = template.id === 't17' ? 1 : 0;
+  const defaultBlock = template.blocks?.[defaultBlockIndex] || template.blocks?.[0];
+
   return {
     template_id: template.id,
     template_source: 'lekha-advanced',
     template_class: `tcard ${template.id}`,
     template_name: template.name || template.id,
-    template_layout: template.blocks?.[0]?.type || 'styled',
-    template_effect: template.blocks?.[0]?.label || '',
+    template_layout: defaultBlock?.type || 'styled',
+    template_effect: defaultBlock?.label || '',
+    template_phase_index: defaultBlockIndex,
     template_markup: template.cardMarkup || '',
     ...(ADVANCED_TEMPLATE_STYLE[template.id] || {}),
     has_background: false,
@@ -98,29 +174,35 @@ function buildAppliedTemplateStyle(template) {
 }
 
 const BASIC_TEMPLATE_STYLE = {
-  't-106': { font_family: 'Noto Sans', font_size: 24, font_weight: '800', text_color: '#FFFFFF', has_shadow: true, shadow_color: '#000000', shadow_blur: 3, shadow_offset_x: 1, shadow_offset_y: 2 },
-  't-52': { font_family: 'Inter', font_size: 26, font_weight: '900', text_color: '#FFFFFF' },
-  't-T4': { font_family: 'Playfair Display', font_size: 24, font_style: 'italic', text_color: '#f9a8d4' },
-  't-WS1': { font_family: 'Raleway', font_size: 24, font_weight: '800', text_color: '#FFFFFF', secondary_color: '#FFE600', highlight_color: '#FFE600' },
-  't-115': { font_family: 'Noto Sans', font_size: 28, font_weight: '900', font_style: 'italic', text_color: '#FFFFFF', secondary_color: '#39FF14', has_shadow: true, shadow_color: '#39FF14', shadow_blur: 10, shadow_offset_x: 0, shadow_offset_y: 0 },
-  't-104': { font_family: 'Noto Sans', font_size: 26, font_weight: '900', text_color: '#FFFFFF', secondary_color: '#B28DFF', has_stroke: true, stroke_color: '#B28DFF', stroke_width: 2 },
-  't-109': { font_family: 'Noto Sans', font_size: 26, font_weight: '900', text_color: '#FFFFFF', secondary_color: '#E01A1A', has_shadow: true, shadow_color: '#E01A1A', shadow_offset_x: 3, shadow_offset_y: 3, shadow_blur: 0 },
-  't-95': { font_family: 'Montserrat', font_size: 30, text_color: '#FFFFFF', secondary_color: '#0055FF' },
-  't-102': { font_family: 'Noto Sans', font_size: 22, font_weight: '800', text_color: '#1F2022', secondary_color: '#1F2022', has_background: true, background_color: '#FFFFFF', background_opacity: 1, background_padding: 10 },
-  't-T5': { font_family: 'Montserrat', font_size: 24, font_weight: '800', font_style: 'italic', text_color: '#333333', has_background: true, background_color: '#ECF00F', background_opacity: 1, background_padding: 10 },
-  't-T6': { font_family: 'Montserrat', font_size: 24, font_weight: '800', font_style: 'italic', text_color: '#FFFFFF', secondary_color: '#FFFFFF', has_background: true, background_color: '#F97316', background_opacity: 1, background_padding: 8 },
-  't-103': { font_family: 'Noto Sans', font_size: 22, font_weight: '800', text_color: '#FFFFFF', has_background: true, background_color: '#1e1e1e', background_opacity: 0.85, background_padding: 10 },
+  't-106': { font_family: 'Noto Sans', font_size: 24, font_weight: '800', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03', has_shadow: true, shadow_color: '#000000', shadow_blur: 3, shadow_offset_x: 1, shadow_offset_y: 2 },
+  't-52': { font_family: 'Inter', font_size: 26, font_weight: '900', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03' },
+  't-T4': { font_family: 'Playfair Display', font_size: 24, font_weight: '700', font_style: 'italic', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03' },
+  't-WS1': { font_family: 'Raleway', font_size: 24, font_weight: '800', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03' },
+  't-115': { font_family: 'Noto Sans', font_size: 28, font_weight: '900', font_style: 'italic', text_color: '#FFFFFF', secondary_color: '#39FF14', highlight_color: '#DDAA03', has_shadow: true, shadow_color: '#39FF14', shadow_blur: 10, shadow_offset_x: 0, shadow_offset_y: 0 },
+  't-104': { font_family: 'Noto Sans', font_size: 26, font_weight: '900', text_color: '#FFFFFF', secondary_color: '#2563EB', highlight_color: '#DDAA03', has_stroke: true, stroke_color: '#2563EB', stroke_width: 2 },
+  't-109': { font_family: 'Noto Sans', font_size: 26, font_weight: '900', text_color: '#FFFFFF', secondary_color: '#E01A1A', highlight_color: '#DDAA03', has_shadow: true, shadow_color: '#E01A1A', shadow_offset_x: 3, shadow_offset_y: 3, shadow_blur: 0 },
+  't-95': { font_family: 'Montserrat', font_size: 30, text_color: '#FFFFFF', secondary_color: '#0055FF', highlight_color: '#DDAA03' },
+  't-102': { font_family: 'Noto Sans', font_size: 22, font_weight: '800', text_color: '#1F2022', secondary_color: '#1F2022', highlight_color: '#b07d00', has_background: true, background_color: '#E8E8E8', background_opacity: 1, background_padding: 10 },
+  't-T5': { font_family: 'Montserrat', font_size: 24, font_weight: '800', font_style: 'italic', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03', has_background: true, background_color: '#BEFF00', background_opacity: 1, background_padding: 10 },
+  't-T6': { font_family: 'Montserrat', font_size: 24, font_weight: '800', font_style: 'italic', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03', has_background: true, background_color: '#F97316', background_opacity: 1, background_padding: 8 },
+  't-103': { font_family: 'Noto Sans', font_size: 22, font_weight: '800', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03', has_background: true, background_color: '#1e1e1e', background_opacity: 0.85, background_padding: 10 },
   't-QW1': { font_family: 'Raleway', font_size: 20, font_weight: '500', font_style: 'italic', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#FFFFFF' },
-  't-36': { font_family: 'Noto Sans', font_size: 26, font_weight: '900', text_color: '#FFFFFF', secondary_color: '#00ffb3' },
-  't-105': { font_family: 'Noto Sans', font_size: 24, font_weight: '800', text_color: '#FFFFFF', has_stroke: true, stroke_color: '#000000', stroke_width: 1, has_shadow: true, shadow_color: '#000000', shadow_blur: 2, shadow_offset_x: 2, shadow_offset_y: 2 },
-  't-124': { font_family: 'Inter', font_size: 26, font_weight: '900', text_color: '#FFFFFF', has_shadow: true, shadow_color: '#ffffff', shadow_offset_x: 4, shadow_offset_y: 4, shadow_blur: 0 },
-  't-110': { font_family: 'Noto Sans', font_size: 24, font_weight: '800', text_color: '#FFFFFF', secondary_color: '#0066FF' },
-  't-56': { font_family: 'Inter', font_size: 26, font_weight: '900', text_color: '#FFFFFF', secondary_color: '#0066FF' },
-  't-119': { font_family: 'Inter', font_size: 24, font_weight: '800', text_color: '#FFFFFF', secondary_color: '#00FFCC' },
-  't-12': { font_family: 'Special Elite', font_size: 22, text_color: '#cc0000', secondary_color: '#cc0000', has_shadow: true, shadow_color: '#cc0000', shadow_blur: 10, shadow_offset_x: 0, shadow_offset_y: 0 },
+  't-36': { font_family: 'Noto Sans', font_size: 26, font_weight: '900', text_color: '#FFFFFF', secondary_color: '#DDAA03', highlight_color: '#DDAA03' },
+  't-105': { font_family: 'Noto Sans', font_size: 24, font_weight: '800', text_color: '#FFFFFF', secondary_color: '#DDAA03', highlight_color: '#DDAA03', has_stroke: true, stroke_color: '#000000', stroke_width: 1, has_shadow: true, shadow_color: '#000000', shadow_blur: 2, shadow_offset_x: 2, shadow_offset_y: 2 },
+  't-124': { font_family: 'Inter', font_size: 26, font_weight: '900', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03', has_shadow: true, shadow_color: '#ffffff', shadow_offset_x: 4, shadow_offset_y: 4, shadow_blur: 0 },
+  't-110': { font_family: 'Noto Sans', font_size: 24, font_weight: '800', text_color: '#FFFFFF', secondary_color: '#0066FF', highlight_color: '#DDAA03' },
+  't-56': { font_family: 'Inter', font_size: 26, font_weight: '900', text_color: '#FFFFFF', secondary_color: '#0066FF', highlight_color: '#DDAA03' },
+  't-119': { font_family: 'Inter', font_size: 24, font_weight: '800', text_color: '#FFFFFF', secondary_color: '#00FFCC', highlight_color: '#DDAA03' },
+  't-12': { font_family: 'Special Elite', font_size: 22, text_color: '#cc0000', secondary_color: '#cc0000', highlight_color: '#DDAA03', has_shadow: true, shadow_color: '#cc0000', shadow_blur: 10, shadow_offset_x: 0, shadow_offset_y: 0 },
+};
+
+const BASIC_TEMPLATE_MARKUP_OVERRIDES = {
+  't-T4': findAppliedBasicTemplateMarkup(originalTemplateHtml, { template_id: 't-T4' }),
+  't-WS1': findAppliedBasicTemplateMarkup(originalTemplateHtml, { template_id: 't-WS1' }),
 };
 
 function buildAppliedBasicTemplateStyle(template) {
+  const templateMarkup = BASIC_TEMPLATE_MARKUP_OVERRIDES[template.id] || template.cardMarkup || '';
   return {
     template_id: template.id,
     template_source: 'lekha-basic',
@@ -128,7 +210,7 @@ function buildAppliedBasicTemplateStyle(template) {
     template_name: template.name || template.id,
     template_layout: 'word-sequence',
     template_effect: template.desc || '',
-    template_markup: template.cardMarkup || '',
+    template_markup: templateMarkup,
     ...(BASIC_TEMPLATE_STYLE[template.id] || {}),
     has_background: BASIC_TEMPLATE_STYLE[template.id]?.has_background || false,
     has_shadow: BASIC_TEMPLATE_STYLE[template.id]?.has_shadow || false,
@@ -144,9 +226,9 @@ function buildAppliedBasicTemplateStyle(template) {
 const SOURCE_FALLBACK_TEMPLATE_BLOCKS = {
   t11: [{ id: 't11-b0', type: 'styled', label: 'CLUSTER' }, { id: 't11-b1', type: 'styled', label: 'BLUR FOCUS' }, { id: 't11-b2', type: 'plain', label: 'PLAIN' }, { id: 't11-b3', type: 'wbw-rise', label: 'WBW RISE' }],
   t12: [{ id: 't12-b0', type: 'styled', label: 'TYPEWRITER' }, { id: 't12-b1', type: 'styled', label: 'SLIDE-UP' }, { id: 't12-b2', type: 'wbw-rise', label: 'WBW RISE' }, { id: 't12-b3', type: 'wbw-slide', label: 'WBW SLIDE' }],
-  t13: [{ id: 't13-b0', type: 'styled', label: 'STAMP IN' }, { id: 't13-b1', type: 'styled', label: 'TICKER ROLL' }, { id: 't13-b2', type: 'wbw-rise', label: 'WBW RISE' }, { id: 't13-b3', type: 'wbw-slide', label: 'WBW SLIDE' }],
+  t13: [{ id: 't13-b0', type: 'styled', label: 'STAMP IN' }, { id: 't13-b1', type: 'styled', label: 'TICKER ROLL' }, { id: 't13-b2', type: 'wbw-rise', label: 'WBW RISE' }, { id: 't13-b3', type: 'wbw-seq-fade', label: 'WBW SEQ FADE' }],
   t14: [{ id: 't14-b0', type: 'styled', label: '3D FLIP' }, { id: 't14-b1', type: 'styled', label: 'DROP BOUNCE' }, { id: 't14-b2', type: 'plain', label: 'PLAIN' }, { id: 't14-b3', type: 'wbw-rise', label: 'WBW RISE' }],
-  t15: [{ id: 't15-b0', type: 'styled', label: 'SHAKE-IN' }, { id: 't15-b1', type: 'styled', label: 'CENTER POP' }, { id: 't15-b2', type: 'wbw-rise', label: 'WBW RISE' }, { id: 't15-b3', type: 'wbw-slide', label: 'WBW SLIDE' }],
+  t15: [{ id: 't15-b0', type: 'styled', label: 'SURGE IN' }, { id: 't15-b1', type: 'styled', label: 'CENTER POP' }, { id: 't15-b2', type: 'wbw-rise', label: 'WBW RISE' }, { id: 't15-b3', type: 'wbw-seq-fade', label: 'WBW SEQ FADE' }],
   t16: [{ id: 't16-b0', type: 'styled', label: 'STACK RISE' }, { id: 't16-b1', type: 'styled', label: 'NEON FLICKER' }, { id: 't16-b2', type: 'wbw-rise', label: 'WBW RISE' }, { id: 't16-b3', type: 'wbw-slide', label: 'WBW SLIDE' }],
   t17: [{ id: 't17-b0', type: 'styled', label: 'GLITCH' }, { id: 't17-b1', type: 'styled', label: 'LETTER SNAP' }, { id: 't17-b2', type: 'plain', label: 'PLAIN' }, { id: 't17-b3', type: 'wbw-rise', label: 'WBW RISE' }],
   t18: [{ id: 't18-b0', type: 'styled', label: 'SPLIT TITLE' }, { id: 't18-b1', type: 'styled', label: 'FADE REVEAL' }, { id: 't18-b2', type: 'plain', label: 'PLAIN' }, { id: 't18-b3', type: 'wbw-rise', label: 'WBW RISE' }],
@@ -155,16 +237,16 @@ const SOURCE_FALLBACK_TEMPLATE_BLOCKS = {
   t21: [{ id: 't21-b0', type: 'styled', label: 'VERT REVEAL' }, { id: 't21-b1', type: 'styled', label: 'SPACING COLLAPSE' }, { id: 't21-b2', type: 'wbw-rise', label: 'WBW RISE' }, { id: 't21-b3', type: 'wbw-slide', label: 'WBW SLIDE' }],
   t22: [{ id: 't22-b0', type: 'styled', label: 'KARAOKE' }, { id: 't22-b1', type: 'styled', label: 'WAVE IN' }, { id: 't22-b2', type: 'wbw-rise', label: 'WBW RISE' }, { id: 't22-b3', type: 'wbw-slide', label: 'WBW SLIDE' }],
   t23: [{ id: 't23-b0', type: 'styled', label: 'SLIDE-RIGHT' }, { id: 't23-b1', type: 'plain', label: 'PLAIN' }, { id: 't23-b2', type: 'plain', label: 'PLAIN' }, { id: 't23-b3', type: 'styled', label: 'PUNCH POP' }],
-  t24: [{ id: 't24-b0', type: 'styled', label: 'REDACT REVEAL' }, { id: 't24-b1', type: 'styled', label: 'SLOW RISE' }, { id: 't24-b2', type: 'plain', label: 'PLAIN' }, { id: 't24-b3', type: 'wbw-rise', label: 'WBW RISE' }],
+  t24: [{ id: 't24-b0', type: 'wbw-rise', label: 'SOFT WIPE' }, { id: 't24-b1', type: 'wbw-rise', label: 'THOUGHT DRIFT' }, { id: 't24-b2', type: 'wbw-slide', label: 'MAP SLIDE' }, { id: 't24-b3', type: 'wbw-rise', label: 'MEMORY STAMP' }, { id: 't24-b4', type: 'wbw-rise', label: 'INNER REVEAL' }],
   t25: [{ id: 't25-b0', type: 'styled', label: 'HANDWRITE' }, { id: 't25-b1', type: 'styled', label: 'SOFT RISE' }, { id: 't25-b2', type: 'wbw-rise', label: 'WBW RISE' }, { id: 't25-b3', type: 'wbw-slide', label: 'WBW SLIDE' }],
-  t26: [{ id: 't26-b0', type: 'styled', label: 'HARD CUT' }, { id: 't26-b1', type: 'styled', label: 'FAST SLIDE' }, { id: 't26-b2', type: 'wbw-rise', label: 'WBW RISE' }, { id: 't26-b3', type: 'wbw-slide', label: 'WBW SLIDE' }],
+  t26: [{ id: 't26-b0', type: 'wbw-rise', label: 'RAW SHUTTER' }, { id: 't26-b1', type: 'wbw-slide', label: 'STREET SNAP' }, { id: 't26-b2', type: 'wbw-rise', label: 'CONCRETE KICK' }, { id: 't26-b3', type: 'wbw-seq-fade', label: 'TAG FADE' }],
   t27: [{ id: 't27-b0', type: 'styled', label: 'CENTER EXPAND' }, { id: 't27-b1', type: 'plain', label: 'PLAIN' }, { id: 't27-b2', type: 'plain', label: 'PLAIN' }, { id: 't27-b3', type: 'wbw-rise', label: 'WBW RISE' }],
   t28: [{ id: 't28-b0', type: 'styled', label: 'GRAIN BLUR' }, { id: 't28-b1', type: 'styled', label: 'SLOW FADE' }, { id: 't28-b2', type: 'wbw-rise', label: 'WBW RISE' }, { id: 't28-b3', type: 'wbw-slide', label: 'WBW SLIDE' }],
-  t29: [{ id: 't29-b0', type: 'styled', label: 'SLAM' }, { id: 't29-b1', type: 'styled', label: 'HARD RISE' }, { id: 't29-b2', type: 'wbw-rise', label: 'WBW RISE' }, { id: 't29-b3', type: 'wbw-slide', label: 'WBW SLIDE' }],
+  t29: [{ id: 't29-b0', type: 'wbw-rise', label: 'SHUTTER PUNCH' }, { id: 't29-b1', type: 'wbw-rise', label: 'RECOIL LIFT' }, { id: 't29-b2', type: 'wbw-slide', label: 'DIAGONAL CHARGE' }, { id: 't29-b3', type: 'wbw-seq-fade', label: 'CLAMP SNAP' }],
   t30: [{ id: 't30-b0', type: 'styled', label: 'BREATHE' }, { id: 't30-b1', type: 'plain', label: 'PLAIN' }, { id: 't30-b2', type: 'plain', label: 'PLAIN' }, { id: 't30-b3', type: 'plain', label: 'PLAIN' }],
   t31: [{ id: 't31-b0', type: 'styled', label: 'TYPEWRITER' }, { id: 't31-b1', type: 'styled', label: '3D FLIP' }, { id: 't31-b2', type: 'plain', label: 'PLAIN' }, { id: 't31-b3', type: 'wbw-rise', label: 'WBW RISE' }],
   t32: [{ id: 't32-b0', type: 'styled', label: 'INK WIPE' }, { id: 't32-b1', type: 'styled', label: '3D FLIP' }, { id: 't32-b2', type: 'plain', label: 'PLAIN' }, { id: 't32-b3', type: 'wbw-rise', label: 'WBW RISE' }],
-  t33: [{ id: 't33-b0', type: 'styled', label: 'DOC WIPE' }, { id: 't33-b1', type: 'styled', label: '3D FLIP' }, { id: 't33-b2', type: 'plain', label: 'PLAIN' }, { id: 't33-b3', type: 'wbw-rise', label: 'WBW RISE' }],
+  t33: [{ id: 't33-b0', type: 'styled', label: 'DOC WIPE' }, { id: 't33-b1', type: 'wbw-seq-fade', label: 'WBW SEQ FADE' }, { id: 't33-b2', type: 'karaoke', label: 'KARAOKE' }, { id: 't33-b3', type: 'wbw-rise', label: 'WBW RISE' }, { id: 't33-b4', type: 'styled', label: '3D FLIP' }],
   t34: [{ id: 't34-b0', type: 'styled', label: 'SPEED IN' }, { id: 't34-b1', type: 'styled', label: 'POW POP' }, { id: 't34-b2', type: 'wbw-rise', label: 'WBW RISE' }, { id: 't34-b3', type: 'wbw-slide', label: 'WBW SLIDE' }],
   t35: [{ id: 't35-b0', type: 'styled', label: 'SECRET REVEAL' }, { id: 't35-b1', type: 'plain', label: 'PLAIN' }, { id: 't35-b2', type: 'plain', label: 'PLAIN' }, { id: 't35-b3', type: 'plain', label: 'PLAIN' }],
 };
@@ -201,7 +283,8 @@ function extractTemplateOrder() {
     sanitizedOriginalTemplateHtml.matchAll(/<div class="tcard" id="card-([^"]+)"/gi),
     ([, id]) => id,
   );
-  return ids.length ? ids : Object.keys(ADVANCED_TEMPLATE_STYLE);
+  const orderedIds = ids.length ? ids : Object.keys(ADVANCED_TEMPLATE_STYLE);
+  return orderedIds.filter((id) => !REMOVED_ADVANCED_TEMPLATE_IDS.has(id));
 }
 
 function extractCardMarkup(templateId) {
@@ -310,11 +393,240 @@ function extractBasicTemplateCards() {
 
 const BASIC_TEMPLATE_PACK = extractBasicTemplateCards();
 
+const TEMPLATE_PREVIEW_DOT_SIZE_PX = 5;
+const TEMPLATE_PREVIEW_DOT_GAP_PX = 6;
+const TEMPLATE_PREVIEW_DOT_STRIP_HEIGHT_PX = 30;
+const TEMPLATE_PREVIEW_DOT_HIT_RADIUS_PX = 10;
+
+function resolvePreviewDotIndex(event, dotCount = 0) {
+  if (!dotCount || dotCount < 1) return -1;
+  const rect = event.currentTarget?.getBoundingClientRect?.();
+  if (!rect || !rect.width || !rect.height) return -1;
+
+  const localY = event.clientY - rect.top;
+  if (localY < rect.height - TEMPLATE_PREVIEW_DOT_STRIP_HEIGHT_PX) return -1;
+
+  const localX = event.clientX - rect.left;
+  const stripWidth = (dotCount * TEMPLATE_PREVIEW_DOT_SIZE_PX)
+    + ((dotCount - 1) * TEMPLATE_PREVIEW_DOT_GAP_PX);
+  const stripStart = (rect.width - stripWidth) / 2;
+
+  let bestIndex = -1;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < dotCount; index += 1) {
+    const centerX = stripStart
+      + (index * (TEMPLATE_PREVIEW_DOT_SIZE_PX + TEMPLATE_PREVIEW_DOT_GAP_PX))
+      + (TEMPLATE_PREVIEW_DOT_SIZE_PX / 2);
+    const distance = Math.abs(localX - centerX);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestIndex = index;
+    }
+  }
+
+  return bestDistance <= TEMPLATE_PREVIEW_DOT_HIT_RADIUS_PX ? bestIndex : -1;
+}
+
+function postPreviewDotJump(iframeRef, dotIndex) {
+  if (dotIndex < 0) return;
+  iframeRef.current?.contentWindow?.postMessage(
+    { type: 'lekha-template-preview-jump', index: dotIndex },
+    '*',
+  );
+}
+
 function extractOriginalStyle() {
   return sanitizedOriginalTemplateHtml.match(/<style>([\s\S]*?)<\/style>/i)?.[1] || '';
 }
 
-const iframeOverrides = (templateId) => `
+function buildTemplateColorPreviewCss(templateId, previewStyle = {}, { basic = false } = {}) {
+  const normalizedTemplateId = String(templateId || '').trim();
+  const alwaysSyncSourceColor = normalizedTemplateId === 't22'
+    || normalizedTemplateId === 't28'
+    || normalizedTemplateId === 't33'
+    || normalizedTemplateId === 't34'
+    || normalizedTemplateId === 't36'
+    || normalizedTemplateId === 't37'
+    || normalizedTemplateId === 't38'
+    || normalizedTemplateId === 't39'
+    || normalizedTemplateId === 't40';
+  if (!previewStyle?.template_color_customized && !alwaysSyncSourceColor) return '';
+  const palette = getTemplatePalette(previewStyle, ADVANCED_TEMPLATE_STYLE[templateId] || BASIC_TEMPLATE_STYLE[templateId] || {});
+  const karaokeColor1 = normalizeColor(previewStyle.karaoke_color_1 || ADVANCED_TEMPLATE_STYLE[templateId]?.karaoke_color_1, '#DDAA03');
+  const karaokeColor2 = normalizeColor(previewStyle.karaoke_color_2 || ADVANCED_TEMPLATE_STYLE[templateId]?.karaoke_color_2, '#22D3EE');
+  const karaokeColor3 = normalizeColor(previewStyle.karaoke_color_3 || ADVANCED_TEMPLATE_STYLE[templateId]?.karaoke_color_3, '#FB923C');
+  if (basic) {
+    return `
+    .btcard {
+      --template-primary: ${palette.text};
+      --template-secondary: ${palette.accent};
+      --template-highlight: ${palette.accent};
+      --template-bg: ${palette.background};
+      color: ${palette.text} !important;
+    }
+    .btcard .word:not(.imp):not(.current),
+    .btcard .bt-cap-block,
+    .btcard .bt-preview-text {
+      color: ${palette.text} !important;
+      -webkit-text-fill-color: ${palette.text} !important;
+    }
+    .btcard .word.imp,
+    .btcard .word.current,
+    .btcard .imp,
+    .btcard [data-imp="true"] {
+      color: ${palette.accent} !important;
+      -webkit-text-fill-color: ${palette.accent} !important;
+    }
+    ${previewStyle.has_background ? `.btcard-preview { background: ${palette.background} !important; }` : ''}
+  `;
+  }
+
+  const selector = `#card-${templateId} .sblock`;
+  return `
+    #card-${templateId} {
+      --template-primary: ${palette.text};
+      --template-secondary: ${palette.accent};
+      --template-highlight: ${palette.accent};
+      --template-bg: ${palette.background};
+      --cyan: ${palette.accent};
+      --gold: ${palette.accent};
+      --rose: ${palette.accent};
+      --green: ${palette.accent};
+      --purple: ${palette.accent};
+      --template-karaoke-1: ${karaokeColor1};
+      --template-karaoke-2: ${karaokeColor2};
+      --template-karaoke-3: ${karaokeColor3};
+    }
+    ${previewStyle.has_background ? `#card-${templateId} .stage { background: ${palette.background} !important; }` : ''}
+    ${selector},
+    ${selector} .lekha-template-fit,
+    ${selector} .w:not([data-imp="true"]),
+    ${selector} .kf-base,
+    ${selector} .cluster-row-top,
+    ${selector} .cluster-row-bot,
+    ${selector} .blur-txt {
+      color: ${palette.text} !important;
+      -webkit-text-fill-color: ${palette.text} !important;
+    }
+    ${selector} .w[data-imp="true"],
+    ${selector} [data-imp="true"],
+    ${selector} .is-emphasis,
+    ${selector} .imp-bold,
+    ${selector} .imp-gold,
+    ${selector} .imp-rose,
+    ${selector} .imp-cyan,
+    ${selector} .imp-green,
+    ${selector} .imp-purple,
+    ${selector} .imp-orange,
+    ${selector} .imp-italic,
+    ${selector} .imp-weight,
+    ${selector} .imp-space,
+    ${selector} .imp-flicker,
+    ${selector} .imp-typewrite,
+    ${selector} .imp-underline,
+    ${selector} .kf-fill {
+      color: ${palette.accent} !important;
+      -webkit-text-fill-color: ${palette.accent} !important;
+      text-shadow: 0 0 12px ${palette.accent}66 !important;
+    }
+    ${templateId === 't36' ? `
+    #card-t36 .kf-base {
+      color: #FFFFFF !important;
+      -webkit-text-fill-color: #FFFFFF !important;
+      opacity: 1 !important;
+      text-shadow: none !important;
+    }
+    #card-t36 #t36-b0 .kf-fill {
+      color: var(--template-karaoke-1, #DDAA03) !important;
+      -webkit-text-fill-color: var(--template-karaoke-1, #DDAA03) !important;
+    }
+    #card-t36 #t36-b1 .kf-fill {
+      color: var(--template-karaoke-2, #22D3EE) !important;
+      -webkit-text-fill-color: var(--template-karaoke-2, #22D3EE) !important;
+    }
+    #card-t36 #t36-b2 .kf-fill {
+      color: var(--template-karaoke-3, #FB923C) !important;
+      -webkit-text-fill-color: var(--template-karaoke-3, #FB923C) !important;
+    }
+    ` : ''}
+    ${templateId === 't23' ? `
+    ${selector} .t23-b3 .punch-txt .imp-bold,
+    ${selector} .t23-b3 .punch-txt .imp-gold,
+    ${selector} .t23-b3 .punch-txt .is-emphasis {
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
+      text-shadow: 0 1px 8px rgba(0,0,0,0.55), 0 0 12px rgba(255,255,255,0.36) !important;
+    }
+    ` : ''}
+    ${templateId === 't25' ? `
+    ${selector} .wbw-rise,
+    ${selector} .wbw-slide {
+      display: inline-flex !important;
+      flex-wrap: wrap !important;
+      align-items: baseline !important;
+      justify-content: center !important;
+      column-gap: 0.28em !important;
+      row-gap: 0.12em !important;
+    }
+    ${selector} .w {
+      margin-right: 0 !important;
+    }
+    ${selector} .imp-italic,
+    ${selector} .imp-rose,
+    ${selector} .w[data-imp="true"],
+    ${selector} .is-emphasis {
+      color: ${palette.accent} !important;
+      -webkit-text-fill-color: ${palette.accent} !important;
+    }
+    ` : ''}
+    ${templateId === 't39' ? `
+    #card-t39 .stage {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      overflow: hidden !important;
+    }
+    #card-t39 .sblock,
+    #card-t39 .t39-block {
+      font-size: 0.94rem !important;
+      line-height: 1.4 !important;
+      max-width: min(100%, 12em) !important;
+      text-align: center !important;
+      margin: 0 auto !important;
+    }
+    #card-t39 .wbw-seq-fade {
+      display: inline-flex !important;
+      flex-wrap: wrap !important;
+      align-items: baseline !important;
+      justify-content: center !important;
+      column-gap: 0.24em !important;
+      row-gap: 0.06em !important;
+      max-width: min(100%, 12em) !important;
+      white-space: normal !important;
+      overflow-wrap: normal !important;
+      word-break: normal !important;
+      text-align: center !important;
+      margin: 0 auto !important;
+    }
+    #card-t39 .w {
+      margin-right: 0 !important;
+    }
+    ` : ''}
+    ${templateId === 't37' ? `
+    ${selector},
+    ${selector} * {
+      -webkit-text-stroke: 0 transparent !important;
+      text-shadow: none !important;
+    }
+    ` : ''}
+    ${selector} .imp-underline::after,
+    ${selector} .w[data-imp="true"].imp-underline::after {
+      background: ${palette.accent} !important;
+    }
+  `;
+}
+
+const iframeOverrides = (templateId, previewStyle = {}) => `
   <style>
     ${ADVANCED_TEMPLATE_RUNTIME_CSS}
 
@@ -379,12 +691,25 @@ const iframeOverrides = (templateId) => `
       transform: scale(0.9) !important;
       line-height: 0.88 !important;
     }
+    ${buildTemplateColorPreviewCss(templateId, previewStyle)}
   </style>
 `;
 
-function buildTemplatePreviewDoc(templateId) {
+function buildTemplatePreviewDoc(templateId, options = {}) {
   const cardMarkup = extractCardMarkup(templateId);
-  const blockConfig = JSON.stringify(TEMPLATE_BLOCKS[templateId] || []);
+  const blocks = TEMPLATE_BLOCKS[templateId] || [];
+  const blockConfig = JSON.stringify(blocks);
+  const rawPhaseIndex = Number(options.activePhaseIndex);
+  const initialBlockIndex = blocks.length && Number.isFinite(rawPhaseIndex)
+    ? ((Math.trunc(rawPhaseIndex) % blocks.length) + blocks.length) % blocks.length
+    : 0;
+  const lockToPhase = Boolean(options.lockToPhase && blocks.length);
+  const appliedPreviewCaption = {
+    text: String(options.captionText || '').trim(),
+    impWordIndex: Number.isFinite(Number(options.impWordIndex)) ? Math.trunc(Number(options.impWordIndex)) : -1,
+    emphasisColor: resolveAdvancedTemplateEmphasisColor(templateId, options.emphasisColor || '', initialBlockIndex),
+  };
+  const appliedPreviewConfig = JSON.stringify(appliedPreviewCaption).replace(/</g, '\\u003c');
   const previewScript = `
     <script>
       (() => {
@@ -392,10 +717,15 @@ function buildTemplatePreviewDoc(templateId) {
         const EXIT = ${ADVANCED_TEMPLATE_TIMING.exitMs};
         const ENTER = ${ADVANCED_TEMPLATE_TIMING.enterMs};
         const GAP = ${ADVANCED_TEMPLATE_TIMING.gapMs};
+        const INITIAL_BLOCK_INDEX = ${initialBlockIndex};
+        const LOCK_TO_PHASE = ${lockToPhase ? 'true' : 'false'};
+        const APPLIED_PREVIEW = ${appliedPreviewConfig};
         let runToken = 0;
-        let activeBlockIndex = 0;
+        let activeBlockIndex = INITIAL_BLOCK_INDEX;
         let pendingTimers = [];
         const IMP_ENTRANCES = ${JSON.stringify(ADVANCED_IMP_ENTRANCES)};
+        const IMP_CLASS_PATTERN = /\\b(?:imp-[\\w-]+|ns[23]-[\\w-]+)\\b/g;
+        const IMP_CLASS_TEST_PATTERN = /\\b(?:imp-[\\w-]+|ns[23]-[\\w-]+)\\b/;
 
         function schedule(callback, delay) {
           const timer = setTimeout(() => {
@@ -473,6 +803,206 @@ function buildTemplatePreviewDoc(templateId) {
                 el.appendChild(document.createTextNode(' '));
               }
             });
+          });
+        }
+
+        function cleanClass(value, fallback) {
+          const cleaned = String(value || '')
+            .split(/\\s+/)
+            .filter((className) => className && !['active', 'visible', 'anim', 'on', 'in', 'fx'].includes(className))
+            .join(' ');
+          return cleaned || fallback;
+        }
+
+        function mappedClass(sourceClasses, index, total, fallback) {
+          if (!sourceClasses.length) return fallback;
+          if (total <= 1) return sourceClasses[0] || fallback;
+          const sourceIndex = Math.min(
+            sourceClasses.length - 1,
+            Math.round((index * (sourceClasses.length - 1)) / Math.max(1, total - 1)),
+          );
+          return sourceClasses[sourceIndex] || fallback;
+        }
+
+        function replacePreviewWbw(container, words) {
+          if (!container || !words.length) return;
+          const sourceWords = Array.from(container.querySelectorAll('.w'));
+          const sourceClasses = sourceWords.map((word) => cleanClass(word.className, 'w'));
+          const sourceImpIndex = sourceWords.findIndex((word) => (
+            word.dataset.imp === 'true' || IMP_CLASS_TEST_PATTERN.test(word.className || '')
+          ));
+          const sourceImpClass = sourceImpIndex >= 0
+            ? sourceWords[sourceImpIndex].dataset.impCls
+              || (sourceClasses[sourceImpIndex].match(IMP_CLASS_TEST_PATTERN) || [])[0]
+              || ''
+            : '';
+          const impWordIndex = Number(APPLIED_PREVIEW.impWordIndex);
+          const emphasisColor = APPLIED_PREVIEW.emphasisColor || '';
+
+          container.textContent = '';
+          container.dataset.text = words.join(' ');
+          words.forEach((word, index) => {
+            if (index > 0) container.appendChild(document.createTextNode(' '));
+            const span = document.createElement('span');
+            const mapped = mappedClass(sourceClasses, index, words.length, 'w')
+              .replace(IMP_CLASS_PATTERN, '')
+              .replace(/\\s+/g, ' ')
+              .trim();
+            const isImp = index === impWordIndex && !!sourceImpClass;
+            span.className = (mapped || 'w') + (isImp ? ' ' + sourceImpClass + ' is-emphasis' : '');
+            span.dataset.i = String(index);
+            if (isImp) {
+              span.dataset.imp = 'true';
+              span.dataset.impCls = sourceImpClass;
+              if (emphasisColor) {
+                span.style.setProperty('color', emphasisColor, 'important');
+                span.style.setProperty('-webkit-text-fill-color', emphasisColor, 'important');
+              }
+            }
+            span.textContent = word;
+            container.appendChild(span);
+          });
+        }
+
+        function replacePreviewKaraoke(container, words) {
+          if (!container || !words.length) return;
+          container.textContent = '';
+          words.forEach((word, index) => {
+            if (index > 0) container.appendChild(document.createTextNode(' '));
+            const wrapper = document.createElement('span');
+            wrapper.className = 'kf-word';
+            const base = document.createElement('span');
+            base.className = 'kf-base';
+            base.textContent = word;
+            const fill = document.createElement('span');
+            fill.className = 'kf-fill';
+            fill.textContent = word;
+            wrapper.append(base, fill);
+            container.appendChild(wrapper);
+          });
+        }
+
+        function collectPreviewTextNodes(root) {
+          const textNodes = [];
+          const visit = (node) => {
+            Array.from(node.childNodes || []).forEach((child) => {
+              if (child.nodeType === 3) {
+                if (/[\\p{L}\\p{N}]/u.test(child.nodeValue || '')) textNodes.push(child);
+                else if (String(child.nodeValue || '').trim()) child.nodeValue = '';
+              } else if (child.nodeType === 1) {
+                visit(child);
+              }
+            });
+          };
+          visit(root);
+          return textNodes;
+        }
+
+        function assignPreviewWordsToSlots(words, slotCount) {
+          const assigned = Array.from({ length: Math.max(0, slotCount) }, () => []);
+          if (!words.length || !assigned.length) return assigned;
+          words.forEach((word, wordIndex) => {
+            const slotIndex = words.length <= 1 || assigned.length <= 1
+              ? 0
+              : Math.min(
+                assigned.length - 1,
+                Math.round((wordIndex * (assigned.length - 1)) / Math.max(1, words.length - 1)),
+              );
+            assigned[slotIndex].push({ word, wordIndex });
+          });
+          return assigned;
+        }
+
+        function findPreviewImpWrapper(slot, block) {
+          let element = slot?.parentElement;
+          while (element && element !== block) {
+            if (IMP_CLASS_TEST_PATTERN.test(String(element.className || ''))) return element;
+            element = element.parentElement;
+          }
+          return null;
+        }
+
+        function getPreviewSourceImpClass(block) {
+          const className = Array.from(block.querySelectorAll('*'))
+            .map((element) => element.className || '')
+            .find((value) => IMP_CLASS_TEST_PATTERN.test(String(value)));
+          return String(className || '').match(IMP_CLASS_TEST_PATTERN)?.[0] || 'imp-gold';
+        }
+
+        function replacePreviewTextSlot(slot, assignedWords, impWordIndex, impClass, emphasisColor, block) {
+          const source = String(slot.nodeValue || '');
+          const leading = /^\\s/.test(source) ? ' ' : '';
+          const trailing = /\\s$/.test(source) ? ' ' : '';
+          const replacementTarget = impWordIndex >= 0 ? findPreviewImpWrapper(slot, block) : null;
+          const fragment = document.createDocumentFragment();
+          if (leading) fragment.appendChild(document.createTextNode(leading));
+          assignedWords.forEach(({ word, wordIndex }, localIndex) => {
+            if (localIndex > 0) fragment.appendChild(document.createTextNode(' '));
+            if (wordIndex === impWordIndex) {
+              const span = document.createElement('span');
+              span.className = impClass + ' is-emphasis';
+              span.dataset.w = String(wordIndex);
+              span.dataset.imp = 'true';
+              span.dataset.impCls = impClass;
+              if (emphasisColor) {
+                span.style.setProperty('color', emphasisColor, 'important');
+                span.style.setProperty('-webkit-text-fill-color', emphasisColor, 'important');
+              }
+              span.textContent = word;
+              fragment.appendChild(span);
+            } else {
+              fragment.appendChild(document.createTextNode(word));
+            }
+          });
+          if (trailing) fragment.appendChild(document.createTextNode(trailing));
+          if (replacementTarget?.parentNode) {
+            replacementTarget.parentNode.replaceChild(fragment, replacementTarget);
+          } else {
+            slot.parentNode?.replaceChild(fragment, slot);
+          }
+        }
+
+        function replacePreviewStyledText(block, words) {
+          const slots = collectPreviewTextNodes(block);
+          if (!slots.length) {
+            block.textContent = APPLIED_PREVIEW.text;
+            return;
+          }
+          const assigned = assignPreviewWordsToSlots(words, slots.length);
+          const impClass = getPreviewSourceImpClass(block);
+          const impWordIndex = Number(APPLIED_PREVIEW.impWordIndex);
+          const emphasisColor = APPLIED_PREVIEW.emphasisColor || '';
+          slots.forEach((slot, slotIndex) => {
+            if (assigned[slotIndex]?.length) {
+              replacePreviewTextSlot(slot, assigned[slotIndex], impWordIndex, impClass, emphasisColor, block);
+            } else {
+              slot.nodeValue = '';
+            }
+          });
+          block.querySelectorAll('[data-text]').forEach((element) => {
+            element.setAttribute('data-text', APPLIED_PREVIEW.text || '');
+          });
+        }
+
+        function injectAppliedPreviewCaption(blocks) {
+          const captionText = String(APPLIED_PREVIEW.text || '').trim();
+          if (!captionText) return;
+          const words = captionText.split(/\\s+/).filter(Boolean);
+          if (!words.length) return;
+
+          blocks.forEach((block) => {
+            if (!block) return;
+            const wbwContainers = Array.from(block.querySelectorAll('.wbw-rise, .wbw-slide, .wbw-seq, .wbw-seq-fade, .wbw-seq-flip'));
+            if (wbwContainers.length) {
+              wbwContainers.forEach((container) => replacePreviewWbw(container, words));
+              return;
+            }
+            const karaokeContainers = Array.from(block.querySelectorAll('.kf-line'));
+            if (karaokeContainers.length) {
+              karaokeContainers.forEach((container) => replacePreviewKaraoke(container, words));
+              return;
+            }
+            replacePreviewStyledText(block, words);
           });
         }
 
@@ -726,11 +1256,30 @@ function buildTemplatePreviewDoc(templateId) {
           });
         }
 
+        function jumpTo(index) {
+          if (!blocks[index]) return;
+          if (LOCK_TO_PHASE) {
+            runSequencer(blocks, dotsEl, labelEl, INITIAL_BLOCK_INDEX);
+            return;
+          }
+          runSequencer(blocks, dotsEl, labelEl, index);
+        }
+
         function runSequencer(blocks, dotsEl, labelEl, startIndex = 0) {
           clearPendingTimers();
           runToken += 1;
           let current = Math.max(0, Math.min(blocks.length - 1, startIndex));
           const token = runToken;
+
+          enterBlock(blocks, current, labelEl);
+          updateDots(dotsEl, current);
+          if (LOCK_TO_PHASE) {
+            schedule(() => {
+              if (token === runToken) enforceSingleBlock(blocks, activeBlockIndex);
+            }, 250);
+            return;
+          }
+
           function showNext() {
             if (token !== runToken) return;
             const prev = (current - 1 + blocks.length) % blocks.length;
@@ -743,8 +1292,6 @@ function buildTemplatePreviewDoc(templateId) {
             });
           }
 
-          enterBlock(blocks, current, labelEl);
-          updateDots(dotsEl, current);
           current = (current + 1) % blocks.length;
           schedule(showNext, HOLD);
           schedule(() => {
@@ -757,6 +1304,25 @@ function buildTemplatePreviewDoc(templateId) {
           if (!el) return null;
           el.dataset.type = item.type;
           el.dataset.label = item.label;
+          if ('${templateId}' === 't33' && item.id === 't33-b2' && item.type === 'karaoke' && !el.querySelector('.kf-line')) {
+            el.textContent = '';
+            const line = document.createElement('div');
+            line.className = 'kf-line';
+            'This is what we found'.split(/\\s+/).forEach((word, index) => {
+              if (index > 0) line.appendChild(document.createTextNode(' '));
+              const wrapper = document.createElement('span');
+              wrapper.className = 'kf-word';
+              const base = document.createElement('span');
+              base.className = 'kf-base';
+              base.textContent = word;
+              const fill = document.createElement('span');
+              fill.className = 'kf-fill';
+              fill.textContent = word;
+              wrapper.append(base, fill);
+              line.appendChild(wrapper);
+            });
+            el.appendChild(line);
+          }
           el.classList.remove('active');
           el.style.opacity = '0';
           el.style.visibility = 'hidden';
@@ -764,6 +1330,7 @@ function buildTemplatePreviewDoc(templateId) {
           el.querySelectorAll('.wbw-rise, .wbw-slide, .wbw-seq, .wbw-seq-flip, .wbw-seq-fade').forEach((wbwEl) => buildWBW(wbwEl));
           return el;
         }).filter(Boolean);
+        injectAppliedPreviewCaption(blocks);
         const dotsEl = document.getElementById('dots-${templateId}');
         const labelEl = document.getElementById('${templateId}-label');
 
@@ -782,22 +1349,29 @@ function buildTemplatePreviewDoc(templateId) {
               dot.addEventListener('click', (event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                runSequencer(blocks, dotsEl, labelEl, dotIndex);
+                jumpTo(dotIndex);
               });
               dot.addEventListener('keydown', (event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault();
-                  runSequencer(blocks, dotsEl, labelEl, dotIndex);
+                  jumpTo(dotIndex);
                 }
               });
             });
           }
-          runSequencer(blocks, dotsEl, labelEl);
+          window.addEventListener('message', (event) => {
+            const payload = event?.data || {};
+            if (payload.type !== 'lekha-template-preview-jump') return;
+            const nextIndex = Number(payload.index);
+            if (!Number.isFinite(nextIndex)) return;
+            jumpTo(nextIndex);
+          });
+          runSequencer(blocks, dotsEl, labelEl, INITIAL_BLOCK_INDEX);
           setInterval(() => enforceSingleBlock(blocks, activeBlockIndex), 250);
-          window.addEventListener('pageshow', () => runSequencer(blocks, dotsEl, labelEl));
-          window.addEventListener('focus', () => runSequencer(blocks, dotsEl, labelEl));
+          window.addEventListener('pageshow', () => runSequencer(blocks, dotsEl, labelEl, LOCK_TO_PHASE ? INITIAL_BLOCK_INDEX : activeBlockIndex));
+          window.addEventListener('focus', () => runSequencer(blocks, dotsEl, labelEl, LOCK_TO_PHASE ? INITIAL_BLOCK_INDEX : activeBlockIndex));
           document.addEventListener('visibilitychange', () => {
-            if (!document.hidden) runSequencer(blocks, dotsEl, labelEl);
+            if (!document.hidden) runSequencer(blocks, dotsEl, labelEl, LOCK_TO_PHASE ? INITIAL_BLOCK_INDEX : activeBlockIndex);
           });
         }
 
@@ -854,7 +1428,7 @@ function buildTemplatePreviewDoc(templateId) {
       <head>
         <meta charset="UTF-8" />
         <style>${extractOriginalStyle()}</style>
-        ${iframeOverrides(templateId)}
+        ${iframeOverrides(templateId, options.previewStyle || {})}
       </head>
       <body>${cardMarkup}${previewScript}</body>
     </html>
@@ -900,7 +1474,7 @@ const basicIframeOverrides = `
   </style>
 `;
 
-function buildBasicTemplatePreviewDoc(template) {
+function buildBasicTemplatePreviewDoc(template, options = {}) {
   const previewScript = `
     <script>
       (() => {
@@ -913,8 +1487,8 @@ function buildBasicTemplatePreviewDoc(template) {
         const dots = Array.from(card.querySelectorAll('.bt-prog-dots .dot'));
         const wordCount = Math.max(1, card.querySelectorAll('.word[data-wi]').length);
 
-        function cls(wi, imp) {
-          let className = 'word' + (imp ? ' imp' : '');
+        function cls(wi) {
+          let className = 'word';
           if (wi <= idx) className += ' active';
           if (wi === idx) className += ' current';
           return className;
@@ -942,10 +1516,12 @@ function buildBasicTemplatePreviewDoc(template) {
         }
 
         function animateBlock(block) {
+          const phaseIndex = Array.from(block.parentElement?.children || []).indexOf(block);
           block.querySelectorAll('.t-52 .word, .t-T4 .word, .t-106 .word, .t-T6 .word').forEach((word) => {
             word.style.opacity = '';
             word.style.transform = '';
             word.style.transition = '';
+            word.style.animation = '';
           });
 
           block.querySelectorAll('.t-52, .t-T4, .t-106, .t-T6, .t-56').forEach((wrapper) => {
@@ -955,14 +1531,65 @@ function buildBasicTemplatePreviewDoc(template) {
           });
 
           block.querySelectorAll('.t-52').forEach((wrapper) => {
+            if (phaseIndex === 0) {
+              wrapper.style.transition = 'none';
+              wrapper.style.opacity = '0';
+              wrapper.style.transform = 'translateY(44px)';
+              setTimeout(() => {
+                wrapper.style.transition = 'transform 700ms cubic-bezier(0.22,1,0.36,1), opacity 400ms ease';
+                wrapper.style.opacity = '1';
+                wrapper.style.transform = 'none';
+              }, 30);
+              return;
+            }
+            wrapper.querySelectorAll('.word').forEach((word, wordIndex) => {
+              word.style.transition = 'none';
+              word.style.opacity = '0';
+              word.style.transform = phaseIndex === 1 ? 'translateX(-38px)' : 'translateX(38px)';
+              setTimeout(() => {
+                word.style.transition = 'opacity 420ms ease, transform 420ms cubic-bezier(0.22,1,0.36,1)';
+                word.style.opacity = '1';
+                word.style.transform = 'none';
+              }, 30 + (wordIndex * 65));
+            });
+          });
+
+          block.querySelectorAll('.t-T4').forEach((wrapper) => {
+            wrapper.classList.remove('study-line-0', 'study-line-1', 'study-line-2', 'study-word-slide-preview');
             wrapper.style.transition = 'none';
-            wrapper.style.opacity = '0';
-            wrapper.style.transform = 'translateY(44px)';
-            setTimeout(() => {
-              wrapper.style.transition = 'transform 700ms cubic-bezier(0.22,1,0.36,1), opacity 400ms ease';
+            wrapper.style.animation = 'none';
+            wrapper.style.opacity = phaseIndex === 1 ? '1' : '0';
+            wrapper.style.transform = phaseIndex === 0
+              ? 'translateX(-38px)'
+              : phaseIndex === 2
+                ? 'translateY(24px)'
+                : 'none';
+            wrapper.querySelectorAll('.cap-text, .basic-manual-line, .word').forEach((node) => {
+              node.style.transition = '';
+              node.style.animation = '';
+              node.style.opacity = '';
+              node.style.transform = '';
+            });
+            wrapper.querySelectorAll('.word').forEach((word, wordIndex) => {
+              if (phaseIndex === 1) {
+                word.style.setProperty('--ws-delay', (90 + (wordIndex * 55)) + 'ms');
+              } else {
+                word.style.removeProperty('--ws-delay');
+              }
+              word.style.removeProperty('--basic-word-delay');
+            });
+            void wrapper.offsetWidth;
+            wrapper.classList.add('study-line-' + phaseIndex);
+            wrapper.classList.toggle('study-word-slide-preview', phaseIndex === 1);
+            if (phaseIndex === 0) {
+              wrapper.style.animation = 'basicWordSlideFromLeft 0.42s cubic-bezier(0.22,1,0.36,1) both';
+            } else if (phaseIndex === 2) {
+              wrapper.style.animation = 'wordRiseInFromBottom 0.38s cubic-bezier(0.34,1.2,0.64,1) both';
+            } else {
+              wrapper.style.animation = 'none';
               wrapper.style.opacity = '1';
               wrapper.style.transform = 'none';
-            }, 30);
+            }
           });
 
           block.querySelectorAll('.t-106 .word, .t-T6 .word').forEach((word, wordIndex) => {
@@ -981,7 +1608,7 @@ function buildBasicTemplatePreviewDoc(template) {
           });
 
           block.querySelectorAll('.t-WS1').forEach((wrapper) => {
-            wrapper.classList.remove('ws-enter', 'ws-done');
+            wrapper.classList.remove('ws-enter', 'ws-done', 'ws-line-0', 'ws-line-1', 'ws-line-2');
             wrapper.querySelectorAll('.word').forEach((word, wordIndex) => {
               word.style.transition = 'none';
               word.style.animation = '';
@@ -991,11 +1618,7 @@ function buildBasicTemplatePreviewDoc(template) {
               word.style.setProperty('--ws-delay', (90 + (wordIndex * 55)) + 'ms');
             });
             void wrapper.offsetWidth;
-            wrapper.classList.add('ws-enter');
-            setTimeout(() => {
-              wrapper.classList.remove('ws-enter');
-              wrapper.classList.add('ws-done');
-            }, 90 + (wrapper.querySelectorAll('.word').length * 55) + 360);
+            wrapper.classList.add('ws-enter', 'ws-line-' + phaseIndex);
           });
 
           block.querySelectorAll('.sblock[data-type="sticky-wave"]').forEach(triggerStickyWave);
@@ -1019,7 +1642,7 @@ function buildBasicTemplatePreviewDoc(template) {
         function tick() {
           idx = (idx + 1) % wordCount;
           card.querySelectorAll('.word[data-wi]').forEach((word) => {
-            word.className = cls(Number(word.dataset.wi || 0), word.dataset.imp === 'true');
+            word.className = cls(Number(word.dataset.wi || 0));
           });
           const blockIndex = Math.max(0, Math.min(blocks.length - 1, Math.floor(idx / 4)));
           setBlock(blockIndex);
@@ -1030,11 +1653,24 @@ function buildBasicTemplatePreviewDoc(template) {
           dot.addEventListener('click', () => {
             idx = Math.min((dotIndex * 4) + 2, wordCount - 1);
             card.querySelectorAll('.word[data-wi]').forEach((word) => {
-              word.className = cls(Number(word.dataset.wi || 0), word.dataset.imp === 'true');
+              word.className = cls(Number(word.dataset.wi || 0));
             });
             setBlock(dotIndex);
             activateWholeLine(dotIndex);
           });
+        });
+
+        window.addEventListener('message', (event) => {
+          const payload = event?.data || {};
+          if (payload.type !== 'lekha-template-preview-jump') return;
+          const dotIndex = Number(payload.index);
+          if (!Number.isFinite(dotIndex) || !dots[dotIndex]) return;
+          idx = Math.min((dotIndex * 4) + 2, wordCount - 1);
+          card.querySelectorAll('.word[data-wi]').forEach((word) => {
+            word.className = cls(Number(word.dataset.wi || 0));
+          });
+          setBlock(dotIndex);
+          activateWholeLine(dotIndex);
         });
 
         setBlock(0);
@@ -1051,22 +1687,46 @@ function buildBasicTemplatePreviewDoc(template) {
         <meta charset="UTF-8" />
         <style>${extractOriginalStyle()}</style>
         ${basicIframeOverrides}
+        <style>${buildTemplateColorPreviewCss(template.id, options.previewStyle || {}, { basic: true })}</style>
       </head>
       <body>${template.cardMarkup}${previewScript}</body>
     </html>
   `;
 }
 
-function TemplatePreviewFrame({ template }) {
+function TemplatePreviewFrame({ template, previewStyle }) {
   // Lazy-mount the script-running preview iframe once the card scrolls into
   // view — see useLazyVisible.
+  const iframeRef = useRef(null);
   const [frameRef, shown] = useLazyVisible();
-  const srcDoc = useMemo(() => (shown ? buildTemplatePreviewDoc(template.id) : ''), [template.id, shown]);
+  const palette = getTemplatePalette(previewStyle, ADVANCED_TEMPLATE_STYLE[template.id] || {});
+  const srcDoc = useMemo(
+    () => (shown ? buildTemplatePreviewDoc(template.id, { previewStyle }) : ''),
+    [
+      template.id,
+      shown,
+      previewStyle?.template_color_customized,
+      previewStyle?.karaoke_color_1,
+      previewStyle?.karaoke_color_2,
+      previewStyle?.karaoke_color_3,
+      palette.text,
+      palette.accent,
+      palette.background,
+    ],
+  );
+  const handlePreviewClick = useCallback((event) => {
+    const dotIndex = resolvePreviewDotIndex(event, template.blocks?.length || 0);
+    if (dotIndex < 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    postPreviewDotJump(iframeRef, dotIndex);
+  }, [template.blocks]);
 
   return (
-    <div ref={frameRef} className="advanced-template-preview-frame">
+    <div ref={frameRef} className="advanced-template-preview-frame" onClick={handlePreviewClick}>
       {shown && (
         <iframe
+          ref={iframeRef}
           title={`${template.code} preview`}
           srcDoc={srcDoc}
           sandbox="allow-scripts"
@@ -1078,14 +1738,32 @@ function TemplatePreviewFrame({ template }) {
   );
 }
 
-function BasicTemplatePreviewFrame({ template }) {
+function BasicTemplatePreviewFrame({ template, onSelect, previewStyle }) {
+  const iframeRef = useRef(null);
   const [containerRef, shown] = useLazyVisible();
-  const srcDoc = useMemo(() => (shown ? buildBasicTemplatePreviewDoc(template) : ''), [template, shown]);
+  const palette = getTemplatePalette(previewStyle, BASIC_TEMPLATE_STYLE[template.id] || {});
+  const srcDoc = useMemo(
+    () => (shown ? buildBasicTemplatePreviewDoc(template, { previewStyle }) : ''),
+    [template, shown, previewStyle?.template_color_customized, palette.text, palette.accent, palette.background],
+  );
+  const dotCount = useMemo(() => {
+    const dotMatches = String(template.cardMarkup || '').match(/class="dot(?:\s|")/g);
+    return dotMatches?.length || 0;
+  }, [template.cardMarkup]);
+  const handlePreviewClick = useCallback((event) => {
+    const dotIndex = resolvePreviewDotIndex(event, dotCount);
+    if (dotIndex < 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onSelect?.();
+    postPreviewDotJump(iframeRef, dotIndex);
+  }, [dotCount, onSelect]);
 
   return (
-    <div ref={containerRef} className="advanced-template-preview-frame">
+    <div ref={containerRef} className="advanced-template-preview-frame" onClick={handlePreviewClick}>
       {shown && (
         <iframe
+          ref={iframeRef}
           title={`${template.name} preview`}
           srcDoc={srcDoc}
           sandbox="allow-scripts"
@@ -1093,6 +1771,111 @@ function BasicTemplatePreviewFrame({ template }) {
           style={{ pointerEvents: 'none' }}
         />
       )}
+    </div>
+  );
+}
+
+function TemplateColorInput({ label, value, defaultValue, onChange, onReset }) {
+  const color = normalizeColor(value, defaultValue || '#FFFFFF');
+  return (
+    <div className="template-color-row">
+      <span>{label}</span>
+      <div className="template-color-control">
+        <label className="template-color-swatch" style={{ backgroundColor: color }}>
+          <input
+            type="color"
+            value={color}
+            onChange={(event) => onChange(event.target.value)}
+            aria-label={`${label} color`}
+          />
+        </label>
+        <span className="template-color-hash">#</span>
+        <input
+          key={color}
+          className="template-color-hex"
+          defaultValue={color.replace('#', '')}
+          onChange={(event) => {
+            const raw = event.target.value.replace(/[^0-9a-f]/gi, '').slice(0, 6);
+            if (raw.length === 6) onChange(`#${raw}`);
+          }}
+          aria-label={`${label} hex`}
+        />
+        <button type="button" onClick={onReset} aria-label={`Reset ${label}`}>
+          <RotateCcw className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function TemplateCustomizationPanel({ currentStyle, defaultStyle, onUpdate }) {
+  const palette = getTemplatePalette(currentStyle, defaultStyle);
+  const defaultPalette = getTemplatePalette(defaultStyle, defaultStyle);
+  const updateColor = (field, color) => onUpdate(getTemplateCustomizationPatch(field, color, currentStyle));
+  const isKaraokeFill = currentStyle?.template_id === 't36' || defaultStyle?.template_id === 't36';
+  const showBackground = Boolean(
+    currentStyle?.has_background
+      || defaultStyle?.has_background
+      || currentStyle?.background_color
+      || defaultStyle?.background_color,
+  );
+
+  return (
+    <div className="template-customization-panel" onClick={(event) => event.stopPropagation()}>
+      <div className="template-customization-section">
+        <p>Customize</p>
+        {!isKaraokeFill && (
+          <TemplateColorInput
+            label="Text"
+            value={palette.text}
+            defaultValue={defaultPalette.text}
+            onChange={(color) => updateColor('text', color)}
+            onReset={() => updateColor('text', defaultPalette.text)}
+          />
+        )}
+        {isKaraokeFill ? (
+          <>
+            <TemplateColorInput
+              label="Fill 1"
+              value={currentStyle?.karaoke_color_1 || palette.accent}
+              defaultValue={defaultStyle?.karaoke_color_1 || defaultPalette.accent}
+              onChange={(color) => updateColor('karaoke1', color)}
+              onReset={() => updateColor('karaoke1', defaultStyle?.karaoke_color_1 || defaultPalette.accent)}
+            />
+            <TemplateColorInput
+              label="Fill 2"
+              value={currentStyle?.karaoke_color_2 || defaultStyle?.karaoke_color_2 || '#22D3EE'}
+              defaultValue={defaultStyle?.karaoke_color_2 || '#22D3EE'}
+              onChange={(color) => updateColor('karaoke2', color)}
+              onReset={() => updateColor('karaoke2', defaultStyle?.karaoke_color_2 || '#22D3EE')}
+            />
+            <TemplateColorInput
+              label="Fill 3"
+              value={currentStyle?.karaoke_color_3 || defaultStyle?.karaoke_color_3 || '#FB923C'}
+              defaultValue={defaultStyle?.karaoke_color_3 || '#FB923C'}
+              onChange={(color) => updateColor('karaoke3', color)}
+              onReset={() => updateColor('karaoke3', defaultStyle?.karaoke_color_3 || '#FB923C')}
+            />
+          </>
+        ) : (
+          <TemplateColorInput
+            label="Accent"
+            value={palette.accent}
+            defaultValue={defaultPalette.accent}
+            onChange={(color) => updateColor('accent', color)}
+            onReset={() => updateColor('accent', defaultPalette.accent)}
+          />
+        )}
+        {showBackground && (
+          <TemplateColorInput
+            label="Background"
+            value={palette.background}
+            defaultValue={defaultPalette.background}
+            onChange={(color) => updateColor('background', color)}
+            onReset={() => updateColor('background', defaultPalette.background)}
+          />
+        )}
+      </div>
     </div>
   );
 }
@@ -1123,29 +1906,44 @@ export default function AdvancedTemplateLibrary({
         </div>
         {ADVANCED_TEMPLATE_PACK.map((template) => {
           const isActive = currentStyle?.template_id === template.id;
+          const defaultStyle = buildAppliedTemplateStyle(template);
+          const previewStyle = isActive ? { ...defaultStyle, ...currentStyle } : defaultStyle;
+          const applyTemplate = () => onApplyTemplate?.(defaultStyle);
+          const updateTemplate = (patch) => onApplyTemplate?.({ ...defaultStyle, ...currentStyle, ...patch });
 
           return (
-            <button
+            <div
               key={template.id}
-              type="button"
-              data-template-card-id={template.id}
-              data-template-kind="advanced"
-              aria-pressed={isActive}
-              onClick={() => onApplyTemplate?.(buildAppliedTemplateStyle(template))}
-              className={`advanced-template-card ${isActive ? 'is-active' : ''}`}
+              className={`advanced-template-card-shell ${isActive ? 'is-active' : ''}`}
             >
-              <TemplatePreviewFrame template={template} />
-              {isActive && <Check className="absolute right-2 top-2 z-10 h-3.5 w-3.5 text-[#ffb629]" />}
-              <div className="advanced-template-card-body">
-                <div className="advanced-template-card-title">
-                  <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#ffb629]" />
-                  <div className="min-w-0">
-                    <p>{template.name}</p>
-                    {template.mood && <span>{template.mood}</span>}
+              <button
+                type="button"
+                data-template-card-id={template.id}
+                data-template-kind="advanced"
+                aria-pressed={isActive}
+                onClick={applyTemplate}
+                className={`advanced-template-card ${isActive ? 'is-active' : ''}`}
+              >
+                <TemplatePreviewFrame template={template} previewStyle={previewStyle} />
+                {isActive && <Check className="absolute right-2 top-2 z-10 h-3.5 w-3.5 text-[#ffb629]" />}
+                <div className="advanced-template-card-body">
+                  <div className="advanced-template-card-title">
+                    <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#ffb629]" />
+                    <div className="min-w-0">
+                      <p>{template.name}</p>
+                      {template.mood && <span>{template.mood}</span>}
+                    </div>
                   </div>
                 </div>
-              </div>
-            </button>
+              </button>
+              {isActive && (
+                <TemplateCustomizationPanel
+                  currentStyle={previewStyle}
+                  defaultStyle={defaultStyle}
+                  onUpdate={updateTemplate}
+                />
+              )}
+            </div>
           );
         })}
 
@@ -1155,29 +1953,44 @@ export default function AdvancedTemplateLibrary({
         </div>
         {BASIC_TEMPLATE_PACK.map((template) => {
           const isActive = currentStyle?.template_id === template.id;
+          const defaultStyle = buildAppliedBasicTemplateStyle(template);
+          const previewStyle = isActive ? { ...defaultStyle, ...currentStyle } : defaultStyle;
+          const applyBasicTemplate = () => onApplyTemplate?.(defaultStyle);
+          const updateBasicTemplate = (patch) => onApplyTemplate?.({ ...defaultStyle, ...currentStyle, ...patch });
 
           return (
-            <button
+            <div
               key={`basic-${template.id}-${template.name}`}
-              type="button"
-              data-template-card-id={template.id}
-              data-template-kind="basic"
-              aria-pressed={isActive}
-              onClick={() => onApplyTemplate?.(buildAppliedBasicTemplateStyle(template))}
-              className={`advanced-template-card basic-template-card ${isActive ? 'is-active' : ''}`}
+              className={`advanced-template-card-shell ${isActive ? 'is-active' : ''}`}
             >
-              <BasicTemplatePreviewFrame template={template} />
-              {isActive && <Check className="absolute right-2 top-2 z-10 h-3.5 w-3.5 text-[#ffb629]" />}
-              <div className="advanced-template-card-body">
-                <div className="advanced-template-card-title">
-                  <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#ffb629]" />
-                  <div className="min-w-0">
-                    <p>{template.name}</p>
-                    {template.desc && <span>{template.desc}</span>}
+              <button
+                type="button"
+                data-template-card-id={template.id}
+                data-template-kind="basic"
+                aria-pressed={isActive}
+                onClick={applyBasicTemplate}
+                className={`advanced-template-card basic-template-card ${isActive ? 'is-active' : ''}`}
+              >
+                <BasicTemplatePreviewFrame template={template} onSelect={applyBasicTemplate} previewStyle={previewStyle} />
+                {isActive && <Check className="absolute right-2 top-2 z-10 h-3.5 w-3.5 text-[#ffb629]" />}
+                <div className="advanced-template-card-body">
+                  <div className="advanced-template-card-title">
+                    <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#ffb629]" />
+                    <div className="min-w-0">
+                      <p>{template.name}</p>
+                      {template.desc && <span>{template.desc}</span>}
+                    </div>
                   </div>
                 </div>
-              </div>
-            </button>
+              </button>
+              {isActive && (
+                <TemplateCustomizationPanel
+                  currentStyle={previewStyle}
+                  defaultStyle={defaultStyle}
+                  onUpdate={updateBasicTemplate}
+                />
+              )}
+            </div>
           );
         })}
       </div>

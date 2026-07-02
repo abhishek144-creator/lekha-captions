@@ -25,6 +25,7 @@ import { FixedSizeList as List } from 'react-window';
 import { loadGoogleFont, detectScript, scriptFontMap } from './fontUtils';
 import { Check, Search, ChevronDown } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { apiRequest } from '@/lib/apiClient';
 
 const FontRow = React.memo(({ data, index, style }) => {
   const font = data.items[index];
@@ -130,9 +131,7 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
     const controller = new AbortController()
     const fetchFullGoogleFonts = async () => {
       try {
-        const res = await fetch('/api/fonts', { signal: controller.signal });
-        if (!res.ok) throw new Error(`fonts api failed: ${res.status}`);
-        const data = await res.json();
+        const data = await apiRequest('/api/fonts', { signal: controller.signal });
         if (data.fonts?.length > 0) {
           setGoogleFontsList(data.fonts.map(f => ({ value: f.family, label: f.family })));
         }
