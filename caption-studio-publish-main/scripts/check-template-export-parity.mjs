@@ -99,14 +99,14 @@ const ADVANCED_STYLE_OVERRIDES = {
   t24: { template_name: 'Philosophical Twist', font_family: 'Spectral', text_color: '#FFFFFF', secondary_color: '#F97316', highlight_color: '#F97316' },
   t25: { template_name: 'Love Letter', font_family: 'Instrument Serif', font_size: 25, font_style: 'italic', text_color: '#FFFFFF', secondary_color: '#FF3D71', highlight_color: '#FF3D71' },
   t26: { template_name: 'Street / Raw', font_family: 'Bungee', font_size: 24, font_weight: '900', text_color: '#FFFFFF', secondary_color: '#F97316', highlight_color: '#F97316', text_case: 'uppercase' },
-  t27: { template_name: 'Sci-Fi Futuristic', font_family: 'Exo 2', text_color: '#00E5FF', secondary_color: '#FFFFFF', highlight_color: '#FFFFFF', text_case: 'uppercase' },
+  t27: { template_name: 'Sci-Fi Futuristic', font_family: 'Exo 2', font_size: 20, text_color: '#00E5FF', secondary_color: '#FFFFFF', highlight_color: '#FFFFFF', text_case: 'uppercase' },
   t28: { template_name: 'Nostalgia / Memory', font_family: 'Bitter', text_color: '#D8CBB8', secondary_color: '#86DE02', highlight_color: '#86DE02' },
   t29: { template_name: 'Battle Cry', font_family: 'Teko', font_size: 30, text_color: '#FFFFFF', secondary_color: '#F97316', highlight_color: '#F97316', text_case: 'uppercase' },
   t30: { template_name: 'Meditation / Zen', font_family: 'Cormorant Garamond', font_style: 'italic', text_color: '#B4D2C8', secondary_color: '#FFFFFF', highlight_color: '#FFFFFF' },
   t31: { template_name: 'Newspaper Headline', font_family: 'Playfair Display', font_size: 27, text_color: '#FFFFFF', secondary_color: '#D4AF37', highlight_color: '#D4AF37' },
   t32: { template_name: 'Poetic Verse', font_family: 'Bodoni Moda', font_style: 'italic', text_color: '#D0CEE8', secondary_color: '#A78BFA', highlight_color: '#A78BFA' },
   t33: { template_name: 'Documentary', font_family: 'Noto Sans', text_color: '#FFFFFF', secondary_color: '#EE17DC', highlight_color: '#EE17DC' },
-  t34: { template_name: 'Anime Energy', font_family: 'Syne', font_size: 24, font_weight: '800', text_color: '#FFFFFF', secondary_color: '#15F5F9', highlight_color: '#15F5F9', text_case: 'uppercase' },
+  t34: { template_name: 'Anime Energy', font_family: 'Syne', font_size: 20, font_weight: '800', text_color: '#FFFFFF', secondary_color: '#15F5F9', highlight_color: '#15F5F9', text_case: 'uppercase' },
   t35: { template_name: 'Whispered Secret', font_family: 'Crimson Text', font_style: 'italic', text_color: '#DCD2DC', secondary_color: '#FFFFFF', highlight_color: '#FFFFFF' },
   t36: { template_name: 'Karaoke Fill', font_family: 'Inter', text_color: '#FFFFFF', secondary_color: '#DDAA03', highlight_color: '#DDAA03', karaoke_color_1: '#DDAA03', karaoke_color_2: '#22D3EE', karaoke_color_3: '#FB923C' },
   t37: { template_name: 'Neon Pulse', font_family: 'Rajdhani', font_size: 25, text_color: '#E1DA09', secondary_color: '#FFFFFF', highlight_color: '#FFFFFF', text_case: 'uppercase' },
@@ -878,6 +878,7 @@ const AFFECTED_ADVANCED_TEMPLATE_IDS = [
   't31', // Newspaper Headline
   't33', // Documentary
   't34', // Anime Energy
+  't40', // Still Frames
 ];
 
 const GOAL_ADVANCED_TEMPLATE_IDS = [

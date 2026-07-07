@@ -44,7 +44,7 @@ const DISABLE_EXPORT_LIMITS_FOR_TESTING = import.meta.env.DEV || import.meta.env
 // User-customized properties (font, color, position) are NOT overridden here.
 const TEMPLATE_CANONICAL_STYLES = {
   't-115': { has_shadow: true, shadow_color: '#39FF14', shadow_blur: 10, shadow_offset_x: 0, shadow_offset_y: 0, has_background: false, has_stroke: false },
-  't-109': { has_shadow: true, shadow_color: '#E01A1A', shadow_blur: 0, shadow_offset_x: 3, shadow_offset_y: 3, has_background: false, has_stroke: false },
+  't-109': { has_shadow: true, shadow_color: '#FF2A00', shadow_blur: 0, shadow_offset_x: 3, shadow_offset_y: 3, has_background: false, has_stroke: false },
   't-26':  { has_background: true, background_color: '#e8e8e8', background_opacity: 1.0, has_stroke: true, stroke_color: '#000000', stroke_width: 1, has_shadow: false },
   't-102': { has_background: true, background_color: '#E8E8E8', background_opacity: 1.0, background_padding: 10, has_stroke: false, has_shadow: false },
   't-36':  { has_background: false, has_stroke: false, has_shadow: false },
@@ -59,9 +59,9 @@ const TEMPLATE_CANONICAL_STYLES = {
   't-52':  { has_background: false, has_stroke: false, has_shadow: false },
   't-103': { has_background: true, background_color: '#1e1e1e', background_opacity: 0.85, background_padding: 10, has_stroke: false, has_shadow: false },
   't-112': { has_background: false, has_stroke: false, has_shadow: false },
-  't-104': { has_stroke: true, stroke_color: '#2563EB', stroke_width: 2, has_background: false, has_shadow: false },
+  't-104': { has_stroke: true, stroke_color: '#4F46FF', stroke_width: 2, has_background: false, has_shadow: false },
   't-111': { has_background: false, has_stroke: false, has_shadow: false },
-  't-T5':  { has_background: true, background_color: '#BEFF00', background_opacity: 1.0, background_padding: 10, has_stroke: false, has_shadow: false },
+  't-T5':  { has_background: true, background_color: '#DDAA03', background_opacity: 1.0, background_padding: 10, has_stroke: false, has_shadow: false },
   't-95':  { has_background: false, has_stroke: false, has_shadow: false },
   't-T1':  { has_background: false, has_stroke: false, has_shadow: false },
   't-T4':  { has_background: false, has_stroke: false, has_shadow: false },
@@ -112,6 +112,26 @@ function getRenderedBoxSize(root) {
 function findRenderedTemplateMeasureElement(preferredRoot) {
   return findLargestRenderedElement('[data-caption-layer="true"] [data-export-measure]', preferredRoot)
     || findLargestRenderedElement('[data-export-measure]', preferredRoot);
+}
+
+function findCaptionLayerById(container, captionId) {
+  if (!container || captionId === undefined || captionId === null) return null;
+  const targetId = String(captionId);
+  return Array.from(container.querySelectorAll?.('[data-caption-layer="true"]') || [])
+    .find((element) => element.getAttribute('data-caption-id') === targetId) || null;
+}
+
+function findRenderedCaptionTemplateElement(preferredRoot) {
+  if (!preferredRoot) return null;
+  return findLargestRenderedElementInRoot('[data-export-measure]', preferredRoot)
+    || findLargestRenderedElementInRoot('.lekha-original-template .lekha-applied-advanced-template.active', preferredRoot)
+    || findLargestRenderedElementInRoot('.lekha-original-template .lekha-applied-advanced-template', preferredRoot)
+    || findLargestRenderedElementInRoot('.lekha-original-template', preferredRoot)
+    || findLargestRenderedElementInRoot('.lekha-applied-advanced-template.active', preferredRoot)
+    || findLargestRenderedElementInRoot('.lekha-applied-advanced-template', preferredRoot)
+    || findLargestRenderedElementInRoot('.lekha-applied-basic-template-host', preferredRoot)
+    || findLargestRenderedElementInRoot('.lekha-sidebar-source-template', preferredRoot)
+    || findLargestRenderedElementInRoot('.cap-text', preferredRoot);
 }
 
 function normalizeTemplateLineText(value) {
@@ -287,6 +307,39 @@ function findLargestRenderedElement(selector, preferredRoot) {
   return best;
 }
 
+function findLargestRenderedElementInRoot(selector, root) {
+  if (!root || typeof window === 'undefined') return null;
+  const candidates = [
+    ...(typeof root.matches === 'function' && root.matches(selector) ? [root] : []),
+    ...(typeof root.querySelectorAll === 'function' ? Array.from(root.querySelectorAll(selector)) : []),
+  ];
+  let best = null;
+  let bestArea = 0;
+
+  candidates.forEach((element) => {
+    if (!element || typeof element.getBoundingClientRect !== 'function') return;
+    const rect = element.getBoundingClientRect();
+    const style = window.getComputedStyle(element);
+    if (
+      !Number.isFinite(rect.width)
+      || !Number.isFinite(rect.height)
+      || rect.width <= 0
+      || rect.height <= 0
+      || style.display === 'none'
+      || style.visibility === 'hidden'
+    ) {
+      return;
+    }
+    const area = rect.width * rect.height;
+    if (area > bestArea) {
+      best = element;
+      bestArea = area;
+    }
+  });
+
+  return best;
+}
+
 function getRenderedElementCenterPercent(element, containerRect, containerToVideo) {
   if (
     !element
@@ -364,6 +417,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
   const [waitStartTime, setWaitStartTime] = useState(null);
   const [showServerBusy, setShowServerBusy] = useState(false);
   const [exportExpiry, setExportExpiry] = useState(null);
+  const [exportAspectRatio, setExportAspectRatio] = useState('9:16');
   const exportInFlightRef = useRef(false);
   const exportAbortRef = useRef(null);
   const backgroundNoticeShownRef = useRef(false);
@@ -611,7 +665,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
         ? captionStyle.template_snapshot
         : captionTemplateSnapshot;
       const baseExportStyle = hasTemplateIdentity(styleTemplateSnapshot)
-        ? { ...captionStyle, ...styleTemplateSnapshot }
+        ? { ...styleTemplateSnapshot, ...captionStyle }
         : (captionStyle || {});
       const templateOverride = TEMPLATE_CANONICAL_STYLES[baseExportStyle?.template_id || ''] || {};
       const effectiveExportStyle = { ...baseExportStyle, ...templateOverride };
@@ -620,9 +674,9 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
         : (hasTemplateIdentity(effectiveExportStyle) ? { ...effectiveExportStyle } : null);
       const activeTemplateValue = (caption, key, fallback = '') => (
         caption?.[key]
+        ?? effectiveExportStyle?.[key]
         ?? caption?.applied_template_style?.[key]
         ?? activeTemplateSnapshot?.[key]
-        ?? effectiveExportStyle?.[key]
         ?? fallback
       );
 
@@ -723,7 +777,8 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
         return layout;
       };
 
-      const exportUsesRecreatedAdvancedTemplate = isRecreatedAdvancedTemplateId(effectiveExportStyle?.template_id);
+      const exportUsesRecreatedAdvancedTemplate = isRecreatedAdvancedTemplateId(effectiveExportStyle?.template_id)
+        || captions.some((cap) => !cap?.isTextElement && isRecreatedAdvancedTemplateId(activeTemplateValue(cap, 'template_id')));
       const wordLayouts = captureLayout(captions);
 
       // Bug 9: Warn if word layout capture returned nothing despite captions having words
@@ -804,6 +859,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
         file_id: fileId,
         id_token: idToken || '',
         quality: effectiveQuality,
+        export_aspect_ratio: exportAspectRatio,
         captions: captions.filter(c => c && c.text).map(cap => {
           const isText = cap.isTextElement;
           const cs = cap.customStyle || {};
@@ -827,6 +883,19 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
             ? previewTemplateLineTexts
             : [];
           const capTemplateId = !isText ? activeTemplateValue(cap, 'template_id') : '';
+          const captionLayerEl = !isText ? findCaptionLayerById(container, cap.id) : null;
+          const captionTemplateEl = !isText ? findRenderedCaptionTemplateElement(captionLayerEl) : null;
+          const captionTemplateBox = getRenderedBoxSize(captionTemplateEl);
+          const captionMeasuredTemplateFontPx = getMaxRenderedFontSize(captionTemplateEl);
+          const captionPreviewTemplateFontPx = captionMeasuredTemplateFontPx > 0
+            ? captionMeasuredTemplateFontPx
+            : previewTemplateFontPx;
+          const captionPreviewTemplateBoxWidthPx = captionTemplateBox.width > 0
+            ? captionTemplateBox.width
+            : previewTemplateBox.width;
+          const captionPreviewTemplateBoxHeightPx = captionTemplateBox.height > 0
+            ? captionTemplateBox.height
+            : previewTemplateBox.height;
           const capUsesRecreatedAdvancedTemplate = isRecreatedAdvancedTemplateId(capTemplateId);
           const sourceTemplateAccentColor = isAdvancedTemplateId(capTemplateId)
             ? (ADVANCED_TEMPLATE_EMPHASIS_COLORS[capTemplateId] || '')
@@ -868,6 +937,9 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
                 karaoke_color_2: activeTemplateValue(cap, 'karaoke_color_2', effectiveExportStyle?.karaoke_color_2 || ''),
                 karaoke_color_3: activeTemplateValue(cap, 'karaoke_color_3', effectiveExportStyle?.karaoke_color_3 || ''),
                 template_color_customized: capTemplateColorsCustomized,
+                preview_template_font_px: Number.isFinite(captionPreviewTemplateFontPx) ? captionPreviewTemplateFontPx : 0,
+                preview_template_box_width_px: Number.isFinite(captionPreviewTemplateBoxWidthPx) ? captionPreviewTemplateBoxWidthPx : 0,
+                preview_template_box_height_px: Number.isFinite(captionPreviewTemplateBoxHeightPx) ? captionPreviewTemplateBoxHeightPx : 0,
               }
             : null;
           return {
@@ -876,7 +948,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
             start_time: cap.start_time,
             end_time: cap.end_time,
             __templateIndex: exportTemplateIndex,
-            animation: !isText && activeTemplateSnapshot ? 'none' : (cap.animation || 'none'),
+            animation: cap.animation || 'none',
             is_text_element: !!isText,
             template_id: capTemplateId,
             template_20_id: !isText ? activeTemplateValue(cap, 'template_20_id') : '',
@@ -890,9 +962,13 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
             emotional_mode: !isText ? (cap.emotional_mode || emotional?.mode || 'normal') : '',
             template_phase_index: resolvedTemplatePhaseIndex,
             imp_word_index: !isText ? Number(emotional?.impWordIndex ?? cap.imp_word_index ?? -1) : -1,
+            imp_word_indices: !isText ? (emotional?.impWordIndices || cap.imp_word_indices || []) : [],
             emphasis_color: !isText ? (emotional?.emphasisColor || cap.emphasis_color || '') : '',
             audio_emotion_metrics: !isText ? (cap.audio_emotion_metrics || emotional?.audio || null) : null,
             preview_template_line_texts: captionPreviewLineTexts,
+            preview_template_font_px: !isText && Number.isFinite(captionPreviewTemplateFontPx) ? captionPreviewTemplateFontPx : 0,
+            preview_template_box_width_px: !isText && Number.isFinite(captionPreviewTemplateBoxWidthPx) ? captionPreviewTemplateBoxWidthPx : 0,
+            preview_template_box_height_px: !isText && Number.isFinite(captionPreviewTemplateBoxHeightPx) ? captionPreviewTemplateBoxHeightPx : 0,
             custom_style: isText ? (() => {
               const teVidPos = containerToVideo(cs.left ?? 50, cs.top ?? 50);
               return {
@@ -947,6 +1023,8 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
             || '';
           const templateColorCustomized = Boolean(
             _cs?.template_color_customized
+              || _cs?.text_gradient
+              || _cs?.highlight_gradient
               || (
                 configuredTemplateAccentColor
                 && sourceTemplateAccentColor
@@ -1025,6 +1103,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
           karaoke_color_2: _cs?.karaoke_color_2 || '',
           karaoke_color_3: _cs?.karaoke_color_3 || '',
           template_color_customized: templateColorCustomized,
+          export_aspect_ratio: exportAspectRatio,
           show_inactive: _cs?.show_inactive !== false,
           preview_width: renderW,
           preview_height: renderH,
@@ -1207,6 +1286,12 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
     },
   ];
 
+  const exportAspectOptions = [
+    { value: '9:16', label: '9:16', detail: 'Shorts' },
+    { value: '1:1', label: '1:1', detail: 'Square' },
+    { value: '16:9', label: '16:9', detail: 'Wide' },
+  ];
+
   const planLabel = userData?.subscription_tier
     ? userData.subscription_tier.replace(/_/g, ' ')
     : isSignedIn
@@ -1309,6 +1394,32 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
                 </Button>
               </div>
             )}
+            <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+              <div className="mb-3 flex items-center justify-between px-1">
+                <p className="text-[11px] text-gray-500 uppercase tracking-[0.22em] font-bold">Canvas Size</p>
+                <span className="text-[10px] font-semibold text-gray-500">{exportAspectRatio}</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {exportAspectOptions.map((option) => {
+                  const isActive = exportAspectRatio === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setExportAspectRatio(option.value)}
+                      className={`rounded-xl border px-3 py-2 text-left transition-colors ${
+                        isActive
+                          ? 'border-[#f5a623]/45 bg-[#f5a623]/14 text-white'
+                          : 'border-white/10 bg-black/20 text-gray-400 hover:bg-white/[0.06] hover:text-white'
+                      }`}
+                    >
+                      <span className="block text-sm font-black">{option.label}</span>
+                      <span className="mt-0.5 block text-[10px] text-gray-500">{option.detail}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             {/* Video exports */}
             <div className="flex items-center justify-between px-1">
               <div>

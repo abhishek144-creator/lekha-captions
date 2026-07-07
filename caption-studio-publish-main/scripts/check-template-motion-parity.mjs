@@ -532,8 +532,33 @@ if (!appliedBasicCss.includes('lekha-basic-template-enter-once.t-106')
   || !appliedBasicCss.includes('lekha-basic-template-enter-once.t-WS1')) {
   fail('right basic one-time entrance animations for Iman, Light Streak, or Word Slide are missing');
 }
+if (!basicTemplateInlineSource.includes('t-106 .bt-cap-block.basic-phase-1 .t-106 .word.current')
+  || !basicTemplateInlineSource.includes('t-106 .bt-cap-block.basic-phase-2 .t-106 .word.current')
+  || !basicTemplateInlineSource.includes('animation: basicLightStreakSlideRight 0.42s cubic-bezier(0.22, 1, 0.36, 1) both !important;')
+  || !captionTemplatesCss.includes('.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-106 .bt-cap-block.basic-phase-1 .lekha-basic-template-animated .word.current')
+  || !captionTemplatesCss.includes('.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-106 .bt-cap-block.basic-phase-2 .lekha-basic-template-animated .word.current')
+  || !gallerySource.includes("block.querySelectorAll('.t-106').forEach((wrapper) => {")
+  || !gallerySource.includes("phaseIndex === 2")
+  || !templatesTabSource.includes("const isIman = template.id === 't-106';")
+  || !templatesTabSource.includes("isIman && phase === 2")) {
+  fail('Iman phase 1 must be plain and phase 2 must slide from the right like Light Streak phase 2');
+}
+if (!basicTemplateInlineSource.includes('basic-phase-1 .t-52 .word.current')
+  || !basicTemplateInlineSource.includes('animation: basicLightStreakSlideLeft 0.42s cubic-bezier(0.22, 1, 0.36, 1) both !important;')
+  || !basicTemplateInlineSource.includes('basic-phase-2 .t-52 .word.current')
+  || !basicTemplateInlineSource.includes('animation: basicLightStreakSlideRight 0.42s cubic-bezier(0.22, 1, 0.36, 1) both !important;')
+  || !captionTemplatesCss.includes('.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-52 .bt-cap-block.basic-phase-1 .lekha-basic-template-animated .word.current')
+  || !captionTemplatesCss.includes('.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-52 .bt-cap-block.basic-phase-2 .lekha-basic-template-animated .word.current')
+  || !templatesTabSource.includes("animation: `${phase === 1 ? 'basicWordSlideFromLeft' : 'basicWordSlideFromRight'} 0.42s cubic-bezier(0.22,1,0.36,1) both`")) {
+  fail('Light Streak phase 1 must mirror phase 2 as the opposite-direction slide in preview and applied renderers');
+}
 if (!/t-T4[\s\S]{0,220}basic-phase-1[\s\S]{0,260}wordSlideIn/.test(appliedBasicCss)) {
   fail('Study With Me phase 1 does not use the Word Slide entrance');
+}
+if (!videoPlayerSource.includes('function resolveAppliedBasicTemplateMarkup')
+  || !videoPlayerSource.includes('markupMatchesTemplate')
+  || !videoPlayerSource.includes("findAppliedBasicTemplateMarkup({ template_id: templateId })")) {
+  fail('Study With Me applied renderer must reject stale Basic markup and reload the matching source template');
 }
 const studyLineResetStart = appliedBasicCss.indexOf(
   '.lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .bt-cap-block.basic-phase-0 .lekha-basic-template-animated,',
@@ -561,7 +586,7 @@ if (!captionTemplatesCss.includes('.t-T4.study-line-0 .cap-text:not(.has-manual-
 }
 const studyGalleryBlockStart = gallerySource.indexOf("block.querySelectorAll('.t-T4').forEach((wrapper) => {");
 const studyGalleryBlockEnd = studyGalleryBlockStart >= 0
-  ? gallerySource.indexOf("block.querySelectorAll('.t-106 .word, .t-T6 .word').forEach((word, wordIndex) => {", studyGalleryBlockStart)
+  ? gallerySource.indexOf("block.querySelectorAll('.t-106').forEach((wrapper) => {", studyGalleryBlockStart)
   : -1;
 const studyGalleryBlock = studyGalleryBlockStart >= 0 && studyGalleryBlockEnd > studyGalleryBlockStart
   ? gallerySource.slice(studyGalleryBlockStart, studyGalleryBlockEnd)
@@ -572,7 +597,8 @@ if (!studyGalleryBlock.includes("wrapper.classList.remove('study-line-0', 'study
   || studyGalleryBlock.includes('word.style.animation =')) {
   fail('Study With Me template preview should delegate phase 0/2 motion to the whole line');
 }
-if (!templatesTabSource.includes("const slideStyle = (isWordSlide || (isStudyWithMe && phase === 1))")
+if (!templatesTabSource.includes("...(isLightStreak && phase > 0")
+  || !templatesTabSource.includes("...((isWordSlide || (isStudyWithMe && phase === 1))")
   || !templatesTabSource.includes('study-word-slide-preview')
   || !templatesTabSource.includes("animation: 'basicWordSlideFromLeft 0.42s cubic-bezier(0.22,1,0.36,1) both'")
   || !templatesTabSource.includes("animation: 'wordRiseInFromBottom 0.38s cubic-bezier(0.34,1.2,0.64,1) both'")) {

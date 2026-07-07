@@ -24,6 +24,99 @@
   letter-spacing: 0.14em;
 }
 
+.advanced-template-browser-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.advanced-template-search {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.045);
+  padding: 0 10px;
+  color: rgba(148, 163, 184, 0.95);
+}
+
+.advanced-template-search input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #fff;
+  font-size: 12px;
+}
+
+.advanced-template-search input::placeholder {
+  color: rgba(148, 163, 184, 0.58);
+}
+
+.advanced-template-search:focus-within {
+  border-color: rgba(255, 182, 41, 0.42);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.advanced-template-favorites-filter,
+.advanced-template-favorite-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.045);
+  color: rgba(203, 213, 225, 0.72);
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
+}
+
+.advanced-template-favorites-filter {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+}
+
+.advanced-template-favorite-button {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  z-index: 12;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: rgba(5, 5, 8, 0.62);
+  backdrop-filter: blur(8px);
+}
+
+.advanced-template-favorites-filter:hover,
+.advanced-template-favorite-button:hover {
+  border-color: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
+.advanced-template-favorites-filter.is-active,
+.advanced-template-favorite-button.is-active {
+  border-color: rgba(255, 182, 41, 0.44);
+  background: rgba(255, 182, 41, 0.16);
+  color: #ffcf6a;
+}
+
+.advanced-template-empty-state {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 20px 12px;
+  color: rgba(148, 163, 184, 0.78);
+  font-size: 12px;
+  text-align: center;
+}
+
 .advanced-template-card {
   position: relative;
   width: 100%;
@@ -40,6 +133,7 @@
 }
 
 .advanced-template-card-shell {
+  position: relative;
   border-radius: 8px;
 }
 

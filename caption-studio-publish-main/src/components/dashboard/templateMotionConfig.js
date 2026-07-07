@@ -13,13 +13,13 @@ export const ADVANCED_TEMPLATE_TIMING = Object.freeze({
 });
 
 export const LEGACY_TEMPLATE_TIMING = Object.freeze({
-  wordStaggerMs: 65,
-  wordDurationMs: 280,
-  positionedWordStaggerMs: 220,
-  positionedWordDurationMs: 300,
-  holdMs: 2800,
-  exitMs: 360,
-  gapMs: 40,
+  wordStaggerMs: 90,
+  wordDurationMs: 420,
+  positionedWordStaggerMs: 260,
+  positionedWordDurationMs: 420,
+  holdMs: 3800,
+  exitMs: 460,
+  gapMs: 80,
 });
 
 export const LEGACY_WBW_CLASSES = Object.freeze([
@@ -108,6 +108,7 @@ export const RECREATED_ADVANCED_TEMPLATE_IDS = Object.freeze([
   't31', // Newspaper Headline
   't33', // Documentary
   't34', // Anime Energy
+  't40', // Still Frames
 ]);
 
 // The authored HTML contains four styled phases whose labels and markup are

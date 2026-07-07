@@ -1,9 +1,14 @@
-import React, { useEffect, useState } from 'react';
-import { Sparkles, Check, X, RotateCcw } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Sparkles, Check, X, RotateCcw, Search, Star } from 'lucide-react';
 import { motion } from 'framer-motion';
 import '../../styles/captionTemplates.css';
 import originalTemplateHtml from '../../assets/lekha-captions-T11-T35.html?raw';
 import { findAppliedBasicTemplateMarkup } from './basicTemplateInline.js';
+import {
+  isExportableTemplateCandidate,
+  templateMatchesQuery,
+  useTemplateFavorites,
+} from './templateBrowserUtils.js';
 
 /*
   Each template corresponds to a CSS class in captionTemplates.css.
@@ -11,6 +16,8 @@ import { findAppliedBasicTemplateMarkup } from './basicTemplateInline.js';
   user sees the exact visual effect before applying.
 */
 const BASIC_TEMPLATE_MARKUP = {
+  't-106': findAppliedBasicTemplateMarkup(originalTemplateHtml, { template_id: 't-106' }),
+  't-52': findAppliedBasicTemplateMarkup(originalTemplateHtml, { template_id: 't-52' }),
   't-T4': findAppliedBasicTemplateMarkup(originalTemplateHtml, { template_id: 't-T4' }),
   't-WS1': findAppliedBasicTemplateMarkup(originalTemplateHtml, { template_id: 't-WS1' }),
 };
@@ -20,7 +27,28 @@ const withBasicTemplateMarkup = (style) => ({
   template_markup: BASIC_TEMPLATE_MARKUP[style.template_id] || style.template_markup || '',
 });
 
-const templates = [
+const IMAN_BASIC_FONT_STYLE = { font_family: 'Noto Sans', font_size: 24 };
+const GLOW_DOT_FONT_STYLE = { font_family: 'Noto Sans', font_size: 22 };
+
+const applyImanFontAfterIman = (templateList) => {
+  let hasPassedIman = false;
+  return templateList.map((template) => {
+    if (hasPassedIman) {
+      return {
+        ...template,
+        style: {
+          ...template.style,
+          ...IMAN_BASIC_FONT_STYLE,
+          ...(template.id === 't-110' ? GLOW_DOT_FONT_STYLE : {}),
+        },
+      };
+    }
+    if (template.id === 't-106') hasPassedIman = true;
+    return template;
+  });
+};
+
+const templates = applyImanFontAfterIman([
   {
     id: 't-115', name: 'Green Neon Pulse',
     desc: 'White text with pulsing green active glow',
@@ -31,7 +59,7 @@ const templates = [
     id: 't-109', name: '3D Shadow',
     desc: 'White text with bold orange 3D shadow on active',
     bg: '#1a1a1a',
-    style: { template_id: 't-109', font_family: 'Noto Sans', font_size: 26, font_weight: '900', position_y: 75, text_color: '#FFFFFF', secondary_color: '#E01A1A', highlight_color: '#DDAA03', has_shadow: true, shadow_color: '#E01A1A', shadow_offset_x: 3, shadow_offset_y: 3, shadow_blur: 0 }
+    style: { template_id: 't-109', font_family: 'Noto Sans', font_size: 26, font_weight: '900', position_y: 75, text_color: '#FFFFFF', secondary_color: '#FF2A00', highlight_color: '#FFF200', has_shadow: true, shadow_color: '#FF2A00', shadow_offset_x: 3, shadow_offset_y: 3, shadow_blur: 0 }
   },
   {
     id: 't-26', name: 'Bold Stroke',
@@ -64,12 +92,6 @@ const templates = [
     style: { template_id: 't-9', font_family: 'Noto Sans', font_size: 26, font_weight: '900', text_case: 'uppercase', position_y: 75, text_color: '#ff8c00', secondary_color: '#ff8c00', has_shadow: true, shadow_color: '#ff4500', shadow_blur: 10, shadow_offset_x: 0, shadow_offset_y: 0 }
   },
   {
-    id: 't-124', name: 'Ghost Echo',
-    desc: 'Fade in with ghost echo shadow trail',
-    bg: '#111',
-    style: { template_id: 't-124', font_family: 'Inter', font_size: 26, font_weight: '900', position_y: 75, text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03', has_shadow: true, shadow_color: '#ffffff', shadow_offset_x: 4, shadow_offset_y: 4, shadow_blur: 0 }
-  },
-  {
     id: 't-16', name: 'Ghost Focus',
     desc: 'Blurred inactive words, sharp spotlight on spoken',
     bg: '#111',
@@ -79,7 +101,7 @@ const templates = [
     id: 't-110', name: 'Glow Dot',
     desc: 'Glowing dot under active word',
     bg: '#111',
-    style: { template_id: 't-110', font_family: 'Noto Sans', font_size: 24, font_weight: '800', position_y: 75, text_color: '#FFFFFF', secondary_color: '#0066FF', highlight_color: '#DDAA03' }
+    style: { template_id: 't-110', font_family: 'Noto Sans', font_size: 22, font_weight: '800', position_y: 75, text_color: '#FFFFFF', secondary_color: '#0066FF', highlight_color: '#DDAA03' }
   },
   {
     id: 't-119', name: 'Gradient Box',
@@ -91,19 +113,19 @@ const templates = [
     id: 't-12', name: 'Horror',
     desc: 'Typewriter font, blood-red glow',
     bg: '#000',
-    style: { template_id: 't-12', font_family: 'Special Elite', font_size: 22, position_y: 75, text_color: '#cc0000', secondary_color: '#cc0000', highlight_color: '#DDAA03', has_shadow: true, shadow_color: '#cc0000', shadow_blur: 10, shadow_offset_x: 0, shadow_offset_y: 0 }
+    style: { template_id: 't-12', font_family: 'Special Elite', font_size: 22, position_y: 75, text_color: '#cc0000', secondary_color: '#cc0000', highlight_color: '#cc0000', has_shadow: true, shadow_color: '#cc0000', shadow_blur: 10, shadow_offset_x: 0, shadow_offset_y: 0 }
   },
   {
     id: 't-106', name: 'Iman',
     desc: 'Words hidden until spoken — clean instant reveal',
     bg: '#111',
-    style: { template_id: 't-106', font_family: 'Noto Sans', font_size: 24, font_weight: '800', position_y: 75, text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03', has_shadow: true, shadow_color: '#000000', shadow_blur: 3, shadow_offset_x: 1, shadow_offset_y: 2 }
+    style: withBasicTemplateMarkup({ template_id: 't-106', template_source: 'lekha-basic', template_class: 'btcard t-106', template_name: 'Iman', template_layout: 'word-sequence', font_family: 'Noto Sans', font_size: 24, font_weight: '800', position_y: 75, text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03', has_shadow: true, shadow_color: '#000000', shadow_blur: 3, shadow_offset_x: 1, shadow_offset_y: 2, show_inactive: true, has_background: false, has_stroke: false })
   },
   {
     id: 't-52', name: 'Light Streak',
     desc: 'Words rise into view as spoken',
     bg: '#111',
-    style: { template_id: 't-52', font_family: 'Inter', font_size: 26, font_weight: '900', position_y: 75, text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03' }
+    style: withBasicTemplateMarkup({ template_id: 't-52', template_source: 'lekha-basic', template_class: 'btcard t-52', template_name: 'Light Streak', template_layout: 'word-sequence', font_family: 'Inter', font_size: 26, font_weight: '900', position_y: 75, text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03', show_inactive: true, has_background: false, has_shadow: false, has_stroke: false })
   },
   {
     id: 't-103', name: 'Nightfall',
@@ -121,7 +143,7 @@ const templates = [
     id: 't-104', name: 'Pulse',
     desc: 'White text with purple stroke glow',
     bg: '#111',
-    style: { template_id: 't-104', font_family: 'Noto Sans', font_size: 26, font_weight: '900', position_y: 75, text_color: '#FFFFFF', secondary_color: '#2563EB', highlight_color: '#DDAA03', has_stroke: true, stroke_color: '#2563EB', stroke_width: 2 }
+    style: { template_id: 't-104', font_family: 'Noto Sans', font_size: 26, font_weight: '900', position_y: 75, text_color: '#FFFFFF', secondary_color: '#4F46FF', highlight_color: '#FFF200', has_stroke: true, stroke_color: '#4F46FF', stroke_width: 2 }
   },
   {
     id: 't-111', name: 'Red Tape',
@@ -133,7 +155,7 @@ const templates = [
     id: 't-T5', name: 'Sentence Box',
     desc: 'Deep yellow pad box for all words',
     bg: '#111',
-    style: { template_id: 't-T5', font_family: 'Montserrat', font_size: 24, font_weight: '800', font_style: 'italic', has_background: true, background_color: '#BEFF00', background_opacity: 1.0, background_padding: 10, text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03', position_y: 75 }
+    style: { template_id: 't-T5', font_family: 'Montserrat', font_size: 24, font_weight: '800', font_style: 'italic', has_background: true, background_color: '#DDAA03', background_opacity: 1.0, background_padding: 10, text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03', position_y: 75 }
   },
   {
     id: 't-95', name: 'Speed Lines',
@@ -183,7 +205,7 @@ const templates = [
     bg: '#111',
     style: { template_id: 't-37', font_family: 'Inter', font_size: 26, font_weight: '900', text_case: 'uppercase', position_y: 75, text_color: '#FF007F' }
   }
-];
+]);
 
 // Live preview words — shows done, active, done+imp states
 // word 1 "This" = done (already spoken), word 2 "IS" = done+imp (important spoken), word 3 "great" = active (current), word 4 "now" = upcoming
@@ -249,7 +271,7 @@ const CustomColorPicker = ({ label, value, onChange, onReset, defaultColor }) =>
   </div>
 );
 
-const TEMPLATE_FEATURES = { "t-115": ["primary", "secondary", "highlight"], "t-109": ["primary", "secondary", "highlight"], "t-26": ["primary", "secondary", "bg", "highlight"], "t-102": ["primary", "bg", "highlight"], "t-36": ["primary", "secondary", "highlight"], "t-105": ["primary", "highlight"], "t-9": ["highlight"], "t-124": ["primary", "highlight"], "t-16": ["primary", "highlight"], "t-110": ["primary", "secondary", "highlight"], "t-119": ["primary", "bg", "highlight"], "t-12": ["primary", "secondary", "highlight"], "t-106": ["primary", "highlight"], "t-52": ["primary", "highlight"], "t-103": ["primary", "bg", "highlight"], "t-112": ["highlight"], "t-104": ["primary", "secondary", "highlight"], "t-111": ["primary", "secondary", "highlight"], "t-T5": ["primary", "bg"], "t-95": ["secondary", "highlight"], "t-T1": ["primary", "highlight"], "t-T4": ["primary", "highlight"], "t-WS1": ["primary", "highlight"], "t-56": ["primary", "secondary", "highlight"], "t-T3": ["primary", "highlight"], "t-57": ["primary", "highlight"], "t-37": ["primary", "highlight"] };
+const TEMPLATE_FEATURES = { "t-115": ["primary", "secondary", "highlight"], "t-109": ["primary", "secondary", "highlight"], "t-26": ["primary", "secondary", "bg", "highlight"], "t-102": ["primary", "bg", "highlight"], "t-36": ["primary", "secondary", "highlight"], "t-105": ["primary", "highlight"], "t-9": ["highlight"], "t-16": ["primary", "highlight"], "t-110": ["primary", "secondary", "highlight"], "t-119": ["primary", "bg", "highlight"], "t-12": ["primary", "secondary", "highlight"], "t-106": ["primary", "highlight"], "t-52": ["primary", "highlight"], "t-103": ["primary", "bg", "highlight"], "t-112": ["highlight"], "t-104": ["primary", "secondary", "highlight"], "t-111": ["primary", "secondary", "highlight"], "t-T5": ["primary", "bg"], "t-95": ["secondary", "highlight"], "t-T1": ["primary", "highlight"], "t-T4": ["primary", "highlight"], "t-WS1": ["primary", "highlight"], "t-56": ["primary", "secondary", "highlight"], "t-T3": ["primary", "highlight"], "t-57": ["primary", "highlight"], "t-37": ["primary", "highlight"] };
 
 const TemplateCustomizationPanel = ({ style, defaultTemplateStyle, onUpdate }) => {
   const currentFeatures = TEMPLATE_FEATURES[style?.template_id] || ['primary', 'secondary', 'bg', 'highlight'];
@@ -324,6 +346,9 @@ const TemplateCustomizationPanel = ({ style, defaultTemplateStyle, onUpdate }) =
 export default function TemplatesTab({ currentStyle, onApplyTemplate }) {
   const [previewIndex, setPreviewIndex] = useState(0);
   const [basicPreviewPhase, setBasicPreviewPhase] = useState(0);
+  const [templateSearchQuery, setTemplateSearchQuery] = useState('');
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const { isFavorite, toggleFavorite } = useTemplateFavorites();
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -333,6 +358,15 @@ export default function TemplatesTab({ currentStyle, onApplyTemplate }) {
 
     return () => window.clearInterval(intervalId);
   }, []);
+
+  const visibleTemplates = useMemo(
+    () => templates.filter((template) => (
+      isExportableTemplateCandidate(template)
+      && templateMatchesQuery(template, templateSearchQuery)
+      && (!favoritesOnly || isFavorite('basic-template', template.id))
+    )),
+    [templateSearchQuery, favoritesOnly, isFavorite],
+  );
 
   if (!onApplyTemplate) return null;
 
@@ -347,9 +381,11 @@ export default function TemplatesTab({ currentStyle, onApplyTemplate }) {
   };
 
   const renderTemplatePreviewWords = (template) => {
+    const isIman = template.id === 't-106';
+    const isLightStreak = template.id === 't-52';
     const isStudyWithMe = template.id === 't-T4';
     const isWordSlide = template.id === 't-WS1';
-    if (isStudyWithMe || isWordSlide) {
+    if (isIman || isLightStreak || isStudyWithMe || isWordSlide) {
       const phase = basicPreviewPhase % PHASED_PREVIEW_WORDS.length;
       const words = PHASED_PREVIEW_WORDS[phase];
 
@@ -360,9 +396,29 @@ export default function TemplatesTab({ currentStyle, onApplyTemplate }) {
           style={{ display: 'inline-flex', gap: '5px', flexWrap: 'wrap', justifyContent: 'center' }}
         >
           {words.map((word, index) => {
-            const slideStyle = (isWordSlide || (isStudyWithMe && phase === 1))
-              ? { '--ws-delay': `${90 + (index * 55)}ms` }
-              : {};
+            const slideStyle = {
+              ...((isWordSlide || (isStudyWithMe && phase === 1))
+                ? { '--ws-delay': `${90 + (index * 55)}ms` }
+                : {}),
+              ...(isLightStreak && phase > 0
+                ? {
+                    animation: `${phase === 1 ? 'basicWordSlideFromLeft' : 'basicWordSlideFromRight'} 0.42s cubic-bezier(0.22,1,0.36,1) both`,
+                    animationDelay: `${index * 65}ms`,
+                  }
+                : {}),
+              ...(isIman && phase === 0
+                ? {
+                    animation: 'basicWordRiseIn 0.28s cubic-bezier(0.34,1.2,0.64,1) both',
+                    animationDelay: `${index * 65}ms`,
+                  }
+                : {}),
+              ...(isIman && phase === 2
+                ? {
+                    animation: 'basicWordSlideFromRight 0.42s cubic-bezier(0.22,1,0.36,1) both',
+                    animationDelay: `${index * 65}ms`,
+                  }
+                : {}),
+            };
             return (
               <span
                 key={`${template.id}-${phase}-${word}-${index}`}
@@ -425,7 +481,32 @@ export default function TemplatesTab({ currentStyle, onApplyTemplate }) {
     <div className="h-full overflow-y-auto pr-1 custom-scrollbar">
       <div className="mb-3">
         <h2 className="text-base font-semibold text-white mb-0.5">Caption Templates</h2>
-        <p className="text-[11px] text-gray-500">26 templates — yellow = important word</p>
+        <p className="text-[11px] text-gray-500">{visibleTemplates.length}/{templates.length} templates - yellow = important word</p>
+      </div>
+
+      <div className="mb-3 flex items-center gap-2">
+        <label className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-500" />
+          <input
+            value={templateSearchQuery}
+            onChange={(event) => setTemplateSearchQuery(event.target.value)}
+            placeholder="Search templates"
+            className="h-9 w-full rounded-lg border border-white/10 bg-white/[0.04] pl-8 pr-3 text-xs text-white outline-none transition-colors placeholder:text-gray-600 focus:border-purple-400/50"
+          />
+        </label>
+        <button
+          type="button"
+          aria-pressed={favoritesOnly}
+          title="Show favorites"
+          onClick={() => setFavoritesOnly((current) => !current)}
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition-colors ${
+            favoritesOnly
+              ? 'border-yellow-400/40 bg-yellow-400/15 text-yellow-300'
+              : 'border-white/10 bg-white/[0.04] text-gray-400 hover:text-white'
+          }`}
+        >
+          <Star className="h-3.5 w-3.5" fill={favoritesOnly ? 'currentColor' : 'none'} />
+        </button>
       </div>
 
       {/* ── NONE / REMOVE OPTION ── always visible at top */}
@@ -454,20 +535,37 @@ export default function TemplatesTab({ currentStyle, onApplyTemplate }) {
 
       {/* ── TEMPLATE CARDS ── */}
       <div className="space-y-2.5">
-        {templates.map((template) => {
+        {visibleTemplates.map((template) => {
           const isActive = currentStyle?.template_id === template.id;
+          const templateIsFavorite = isFavorite('basic-template', template.id);
 
           return (
             <motion.div
               key={template.id}
               whileHover={{ scale: 1.01 }}
               whileTap={{ scale: 0.99 }}
-              className={`rounded-xl border cursor-pointer transition-all overflow-hidden ${isActive
+              className={`relative rounded-xl border cursor-pointer transition-all overflow-hidden ${isActive
                 ? 'border-purple-500 bg-purple-600/10 shadow-[0_0_12px_rgba(168,85,247,0.15)]'
                 : 'border-white/10 bg-white/[0.02] hover:border-white/20'
                 }`}
               onClick={() => onApplyTemplate(template.style)}
             >
+              <button
+                type="button"
+                title={templateIsFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                aria-label={templateIsFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  toggleFavorite('basic-template', template.id);
+                }}
+                className={`absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full border transition-colors ${
+                  templateIsFavorite
+                    ? 'border-yellow-400/40 bg-yellow-400/20 text-yellow-300'
+                    : 'border-white/10 bg-black/30 text-white/50 hover:text-white'
+                }`}
+              >
+                <Star className="h-3.5 w-3.5" fill={templateIsFavorite ? 'currentColor' : 'none'} />
+              </button>
               <div
                 style={{
                   backgroundColor: template.bg,
@@ -526,6 +624,11 @@ export default function TemplatesTab({ currentStyle, onApplyTemplate }) {
             </motion.div>
           );
         })}
+        {!visibleTemplates.length && (
+          <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-6 text-center text-xs text-gray-500">
+            No matching templates.
+          </div>
+        )}
       </div>
     </div >
   );

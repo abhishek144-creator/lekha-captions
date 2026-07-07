@@ -1,8 +1,16 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Check, Sparkles, X } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Check, Sparkles, X, Search, Star } from 'lucide-react';
 import { useLazyVisible } from './useLazyVisible';
+import {
+  isExportableTemplateCandidate,
+  templateMatchesQuery,
+  useTemplateFavorites,
+} from './templateBrowserUtils.js';
+import '../../styles/advancedTemplateLibrary.css';
 import legacyTemplateHtml from '../../assets/lekha-captions-20-templates.html?raw';
 import newTemplateHtml from '../../assets/lekha-captions-49-templates.html?raw';
+import lcTemplateHtml2 from '../../assets/lekha-captions-lc-2.html?raw';
+import lcTemplateHtml3 from '../../assets/lekha-captions-lc-3.html?raw';
 
 function sanitizeTemplateHtml(value = '') {
   return String(value)
@@ -13,6 +21,13 @@ function sanitizeTemplateHtml(value = '') {
 
 const sanitizedLegacyTemplateHtml = sanitizeTemplateHtml(legacyTemplateHtml);
 const sanitizedNewTemplateHtml = sanitizeTemplateHtml(newTemplateHtml);
+const lcTemplateHtmlSets = [lcTemplateHtml2, lcTemplateHtml3];
+const sanitizedLcTemplateHtml = lcTemplateHtmlSets.map(sanitizeTemplateHtml);
+const LC_FONT_LINKS = `
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,500;0,600;0,700;0,800;0,900;1,600&family=Fraunces:ital,opsz,wght@1,9..144,500;1,9..144,700&family=Great+Vibes&display=swap" rel="stylesheet">
+`;
 const legacyTemplateCss = (() => {
   const matches = [...legacyTemplateHtml.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)];
   return matches.map(m => m[1]).join('\n');
@@ -21,6 +36,7 @@ const newTemplateCss = (() => {
   const matches = [...newTemplateHtml.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)];
   return matches.map(m => m[1]).join('\n');
 })();
+const lcTemplateCss = lcTemplateHtmlSets.map(extractOriginalStyle).join('\n');
 
 const VIGIL_BASE_TEMPLATE_STYLE = {
   font_family: 'Raleway',
@@ -207,7 +223,11 @@ function extractAccentColorFromMarkup(markup = '') {
 }
 
 function extractTemplateStyleFromPreview(template) {
-  const cssText = template.format === 'lk' ? newTemplateCss : legacyTemplateCss;
+  const cssText = template.format === 'lk'
+    ? newTemplateCss
+    : template.format === 'lc'
+      ? lcTemplateCss
+      : legacyTemplateCss;
   const className = template.cardClass || '';
   const baseRuleBody = pickFirstCssBody(cssText, [
     `.${className} .wbw-line`,
@@ -322,6 +342,346 @@ function extractNewCards() {
   return cards;
 }
 
+function escapeHtml(value = '') {
+  return String(value).replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  }[char]));
+}
+
+const LC_MASTER_COLORS = [
+  '#FFB000', '#00D4FF', '#FF2E7A', '#76FF03', '#B86BFF', '#FF6A00', '#00F5A0',
+  '#FF3030', '#3D7CFF', '#FFE600', '#FF00C8', '#00E5FF', '#A3FF12', '#FF9500',
+];
+
+const LC_MERGE_LAYOUTS = new Set(['splice', 'serifbreak', 'baseline', 'weld']);
+const LC_TIMING = {
+  staggerMs: 280,
+  bodyDurationMs: 430,
+  heroDurationMs: 560,
+  wbwDurationMs: 110,
+};
+
+const LC_ANIMATION_MAP = {
+  rise: 'rise',
+  drop: 'drop',
+  fade: 'fade',
+  slidel: 'slide-l',
+  slider: 'slide-r',
+  wipe: 'wipe',
+  wipeup: 'wipe-up',
+  pop: 'pop',
+  elastic: 'pop',
+  press: 'pop',
+  punch: 'pop',
+  stamp: 'pop',
+  swing: 'roll',
+  roll: 'roll',
+  rolly: 'roll',
+  climb: 'rise',
+  type: 'wipe',
+  slot: 'wipe',
+  flick: 'fade',
+  whip: 'slide-l',
+  track: 'pop',
+  skew: 'skew-snap',
+  shutter: 'stencil',
+  stretch: 'pop',
+  unfold: 'wipe-up',
+};
+
+function mapLcAnimation(anim = '') {
+  return LC_ANIMATION_MAP[String(anim || '').trim()] || 'rise';
+}
+
+function getLcAnimationEase(anim = '') {
+  const key = String(anim || '').trim();
+  if (key === 'type') return 'steps(8,end)';
+  if (key === 'flick') return 'linear';
+  return 'cubic-bezier(.22,.68,.26,1)';
+}
+
+function parseLcTemplateSet(markup = '') {
+  const source = String(markup || '');
+  const marker = 'const TPLS=[';
+  const start = source.indexOf(marker);
+  if (start < 0) return [];
+  const bodyStart = start + marker.length;
+  const bodyEnd = source.indexOf('];', bodyStart);
+  if (bodyEnd < 0) return [];
+  const body = source.slice(bodyStart, bodyEnd);
+  try {
+    return Function(`
+      const C = (layout, ...lines) => ({ k: 'c', layout, lines });
+      const L = (cls, text, anim, o = {}) => Object.assign({ cls, text, anim }, o);
+      const N = (text, o = {}) => Object.assign({ k: 'n', text }, o);
+      const T = (id, name, style, scenes) => ({ id, name, style, scenes });
+      return [${body}];
+    `)();
+  } catch (error) {
+    console.warn('Unable to parse LC templates', error);
+    return [];
+  }
+}
+
+function lcWords(value = '') {
+  return String(value || '').trim().split(/\s+/).filter(Boolean);
+}
+
+function buildLcWordSpan(word, {
+  cls = '',
+  hero = false,
+  heroCol = '',
+  ul = false,
+  anim = '',
+  delay = 0,
+  duration = LC_TIMING.bodyDurationMs,
+  on = false,
+} = {}) {
+  const className = ['w', cls, hero ? 'hero is-emphasis' : '', ul ? 'ul' : '', on ? 'on' : '']
+    .filter(Boolean)
+    .join(' ');
+  const style = [];
+  if (hero && heroCol) style.push(`color:${heroCol}`);
+  if (anim) {
+    style.push(`animation:${anim} ${duration}ms ${getLcAnimationEase(anim)} ${delay}ms forwards`);
+  }
+  const attrs = [
+    `class="${escapeHtml(className)}"`,
+    anim ? `data-anim="${escapeHtml(mapLcAnimation(anim))}"` : '',
+    anim ? `data-lc-anim="${escapeHtml(anim)}"` : '',
+    anim ? `data-lc-duration="${duration}"` : '',
+    anim ? `data-lc-ease="${escapeHtml(getLcAnimationEase(anim))}"` : '',
+    anim ? `data-lc-delay="${delay}"` : '',
+    style.length ? `style="${escapeHtml(style.join(';'))}"` : '',
+  ].filter(Boolean).join(' ');
+  return `<span ${attrs}>${escapeHtml(word)}</span>`;
+}
+
+function renderLcFlow(segs = [], ctx, fuse = false) {
+  let first = true;
+  let end = 0;
+  const html = [];
+  segs.forEach((seg) => {
+    lcWords(seg.text).forEach((word) => {
+      if (!first && !fuse) html.push(' ');
+      first = false;
+      const duration = seg.hero ? LC_TIMING.heroDurationMs : LC_TIMING.bodyDurationMs;
+      const delay = ctx.n * LC_TIMING.staggerMs;
+      html.push(buildLcWordSpan(word, {
+        cls: seg.spanCls || '',
+        hero: !!seg.hero,
+        heroCol: ctx.heroCol,
+        ul: !!seg.ul,
+        anim: seg.anim || '',
+        delay,
+        duration,
+        on: !seg.anim,
+      }));
+      if (seg.anim) {
+        ctx.n += 1;
+        end = Math.max(end, delay + duration);
+      }
+    });
+  });
+  return { html: html.join(''), end };
+}
+
+function findLc3HeroRange(words = [], hero = '') {
+  const heroWords = lcWords(hero);
+  const strip = (value) => String(value || '').replace(/[^0-9A-Za-z']/g, '').toLowerCase();
+  if (!heroWords.length) return [-1, -1];
+  for (let index = 0; index <= words.length - heroWords.length; index += 1) {
+    const matched = heroWords.every((word, offset) => strip(words[index + offset]) === strip(word));
+    if (matched) return [index, index + heroWords.length];
+  }
+  return [-1, -1];
+}
+
+function renderLcNormalScene(scene = {}, ctx, templateId = '') {
+  const isFormulaSet = Number(String(templateId).replace(/\D/g, '')) >= 181;
+  const mode = scene.mode || (scene.anim ? 'anim' : 'plain');
+  const keywordClassMap = {
+    underline: 'ns3hero',
+    box: 'ns3box',
+    mark: 'ns3mark',
+    bracket: 'ns3bracket',
+    dot: 'ns3dot',
+  };
+  let end = 0;
+
+  const putWords = (words, heroFlags = []) => {
+    const output = [];
+    words.forEach((word, index) => {
+      if (output.length) output.push(' ');
+      const hero = !!heroFlags[index];
+      const cls = hero
+        ? (isFormulaSet
+          ? (scene.styledHero ? 'ns3hero' : 'hero')
+          : (scene.type === 3 ? (keywordClassMap[scene.keywordStyle] || 'ns3hero') : 'hero'))
+        : '';
+      let anim = '';
+      let duration = hero ? LC_TIMING.heroDurationMs : LC_TIMING.bodyDurationMs;
+      let delay = ctx.n * LC_TIMING.staggerMs;
+      let on = false;
+      if (mode === 'static' || mode === 'plain') {
+        on = true;
+      } else if (mode === 'wbw') {
+        anim = 'fade';
+        duration = LC_TIMING.wbwDurationMs;
+      } else {
+        anim = hero ? (scene.heroAnim || 'pop') : (scene.bodyAnim || 'rise');
+      }
+      output.push(buildLcWordSpan(word, {
+        cls,
+        hero,
+        heroCol: ctx.heroCol,
+        anim,
+        delay,
+        duration,
+        on,
+      }));
+      if (anim) {
+        ctx.n += 1;
+        end = Math.max(end, delay + duration);
+      }
+    });
+    return output.join('');
+  };
+
+  if (isFormulaSet) {
+    const words = lcWords(scene.text);
+    const [heroStart, heroEnd] = findLc3HeroRange(words, scene.hero);
+    const isHero = words.map((_, index) => heroStart >= 0 && index >= heroStart && index < heroEnd);
+    let inner = '';
+    if (scene.drop && heroStart >= 0) {
+      const topWords = words.filter((_, index) => !isHero[index]);
+      const bottomWords = words.filter((_, index) => isHero[index]);
+      inner = `<div class="ns3top">${putWords(topWords, topWords.map(() => false))}</div><div class="ns3bot">${putWords(bottomWords, bottomWords.map(() => true))}</div>`;
+    } else {
+      inner = putWords(words, isHero);
+    }
+    const wrapClass = `nline${mode === 'plain' ? ' plainwrap' : ''}`;
+    if (mode === 'plain') end = 240;
+    if (mode === 'static') end = 0;
+    return { html: `<div class="${wrapClass}">${inner}</div>`, end };
+  }
+
+  const text = String(scene.text || '').trim();
+  const hero = String(scene.hero || '').trim();
+  let pre = [];
+  let heroWords = [];
+  let post = [];
+  if (hero && text.includes(hero)) {
+    const heroStart = text.indexOf(hero);
+    pre = lcWords(text.slice(0, heroStart));
+    heroWords = [hero];
+    post = lcWords(text.slice(heroStart + hero.length));
+  } else {
+    pre = lcWords(text);
+  }
+  let inner = '';
+  if (scene.type === 3 && scene.drop && hero) {
+    inner = `<div class="ns3top">${putWords([...pre, ...post], [...pre, ...post].map(() => false))}</div><div class="ns3bot">${putWords(heroWords, heroWords.map(() => true))}</div>`;
+  } else {
+    inner = [
+      putWords(pre, pre.map(() => false)),
+      heroWords.length ? putWords(heroWords, heroWords.map(() => true)) : '',
+      putWords(post, post.map(() => false)),
+    ].filter(Boolean).join(' ');
+  }
+  const wrapClass = `nline${mode === 'plain' ? ' plainwrap' : ''}`;
+  if (mode === 'plain') end = 240;
+  return { html: `<div class="${wrapClass}">${inner}</div>`, end };
+}
+
+function getLcPalette(templateIndex = 0) {
+  return [0, 1, 2, 3, 4].map((offset) => (
+    LC_MASTER_COLORS[((templateIndex * 3) + (offset * 2)) % LC_MASTER_COLORS.length]
+  ));
+}
+
+function buildLcSceneMarkup(scene = {}, sceneIndex = 0, template = {}) {
+  const palette = template.pal || getLcPalette(0);
+  const heroCol = palette[sceneIndex % palette.length] || LC_MASTER_COLORS[0];
+  const ctx = { n: 0, heroCol };
+  if (scene.k === 'n') {
+    return renderLcNormalScene(scene, ctx, template.id).html;
+  }
+
+  const layout = escapeHtml(scene.layout || 'pyramid');
+  if (LC_MERGE_LAYOUTS.has(scene.layout)) {
+    const segs = (scene.lines || []).map((line) => ({
+      text: line.text,
+      anim: line.anim,
+      hero: line.hero,
+      spanCls: [line.cls, line.font].filter(Boolean).join(' '),
+      ul: line.ul,
+    }));
+    const lineMarkup = renderLcFlow(segs, ctx, scene.layout === 'weld').html;
+    return `<div class="cpt ${layout}" style="--hc:${heroCol}"><div class="ln">${lineMarkup}</div></div>`;
+  }
+
+  const lines = (scene.lines || []).map((line) => {
+    const lineClass = ['ln', line.cls, line.font, line.hero ? 'hero' : '', line.box ? 'box' : '']
+      .filter(Boolean)
+      .map(escapeHtml)
+      .join(' ');
+    const lineStyle = [
+      line.box ? `background:${heroCol}` : '',
+      line.box ? 'color:#101114' : '',
+      line.hero && !line.box ? `color:${heroCol}` : '',
+    ].filter(Boolean).join(';');
+    const savedHeroCol = ctx.heroCol;
+    if (line.box) ctx.heroCol = '#101114';
+    const lineMarkup = renderLcFlow([{
+      text: line.text,
+      anim: line.anim,
+      spanCls: '',
+      ul: line.ul,
+      hero: line.hero,
+    }], ctx).html;
+    ctx.heroCol = savedHeroCol;
+    return `<div class="${lineClass}"${lineStyle ? ` style="${escapeHtml(lineStyle)}"` : ''}>${lineMarkup}</div>`;
+  }).join('');
+  return `<div class="cpt ${layout}" data-lc-scene="${sceneIndex}" style="--hc:${heroCol}">${lines}</div>`;
+}
+
+function buildLcCardMarkup(template = {}, templateIndex = 0) {
+  const palette = getLcPalette(templateIndex);
+  template.pal = palette;
+  const sceneMarkup = (template.scenes || []).map((scene, sceneIndex) => (
+    `<div class="sb${sceneIndex === 0 ? ' active' : ''}" data-si="${sceneIndex}" style="--template-highlight:${palette[sceneIndex % palette.length]}"><div class="cap"><div class="scene">${buildLcSceneMarkup(scene, sceneIndex, template)}</div></div></div>`
+  )).join('');
+  const dots = (template.scenes || []).map((_, sceneIndex) => `<i class="${sceneIndex === 0 ? 'on' : ''}"></i>`).join('');
+  const cardClass = `lc-${String(template.id || '').toLowerCase()}`;
+  const tint = palette[0] || LC_MASTER_COLORS[0];
+  return `<div class="card lc-card ${cardClass}" data-lc-template="true" style="--tint:${tint}"><div class="card-top"><div><span class="cid">${escapeHtml(template.id)}</span><span class="cnm"> · ${escapeHtml(template.name)}</span></div><div class="badges"><span class="bg m">LC</span><span class="bg s${template.style}">${template.style} STYLE</span></div></div><div class="stage">${sceneMarkup}</div><div class="dots">${dots}</div></div>`;
+}
+
+function extractLcCards() {
+  return lcTemplateHtmlSets.flatMap((markup, setIndex) => (
+    parseLcTemplateSet(markup).map((template, templateIndex) => {
+      const formula = `${template.style} Style`;
+      const cardMarkup = buildLcCardMarkup(template, templateIndex);
+      return {
+        id: template.id,
+        name: template.name,
+        displayName: template.name,
+        mood: `LC ${template.id}`,
+        formula,
+        cardClass: `lc-${String(template.id || '').toLowerCase()}`,
+        cardMarkup,
+        format: 'lc',
+        styleGroup: Number(template.style) || 1,
+      };
+    })
+  ));
+}
+
 const LEGACY_TEMPLATE_CARDS = Array.from(
   extractLegacyCards().reduce((uniqueCards, card) => {
     const uniqueKey = card.id || card.name;
@@ -349,11 +709,32 @@ const NEW_TEMPLATE_CARDS = Array.from(
   }, new Map()).values(),
 );
 
-// Keep both left-side sets in the selectable catalog: the original 20 plus the
-// newer 49-template pack.
-const TEMPLATE_CARDS = [...LEGACY_TEMPLATE_CARDS, ...NEW_TEMPLATE_CARDS];
-const TOTAL_TEMPLATE_COUNT = TEMPLATE_CARDS.length;
+const LC_TEMPLATE_CARDS = Array.from(
+  extractLcCards().reduce((uniqueCards, card) => {
+    const uniqueKey = card.id || card.name;
+    if (!uniqueCards.has(uniqueKey)) {
+      uniqueCards.set(uniqueKey, card);
+    }
+    return uniqueCards;
+  }, new Map()).values(),
+);
+
+const LC_STYLE_1_TEMPLATE_CARDS = LC_TEMPLATE_CARDS.filter((template) => template.styleGroup === 1);
+const LC_STYLE_2_TEMPLATE_CARDS = LC_TEMPLATE_CARDS.filter((template) => template.styleGroup === 2);
+const LC_STYLE_3_TEMPLATE_CARDS = LC_TEMPLATE_CARDS.filter((template) => template.styleGroup === 3);
+
+const TEMPLATE_CARDS = [
+  ...LEGACY_TEMPLATE_CARDS,
+  ...NEW_TEMPLATE_CARDS,
+  ...LC_TEMPLATE_CARDS,
+];
+const SELECTABLE_TEMPLATE_CARDS = [
+  ...LEGACY_TEMPLATE_CARDS,
+  ...LC_TEMPLATE_CARDS,
+];
+const TOTAL_TEMPLATE_COUNT = SELECTABLE_TEMPLATE_CARDS.length;
 const TEMPLATE_PREVIEW_PROGRESS_EVENT = 'lekha-sidebar-template-preview-progress';
+const TEMPLATE_PREVIEW_JUMP_EVENT = 'lekha-sidebar-template-preview-jump';
 const getTemplateStyleKey = (template) => `${template?.format || 'legacy'}::${template?.id || ''}`;
 const EXTRACTED_TEMPLATE_STYLE_MAP = Object.fromEntries(
   TEMPLATE_CARDS.map((template) => [getTemplateStyleKey(template), extractTemplateStyleFromPreview(template)]),
@@ -384,7 +765,11 @@ function buildTemplateStyle(template) {
   return {
     template_id: `sidebar-${template.id}`,
     template_20_id: template.id,
-    template_source: template.format === 'lk' ? 'lekha-49' : 'lekha-20',
+    template_source: template.format === 'lk'
+      ? 'lekha-49'
+      : template.format === 'lc'
+        ? 'lekha-lc'
+        : 'lekha-20',
     template_class: template.cardClass || '',
     template_name: template.displayName || template.name || '',
     template_layout: detectTemplatePreviewLayout(template),
@@ -404,6 +789,11 @@ function buildTemplateStyle(template) {
 
 function buildPreviewDoc(template) {
   const previewTemplateId = JSON.stringify(template.id);
+  const sourceStyleHtml = template.format === 'lk'
+    ? sanitizedNewTemplateHtml
+    : template.format === 'lc'
+      ? sanitizedLcTemplateHtml.join('\n')
+      : sanitizedLegacyTemplateHtml;
   if (template.format === 'lk') {
     const previewScript = `
       <script>
@@ -413,7 +803,9 @@ function buildPreviewDoc(template) {
           const sblocks = Array.from(card.querySelectorAll('.sblock'));
           if (!sblocks.length) return;
           const dots = Array.from(card.querySelectorAll('.lk-dots i'));
-          const WBW_STAGGER = 160;
+          const WBW_STAGGER = 300;
+          const STICKY_WAVE_STAGGER = 340;
+          const MIN_PHASE_HOLD = 4800;
           let current = 0;
           let timer = null;
 
@@ -436,7 +828,7 @@ function buildPreviewDoc(template) {
             words.forEach((word, index) => {
               setTimeout(() => {
                 word.style.opacity = '1';
-              }, index * 210);
+              }, index * STICKY_WAVE_STAGGER);
             });
           }
 
@@ -460,7 +852,7 @@ function buildPreviewDoc(template) {
                 word.classList.add('visible');
                 if (/\\bns[23]-/.test(word.className)) {
                   word.classList.add('anim');
-                  setTimeout(() => word.classList.remove('anim'), 650);
+                  setTimeout(() => word.classList.remove('anim'), 900);
                 }
               }, index * WBW_STAGGER);
             });
@@ -483,7 +875,8 @@ function buildPreviewDoc(template) {
           function scheduleNext(fromIndex) {
             if (timer) window.clearTimeout(timer);
             if (sblocks.length < 2) return;
-            const duration = parseInt(sblocks[fromIndex]?.dataset?.dur || '3000', 10);
+            const authoredDuration = parseInt(sblocks[fromIndex]?.dataset?.dur || '0', 10);
+            const duration = Math.max(Number.isFinite(authoredDuration) ? authoredDuration : 0, MIN_PHASE_HOLD);
             timer = window.setTimeout(() => {
               current = (fromIndex + 1) % sblocks.length;
               showPhase(current);
@@ -500,6 +893,16 @@ function buildPreviewDoc(template) {
               showPhase(index);
               scheduleNext(index);
             });
+          });
+
+          window.addEventListener('message', (event) => {
+            const data = event.data || {};
+            if (data.type !== '${TEMPLATE_PREVIEW_JUMP_EVENT}' || data.templateId !== ${previewTemplateId}) return;
+            const index = Number(data.activeIndex);
+            if (!Number.isFinite(index) || !sblocks[index]) return;
+            current = index;
+            showPhase(index);
+            scheduleNext(index);
           });
 
           document.addEventListener('visibilitychange', () => {
@@ -631,17 +1034,17 @@ function buildPreviewDoc(template) {
         const card = document.querySelector('.card');
         if (!card) return;
         const stage = card.querySelector('.stage');
-        const isNewTemplate = ${template.format === 'new'};
+        const isNewTemplate = ${template.format === 'lk'};
         const blocks = Array.from(card.querySelectorAll('.sb, .sblock'));
         const dots = Array.from(card.querySelectorAll('.dots i'));
         const label = card.querySelector('.slbl, .stage-lbl');
-        const HOLD = 2800;
-        const EXIT_MS = 360;
-        const GAP = 40;
-        const WBW_DELAY = 65;
-        const WBW_DUR = 280;
-        const POS_STAGGER = 220;
-        const POS_DUR = 300;
+        const HOLD = 4800;
+        const EXIT_MS = 560;
+        const GAP = 120;
+        const WBW_DELAY = 125;
+        const WBW_DUR = 540;
+        const POS_STAGGER = 320;
+        const POS_DUR = 560;
         const WBW_CLASSES = ['wrise','wslide','wslider','wroll','wwipe','wwipeup','wfade','wscale','wflip','wbounce','wdiag','wexpand','wskew','wstencil','wlift','wbw-rise','wbw-slide'];
         const IMP_ANIMS = isNewTemplate
           ? {
@@ -681,6 +1084,19 @@ function buildPreviewDoc(template) {
         let currentIndex = 0;
         let timer = null;
 
+        function getLcAnimation(element, fallbackDuration) {
+          const anim = element && element.dataset ? (element.dataset.lcAnim || '') : '';
+          if (!anim) return null;
+          const duration = Number(element.dataset.lcDuration);
+          const delay = Number(element.dataset.lcDelay);
+          return {
+            anim,
+            duration: Number.isFinite(duration) && duration > 0 ? duration : fallbackDuration,
+            ease: element.dataset.lcEase || 'cubic-bezier(.22,.68,.26,1)',
+            delay: Number.isFinite(delay) && delay >= 0 ? delay : null
+          };
+        }
+
         function emitProgress(index) {
           try {
             window.parent.postMessage({
@@ -695,9 +1111,11 @@ function buildPreviewDoc(template) {
         }
 
         function getBlockType(block) {
+          const wbwSelector = WBW_CLASSES.map((className) => '.' + className + ' .w').concat('.w[data-lc-anim]').join(',');
+          if (block.querySelector(wbwSelector)) return 'wbw';
+          if (block.querySelector('.sw, .sw-w')) return 'pos';
           if (block.querySelector('.plain-s')) return 'plain';
-          if (block.querySelector('.wbw, .wbw-rise, .wbw-slide')) return 'wbw';
-          return 'pos';
+          return 'plain';
         }
 
         function wbwInitWord(word) {
@@ -706,6 +1124,13 @@ function buildPreviewDoc(template) {
           word.style.clipPath = 'inset(0 0 0 0)';
           word.style.transformOrigin = '';
           word.style.filter = '';
+          if (getLcAnimation(word, WBW_DUR)) {
+            word.style.animation = 'none';
+            word.style.transform = 'none';
+            word.style.clipPath = '';
+            word.style.opacity = '0';
+            return;
+          }
           if (parent.classList.contains('wrise') || parent.classList.contains('wbw-rise')) { word.style.transform = 'translateY(22px)'; word.style.opacity = '0'; }
           else if (parent.classList.contains('wslide') || parent.classList.contains('wbw-slide')) { word.style.transform = 'translateX(-26px)'; word.style.opacity = '0'; }
           else if (parent.classList.contains('wslider')) { word.style.transform = 'translateX(26px)'; word.style.opacity = '0'; }
@@ -725,7 +1150,18 @@ function buildPreviewDoc(template) {
         }
 
         function wbwAnimWord(word, delay) {
+          const lcAnimation = getLcAnimation(word, WBW_DUR);
+          const playbackDelay = lcAnimation && lcAnimation.delay !== null ? lcAnimation.delay : delay;
           setTimeout(() => {
+            if (lcAnimation) {
+              word.style.transition = 'none';
+              word.style.transform = 'none';
+              word.style.clipPath = '';
+              word.style.opacity = '';
+              word.style.animation = lcAnimation.anim + ' ' + lcAnimation.duration + 'ms ' + lcAnimation.ease + ' 0ms forwards';
+              word.classList.add('in');
+              return;
+            }
             const parent = word.parentElement;
             let transition = 'transform ' + WBW_DUR + 'ms cubic-bezier(0.22, 1, 0.36, 1), opacity ' + (WBW_DUR - 40) + 'ms ease';
             if (parent.classList.contains('wwipe') || parent.classList.contains('wwipeup') || parent.classList.contains('wstencil')) {
@@ -736,7 +1172,7 @@ function buildPreviewDoc(template) {
             word.style.opacity = '1';
             word.style.clipPath = 'inset(0 0 0 0)';
             word.classList.add('in');
-          }, delay);
+          }, playbackDelay);
         }
 
         function wbwAnimIMP(word, delay) {
@@ -983,7 +1419,7 @@ function buildPreviewDoc(template) {
         }
 
         function animateWBW(block) {
-          const selector = WBW_CLASSES.map((className) => '.' + className + ' .w').join(',');
+          const selector = WBW_CLASSES.map((className) => '.' + className + ' .w').concat('.w[data-lc-anim]').join(',');
           const words = block.querySelectorAll(selector);
           if (!words.length) return;
           words.forEach((word) => wbwInitWord(word));
@@ -995,7 +1431,7 @@ function buildPreviewDoc(template) {
         }
 
         function resetWBW(block) {
-          const selector = WBW_CLASSES.map((className) => '.' + className + ' .w').join(',');
+          const selector = WBW_CLASSES.map((className) => '.' + className + ' .w').concat('.w[data-lc-anim]').join(',');
           block.querySelectorAll(selector).forEach((word) => {
             word.classList.remove('in', 'fx');
             wbwInitWord(word);
@@ -1003,6 +1439,15 @@ function buildPreviewDoc(template) {
         }
 
         function posInitWord(word) {
+          if (getLcAnimation(word, POS_DUR)) {
+            word.style.transition = 'none';
+            word.style.animation = 'none';
+            word.style.clipPath = '';
+            word.style.transformOrigin = '';
+            word.style.transform = 'none';
+            word.style.opacity = '0';
+            return;
+          }
           const anim = word.dataset.anim || 'rise';
           word.style.transition = 'none';
           word.style.clipPath = '';
@@ -1030,7 +1475,18 @@ function buildPreviewDoc(template) {
         }
 
         function posAnimWord(word, delay) {
+          const lcAnimation = getLcAnimation(word, POS_DUR);
+          const playbackDelay = lcAnimation && lcAnimation.delay !== null ? lcAnimation.delay : delay;
           setTimeout(() => {
+            if (lcAnimation) {
+              word.style.transition = 'none';
+              word.style.transform = 'none';
+              word.style.clipPath = '';
+              word.style.opacity = '';
+              word.style.animation = lcAnimation.anim + ' ' + lcAnimation.duration + 'ms ' + lcAnimation.ease + ' 0ms forwards';
+              word.classList.add('in');
+              return;
+            }
             const anim = word.dataset.anim || 'rise';
             let transition = 'transform ' + POS_DUR + 'ms cubic-bezier(0.22, 1, 0.36, 1), opacity ' + (POS_DUR - 40) + 'ms ease';
             if (anim === 'wipe' || anim === 'wipe-up' || anim === 'diagonal-wipe' || anim === 'stencil') {
@@ -1047,7 +1503,7 @@ function buildPreviewDoc(template) {
               word.style.clipPath = 'inset(0 0 0 0)';
             }
             word.classList.add('in');
-          }, delay);
+          }, playbackDelay);
         }
 
         function animatePosWords(block) {
@@ -1082,6 +1538,12 @@ function buildPreviewDoc(template) {
             block.style.pointerEvents = 'auto';
             block.style.opacity = '1';
             block.classList.add('active');
+            block.querySelectorAll('.plainwrap').forEach((element) => {
+              element.style.animation = 'none';
+              element.style.opacity = '0';
+              void element.offsetWidth;
+              element.style.animation = '';
+            });
           } else if (type === 'wbw') {
             block.style.transition = 'none';
             block.style.visibility = 'visible';
@@ -1188,6 +1650,14 @@ function buildPreviewDoc(template) {
           });
         });
 
+        window.addEventListener('message', (event) => {
+          const data = event.data || {};
+          if (data.type !== '${TEMPLATE_PREVIEW_JUMP_EVENT}' || data.templateId !== ${previewTemplateId}) return;
+          const index = Number(data.activeIndex);
+          if (!Number.isFinite(index) || !blocks[index]) return;
+          jumpTo(index);
+        });
+
         document.addEventListener('visibilitychange', () => {
           if (document.hidden && timer) {
             window.clearTimeout(timer);
@@ -1207,7 +1677,8 @@ function buildPreviewDoc(template) {
     <html lang="en">
       <head>
         <meta charset="UTF-8" />
-        <style>${extractOriginalStyle(template.format === 'new' ? sanitizedNewTemplateHtml : sanitizedLegacyTemplateHtml)}</style>
+        ${template.format === 'lc' ? LC_FONT_LINKS : ''}
+        <style>${extractOriginalStyle(sourceStyleHtml)}</style>
         <style>
           html, body {
             margin: 0;
@@ -1229,11 +1700,55 @@ function buildPreviewDoc(template) {
           .card-top {
             display: none !important;
           }
+          .lc-card {
+            background: transparent !important;
+          }
           .stage {
             aspect-ratio: auto !important;
             height: 280px !important;
             min-height: 0 !important;
             overflow: hidden !important;
+          }
+          .lc-card .sb {
+            position: absolute !important;
+            inset: 0 !important;
+          }
+          .lc-card .cap {
+            left: 50% !important;
+            top: 52% !important;
+            transform: translate(-50%, -50%) !important;
+            width: 88% !important;
+          }
+          .lc-card .cpt {
+            margin-left: auto !important;
+            margin-right: auto !important;
+          }
+          .lc-card .ln,
+          .lc-card .nline,
+          .lc-card .plain-s {
+            text-wrap: balance;
+          }
+          .lc-card .sb .hero,
+          .lc-card .sb .is-emphasis,
+          .lc-card .sb .ns3hero,
+          .lc-card .sb .ns3box,
+          .lc-card .sb .ns3mark,
+          .lc-card .sb .ns3bracket,
+          .lc-card .sb .ns3dot {
+            color: var(--template-highlight, var(--tint)) !important;
+            -webkit-text-fill-color: var(--template-highlight, var(--tint)) !important;
+            filter: saturate(1.35) brightness(1.12);
+            font-weight: 900;
+          }
+          .lc-card .sb .box {
+            background: var(--template-highlight, var(--tint)) !important;
+            color: #101114 !important;
+            -webkit-text-fill-color: #101114 !important;
+          }
+          .lc-card .sb .box .sw,
+          .lc-card .sb .box .hero {
+            color: #101114 !important;
+            -webkit-text-fill-color: #101114 !important;
           }
           .sb,
           .sblock {
@@ -1279,10 +1794,11 @@ function buildPreviewDoc(template) {
   `;
 }
 
-function TemplatePreviewFrame({ template, onProgressChange }) {
+function TemplatePreviewFrame({ template, jumpRequest, onProgressChange }) {
   // Lazy-mount the (script-running) preview iframe only once its card scrolls
   // into view - see useLazyVisible for why this matters.
   const [containerRef, shown] = useLazyVisible();
+  const iframeRef = useRef(null);
   const srcDoc = useMemo(() => (shown ? buildPreviewDoc(template) : ''), [template, shown]);
 
   useEffect(() => {
@@ -1303,14 +1819,32 @@ function TemplatePreviewFrame({ template, onProgressChange }) {
     return () => window.removeEventListener('message', handleMessage);
   }, [shown, template.id, onProgressChange]);
 
+  useEffect(() => {
+    if (!shown || !jumpRequest || jumpRequest.phase === null || jumpRequest.phase === undefined) return;
+    iframeRef.current?.contentWindow?.postMessage({
+      type: TEMPLATE_PREVIEW_JUMP_EVENT,
+      templateId: template.id,
+      activeIndex: jumpRequest.phase,
+    }, '*');
+  }, [jumpRequest, shown, template.id]);
+
   return (
     <div ref={containerRef} className="advanced-template-preview-frame sidebar-template-preview-frame">
       {shown && (
         <iframe
+          ref={iframeRef}
           title={`${template.id} preview`}
           srcDoc={srcDoc}
           sandbox="allow-scripts"
           scrolling="no"
+          onLoad={() => {
+            if (!jumpRequest || jumpRequest.phase === null || jumpRequest.phase === undefined) return;
+            iframeRef.current?.contentWindow?.postMessage({
+              type: TEMPLATE_PREVIEW_JUMP_EVENT,
+              templateId: template.id,
+              activeIndex: jumpRequest.phase,
+            }, '*');
+          }}
           style={{ pointerEvents: 'none' }}
         />
       )}
@@ -1318,58 +1852,113 @@ function TemplatePreviewFrame({ template, onProgressChange }) {
   );
 }
 
-function TemplateCardButton({ template, isActive, onApplyTemplate }) {
+function TemplateCardButton({ template, isActive, isFavorite, onToggleFavorite, onApplyTemplate }) {
   const baseDotCount = useMemo(() => getTemplatePreviewDotCount(template), [template]);
+  const [jumpRequest, setJumpRequest] = useState({ phase: 0, token: 0 });
   const [previewProgress, setPreviewProgress] = useState({
     activeIndex: 0,
     total: baseDotCount,
   });
   const totalDots = Math.max(baseDotCount, previewProgress?.total || 0);
   const activeDotIndex = Math.min(previewProgress?.activeIndex || 0, Math.max(totalDots - 1, 0));
+  const requestPreviewPhase = (index) => {
+    setJumpRequest((current) => ({ phase: index, token: current.token + 1 }));
+    setPreviewProgress({ activeIndex: index, total: totalDots });
+  };
 
   return (
-    <button
-      type="button"
-      data-template-card-id={template.id}
-      aria-pressed={isActive}
-      onClick={() => onApplyTemplate(template)}
-      className={`advanced-template-card ${isActive ? 'is-active' : ''}`}
-    >
-      <TemplatePreviewFrame template={template} onProgressChange={setPreviewProgress} />
-      {isActive && <Check className="absolute right-2 top-2 z-10 h-3.5 w-3.5 text-[#ffb629]" />}
-      <div className="advanced-template-card-body">
-        <div className="advanced-template-card-title">
-          <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#ffb629]" />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center justify-between gap-2">
-              <p className="truncate">{(template.displayName || template.name).replace(/^[^A-Za-z]+/, '')}</p>
-              {totalDots > 0 && (
-                <div className="flex shrink-0 items-center gap-1.5" aria-hidden="true">
-                  {Array.from({ length: totalDots }).map((_, index) => (
-                    <span
-                      key={`${template.id}-dot-${index}`}
-                      className={`h-[5px] w-[5px] rounded-full transition-all ${
-                        index === activeDotIndex ? 'scale-125 bg-white' : 'bg-white/25'
-                      }`}
-                    />
-                  ))}
-                </div>
-              )}
+    <div className="advanced-template-card-shell">
+      <button
+        type="button"
+        title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+        aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+        onClick={(event) => {
+          event.stopPropagation();
+          onToggleFavorite?.(template);
+        }}
+        className={`advanced-template-favorite-button ${isFavorite ? 'is-active' : ''}`}
+      >
+        <Star className="h-3.5 w-3.5" fill={isFavorite ? 'currentColor' : 'none'} />
+      </button>
+      <div
+        data-template-card-id={template.id}
+        aria-pressed={isActive}
+        onClick={() => onApplyTemplate(template)}
+        onKeyDown={(event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          onApplyTemplate(template);
+        }}
+        className={`advanced-template-card ${isActive ? 'is-active' : ''}`}
+        role="button"
+        tabIndex={0}
+      >
+        <TemplatePreviewFrame template={template} jumpRequest={jumpRequest} onProgressChange={setPreviewProgress} />
+        {isActive && <Check className="absolute right-11 top-2 z-10 h-3.5 w-3.5 text-[#ffb629]" />}
+        <div className="advanced-template-card-body">
+          <div className="advanced-template-card-title">
+            <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#ffb629]" />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-2">
+                <p className="truncate">{(template.displayName || template.name).replace(/^[^A-Za-z]+/, '')}</p>
+                {totalDots > 0 && (
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    {Array.from({ length: totalDots }).map((_, index) => (
+                      <button
+                        type="button"
+                        key={`${template.id}-dot-${index}`}
+                        aria-label={`Play template line ${index + 1}`}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          requestPreviewPhase(index);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key !== 'Enter' && event.key !== ' ') return;
+                          event.preventDefault();
+                          event.stopPropagation();
+                          requestPreviewPhase(index);
+                        }}
+                        className={`h-[5px] w-[5px] rounded-full border-0 p-0 transition-all cursor-pointer ${
+                          index === activeDotIndex ? 'scale-125 bg-white' : 'bg-white/25'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+              {template.mood && <span>{template.mood}</span>}
             </div>
-            {template.mood && <span>{template.mood}</span>}
           </div>
         </div>
       </div>
-    </button>
+    </div>
   );
 }
 
 export default function SidebarTemplateGallery20({ currentStyle, onApplyTemplate, onBack }) {
   const activeTemplateId = currentStyle?.template_20_id || '';
+  const [templateSearchQuery, setTemplateSearchQuery] = useState('');
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const { isFavorite, toggleFavorite } = useTemplateFavorites();
   const templateSections = [
     { id: 'original-20', title: '20 Templates', templates: LEGACY_TEMPLATE_CARDS },
-    { id: 'new-49', title: '49 Templates', templates: NEW_TEMPLATE_CARDS },
+    { id: 'lc-style-1', title: 'LC Style 1', templates: LC_STYLE_1_TEMPLATE_CARDS },
+    { id: 'lc-style-2', title: 'LC Style 2', templates: LC_STYLE_2_TEMPLATE_CARDS },
+    { id: 'lc-style-3', title: 'LC Style 3', templates: LC_STYLE_3_TEMPLATE_CARDS },
   ];
+  const visibleTemplateSections = useMemo(
+    () => templateSections.map((section) => ({
+      ...section,
+      templates: section.templates.filter((template) => (
+        isExportableTemplateCandidate(template)
+        && templateMatchesQuery(template, templateSearchQuery)
+        && (!favoritesOnly || isFavorite('sidebar-template', template.id))
+      )),
+    })),
+    [templateSearchQuery, favoritesOnly, isFavorite],
+  );
+  const visibleTemplateCount = visibleTemplateSections.reduce((total, section) => total + section.templates.length, 0);
   const applyTemplate = (template) => {
     onApplyTemplate?.(buildTemplateStyle(template));
   };
@@ -1399,28 +1988,54 @@ export default function SidebarTemplateGallery20({ currentStyle, onApplyTemplate
         </div>
       </div>
 
+      <div className="advanced-template-browser-controls">
+        <label className="advanced-template-search">
+          <Search className="h-3.5 w-3.5" />
+          <input
+            value={templateSearchQuery}
+            onChange={(event) => setTemplateSearchQuery(event.target.value)}
+            placeholder="Search templates"
+          />
+        </label>
+        <button
+          type="button"
+          aria-pressed={favoritesOnly}
+          title="Show favorites"
+          onClick={() => setFavoritesOnly((current) => !current)}
+          className={`advanced-template-favorites-filter ${favoritesOnly ? 'is-active' : ''}`}
+        >
+          <Star className="h-3.5 w-3.5" fill={favoritesOnly ? 'currentColor' : 'none'} />
+        </button>
+      </div>
+
       <div className="flex-1 overflow-y-auto pr-1 space-y-2">
-        {templateSections.map((section) => (
+        {visibleTemplateSections.map((section) => (
           <div key={section.id} className="space-y-2">
             <div className="advanced-template-section-label !mb-2 !px-0">
               <span className="text-[10px] tracking-[0.18em]">{section.title}</span>
-              <small>{section.templates.length}</small>
+              <small>{section.templates.length}/{templateSections.find((item) => item.id === section.id)?.templates.length || 0}</small>
             </div>
 
             {section.templates.map((template) => {
               const isActive = activeTemplateId === template.id;
+              const templateIsFavorite = isFavorite('sidebar-template', template.id);
 
               return (
                 <TemplateCardButton
                   key={template.id}
                   template={template}
                   isActive={isActive}
+                  isFavorite={templateIsFavorite}
+                  onToggleFavorite={() => toggleFavorite('sidebar-template', template.id)}
                   onApplyTemplate={applyTemplate}
                 />
               );
             })}
           </div>
         ))}
+        {!visibleTemplateCount && (
+          <div className="advanced-template-empty-state">No matching templates.</div>
+        )}
       </div>
 
       {onBack && (

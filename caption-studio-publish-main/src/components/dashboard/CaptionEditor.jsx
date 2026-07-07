@@ -29,6 +29,7 @@ export default function CaptionEditor({
   selectedCaptionId,
   setSelectedCaptionId,
   onSeek,
+  onPlayCaption,
   onOpenWordPopup,
   wordPopup,
   user
@@ -394,6 +395,12 @@ export default function CaptionEditor({
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
+                                setSelectedCaptionId(caption.id);
+                                if (onPlayCaption) {
+                                  onPlayCaption(caption);
+                                } else {
+                                  onSeek(caption.start_time || 0);
+                                }
                                 setEditingCaptionId(caption.id);
                               }}
                               className="rounded-md p-1 hover:bg-white/5 hover:text-slate-200"

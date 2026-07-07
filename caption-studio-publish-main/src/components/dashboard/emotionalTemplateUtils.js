@@ -37,6 +37,17 @@ function countLettersAndNumbers(word = '') {
 }
 
 function selectSemanticEmphasis(words = [], audioImpWordIndex = -1) {
+  const normalizedWords = words.map(normalizeEmphasisWord);
+  for (let index = 0; index < normalizedWords.length - 1; index += 1) {
+    if (normalizedWords[index] === '\u0926\u0938' && normalizedWords[index + 1] === '\u0932\u0915') {
+      return {
+        impWordIndex: index,
+        impWordIndices: [index, index + 1],
+        emphasisColor: '',
+      };
+    }
+  }
+
   let best = null;
   let fallback = null;
   words.forEach((rawWord, index) => {
@@ -71,11 +82,13 @@ function selectSemanticEmphasis(words = [], audioImpWordIndex = -1) {
     if (!fallback) return { impWordIndex: -1, emphasisColor: '' };
     return {
       impWordIndex: fallback.index,
+      impWordIndices: [fallback.index],
       emphasisColor: '',
     };
   }
   return {
     impWordIndex: best.index,
+    impWordIndices: [best.index],
     emphasisColor: '',
   };
 }
@@ -207,6 +220,11 @@ export function buildEmotionalCaptionPlan(captions = [], waveformData = [], dura
       mode,
       phaseIndex,
       impWordIndex: emphasis.impWordIndex,
+      impWordIndices: emphasis.impWordIndices || (
+        Number.isFinite(Number(emphasis.impWordIndex)) && Number(emphasis.impWordIndex) >= 0
+          ? [Number(emphasis.impWordIndex)]
+          : []
+      ),
       emphasisColor: emphasis.emphasisColor,
       audio: {
         rms: audio.rms,

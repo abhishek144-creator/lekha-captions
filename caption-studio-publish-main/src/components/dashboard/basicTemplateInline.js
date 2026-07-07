@@ -24,6 +24,15 @@ export const SOURCE_BASIC_TEMPLATE_IDS = [
 
 export const APPLIED_BASIC_TEMPLATE_FONT_SCALE = 0.76;
 
+export function normalizeAppliedBasicTemplateFontSize(templateId = '', fontSize = 0) {
+  const normalizedTemplateId = String(templateId || '').trim();
+  const numericFontSize = Number(fontSize);
+  if (normalizedTemplateId === 't-110' && (numericFontSize === 24 || numericFontSize === 28 || numericFontSize === 32)) {
+    return 22;
+  }
+  return Number.isFinite(numericFontSize) && numericFontSize > 0 ? numericFontSize : 0;
+}
+
 export function isSourceBasicTemplateId(templateId) {
   return SOURCE_BASIC_TEMPLATE_IDS.includes(String(templateId || ''));
 }
@@ -266,10 +275,26 @@ export function _basicWordStateClass(baseClass, index, currentIndex, isEmphasis 
     .join(' ') || 'word';
   return [
     cleaned,
+    isEmphasis ? 'imp' : '',
     revealWholeBlock || index <= currentIndex ? 'active' : '',
     !revealWholeBlock && index < currentIndex ? 'done' : '',
     index === currentIndex ? 'current' : '',
   ].filter(Boolean).join(' ');
+}
+
+export function normalizeBasicImpWordIndices(impWordIndex = -1, impWordIndices = []) {
+  const values = Array.isArray(impWordIndices) ? impWordIndices : [];
+  const normalized = values
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value >= 0)
+    .map((value) => Math.trunc(value));
+  const single = Number(impWordIndex);
+  if (Number.isFinite(single) && single >= 0) normalized.push(Math.trunc(single));
+  return new Set([...new Set(normalized)]);
+}
+
+function _basicWordAttrs(index, isEmphasis) {
+  return `data-w="${index}"${isEmphasis ? ' data-imp="true"' : ''}`;
 }
 
 export function updateAppliedBasicTemplateWordState(host, currentIndex = 0, wordCount = 1, templateId = '') {
@@ -279,7 +304,7 @@ export function updateAppliedBasicTemplateWordState(host, currentIndex = 0, word
   const safeCurrentIndex = Math.max(0, Number(currentIndex) || 0);
 
   host.querySelectorAll('.word, .sw-w').forEach((word) => {
-    word.classList.remove('current', 'imp');
+    word.classList.remove('current');
   });
 
   const activeBlock = host.querySelector('.bt-cap-block.is-active') || host;
@@ -323,48 +348,54 @@ function _basicTemplateWordDelay(templateId = '', phaseIndex = 0, lineIndex = ph
   };
 }
 
-export function _basicReplaceCapText(container, words, currentIndex, impWordIndex = -1, revealWholeBlock = true, lineGroups = [], templateId = '', phaseIndex = 0) {
+export function _basicReplaceCapText(container, words, currentIndex, impWordIndex = -1, revealWholeBlock = true, lineGroups = [], templateId = '', phaseIndex = 0, impWordIndices = []) {
   if (!container || !words.length) return;
   const sourceClasses = Array.from(container.querySelectorAll('.word'))
     .map((word) => _astCleanClass(word.className, 'word'));
+  const emphasisIndices = normalizeBasicImpWordIndices(impWordIndex, impWordIndices);
   const hasManualLines = lineGroups.length > 1;
   container.classList.toggle('has-manual-lines', hasManualLines);
   const renderWord = ({ word, index, localIndex = index, lineIndex = phaseIndex }) => {
     const { basicWordDelayMs, wordSlideDelayMs } = _basicTemplateWordDelay(templateId, phaseIndex, lineIndex, localIndex);
-    return `<span class="${_basicWordStateClass(_astMappedClass(sourceClasses, index, words.length, 'word'), index, currentIndex, index === impWordIndex, revealWholeBlock)}" data-w="${index}" style="--basic-word-index:${index};--basic-word-delay:${basicWordDelayMs}ms;--ws-delay:${wordSlideDelayMs}ms">${_astEscape(word)}</span>`;
+    const isEmphasis = emphasisIndices.has(index);
+    return `<span class="${_basicWordStateClass(_astMappedClass(sourceClasses, index, words.length, 'word'), index, currentIndex, isEmphasis, revealWholeBlock)}" ${_basicWordAttrs(index, isEmphasis)} style="--basic-word-index:${index};--basic-word-delay:${basicWordDelayMs}ms;--ws-delay:${wordSlideDelayMs}ms">${_astEscape(word)}</span>`;
   };
   container.innerHTML = hasManualLines
     ? lineGroups.map((line, lineIndex) => `<span class="basic-manual-line basic-manual-line-${lineIndex}" data-basic-line="${lineIndex}">${line.map((record, localIndex) => renderWord({ ...record, localIndex, lineIndex })).join(' ')}</span>`).join('')
     : words.map((word, index) => renderWord({ word, index, localIndex: index, lineIndex: phaseIndex })).join(' ');
 }
 
-export function _basicReplaceStickyLine(container, words, currentIndex, impWordIndex = -1, revealWholeBlock = true) {
+export function _basicReplaceStickyLine(container, words, currentIndex, impWordIndex = -1, revealWholeBlock = true, impWordIndices = []) {
   if (!container || !words.length) return;
   const sourceClasses = Array.from(container.querySelectorAll('.sw-w'))
     .map((word) => _astCleanClass(word.className, 'sw-w'));
+  const emphasisIndices = normalizeBasicImpWordIndices(impWordIndex, impWordIndices);
   container.innerHTML = words.map((word, index) => (
-    `<span class="${_basicWordStateClass(_astMappedClass(sourceClasses, index, words.length, 'sw-w'), index, currentIndex, index === impWordIndex, revealWholeBlock)}" data-w="${index}" style="--basic-word-index:${index};--basic-word-delay:${index * 80}ms">${_astEscape(word)}</span>`
+    `<span class="${_basicWordStateClass(_astMappedClass(sourceClasses, index, words.length, 'sw-w'), index, currentIndex, emphasisIndices.has(index), revealWholeBlock)}" ${_basicWordAttrs(index, emphasisIndices.has(index))} style="--basic-word-index:${index};--basic-word-delay:${index * 80}ms">${_astEscape(word)}</span>`
   )).join(' ');
 }
 
-export function _basicReplaceLayoutSlots(block, words, currentIndex, impWordIndex = -1, revealWholeBlock = true) {
+export function _basicReplaceLayoutSlots(block, words, currentIndex, impWordIndex = -1, revealWholeBlock = true, impWordIndices = []) {
   const slots = Array.from(block.querySelectorAll('.cpt-wrap .word[data-wi]'));
   if (!slots.length || !words.length) return false;
   const visibleSlots = slots.filter((slot) => slot.getAttribute('data-basic-hidden-slot') !== 'true');
-  const targetSlots = visibleSlots.length ? visibleSlots : slots;
+  const targetSlots = (visibleSlots.length ? visibleSlots : slots)
+    .slice(0, Math.max(1, Math.min(words.length, visibleSlots.length || slots.length)));
   const wordSlots = _astSplitWordRecordsForSlots(words, targetSlots.length);
+  const emphasisIndices = normalizeBasicImpWordIndices(impWordIndex, impWordIndices);
 
   slots.forEach((slot) => {
-    if (slot.getAttribute('data-basic-hidden-slot') !== 'true') return;
+    if (slot.getAttribute('data-basic-hidden-slot') !== 'true' && targetSlots.includes(slot)) return;
     slot.textContent = '';
     slot.className = _basicWordStateClass(slot.className, Number.POSITIVE_INFINITY, -1, false);
+    slot.setAttribute('data-basic-hidden-slot', 'true');
   });
 
   targetSlots.forEach((slot, index) => {
     const slotWords = wordSlots[index] || [];
     const sourceClass = _astCleanClass(slot.className, 'word');
     const replacement = slotWords.map(({ word, index: wordIndex }) => (
-      `<span class="${_basicWordStateClass(sourceClass, wordIndex, currentIndex, wordIndex === impWordIndex, revealWholeBlock)}" data-w="${wordIndex}" style="--basic-word-index:${wordIndex};--basic-word-delay:${wordIndex * 65}ms;--ws-delay:${90 + (wordIndex * 55)}ms">${_astEscape(word)}</span>`
+      `<span class="${_basicWordStateClass(sourceClass, wordIndex, currentIndex, emphasisIndices.has(wordIndex), revealWholeBlock)}" ${_basicWordAttrs(wordIndex, emphasisIndices.has(wordIndex))} style="--basic-word-index:${wordIndex};--basic-word-delay:${wordIndex * 65}ms;--ws-delay:${90 + (wordIndex * 55)}ms">${_astEscape(word)}</span>`
     )).join(' ');
     slot.outerHTML = replacement;
   });
@@ -376,7 +407,7 @@ export function _basicReplaceLayoutSlots(block, words, currentIndex, impWordInde
 // per-frame current word is applied separately via
 // updateAppliedBasicTemplateWordState (so the same markup can be reused across
 // playhead positions without rebuilding).
-export function _buildAppliedBasicTemplateInlineUncached(rawMarkup, templateId, captionText, activePhase, currentIndex, impWordIndex) {
+export function _buildAppliedBasicTemplateInlineUncached(rawMarkup, templateId, captionText, activePhase, currentIndex, impWordIndex, impWordIndices = []) {
   const markup = sanitizeAppliedTemplateMarkup(rawMarkup, true);
   if (!markup || typeof DOMParser === 'undefined') return null;
   const parsedCaption = parseBasicCaptionLines(captionText);
@@ -411,10 +442,10 @@ export function _buildAppliedBasicTemplateInlineUncached(rawMarkup, templateId, 
     block.style.display = isActive ? 'flex' : 'none';
     if (!isActive) return;
 
-    const slotLayoutHandled = _basicReplaceLayoutSlots(block, words, currentIndex, impWordIndex, revealWholeBlock);
-    block.querySelectorAll('.sw-line').forEach((line) => _basicReplaceStickyLine(line, words, currentIndex, impWordIndex, revealWholeBlock));
+    const slotLayoutHandled = _basicReplaceLayoutSlots(block, words, currentIndex, impWordIndex, revealWholeBlock, impWordIndices);
+    block.querySelectorAll('.sw-line').forEach((line) => _basicReplaceStickyLine(line, words, currentIndex, impWordIndex, revealWholeBlock, impWordIndices));
     if (!slotLayoutHandled) {
-      block.querySelectorAll('.cap-text').forEach((line) => _basicReplaceCapText(line, words, currentIndex, impWordIndex, revealWholeBlock, parsedCaption.lines, templateId, index));
+      block.querySelectorAll('.cap-text').forEach((line) => _basicReplaceCapText(line, words, currentIndex, impWordIndex, revealWholeBlock, parsedCaption.lines, templateId, index, impWordIndices));
     }
 
     // The authored per-template motion/effects are written as
@@ -445,8 +476,8 @@ export function _buildAppliedBasicTemplateInlineUncached(rawMarkup, templateId, 
 }
 
 // Public builder used by both preview and export.
-export function buildAppliedBasicTemplateInlineFromMarkup(rawMarkup, templateId, captionText, { activePhase = 0 } = {}) {
-  return _buildAppliedBasicTemplateInlineUncached(rawMarkup, templateId, captionText, activePhase, 0, -1);
+export function buildAppliedBasicTemplateInlineFromMarkup(rawMarkup, templateId, captionText, { activePhase = 0, currentIndex = 0, impWordIndex = -1, impWordIndices = [] } = {}) {
+  return _buildAppliedBasicTemplateInlineUncached(rawMarkup, templateId, captionText, activePhase, currentIndex, impWordIndex, impWordIndices);
 }
 
 export function countAppliedBasicTemplatePhasesFromMarkup(rawMarkup = '') {
@@ -496,6 +527,13 @@ export const APPLIED_BASIC_TEMPLATE_HOST_OVERRIDES = `
   .lekha-applied-basic-template-host .bt-prog-dots {
     display: none !important;
   }
+  .lekha-applied-basic-template-host [class^='t-'],
+  .lekha-applied-basic-template-host [class*=' t-'] {
+    --template-primary: inherit !important;
+    --template-secondary: inherit !important;
+    --template-highlight: inherit !important;
+    --template-bg: inherit !important;
+  }
   .lekha-applied-basic-template-host .cap-text,
   .lekha-applied-basic-template-host .sw-line {
     max-width: 100% !important;
@@ -525,10 +563,12 @@ export const APPLIED_BASIC_TEMPLATE_HOST_OVERRIDES = `
   .lekha-applied-basic-template-host .basic-manual-line {
     display: inline-flex !important;
     flex-direction: row !important;
+    flex-wrap: wrap !important;
     align-items: center !important;
     justify-content: center !important;
     gap: inherit !important;
-    white-space: nowrap !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
   }
   .lekha-applied-basic-template-host .t-T6 .cap-text,
   .lekha-applied-basic-template-host .t-109 .cap-text,
@@ -536,8 +576,33 @@ export const APPLIED_BASIC_TEMPLATE_HOST_OVERRIDES = `
   .lekha-applied-basic-template-host .t-119 .cap-text {
     gap: 0.26em !important;
   }
+  .lekha-applied-basic-template-host.t-110,
+  .lekha-applied-basic-template-host.t-110 .btcard-preview .t-110 .cap-text,
+  .lekha-applied-basic-template-host.t-110 .t-110 .cap-text,
+  .lekha-applied-basic-template-host.t-110 .t-110 .word {
+    font-size: calc(14px * var(--applied-basic-scale, 1)) !important;
+    line-height: 1.25 !important;
+  }
+  .lekha-applied-basic-template-host.t-109 .t-109 .word.current,
+  .lekha-applied-basic-template-host.t-109 .t-109 .word.imp.current {
+    text-shadow: 3px 3px 0 var(--template-secondary, #FF4500) !important;
+    filter: none !important;
+  }
+  .lekha-applied-basic-template-host.t-109 .t-109 .word.current {
+    color: var(--template-primary, #fff) !important;
+    -webkit-text-fill-color: var(--template-primary, #fff) !important;
+  }
+  .lekha-applied-basic-template-host.t-109 .t-109 .word.imp.current {
+    color: var(--template-primary, #fff) !important;
+    -webkit-text-fill-color: var(--template-primary, #fff) !important;
+  }
   .lekha-applied-basic-template-host .t-T6 .cap-text {
     gap: 0.18em !important;
+  }
+  .lekha-applied-basic-template-host.t-QW1 .t-QW1 .sw-line {
+    width: min(14.7em, 100%) !important;
+    max-width: 92% !important;
+    gap: 0 0.3em !important;
   }
   .lekha-applied-basic-template-host.t-T5 .t-T5 .cap-text {
     display: block !important;
@@ -578,7 +643,8 @@ export const APPLIED_BASIC_TEMPLATE_HOST_OVERRIDES = `
   .lekha-applied-basic-template-host.t-T6 .t-T6 .word {
     margin: 0 !important;
   }
-  .lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T6 .lekha-basic-template-animated .word.active {
+  .lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T6 .lekha-basic-template-animated .word.active,
+  .lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-106 .bt-cap-block.basic-phase-0 .t-106 .word.active {
     animation: basicWordRiseIn 0.28s cubic-bezier(0.34, 1.2, 0.64, 1) both !important;
     animation-delay: var(--basic-word-delay, 0ms) !important;
   }
@@ -666,6 +732,28 @@ export const APPLIED_BASIC_TEMPLATE_HOST_OVERRIDES = `
     animation: basicLightStreakSlideRight 0.42s cubic-bezier(0.22, 1, 0.36, 1) both !important;
     animation-delay: var(--basic-word-delay, 0ms) !important;
   }
+  .lekha-applied-basic-template-host[data-basic-playing="false"].t-52 .t-52,
+  .lekha-applied-basic-template-host[data-basic-playing="false"].t-52 .lekha-basic-template-animated,
+  .lekha-applied-basic-template-host[data-basic-playing="false"].t-52 .word {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+    filter: none !important;
+    opacity: 1 !important;
+    will-change: auto !important;
+  }
+  .lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-106 .bt-cap-block.basic-phase-1 .t-106 .word,
+  .lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-106 .bt-cap-block.basic-phase-1 .t-106 .word.active,
+  .lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-106 .bt-cap-block.basic-phase-1 .t-106 .word.current {
+    animation: none !important;
+    transform: none !important;
+    opacity: 1 !important;
+  }
+  .lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-106 .bt-cap-block.basic-phase-2 .t-106 .word.active,
+  .lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-106 .bt-cap-block.basic-phase-2 .t-106 .word.current {
+    animation: basicLightStreakSlideRight 0.42s cubic-bezier(0.22, 1, 0.36, 1) both !important;
+    animation-delay: var(--basic-word-delay, 0ms) !important;
+  }
   .lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .t-T4,
   .lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .lekha-basic-template-animated,
   .lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .basic-manual-line {
@@ -705,6 +793,15 @@ export const APPLIED_BASIC_TEMPLATE_HOST_OVERRIDES = `
   .lekha-applied-basic-template-host.lekha-basic-template-enter-once.t-T4 .lekha-basic-template-animated.has-manual-lines .basic-manual-line-2 {
     animation: none !important;
     transform: none !important;
+  }
+  .lekha-applied-basic-template-host .lekha-basic-template-animated .word.imp,
+  .lekha-applied-basic-template-host .lekha-basic-template-animated .word.imp.active,
+  .lekha-applied-basic-template-host .lekha-basic-template-animated .word.imp.current,
+  .lekha-applied-basic-template-host .lekha-basic-template-animated .sw-w.imp,
+  .lekha-applied-basic-template-host .lekha-basic-template-animated .sw-w.imp.active,
+  .lekha-applied-basic-template-host .lekha-basic-template-animated .sw-w.imp.current {
+    color: var(--template-highlight, var(--template-secondary, currentColor)) !important;
+    -webkit-text-fill-color: var(--template-highlight, var(--template-secondary, currentColor)) !important;
   }
   .lekha-applied-basic-template-host .sw-line {
     white-space: normal !important;

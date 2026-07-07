@@ -1,21 +1,45 @@
-import React, { useCallback, useMemo, useRef } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { useLazyVisible } from './useLazyVisible';
-import { Check, RotateCcw, Sparkles } from 'lucide-react';
+import { Check, RotateCcw, Sparkles, Search, Star } from 'lucide-react';
 import originalTemplateHtml from '../../assets/lekha-captions-T11-T35.html?raw';
 import { findAppliedBasicTemplateMarkup } from './basicTemplateInline.js';
 import {
   ADVANCED_IMP_ENTRANCES,
   ADVANCED_TEMPLATE_EMPHASIS_COLORS,
   ADVANCED_TEMPLATE_RUNTIME_CSS,
-  ADVANCED_TEMPLATE_TIMING,
   ORIGINAL_TEMPLATE_BLOCKS,
 } from './templateMotionConfig';
+import {
+  isExportableTemplateCandidate,
+  templateMatchesQuery,
+  useTemplateFavorites,
+} from './templateBrowserUtils.js';
 import '../../styles/advancedTemplateLibrary.css';
 
 const sanitizedOriginalTemplateHtml = originalTemplateHtml
   .replace(/<script[\s\S]*?<\/script>/gi, '')
   .replace(/\s+bis_skin_checked="[^"]*"/gi, '')
   .replace(/<!-- saved from url=.*?-->\s*/gi, '');
+
+const ADVANCED_TEMPLATE_PREVIEW_TIMING = Object.freeze({
+  holdMs: 3300,
+  enterMs: 260,
+  exitMs: 360,
+  gapMs: 70,
+  wordStaggerMs: 95,
+  wordDurationMs: 360,
+  emphasisDelayMs: 80,
+  emphasisDurationMs: 460,
+  sequentialStaggerMs: 190,
+  sequentialDurationMs: 280,
+});
+
+const BASIC_TEMPLATE_PREVIEW_TIMING = Object.freeze({
+  fixedLineCycleMs: 2600,
+  wordCycleMs: 1200,
+  wordStaggerMs: 95,
+  stickyWaveStaggerMs: 300,
+});
 
 const REMOVED_ADVANCED_TEMPLATE_IDS = new Set(['t17']);
 
@@ -51,7 +75,7 @@ const ADVANCED_TEMPLATE_STYLE = {
   t12: { font_family: 'Lora', font_size: 24, font_style: 'italic', font_weight: '700', secondary_color: '#FF3D71', highlight_color: '#FF3D71', emphasis_color: '#FF3D71', text_color: '#FFFFFF' },
   t13: { font_family: 'IBM Plex Mono', font_size: 23, font_weight: '700', secondary_color: '#FFFFFF', text_color: '#F97316', text_case: 'uppercase' },
   t14: { font_family: 'Libre Baskerville', font_size: 23, font_weight: '700', secondary_color: '#D4AF37', text_color: '#E8E0D0' },
-  t15: { font_family: 'Oswald', font_size: 26, font_weight: '700', secondary_color: '#FF3D71', text_color: '#FFFFFF', text_case: 'uppercase' },
+  t15: { font_family: 'Oswald', font_size: 22, font_weight: '700', secondary_color: '#FF3D71', text_color: '#FFFFFF', text_case: 'uppercase' },
   t16: { font_family: 'Unbounded', font_size: 22, font_weight: '900', secondary_color: '#FFFFFF', highlight_color: '#FFFFFF', emphasis_color: '#FFFFFF', text_color: '#00E5FF', text_case: 'uppercase' },
   t17: { font_family: 'Space Mono', font_size: 23, font_weight: '700', secondary_color: '#FF3D71', highlight_color: '#FF3D71', emphasis_color: '#FF3D71', text_color: '#FFFFFF', text_case: 'uppercase' },
   t18: { font_family: 'Cinzel', font_size: 23, font_weight: '700', secondary_color: '#D4AF37', text_color: '#FFFFFF' },
@@ -63,14 +87,14 @@ const ADVANCED_TEMPLATE_STYLE = {
   t24: { font_family: 'Spectral', font_size: 23, font_weight: '600', secondary_color: '#F97316', text_color: '#FFFFFF' },
   t25: { font_family: 'Instrument Serif', font_size: 25, font_style: 'italic', font_weight: '700', secondary_color: '#FF3D71', text_color: '#FFFFFF' },
   t26: { font_family: 'Bungee', font_size: 24, font_weight: '900', secondary_color: '#F97316', text_color: '#FFFFFF', text_case: 'uppercase' },
-  t27: { font_family: 'Exo 2', font_size: 23, font_weight: '700', secondary_color: '#FFFFFF', text_color: '#00E5FF', text_case: 'uppercase' },
+  t27: { font_family: 'Exo 2', font_size: 20, font_weight: '700', secondary_color: '#FFFFFF', text_color: '#00E5FF', text_case: 'uppercase' },
   t28: { font_family: 'Bitter', font_size: 23, font_weight: '700', secondary_color: '#86DE02', highlight_color: '#86DE02', emphasis_color: '#86DE02', text_color: '#D8CBB8' },
   t29: { font_family: 'Teko', font_size: 24, font_weight: '700', secondary_color: '#F97316', text_color: '#FFFFFF', text_case: 'uppercase' },
   t30: { font_family: 'Cormorant Garamond', font_size: 24, font_style: 'italic', font_weight: '600', secondary_color: '#FFFFFF', text_color: '#B4D2C8' },
   t31: { font_family: 'Playfair Display', font_size: 27, font_weight: '700', secondary_color: '#D4AF37', text_color: '#FFFFFF' },
   t32: { font_family: 'Bodoni Moda', font_size: 23, font_style: 'italic', font_weight: '700', secondary_color: '#00E5FF', highlight_color: '#00E5FF', emphasis_color: '#00E5FF', text_color: '#D0CEE8' },
   t33: { font_family: 'Noto Sans', font_size: 23, font_weight: '700', secondary_color: '#EE17DC', highlight_color: '#EE17DC', emphasis_color: '#EE17DC', text_color: '#FFFFFF' },
-  t34: { font_family: 'Syne', font_size: 24, font_weight: '800', secondary_color: '#15F5F9', highlight_color: '#15F5F9', emphasis_color: '#15F5F9', text_color: '#FFFFFF', text_case: 'uppercase' },
+  t34: { font_family: 'Syne', font_size: 20, font_weight: '800', secondary_color: '#15F5F9', highlight_color: '#15F5F9', emphasis_color: '#15F5F9', text_color: '#FFFFFF', text_case: 'uppercase' },
   t35: { font_family: 'Crimson Text', font_size: 24, font_style: 'italic', font_weight: '600', secondary_color: '#FFFFFF', text_color: '#DCD2DC' },
   t36: { font_family: 'Inter', font_size: 23, font_weight: '800', secondary_color: '#DDAA03', highlight_color: '#DDAA03', emphasis_color: '#DDAA03', karaoke_color_1: '#DDAA03', karaoke_color_2: '#22D3EE', karaoke_color_3: '#FB923C', text_color: '#FFFFFF' },
   t37: { font_family: 'Rajdhani', font_size: 25, font_weight: '800', secondary_color: '#FFFFFF', highlight_color: '#FFFFFF', emphasis_color: '#FFFFFF', text_color: '#E1DA09', text_case: 'uppercase' },
@@ -103,12 +127,22 @@ function getTemplatePalette(style = {}, defaults = {}) {
   const sourceText = templateId === 't36'
     ? '#FFFFFF'
     : (!isCustomized && templateId === 't12' ? '#FFFFFF' : '');
-  const configuredAccent = style.highlight_color
-    || style.emphasis_color
-    || style.secondary_color
-    || defaults.highlight_color
-    || defaults.emphasis_color
-    || defaults.secondary_color;
+  const accentSourceField = BASIC_TEMPLATE_ACCENT_SOURCE_FIELDS[templateId] || '';
+  const configuredAccent = accentSourceField
+    ? style[accentSourceField]
+      || defaults[accentSourceField]
+      || style.emphasis_color
+      || defaults.emphasis_color
+      || style.secondary_color
+      || defaults.secondary_color
+      || style.highlight_color
+      || defaults.highlight_color
+    : style.highlight_color
+      || style.emphasis_color
+      || style.secondary_color
+      || defaults.highlight_color
+      || defaults.emphasis_color
+      || defaults.secondary_color;
   const text = normalizeColor(sourceText || style.text_color || defaults.text_color, '#FFFFFF');
   const accent = normalizeColor(
     isCustomized ? configuredAccent : (sourceAccent || configuredAccent),
@@ -124,6 +158,16 @@ function getTemplateCustomizationPatch(field, color, currentStyle = {}) {
     return { text_color: nextColor, text_gradient: '', template_color_customized: true };
   }
   if (field === 'accent') {
+    const templateId = String(currentStyle?.template_id || '').trim();
+    const accentSourceField = BASIC_TEMPLATE_ACCENT_SOURCE_FIELDS[templateId] || '';
+    if (accentSourceField === 'highlight_color') {
+      return {
+        highlight_color: nextColor,
+        highlight_gradient: '',
+        emphasis_color: nextColor,
+        template_color_customized: true,
+      };
+    }
     return {
       secondary_color: nextColor,
       highlight_color: nextColor,
@@ -175,34 +219,39 @@ function buildAppliedTemplateStyle(template) {
 
 const BASIC_TEMPLATE_STYLE = {
   't-106': { font_family: 'Noto Sans', font_size: 24, font_weight: '800', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03', has_shadow: true, shadow_color: '#000000', shadow_blur: 3, shadow_offset_x: 1, shadow_offset_y: 2 },
-  't-52': { font_family: 'Inter', font_size: 26, font_weight: '900', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03' },
-  't-T4': { font_family: 'Playfair Display', font_size: 24, font_weight: '700', font_style: 'italic', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03' },
-  't-WS1': { font_family: 'Raleway', font_size: 24, font_weight: '800', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03' },
+  't-52': { font_family: 'Inter', font_size: 26, font_weight: '900', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#22D3EE' },
+  't-T4': { font_family: 'Playfair Display', font_size: 24, font_weight: '700', font_style: 'italic', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#FF6B9E' },
+  't-WS1': { font_family: 'Raleway', font_size: 24, font_weight: '800', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#BEFF00' },
   't-115': { font_family: 'Noto Sans', font_size: 28, font_weight: '900', font_style: 'italic', text_color: '#FFFFFF', secondary_color: '#39FF14', highlight_color: '#DDAA03', has_shadow: true, shadow_color: '#39FF14', shadow_blur: 10, shadow_offset_x: 0, shadow_offset_y: 0 },
-  't-104': { font_family: 'Noto Sans', font_size: 26, font_weight: '900', text_color: '#FFFFFF', secondary_color: '#2563EB', highlight_color: '#DDAA03', has_stroke: true, stroke_color: '#2563EB', stroke_width: 2 },
-  't-109': { font_family: 'Noto Sans', font_size: 26, font_weight: '900', text_color: '#FFFFFF', secondary_color: '#E01A1A', highlight_color: '#DDAA03', has_shadow: true, shadow_color: '#E01A1A', shadow_offset_x: 3, shadow_offset_y: 3, shadow_blur: 0 },
+  't-104': { font_family: 'Noto Sans', font_size: 26, font_weight: '900', text_color: '#FFFFFF', secondary_color: '#2563EB', highlight_color: '#2563EB', has_stroke: true, stroke_color: '#2563EB', stroke_width: 2 },
+  't-109': { font_family: 'Noto Sans', font_size: 26, font_weight: '900', text_color: '#FFFFFF', secondary_color: '#FF4500', highlight_color: '#FFF200', has_shadow: true, shadow_color: '#FF4500', shadow_offset_x: 3, shadow_offset_y: 3, shadow_blur: 0 },
   't-95': { font_family: 'Montserrat', font_size: 30, text_color: '#FFFFFF', secondary_color: '#0055FF', highlight_color: '#DDAA03' },
   't-102': { font_family: 'Noto Sans', font_size: 22, font_weight: '800', text_color: '#1F2022', secondary_color: '#1F2022', highlight_color: '#b07d00', has_background: true, background_color: '#E8E8E8', background_opacity: 1, background_padding: 10 },
-  't-T5': { font_family: 'Montserrat', font_size: 24, font_weight: '800', font_style: 'italic', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03', has_background: true, background_color: '#BEFF00', background_opacity: 1, background_padding: 10 },
+  't-T5': { font_family: 'Montserrat', font_size: 24, font_weight: '800', font_style: 'italic', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03', has_background: true, background_color: '#DDAA03', background_opacity: 1, background_padding: 10 },
   't-T6': { font_family: 'Montserrat', font_size: 24, font_weight: '800', font_style: 'italic', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03', has_background: true, background_color: '#F97316', background_opacity: 1, background_padding: 8 },
   't-103': { font_family: 'Noto Sans', font_size: 22, font_weight: '800', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03', has_background: true, background_color: '#1e1e1e', background_opacity: 0.85, background_padding: 10 },
   't-QW1': { font_family: 'Raleway', font_size: 20, font_weight: '500', font_style: 'italic', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#FFFFFF' },
   't-36': { font_family: 'Noto Sans', font_size: 26, font_weight: '900', text_color: '#FFFFFF', secondary_color: '#DDAA03', highlight_color: '#DDAA03' },
   't-105': { font_family: 'Noto Sans', font_size: 24, font_weight: '800', text_color: '#FFFFFF', secondary_color: '#DDAA03', highlight_color: '#DDAA03', has_stroke: true, stroke_color: '#000000', stroke_width: 1, has_shadow: true, shadow_color: '#000000', shadow_blur: 2, shadow_offset_x: 2, shadow_offset_y: 2 },
   't-124': { font_family: 'Inter', font_size: 26, font_weight: '900', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03', has_shadow: true, shadow_color: '#ffffff', shadow_offset_x: 4, shadow_offset_y: 4, shadow_blur: 0 },
-  't-110': { font_family: 'Noto Sans', font_size: 24, font_weight: '800', text_color: '#FFFFFF', secondary_color: '#0066FF', highlight_color: '#DDAA03' },
+  't-110': { font_family: 'Noto Sans', font_size: 22, font_weight: '800', text_color: '#FFFFFF', secondary_color: '#0066FF', highlight_color: '#DDAA03' },
   't-56': { font_family: 'Inter', font_size: 26, font_weight: '900', text_color: '#FFFFFF', secondary_color: '#0066FF', highlight_color: '#DDAA03' },
   't-119': { font_family: 'Inter', font_size: 24, font_weight: '800', text_color: '#FFFFFF', secondary_color: '#00FFCC', highlight_color: '#DDAA03' },
-  't-12': { font_family: 'Special Elite', font_size: 22, text_color: '#cc0000', secondary_color: '#cc0000', highlight_color: '#DDAA03', has_shadow: true, shadow_color: '#cc0000', shadow_blur: 10, shadow_offset_x: 0, shadow_offset_y: 0 },
+  't-12': { font_family: 'Special Elite', font_size: 22, text_color: '#cc0000', secondary_color: '#cc0000', highlight_color: '#cc0000', has_shadow: true, shadow_color: '#cc0000', shadow_blur: 10, shadow_offset_x: 0, shadow_offset_y: 0 },
 };
 
 const BASIC_TEMPLATE_MARKUP_OVERRIDES = {
+  't-106': findAppliedBasicTemplateMarkup(originalTemplateHtml, { template_id: 't-106' }),
+  't-52': findAppliedBasicTemplateMarkup(originalTemplateHtml, { template_id: 't-52' }),
   't-T4': findAppliedBasicTemplateMarkup(originalTemplateHtml, { template_id: 't-T4' }),
   't-WS1': findAppliedBasicTemplateMarkup(originalTemplateHtml, { template_id: 't-WS1' }),
 };
 
 function buildAppliedBasicTemplateStyle(template) {
-  const templateMarkup = BASIC_TEMPLATE_MARKUP_OVERRIDES[template.id] || template.cardMarkup || '';
+  const templateMarkup = BASIC_TEMPLATE_MARKUP_OVERRIDES[template.id]
+    || findAppliedBasicTemplateMarkup(originalTemplateHtml, { template_id: template.id })
+    || template.cardMarkup
+    || '';
   return {
     template_id: template.id,
     template_source: 'lekha-basic',
@@ -212,6 +261,8 @@ function buildAppliedBasicTemplateStyle(template) {
     template_effect: template.desc || '',
     template_markup: templateMarkup,
     ...(BASIC_TEMPLATE_STYLE[template.id] || {}),
+    ...(BASIC_TEMPLATE_IMAN_FONT_IDS.has(template.id) ? BASIC_TEMPLATE_IMAN_FONT_STYLE : {}),
+    ...(template.id === 't-110' ? { font_family: 'Noto Sans', font_size: 22 } : {}),
     has_background: BASIC_TEMPLATE_STYLE[template.id]?.has_background || false,
     has_shadow: BASIC_TEMPLATE_STYLE[template.id]?.has_shadow || false,
     has_stroke: BASIC_TEMPLATE_STYLE[template.id]?.has_stroke || false,
@@ -374,7 +425,7 @@ function extractBasicTemplateCards() {
     const id = cardMarkup.match(/class="[^"]*\b(t-[^"\s]+)/i)?.[1];
     const bg = cardMarkup.match(/<div class="btcard-preview"[^>]*style="[^"]*background\s*:\s*([^;"]+)/i)?.[1]?.trim() || '#111';
 
-    if (name && id) {
+    if (name && id && id !== 't-124') {
       cards.push({
         id,
         code: id.replace(/^t-/, ''),
@@ -392,6 +443,47 @@ function extractBasicTemplateCards() {
 }
 
 const BASIC_TEMPLATE_PACK = extractBasicTemplateCards();
+const BASIC_TEMPLATE_IMAN_FONT_STYLE = { font_family: 'Noto Sans', font_size: 24 };
+const BASIC_TEMPLATE_IMAN_FONT_IDS = new Set(
+  (() => {
+    const imanIndex = BASIC_TEMPLATE_PACK.findIndex((template) => template.id === 't-106');
+    return imanIndex === -1
+      ? []
+      : BASIC_TEMPLATE_PACK.slice(imanIndex + 1).map((template) => template.id);
+  })(),
+);
+const BASIC_TEMPLATE_ACCENT_ENABLED_IDS = new Set([
+  't-106', 't-52', 't-T4', 't-WS1',
+  't-115', 't-104', 't-109', 't-95', 't-102', 't-103',
+  't-36', 't-105', 't-110', 't-56', 't-119', 't-12',
+]);
+const BASIC_TEMPLATE_ACCENT_DISABLED_IDS = new Set(
+  (() => {
+    const imanIndex = BASIC_TEMPLATE_PACK.findIndex((template) => template.id === 't-106');
+    return imanIndex === -1
+      ? []
+      : BASIC_TEMPLATE_PACK
+        .slice(imanIndex)
+        .map((template) => template.id)
+        .filter((templateId) => !BASIC_TEMPLATE_ACCENT_ENABLED_IDS.has(templateId));
+  })(),
+);
+const BASIC_TEMPLATE_ACCENT_SOURCE_FIELDS = {
+  't-106': 'highlight_color',
+  't-52': 'highlight_color',
+  't-T4': 'highlight_color',
+  't-WS1': 'highlight_color',
+  't-12': 'secondary_color',
+  't-56': 'secondary_color',
+  't-95': 'secondary_color',
+  't-102': 'highlight_color',
+  't-103': 'highlight_color',
+  't-104': 'secondary_color',
+  't-109': 'secondary_color',
+  't-110': 'secondary_color',
+  't-115': 'secondary_color',
+  't-119': 'secondary_color',
+};
 
 const TEMPLATE_PREVIEW_DOT_SIZE_PX = 5;
 const TEMPLATE_PREVIEW_DOT_GAP_PX = 6;
@@ -441,6 +533,8 @@ function extractOriginalStyle() {
 
 function buildTemplateColorPreviewCss(templateId, previewStyle = {}, { basic = false } = {}) {
   const normalizedTemplateId = String(templateId || '').trim();
+  const basicFixedHighlightTemplate = ['t-106', 't-52', 't-T4', 't-WS1'].includes(normalizedTemplateId);
+  const basicShadowHighlightTemplate = ['t-104', 't-109'].includes(normalizedTemplateId);
   const alwaysSyncSourceColor = normalizedTemplateId === 't22'
     || normalizedTemplateId === 't28'
     || normalizedTemplateId === 't33'
@@ -449,9 +543,20 @@ function buildTemplateColorPreviewCss(templateId, previewStyle = {}, { basic = f
     || normalizedTemplateId === 't37'
     || normalizedTemplateId === 't38'
     || normalizedTemplateId === 't39'
-    || normalizedTemplateId === 't40';
+    || normalizedTemplateId === 't40'
+    || normalizedTemplateId === 't-106'
+    || normalizedTemplateId === 't-52'
+    || normalizedTemplateId === 't-T4'
+    || normalizedTemplateId === 't-WS1';
   if (!previewStyle?.template_color_customized && !alwaysSyncSourceColor) return '';
   const palette = getTemplatePalette(previewStyle, ADVANCED_TEMPLATE_STYLE[templateId] || BASIC_TEMPLATE_STYLE[templateId] || {});
+  const highlight = normalizeColor(
+    previewStyle.highlight_color
+      || ADVANCED_TEMPLATE_STYLE[templateId]?.highlight_color
+      || BASIC_TEMPLATE_STYLE[templateId]?.highlight_color
+      || palette.accent,
+    palette.accent,
+  );
   const karaokeColor1 = normalizeColor(previewStyle.karaoke_color_1 || ADVANCED_TEMPLATE_STYLE[templateId]?.karaoke_color_1, '#DDAA03');
   const karaokeColor2 = normalizeColor(previewStyle.karaoke_color_2 || ADVANCED_TEMPLATE_STYLE[templateId]?.karaoke_color_2, '#22D3EE');
   const karaokeColor3 = normalizeColor(previewStyle.karaoke_color_3 || ADVANCED_TEMPLATE_STYLE[templateId]?.karaoke_color_3, '#FB923C');
@@ -460,9 +565,16 @@ function buildTemplateColorPreviewCss(templateId, previewStyle = {}, { basic = f
     .btcard {
       --template-primary: ${palette.text};
       --template-secondary: ${palette.accent};
-      --template-highlight: ${palette.accent};
+      --template-highlight: ${highlight};
       --template-bg: ${palette.background};
       color: ${palette.text} !important;
+    }
+    .btcard [class^="t-"],
+    .btcard [class*=" t-"] {
+      --template-primary: ${palette.text} !important;
+      --template-secondary: ${palette.accent} !important;
+      --template-highlight: ${highlight} !important;
+      --template-bg: ${palette.background} !important;
     }
     .btcard .word:not(.imp):not(.current),
     .btcard .bt-cap-block,
@@ -470,13 +582,14 @@ function buildTemplateColorPreviewCss(templateId, previewStyle = {}, { basic = f
       color: ${palette.text} !important;
       -webkit-text-fill-color: ${palette.text} !important;
     }
+    ${basicShadowHighlightTemplate ? '' : `
     .btcard .word.imp,
-    .btcard .word.current,
     .btcard .imp,
-    .btcard [data-imp="true"] {
-      color: ${palette.accent} !important;
-      -webkit-text-fill-color: ${palette.accent} !important;
-    }
+    .btcard [data-imp="true"]${basicFixedHighlightTemplate ? '' : `,
+    .btcard .word.current`} {
+      color: ${highlight} !important;
+      -webkit-text-fill-color: ${highlight} !important;
+    }`}
     ${previewStyle.has_background ? `.btcard-preview { background: ${palette.background} !important; }` : ''}
   `;
   }
@@ -486,7 +599,7 @@ function buildTemplateColorPreviewCss(templateId, previewStyle = {}, { basic = f
     #card-${templateId} {
       --template-primary: ${palette.text};
       --template-secondary: ${palette.accent};
-      --template-highlight: ${palette.accent};
+      --template-highlight: ${highlight};
       --template-bg: ${palette.background};
       --cyan: ${palette.accent};
       --gold: ${palette.accent};
@@ -524,6 +637,7 @@ function buildTemplateColorPreviewCss(templateId, previewStyle = {}, { basic = f
     ${selector} .imp-flicker,
     ${selector} .imp-typewrite,
     ${selector} .imp-underline,
+    ${selector} .still-frames-highlight,
     ${selector} .kf-fill {
       color: ${palette.accent} !important;
       -webkit-text-fill-color: ${palette.accent} !important;
@@ -611,6 +725,18 @@ function buildTemplateColorPreviewCss(templateId, previewStyle = {}, { basic = f
     #card-t39 .w {
       margin-right: 0 !important;
     }
+    #card-t39 .imp-gold,
+    #card-t39 .imp-rose,
+    #card-t39 .imp-italic,
+    #card-t39 .imp-weight,
+    #card-t39 .w[data-imp="true"],
+    #card-t39 .w[data-imp-cls],
+    #card-t39 .is-emphasis {
+      color: ${palette.accent} !important;
+      -webkit-text-fill-color: ${palette.accent} !important;
+      opacity: 1 !important;
+      text-shadow: 0 0 12px ${palette.accent}66 !important;
+    }
     ` : ''}
     ${templateId === 't37' ? `
     ${selector},
@@ -691,6 +817,30 @@ const iframeOverrides = (templateId, previewStyle = {}) => `
       transform: scale(0.9) !important;
       line-height: 0.88 !important;
     }
+    #card-t13 .t13-b0 .slide-crash,
+    #card-t13 .t13-b1 .ticker-txt {
+      display: inline-flex !important;
+      flex-wrap: wrap !important;
+      justify-content: center !important;
+      align-items: center !important;
+      max-width: min(100%, 12.2em) !important;
+      white-space: normal !important;
+      overflow-wrap: anywhere !important;
+      word-break: break-word !important;
+      text-align: center !important;
+      line-height: 1.12 !important;
+      margin-left: auto !important;
+      margin-right: auto !important;
+    }
+    #card-t13 .t13-b0 .slide-crash {
+      font-size: 1.12rem !important;
+      letter-spacing: 0.03em !important;
+      text-transform: none !important;
+    }
+    #card-t13 .t13-b1 .ticker-txt {
+      font-size: 0.98rem !important;
+      letter-spacing: 0.06em !important;
+    }
     ${buildTemplateColorPreviewCss(templateId, previewStyle)}
   </style>
 `;
@@ -713,10 +863,10 @@ function buildTemplatePreviewDoc(templateId, options = {}) {
   const previewScript = `
     <script>
       (() => {
-        const HOLD = ${ADVANCED_TEMPLATE_TIMING.holdMs};
-        const EXIT = ${ADVANCED_TEMPLATE_TIMING.exitMs};
-        const ENTER = ${ADVANCED_TEMPLATE_TIMING.enterMs};
-        const GAP = ${ADVANCED_TEMPLATE_TIMING.gapMs};
+        const HOLD = ${ADVANCED_TEMPLATE_PREVIEW_TIMING.holdMs};
+        const EXIT = ${ADVANCED_TEMPLATE_PREVIEW_TIMING.exitMs};
+        const ENTER = ${ADVANCED_TEMPLATE_PREVIEW_TIMING.enterMs};
+        const GAP = ${ADVANCED_TEMPLATE_PREVIEW_TIMING.gapMs};
         const INITIAL_BLOCK_INDEX = ${initialBlockIndex};
         const LOCK_TO_PHASE = ${lockToPhase ? 'true' : 'false'};
         const APPLIED_PREVIEW = ${appliedPreviewConfig};
@@ -836,8 +986,12 @@ function buildTemplatePreviewDoc(templateId, options = {}) {
               || (sourceClasses[sourceImpIndex].match(IMP_CLASS_TEST_PATTERN) || [])[0]
               || ''
             : '';
-          const impWordIndex = Number(APPLIED_PREVIEW.impWordIndex);
+          const rawImpWordIndex = Number(APPLIED_PREVIEW.impWordIndex);
+          const impWordIndex = Number.isFinite(rawImpWordIndex) && rawImpWordIndex >= 0
+            ? rawImpWordIndex
+            : (sourceImpIndex >= 0 ? Math.min(words.length - 1, sourceImpIndex) : -1);
           const emphasisColor = APPLIED_PREVIEW.emphasisColor || '';
+          const resolvedImpClass = sourceImpClass || ('${templateId}' === 't39' ? 'imp-rose' : '');
 
           container.textContent = '';
           container.dataset.text = words.join(' ');
@@ -848,12 +1002,12 @@ function buildTemplatePreviewDoc(templateId, options = {}) {
               .replace(IMP_CLASS_PATTERN, '')
               .replace(/\\s+/g, ' ')
               .trim();
-            const isImp = index === impWordIndex && !!sourceImpClass;
-            span.className = (mapped || 'w') + (isImp ? ' ' + sourceImpClass + ' is-emphasis' : '');
+            const isImp = index === impWordIndex && !!resolvedImpClass;
+            span.className = (mapped || 'w') + (isImp ? ' ' + resolvedImpClass + ' is-emphasis' : '');
             span.dataset.i = String(index);
             if (isImp) {
               span.dataset.imp = 'true';
-              span.dataset.impCls = sourceImpClass;
+              span.dataset.impCls = resolvedImpClass;
               if (emphasisColor) {
                 span.style.setProperty('color', emphasisColor, 'important');
                 span.style.setProperty('-webkit-text-fill-color', emphasisColor, 'important');
@@ -968,16 +1122,21 @@ function buildTemplatePreviewDoc(templateId, options = {}) {
             block.textContent = APPLIED_PREVIEW.text;
             return;
           }
-          const assigned = assignPreviewWordsToSlots(words, slots.length);
+          const targetSlotCount = Math.max(1, Math.min(words.length, slots.length));
+          const targetSlots = slots.slice(0, targetSlotCount);
+          const assigned = assignPreviewWordsToSlots(words, targetSlots.length);
           const impClass = getPreviewSourceImpClass(block);
           const impWordIndex = Number(APPLIED_PREVIEW.impWordIndex);
           const emphasisColor = APPLIED_PREVIEW.emphasisColor || '';
-          slots.forEach((slot, slotIndex) => {
+          targetSlots.forEach((slot, slotIndex) => {
             if (assigned[slotIndex]?.length) {
               replacePreviewTextSlot(slot, assigned[slotIndex], impWordIndex, impClass, emphasisColor, block);
             } else {
               slot.nodeValue = '';
             }
+          });
+          slots.slice(targetSlotCount).forEach((slot) => {
+            slot.nodeValue = '';
           });
           block.querySelectorAll('[data-text]').forEach((element) => {
             element.setAttribute('data-text', APPLIED_PREVIEW.text || '');
@@ -1003,6 +1162,40 @@ function buildTemplatePreviewDoc(templateId, options = {}) {
               return;
             }
             replacePreviewStyledText(block, words);
+          });
+        }
+
+        function applyStillFramesPreviewHighlight(blocks) {
+          if ('${templateId}' !== 't40') return;
+          blocks.forEach((block) => {
+            if (!block || block.querySelector('.still-frames-highlight')) return;
+            const target = block.querySelector('.lekha-template-fit, span') || block;
+            const words = String(target.textContent || '').trim().split(/\\s+/).filter(Boolean);
+            if (!words.length) return;
+            const rawImpWordIndex = Number(APPLIED_PREVIEW.impWordIndex);
+            const impWordIndex = Number.isFinite(rawImpWordIndex) && rawImpWordIndex >= 0
+              ? Math.min(words.length - 1, rawImpWordIndex)
+              : Math.min(1, words.length - 1);
+            const emphasisColor = APPLIED_PREVIEW.emphasisColor || '';
+            target.textContent = '';
+            target.classList.add('lekha-template-fit', 'still-frames-line');
+            words.forEach((word, index) => {
+              if (index > 0) target.appendChild(document.createTextNode(' '));
+              if (index === impWordIndex) {
+                const span = document.createElement('span');
+                span.className = 'imp-rose still-frames-highlight is-emphasis';
+                span.dataset.imp = 'true';
+                span.dataset.impCls = 'imp-rose';
+                if (emphasisColor) {
+                  span.style.setProperty('color', emphasisColor, 'important');
+                  span.style.setProperty('-webkit-text-fill-color', emphasisColor, 'important');
+                }
+                span.textContent = word;
+                target.appendChild(span);
+              } else {
+                target.appendChild(document.createTextNode(word));
+              }
+            });
           });
         }
 
@@ -1040,8 +1233,8 @@ function buildTemplatePreviewDoc(templateId, options = {}) {
                     : 'slide';
           const isSeq = type === 'seq' || type === 'seq-flip' || type === 'seq-fade';
           const stagger = isSeq
-            ? ${ADVANCED_TEMPLATE_TIMING.sequentialStaggerMs}
-            : ${ADVANCED_TEMPLATE_TIMING.wordStaggerMs};
+            ? ${ADVANCED_TEMPLATE_PREVIEW_TIMING.sequentialStaggerMs}
+            : ${ADVANCED_TEMPLATE_PREVIEW_TIMING.wordStaggerMs};
           const words = block.querySelectorAll('.w');
           words.forEach((word) => {
             word.classList.remove('in', 'fx');
@@ -1066,12 +1259,12 @@ function buildTemplatePreviewDoc(templateId, options = {}) {
             const index = Number.isFinite(parsedIndex) ? parsedIndex : fallbackIndex;
             const delay = isSeq
               ? index * stagger
-              : (index * stagger) + (isImp ? ${ADVANCED_TEMPLATE_TIMING.emphasisDelayMs} : 0);
+              : (index * stagger) + (isImp ? ${ADVANCED_TEMPLATE_PREVIEW_TIMING.emphasisDelayMs} : 0);
             const dur = isSeq
-              ? ${ADVANCED_TEMPLATE_TIMING.sequentialDurationMs}
+              ? ${ADVANCED_TEMPLATE_PREVIEW_TIMING.sequentialDurationMs}
               : isImp
-                ? ${ADVANCED_TEMPLATE_TIMING.emphasisDurationMs}
-                : ${ADVANCED_TEMPLATE_TIMING.wordDurationMs};
+                ? ${ADVANCED_TEMPLATE_PREVIEW_TIMING.emphasisDurationMs}
+                : ${ADVANCED_TEMPLATE_PREVIEW_TIMING.wordDurationMs};
             const entrance = !isSeq && isImp ? (IMP_ENTRANCES[impCls] || 'opposite') : null;
 
             schedule(() => {
@@ -1340,6 +1533,7 @@ function buildTemplatePreviewDoc(templateId, options = {}) {
         }
 
         if (blocks.length && dotsEl) {
+          applyStillFramesPreviewHighlight(blocks);
           if (!dotsEl.dataset.dotHandlersBound) {
             dotsEl.dataset.dotHandlersBound = 'true';
             dotsEl.querySelectorAll('.dot').forEach((dot, dotIndex) => {
@@ -1471,6 +1665,32 @@ const basicIframeOverrides = `
     .bt-prog-dots .dot {
       cursor: pointer !important;
     }
+    .btcard-preview .t-104 .word.current,
+    .btcard-preview .t-104 .word.imp.current {
+      color: var(--template-primary, #fff) !important;
+      -webkit-text-fill-color: var(--template-primary, #fff) !important;
+      -webkit-text-stroke: 2px var(--template-secondary, #B28DFF) !important;
+      text-shadow: 0 0 6px var(--template-secondary, #2563EB),
+        0 0 12px var(--template-secondary, #2563EB) !important;
+      filter: drop-shadow(1px 1px 2px rgba(0, 0, 0, .75))
+        drop-shadow(0 0 8px var(--template-secondary, #2563EB)) !important;
+    }
+    .btcard-preview .t-109 .word.current,
+    .btcard-preview .t-109 .word.imp.current {
+      text-shadow: 3px 3px 0 var(--template-secondary, #FF4500) !important;
+      filter: none !important;
+    }
+    .btcard-preview .t-109 .word.current {
+      color: var(--template-primary, #fff) !important;
+      -webkit-text-fill-color: var(--template-primary, #fff) !important;
+    }
+    .btcard-preview .t-109 .word.imp.current {
+      color: var(--template-primary, #fff) !important;
+      -webkit-text-fill-color: var(--template-primary, #fff) !important;
+    }
+    .btcard-preview .t-110 .cap-text {
+      font-size: 22px !important;
+    }
   </style>
 `;
 
@@ -1481,6 +1701,8 @@ function buildBasicTemplatePreviewDoc(template, options = {}) {
         const card = document.querySelector('.btcard');
         if (!card) return;
 
+        const fixedHighlightPerLine = ['t-106', 't-52', 't-T4', 't-WS1'].includes('${template.id}');
+        const previewWordIndexForBlock = (blockIndex) => Math.min((Math.max(0, blockIndex) * 4) + 2, wordCount - 1);
         let idx = 2;
         let currentBlock = -1;
         const blocks = Array.from(card.querySelectorAll('.bt-cap-block'));
@@ -1491,6 +1713,7 @@ function buildBasicTemplatePreviewDoc(template, options = {}) {
           let className = 'word';
           if (wi <= idx) className += ' active';
           if (wi === idx) className += ' current';
+          if (wi === idx && ['t-106', 't-52', 't-T4', 't-WS1'].includes('${template.id}')) className += ' imp';
           return className;
         }
 
@@ -1511,7 +1734,7 @@ function buildBasicTemplatePreviewDoc(template, options = {}) {
           words.forEach((word, wordIndex) => {
             setTimeout(() => {
               word.style.opacity = '1';
-            }, wordIndex * 210);
+            }, wordIndex * ${BASIC_TEMPLATE_PREVIEW_TIMING.stickyWaveStaggerMs});
           });
         }
 
@@ -1550,7 +1773,7 @@ function buildBasicTemplatePreviewDoc(template, options = {}) {
                 word.style.transition = 'opacity 420ms ease, transform 420ms cubic-bezier(0.22,1,0.36,1)';
                 word.style.opacity = '1';
                 word.style.transform = 'none';
-              }, 30 + (wordIndex * 65));
+              }, 30 + (wordIndex * ${BASIC_TEMPLATE_PREVIEW_TIMING.wordStaggerMs}));
             });
           });
 
@@ -1572,7 +1795,7 @@ function buildBasicTemplatePreviewDoc(template, options = {}) {
             });
             wrapper.querySelectorAll('.word').forEach((word, wordIndex) => {
               if (phaseIndex === 1) {
-                word.style.setProperty('--ws-delay', (90 + (wordIndex * 55)) + 'ms');
+                word.style.setProperty('--ws-delay', (120 + (wordIndex * ${BASIC_TEMPLATE_PREVIEW_TIMING.wordStaggerMs})) + 'ms');
               } else {
                 word.style.removeProperty('--ws-delay');
               }
@@ -1592,7 +1815,30 @@ function buildBasicTemplatePreviewDoc(template, options = {}) {
             }
           });
 
-          block.querySelectorAll('.t-106 .word, .t-T6 .word').forEach((word, wordIndex) => {
+          block.querySelectorAll('.t-106').forEach((wrapper) => {
+            wrapper.querySelectorAll('.word').forEach((word, wordIndex) => {
+              word.style.transition = 'none';
+              word.style.opacity = phaseIndex === 1 ? '1' : '0';
+              word.style.transform = phaseIndex === 0
+                ? 'translateY(20px)'
+                : phaseIndex === 2
+                  ? 'translateX(38px)'
+                  : 'none';
+              if (phaseIndex === 1) {
+                word.style.opacity = '1';
+                word.style.transform = 'none';
+                word.style.animation = 'none';
+                return;
+              }
+              setTimeout(() => {
+                word.style.transition = 'opacity 420ms ease, transform 420ms cubic-bezier(0.22,1,0.36,1)';
+                word.style.opacity = '1';
+                word.style.transform = 'none';
+              }, 30 + (wordIndex * ${BASIC_TEMPLATE_PREVIEW_TIMING.wordStaggerMs}));
+            });
+          });
+
+          block.querySelectorAll('.t-T6 .word').forEach((word, wordIndex) => {
             word.style.transition = 'none';
             word.style.opacity = '0';
             word.style.transform = 'translateY(20px)';
@@ -1600,7 +1846,7 @@ function buildBasicTemplatePreviewDoc(template, options = {}) {
               word.style.transition = 'opacity 280ms ease, transform 280ms cubic-bezier(0.34,1.2,0.64,1)';
               word.style.opacity = '1';
               word.style.transform = 'none';
-            }, 30 + (wordIndex * 65));
+            }, 30 + (wordIndex * ${BASIC_TEMPLATE_PREVIEW_TIMING.wordStaggerMs}));
             setTimeout(() => {
               word.style.opacity = '1';
               word.style.transform = 'none';
@@ -1615,7 +1861,7 @@ function buildBasicTemplatePreviewDoc(template, options = {}) {
               word.style.opacity = '';
               word.style.transform = '';
               word.style.filter = 'none';
-              word.style.setProperty('--ws-delay', (90 + (wordIndex * 55)) + 'ms');
+              word.style.setProperty('--ws-delay', (120 + (wordIndex * ${BASIC_TEMPLATE_PREVIEW_TIMING.wordStaggerMs})) + 'ms');
             });
             void wrapper.offsetWidth;
             wrapper.classList.add('ws-enter', 'ws-line-' + phaseIndex);
@@ -1640,6 +1886,16 @@ function buildBasicTemplatePreviewDoc(template, options = {}) {
         }
 
         function tick() {
+          if (fixedHighlightPerLine) {
+            const nextBlockIndex = Math.max(0, (currentBlock + 1) % Math.max(1, blocks.length));
+            idx = previewWordIndexForBlock(nextBlockIndex);
+            card.querySelectorAll('.word[data-wi]').forEach((word) => {
+              word.className = cls(Number(word.dataset.wi || 0));
+            });
+            setBlock(nextBlockIndex);
+            activateWholeLine(nextBlockIndex);
+            return;
+          }
           idx = (idx + 1) % wordCount;
           card.querySelectorAll('.word[data-wi]').forEach((word) => {
             word.className = cls(Number(word.dataset.wi || 0));
@@ -1651,7 +1907,7 @@ function buildBasicTemplatePreviewDoc(template, options = {}) {
 
         dots.forEach((dot, dotIndex) => {
           dot.addEventListener('click', () => {
-            idx = Math.min((dotIndex * 4) + 2, wordCount - 1);
+            idx = previewWordIndexForBlock(dotIndex);
             card.querySelectorAll('.word[data-wi]').forEach((word) => {
               word.className = cls(Number(word.dataset.wi || 0));
             });
@@ -1665,7 +1921,7 @@ function buildBasicTemplatePreviewDoc(template, options = {}) {
           if (payload.type !== 'lekha-template-preview-jump') return;
           const dotIndex = Number(payload.index);
           if (!Number.isFinite(dotIndex) || !dots[dotIndex]) return;
-          idx = Math.min((dotIndex * 4) + 2, wordCount - 1);
+          idx = previewWordIndexForBlock(dotIndex);
           card.querySelectorAll('.word[data-wi]').forEach((word) => {
             word.className = cls(Number(word.dataset.wi || 0));
           });
@@ -1673,9 +1929,14 @@ function buildBasicTemplatePreviewDoc(template, options = {}) {
           activateWholeLine(dotIndex);
         });
 
+        idx = previewWordIndexForBlock(0);
+        card.querySelectorAll('.word[data-wi]').forEach((word) => {
+          word.className = cls(Number(word.dataset.wi || 0));
+        });
+        const cycleMs = fixedHighlightPerLine ? ${BASIC_TEMPLATE_PREVIEW_TIMING.fixedLineCycleMs} : ${BASIC_TEMPLATE_PREVIEW_TIMING.wordCycleMs};
         setBlock(0);
         activateWholeLine(0);
-        setInterval(tick, 700);
+        setInterval(tick, cycleMs);
       })();
     </script>
   `;
@@ -1808,7 +2069,7 @@ function TemplateColorInput({ label, value, defaultValue, onChange, onReset }) {
   );
 }
 
-function TemplateCustomizationPanel({ currentStyle, defaultStyle, onUpdate }) {
+function TemplateCustomizationPanel({ currentStyle, defaultStyle, onUpdate, hideAccent = false }) {
   const palette = getTemplatePalette(currentStyle, defaultStyle);
   const defaultPalette = getTemplatePalette(defaultStyle, defaultStyle);
   const updateColor = (field, color) => onUpdate(getTemplateCustomizationPatch(field, color, currentStyle));
@@ -1857,7 +2118,7 @@ function TemplateCustomizationPanel({ currentStyle, defaultStyle, onUpdate }) {
               onReset={() => updateColor('karaoke3', defaultStyle?.karaoke_color_3 || '#FB923C')}
             />
           </>
-        ) : (
+        ) : !hideAccent ? (
           <TemplateColorInput
             label="Accent"
             value={palette.accent}
@@ -1865,7 +2126,8 @@ function TemplateCustomizationPanel({ currentStyle, defaultStyle, onUpdate }) {
             onChange={(color) => updateColor('accent', color)}
             onReset={() => updateColor('accent', defaultPalette.accent)}
           />
-        )}
+        ) : null
+        }
         {showBackground && (
           <TemplateColorInput
             label="Background"
@@ -1887,6 +2149,26 @@ export default function AdvancedTemplateLibrary({
   showHeader = true,
   showBackButton = true,
 }) {
+  const [templateSearchQuery, setTemplateSearchQuery] = useState('');
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const { isFavorite, toggleFavorite } = useTemplateFavorites();
+  const visibleAdvancedTemplates = useMemo(
+    () => ADVANCED_TEMPLATE_PACK.filter((template) => (
+      isExportableTemplateCandidate(template)
+      && templateMatchesQuery(template, templateSearchQuery)
+      && (!favoritesOnly || isFavorite('advanced-template', template.id))
+    )),
+    [templateSearchQuery, favoritesOnly, isFavorite],
+  );
+  const visibleBasicTemplates = useMemo(
+    () => BASIC_TEMPLATE_PACK.filter((template) => (
+      isExportableTemplateCandidate(template)
+      && templateMatchesQuery(template, templateSearchQuery)
+      && (!favoritesOnly || isFavorite('basic-template', template.id))
+    )),
+    [templateSearchQuery, favoritesOnly, isFavorite],
+  );
+
   return (
     <div className="h-full flex flex-col text-white">
       {showHeader && (
@@ -1900,12 +2182,33 @@ export default function AdvancedTemplateLibrary({
       )}
 
       <div className="flex-1 overflow-y-auto pr-1 space-y-3">
+        <div className="advanced-template-browser-controls">
+          <label className="advanced-template-search">
+            <Search className="h-3.5 w-3.5" />
+            <input
+              value={templateSearchQuery}
+              onChange={(event) => setTemplateSearchQuery(event.target.value)}
+              placeholder="Search templates"
+            />
+          </label>
+          <button
+            type="button"
+            aria-pressed={favoritesOnly}
+            title="Show favorites"
+            onClick={() => setFavoritesOnly((current) => !current)}
+            className={`advanced-template-favorites-filter ${favoritesOnly ? 'is-active' : ''}`}
+          >
+            <Star className="h-3.5 w-3.5" fill={favoritesOnly ? 'currentColor' : 'none'} />
+          </button>
+        </div>
+
         <div className="advanced-template-section-label">
           <span>Advanced Templates</span>
-          <small>{ADVANCED_TEMPLATE_PACK.length}</small>
+          <small>{visibleAdvancedTemplates.length}/{ADVANCED_TEMPLATE_PACK.length}</small>
         </div>
-        {ADVANCED_TEMPLATE_PACK.map((template) => {
+        {visibleAdvancedTemplates.map((template) => {
           const isActive = currentStyle?.template_id === template.id;
+          const templateIsFavorite = isFavorite('advanced-template', template.id);
           const defaultStyle = buildAppliedTemplateStyle(template);
           const previewStyle = isActive ? { ...defaultStyle, ...currentStyle } : defaultStyle;
           const applyTemplate = () => onApplyTemplate?.(defaultStyle);
@@ -1918,6 +2221,18 @@ export default function AdvancedTemplateLibrary({
             >
               <button
                 type="button"
+                title={templateIsFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                aria-label={templateIsFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  toggleFavorite('advanced-template', template.id);
+                }}
+                className={`advanced-template-favorite-button ${templateIsFavorite ? 'is-active' : ''}`}
+              >
+                <Star className="h-3.5 w-3.5" fill={templateIsFavorite ? 'currentColor' : 'none'} />
+              </button>
+              <button
+                type="button"
                 data-template-card-id={template.id}
                 data-template-kind="advanced"
                 aria-pressed={isActive}
@@ -1925,7 +2240,7 @@ export default function AdvancedTemplateLibrary({
                 className={`advanced-template-card ${isActive ? 'is-active' : ''}`}
               >
                 <TemplatePreviewFrame template={template} previewStyle={previewStyle} />
-                {isActive && <Check className="absolute right-2 top-2 z-10 h-3.5 w-3.5 text-[#ffb629]" />}
+                {isActive && <Check className="absolute right-11 top-2 z-10 h-3.5 w-3.5 text-[#ffb629]" />}
                 <div className="advanced-template-card-body">
                   <div className="advanced-template-card-title">
                     <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#ffb629]" />
@@ -1946,13 +2261,17 @@ export default function AdvancedTemplateLibrary({
             </div>
           );
         })}
+        {!visibleAdvancedTemplates.length && (
+          <div className="advanced-template-empty-state">No matching advanced templates.</div>
+        )}
 
         <div className="advanced-template-section-label">
           <span>Basic Templates</span>
-          <small>{BASIC_TEMPLATE_PACK.length}</small>
+          <small>{visibleBasicTemplates.length}/{BASIC_TEMPLATE_PACK.length}</small>
         </div>
-        {BASIC_TEMPLATE_PACK.map((template) => {
+        {visibleBasicTemplates.map((template) => {
           const isActive = currentStyle?.template_id === template.id;
+          const templateIsFavorite = isFavorite('basic-template', template.id);
           const defaultStyle = buildAppliedBasicTemplateStyle(template);
           const previewStyle = isActive ? { ...defaultStyle, ...currentStyle } : defaultStyle;
           const applyBasicTemplate = () => onApplyTemplate?.(defaultStyle);
@@ -1965,6 +2284,18 @@ export default function AdvancedTemplateLibrary({
             >
               <button
                 type="button"
+                title={templateIsFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                aria-label={templateIsFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  toggleFavorite('basic-template', template.id);
+                }}
+                className={`advanced-template-favorite-button ${templateIsFavorite ? 'is-active' : ''}`}
+              >
+                <Star className="h-3.5 w-3.5" fill={templateIsFavorite ? 'currentColor' : 'none'} />
+              </button>
+              <button
+                type="button"
                 data-template-card-id={template.id}
                 data-template-kind="basic"
                 aria-pressed={isActive}
@@ -1972,7 +2303,7 @@ export default function AdvancedTemplateLibrary({
                 className={`advanced-template-card basic-template-card ${isActive ? 'is-active' : ''}`}
               >
                 <BasicTemplatePreviewFrame template={template} onSelect={applyBasicTemplate} previewStyle={previewStyle} />
-                {isActive && <Check className="absolute right-2 top-2 z-10 h-3.5 w-3.5 text-[#ffb629]" />}
+                {isActive && <Check className="absolute right-11 top-2 z-10 h-3.5 w-3.5 text-[#ffb629]" />}
                 <div className="advanced-template-card-body">
                   <div className="advanced-template-card-title">
                     <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#ffb629]" />
@@ -1988,11 +2319,15 @@ export default function AdvancedTemplateLibrary({
                   currentStyle={previewStyle}
                   defaultStyle={defaultStyle}
                   onUpdate={updateBasicTemplate}
+                  hideAccent={BASIC_TEMPLATE_ACCENT_DISABLED_IDS.has(template.id)}
                 />
               )}
             </div>
           );
         })}
+        {!visibleBasicTemplates.length && (
+          <div className="advanced-template-empty-state">No matching basic templates.</div>
+        )}
       </div>
 
       {showBackButton && onBack && (
