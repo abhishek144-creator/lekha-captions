@@ -8,6 +8,8 @@ import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import MobileDashboard from '@/pages/MobileDashboard';
+import { useViewportIsMobile } from '@/components/mobile/useViewportIsMobile';
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -19,6 +21,9 @@ const LayoutWrapper = ({ children, currentPageName }) => Layout ?
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
+  const isMobileViewport = useViewportIsMobile();
+  // Small viewports get the touch-first editor; desktop hits the exact same code path as before
+  const resolvePage = (pageKey, Page) => (pageKey === 'Dashboard' && isMobileViewport ? MobileDashboard : Page);
 
   // Show loading spinner while checking app public settings or auth
   if (isLoadingPublicSettings || isLoadingAuth) {
@@ -41,24 +46,28 @@ const AuthenticatedApp = () => {
   }
 
   // Render the main app
+  const ResolvedMainPage = resolvePage(mainPageKey, MainPage);
   return (
     <Routes>
       <Route path="/" element={
         <LayoutWrapper currentPageName={mainPageKey}>
-          <MainPage />
+          <ResolvedMainPage />
         </LayoutWrapper>
       } />
-      {Object.entries(Pages).map(([path, Page]) => (
+      {Object.entries(Pages).map(([path, Page]) => {
+        const ResolvedPage = resolvePage(path, Page);
+        return (
         <Route
           key={path}
           path={`/${path}`}
           element={
             <LayoutWrapper currentPageName={path}>
-              <Page />
+              <ResolvedPage />
             </LayoutWrapper>
           }
         />
-      ))}
+        );
+      })}
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );
