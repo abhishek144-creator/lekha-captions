@@ -638,6 +638,12 @@ export default function Dashboard() {
     setSeekSignal(time);
   };
 
+  const handlePlayCaption = (caption) => {
+    const startTime = Number(caption?.start_time || 0);
+    handleSeek(startTime);
+    setIsPlaying(true);
+  };
+
   const refreshVideoPlaybackUrl = useCallback(async (event) => {
     if (!fileId || mediaRefreshInFlightRef.current) return;
 
@@ -709,6 +715,9 @@ export default function Dashboard() {
         : `${wordPopup.caption?.id}-${wordPopup.wordIndex}`;
       const existingStyle = wordStyles[styleKey] || {};
       const updatedStyle = { ...existingStyle, [key]: value };
+      if (key === 'textGradient') {
+        updatedStyle.textGradient = typeof value === 'string' ? value.trim() : '';
+      }
       // Slider size changes should grow the word normally, not keep a narrow side-resize box.
       if (key === 'fontSize') {
         delete updatedStyle.frozenFontSize;
@@ -726,6 +735,33 @@ export default function Dashboard() {
         }
       };
     }));
+
+    setWordPopup(prev => {
+      if (!prev?.caption || prev.type === 'element') return prev;
+      const styleKey = `${prev.caption.id}-${prev.wordIndex}`;
+      const existingStyle = prev.caption.wordStyles?.[styleKey] || {};
+      const updatedStyle = { ...existingStyle, [key]: value };
+      if (key === 'textGradient') {
+        updatedStyle.textGradient = typeof value === 'string' ? value.trim() : '';
+      }
+      if (key === 'fontSize') {
+        delete updatedStyle.frozenFontSize;
+        delete updatedStyle.boxWidth;
+        delete updatedStyle.textScaleX;
+      }
+      if (key === 'x') delete updatedStyle.x_pct;
+      if (key === 'y') delete updatedStyle.y_pct;
+      return {
+        ...prev,
+        caption: {
+          ...prev.caption,
+          wordStyles: {
+            ...(prev.caption.wordStyles || {}),
+            [styleKey]: updatedStyle,
+          },
+        },
+      };
+    });
   };
 
   const handleApplyTemplate = async (templateStyle) => {
@@ -849,6 +885,7 @@ export default function Dashboard() {
           emotional_mode: _emotionalMode,
           template_phase_index: _templatePhaseIndex,
           imp_word_index: _impWordIndex,
+          imp_word_indices: _impWordIndices,
           emphasis_color: _emphasisColor,
           audio_emotion_metrics: _audioEmotionMetrics,
           ...rest
@@ -881,6 +918,7 @@ export default function Dashboard() {
         emotional_mode: emotional?.mode || 'normal',
         template_phase_index: templatePhaseIndex,
         imp_word_index: emotional?.impWordIndex ?? -1,
+        imp_word_indices: emotional?.impWordIndices || [],
         emphasis_color: templateEmphasisColor,
         audio_emotion_metrics: emotional?.audio || null,
       };
@@ -1061,6 +1099,7 @@ export default function Dashboard() {
             selectedCaptionId={selectedCaptionId}
             setSelectedCaptionId={setSelectedCaptionId}
             onSeek={handleSeek}
+            onPlayCaption={handlePlayCaption}
             onOpenWordPopup={(caption, wordIndex, position, word) => openWordPopup({ caption, wordIndex, position, word })}
             wordPopup={wordPopup}
             user={currentUser}

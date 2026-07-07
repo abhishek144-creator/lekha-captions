@@ -1727,7 +1727,7 @@ body {
 }
 
 .t-109 .word {
-   color: var(--template-primary, #fff) !important;
+   color: #bbb !important;
    text-shadow: none !important;
    filter: none !important;
    -webkit-filter: none !important;
@@ -1736,22 +1736,30 @@ body {
 
 .t-109 .word.active {
    color: var(--template-primary, #fff) !important;
-   text-shadow: 3px 3px 0 rgba(255, 69, 0, .4) !important
+   -webkit-text-fill-color: var(--template-primary, #fff) !important;
+   text-shadow: 3px 3px 0 color-mix(in srgb, var(--template-secondary, #FF4500) 40%, transparent) !important;
+   filter: none !important
 }
 
 .t-109 .word.current {
    color: var(--template-primary, #fff) !important;
-   text-shadow: 3px 3px 0 var(--template-secondary, #FF4500) !important
+   -webkit-text-fill-color: var(--template-primary, #fff) !important;
+   text-shadow: 3px 3px 0 var(--template-secondary, #FF4500) !important;
+   filter: none !important
 }
 
 .t-109 .word.imp.active {
    color: var(--template-primary, #fff) !important;
-   text-shadow: 3px 3px 0 var(--template-secondary, #FF4500) !important
+   -webkit-text-fill-color: var(--template-primary, #fff) !important;
+   text-shadow: 3px 3px 0 color-mix(in srgb, var(--template-secondary, #FF4500) 40%, transparent) !important;
+   filter: none !important
 }
 
 .t-109 .word.imp.current {
    color: var(--template-primary, #fff) !important;
-   text-shadow: 3px 3px 0 var(--template-secondary, #FF4500) !important
+   -webkit-text-fill-color: var(--template-primary, #fff) !important;
+   text-shadow: 3px 3px 0 var(--template-secondary, #FF4500) !important;
+   filter: none !important
 }
 
 /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -1821,15 +1829,18 @@ body {
 }
 
 .t-102 .word.imp.active {
-   color: #b07d00 !important
+   color: var(--template-highlight, #b07d00) !important;
+   -webkit-text-fill-color: var(--template-highlight, #b07d00) !important
 }
 
 .t-102 .word.current {
-   color: #000 !important
+   color: var(--template-primary, #1F2022) !important;
+   -webkit-text-fill-color: var(--template-primary, #1F2022) !important
 }
 
 .t-102 .word.imp.current {
-   color: #b07d00 !important
+   color: var(--template-highlight, #b07d00) !important;
+   -webkit-text-fill-color: var(--template-highlight, #b07d00) !important
 }
 
 /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -2010,7 +2021,7 @@ body {
 â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 .t-110 .cap-text {
    font-weight: 800;
-   font-size: 24px
+   font-size: 28px
 }
 
 .t-110 .word {
@@ -2055,9 +2066,9 @@ body {
    transform: translateX(-50%);
    width: 6px;
    height: 6px;
-   background: #00FFAA;
+   background: var(--template-secondary, #0066FF);
    border-radius: 50%;
-   box-shadow: 0 0 8px #00FFAA;
+   box-shadow: 0 0 8px var(--template-secondary, #0066FF);
 }
 
 /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -2089,16 +2100,14 @@ body {
 }
 
 .t-119 .word.imp.active {
-   color: #1a1a1a !important;
-   background: rgba(221, 170, 3, .78) !important;
-   padding: 2px 3px;
-   border-radius: 4px;
-   -webkit-text-fill-color: #1a1a1a !important
+   color: var(--template-primary, #fff) !important;
+   background: transparent !important;
+   -webkit-text-fill-color: var(--template-primary, #fff) !important
 }
 
 .t-119 .word.imp.current {
    color: #1a1a1a !important;
-   background: rgba(221, 170, 3, .78) !important;
+   background: var(--template-highlight, #DDAA03) !important;
    padding: 2px 3px;
    border-radius: 4px;
    -webkit-text-fill-color: #1a1a1a !important
@@ -2129,11 +2138,12 @@ body {
 }
 
 .t-12 .word.imp.active {
-   color: var(--template-highlight, #DDAA03) !important
+   color: #c00 !important
 }
 
 .t-12 .word.imp.current {
-   color: var(--template-highlight, #DDAA03) !important
+   color: #c00 !important;
+   text-shadow: 0 0 18px var(--template-secondary, #c00) !important
 }
 
 /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -2195,6 +2205,7 @@ body {
 }
 
 .t-52 .word.imp.current {
+   color: var(--template-highlight, #DDAA03) !important;
    animation: none
 }
 
@@ -2261,7 +2272,7 @@ body {
    flex-wrap: wrap;
    justify-content: center;
    gap: 0 5px;
-   width: min(250px, 78vw);
+   width: min(14.7em, 78vw);
    max-width: 92%;
    box-sizing: border-box;
    line-height: 1.45;
@@ -2287,7 +2298,7 @@ body {
 }
 
 .t-QW1 .qw-single {
-   width: min(250px, 78vw);
+   width: min(14.7em, 78vw);
    box-sizing: border-box;
    padding: 0;
    border-radius: 0;
@@ -2366,17 +2377,29 @@ body {
 }
 
 .t-104 .word.current {
-   filter: drop-shadow(2px 2px 2px rgba(0, 0, 0, .9)) drop-shadow(0 0 6px var(--template-secondary, #B28DFF))
+   color: var(--template-primary, #fff) !important;
+   -webkit-text-fill-color: var(--template-primary, #fff) !important;
+   -webkit-text-stroke: 2px var(--template-secondary, #B28DFF) !important;
+   text-shadow: 0 0 12px var(--template-secondary, #2563EB),
+      0 0 26px var(--template-secondary, #2563EB) !important;
+   filter: drop-shadow(2px 2px 2px rgba(0, 0, 0, .9)) drop-shadow(0 0 14px var(--template-secondary, #2563EB))
 }
 
 .t-104 .word.imp.active {
-   color: var(--template-highlight, #DDAA03) !important;
-   -webkit-text-stroke: 2px rgba(178, 141, 255, .5) !important
+   color: var(--template-primary, #fff) !important;
+   -webkit-text-fill-color: var(--template-primary, #fff) !important;
+   -webkit-text-stroke: 2px var(--template-secondary, #B28DFF) !important;
+   text-shadow: none !important;
+   filter: drop-shadow(2px 2px 2px rgba(0, 0, 0, .9)) !important
 }
 
 .t-104 .word.imp.current {
-   color: var(--template-highlight, #DDAA03) !important;
-   -webkit-text-stroke: 2px var(--template-secondary, #B28DFF) !important
+   color: var(--template-primary, #fff) !important;
+   -webkit-text-fill-color: var(--template-primary, #fff) !important;
+   -webkit-text-stroke: 2px var(--template-secondary, #B28DFF) !important;
+   text-shadow: 0 0 12px var(--template-secondary, #2563EB),
+      0 0 26px var(--template-secondary, #2563EB) !important;
+   filter: drop-shadow(0 0 14px var(--template-secondary, #2563EB))
 }
 
 /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -2550,7 +2573,7 @@ body {
 }
 
 .t-T4 .word.imp.active {
-   color: var(--template-primary, #fff) !important
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 .t-T4 .word.current {
@@ -2560,7 +2583,7 @@ body {
 }
 
 .t-T4 .word.imp.current {
-   color: var(--template-primary, #fff) !important;
+   color: var(--template-highlight, #DDAA03) !important;
    opacity: 1 !important;
    animation: none
 }
@@ -2573,6 +2596,11 @@ body {
    color: #ffffff !important;
    animation: wordSlideIn 0.32s cubic-bezier(0.34,1.4,0.64,1) both !important;
    animation-delay: var(--ws-delay, 90ms) !important
+}
+
+.t-T4.study-word-slide-preview .word.imp.active,
+.t-T4.study-word-slide-preview .word.imp.current {
+   color: var(--template-highlight, #DDAA03) !important
 }
 
 .t-T4.study-line-0 {
@@ -3398,7 +3426,7 @@ body {
 }
 
 .btcard-preview .t-110 .cap-text {
-  font-size:24px!important;
+  font-size:28px!important;
   gap:4px!important;
 }
 

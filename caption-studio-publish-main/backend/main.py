@@ -1277,6 +1277,7 @@ class ExportRequest(BaseModel):
     idempotency_key: str = ""
     quality: str = "1080p"  # Export quality: "4k", "1080p", "720p"
     fps: int = 30  # Frame rate: 24, 30, 60
+    export_aspect_ratio: str = ""  # "", "9:16", "1:1", "16:9"
     org_id: str = ""
 
     def validated_style(self) -> Dict[str, Any]:
@@ -1303,6 +1304,8 @@ class ExportRequest(BaseModel):
                     del s[field]
         if s.get('quality') not in ('4k', '1080p', '720p', None):
             s.pop('quality', None)
+        if s.get('export_aspect_ratio') not in ('9:16', '1:1', '16:9', '', None):
+            s.pop('export_aspect_ratio', None)
         return s
 
 class CreateOrderRequest(BaseModel):
@@ -1567,7 +1570,12 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
     output_path = os.path.join(EXPORT_DIR, output_filename)
     queue_entered_at = time.time()
     _set_export_job(export_job_id, "queued", queue_entered_at=queue_entered_at)
-    style_with_quality = {**req.validated_style(), 'quality': preset["quality"], 'fps': preset["fps"]}
+    style_with_quality = {
+        **req.validated_style(),
+        'quality': preset["quality"],
+        'fps': preset["fps"],
+        'export_aspect_ratio': req.export_aspect_ratio if req.export_aspect_ratio in ('9:16', '1:1', '16:9') else '',
+    }
     _write_last_export_request_debug(
         export_job_id=export_job_id,
         file_id=req.file_id,
@@ -1924,7 +1932,7 @@ async def export_video(req: ExportRequest, request: Request, response: Response)
     auto_idem = False
     if not raw_idem:
         # Auto-key to prevent accidental double-click duplicate renders.
-        raw_idem = f"auto:{req.file_id}:{req.quality}:{req.fps}"
+        raw_idem = f"auto:{req.file_id}:{req.quality}:{req.fps}:{req.export_aspect_ratio or 'source'}"
         auto_idem = True
     idem_key = f"{uid}:{raw_idem}" if raw_idem else ""
     if idem_key:

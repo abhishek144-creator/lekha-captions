@@ -27,6 +27,7 @@ import {
   findAppliedBasicTemplateMarkup,
   APPLIED_BASIC_TEMPLATE_HOST_OVERRIDES,
   APPLIED_BASIC_TEMPLATE_FONT_SCALE,
+  normalizeAppliedBasicTemplateFontSize,
 } from '../src/components/dashboard/basicTemplateInline.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -288,6 +289,37 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         || /[\p{Script=Arabic}\p{Script=Bengali}\p{Script=Devanagari}\p{Script=Gujarati}\p{Script=Gurmukhi}\p{Script=Han}\p{Script=Hiragana}\p{Script=Kannada}\p{Script=Katakana}\p{Script=Malayalam}\p{Script=Oriya}\p{Script=Tamil}\p{Script=Telugu}\p{Script=Thai}]/u.test(value);
     };
 
+    const normalizeImpWordIndices = (impWordIndex = -1, impWordIndices = []) => {
+      const values = Array.isArray(impWordIndices) ? impWordIndices : [];
+      const normalized = values
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value) && value >= 0);
+      const single = Number(impWordIndex);
+      if (Number.isFinite(single) && single >= 0) normalized.push(single);
+      return [...new Set(normalized.map((value) => Math.trunc(value)))];
+    };
+
+    const normalizeTemplateWord = (word = '') => String(word || '')
+      .normalize('NFKC')
+      .toLocaleLowerCase()
+      .replace(/^[^\\p{L}\\p{M}\\p{N}]+|[^\\p{L}\\p{M}\\p{N}]+$/gu, '');
+
+    const getTargetPhraseImpWordIndices = (wordsOrTokens = []) => {
+      const normalizedWords = wordsOrTokens.map((item) => normalizeTemplateWord(item?.word ?? item));
+      for (let index = 0; index < normalizedWords.length - 1; index += 1) {
+        if (normalizedWords[index] === '\\u0926\\u0938' && normalizedWords[index + 1] === '\\u0932\\u0915') {
+          return [index, index + 1];
+        }
+      }
+      return [];
+    };
+
+    const resolveImpWordIndicesForWords = (wordsOrTokens = [], impWordIndex = -1, impWordIndices = []) => {
+      const phraseIndices = getTargetPhraseImpWordIndices(wordsOrTokens);
+      if (phraseIndices.length) return phraseIndices;
+      return normalizeImpWordIndices(impWordIndex, impWordIndices);
+    };
+
     const heroMarkup = (text, className = '') => {
       const { top, hero, bottom, full } = splitCaptionForTemplate(text);
       if (!full) return '';
@@ -295,11 +327,25 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       return \`\${top ? \`\${escapeHtml(top)} \` : ''}<span class="\${className}">\${escapeHtml(hero)}</span>\${bottom ? \` \${escapeHtml(bottom)}\` : ''}\`;
     };
 
+    const stillFramesMarkup = (text) =>
+      \`<span class="still-frames-line">\${heroMarkup(text, 'imp-rose still-frames-highlight')}</span>\`;
+
+    let activeTemplateImpWordIndices = [];
+
     const wbwMarkup = (text, variant = 'wbw-rise', impClass = 'imp-bold', options = {}) => {
       const { hero, full } = splitCaptionForTemplate(text);
       if (!full) return '';
       const tokens = full.split(/\\s+/).filter(Boolean).map((word) => ({ word }));
       const heroIndex = Math.max(0, tokens.findIndex((token) => token.word === hero));
+      const requestedImpWordIndices = options.impWordIndices?.length
+        ? options.impWordIndices
+        : activeTemplateImpWordIndices;
+      const resolvedImpWordIndices = options.impWordIndices?.length
+        ? resolveImpWordIndicesForWords(tokens, -1, requestedImpWordIndices)
+        : requestedImpWordIndices.length
+          ? resolveImpWordIndicesForWords(tokens, -1, requestedImpWordIndices)
+        : resolveImpWordIndicesForWords(tokens);
+      const emphasisIndices = new Set(resolvedImpWordIndices.length ? resolvedImpWordIndices : [heroIndex]);
       const lineMotion = String(options.motion || '');
       const lineClassName = String(options.lineClassName || '');
       const lineMotionAttr = lineMotion ? \` data-line-motion="\${escapeHtml(lineMotion)}"\` : '';
@@ -311,7 +357,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         const markup = indexedLines.map((line) => {
           const lineWords = line.map((token, localIndex) => {
             const style = \`--wbw-delay:\${token.wordIndex * 65}ms\`;
-            const isImp = token.wordIndex === heroIndex;
+            const isImp = emphasisIndices.has(token.wordIndex);
             return \`\${localIndex > 0 ? ' ' : ''}<span class="w\${isImp ? \` \${impClass}\` : ''} in" data-i="\${token.wordIndex}"\${lineMotionAttr}\${isImp ? \` data-imp="true" data-imp-cls="\${impClass}"\` : ''} style="\${style}">\${escapeHtml(token.word)}</span>\`;
           }).join('');
           return \`<span class="lekha-template-preview-line">\${lineWords}</span>\`;
@@ -320,7 +366,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       }
       const words = tokens.map((token, index) => {
         const style = \`--wbw-delay:\${index * 65}ms\`;
-        const isImp = index === heroIndex;
+        const isImp = emphasisIndices.has(index);
         return \`\${index > 0 ? ' ' : ''}<span class="w\${isImp ? \` \${impClass}\` : ''} in" data-i="\${index}"\${lineMotionAttr}\${isImp ? \` data-imp="true" data-imp-cls="\${impClass}"\` : ''} style="\${style}">\${escapeHtml(token.word)}</span>\`;
       }).join('');
       return \`<span class="\${outerClass}" data-type="\${variant}"\${lineMotionAttr}>\${words}</span>\`;
@@ -401,7 +447,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       return ADVANCED_TEMPLATE_EMPHASIS_COLORS[normalizedId] || '';
     };
 
-    const replaceAdvancedSourceWbw = (container, words, impWordIndex, emphasisColor) => {
+    const replaceAdvancedSourceWbw = (container, words, impWordIndex, emphasisColor, impWordIndices = []) => {
       const doc = container.ownerDocument || document;
       const sourceWords = Array.from(container.querySelectorAll('.w'));
       const sourceClasses = sourceWords.map((word) => String(word.className || 'w'));
@@ -414,7 +460,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           || sourceClasses[sourceImpIndex].match(impPattern)?.[0]
           || ''
         : '';
-      const targetImpIndex = impWordIndex;
+      const targetImpIndices = new Set(resolveImpWordIndicesForWords(words, impWordIndex, impWordIndices));
       container.textContent = '';
       container.dataset.text = words.join(' ');
       container.classList.remove('lekha-template-preview-lines');
@@ -425,7 +471,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           .replace(/\\bimp-[\\w-]+\\b/g, '')
           .replace(/\\s+/g, ' ')
           .trim();
-        const isImp = index === targetImpIndex;
+        const isImp = targetImpIndices.has(index);
         span.className = (mapped || 'w') + (isImp && impClass ? ' ' + impClass : '') + (isImp ? ' is-emphasis' : '');
         span.dataset.i = String(index);
         if (isImp) {
@@ -552,19 +598,20 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       return null;
     };
 
-    const replaceAdvancedTextSlot = (slot, assignedWords, impWordIndex, impClass, emphasisColor, block) => {
+    const replaceAdvancedTextSlot = (slot, assignedWords, impWordIndex, impClass, emphasisColor, block, impWordIndices = []) => {
       const doc = slot.ownerDocument;
       const source = String(slot.nodeValue || '');
       const leading = /^\\s/.test(source) ? ' ' : '';
       const trailing = /\\s$/.test(source) ? ' ' : '';
-      const replacementTarget = impWordIndex >= 0
+      const targetImpIndices = new Set(normalizeImpWordIndices(impWordIndex, impWordIndices));
+      const replacementTarget = targetImpIndices.size > 0
         ? findAdvancedSlotImpWrapper(slot, block)
         : null;
       const fragment = doc.createDocumentFragment();
       if (leading) fragment.appendChild(doc.createTextNode(leading));
       assignedWords.forEach(({ word, wordIndex }, localIndex) => {
         if (localIndex > 0) fragment.appendChild(doc.createTextNode(' '));
-        if (wordIndex === impWordIndex) {
+        if (targetImpIndices.has(wordIndex)) {
           const span = doc.createElement('span');
           span.className = impClass + ' is-emphasis';
           span.dataset.w = String(wordIndex);
@@ -614,22 +661,28 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       if (moved) assigned[impSlotIndex].push(moved);
     };
 
-    const replaceAdvancedSourceStyledText = (block, words, captionText, impWordIndex = -1, emphasisColor = '') => {
+    const replaceAdvancedSourceStyledText = (block, words, captionText, impWordIndex = -1, emphasisColor = '', impWordIndices = []) => {
       const slots = collectAdvancedSourceTextNodes(block);
       if (!slots.length) {
         block.textContent = captionText;
         return;
       }
-      const assigned = assignAdvancedWordsToSlots(words, slots.length);
-      const sourceImpSlotIndex = findAdvancedSourceImpSlotIndex(slots, block);
+      const targetSlotCount = Math.max(1, Math.min(words.length, slots.length));
+      const targetSlots = slots.slice(0, targetSlotCount);
+      const assigned = assignAdvancedWordsToSlots(words, targetSlots.length);
+      const sourceImpSlotIndex = findAdvancedSourceImpSlotIndex(targetSlots, block);
       ensureAdvancedSourceImpSlotHasWord(assigned, sourceImpSlotIndex);
       const impClass = getAdvancedSourceImpClass(block);
-      slots.forEach((slot, slotIndex) => {
+      const resolvedImpWordIndices = resolveImpWordIndicesForWords(words, impWordIndex, impWordIndices);
+      targetSlots.forEach((slot, slotIndex) => {
         if (assigned[slotIndex].length) {
-          replaceAdvancedTextSlot(slot, assigned[slotIndex], impWordIndex, impClass, emphasisColor, block);
+          replaceAdvancedTextSlot(slot, assigned[slotIndex], -1, impClass, emphasisColor, block, resolvedImpWordIndices);
         } else {
           slot.nodeValue = '';
         }
+      });
+      slots.slice(targetSlotCount).forEach((slot) => {
+        slot.nodeValue = '';
       });
       block.querySelectorAll('[data-text]').forEach((element) => {
         element.setAttribute('data-text', captionText);
@@ -732,20 +785,22 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         return;
       }
 
-      if (templateId !== 't13' || !shouldCompactTemplateLine(captionText)) return;
+      if (templateId !== 't13') return;
 
       const selector = blockIndex === 0
         ? '.slide-crash'
         : blockIndex === 1
           ? '.ticker-txt'
-          : '';
-      if (!selector) return;
+          : '.wbw-rise, .wbw-slide, .wbw-seq-fade';
 
       const line = block.querySelector(selector);
       if (!line) return;
 
-      line.classList.add('lekha-template-fit', 't13-compact-line');
-      line.style.setProperty('text-transform', 'none', 'important');
+      line.classList.add('lekha-template-fit');
+      if (shouldCompactTemplateLine(captionText)) {
+        line.classList.add('t13-compact-line');
+        line.style.setProperty('text-transform', 'none', 'important');
+      }
     };
 
     const originalTemplateBlockTypes = ${JSON.stringify(ORIGINAL_TEMPLATE_BLOCK_TYPES)};
@@ -767,13 +822,15 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       emphasisColor = '',
       templateId = '',
       blockIndex = 0,
+      impWordIndices = [],
     ) => {
       if (!block || !words.length || !shouldRecreateAdvancedWbwPhase(templateId, blockIndex)) return;
       const doc = block.ownerDocument;
       const impClass = getRecreatedAdvancedWbwImpClass(templateId, blockIndex);
-      const targetImpIndex = Number.isFinite(Number(impWordIndex)) && Number(impWordIndex) >= 0
+      const fallbackImpIndex = Number.isFinite(Number(impWordIndex)) && Number(impWordIndex) >= 0
         ? Math.min(words.length - 1, Number(impWordIndex))
         : Math.min(1, words.length - 1);
+      const targetImpIndices = new Set(resolveImpWordIndicesForWords(words, fallbackImpIndex, impWordIndices));
       block.textContent = '';
       const line = doc.createElement('span');
       line.className = 'wbw-rise lekha-template-fit';
@@ -781,7 +838,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       words.forEach((word, index) => {
         if (index > 0) line.appendChild(doc.createTextNode(' '));
         const span = doc.createElement('span');
-        const isImp = index === targetImpIndex;
+        const isImp = targetImpIndices.has(index);
         span.className = 'w' + (isImp ? ' ' + impClass + ' is-emphasis' : '');
         span.dataset.i = String(index);
         if (isImp) {
@@ -808,6 +865,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       impWordIndex = -1,
       emphasisColor = '',
       previewLineTexts = [],
+      impWordIndices = [],
     ) => {
       if (recreatedAdvancedTemplateIds.has(String(templateId || '').trim())) return '';
 
@@ -829,13 +887,13 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       block.dataset.templateBlockType = blockType;
       block.style.opacity = '0';
       block.style.transition = 'none';
-      rebuildAdvancedWbwRiseBlock(block, words, impWordIndex, resolvedEmphasisColor, templateId, normalized);
+      rebuildAdvancedWbwRiseBlock(block, words, impWordIndex, resolvedEmphasisColor, templateId, normalized, impWordIndices);
 
       const wbwContainers = Array.from(block.querySelectorAll(
         '.wbw-rise, .wbw-slide, .wbw-seq, .wbw-seq-fade, .wbw-seq-flip',
       ));
       if (wbwContainers.length) {
-        wbwContainers.forEach((container) => replaceAdvancedSourceWbw(container, words, impWordIndex, resolvedEmphasisColor));
+        wbwContainers.forEach((container) => replaceAdvancedSourceWbw(container, words, impWordIndex, resolvedEmphasisColor, impWordIndices));
       } else {
         const karaokeContainers = Array.from(block.querySelectorAll('.kf-line'));
         if (karaokeContainers.length) {
@@ -848,6 +906,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
             text,
             suppressSemanticEmphasis ? -1 : impWordIndex,
             suppressSemanticEmphasis ? '' : resolvedEmphasisColor,
+            suppressSemanticEmphasis ? [] : impWordIndices,
           );
         }
       }
@@ -902,7 +961,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       </span>
     \`;
 
-    const buildOriginalAdvancedTemplateMarkup = (templateId, text, blockIndex = 0, previewLineTexts = []) => {
+    const buildOriginalAdvancedTemplateMarkup = (templateId, text, blockIndex = 0, previewLineTexts = [], impWordIndex = -1, impWordIndices = []) => {
       const { top, hero, bottom, full } = splitCaptionForTemplate(text);
       const blockTypes = originalTemplateBlockTypes[templateId] || ['styled'];
       const normalized = ((blockIndex % blockTypes.length) + blockTypes.length) % blockTypes.length;
@@ -917,6 +976,11 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       const compactFull = shouldCompactTemplateLine(full);
       const t13LineClass = compactFull ? 'lekha-template-fit t13-compact-line' : 'lekha-template-fit';
       const t13LineText = compactFull ? full : upperFull;
+      activeTemplateImpWordIndices = resolveImpWordIndicesForWords(
+        full.split(/\\s+/).filter(Boolean),
+        impWordIndex,
+        impWordIndices,
+      );
       const lineSpans = (lines, cls, mapper = (line) => escapeHtml(line)) =>
         lines.map((line, index) => \`<span class="\${cls}" style="animation-delay:\${index * 0.1}s">\${mapper(line, index)}</span>\`).join('');
       const wrap = (blockClass, children, extraStyle = '') => wrapOriginalTemplate(templateId, blockClass, normalized, blockType, children, extraStyle);
@@ -1032,11 +1096,11 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           if (normalized === 4) return wrap('t32-b4', wbwMarkup(full, 'wbw-seq-fade', 'imp-purple'));
           return wrap('t32-b0', \`<span style="font-style:italic" class="lekha-template-fit">\${lineSpans(lines2, 'ink-line', (line, index) => index === lines2.length - 1 ? heroMarkup(line, 'imp-purple') : escapeHtml(line))}</span>\`);
         case 't33':
-          if (normalized === 1) return wrap('t33-b1', wbwMarkup(full, 'wbw-seq-fade', 'imp-cyan'));
+          if (normalized === 1) return wrap('t33-b1', wbwMarkup(full, 'wbw-seq-fade', 'imp-cyan', { compactLines: true, lineTexts: previewLineTexts }));
           if (normalized === 2) return wrap('t33-b2', karaokeMarkup(full));
-          if (normalized === 3) return wrap('t33-b3', wbwMarkup(full, 'wbw-rise', 'imp-bold'));
+          if (normalized === 3) return wrap('t33-b3', wbwMarkup(full, 'wbw-rise', 'imp-bold', { compactLines: true, lineTexts: previewLineTexts }));
           if (normalized === 4) return wrap('t33-b4', \`<span style="perspective:500px" class="lekha-template-fit"><span class="flip-line" style="font-family:'Noto Sans',sans-serif">\${heroMarkup(full, 'imp-cyan')}</span></span>\`);
-          return wrap('t33-b0', \`<span class="doc-line lekha-template-fit">\${lineSpans(lines2, '', (line) => line.includes(hero) ? heroMarkup(line, 'imp-cyan') : escapeHtml(line))}</span>\`);
+          return wrap('t33-b0', \`<span class="doc-line lekha-template-fit">\${lineSpans(resolvedPreviewLines, '', (line) => line.includes(hero) ? heroMarkup(line, 'imp-cyan') : escapeHtml(line))}</span>\`);
         case 't34':
           if (normalized === 1) return wrap('t34-b1', \`<span class="pow-txt lekha-template-fit">\${heroMarkup(full, 'imp-cyan')}</span>\`);
           if (normalized === 2) return wrap('t34-b2', wbwMarkup(full, 'wbw-rise', 'imp-bold'));
@@ -1060,8 +1124,8 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         case 't39':
           return wrap(\`t39-b\${normalized}\`, wbwMarkup(full, 'wbw-seq-fade', normalized % 2 ? 'imp-rose' : 'imp-gold'));
         case 't40':
-          if (normalized === 2) return wrap('t40-b2', \`<span class="lekha-template-fit">\${escapeHtml(full)}</span>\`);
-          return wrap(\`t40-b\${normalized}\`, \`<span class="lekha-template-fit">\${escapeHtml(full)}</span>\`);
+          if (normalized === 2) return wrap('t40-b2', \`<span class="lekha-template-fit">\${stillFramesMarkup(full)}</span>\`);
+          return wrap(\`t40-b\${normalized}\`, \`<span class="lekha-template-fit">\${stillFramesMarkup(full)}</span>\`);
         default:
           return '';
       }
@@ -1075,6 +1139,159 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         key: \`\${caption.id}-\${index}\`,
         style: styled[\`\${caption.id}-\${index}\`] || {},
       }));
+    };
+
+    const getWordEffectInlineStyles = (wordStyle = {}) => {
+      const type = wordStyle?.effectType || 'none';
+      if (type === 'none') return {};
+      const color = wordStyle?.effectColor || '#000000';
+      const blur = ((wordStyle?.effectBlur ?? 50) / 100) * 24;
+      const offset = ((wordStyle?.effectOffset ?? 50) / 100) * 16;
+      const dir = wordStyle?.effectDirection ?? -45;
+      const transp = wordStyle?.effectTransparency ?? 40;
+      const thick = wordStyle?.effectThickness ?? 50;
+      const alpha = (100 - transp) / 100;
+      const rad = (dir * Math.PI) / 180;
+      const ox = +(Math.cos(rad) * offset).toFixed(1);
+      const oy = +(Math.sin(rad) * offset).toFixed(1);
+      const rc = (a = alpha) => rgbaFromHex(color, a);
+      switch (type) {
+        case 'shadow': return { 'text-shadow': \`\${ox}px \${oy}px \${blur}px \${rc()}\` };
+        case 'lift': return { 'text-shadow': \`0px \${(offset * 0.4).toFixed(1)}px \${(blur * 0.5).toFixed(1)}px \${rc()}, 0px \${offset}px \${blur}px \${rc(alpha * 0.4)}\` };
+        case 'hollow': return { '-webkit-text-stroke': \`\${(thick / 40).toFixed(1)}px \${color}\`, color: 'transparent', '-webkit-text-fill-color': 'transparent' };
+        case 'splice': return { 'text-shadow': \`\${ox}px \${oy}px 0px \${rc()}\` };
+        case 'outline': return { '-webkit-text-stroke': \`\${(thick / 40).toFixed(1)}px \${color}\` };
+        case 'echo': return { 'text-shadow': \`\${ox}px \${oy}px 0px \${rc()}, \${ox * 2}px \${oy * 2}px 0px \${rc(alpha * 0.55)}, \${ox * 3}px \${oy * 3}px 0px \${rc(alpha * 0.25)}\` };
+        case 'neon': return { 'text-shadow': \`0 0 \${(blur * 0.5).toFixed(1)}px \${color}, 0 0 \${blur}px \${color}, 0 0 \${(blur * 2).toFixed(1)}px \${color}\` };
+        default: return {};
+      }
+    };
+
+    const getSourceWordAnimationStyle = (animationType, speed = 1) => {
+      const safeSpeed = Math.max(0.25, Number(speed) || 1);
+      const duration = (seconds) => \`\${+(seconds / safeSpeed).toFixed(2)}s\`;
+      const animations = {
+        rise: \`source-word-rise \${duration(0.4)} ease-out both\`,
+        pan: \`source-word-pan \${duration(0.5)} ease-in-out both\`,
+        fade: \`source-word-fade \${duration(0.5)} ease-in both\`,
+        pop: \`source-word-pop \${duration(0.3)} ease-out both\`,
+        wipe: \`source-word-wipe \${duration(0.4)} ease-out both\`,
+        blur: \`source-word-blur \${duration(0.5)} ease-in-out both\`,
+        succession: \`source-word-succession \${duration(0.4)} ease-out both\`,
+        breathe: \`source-word-breathe \${duration(1.5)} ease-in-out infinite\`,
+        baseline: \`source-word-baseline \${duration(0.4)} ease-out both\`,
+        drift: \`source-word-drift \${duration(0.6)} ease-in-out both\`,
+        tectonic: \`source-word-tectonic \${duration(0.5)} ease-out both\`,
+        tumble: \`source-word-tumble \${duration(0.6)} ease-in-out both\`,
+      };
+      return animations[animationType] || '';
+    };
+
+    const sourceTemplateWordSelector = [
+      '.lekha-applied-basic-template-host .word',
+      '.lekha-applied-basic-template-host .w',
+      '.lekha-applied-basic-template-host .wbw-word',
+      '.template-caption-shell .lekha-original-template .w',
+      '.template-caption-shell .lekha-original-template .kf-word',
+      '.template-caption-shell .lekha-original-template .is-emphasis',
+      '.lekha-sidebar-export-template-shell .w',
+      '.lekha-sidebar-export-template-shell .wbw-word',
+      '.lekha-sidebar-export-template-shell .sw',
+      '.lekha-sidebar-export-template-shell .sw-w',
+      '[data-word-key]',
+      '[data-i]',
+    ].join(',');
+
+    const getEditableSourceTemplateWords = (root) => {
+      const candidates = Array.from(root.querySelectorAll(sourceTemplateWordSelector));
+      return candidates.filter((node) => {
+        const parentEditable = node.parentElement?.closest?.(sourceTemplateWordSelector);
+        return !parentEditable || !root.contains(parentEditable);
+      });
+    };
+
+    const sourceTemplateVisualSelector = '[data-source-word-visual="true"], .kf-base, .kf-fill';
+    const getSourceTemplateVisualTargets = (node) => {
+      if (!node) return [];
+      const existingTargets = Array.from(node.querySelectorAll(sourceTemplateVisualSelector));
+      if (existingTargets.length) return existingTargets;
+      const elementChildren = Array.from(node.children || []);
+      if (elementChildren.length) return [node];
+      const visual = document.createElement('span');
+      visual.dataset.sourceWordVisual = 'true';
+      while (node.firstChild) {
+        visual.appendChild(node.firstChild);
+      }
+      node.appendChild(visual);
+      return [visual];
+    };
+
+    const applySourceTemplateWordStyles = (root, caption) => {
+      if (!root || !caption) return;
+      const nodes = getEditableSourceTemplateWords(root);
+      const styles = caption.word_styles || {};
+      const setImportant = (element, property, value) => {
+        if (!element?.style || value === undefined || value === null || value === '') return;
+        element.style.setProperty(property, String(value), 'important');
+      };
+      const applyTextGradient = (target, gradient) => {
+        setImportant(target, 'background-color', 'transparent');
+        setImportant(target, 'background', gradient);
+        setImportant(target, 'background-image', gradient);
+        setImportant(target, 'background-size', '100% 100%');
+        setImportant(target, 'background-repeat', 'no-repeat');
+        setImportant(target, 'background-position', 'center');
+        setImportant(target, '-webkit-background-clip', 'text');
+        setImportant(target, 'background-clip', 'text');
+        setImportant(target, '-webkit-text-fill-color', 'transparent');
+        setImportant(target, 'color', 'transparent');
+      };
+      nodes.forEach((node, index) => {
+        const key = \`\${caption.id}-\${index}\`;
+        const wordStyle = styles[key] || {};
+        node.dataset.wordKey = key;
+        if (!Object.keys(wordStyle).length) return;
+        const targets = getSourceTemplateVisualTargets(node);
+        const textGradient = typeof wordStyle.textGradient === 'string' ? wordStyle.textGradient.trim() : '';
+        if (textGradient) {
+          node.dataset.sourceWordGradient = 'true';
+          node.style.setProperty('--source-word-text-gradient', textGradient, 'important');
+        } else {
+          delete node.dataset.sourceWordGradient;
+          node.style.removeProperty('--source-word-text-gradient');
+        }
+        targets.forEach((target) => {
+          if (wordStyle.fontFamily) setImportant(target, 'font-family', wordStyle.fontFamily);
+          if (wordStyle.fontSize) setImportant(target, 'font-size', \`\${scaleTemplateFontSize(wordStyle.fontSize)}px\`);
+          if (wordStyle.fontWeight) setImportant(target, 'font-weight', wordStyle.fontWeight);
+          if (wordStyle.fontStyle) setImportant(target, 'font-style', wordStyle.fontStyle);
+          if (wordStyle.textDecoration) setImportant(target, 'text-decoration', wordStyle.textDecoration);
+          if (wordStyle.textTransform) setImportant(target, 'text-transform', wordStyle.textTransform);
+          if (textGradient) {
+            applyTextGradient(target, textGradient);
+          } else if (wordStyle.color) {
+            setImportant(target, 'color', wordStyle.color);
+            setImportant(target, '-webkit-text-fill-color', wordStyle.color);
+          }
+          if (wordStyle.backgroundColor || wordStyle.highlightGradient) {
+            setImportant(target, 'background', wordStyle.highlightGradient || rgbaFromHex(wordStyle.backgroundColor, wordStyle.backgroundOpacity ?? 0.6));
+            setImportant(target, 'border-radius', '4px');
+            setImportant(target, 'padding', \`\${wordStyle.backgroundPadding || 2}px 4px\`);
+            setImportant(target, 'box-decoration-break', 'clone');
+            setImportant(target, '-webkit-box-decoration-break', 'clone');
+            if (textGradient) applyTextGradient(target, textGradient);
+          }
+          Object.entries(getWordEffectInlineStyles(wordStyle)).forEach(([property, value]) => {
+            setImportant(target, property, value);
+          });
+          const animation = getSourceWordAnimationStyle(wordStyle.animation, wordStyle.animationSpeed || 1);
+          if (animation) {
+            setImportant(target, 'display', 'inline-block');
+            setImportant(target, 'transform-origin', 'center center');
+            setImportant(target, 'animation', animation);
+          }
+        });
+      });
     };
 
     // Right-side "Basic" templates — render the authored .btcard source markup
@@ -1097,34 +1314,73 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       const currentIndex = window.__basicTpl.getAppliedBasicCurrentWordIndex
         ? window.__basicTpl.getAppliedBasicCurrentWordIndex(caption, time, words.length)
         : getCurrentWordIndex(caption, time);
+      const impWordIndex = Number(
+        caption?.imp_word_index
+        ?? caption?.template_imp_word_index
+        ?? caption?.emphasis_word_index
+        ?? -1,
+      );
+      const impWordIndices = Array.isArray(caption?.imp_word_indices)
+        ? caption.imp_word_indices
+        : [];
       const html = window.__basicTpl.buildAppliedBasicTemplateInlineFromMarkup(
         rawMarkup,
         templateId,
         text,
-        { activePhase: selectedPhase },
+        { activePhase: selectedPhase, currentIndex: 0, impWordIndex, impWordIndices },
       );
       if (!html) return buildTemplateMarkup(caption, globalStyle, time);
       const textCase = globalStyle?.text_case && globalStyle.text_case !== 'none'
         ? globalStyle.text_case
         : '';
+      const normalizedTemplateFontSize = normalizeAppliedBasicTemplateFontSize(
+        templateId,
+        globalStyle?.font_size || 22,
+      ) || 22;
+      const exportScale = Number(window.__exportCanvasScale || 1) || 1;
+      const measuredBasicWidth = Number(
+        caption?.preview_template_box_width_px
+        || caption?.applied_template_style?.preview_template_box_width_px
+        || globalStyle?.preview_template_box_width_px
+        || 0,
+      );
+      const measuredBasicFont = Number(
+        caption?.preview_template_font_px
+        || caption?.applied_template_style?.preview_template_font_px
+        || globalStyle?.preview_template_font_px
+        || 0,
+      );
+      const exportBasicWidth = Math.max(
+        1,
+        Math.round((measuredBasicWidth > 0 ? measuredBasicWidth : 320) * exportScale),
+      );
+      const exportBasicFontPx = measuredBasicFont > 0
+        ? Math.max(1, Math.round(measuredBasicFont * exportScale))
+        : Math.max(
+            12,
+            Math.round(scaleTemplateFontSize(normalizedTemplateFontSize) * APPLIED_BASIC_EXPORT_FONT_SCALE),
+          );
       const hostStyle = [
         \`--template-primary:\${globalStyle?.text_color || '#ffffff'}\`,
+        \`--template-text-gradient:\${globalStyle?.text_gradient || 'none'}\`,
         \`--template-secondary:\${globalStyle?.secondary_color || '#000000'}\`,
         \`--template-bg:\${globalStyle?.background_color || 'transparent'}\`,
         \`--template-highlight:\${globalStyle?.highlight_color || globalStyle?.emphasis_color || globalStyle?.secondary_color || '#DDAA03'}\`,
+        \`--template-highlight-gradient:\${globalStyle?.highlight_gradient || 'none'}\`,
         \`--template-karaoke-1:\${globalStyle?.karaoke_color_1 || globalStyle?.highlight_color || globalStyle?.emphasis_color || globalStyle?.secondary_color || '#DDAA03'}\`,
         \`--template-karaoke-2:\${globalStyle?.karaoke_color_2 || '#22D3EE'}\`,
         \`--template-karaoke-3:\${globalStyle?.karaoke_color_3 || '#FB923C'}\`,
-        \`--applied-basic-scale:\${Number(window.__exportCanvasScale || 1) || 1}\`,
+        \`--applied-basic-scale:\${exportScale}\`,
+        \`--applied-basic-width:\${exportBasicWidth}px\`,
         \`color:\${globalStyle?.text_color || '#ffffff'}\`,
         \`font-family:'\${globalStyle?.font_family || 'Inter'}'\`,
-        \`font-size:\${Math.max(12, Math.round(scaleTemplateFontSize(globalStyle?.font_size || 22) * APPLIED_BASIC_EXPORT_FONT_SCALE))}px\`,
+        \`font-size:\${exportBasicFontPx}px\`,
         \`font-weight:\${globalStyle?.font_weight || '800'}\`,
         \`font-style:\${globalStyle?.font_style || 'normal'}\`,
         \`line-height:\${globalStyle?.line_spacing || 1.25}\`,
         textCase ? \`text-transform:\${textCase}\` : '',
       ].filter(Boolean).join(';');
-      return \`<span class="lekha-applied-basic-template-host lekha-basic-template-fit lekha-basic-template-enter-once \${templateId}" \`
+      return \`<span class="lekha-applied-basic-template-host lekha-basic-template-fit lekha-basic-template-enter-once \${templateId} \${globalStyle?.text_gradient ? 'has-text-gradient' : ''} \${globalStyle?.highlight_gradient ? 'has-highlight-gradient' : ''}" \`
         + \`data-applied-template-id="\${templateId}" data-applied-template-source="lekha-basic" \`
         + \`data-export-measure="basic-template" data-export-caption-id="\${escapeHtml(caption?.id || '')}" \`
         + \`data-caption-start="\${Number(caption?.start_time ?? 0)}" data-caption-end="\${Number(caption?.end_time ?? caption?.start_time ?? 0)}" \`
@@ -1220,9 +1476,11 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         : (globalStyle?.text_color || '#ffffff');
       const styleVars = [
         \`--template-primary:\${templatePrimaryColor}\`,
+        \`--template-text-gradient:\${globalStyle?.text_gradient || 'none'}\`,
         \`--template-secondary:\${globalStyle?.secondary_color || '#000000'}\`,
         \`--template-bg:\${hasAppliedTemplate ? 'transparent' : (globalStyle?.background_color || 'transparent')}\`,
         \`--template-highlight:\${globalStyle?.highlight_color || globalStyle?.emphasis_color || globalStyle?.secondary_color || '#DDAA03'}\`,
+        \`--template-highlight-gradient:\${globalStyle?.highlight_gradient || 'none'}\`,
         \`--template-karaoke-1:\${globalStyle?.karaoke_color_1 || globalStyle?.highlight_color || globalStyle?.emphasis_color || globalStyle?.secondary_color || '#DDAA03'}\`,
         \`--template-karaoke-2:\${globalStyle?.karaoke_color_2 || '#22D3EE'}\`,
         \`--template-karaoke-3:\${globalStyle?.karaoke_color_3 || '#FB923C'}\`,
@@ -1235,7 +1493,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           : globalStyle?.preview_template_line_texts;
         return \`
           <div
-            class="template-caption-shell \${globalStyle?.template_color_customized ? 'is-color-customized' : ''}"
+            class="template-caption-shell template-shell-\${globalStyle?.template_id || ''} \${globalStyle?.template_color_customized ? 'is-color-customized' : ''} \${globalStyle?.text_gradient ? 'has-text-gradient' : ''} \${globalStyle?.highlight_gradient ? 'has-highlight-gradient' : ''}"
             data-caption-start="\${captionStart}"
             data-caption-end="\${captionEnd}"
             style="\${styleVars.join(';')}"
@@ -1255,11 +1513,14 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
                   ? (caption.emphasis_color || globalStyle?.highlight_color || globalStyle?.emphasis_color || globalStyle?.secondary_color || '')
                   : '',
                 previewLineTexts,
+                caption.imp_word_indices || [],
               ) || buildOriginalAdvancedTemplateMarkup(
                 globalStyle?.template_id,
                 transformText(caption.text || '', globalStyle),
                 templateIndex,
                 previewLineTexts,
+                Number(caption.imp_word_index ?? -1),
+                caption.imp_word_indices || [],
               )}</span>
             </div>
             \${positionedWords}
@@ -1293,7 +1554,11 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           const parts = declaration.split(':');
           const property = String(parts.shift() || '').trim().toLowerCase();
           const value = parts.join(':').trim();
-          return property === 'animation-delay' && /^-?\\d*\\.?\\d+(m?s)$/i.test(value);
+          if (property === 'animation-delay') return /^-?\\d*\\.?\\d+(m?s)$/i.test(value);
+          if (/^--template-(?:primary|secondary|highlight|bg)$/.test(property)) {
+            return /^(?:#[0-9a-f]{3,8}|transparent|rgba?\\([\\d\\s,%.]+\\))$/i.test(value);
+          }
+          return false;
         });
       return allowed.length ? ' style="' + allowed.join(';') + '"' : '';
     };
@@ -1365,13 +1630,14 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       const impPattern = /\\b(?:imp-[\\w-]+|ns[23]-[\\w-]+)\\b/;
       const sourceImpIndex = sourceClasses.findIndex((className) => impPattern.test(className));
       const impClass = sourceImpIndex >= 0 ? sourceClasses[sourceImpIndex].match(impPattern)?.[0] || '' : '';
-      const targetImpIndex = resolveSidebarTargetImpIndex(sourceImpIndex, sourceClasses.length, words.length, impWordIndex);
+      const fallbackImpIndex = resolveSidebarTargetImpIndex(sourceImpIndex, sourceClasses.length, words.length, impWordIndex);
+      const targetImpIndices = new Set(resolveImpWordIndicesForWords(words, fallbackImpIndex));
       container.innerHTML = words.map((word, index) => {
         const mapped = mappedSidebarClassName(sourceClasses, index, words.length, fallback)
           .replace(/\\b(?:imp-[\\w-]+|ns[23]-[\\w-]+)\\b/g, '')
           .replace(/\\s+/g, ' ')
           .trim();
-        const isEmphasis = index === targetImpIndex;
+        const isEmphasis = targetImpIndices.has(index);
         const emphasis = isEmphasis && impClass ? ' ' + impClass : '';
         return '<span data-export-caption-text="true" class="' + (mapped || fallback) + emphasis + (isEmphasis ? ' is-emphasis' : '') + '">' + escapeHtml(word) + '</span>';
       }).join(' ');
@@ -1384,18 +1650,40 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       const sourceClasses = stickyWords.map((word) => cleanSidebarClassName(word.className, 'sw-w'));
       const impPattern = /\\b(?:imp-[\\w-]+|ns[23]-[\\w-]+)\\b/;
       const sourceImpIndex = sourceClasses.findIndex((className) => impPattern.test(className));
-      const targetImpIndex = resolveSidebarTargetImpIndex(sourceImpIndex, sourceClasses.length, words.length, impWordIndex);
+      const fallbackImpIndex = resolveSidebarTargetImpIndex(sourceImpIndex, sourceClasses.length, words.length, impWordIndex);
+      const targetImpIndices = new Set(resolveImpWordIndicesForWords(words, fallbackImpIndex));
       container.innerHTML = words.map((word, index) => (
-        '<span data-export-caption-text="true" class="' + mappedSidebarClassName(sourceClasses, index, words.length, 'sw-w') + (index === targetImpIndex ? ' is-emphasis' : '') + '">' + escapeHtml(word) + '</span>'
+        '<span data-export-caption-text="true" class="' + mappedSidebarClassName(sourceClasses, index, words.length, 'sw-w') + (targetImpIndices.has(index) ? ' is-emphasis' : '') + '">' + escapeHtml(word) + '</span>'
       )).join(' ');
       return true;
     };
 
-    const replaceSidebarPositioned = (block, words, impWordIndex) => {
+    const replaceSidebarPositioned = (block, words, impWordIndex, forceContiguous = false) => {
       const spans = Array.from(block.querySelectorAll('.sw'));
       if (!spans.length || !words.length) return false;
       const rows = Array.from(new Set(spans.map((span) => span.parentElement).filter(Boolean)));
       const sourceByRow = rows.map((row) => Array.from(row.querySelectorAll(':scope > .sw')));
+      const targetImpIndices = new Set(resolveImpWordIndicesForWords(words, impWordIndex));
+      if (forceContiguous && sourceByRow.length > 1) {
+        const sourceClasses = spans.map((span) => cleanSidebarClassName(span.className, 'sw'));
+        const sourceAnims = spans.map((span) => span.getAttribute('data-anim') || 'rise');
+        const heroRowIndex = rows.findIndex((row) => /\\b(hero|l3|bold|impact)\\b/.test(row.className || ''));
+        const targetRow = rows[heroRowIndex >= 0 ? heroRowIndex : rows.length - 1];
+        rows.forEach((row) => { row.textContent = ''; });
+        targetRow.style.paddingLeft = '0';
+        targetRow.style.textAlign = 'center';
+        words.forEach((word, wordIndex) => {
+          if (wordIndex > 0) targetRow.appendChild(document.createTextNode(' '));
+          const span = document.createElement('span');
+          span.dataset.exportCaptionText = 'true';
+          span.className = mappedSidebarClassName(sourceClasses, wordIndex, words.length, 'sw')
+            + (targetImpIndices.has(wordIndex) ? ' is-emphasis' : '');
+          span.dataset.anim = mappedSidebarClassName(sourceAnims, wordIndex, words.length, 'rise');
+          span.textContent = word;
+          targetRow.appendChild(span);
+        });
+        return true;
+      }
       const totalSlots = sourceByRow.reduce((sum, rowSpans) => sum + rowSpans.length, 0);
       let wordCursor = 0;
       sourceByRow.forEach((rowSpans, rowIndex) => {
@@ -1415,7 +1703,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           span.dataset.exportCaptionText = 'true';
           const globalWordIndex = wordCursor + localIndex;
           span.className = mappedSidebarClassName(sourceClasses, localIndex, rowWords.length, 'sw')
-            + (globalWordIndex === impWordIndex ? ' is-emphasis' : '');
+            + (targetImpIndices.has(globalWordIndex) ? ' is-emphasis' : '');
           span.dataset.anim = mappedSidebarClassName(sourceAnims, localIndex, rowWords.length, 'rise');
           span.textContent = word;
           row.appendChild(span);
@@ -1431,9 +1719,10 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       if (!plain || !words.length) return false;
       plain.dataset.exportCaptionText = 'true';
       plain.textContent = '';
+      const targetImpIndices = new Set(resolveImpWordIndicesForWords(words, impWordIndex));
       words.forEach((word, index) => {
         if (index > 0) plain.appendChild(document.createTextNode(' '));
-        if (index === impWordIndex) {
+        if (targetImpIndices.has(index)) {
           const span = document.createElement('span');
           span.className = 'is-emphasis';
           span.dataset.exportCaptionText = 'true';
@@ -1446,11 +1735,11 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       return true;
     };
 
-    const replaceSidebarTemplateText = (block, captionText, impWordIndex) => {
+    const replaceSidebarTemplateText = (block, captionText, impWordIndex, forceContiguousPositioned = false) => {
       const words = String(captionText || '').trim().split(/\\s+/).filter(Boolean);
       block.querySelectorAll('.wbw, .wbw-line').forEach((container) => replaceSidebarWordByWord(container, words, impWordIndex));
       block.querySelectorAll('.sw-line').forEach((container) => replaceSidebarSticky(container, words, impWordIndex));
-      replaceSidebarPositioned(block, words, impWordIndex);
+      replaceSidebarPositioned(block, words, impWordIndex, forceContiguousPositioned);
       replaceSidebarPlain(block, words, impWordIndex);
     };
 
@@ -1538,7 +1827,9 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         const captionDurationMs = Math.max(0, (captionEnd - captionStart) * 1000);
         const phaseIndex = Number(shell.dataset.templatePhaseIndex || shell.dataset.captionIndex || 0);
         const impWordIndex = Number(shell.dataset.impWordIndex || -1);
-        const isNewTemplateSet = shell.dataset.templateSource === 'lekha-49';
+        const templateSource = shell.dataset.templateSource || '';
+        const isNewTemplateSet = templateSource === 'lekha-49';
+        const isLegacyTemplateSet = templateSource === 'lekha-20' || !templateSource;
         const elapsedMs = Math.max(0, (time - captionStart) * 1000);
         const fallbackDuration = 3000;
         // Parity with the live preview's per-source timing (legacy vs lekha-49).
@@ -1549,7 +1840,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         const dots = Array.from(shell.querySelectorAll('.dots i, .lk-dots i'));
 
         blocks.forEach((block) => {
-          replaceSidebarTemplateText(block, captionText, impWordIndex);
+          replaceSidebarTemplateText(block, captionText, impWordIndex, isLegacyTemplateSet);
           block.classList.remove('active');
           block.style.opacity = '0';
           block.style.visibility = 'hidden';
@@ -1686,9 +1977,10 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
 
     const buildSidebarTemplateMarkup = (caption, globalStyle) => {
       const appliedStyle = caption.applied_template_style || {};
+      const templateSource = caption.template_source || appliedStyle.template_source || globalStyle?.template_source || '';
       const templateMarkup = sanitizeSidebarTemplateMarkup(
         caption.template_markup || appliedStyle.template_markup || globalStyle?.template_markup || '',
-        (caption.template_source || appliedStyle.template_source || globalStyle?.template_source || '') === 'lekha-49',
+        ['lekha-49', 'lekha-lc'].includes(templateSource),
       );
       if (!templateMarkup) return '';
       return '<div class="lekha-sidebar-export-template-shell"'
@@ -1700,24 +1992,24 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         + ' data-template-phase-index="' + Number(caption.__templateIndex ?? caption.template_phase_index ?? 0) + '"'
         + ' data-imp-word-index="' + Number(caption.imp_word_index ?? -1) + '"'
         + ' data-emphasis-color="' + escapeHtml(caption.emphasis_color || '') + '"'
-        + ' data-caption-font-weight="' + escapeHtml(appliedStyle.font_weight || globalStyle?.font_weight || '400') + '"'
-        + ' data-caption-text-color="' + escapeHtml(appliedStyle.text_color || globalStyle?.text_color || '#FFFFFF') + '"'
-        + ' data-template-source="' + escapeHtml(caption.template_source || appliedStyle.template_source || globalStyle?.template_source || '') + '"'
-        + ' style="--sidebar-source-font:\\'' + escapeHtml(appliedStyle.font_family || globalStyle?.font_family || 'Inter') + '\\';'
+        + ' data-caption-font-weight="' + escapeHtml(globalStyle?.font_weight || appliedStyle.font_weight || '400') + '"'
+        + ' data-caption-text-color="' + escapeHtml(globalStyle?.text_color || appliedStyle.text_color || '#FFFFFF') + '"'
+        + ' data-template-source="' + escapeHtml(templateSource) + '"'
+        + ' style="--sidebar-source-font:\\'' + escapeHtml(globalStyle?.font_family || appliedStyle.font_family || 'Inter') + '\\';'
         + '--sidebar-emphasis-accent:' + escapeHtml((() => {
-          const configured = String(caption.emphasis_color || appliedStyle.secondary_color || globalStyle?.secondary_color || appliedStyle.highlight_color || globalStyle?.highlight_color || '').trim();
-          const textColor = String(appliedStyle.text_color || globalStyle?.text_color || '#FFFFFF').trim();
+          const configured = String(caption.emphasis_color || globalStyle?.secondary_color || appliedStyle.secondary_color || globalStyle?.highlight_color || appliedStyle.highlight_color || '').trim();
+          const textColor = String(globalStyle?.text_color || appliedStyle.text_color || '#FFFFFF').trim();
           return configured && configured.toLowerCase() !== textColor.toLowerCase() ? configured : '#DDAA03';
         })()) + ';'
-        + 'font-family:\\'' + escapeHtml(appliedStyle.font_family || globalStyle?.font_family || 'Inter') + '\\';'
-        + 'font-size:' + scaleExportPx(appliedStyle.font_size || globalStyle?.font_size || 22) + 'px;'
-        + 'font-weight:' + escapeHtml(appliedStyle.font_weight || globalStyle?.font_weight || '300') + ';'
+        + 'font-family:\\'' + escapeHtml(globalStyle?.font_family || appliedStyle.font_family || 'Inter') + '\\';'
+        + 'font-size:' + scaleExportPx(globalStyle?.font_size || appliedStyle.font_size || 22) + 'px;'
+        + 'font-weight:' + escapeHtml(globalStyle?.font_weight || appliedStyle.font_weight || '300') + ';'
         // Mirror the preview host's inline style so inherited text properties
         // resolve identically in both renderers.
-        + 'color:' + escapeHtml(appliedStyle.text_color || globalStyle?.text_color || '#FFFFFF') + ';'
-        + 'font-style:' + escapeHtml(appliedStyle.font_style || globalStyle?.font_style || 'normal') + ';'
-        + 'line-height:' + escapeHtml(String(appliedStyle.line_spacing || globalStyle?.line_spacing || 1.25)) + ';'
-        + 'opacity:' + escapeHtml(String(appliedStyle.text_opacity ?? globalStyle?.text_opacity ?? 1)) + ';"'
+        + 'color:' + escapeHtml(globalStyle?.text_color || appliedStyle.text_color || '#FFFFFF') + ';'
+        + 'font-style:' + escapeHtml(globalStyle?.font_style || appliedStyle.font_style || 'normal') + ';'
+        + 'line-height:' + escapeHtml(String(globalStyle?.line_spacing || appliedStyle.line_spacing || 1.25)) + ';'
+        + 'opacity:' + escapeHtml(String(templateSource === 'lekha-lc' ? 1 : (globalStyle?.text_opacity ?? appliedStyle.text_opacity ?? 1))) + ';"'
         + '>' + templateMarkup + '</div>';
     };
 
@@ -1895,7 +2187,8 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       textContainers.forEach((container) => applyPreviewTextLineBreaks(container, lineTexts));
 
       const containers = Array.from(root.querySelectorAll(
-        '.lekha-original-template .wbw-rise, '
+        '.lekha-original-template .kf-line, '
+        + '.lekha-original-template .wbw-rise, '
         + '.lekha-original-template .wbw-slide, '
         + '.lekha-original-template .wbw-seq, '
         + '.lekha-original-template .wbw-seq-fade, '
@@ -1960,27 +2253,53 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         if (!caption || caption.is_text_element) return style;
         const appliedStyle = caption.applied_template_style || {};
         return {
-          ...style,
           ...appliedStyle,
-          template_id: caption.template_id || appliedStyle.template_id || style.template_id || '',
-          template_20_id: caption.template_20_id || appliedStyle.template_20_id || style.template_20_id || '',
-          template_source: caption.template_source || appliedStyle.template_source || style.template_source || '',
-          template_class: caption.template_class || appliedStyle.template_class || style.template_class || '',
-          template_name: caption.template_name || appliedStyle.template_name || style.template_name || '',
-          template_layout: caption.template_layout || appliedStyle.template_layout || style.template_layout || '',
-          template_effect: caption.template_effect || appliedStyle.template_effect || style.template_effect || '',
-          template_markup: caption.template_markup || appliedStyle.template_markup || style.template_markup || '',
-          text_color: caption.text_color || appliedStyle.text_color || style.text_color || '#ffffff',
-          secondary_color: caption.secondary_color || appliedStyle.secondary_color || style.secondary_color || '',
-          highlight_color: caption.highlight_color || appliedStyle.highlight_color || style.highlight_color || '',
-          emphasis_color: caption.emphasis_color || appliedStyle.emphasis_color || style.emphasis_color || '',
-          karaoke_color_1: caption.karaoke_color_1 || appliedStyle.karaoke_color_1 || style.karaoke_color_1 || '',
-          karaoke_color_2: caption.karaoke_color_2 || appliedStyle.karaoke_color_2 || style.karaoke_color_2 || '',
-          karaoke_color_3: caption.karaoke_color_3 || appliedStyle.karaoke_color_3 || style.karaoke_color_3 || '',
+          ...style,
+          template_id: caption.template_id || style.template_id || appliedStyle.template_id || '',
+          template_20_id: caption.template_20_id || style.template_20_id || appliedStyle.template_20_id || '',
+          template_source: caption.template_source || style.template_source || appliedStyle.template_source || '',
+          template_class: caption.template_class || style.template_class || appliedStyle.template_class || '',
+          template_name: caption.template_name || style.template_name || appliedStyle.template_name || '',
+          template_layout: caption.template_layout || style.template_layout || appliedStyle.template_layout || '',
+          template_effect: caption.template_effect || style.template_effect || appliedStyle.template_effect || '',
+          template_markup: caption.template_markup || style.template_markup || appliedStyle.template_markup || '',
+          text_color: caption.text_color || style.text_color || appliedStyle.text_color || '#ffffff',
+          text_gradient: caption.text_gradient || style.text_gradient || appliedStyle.text_gradient || '',
+          secondary_color: caption.secondary_color || style.secondary_color || appliedStyle.secondary_color || '',
+          highlight_color: caption.highlight_color || style.highlight_color || appliedStyle.highlight_color || '',
+          highlight_gradient: caption.highlight_gradient || style.highlight_gradient || appliedStyle.highlight_gradient || '',
+          emphasis_color: caption.emphasis_color || style.emphasis_color || appliedStyle.emphasis_color || '',
+          karaoke_color_1: caption.karaoke_color_1 || style.karaoke_color_1 || appliedStyle.karaoke_color_1 || '',
+          karaoke_color_2: caption.karaoke_color_2 || style.karaoke_color_2 || appliedStyle.karaoke_color_2 || '',
+          karaoke_color_3: caption.karaoke_color_3 || style.karaoke_color_3 || appliedStyle.karaoke_color_3 || '',
+          preview_template_font_px: Number(
+            caption.preview_template_font_px
+            || style.preview_template_font_px
+            || appliedStyle.preview_template_font_px
+            || 0,
+          ),
+          preview_template_box_width_px: Number(
+            caption.preview_template_box_width_px
+            || style.preview_template_box_width_px
+            || appliedStyle.preview_template_box_width_px
+            || 0,
+          ),
+          preview_template_box_height_px: Number(
+            caption.preview_template_box_height_px
+            || style.preview_template_box_height_px
+            || appliedStyle.preview_template_box_height_px
+            || 0,
+          ),
           template_color_customized: Boolean(
             caption.template_color_customized
-            || appliedStyle.template_color_customized
             || style.template_color_customized
+            || appliedStyle.template_color_customized
+            || caption.text_gradient
+            || style.text_gradient
+            || appliedStyle.text_gradient
+            || caption.highlight_gradient
+            || style.highlight_gradient
+            || appliedStyle.highlight_gradient
           ),
         };
       };
@@ -2060,6 +2379,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
             : templateCaptionIndex,
         };
         const renderStyle = resolveCaptionTemplateStyle(captionWithTemplateIndex);
+        applySourceTemplateWordStyles(anchor, captionWithTemplateIndex);
         const captionLineTexts = Array.isArray(caption?.preview_template_line_texts)
           && caption.preview_template_line_texts.length > 0
           ? caption.preview_template_line_texts
@@ -2079,6 +2399,11 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       });
       activateSidebarTemplateShells(root, time);
       activateBasicTemplates(root);
+      activeCaptions.forEach((caption, activeIndex) => {
+        const anchor = root.querySelector(\`[data-caption-render-index="\${activeIndex}"]\`);
+        if (!anchor || caption?.is_text_element) return;
+        applySourceTemplateWordStyles(anchor, caption);
+      });
     };
   `;
 }
@@ -2112,6 +2437,11 @@ async function main() {
       || canonical.emphasisColor
       || '';
     caption.imp_word_index = canonical.impWordIndex;
+    caption.imp_word_indices = canonical.impWordIndices || (
+      Number.isFinite(Number(canonical.impWordIndex)) && Number(canonical.impWordIndex) >= 0
+        ? [Number(canonical.impWordIndex)]
+        : []
+    );
     caption.emphasis_color = templateEmphasisColor;
   });
   const firstTemplateCaption = (payload.captions || []).find((caption) => (
@@ -2221,9 +2551,22 @@ async function main() {
     : '';
   const hasSidebarTemplate = Boolean(payload.style?.template_20_id);
   const sidebarTemplateHtml = hasSidebarTemplate
-    ? await fs.readFile(path.join(projectRoot, 'src', 'assets', payload.style?.template_source === 'lekha-49' ? 'lekha-captions-49-templates.html' : 'lekha-captions-20-templates.html'), 'utf8')
+    ? await fs.readFile(path.join(projectRoot, 'src', 'assets', payload.style?.template_source === 'lekha-49'
+      ? 'lekha-captions-49-templates.html'
+      : payload.style?.template_source === 'lekha-lc'
+        ? 'lekha-captions-lc-2.html'
+        : 'lekha-captions-20-templates.html'), 'utf8')
     : '';
-  const sidebarTemplateCss = hasSidebarTemplate ? extractHtmlStyle(sidebarTemplateHtml) : '';
+  const sidebarTemplateCss = hasSidebarTemplate
+    ? payload.style?.template_source === 'lekha-lc'
+      ? [
+          await fs.readFile(path.join(projectRoot, 'src', 'assets', 'lekha-captions-lc-2.html'), 'utf8'),
+          await fs.readFile(path.join(projectRoot, 'src', 'assets', 'lekha-captions-lc-3.html'), 'utf8'),
+          await fs.readFile(path.join(projectRoot, 'src', 'assets', 'lekha-captions-lc-4.html'), 'utf8'),
+          await fs.readFile(path.join(projectRoot, 'src', 'assets', 'lekha-captions-lc-5.html'), 'utf8'),
+        ].map(extractHtmlStyle).join('\n')
+      : extractHtmlStyle(sidebarTemplateHtml)
+    : '';
   const previewWidth = Number(payload.style?.preview_width || 0);
   const exportCssScale = Math.max(1, Math.min(8, Number(payload.video_width || 360) / (previewWidth || 360)));
   const hasAdvancedTemplate = isAdvancedTemplateId(payload.style?.template_id);
@@ -2365,6 +2708,43 @@ async function main() {
       padding: 0 !important;
       margin: 0 !important;
     }
+    .lekha-sidebar-export-template-shell .lc-card .stage {
+      height: auto !important;
+      aspect-ratio: auto !important;
+    }
+    .lekha-sidebar-export-template-shell .lc-card .stage::after {
+      content: none !important;
+      display: none !important;
+      box-shadow: none !important;
+      background: transparent !important;
+    }
+    .lekha-sidebar-export-template-shell .lc-card .sb {
+      position: relative !important;
+      inset: auto !important;
+    }
+    .lekha-sidebar-export-template-shell .lc-card .sb:not(.active) {
+      position: absolute !important;
+      visibility: hidden !important;
+      opacity: 0 !important;
+    }
+    .lekha-sidebar-export-template-shell .lc-card .cap {
+      position: relative !important;
+      left: auto !important;
+      top: auto !important;
+      transform: none !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      text-align: center !important;
+    }
+    .lekha-sidebar-export-template-shell .lc-card .scene,
+    .lekha-sidebar-export-template-shell .lc-card .cpt,
+    .lekha-sidebar-export-template-shell .lc-card .nline,
+    .lekha-sidebar-export-template-shell .lc-card .plain-s {
+      width: fit-content !important;
+      max-width: 100% !important;
+      margin-left: auto !important;
+      margin-right: auto !important;
+    }
     .lekha-sidebar-export-template-shell .card[class] .stage,
     .lekha-sidebar-export-template-shell .lk-card[class] .lk-stage {
       background: transparent !important;
@@ -2438,6 +2818,28 @@ async function main() {
       vertical-align: baseline !important;
       color: var(--sidebar-emphasis-accent, #DDAA03) !important;
       -webkit-text-fill-color: var(--sidebar-emphasis-accent, #DDAA03) !important;
+    }
+    .lekha-sidebar-export-template-shell .lc-card .sb .hero,
+    .lekha-sidebar-export-template-shell .lc-card .sb .is-emphasis,
+    .lekha-sidebar-export-template-shell .lc-card .sb .ns3hero,
+    .lekha-sidebar-export-template-shell .lc-card .sb .ns3box,
+    .lekha-sidebar-export-template-shell .lc-card .sb .ns3mark,
+    .lekha-sidebar-export-template-shell .lc-card .sb .ns3bracket,
+    .lekha-sidebar-export-template-shell .lc-card .sb .ns3dot {
+      color: var(--template-highlight, var(--sidebar-emphasis-accent, #DDAA03)) !important;
+      -webkit-text-fill-color: var(--template-highlight, var(--sidebar-emphasis-accent, #DDAA03)) !important;
+      filter: saturate(1.35) brightness(1.12);
+      font-weight: 900;
+    }
+    .lekha-sidebar-export-template-shell .lc-card .sb .box {
+      background: var(--template-highlight, var(--sidebar-emphasis-accent, #DDAA03)) !important;
+      color: #101114 !important;
+      -webkit-text-fill-color: #101114 !important;
+    }
+    .lekha-sidebar-export-template-shell .lc-card .sb .box .sw,
+    .lekha-sidebar-export-template-shell .lc-card .sb .box .hero {
+      color: #101114 !important;
+      -webkit-text-fill-color: #101114 !important;
     }
     .lekha-sidebar-export-template-shell .stage .w[class*='imp-'],
     .lekha-sidebar-export-template-shell .stage .w[class*='ns2-'],
@@ -2642,16 +3044,32 @@ async function main() {
       opacity: 1 !important;
       text-shadow: 0 0 12px rgba(255,255,255,0.35) !important;
     }
-    .lekha-original-template.t13-stage .t13-b0 .slide-crash.t13-compact-line,
-    .lekha-original-template.t13-stage .t13-b1 .ticker-txt.t13-compact-line {
-      display: inline-block !important;
-      max-width: min(100%, 11.5em) !important;
+    .lekha-original-template.t13-stage .lekha-applied-advanced-template,
+    .lekha-original-template.t13-stage .lekha-template-fit,
+    .lekha-original-template.t13-stage .wbw-rise,
+    .lekha-original-template.t13-stage .wbw-slide,
+    .lekha-original-template.t13-stage .wbw-seq-fade,
+    .lekha-original-template.t13-stage .t13-b0 .slide-crash,
+    .lekha-original-template.t13-stage .t13-b1 .ticker-txt {
+      display: inline-flex !important;
+      flex-wrap: wrap !important;
+      justify-content: center !important;
+      align-items: center !important;
+      max-width: min(100%, 13.5em) !important;
       white-space: normal !important;
-      overflow-wrap: anywhere !important;
-      word-break: break-word !important;
-      line-height: 1.18 !important;
+      overflow-wrap: normal !important;
+      word-break: normal !important;
+      line-height: 1.2 !important;
       letter-spacing: 0.02em !important;
       text-align: center !important;
+      margin-left: auto !important;
+      margin-right: auto !important;
+    }
+    .lekha-original-template.t13-stage .t13-b0 .slide-crash.t13-compact-line,
+    .lekha-original-template.t13-stage .t13-b1 .ticker-txt.t13-compact-line {
+      max-width: min(100%, 12em) !important;
+      overflow-wrap: anywhere !important;
+      word-break: break-word !important;
       text-transform: none !important;
     }
     .lekha-original-template.t13-stage .t13-b0 .slide-crash.t13-compact-line {
@@ -2659,6 +3077,27 @@ async function main() {
     }
     .lekha-original-template.t13-stage .t13-b1 .ticker-txt.t13-compact-line {
       font-size: 0.98rem !important;
+    }
+    .lekha-original-template.t15-stage .lekha-applied-advanced-template,
+    .lekha-original-template.t15-stage .lekha-template-fit,
+    .lekha-original-template.t15-stage .shake-in,
+    .lekha-original-template.t15-stage .pop-txt,
+    .lekha-original-template.t15-stage .wbw-rise,
+    .lekha-original-template.t15-stage .wbw-seq-fade,
+    .lekha-original-template.t15-stage .w.in {
+      font-size: ${Math.max(14, Math.round(exportAdvancedTemplateFontPx * 0.88))}px !important;
+      line-height: 1.28 !important;
+    }
+    .lekha-original-template.t35-stage .lekha-applied-advanced-template,
+    .lekha-original-template.t35-stage .lekha-template-fit,
+    .lekha-original-template.t35-stage .secret-txt {
+      display: inline-block !important;
+      max-width: min(100%, 12.5em) !important;
+      white-space: normal !important;
+      overflow-wrap: anywhere !important;
+      word-break: normal !important;
+      line-height: 1.22 !important;
+      text-align: center !important;
     }
     .lekha-original-template.t14-stage .t14-block,
     .lekha-original-template.t14-stage .t14-b0 .flip-line,
@@ -2740,6 +3179,16 @@ async function main() {
     .lekha-original-template.t34-stage .pow-txt {
       font-size: ${exportAdvancedTemplateFontPx}px !important;
       line-height: 1.32 !important;
+    }
+    .lekha-original-template.t15-stage .lekha-applied-advanced-template,
+    .lekha-original-template.t15-stage .lekha-template-fit,
+    .lekha-original-template.t15-stage .shake-in,
+    .lekha-original-template.t15-stage .pop-txt,
+    .lekha-original-template.t15-stage .wbw-rise,
+    .lekha-original-template.t15-stage .wbw-seq-fade,
+    .lekha-original-template.t15-stage .w.in {
+      font-size: ${Math.max(14, Math.round(exportAdvancedTemplateFontPx * 0.88))}px !important;
+      line-height: 1.28 !important;
     }
     .lekha-original-template .wbw-rise .w,
     .lekha-original-template .wbw-slide .w,
@@ -3298,6 +3747,7 @@ async function main() {
     .lekha-original-template.t27-stage .t27-block,
     .lekha-original-template.t27-stage .center-expand-txt,
     .lekha-original-template.t27-stage .t27-b1 .lekha-template-fit,
+    .lekha-original-template.t27-stage .t27-b2 .lekha-template-fit,
     .lekha-original-template.t27-stage .w.in:not([data-imp='true']) {
       color: var(--cyan) !important;
       -webkit-text-fill-color: var(--cyan) !important;
@@ -3305,7 +3755,6 @@ async function main() {
     }
     .lekha-original-template.t27-stage .imp-cyan,
     .lekha-original-template.t27-stage .imp-bold,
-    .lekha-original-template.t27-stage .t27-b2 .lekha-template-fit,
     .lekha-original-template.t27-stage .w.in[data-imp='true'],
     .lekha-original-template.t27-stage .w[data-hero-emphasis='true'] {
       color: #ffffff !important;
@@ -3431,7 +3880,7 @@ async function main() {
       font-weight: 700 !important;
       line-height: 1.32 !important;
       text-align: center !important;
-      max-width: min(100%, 13em) !important;
+      max-width: min(100%, 18em) !important;
       white-space: normal !important;
       overflow-wrap: normal !important;
       word-break: normal !important;
@@ -3449,7 +3898,7 @@ async function main() {
       justify-content: center !important;
       column-gap: 0.24em !important;
       row-gap: 0.04em !important;
-      max-width: min(100%, 13em) !important;
+      max-width: min(100%, 18em) !important;
       white-space: normal !important;
     }
     .lekha-original-template.t33-stage .imp-cyan,
@@ -3459,6 +3908,90 @@ async function main() {
       color: var(--template-highlight, var(--template-secondary, #00e5ff)) !important;
       -webkit-text-fill-color: var(--template-highlight, var(--template-secondary, #00e5ff)) !important;
       opacity: 1 !important;
+    }
+    .template-caption-shell.template-shell-t33,
+    .template-caption-shell.template-shell-t33 > div,
+    .template-caption-shell.template-shell-t33 > div > span {
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      width: min(92vw, 18em) !important;
+      max-width: min(92vw, 18em) !important;
+      max-height: 4.4em !important;
+      overflow: hidden !important;
+      text-align: center !important;
+    }
+    .template-caption-shell.template-shell-t33 .lekha-original-template.t33-stage {
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      max-height: 2.9em !important;
+      overflow: hidden !important;
+      text-align: center !important;
+    }
+    .template-caption-shell.template-shell-t33 .lekha-original-template.t33-stage .t33-block,
+    .template-caption-shell.template-shell-t33 .lekha-original-template.t33-stage .lekha-applied-advanced-template,
+    .template-caption-shell.template-shell-t33 .lekha-original-template.t33-stage .lekha-template-fit,
+    .template-caption-shell.template-shell-t33 .lekha-original-template.t33-stage .doc-line,
+    .template-caption-shell.template-shell-t33 .lekha-original-template.t33-stage .wbw-rise,
+    .template-caption-shell.template-shell-t33 .lekha-original-template.t33-stage .wbw-slide,
+    .template-caption-shell.template-shell-t33 .lekha-original-template.t33-stage .wbw-seq-fade,
+    .template-caption-shell.template-shell-t33 .lekha-original-template.t33-stage .kf-line {
+      display: inline-flex !important;
+      flex-wrap: wrap !important;
+      align-items: center !important;
+      justify-content: center !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      max-height: 4.4em !important;
+      overflow: hidden !important;
+      font-size: ${Math.max(14, Math.round(exportAdvancedTemplateFontPx * 0.9))}px !important;
+      line-height: 1.22 !important;
+      text-align: center !important;
+      white-space: normal !important;
+      overflow-wrap: normal !important;
+      word-break: normal !important;
+      column-gap: 0.22em !important;
+      row-gap: 0.08em !important;
+      padding: 0 !important;
+      margin: 0 auto !important;
+      transform: none !important;
+    }
+    .template-caption-shell.template-shell-t33 .lekha-original-template.t33-stage .lekha-template-preview-lines,
+    .template-caption-shell.template-shell-t33 .lekha-original-template.t33-stage .doc-line {
+      display: grid !important;
+      grid-auto-rows: min-content !important;
+      gap: 0.08em !important;
+    }
+    .template-caption-shell.template-shell-t33 .lekha-original-template.t33-stage .lekha-template-preview-line,
+    .template-caption-shell.template-shell-t33 .lekha-original-template.t33-stage .doc-line > span {
+      display: block !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      white-space: nowrap !important;
+      overflow: hidden !important;
+      text-align: center !important;
+      line-height: 1.22 !important;
+    }
+    .template-caption-shell.template-shell-t33 .lekha-original-template.t33-stage .w {
+      margin-right: 0 !important;
+      font-size: 1em !important;
+      line-height: 1.22 !important;
+    }
+    .lekha-original-template.t40-stage .still-frames-line,
+    .lekha-original-template.t40-stage .still-frames-highlight,
+    .lekha-original-template.t40-stage .imp-rose,
+    .lekha-original-template.t40-stage .is-emphasis {
+      opacity: 1 !important;
+    }
+    .lekha-original-template.t40-stage .still-frames-highlight,
+    .lekha-original-template.t40-stage .imp-rose,
+    .lekha-original-template.t40-stage .is-emphasis {
+      color: var(--template-highlight, var(--template-secondary, #f2072b)) !important;
+      -webkit-text-fill-color: var(--template-highlight, var(--template-secondary, #f2072b)) !important;
+      text-shadow: 0 0 12px color-mix(in srgb, var(--template-highlight, var(--template-secondary, #f2072b)) 48%, transparent) !important;
     }
     .lekha-original-template.t34-stage .t34-block,
     .lekha-original-template.t34-stage .pow-txt,
@@ -3476,7 +4009,7 @@ async function main() {
       opacity: 1 !important;
     }
     .lekha-original-template.t34-stage .pow-txt {
-      font-size: max(${exportAdvancedTemplateFontPx}px, 22px) !important;
+      font-size: max(${Math.max(16, Math.round(exportAdvancedTemplateFontPx * 0.96))}px, 20px) !important;
       line-height: 1.28 !important;
     }
     .lekha-original-template.t32-stage .imp-purple {
@@ -3594,6 +4127,50 @@ async function main() {
       -webkit-text-fill-color: #ffffff !important;
       text-shadow: 0 1px 8px rgba(0,0,0,0.55), 0 0 12px rgba(255,255,255,0.36) !important;
     }
+    .template-caption-shell.has-text-gradient .lekha-original-template .lekha-applied-advanced-template,
+    .template-caption-shell.has-text-gradient .lekha-original-template .lekha-template-fit,
+    .template-caption-shell.has-text-gradient .lekha-original-template .w.in:not([data-imp='true']),
+    .template-caption-shell.has-text-gradient .lekha-original-template .kf-base,
+    .template-caption-shell.has-text-gradient .lekha-original-template .cluster-row-top,
+    .template-caption-shell.has-text-gradient .lekha-original-template .cluster-row-bot,
+    .template-caption-shell.has-text-gradient .lekha-original-template .blur-txt,
+    .lekha-applied-basic-template-host.has-text-gradient .word,
+    .lekha-applied-basic-template-host.has-text-gradient .sw-w,
+    .lekha-applied-basic-template-host.has-text-gradient .lekha-basic-template-animated {
+      background: var(--template-text-gradient) !important;
+      background-image: var(--template-text-gradient) !important;
+      -webkit-background-clip: text !important;
+      background-clip: text !important;
+      -webkit-text-fill-color: transparent !important;
+      color: transparent !important;
+    }
+    .template-caption-shell.has-highlight-gradient .lekha-original-template .is-emphasis,
+    .template-caption-shell.has-highlight-gradient .lekha-original-template [data-imp='true'],
+    .template-caption-shell.has-highlight-gradient .lekha-original-template .w.in[data-imp='true'],
+    .template-caption-shell.has-highlight-gradient .lekha-original-template [data-hero-emphasis='true'],
+    .template-caption-shell.has-highlight-gradient .lekha-original-template .imp-gold,
+    .template-caption-shell.has-highlight-gradient .lekha-original-template .imp-rose,
+    .template-caption-shell.has-highlight-gradient .lekha-original-template .imp-cyan,
+    .template-caption-shell.has-highlight-gradient .lekha-original-template .imp-purple,
+    .template-caption-shell.has-highlight-gradient .lekha-original-template .imp-green,
+    .template-caption-shell.has-highlight-gradient .lekha-original-template .imp-orange,
+    .template-caption-shell.has-highlight-gradient .lekha-original-template .imp-bold,
+    .template-caption-shell.has-highlight-gradient .lekha-original-template .imp-italic,
+    .template-caption-shell.has-highlight-gradient .lekha-original-template .imp-weight,
+    .template-caption-shell.has-highlight-gradient .lekha-original-template .imp-space,
+    .template-caption-shell.has-highlight-gradient .lekha-original-template .imp-flicker,
+    .template-caption-shell.has-highlight-gradient .lekha-original-template .imp-underline,
+    .lekha-applied-basic-template-host.has-highlight-gradient .word.imp,
+    .lekha-applied-basic-template-host.has-highlight-gradient .word.current,
+    .lekha-applied-basic-template-host.has-highlight-gradient .sw-w.imp,
+    .lekha-applied-basic-template-host.has-highlight-gradient .sw-w.current {
+      background: var(--template-highlight-gradient) !important;
+      background-image: var(--template-highlight-gradient) !important;
+      -webkit-background-clip: text !important;
+      background-clip: text !important;
+      -webkit-text-fill-color: transparent !important;
+      color: transparent !important;
+    }
     @keyframes lekhaKaraokeFill {
       from { clip-path: inset(0 100% 0 0); }
       to { clip-path: inset(0 0% 0 0); }
@@ -3629,6 +4206,55 @@ async function main() {
       from { opacity: 0.14; }
       to { opacity: 1; }
     }
+    @keyframes source-word-rise {
+      0% { transform: translateY(20px); opacity: 0; }
+      100% { transform: translateY(0); opacity: 1; }
+    }
+    @keyframes source-word-pan {
+      0% { transform: translateX(-30px); opacity: 0; }
+      100% { transform: translateX(0); opacity: 1; }
+    }
+    @keyframes source-word-fade {
+      0% { opacity: 0; }
+      100% { opacity: 1; }
+    }
+    @keyframes source-word-pop {
+      0% { transform: scale(0.5); opacity: 0; }
+      50% { transform: scale(1.1); }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    @keyframes source-word-wipe {
+      0% { clip-path: inset(0 100% 0 0); }
+      100% { clip-path: inset(0 0 0 0); }
+    }
+    @keyframes source-word-blur {
+      0% { filter: blur(10px); opacity: 0; }
+      100% { filter: blur(0); opacity: 1; }
+    }
+    @keyframes source-word-succession {
+      0% { transform: translateY(-10px); opacity: 0; }
+      100% { transform: translateY(0); opacity: 1; }
+    }
+    @keyframes source-word-breathe {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.05); opacity: 0.9; }
+    }
+    @keyframes source-word-baseline {
+      0% { transform: translateY(5px); opacity: 0; }
+      100% { transform: translateY(0); opacity: 1; }
+    }
+    @keyframes source-word-drift {
+      0% { transform: translate(-10px, -10px); opacity: 0; }
+      100% { transform: translate(0, 0); opacity: 1; }
+    }
+    @keyframes source-word-tectonic {
+      0% { transform: translateX(-20px) rotate(-5deg); opacity: 0; }
+      100% { transform: translateX(0) rotate(0); opacity: 1; }
+    }
+    @keyframes source-word-tumble {
+      0% { transform: rotate(-180deg) scale(0.5); opacity: 0; }
+      100% { transform: rotate(0) scale(1); opacity: 1; }
+    }
   `;
 
   const browser = await puppeteer.launch({
@@ -3644,6 +4270,15 @@ async function main() {
 
   try {
     const page = await browser.newPage();
+    const pageErrors = [];
+    page.on('pageerror', (error) => {
+      pageErrors.push(error?.stack || error?.message || String(error));
+    });
+    page.on('console', (message) => {
+      if (message.type() === 'error') {
+        pageErrors.push(message.text());
+      }
+    });
     await page.setContent(`
       <!doctype html>
       <html>
@@ -3670,6 +4305,10 @@ async function main() {
     await page.addStyleTag({ content: originalTemplateCss });
     if (hasBasicTemplate) {
       await page.addStyleTag({ content: APPLIED_BASIC_TEMPLATE_HOST_OVERRIDES });
+    }
+    const renderPayloadType = await page.evaluate(() => typeof window.__renderPayload);
+    if (renderPayloadType !== 'function') {
+      throw new Error(`[Template DOM] overlay runtime did not initialize __renderPayload. Page errors: ${pageErrors.join(' | ') || 'none'}`);
     }
     await page.evaluate(() => document.fonts.ready);
 
@@ -3817,14 +4456,24 @@ async function main() {
       let renderedFramePath = blankFramePath;
       if (hasActiveCaptions) {
         await page.evaluate(async (currentPayload, currentTime) => {
-          window.__renderPayload(currentPayload, currentTime);
-          if (window.__activateTemplateAnimations) {
-            await window.__activateTemplateAnimations();
-          } else {
-            await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          try {
+            window.__renderPayload(currentPayload, currentTime);
+            if (window.__activateTemplateAnimations) {
+              await window.__activateTemplateAnimations();
+            } else {
+              await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+            }
+          } catch (error) {
+            throw new Error(`[Template DOM] renderPayload failed at ${currentTime.toFixed(3)}s: ${error?.stack || error?.message || error}`);
           }
 
-          document.getAnimations({ subtree: true }).forEach((animation) => {
+          let animations = [];
+          try {
+            animations = document.getAnimations({ subtree: true });
+          } catch (error) {
+            throw new Error(`[Template DOM] getAnimations failed at ${currentTime.toFixed(3)}s: ${error?.stack || error?.message || error}`);
+          }
+          animations.forEach((animation) => {
             try {
               const target = animation.effect?.target?.element || animation.effect?.target;
               const shell = target?.closest?.(
