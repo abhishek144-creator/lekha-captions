@@ -705,17 +705,20 @@ class VideoProcessor:
             video_w, video_h = self._get_video_dimensions(input_p)
             print(f"Original Video dimensions: {video_w}x{video_h}")
             
+            export_aspect_ratio = self._get_export_aspect_ratio(style)
             crop_filter = ""
-            # Auto-Reframe: If horizontal (wider than tall), crop center to 9:16
-            if video_w > video_h:
-                new_w = int(video_h * 9 / 16)
-                if new_w % 2 != 0: new_w -= 1 # Ensure even number for encoders
-                crop_filter = f"crop={new_w}:{video_h},"
-                print(f"[Reframe] Auto-reframing horizontal video to vertical: {new_w}x{video_h}")
-                video_w = new_w # Update subtitle canvas width to match new cropped width
+            if export_aspect_ratio:
+                crop_filter, video_w, video_h = self._build_aspect_crop_filter(video_w, video_h, export_aspect_ratio)
+                if crop_filter:
+                    print(f"[Reframe] Export aspect {export_aspect_ratio}: {crop_filter} -> {video_w}x{video_h}")
+            elif video_w > video_h:
+                crop_filter, video_w, video_h = self._build_aspect_crop_filter(video_w, video_h, "9:16")
+                if crop_filter:
+                    crop_filter = f"{crop_filter},"
+                    print(f"[Reframe] Auto-reframing horizontal video to vertical: {video_w}x{video_h}")
 
             # Templates are rendered with the same browser DOM/CSS pipeline as the app preview.
-            if self._should_use_dom_template_renderer(style):
+            if self._should_use_dom_template_renderer(style, captions):
                 return self._render_dom_template_overlay(
                     input_p=input_p,
                     output_p=output_p,
@@ -746,18 +749,7 @@ class VideoProcessor:
             # so scaling by width works uniformly for all orientations.
             quality = style.get('quality', '1080p')
             fps = self._get_export_fps(style)
-            if quality == '4k':
-                scale_filter = "scale=2160:-2:flags=lanczos"
-                crf = "18"
-                audio_bitrate = "192k"
-            elif quality == '720p':
-                scale_filter = "scale=720:-2:flags=lanczos"
-                crf = "26"
-                audio_bitrate = "128k"
-            else:  # 1080p default
-                scale_filter = "scale=1080:-2:flags=lanczos"
-                crf = "22"
-                audio_bitrate = "128k"
+            scale_filter, crf, audio_bitrate = self._get_quality_settings(quality, export_aspect_ratio)
 
             # Filter chain: crop → ass → scale
             # ass must come before scale so ASS PlayRes coords match the pre-scale frame dimensions.
@@ -839,17 +831,31 @@ class VideoProcessor:
         't-124', 't-110', 't-56', 't-119', 't-12',
     }
 
-    def _should_use_dom_template_renderer(self, style):
-        template_id = str(style.get('template_id') or '').strip()
-        template_20_id = str(style.get('template_20_id') or '').strip()
-        if template_20_id:
+    def _should_use_dom_template_renderer(self, style, captions=None):
+        def _template_values(source):
+            if not isinstance(source, dict):
+                return '', ''
+            applied = source.get('applied_template_style')
+            if not isinstance(applied, dict):
+                applied = {}
+            return (
+                str(source.get('template_id') or applied.get('template_id') or '').strip(),
+                str(source.get('template_20_id') or applied.get('template_20_id') or '').strip(),
+            )
+
+        candidates = [_template_values(style)]
+        for caption in captions or []:
+            if isinstance(caption, dict) and not caption.get('is_text_element'):
+                candidates.append(_template_values(caption))
+
+        if any(template_20_id for _, template_20_id in candidates):
             return True
         # No-hyphen advanced templates (t11–t40) need DOM/CSS rendering.
-        if re.fullmatch(r"t\d{2}", template_id):
+        if any(re.fullmatch(r"t\d{2}", template_id) for template_id, _ in candidates):
             return True
         # Source-markup Basic templates render their `.btcard` design in the
         # preview, so they export through the same DOM overlay for parity.
-        return template_id in self._SOURCE_BASIC_TEMPLATE_IDS
+        return any(template_id in self._SOURCE_BASIC_TEMPLATE_IDS for template_id, _ in candidates)
 
     def _get_video_duration(self, video_path):
         try:
@@ -864,7 +870,17 @@ class VideoProcessor:
         except Exception:
             return 1.0
 
-    def _get_quality_settings(self, quality):
+    def _get_quality_settings(self, quality, export_aspect_ratio=""):
+        aspect = str(export_aspect_ratio or "").strip()
+        base = 2160 if quality == '4k' else 720 if quality == '720p' else 1080
+        crf = "18" if quality == '4k' else "26" if quality == '720p' else "22"
+        audio_bitrate = "192k" if quality == '4k' else "128k"
+        if aspect == "9:16":
+            return f"scale={base}:{base * 16 // 9}:flags=lanczos", crf, audio_bitrate
+        if aspect == "1:1":
+            return f"scale={base}:{base}:flags=lanczos", crf, audio_bitrate
+        if aspect == "16:9":
+            return f"scale={base * 16 // 9}:{base}:flags=lanczos", crf, audio_bitrate
         if quality == '4k':
             return "scale=2160:-2:flags=lanczos", "18", "192k"
         if quality == '720p':
@@ -878,9 +894,32 @@ class VideoProcessor:
             fps = 30
         return fps if fps in {24, 30, 60} else 30
 
+    def _get_export_aspect_ratio(self, style):
+        value = str(style.get('export_aspect_ratio') or '').strip()
+        return value if value in {'9:16', '1:1', '16:9'} else ''
+
+    def _build_aspect_crop_filter(self, video_w, video_h, target_aspect):
+        ratios = {'9:16': 9 / 16, '1:1': 1, '16:9': 16 / 9}
+        target_ratio = ratios.get(target_aspect)
+        if not target_ratio or video_w <= 0 or video_h <= 0:
+            return "", video_w, video_h
+        current_ratio = video_w / video_h
+        if abs(current_ratio - target_ratio) < 0.01:
+            return "", video_w, video_h
+        if current_ratio > target_ratio:
+            new_w = int(video_h * target_ratio)
+            if new_w % 2 != 0:
+                new_w -= 1
+            return f"crop={new_w}:{video_h}", new_w, video_h
+        new_h = int(video_w / target_ratio)
+        if new_h % 2 != 0:
+            new_h -= 1
+        return f"crop={video_w}:{new_h}", video_w, new_h
+
     def _render_dom_template_overlay(self, input_p, output_p, captions, style, video_w, video_h, crop_filter=""):
         quality = style.get('quality', '1080p')
-        scale_filter, crf, audio_bitrate = self._get_quality_settings(quality)
+        export_aspect_ratio = self._get_export_aspect_ratio(style)
+        scale_filter, crf, audio_bitrate = self._get_quality_settings(quality, export_aspect_ratio)
         fps = self._get_export_fps(style)
         duration = self._get_video_duration(input_p)
         temp_root = os.path.join(self.project_root, ".render_tmp")
@@ -1621,18 +1660,24 @@ class VideoProcessor:
 
                     # Per-template extra ASS tags for the currently-speaking word
                     _gn = self._hex_to_ass
+                    _t109_shadow_hex = secondary_hex or shadow_color_hex or "#FF2A00"
+                    _t109_x = max(int(((shadow_ox_v if abs(shadow_ox_v) > 0 else 3) or 3) * scale_factor), 1)
+                    _t109_y = max(int(((shadow_oy_v if abs(shadow_oy_v) > 0 else 3) or 3) * scale_factor), 1)
                     _CEFF = {
                         't-115': f'\\bord0\\shad6\\blur5\\4c{_gn(secondary_hex or "#39FF14")}',
-                        't-109': f'\\bord0\\shad4\\xshad{max(int(3*scale_factor),1)}\\yshad{max(int(3*scale_factor),1)}\\4c{_gn(secondary_hex or "#E01A1A")}',
+                        't-109': f'\\bord0\\shad0\\blur0\\xshad{_t109_x}\\yshad{_t109_y}\\4c{_gn(_t109_shadow_hex, 1.0)}',
                         't-9':   f'\\bord0\\shad8\\blur5\\4c{_gn(shadow_color_hex if has_shadow_v else "#ff4500")}',
                         't-12':  f'\\bord0\\shad8\\blur5\\4c{_gn(shadow_color_hex if has_shadow_v else "#cc0000")}',
                         't-57':  f'\\bord0\\shad0\\xshad{max(int(2*scale_factor),1)}\\yshad0\\4c{_gn(shadow_color_hex if has_shadow_v else "#00ffff")}',
                         't-56':  '\\u1\\bord0\\shad0',
                         't-T3':  '\\u1\\bord0\\shad0',
                         't-124': f'\\bord0\\shad4\\xshad{max(int(4*scale_factor),1)}\\yshad{max(int(4*scale_factor),1)}\\blur0\\4c{_gn(shadow_color_hex if has_shadow_v else "#ffffff")}',
-                        't-104': f'\\bord{max(int(stroke_width_v*scale_factor),1)}\\3c{_gn(secondary_hex or "#B28DFF",1.0)}\\shad0',
+                        't-104': f'\\bord{max(int(stroke_width_v*scale_factor),1)}\\3c{_gn(secondary_hex or "#4F46FF",1.0)}\\shad3\\blur2\\4c{_gn(highlight_hex or "#FFF200",1.0)}',
                         't-110': f'\\bord0\\shad{max(int(4*scale_factor),2)}\\blur3\\4c{_gn(secondary_hex or "#0066FF")}',
                         't-105': f'\\bord{max(int(stroke_width_v*scale_factor),1)}\\3c{_gn(stroke_color_hex,1.0)}\\shad{max(int(shadow_blur_v*scale_factor*0.4),1)}\\4c{_gn(shadow_color_hex,1.0)}\\blur2',
+                    }
+                    _AEFF = {
+                        't-109': f'\\bord0\\shad0\\blur0\\xshad{_t109_x}\\yshad{_t109_y}\\4c{_gn(_t109_shadow_hex, 0.4)}',
                     }
                     _cur_eff = _CEFF.get(template_id, '\\bord0\\shad0')
 
@@ -1656,6 +1701,7 @@ class VideoProcessor:
 
                     # Suppressor: hides outline/shadow/box from Default style (BoxStyle=1 or 3)
                     _nobox = '\\bord0\\shad0\\3a&HFF&\\4a&HFF&'
+                    _act_eff = _AEFF.get(template_id, _nobox)
 
                     def _wxy(lyt):
                         _wx = int((float(lyt['x']) / 100) * video_w)
@@ -1708,7 +1754,7 @@ class VideoProcessor:
                                     _lt = f'{_bt}\\1c{_act_c}\\3c{_base_box_bg}{_pt}'
                                     _sn = 'WordBox'
                                 else:
-                                    _lt = f'{_bt}\\1c{_act_c}{_nobox}{_pt}'
+                                    _lt = f'{_bt}\\1c{_act_c}{_act_eff}{_pt}'
                                     _sn = 'Default'
                                 f.write(f"Dialogue: 0,{_ts_s},{_ts_e},{_sn},,0,0,0,,{{{_lt}}}{_wd2}\n")
 
@@ -1822,6 +1868,9 @@ class VideoProcessor:
                     _ia_fb, _aa_fb = TEMPLATE_WORD_CONFIG.get(template_id, (0.3, 1.0))
                     _pa_fb = float(style.get('text_opacity', 1.0) or 1.0)
                     _gn_fb = self._hex_to_ass
+                    _t109_shadow_hex_fb = secondary_hex or shadow_color_hex or "#FF2A00"
+                    _t109_x_fb = max(int(((shadow_ox_v if abs(shadow_ox_v) > 0 else 3) or 3) * scale_factor), 1)
+                    _t109_y_fb = max(int(((shadow_oy_v if abs(shadow_oy_v) > 0 else 3) or 3) * scale_factor), 1)
 
                     # Color logic matching the primary word-layout path
                     _ACT_SEC_FB = {'t-36', 't-37'}
@@ -1846,20 +1895,24 @@ class VideoProcessor:
                     # Per-template CURRENT-word effects (mirrors primary path _CEFF)
                     _CEFF_FB = {
                         't-115': f'\\bord0\\shad6\\blur5\\4c{_gn_fb(secondary_hex or "#39FF14")}',
-                        't-109': f'\\bord0\\shad4\\xshad{max(int(3*scale_factor),1)}\\yshad{max(int(3*scale_factor),1)}\\4c{_gn_fb(secondary_hex or "#E01A1A")}',
+                        't-109': f'\\bord0\\shad0\\blur0\\xshad{_t109_x_fb}\\yshad{_t109_y_fb}\\4c{_gn_fb(_t109_shadow_hex_fb, 1.0)}',
                         't-9':   f'\\bord0\\shad8\\blur5\\4c{_gn_fb(shadow_color_hex if has_shadow_v else "#ff4500")}',
                         't-12':  f'\\bord0\\shad8\\blur5\\4c{_gn_fb(shadow_color_hex if has_shadow_v else "#cc0000")}',
                         't-57':  f'\\bord0\\shad0\\xshad{max(int(2*scale_factor),1)}\\yshad0\\4c{_gn_fb(shadow_color_hex if has_shadow_v else "#00ffff")}',
                         't-56':  '\\u1\\bord0\\shad0',
                         't-T3':  '\\u1\\bord0\\shad0',
                         't-124': f'\\bord0\\shad4\\xshad{max(int(4*scale_factor),1)}\\yshad{max(int(4*scale_factor),1)}\\blur0\\4c{_gn_fb(shadow_color_hex if has_shadow_v else "#ffffff")}',
-                        't-104': f'\\bord{max(int(stroke_width_v*scale_factor),1)}\\3c{_gn_fb(secondary_hex or "#B28DFF",1.0)}\\shad0',
+                        't-104': f'\\bord{max(int(stroke_width_v*scale_factor),1)}\\3c{_gn_fb(secondary_hex or "#4F46FF",1.0)}\\shad3\\blur2\\4c{_gn_fb(highlight_hex or "#FFF200",1.0)}',
                         't-110': f'\\bord0\\shad{max(int(4*scale_factor),2)}\\blur3\\4c{_gn_fb(secondary_hex or "#0066FF")}',
                         't-105': f'\\bord{max(int(stroke_width_v*scale_factor),1)}\\3c{_gn_fb(stroke_color_hex,1.0)}\\shad{max(int(shadow_blur_v*scale_factor*0.4),1)}\\4c{_gn_fb(shadow_color_hex,1.0)}\\blur2',
+                    }
+                    _AEFF_FB = {
+                        't-109': f'\\bord0\\shad0\\blur0\\xshad{_t109_x_fb}\\yshad{_t109_y_fb}\\4c{_gn_fb(_t109_shadow_hex_fb, 0.4)}',
                     }
                     _cur_eff_fb = _CEFF_FB.get(template_id, '\\bord0\\shad0')
                     # Suppress effects for non-current words (no glow/shadow bleed)
                     _noeff_fb = '\\bord0\\shad0\\blur0'
+                    _act_eff_fb = _AEFF_FB.get(template_id, _noeff_fb)
 
                     def _tpl_line(w_s, w_e, cur_wi):
                         if w_e <= w_s: return
@@ -1874,7 +1927,7 @@ class VideoProcessor:
                                 if has_bg:
                                     parts.append(f"{{\\1c{_act_c_fb}}}{tw}")
                                 else:
-                                    parts.append(f"{{\\1c{_act_c_fb}{_noeff_fb}}}{tw}")
+                                    parts.append(f"{{\\1c{_act_c_fb}{_act_eff_fb}}}{tw}")
                             elif j == cur_wi:
                                 # Currently speaking — template-specific effects
                                 if has_bg:

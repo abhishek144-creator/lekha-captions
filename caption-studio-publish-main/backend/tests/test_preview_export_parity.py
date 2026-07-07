@@ -74,6 +74,9 @@ class PreviewExportParityTests(unittest.TestCase):
         self.assertTrue(processor._should_use_dom_template_renderer({"template_20_id": "A5"}))
         self.assertTrue(processor._should_use_dom_template_renderer({"template_id": "t38"}))
         self.assertTrue(processor._should_use_dom_template_renderer({"template_id": "t-115"}))
+        self.assertTrue(processor._should_use_dom_template_renderer({}, [
+            {"template_id": "t33", "text": "एक क्लबाउस है और यहाँ पे"}
+        ]))
 
     def test_local_testing_bypasses_credit_and_quality_limits(self):
         allowed, error, _ = _evaluate_export_policy(

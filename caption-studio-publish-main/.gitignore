@@ -44,6 +44,7 @@ codex-*.png
 codex-*.jpg
 codex-*.log
 codex-*.err.log
+.codex-logs/
 frontend*.log
 frontend*.err.log
 vite*.log
