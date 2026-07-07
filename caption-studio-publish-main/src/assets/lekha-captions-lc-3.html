@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lekha Captions — Formula Set · T181–T195</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,500;0,600;0,700;0,800;0,900;1,600&family=Fraunces:ital,opsz,wght@1,9..144,500;1,9..144,700&family=Great+Vibes&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0d0e11; --card:#15171c; --edge:#23262d; --ink:#f2f3f5; --dim:#8b909a;
+  --s1:#6ee7ff; --s2:#ffd166; --s3:#ff8fa3;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:'Archivo',sans-serif;padding:28px 22px 60px}
+header{max-width:1400px;margin:0 auto 26px}
+header h1{font-size:22px;font-weight:800;letter-spacing:-.01em}
+header p{color:var(--dim);font-size:13px;margin-top:6px;line-height:1.5}
+.legend{display:flex;gap:14px;margin-top:12px;font-size:11.5px;color:var(--dim);flex-wrap:wrap}
+.legend b{font-weight:700;color:var(--ink)}
+.legend .k{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:middle}
+.grid{max-width:1400px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(285px,1fr));gap:20px}
+.card{background:var(--card);border:1px solid var(--edge);border-radius:14px;overflow:hidden;display:flex;flex-direction:column}
+.chead{display:flex;align-items:center;justify-content:space-between;padding:10px 13px}
+.chead .nm{font-size:13.5px;font-weight:700}
+.chead .id{color:var(--dim);font-size:11px;font-weight:600;margin-left:7px}
+.badge{font-size:10px;font-weight:800;letter-spacing:.06em;padding:3px 8px;border-radius:20px;color:#0d0e11}
+.b1{background:var(--s1)}.b2{background:var(--s2)}.b3{background:var(--s3)}
+.stage{position:relative;aspect-ratio:9/13;background:
+  radial-gradient(120% 90% at 50% 8%, color-mix(in srgb, var(--tint) 9%, transparent), transparent 62%),
+  linear-gradient(180deg,#101216,#0a0b0e);
+  container-type:inline-size;overflow:hidden}
+.stage::after{content:'';position:absolute;inset:0;box-shadow:inset 0 0 70px rgba(0,0,0,.55);pointer-events:none}
+.cap{position:absolute;left:50%;top:52%;transform:translate(-50%,-50%);width:88%;text-align:center}
+.scene{transition:opacity .42s ease;line-height:1.15}
+.scene.out{opacity:0}
+.w{display:inline-block;opacity:0;will-change:transform,opacity,clip-path;white-space:pre-wrap}
+.w.on{opacity:1}
+.hero{font-weight:800}
+.nline .hero{font-size:1.14em}
+.nline{font-size:5.9cqw;font-weight:600;line-height:1.3;color:#eef0f3}
+.plainwrap{animation:fade 240ms ease forwards;opacity:0}
+.plainwrap .w{opacity:1}
+
+/* ---- size / voice classes (work on lines or single words) ---- */
+.xs{font-size:3.9cqw;font-weight:600;letter-spacing:.02em}
+.s{font-size:4.8cqw;font-weight:600;letter-spacing:.01em}
+.m{font-size:6.4cqw;font-weight:700}
+.h{font-size:10.4cqw;font-weight:800;letter-spacing:-.02em;line-height:1.04}
+.xh{font-size:13.2cqw;font-weight:900;letter-spacing:-.025em;line-height:1}
+.serif{font-family:'Fraunces',serif;font-style:italic;font-weight:700;letter-spacing:0}
+.script{font-family:'Great Vibes',cursive;font-weight:400;letter-spacing:0;line-height:.9}
+.script.h{font-size:14cqw}.script.xh{font-size:17cqw}
+
+/* ---- CPT layout library ---- */
+.cpt{display:flex;flex-direction:column;align-items:center;gap:.06em}
+.cpt .ln{line-height:1.06}
+.cpt.whisper{align-items:flex-start;text-align:left;width:fit-content;margin:0 auto}
+.cpt.pyramid{align-items:center}
+.cpt.sandwich{align-items:center}
+.cpt .ln.box{padding:.03em .22em;border-radius:.09em}
+.cpt.sidecar{align-items:flex-start;width:fit-content;margin:0 auto}
+.cpt.sidecar .ln:nth-child(1){align-self:flex-end;margin-bottom:-.28em;position:relative;z-index:2}
+.cpt.sidecar .ln:nth-child(3){align-self:flex-start;margin-top:-.12em}
+.cpt.anchor{width:fit-content;margin:0 auto}
+.cpt.anchor .ln:nth-child(1){align-self:flex-start;margin-bottom:-.22em;margin-left:.15em}
+.cpt.anchor .ln:nth-child(3){align-self:flex-end;margin-top:-.16em;margin-right:.15em}
+.cpt.signature{align-items:flex-end;text-align:right;width:fit-content;margin:0 auto}
+.cpt.signature .ln:nth-child(2){margin:-.14em .1em 0 0}
+.cpt.step{align-items:flex-start;text-align:left;width:fit-content;margin:0 auto}
+.cpt.step .ln:nth-child(2){margin-left:1.4em}
+.cpt.twostep{align-items:flex-start;text-align:left;width:fit-content;margin:0 auto}
+.cpt.twostep .ln:nth-child(2){margin-left:2.6em;margin-top:-.06em}
+.cpt.spine{align-items:flex-start;text-align:left;width:fit-content;margin:0 auto}
+.cpt.rail{align-items:flex-end;text-align:right;width:fit-content;margin:0 auto}
+.cpt.mirror{width:100%}
+.cpt.mirror .ln:nth-child(1){align-self:flex-start}
+.cpt.mirror .ln:nth-child(3){align-self:flex-end}
+.cpt.compress{align-items:center}
+.cpt.compress .ln:nth-child(1){letter-spacing:.42em;margin-right:-.42em}
+.cpt.underscore{align-items:center}
+.w.ul{border-bottom:.055em solid currentColor;padding-bottom:.05em}
+.cpt.tag{flex-direction:row;align-items:flex-start;justify-content:center;gap:.3em}
+.cpt.tag .ln:nth-child(2){border:1.5px solid currentColor;border-radius:.35em;padding:.1em .4em;margin-top:.15em}
+.cpt.dropcap{display:grid;grid-template-columns:auto auto;column-gap:.28em;width:fit-content;margin:0 auto;text-align:left;align-items:center}
+.cpt.dropcap .ln:nth-child(1){grid-row:1/3;grid-column:1}
+.cpt.dropcap .ln:nth-child(2){grid-row:1;grid-column:2;align-self:end}
+.cpt.dropcap .ln:nth-child(3){grid-row:2;grid-column:2;align-self:start}
+.cpt.bracket{display:grid;grid-template-columns:auto auto;column-gap:.32em;width:fit-content;margin:0 auto;text-align:left;align-items:center}
+.cpt.bracket .ln:nth-child(1){grid-row:1/3;grid-column:1}
+.cpt.bracket .ln:nth-child(2){grid-row:1;grid-column:2;align-self:end}
+.cpt.bracket .ln:nth-child(3){grid-row:2;grid-column:2;align-self:start}
+.cpt.merge .ln, .cpt.baseline .ln{display:inline}
+.cpt.merge, .cpt.baseline, .cpt.splice, .cpt.serifbreak, .cpt.weld{display:block;text-align:center}
+
+/* ---- animation keyframes (NO BLUR anywhere) ---- */
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes rise{from{opacity:0;transform:translateY(.6em)}to{opacity:1;transform:none}}
+@keyframes drop{from{opacity:0;transform:translateY(-.6em)}to{opacity:1;transform:none}}
+@keyframes slidel{from{opacity:0;transform:translateX(-.85em)}to{opacity:1;transform:none}}
+@keyframes slider{from{opacity:0;transform:translateX(.85em)}to{opacity:1;transform:none}}
+@keyframes wipe{from{opacity:1;clip-path:inset(0 100% 0 0)}to{opacity:1;clip-path:inset(0 -6% 0 0)}}
+@keyframes wipeup{from{opacity:1;clip-path:inset(100% 0 0 0)}to{opacity:1;clip-path:inset(-6% 0 0 0)}}
+@keyframes flick{0%{opacity:0}14%{opacity:1}28%{opacity:0}48%{opacity:1}62%{opacity:0}100%{opacity:1}}
+@keyframes type{from{opacity:1;clip-path:inset(0 100% 0 0)}to{opacity:1;clip-path:inset(0 -4% 0 0)}}
+@keyframes roll{from{opacity:0;transform:perspective(420px) rotateX(96deg)}to{opacity:1;transform:perspective(420px) rotateX(0)}}
+@keyframes rolly{from{opacity:0;transform:perspective(420px) rotateY(92deg)}to{opacity:1;transform:perspective(420px) rotateY(0)}}
+@keyframes unfold{from{opacity:0;transform:scaleY(.08);transform-origin:top}to{opacity:1;transform:scaleY(1);transform-origin:top}}
+@keyframes swing{0%{opacity:0;transform:rotate(-11deg) translateY(-.18em)}62%{opacity:1;transform:rotate(4deg)}100%{opacity:1;transform:none}}
+@keyframes press{from{opacity:0;transform:scale(1.75)}to{opacity:1;transform:scale(1)}}
+@keyframes pop{0%{opacity:0;transform:scale(.3)}72%{opacity:1;transform:scale(1.12)}100%{opacity:1;transform:scale(1)}}
+@keyframes elastic{0%{opacity:0;transform:scale(.4)}55%{opacity:1;transform:scale(1.18)}76%{transform:scale(.94)}100%{opacity:1;transform:scale(1)}}
+@keyframes stretch{from{opacity:0;transform:scaleX(1.85)}to{opacity:1;transform:scaleX(1)}}
+@keyframes stamp{from{opacity:0;transform:scale(2.5) rotate(-5deg)}to{opacity:1;transform:none}}
+@keyframes whip{0%{opacity:0;transform:translateX(-1.5em) skewX(-9deg)}72%{opacity:1;transform:translateX(.12em) skewX(0)}100%{opacity:1;transform:none}}
+@keyframes track{from{opacity:0;transform:scale(1.4,.8)}to{opacity:1;transform:scale(1,1)}}
+@keyframes skew{from{opacity:0;transform:skewX(15deg) translateY(.45em)}to{opacity:1;transform:none}}
+@keyframes climb{from{opacity:0;transform:translateY(.95em) rotate(3.5deg)}to{opacity:1;transform:none}}
+@keyframes shutter{from{opacity:0;transform:scaleY(.06)}to{opacity:1;transform:scaleY(1)}}
+@keyframes punch{0%{opacity:0;transform:scale(2.7)}45%{opacity:1}100%{opacity:1;transform:scale(1)}}
+@keyframes tilt{from{opacity:0;transform:rotate(7deg) scale(1.16)}to{opacity:1;transform:none}}
+@keyframes slot{0%{opacity:0;transform:translateY(-1.15em)}72%{opacity:1;transform:translateY(.12em)}100%{opacity:1;transform:none}}
+
+/* ---- dots ---- */
+.dots{display:flex;gap:7px;justify-content:center;padding:11px 0 13px}
+.dot{width:8px;height:8px;border-radius:50%;background:#33373f;border:none;cursor:pointer;padding:0;transition:transform .18s, background .18s}
+.dot:hover{transform:scale(1.35)}
+.dot.on{background:var(--tint);transform:scale(1.28)}
+.dot:focus-visible{outline:2px solid var(--tint);outline-offset:2px}
+.meta{font-size:10px;color:var(--dim);text-align:center;padding-bottom:11px;letter-spacing:.02em}
+
+
+/* --- 3rd N.S: Bold + Italic + thin Underline + Color keyword --- */
+.ns3hero{font-weight:800;font-style:italic;border-bottom:.055em solid currentColor;padding-bottom:.03em;font-size:1.15em;display:inline-block}
+.ns3top{line-height:1.25}
+.ns3bot{margin-top:.1em;line-height:1.05}
+
+@media (prefers-reduced-motion: reduce){
+  .w{opacity:1 !important;animation:none !important}
+  .scene{transition:none}
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Lekha Captions — The Formula Set · 5 per Style (T181–T195)</h1>
+  <p>Signature Standard v16 · Built on your new scene-by-scene formulas · STYLED hooks = CPT · true zero-animation static "breath" scenes · animated normals always differ scene-to-scene · Clickable dots play their line.</p>
+  <div class="legend">
+    <span><span class="k" style="background:var(--s1)"></span><b>1 STYLE</b> — CPT + anim + static + anim</span>
+    <span><span class="k" style="background:var(--s2)"></span><b>2 STYLE</b> — CPT + anim + CPT + static + anim + anim/static</span>
+    <span><span class="k" style="background:var(--s3)"></span><b>3 STYLE</b> — CPT + CPT + static + anim + CPT + anim + static/anim</span>
+  </div>
+</header>
+<div class="grid" id="grid"></div>
+<script>
+/* ================= ENGINE ================= */
+const HOLD=3000, EXIT=420, GAP=50, STAG=280, BODY_DUR=430, HERO_DUR=560;
+const EASE={type:'steps(8,end)',flick:'linear',def:'cubic-bezier(.22,.68,.26,1)'};
+const MERGE={splice:1,serifbreak:1,baseline:1,weld:1};
+
+const MASTER=['#FFD166','#6EE7FF','#FF8FA3','#A7F27C','#C9A7FF','#FFB26E','#7CF2C4','#FF6E6E','#8FB8FF','#F2E27C','#FF9BE0','#7CE0F2','#D6FF7C','#FFC96E'];
+
+const C=(layout,...lines)=>({k:'c',layout,lines});
+const L=(cls,text,anim,o={})=>Object.assign({cls,text,anim},o);
+const N=(text,o={})=>Object.assign({k:'n',text},o);
+const T=(id,name,style,scenes)=>({id,name,style,scenes});
+
+function span(word,segCls,hero,heroCol){
+  const sp=document.createElement('span');
+  sp.className='w'+(segCls?' '+segCls:'');
+  sp.textContent=word;
+  if(hero){sp.classList.add('hero');sp.style.color=heroCol;}
+  return sp;
+}
+function animate(sp,anim,delay,dur){
+  if(!anim){sp.classList.add('on');return 0;}
+  const ease=EASE[anim]||EASE.def;
+  sp.style.animation=`${anim} ${dur}ms ${ease} ${delay}ms forwards`;
+  return delay+dur;
+}
+/* flow words with spaces from TEXT NODES only — Zero Gap Rule */
+function flow(parent,segs,ctx,fuse){
+  let first=true, end=0;
+  segs.forEach(seg=>{
+    const wordsArr=seg.text.trim().split(/\s+/);
+    wordsArr.forEach(w=>{
+      if(!first && !fuse) parent.appendChild(document.createTextNode(' '));
+      first=false;
+      const sp=span(w,seg.spanCls,seg.hero,ctx.heroCol);
+      if(seg.ul)sp.classList.add('ul');
+      const dur=seg.hero?HERO_DUR:BODY_DUR;
+      if(seg.anim){const e=animate(sp,seg.anim,ctx.n*STAG,dur);ctx.n++;end=Math.max(end,e);}
+      else sp.classList.add('on');
+      parent.appendChild(sp);
+    });
+  });
+  return end;
+}
+function buildNormal(sc,ctx){
+  // modes: 'static' (zero animation, instant) | 'plain' (240ms whole-sentence fade)
+  //        'wbw' (word-by-word, no animation) | 'anim' (word-by-word animated)
+  const mode = sc.mode || (sc.anim ? 'anim' : 'plain');
+  const wrap=document.createElement('div'); wrap.className='nline';
+  const words=sc.text.trim().split(/\s+/).filter(Boolean);
+  const hTok=(sc.hero||'').trim().split(/\s+/).filter(Boolean);
+  const strip=s=>s.replace(/[^0-9A-Za-z']/g,'').toLowerCase();
+  let hStart=-1;
+  if(hTok.length){
+    for(let i=0;i<=words.length-hTok.length;i++){
+      let ok=true; for(let j=0;j<hTok.length;j++){ if(strip(words[i+j])!==strip(hTok[j])){ok=false;break;} }
+      if(ok){hStart=i;break;}
+    }
+  }
+  const isHero=i=>hStart>=0&&i>=hStart&&i<hStart+hTok.length;
+  const drop = sc.drop && hStart>=0;
+  let n=0,end=0;
+  function put(container,word,heroFlag){
+    if(container._started) container.appendChild(document.createTextNode(' '));
+    container._started=true;
+    const sp=document.createElement('span'); sp.className='w'; sp.textContent=word;
+    if(heroFlag){ sp.classList.add(sc.styledHero?'ns3hero':'hero'); sp.style.color=ctx.heroCol; }
+    if(mode==='static'||mode==='plain'){ sp.classList.add('on'); }
+    else if(mode==='wbw'){ sp.style.animation=`fade 110ms linear ${n*STAG}ms forwards`; end=Math.max(end,n*STAG+110); n++; }
+    else { const a=heroFlag?(sc.heroAnim||'pop'):(sc.bodyAnim||'rise'); const dur=heroFlag?HERO_DUR:BODY_DUR; end=Math.max(end,animate(sp,a,n*STAG,dur)); n++; }
+    container.appendChild(sp);
+  }
+  if(drop){
+    const top=document.createElement('div'); top.className='ns3top';
+    const bot=document.createElement('div'); bot.className='ns3bot';
+    words.forEach((w,i)=>{ if(!isHero(i)) put(top,w,false); });
+    words.forEach((w,i)=>{ if(isHero(i)) put(bot,w,true); });
+    wrap.appendChild(top); wrap.appendChild(bot);
+  } else {
+    words.forEach((w,i)=>put(wrap,w,isHero(i)));
+  }
+  if(mode==='plain'){ wrap.classList.add('plainwrap'); end=240; }
+  if(mode==='static'){ end=0; }
+  return {wrap,end};
+}
+function buildScene(tpl,idx){
+  const sc=tpl.scenes[idx];
+  const heroCol=tpl.pal[idx%tpl.pal.length];
+  const el=document.createElement('div'); el.className='scene';
+  const ctx={n:0,heroCol}; let intro=0;
+
+  if(sc.k==='n'){
+    const r=buildNormal(sc,ctx); intro=r.end; el.appendChild(r.wrap);
+  }else{
+    const box=document.createElement('div'); box.className='cpt '+sc.layout;
+    box.style.setProperty('--hc',heroCol);
+    if(MERGE[sc.layout]){
+      const ln=document.createElement('div'); ln.className='ln';
+      const segs=sc.lines.map(L2=>({text:L2.text,anim:L2.anim,hero:L2.hero,spanCls:L2.cls+(L2.font?' '+L2.font:''),ul:L2.ul}));
+      intro=flow(ln,segs,ctx,sc.layout==='weld');
+      box.appendChild(ln);
+    }else{
+      sc.lines.forEach(L2=>{
+        const ln=document.createElement('div');
+        ln.className='ln '+L2.cls+(L2.font?' '+L2.font:'');
+        if(L2.box){ln.classList.add('box');ln.style.background=heroCol;ln.style.color='#101114';}
+        if(L2.hero && !L2.box)ln.style.color=heroCol;
+        const savedHeroCol=ctx.heroCol; if(L2.box) ctx.heroCol='#101114';
+        const e=flow(ln,[{text:L2.text,anim:L2.anim,spanCls:null,ul:L2.ul,hero:L2.hero}],ctx);
+        ctx.heroCol=savedHeroCol;
+        if(L2.hero)ln.classList.add('hero');
+        intro=Math.max(intro,e);
+        box.appendChild(ln);
+      });
+    }
+    el.appendChild(box);
+  }
+  return {el,intro};
+}
+function clearTimers(card){card.timers.forEach(clearTimeout);card.timers=[];}
+function showScene(card,i){
+  clearTimers(card); card.idx=i;
+  card.dots.forEach((d,j)=>d.classList.toggle('on',j===i));
+  card.cap.innerHTML='';
+  const {el,intro}=buildScene(card.tpl,i);
+  card.cap.appendChild(el);
+  card.timers.push(setTimeout(()=>{
+    el.classList.add('out');
+    card.timers.push(setTimeout(()=>showScene(card,(i+1)%card.tpl.scenes.length),EXIT+GAP));
+  },intro+HOLD));
+}
+function makeCard(tpl){
+  const card=document.createElement('div');card.className='card';
+  card.style.setProperty('--tint',tpl.pal[0]);
+  card.innerHTML=`<div class="chead"><span class="nm">${tpl.name}<span class="id">${tpl.id}</span></span><span class="badge b${tpl.style}">${tpl.style} STYLE</span></div>
+  <div class="stage"><div class="cap"></div></div>
+  <div class="dots"></div><div class="meta">${tpl.meta||''}</div>`;
+  const state={tpl,cap:card.querySelector('.cap'),timers:[],idx:0,dots:[]};
+  const dots=card.querySelector('.dots');
+  tpl.scenes.forEach((_,i)=>{
+    const b=document.createElement('button');b.className='dot';b.title='Play line '+(i+1);
+    b.onclick=()=>showScene(state,i);
+    dots.appendChild(b);state.dots.push(b);
+  });
+  card._state=state;
+  return card;
+}
+</script>
+<script>
+/* ================= TEMPLATE DATA · T131–T165 ================= */
+const TPLS=[
+
+/* ================= 1 STYLE (5 variations) — T181-T185 =================
+   S1 STYLED hook (CPT) · S2 anim (wbw) · S3 plain static (zero anim) · S4 anim (diff from S2) */
+
+T('T181','1 Style · V1',1,[
+  C('whisper', L('s','the work is','rise'), L('h','SIMPLE.','stamp',{hero:1})),
+  N('hard is not the same as complicated.',{mode:'anim',hero:'complicated',bodyAnim:'rise',heroAnim:'roll'}),
+  N('most quit right at the boring part.',{mode:'static',hero:'boring'}),
+  N('effort beats talent when talent rests.',{mode:'anim',hero:'talent',bodyAnim:'slidel',heroAnim:'flick'})
+]),
+T('T182','1 Style · V2',1,[
+  C('dropcap', L('xh','FOCUS','pop',{hero:1}), L('s','beats raw','wipe'), L('s','hustle.','wipe')),
+  N('one deep hour outruns ten distracted ones.',{mode:'anim',hero:'deep',bodyAnim:'wipe',heroAnim:'punch'}),
+  N('notifications are someone else\u2019s priorities.',{mode:'static',hero:'priorities'}),
+  N('guard your attention like gold.',{mode:'anim',hero:'gold',bodyAnim:'climb',heroAnim:'stretch'})
+]),
+T('T183','1 Style · V3',1,[
+  C('rail', L('s','small steps','slider'), L('h','COMPOUND.','elastic',{hero:1})),
+  N('tiny gains quietly stack into landslides.',{mode:'anim',hero:'landslides',bodyAnim:'rise',heroAnim:'slot'}),
+  N('you overrate a day and underrate a year.',{mode:'static',hero:'year'}),
+  N('patience is just aggression with a plan.',{mode:'anim',hero:'aggression',bodyAnim:'drop',heroAnim:'punch'})
+]),
+T('T184','1 Style · V4',1,[
+  C('anchor', L('s','spend','drop'), L('h','LESS','press',{hero:1}), L('s','than you make.','drop')),
+  N('every saved rupee is a hired hand.',{mode:'anim',hero:'hired',bodyAnim:'slider',heroAnim:'roll'}),
+  N('broke is loud, wealth is silent.',{mode:'static',hero:'silent'}),
+  N('invest long before you try to impress.',{mode:'anim',hero:'impress',bodyAnim:'wipeup',heroAnim:'swing'})
+]),
+T('T185','1 Style · V5',1,[
+  C('compress', L('s','PROTECT','track'), L('h','YOUR PEACE.','stamp',{hero:1})),
+  N('not every message deserves a reply.',{mode:'anim',hero:'reply',bodyAnim:'rise',heroAnim:'flick'}),
+  N('silence is a complete sentence.',{mode:'static',hero:'silence'}),
+  N('calm is a quiet competitive edge.',{mode:'anim',hero:'edge',bodyAnim:'type',heroAnim:'press'})
+]),
+
+/* ================= 2 STYLE (5 variations) — T186-T190 =================
+   S1 CPT-A hook · S2 anim(wbw) · S3 CPT-B (diff from A) · S4 plain static · S5 anim(diff from S2) · S6 anim OR static */
+
+T('T186','2 Style · V1',2,[
+  C('sidecar', L('xs','stop','skew'), L('h','chasing','press',{hero:1}), L('xs','everyone.','skew')),
+  N('the right people move toward you.',{mode:'anim',hero:'toward',bodyAnim:'rise',heroAnim:'roll'}),
+  C('pyramid', L('s','just become','wipeup'), L('h','MAGNETIC.','whip',{hero:1})),
+  N('desperation repels, presence attracts.',{mode:'static',hero:'presence'}),
+  N('your value speaks before you do.',{mode:'anim',hero:'value',bodyAnim:'slidel',heroAnim:'stretch'}),
+  N('raise the standard, the circle shifts.',{mode:'anim',hero:'standard',bodyAnim:'climb',heroAnim:'slot'})
+]),
+T('T187','2 Style · V2',2,[
+  C('splice', L('h','and','whip'), L('h','here\u2019s','rolly',{hero:1,font:'serif'}), L('h','the catch.','whip')),
+  N('everyone wants easy, few pay full price.',{mode:'anim',hero:'price',bodyAnim:'wipe',heroAnim:'pop'}),
+  C('sandwich', L('s','the grind','shutter'), L('h','IS THE GIFT','pop',{hero:1,box:1}), L('s','not the wall','shutter')),
+  N('comfort is where dreams go quiet.',{mode:'static',hero:'quiet'}),
+  N('discomfort is just growth in disguise.',{mode:'anim',hero:'growth',bodyAnim:'drop',heroAnim:'flick'}),
+  N('the dip always tests the serious.',{mode:'static',hero:'serious'})
+]),
+T('T188','2 Style · V3',2,[
+  C('signature', L('xh','Gently','fade',{font:'script'}), L('s','say the','rise'), L('h','TRUTH.','press',{hero:1})),
+  N('honesty is the fastest road to trust.',{mode:'anim',hero:'trust',bodyAnim:'climb',heroAnim:'roll'}),
+  C('spine', L('s','clear','wipeup'), L('h','IS KIND.','elastic',{hero:1}), L('s','always.','wipeup')),
+  N('sugar-coating helps nobody actually grow.',{mode:'static',hero:'nobody'}),
+  N('real feedback is a gift, not an attack.',{mode:'anim',hero:'gift',bodyAnim:'slider',heroAnim:'stretch'}),
+  N('say it soft, but say it straight.',{mode:'anim',hero:'straight',bodyAnim:'wipe',heroAnim:'swing'})
+]),
+T('T189','2 Style · V4',2,[
+  C('mirror', L('s','their reel','slidel'), L('xh','VS','tilt',{hero:1}), L('s','your reality','slider')),
+  N('you compare their peak to your start.',{mode:'anim',hero:'peak',bodyAnim:'rise',heroAnim:'punch'}),
+  C('twostep', L('m','run your','climb'), L('h','OWN LANE.','stamp',{hero:1})),
+  N('comparison is a thief with good manners.',{mode:'static',hero:'thief'}),
+  N('your pace is not your worth.',{mode:'anim',hero:'worth',bodyAnim:'wipe',heroAnim:'slot'}),
+  N('the only scoreboard is yesterday.',{mode:'static',hero:'yesterday'})
+]),
+T('T190','2 Style · V5',2,[
+  C('tag', L('h','RISK','drop'), L('xs','measured','flick',{hero:1})),
+  N('safe roads rarely reach the summit.',{mode:'anim',hero:'summit',bodyAnim:'slidel',heroAnim:'roll'}),
+  C('baseline', L('m','bet on','wipe'), L('h','YOURSELF.','slot',{hero:1})),
+  N('fear shrinks the moment you move.',{mode:'static',hero:'move'}),
+  N('doubt is loud but usually wrong.',{mode:'anim',hero:'wrong',bodyAnim:'climb',heroAnim:'press'}),
+  N('leap, and the net appears mid-air.',{mode:'anim',hero:'leap',bodyAnim:'wipeup',heroAnim:'stretch'})
+]),
+
+/* ================= 3 STYLE (5 variations) — T191-T195 =================
+   S1 CPT-A hook · S2 CPT-B (diff) · S3 plain static · S4 anim(wbw) · S5 CPT-C (diff from A&B) · S6 anim · S7 static OR anim */
+
+T('T191','3 Style · V1',3,[
+  C('whisper', L('s','every frame','rise'), L('h','EARNS ITS PLACE.','stamp',{hero:1})),
+  C('anchor', L('s','show','wipe'), L('h','DON\u2019T','press',{hero:1}), L('s','tell.','wipe')),
+  N('boredom is the enemy of the scroll.',{mode:'static',hero:'boredom'}),
+  N('emotion is the real edit.',{mode:'anim',hero:'emotion',bodyAnim:'rise',heroAnim:'roll'}),
+  C('underscore', L('s','make them','type'), L('h','FEEL IT.','pop',{hero:1,ul:1})),
+  N('cut faster than they can blink.',{mode:'anim',hero:'blink',bodyAnim:'wipe',heroAnim:'flick'}),
+  N('pace is a feeling, not a number.',{mode:'static',hero:'feeling'})
+]),
+T('T192','3 Style · V2',3,[
+  C('dropcap', L('xh','BUILD','whip',{hero:1}), L('s','long before','punch'), L('s','you feel ready.','punch')),
+  C('tag', L('h','MVP','slot'), L('xs','ugly wins','pop',{hero:1})),
+  N('ideas are cheap, execution is rare.',{mode:'static',hero:'execution'}),
+  N('talk to users, not to walls.',{mode:'anim',hero:'users',bodyAnim:'slidel',heroAnim:'stretch'}),
+  C('step', L('s','stay','wipe'), L('h','DEFAULT ALIVE.','stamp',{hero:1})),
+  N('ship, learn, then ship faster.',{mode:'anim',hero:'faster',bodyAnim:'drop',heroAnim:'slot'}),
+  N('momentum is a startup\u2019s oxygen.',{mode:'anim',hero:'oxygen',bodyAnim:'climb',heroAnim:'swing'})
+]),
+T('T193','3 Style · V3',3,[
+  C('anchor', L('s','when the','drop'), L('h','BREATH','elastic',{hero:1}), L('s','slows, you win.','drop')),
+  C('pyramid', L('s','sit','fade'), L('h','WITH YOURSELF.','track',{hero:1})),
+  N('stillness is a skill you sharpen.',{mode:'static',hero:'stillness'}),
+  N('silence rewires a restless mind.',{mode:'anim',hero:'rewires',bodyAnim:'rise',heroAnim:'roll'}),
+  C('compress', L('s','LESS NOISE','wipeup'), L('h','MORE SIGNAL.','stamp',{hero:1})),
+  N('ten calm minutes reset everything.',{mode:'anim',hero:'reset',bodyAnim:'wipe',heroAnim:'punch'}),
+  N('peace is a practice, not a place.',{mode:'static',hero:'place'})
+]),
+T('T194','3 Style · V4',3,[
+  C('sandwich', L('s','good work','unfold'), L('h','IS EDITED','stamp',{hero:1,box:1}), L('s','not written','unfold')),
+  C('twostep', L('m','kill your','climb'), L('h','DARLINGS.','rolly',{hero:1})),
+  N('the first draft is just raw clay.',{mode:'static',hero:'clay'}),
+  N('clarity is a courtesy to readers.',{mode:'anim',hero:'clarity',bodyAnim:'wipe',heroAnim:'slot'}),
+  C('rail', L('s','trim','type'), L('h','TIGHTEN','press',{hero:1}), L('s','ship.','type')),
+  N('cut it until it almost aches.',{mode:'anim',hero:'aches',bodyAnim:'climb',heroAnim:'swing'}),
+  N('short sentences carry long ideas.',{mode:'anim',hero:'ideas',bodyAnim:'slider',heroAnim:'stretch'})
+]),
+T('T195','3 Style · V5',3,[
+  C('signature', L('xh','Legacy','fade',{font:'script'}), L('s','is built in','slot'), L('h','DAYS.','stamp',{hero:1})),
+  C('spine', L('s','repeat','unfold'), L('h','THE RIGHT THINGS.','swing',{hero:1}), L('s','daily.','unfold')),
+  N('nobody recalls your busiest week.',{mode:'static',hero:'busiest'}),
+  N('small habits carve deep canyons.',{mode:'anim',hero:'canyons',bodyAnim:'rise',heroAnim:'roll'}),
+  C('mirror', L('s','start small','type'), L('xh','END LOUD','punch',{hero:1}), L('s','stay true','type')),
+  N('what you repeat, you slowly become.',{mode:'anim',hero:'become',bodyAnim:'wipe',heroAnim:'press'}),
+  N('the work always outlives the worker.',{mode:'static',hero:'outlives'})
+])
+];
+
+/* palettes: rotate the master wheel so every template gets 5 distinct hero colors */
+TPLS.forEach((t,i)=>{
+  t.pal=[0,1,2,3,4].map(j=>MASTER[(i*3+j*2)%MASTER.length]);
+  t.meta=[...new Set(t.scenes.filter(s=>s.k==='c').map(s=>s.layout))].join(' \u00b7 ');
+});
+
+/* mount + only animate visible cards */
+const grid=document.getElementById('grid');
+const cards=TPLS.map(t=>{const c=makeCard(t);grid.appendChild(c);return c;});
+const io=new IntersectionObserver(entries=>{
+  entries.forEach(en=>{
+    const st=en.target._state;
+    if(en.isIntersecting){ if(!st.running){st.running=true;showScene(st,st.idx||0);} }
+    else{ st.running=false; clearTimers(st); }
+  });
+},{threshold:.15});
+cards.forEach(c=>io.observe(c));
+</script>
+</body>
+</html>

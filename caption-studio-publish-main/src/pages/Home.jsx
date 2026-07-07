@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import HeroSection from '@/components/landing/HeroSection';
 import FeaturesSection from '@/components/landing/FeaturesSection';
+import TemplateShowcase from '@/components/landing/TemplateShowcase';
 import PricingSection from '@/components/landing/PricingSection';
 import Footer from '@/components/landing/Footer';
 import CaptionStudioLogo from '@/components/dashboard/CaptionStudioLogo';
@@ -23,6 +24,7 @@ export default function Home() {
       </nav>
       <HeroSection />
       <FeaturesSection />
+      <TemplateShowcase />
       <PricingSection />
       <Footer />
     </div>
