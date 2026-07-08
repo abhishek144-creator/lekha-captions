@@ -58,10 +58,12 @@ const Faq = lazy(() => import('./pages/Faq'))
 const TermsAndConditions = lazy(() => import('./pages/TermsAndConditions'))
 const HelpAndSupport = lazy(() => import('./pages/HelpAndSupport'))
 const AdminOps = lazy(() => import('./pages/AdminOps'))
+const LandingV2 = lazy(() => import('./pages/LandingV2'))
 
 export const PAGES = {
     "Dashboard": Dashboard,
     "Home": Home,
+    "LandingV2": LandingV2,
     "login": Login,
     "UserAccount": UserAccount,
     "Faq": Faq,
