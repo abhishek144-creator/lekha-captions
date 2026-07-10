@@ -2046,6 +2046,24 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
             word.style.setProperty('--sidebar-export-lc-ease', entry.ease);
             word.classList.add('sidebar-export-lc-anim');
           });
+          // Whole-line 'block' scenes (LC4/LC5): the wrap carries one authored
+          // animation while its words stay statically visible. Mirrors the
+          // canvas stamp in VideoPlayer.jsx startLcTimeline.
+          phase.block.querySelectorAll('[data-lc-block-anim]').forEach((wrap) => {
+            const wrapSchedule = getLcMotionSchedule([{
+              animation: wrap.dataset.lcBlockAnim,
+              duration: wrap.dataset.lcBlockDuration,
+              delay: wrap.dataset.lcBlockDelay,
+              ease: wrap.dataset.lcBlockEase,
+            }]);
+            const wrapEntry = wrapSchedule.entries[0];
+            if (!wrapEntry?.animation) return;
+            wrap.style.setProperty('--sidebar-export-lc-animation', wrapEntry.animation);
+            wrap.style.setProperty('--sidebar-export-word-duration', (wrapEntry.durationMs || 560) + 'ms');
+            wrap.style.setProperty('--sidebar-export-word-delay', (phase.phaseStartMs + wrapEntry.delayMs) + 'ms');
+            wrap.style.setProperty('--sidebar-export-lc-ease', wrapEntry.ease);
+            wrap.classList.add('sidebar-export-lc-anim');
+          });
         }
 
         phase.block.querySelectorAll('.w, .wbw-word').forEach((word, index) => {

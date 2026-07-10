@@ -273,12 +273,19 @@ function renderLcNormalScene(scene = {}, ctx, templateId = '') {
   const isFormulaSet = Number(String(templateId).replace(/\D/g, '')) >= 181;
   const mode = scene.mode || (scene.anim ? 'anim' : 'plain');
   const keywordClassMap = { underline: 'ns3hero', box: 'ns3box', mark: 'ns3mark', bracket: 'ns3bracket', dot: 'ns3dot' };
+  // Keep in lockstep with renderLcNormalScene in SidebarTemplateGallery20.jsx:
+  // styledHero maps through the full keyword set (LC4/LC5 engines), and 'block'
+  // scenes keep their words statically visible (the wrap carries the motion).
   const putWords = (words, heroFlags = []) => words.map((word, index) => {
     const hero = !!heroFlags[index];
     const cls = hero
-      ? (isFormulaSet ? (scene.styledHero ? 'ns3hero' : 'hero') : (scene.type === 3 ? (keywordClassMap[scene.keywordStyle] || 'ns3hero') : 'hero'))
+      ? (isFormulaSet
+        ? (scene.styledHero ? (keywordClassMap[scene.keywordStyle] || 'ns3hero') : 'hero')
+        : (scene.type === 3 ? (keywordClassMap[scene.keywordStyle] || 'ns3hero') : 'hero'))
       : '';
-    const anim = mode === 'static' || mode === 'plain' ? '' : (mode === 'wbw' ? 'fade' : (hero ? (scene.heroAnim || 'pop') : (scene.bodyAnim || 'rise')));
+    const anim = mode === 'static' || mode === 'plain' || mode === 'block'
+      ? ''
+      : (mode === 'wbw' ? 'fade' : (hero ? (scene.heroAnim || 'pop') : (scene.bodyAnim || 'rise')));
     const delay = ctx.n * LC_TIMING.staggerMs;
     if (anim) ctx.n += 1;
     return buildLcWordSpan(word, {
@@ -301,7 +308,13 @@ function renderLcNormalScene(scene = {}, ctx, templateId = '') {
   } else {
     inner = putWords(words, isHero);
   }
-  return `<div class="nline${mode === 'plain' ? ' plainwrap' : ''}">${inner}</div>`;
+  // Whole-line block animation attrs — same emission as the app builder.
+  let wrapAttrs = '';
+  if (mode === 'block') {
+    const blockAnim = scene.blockAnim || 'rise';
+    wrapAttrs = ` data-lc-block-anim="${escapeHtml(blockAnim)}" data-lc-block-duration="${LC_TIMING.heroDurationMs}" data-lc-block-ease="${escapeHtml(getLcAnimationEase(blockAnim))}"`;
+  }
+  return `<div class="nline${mode === 'plain' ? ' plainwrap' : ''}"${wrapAttrs}>${inner}</div>`;
 }
 
 function getLcPalette(templateIndex = 0) {
@@ -1098,10 +1111,27 @@ function buildExhaustiveSidebarCases() {
 function buildLcSidebarCases() {
   // LC cards are generated from four source packs, so the small hand-picked
   // CASES list cannot prove that a reveal change works beyond its first lines.
-  // Reuse the canonical sidebar enumerator to cover every generated LC card.
+  // Reuse the canonical sidebar enumerator to cover every generated LC card,
+  // then expand EVERY authored scene (phase) — the reported reveal bugs were
+  // line-specific, and block/static/wbw scenes only exist past phase 0.
+  // Applied captions cycle phases by caption order, so each phase is a real
+  // runtime state, not a synthetic one.
   return buildExhaustiveSidebarCases()
     .filter((testCase) => testCase.sidebar && testCase.templateSource === 'lekha-lc')
-    .map((testCase) => ({ ...testCase, motionCritical: true }));
+    .flatMap((testCase) => {
+      const cardClass = `lc-${String(testCase.template20Id || '').toLowerCase()}`;
+      const cardStart = lcSidebarHtml.indexOf(cardClass);
+      const cardMarkup = cardStart >= 0 ? extractCompleteDiv(lcSidebarHtml, lcSidebarHtml.lastIndexOf('<div', cardStart)) : '';
+      const phaseCount = Math.max(1, (cardMarkup.match(/class="sb[" ]/g) || []).length);
+      return Array.from({ length: phaseCount }, (_, phaseIndex) => ({
+        ...testCase,
+        id: `${testCase.id}-p${phaseIndex}`,
+        phaseIndex,
+        // Phase 0 is always an animated hook scene; later phases may be
+        // static/plain by design, so motion cannot be asserted there.
+        motionCritical: phaseIndex === 0,
+      }));
+    });
 }
 
 // Right-side "Basic" templates render their `.btcard` source markup in both the
@@ -1722,15 +1752,23 @@ async function measureFrameMotion(page, framePaths) {
 const outputRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'lekha-template-export-parity-'));
 const selectedCases = (() => {
   const scope = cliScope || process.env.TEMPLATE_EXPORT_SCOPE || '';
-  if (scope === 'all-left') return buildExhaustiveSidebarCases();
-  if (scope === 'lc-left') return buildLcSidebarCases();
-  if (scope === 'all-right') return buildExhaustiveAdvancedCases();
-  if (scope === 'all-right-phases') return buildExhaustiveAdvancedCases({ allPhases: true });
-  if (scope === 'affected-right-phases') return buildAffectedAdvancedPhaseCases();
-  if (scope === 'goal-right-phases') return buildGoalAdvancedPhaseCases();
-  if (scope === 'all-basic') return buildExhaustiveBasicCases();
-  if (scope === 'all-basic-scaled') return buildScaledBasicCases();
-  return CASES;
+  const scopedCases = (() => {
+    if (scope === 'all-left') return buildExhaustiveSidebarCases();
+    if (scope === 'lc-left') return buildLcSidebarCases();
+    if (scope === 'all-right') return buildExhaustiveAdvancedCases();
+    if (scope === 'all-right-phases') return buildExhaustiveAdvancedCases({ allPhases: true });
+    if (scope === 'affected-right-phases') return buildAffectedAdvancedPhaseCases();
+    if (scope === 'goal-right-phases') return buildGoalAdvancedPhaseCases();
+    if (scope === 'all-basic') return buildExhaustiveBasicCases();
+    if (scope === 'all-basic-scaled') return buildScaledBasicCases();
+    return CASES;
+  })();
+  // TEMPLATE_EXPORT_FILTER=<substring> narrows any scope to matching case ids —
+  // e.g. TEMPLATE_EXPORT_FILTER=t196 --scope=lc-left runs one template's phases.
+  const caseFilter = String(process.env.TEMPLATE_EXPORT_FILTER || '').trim().toLowerCase();
+  return caseFilter
+    ? scopedCases.filter((testCase) => String(testCase.id || '').toLowerCase().includes(caseFilter))
+    : scopedCases;
 })();
 const browser = await puppeteer.launch({
   headless: true,
