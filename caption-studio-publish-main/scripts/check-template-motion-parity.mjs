@@ -83,8 +83,20 @@ if (
 if (videoPlayerSource.includes('getLcRevealPlan') || exportRendererSource.includes('getLcRevealPlan')) {
   fail('LC rendering still derives a caption-length-dependent reveal plan');
 }
-if (!videoPlayerSource.includes('getLcMotionSchedule') || !videoPlayerSource.includes('block.getBoundingClientRect()')) {
-  fail('canvas LC renderer does not stamp the shared authored schedule from a committed layout state');
+if (
+  !videoPlayerSource.includes('getLcMotionSchedule')
+  || !videoPlayerSource.includes('selectedBlock.getBoundingClientRect()')
+  || !videoPlayerSource.includes('videoRef?.current?.currentTime')
+  || !videoPlayerSource.includes('animation.currentTime = elapsed')
+) {
+  fail('canvas LC renderer does not seek the shared authored schedule from the video clock');
+}
+if (
+  videoPlayerSource.includes('lcSettleTimer')
+  || videoPlayerSource.includes('runLcEntrance')
+  || videoPlayerSource.includes('stampLcReveal')
+) {
+  fail('canvas LC renderer still contains the timer-based reveal lifecycle');
 }
 if (!sidebarGallerySource.includes('stampLcMotion') || !sidebarGallerySource.includes('getLcMotionSchedule')) {
   fail('template preview does not use the shared authored LC schedule');
@@ -513,8 +525,12 @@ if (!appliedSidebarRendererSource.includes('enterBlock(selectedBlock)')) {
 if (!appliedSidebarRendererSource.includes('host.dataset.appliedAnimationRun')) {
   fail('left live rendering does not expose per-caption animation runs');
 }
-if (appliedSidebarRendererSource.includes('videoRef?.current?.currentTime')) {
-  fail('left live rendering still depends on the media clock for entrance motion');
+if (
+  !appliedSidebarRendererSource.includes('videoRef?.current?.currentTime')
+  || !appliedSidebarRendererSource.includes('startLcTimeline')
+  || !appliedSidebarRendererSource.includes('if (isLcTemplateSet)')
+) {
+  fail('LC live rendering is not synchronized to the media clock');
 }
 
 if (!basicTemplateInlineSource.includes('revealWholeBlock || index <= currentIndex')) {
