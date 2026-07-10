@@ -1599,6 +1599,7 @@ function AppliedSidebarTemplateSourceRenderer({
   fontSize,
   currentTime = 0,
   isPlaying = false,
+  videoRef,
   startTime = 0,
   endTime = 0,
   phaseOffset = 0,
@@ -1610,7 +1611,6 @@ function AppliedSidebarTemplateSourceRenderer({
   const runnerRef = useRef(null);
   const playbackControlRef = useRef({ currentTime, isPlaying });
   const playStateRef = useRef({ currentTime, isPlaying, startTime, endTime });
-  const selectionPreviewRef = useRef(false);
   playStateRef.current = { currentTime, isPlaying, startTime, endTime };
   const configuredAccent = String(emphasisColor || effectiveStyle?.secondary_color || effectiveStyle?.highlight_color || '').trim();
   const textColor = String(effectiveStyle?.text_color || '#FFFFFF').trim();
@@ -2179,27 +2179,43 @@ function AppliedSidebarTemplateSourceRenderer({
       recolorEmphasisToHero(block);
     };
 
-    // ── LC motion: stamped once, owned by CSS ─────────────────────────────────
-    // A render frame is derived from the source node's authored schedule, never
-    // from a per-word timer. This makes playback, seeking, and export deterministic.
-    let lcSettleTimer = null;
-    let lcPreviewing = false;
+    // ── LC motion: video-clock driven CSS animations ─────────────────────────
+    // Build every source span once, then freeze CSS animations and seek their
+    // timeline from video.currentTime. No word timer, reveal class, or pause
+    // re-render is allowed to decide whether a word exists on screen.
+    let lcFrameId = null;
+    let lcAnimations = [];
 
     const lcMotionNodes = (block) => Array.from(block?.querySelectorAll(
       '.w[data-lc-anim], .sw[data-lc-anim], .sw-w[data-lc-anim]',
     ) || []);
 
-    const clearLcSettleTimer = () => {
-      if (lcSettleTimer !== null) {
-        window.clearTimeout(lcSettleTimer);
-        lcSettleTimer = null;
+    const stopLcClock = () => {
+      if (lcFrameId !== null) {
+        window.cancelAnimationFrame(lcFrameId);
+        lcFrameId = null;
       }
     };
 
-    const stampLcReveal = (block, elapsedMs = 0) => {
-      if (!block) return 0;
-      const elapsed = Math.max(0, Math.round(Number(elapsedMs) || 0));
-      const motionNodes = lcMotionNodes(block);
+    const seekLcTimeline = (elapsedMs = 0) => {
+      const elapsed = Math.max(0, Number(elapsedMs) || 0);
+      lcAnimations.forEach((animation) => {
+        try {
+          animation.pause();
+          animation.currentTime = elapsed;
+        } catch {
+          // Ignore pseudo-element animations that are not seekable.
+        }
+      });
+    };
+
+    const startLcTimeline = () => {
+      if (!selectedBlock) return;
+      stopLcClock();
+      clearScheduledWork();
+      preparePhase();
+      enterBlock(selectedBlock);
+      const motionNodes = lcMotionNodes(selectedBlock);
       const motionNodeSet = new Set(motionNodes);
       const schedule = getLcMotionSchedule(motionNodes.map((word) => ({
         animation: word.dataset.lcAnim,
@@ -2223,17 +2239,17 @@ function AppliedSidebarTemplateSourceRenderer({
       // Force the hidden source state to paint before applying each authored
       // keyframe. This is the synchronization point that the previous timer
       // reveal lacked, and avoids a pause-induced repaint changing the result.
-      void block.getBoundingClientRect();
+      void selectedBlock.getBoundingClientRect();
       motionNodes.forEach((word, index) => {
         const entry = schedule.entries[index];
         if (!entry?.animation) return;
-        word.style.animation = `${entry.animation} ${entry.durationMs}ms ${entry.ease} ${entry.delayMs - elapsed}ms both`;
+        word.style.animation = `${entry.animation} ${entry.durationMs}ms ${entry.ease} ${entry.delayMs}ms both`;
         word.dataset.appliedVisible = 'true';
       });
 
       // Some authored LC scenes intentionally keep supporting words static.
       // Those source `.on` words must always be visible from the first frame.
-      block.querySelectorAll('.w, .sw, .sw-w').forEach((word) => {
+      selectedBlock.querySelectorAll('.w, .sw, .sw-w').forEach((word) => {
         if (motionNodeSet.has(word) || !word.classList.contains('on')) return;
         word.style.animation = 'none';
         word.style.transition = 'none';
@@ -2244,17 +2260,16 @@ function AppliedSidebarTemplateSourceRenderer({
         word.dataset.appliedVisible = 'true';
       });
 
-      block.querySelectorAll('.plainwrap').forEach((element) => {
+      selectedBlock.querySelectorAll('.plainwrap').forEach((element) => {
         element.style.transition = 'none';
         element.style.opacity = '';
-        element.style.animation = `fade ${LC_TEMPLATE_TIMING.plainFadeDurationMs}ms ease ${-elapsed}ms both`;
+        element.style.animation = `fade ${LC_TEMPLATE_TIMING.plainFadeDurationMs}ms ease 0ms both`;
         element.dataset.appliedVisible = 'true';
       });
 
       // Whole-line 'block' scenes (LC4/LC5): the wrap carries one authored
       // animation while its words are statically visible.
-      let blockWrapEndMs = 0;
-      block.querySelectorAll('[data-lc-block-anim]').forEach((element) => {
+      selectedBlock.querySelectorAll('[data-lc-block-anim]').forEach((element) => {
         const wrapSchedule = getLcMotionSchedule([{
           animation: element.dataset.lcBlockAnim,
           duration: element.dataset.lcBlockDuration,
@@ -2265,52 +2280,31 @@ function AppliedSidebarTemplateSourceRenderer({
         const wrapDuration = entry?.durationMs || LC_TEMPLATE_TIMING.heroDurationMs;
         element.style.transition = 'none';
         element.style.opacity = '';
-        element.style.animation = `${entry?.animation || 'rise'} ${wrapDuration}ms ${entry?.ease || 'cubic-bezier(.22,.68,.26,1)'} ${(entry?.delayMs || 0) - elapsed}ms both`;
+        element.style.animation = `${entry?.animation || 'rise'} ${wrapDuration}ms ${entry?.ease || 'cubic-bezier(.22,.68,.26,1)'} ${entry?.delayMs || 0}ms both`;
         element.dataset.appliedVisible = 'true';
-        blockWrapEndMs = Math.max(blockWrapEndMs, wrapDuration);
       });
 
-      recolorEmphasisToHero(block);
-      return Math.max(
-        schedule.endMs,
-        blockWrapEndMs,
-        block.querySelector('.plainwrap') ? LC_TEMPLATE_TIMING.plainFadeDurationMs : 0,
-      );
-    };
-
-    const runLcEntrance = ({ preview = false, elapsedMs = 0 } = {}) => {
-      clearLcSettleTimer();
-      clearScheduledWork();
-      preparePhase();
-      enterBlock(selectedBlock);
-      lcPreviewing = preview;
-      selectionPreviewRef.current = preview;
-      host.dataset.appliedTemplatePaused = 'false';
-      host.dataset.appliedTemplateSelectionPreview = preview ? 'true' : 'false';
-      host.dataset.appliedAnimationRun = String(Number(host.dataset.appliedAnimationRun || 0) + 1);
-      const endMs = stampLcReveal(selectedBlock, elapsedMs);
-      if (!preview) return;
-      // Bookkeeping only: the CSS fill mode already leaves every word settled,
-      // so nothing visible depends on this timer firing.
-      lcSettleTimer = window.setTimeout(() => {
-        lcSettleTimer = null;
-        lcPreviewing = false;
-        selectionPreviewRef.current = false;
-        host.dataset.appliedTemplateSelectionPreview = 'false';
-        if (!playStateRef.current.isPlaying) {
-          host.dataset.appliedTemplatePaused = 'true';
-          settleBlock(selectedBlock);
-        }
-      }, Math.max(0, endMs - Math.max(0, Number(elapsedMs) || 0)) + 80);
+      recolorEmphasisToHero(selectedBlock);
+      lcAnimations = selectedBlock.getAnimations({ subtree: true });
+      const sync = () => {
+        const videoTime = Number(videoRef?.current?.currentTime);
+        const current = Number.isFinite(videoTime)
+          ? videoTime
+          : Number(playStateRef.current.currentTime || 0);
+        const start = Number(playStateRef.current.startTime || 0);
+        seekLcTimeline((current - start) * 1000);
+      };
+      sync();
+      const tick = () => {
+        sync();
+        if (playStateRef.current.isPlaying) lcFrameId = window.requestAnimationFrame(tick);
+      };
+      if (playStateRef.current.isPlaying) lcFrameId = window.requestAnimationFrame(tick);
     };
 
     const play = () => {
       if (isLcTemplateSet) {
-        // Sync the reveal to the video clock (mid-caption plays/seeks land on
-        // the exact frame the export renders for that timestamp).
-        const elapsedMs = (Number(playStateRef.current.currentTime || 0)
-          - Number(playStateRef.current.startTime || 0)) * 1000;
-        runLcEntrance({ elapsedMs: Math.max(0, elapsedMs) });
+        startLcTimeline();
         return;
       }
       clearScheduledWork();
@@ -2322,15 +2316,7 @@ function AppliedSidebarTemplateSourceRenderer({
 
     const pause = () => {
       if (isLcTemplateSet) {
-        // A pause during the one-shot selection preview lets it finish: the
-        // reveal is pure CSS and the settle timer completes the bookkeeping.
-        if (lcPreviewing) return;
-        clearLcSettleTimer();
-        clearScheduledWork();
-        host.dataset.appliedTemplatePaused = 'true';
-        host.dataset.appliedTemplateSelectionPreview = 'false';
-        preparePhase();
-        settleBlock(selectedBlock);
+        stopLcClock();
         return;
       }
       clearScheduledWork();
@@ -2343,15 +2329,14 @@ function AppliedSidebarTemplateSourceRenderer({
     if (playStateRef.current.isPlaying) {
       play();
     } else if (isLcTemplateSet) {
-      runLcEntrance({ preview: true });
+      pause();
     } else {
       pause();
     }
 
     return () => {
       clearScheduledWork();
-      clearLcSettleTimer();
-      selectionPreviewRef.current = false;
+      stopLcClock();
       runnerRef.current = null;
     };
   }, [html, captionId, captionText, effectiveStyle?.template_20_id, effectiveStyle?.template_source, phaseOffset, startTime, endTime]);
@@ -2363,7 +2348,7 @@ function AppliedSidebarTemplateSourceRenderer({
     const timeDelta = Math.abs(Number(currentTime || 0) - Number(previous.currentTime || 0));
     const seeked = previous.isPlaying && isPlaying && timeDelta > 0.75;
     if (!isPlaying) {
-      if (!selectionPreviewRef.current) runner.pause();
+      runner.pause();
       playbackControlRef.current = { currentTime, isPlaying };
       return;
     }
@@ -2377,7 +2362,7 @@ function AppliedSidebarTemplateSourceRenderer({
       renderScale,
       onSourceWordClick,
     });
-    if (!playStateRef.current.isPlaying && !selectionPreviewRef.current) runnerRef.current?.pause?.();
+    if (!playStateRef.current.isPlaying) runnerRef.current?.pause?.();
     return cleanup;
   }, [caption, html, onSourceWordClick, phaseOffset, renderScale, wordStylesSignature]);
 
@@ -7600,6 +7585,7 @@ export default function VideoPlayer({
             fontSize={fontSize}
             currentTime={currentTime}
             isPlaying={isPlaying}
+            videoRef={videoRef}
             startTime={caption?.start_time || 0}
             endTime={caption?.end_time || caption?.start_time || 0}
             phaseOffset={selectedPhase}
