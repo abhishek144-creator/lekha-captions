@@ -1,0 +1,49 @@
+<svg viewBox="0 0 256 344" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Lekha Captions logo (dark background)">
+  <defs>
+    <linearGradient id="lkd-play" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#B9770A"/>
+      <stop offset="1" stop-color="#FFD166"/>
+    </linearGradient>
+    <radialGradient id="lkd-rays" cx="128" cy="118" r="100" gradientUnits="userSpaceOnUse">
+      <stop offset="0.55" stop-color="#C98410"/>
+      <stop offset="1" stop-color="#FFD166"/>
+    </radialGradient>
+  </defs>
+
+  <!-- mark -->
+  <g transform="translate(0,-10)">
+    <g stroke="url(#lkd-rays)" stroke-linecap="round" fill="none">
+      <g stroke-width="12">
+        <line x1="196" y1="128" x2="224" y2="128"/>
+        <line x1="94"  y1="186.9" x2="80"  y2="211.1"/>
+        <line x1="94"  y1="69.1"  x2="80"  y2="44.9"/>
+      </g>
+      <g stroke-width="12">
+        <line x1="162" y1="186.9" x2="173" y2="205.9"/>
+        <line x1="60"  y1="128"   x2="38"  y2="128"/>
+        <line x1="162" y1="69.1"  x2="173" y2="50.1"/>
+      </g>
+      <g stroke-width="7">
+        <line x1="185.2" y1="161" x2="200.7" y2="170"/>
+        <line x1="128"   y1="194" x2="128"   y2="212"/>
+        <line x1="70.8"  y1="161" x2="55.3"  y2="170"/>
+        <line x1="70.8"  y1="95"  x2="55.3"  y2="86"/>
+        <line x1="128"   y1="62"  x2="128"   y2="44"/>
+        <line x1="185.2" y1="95"  x2="200.7" y2="86"/>
+      </g>
+    </g>
+    <path d="M110 98 L110 158 L162 128 Z"
+          fill="url(#lkd-play)" stroke="url(#lkd-play)"
+          stroke-width="22" stroke-linejoin="round"/>
+  </g>
+
+  <!-- wordmark -->
+  <text x="128" y="288" text-anchor="middle"
+        font-family="'Poppins','Inter','Segoe UI',system-ui,sans-serif"
+        font-size="54" font-weight="600" letter-spacing="-1.5"
+        fill="#F5F1E8">lekha</text>
+  <text x="131" y="320" text-anchor="middle"
+        font-family="'Poppins','Inter','Segoe UI',system-ui,sans-serif"
+        font-size="16" font-weight="500" letter-spacing="7"
+        fill="#A9A49B">CAPTIONS</text>
+</svg>

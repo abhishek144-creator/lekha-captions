@@ -103,57 +103,6 @@ const presetGradients = [
   { name: 'Night', value: 'linear-gradient(to right, #60a5fa, #4f46e5)' },
 ];
 
-const BRAND_KIT_STORAGE_KEY = 'captionStudio.brandKits.v1';
-const BRAND_KIT_STYLE_FIELDS = [
-  'font_family',
-  'font_size',
-  'font_weight',
-  'font_style',
-  'line_spacing',
-  'word_spacing',
-  'letter_spacing',
-  'text_align',
-  'text_case',
-  'text_color',
-  'text_gradient',
-  'text_opacity',
-  'highlight_color',
-  'highlight_gradient',
-  'secondary_color',
-  'has_background',
-  'background_color',
-  'background_opacity',
-  'background_padding',
-  'background_h_multiplier',
-  'has_stroke',
-  'stroke_width',
-  'stroke_color',
-  'has_shadow',
-  'shadow_color',
-  'shadow_blur',
-  'shadow_offset_x',
-  'shadow_offset_y',
-  'position_x',
-  'position_y',
-];
-
-function readBrandKits() {
-  if (typeof window === 'undefined') return [];
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(BRAND_KIT_STORAGE_KEY) || '[]');
-    return Array.isArray(parsed) ? parsed.filter((kit) => kit?.id && kit?.style) : [];
-  } catch {
-    return [];
-  }
-}
-
-function extractBrandKitStyle(style = {}) {
-  return BRAND_KIT_STYLE_FIELDS.reduce((kitStyle, field) => {
-    if (style[field] !== undefined) kitStyle[field] = style[field];
-    return kitStyle;
-  }, {});
-}
-
 export default function StyleControls({
   captionStyle,
   setCaptionStyle,
@@ -162,6 +111,7 @@ export default function StyleControls({
   selectedCaption,
   captions,
   setCaptions,
+  setCaptionsRaw,
   onApplyTemplate,
 }) {
   // Detect script from captions and get appropriate fonts
@@ -226,20 +176,15 @@ export default function StyleControls({
   const [fontPopoverOpen, setFontPopoverOpen] = useState(false)
   const [effectsOpen, setEffectsOpen] = useState(false)
   const [activePanelTab, setActivePanelTab] = useState('style')
-  const [brandKits, setBrandKits] = useState(() => readBrandKits())
-
-  React.useEffect(() => {
-    try {
-      window.localStorage.setItem(BRAND_KIT_STORAGE_KEY, JSON.stringify(brandKits));
-    } catch {
-      // Local presets are optional; editing should continue if storage is unavailable.
-    }
-  }, [brandKits]);
 
   const updateStyle = (key, value, skipHistory = false) => {
+    // Slider ticks (skipHistory=true) must use the RAW caption setter — the
+    // history-pushing one records an entry per tick, flooding the undo cap.
+    // History for drags is snapshotted once via onPointerDown -> addToHistory.
+    const applyCaptions = (skipHistory && setCaptionsRaw) ? setCaptionsRaw : setCaptions;
     // If a text element is selected, update its customStyle instead of global captionStyle
-    if (selectedTextElement && setCaptions) {
-      setCaptions(prev => prev.map(cap => {
+    if (selectedTextElement && applyCaptions) {
+      applyCaptions(prev => prev.map(cap => {
         if (cap.id === selectedTextElement.id) {
           const customStyle = cap.customStyle || {};
           // Map captionStyle keys to customStyle keys
@@ -316,7 +261,7 @@ export default function StyleControls({
 
     // Default: update global captionStyle (main captions)
     if (!captionStyle) return;
-    const marksTemplateColorCustomized = [
+    const templateColorFields = [
       'text_color',
       'text_gradient',
       'secondary_color',
@@ -326,15 +271,32 @@ export default function StyleControls({
       'karaoke_color_1',
       'karaoke_color_2',
       'karaoke_color_3',
-    ].includes(key) && /^t\d+$/i.test(String(captionStyle?.template_id || ''));
+    ];
+    const marksTemplateColorCustomized = templateColorFields.includes(key)
+      && Boolean(captionStyle?.template_id || captionStyle?.template_20_id);
+    const withTemplateSnapshotUpdate = (prev) => {
+      const next = {
+        ...prev,
+        [key]: value,
+        ...(marksTemplateColorCustomized ? { template_color_customized: true } : {}),
+      };
+      if (prev?.template_snapshot && (prev.template_id || prev.template_20_id)) {
+        next.template_snapshot = {
+          ...prev.template_snapshot,
+          [key]: value,
+          ...(marksTemplateColorCustomized ? { template_color_customized: true } : {}),
+        };
+      }
+      return next;
+    };
 
     // When font size changes for main captions, scale displaced word offsets proportionally
-    if (key === 'font_size' && captions && setCaptions) {
+    if (key === 'font_size' && captions && applyCaptions) {
       const oldFontSize = captionStyle.font_size || 18;
       const newFontSize = value;
       if (oldFontSize && newFontSize && oldFontSize !== newFontSize) {
         const ratio = newFontSize / oldFontSize;
-        const captionUpdater = (typeof setCaptions === 'function') ? setCaptions : null;
+        const captionUpdater = (typeof applyCaptions === 'function') ? applyCaptions : null;
         if (captionUpdater) {
           captionUpdater(prev => prev.map(c => {
             if (c.isTextElement || !c.wordStyles) return c;
@@ -353,43 +315,10 @@ export default function StyleControls({
       }
     }
     if (skipHistory && setCaptionStyleRaw) {
-      setCaptionStyleRaw(prev => ({
-        ...prev,
-        [key]: value,
-        ...(marksTemplateColorCustomized ? { template_color_customized: true } : {}),
-      }));
+      setCaptionStyleRaw(prev => withTemplateSnapshotUpdate(prev));
     } else if (setCaptionStyle) {
-      setCaptionStyle(prev => ({
-        ...prev,
-        [key]: value,
-        ...(marksTemplateColorCustomized ? { template_color_customized: true } : {}),
-      }));
+      setCaptionStyle(prev => withTemplateSnapshotUpdate(prev));
     }
-  };
-
-  const saveBrandKit = () => {
-    if (!captionStyle) return;
-    const nextIndex = brandKits.length + 1;
-    const nextKit = {
-      id: `brand-kit-${Date.now()}`,
-      name: `Brand Kit ${nextIndex}`,
-      style: extractBrandKitStyle(captionStyle),
-    };
-    setBrandKits((current) => [nextKit, ...current].slice(0, 8));
-  };
-
-  const applyBrandKit = (kit) => {
-    if (!kit?.style || !setCaptionStyle) return;
-    addToHistory?.();
-    setCaptionStyle((current) => ({
-      ...current,
-      ...kit.style,
-      template_color_customized: Boolean(current?.template_id || kit.style.template_color_customized),
-    }));
-  };
-
-  const deleteBrandKit = (kitId) => {
-    setBrandKits((current) => current.filter((kit) => kit.id !== kitId));
   };
 
   const createGradient = (color1, color2) => {
@@ -524,49 +453,14 @@ export default function StyleControls({
         </div>
       )}
 
-      {!selectedTextElement && (
+      {false && !selectedTextElement && (
         <div className="mb-5 rounded-lg border border-white/10 bg-white/[0.035] p-3">
           <div className="mb-3 flex items-center justify-between gap-2">
             <div className="min-w-0">
               <p className="text-[9px] font-bold uppercase tracking-[0.22em] text-slate-400">Brand Kits</p>
               <p className="mt-1 truncate text-[10px] text-slate-500">{getCurrentValue('font_family', 'Inter')} · {getCurrentValue('position_y', 75)}%</p>
             </div>
-            <button
-              type="button"
-              onClick={saveBrandKit}
-              className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.05] px-2.5 text-[10px] font-semibold text-slate-200 transition-colors hover:bg-white/[0.09]"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Save
-            </button>
           </div>
-          {brandKits.length > 0 && (
-            <div className="space-y-2">
-              {brandKits.map((kit) => (
-                <div key={kit.id} className="flex items-center gap-2 rounded-md border border-white/10 bg-black/20 px-2 py-2">
-                  <div className="flex min-w-0 flex-1 items-center gap-2">
-                    <span className="h-4 w-4 shrink-0 rounded-full border border-white/20" style={{ backgroundColor: kit.style?.text_color || '#ffffff' }} />
-                    <span className="truncate text-[11px] font-semibold text-white">{kit.name}</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => applyBrandKit(kit)}
-                    className="rounded-md border border-white/10 px-2 py-1 text-[10px] font-semibold text-slate-300 transition-colors hover:bg-white/[0.08] hover:text-white"
-                  >
-                    Apply
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => deleteBrandKit(kit.id)}
-                    aria-label={`Delete ${kit.name}`}
-                    className="flex h-7 w-7 items-center justify-center rounded-md border border-white/10 text-slate-500 transition-colors hover:bg-white/[0.08] hover:text-white"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       )}
 

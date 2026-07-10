@@ -1,5 +1,34 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 
+// Reject loopback/link-local/private/internal hosts so a user-supplied
+// `file_url` can't drive server-side requests (directly here or via the
+// downstream transcribe/render services) at internal infrastructure (SSRF).
+function isBlockedHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  if (host === 'localhost' || host.endsWith('.localhost')) return true;
+  if (host.endsWith('.internal') || host.endsWith('.local')) return true;
+  if (host === '::1' || host.startsWith('fc') || host.startsWith('fd') || host.startsWith('fe80')) return true;
+  const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (m) {
+    const [a, b] = [Number(m[1]), Number(m[2])];
+    if (a === 10 || a === 127 || a === 0) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true;
+  }
+  return false;
+}
+
+function isSafeFetchUrl(rawUrl: string): boolean {
+  try {
+    const parsed = new URL(rawUrl);
+    return parsed.protocol === 'https:' && !isBlockedHost(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Main export processing function
  * Orchestrates: Credit check -> Transcribe -> Translate -> Create Job
@@ -29,6 +58,10 @@ Deno.serve(async (req) => {
 
     if (!file_url) {
       return Response.json({ error: 'file_url is required' }, { status: 400 });
+    }
+
+    if (!isSafeFetchUrl(file_url)) {
+      return Response.json({ error: 'file_url must be a public https URL' }, { status: 400 });
     }
 
     // Step 1: Check credits

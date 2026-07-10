@@ -37,6 +37,7 @@ from firebase_admin_setup import verify_token, get_db, upload_to_firebase_storag
 from firebase_admin import auth as firebase_auth
 import math
 from google.cloud import firestore
+from google.api_core.exceptions import AlreadyExists
 import mimetypes
 import logging
 import pathlib
@@ -245,7 +246,12 @@ render_semaphore = asyncio.Semaphore(2)
 MAX_CONCURRENT_EXPORTS_PER_USER = 1
 EXPORT_FAILURE_LIMIT = 5
 EXPORT_FAILURE_WINDOW = 15 * 60
-DISABLE_EXPORT_FAILURE_RATE_LIMIT = os.environ.get("DISABLE_EXPORT_FAILURE_RATE_LIMIT", "1") == "1"
+# Failure rate limiting is always enforced in production; the dev default keeps
+# local parity-repair iteration unblocked. Override via env in either direction.
+DISABLE_EXPORT_FAILURE_RATE_LIMIT = os.environ.get(
+    "DISABLE_EXPORT_FAILURE_RATE_LIMIT",
+    "0" if _IS_PRODUCTION else "1",
+) == "1"
 # Export retry and daily quota throttles are disabled by default. Credits and
 # concurrent-export protection remain separate controls.
 DISABLE_EXPORT_DAILY_LIMIT = os.environ.get(
@@ -494,6 +500,21 @@ TRANSLATE_RATE_LIMIT = 20  # max translation attempts per hour per IP
 
 _process_rate: Dict[str, list] = {}
 PROCESS_RATE_LIMIT = 20   # max transcription attempts per hour per IP
+
+_analytics_rate: Dict[str, list] = {}
+ANALYTICS_RATE_LIMIT = 120  # max client analytics events per hour per IP
+
+# Counters that the release gate (`_build_slo_snapshot`) and failure-ratio
+# alerting read as ground truth. The public /api/analytics/track endpoint must
+# never let a client write these — otherwise an unauthenticated caller could
+# inflate failure counters to trip the readiness gate or fire ops alerts.
+RESERVED_SERVER_ANALYTICS_EVENTS = frozenset({
+    "export_success",
+    "export_failed_http",
+    "export_failed_exception",
+    "process_success",
+    "process_failed",
+})
 
 PLAN_EXPORT_PRESETS = {
     "free": {"max_quality": "1080p", "fps_options": {24, 30}},
@@ -1230,7 +1251,7 @@ CACHE_DIR = os.path.abspath("cache")
 TRANSCRIPTION_CACHE_DIR = os.path.join(CACHE_DIR, "transcriptions")
 RENDER_CACHE_DIR = os.path.join(CACHE_DIR, "renders")
 DEAD_LETTER_DIR = os.path.join(CACHE_DIR, "dead_letter")
-EXPORT_RENDERER_VERSION = "2026-07-02-t17-word-size-floor-parity-v32"
+EXPORT_RENDERER_VERSION = "2026-07-10-lc-authored-reveal-plan-v33"
 
 for d in [UPLOAD_DIR, EXPORT_DIR, FONTS_DIR, CACHE_DIR, TRANSCRIPTION_CACHE_DIR, RENDER_CACHE_DIR, DEAD_LETTER_DIR]:
     os.makedirs(d, exist_ok=True)
@@ -1646,7 +1667,10 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
 
         user_update = {'history': current_history}
         if not DISABLE_EXPORT_CREDIT_LIMIT:
-            user_update['credits_remaining'] = max(0, credits - 1)
+            # Atomic decrement: a plain `credits - 1` write clobbers any credits
+            # purchased while this export was rendering. Policy already gated on
+            # credits > 0, so this cannot drive the balance below zero.
+            user_update['credits_remaining'] = firestore.Increment(-1)
         if not DISABLE_EXPORT_DAILY_LIMIT:
             user_update['export_timestamps'] = recent_exports
         user_ref.update(user_update)
@@ -2119,7 +2143,15 @@ async def analytics_summary_v1():
     return await analytics_summary()
 
 @app.post("/api/analytics/track")
-async def analytics_track(request: Request):
+async def analytics_track(request: Request, response: Response):
+    # Unauthenticated telemetry endpoint: rate-limit per IP so it can't be used
+    # as an unbounded Firestore write amplifier (cost/DoS), and reject reserved
+    # server counter names so it can't poison the release gate / alerting.
+    client_ip = request.client.host if request.client else "unknown"
+    allowed, retry_after, remaining = _check_rate(_analytics_rate, client_ip, ANALYTICS_RATE_LIMIT)
+    _apply_rate_headers(response, ANALYTICS_RATE_LIMIT, remaining, retry_after)
+    if not allowed:
+        raise HTTPException(status_code=429, detail="Too many analytics events. Please slow down.")
     try:
         body = await request.json()
     except Exception:
@@ -2127,6 +2159,8 @@ async def analytics_track(request: Request):
     event = (body.get("event") or "").strip()
     if not event or len(event) > 80:
         raise HTTPException(status_code=400, detail="Invalid analytics event")
+    if event in RESERVED_SERVER_ANALYTICS_EVENTS:
+        raise HTTPException(status_code=400, detail="Reserved analytics event")
     payload = body.get("payload") or {}
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Invalid analytics payload")
@@ -2421,12 +2455,24 @@ def _apply_successful_payment(uid: str, plan_id: str, payment_id: str, order_id:
     if payment_doc.exists:
         return {"success": True, "duplicate": True, "type": payment_doc.to_dict().get("type", "unknown")}
 
-    current_credits = user_data.get('credits_remaining', 0)
-    current_topups = user_data.get('topups_this_cycle', 0)
     now_utc = datetime.utcnow()
     cycle_start = now_utc.isoformat() + "Z"
     is_topup = plan_config.get('is_topup', False)
     credits_to_add = int(plan_config['credits'])
+
+    # CONCURRENCY: this function is reached from three independent paths for the
+    # same payment (client verify, Razorpay webhook, reconciliation job). The
+    # payment record is therefore create()d FIRST as an atomic claim — only the
+    # caller that wins the create applies credits, so a payment can never be
+    # credited twice. Credit changes use firestore.Increment so they compose
+    # with concurrent writes (e.g. an export decrement landing mid-purchase)
+    # instead of overwriting them with stale read-modify-write values.
+    def _claim_payment(record):
+        try:
+            payment_ref.create(record)
+            return True
+        except AlreadyExists:
+            return False
 
     if is_topup:
         base_tier = user_data.get('subscription_tier', 'free').replace('_yearly', '')
@@ -2438,13 +2484,7 @@ def _apply_successful_payment(uid: str, plan_id: str, payment_id: str, order_id:
         if not user_doc.exists:
             raise HTTPException(status_code=404, detail="User not found. Purchase a plan first.")
 
-        user_ref.update({
-            'credits_remaining': current_credits + credits_to_add,
-            'topups_this_cycle': current_topups + 1,
-            **({'org_id': org_id} if org_id else {}),
-        })
-
-        payment_ref.set({
+        if not _claim_payment({
             'payment_id': payment_id,
             'order_id': order_id,
             'amount': amount_minor,
@@ -2456,6 +2496,13 @@ def _apply_successful_payment(uid: str, plan_id: str, payment_id: str, order_id:
             'timestamp': cycle_start,
             'source': source,
             **({'org_id': org_id} if org_id else {}),
+        }):
+            return {"success": True, "duplicate": True, "type": "topup"}
+
+        user_ref.update({
+            'credits_remaining': firestore.Increment(credits_to_add),
+            'topups_this_cycle': firestore.Increment(1),
+            **({'org_id': org_id} if org_id else {}),
         })
         return {"success": True, "credits_added": credits_to_add, "type": "topup"}
 
@@ -2463,9 +2510,24 @@ def _apply_successful_payment(uid: str, plan_id: str, payment_id: str, order_id:
     days_to_add = int(plan_config['days'])
     cycle_end = (now_utc + timedelta(days=days_to_add)).isoformat() + "Z"
 
+    if not _claim_payment({
+        'payment_id': payment_id,
+        'order_id': order_id,
+        'amount': amount_minor,
+        'currency': (currency or "INR").upper(),
+        'status': 'captured',
+        'plan': tier,
+        'credits_added': credits_to_add,
+        'type': 'subscription',
+        'timestamp': cycle_start,
+        'source': source,
+        **({'org_id': org_id} if org_id else {}),
+    }):
+        return {"success": True, "duplicate": True, "type": "subscription"}
+
     if user_doc.exists:
         user_ref.update({
-            'credits_remaining': current_credits + credits_to_add,
+            'credits_remaining': firestore.Increment(credits_to_add),
             'subscription_tier': tier,
             'billing_cycle_start': cycle_start,
             'billing_cycle_end': cycle_end,
@@ -2486,19 +2548,6 @@ def _apply_successful_payment(uid: str, plan_id: str, payment_id: str, order_id:
             **({'org_id': org_id} if org_id else {}),
         })
 
-    payment_ref.set({
-        'payment_id': payment_id,
-        'order_id': order_id,
-        'amount': amount_minor,
-        'currency': (currency or "INR").upper(),
-        'status': 'captured',
-        'plan': tier,
-        'credits_added': credits_to_add,
-        'type': 'subscription',
-        'timestamp': cycle_start,
-        'source': source,
-        **({'org_id': org_id} if org_id else {}),
-    })
     return {"success": True, "credits_added": credits_to_add, "billing_cycle_end": cycle_end, "type": "subscription"}
 
 # --- RAZORPAY SUBSCRIPTION ENDPOINTS ---

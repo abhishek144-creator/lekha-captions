@@ -50,157 +50,157 @@ const applyImanFontAfterIman = (templateList) => {
 
 const templates = applyImanFontAfterIman([
   {
-    id: 't-115', name: 'Green Neon Pulse',
+    id: 't-115', name: 'Neon Authority',
     desc: 'White text with pulsing green active glow',
     bg: '#111',
     style: { template_id: 't-115', font_family: 'Noto Sans', font_size: 28, font_weight: '900', font_style: 'italic', position_y: 75, text_color: '#FFFFFF', secondary_color: '#39FF14', highlight_color: '#DDAA03', has_shadow: true, shadow_color: '#39FF14', shadow_blur: 10, shadow_offset_x: 0, shadow_offset_y: 0 }
   },
   {
-    id: 't-109', name: '3D Shadow',
+    id: 't-109', name: 'Cinema Depth',
     desc: 'White text with bold orange 3D shadow on active',
     bg: '#1a1a1a',
-    style: { template_id: 't-109', font_family: 'Noto Sans', font_size: 26, font_weight: '900', position_y: 75, text_color: '#FFFFFF', secondary_color: '#FF2A00', highlight_color: '#FFF200', has_shadow: true, shadow_color: '#FF2A00', shadow_offset_x: 3, shadow_offset_y: 3, shadow_blur: 0 }
+    style: { template_id: 't-109', font_family: 'Noto Sans', font_size: 26, font_weight: '900', position_y: 75, text_color: '#FFFFFF', secondary_color: '#FF4500', highlight_color: '#FFF200', has_shadow: true, shadow_color: '#FF4500', shadow_offset_x: 3, shadow_offset_y: 3, shadow_blur: 0 }
   },
   {
-    id: 't-26', name: 'Bold Stroke',
+    id: 't-26', name: 'Editorial Impact',
     desc: 'Light bg, black bold text with pink 3D shadow',
     bg: '#e8e8e8',
     style: { template_id: 't-26', font_family: 'Bangers', font_size: 28, font_weight: '900', text_case: 'uppercase', position_y: 75, text_color: '#000000', secondary_color: '#ff2058', has_background: true, background_color: '#e8e8e8', background_opacity: 1.0, has_stroke: true, stroke_color: '#000000', stroke_width: 1 }
   },
   {
-    id: 't-102', name: 'Clarity',
+    id: 't-102', name: 'Studio Clarity',
     desc: 'Clean light bg, dark readable text',
     bg: '#FFFFFF',
     style: { template_id: 't-102', font_family: 'Noto Sans', font_size: 22, font_weight: '800', position_y: 75, text_color: '#1F2022', secondary_color: '#1F2022', highlight_color: '#b07d00', has_background: true, background_color: '#E8E8E8', background_opacity: 1.0, background_padding: 10 }
   },
   {
-    id: 't-36', name: 'Color Flash',
+    id: 't-36', name: 'Signal Flash',
     desc: 'Invisible until spoken — active word flashes in colour',
     bg: '#111',
     style: { template_id: 't-36', font_family: 'Noto Sans', font_size: 26, font_weight: '900', position_y: 75, text_color: '#FFFFFF', secondary_color: '#DDAA03', highlight_color: '#DDAA03' }
   },
   {
-    id: 't-105', name: 'Daze',
+    id: 't-105', name: 'Golden Focus',
     desc: 'White stroked, yellow glow on speak',
     bg: '#111',
     style: { template_id: 't-105', font_family: 'Noto Sans', font_size: 24, font_weight: '800', position_y: 75, text_color: '#FFFFFF', secondary_color: '#DDAA03', highlight_color: '#DDAA03', has_stroke: true, stroke_color: '#000000', stroke_width: 1, has_shadow: true, shadow_color: '#000000', shadow_blur: 2, shadow_offset_x: 2, shadow_offset_y: 2 }
   },
   {
-    id: 't-9', name: 'Fire Words',
+    id: 't-9', name: 'Ember Command',
     desc: 'Words ignite in fire orange glow',
     bg: '#1a0500',
     style: { template_id: 't-9', font_family: 'Noto Sans', font_size: 26, font_weight: '900', text_case: 'uppercase', position_y: 75, text_color: '#ff8c00', secondary_color: '#ff8c00', has_shadow: true, shadow_color: '#ff4500', shadow_blur: 10, shadow_offset_x: 0, shadow_offset_y: 0 }
   },
   {
-    id: 't-16', name: 'Ghost Focus',
+    id: 't-16', name: 'Soft Focus',
     desc: 'Blurred inactive words, sharp spotlight on spoken',
     bg: '#111',
     style: { template_id: 't-16', font_family: 'Playfair Display', font_size: 24, font_weight: '700', font_style: 'italic', position_y: 75, text_color: '#FFFFFF' }
   },
   {
-    id: 't-110', name: 'Glow Dot',
+    id: 't-110', name: 'Orbit Glow',
     desc: 'Glowing dot under active word',
     bg: '#111',
     style: { template_id: 't-110', font_family: 'Noto Sans', font_size: 22, font_weight: '800', position_y: 75, text_color: '#FFFFFF', secondary_color: '#0066FF', highlight_color: '#DDAA03' }
   },
   {
-    id: 't-119', name: 'Gradient Box',
+    id: 't-119', name: 'Gradient Marker',
     desc: 'Active word gets blue-cyan gradient box',
     bg: '#111',
     style: { template_id: 't-119', font_family: 'Inter', font_size: 24, font_weight: '800', position_y: 75, text_color: '#FFFFFF', secondary_color: '#00FFCC', highlight_color: '#DDAA03' }
   },
   {
-    id: 't-12', name: 'Horror',
+    id: 't-12', name: 'Noir Pulse',
     desc: 'Typewriter font, blood-red glow',
     bg: '#000',
     style: { template_id: 't-12', font_family: 'Special Elite', font_size: 22, position_y: 75, text_color: '#cc0000', secondary_color: '#cc0000', highlight_color: '#cc0000', has_shadow: true, shadow_color: '#cc0000', shadow_blur: 10, shadow_offset_x: 0, shadow_offset_y: 0 }
   },
   {
-    id: 't-106', name: 'Iman',
+    id: 't-106', name: 'Clean Reveal',
     desc: 'Words hidden until spoken — clean instant reveal',
     bg: '#111',
-    style: withBasicTemplateMarkup({ template_id: 't-106', template_source: 'lekha-basic', template_class: 'btcard t-106', template_name: 'Iman', template_layout: 'word-sequence', font_family: 'Noto Sans', font_size: 24, font_weight: '800', position_y: 75, text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03', has_shadow: true, shadow_color: '#000000', shadow_blur: 3, shadow_offset_x: 1, shadow_offset_y: 2, show_inactive: true, has_background: false, has_stroke: false })
+    style: withBasicTemplateMarkup({ template_id: 't-106', template_source: 'lekha-basic', template_class: 'btcard t-106', template_name: 'Clean Reveal', template_layout: 'word-sequence', font_family: 'Noto Sans', font_size: 24, font_weight: '800', position_y: 75, text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03', has_shadow: true, shadow_color: '#000000', shadow_blur: 3, shadow_offset_x: 1, shadow_offset_y: 2, show_inactive: true, has_background: false, has_stroke: false })
   },
   {
-    id: 't-52', name: 'Light Streak',
+    id: 't-52', name: 'Luminous Streak',
     desc: 'Words rise into view as spoken',
     bg: '#111',
-    style: withBasicTemplateMarkup({ template_id: 't-52', template_source: 'lekha-basic', template_class: 'btcard t-52', template_name: 'Light Streak', template_layout: 'word-sequence', font_family: 'Inter', font_size: 26, font_weight: '900', position_y: 75, text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03', show_inactive: true, has_background: false, has_shadow: false, has_stroke: false })
+    style: withBasicTemplateMarkup({ template_id: 't-52', template_source: 'lekha-basic', template_class: 'btcard t-52', template_name: 'Luminous Streak', template_layout: 'word-sequence', font_family: 'Inter', font_size: 26, font_weight: '900', position_y: 75, text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03', show_inactive: true, has_background: false, has_shadow: false, has_stroke: false })
   },
   {
-    id: 't-103', name: 'Nightfall',
+    id: 't-103', name: 'Midnight Focus',
     desc: 'Muted words on dark bg, spotlight on speak',
     bg: '#1e1e1e',
     style: { template_id: 't-103', font_family: 'Noto Sans', font_size: 22, font_weight: '800', position_y: 75, text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03', has_background: true, background_color: '#1e1e1e', background_opacity: 0.85, background_padding: 10 }
   },
   {
-    id: 't-112', name: 'Pink Gradient',
+    id: 't-112', name: 'Rose Spectrum',
     desc: 'Hot pink-to-coral gradient text reveal',
     bg: '#111',
     style: { template_id: 't-112', font_family: 'Noto Sans', font_size: 25, font_weight: '900', position_y: 75, text_color: '#FF007F', secondary_color: '#FF8E53' }
   },
   {
-    id: 't-104', name: 'Pulse',
+    id: 't-104', name: 'Electric Pulse',
     desc: 'White text with purple stroke glow',
     bg: '#111',
-    style: { template_id: 't-104', font_family: 'Noto Sans', font_size: 26, font_weight: '900', position_y: 75, text_color: '#FFFFFF', secondary_color: '#4F46FF', highlight_color: '#FFF200', has_stroke: true, stroke_color: '#4F46FF', stroke_width: 2 }
+    style: { template_id: 't-104', font_family: 'Noto Sans', font_size: 26, font_weight: '900', position_y: 75, text_color: '#FFFFFF', secondary_color: '#2563EB', highlight_color: '#2563EB', has_stroke: true, stroke_color: '#2563EB', stroke_width: 2 }
   },
   {
-    id: 't-111', name: 'Red Tape',
+    id: 't-111', name: 'Crimson Marker',
     desc: 'Bold red box snaps onto each spoken word',
     bg: '#111',
     style: { template_id: 't-111', font_family: 'Inter', font_size: 22, font_weight: '900', position_y: 75, text_color: '#FFFFFF', secondary_color: '#E60000' }
   },
   {
-    id: 't-T5', name: 'Sentence Box',
+    id: 't-T5', name: 'Golden Caption Bar',
     desc: 'Deep yellow pad box for all words',
     bg: '#111',
     style: { template_id: 't-T5', font_family: 'Montserrat', font_size: 24, font_weight: '800', font_style: 'italic', has_background: true, background_color: '#DDAA03', background_opacity: 1.0, background_padding: 10, text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03', position_y: 75 }
   },
   {
-    id: 't-95', name: 'Speed Lines',
+    id: 't-95', name: 'Velocity Lines',
     desc: 'Skewed font with blue speed streaks',
     bg: '#111',
     style: { template_id: 't-95', font_family: 'Montserrat', font_size: 30, position_y: 75, text_color: '#FFFFFF', secondary_color: '#0055FF', highlight_color: '#DDAA03' }
   },
   {
-    id: 't-T1', name: 'Stack & Flow',
+    id: 't-T1', name: 'Serif Cascade',
     desc: 'Italic serif, words stack then flow in',
     bg: '#0d1b2a',
     style: { template_id: 't-T1', font_family: 'Noto Sans', font_size: 30, font_style: 'italic', position_y: 75, text_color: '#FFFFFF' }
   },
   {
-    id: 't-T4', name: 'Study With Me',
-    desc: 'White italic serif with Word Slide on line two',
+    id: 't-T4', name: 'Scholar Script',
+    desc: 'White italic serif with Motion Slide on line two',
     bg: '#1a0e14',
-    style: withBasicTemplateMarkup({ template_id: 't-T4', template_source: 'lekha-basic', template_class: 'btcard t-T4', template_name: 'Study With Me', template_layout: 'word-sequence', font_family: 'Playfair Display', font_size: 24, font_weight: '700', font_style: 'italic', position_y: 75, text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03', show_inactive: true, has_background: false, has_shadow: false, has_stroke: false })
+    style: withBasicTemplateMarkup({ template_id: 't-T4', template_source: 'lekha-basic', template_class: 'btcard t-T4', template_name: 'Scholar Script', template_layout: 'word-sequence', font_family: 'Playfair Display', font_size: 24, font_weight: '700', font_style: 'italic', position_y: 75, text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03', show_inactive: true, has_background: false, has_shadow: false, has_stroke: false })
   },
   {
-    id: 't-WS1', name: 'Word Slide',
+    id: 't-WS1', name: 'Motion Slide',
     desc: 'Words slide in together with a slight stagger',
     bg: '#0d1117',
-    style: withBasicTemplateMarkup({ template_id: 't-WS1', template_source: 'lekha-basic', template_class: 'btcard t-WS1', template_name: 'Word Slide', template_layout: 'word-sequence', font_family: 'Raleway', font_size: 24, font_weight: '800', position_y: 75, text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03', show_inactive: true, has_background: false, has_shadow: false, has_stroke: false })
+    style: withBasicTemplateMarkup({ template_id: 't-WS1', template_source: 'lekha-basic', template_class: 'btcard t-WS1', template_name: 'Motion Slide', template_layout: 'word-sequence', font_family: 'Raleway', font_size: 24, font_weight: '800', position_y: 75, text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03', show_inactive: true, has_background: false, has_shadow: false, has_stroke: false })
   },
   {
-    id: 't-56', name: 'Underline',
+    id: 't-56', name: 'Precision Underline',
     desc: 'Active word gets a blue bottom border',
     bg: '#111',
     style: { template_id: 't-56', font_family: 'Inter', font_size: 26, font_weight: '900', position_y: 75, text_color: '#FFFFFF', secondary_color: '#0066FF', highlight_color: '#DDAA03' }
   },
   {
-    id: 't-T3', name: 'Underline Fade',
+    id: 't-T3', name: 'Quiet Emphasis',
     desc: 'Words fade in, key words get green underline',
     bg: '#0a0a0a',
     style: { template_id: 't-T3', font_family: 'Montserrat', font_size: 22, font_weight: '400', position_y: 75, text_color: '#FFFFFF' }
   },
   {
-    id: 't-57', name: 'VHS Glitch',
+    id: 't-57', name: 'Retro Signal',
     desc: 'Flicker-on reveal with chromatic aberration',
     bg: '#111',
     style: { template_id: 't-57', font_family: 'Inter', font_size: 26, font_weight: '900', position_y: 75, text_color: '#FFFFFF', has_shadow: true, shadow_color: '#00ffff', shadow_offset_x: 2, shadow_offset_y: 0, shadow_blur: 0 }
   },
   {
-    id: 't-37', name: 'Wipe Mask',
+    id: 't-37', name: 'Clean Wipe',
     desc: 'Pink uppercase text wipes in from left',
     bg: '#111',
     style: { template_id: 't-37', font_family: 'Inter', font_size: 26, font_weight: '900', text_case: 'uppercase', position_y: 75, text_color: '#FF007F' }

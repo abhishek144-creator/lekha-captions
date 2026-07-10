@@ -775,37 +775,37 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
                         {['hollow', 'splice', 'outline'].includes(currentStyle.effectType) && (
                           <div>
                             <div className="flex justify-between mb-1"><span className="text-[10px] text-gray-400">Thickness</span><span className="text-[10px] text-gray-500">{currentStyle.effectThickness ?? 50}</span></div>
-                            <Slider value={[currentStyle.effectThickness ?? 50]} onValueChange={([val]) => onStyleChange('effectThickness', val)} max={100} step={1} />
+                            <Slider value={[currentStyle.effectThickness ?? 50]} onValueChange={([val]) => onStyleChange('effectThickness', val)} onPointerDown={() => onHistoryRecord && onHistoryRecord()} max={100} step={1} />
                           </div>
                         )}
                         {['shadow', 'splice', 'echo', 'lift'].includes(currentStyle.effectType) && (
                           <>
                             <div>
                               <div className="flex justify-between mb-1"><span className="text-[10px] text-gray-400">Offset</span><span className="text-[10px] text-gray-500">{currentStyle.effectOffset ?? 50}</span></div>
-                              <Slider value={[currentStyle.effectOffset ?? 50]} onValueChange={([val]) => onStyleChange('effectOffset', val)} max={100} step={1} />
+                              <Slider value={[currentStyle.effectOffset ?? 50]} onValueChange={([val]) => onStyleChange('effectOffset', val)} onPointerDown={() => onHistoryRecord && onHistoryRecord()} max={100} step={1} />
                             </div>
                             <div>
                               <div className="flex justify-between mb-1"><span className="text-[10px] text-gray-400">Direction</span><span className="text-[10px] text-gray-500">{currentStyle.effectDirection ?? -45}°</span></div>
-                              <Slider value={[currentStyle.effectDirection ?? -45]} onValueChange={([val]) => onStyleChange('effectDirection', val)} min={-180} max={180} step={1} />
+                              <Slider value={[currentStyle.effectDirection ?? -45]} onValueChange={([val]) => onStyleChange('effectDirection', val)} onPointerDown={() => onHistoryRecord && onHistoryRecord()} min={-180} max={180} step={1} />
                             </div>
                           </>
                         )}
                         {['shadow', 'neon', 'lift'].includes(currentStyle.effectType) && (
                           <div>
                             <div className="flex justify-between mb-1"><span className="text-[10px] text-gray-400">Blur</span><span className="text-[10px] text-gray-500">{currentStyle.effectBlur ?? 50}</span></div>
-                            <Slider value={[currentStyle.effectBlur ?? 50]} onValueChange={([val]) => onStyleChange('effectBlur', val)} max={100} step={1} />
+                            <Slider value={[currentStyle.effectBlur ?? 50]} onValueChange={([val]) => onStyleChange('effectBlur', val)} onPointerDown={() => onHistoryRecord && onHistoryRecord()} max={100} step={1} />
                           </div>
                         )}
                         {['shadow', 'echo'].includes(currentStyle.effectType) && (
                           <div>
                             <div className="flex justify-between mb-1"><span className="text-[10px] text-gray-400">Transparency</span><span className="text-[10px] text-gray-500">{currentStyle.effectTransparency ?? 40}</span></div>
-                            <Slider value={[currentStyle.effectTransparency ?? 40]} onValueChange={([val]) => onStyleChange('effectTransparency', val)} max={100} step={1} />
+                            <Slider value={[currentStyle.effectTransparency ?? 40]} onValueChange={([val]) => onStyleChange('effectTransparency', val)} onPointerDown={() => onHistoryRecord && onHistoryRecord()} max={100} step={1} />
                           </div>
                         )}
                         {['neon'].includes(currentStyle.effectType) && (
                           <div>
                             <div className="flex justify-between mb-1"><span className="text-[10px] text-gray-400">Intensity</span><span className="text-[10px] text-gray-500">{currentStyle.effectIntensity ?? 50}</span></div>
-                            <Slider value={[currentStyle.effectIntensity ?? 50]} onValueChange={([val]) => onStyleChange('effectIntensity', val)} max={100} step={1} />
+                            <Slider value={[currentStyle.effectIntensity ?? 50]} onValueChange={([val]) => onStyleChange('effectIntensity', val)} onPointerDown={() => onHistoryRecord && onHistoryRecord()} max={100} step={1} />
                           </div>
                         )}
                         {!['lift'].includes(currentStyle.effectType) && (
@@ -868,6 +868,7 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
                   <Slider
                     value={[currentStyle.animationSpeed || 1]}
                     onValueChange={([val]) => onStyleChange('animationSpeed', val)}
+                    onPointerDown={() => onHistoryRecord && onHistoryRecord()}
                     min={0.25}
                     max={3}
                     step={0.25}

@@ -52,9 +52,11 @@ export default function CaptionEditor({
   }, [user?.email]);
 
   const updateCaption = (id, updates) => {
+    // coalesce: per-keystroke text edits collapse into one undo snapshot per
+    // typing burst instead of flooding the 50-entry history cap.
     setCaptions(prev => prev.map(c =>
       c.id === id ? { ...c, ...updates } : c
-    ));
+    ), { coalesce: true });
   };
 
   const deleteCaption = (id) => {
@@ -65,11 +67,33 @@ export default function CaptionEditor({
 
   const duplicateCaption = (caption) => {
     if (!caption) return;
+    const newId = `${Date.now()}-duplicate`;
+    const newStart = (caption.end_time || caption.start_time || 0) + 0.1;
+    const timeDelta = newStart - (caption.start_time || 0);
     const clone = {
       ...caption,
-      id: `${Date.now()}-duplicate`,
-      start_time: (caption.end_time || caption.start_time || 0) + 0.1,
-      end_time: (caption.end_time || caption.start_time || 0) + Math.max(0.1, (caption.end_time || 0) - (caption.start_time || 0)) + 0.1
+      id: newId,
+      start_time: newStart,
+      end_time: newStart + Math.max(0.1, (caption.end_time || 0) - (caption.start_time || 0)),
+      // Word timings must move with the caption — copying them verbatim leaves
+      // them pointing at the ORIGINAL time window, breaking per-word highlight
+      // timing on the duplicate.
+      words: Array.isArray(caption.words)
+        ? caption.words.map(w => ({
+            ...w,
+            ...(Number.isFinite(Number(w?.start)) ? { start: Number(w.start) + timeDelta } : {}),
+            ...(Number.isFinite(Number(w?.end)) ? { end: Number(w.end) + timeDelta } : {}),
+          }))
+        : caption.words,
+      // wordStyles keys embed the caption id (`${id}-${wordIndex}`) — remap them
+      // onto the new id or every per-word style silently stops applying.
+      wordStyles: caption.wordStyles
+        ? Object.fromEntries(Object.entries(caption.wordStyles).map(([key, value]) => (
+            key.startsWith(`${caption.id}-`)
+              ? [`${newId}-${key.slice(String(caption.id).length + 1)}`, value]
+              : [key, value]
+          )))
+        : caption.wordStyles,
     };
     setCaptions(prev => {
       const index = prev.findIndex(c => c.id === caption.id);
@@ -81,7 +105,7 @@ export default function CaptionEditor({
     setSelectedCaptionId(clone.id);
   };
 
-  const splitCaption = (id, cursorPosition) => {
+  const splitCaption = (id) => {
     const caption = captions.find(c => c.id === id);
     if (!caption || !caption.text) return;
 
@@ -97,17 +121,47 @@ export default function CaptionEditor({
 
     if (!firstHalf || !secondHalf) return;
 
-    const midTime = ((caption.start_time || 0) + (caption.end_time || 0)) / 2;
+    // Split the timed words along with the text — keeping the full words array
+    // on the first half made its highlight timing run past its new end, while
+    // the second half lost per-word timing entirely.
+    const firstWordCount = firstHalf.split(/\s+/).filter(Boolean).length;
+    const timedWords = Array.isArray(caption.words) ? caption.words : [];
+    const firstWords = timedWords.slice(0, firstWordCount);
+    const secondWords = timedWords.slice(firstWordCount);
 
+    // Prefer the real word boundary as the split time so word timings stay
+    // inside their captions; fall back to the midpoint without timings.
+    const boundaryEnd = Number(firstWords[firstWords.length - 1]?.end);
+    const boundaryStart = Number(secondWords[0]?.start);
+    const midTime = Number.isFinite(boundaryEnd)
+      ? boundaryEnd
+      : Number.isFinite(boundaryStart)
+        ? boundaryStart
+        : ((caption.start_time || 0) + (caption.end_time || 0)) / 2;
+
+    const newId = `${Date.now()}-split`;
     const newCaptions = captions.flatMap(c => {
       if (c.id === id) {
+        // wordStyles keys are `${captionId}-${wordIndex}`; indices past the
+        // split belong to the second caption under its new id.
+        const firstStyles = {};
+        const secondStyles = {};
+        Object.entries(c.wordStyles || {}).forEach(([key, value]) => {
+          if (!key.startsWith(`${c.id}-`)) return;
+          const wordIndex = Number(key.slice(String(c.id).length + 1));
+          if (!Number.isFinite(wordIndex)) return;
+          if (wordIndex < firstWordCount) firstStyles[key] = value;
+          else secondStyles[`${newId}-${wordIndex - firstWordCount}`] = value;
+        });
         return [
-          { ...c, text: firstHalf, end_time: midTime },
+          { ...c, text: firstHalf, end_time: midTime, words: firstWords, wordStyles: firstStyles },
           {
-            id: `${Date.now()}-split`,
+            id: newId,
             text: secondHalf,
             start_time: midTime,
-            end_time: c.end_time
+            end_time: c.end_time,
+            words: secondWords,
+            wordStyles: secondStyles
           }
         ];
       }

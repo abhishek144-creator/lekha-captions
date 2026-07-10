@@ -100,12 +100,14 @@ export default function AnimateTab({ selectedCaption, captions, setCaptions, bas
 
   const handleSpeedChange = (speed) => {
     if (freshSelectedCaption && setCaptions) {
+      // coalesce: slider drags fire per tick — collapse the burst into one
+      // undo snapshot instead of flooding the history cap.
       setCaptions(prev => prev.map(cap => {
         if (cap.id === freshSelectedCaption.id) {
           return { ...cap, animationSpeed: speed };
         }
         return cap;
-      }));
+      }), { coalesce: true });
     }
   };
 

@@ -26,6 +26,13 @@ const newSidebarHtml = await fs.readFile(
   path.join(projectRoot, 'src', 'assets', 'lekha-captions-49-templates.html'),
   'utf8',
 );
+const lcSidebarRawHtml = (await Promise.all(
+  ['2', '3', '4', '5'].map((suffix) => fs.readFile(
+    path.join(projectRoot, 'src', 'assets', `lekha-captions-lc-${suffix}.html`),
+    'utf8',
+  )),
+)).join('\n');
+let lcSidebarHtml = '';
 const rightTemplateHtml = await fs.readFile(
   path.join(projectRoot, 'src', 'assets', 'lekha-captions-T11-T35.html'),
   'utf8',
@@ -114,6 +121,247 @@ const ADVANCED_STYLE_OVERRIDES = {
   t39: { template_name: 'Evidence Board', font_family: 'IBM Plex Mono', font_size: 22, text_color: '#FFFFFF', secondary_color: '#FF3D71', highlight_color: '#FF3D71', text_case: 'uppercase' },
   t40: { template_name: 'Final Whisper', font_family: 'Crimson Text', text_color: '#FFFFFF', secondary_color: '#F2072B', highlight_color: '#F2072B' },
 };
+
+const LC_MASTER_COLORS = [
+  '#FFB000', '#00D4FF', '#FF2E7A', '#76FF03', '#B86BFF', '#FF6A00', '#00F5A0',
+  '#FF3030', '#3D7CFF', '#FFE600', '#FF00C8', '#00E5FF', '#A3FF12', '#FF9500',
+];
+const LC_MERGE_LAYOUTS = new Set(['splice', 'serifbreak', 'baseline', 'weld']);
+const LC_TIMING = {
+  staggerMs: 280,
+  bodyDurationMs: 430,
+  heroDurationMs: 560,
+  wbwDurationMs: 110,
+};
+const LC_ANIMATION_MAP = {
+  rise: 'rise',
+  drop: 'drop',
+  fade: 'fade',
+  slidel: 'slide-l',
+  slider: 'slide-r',
+  wipe: 'wipe',
+  wipeup: 'wipe-up',
+  pop: 'pop',
+  elastic: 'pop',
+  press: 'pop',
+  punch: 'pop',
+  stamp: 'pop',
+  swing: 'roll',
+  roll: 'roll',
+  rolly: 'roll',
+  climb: 'rise',
+  type: 'wipe',
+  slot: 'wipe',
+  flick: 'fade',
+  whip: 'slide-l',
+  track: 'pop',
+  skew: 'skew-snap',
+  shutter: 'stencil',
+  stretch: 'pop',
+  unfold: 'wipe-up',
+};
+
+function escapeHtml(value = '') {
+  return String(value).replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  }[char]));
+}
+
+function mapLcAnimation(anim = '') {
+  return LC_ANIMATION_MAP[String(anim || '').trim()] || 'rise';
+}
+
+function getLcAnimationEase(anim = '') {
+  const key = String(anim || '').trim();
+  if (key === 'type') return 'steps(8,end)';
+  if (key === 'flick') return 'linear';
+  return 'cubic-bezier(.22,.68,.26,1)';
+}
+
+function parseLcTemplateSet(markup = '') {
+  const source = String(markup || '');
+  const marker = 'const TPLS=[';
+  const start = source.indexOf(marker);
+  if (start < 0) return [];
+  const bodyStart = start + marker.length;
+  const bodyEnd = source.indexOf('];', bodyStart);
+  if (bodyEnd < 0) return [];
+  const body = source.slice(bodyStart, bodyEnd);
+  return Function(`
+    const C = (layout, ...lines) => ({ k: 'c', layout, lines });
+    const L = (cls, text, anim, o = {}) => Object.assign({ cls, text, anim }, o);
+    const N = (text, o = {}) => Object.assign({ k: 'n', text }, o);
+    const T = (id, name, style, scenes) => ({ id, name, style, scenes });
+    return [${body}];
+  `)();
+}
+
+function lcWords(value = '') {
+  return String(value || '').trim().split(/\s+/).filter(Boolean);
+}
+
+function buildLcWordSpan(word, {
+  cls = '',
+  hero = false,
+  heroCol = '',
+  ul = false,
+  anim = '',
+  delay = 0,
+  duration = LC_TIMING.bodyDurationMs,
+  on = false,
+} = {}) {
+  const className = ['w', cls, hero ? 'hero is-emphasis' : '', ul ? 'ul' : '', on ? 'on' : '']
+    .filter(Boolean)
+    .join(' ');
+  const style = [];
+  if (hero && heroCol) style.push(`color:${heroCol}`);
+  if (anim) style.push(`animation:${anim} ${duration}ms ${getLcAnimationEase(anim)} ${delay}ms forwards`);
+  const attrs = [
+    `class="${escapeHtml(className)}"`,
+    anim ? `data-anim="${escapeHtml(mapLcAnimation(anim))}"` : '',
+    anim ? `data-lc-anim="${escapeHtml(anim)}"` : '',
+    anim ? `data-lc-duration="${duration}"` : '',
+    anim ? `data-lc-ease="${escapeHtml(getLcAnimationEase(anim))}"` : '',
+    anim ? `data-lc-delay="${delay}"` : '',
+    style.length ? `style="${escapeHtml(style.join(';'))}"` : '',
+  ].filter(Boolean).join(' ');
+  return `<span ${attrs}>${escapeHtml(word)}</span>`;
+}
+
+function renderLcFlow(segs = [], ctx, fuse = false) {
+  let first = true;
+  const html = [];
+  segs.forEach((seg) => {
+    lcWords(seg.text).forEach((word) => {
+      if (!first && !fuse) html.push(' ');
+      first = false;
+      const duration = seg.hero ? LC_TIMING.heroDurationMs : LC_TIMING.bodyDurationMs;
+      const delay = ctx.n * LC_TIMING.staggerMs;
+      html.push(buildLcWordSpan(word, {
+        cls: seg.spanCls || '',
+        hero: !!seg.hero,
+        heroCol: ctx.heroCol,
+        ul: !!seg.ul,
+        anim: seg.anim || '',
+        delay,
+        duration,
+        on: !seg.anim,
+      }));
+      if (seg.anim) ctx.n += 1;
+    });
+  });
+  return html.join('');
+}
+
+function findLc3HeroRange(words = [], hero = '') {
+  const heroWords = lcWords(hero);
+  const strip = (value) => String(value || '').replace(/[^0-9A-Za-z']/g, '').toLowerCase();
+  if (!heroWords.length) return [-1, -1];
+  for (let index = 0; index <= words.length - heroWords.length; index += 1) {
+    if (heroWords.every((word, offset) => strip(words[index + offset]) === strip(word))) {
+      return [index, index + heroWords.length];
+    }
+  }
+  return [-1, -1];
+}
+
+function renderLcNormalScene(scene = {}, ctx, templateId = '') {
+  const isFormulaSet = Number(String(templateId).replace(/\D/g, '')) >= 181;
+  const mode = scene.mode || (scene.anim ? 'anim' : 'plain');
+  const keywordClassMap = { underline: 'ns3hero', box: 'ns3box', mark: 'ns3mark', bracket: 'ns3bracket', dot: 'ns3dot' };
+  const putWords = (words, heroFlags = []) => words.map((word, index) => {
+    const hero = !!heroFlags[index];
+    const cls = hero
+      ? (isFormulaSet ? (scene.styledHero ? 'ns3hero' : 'hero') : (scene.type === 3 ? (keywordClassMap[scene.keywordStyle] || 'ns3hero') : 'hero'))
+      : '';
+    const anim = mode === 'static' || mode === 'plain' ? '' : (mode === 'wbw' ? 'fade' : (hero ? (scene.heroAnim || 'pop') : (scene.bodyAnim || 'rise')));
+    const delay = ctx.n * LC_TIMING.staggerMs;
+    if (anim) ctx.n += 1;
+    return buildLcWordSpan(word, {
+      cls,
+      hero,
+      heroCol: ctx.heroCol,
+      anim,
+      delay,
+      duration: mode === 'wbw' ? LC_TIMING.wbwDurationMs : (hero ? LC_TIMING.heroDurationMs : LC_TIMING.bodyDurationMs),
+      on: !anim,
+    });
+  }).join(' ');
+
+  const words = lcWords(scene.text);
+  const [heroStart, heroEnd] = findLc3HeroRange(words, scene.hero);
+  const isHero = words.map((_, index) => heroStart >= 0 && index >= heroStart && index < heroEnd);
+  let inner = '';
+  if (scene.drop && heroStart >= 0) {
+    inner = `<div class="ns3top">${putWords(words.filter((_, index) => !isHero[index]))}</div><div class="ns3bot">${putWords(words.filter((_, index) => isHero[index]), words.filter((_, index) => isHero[index]).map(() => true))}</div>`;
+  } else {
+    inner = putWords(words, isHero);
+  }
+  return `<div class="nline${mode === 'plain' ? ' plainwrap' : ''}">${inner}</div>`;
+}
+
+function getLcPalette(templateIndex = 0) {
+  return [0, 1, 2, 3, 4].map((offset) => LC_MASTER_COLORS[((templateIndex * 3) + (offset * 2)) % LC_MASTER_COLORS.length]);
+}
+
+function buildLcSceneMarkup(scene = {}, sceneIndex = 0, template = {}) {
+  const palette = template.pal || getLcPalette(0);
+  const heroCol = palette[sceneIndex % palette.length] || LC_MASTER_COLORS[0];
+  const ctx = { n: 0, heroCol };
+  if (scene.k === 'n') return renderLcNormalScene(scene, ctx, template.id);
+  const layout = escapeHtml(scene.layout || 'pyramid');
+  if (LC_MERGE_LAYOUTS.has(scene.layout)) {
+    const lineMarkup = renderLcFlow((scene.lines || []).map((line) => ({
+      text: line.text,
+      anim: line.anim,
+      hero: line.hero,
+      spanCls: [line.cls, line.font].filter(Boolean).join(' '),
+      ul: line.ul,
+    })), ctx, scene.layout === 'weld');
+    return `<div class="cpt ${layout}" style="--hc:${heroCol}"><div class="ln">${lineMarkup}</div></div>`;
+  }
+  const lines = (scene.lines || []).map((line) => {
+    const lineClass = ['ln', line.cls, line.font, line.hero ? 'hero' : '', line.box ? 'box' : '']
+      .filter(Boolean)
+      .map(escapeHtml)
+      .join(' ');
+    const lineStyle = [line.box ? `background:${heroCol}` : '', line.box ? 'color:#101114' : '', line.hero && !line.box ? `color:${heroCol}` : '']
+      .filter(Boolean)
+      .join(';');
+    const savedHeroCol = ctx.heroCol;
+    if (line.box) ctx.heroCol = '#101114';
+    const lineMarkup = renderLcFlow([{ text: line.text, anim: line.anim, spanCls: '', ul: line.ul, hero: line.hero }], ctx);
+    ctx.heroCol = savedHeroCol;
+    return `<div class="${lineClass}"${lineStyle ? ` style="${escapeHtml(lineStyle)}"` : ''}>${lineMarkup}</div>`;
+  }).join('');
+  return `<div class="cpt ${layout}" data-lc-scene="${sceneIndex}" style="--hc:${heroCol}">${lines}</div>`;
+}
+
+function buildLcCardMarkup(template = {}, templateIndex = 0) {
+  const palette = getLcPalette(templateIndex);
+  template.pal = palette;
+  const sceneMarkup = (template.scenes || []).map((scene, sceneIndex) => (
+    `<div class="sb${sceneIndex === 0 ? ' active' : ''}" data-si="${sceneIndex}" style="--lc-scene-highlight:${palette[sceneIndex % palette.length]}"><div class="cap"><div class="scene">${buildLcSceneMarkup(scene, sceneIndex, template)}</div></div></div>`
+  )).join('');
+  const dots = (template.scenes || []).map((_, sceneIndex) => `<i class="${sceneIndex === 0 ? 'on' : ''}"></i>`).join('');
+  const cardClass = `lc-${String(template.id || '').toLowerCase()}`;
+  const tint = palette[0] || LC_MASTER_COLORS[0];
+  return `<div class="card lc-card ${cardClass}" data-lc-template="true" style="--tint:${tint}"><div class="card-top"><div><span class="cid">${escapeHtml(template.id)}</span><span class="cnm"> - ${escapeHtml(template.name)}</span></div><div class="badges"><span class="bg m">LC</span><span class="bg s${template.style}">${template.style} STYLE</span></div></div><div class="stage">${sceneMarkup}</div><div class="dots">${dots}</div></div>`;
+}
+
+function buildLcSidebarHtml(rawMarkup = '') {
+  return rawMarkup
+    .split(/<\/html>/i)
+    .flatMap((chunk) => parseLcTemplateSet(chunk))
+    .map((template, index) => buildLcCardMarkup(template, index))
+    .join('\n');
+}
+
+lcSidebarHtml = buildLcSidebarHtml(lcSidebarRawHtml);
 
 const CASES = [
   {
@@ -607,6 +855,46 @@ const CASES = [
     },
   },
   {
+    id: 'left-lc-cpt-multi-line-reveal',
+    sidebar: true,
+    template20Id: 'T166',
+    templateSource: 'lekha-lc',
+    text: 'Every Word Must Stay Visible',
+    phaseIndex: 0,
+    impWordIndex: 2,
+    requiredColors: [],
+    minBboxHeight: 14,
+    motionCritical: true,
+    style: {
+      template_name: 'LC CPT Multi Line',
+      font_family: 'Archivo',
+      font_size: 24,
+      font_weight: '800',
+      text_color: '#FFFFFF',
+      secondary_color: '#DDAA03',
+    },
+  },
+  {
+    id: 'left-lc-nline-middle-phrase',
+    sidebar: true,
+    template20Id: 'T176',
+    templateSource: 'lekha-lc',
+    text: 'Middle Lines Should Not Disappear',
+    phaseIndex: 2,
+    impWordIndex: 2,
+    requiredColors: [],
+    minBboxHeight: 14,
+    motionCritical: true,
+    style: {
+      template_name: 'LC NLine Middle Phrase',
+      font_family: 'Archivo',
+      font_size: 24,
+      font_weight: '800',
+      text_color: '#FFFFFF',
+      secondary_color: '#DDAA03',
+    },
+  },
+  {
     id: 'right-basic-green-neon-pulse',
     basic: true,
     templateId: 't-115',
@@ -760,6 +1048,13 @@ function buildExhaustiveSidebarCases() {
       idClass: 'lk-cid',
       nameClass: 'lk-cnm',
     },
+    {
+      source: lcSidebarHtml,
+      templateSource: 'lekha-lc',
+      cardClass: 'card',
+      idClass: 'cid',
+      nameClass: 'cnm',
+    },
   ]) {
     const sanitized = sanitizeHtml(source);
     const cardPattern = /<div\b[^>]*class="([^"]*)"[^>]*>/gi;
@@ -786,7 +1081,7 @@ function buildExhaustiveSidebarCases() {
           requiredColors: [],
           style: {
             template_name: templateName || id,
-            font_family: templateSource === 'lekha-49' ? 'Inter' : 'Noto Sans',
+            font_family: templateSource === 'lekha-lc' ? 'Archivo' : (templateSource === 'lekha-49' ? 'Inter' : 'Noto Sans'),
             font_size: 24,
             font_weight: '800',
             text_color: '#FFFFFF',
@@ -798,6 +1093,15 @@ function buildExhaustiveSidebarCases() {
     }
   }
   return cases;
+}
+
+function buildLcSidebarCases() {
+  // LC cards are generated from four source packs, so the small hand-picked
+  // CASES list cannot prove that a reveal change works beyond its first lines.
+  // Reuse the canonical sidebar enumerator to cover every generated LC card.
+  return buildExhaustiveSidebarCases()
+    .filter((testCase) => testCase.sidebar && testCase.templateSource === 'lekha-lc')
+    .map((testCase) => ({ ...testCase, motionCritical: true }));
 }
 
 // Right-side "Basic" templates render their `.btcard` source markup in both the
@@ -952,7 +1256,7 @@ function stripPreviewRuntimeState(markup = '', preserveInlineStyles = false) {
     .replace(/\sclass="([^"]*)"/gi, (_, classValue) => {
       const cleanedClassValue = String(classValue)
         .split(/\s+/)
-        .filter((className) => className && !['active', 'visible', 'anim', 'on'].includes(className))
+        .filter((className) => className && !['active', 'visible', 'anim', preserveInlineStyles ? '' : 'on', 'in'].includes(className))
         .join(' ');
       return cleanedClassValue ? ` class="${cleanedClassValue}"` : '';
     })
@@ -962,7 +1266,8 @@ function stripPreviewRuntimeState(markup = '', preserveInlineStyles = false) {
 
 function findSidebarTemplateMarkup(templateSource, templateId) {
   const isNew = templateSource === 'lekha-49';
-  const source = sanitizeHtml(isNew ? newSidebarHtml : legacySidebarHtml);
+  const isLc = templateSource === 'lekha-lc';
+  const source = sanitizeHtml(isLc ? lcSidebarHtml : (isNew ? newSidebarHtml : legacySidebarHtml));
   const cardClass = isNew ? 'lk-card' : 'card';
   const idClass = isNew ? 'lk-cid' : 'cid';
   const cardPattern = /<div\b[^>]*class="([^"]*)"[^>]*>/gi;
@@ -976,7 +1281,7 @@ function findSidebarTemplateMarkup(templateSource, templateId) {
       cardMarkup.match(new RegExp(`<span class="${idClass}">([\\s\\S]*?)<\\/span>`, 'i'))?.[1] || '',
     );
     if (id === templateId) {
-      return stripPreviewRuntimeState(cardMarkup, isNew);
+      return stripPreviewRuntimeState(cardMarkup, isNew || isLc);
     }
     cardPattern.lastIndex = match.index + Math.max(cardMarkup.length, 1);
   }
@@ -1215,6 +1520,7 @@ async function measureFrame(page, framePath) {
       cyan: 0,
     };
     const rowVisible = new Array(canvas.height).fill(0);
+    const rowTextCore = new Array(canvas.height).fill(0);
     const makeBox = () => ({
       minX: canvas.width,
       minY: canvas.height,
@@ -1265,6 +1571,18 @@ async function measureFrame(page, framePath) {
         rowVisible[y] += 1;
         addBoxPixel('visible', x, y);
       }
+      // Line structure must be derived from opaque glyph cores, not glow. A
+      // colored text shadow can bridge adjacent authored lines and turn two
+      // legitimate rows into one large visible-pixel cluster.
+      if (a >= 180 && (
+        (r >= 205 && g >= 205 && b >= 205)
+        || (r >= 180 && g <= 145 && b <= 145)
+        || (r >= 150 && r >= g && g >= 85 && g <= 205 && b <= 145)
+        || (r <= 145 && g >= 165 && b <= 165)
+        || (r <= 145 && g >= 140 && b >= 140)
+      )) {
+        rowTextCore[y] += 1;
+      }
       if (r >= 205 && g >= 205 && b >= 205) {
         counts.white += 1;
         addBoxPixel('white', x, y);
@@ -1299,9 +1617,9 @@ async function measureFrame(page, framePath) {
       }
     }
 
-    const visibleRows = rowVisible
+    const visibleRows = rowTextCore
       .map((count, y) => ({ count, y }))
-      .filter(({ count }) => count >= 3);
+      .filter(({ count }) => count >= 2);
     const lineClusters = [];
     visibleRows.forEach(({ y }) => {
       const lastCluster = lineClusters[lineClusters.length - 1];
@@ -1405,6 +1723,7 @@ const outputRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'lekha-template-expor
 const selectedCases = (() => {
   const scope = cliScope || process.env.TEMPLATE_EXPORT_SCOPE || '';
   if (scope === 'all-left') return buildExhaustiveSidebarCases();
+  if (scope === 'lc-left') return buildLcSidebarCases();
   if (scope === 'all-right') return buildExhaustiveAdvancedCases();
   if (scope === 'all-right-phases') return buildExhaustiveAdvancedCases({ allPhases: true });
   if (scope === 'affected-right-phases') return buildAffectedAdvancedPhaseCases();
@@ -1488,6 +1807,8 @@ try {
   const scope = cliScope || process.env.TEMPLATE_EXPORT_SCOPE || '';
   const scopeLabel = scope === 'all-left'
     ? 'left templates'
+    : scope === 'lc-left'
+      ? 'LC left templates'
     : scope === 'all-right'
       ? 'right templates'
       : scope === 'all-right-phases'

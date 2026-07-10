@@ -10,9 +10,11 @@ import {
   ADVANCED_TEMPLATE_EMPHASIS_COLORS,
   ADVANCED_TEMPLATE_RUNTIME_CSS,
   ADVANCED_TEMPLATE_TIMING,
+  LC_TEMPLATE_TIMING,
   LEGACY_IMP_ANIMS,
   LEGACY_TEMPLATE_TIMING,
   LEGACY_WBW_CLASSES,
+  getLcMotionSchedule,
   ORIGINAL_TEMPLATE_BLOCK_TYPES,
   RECREATED_ADVANCED_TEMPLATE_IDS,
   getAdvancedPlaybackElapsedMs,
@@ -899,7 +901,7 @@ function buildAppliedSidebarTemplateInline(captionText, captionStyle, { activePh
   if (_appliedInlineCache.has(cacheKey)) return _appliedInlineCache.get(cacheKey);
   const isNew = captionStyle?.template_source === 'lekha-49';
   const isLc = captionStyle?.template_source === 'lekha-lc';
-  const forceContiguousPositioned = captionStyle?.template_source === 'lekha-20';
+  const forceContiguousPositioned = false;
   const result = _buildAppliedSidebarTemplateInlineUncached(rawMarkup, isNew || isLc, captionText, activePhase, settled, impWordIndex, normalizedImpWordIndices, forceContiguousPositioned);
   if (_appliedInlineCache.size > 400) _appliedInlineCache.clear();
   _appliedInlineCache.set(cacheKey, result);
@@ -1072,8 +1074,12 @@ function extractAppliedTemplateCss(source = 'lekha-20') {
 const APPLIED_TEMPLATE_HOST_OVERRIDES = `
   .lekha-applied-template-host {
     display: inline-block;
-    width: min(100%, var(--applied-template-width, 280px));
-    max-width: min(100%, 320px);
+    width: var(--applied-template-width, 280px);
+    max-width: min(94vw, var(--applied-template-width, 320px));
+  }
+  .lekha-applied-template-host[data-applied-template-source="lekha-lc"] {
+    width: var(--applied-template-width, 280px);
+    max-width: min(92vw, 320px);
   }
   .lekha-applied-template-host .lk-card,
   .lekha-applied-template-host .card {
@@ -1088,10 +1094,24 @@ const APPLIED_TEMPLATE_HOST_OVERRIDES = `
     background: transparent !important; box-shadow: none !important; border: 0 !important;
     overflow: visible !important; padding: 0 !important; margin: 0 !important; display: block !important;
     width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    aspect-ratio: auto !important;
   }
   .lekha-applied-template-host .lc-card .sb {
     position: relative !important;
     inset: auto !important;
+  }
+  .lekha-applied-template-host[data-applied-template-source="lekha-lc"] .lc-card .sb {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 100% !important;
+    margin: 0 !important;
+  }
+  .lekha-applied-template-host.is-color-customized .lc-card .sb {
+    --template-highlight: var(--sidebar-template-highlight, var(--sidebar-emphasis-accent, #DDAA03)) !important;
   }
   .lekha-applied-template-host .lc-card .sb:not(.active) {
     position: absolute !important;
@@ -1120,6 +1140,23 @@ const APPLIED_TEMPLATE_HOST_OVERRIDES = `
     height: auto !important;
     aspect-ratio: auto !important;
   }
+  .lekha-applied-template-host[data-applied-template-source="lekha-lc"] .lc-card .stage {
+    position: relative !important;
+    width: 100% !important;
+    height: min(58vh, calc(var(--applied-template-width, 280px) * 1.28)) !important;
+    min-height: 220px !important;
+    aspect-ratio: auto !important;
+    container-type: inline-size !important;
+    overflow: visible !important;
+  }
+  .lekha-applied-template-host[data-applied-template-source="lekha-lc"] .lc-card .cap {
+    position: absolute !important;
+    left: 50% !important;
+    top: 52% !important;
+    transform: translate(-50%, -50%) !important;
+    width: 88% !important;
+    max-width: 88% !important;
+  }
   .lekha-applied-template-host .lc-card .stage::after {
     content: none !important;
     display: none !important;
@@ -1133,13 +1170,16 @@ const APPLIED_TEMPLATE_HOST_OVERRIDES = `
   .lekha-applied-template-host .lc-card .sb .ns3mark,
   .lekha-applied-template-host .lc-card .sb .ns3bracket,
   .lekha-applied-template-host .lc-card .sb .ns3dot {
-    color: var(--template-highlight, var(--sidebar-emphasis-accent, #DDAA03)) !important;
-    -webkit-text-fill-color: var(--template-highlight, var(--sidebar-emphasis-accent, #DDAA03)) !important;
+    color: var(--template-highlight, var(--lc-scene-highlight, var(--sidebar-emphasis-accent, #DDAA03))) !important;
+    -webkit-text-fill-color: var(--template-highlight, var(--lc-scene-highlight, var(--sidebar-emphasis-accent, #DDAA03))) !important;
     filter: saturate(1.35) brightness(1.12);
     font-weight: 900;
   }
+  .lekha-applied-template-host .lc-card .cpt {
+    --hc: var(--template-highlight, var(--lc-scene-highlight, var(--sidebar-emphasis-accent, #DDAA03))) !important;
+  }
   .lekha-applied-template-host .lc-card .sb .box {
-    background: var(--template-highlight, var(--sidebar-emphasis-accent, #DDAA03)) !important;
+    background: var(--template-highlight, var(--lc-scene-highlight, var(--sidebar-emphasis-accent, #DDAA03))) !important;
     color: #101114 !important;
     -webkit-text-fill-color: #101114 !important;
   }
@@ -1153,6 +1193,15 @@ const APPLIED_TEMPLATE_HOST_OVERRIDES = `
   .lekha-applied-template-host .lekha-applied-advanced-template,
   .lekha-applied-template-host .lekha-template-fit {
     overflow: visible !important;
+  }
+  .lekha-applied-template-host .sb,
+  .lekha-applied-template-host .sblock {
+    inset: auto !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+    margin: 0 auto !important;
   }
   .lekha-applied-template-host [data-source-word-index] {
     display: inline-block !important;
@@ -1233,12 +1282,12 @@ const APPLIED_TEMPLATE_HOST_OVERRIDES = `
   }
   /* Paused editing uses the fully settled frame. This is also a race-proof
      fallback for a pause that lands while a wipe/roll transition is in flight. */
-  .lekha-applied-template-host[data-applied-template-paused="true"] .sb.active .w,
-  .lekha-applied-template-host[data-applied-template-paused="true"] .sb.active .sw,
-  .lekha-applied-template-host[data-applied-template-paused="true"] .sb.active .wbw-word,
-  .lekha-applied-template-host[data-applied-template-paused="true"] .sblock.active .wbw-word,
-  .lekha-applied-template-host[data-applied-template-paused="true"] .sblock.active .sw-w,
-  .lekha-applied-template-host[data-applied-template-paused="true"] .sblock.active .sw {
+  .lekha-applied-template-host[data-applied-template-paused="true"]:not([data-applied-template-selection-preview="true"]) .sb.active .w,
+  .lekha-applied-template-host[data-applied-template-paused="true"]:not([data-applied-template-selection-preview="true"]) .sb.active .sw,
+  .lekha-applied-template-host[data-applied-template-paused="true"]:not([data-applied-template-selection-preview="true"]) .sb.active .wbw-word,
+  .lekha-applied-template-host[data-applied-template-paused="true"]:not([data-applied-template-selection-preview="true"]) .sblock.active .wbw-word,
+  .lekha-applied-template-host[data-applied-template-paused="true"]:not([data-applied-template-selection-preview="true"]) .sblock.active .sw-w,
+  .lekha-applied-template-host[data-applied-template-paused="true"]:not([data-applied-template-selection-preview="true"]) .sblock.active .sw {
     animation: none !important;
     transition: none !important;
     opacity: 1 !important;
@@ -1249,11 +1298,11 @@ const APPLIED_TEMPLATE_HOST_OVERRIDES = `
   /* During active playback the JS timing engine owns opacity/transform. Only
      cancel source CSS keyframes here; forcing opacity to 1 makes fade/typewrite
      phases run faster than the gallery preview. */
-  .lekha-applied-template-host .sb.active .w,
-  .lekha-applied-template-host .sb.active .wbw-word,
-  .lekha-applied-template-host .sblock.active .w,
-  .lekha-applied-template-host .sblock.active .wbw-word,
-  .lekha-applied-template-host .sblock.active .sw-w {
+  .lekha-applied-template-host:not([data-applied-template-source="lekha-lc"]) .sb.active .w,
+  .lekha-applied-template-host:not([data-applied-template-source="lekha-lc"]) .sb.active .wbw-word,
+  .lekha-applied-template-host:not([data-applied-template-source="lekha-lc"]) .sblock.active .w,
+  .lekha-applied-template-host:not([data-applied-template-source="lekha-lc"]) .sblock.active .wbw-word,
+  .lekha-applied-template-host:not([data-applied-template-source="lekha-lc"]) .sblock.active .sw-w {
     animation: none !important;
   }
   /* Indic glyphs extend farther above/below the Latin metrics used by these
@@ -1561,6 +1610,7 @@ function AppliedSidebarTemplateSourceRenderer({
   const runnerRef = useRef(null);
   const playbackControlRef = useRef({ currentTime, isPlaying });
   const playStateRef = useRef({ currentTime, isPlaying, startTime, endTime });
+  const selectionPreviewRef = useRef(false);
   playStateRef.current = { currentTime, isPlaying, startTime, endTime };
   const configuredAccent = String(emphasisColor || effectiveStyle?.secondary_color || effectiveStyle?.highlight_color || '').trim();
   const textColor = String(effectiveStyle?.text_color || '#FFFFFF').trim();
@@ -1605,13 +1655,15 @@ function AppliedSidebarTemplateSourceRenderer({
         }
       : isLcTemplateSet
         ? {
-            wordStaggerMs: 280,
-            wordDurationMs: 430,
-            positionedWordStaggerMs: 280,
-            positionedWordDurationMs: 430,
-            holdMs: 3000,
-            exitMs: 420,
-            gapMs: 50,
+            // LC nodes use their authored source schedule; these values only
+            // feed the non-word legacy paths.
+            wordStaggerMs: LC_TEMPLATE_TIMING.staggerMs,
+            wordDurationMs: LC_TEMPLATE_TIMING.bodyDurationMs,
+            positionedWordStaggerMs: LC_TEMPLATE_TIMING.staggerMs,
+            positionedWordDurationMs: LC_TEMPLATE_TIMING.bodyDurationMs,
+            holdMs: LC_TEMPLATE_TIMING.holdMs,
+            exitMs: LC_TEMPLATE_TIMING.exitMs,
+            gapMs: LC_TEMPLATE_TIMING.gapMs,
           }
       : APPLIED_LEGACY_TEMPLATE_TIMING;
     const WBW_DELAY = sourceTiming.wordStaggerMs;
@@ -1624,13 +1676,11 @@ function AppliedSidebarTemplateSourceRenderer({
     const getLcAnimation = (word, fallbackDuration = WBW_DUR) => {
       const anim = String(word?.dataset?.lcAnim || '').trim();
       if (!isLcTemplateSet || !anim) return null;
-      const duration = Number(word.dataset.lcDuration);
-      const delay = Number(word.dataset.lcDelay);
       return {
         anim,
-        duration: Number.isFinite(duration) && duration > 0 ? duration : fallbackDuration,
+        duration: fallbackDuration,
         ease: word.dataset.lcEase || 'cubic-bezier(.22,.68,.26,1)',
-        delay: Number.isFinite(delay) && delay >= 0 ? delay : null,
+        delay: null,
       };
     };
 
@@ -1929,7 +1979,7 @@ function AppliedSidebarTemplateSourceRenderer({
     };
 
     const resetPlain = (block) => {
-      block.querySelectorAll('.plainwrap').forEach((element) => {
+      block.querySelectorAll('.plainwrap, [data-lc-block-anim]').forEach((element) => {
         element.style.transition = 'none';
         element.style.animation = 'none';
         element.style.opacity = '0';
@@ -2050,6 +2100,10 @@ function AppliedSidebarTemplateSourceRenderer({
       block.style.opacity = '1';
       block.style.pointerEvents = 'auto';
       block.classList.add('active');
+      // LC templates are driven by the deterministic frame renderer below.
+      // Do not also schedule their old timer-based reveal path: two independent
+      // clocks were racing to reset/settle individual words during playback.
+      if (isLcTemplateSet) return;
       if (type === 'wbw') {
         raf(() => raf(() => animateWBW(block)));
       } else if (type === 'pos') {
@@ -2110,7 +2164,155 @@ function AppliedSidebarTemplateSourceRenderer({
       });
     };
 
+    const settleBlock = (block) => {
+      if (!block) return;
+      block.style.visibility = 'visible';
+      block.style.position = 'relative';
+      block.style.pointerEvents = 'auto';
+      block.style.transition = 'none';
+      block.style.opacity = '1';
+      block.classList.add('active');
+      block.querySelectorAll(wbwSelector).forEach(settleWBWWord);
+      block.querySelectorAll('.sw, .sw-w').forEach(settlePosWord);
+      block.querySelectorAll('.plainwrap, [data-lc-block-anim]').forEach(settlePlainWrap);
+      block.querySelectorAll('.plain-s .is-emphasis').forEach(settlePlainWord);
+      recolorEmphasisToHero(block);
+    };
+
+    // ── LC motion: stamped once, owned by CSS ─────────────────────────────────
+    // A render frame is derived from the source node's authored schedule, never
+    // from a per-word timer. This makes playback, seeking, and export deterministic.
+    let lcSettleTimer = null;
+    let lcPreviewing = false;
+
+    const lcMotionNodes = (block) => Array.from(block?.querySelectorAll(
+      '.w[data-lc-anim], .sw[data-lc-anim], .sw-w[data-lc-anim]',
+    ) || []);
+
+    const clearLcSettleTimer = () => {
+      if (lcSettleTimer !== null) {
+        window.clearTimeout(lcSettleTimer);
+        lcSettleTimer = null;
+      }
+    };
+
+    const stampLcReveal = (block, elapsedMs = 0) => {
+      if (!block) return 0;
+      const elapsed = Math.max(0, Math.round(Number(elapsedMs) || 0));
+      const motionNodes = lcMotionNodes(block);
+      const motionNodeSet = new Set(motionNodes);
+      const schedule = getLcMotionSchedule(motionNodes.map((word) => ({
+        animation: word.dataset.lcAnim,
+        duration: word.dataset.lcDuration,
+        delay: word.dataset.lcDelay,
+        ease: word.dataset.lcEase,
+      })));
+
+      motionNodes.forEach((word, index) => {
+        const entry = schedule.entries[index];
+        if (!entry?.animation) return;
+        word.style.transition = 'none';
+        word.style.opacity = '';
+        word.style.transform = '';
+        word.style.clipPath = '';
+        word.style.animation = 'none';
+        word.classList.remove('in', 'visible');
+        word.dataset.lcMotion = 'true';
+      });
+
+      // Force the hidden source state to paint before applying each authored
+      // keyframe. This is the synchronization point that the previous timer
+      // reveal lacked, and avoids a pause-induced repaint changing the result.
+      void block.getBoundingClientRect();
+      motionNodes.forEach((word, index) => {
+        const entry = schedule.entries[index];
+        if (!entry?.animation) return;
+        word.style.animation = `${entry.animation} ${entry.durationMs}ms ${entry.ease} ${entry.delayMs - elapsed}ms both`;
+        word.dataset.appliedVisible = 'true';
+      });
+
+      // Some authored LC scenes intentionally keep supporting words static.
+      // Those source `.on` words must always be visible from the first frame.
+      block.querySelectorAll('.w, .sw, .sw-w').forEach((word) => {
+        if (motionNodeSet.has(word) || !word.classList.contains('on')) return;
+        word.style.animation = 'none';
+        word.style.transition = 'none';
+        word.style.opacity = '1';
+        word.style.transform = 'none';
+        word.style.clipPath = 'inset(0 0 0 0)';
+        word.classList.add('in', 'visible');
+        word.dataset.appliedVisible = 'true';
+      });
+
+      block.querySelectorAll('.plainwrap').forEach((element) => {
+        element.style.transition = 'none';
+        element.style.opacity = '';
+        element.style.animation = `fade ${LC_TEMPLATE_TIMING.plainFadeDurationMs}ms ease ${-elapsed}ms both`;
+        element.dataset.appliedVisible = 'true';
+      });
+
+      // Whole-line 'block' scenes (LC4/LC5): the wrap carries one authored
+      // animation while its words are statically visible.
+      let blockWrapEndMs = 0;
+      block.querySelectorAll('[data-lc-block-anim]').forEach((element) => {
+        const wrapSchedule = getLcMotionSchedule([{
+          animation: element.dataset.lcBlockAnim,
+          duration: element.dataset.lcBlockDuration,
+          delay: element.dataset.lcBlockDelay,
+          ease: element.dataset.lcBlockEase,
+        }]);
+        const entry = wrapSchedule.entries[0];
+        const wrapDuration = entry?.durationMs || LC_TEMPLATE_TIMING.heroDurationMs;
+        element.style.transition = 'none';
+        element.style.opacity = '';
+        element.style.animation = `${entry?.animation || 'rise'} ${wrapDuration}ms ${entry?.ease || 'cubic-bezier(.22,.68,.26,1)'} ${(entry?.delayMs || 0) - elapsed}ms both`;
+        element.dataset.appliedVisible = 'true';
+        blockWrapEndMs = Math.max(blockWrapEndMs, wrapDuration);
+      });
+
+      recolorEmphasisToHero(block);
+      return Math.max(
+        schedule.endMs,
+        blockWrapEndMs,
+        block.querySelector('.plainwrap') ? LC_TEMPLATE_TIMING.plainFadeDurationMs : 0,
+      );
+    };
+
+    const runLcEntrance = ({ preview = false, elapsedMs = 0 } = {}) => {
+      clearLcSettleTimer();
+      clearScheduledWork();
+      preparePhase();
+      enterBlock(selectedBlock);
+      lcPreviewing = preview;
+      selectionPreviewRef.current = preview;
+      host.dataset.appliedTemplatePaused = 'false';
+      host.dataset.appliedTemplateSelectionPreview = preview ? 'true' : 'false';
+      host.dataset.appliedAnimationRun = String(Number(host.dataset.appliedAnimationRun || 0) + 1);
+      const endMs = stampLcReveal(selectedBlock, elapsedMs);
+      if (!preview) return;
+      // Bookkeeping only: the CSS fill mode already leaves every word settled,
+      // so nothing visible depends on this timer firing.
+      lcSettleTimer = window.setTimeout(() => {
+        lcSettleTimer = null;
+        lcPreviewing = false;
+        selectionPreviewRef.current = false;
+        host.dataset.appliedTemplateSelectionPreview = 'false';
+        if (!playStateRef.current.isPlaying) {
+          host.dataset.appliedTemplatePaused = 'true';
+          settleBlock(selectedBlock);
+        }
+      }, Math.max(0, endMs - Math.max(0, Number(elapsedMs) || 0)) + 80);
+    };
+
     const play = () => {
+      if (isLcTemplateSet) {
+        // Sync the reveal to the video clock (mid-caption plays/seeks land on
+        // the exact frame the export renders for that timestamp).
+        const elapsedMs = (Number(playStateRef.current.currentTime || 0)
+          - Number(playStateRef.current.startTime || 0)) * 1000;
+        runLcEntrance({ elapsedMs: Math.max(0, elapsedMs) });
+        return;
+      }
       clearScheduledWork();
       host.dataset.appliedTemplatePaused = 'false';
       host.dataset.appliedAnimationRun = String(Number(host.dataset.appliedAnimationRun || 0) + 1);
@@ -2119,31 +2321,40 @@ function AppliedSidebarTemplateSourceRenderer({
     };
 
     const pause = () => {
+      if (isLcTemplateSet) {
+        // A pause during the one-shot selection preview lets it finish: the
+        // reveal is pure CSS and the settle timer completes the bookkeeping.
+        if (lcPreviewing) return;
+        clearLcSettleTimer();
+        clearScheduledWork();
+        host.dataset.appliedTemplatePaused = 'true';
+        host.dataset.appliedTemplateSelectionPreview = 'false';
+        preparePhase();
+        settleBlock(selectedBlock);
+        return;
+      }
       clearScheduledWork();
       host.dataset.appliedTemplatePaused = 'true';
       preparePhase();
-      selectedBlock.style.visibility = 'visible';
-      selectedBlock.style.position = 'relative';
-      selectedBlock.style.pointerEvents = 'auto';
-      selectedBlock.style.transition = 'none';
-      selectedBlock.style.opacity = '1';
-      selectedBlock.classList.add('active');
-      selectedBlock.querySelectorAll(wbwSelector).forEach(settleWBWWord);
-      selectedBlock.querySelectorAll('.sw, .sw-w').forEach(settlePosWord);
-      selectedBlock.querySelectorAll('.plainwrap').forEach(settlePlainWrap);
-      selectedBlock.querySelectorAll('.plain-s .is-emphasis').forEach(settlePlainWord);
-      recolorEmphasisToHero(selectedBlock);
+      settleBlock(selectedBlock);
     };
 
     runnerRef.current = { play, pause };
-    if (playStateRef.current.isPlaying) play();
-    else pause();
+    if (playStateRef.current.isPlaying) {
+      play();
+    } else if (isLcTemplateSet) {
+      runLcEntrance({ preview: true });
+    } else {
+      pause();
+    }
 
     return () => {
       clearScheduledWork();
+      clearLcSettleTimer();
+      selectionPreviewRef.current = false;
       runnerRef.current = null;
     };
-  }, [html, captionId, captionText, effectiveStyle?.template_20_id, effectiveStyle?.template_source, phaseOffset]);
+  }, [html, captionId, captionText, effectiveStyle?.template_20_id, effectiveStyle?.template_source, phaseOffset, startTime, endTime]);
 
   useEffect(() => {
     const runner = runnerRef.current;
@@ -2151,8 +2362,12 @@ function AppliedSidebarTemplateSourceRenderer({
     const previous = playbackControlRef.current;
     const timeDelta = Math.abs(Number(currentTime || 0) - Number(previous.currentTime || 0));
     const seeked = previous.isPlaying && isPlaying && timeDelta > 0.75;
-    if (!isPlaying) runner.pause();
-    else if (!previous.isPlaying || seeked) runner.play();
+    if (!isPlaying) {
+      if (!selectionPreviewRef.current) runner.pause();
+      playbackControlRef.current = { currentTime, isPlaying };
+      return;
+    }
+    if (!previous.isPlaying || seeked) runner.play();
     playbackControlRef.current = { currentTime, isPlaying };
   }, [currentTime, isPlaying, startTime, endTime]);
 
@@ -2162,7 +2377,7 @@ function AppliedSidebarTemplateSourceRenderer({
       renderScale,
       onSourceWordClick,
     });
-    if (!playStateRef.current.isPlaying) runnerRef.current?.pause?.();
+    if (!playStateRef.current.isPlaying && !selectionPreviewRef.current) runnerRef.current?.pause?.();
     return cleanup;
   }, [caption, html, onSourceWordClick, phaseOffset, renderScale, wordStylesSignature]);
 
@@ -2172,6 +2387,7 @@ function AppliedSidebarTemplateSourceRenderer({
       key={`applied-sidebar-source-${captionId || 'active'}-${effectiveStyle?.template_20_id || 'tpl'}-${captionText}`}
       className={[
         'lekha-applied-template-host',
+        effectiveStyle?.template_color_customized ? 'is-color-customized' : '',
         effectiveStyle?.text_gradient ? 'has-text-gradient' : '',
         effectiveStyle?.highlight_gradient ? 'has-highlight-gradient' : '',
       ].filter(Boolean).join(' ')}
@@ -2188,11 +2404,18 @@ function AppliedSidebarTemplateSourceRenderer({
         '--sidebar-source-color': effectiveStyle?.text_color || '#FFFFFF',
         '--sidebar-source-accent': effectiveStyle?.secondary_color || '#DDAA03',
         '--sidebar-emphasis-accent': emphasisAccent,
+        '--sidebar-template-highlight': effectiveStyle?.highlight_color || effectiveStyle?.emphasis_color || effectiveStyle?.secondary_color || '#DDAA03',
         '--sidebar-source-line-height': effectiveStyle?.line_spacing || 1.25,
         '--sidebar-source-font': resolvedFont,
+        '--template-primary': effectiveStyle?.text_color || '#FFFFFF',
+        '--template-secondary': effectiveStyle?.secondary_color || '#DDAA03',
+        '--template-highlight': effectiveStyle?.highlight_color || effectiveStyle?.emphasis_color || effectiveStyle?.secondary_color || '#DDAA03',
         '--template-text-gradient': effectiveStyle?.text_gradient || 'none',
         '--template-highlight-gradient': effectiveStyle?.highlight_gradient || 'none',
-        '--applied-template-width': '100%',
+        '--template-karaoke-1': effectiveStyle?.karaoke_color_1 || effectiveStyle?.highlight_color || effectiveStyle?.emphasis_color || effectiveStyle?.secondary_color || '#DDAA03',
+        '--template-karaoke-2': effectiveStyle?.karaoke_color_2 || '#22D3EE',
+        '--template-karaoke-3': effectiveStyle?.karaoke_color_3 || '#FB923C',
+        '--applied-template-width': `${Math.round(SIDEBAR_TEMPLATE_APPLIED_WIDTH_CAP * renderScale)}px`,
         color: effectiveStyle?.text_color || '#FFFFFF',
         fontFamily: resolvedFont,
         fontSize: `${fontSize}px`,
@@ -2970,6 +3193,10 @@ function OriginalAdvancedTemplateStyles() {
         .lekha-original-template.t15-stage .w.in {
           font-size: 0.88em !important;
           line-height: 1.28 !important;
+        }
+        .lekha-original-template.t15-stage .shake-in > br {
+          display: block !important;
+          content: '' !important;
         }
 
         .lekha-original-template.t35-stage .lekha-applied-advanced-template,
@@ -6256,6 +6483,7 @@ const MemoizedVideo = React.memo(function MemoizedVideo({
     <video
       ref={videoRef}
       src={videoUrl}
+      data-lekha-player="true"
       className="w-full h-full object-contain"
       playsInline
       preload="auto"
@@ -9646,17 +9874,17 @@ export default function VideoPlayer({
                     padding: '0px',
                     textAlign: captionStyle?.text_align || 'center',
                     width: isSidebarTemplate 
-                      ? '100%' 
+                      ? 'fit-content'
                       : captionStyle?.boxWidth 
                         ? `${captionStyle.boxWidth * previewRenderScale}px` 
                         : (shouldWrapCaption ? `${autoWrapMaxWidth}px` : 'fit-content'),
                     maxWidth: isSidebarTemplate
-                      ? '100%'
+                      ? '94%'
                       : captionStyle?.boxWidth 
                         ? undefined 
                         : (shouldWrapCaption ? `${autoWrapMaxWidth}px` : '90vw'),
                     position: 'relative',
-                    display: isSidebarTemplate ? 'flex' : 'inline-block',
+                    display: isSidebarTemplate ? 'inline-flex' : 'inline-block',
                     justifyContent: isSidebarTemplate ? 'center' : undefined,
                     overflow: 'visible',
                     // Template captions keep pointer events so the caption box is
