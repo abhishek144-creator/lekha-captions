@@ -9,6 +9,13 @@
       "autoPort": false
     },
     {
+      "name": "landing-v2",
+      "runtimeExecutable": "cmd.exe",
+      "runtimeArgs": ["/c", "cd C:\\Users\\ADMIN\\Downloads\\caption-studio-publish-main\\.claude\\worktrees\\landing-v2\\caption-studio-publish-main && npx vite --port 3210 --host 0.0.0.0"],
+      "port": 3210,
+      "autoPort": false
+    },
+    {
       "name": "backend",
       "runtimeExecutable": "cmd.exe",
       "runtimeArgs": ["/c", "cd caption-studio-publish-main\\backend && python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload"],
@@ -19,6 +26,12 @@
       "runtimeExecutable": "cmd.exe",
       "runtimeArgs": ["/c", "python -m http.server 5050 --directory C:\\Users\\ADMIN\\Downloads"],
       "port": 5050
+    },
+    {
+      "name": "scratchpad-preview",
+      "runtimeExecutable": "cmd.exe",
+      "runtimeArgs": ["/c", "python -m http.server 5077 --directory C:\\Users\\ADMIN\\AppData\\Local\\Temp\\claude\\C--Users-ADMIN-Downloads-caption-studio-publish-main\\8c65c1c8-c80b-471f-8ab9-dba93193f759\\scratchpad"],
+      "port": 5077
     }
   ]
 }

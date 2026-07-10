@@ -38,7 +38,7 @@ export function detectScript(text) {
     else if (code >= 0x30A0 && code <= 0x30FF) scriptCounts.japanese++;
     else if (code >= 0xAC00 && code <= 0xD7AF) scriptCounts.korean++;
     else if (code >= 0x0E00 && code <= 0x0E7F) scriptCounts.thai++;
-    else if ((code >= 0x0041 && code <= 0x007A) || (code >= 0x0061 && code <= 0x007A)) scriptCounts.latin++;
+    else if ((code >= 0x0041 && code <= 0x005A) || (code >= 0x0061 && code <= 0x007A)) scriptCounts.latin++;
   });
 
   let maxCount = 0;
@@ -485,6 +485,11 @@ export const systemFonts = new Set([
 
 // Track which weights have been loaded per font so we can load additional weights on demand
 const _loadedFontWeights = {};
+// Serialize loads per font: two concurrent loads of the same family with
+// different weights each created a link and then deleted the other's
+// still-loading link on onload — leaving weights permanently unloaded and a
+// promise that never settled.
+const _fontLoadQueues = {};
 
 export function loadGoogleFont(fontName, weights = [400, 700]) {
   if (systemFonts.has(fontName)) {
@@ -493,44 +498,52 @@ export function loadGoogleFont(fontName, weights = [400, 700]) {
 
   const safeKey = fontName.replace(/\s+/g, '-');
 
-  // Find which of the requested weights are not yet loaded
-  const alreadyLoaded = _loadedFontWeights[safeKey] || new Set();
-  const missing = weights.filter(w => !alreadyLoaded.has(w));
+  const run = () => {
+    // Compute missing weights INSIDE the queued step so it sees the state
+    // left by the previous load of this font.
+    const alreadyLoaded = _loadedFontWeights[safeKey] || new Set();
+    const missing = weights.filter(w => !alreadyLoaded.has(w));
 
-  if (missing.length === 0) {
-    // All requested weights already loaded
-    return Promise.resolve();
-  }
+    if (missing.length === 0) {
+      // All requested weights already loaded
+      return Promise.resolve();
+    }
 
-  // Merge with already-loaded weights for the new link tag
-  const allWeights = [...new Set([...alreadyLoaded, ...missing])].sort((a, b) => a - b);
+    // Merge with already-loaded weights for the new link tag
+    const allWeights = [...new Set([...alreadyLoaded, ...missing])].sort((a, b) => a - b);
 
-  // Use a unique ID so the old link stays alive until the new one loads successfully
-  const newLinkId = `font-${safeKey}-${Date.now()}`;
+    // Use a unique ID so the old link stays alive until the new one loads successfully
+    const newLinkId = `font-${safeKey}-${Date.now()}`;
 
-  return new Promise((resolve, reject) => {
-    const link = document.createElement('link');
-    link.id = newLinkId;
-    link.rel = 'stylesheet';
-    link.href = `https://fonts.googleapis.com/css2?family=${fontName.replace(/\s+/g, '+')}:wght@${allWeights.join(';')}&display=swap`;
+    return new Promise((resolve, reject) => {
+      const link = document.createElement('link');
+      link.id = newLinkId;
+      link.rel = 'stylesheet';
+      link.href = `https://fonts.googleapis.com/css2?family=${fontName.replace(/\s+/g, '+')}:wght@${allWeights.join(';')}&display=swap`;
 
-    link.onload = () => {
-      // Record all weights now loaded
-      _loadedFontWeights[safeKey] = new Set(allWeights);
-      // Remove any older links for this font now that the new one is live
-      document.querySelectorAll(`link[id^="font-${safeKey}-"]`).forEach(el => {
-        if (el.id !== newLinkId) el.remove();
-      });
-      resolve();
-    };
-    link.onerror = () => {
-      // Remove the failed link — old one (if any) stays intact
-      link.remove();
-      reject(new Error(`Failed to load font: ${fontName}`));
-    };
+      link.onload = () => {
+        // Record all weights now loaded
+        _loadedFontWeights[safeKey] = new Set(allWeights);
+        // Remove any older links for this font now that the new one is live
+        document.querySelectorAll(`link[id^="font-${safeKey}-"]`).forEach(el => {
+          if (el.id !== newLinkId) el.remove();
+        });
+        resolve();
+      };
+      link.onerror = () => {
+        // Remove the failed link — old one (if any) stays intact
+        link.remove();
+        reject(new Error(`Failed to load font: ${fontName}`));
+      };
 
-    document.head.appendChild(link);
-  });
+      document.head.appendChild(link);
+    });
+  };
+
+  const queued = (_fontLoadQueues[safeKey] || Promise.resolve()).then(run, run);
+  // The queue itself must never stay rejected, or every later load would skip.
+  _fontLoadQueues[safeKey] = queued.catch(() => {});
+  return queued;
 }
 
 export async function autoLoadFontForText(text) {

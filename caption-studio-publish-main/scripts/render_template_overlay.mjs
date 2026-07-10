@@ -11,7 +11,9 @@ import {
   LEGACY_TEMPLATE_TIMING,
   ORIGINAL_TEMPLATE_BLOCK_TYPES,
   RECREATED_ADVANCED_TEMPLATE_IDS,
+  LC_TEMPLATE_TIMING,
   getAdvancedAnimationWindowMs,
+  getLcMotionSchedule,
   getOriginalTemplateBlockType,
 } from '../src/components/dashboard/templateMotionConfig.js';
 import {
@@ -1570,7 +1572,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       .replace(/\\sclass="([^"]*)"/gi, (_, classValue) => {
         const cleanedClassValue = String(classValue)
           .split(/\\s+/)
-          .filter((className) => className && !['active', 'visible', 'anim', 'on', 'in'].includes(className))
+          .filter((className) => className && !['active', 'visible', 'anim', preserveInlineStyles ? '' : 'on', 'in'].includes(className))
           .join(' ');
         return cleanedClassValue ? ' class="' + cleanedClassValue + '"' : '';
       })
@@ -1593,6 +1595,23 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         Math.round((index * (sourceClasses.length - 1)) / Math.max(1, total - 1)),
       );
       return sourceClasses[sourceIndex] || fallback;
+    };
+
+    const mappedSidebarNodeValue = (sourceNodes, index, total, attrName, fallback = '') => (
+      mappedSidebarClassName(
+        sourceNodes.map((node) => node.getAttribute(attrName) || ''),
+        index,
+        total,
+        fallback,
+      )
+    );
+
+    const renderSidebarLcAttrs = (sourceNodes, index, total) => {
+      const attrs = ['data-lc-anim', 'data-lc-duration', 'data-lc-ease', 'data-lc-delay'];
+      return attrs.map((attrName) => {
+        const value = mappedSidebarNodeValue(sourceNodes, index, total, attrName, '');
+        return value ? ' ' + attrName + '="' + escapeHtml(value) + '"' : '';
+      }).join('');
     };
 
     const resolveSidebarTargetImpIndex = (sourceImpIndex, sourceCount, targetCount, requestedIndex) => {
@@ -1625,7 +1644,8 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       const isNewWbw = container.classList.contains('wbw-line');
       const selector = isNewWbw ? '.wbw-word' : '.w';
       const fallback = isNewWbw ? 'wbw-word normal' : 'w';
-      const sourceClasses = Array.from(container.querySelectorAll(selector))
+      const sourceNodes = Array.from(container.querySelectorAll(selector));
+      const sourceClasses = sourceNodes
         .map((word) => cleanSidebarClassName(word.className, fallback));
       const impPattern = /\\b(?:imp-[\\w-]+|ns[23]-[\\w-]+)\\b/;
       const sourceImpIndex = sourceClasses.findIndex((className) => impPattern.test(className));
@@ -1639,7 +1659,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           .trim();
         const isEmphasis = targetImpIndices.has(index);
         const emphasis = isEmphasis && impClass ? ' ' + impClass : '';
-        return '<span data-export-caption-text="true" class="' + (mapped || fallback) + emphasis + (isEmphasis ? ' is-emphasis' : '') + '">' + escapeHtml(word) + '</span>';
+        return '<span data-export-caption-text="true" class="' + (mapped || fallback) + emphasis + (isEmphasis ? ' is-emphasis' : '') + '"' + renderSidebarLcAttrs(sourceNodes, index, words.length) + '>' + escapeHtml(word) + '</span>';
       }).join(' ');
       return true;
     };
@@ -1653,8 +1673,56 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       const fallbackImpIndex = resolveSidebarTargetImpIndex(sourceImpIndex, sourceClasses.length, words.length, impWordIndex);
       const targetImpIndices = new Set(resolveImpWordIndicesForWords(words, fallbackImpIndex));
       container.innerHTML = words.map((word, index) => (
-        '<span data-export-caption-text="true" class="' + mappedSidebarClassName(sourceClasses, index, words.length, 'sw-w') + (targetImpIndices.has(index) ? ' is-emphasis' : '') + '">' + escapeHtml(word) + '</span>'
+        '<span data-export-caption-text="true" class="' + mappedSidebarClassName(sourceClasses, index, words.length, 'sw-w') + (targetImpIndices.has(index) ? ' is-emphasis' : '') + '"' + renderSidebarLcAttrs(stickyWords, index, words.length) + '>' + escapeHtml(word) + '</span>'
       )).join(' ');
+      return true;
+    };
+
+    const replaceSidebarLcCaptionText = (container, words, impWordIndex) => {
+      const sourceSpans = Array.from(container.querySelectorAll('.w'));
+      if (!sourceSpans.length || !words.length) return false;
+      const rows = Array.from(new Set(sourceSpans.map((span) => span.parentElement).filter(Boolean)));
+      const sourceByRow = rows.map((row) => Array.from(row.querySelectorAll(':scope > .w')));
+      const targetImpIndices = new Set(resolveImpWordIndicesForWords(words, impWordIndex));
+      const totalSlots = sourceByRow.reduce((sum, rowSpans) => sum + rowSpans.length, 0);
+      let wordCursor = 0;
+
+      sourceByRow.forEach((rowSpans, rowIndex) => {
+        const row = rows[rowIndex];
+        const remainingRows = sourceByRow.length - rowIndex - 1;
+        const remainingWords = words.length - wordCursor;
+        const proportional = Math.round((rowSpans.length / Math.max(1, totalSlots)) * words.length);
+        const rowWordCount = rowIndex === sourceByRow.length - 1
+          ? remainingWords
+          : Math.max(0, Math.min(remainingWords, Math.max(1, Math.min(remainingWords - remainingRows, proportional))));
+        const rowWords = words.slice(wordCursor, wordCursor + rowWordCount);
+        const sourceClasses = rowSpans.map((span) => cleanSidebarClassName(span.className, 'w'));
+        const sourceVisible = rowSpans.map((span) => span.classList.contains('on') && !span.getAttribute('data-lc-anim'));
+        const sourceStyles = rowSpans.map((span) => String(span.getAttribute('style') || '').replace(/\\banimation\\s*:[^;]+;?/gi, '').trim());
+        row.textContent = '';
+        rowWords.forEach((word, localIndex) => {
+          if (localIndex > 0) row.appendChild(document.createTextNode(' '));
+          const wordIndex = wordCursor + localIndex;
+          const span = document.createElement('span');
+          const className = mappedSidebarClassName(sourceClasses, localIndex, rowWords.length, 'w')
+            .replace(/\\bis-emphasis\\b/g, '')
+            .replace(/\\s+/g, ' ')
+            .trim();
+          span.dataset.exportCaptionText = 'true';
+          span.className = (className || 'w')
+            + (targetImpIndices.has(wordIndex) ? ' is-emphasis' : '')
+            + (mappedSidebarClassName(sourceVisible, localIndex, rowWords.length, false) ? ' on' : '');
+          for (const attrName of ['data-lc-anim', 'data-lc-duration', 'data-lc-ease', 'data-lc-delay']) {
+            const value = mappedSidebarNodeValue(rowSpans, localIndex, rowWords.length, attrName, '');
+            if (value) span.setAttribute(attrName, value);
+          }
+          const sourceStyle = mappedSidebarClassName(sourceStyles, localIndex, rowWords.length, '');
+          if (sourceStyle) span.setAttribute('style', sourceStyle);
+          span.textContent = word;
+          row.appendChild(span);
+        });
+        wordCursor += rowWordCount;
+      });
       return true;
     };
 
@@ -1705,6 +1773,10 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           span.className = mappedSidebarClassName(sourceClasses, localIndex, rowWords.length, 'sw')
             + (targetImpIndices.has(globalWordIndex) ? ' is-emphasis' : '');
           span.dataset.anim = mappedSidebarClassName(sourceAnims, localIndex, rowWords.length, 'rise');
+          for (const attrName of ['data-lc-anim', 'data-lc-duration', 'data-lc-ease', 'data-lc-delay']) {
+            const value = mappedSidebarNodeValue(rowSpans, localIndex, rowWords.length, attrName, '');
+            if (value) span.setAttribute(attrName, value);
+          }
           span.textContent = word;
           row.appendChild(span);
         });
@@ -1735,10 +1807,13 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       return true;
     };
 
-    const replaceSidebarTemplateText = (block, captionText, impWordIndex, forceContiguousPositioned = false) => {
+    const replaceSidebarTemplateText = (block, captionText, impWordIndex, forceContiguousPositioned = false, templateSource = '') => {
       const words = String(captionText || '').trim().split(/\\s+/).filter(Boolean);
       block.querySelectorAll('.wbw, .wbw-line').forEach((container) => replaceSidebarWordByWord(container, words, impWordIndex));
       block.querySelectorAll('.sw-line').forEach((container) => replaceSidebarSticky(container, words, impWordIndex));
+      if (templateSource === 'lekha-lc') {
+        block.querySelectorAll('.cpt, .nline').forEach((container) => replaceSidebarLcCaptionText(container, words, impWordIndex));
+      }
       replaceSidebarPositioned(block, words, impWordIndex, forceContiguousPositioned);
       replaceSidebarPlain(block, words, impWordIndex);
     };
@@ -1800,6 +1875,11 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       return base;
     };
 
+    // Shared LC source schedule — serialized verbatim from
+    // src/components/dashboard/templateMotionConfig.js so the exported video
+    // uses the exact word delays/durations the canvas preview renders.
+    const getLcMotionSchedule = ${getLcMotionSchedule.toString()};
+
     const chooseSidebarPhase = (blocks, elapsedMs, fallbackDuration, phaseIndex) => {
       if (!blocks.length) return { block: null, index: 0, phaseStartMs: 0 };
       const normalizedIndex = ((Number(phaseIndex || 0) % blocks.length) + blocks.length) % blocks.length;
@@ -1829,10 +1909,11 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         const impWordIndex = Number(shell.dataset.impWordIndex || -1);
         const templateSource = shell.dataset.templateSource || '';
         const isNewTemplateSet = templateSource === 'lekha-49';
-        const isLegacyTemplateSet = templateSource === 'lekha-20' || !templateSource;
+        const isLcTemplateSet = templateSource === 'lekha-lc';
         const elapsedMs = Math.max(0, (time - captionStart) * 1000);
         const fallbackDuration = 3000;
-        // Parity with the live preview's per-source timing (legacy vs lekha-49).
+        // Parity with the live preview's per-source timing. LC nodes retain the
+        // authored delay/duration/easing from the original template markup.
         const wordStagger = isNewTemplateSet
           ? ${EMOTIONAL_TEMPLATE_TIMING.wordStaggerMs}
           : ${SIDEBAR_TEMPLATE_WORD_STAGGER_SECONDS * 1000};
@@ -1840,7 +1921,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         const dots = Array.from(shell.querySelectorAll('.dots i, .lk-dots i'));
 
         blocks.forEach((block) => {
-          replaceSidebarTemplateText(block, captionText, impWordIndex, isLegacyTemplateSet);
+          replaceSidebarTemplateText(block, captionText, impWordIndex, false, templateSource);
           block.classList.remove('active');
           block.style.opacity = '0';
           block.style.visibility = 'hidden';
@@ -1848,7 +1929,8 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           block.querySelectorAll('.w, .wbw-word').forEach((word) => {
             const motion = getSidebarWordMotion(word);
             word.classList.remove('visible', 'anim', 'in');
-            word.classList.remove('sidebar-export-word-anim');
+            word.classList.remove('sidebar-export-word-anim', 'sidebar-export-lc-anim');
+            word.style.removeProperty('animation');
             word.style.setProperty('--sidebar-export-initial-transform', motion.transform || 'none');
             word.style.setProperty('--sidebar-export-initial-opacity', motion.opacity || '0');
             word.style.setProperty('--sidebar-export-initial-clip', motion.clipPath || 'inset(0 0 0 0)');
@@ -1856,7 +1938,8 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
             word.style.transformOrigin = motion.origin || '';
           });
           block.querySelectorAll('.sw').forEach((element) => {
-            element.classList.remove('in', 'sidebar-export-sw-anim');
+            element.classList.remove('in', 'sidebar-export-sw-anim', 'sidebar-export-lc-anim');
+            element.style.removeProperty('animation');
             if (!isNewTemplateSet) {
               const motion = getSidebarSwMotion(element);
               element.style.setProperty('--sidebar-export-initial-transform', motion.transform || 'none');
@@ -1866,7 +1949,12 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
             }
           });
           block.querySelectorAll('.sw-w').forEach((word) => {
+            word.classList.remove('sidebar-export-lc-anim');
             word.style.opacity = '0.14';
+          });
+          block.querySelectorAll('[data-lc-block-anim]').forEach((wrap) => {
+            wrap.classList.remove('sidebar-export-lc-anim');
+            wrap.style.removeProperty('animation');
           });
         });
 
@@ -1940,7 +2028,38 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           dot.className = dotIndex === phase.index ? 'on' : '';
         });
 
+        // LC motion nodes use the same authored source schedule as the canvas.
+        if (isLcTemplateSet) {
+          const lcMotionWords = Array.from(phase.block.querySelectorAll('[data-lc-anim]'));
+          const lcSchedule = getLcMotionSchedule(lcMotionWords.map((word) => ({
+            animation: word.dataset.lcAnim,
+            duration: word.dataset.lcDuration,
+            delay: word.dataset.lcDelay,
+            ease: word.dataset.lcEase,
+          })));
+          lcMotionWords.forEach((word, index) => {
+            const entry = lcSchedule.entries[index];
+            if (!entry?.animation) return;
+            word.style.setProperty('--sidebar-export-lc-animation', entry.animation);
+            word.style.setProperty('--sidebar-export-word-duration', entry.durationMs + 'ms');
+            word.style.setProperty('--sidebar-export-word-delay', (phase.phaseStartMs + entry.delayMs) + 'ms');
+            word.style.setProperty('--sidebar-export-lc-ease', entry.ease);
+            word.classList.add('sidebar-export-lc-anim');
+          });
+        }
+
         phase.block.querySelectorAll('.w, .wbw-word').forEach((word, index) => {
+          const lcAnim = isLcTemplateSet ? String(word.dataset.lcAnim || '').trim() : '';
+          const phaseWordStagger = fitSidebarStagger(wordStagger, phase.block.querySelectorAll('.w, .wbw-word').length);
+          if (lcAnim) return; // already timed by the LC motion pass above
+          if (isLcTemplateSet && word.classList.contains('on')) {
+            word.style.animation = 'none';
+            word.style.opacity = '1';
+            word.style.transform = 'none';
+            word.style.clipPath = 'inset(0 0 0 0)';
+            word.classList.add('in', 'visible');
+            return;
+          }
           if (word.classList.contains('imp-flicker') || word.classList.contains('imp-typewrite')) {
             word.style.setProperty('--sidebar-export-initial-transform', 'none');
             word.style.setProperty('transform', 'none');
@@ -1948,12 +2067,21 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           const duration = /\\b(imp-|ns[23]-)/.test(word.className)
             ? (isNewTemplateSet ? ${EMOTIONAL_TEMPLATE_TIMING.supportDurationMs + 160} : ${LEGACY_TEMPLATE_TIMING.wordDurationMs + 160})
             : (isNewTemplateSet ? ${EMOTIONAL_TEMPLATE_TIMING.supportDurationMs} : ${LEGACY_TEMPLATE_TIMING.wordDurationMs});
-          const phaseWordStagger = fitSidebarStagger(wordStagger, phase.block.querySelectorAll('.w, .wbw-word').length);
           word.style.setProperty('--sidebar-export-word-duration', duration + 'ms');
           word.style.setProperty('--sidebar-export-word-delay', (phase.phaseStartMs + index * phaseWordStagger) + 'ms');
           word.classList.add('sidebar-export-word-anim');
         });
         phase.block.querySelectorAll('.sw').forEach((element, index) => {
+          const lcAnim = isLcTemplateSet ? String(element.dataset.lcAnim || '').trim() : '';
+          if (lcAnim) return; // already timed by the LC motion pass above
+          if (isLcTemplateSet && element.classList.contains('on')) {
+            element.style.animation = 'none';
+            element.style.opacity = '1';
+            element.style.transform = 'none';
+            element.style.clipPath = 'inset(0 0 0 0)';
+            element.classList.add('in');
+            return;
+          }
           const phaseSwStagger = fitSidebarStagger(${SIDEBAR_TEMPLATE_POSITION_STAGGER_SECONDS * 1000}, phase.block.querySelectorAll('.sw').length);
           if (isNewTemplateSet) {
             const sourceDelayMs = parseSidebarAnimationDelayMs(element.style.animationDelay || '0s');
@@ -1965,6 +2093,8 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           }
         });
         phase.block.querySelectorAll('.sw-w').forEach((word, index) => {
+          const lcAnim = isLcTemplateSet ? String(word.dataset.lcAnim || '').trim() : '';
+          if (lcAnim) return; // already timed by the LC motion pass above
           const phaseStickyStagger = fitSidebarStagger(
             isNewTemplateSet ? ${EMOTIONAL_TEMPLATE_TIMING.positionedWordStaggerMs} : ${SIDEBAR_TEMPLATE_POSITION_STAGGER_SECONDS * 1000},
             phase.block.querySelectorAll('.sw-w').length,
@@ -1983,7 +2113,10 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         ['lekha-49', 'lekha-lc'].includes(templateSource),
       );
       if (!templateMarkup) return '';
-      return '<div class="lekha-sidebar-export-template-shell"'
+      const colorCustomizedClass = globalStyle?.template_color_customized || appliedStyle.template_color_customized
+        ? ' is-color-customized'
+        : '';
+      return '<div class="lekha-sidebar-export-template-shell' + colorCustomizedClass + '"'
         + ' data-caption-id="' + escapeHtml(caption.id || '') + '"'
         + ' data-caption-text="' + escapeHtml(transformText(caption.text || '', globalStyle)) + '"'
         + ' data-caption-start="' + Number(caption.start_time || 0) + '"'
@@ -2001,14 +2134,23 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           const textColor = String(globalStyle?.text_color || appliedStyle.text_color || '#FFFFFF').trim();
           return configured && configured.toLowerCase() !== textColor.toLowerCase() ? configured : '#DDAA03';
         })()) + ';'
+        + '--sidebar-template-highlight:' + escapeHtml(globalStyle?.highlight_color || globalStyle?.emphasis_color || globalStyle?.secondary_color || appliedStyle.highlight_color || appliedStyle.emphasis_color || appliedStyle.secondary_color || '#DDAA03') + ';'
+        + '--template-primary:' + escapeHtml(globalStyle?.text_color || appliedStyle.text_color || '#FFFFFF') + ';'
+        + '--template-secondary:' + escapeHtml(globalStyle?.secondary_color || appliedStyle.secondary_color || '#DDAA03') + ';'
+        + '--template-highlight:' + escapeHtml(globalStyle?.highlight_color || globalStyle?.emphasis_color || globalStyle?.secondary_color || appliedStyle.highlight_color || appliedStyle.emphasis_color || appliedStyle.secondary_color || '#DDAA03') + ';'
+        + '--template-text-gradient:' + escapeHtml(globalStyle?.text_gradient || appliedStyle.text_gradient || 'none') + ';'
+        + '--template-highlight-gradient:' + escapeHtml(globalStyle?.highlight_gradient || appliedStyle.highlight_gradient || 'none') + ';'
+        + '--template-karaoke-1:' + escapeHtml(globalStyle?.karaoke_color_1 || globalStyle?.highlight_color || globalStyle?.emphasis_color || globalStyle?.secondary_color || appliedStyle.karaoke_color_1 || appliedStyle.highlight_color || appliedStyle.emphasis_color || appliedStyle.secondary_color || '#DDAA03') + ';'
+        + '--template-karaoke-2:' + escapeHtml(globalStyle?.karaoke_color_2 || appliedStyle.karaoke_color_2 || '#22D3EE') + ';'
+        + '--template-karaoke-3:' + escapeHtml(globalStyle?.karaoke_color_3 || appliedStyle.karaoke_color_3 || '#FB923C') + ';'
         + 'font-family:\\'' + escapeHtml(globalStyle?.font_family || appliedStyle.font_family || 'Inter') + '\\';'
         + 'font-size:' + scaleExportPx(globalStyle?.font_size || appliedStyle.font_size || 22) + 'px;'
         + 'font-weight:' + escapeHtml(globalStyle?.font_weight || appliedStyle.font_weight || '300') + ';'
         // Mirror the preview host's inline style so inherited text properties
         // resolve identically in both renderers.
-        + 'color:' + escapeHtml(globalStyle?.text_color || appliedStyle.text_color || '#FFFFFF') + ';'
+        + 'color:' + escapeHtml(appliedStyle.text_color ? (globalStyle?.text_color || appliedStyle.text_color) : (globalStyle?.text_color || '#FFFFFF')) + ';'
         + 'font-style:' + escapeHtml(globalStyle?.font_style || appliedStyle.font_style || 'normal') + ';'
-        + 'line-height:' + escapeHtml(String(globalStyle?.line_spacing || appliedStyle.line_spacing || 1.25)) + ';'
+        + 'line-height:' + escapeHtml(String(appliedStyle.line_spacing ? (globalStyle?.line_spacing || appliedStyle.line_spacing) : (globalStyle?.line_spacing || 1.25))) + ';'
         + 'opacity:' + escapeHtml(String(templateSource === 'lekha-lc' ? 1 : (globalStyle?.text_opacity ?? appliedStyle.text_opacity ?? 1))) + ';"'
         + '>' + templateMarkup + '</div>';
     };
@@ -2609,7 +2751,6 @@ async function main() {
   const exportT24TemplateMaxWidthPx = exportMeasuredAdvancedTemplateWidthPx
     || Math.round(Math.min(exportTemplateMaxWidth, 260 * exportCssScale));
   const exportSidebarWidth = Math.round(Math.max(160, Math.min(Number(payload.video_width || 360) * 0.94, 320 * exportCssScale)));
-  const exportSidebarHeight = Math.round(Math.max(120, Math.min(Number(payload.video_height || 640) * 0.56, 280 * exportCssScale)));
   const exportFontFamilies = new Set([
     payload.style?.font_family,
     ...(payload.captions || []).flatMap((caption) => [
@@ -2654,10 +2795,11 @@ async function main() {
       max-width: 100%;
     }
     .lekha-sidebar-export-template-shell {
-      display: block;
+      display: inline-block;
       width: ${exportSidebarWidth}px;
-      height: ${exportSidebarHeight}px;
+      height: auto;
       max-width: 94%;
+      min-height: 0;
       /* Preview never crops the applied template (matras, descenders, entrance
          motion all paint freely) — keep the export shell unclipped to match. */
       overflow: visible;
@@ -2669,7 +2811,7 @@ async function main() {
     .lekha-sidebar-export-template-shell .lk-card {
       display: block !important;
       width: 100% !important;
-      height: 100% !important;
+      height: auto !important;
       min-height: 0 !important;
       aspect-ratio: auto !important;
       border: 0 !important;
@@ -2699,8 +2841,9 @@ async function main() {
       position: relative !important;
       inset: auto !important;
       width: 100% !important;
-      height: 100% !important;
+      height: auto !important;
       min-height: 0 !important;
+      aspect-ratio: auto !important;
       border: 0 !important;
       box-shadow: none !important;
       background: transparent !important;
@@ -2712,6 +2855,10 @@ async function main() {
       height: auto !important;
       aspect-ratio: auto !important;
     }
+    .lekha-sidebar-export-template-shell[data-template-source="lekha-lc"] {
+      height: auto !important;
+      min-height: 0 !important;
+    }
     .lekha-sidebar-export-template-shell .lc-card .stage::after {
       content: none !important;
       display: none !important;
@@ -2721,6 +2868,9 @@ async function main() {
     .lekha-sidebar-export-template-shell .lc-card .sb {
       position: relative !important;
       inset: auto !important;
+    }
+    .lekha-sidebar-export-template-shell.is-color-customized .lc-card .sb {
+      --template-highlight: var(--sidebar-template-highlight, var(--sidebar-emphasis-accent, #DDAA03)) !important;
     }
     .lekha-sidebar-export-template-shell .lc-card .sb:not(.active) {
       position: absolute !important;
@@ -2775,6 +2925,13 @@ async function main() {
     }
     .lekha-sidebar-export-template-shell .sb,
     .lekha-sidebar-export-template-shell .sblock {
+      position: relative !important;
+      inset: auto !important;
+      width: 100% !important;
+      height: auto !important;
+      min-height: 0 !important;
+      padding: 0 !important;
+      margin: 0 auto !important;
       opacity: 0 !important;
       pointer-events: none !important;
       background: transparent !important;
@@ -2826,13 +2983,16 @@ async function main() {
     .lekha-sidebar-export-template-shell .lc-card .sb .ns3mark,
     .lekha-sidebar-export-template-shell .lc-card .sb .ns3bracket,
     .lekha-sidebar-export-template-shell .lc-card .sb .ns3dot {
-      color: var(--template-highlight, var(--sidebar-emphasis-accent, #DDAA03)) !important;
-      -webkit-text-fill-color: var(--template-highlight, var(--sidebar-emphasis-accent, #DDAA03)) !important;
+      color: var(--template-highlight, var(--lc-scene-highlight, var(--sidebar-emphasis-accent, #DDAA03))) !important;
+      -webkit-text-fill-color: var(--template-highlight, var(--lc-scene-highlight, var(--sidebar-emphasis-accent, #DDAA03))) !important;
       filter: saturate(1.35) brightness(1.12);
       font-weight: 900;
     }
+    .lekha-sidebar-export-template-shell .lc-card .cpt {
+      --hc: var(--template-highlight, var(--lc-scene-highlight, var(--sidebar-emphasis-accent, #DDAA03))) !important;
+    }
     .lekha-sidebar-export-template-shell .lc-card .sb .box {
-      background: var(--template-highlight, var(--sidebar-emphasis-accent, #DDAA03)) !important;
+      background: var(--template-highlight, var(--lc-scene-highlight, var(--sidebar-emphasis-accent, #DDAA03))) !important;
       color: #101114 !important;
       -webkit-text-fill-color: #101114 !important;
     }
@@ -2865,6 +3025,14 @@ async function main() {
     }
     .lekha-sidebar-export-template-shell .imp-flicker.sidebar-export-word-anim {
       animation-name: lekhaSidebarExportFlicker;
+    }
+    .lekha-sidebar-export-template-shell .sidebar-export-lc-anim {
+      animation-name: var(--sidebar-export-lc-animation, fade);
+      animation-duration: var(--sidebar-export-word-duration, 180ms);
+      animation-delay: var(--sidebar-export-word-delay, 0ms);
+      animation-timing-function: var(--sidebar-export-lc-ease, cubic-bezier(.22,.68,.26,1));
+      animation-fill-mode: both;
+      animation-play-state: running;
     }
     .lekha-sidebar-export-template-shell .sidebar-export-sticky-anim {
       animation: lekhaSidebarExportStickyIn ${LEGACY_TEMPLATE_TIMING.positionedWordDurationMs}ms cubic-bezier(0.22, 1, 0.36, 1) both;
@@ -3087,6 +3255,10 @@ async function main() {
     .lekha-original-template.t15-stage .w.in {
       font-size: ${Math.max(14, Math.round(exportAdvancedTemplateFontPx * 0.88))}px !important;
       line-height: 1.28 !important;
+    }
+    .lekha-original-template.t15-stage .shake-in > br {
+      display: block !important;
+      content: '' !important;
     }
     .lekha-original-template.t35-stage .lekha-applied-advanced-template,
     .lekha-original-template.t35-stage .lekha-template-fit,
@@ -4359,12 +4531,28 @@ async function main() {
         if (caption?.is_text_element) continue;
         const sidebarSampleFps = defaultTemplateSampleFps;
         const wordCount = Math.max(1, String(caption.text || '').trim().split(/\s+/).filter(Boolean).length);
+        const captionTemplateSource = String(caption.template_source || caption.applied_template_style?.template_source || payload.style?.template_source || '').trim();
+        const isLcSidebarCaption = captionTemplateSource === 'lekha-lc';
+        const durationSeconds = Math.max(0, end - start);
+        // Sampling window for LC: use the source stagger and longest authored
+        // duration. This only overestimates the required frames; it never cuts
+        // off the tail of a real reveal.
+        const lcSchedule = isLcSidebarCaption
+          ? getLcMotionSchedule(Array.from({ length: wordCount }, (_, index) => ({
+            animation: 'rise',
+            duration: LC_TEMPLATE_TIMING.heroDurationMs,
+            delay: index * LC_TEMPLATE_TIMING.staggerMs,
+          })))
+          : null;
         const animationWindowSeconds = Math.min(
-          Math.max(0, end - start),
-          0.54 + (Math.max(0, wordCount - 1) * SIDEBAR_TEMPLATE_WORD_STAGGER_SECONDS) + 0.42,
+          durationSeconds,
+          isLcSidebarCaption
+            ? ((lcSchedule.endMs + 140) / 1000)
+            : 0.54 + (Math.max(0, wordCount - 1) * SIDEBAR_TEMPLATE_WORD_STAGGER_SECONDS) + 0.42,
         );
         const animationEnd = Math.min(end, start + animationWindowSeconds);
         points.add(start);
+        points.add(animationEnd);
         points.add(end);
         for (
           let sample = start + (1 / sidebarSampleFps);

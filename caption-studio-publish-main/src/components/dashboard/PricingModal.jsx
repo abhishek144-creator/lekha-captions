@@ -249,17 +249,22 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
         order_id: orderData.order.id,
         handler: async (response) => {
           try {
+            // Razorpay checkout can stay open long enough for the pre-checkout
+            // token to expire — mint a fresh one for verification.
+            const verifyToken = typeof currentUser.getIdToken === 'function'
+              ? await currentUser.getIdToken().catch(() => idToken)
+              : idToken
             const verifyData = await apiRequest('/api/verify-payment', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                Authorization: `Bearer ${idToken}`,
+                Authorization: `Bearer ${verifyToken}`,
               },
               body: JSON.stringify({
                 razorpay_order_id: response.razorpay_order_id,
                 razorpay_payment_id: response.razorpay_payment_id,
                 razorpay_signature: response.razorpay_signature,
-                id_token: idToken,
+                id_token: verifyToken,
                 plan_id: planId,
                 idempotency_key: paymentAttemptKey,
               }),
@@ -267,7 +272,10 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
             if (verifyData.success) {
               toast({ title: 'Payment successful', description: `${verifyData.credits_added} credits added.` })
               if (onSelectPlan) onSelectPlan(planId)
-              window.location.reload()
+              // No page reload: the user may have unsaved captions in the
+              // editor (upgrading mid-edit is the common path). Refreshing
+              // userData updates credits/plan gating in place.
+              await refreshUserData?.()
             } else {
               toast({ variant: 'destructive', title: 'Payment verification failed', description: 'Please contact support.' })
             }
@@ -381,24 +389,28 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
         order_id: orderData.order.id,
         handler: async (response) => {
           try {
+            const verifyToken = typeof currentUser.getIdToken === 'function'
+              ? await currentUser.getIdToken().catch(() => idToken)
+              : idToken
             const verifyData = await apiRequest('/api/verify-payment', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                Authorization: `Bearer ${idToken}`,
+                Authorization: `Bearer ${verifyToken}`,
               },
               body: JSON.stringify({
                 razorpay_order_id: response.razorpay_order_id,
                 razorpay_payment_id: response.razorpay_payment_id,
                 razorpay_signature: response.razorpay_signature,
-                id_token: idToken,
+                id_token: verifyToken,
                 plan_id: topup.plan_id,
                 idempotency_key: paymentAttemptKey,
               }),
             })
             if (verifyData.success) {
               toast({ title: 'Top-up successful', description: `${verifyData.credits_added} credits added.` })
-              window.location.reload()
+              // No page reload — see handlePayment: preserve unsaved editor work.
+              await refreshUserData?.()
             } else {
               toast({ variant: 'destructive', title: 'Top-up verification failed', description: 'Please contact support.' })
             }

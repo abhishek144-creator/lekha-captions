@@ -42,9 +42,13 @@ const DISABLE_EXPORT_LIMITS_FOR_TESTING = import.meta.env.DEV || import.meta.env
 // (background, stroke, shadow) even if the user's React state is stale from
 // applying the template before these properties were added to the template def.
 // User-customized properties (font, color, position) are NOT overridden here.
+// MUST MIRROR the gallery sources of truth: BASIC_TEMPLATE_STYLE in
+// AdvancedTemplateLibrary.jsx and the per-template `style` objects in
+// TemplatesTab.jsx — if a template is retuned there, update it here too or the
+// export will silently diverge from the canvas.
 const TEMPLATE_CANONICAL_STYLES = {
   't-115': { has_shadow: true, shadow_color: '#39FF14', shadow_blur: 10, shadow_offset_x: 0, shadow_offset_y: 0, has_background: false, has_stroke: false },
-  't-109': { has_shadow: true, shadow_color: '#FF2A00', shadow_blur: 0, shadow_offset_x: 3, shadow_offset_y: 3, has_background: false, has_stroke: false },
+  't-109': { has_shadow: true, shadow_color: '#FF4500', shadow_blur: 0, shadow_offset_x: 3, shadow_offset_y: 3, has_background: false, has_stroke: false },
   't-26':  { has_background: true, background_color: '#e8e8e8', background_opacity: 1.0, has_stroke: true, stroke_color: '#000000', stroke_width: 1, has_shadow: false },
   't-102': { has_background: true, background_color: '#E8E8E8', background_opacity: 1.0, background_padding: 10, has_stroke: false, has_shadow: false },
   't-36':  { has_background: false, has_stroke: false, has_shadow: false },
@@ -59,7 +63,7 @@ const TEMPLATE_CANONICAL_STYLES = {
   't-52':  { has_background: false, has_stroke: false, has_shadow: false },
   't-103': { has_background: true, background_color: '#1e1e1e', background_opacity: 0.85, background_padding: 10, has_stroke: false, has_shadow: false },
   't-112': { has_background: false, has_stroke: false, has_shadow: false },
-  't-104': { has_stroke: true, stroke_color: '#4F46FF', stroke_width: 2, has_background: false, has_shadow: false },
+  't-104': { has_stroke: true, stroke_color: '#2563EB', stroke_width: 2, has_background: false, has_shadow: false },
   't-111': { has_background: false, has_stroke: false, has_shadow: false },
   't-T5':  { has_background: true, background_color: '#DDAA03', background_opacity: 1.0, background_padding: 10, has_stroke: false, has_shadow: false },
   't-95':  { has_background: false, has_stroke: false, has_shadow: false },
@@ -77,6 +81,18 @@ function isAdvancedTemplateId(templateId) {
 
 function isRecreatedAdvancedTemplateId(templateId) {
   return RECREATED_ADVANCED_TEMPLATE_IDS.includes(String(templateId || '').trim());
+}
+
+// Backend signals credit/plan problems as HTTP 403 with a marker prefix in `detail`.
+// apiRequest throws an ApiError for non-2xx responses, so these must be detected on
+// the thrown error (error.data.detail / error.message), not on a returned payload.
+function getPlanLimitErrorKind(errorOrDetail) {
+  const detail = typeof errorOrDetail === 'string'
+    ? errorOrDetail
+    : String(errorOrDetail?.data?.detail || errorOrDetail?.message || '');
+  if (detail.includes('PLAN_EXPIRED')) return 'expired';
+  if (detail.includes('UPGRADE_REQUIRED')) return 'upgrade';
+  return null;
 }
 
 function getMaxRenderedFontSize(root) {
@@ -375,7 +391,9 @@ function getRenderedElementCenterPercent(element, containerRect, containerToVide
 const exportQueue = {
   queue: [],
   isProcessing: false,
-  maxConcurrent: 2,
+  // Backend allows one concurrent export per account (429 otherwise), so the
+  // client queue must never release two exports at once.
+  maxConcurrent: 1,
   currentCount: 0,
 
   add(exportFn) {
@@ -407,7 +425,7 @@ const exportQueue = {
 };
 
 export default function ExportPanel({ open, onClose, captions, captionStyle, waveformData, duration, videoUrl, projectId, fileId, originalFileName, onUpgradeClick }) {
-  const { currentUser, userData } = useAuth();
+  const { currentUser, userData, refreshUserData } = useAuth();
   // Use auth context directly for consistent, up-to-date auth & credit checks
   const isSignedIn = !!currentUser;
 
@@ -438,9 +456,13 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
     }, { once: true });
   });
 
-  const pollExportStatus = async (jobId, authHeaders = {}, timeoutMs = 2 * 60 * 1000, signal = null) => {
+  // Long renders (4K, long videos) can exceed several minutes — a short client
+  // timeout here fails the UI while the server render succeeds, and the retry
+  // then hits the per-account concurrent-export guard (429). Keep this generous.
+  const pollExportStatus = async (jobId, authHeaders = {}, timeoutMs = 10 * 60 * 1000, signal = null) => {
     const startedAt = Date.now();
     let hadTransientFailure = false;
+    let consecutiveNotFound = 0;
     while (Date.now() - startedAt < timeoutMs) {
       throwIfAborted(signal);
       let statusPayload;
@@ -450,12 +472,21 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
           signal
         });
         throwIfAborted(signal);
+        consecutiveNotFound = 0;
         if (hadTransientFailure) {
           setStatusMessage('Connection restored. Finalizing export status...');
           hadTransientFailure = false;
         }
       } catch (err) {
         throwIfAborted(signal);
+        // A missing job never recovers — fail fast instead of retrying for the
+        // full timeout window.
+        if (err?.status === 404) {
+          consecutiveNotFound++;
+          if (consecutiveNotFound >= 4) {
+            throw new Error('Export job was not found on the server. Please start the export again.');
+          }
+        }
         hadTransientFailure = true;
         setStatusMessage('Reconnecting to export status...');
         await abortableSleep(1500, signal);
@@ -501,7 +532,13 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
   const generateSRT = () => {
     if (!captions || captions.length === 0) return '';
 
-    return captions.filter(cap => cap && cap.text && !cap.isTextElement).map((caption, index) => {
+    return captions
+      .filter(cap => cap && cap.text && !cap.isTextElement)
+      // SRT entries must be in chronological order — the captions array can be
+      // reordered by timeline edits.
+      .slice()
+      .sort((a, b) => (a.start_time || 0) - (b.start_time || 0))
+      .map((caption, index) => {
       const formatTime = (seconds) => {
         const hrs = Math.floor((seconds || 0) / 3600);
         const mins = Math.floor(((seconds || 0) % 3600) / 60);
@@ -533,11 +570,19 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
 
   const handleDownloadSRT = () => {
     const srt = generateSRT();
+    if (!srt) {
+      toast({ variant: 'destructive', title: 'No captions to export' });
+      return;
+    }
     downloadFile(srt, 'captions.srt', 'text/plain');
   };
 
   const handleDownloadText = () => {
     const text = generatePlainText();
+    if (!text) {
+      toast({ variant: 'destructive', title: 'No captions to export' });
+      return;
+    }
     downloadFile(text, 'captions.txt', 'text/plain');
   };
 
@@ -585,6 +630,25 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
     ].includes(normalizedTier);
   })();
 
+  const handlePlanLimitError = (kind) => {
+    if (kind === 'expired') {
+      toast({
+        variant: 'destructive',
+        title: 'Plan expired',
+        description: 'Your plan has expired and you have no credits left. Please renew to continue exporting.',
+      });
+    } else {
+      toast({
+        variant: 'destructive',
+        title: 'No credits remaining',
+        description: 'Please upgrade your plan to continue exporting.',
+      });
+    }
+    if (onUpgradeClick) {
+      onUpgradeClick();
+    }
+  };
+
   const handleExportVideo = async (quality) => {
     if (exportInFlightRef.current) {
       toast({
@@ -629,7 +693,10 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       setProgress(20);
       setStatusMessage('Sending to render engine...');
 
-      const videoEl = document.querySelector('video');
+      // Prefer the tagged dashboard player — a bare 'video' query breaks silently
+      // if any other <video> (template preview, tutorial, embed) is ever on the page.
+      const videoEl = document.querySelector('video[data-lekha-player="true"]')
+        || document.querySelector('video');
       const container = videoEl?.parentElement;
       if (!videoEl || !container) {
         toast({
@@ -1118,7 +1185,6 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
         word_layouts: exportUsesRecreatedAdvancedTemplate ? {} : wordLayouts
       };
 
-      setProgress(0);
       setStatusMessage('Rendering captions onto video...');
 
       // Start simulated progress for smooth UI
@@ -1146,30 +1212,9 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       }
 
       if (!result.success) {
-        // Check for specific upgrade/expiry errors from backend
-        const detail = result.detail || result.error || '';
-        if (detail.includes('PLAN_EXPIRED') || detail.includes('UPGRADE_REQUIRED')) {
-          setIsExporting(false);
-          setProgress(0);
-          setStatusMessage('');
-          // Show user-friendly message first
-          if (detail.includes('PLAN_EXPIRED')) {
-            toast({
-              variant: 'destructive',
-              title: 'Plan expired',
-              description: 'Your plan has expired and you have no credits left. Please renew to continue exporting.',
-            });
-          } else {
-            toast({
-              variant: 'destructive',
-              title: 'No credits remaining',
-              description: 'Please upgrade your plan to continue exporting.',
-            });
-          }
-          // Then open the pricing/upgrade modal
-          if (onUpgradeClick) {
-            onUpgradeClick();
-          }
+        const planKind = getPlanLimitErrorKind(result.detail || result.error || '');
+        if (planKind) {
+          handlePlanLimitError(planKind);
           return;
         }
         throw new Error(result.error || 'Export failed');
@@ -1177,7 +1222,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
 
       let resolvedResult = result;
       if (result.export_job_id) {
-        await pollExportStatus(result.export_job_id, authHeaders, 2 * 60 * 1000, exportController.signal);
+        await pollExportStatus(result.export_job_id, authHeaders, 10 * 60 * 1000, exportController.signal);
         if (!result.video_url) {
           resolvedResult = await apiRequest(`/api/export-result/${result.export_job_id}`, {
             headers: authHeaders,
@@ -1196,6 +1241,9 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
 
       // Firebase Storage URLs are absolute; local URLs are relative
       const downloadUrl = resolvedResult.video_url
+      if (!downloadUrl) {
+        throw new Error('Export completed but no download link was returned. Please retry.');
+      }
       const videoResponse = await fetch(downloadUrl);
       if (!videoResponse.ok) {
         throw new Error(`Video download failed (${videoResponse.status}). Please try again.`);
@@ -1218,15 +1266,29 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
 
       setProgress(100);
       setStatusMessage('Export complete!');
+      // The backend just decremented a credit — refresh so the plan/credits
+      // gating reflects reality instead of the stale pre-export snapshot.
+      refreshUserData?.().catch(() => {});
       await new Promise(resolve => setTimeout(resolve, 1000));
 
     } catch (error) {
+      // Cancelled exports are not failures — skip failure analytics and toasts.
+      if (error?.name === 'AbortError') return;
       console.error('Export failed:', error);
+      const planKind = getPlanLimitErrorKind(error);
       trackAnalytics('funnel.export.failed', getClientContext({
         stage: 'export',
         quality,
-        plan: userData?.subscription_tier || 'free'
+        plan: userData?.subscription_tier || 'free',
+        reason: planKind || 'error'
       }));
+      // The backend rejects out-of-credit exports with HTTP 403, which apiRequest
+      // surfaces as a thrown ApiError — route it to the upgrade flow instead of a
+      // generic failure toast.
+      if (planKind) {
+        handlePlanLimitError(planKind);
+        return;
+      }
       notifyApiError(error, 'Export failed');
     } finally {
       setIsExporting(false);

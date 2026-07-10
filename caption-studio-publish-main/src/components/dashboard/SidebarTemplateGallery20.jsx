@@ -1,16 +1,19 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Sparkles, X, Search, Star } from 'lucide-react';
+import { Check, Sparkles, X, Search, Star, RotateCcw } from 'lucide-react';
 import { useLazyVisible } from './useLazyVisible';
 import {
   isExportableTemplateCandidate,
   templateMatchesQuery,
   useTemplateFavorites,
 } from './templateBrowserUtils.js';
+import { getLcMotionSchedule } from './templateMotionConfig.js';
 import '../../styles/advancedTemplateLibrary.css';
 import legacyTemplateHtml from '../../assets/lekha-captions-20-templates.html?raw';
 import newTemplateHtml from '../../assets/lekha-captions-49-templates.html?raw';
 import lcTemplateHtml2 from '../../assets/lekha-captions-lc-2.html?raw';
 import lcTemplateHtml3 from '../../assets/lekha-captions-lc-3.html?raw';
+import lcTemplateHtml4 from '../../assets/lekha-captions-lc-4.html?raw';
+import lcTemplateHtml5 from '../../assets/lekha-captions-lc-5.html?raw';
 
 function sanitizeTemplateHtml(value = '') {
   return String(value)
@@ -21,7 +24,7 @@ function sanitizeTemplateHtml(value = '') {
 
 const sanitizedLegacyTemplateHtml = sanitizeTemplateHtml(legacyTemplateHtml);
 const sanitizedNewTemplateHtml = sanitizeTemplateHtml(newTemplateHtml);
-const lcTemplateHtmlSets = [lcTemplateHtml2, lcTemplateHtml3];
+const lcTemplateHtmlSets = [lcTemplateHtml2, lcTemplateHtml3, lcTemplateHtml4, lcTemplateHtml5];
 const sanitizedLcTemplateHtml = lcTemplateHtmlSets.map(sanitizeTemplateHtml);
 const LC_FONT_LINKS = `
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -73,17 +76,90 @@ const NEW_TEMPLATE_STYLE_FALLBACK = {
 };
 
 const DUPLICATE_TEMPLATE_RENAMES = {
-  T01: 'The Stand',
-  T03: 'The Keepsake',
-  T08: 'The Curtain',
-  T09: 'The Lightwell',
-  T11: 'The Record',
-  T13: 'The Frequency',
-  T14: 'The Fracture',
-  'V3.1': 'The Afterglow',
-  'V4.2': 'The Flowstate',
-  'V4.8': 'The Sway',
+  T01: 'Command Frame',
+  T03: 'Keepsake Glow',
+  T08: 'Curtain Lift',
+  T09: 'Lightwell Focus',
+  T11: 'Archive Signal',
+  T13: 'Frequency Cut',
+  T14: 'Fracture Pulse',
+  'V3.1': 'Afterglow Verse',
+  'V4.2': 'Flowstate Caption',
+  'V4.8': 'Sway Marker',
 };
+
+const SIDEBAR_TEMPLATE_NAME_OVERRIDES = {
+  A1: 'Vigil Frame',
+  A2: 'Command Cut',
+  A3: 'Velvet Thesis',
+  A4: 'Anchor Serif',
+  A5: 'Muse Highlight',
+  B1: 'Bodoni Glow',
+  B2: 'Editorial Whisper',
+  B3: 'Matrix Signal',
+  B4: 'Spectral Note',
+  B5: 'Poster Sprint',
+  C1: 'Urban Header',
+  C2: 'Cinematic Seal',
+  C3: 'Quiet Memoir',
+  C4: 'Studio Verdict',
+  C5: 'Romance Frame',
+  D1: 'Impact Banner',
+  D2: 'Premium Quote',
+  D3: 'Cyber Pulse',
+  D4: 'Royal Marker',
+  D5: 'Legacy Serif',
+  ...DUPLICATE_TEMPLATE_RENAMES,
+};
+
+const PROFESSIONAL_TEMPLATE_ADJECTIVES = [
+  'Aurora', 'Beacon', 'Cinematic', 'Editorial', 'Golden', 'Kinetic', 'Luminous',
+  'Midnight', 'Neon', 'Oracle', 'Prime', 'Radiant', 'Signal', 'Studio', 'Velvet',
+  'Vivid', 'Monarch', 'Nova', 'Prism', 'Summit',
+];
+
+const PROFESSIONAL_TEMPLATE_NOUNS = [
+  'Arc', 'Banner', 'Cadence', 'Caption', 'Cut', 'Echo', 'Frame', 'Glow', 'Lift',
+  'Marker', 'Pulse', 'Reveal', 'Rhythm', 'Script', 'Sequence', 'Signal', 'Spark',
+  'Trace', 'Verse', 'Wave',
+];
+
+function buildProfessionalTemplateName(template = {}, index = 0) {
+  const override = SIDEBAR_TEMPLATE_NAME_OVERRIDES[String(template.id || '').trim()];
+  if (override) return override;
+  const source = `${template.format || ''}:${template.id || ''}:${template.name || ''}`;
+  const seed = Array.from(source).reduce((total, char) => total + char.charCodeAt(0), index * 17);
+  const sourceOffset = template.format === 'lc' ? 9 : template.format === 'lk' ? 5 : 0;
+  const adjective = PROFESSIONAL_TEMPLATE_ADJECTIVES[(seed + sourceOffset) % PROFESSIONAL_TEMPLATE_ADJECTIVES.length];
+  const noun = PROFESSIONAL_TEMPLATE_NOUNS[((seed * 7) + index + sourceOffset) % PROFESSIONAL_TEMPLATE_NOUNS.length];
+  return `${adjective} ${noun}`;
+}
+
+function replaceMarkupText(markup = '', pattern, replacementText = '') {
+  return String(markup || '').replace(pattern, (...parts) => {
+    const match = parts[0];
+    const prefix = parts[1] || '';
+    const suffix = parts[3] || parts[2] || '';
+    return prefix && suffix ? `${prefix}${replacementText}${suffix}` : match;
+  });
+}
+
+function replaceTemplateNameInMarkup(markup = '', template = {}, displayName = '') {
+  if (template.format === 'lk') {
+    return replaceMarkupText(markup, /(<span class="lk-cnm">)([\s\S]*?)(<\/span>)/i, displayName);
+  }
+  return replaceMarkupText(markup, /(<span class="cnm">)([\s\S]*?)(<\/span>)/i, ` · ${displayName}`);
+}
+
+function applyProfessionalTemplateName(template = {}, index = 0) {
+  const displayName = buildProfessionalTemplateName(template, index);
+  return {
+    ...template,
+    originalName: template.originalName || template.name,
+    displayName,
+    cardMarkup: replaceTemplateNameInMarkup(template.cardMarkup, template, displayName),
+  };
+}
 
 // Preserve the authored template accent families so the template thumbnail,
 // canvas preview, and exported overlay do not drift from one another.
@@ -214,6 +290,8 @@ function normalizeColorValue(value = '') {
 }
 
 function extractAccentColorFromMarkup(markup = '') {
+  const lcColorMatch = String(markup).match(/--(?:lc-scene-highlight|tint|hc)\s*:\s*(#[0-9a-f]{3,8})/i);
+  if (lcColorMatch?.[1]) return lcColorMatch[1].toUpperCase();
   const match = String(markup).match(/\b(ns\d+|imp|neon)-([a-z]+)\b/i);
   if (!match?.[2]) return '';
   const family = match[1].toLowerCase();
@@ -518,16 +596,21 @@ function renderLcNormalScene(scene = {}, ctx, templateId = '') {
     words.forEach((word, index) => {
       if (output.length) output.push(' ');
       const hero = !!heroFlags[index];
+      // LC3's engine only knows ns3hero; LC4/LC5 map styledHero through the
+      // full keyword set (underline/box/mark/bracket/dot). LC3 data never sets
+      // keywordStyle, so the shared lookup stays faithful to both engines.
       const cls = hero
         ? (isFormulaSet
-          ? (scene.styledHero ? 'ns3hero' : 'hero')
+          ? (scene.styledHero ? (keywordClassMap[scene.keywordStyle] || 'ns3hero') : 'hero')
           : (scene.type === 3 ? (keywordClassMap[scene.keywordStyle] || 'ns3hero') : 'hero'))
         : '';
       let anim = '';
       let duration = hero ? LC_TIMING.heroDurationMs : LC_TIMING.bodyDurationMs;
       let delay = ctx.n * LC_TIMING.staggerMs;
       let on = false;
-      if (mode === 'static' || mode === 'plain') {
+      // 'block' animates the whole wrap once (LC4/LC5 engines); its words are
+      // statically visible and the wrap carries the motion (attrs added below).
+      if (mode === 'static' || mode === 'plain' || mode === 'block') {
         on = true;
       } else if (mode === 'wbw') {
         anim = 'fade';
@@ -567,7 +650,16 @@ function renderLcNormalScene(scene = {}, ctx, templateId = '') {
     const wrapClass = `nline${mode === 'plain' ? ' plainwrap' : ''}`;
     if (mode === 'plain') end = 240;
     if (mode === 'static') end = 0;
-    return { html: `<div class="${wrapClass}">${inner}</div>`, end };
+    // Whole-line block animation (source: wrap.style.animation = `${a} ${HERO_DUR}ms …`).
+    // Carried as data attributes so the preview runtime, canvas stamp, and
+    // export activate can each stamp the same authored wrap animation.
+    let wrapAttrs = '';
+    if (mode === 'block') {
+      const blockAnim = scene.blockAnim || 'rise';
+      wrapAttrs = ` data-lc-block-anim="${escapeHtml(blockAnim)}" data-lc-block-duration="${LC_TIMING.heroDurationMs}" data-lc-block-ease="${escapeHtml(getLcAnimationEase(blockAnim))}"`;
+      end = LC_TIMING.heroDurationMs;
+    }
+    return { html: `<div class="${wrapClass}"${wrapAttrs}>${inner}</div>`, end };
   }
 
   const text = String(scene.text || '').trim();
@@ -654,7 +746,7 @@ function buildLcCardMarkup(template = {}, templateIndex = 0) {
   const palette = getLcPalette(templateIndex);
   template.pal = palette;
   const sceneMarkup = (template.scenes || []).map((scene, sceneIndex) => (
-    `<div class="sb${sceneIndex === 0 ? ' active' : ''}" data-si="${sceneIndex}" style="--template-highlight:${palette[sceneIndex % palette.length]}"><div class="cap"><div class="scene">${buildLcSceneMarkup(scene, sceneIndex, template)}</div></div></div>`
+    `<div class="sb${sceneIndex === 0 ? ' active' : ''}" data-si="${sceneIndex}" style="--lc-scene-highlight:${palette[sceneIndex % palette.length]}"><div class="cap"><div class="scene">${buildLcSceneMarkup(scene, sceneIndex, template)}</div></div></div>`
   )).join('');
   const dots = (template.scenes || []).map((_, sceneIndex) => `<i class="${sceneIndex === 0 ? 'on' : ''}"></i>`).join('');
   const cardClass = `lc-${String(template.id || '').toLowerCase()}`;
@@ -686,13 +778,11 @@ const LEGACY_TEMPLATE_CARDS = Array.from(
   extractLegacyCards().reduce((uniqueCards, card) => {
     const uniqueKey = card.id || card.name;
     if (!uniqueCards.has(uniqueKey)) {
-      uniqueCards.set(uniqueKey, card);
+      uniqueCards.set(uniqueKey, applyProfessionalTemplateName(card, uniqueCards.size));
     }
     return uniqueCards;
   }, new Map()).values(),
 );
-
-const legacyTemplateNames = new Set(LEGACY_TEMPLATE_CARDS.map((card) => normalizeTemplateName(card.name)));
 
 const NEW_TEMPLATE_CARDS = Array.from(
   extractNewCards().reduce((uniqueCards, card) => {
@@ -700,11 +790,7 @@ const NEW_TEMPLATE_CARDS = Array.from(
     if (!uniqueKey || uniqueCards.has(uniqueKey)) {
       return uniqueCards;
     }
-    const isDuplicateName = legacyTemplateNames.has(normalizeTemplateName(card.name));
-    uniqueCards.set(uniqueKey, {
-      ...card,
-      displayName: isDuplicateName ? (DUPLICATE_TEMPLATE_RENAMES[card.id] || card.name) : card.name,
-    });
+    uniqueCards.set(uniqueKey, applyProfessionalTemplateName(card, uniqueCards.size));
     return uniqueCards;
   }, new Map()).values(),
 );
@@ -713,7 +799,7 @@ const LC_TEMPLATE_CARDS = Array.from(
   extractLcCards().reduce((uniqueCards, card) => {
     const uniqueKey = card.id || card.name;
     if (!uniqueCards.has(uniqueKey)) {
-      uniqueCards.set(uniqueKey, card);
+      uniqueCards.set(uniqueKey, applyProfessionalTemplateName(card, uniqueCards.size));
     }
     return uniqueCards;
   }, new Map()).values(),
@@ -723,13 +809,16 @@ const LC_STYLE_1_TEMPLATE_CARDS = LC_TEMPLATE_CARDS.filter((template) => templat
 const LC_STYLE_2_TEMPLATE_CARDS = LC_TEMPLATE_CARDS.filter((template) => template.styleGroup === 2);
 const LC_STYLE_3_TEMPLATE_CARDS = LC_TEMPLATE_CARDS.filter((template) => template.styleGroup === 3);
 
-const TEMPLATE_CARDS = [
-  ...LEGACY_TEMPLATE_CARDS,
+const TEMPLATE_CARDS = [...LEGACY_TEMPLATE_CARDS];
+const ALL_TEMPLATE_CARDS = [
+  ...TEMPLATE_CARDS,
+  // Keep hidden 49-pack templates in the style map so older saved projects
+  // that already reference them can still resolve their preview/export styles.
   ...NEW_TEMPLATE_CARDS,
   ...LC_TEMPLATE_CARDS,
 ];
 const SELECTABLE_TEMPLATE_CARDS = [
-  ...LEGACY_TEMPLATE_CARDS,
+  ...TEMPLATE_CARDS,
   ...LC_TEMPLATE_CARDS,
 ];
 const TOTAL_TEMPLATE_COUNT = SELECTABLE_TEMPLATE_CARDS.length;
@@ -737,7 +826,7 @@ const TEMPLATE_PREVIEW_PROGRESS_EVENT = 'lekha-sidebar-template-preview-progress
 const TEMPLATE_PREVIEW_JUMP_EVENT = 'lekha-sidebar-template-preview-jump';
 const getTemplateStyleKey = (template) => `${template?.format || 'legacy'}::${template?.id || ''}`;
 const EXTRACTED_TEMPLATE_STYLE_MAP = Object.fromEntries(
-  TEMPLATE_CARDS.map((template) => [getTemplateStyleKey(template), extractTemplateStyleFromPreview(template)]),
+  ALL_TEMPLATE_CARDS.map((template) => [getTemplateStyleKey(template), extractTemplateStyleFromPreview(template)]),
 );
 
 function getTemplatePreviewDotCount(template) {
@@ -761,6 +850,7 @@ function buildTemplateStyle(template) {
   const extractedStyle = EXTRACTED_TEMPLATE_STYLE_MAP[getTemplateStyleKey(template)] || {};
   const baseStyle = TEMPLATE_STYLE_MAP[template.id]
     || (Object.keys(extractedStyle).length ? extractedStyle : NEW_TEMPLATE_STYLE_FALLBACK);
+  const templateAccent = extractAccentColorFromMarkup(template.cardMarkup);
 
   return {
     template_id: `sidebar-${template.id}`,
@@ -776,6 +866,12 @@ function buildTemplateStyle(template) {
     template_effect: detectTemplatePreviewEffect(template),
     template_markup: template.cardMarkup || '',
     ...baseStyle,
+    ...(templateAccent ? {
+      secondary_color: templateAccent,
+      highlight_color: templateAccent,
+      emphasis_color: templateAccent,
+      karaoke_color_1: templateAccent,
+    } : {}),
     has_background: false,
     has_shadow: false,
     has_stroke: false,
@@ -1083,6 +1179,22 @@ function buildPreviewDoc(template) {
             };
         let currentIndex = 0;
         let timer = null;
+        const animationTimers = new Set();
+        const setTimeout = (fn, delay) => {
+          const id = window.setTimeout(() => {
+            animationTimers.delete(id);
+            fn();
+          }, delay);
+          animationTimers.add(id);
+          return id;
+        };
+
+        function clearAnimationTimers() {
+          animationTimers.forEach((id) => window.clearTimeout(id));
+          animationTimers.clear();
+        }
+
+        const getLcMotionSchedule = ${getLcMotionSchedule.toString()};
 
         function getLcAnimation(element, fallbackDuration) {
           const anim = element && element.dataset ? (element.dataset.lcAnim || '') : '';
@@ -1111,6 +1223,7 @@ function buildPreviewDoc(template) {
         }
 
         function getBlockType(block) {
+          if (block.querySelector('[data-lc-anim], [data-lc-block-anim]')) return 'lc';
           const wbwSelector = WBW_CLASSES.map((className) => '.' + className + ' .w').concat('.w[data-lc-anim]').join(',');
           if (block.querySelector(wbwSelector)) return 'wbw';
           if (block.querySelector('.sw, .sw-w')) return 'pos';
@@ -1522,17 +1635,76 @@ function buildPreviewDoc(template) {
         }
 
         function resetBlock(block) {
+          clearAnimationTimers();
           block.classList.remove('active');
           block.style.cssText = 'opacity:0;visibility:hidden;pointer-events:none';
           resetWBW(block);
           resetPosWords(block);
         }
 
+        function stampLcMotion(block) {
+          const nodes = Array.from(block.querySelectorAll('[data-lc-anim]'));
+          const schedule = getLcMotionSchedule(nodes.map((node) => ({
+            animation: node.dataset.lcAnim,
+            duration: node.dataset.lcDuration,
+            delay: node.dataset.lcDelay,
+            ease: node.dataset.lcEase,
+          })));
+
+          nodes.forEach((node) => {
+            node.style.animation = 'none';
+            node.style.transition = 'none';
+            node.style.opacity = '';
+            node.style.transform = '';
+            node.style.clipPath = '';
+            node.classList.remove('in', 'visible');
+          });
+          void block.getBoundingClientRect();
+          nodes.forEach((node, index) => {
+            const entry = schedule.entries[index];
+            if (!entry || !entry.animation) return;
+            node.style.animation = entry.animation + ' ' + entry.durationMs + 'ms ' + entry.ease + ' ' + entry.delayMs + 'ms both';
+          });
+
+          block.querySelectorAll('[data-lc-block-anim]').forEach((node) => {
+            const schedule = getLcMotionSchedule([{
+              animation: node.dataset.lcBlockAnim,
+              duration: node.dataset.lcBlockDuration,
+              delay: node.dataset.lcBlockDelay,
+              ease: node.dataset.lcBlockEase,
+            }]);
+            const entry = schedule.entries[0];
+            if (!entry || !entry.animation) return;
+            node.style.animation = 'none';
+            void node.getBoundingClientRect();
+            node.style.animation = entry.animation + ' ' + entry.durationMs + 'ms ' + entry.ease + ' ' + entry.delayMs + 'ms both';
+          });
+
+          block.querySelectorAll('.w.on, .sw.on, .sw-w.on').forEach((node) => {
+            node.style.animation = 'none';
+            node.style.opacity = '1';
+            node.style.transform = 'none';
+            node.style.clipPath = 'inset(0 0 0 0)';
+          });
+          block.querySelectorAll('.plainwrap').forEach((node) => {
+            node.style.animation = 'none';
+            void node.getBoundingClientRect();
+            node.style.animation = 'fade 240ms ease 0ms both';
+          });
+        }
+
         function enterBlock(block) {
           const type = getBlockType(block);
           resetBlock(block);
           void block.offsetHeight;
-          if (type === 'plain') {
+          if (type === 'lc') {
+            block.style.transition = 'none';
+            block.style.visibility = 'visible';
+            block.style.pointerEvents = 'auto';
+            block.style.opacity = '1';
+            block.classList.add('active');
+            stampLcMotion(block);
+          } else if (type === 'plain') {
             block.style.transition = 'none';
             block.style.visibility = 'visible';
             block.style.pointerEvents = 'auto';
@@ -1543,6 +1715,13 @@ function buildPreviewDoc(template) {
               element.style.opacity = '0';
               void element.offsetWidth;
               element.style.animation = '';
+            });
+            block.querySelectorAll('[data-lc-block-anim]').forEach((element) => {
+              element.style.animation = 'none';
+              void element.offsetWidth;
+              element.style.animation = element.dataset.lcBlockAnim + ' '
+                + (element.dataset.lcBlockDuration || 560) + 'ms '
+                + (element.dataset.lcBlockEase || 'cubic-bezier(.22,.68,.26,1)') + ' 0ms both';
             });
           } else if (type === 'wbw') {
             block.style.transition = 'none';
@@ -1618,6 +1797,7 @@ function buildPreviewDoc(template) {
             window.clearTimeout(timer);
             timer = null;
           }
+          clearAnimationTimers();
           blocks.forEach((block) => resetBlock(block));
           currentIndex = index;
           show(currentIndex);
@@ -1661,6 +1841,7 @@ function buildPreviewDoc(template) {
         document.addEventListener('visibilitychange', () => {
           if (document.hidden && timer) {
             window.clearTimeout(timer);
+            clearAnimationTimers();
             timer = null;
           } else if (!document.hidden && !timer && blocks.length > 1) {
             blocks.forEach((block) => resetBlock(block));
@@ -1735,13 +1916,16 @@ function buildPreviewDoc(template) {
           .lc-card .sb .ns3mark,
           .lc-card .sb .ns3bracket,
           .lc-card .sb .ns3dot {
-            color: var(--template-highlight, var(--tint)) !important;
-            -webkit-text-fill-color: var(--template-highlight, var(--tint)) !important;
+            color: var(--template-highlight, var(--lc-scene-highlight, var(--tint))) !important;
+            -webkit-text-fill-color: var(--template-highlight, var(--lc-scene-highlight, var(--tint))) !important;
             filter: saturate(1.35) brightness(1.12);
             font-weight: 900;
           }
+          .lc-card .cpt {
+            --hc: var(--template-highlight, var(--lc-scene-highlight, var(--tint))) !important;
+          }
           .lc-card .sb .box {
-            background: var(--template-highlight, var(--tint)) !important;
+            background: var(--template-highlight, var(--lc-scene-highlight, var(--tint))) !important;
             color: #101114 !important;
             -webkit-text-fill-color: #101114 !important;
           }
@@ -1852,7 +2036,15 @@ function TemplatePreviewFrame({ template, jumpRequest, onProgressChange }) {
   );
 }
 
-function TemplateCardButton({ template, isActive, isFavorite, onToggleFavorite, onApplyTemplate }) {
+function TemplateCardButton({
+  template,
+  isActive,
+  isFavorite,
+  onToggleFavorite,
+  onApplyTemplate,
+  onUpdateTemplate,
+  currentStyle,
+}) {
   const baseDotCount = useMemo(() => getTemplatePreviewDotCount(template), [template]);
   const [jumpRequest, setJumpRequest] = useState({ phase: 0, token: 0 });
   const [previewProgress, setPreviewProgress] = useState({
@@ -1931,6 +2123,98 @@ function TemplateCardButton({ template, isActive, isFavorite, onToggleFavorite, 
             </div>
           </div>
         </div>
+      </div>
+      {isActive && (
+        <SidebarTemplateColorControls
+          currentStyle={currentStyle}
+          activeTemplate={template}
+          onApplyTemplate={onUpdateTemplate}
+        />
+      )}
+    </div>
+  );
+}
+
+function SidebarTemplateColorPicker({ label, value, defaultColor, onChange, onReset }) {
+  const displayColor = value || defaultColor || '#FFFFFF';
+  return (
+    <div className="flex items-center justify-between mb-3">
+      <span className="text-xs text-gray-400">{label}</span>
+      <div className="flex items-center gap-2">
+        <label className="flex items-center bg-[#1F2022] rounded-lg p-1 pr-3 border border-white/5">
+          <span className="relative w-6 h-6 rounded overflow-hidden mr-2 border border-white/10">
+            <input
+              type="color"
+              value={displayColor}
+              onChange={(event) => onChange(event.target.value)}
+              className="absolute -top-2 -left-2 w-10 h-10 cursor-pointer"
+            />
+          </span>
+          <span className="text-xs text-gray-300 font-mono">{displayColor.toUpperCase()}</span>
+        </label>
+        <button
+          type="button"
+          title={`Reset ${label.toLowerCase()}`}
+          onClick={onReset}
+          className="w-8 h-8 flex items-center justify-center rounded-lg bg-[#1F2022] border border-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+        >
+          <RotateCcw className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SidebarTemplateColorControls({ currentStyle, activeTemplate, onApplyTemplate }) {
+  if (!currentStyle?.template_20_id || !activeTemplate) return null;
+  const defaultStyle = buildTemplateStyle(activeTemplate);
+  const defaultAccent = defaultStyle.highlight_color || defaultStyle.emphasis_color || defaultStyle.secondary_color || '#DDAA03';
+  const currentAccent = currentStyle.highlight_color || currentStyle.emphasis_color || currentStyle.secondary_color || defaultAccent;
+  const defaultSecondary = defaultStyle.secondary_color || defaultAccent;
+
+  const applyPatch = (patch) => {
+    onApplyTemplate?.({
+      ...currentStyle,
+      ...patch,
+      template_color_customized: true,
+    });
+  };
+
+  return (
+    <div className="mx-2 mb-2 mt-3 px-4 py-3 bg-[#111111] rounded-lg border border-white/5">
+      <div className="mb-4">
+        <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-3">Colors</h4>
+        <SidebarTemplateColorPicker
+          label="Primary"
+          value={currentStyle.text_color}
+          defaultColor={defaultStyle.text_color || '#FFFFFF'}
+          onChange={(value) => applyPatch({ text_color: value })}
+          onReset={() => applyPatch({ text_color: defaultStyle.text_color || '#FFFFFF' })}
+        />
+        <SidebarTemplateColorPicker
+          label="Secondary"
+          value={currentStyle.secondary_color}
+          defaultColor={defaultSecondary}
+          onChange={(value) => applyPatch({ secondary_color: value })}
+          onReset={() => applyPatch({ secondary_color: defaultSecondary })}
+        />
+        <SidebarTemplateColorPicker
+          label="Highlight Color"
+          value={currentAccent}
+          defaultColor={defaultAccent}
+          onChange={(value) => applyPatch({
+            secondary_color: value,
+            highlight_color: value,
+            emphasis_color: value,
+            karaoke_color_1: value,
+          })}
+          onReset={() => applyPatch({
+            secondary_color: defaultStyle.secondary_color || defaultAccent,
+            highlight_color: defaultStyle.highlight_color || defaultAccent,
+            emphasis_color: defaultStyle.emphasis_color || defaultAccent,
+            karaoke_color_1: defaultStyle.karaoke_color_1 || defaultStyle.highlight_color || defaultAccent,
+          })}
+        />
       </div>
     </div>
   );
@@ -2028,6 +2312,8 @@ export default function SidebarTemplateGallery20({ currentStyle, onApplyTemplate
                   isFavorite={templateIsFavorite}
                   onToggleFavorite={() => toggleFavorite('sidebar-template', template.id)}
                   onApplyTemplate={applyTemplate}
+                  onUpdateTemplate={onApplyTemplate}
+                  currentStyle={currentStyle}
                 />
               );
             })}

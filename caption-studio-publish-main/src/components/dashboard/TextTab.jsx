@@ -1,6 +1,7 @@
 import React from 'react';
 import { Type } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
+import { loadGoogleFont } from './fontUtils';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
@@ -72,6 +73,13 @@ const buildCaptionMatchedTextElement = ({ activeSpeechCaption, currentTime, capt
 };
 
 export default function TextTab({ captions, setCaptions, currentTime, setSelectedCaptionId, captionStyle }) {
+  // The combo presets use display fonts that nothing else loads — without this
+  // the preview grid AND the inserted text element render in a fallback font.
+  React.useEffect(() => {
+    const families = [...new Set(fontCombos.map((combo) => combo.fontFamily))];
+    families.forEach((family) => loadGoogleFont(family, [400, 700]).catch(() => {}));
+  }, []);
+
   const addTextElement = (type) => {
     // Check limit
     const activeTextCount = captions.filter(c => c.isTextElement).length;

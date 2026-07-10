@@ -51,7 +51,7 @@ export function sanitizeTemplateInlineStyle(styleValue = '') {
       if (property === 'animation-delay') {
         return /^-?\d*\.?\d+(m?s)$/i.test(value);
       }
-      if (/^--template-(?:primary|secondary|highlight|bg)$/.test(property)) {
+      if (/^(?:--template-(?:primary|secondary|highlight|bg)|--(?:tint|hc|lc-scene-highlight))$/.test(property)) {
         return /^(?:#[0-9a-f]{3,8}|transparent|rgba?\([\d\s,%.]+\))$/i.test(value);
       }
       if (property === 'font-weight') {
@@ -112,7 +112,7 @@ export function sanitizeAppliedTemplateMarkup(markup = '', preserveInlineStyles 
     .replace(/\sclass="([^"]*)"/gi, (_, classValue) => {
       const cleanedClassValue = String(classValue)
         .split(/\s+/)
-        .filter((className) => className && !['active', 'visible', 'anim', 'on', 'in'].includes(className))
+        .filter((className) => className && !['active', 'visible', 'anim', preserveInlineStyles ? '' : 'on', 'in'].includes(className))
         .join(' ');
       return cleanedClassValue ? ` class="${cleanedClassValue}"` : '';
     })

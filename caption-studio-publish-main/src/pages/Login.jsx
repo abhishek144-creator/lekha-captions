@@ -45,7 +45,7 @@ export default function Login() {
         setSearchParams({});
     };
 
-    const title = isLoginMode ? 'Welcome back to Caption Studio' : 'Welcome to Caption Studio';
+    const title = isLoginMode ? 'Welcome back to Lekha Captions' : 'Welcome to Lekha Captions';
     const subtitle = isLoginMode
         ? 'Log in with Google to continue editing your projects.'
         : 'Create your account with Google to start captioning right away.';

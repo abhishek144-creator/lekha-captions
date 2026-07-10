@@ -131,6 +131,10 @@ export default function Dashboard() {
   const [isPricingModalOpen, setIsPricingModalOpen] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isExportPanelOpen, setIsExportPanelOpen] = useState(false);
+  // Once opened, ExportPanel stays mounted (hidden) so an in-flight export keeps
+  // its progress state when the sheet is closed and reopened. Unmounting it
+  // mid-export orphaned the running export and let users start a duplicate one.
+  const [exportPanelMounted, setExportPanelMounted] = useState(false);
   const [isPlanExpiredModalOpen, setIsPlanExpiredModalOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -180,7 +184,10 @@ export default function Dashboard() {
     if (typeof window === 'undefined') return;
     if (!new URLSearchParams(window.location.search).has('devseed')) return;
     const mkWords = (pairs) => pairs.map(([w, s, e]) => ({ word: w, text: w, start: s, end: e }));
-    setVideoUrl('/uploads/6e7cb4d2-0b2e-472d-91c4-fa8dae2eb30a.mov');
+    // Served from public/ (gitignored) — drop any small clip there. The old
+    // /uploads/<id>.mov path 404s: uploads are now token-gated behind
+    // /api/media/upload/<id>, which the seed cannot sign.
+    setVideoUrl('/dev-sample.mov');
     setDuration(12);
     setFileId('devseed');
     setCaptions([
@@ -202,9 +209,14 @@ export default function Dashboard() {
   const [settings, setSettings] = useState({ language: 'english', style: 'viral_hook' });
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // Undo/Redo state
+  // Undo/Redo state. `history` holds PRE-change snapshots (history[historyIndex]
+  // is what undo restores). Undone states live on `redoStack` — without it, redo
+  // re-restored the snapshot the editor was already showing and the newest state
+  // was unreachable.
   const [history, setHistory] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+  const [redoStack, setRedoStack] = useState([]);
+  const lastCoalescedPushRef = useRef(0);
 
   // Active tab for sidebar navigation
   const [activeTab, setActiveTab] = useState('captions');
@@ -678,23 +690,34 @@ export default function Dashboard() {
     }
   }, [currentTime, currentUser, fileId, isPlaying, videoUrl]);
 
-  // Push current state to history, then apply new state
-  const pushHistory = (newCaptions, newStyle) => {
-    const snapshot = {
-      captions: JSON.parse(JSON.stringify(captions)),
-      captionStyle: JSON.parse(JSON.stringify(captionStyle))
-    };
-    const trimmed = history.slice(0, historyIndex + 1);
-    const newHistory = [...trimmed, snapshot];
-    // Cap history at 50 entries
-    if (newHistory.length > 50) newHistory.shift();
-    setHistory(newHistory);
-    setHistoryIndex(newHistory.length - 1);
+  // Push current state to history, then apply new state.
+  // options.coalesce: rapid consecutive pushes (e.g. per-keystroke text edits)
+  // record only ONE snapshot per burst — without this, typing a sentence pushed
+  // ~50 single-character entries and flushed the entire useful undo history.
+  const pushHistory = (newCaptions, newStyle, options = {}) => {
+    const now = Date.now();
+    const coalesce = options.coalesce === true;
+    const withinBurst = coalesce && (now - lastCoalescedPushRef.current < 1200);
+    lastCoalescedPushRef.current = coalesce ? now : 0;
+    if (!withinBurst) {
+      const snapshot = {
+        captions: JSON.parse(JSON.stringify(captions)),
+        captionStyle: JSON.parse(JSON.stringify(captionStyle))
+      };
+      const trimmed = history.slice(0, historyIndex + 1);
+      const newHistory = [...trimmed, snapshot];
+      // Cap history at 50 entries
+      if (newHistory.length > 50) newHistory.shift();
+      setHistory(newHistory);
+      setHistoryIndex(newHistory.length - 1);
+    }
+    // Any new change invalidates the redo branch.
+    setRedoStack([]);
     if (newCaptions !== undefined) setCaptions(newCaptions);
     if (newStyle !== undefined) setCaptionStyle(newStyle);
   };
 
-  const updateCaptions = (newCaptions) => pushHistory(newCaptions, undefined);
+  const updateCaptions = (newCaptions, options) => pushHistory(newCaptions, undefined, options);
   const updateCaptionStyle = (newStyle) => pushHistory(undefined, newStyle);
 
   const handleWordStyleChange = (key, value, skipHistory = false) => {
@@ -963,6 +986,12 @@ export default function Dashboard() {
   const handleUndo = () => {
     if (historyIndex >= 0) {
       const prevState = history[historyIndex];
+      // Save the state being undone so redo can bring it back — history only
+      // holds pre-change snapshots, never the state after a change.
+      setRedoStack(stack => [...stack, {
+        captions: JSON.parse(JSON.stringify(captions)),
+        captionStyle: JSON.parse(JSON.stringify(captionStyle))
+      }]);
       setCaptions(prevState.captions);
       setCaptionStyle(prevState.captionStyle);
       setHistoryIndex(historyIndex - 1);
@@ -970,11 +999,17 @@ export default function Dashboard() {
   };
 
   const handleRedo = () => {
-    if (historyIndex < history.length - 1) {
-      const nextState = history[historyIndex + 1];
+    if (redoStack.length > 0) {
+      const nextState = redoStack[redoStack.length - 1];
+      setRedoStack(stack => stack.slice(0, -1));
+      // The state being replaced becomes the pre-change snapshot again.
+      setHistory(h => [...h.slice(0, historyIndex + 1), {
+        captions: JSON.parse(JSON.stringify(captions)),
+        captionStyle: JSON.parse(JSON.stringify(captionStyle))
+      }]);
+      setHistoryIndex(historyIndex + 1);
       setCaptions(nextState.captions);
       setCaptionStyle(nextState.captionStyle);
-      setHistoryIndex(historyIndex + 1);
     }
   };
 
@@ -990,7 +1025,7 @@ export default function Dashboard() {
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
 
-  }, [historyIndex, history]);
+  }, [historyIndex, history, redoStack, captions, captionStyle]);
 
   const handleRefresh = () => {
     const initialState = initialEditorStateRef.current || snapshotEditorState();
@@ -1020,6 +1055,7 @@ export default function Dashboard() {
       captionStyle: JSON.parse(JSON.stringify(initialState.captionStyle || defaultCaptionStyle))
     }]);
     setHistoryIndex(0);
+    setRedoStack([]);
   };
 
   const handleNewProject = () => {
@@ -1033,6 +1069,7 @@ export default function Dashboard() {
     setSelectedCaptionId(null);
     setHistory([]);
     setHistoryIndex(-1);
+    setRedoStack([]);
   };
 
   const handleSelectPlan = async (planId) => {
@@ -1086,6 +1123,7 @@ export default function Dashboard() {
 
   const handleExportClick = () => {
     // Always open the Export Panel — auth/credit checks are handled inside
+    setExportPanelMounted(true);
     setIsExportPanelOpen(true);
   };
 
@@ -1166,6 +1204,9 @@ export default function Dashboard() {
             selectedCaptionId={selectedCaptionId}
             setSelectedCaptionId={setSelectedCaptionId}
             onSeek={handleSeek}
+            captionStyle={captionStyle}
+            setCaptionStyle={updateCaptionStyle}
+            addToHistory={addToHistory}
           />
         </Suspense>
       );
@@ -1184,6 +1225,7 @@ export default function Dashboard() {
         selectedCaption={captions.find(c => c.id === selectedCaptionId)}
         captions={captions}
         setCaptions={updateCaptions}
+        setCaptionsRaw={setCaptions}
         onApplyTemplate={handleApplyTemplate}
       />
     </Suspense>
@@ -1367,7 +1409,7 @@ export default function Dashboard() {
         onUndo={handleUndo}
         onRedo={handleRedo}
         canUndo={historyIndex >= 0}
-        canRedo={historyIndex < history.length - 1}
+        canRedo={redoStack.length > 0}
         onRefresh={handleRefresh}
         user={currentUser}
         userData={userData}
@@ -1685,7 +1727,7 @@ export default function Dashboard() {
         </Suspense>
       )}
 
-      {isExportPanelOpen && (
+      {exportPanelMounted && (
         <ErrorBoundary>
           <Suspense fallback={null}>
             <ExportPanel
