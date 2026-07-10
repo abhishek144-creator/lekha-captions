@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import {
   ADVANCED_TEMPLATE_RUNTIME_CSS,
+  getLcMotionSchedule,
   LEGACY_IMP_ANIMS,
   LEGACY_TEMPLATE_TIMING,
   LEGACY_WBW_CLASSES,
@@ -65,6 +66,32 @@ const captionTemplatesCss = await fs.readFile(
   new URL('src/styles/captionTemplates.css', projectRoot),
   'utf8',
 );
+
+const lcSchedule = getLcMotionSchedule([
+  { animation: 'rise', duration: '430', delay: '280', ease: 'ease-out' },
+  { animation: 'pop', duration: '560', delay: '560ms', ease: 'linear' },
+]);
+if (
+  lcSchedule.entries[0]?.delayMs !== 280
+  || lcSchedule.entries[0]?.durationMs !== 430
+  || lcSchedule.entries[1]?.delayMs !== 560
+  || lcSchedule.entries[1]?.durationMs !== 560
+  || lcSchedule.endMs !== 1120
+) {
+  fail(`LC authored schedule was altered: ${JSON.stringify(lcSchedule)}`);
+}
+if (videoPlayerSource.includes('getLcRevealPlan') || exportRendererSource.includes('getLcRevealPlan')) {
+  fail('LC rendering still derives a caption-length-dependent reveal plan');
+}
+if (!videoPlayerSource.includes('getLcMotionSchedule') || !videoPlayerSource.includes('block.getBoundingClientRect()')) {
+  fail('canvas LC renderer does not stamp the shared authored schedule from a committed layout state');
+}
+if (!sidebarGallerySource.includes('stampLcMotion') || !sidebarGallerySource.includes('getLcMotionSchedule')) {
+  fail('template preview does not use the shared authored LC schedule');
+}
+if (!exportRendererSource.includes('getLcMotionSchedule')) {
+  fail('export renderer does not use the shared authored LC schedule');
+}
 
 function fail(message) {
   throw new Error(`Template motion parity failed: ${message}`);
@@ -437,11 +464,17 @@ for (const card of newTemplateCards) {
   if (card.phaseCount < 1) fail(`49-template ${card.className} has no authored phases`);
   if (!card.hasMotionMarkup) fail(`49-template ${card.className} has no authored motion/text markup`);
 }
-if (!sidebarGallerySource.includes('const TEMPLATE_CARDS = [...LEGACY_TEMPLATE_CARDS, ...NEW_TEMPLATE_CARDS]')) {
-  fail('left template gallery does not include the 49-template pack in its total catalog');
+// The 49-pack is intentionally hidden from the selectable gallery, but it must
+// stay in ALL_TEMPLATE_CARDS so older saved projects that reference it still
+// resolve their preview/export styles. LC templates are the selectable set.
+if (!sidebarGallerySource.includes('const TEMPLATE_CARDS = [...LEGACY_TEMPLATE_CARDS]')) {
+  fail('left template gallery legacy catalog changed shape');
 }
-if (!sidebarGallerySource.includes("{ id: 'new-49', title: '49 Templates', templates: NEW_TEMPLATE_CARDS }")) {
-  fail('left template gallery does not render the 49-template section');
+if (!/const ALL_TEMPLATE_CARDS = \[[\s\S]*?\.\.\.NEW_TEMPLATE_CARDS,[\s\S]*?\.\.\.LC_TEMPLATE_CARDS,[\s\S]*?\];/.test(sidebarGallerySource)) {
+  fail('left template style map no longer resolves the hidden 49-pack and LC templates');
+}
+if (!sidebarGallerySource.includes("{ id: 'lc-style-1', title: 'LC Style 1', templates: LC_STYLE_1_TEMPLATE_CARDS }")) {
+  fail('left template gallery does not render the LC template sections');
 }
 if (!sidebarGallerySource.includes("const getTemplateStyleKey = (template) => `${template?.format || 'legacy'}::${template?.id || ''}`")) {
   fail('left template extracted-style cache is not keyed by template source and ID');
@@ -617,7 +650,7 @@ if (!basicPreviewFrame.includes('onSelect')
   || !gallerySource.includes('onSelect={applyBasicTemplate}')) {
   fail('right basic preview dot clicks do not apply the selected template');
 }
-if (!templatesTabSource.includes("id: 't-WS1', name: 'Word Slide'")
+if (!templatesTabSource.includes("id: 't-WS1', name: 'Motion Slide'")
   || !templatesTabSource.includes("template_class: 'btcard t-WS1'")
   || !templatesTabSource.includes("template_source: 'lekha-basic'")
   || !templatesTabSource.includes('PHASED_PREVIEW_WORDS')

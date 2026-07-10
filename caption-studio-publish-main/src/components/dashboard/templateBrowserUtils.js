@@ -24,12 +24,23 @@ function writeTemplateFavoriteKeys(keys = []) {
   );
 }
 
+const TEMPLATE_FAVORITES_CHANGED_EVENT = 'lekha-template-favorites-changed';
+
 export function useTemplateFavorites() {
   const [favoriteKeys, setFavoriteKeys] = useState(() => readTemplateFavoriteKeys());
 
+  // Several galleries mount this hook at once. Each instance must re-read on
+  // any change, or a toggle in one gallery is invisible to the others — and a
+  // later write from a stale instance silently wipes it.
   useEffect(() => {
-    writeTemplateFavoriteKeys(favoriteKeys);
-  }, [favoriteKeys]);
+    const sync = () => setFavoriteKeys(readTemplateFavoriteKeys());
+    window.addEventListener(TEMPLATE_FAVORITES_CHANGED_EVENT, sync);
+    window.addEventListener('storage', sync);
+    return () => {
+      window.removeEventListener(TEMPLATE_FAVORITES_CHANGED_EVENT, sync);
+      window.removeEventListener('storage', sync);
+    };
+  }, []);
 
   const favoriteKeySet = useMemo(() => new Set(favoriteKeys), [favoriteKeys]);
   const isFavorite = useCallback(
@@ -38,11 +49,14 @@ export function useTemplateFavorites() {
   );
   const toggleFavorite = useCallback((kind, id) => {
     const key = getTemplateFavoriteKey(kind, id);
-    setFavoriteKeys((current) => (
-      current.includes(key)
-        ? current.filter((item) => item !== key)
-        : [...current, key]
-    ));
+    // Read fresh from storage instead of this instance's state so concurrent
+    // gallery instances never clobber each other's toggles.
+    const current = readTemplateFavoriteKeys();
+    const next = current.includes(key)
+      ? current.filter((item) => item !== key)
+      : [...current, key];
+    writeTemplateFavoriteKeys(next);
+    window.dispatchEvent(new CustomEvent(TEMPLATE_FAVORITES_CHANGED_EVENT));
   }, []);
 
   return { favoriteKeys, isFavorite, toggleFavorite };

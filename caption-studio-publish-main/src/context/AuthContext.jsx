@@ -103,18 +103,19 @@ export function AuthProvider({ children }) {
             const unsubscribe = onAuthStateChanged(auth, (user) => {
                 setCurrentUser(user)
                 setLoading(false)
-                setAuthError(null)
 
                 if (user) {
-                    const userRef = doc(db, 'users', user.uid)
-                    getDoc(userRef)
-                        .then((userSnap) => {
-                            if (userSnap.exists()) {
-                                setUserData(userSnap.data())
-                            }
-                        })
+                    // Only clear a previous error once a user actually signed in —
+                    // clearing unconditionally wiped redirect sign-in failures
+                    // before the Login page could display them.
+                    setAuthError(null)
+                    // syncUserRecord creates the user doc (with the 3 free
+                    // credits) when it is missing. Redirect sign-ins and
+                    // interrupted first logins reach here without a doc, so
+                    // relying on getDoc alone left userData null forever.
+                    syncUserRecord(user)
                         .catch((error) => {
-                            console.warn('Failed to fetch user data from Firestore:', error.message)
+                            console.warn('Failed to sync user data from Firestore:', error.message)
                         })
                 } else {
                     setUserData(null)

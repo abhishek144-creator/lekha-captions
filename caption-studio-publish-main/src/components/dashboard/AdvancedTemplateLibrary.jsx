@@ -43,31 +43,92 @@ const BASIC_TEMPLATE_PREVIEW_TIMING = Object.freeze({
 
 const REMOVED_ADVANCED_TEMPLATE_IDS = new Set(['t17']);
 
+const ADVANCED_TEMPLATE_CREATIVE_NAMES = {
+  t11: 'Oracle Serif',
+  t12: 'Velvet Confession',
+  t13: 'Founder Signal',
+  t14: 'Literary Gold',
+  t15: 'Surge Cut',
+  t16: 'Motivation Grid',
+  t18: 'Chapter One',
+  t19: 'Defiant Headline',
+  t20: 'Gravity Impact',
+  t21: 'Runway Caption',
+  t22: 'Lyric Glow',
+  t23: 'Punchline Pop',
+  t24: "Philosopher's Turn",
+  t25: 'Handwritten Promise',
+  t26: 'Street Stamp',
+  t27: 'Future Terminal',
+  t28: 'Memory Grain',
+  t29: 'Battle Banner',
+  t30: 'Zen Whisper',
+  t31: 'Press Headline',
+  t32: 'Poetic Frame',
+  t33: 'Documentary Note',
+  t34: 'Anime Burst',
+  t35: 'Secret Serif',
+  t36: 'Karaoke Beam',
+  t37: 'Neon Broadcast',
+  t38: 'Classic Echo',
+  t39: 'Evidence Marker',
+  t40: 'Final Signal',
+};
+
+const BASIC_TEMPLATE_CREATIVE_NAMES = {
+  't-115': 'Neon Authority',
+  't-109': 'Cinema Depth',
+  't-26': 'Editorial Impact',
+  't-102': 'Studio Clarity',
+  't-36': 'Signal Flash',
+  't-105': 'Golden Focus',
+  't-9': 'Ember Command',
+  't-16': 'Soft Focus',
+  't-110': 'Orbit Glow',
+  't-119': 'Gradient Marker',
+  't-12': 'Noir Pulse',
+  't-106': 'Clean Reveal',
+  't-52': 'Luminous Streak',
+  't-103': 'Midnight Focus',
+  't-112': 'Rose Spectrum',
+  't-104': 'Electric Pulse',
+  't-111': 'Crimson Marker',
+  't-T5': 'Golden Caption Bar',
+  't-95': 'Velocity Lines',
+  't-T1': 'Serif Cascade',
+  't-T4': 'Scholar Script',
+  't-WS1': 'Motion Slide',
+  't-56': 'Precision Underline',
+  't-T3': 'Quiet Emphasis',
+  't-57': 'Retro Signal',
+  't-37': 'Clean Wipe',
+};
+
 const FALLBACK_TEMPLATE_PACK = [
-  { id: 't11', code: 'T11', name: 'Spiritual Awakening', formula: '3-Style', stageLabel: 'CLUSTER', mood: 'spiritual' },
-  { id: 't12', code: 'T12', name: 'Intimate Confession', formula: '2-Style', stageLabel: 'TYPEWRITER', mood: 'intimate' },
-  { id: 't13', code: 'T13', name: 'Startup Hustle', formula: '2-Style', stageLabel: 'STAMP IN', mood: 'hustle' },
-  { id: 't14', code: 'T14', name: 'Literary Weight', formula: '3-Style', stageLabel: '3D FLIP', mood: 'literary' },
-  { id: 't15', code: 'T15', name: 'Storm Surge', formula: '2-Style', stageLabel: 'SURGE IN', mood: 'storm' },
-  { id: 't16', code: 'T16', name: 'Motivation Stack', formula: '2-Style', stageLabel: 'STACK RISE', mood: 'countdown' },
-  { id: 't18', code: 'T18', name: 'Cinematic Chapter', formula: '3-Style', stageLabel: 'SPLIT TITLE', mood: 'cinematic' },
-  { id: 't19', code: 'T19', name: 'Defiance', formula: '2-Style', stageLabel: 'SLASH WIPE', mood: 'rebellion' },
-  { id: 't20', code: 'T20', name: 'Impact / Gravity', formula: '2-Style', stageLabel: 'NEON DROP', mood: 'impact' },
-  { id: 't21', code: 'T21', name: 'Fashion Editorial', formula: '2-Style', stageLabel: 'VERT REVEAL', mood: 'luxury' },
-  { id: 't22', code: 'T22', name: 'Music / Lyrical', formula: '2-Style', stageLabel: 'KARAOKE', mood: 'lyrical' },
-  { id: 't23', code: 'T23', name: 'Comedy Punchline', formula: '3-Style', stageLabel: 'SETUP->POP', mood: 'comedy' },
-  { id: 't24', code: 'T24', name: 'Philosophical Twist', formula: '3-Style', stageLabel: 'REDACT REVEAL', mood: 'philosophy' },
-  { id: 't25', code: 'T25', name: 'Love Letter', formula: '2-Style', stageLabel: 'HANDWRITE', mood: 'love' },
-  { id: 't26', code: 'T26', name: 'Street / Raw', formula: '2-Style', stageLabel: 'HARD CUT', mood: 'street' },
-  { id: 't27', code: 'T27', name: 'Sci-Fi Futuristic', formula: '3-Style', stageLabel: 'CENTER EXPAND', mood: 'sci-fi' },
-  { id: 't28', code: 'T28', name: 'Nostalgia / Memory', formula: '2-Style', stageLabel: 'GRAIN BLUR', mood: 'nostalgia' },
-  { id: 't29', code: 'T29', name: 'Battle Cry', formula: '2-Style', stageLabel: 'SLAM', mood: 'battle' },
-  { id: 't30', code: 'T30', name: 'Meditation / Zen', formula: '1-Style', stageLabel: 'BREATHE', mood: 'zen' },
-  { id: 't31', code: 'T31', name: 'Newspaper Headline', formula: '3-Style', stageLabel: 'TYPEWRITER', mood: 'editorial' },
-  { id: 't32', code: 'T32', name: 'Poetic Verse', formula: '3-Style', stageLabel: 'INK WIPE', mood: 'poetry' },
-  { id: 't33', code: 'T33', name: 'Documentary', formula: '3-Style', stageLabel: 'DOC WIPE', mood: 'documentary' },
-  { id: 't34', code: 'T34', name: 'Anime Energy', formula: '2-Style', stageLabel: 'SPEED IN', mood: 'anime' },
-  { id: 't35', code: 'T35', name: 'Whispered Secret', formula: '1-Style', stageLabel: 'SECRET REVEAL', mood: 'whisper' },
+  { id: 't11', code: 'T11', name: 'Oracle Serif', formula: '3-Style', stageLabel: 'CLUSTER', mood: 'spiritual' },
+  { id: 't12', code: 'T12', name: 'Velvet Confession', formula: '2-Style', stageLabel: 'TYPEWRITER', mood: 'intimate' },
+  { id: 't13', code: 'T13', name: 'Founder Signal', formula: '2-Style', stageLabel: 'STAMP IN', mood: 'hustle' },
+  { id: 't14', code: 'T14', name: 'Literary Gold', formula: '3-Style', stageLabel: '3D FLIP', mood: 'literary' },
+  { id: 't15', code: 'T15', name: 'Surge Cut', formula: '2-Style', stageLabel: 'SURGE IN', mood: 'storm' },
+  { id: 't16', code: 'T16', name: 'Motivation Grid', formula: '2-Style', stageLabel: 'STACK RISE', mood: 'countdown' },
+  { id: 't18', code: 'T18', name: 'Chapter One', formula: '3-Style', stageLabel: 'SPLIT TITLE', mood: 'cinematic' },
+  { id: 't19', code: 'T19', name: 'Defiant Headline', formula: '2-Style', stageLabel: 'SLASH WIPE', mood: 'rebellion' },
+  { id: 't20', code: 'T20', name: 'Gravity Impact', formula: '2-Style', stageLabel: 'NEON DROP', mood: 'impact' },
+  { id: 't21', code: 'T21', name: 'Runway Caption', formula: '2-Style', stageLabel: 'VERT REVEAL', mood: 'luxury' },
+  { id: 't22', code: 'T22', name: 'Lyric Glow', formula: '2-Style', stageLabel: 'KARAOKE', mood: 'lyrical' },
+  { id: 't23', code: 'T23', name: 'Punchline Pop', formula: '3-Style', stageLabel: 'SETUP->POP', mood: 'comedy' },
+  { id: 't24', code: 'T24', name: "Philosopher's Turn", formula: '3-Style', stageLabel: 'REDACT REVEAL', mood: 'philosophy' },
+  { id: 't25', code: 'T25', name: 'Handwritten Promise', formula: '2-Style', stageLabel: 'HANDWRITE', mood: 'love' },
+  { id: 't26', code: 'T26', name: 'Street Stamp', formula: '2-Style', stageLabel: 'HARD CUT', mood: 'street' },
+  { id: 't27', code: 'T27', name: 'Future Terminal', formula: '3-Style', stageLabel: 'CENTER EXPAND', mood: 'sci-fi' },
+  { id: 't28', code: 'T28', name: 'Memory Grain', formula: '2-Style', stageLabel: 'GRAIN BLUR', mood: 'nostalgia' },
+  { id: 't29', code: 'T29', name: 'Battle Banner', formula: '2-Style', stageLabel: 'SLAM', mood: 'battle' },
+  { id: 't30', code: 'T30', name: 'Zen Whisper', formula: '1-Style', stageLabel: 'BREATHE', mood: 'zen' },
+  { id: 't31', code: 'T31', name: 'Press Headline', formula: '3-Style', stageLabel: 'TYPEWRITER', mood: 'editorial' },
+  { id: 't32', code: 'T32', name: 'Poetic Frame', formula: '3-Style', stageLabel: 'INK WIPE', mood: 'poetry' },
+  { id: 't33', code: 'T33', name: 'Documentary Note', formula: '3-Style', stageLabel: 'DOC WIPE', mood: 'documentary' },
+  { id: 't34', code: 'T34', name: 'Anime Burst', formula: '2-Style', stageLabel: 'SPEED IN', mood: 'anime' },
+  { id: 't35', code: 'T35', name: 'Secret Serif', formula: '1-Style', stageLabel: 'SECRET REVEAL', mood: 'whisper' },
 ];
 
 const ADVANCED_TEMPLATE_STYLE = {
@@ -217,11 +278,16 @@ function buildAppliedTemplateStyle(template) {
   };
 }
 
+// Several ids here are ALSO defined in TemplatesTab.jsx (t-106, t-52, t-T4,
+// t-WS1, t-104, t-109, …) and mirrored by TEMPLATE_CANONICAL_STYLES in
+// ExportPanel.jsx. All three must stay in sync — a retune in one place only
+// makes the same template render differently depending on which gallery
+// applied it (and diverge from the export).
 const BASIC_TEMPLATE_STYLE = {
   't-106': { font_family: 'Noto Sans', font_size: 24, font_weight: '800', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03', has_shadow: true, shadow_color: '#000000', shadow_blur: 3, shadow_offset_x: 1, shadow_offset_y: 2 },
-  't-52': { font_family: 'Inter', font_size: 26, font_weight: '900', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#22D3EE' },
-  't-T4': { font_family: 'Playfair Display', font_size: 24, font_weight: '700', font_style: 'italic', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#FF6B9E' },
-  't-WS1': { font_family: 'Raleway', font_size: 24, font_weight: '800', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#BEFF00' },
+  't-52': { font_family: 'Inter', font_size: 26, font_weight: '900', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03' },
+  't-T4': { font_family: 'Playfair Display', font_size: 24, font_weight: '700', font_style: 'italic', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03' },
+  't-WS1': { font_family: 'Raleway', font_size: 24, font_weight: '800', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03' },
   't-115': { font_family: 'Noto Sans', font_size: 28, font_weight: '900', font_style: 'italic', text_color: '#FFFFFF', secondary_color: '#39FF14', highlight_color: '#DDAA03', has_shadow: true, shadow_color: '#39FF14', shadow_blur: 10, shadow_offset_x: 0, shadow_offset_y: 0 },
   't-104': { font_family: 'Noto Sans', font_size: 26, font_weight: '900', text_color: '#FFFFFF', secondary_color: '#2563EB', highlight_color: '#2563EB', has_stroke: true, stroke_color: '#2563EB', stroke_width: 2 },
   't-109': { font_family: 'Noto Sans', font_size: 26, font_weight: '900', text_color: '#FFFFFF', secondary_color: '#FF4500', highlight_color: '#FFF200', has_shadow: true, shadow_color: '#FF4500', shadow_offset_x: 3, shadow_offset_y: 3, shadow_blur: 0 },
@@ -329,6 +395,15 @@ function stripHtml(value = '') {
   return decodeHtmlEntities(String(value).replace(/<[^>]+>/g, '')).trim();
 }
 
+function replaceMarkupText(markup = '', pattern, replacementText = '') {
+  return String(markup || '').replace(pattern, (...parts) => {
+    const match = parts[0];
+    const prefix = parts[1] || '';
+    const suffix = parts[3] || parts[2] || '';
+    return prefix && suffix ? `${prefix}${replacementText}${suffix}` : match;
+  });
+}
+
 function extractTemplateOrder() {
   const ids = Array.from(
     sanitizedOriginalTemplateHtml.matchAll(/<div class="tcard" id="card-([^"]+)"/gi),
@@ -379,16 +454,19 @@ function extractTemplateCard(templateId) {
   const stageLabel = cardMarkup.match(/<span class="stage-type-label"[^>]*>([^<]+)<\/span>/i)?.[1]?.trim()
     || blocks[0]?.label
     || fallback.stageLabel;
+  const originalName = decodeHtmlEntities(cardMarkup.match(/<span class="tcard-name">([^<]+)<\/span>/i)?.[1]?.trim() || fallback.name);
+  const name = ADVANCED_TEMPLATE_CREATIVE_NAMES[templateId] || originalName;
 
   return {
     ...fallback,
     code: decodeHtmlEntities(cardMarkup.match(/<span class="tcard-id">([^<]+)<\/span>/i)?.[1]?.trim() || fallback.code),
-    name: decodeHtmlEntities(cardMarkup.match(/<span class="tcard-name">([^<]+)<\/span>/i)?.[1]?.trim() || fallback.name),
+    name,
+    originalName,
     formula: decodeHtmlEntities(cardMarkup.match(/<span class="formula-badge[^"]*">([^<]+)<\/span>/i)?.[1]?.trim() || fallback.formula),
     mood: decodeHtmlEntities(cardMarkup.match(/<span class="tcard-mood">([^<]+)<\/span>/i)?.[1]?.trim() || fallback.mood),
     stageLabel: decodeHtmlEntities(stageLabel),
     blocks,
-    cardMarkup,
+    cardMarkup: replaceMarkupText(cardMarkup, /(<span class="tcard-name">)([^<]*)(<\/span>)/i, name),
   };
 }
 
@@ -424,15 +502,17 @@ function extractBasicTemplateCards() {
     const desc = stripHtml(cardMarkup.match(/<div class="btcard-desc">([\s\S]*?)<\/div>/i)?.[1] || '');
     const id = cardMarkup.match(/class="[^"]*\b(t-[^"\s]+)/i)?.[1];
     const bg = cardMarkup.match(/<div class="btcard-preview"[^>]*style="[^"]*background\s*:\s*([^;"]+)/i)?.[1]?.trim() || '#111';
+    const creativeName = BASIC_TEMPLATE_CREATIVE_NAMES[id] || name;
 
     if (name && id && id !== 't-124') {
       cards.push({
         id,
         code: id.replace(/^t-/, ''),
-        name,
+        name: creativeName,
+        originalName: name,
         desc,
         bg,
-        cardMarkup,
+        cardMarkup: replaceMarkupText(cardMarkup, /(<div class="btcard-name">)([\s\S]*?)(<\/div>)/i, creativeName),
       });
     }
 
@@ -1795,7 +1875,7 @@ function buildBasicTemplatePreviewDoc(template, options = {}) {
             });
             wrapper.querySelectorAll('.word').forEach((word, wordIndex) => {
               if (phaseIndex === 1) {
-                word.style.setProperty('--ws-delay', (120 + (wordIndex * ${BASIC_TEMPLATE_PREVIEW_TIMING.wordStaggerMs})) + 'ms');
+                word.style.setProperty('--ws-delay', (90 + (wordIndex * 55)) + 'ms');
               } else {
                 word.style.removeProperty('--ws-delay');
               }

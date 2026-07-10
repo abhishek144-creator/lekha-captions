@@ -93,6 +93,14 @@ export default function CaptionTimeline({
     return (time / duration) * 100;
   };
 
+  // All tracks (grid, speech, waveform) are inset by TRACK_LEFT/TRACK_RIGHT.
+  // Anything positioned as a % of the FULL timeline width (playhead, text
+  // blocks, scrub math) drifts up to 48px from the blocks it should align with
+  // — always convert through these helpers.
+  const TRACK_SPAN = TRACK_LEFT + TRACK_RIGHT;
+  const trackLeftCss = (pct) => `calc(${TRACK_LEFT}px + ((100% - ${TRACK_SPAN}px) * ${pct / 100}))`;
+  const trackWidthCss = (pct) => `calc((100% - ${TRACK_SPAN}px) * ${pct / 100})`;
+
   const formatTime = (seconds = 0) => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
@@ -267,9 +275,11 @@ export default function CaptionTimeline({
     const bounds = scrubBoundsRef.current || timelineRef.current?.getBoundingClientRect();
     if (!bounds || !duration) return;
 
-    const x = clientX - bounds.left;
-    const clampedX = Math.max(0, Math.min(x, bounds.width));
-    const percentage = clampedX / Math.max(1, bounds.width);
+    // Map within the inset track area so the scrubbed time matches the blocks.
+    const trackWidth = Math.max(1, bounds.width - TRACK_LEFT - TRACK_RIGHT);
+    const x = clientX - bounds.left - TRACK_LEFT;
+    const clampedX = Math.max(0, Math.min(x, trackWidth));
+    const percentage = clampedX / trackWidth;
     setLocalScrubTime(percentage * duration);
   }, [duration]);
 
@@ -392,7 +402,9 @@ export default function CaptionTimeline({
 
         const rect = timelineRef.current.getBoundingClientRect();
         const deltaX = e.clientX - dragStartX;
-        const deltaTime = (deltaX / rect.width) * duration;
+        // Blocks are laid out as a % of the inset track width — using the full
+        // timeline width here made drags move blocks faster than the cursor.
+        const deltaTime = (deltaX / Math.max(1, rect.width - TRACK_LEFT - TRACK_RIGHT)) * duration;
 
         rawSet(prev => prev.map(cap => {
           if (cap.id !== draggingElement.id) return cap;
@@ -414,11 +426,23 @@ export default function CaptionTimeline({
             newStart = Math.min(bounds.maxStart, newStart);
             newStart = Math.max(0, Math.min(duration - capDuration, newStart));
 
+            // Word timings are absolute — they must shift with the caption or
+            // per-word highlighting keeps firing at the pre-drag times.
+            const timeShift = newStart - cap.start_time;
+            const shiftedWords = Array.isArray(cap.words)
+              ? cap.words.map(w => ({
+                  ...w,
+                  ...(Number.isFinite(Number(w?.start)) ? { start: Number(w.start) + timeShift } : {}),
+                  ...(Number.isFinite(Number(w?.end)) ? { end: Number(w.end) + timeShift } : {}),
+                }))
+              : cap.words;
+
             if (!cap.isTextElement) {
               return {
                 ...cap,
                 start_time: newStart,
                 end_time: newStart + capDuration,
+                words: shiftedWords,
                 _needsReorder: true
               };
             }
@@ -426,7 +450,8 @@ export default function CaptionTimeline({
             return {
               ...cap,
               start_time: newStart,
-              end_time: newStart + capDuration
+              end_time: newStart + capDuration,
+              words: shiftedWords
             };
           } else if (dragType === 'resize-left') {
             let rawStart = dragStartTime + deltaTime;
@@ -679,8 +704,8 @@ export default function CaptionTimeline({
                   }`}
                   style={{
                     top: `${TEXT_TRACK_TOP + (rowIndex * TEXT_ROW_HEIGHT) + 4}px`,
-                    left: `${left}%`,
-                    width: `${Math.max(width, 8)}%`,
+                    left: trackLeftCss(left),
+                    width: trackWidthCss(Math.max(width, 8)),
                     height: `${TEXT_ROW_HEIGHT - 8}px`
                   }}
                   onClick={(e) => {
@@ -780,7 +805,7 @@ export default function CaptionTimeline({
 
             <motion.div
               className="absolute top-0 bottom-0 w-px bg-white z-50 pointer-events-none"
-              style={{ left: `${getPositionPercentage(displayTime)}%` }}
+              style={{ left: trackLeftCss(getPositionPercentage(displayTime)) }}
             >
               <div className="absolute -top-1 left-1/2 h-2 w-2 -translate-x-1/2 rounded-full bg-white" />
             </motion.div>

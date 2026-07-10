@@ -5,6 +5,46 @@ const openai = new OpenAI({
   apiKey: Deno.env.get("OPENAI_API_KEY"),
 });
 
+// Reject URLs that point at the loopback/link-local/private/internal address
+// space so a user-supplied `file_url` can't be used to make the server issue
+// requests to cloud metadata endpoints or internal-only services (SSRF).
+function isBlockedHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  if (host === 'localhost' || host.endsWith('.localhost')) return true;
+  if (host.endsWith('.internal') || host.endsWith('.local')) return true;
+  // IPv6 loopback / unique-local / link-local
+  if (host === '::1' || host.startsWith('fc') || host.startsWith('fd') || host.startsWith('fe80')) return true;
+  // IPv4 literals in private / loopback / link-local (incl. 169.254 metadata) ranges
+  const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (m) {
+    const [a, b] = [Number(m[1]), Number(m[2])];
+    if (a === 10) return true;
+    if (a === 127) return true;
+    if (a === 0) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true; // carrier-grade NAT
+  }
+  return false;
+}
+
+function assertSafeFetchUrl(rawUrl: string): URL {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw new Error('Invalid file_url');
+  }
+  if (parsed.protocol !== 'https:') {
+    throw new Error('file_url must be an https URL');
+  }
+  if (isBlockedHost(parsed.hostname)) {
+    throw new Error('file_url host is not allowed');
+  }
+  return parsed;
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -20,8 +60,16 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'file_url is required' }, { status: 400 });
     }
 
-    // Fetch the audio/video file
-    const response = await fetch(file_url);
+    let safeUrl: URL;
+    try {
+      safeUrl = assertSafeFetchUrl(file_url);
+    } catch (validationError) {
+      return Response.json({ error: validationError.message }, { status: 400 });
+    }
+
+    // Fetch the audio/video file. `redirect: 'error'` prevents a public URL from
+    // 3xx-redirecting into the blocked internal address space after the check.
+    const response = await fetch(safeUrl, { redirect: 'error' });
     if (!response.ok) {
       return Response.json({ error: 'Failed to fetch video file' }, { status: 400 });
     }

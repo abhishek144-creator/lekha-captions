@@ -137,7 +137,14 @@ export async function apiRequest(url, options = {}) {
 
       if (!response.ok) {
         if (response.status === 401 || response.status === 403) {
-          window.dispatchEvent(new CustomEvent("auth:logout", { detail: { reason: "token_expired", status: response.status } }))
+          // The backend also uses 403 for plan/credit limits (PLAN_EXPIRED /
+          // UPGRADE_REQUIRED) — those are not auth failures and must never
+          // trigger a logout.
+          const errorDetail = String(data?.detail || data?.error || data?.message || "")
+          const isPlanLimitError = /PLAN_EXPIRED|UPGRADE_REQUIRED/.test(errorDetail)
+          if (!isPlanLimitError) {
+            window.dispatchEvent(new CustomEvent("auth:logout", { detail: { reason: "token_expired", status: response.status } }))
+          }
         }
         if (localApiRequest && response.status >= 500 && looksLikeProxyConnectionFailure(data)) {
           if (directBackendUrl && requestUrl !== directBackendUrl) {
