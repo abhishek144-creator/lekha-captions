@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Loader2, Download, Video } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { resolveApiResourceUrl } from './exportPipelineUtils';
 
 // History Tab component that fetches user's past generated videos
 export default function HistoryTab({ user, userData }) {
@@ -49,7 +50,7 @@ export default function HistoryTab({ user, userData }) {
             <div className="mb-6">
                 <h2 className="text-lg font-semibold text-white mb-2">Your History</h2>
                 <p className="text-sm text-gray-500">
-                    Your last 5 generated videos (auto-deleted after 24 hrs).
+                    Your last 5 generated videos. Availability follows your plan's export-retention window.
                 </p>
             </div>
 
@@ -83,7 +84,15 @@ export default function HistoryTab({ user, userData }) {
                                 variant="secondary"
                                 size="sm"
                                 className="w-full mt-2 bg-[#F5A623]/30 text-[#F5A623] hover:bg-[#F5A623]/30"
-                                onClick={() => window.open(item.url, '_blank')}
+                                onClick={() => {
+                                    const mediaUrl = resolveApiResourceUrl(
+                                        item.url,
+                                        import.meta.env.VITE_API_BASE_URL,
+                                    )
+                                    if (!mediaUrl) return
+                                    const opened = window.open(mediaUrl, '_blank', 'noopener,noreferrer')
+                                    if (opened) opened.opener = null
+                                }}
                             >
                                 <Download className="w-4 h-4 mr-2" />
                                 Download / View

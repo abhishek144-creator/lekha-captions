@@ -12,6 +12,7 @@ import {
   ORIGINAL_TEMPLATE_BLOCK_TYPES,
   RECREATED_ADVANCED_TEMPLATE_IDS,
   LC_TEMPLATE_TIMING,
+  fitLcMotionScheduleToCaption,
   getAdvancedAnimationWindowMs,
   getLcMotionSchedule,
   getOriginalTemplateBlockType,
@@ -288,8 +289,12 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       const value = String(text || '').trim();
       if (!value) return false;
       return value.length > 22
-        || /[\p{Script=Arabic}\p{Script=Bengali}\p{Script=Devanagari}\p{Script=Gujarati}\p{Script=Gurmukhi}\p{Script=Han}\p{Script=Hiragana}\p{Script=Kannada}\p{Script=Katakana}\p{Script=Malayalam}\p{Script=Oriya}\p{Script=Tamil}\p{Script=Telugu}\p{Script=Thai}]/u.test(value);
+        || usesComplexTemplateScript(value);
     };
+
+    const usesComplexTemplateScript = (text = '') => (
+      /[\\p{Script=Arabic}\\p{Script=Bengali}\\p{Script=Devanagari}\\p{Script=Gujarati}\\p{Script=Gurmukhi}\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Kannada}\\p{Script=Katakana}\\p{Script=Malayalam}\\p{Script=Oriya}\\p{Script=Tamil}\\p{Script=Telugu}\\p{Script=Thai}]/u.test(String(text || ''))
+    );
 
     const normalizeImpWordIndices = (impWordIndex = -1, impWordIndices = []) => {
       const values = Array.isArray(impWordIndices) ? impWordIndices : [];
@@ -1565,19 +1570,49 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       return allowed.length ? ' style="' + allowed.join(';') + '"' : '';
     };
 
-    const sanitizeSidebarTemplateMarkup = (markup = '', preserveInlineStyles = false) => String(markup)
-      .replace(/<script[\\s\\S]*?<\\/script>/gi, '')
-      .replace(/\\s+bis_skin_checked="[^"]*"/gi, '')
-      .replace(/\\sstyle="([^"]*)"/gi, preserveInlineStyles ? (_, styleValue) => sanitizeSidebarInlineStyle(styleValue) : '')
-      .replace(/\\sclass="([^"]*)"/gi, (_, classValue) => {
-        const cleanedClassValue = String(classValue)
-          .split(/\\s+/)
-          .filter((className) => className && !['active', 'visible', 'anim', preserveInlineStyles ? '' : 'on', 'in'].includes(className))
-          .join(' ');
-        return cleanedClassValue ? ' class="' + cleanedClassValue + '"' : '';
-      })
-      .replace(/\\s+data-ti="[^"]*"/gi, '')
-      .replace(/\\s+data-si="[^"]*"/gi, '');
+    const sanitizeSidebarTemplateMarkup = (markup = '', preserveInlineStyles = false) => {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(String(markup), 'text/html');
+      const allowedTags = new Set([
+        'div', 'span', 'p', 'br', 'strong', 'em', 'b', 'i', 'u', 's',
+        'small', 'mark', 'sub', 'sup',
+      ]);
+      const safeDataName = /^data-(?:anim|dur|type|imp|imp-cls|line-motion|line-delay|battle-motion|battle-index|lc-[a-z0-9-]+)$/i;
+
+      for (const node of Array.from(doc.body.querySelectorAll('*'))) {
+        if (!allowedTags.has(node.tagName.toLowerCase())) {
+          node.remove();
+          continue;
+        }
+        for (const attribute of Array.from(node.attributes)) {
+          const name = attribute.name.toLowerCase();
+          const value = String(attribute.value || '');
+          if (name === 'class') {
+            const cleanedClassValue = value
+              .split(/\\s+/)
+              .filter((className) => /^[A-Za-z0-9_-]{1,80}$/.test(className))
+              .filter((className) => className && !['active', 'visible', 'anim', preserveInlineStyles ? '' : 'on', 'in'].includes(className))
+              .join(' ');
+            if (cleanedClassValue) node.setAttribute('class', cleanedClassValue);
+            else node.removeAttribute(attribute.name);
+            continue;
+          }
+          if (name === 'style') {
+            node.removeAttribute(attribute.name);
+            if (preserveInlineStyles) {
+              const safeStyle = sanitizeSidebarInlineStyle(value).match(/ style="([^"]*)"/)?.[1] || '';
+              if (safeStyle) node.setAttribute('style', safeStyle);
+            }
+            continue;
+          }
+          if (safeDataName.test(name) && value.length <= 240 && !/[<>]/.test(value)) {
+            continue;
+          }
+          node.removeAttribute(attribute.name);
+        }
+      }
+      return doc.body.innerHTML;
+    };
 
     const cleanSidebarClassName = (value, fallback) => {
       const cleaned = String(value || '')
@@ -1877,8 +1912,11 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
 
     // Shared LC source schedule — serialized verbatim from
     // src/components/dashboard/templateMotionConfig.js so the exported video
-    // uses the exact word delays/durations the canvas preview renders.
+    // uses the exact word delays/durations the canvas preview renders. The
+    // caption-fit pass is the SAME helper the canvas runs: without it, short
+    // speech captions end before the authored reveal finishes in the export.
     const getLcMotionSchedule = ${getLcMotionSchedule.toString()};
+    const fitLcMotionScheduleToCaption = ${fitLcMotionScheduleToCaption.toString()};
 
     const chooseSidebarPhase = (blocks, elapsedMs, fallbackDuration, phaseIndex) => {
       if (!blocks.length) return { block: null, index: 0, phaseStartMs: 0 };
@@ -1950,9 +1988,11 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           });
           block.querySelectorAll('.sw-w').forEach((word) => {
             word.classList.remove('sidebar-export-lc-anim');
-            word.style.opacity = '0.14';
+            // The 0.14 dimmed-context look belongs to the lekha-20/49 sticky
+            // design. LC supporting words are fully visible on the canvas.
+            word.style.opacity = isLcTemplateSet ? '' : '0.14';
           });
-          block.querySelectorAll('[data-lc-block-anim]').forEach((wrap) => {
+          block.querySelectorAll('.plainwrap, [data-lc-block-anim]').forEach((wrap) => {
             wrap.classList.remove('sidebar-export-lc-anim');
             wrap.style.removeProperty('animation');
           });
@@ -2028,34 +2068,57 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           dot.className = dotIndex === phase.index ? 'on' : '';
         });
 
-        // LC motion nodes use the same authored source schedule as the canvas.
+        // LC motion nodes use the same authored source schedule as the canvas,
+        // fitted to the caption duration with the SAME shared helper the canvas
+        // runs (fitLcMotionScheduleToCaption) so every word reaches its final
+        // keyframe before the caption ends in the exported video too.
         if (isLcTemplateSet) {
           const lcMotionWords = Array.from(phase.block.querySelectorAll('[data-lc-anim]'));
-          const lcSchedule = getLcMotionSchedule(lcMotionWords.map((word) => ({
+          const lcSchedule = fitLcMotionScheduleToCaption(getLcMotionSchedule(lcMotionWords.map((word) => ({
             animation: word.dataset.lcAnim,
             duration: word.dataset.lcDuration,
             delay: word.dataset.lcDelay,
             ease: word.dataset.lcEase,
-          })));
+          }))), captionDurationMs);
           lcMotionWords.forEach((word, index) => {
             const entry = lcSchedule.entries[index];
             if (!entry?.animation) return;
+            // Mirror the canvas: motion words carry no stale inline state — the
+            // authored keyframes own opacity/transform/clip for the whole ride.
+            word.style.opacity = '';
+            word.style.transform = '';
+            word.style.clipPath = '';
             word.style.setProperty('--sidebar-export-lc-animation', entry.animation);
             word.style.setProperty('--sidebar-export-word-duration', entry.durationMs + 'ms');
             word.style.setProperty('--sidebar-export-word-delay', (phase.phaseStartMs + entry.delayMs) + 'ms');
             word.style.setProperty('--sidebar-export-lc-ease', entry.ease);
             word.classList.add('sidebar-export-lc-anim');
           });
+          // Plain scenes: the wrap fades in as one unit while its words stay
+          // statically visible. Mirrors the canvas stamp in initializeLcTimeline.
+          phase.block.querySelectorAll('.plainwrap').forEach((wrap) => {
+            const plainEntry = fitLcMotionScheduleToCaption(getLcMotionSchedule([{
+              animation: 'fade',
+              duration: ${LC_TEMPLATE_TIMING.plainFadeDurationMs},
+              delay: 0,
+              ease: 'ease',
+            }]), captionDurationMs).entries[0];
+            wrap.style.setProperty('--sidebar-export-lc-animation', 'fade');
+            wrap.style.setProperty('--sidebar-export-word-duration', (plainEntry?.durationMs || ${LC_TEMPLATE_TIMING.plainFadeDurationMs}) + 'ms');
+            wrap.style.setProperty('--sidebar-export-word-delay', phase.phaseStartMs + 'ms');
+            wrap.style.setProperty('--sidebar-export-lc-ease', 'ease');
+            wrap.classList.add('sidebar-export-lc-anim');
+          });
           // Whole-line 'block' scenes (LC4/LC5): the wrap carries one authored
           // animation while its words stay statically visible. Mirrors the
-          // canvas stamp in VideoPlayer.jsx startLcTimeline.
+          // canvas stamp in VideoPlayer.jsx initializeLcTimeline.
           phase.block.querySelectorAll('[data-lc-block-anim]').forEach((wrap) => {
-            const wrapSchedule = getLcMotionSchedule([{
+            const wrapSchedule = fitLcMotionScheduleToCaption(getLcMotionSchedule([{
               animation: wrap.dataset.lcBlockAnim,
               duration: wrap.dataset.lcBlockDuration,
               delay: wrap.dataset.lcBlockDelay,
               ease: wrap.dataset.lcBlockEase,
-            }]);
+            }]), captionDurationMs);
             const wrapEntry = wrapSchedule.entries[0];
             if (!wrapEntry?.animation) return;
             wrap.style.setProperty('--sidebar-export-lc-animation', wrapEntry.animation);
@@ -2070,7 +2133,10 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           const lcAnim = isLcTemplateSet ? String(word.dataset.lcAnim || '').trim() : '';
           const phaseWordStagger = fitSidebarStagger(wordStagger, phase.block.querySelectorAll('.w, .wbw-word').length);
           if (lcAnim) return; // already timed by the LC motion pass above
-          if (isLcTemplateSet && word.classList.contains('on')) {
+          if (isLcTemplateSet) {
+            // Parity with the canvas: every LC word without authored motion is
+            // a static supporting word — visible for the whole caption, never
+            // run through the legacy stagger reveal.
             word.style.animation = 'none';
             word.style.opacity = '1';
             word.style.transform = 'none';
@@ -2092,7 +2158,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         phase.block.querySelectorAll('.sw').forEach((element, index) => {
           const lcAnim = isLcTemplateSet ? String(element.dataset.lcAnim || '').trim() : '';
           if (lcAnim) return; // already timed by the LC motion pass above
-          if (isLcTemplateSet && element.classList.contains('on')) {
+          if (isLcTemplateSet) {
             element.style.animation = 'none';
             element.style.opacity = '1';
             element.style.transform = 'none';
@@ -2113,6 +2179,14 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         phase.block.querySelectorAll('.sw-w').forEach((word, index) => {
           const lcAnim = isLcTemplateSet ? String(word.dataset.lcAnim || '').trim() : '';
           if (lcAnim) return; // already timed by the LC motion pass above
+          if (isLcTemplateSet) {
+            word.style.animation = 'none';
+            word.style.opacity = '1';
+            word.style.transform = 'none';
+            word.style.clipPath = 'inset(0 0 0 0)';
+            word.classList.add('in');
+            return;
+          }
           const phaseStickyStagger = fitSidebarStagger(
             isNewTemplateSet ? ${EMOTIONAL_TEMPLATE_TIMING.positionedWordStaggerMs} : ${SIDEBAR_TEMPLATE_POSITION_STAGGER_SECONDS * 1000},
             phase.block.querySelectorAll('.sw-w').length,
@@ -2146,6 +2220,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         + ' data-caption-font-weight="' + escapeHtml(globalStyle?.font_weight || appliedStyle.font_weight || '400') + '"'
         + ' data-caption-text-color="' + escapeHtml(globalStyle?.text_color || appliedStyle.text_color || '#FFFFFF') + '"'
         + ' data-template-source="' + escapeHtml(templateSource) + '"'
+        + ' data-template-complex-script="' + (usesComplexTemplateScript(caption.text || '') ? 'true' : 'false') + '"'
         + ' style="--sidebar-source-font:\\'' + escapeHtml(globalStyle?.font_family || appliedStyle.font_family || 'Inter') + '\\';'
         + '--sidebar-emphasis-accent:' + escapeHtml((() => {
           const configured = String(caption.emphasis_color || globalStyle?.secondary_color || appliedStyle.secondary_color || globalStyle?.highlight_color || appliedStyle.highlight_color || '').trim();
@@ -2412,54 +2487,55 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       const resolveCaptionTemplateStyle = (caption) => {
         if (!caption || caption.is_text_element) return style;
         const appliedStyle = caption.applied_template_style || {};
+        const captionTemplateId = String(caption.template_id || appliedStyle.template_id || '').trim();
+        const globalTemplateId = String(style.template_id || '').trim();
+        const globalStyleMatchesTemplate = !captionTemplateId
+          || !globalTemplateId
+          || captionTemplateId === globalTemplateId;
+        const mergedStyle = globalStyleMatchesTemplate
+          ? { ...appliedStyle, ...style }
+          : { ...style, ...appliedStyle };
         return {
-          ...appliedStyle,
-          ...style,
-          template_id: caption.template_id || style.template_id || appliedStyle.template_id || '',
-          template_20_id: caption.template_20_id || style.template_20_id || appliedStyle.template_20_id || '',
-          template_source: caption.template_source || style.template_source || appliedStyle.template_source || '',
-          template_class: caption.template_class || style.template_class || appliedStyle.template_class || '',
-          template_name: caption.template_name || style.template_name || appliedStyle.template_name || '',
-          template_layout: caption.template_layout || style.template_layout || appliedStyle.template_layout || '',
-          template_effect: caption.template_effect || style.template_effect || appliedStyle.template_effect || '',
-          template_markup: caption.template_markup || style.template_markup || appliedStyle.template_markup || '',
-          text_color: caption.text_color || style.text_color || appliedStyle.text_color || '#ffffff',
-          text_gradient: caption.text_gradient || style.text_gradient || appliedStyle.text_gradient || '',
-          secondary_color: caption.secondary_color || style.secondary_color || appliedStyle.secondary_color || '',
-          highlight_color: caption.highlight_color || style.highlight_color || appliedStyle.highlight_color || '',
-          highlight_gradient: caption.highlight_gradient || style.highlight_gradient || appliedStyle.highlight_gradient || '',
-          emphasis_color: caption.emphasis_color || style.emphasis_color || appliedStyle.emphasis_color || '',
-          karaoke_color_1: caption.karaoke_color_1 || style.karaoke_color_1 || appliedStyle.karaoke_color_1 || '',
-          karaoke_color_2: caption.karaoke_color_2 || style.karaoke_color_2 || appliedStyle.karaoke_color_2 || '',
-          karaoke_color_3: caption.karaoke_color_3 || style.karaoke_color_3 || appliedStyle.karaoke_color_3 || '',
+          ...mergedStyle,
+          template_id: caption.template_id || mergedStyle.template_id || '',
+          template_20_id: caption.template_20_id || mergedStyle.template_20_id || '',
+          template_source: caption.template_source || mergedStyle.template_source || '',
+          template_class: caption.template_class || mergedStyle.template_class || '',
+          template_name: caption.template_name || mergedStyle.template_name || '',
+          template_layout: caption.template_layout || mergedStyle.template_layout || '',
+          template_effect: caption.template_effect || mergedStyle.template_effect || '',
+          template_markup: caption.template_markup || mergedStyle.template_markup || '',
+          text_color: caption.text_color || mergedStyle.text_color || '#ffffff',
+          text_gradient: caption.text_gradient || mergedStyle.text_gradient || '',
+          secondary_color: caption.secondary_color || mergedStyle.secondary_color || '',
+          highlight_color: caption.highlight_color || mergedStyle.highlight_color || '',
+          highlight_gradient: caption.highlight_gradient || mergedStyle.highlight_gradient || '',
+          emphasis_color: caption.emphasis_color || mergedStyle.emphasis_color || '',
+          karaoke_color_1: caption.karaoke_color_1 || mergedStyle.karaoke_color_1 || '',
+          karaoke_color_2: caption.karaoke_color_2 || mergedStyle.karaoke_color_2 || '',
+          karaoke_color_3: caption.karaoke_color_3 || mergedStyle.karaoke_color_3 || '',
           preview_template_font_px: Number(
             caption.preview_template_font_px
-            || style.preview_template_font_px
-            || appliedStyle.preview_template_font_px
+            || mergedStyle.preview_template_font_px
             || 0,
           ),
           preview_template_box_width_px: Number(
             caption.preview_template_box_width_px
-            || style.preview_template_box_width_px
-            || appliedStyle.preview_template_box_width_px
+            || mergedStyle.preview_template_box_width_px
             || 0,
           ),
           preview_template_box_height_px: Number(
             caption.preview_template_box_height_px
-            || style.preview_template_box_height_px
-            || appliedStyle.preview_template_box_height_px
+            || mergedStyle.preview_template_box_height_px
             || 0,
           ),
           template_color_customized: Boolean(
             caption.template_color_customized
-            || style.template_color_customized
-            || appliedStyle.template_color_customized
+            || mergedStyle.template_color_customized
             || caption.text_gradient
-            || style.text_gradient
-            || appliedStyle.text_gradient
+            || mergedStyle.text_gradient
             || caption.highlight_gradient
-            || style.highlight_gradient
-            || appliedStyle.highlight_gradient
+            || mergedStyle.highlight_gradient
           ),
         };
       };
@@ -2644,11 +2720,18 @@ async function main() {
     : {};
   const payloadStyle = payload.style || {};
   const styleSnapshot = payloadStyle.template_snapshot || {};
-  const resolvedStyle = {
-    ...captionTemplateStyle,
-    ...styleSnapshot,
-    ...payloadStyle,
-  };
+  const captionTemplateId = String(
+    captionTemplateStyle.template_id || captionTemplateStyle.template_20_id || '',
+  ).trim();
+  const payloadTemplateId = String(
+    payloadStyle.template_id || payloadStyle.template_20_id || '',
+  ).trim();
+  const globalStyleMatchesCaption = !captionTemplateId
+    || !payloadTemplateId
+    || captionTemplateId === payloadTemplateId;
+  const resolvedStyle = globalStyleMatchesCaption
+    ? { ...captionTemplateStyle, ...styleSnapshot, ...payloadStyle }
+    : { ...payloadStyle, ...styleSnapshot, ...captionTemplateStyle };
   [
     'template_id',
     'template_20_id',
@@ -2659,8 +2742,7 @@ async function main() {
     'template_effect',
     'template_markup',
   ].forEach((key) => {
-    resolvedStyle[key] =
-      payloadStyle[key] || styleSnapshot[key] || captionTemplateStyle[key] || '';
+    resolvedStyle[key] = resolvedStyle[key] || '';
   });
   payload.style = resolvedStyle;
   const outputDir = payload.output_dir || path.join(projectRoot, 'tmp-overlay');
@@ -3000,11 +3082,25 @@ async function main() {
     .lekha-sidebar-export-template-shell .lc-card .sb .ns3box,
     .lekha-sidebar-export-template-shell .lc-card .sb .ns3mark,
     .lekha-sidebar-export-template-shell .lc-card .sb .ns3bracket,
-    .lekha-sidebar-export-template-shell .lc-card .sb .ns3dot {
+    .lekha-sidebar-export-template-shell .lc-card .sb .ns3dot,
+    .lekha-sidebar-export-template-shell .lc-card .sb [data-hero-emphasis='true'] {
       color: var(--template-highlight, var(--lc-scene-highlight, var(--sidebar-emphasis-accent, #DDAA03))) !important;
       -webkit-text-fill-color: var(--template-highlight, var(--lc-scene-highlight, var(--sidebar-emphasis-accent, #DDAA03))) !important;
       filter: saturate(1.35) brightness(1.12);
       font-weight: 900;
+    }
+    .lekha-sidebar-export-template-shell[data-template-complex-script='true'] .lc-card .cpt.dropcap > .ln:first-child {
+      position: relative !important;
+      top: 0.18em !important;
+    }
+    .lekha-sidebar-export-template-shell[data-template-complex-script='true'] .lc-card .ns3box {
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      line-height: 1.05 !important;
+      padding-block: 0.12em 0.04em !important;
+      vertical-align: middle !important;
+      box-sizing: border-box !important;
     }
     .lekha-sidebar-export-template-shell .lc-card .cpt {
       --hc: var(--template-highlight, var(--lc-scene-highlight, var(--sidebar-emphasis-accent, #DDAA03))) !important;
@@ -4447,10 +4543,18 @@ async function main() {
     }
   `;
 
+  const runtimeEnv = String(process.env.APP_ENV || process.env.ENV || '').toLowerCase();
+  const disableSandbox = process.env.PUPPETEER_DISABLE_SANDBOX === '1';
+  if (disableSandbox && runtimeEnv === 'production') {
+    throw new Error('PUPPETEER_DISABLE_SANDBOX is forbidden in production');
+  }
+  const browserArgs = ['--disable-gpu', '--disable-dev-shm-usage'];
+  if (disableSandbox) browserArgs.push('--no-sandbox');
+
   const browser = await puppeteer.launch({
     headless: true,
     executablePath: findChromeExecutable(),
-    args: ['--no-sandbox', '--disable-gpu'],
+    args: browserArgs,
     defaultViewport: {
       width: payload.video_width,
       height: payload.video_height,
@@ -4460,6 +4564,28 @@ async function main() {
 
   try {
     const page = await browser.newPage();
+    // Font stylesheets can take longer than Puppeteer's 30-second default on
+    // cold CI runners. Keep the wait bounded, but leave enough room for the
+    // same assets the export subsequently verifies via document.fonts.ready.
+    page.setDefaultNavigationTimeout(60_000);
+    await page.setRequestInterception(true);
+    page.on('request', (request) => {
+      const rawUrl = request.url();
+      if (rawUrl === 'about:blank' || rawUrl.startsWith('data:')) {
+        request.continue();
+        return;
+      }
+      try {
+        const parsed = new URL(rawUrl);
+        if (parsed.protocol === 'https:' && ['fonts.googleapis.com', 'fonts.gstatic.com'].includes(parsed.hostname)) {
+          request.continue();
+          return;
+        }
+      } catch {
+        // Invalid and non-network URLs are blocked below.
+      }
+      request.abort('blockedbyclient');
+    });
     const pageErrors = [];
     page.on('pageerror', (error) => {
       pageErrors.push(error?.stack || error?.message || String(error));
@@ -4474,6 +4600,7 @@ async function main() {
       <html>
         <head>
           <meta charset="utf-8" />
+          <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src data: https://fonts.gstatic.com; img-src data:; connect-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'" />
           <link rel="preconnect" href="https://fonts.googleapis.com">
           <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
           ${exportFontLinks}
@@ -4629,6 +4756,23 @@ async function main() {
       segments.push({ start: 0, end: Math.max(Number(payload.duration || 1), 1), duration: Math.max(Number(payload.duration || 1), 1) });
     }
 
+    const maxOverlayFrames = Math.max(
+      300,
+      Math.min(6000, Number(process.env.TEMPLATE_OVERLAY_MAX_FRAMES || 3600)),
+    );
+    if (segments.length > maxOverlayFrames) {
+      const groupSize = Math.ceil(segments.length / maxOverlayFrames);
+      const compacted = [];
+      for (let index = 0; index < segments.length; index += groupSize) {
+        const group = segments.slice(index, index + groupSize);
+        const start = group[0].start;
+        const end = group[group.length - 1].end;
+        compacted.push({ start, end, duration: end - start });
+      }
+      console.warn(`[Template DOM] frame cap compacted ${segments.length} samples to ${compacted.length}`);
+      segments.splice(0, segments.length, ...compacted);
+    }
+
     console.log(`[Template DOM] segments=${segments.length} template_timing=${templateUsesPreviewTiming} sidebar_timing=${templateUsesSidebarTiming} sample_fps=${adaptiveTemplateSampleFps}`);
 
     const frameLines = [];
@@ -4710,6 +4854,40 @@ async function main() {
             } catch {
               // Some browser-managed animations cannot be seeked; leave them at their rendered state.
             }
+          });
+          // LC accent colors are opaque hex values, but entrance keyframes such
+          // as fade/rise/pop interpolate `opacity`. When a frame lands inside
+          // that interpolation, the keyword has the right color but is composited
+          // at partial alpha and looks washed out compared with the template and
+          // canvas previews. Promote only highlights that have actually started
+          // appearing; opacity:0 nodes remain hidden until their authored delay.
+          // Walk animated wrappers too, because LC4/LC5 can fade a whole line.
+          const lcHighlightSelector = [
+            '.hero',
+            '.is-emphasis',
+            '.ns3hero',
+            '.ns3box',
+            '.ns3mark',
+            '.ns3bracket',
+            '.ns3dot',
+            '[data-hero-emphasis="true"]',
+            '.box',
+          ].join(', ');
+          document.querySelectorAll(
+            '.lekha-sidebar-export-template-shell[data-template-source="lekha-lc"] .sb.active',
+          ).forEach((block) => {
+            block.querySelectorAll(lcHighlightSelector).forEach((highlight) => {
+              const visibleOpacity = Number.parseFloat(getComputedStyle(highlight).opacity);
+              if (!Number.isFinite(visibleOpacity) || visibleOpacity <= 0.001) return;
+              let node = highlight;
+              while (node && node !== block) {
+                const opacity = Number.parseFloat(getComputedStyle(node).opacity);
+                if (Number.isFinite(opacity) && opacity > 0.001 && opacity < 1) {
+                  node.style.setProperty('opacity', '1', 'important');
+                }
+                node = node.parentElement;
+              }
+            });
           });
           document.querySelectorAll('.lekha-applied-advanced-template.active').forEach((block) => {
             block.style.transition = 'none';

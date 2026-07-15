@@ -4,7 +4,7 @@
     {
       "name": "frontend",
       "runtimeExecutable": "cmd.exe",
-      "runtimeArgs": ["/c", "cd caption-studio-publish-main && npx vite --port 3000 --host 0.0.0.0"],
+      "runtimeArgs": ["/c", "cd caption-studio-publish-main && npm run dev:frontend -- --port 3000 --host 0.0.0.0"],
       "port": 3000,
       "autoPort": false
     },

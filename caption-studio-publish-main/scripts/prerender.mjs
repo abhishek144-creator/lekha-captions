@@ -3,10 +3,10 @@
  * Starts `vite preview`, visits each public route with headless Chrome,
  * captures the fully-rendered HTML, and writes it to dist/.
  *
- * Usage: node scripts/prerender.mjs  (called automatically by `npm run build`)
+ * Usage: node scripts/prerender.mjs
  */
 
-import puppeteer from 'puppeteer-core'
+import puppeteer from 'puppeteer'
 import { spawn } from 'node:child_process'
 import { writeFileSync, mkdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
@@ -17,9 +17,9 @@ const ROOT = join(__dirname, '..')
 const DIST = join(ROOT, 'dist')
 
 // Routes to pre-render (public only — no dashboard/auth routes)
-const ROUTES = ['/', '/Faq', '/Help', '/Terms']
+const ROUTES = ['/', '/Faq', '/HelpAndSupport', '/TermsAndConditions', '/PrivacyPolicy']
 
-const CHROME_PATH = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
+const CHROME_PATH = process.env.CHROME_PATH || puppeteer.executablePath()
 const PREVIEW_PORT = 4173
 
 // ── helpers ──────────────────────────────────────────────────────────────────

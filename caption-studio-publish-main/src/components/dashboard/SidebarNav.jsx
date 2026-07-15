@@ -1,4 +1,3 @@
-import React from 'react';
 import { Captions, Clock3, Layers, Layout, Type, Sparkles, Video, Crown, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
@@ -19,7 +18,7 @@ const navItems = [
   { id: 'history', icon: Clock3, label: 'History' },
 ];
 
-export default function SidebarNav({ activeTab, setActiveTab, user, onOpenPricing }) {
+export default function SidebarNav({ activeTab, setActiveTab, onOpenPricing }) {
   const { currentUser, userData, logout } = useAuth();
 
   const getPlanDetails = () => {
@@ -29,7 +28,7 @@ export default function SidebarNav({ activeTab, setActiveTab, user, onOpenPricin
     if (plan === 'creator' || plan === 'creator_yearly')
       return { name: 'Creator', icon: <Crown className="w-4 h-4" />, totalCredits: plan === 'creator_yearly' ? 540 : 45 }
     if (plan === 'pro' || plan === 'pro_yearly')
-      return { name: 'Pro', icon: <Crown className="w-4 h-4" />, totalCredits: plan === 'pro_yearly' ? 1200 : 100 }
+      return { name: 'Pro', icon: <Crown className="w-4 h-4" />, totalCredits: plan === 'pro_yearly' ? 1440 : 120 }
     return { name: 'Free', icon: <Video className="w-4 h-4" />, totalCredits: 3 }
   }
 

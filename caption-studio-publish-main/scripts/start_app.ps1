@@ -143,14 +143,11 @@ if (Test-HttpReady "$BackendUrl/api/version") {
 
   Write-Host "[3/4] Starting backend on $BackendUrl ..."
   Remove-Item -LiteralPath $BackendLog -Force -ErrorAction SilentlyContinue
-  $backendCommand = @"
-Set-Location -LiteralPath '$Root'
-python -m uvicorn backend.main:app --host 127.0.0.1 --port $BackendPort --reload *>&1 | Tee-Object -FilePath '$BackendLog' -Append
-"@
-  Start-Process -FilePath "powershell.exe" `
-    -ArgumentList @("-NoExit", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", $backendCommand) `
+  $backendCommand = "set `"APP_ENV=development`" && set `"LOCAL_DEV_AUTH_BYPASS=1`" && python -m uvicorn backend.main:app --host 127.0.0.1 --port $BackendPort >> `"$BackendLog`" 2>&1"
+  Start-Process -FilePath "cmd.exe" `
+    -ArgumentList @("/d", "/s", "/c", $backendCommand) `
     -WorkingDirectory $Root `
-    -WindowStyle Minimized
+    -WindowStyle Hidden
 
   if (-not (Wait-ForHttp "$BackendUrl/api/version" 60)) {
     Show-LogTail $BackendLog
@@ -166,15 +163,11 @@ if (Test-PortListening $FrontendPort) {
 } else {
   Write-Host "[4/4] Starting frontend on $FrontendUrl ..."
   Remove-Item -LiteralPath $FrontendLog -Force -ErrorAction SilentlyContinue
-  $frontendCommand = @"
-Set-Location -LiteralPath '$Root'
-`$env:VITE_BACKEND_PROXY_TARGET = '$BackendUrl'
-npm run dev:frontend -- --host localhost --port $FrontendPort *>&1 | Tee-Object -FilePath '$FrontendLog' -Append
-"@
-  Start-Process -FilePath "powershell.exe" `
-    -ArgumentList @("-NoExit", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", $frontendCommand) `
+  $frontendCommand = "set `"VITE_BACKEND_PROXY_TARGET=$BackendUrl`" && set `"VITE_USE_DEV_AUTH_BYPASS=1`" && npm run dev:frontend -- --host localhost --port $FrontendPort >> `"$FrontendLog`" 2>&1"
+  Start-Process -FilePath "cmd.exe" `
+    -ArgumentList @("/d", "/s", "/c", $frontendCommand) `
     -WorkingDirectory $Root `
-    -WindowStyle Minimized
+    -WindowStyle Hidden
 
   if (-not (Wait-ForHttp $FrontendUrl 45)) {
     Show-LogTail $FrontendLog

@@ -1,7 +1,8 @@
-import React from 'react';
 import { Link } from 'react-router-dom';
 import CaptionStudioLogo from '@/components/dashboard/CaptionStudioLogo';
 import { MessageCircle, BookOpen, FileText, Zap } from 'lucide-react';
+
+const supportEmail = import.meta.env.VITE_SUPPORT_EMAIL || 'support@lekhacaptions.com';
 
 const topics = [
   {
@@ -113,15 +114,13 @@ export default function HelpAndSupport() {
           <p className="text-gray-400 text-sm mb-2 max-w-md mx-auto">
             Have a question not answered here? Reach out and we'll get back to you as soon as possible.
           </p>
-          <p className="text-gray-500 text-xs mb-6 italic">
-            (Professional email coming soon — we are setting up our support inbox.)
-          </p>
-          <Link
-            to="/Faq"
+          <a
+            href={`mailto:${supportEmail}`}
             className="inline-flex items-center gap-2 bg-white text-black font-semibold text-sm px-6 py-2.5 rounded-full hover:bg-gray-200 transition-colors"
           >
-            Browse FAQ
-          </Link>
+            Email {supportEmail}
+          </a>
+          <p className="mt-4 text-xs text-gray-500"><Link to="/Faq" className="hover:text-gray-300">Browse FAQ</Link> for common questions.</p>
         </div>
       </div>
 

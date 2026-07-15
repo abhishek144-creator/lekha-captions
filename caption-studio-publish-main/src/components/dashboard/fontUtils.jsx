@@ -452,32 +452,6 @@ export const scriptFontMap = {
   ]
 };
 
-export const popularLatinFonts = [
-  { name: 'Helvetica', weights: [400, 700] },
-  { name: 'Arial', weights: [400, 700] },
-  { name: 'Times New Roman', weights: [400, 700] },
-  { name: 'Calibri', weights: [400, 700] },
-  { name: 'Roboto', weights: [300, 400, 500, 700] },
-  { name: 'Verdana', weights: [400, 700] },
-  { name: 'Georgia', weights: [400, 700] },
-  { name: 'Montserrat', weights: [300, 400, 500, 600, 700, 800] },
-  { name: 'Open Sans', weights: [300, 400, 500, 600, 700, 800] },
-  { name: 'Lato', weights: [300, 400, 700] },
-  { name: 'Futura', weights: [400, 700] },
-  { name: 'Garamond', weights: [400, 700] },
-  { name: 'Bodoni', weights: [400, 700] },
-  { name: 'Didot', weights: [400, 700] },
-  { name: 'Comic Sans MS', weights: [400, 700] }
-];
-export function getFontOptionsForScript(script) {
-  if (script === 'latin') return scriptFontMap.latin;
-  const nativeFonts = scriptFontMap[script] || [];
-  if (nativeFonts.length === 0) return scriptFontMap.latin;
-  const nativeNames = new Set(nativeFonts.map(f => f.name));
-  const extras = popularLatinFonts.filter(f => !nativeNames.has(f.name));
-  return [...extras, ...nativeFonts];
-}
-
 export const systemFonts = new Set([
   'Helvetica', 'Arial', 'Times New Roman', 'Calibri', 'Verdana',
   'Georgia', 'Futura', 'Garamond', 'Bodoni', 'Didot', 'Comic Sans MS'
@@ -568,11 +542,6 @@ export async function autoLoadFontForText(text) {
     console.error('Failed to load Inter fallback font:', error);
     return { fontFamily: 'sans-serif', script: 'latin', fontOptions: scriptFontMap.latin, error: error?.message || 'Font load failed' };
   }
-}
-
-export function getAllFontsForScript(script) {
-  const fonts = scriptFontMap[script] || scriptFontMap.latin;
-  return fonts.map(f => f.name);
 }
 
 // ── Devanagari template-font mapping ────────────────────────────────────────

@@ -1,4 +1,4 @@
-# Lekha Captions — Development Log
+﻿# Lekha Captions — Development Log
 
 This is the **Work Diary** for the Lekha Captions project.
 
@@ -16,6 +16,7 @@ This is the **Work Diary** for the Lekha Captions project.
 
 > Keep this section always up-to-date. It is the first thing read at session start.
 
+- [ ] **Deployment architecture reminder** - Host the SEO landing/marketing site separately on Netlify at `lekhacaptions.com`. Keep the dashboard/editor app separate at `app.lekhacaptions.com`. Do not touch the dashboard/editor now; revisit making the app server-side during the deploy phase, not in the current work.
 - [ ] **Timeline fix** — Speech track background is showing gold stripe. Only the individual caption *blocks* should be gold, not the entire track row background. Fix in `src/components/dashboard/CaptionTimeline.jsx`
 - [ ] **Gradient gold buttons** — Replace flat `bg-[#F5A623]` buttons with gradient: `bg-gradient-to-r from-[#FFE566] to-[#F5A623] hover:from-[#F5A623] hover:to-[#D4891A]` across all CTA buttons (14 files)
 - [ ] **Text gradient** — Apply `bg-gradient-to-r from-[#F5A623] to-[#FFD700] bg-clip-text text-transparent` to key headings, logo, and accent text

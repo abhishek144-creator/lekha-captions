@@ -166,8 +166,6 @@ export default function StyleControls({
   const [customTextColor2, setCustomTextColor2] = useState('#764ba2');
   const [customHighlightColor1, setCustomHighlightColor1] = useState('#f093fb');
   const [customHighlightColor2, setCustomHighlightColor2] = useState('#f5576c');
-  const [textColorHex, setTextColorHex] = useState('#ffffff');
-  const [highlightColorHex, setHighlightColorHex] = useState('#facc15');
   const [showTextGradient, setShowTextGradient] = useState(false);
   const [showHighlightGradient, setShowHighlightGradient] = useState(false);
   const [showTextSolid, setShowTextSolid] = useState(false);

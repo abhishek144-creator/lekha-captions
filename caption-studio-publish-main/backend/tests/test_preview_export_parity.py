@@ -1,28 +1,20 @@
 import os
 import sys
 import unittest
-
-from fastapi.testclient import TestClient
-
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from main import ExportRequest, app, processor, _evaluate_export_policy, _resolve_export_preset
+from main import ExportRequest, processor, _build_parity_signature, _evaluate_export_policy, _resolve_export_preset
 
 
 class PreviewExportParityTests(unittest.TestCase):
-    def setUp(self):
-        self.client = TestClient(app)
-
     def test_parity_signature_deterministic(self):
         payload = {
             "captions": [{"id": "1", "text": "Hello", "start_time": 0, "end_time": 1}],
             "style": {"font_family": "Inter", "position_x": 50, "position_y": 75},
             "word_layouts": {"1-0": {"x": 50, "y": 75, "w": 10, "h": 4}},
         }
-        r1 = self.client.post("/api/export-parity-signature", json=payload)
-        r2 = self.client.post("/api/export-parity-signature", json=payload)
-        self.assertEqual(r1.status_code, 200)
-        self.assertEqual(r2.status_code, 200)
-        self.assertEqual(r1.json()["signature"], r2.json()["signature"])
+        signature_1 = _build_parity_signature(payload["captions"], payload["style"], payload["word_layouts"])
+        signature_2 = _build_parity_signature(payload["captions"], payload["style"], payload["word_layouts"])
+        self.assertEqual(signature_1, signature_2)
 
     def test_parity_signature_detects_change(self):
         payload_a = {
@@ -35,15 +27,13 @@ class PreviewExportParityTests(unittest.TestCase):
             "style": {"font_family": "Inter"},
             "word_layouts": {},
         }
-        ra = self.client.post("/api/export-parity-signature", json=payload_a)
-        rb = self.client.post("/api/export-parity-signature", json=payload_b)
-        self.assertEqual(ra.status_code, 200)
-        self.assertEqual(rb.status_code, 200)
-        self.assertNotEqual(ra.json()["signature"], rb.json()["signature"])
+        signature_a = _build_parity_signature(payload_a["captions"], payload_a["style"], payload_a["word_layouts"])
+        signature_b = _build_parity_signature(payload_b["captions"], payload_b["style"], payload_b["word_layouts"])
+        self.assertNotEqual(signature_a, signature_b)
 
     def test_export_caption_template_sequence_metadata_survives_round_trip(self):
         request = ExportRequest(
-            file_id="template-sequence",
+            file_id="123e4567-e89b-12d3-a456-426614174000",
             captions=[
                 {
                     "id": "caption-2",
@@ -69,6 +59,12 @@ class PreviewExportParityTests(unittest.TestCase):
 
         replay_payload = ExportRequest(**payload).model_dump(by_alias=True)
         self.assertEqual(replay_payload["captions"][0]["__templateIndex"], 2)
+
+    def test_ass_override_syntax_is_neutralized(self):
+        escaped = processor._escape_ass_text(r"hello{\pos(1,1)}world")
+        self.assertNotIn("{", escaped)
+        self.assertNotIn("}", escaped)
+        self.assertNotIn("\\", escaped)
 
     def test_dom_renderer_accepts_both_template_tabs(self):
         self.assertTrue(processor._should_use_dom_template_renderer({"template_20_id": "A5"}))

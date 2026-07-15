@@ -20,12 +20,20 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from '@/components/ui/use-toast';
-import { apiRequest } from '@/lib/apiClient';
+import { apiFetch, apiRequest } from '@/lib/apiClient';
 import { notifyApiError } from '@/lib/notifyApiError';
 import { getClientContext, trackAnalytics } from '@/lib/analytics';
 import { isFeatureEnabled } from '@/lib/featureFlags';
 import { getEffectiveAuthToken } from '@/lib/devAuth';
 import { buildEmotionalCaptionPlan } from './emotionalTemplateUtils';
+import { getBasicTemplateExportEffects } from './basicTemplateCatalog.js';
+import {
+  buildPlainText,
+  buildSrt,
+  getCaptionedVideoFilename,
+  hasExportableVideoContent,
+  shouldAttachApiAuth,
+} from './exportPipelineUtils';
 import {
   ADVANCED_TEMPLATE_EMPHASIS_COLORS,
   RECREATED_ADVANCED_TEMPLATE_IDS,
@@ -37,44 +45,9 @@ import { Progress } from "@/components/ui/progress";
 // Restore before deploy by setting VITE_DISABLE_EXPORT_LIMITS=0 or removing this bypass.
 const DISABLE_EXPORT_LIMITS_FOR_TESTING = import.meta.env.DEV || import.meta.env.VITE_DISABLE_EXPORT_LIMITS === '1';
 
-// ─── TEMPLATE CANONICAL STYLES ────────────────────────────────────────────────
-// Ensures the export always uses the correct template-defined visual properties
-// (background, stroke, shadow) even if the user's React state is stale from
-// applying the template before these properties were added to the template def.
-// User-customized properties (font, color, position) are NOT overridden here.
-// MUST MIRROR the gallery sources of truth: BASIC_TEMPLATE_STYLE in
-// AdvancedTemplateLibrary.jsx and the per-template `style` objects in
-// TemplatesTab.jsx — if a template is retuned there, update it here too or the
-// export will silently diverge from the canvas.
-const TEMPLATE_CANONICAL_STYLES = {
-  't-115': { has_shadow: true, shadow_color: '#39FF14', shadow_blur: 10, shadow_offset_x: 0, shadow_offset_y: 0, has_background: false, has_stroke: false },
-  't-109': { has_shadow: true, shadow_color: '#FF4500', shadow_blur: 0, shadow_offset_x: 3, shadow_offset_y: 3, has_background: false, has_stroke: false },
-  't-26':  { has_background: true, background_color: '#e8e8e8', background_opacity: 1.0, has_stroke: true, stroke_color: '#000000', stroke_width: 1, has_shadow: false },
-  't-102': { has_background: true, background_color: '#E8E8E8', background_opacity: 1.0, background_padding: 10, has_stroke: false, has_shadow: false },
-  't-36':  { has_background: false, has_stroke: false, has_shadow: false },
-  't-105': { has_stroke: true, stroke_color: '#000000', stroke_width: 1, has_shadow: true, shadow_color: '#000000', shadow_blur: 2, shadow_offset_x: 2, shadow_offset_y: 2, has_background: false },
-  't-9':   { has_shadow: true, shadow_color: '#ff4500', shadow_blur: 10, shadow_offset_x: 0, shadow_offset_y: 0, has_background: false, has_stroke: false },
-  't-124': { has_shadow: true, shadow_color: '#ffffff', shadow_blur: 0, shadow_offset_x: 4, shadow_offset_y: 4, has_background: false, has_stroke: false },
-  't-16':  { has_background: false, has_stroke: false, has_shadow: false },
-  't-110': { has_background: false, has_stroke: false, has_shadow: false },
-  't-119': { has_background: false, has_stroke: false, has_shadow: false },
-  't-12':  { has_shadow: true, shadow_color: '#cc0000', shadow_blur: 10, shadow_offset_x: 0, shadow_offset_y: 0, has_background: false, has_stroke: false },
-  't-106': { has_shadow: true, shadow_color: '#000000', shadow_blur: 3, shadow_offset_x: 1, shadow_offset_y: 2, has_background: false, has_stroke: false },
-  't-52':  { has_background: false, has_stroke: false, has_shadow: false },
-  't-103': { has_background: true, background_color: '#1e1e1e', background_opacity: 0.85, background_padding: 10, has_stroke: false, has_shadow: false },
-  't-112': { has_background: false, has_stroke: false, has_shadow: false },
-  't-104': { has_stroke: true, stroke_color: '#2563EB', stroke_width: 2, has_background: false, has_shadow: false },
-  't-111': { has_background: false, has_stroke: false, has_shadow: false },
-  't-T5':  { has_background: true, background_color: '#DDAA03', background_opacity: 1.0, background_padding: 10, has_stroke: false, has_shadow: false },
-  't-95':  { has_background: false, has_stroke: false, has_shadow: false },
-  't-T1':  { has_background: false, has_stroke: false, has_shadow: false },
-  't-T4':  { has_background: false, has_stroke: false, has_shadow: false },
-  't-56':  { has_background: false, has_stroke: false, has_shadow: false },
-  't-T3':  { has_background: false, has_stroke: false, has_shadow: false },
-  't-57':  { has_shadow: true, shadow_color: '#00ffff', shadow_blur: 0, shadow_offset_x: 2, shadow_offset_y: 0, has_background: false, has_stroke: false },
-  't-37':  { has_background: false, has_stroke: false, has_shadow: false },
-};
-
+// Basic template effect defaults come from the same catalog as both galleries.
+// Only structural effects are restored here; user font/color/position choices
+// remain authoritative in the export payload.
 function isAdvancedTemplateId(templateId) {
   return /^t\d{2}$/.test(String(templateId || ''));
 }
@@ -387,6 +360,17 @@ function getRenderedElementCenterPercent(element, containerRect, containerToVide
   return pos;
 }
 
+function indexWordElementsByKey(container) {
+  const elementsByKey = new Map();
+  container?.querySelectorAll?.('[data-word-key]').forEach((element) => {
+    const key = element.getAttribute('data-word-key');
+    if (key !== null && !elementsByKey.has(key)) {
+      elementsByKey.set(key, element);
+    }
+  });
+  return elementsByKey;
+}
+
 // Simple queue system to prevent server overload
 const exportQueue = {
   queue: [],
@@ -424,7 +408,7 @@ const exportQueue = {
   }
 };
 
-export default function ExportPanel({ open, onClose, captions, captionStyle, waveformData, duration, videoUrl, projectId, fileId, originalFileName, onUpgradeClick }) {
+export default function ExportPanel({ open, onClose, captions, captionStyle, waveformData, duration, fileId, originalFileName, onUpgradeClick }) {
   const { currentUser, userData, refreshUserData } = useAuth();
   // Use auth context directly for consistent, up-to-date auth & credit checks
   const isSignedIn = !!currentUser;
@@ -439,6 +423,12 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
   const exportInFlightRef = useRef(false);
   const exportAbortRef = useRef(null);
   const backgroundNoticeShownRef = useRef(false);
+
+  useEffect(() => () => {
+    // Closing the sheet intentionally keeps an export alive, but leaving the
+    // dashboard must not trigger a surprise download or update unmounted state.
+    exportAbortRef.current?.abort();
+  }, []);
 
   const throwIfAborted = (signal) => {
     if (signal?.aborted) throw new DOMException('Export cancelled', 'AbortError');
@@ -529,33 +519,6 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
     return () => clearInterval(timer);
   }, [isExporting, waitStartTime]);
 
-  const generateSRT = () => {
-    if (!captions || captions.length === 0) return '';
-
-    return captions
-      .filter(cap => cap && cap.text && !cap.isTextElement)
-      // SRT entries must be in chronological order — the captions array can be
-      // reordered by timeline edits.
-      .slice()
-      .sort((a, b) => (a.start_time || 0) - (b.start_time || 0))
-      .map((caption, index) => {
-      const formatTime = (seconds) => {
-        const hrs = Math.floor((seconds || 0) / 3600);
-        const mins = Math.floor(((seconds || 0) % 3600) / 60);
-        const secs = Math.floor((seconds || 0) % 60);
-        const ms = Math.floor(((seconds || 0) % 1) * 1000);
-        return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')},${String(ms).padStart(3, '0')}`;
-      };
-
-      return `${index + 1}\n${formatTime(caption.start_time)} --> ${formatTime(caption.end_time)}\n${caption.text}\n`;
-    }).join('\n');
-  };
-
-  const generatePlainText = () => {
-    if (!captions || captions.length === 0) return '';
-    return captions.filter(cap => cap && cap.text && !cap.isTextElement).map(c => c.text).join('\n');
-  };
-
   const downloadFile = (content, filename, type) => {
     const blob = new Blob([content], { type });
     const url = URL.createObjectURL(blob);
@@ -565,11 +528,11 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   const handleDownloadSRT = () => {
-    const srt = generateSRT();
+    const srt = buildSrt(captions);
     if (!srt) {
       toast({ variant: 'destructive', title: 'No captions to export' });
       return;
@@ -578,7 +541,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
   };
 
   const handleDownloadText = () => {
-    const text = generatePlainText();
+    const text = buildPlainText(captions);
     if (!text) {
       toast({ variant: 'destructive', title: 'No captions to export' });
       return;
@@ -665,7 +628,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       });
       return;
     }
-    if (!captions || captions.length === 0) {
+    if (!hasExportableVideoContent(captions)) {
       toast({
         variant: 'destructive',
         title: 'No captions to export',
@@ -714,6 +677,15 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       const ch = container?.offsetHeight || 1;
 
       const containerRect = container?.getBoundingClientRect();
+      if (
+        !containerRect
+        || !Number.isFinite(containerRect.width)
+        || !Number.isFinite(containerRect.height)
+        || containerRect.width <= 0
+        || containerRect.height <= 0
+      ) {
+        throw new Error('The video preview is not visible. Open the preview and try exporting again.');
+      }
 
       const vnw = videoEl?.videoWidth || cw;
       const vnh = videoEl?.videoHeight || ch;
@@ -734,7 +706,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       const baseExportStyle = hasTemplateIdentity(styleTemplateSnapshot)
         ? { ...styleTemplateSnapshot, ...captionStyle }
         : (captionStyle || {});
-      const templateOverride = TEMPLATE_CANONICAL_STYLES[baseExportStyle?.template_id || ''] || {};
+      const templateOverride = getBasicTemplateExportEffects(baseExportStyle?.template_id);
       const effectiveExportStyle = { ...baseExportStyle, ...templateOverride };
       const activeTemplateSnapshot = hasTemplateIdentity(styleTemplateSnapshot)
         ? styleTemplateSnapshot
@@ -797,6 +769,11 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
           )
         : null;
 
+      // Caption IDs are persisted user data, not safe CSS selector fragments.
+      // Index literal attribute values once so imported IDs containing quotes do
+      // not throw a DOMException and abort the whole export.
+      const wordElementsByKey = indexWordElementsByKey(container);
+
       // Capture exact word positions from DOM
       const captureLayout = (caps) => {
         const layout = {};
@@ -808,7 +785,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
           if (cap.words && cap.words.length > 0) {
             cap.words.forEach((_, wIdx) => {
               const key = `${capId}-${wIdx}`;
-              const el = container.querySelector(`[data-word-key="${key}"]`);
+              const el = wordElementsByKey.get(key);
               if (el) {
                 const rect = el.getBoundingClientRect();
 
@@ -854,8 +831,6 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       if (captionsWithWords.length > 0 && layoutKeys === 0) {
         console.warn('[Export] Word layout capture returned 0 entries. Export will use fallback position-based rendering. Make sure the video player is fully visible before exporting.');
         setStatusMessage('Note: Using fallback positioning (scroll video into view for best results)');
-      } else {
-        console.log(`[Export] Captured ${layoutKeys} word layout entries for ${captionsWithWords.length} captions.`);
       }
 
       const patchWordStyles = (ws) => {
@@ -864,7 +839,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
         const patched = {};
         for (const [k, v] of Object.entries(ws)) {
           if (v.x !== undefined || v.y !== undefined) {
-            const wordEl = container.querySelector(`[data-word-key="${k}"]`);
+            const wordEl = wordElementsByKey.get(k);
             if (wordEl) {
               const wordRect = wordEl.getBoundingClientRect();
               const centerX = wordRect.left + wordRect.width / 2 - containerRect.left;
@@ -901,6 +876,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       };
 
       const idToken = await getEffectiveAuthToken(currentUser);
+      throwIfAborted(exportController.signal);
       const authHeaders = idToken ? { Authorization: `Bearer ${idToken}` } : {};
       let effectiveQuality = quality;
       const prefersDataSave = !!navigator?.connection?.saveData;
@@ -1201,6 +1177,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       try {
         result = await exportQueue.add(() => apiRequest('/api/export', {
           method: 'POST',
+          signal: exportController.signal,
           headers: {
             'Content-Type': 'application/json',
             ...(isFeatureEnabled('canaryExportFlow') ? { 'x-api-version': '2026-04-21' } : {}),
@@ -1231,6 +1208,10 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
         }
       }
 
+      if (resolvedResult?.success === false) {
+        throw new Error(resolvedResult.error || 'Export completed without a usable video. Please retry.');
+      }
+
       // Store expiry info
       if (resolvedResult.retention_hours) {
         setExportExpiry({ hours: resolvedResult.retention_hours, expiresAt: resolvedResult.expires_at })
@@ -1244,20 +1225,25 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       if (!downloadUrl) {
         throw new Error('Export completed but no download link was returned. Please retry.');
       }
-      const videoResponse = await fetch(downloadUrl);
-      if (!videoResponse.ok) {
-        throw new Error(`Video download failed (${videoResponse.status}). Please try again.`);
-      }
+      const downloadHeaders = shouldAttachApiAuth(downloadUrl, window.location.origin) ? authHeaders : {};
+      const videoResponse = await apiFetch(downloadUrl, {
+        headers: downloadHeaders,
+        signal: exportController.signal
+      });
       const blob = await videoResponse.blob();
+      if (blob.size === 0) {
+        throw new Error('The exported video download was empty. Please retry.');
+      }
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      const baseName = originalFileName ? originalFileName.replace(/\.[^/.]+$/, '') : 'export';
-      a.download = `${baseName}_captioned.mp4`;
+      a.download = getCaptionedVideoFilename(originalFileName);
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      // Revoking synchronously can cancel a just-started download in Safari and
+      // Firefox. Release it after the browser has consumed the click instead.
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
       trackAnalytics('funnel.export.success', getClientContext({
         stage: 'export',
         quality: effectiveQuality,
@@ -1268,7 +1254,10 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       setStatusMessage('Export complete!');
       // The backend just decremented a credit — refresh so the plan/credits
       // gating reflects reality instead of the stale pre-export snapshot.
-      refreshUserData?.().catch(() => {});
+      // Auth-context implementations have historically varied between async and
+      // synchronous refresh functions. Normalize both so a successful download
+      // is never turned into a false "Export failed" error by `.catch` on void.
+      Promise.resolve().then(() => refreshUserData?.()).catch(() => {});
       await new Promise(resolve => setTimeout(resolve, 1000));
 
     } catch (error) {

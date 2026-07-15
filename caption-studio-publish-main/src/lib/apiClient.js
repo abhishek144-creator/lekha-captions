@@ -1,3 +1,6 @@
+import { auth } from '@/lib/firebase'
+import { shouldDispatchAuthLogout } from '@/lib/apiErrorPolicy'
+
 export class ApiError extends Error {
   constructor(message, { status = 0, data = null } = {}) {
     super(message || "Request failed")
@@ -16,6 +19,12 @@ const LOCAL_API_RETRY_DELAY_MS = 450
 const LOCAL_DIRECT_BACKEND_URL = String(
   import.meta.env.VITE_DIRECT_BACKEND_URL || (import.meta.env.DEV ? "http://127.0.0.1:8000" : ""),
 ).replace(/\/+$/, "")
+const API_BASE_URL = String(import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "")
+
+function resolveApiUrl(url) {
+  if (!API_BASE_URL || typeof url !== "string" || !url.startsWith("/api")) return url
+  return `${API_BASE_URL}${url}`
+}
 
 function isLocalApiRequest(url) {
   if (typeof url !== "string") return false
@@ -30,6 +39,9 @@ function isLocalApiRequest(url) {
 }
 
 function getBackendUnavailableMessage() {
+  if (!import.meta.env.DEV) {
+    return "Service is temporarily unavailable. Please try again shortly."
+  }
   return "Backend API is not reachable. Start the full app with start_app.bat or npm run dev so localhost:3000 and the Python backend on port 8000 are both running."
 }
 
@@ -80,14 +92,16 @@ async function parseResponseBody(response) {
   }
 }
 
-export async function apiRequest(url, options = {}) {
+export async function apiFetch(url, options = {}) {
   const { dedupeKey = "", cancelPrevious = false, ...fetchOptions } = options
   const localApiRequest = isLocalApiRequest(url)
   const directBackendUrl = getLocalDirectBackendUrl(url)
+  const resolvedUrl = resolveApiUrl(url)
   const retryUntil = localApiRequest && canRetryRequestBody(fetchOptions.body)
     ? Date.now() + LOCAL_API_RETRY_MS
     : 0
   let controller = null
+  let authRefreshAttempted = false
   if (dedupeKey) {
     if (cancelPrevious) {
       cancelRequest(dedupeKey)
@@ -101,15 +115,13 @@ export async function apiRequest(url, options = {}) {
   try {
     while (true) {
       let response
-      let data
-      let requestUrl = url
+      let requestUrl = resolvedUrl
       try {
         try {
           response = await fetch(requestUrl, {
             ...fetchOptions,
             signal: fetchOptions.signal || controller?.signal,
           })
-          data = await parseResponseBody(response)
         } catch (error) {
           if (error?.name === "AbortError") throw error
           if (!directBackendUrl || directBackendUrl === requestUrl) throw error
@@ -118,7 +130,6 @@ export async function apiRequest(url, options = {}) {
             ...fetchOptions,
             signal: fetchOptions.signal || controller?.signal,
           })
-          data = await parseResponseBody(response)
         }
       } catch (error) {
         if (error?.name === "AbortError") throw error
@@ -136,15 +147,37 @@ export async function apiRequest(url, options = {}) {
       }
 
       if (!response.ok) {
-        if (response.status === 401 || response.status === 403) {
+        let data = await parseResponseBody(response.clone())
+        if (localApiRequest && response.status === 401 && !authRefreshAttempted && auth?.currentUser?.getIdToken) {
+          authRefreshAttempted = true
+          try {
+            const refreshedToken = await auth.currentUser.getIdToken(true)
+            if (refreshedToken) {
+              const headers = new Headers(fetchOptions.headers || {})
+              headers.set("Authorization", `Bearer ${refreshedToken}`)
+              fetchOptions.headers = headers
+              if (typeof fetchOptions.body === "string" && headers.get("content-type")?.includes("application/json")) {
+                try {
+                  const parsedBody = JSON.parse(fetchOptions.body)
+                  if (parsedBody && typeof parsedBody === "object" && "id_token" in parsedBody) {
+                    parsedBody.id_token = refreshedToken
+                    fetchOptions.body = JSON.stringify(parsedBody)
+                  }
+                } catch {
+                  // Caller-managed bodies remain unchanged.
+                }
+              }
+              continue
+            }
+          } catch {
+            // Clear the rejected session below.
+          }
+        }
+        if (localApiRequest && shouldDispatchAuthLogout(response.status, data)) {
           // The backend also uses 403 for plan/credit limits (PLAN_EXPIRED /
           // UPGRADE_REQUIRED) — those are not auth failures and must never
           // trigger a logout.
-          const errorDetail = String(data?.detail || data?.error || data?.message || "")
-          const isPlanLimitError = /PLAN_EXPIRED|UPGRADE_REQUIRED/.test(errorDetail)
-          if (!isPlanLimitError) {
-            window.dispatchEvent(new CustomEvent("auth:logout", { detail: { reason: "token_expired", status: response.status } }))
-          }
+          window.dispatchEvent(new CustomEvent("auth:logout", { detail: { reason: "token_rejected", status: response.status } }))
         }
         if (localApiRequest && response.status >= 500 && looksLikeProxyConnectionFailure(data)) {
           if (directBackendUrl && requestUrl !== directBackendUrl) {
@@ -154,8 +187,8 @@ export async function apiRequest(url, options = {}) {
                 ...fetchOptions,
                 signal: fetchOptions.signal || controller?.signal,
               })
-              data = await parseResponseBody(response)
-              if (response.ok) return data ?? {}
+              data = await parseResponseBody(response.clone())
+              if (response.ok) return response
               if (!looksLikeProxyConnectionFailure(data)) {
                 const message =
                   data?.detail ||
@@ -182,7 +215,7 @@ export async function apiRequest(url, options = {}) {
           `Request failed (${response.status})`
         throw new ApiError(message, { status: response.status, data })
       }
-      return data ?? {}
+      return response
     }
   } finally {
     if (dedupeKey && controller) {
@@ -192,6 +225,11 @@ export async function apiRequest(url, options = {}) {
       }
     }
   }
+}
+
+export async function apiRequest(url, options = {}) {
+  const response = await apiFetch(url, options)
+  return await parseResponseBody(response) ?? {}
 }
 
 export function getApiErrorMessage(error, fallback = "Something went wrong. Please try again.") {

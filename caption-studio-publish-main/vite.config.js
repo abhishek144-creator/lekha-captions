@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 import { spawn } from 'node:child_process'
@@ -9,6 +9,19 @@ const backendUrl = new URL(backendTarget)
 const backendPort = Number(backendUrl.port || 8000)
 const backendHost = backendUrl.hostname === 'localhost' ? '127.0.0.1' : backendUrl.hostname
 const backendAutostartDisabled = process.env.LEKHA_DISABLE_BACKEND_AUTOSTART === '1'
+const backendEnv = {
+  ...process.env,
+  APP_ENV: process.env.APP_ENV || 'development',
+  LOCAL_DEV_AUTH_BYPASS: process.env.LOCAL_DEV_AUTH_BYPASS || '1',
+}
+const baseSecurityHeaders = {
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(self)',
+  'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
+}
+const productionCsp = "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; script-src 'self' https://checkout.razorpay.com; frame-src https://*.razorpay.com https://*.firebaseapp.com; connect-src 'self' https:; img-src 'self' data: blob: https:; media-src 'self' blob: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com"
 
 function isLocalBackendTarget() {
   return ['localhost', '127.0.0.1'].includes(backendUrl.hostname)
@@ -49,10 +62,9 @@ function backendAutostartPlugin() {
       backendHost,
       '--port',
       String(backendPort),
-      '--reload',
     ], {
       cwd: process.cwd(),
-      env: process.env,
+      env: backendEnv,
       stdio: ['ignore', 'inherit', 'inherit'],
       windowsHide: true,
     })
@@ -93,7 +105,15 @@ function backendAutostartPlugin() {
   }
 }
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const env = { ...loadEnv(mode, process.cwd(), ''), ...process.env }
+  if (mode === 'production' && !env.VITE_API_BASE_URL && env.VITE_ALLOW_SAME_ORIGIN_API !== '1') {
+    throw new Error(
+      'Production builds require VITE_API_BASE_URL. Set VITE_ALLOW_SAME_ORIGIN_API=1 only when the host reverse-proxies /api to the backend.'
+    )
+  }
+
+  return {
   plugins: [backendAutostartPlugin(), react()],
   build: {
     rollupOptions: {
@@ -119,6 +139,7 @@ export default defineConfig({
     port: 3000,
     strictPort: true,
     allowedHosts: ['localhost', '127.0.0.1'],
+    headers: baseSecurityHeaders,
     proxy: {
       // 1. Send API requests to Python
       '/api': {
@@ -126,5 +147,12 @@ export default defineConfig({
         changeOrigin: true,
       },
     }
+  },
+  preview: {
+    headers: {
+      ...baseSecurityHeaders,
+      'Content-Security-Policy': productionCsp,
+    },
+  },
   }
 })

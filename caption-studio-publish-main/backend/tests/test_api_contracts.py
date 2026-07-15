@@ -1,6 +1,8 @@
 import io
 import os
 import sys
+import tempfile
+from datetime import datetime, timedelta, timezone
 import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -16,27 +18,92 @@ class ApiContractTests(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(app)
         main._export_jobs.clear()
+        main._export_idempotency.clear()
         main._active_exports_by_user.clear()
         main._payment_idempotency.clear()
         main._upload_owners.clear()
         main._payment_rate.clear()
         main._upload_rate.clear()
         main._process_rate.clear()
+        main._detect_language_rate.clear()
         main._translate_rate.clear()
 
     def tearDown(self):
         main._export_jobs.clear()
+        main._export_idempotency.clear()
         main._active_exports_by_user.clear()
         main._payment_idempotency.clear()
         main._upload_owners.clear()
         main._payment_rate.clear()
         main._upload_rate.clear()
         main._process_rate.clear()
+        main._detect_language_rate.clear()
         main._translate_rate.clear()
 
-    def test_export_rate_limits_disabled_by_default(self):
-        self.assertTrue(main.DISABLE_EXPORT_FAILURE_RATE_LIMIT)
+    def test_export_daily_limit_disabled_by_default(self):
         self.assertTrue(main.DISABLE_EXPORT_DAILY_LIMIT)
+
+    def test_expired_paid_plan_is_blocked_even_with_remaining_credits(self):
+        expired_at = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+        user_data = {
+            "subscription_tier": "pro",
+            "subscription_expiry": expired_at,
+            "credits_remaining": 20,
+            "export_timestamps": [],
+        }
+
+        allowed, detail, _recent = main._evaluate_export_policy(user_data, 1_700_000_000.0)
+
+        self.assertFalse(allowed)
+        self.assertIn("PLAN_EXPIRED", detail)
+        self.assertEqual(main._effective_subscription_tier(user_data), "free")
+
+    def test_active_paid_plan_keeps_entitlements(self):
+        active_until = (datetime.now(timezone.utc) + timedelta(days=5)).isoformat()
+        user_data = {
+            "subscription_tier": "creator",
+            "subscription_expiry": active_until,
+            "credits_remaining": 4,
+            "export_timestamps": [],
+        }
+
+        allowed, detail, _recent = main._evaluate_export_policy(user_data, 1_700_000_000.0)
+
+        self.assertTrue(allowed)
+        self.assertEqual(detail, "")
+        self.assertEqual(main._effective_subscription_tier(user_data), "creator")
+
+    def test_paid_plan_without_expiry_fails_closed(self):
+        user_data = {
+            "subscription_tier": "pro",
+            "credits_remaining": 20,
+            "export_timestamps": [],
+        }
+
+        allowed, detail, _recent = main._evaluate_export_policy(user_data, 1_700_000_000.0)
+
+        self.assertFalse(allowed)
+        self.assertIn("PLAN_EXPIRED", detail)
+        self.assertEqual(main._effective_subscription_tier(user_data), "free")
+
+    @patch("main._authenticate_media_request", return_value={"uid": "rate-limited-user"})
+    @patch("main._get_recent_export_failures", return_value=[0.0] * main.EXPORT_FAILURE_LIMIT)
+    def test_export_failure_rate_limit_is_always_enforced(self, _recent_failures, _authenticate):
+        res = self.client.post(
+            "/api/export",
+            json={
+                "file_id": "123e4567-e89b-12d3-a456-426614174099",
+                "captions": [{"id": "1", "text": "Hello", "start_time": 0.0, "end_time": 1.0}],
+                "style": {},
+                "word_layouts": {},
+                "id_token": "token",
+                "quality": "1080p",
+                "fps": 30,
+            },
+        )
+
+        self.assertEqual(res.status_code, 429)
+        self.assertIn("Too many failed export attempts", res.json()["detail"])
 
     def test_media_tokens_reject_tampering_expiry_and_wrong_kind(self):
         token = main._create_media_token({
@@ -64,6 +131,30 @@ class ApiContractTests(unittest.TestCase):
         with self.assertRaises(Exception):
             main._verify_media_token(expired, "upload")
 
+    def test_upload_materializes_from_shared_storage_on_another_instance(self):
+        file_id = "123e4567-e89b-12d3-a456-426614174055"
+
+        def fake_download(remote_path, local_path):
+            self.assertEqual(remote_path, f"uploads/media-user/{file_id}.mp4")
+            with open(local_path, "wb") as handle:
+                handle.write(b"shared-media")
+            return True
+
+        with (
+            tempfile.TemporaryDirectory() as scratch,
+            patch.object(main, "UPLOAD_DIR", scratch),
+            patch.object(main, "_load_upload_metadata", return_value={
+                "uid": "media-user",
+                "remote_path": f"uploads/media-user/{file_id}.mp4",
+                "extension": "mp4",
+            }),
+            patch.object(main, "download_from_firebase_storage", side_effect=fake_download),
+        ):
+            path = main._safe_find_upload(file_id)
+            self.assertTrue(path and os.path.isfile(path))
+            with open(path, "rb") as handle:
+                self.assertEqual(handle.read(), b"shared-media")
+
     @patch("main._scan_upload_for_threat", return_value=True)
     @patch("main._probe_media", return_value={"format": {"duration": 12.3}, "streams": [{"codec_type": "video"}]})
     @patch("main.verify_token", return_value={"uid": "upload-user"})
@@ -90,6 +181,7 @@ class ApiContractTests(unittest.TestCase):
     @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
     def test_process_contract(self, _safe_find, mock_process, _verify_token):
         mock_process.return_value = {"success": True, "captions": [{"id": 1, "text": "hello", "start_time": 0, "end_time": 1}]}
+        main._upload_owners["123e4567-e89b-12d3-a456-426614174000"] = "process-user"
         res = self.client.post(
             "/api/process",
             json={
@@ -103,6 +195,55 @@ class ApiContractTests(unittest.TestCase):
         self.assertIn("success", data)
         self.assertIn("captions", data)
 
+    @patch("main.verify_token", return_value={"uid": "process-user"})
+    @patch("main.processor.generate_captions_only", new_callable=AsyncMock)
+    @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
+    def test_process_rejects_successful_empty_transcription(self, _safe_find, mock_process, _verify_token):
+        mock_process.return_value = {"success": True, "captions": []}
+        file_id = "123e4567-e89b-12d3-a456-426614174000"
+        main._upload_owners[file_id] = "process-user"
+        res = self.client.post(
+            "/api/process",
+            json={"file_id": file_id, "language": "english", "id_token": "token-123"},
+        )
+        self.assertEqual(res.status_code, 422)
+
+    def test_request_models_reject_invalid_caption_and_word_range(self):
+        export_res = self.client.post(
+            "/api/export",
+            json={
+                "file_id": "123e4567-e89b-12d3-a456-426614174000",
+                "captions": [{"id": "1", "text": "   ", "start_time": 1, "end_time": 0}],
+            },
+        )
+        process_res = self.client.post(
+            "/api/process",
+            json={
+                "file_id": "123e4567-e89b-12d3-a456-426614174000",
+                "min_words": 5,
+                "max_words": 2,
+            },
+        )
+        self.assertEqual(export_res.status_code, 422)
+        self.assertEqual(process_res.status_code, 422)
+
+    def test_export_rejects_executable_template_markup_before_auth(self):
+        res = self.client.post(
+            "/api/export",
+            json={
+                "file_id": "123e4567-e89b-12d3-a456-426614174000",
+                "captions": [{
+                    "id": "1",
+                    "text": "Hello",
+                    "start_time": 0,
+                    "end_time": 1,
+                    "template_markup": '<img src="http://127.0.0.1/secret" onerror="fetch(\'/\')">',
+                }],
+            },
+        )
+        self.assertEqual(res.status_code, 422)
+        self.assertIn("unsafe", str(res.json()).lower())
+
     def test_process_requires_auth(self):
         res = self.client.post(
             "/api/process",
@@ -110,10 +251,12 @@ class ApiContractTests(unittest.TestCase):
         )
         self.assertEqual(res.status_code, 401)
 
+    @patch("main.LOCAL_DEV_AUTH_BYPASS_ENABLED", True)
     @patch("main.processor.generate_captions_only", new_callable=AsyncMock)
     @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
-    def test_process_accepts_local_dev_bypass_token(self, _safe_find, mock_process):
+    def test_process_accepts_explicitly_enabled_local_dev_bypass_token(self, _safe_find, mock_process):
         mock_process.return_value = {"success": True, "captions": [{"id": 1, "text": "hello", "start_time": 0, "end_time": 1}]}
+        main._upload_owners["123e4567-e89b-12d3-a456-426614174000"] = "dev-local-user"
         res = self.client.post(
             "/api/process",
             json={
@@ -124,6 +267,19 @@ class ApiContractTests(unittest.TestCase):
         )
         self.assertEqual(res.status_code, 200)
         self.assertTrue(res.json().get("success"))
+
+    @patch("main.verify_token", return_value={"uid": "process-user"})
+    @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
+    def test_process_fails_closed_when_upload_owner_is_unknown(self, _safe_find, _verify_token):
+        res = self.client.post(
+            "/api/process",
+            json={
+                "file_id": "123e4567-e89b-12d3-a456-426614174000",
+                "language": "english",
+                "id_token": "token-123",
+            },
+        )
+        self.assertEqual(res.status_code, 403)
 
     def test_export_requires_auth(self):
         res = self.client.post(
@@ -172,10 +328,28 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(res_ok.status_code, 200)
         self.assertEqual(res_ok.json().get("status"), "completed")
 
+    def test_export_status_allows_local_dev_mock_token_for_dev_job(self):
+        job_id = "job-dev-auth-check"
+        main._export_jobs[job_id] = {
+            "uid": "dev-local-user",
+            "status": "completed",
+            "payload": {"success": True, "video_url": "/api/media/export/dev.mp4"},
+        }
+
+        with patch.object(main, "LOCAL_DEV_AUTH_BYPASS_ENABLED", True):
+            res = self.client.get(
+                f"/api/export-status/{job_id}",
+                headers={"Authorization": "Bearer mock-token"},
+            )
+
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json().get("status"), "completed")
+
     @patch("main.verify_token")
     def test_export_replay_requires_owner_auth(self, mock_verify_token):
         job = {
             "uid": "owner-uid",
+            "status": "failed",
             "request_snapshot": {
                 "file_id": "123e4567-e89b-12d3-a456-426614174000",
                 "captions": [{"id": "1", "text": "Hello", "start_time": 0.0, "end_time": 1.0}],
@@ -204,7 +378,11 @@ class ApiContractTests(unittest.TestCase):
             def enqueue_call(self, **kwargs):
                 return kwargs
 
-        with patch.object(main, "_export_queue", FakeQueue()), patch.object(main, "get_db", return_value=FakeDb()):
+        with (
+            patch.object(main, "_export_queue", FakeQueue()),
+            patch.object(main, "get_db", return_value=FakeDb()),
+            patch.object(main, "_persist_export_job", return_value=True),
+        ):
             res_unauth = self.client.post("/api/export-replay/job-1")
             self.assertEqual(res_unauth.status_code, 401)
 
@@ -223,6 +401,13 @@ class ApiContractTests(unittest.TestCase):
             self.assertEqual(res_ok.status_code, 200)
             self.assertTrue(res_ok.json().get("success"))
 
+            job["status"] = "completed"
+            res_completed = self.client.post(
+                "/api/export-replay/job-1",
+                headers={"Authorization": "Bearer owner-token"},
+            )
+            self.assertEqual(res_completed.status_code, 409)
+
     @patch("main.verify_token", return_value={"uid": "queue-user"})
     def test_queued_export_retains_user_slot_and_sanitizes_snapshot(self, _verify_token):
         captured = {}
@@ -232,7 +417,10 @@ class ApiContractTests(unittest.TestCase):
                 captured.update(kwargs)
                 return {"queued": True}
 
-        with patch.object(main, "_export_queue", FakeQueue()):
+        with (
+            patch.object(main, "_export_queue", FakeQueue()),
+            patch.object(main, "_persist_export_job", return_value=True),
+        ):
             res = self.client.post(
                 "/api/export",
                 json={
@@ -249,7 +437,10 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         payload = res.json()
         self.assertTrue(payload.get("queued"))
-        self.assertEqual(main._active_exports_by_user.get("queue-user"), 1)
+        self.assertEqual(
+            main._active_exports_by_user.get("queue-user"),
+            payload["export_job_id"],
+        )
 
         job = main._export_jobs[payload["export_job_id"]]
         self.assertNotIn("id_token", job.get("request_snapshot", {}))
@@ -268,6 +459,55 @@ class ApiContractTests(unittest.TestCase):
             },
         )
         self.assertEqual(res_second.status_code, 429)
+
+    def test_export_slot_can_only_be_released_by_its_owner(self):
+        self.assertTrue(main._acquire_export_slot("lease-user", "job-a"))
+        self.assertTrue(main._acquire_export_slot("lease-user", "job-a"))
+        self.assertFalse(main._acquire_export_slot("lease-user", "job-b"))
+
+        main._release_export_slot("lease-user", "job-b")
+        self.assertEqual(main._active_exports_by_user.get("lease-user"), "job-a")
+
+        main._release_export_slot("lease-user", "job-a")
+        self.assertNotIn("lease-user", main._active_exports_by_user)
+
+    @patch("main.verify_token", return_value={"uid": "idem-user"})
+    def test_queued_export_idempotency_tracks_job_and_request_fingerprint(self, _verify_token):
+        class FakeQueue:
+            def enqueue_call(self, **kwargs):
+                return kwargs
+
+        request_body = {
+            "file_id": "123e4567-e89b-12d3-a456-426614174010",
+            "captions": [{"id": "1", "text": "Hello", "start_time": 0.0, "end_time": 1.0}],
+            "style": {},
+            "word_layouts": {},
+            "id_token": "secret-token",
+            "idempotency_key": "stable-export-key",
+            "quality": "1080p",
+            "fps": 30,
+        }
+        with (
+            patch.object(main, "_export_queue", FakeQueue()),
+            patch.object(main, "_persist_export_job", return_value=True),
+        ):
+            first = self.client.post("/api/export", json=request_body)
+            replay = self.client.post("/api/export", json=request_body)
+            changed = self.client.post(
+                "/api/export",
+                json={
+                    **request_body,
+                    "captions": [{"id": "1", "text": "Changed", "start_time": 0.0, "end_time": 1.0}],
+                },
+            )
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(replay.status_code, 200)
+        self.assertTrue(replay.json().get("idempotent_replay"))
+        self.assertEqual(changed.status_code, 409)
+        marker = main._export_idempotency["idem-user:stable-export-key"]
+        self.assertEqual(marker["status"], "in_progress")
+        self.assertEqual(marker["job_id"], first.json()["export_job_id"])
 
     @patch("main.verify_token", return_value={"uid": "payment-user"})
     def test_verify_payment_fails_closed_when_live_fetch_fails(self, _verify_token):
@@ -413,6 +653,9 @@ class ApiContractTests(unittest.TestCase):
                 return {"history": [{"firebase_path": "exports/delete-user/export.mp4"}]}
 
         class FakePaymentsCollection:
+            def limit(self, _count):
+                return self
+
             def stream(self):
                 return [FakePaymentDoc("pay_1"), FakePaymentDoc("pay_2")]
 
@@ -436,7 +679,12 @@ class ApiContractTests(unittest.TestCase):
                 self.last_name = name
                 return FakeUsersCollection()
 
-        with patch.object(main, "get_db", return_value=FakeDb()), patch.object(main, "delete_from_firebase_storage", return_value=True):
+        with (
+            patch.object(main, "get_db", return_value=FakeDb()),
+            patch.object(main, "delete_from_firebase_storage", return_value=True),
+            patch.object(main, "delete_user_exports", return_value=1),
+            patch.object(main, "delete_user_uploads", return_value=1),
+        ):
             res = self.client.post("/api/account-delete", json={"id_token": "token-123"})
 
         self.assertEqual(res.status_code, 200)
@@ -445,9 +693,331 @@ class ApiContractTests(unittest.TestCase):
         self.assertIn("user_doc", deleted)
         mock_delete_user.assert_called_once_with("delete-user")
 
+    @patch("main.firebase_auth.delete_user")
+    @patch("main.verify_token", return_value={"uid": "delete-user"})
+    def test_account_delete_keeps_auth_when_firestore_cleanup_fails(self, _verify_token, mock_delete_user):
+        class FakeUserDoc:
+            exists = True
+
+            def to_dict(self):
+                return {"history": []}
+
+        class FakeUserRef:
+            def get(self):
+                return FakeUserDoc()
+
+            def set(self, *_args, **_kwargs):
+                return None
+
+        fake_ref = FakeUserRef()
+        fake_db = SimpleNamespace(
+            collection=lambda _name: SimpleNamespace(document=lambda _uid: fake_ref),
+        )
+        with (
+            patch.object(main, "get_db", return_value=fake_db),
+            patch.object(main, "delete_user_exports", return_value=0),
+            patch.object(main, "_delete_user_document_tree", side_effect=RuntimeError("firestore unavailable")),
+        ):
+            response = self.client.post("/api/account-delete", json={"id_token": "token-123"})
+
+        self.assertEqual(response.status_code, 500)
+        mock_delete_user.assert_not_called()
+
+    @patch("main.verify_token", return_value={"uid": "export-user"})
+    def test_account_export_paginates_payments(self, _verify_token):
+        class FakeDoc:
+            exists = True
+
+            def __init__(self, doc_id, data):
+                self.id = doc_id
+                self._data = data
+
+            def to_dict(self):
+                return dict(self._data)
+
+        payment_docs = [
+            FakeDoc("pay_3", {"timestamp": "2026-03-03T00:00:00Z"}),
+            FakeDoc("pay_2", {"timestamp": "2026-03-02T00:00:00Z"}),
+            FakeDoc("pay_1", {"timestamp": "2026-03-01T00:00:00Z"}),
+        ]
+
+        class FakePayments:
+            def order_by(self, *_args, **_kwargs):
+                return self
+
+            def limit(self, count):
+                self.count = count
+                return self
+
+            def stream(self):
+                return payment_docs[:self.count]
+
+        class FakeUserRef:
+            def __init__(self):
+                self.payments = FakePayments()
+
+            def get(self):
+                return FakeDoc("export-user", {"uid": "export-user"})
+
+            def collection(self, _name):
+                return self.payments
+
+        user_ref = FakeUserRef()
+        fake_db = SimpleNamespace(
+            collection=lambda _name: SimpleNamespace(document=lambda _uid: user_ref),
+        )
+        with patch.object(main, "get_db", return_value=fake_db), patch.object(main, "_audit_action"):
+            res = self.client.post(
+                "/api/account-export",
+                json={"id_token": "token-123", "payment_limit": 2},
+            )
+
+        self.assertEqual(res.status_code, 200)
+        payload = res.json()["data"]
+        self.assertEqual([item["id"] for item in payload["payments"]], ["pay_3", "pay_2"])
+        self.assertTrue(payload["has_more_payments"])
+        self.assertEqual(payload["next_payment_cursor"], "pay_2")
+
+    def test_payment_grant_writes_claim_and_credits_in_one_transaction(self):
+        class FakeSnapshot:
+            def __init__(self, exists, data=None):
+                self.exists = exists
+                self._data = data or {}
+
+            def to_dict(self):
+                return dict(self._data)
+
+        class FakeRef:
+            def __init__(self, snapshot):
+                self.snapshot = snapshot
+
+            def get(self, transaction=None):
+                self.transaction = transaction
+                return self.snapshot
+
+        class FakeTransaction:
+            def __init__(self):
+                self.writes = []
+
+            def create(self, ref, data):
+                self.writes.append(("create", ref, data))
+
+            def update(self, ref, data):
+                self.writes.append(("update", ref, data))
+
+            def set(self, ref, data):
+                self.writes.append(("set", ref, data))
+
+        transaction = FakeTransaction()
+        db = SimpleNamespace(transaction=lambda: transaction)
+        user_ref = FakeRef(FakeSnapshot(True, {"subscription_tier": "free"}))
+        payment_ref = FakeRef(FakeSnapshot(False))
+
+        with patch.object(main.firestore, "transactional", new=lambda fn: fn):
+            result = main._grant_payment_transactionally(
+                db,
+                user_ref,
+                payment_ref,
+                "payment-user",
+                "starter",
+                main.PLAN_PRICING["starter"],
+                "pay_123",
+                "order_123",
+                main.PLAN_PRICING["starter"]["inr_paise"],
+                "INR",
+                "test",
+                "",
+            )
+
+        self.assertTrue(result["success"])
+        self.assertEqual([write[0] for write in transaction.writes], ["create", "update"])
+        self.assertIs(payment_ref.transaction, transaction)
+        self.assertIs(user_ref.transaction, transaction)
+
+    def test_export_usage_is_recorded_once_per_job(self):
+        class FakeSnapshot:
+            def __init__(self, exists, data=None):
+                self.exists = exists
+                self._data = data or {}
+
+            def to_dict(self):
+                return dict(self._data)
+
+        class FakeRef:
+            def __init__(self, snapshot):
+                self.snapshot = snapshot
+
+            def get(self, transaction=None):
+                return self.snapshot
+
+        ledger_ref = FakeRef(FakeSnapshot(False))
+
+        class FakeCollection:
+            def document(self, _doc_id):
+                return ledger_ref
+
+        class FakeUserRef(FakeRef):
+            def collection(self, _name):
+                return FakeCollection()
+
+        class FakeTransaction:
+            def __init__(self):
+                self.writes = []
+
+            def create(self, ref, data):
+                self.writes.append(("create", ref, data))
+                ref.snapshot.exists = True
+
+            def update(self, ref, data):
+                self.writes.append(("update", ref, data))
+
+        transactions = []
+
+        def make_transaction():
+            transaction = FakeTransaction()
+            transactions.append(transaction)
+            return transaction
+
+        db = SimpleNamespace(transaction=make_transaction)
+        user_ref = FakeUserRef(FakeSnapshot(True, {
+            "credits_remaining": 2,
+            "subscription_tier": "free",
+            "history": [],
+            "export_timestamps": [],
+        }))
+        history_item = {"id": "file-1", "export_job_id": "job-1"}
+
+        with patch.object(main.firestore, "transactional", new=lambda fn: fn):
+            main._record_export_usage(db, user_ref, history_item, 100.0, "job-1")
+            main._record_export_usage(db, user_ref, history_item, 101.0, "job-1")
+
+        self.assertEqual([write[0] for write in transactions[0].writes], ["create", "update"])
+        self.assertEqual(transactions[1].writes, [])
+
+    def test_payment_idempotency_fails_closed_when_redis_is_unavailable(self):
+        class BrokenRedis:
+            def get(self, _key):
+                raise ConnectionError("redis unavailable")
+
+        with patch.object(main, "_redis_client", BrokenRedis()):
+            with self.assertRaises(main.HTTPException) as raised:
+                main._payment_idem_get("payment-key")
+
+        self.assertEqual(raised.exception.status_code, 503)
+
+    def test_durable_queue_rejects_unpersisted_job_state(self):
+        with (
+            patch.object(main, "_export_queue", object()),
+            patch.object(main, "_persist_export_job", return_value=False),
+        ):
+            with self.assertRaises(RuntimeError):
+                main._set_export_job("durable-job", "queued", uid="owner")
+
+    @patch("main.firebase_auth.delete_user")
+    @patch("main.verify_token", return_value={"uid": "delete-user"})
+    def test_account_delete_stops_when_cloud_cleanup_fails(self, _verify_token, mock_delete_user):
+        class FakeUserDoc:
+            exists = True
+
+            def to_dict(self):
+                return {"history": [{"firebase_path": "exports/delete-user/export.mp4"}]}
+
+        class FakeUserRef:
+            def get(self):
+                return FakeUserDoc()
+
+            def set(self, *_args, **_kwargs):
+                return None
+
+        fake_ref = FakeUserRef()
+        fake_db = SimpleNamespace(
+            collection=lambda _name: SimpleNamespace(document=lambda _uid: fake_ref),
+        )
+        with (
+            patch.object(main, "get_db", return_value=fake_db),
+            patch.object(main, "delete_user_exports", return_value=None),
+        ):
+            response = self.client.post("/api/account-delete", json={"id_token": "token-123"})
+
+        self.assertEqual(response.status_code, 503)
+        mock_delete_user.assert_not_called()
+
+    @patch("main.verify_token", return_value={"uid": "delete-user"})
+    def test_delete_file_proves_history_ownership_before_local_cleanup(self, _verify_token):
+        class FakeUserDoc:
+            exists = True
+
+            def to_dict(self):
+                return {"history": []}
+
+        fake_ref = SimpleNamespace(get=lambda: FakeUserDoc())
+        fake_db = SimpleNamespace(
+            collection=lambda _name: SimpleNamespace(document=lambda _uid: fake_ref),
+        )
+        with (
+            patch.object(main, "get_db", return_value=fake_db),
+            patch.object(main, "_audit_action"),
+            patch.object(main.os, "remove") as remove_file,
+        ):
+            response = self.client.post(
+                "/api/delete-file",
+                json={
+                    "id_token": "token-123",
+                    "file_id": "123e4567-e89b-12d3-a456-426614174000",
+                },
+            )
+
+        self.assertEqual(response.status_code, 404)
+        remove_file.assert_not_called()
+
+    @patch("main.verify_token", return_value={
+        "uid": "new-user",
+        "email": "new@example.com",
+        "name": "New User",
+        "picture": "https://example.com/avatar.png",
+    })
+    def test_account_bootstrap_creates_server_owned_entitlements(self, _verify_token):
+        stored = {}
+
+        class FakeSnapshot:
+            exists = True
+
+            def to_dict(self):
+                return dict(stored)
+
+        class FakeUserRef:
+            def create(self, data):
+                stored.update(data)
+
+            def get(self):
+                return FakeSnapshot()
+
+        fake_ref = FakeUserRef()
+        fake_db = SimpleNamespace(
+            collection=lambda _name: SimpleNamespace(document=lambda _uid: fake_ref),
+        )
+        with patch.object(main, "get_db", return_value=fake_db), patch.object(main, "_audit_action"):
+            res = self.client.post("/api/account-bootstrap", json={"id_token": "token-123"})
+
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(stored["credits_remaining"], 3)
+        self.assertEqual(stored["subscription_tier"], "free")
+        self.assertEqual(stored["uid"], "new-user")
+
     def test_create_order_requires_auth(self):
         res = self.client.post("/api/create-order", json={"plan_id": "starter", "id_token": "invalid-token", "currency": "INR"})
         self.assertEqual(res.status_code, 401)
+
+    @patch("main.verify_token", return_value={"uid": "ordinary-user", "email": "user@example.com", "email_verified": True})
+    def test_admin_endpoints_reject_non_admin_tokens(self, _verify_token):
+        res = self.client.post("/api/admin/recovery-summary", json={"id_token": "token-123", "limit": 10})
+        self.assertEqual(res.status_code, 403)
+
+    @patch("main.verify_token", return_value={"uid": "attacker", "email": "ops@example.com", "email_verified": False})
+    def test_admin_email_allowlist_requires_verified_email(self, _verify_token):
+        with patch.dict(os.environ, {"ADMIN_EMAILS": "ops@example.com"}):
+            res = self.client.post("/api/admin/tenant-backfill", json={"id_token": "token-123", "limit": 10})
+        self.assertEqual(res.status_code, 403)
 
     @patch("main.verify_token", return_value={"uid": "payment-user"})
     def test_create_order_idempotency_replays_without_duplicate_order(self, _verify_token):
@@ -482,17 +1052,35 @@ class ApiContractTests(unittest.TestCase):
         data = res.json()
         self.assertIn("version", data)
         self.assertIn("min_supported_version", data)
+        self.assertEqual(res.headers.get("x-content-type-options"), "nosniff")
+        self.assertEqual(res.headers.get("x-frame-options"), "DENY")
+        self.assertIn("default-src 'self'", res.headers.get("content-security-policy", ""))
+
+    def test_chunked_json_body_limit(self):
+        res = self.client.post(
+            "/api/translate",
+            content=b'{' + b'"padding":"' + (b'x' * (main.MAX_JSON_BODY_BYTES + 1)) + b'"}',
+            headers={"Content-Type": "application/json"},
+        )
+        self.assertEqual(res.status_code, 413)
 
     def test_slo_and_readiness_contract(self):
         slo_res = self.client.get("/api/slo/status")
-        self.assertEqual(slo_res.status_code, 200)
-        self.assertIn("release_gate_passed", slo_res.json())
+        self.assertEqual(slo_res.status_code, 403)
+
+        with patch.object(main, "verify_token", return_value={"uid": "admin", "admin": True}):
+            admin_slo_res = self.client.get(
+                "/api/slo/status",
+                headers={"Authorization": "Bearer admin-token"},
+            )
+        self.assertEqual(admin_slo_res.status_code, 200)
+        self.assertIn("release_gate_passed", admin_slo_res.json())
 
         ready_res = self.client.get("/api/health/readiness")
         self.assertEqual(ready_res.status_code, 200)
         ready_data = ready_res.json()
         self.assertIn("ready", ready_data)
-        self.assertIn("slo", ready_data)
+        self.assertNotIn("slo", ready_data)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,3 @@
-import React from 'react';
 import { Link } from 'react-router-dom';
 import CaptionStudioLogo from '@/components/dashboard/CaptionStudioLogo';
 
@@ -17,7 +16,7 @@ const sections = [
   },
   {
     title: '4. Privacy & Data',
-    body: 'Your uploaded videos are processed securely for transcription purposes. We do not share your content with third parties or use it to train AI models. Processed files may be stored temporarily and deleted automatically after processing.',
+    body: 'Your uploaded videos are processed by Lekha Captions and the service providers identified in our Privacy Policy for transcription, translation, storage, export, and payment functions. Source and exported media are retained temporarily according to the published retention schedule.',
   },
   {
     title: '5. Accuracy Disclaimer',
@@ -61,7 +60,7 @@ export default function TermsAndConditions() {
           Legal
         </div>
         <h1 className="text-4xl font-bold mb-3">Terms &amp; Conditions</h1>
-        <p className="text-gray-500 text-sm">Last updated: March 2026</p>
+        <p className="text-gray-500 text-sm">Version 2026-07-14 · Last updated: July 14, 2026</p>
       </div>
 
       {/* Content */}
@@ -72,6 +71,7 @@ export default function TermsAndConditions() {
             <p className="text-gray-400 text-sm leading-relaxed">{s.body}</p>
           </div>
         ))}
+        <p className="text-gray-400 text-sm">Terms questions: <a className="text-[#F5A623] hover:underline" href="mailto:support@lekhacaptions.com">support@lekhacaptions.com</a></p>
       </div>
 
       {/* Footer */}

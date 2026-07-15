@@ -15,12 +15,15 @@ backend/uploads/
 backend/exports/
 *.mp4
 *.MOV
+!public/landing/lekha-studio-workflow-2026-07.mp4
+!public/landing/lekha-template-library-2026-07.mp4
 *.avi
 *.webm
 
 # Security & Temp Files
 .env.*
 .env.local
+!.env.example
 *.pem
 *.key
 backend/*.ass
@@ -49,6 +52,7 @@ frontend*.log
 frontend*.err.log
 vite*.log
 vite*.err.log
+landing-next/*.log
 backend_stdout.log
 backend_stderr.log
 build.log

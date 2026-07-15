@@ -17,11 +17,16 @@ function readTemplateFavoriteKeys() {
 }
 
 function writeTemplateFavoriteKeys(keys = []) {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(
-    TEMPLATE_FAVORITES_STORAGE_KEY,
-    JSON.stringify([...new Set(keys.filter(Boolean).map(String))]),
-  );
+  if (typeof window === 'undefined') return false;
+  try {
+    window.localStorage.setItem(
+      TEMPLATE_FAVORITES_STORAGE_KEY,
+      JSON.stringify([...new Set(keys.filter(Boolean).map(String))]),
+    );
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 const TEMPLATE_FAVORITES_CHANGED_EVENT = 'lekha-template-favorites-changed';
@@ -55,8 +60,13 @@ export function useTemplateFavorites() {
     const next = current.includes(key)
       ? current.filter((item) => item !== key)
       : [...current, key];
-    writeTemplateFavoriteKeys(next);
-    window.dispatchEvent(new CustomEvent(TEMPLATE_FAVORITES_CHANGED_EVENT));
+    if (writeTemplateFavoriteKeys(next)) {
+      window.dispatchEvent(new CustomEvent(TEMPLATE_FAVORITES_CHANGED_EVENT));
+    } else {
+      // Storage can be unavailable in private/locked-down browsers. Keep this
+      // gallery usable for the session instead of crashing on a favorite click.
+      setFavoriteKeys(next);
+    }
   }, []);
 
   return { favoriteKeys, isFavorite, toggleFavorite };

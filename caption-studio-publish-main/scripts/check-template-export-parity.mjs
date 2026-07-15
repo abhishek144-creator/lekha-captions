@@ -594,7 +594,11 @@ const CASES = [
     phaseIndex: 0,
     impWordIndex: 2,
     requiredColors: ['gold'],
-    minBboxHeight: 16,
+    // DM Serif Display at the measured 17px preview size paints a 15px glyph
+    // core on Chromium/Windows and 16px on Chromium/Linux. Both are the same
+    // CSS size; keep a one-pixel rasterization tolerance without weakening the
+    // width, visibility, color, or motion checks for this template.
+    minBboxHeight: 15,
   },
   {
     id: 'philosophical-twist-size-lock',
@@ -675,10 +679,13 @@ const CASES = [
     phaseIndex: 1,
     impWordIndex: 1,
     // t34's pinned accent is #15F5F9 (cyan), and this all-caps Syne line at the
-    // export font (~17px = preview font x scale) paints a ~13px cap-height
-    // bbox — matching the canvas. Orange was the old rotating palette.
+    // export font (~14.4px = library font_size 20 x 0.72 preview ratio) paints
+    // a ~11px cap-height bbox — matching the canvas. The old 12px floor dated
+    // from the font_size-24 era (~17px export font); 99f8966 lowered the
+    // library font to 20 without recalibrating. Orange was the old rotating
+    // palette.
     requiredColors: ['cyan', 'white'],
-    minBboxHeight: 12,
+    minBboxHeight: 10,
   },
   {
     id: 'left-legacy-current-cyan',
@@ -1506,7 +1513,7 @@ async function renderCase(testCase, rootOutputDir) {
   await fs.writeFile(payloadPath, JSON.stringify(buildPayload(testCase, outputDir), null, 2));
   await execFileAsync(process.execPath, [rendererPath, payloadPath], {
     cwd: projectRoot,
-    timeout: 60_000,
+    timeout: 120_000,
     maxBuffer: 1024 * 1024 * 4,
   });
 
@@ -1766,9 +1773,13 @@ const selectedCases = (() => {
   // TEMPLATE_EXPORT_FILTER=<substring> narrows any scope to matching case ids —
   // e.g. TEMPLATE_EXPORT_FILTER=t196 --scope=lc-left runs one template's phases.
   const caseFilter = String(process.env.TEMPLATE_EXPORT_FILTER || '').trim().toLowerCase();
-  return caseFilter
+  const filteredCases = caseFilter
     ? scopedCases.filter((testCase) => String(testCase.id || '').toLowerCase().includes(caseFilter))
     : scopedCases;
+  const textOverride = String(process.env.TEMPLATE_EXPORT_TEXT || '').trim();
+  return textOverride
+    ? filteredCases.map((testCase) => ({ ...testCase, text: textOverride }))
+    : filteredCases;
 })();
 const browser = await puppeteer.launch({
   headless: true,

@@ -12,11 +12,11 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { extractWaveformData } from '@/components/dashboard/audioUtils';
 import { autoLoadFontForText, loadGoogleFont, resolveScriptFont } from '@/components/dashboard/fontUtils';
 import { buildEmotionalCaptionPlan, EMOTIONAL_TEMPLATE_TIMING } from '@/components/dashboard/emotionalTemplateUtils';
-import { toast } from '@/components/ui/use-toast';
 import { apiRequest } from '@/lib/apiClient';
 import { notifyApiError } from '@/lib/notifyApiError';
 import { getClientContext, trackAnalytics } from '@/lib/analytics';
 import { getEffectiveAuthToken } from '@/lib/devAuth';
+import { resolveApiResourceUrl } from '@/components/dashboard/exportPipelineUtils';
 
 const VideoPlayer = lazy(() => import('@/components/dashboard/VideoPlayer'));
 const CaptionTimeline = lazy(() => import('@/components/dashboard/CaptionTimeline'));
@@ -43,19 +43,6 @@ const VideoLoadingFallback = () => (
     <div className="h-9 w-9 animate-spin rounded-full border-4 border-white/15 border-t-white" />
   </div>
 );
-
-// Helper for retrying operations
-const retryOperation = async (operation, maxRetries = 3, delay = 1000) => {
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      return await operation();
-    } catch (error) {
-      if (i === maxRetries - 1) throw error;
-      console.warn(`Operation failed, retrying(${i + 1}/${maxRetries})...`, error);
-      await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, i)));
-    }
-  }
-};
 
 const defaultCaptionStyle = {
   font_family: 'Inter',
@@ -91,6 +78,12 @@ const defaultCaptionStyle = {
 
 const GENERATING_SCREEN_MIN_MS = 10000;
 
+const TOP_UP_OFFERS = {
+  starter: { credits: 10, price: 'Rs 99' },
+  creator: { credits: 15, price: 'Rs 99' },
+  pro: { credits: 25, price: 'Rs 149' },
+};
+
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const normalizeCaptionStyle = (style = {}) => {
@@ -125,7 +118,7 @@ const stripDetachedWordLayout = (wordStyles = {}) => Object.fromEntries(
 );
 
 export default function Dashboard() {
-  const { currentUser, userData, loginWithGoogle } = useAuth();
+  const { currentUser, userData } = useAuth();
   const location = useLocation();
 
   const [isPricingModalOpen, setIsPricingModalOpen] = useState(false);
@@ -226,15 +219,12 @@ export default function Dashboard() {
   const [wordPopupOpenCount, setWordPopupOpenCount] = useState(0);
 
   // Animation settings
-  const [selectedWordForAnimation, setSelectedWordForAnimation] = useState(null);
+  const selectedWordForAnimation = null;
 
   // Waveform data for timeline
   const [waveformData, setWaveformData] = useState(null);
   const initialEditorStateRef = useRef(null);
   const mediaRefreshInFlightRef = useRef(false);
-
-  // Raw HTML5 video DOM element for native fast-scrubbing bypassing React renders
-  const [videoElement, setVideoElement] = useState(null);
 
   // External Video Sync Signal
   const [seekSignal, setSeekSignal] = useState(null);
@@ -447,6 +437,10 @@ export default function Dashboard() {
     setSettings(uploadSettings);
     setIsUploadModalOpen(false);
     setIsGenerating(true);
+    setHistory([]);
+    setHistoryIndex(-1);
+    setRedoStack([]);
+    initialEditorStateRef.current = null;
     const generationStart = Date.now();
     setGenerationStartedAt(generationStart);
 
@@ -512,6 +506,9 @@ export default function Dashboard() {
         id: `${Date.now()}-${idx}`,
         words: cap?.words || []
       }));
+      if (generatedCaptions.length === 0) {
+        throw new Error('No speech with usable word timestamps was detected. Try another video or add captions manually.');
+      }
 
       // Auto-translate if user selected a specific caption language (not 'auto')
       const targetLang = uploadSettings?.language;
@@ -537,13 +534,21 @@ export default function Dashboard() {
               if (c.isTextElement || !translatedMap.has(c.id)) return c;
               return { ...c, text: translatedMap.get(c.id) };
             });
+          } else {
+            throw new Error(translateData.error || `Translation to ${targetLang} failed`);
           }
         } catch (translateErr) {
-          console.warn('Auto-translation failed, using original captions:', translateErr);
+          trackAnalytics('funnel.translate.failed', getClientContext({ stage: 'translate', targetLanguage: targetLang }));
+          throw new Error(`Could not translate captions to ${targetLang}. Please retry.`, { cause: translateErr });
         }
       }
 
-      setVideoUrl(uploadData.raw_url);
+      const playableVideoUrl = resolveApiResourceUrl(
+        uploadData.raw_url,
+        import.meta.env.VITE_API_BASE_URL,
+      );
+      if (!playableVideoUrl) throw new Error('Upload completed without a playable media URL');
+      setVideoUrl(playableVideoUrl);
       setFileId(uploadData.file_id);
       setOriginalFileName(file.name);
 
@@ -588,7 +593,7 @@ export default function Dashboard() {
       const nextProjectId = `local_${Date.now()}`;
       setProjectId(nextProjectId);
       initialEditorStateRef.current = {
-        videoUrl: uploadData.raw_url,
+        videoUrl: playableVideoUrl,
         captions: JSON.parse(JSON.stringify(generatedCaptions)),
         captionStyle: JSON.parse(JSON.stringify(nextCaptionStyle)),
         duration: 0,
@@ -599,7 +604,7 @@ export default function Dashboard() {
       };
 
       try {
-        const waveform = await extractWaveformData(uploadData.raw_url);
+        const waveform = await extractWaveformData(playableVideoUrl);
         setWaveformData(waveform);
       } catch (e) {
         console.warn('Waveform extraction failed:', e);
@@ -677,8 +682,12 @@ export default function Dashboard() {
         cancelPrevious: true,
       });
 
-      if (data?.success && data.raw_url && data.raw_url !== videoUrl) {
-        setVideoUrl(data.raw_url);
+      const refreshedVideoUrl = resolveApiResourceUrl(
+        data?.raw_url,
+        import.meta.env.VITE_API_BASE_URL,
+      );
+      if (data?.success && refreshedVideoUrl && refreshedVideoUrl !== videoUrl) {
+        setVideoUrl(refreshedVideoUrl);
         setCurrentTime(resumeAt);
         setSeekSignal(resumeAt);
         if (shouldResume) setIsPlaying(true);
@@ -720,7 +729,7 @@ export default function Dashboard() {
   const updateCaptions = (newCaptions, options) => pushHistory(newCaptions, undefined, options);
   const updateCaptionStyle = (newStyle) => pushHistory(undefined, newStyle);
 
-  const handleWordStyleChange = (key, value, skipHistory = false) => {
+  const handleWordStyleChange = (key, value) => {
     if (!wordPopup) return;
 
     // Always use raw setCaptions — never updateCaptions here.
@@ -1050,16 +1059,14 @@ export default function Dashboard() {
     setDuration(initialState.duration || 0);
     setFileId(initialState.fileId || null);
     setOriginalFileName(initialState.originalFileName || '');
-    setHistory([{
-      captions: JSON.parse(JSON.stringify(initialState.captions || [])),
-      captionStyle: JSON.parse(JSON.stringify(initialState.captionStyle || defaultCaptionStyle))
-    }]);
-    setHistoryIndex(0);
+    setHistory([]);
+    setHistoryIndex(-1);
     setRedoStack([]);
   };
 
   const handleNewProject = () => {
     localStorage.removeItem('captionEditorState');
+    initialEditorStateRef.current = null;
     setVideoUrl('');
     setCaptions([]);
     setCaptionStyle(defaultCaptionStyle);
@@ -1072,12 +1079,9 @@ export default function Dashboard() {
     setRedoStack([]);
   };
 
-  const handleSelectPlan = async (planId) => {
-    localStorage.setItem('captionStudioTestPlan', planId);
-    toast({
-      title: 'Testing mode plan selected',
-      description: `${planId} is active for local testing. Restore payment before deploy.`,
-    });
+  const handleSelectPlan = async () => {
+    // Server-verified payment updates are refreshed by PricingModal. Never
+    // persist a client-selected plan as an authorization signal.
     setIsPricingModalOpen(false);
   };
 
@@ -1089,18 +1093,7 @@ export default function Dashboard() {
     });
   }, []);
 
-  // Initialize history when captions are first loaded (transition from empty → populated)
-  useEffect(() => {
-    if (captions.length > 0 && history.length === 0) {
-      setHistory([{
-        captions: JSON.parse(JSON.stringify(captions)),
-        captionStyle: JSON.parse(JSON.stringify(captionStyle))
-      }]);
-      setHistoryIndex(0);
-    }
-
-  }, [captions.length, history.length]);
-
+  // Capture the immutable reset point once the initial project has loaded.
   useEffect(() => {
     if (!videoUrl || !captions.length) return;
     if (initialEditorStateRef.current) return;
@@ -1244,10 +1237,8 @@ export default function Dashboard() {
         setCaptionsRaw={setCaptions}
         addToHistory={addToHistory}
         waveformData={waveformData}
-        videoElement={videoElement}
         isPlaying={isPlaying}
         setIsPlaying={setIsPlaying}
-        timelineHeight={timelineHeight}
         collapsed={isTimelineCollapsed}
         onToggleCollapsed={() => {
           setIsTimelineCollapsed(prev => {
@@ -1273,13 +1264,6 @@ export default function Dashboard() {
       { label: 'Highlighting key moments', status: step4Ready ? 'complete' : step3Ready ? 'active' : 'upcoming' },
       { label: 'Rendering your preview', status: step4Ready ? 'active' : 'upcoming' },
     ];
-    const completedSteps = progressSteps.filter((step) => step.status === 'complete').length;
-    const hasActiveStep = progressSteps.some((step) => step.status === 'active');
-    const progressPercent = Math.min(
-      96,
-      Math.round(((completedSteps + (hasActiveStep ? 0.65 : 0)) / progressSteps.length) * 100),
-    );
-
     return (
       <div className="relative flex h-full items-center justify-center overflow-hidden bg-[#050505] p-5">
         <div className="absolute inset-x-0 top-0 h-px bg-white/[0.06]" />
@@ -1395,6 +1379,9 @@ export default function Dashboard() {
     { id: 'layers', label: 'Layers', icon: Layers },
     { id: 'timeline', label: 'Timeline', icon: Clock3 },
   ];
+  const subscriptionBaseTier = String(userData?.subscription_tier || '')
+    .replace(/_yearly$/, '');
+  const lowCreditTopUpOffer = TOP_UP_OFFERS[subscriptionBaseTier] || null;
 
   return (
     <div className="h-[100dvh] max-h-[100dvh] bg-[#050505] flex flex-col overflow-hidden text-white">
@@ -1405,7 +1392,6 @@ export default function Dashboard() {
         isSaving={isSaving}
         saveSuccess={saveSuccess}
         hasVideo={!!videoUrl}
-        hasCaptions={captions.length > 0}
         onUndo={handleUndo}
         onRedo={handleRedo}
         canUndo={historyIndex >= 0}
@@ -1451,12 +1437,12 @@ export default function Dashboard() {
           // Editor layout
           <div className="h-full flex flex-col overflow-hidden">
             {/* Low-credits top-up banner */}
-            {userData && userData.subscription_tier && userData.subscription_tier !== 'free' &&
+            {lowCreditTopUpOffer &&
               (userData.credits_remaining ?? 999) <= 5 && (
               <div className="px-4 pt-2 shrink-0">
                 <div className="flex items-center justify-between gap-3 bg-white/5 border border-white/15 rounded-xl px-4 py-2.5">
                   <p className="text-sm text-white font-medium">
-                    Low credits? Add {userData.subscription_tier.startsWith('pro') ? '25' : userData.subscription_tier.startsWith('creator') ? '15' : '10'} credits for {userData.subscription_tier.startsWith('pro') ? 'Rs 79' : 'Rs 49'} - no plan change needed.
+                    Low credits? Add {lowCreditTopUpOffer.credits} credits for {lowCreditTopUpOffer.price} - no plan change needed.
                   </p>
                   <button
                     onClick={() => setIsPricingModalOpen(true)}
@@ -1475,7 +1461,6 @@ export default function Dashboard() {
                 <SidebarNav
                   activeTab={activeTab}
                   setActiveTab={setActiveTab}
-                  user={currentUser}
                   onOpenPricing={(action) => {
                     if (action === 'logout') {
                       // Handled by AuthContext logout 
@@ -1537,7 +1522,6 @@ export default function Dashboard() {
                       wordPopup={wordPopup}
                       setWordPopup={openWordPopup}
                       onVideoLoaded={async (videoEl) => {
-                        setVideoElement(videoEl);
                         if (videoEl && !waveformData) {
                           const data = await extractWaveformData(videoEl, 400);
                           if (data) setWaveformData(data);
@@ -1708,8 +1692,6 @@ export default function Dashboard() {
               }}
               onResetFontSize={handleResetWordFontSize}
               onHistoryRecord={addToHistory}
-              videoContainerRef={null}
-              isElementWord={wordPopup.type === 'element'}
             />
           </Suspense>
         </>

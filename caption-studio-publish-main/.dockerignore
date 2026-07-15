@@ -1,0 +1,15 @@
+.git
+.env
+.env.*
+!.env.example
+node_modules
+dist
+cache
+uploads
+exports
+backend/cache
+backend/uploads
+backend/exports
+backend/*.log
+backend/*.err.log
+.render_tmp

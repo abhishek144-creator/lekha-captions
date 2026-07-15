@@ -13,13 +13,10 @@ import { useAuth } from '@/lib/AuthContext'
 import { toast } from '@/components/ui/use-toast'
 import { apiRequest } from '@/lib/apiClient'
 import { notifyApiError } from '@/lib/notifyApiError'
+import planCatalog from '../../../shared/planCatalog.json'
 
 const DEV_FALLBACK_RAZORPAY_KEY_ID = ''
 const RAZORPAY_KEY_ID = import.meta.env.VITE_RAZORPAY_KEY_ID || DEV_FALLBACK_RAZORPAY_KEY_ID
-const LOCAL_DEV_BYPASS_TOKEN = 'mock-token'
-// TESTING PHASE ONLY: plan buttons should not depend on Razorpay while export
-// and caption parity are being tested. Restore before deploy by setting this off.
-const DISABLE_PAYMENT_FOR_TESTING = import.meta.env.DEV || import.meta.env.VITE_DISABLE_EXPORT_LIMITS === '1'
 
 const loadRazorpayScript = () => new Promise((resolve, reject) => {
   if (window.Razorpay) { resolve(true); return }
@@ -45,9 +42,9 @@ const plans = [
   {
     id: 'starter',
     name: 'Starter',
-    monthlyPrice: '299', yearlyPrice: '2500',
-    monthlyPaise: 29900, yearlyPaise: 250000,
-    credits: 15,
+    monthlyPrice: formatInrPrice(planCatalog.starter.inr_paise), yearlyPrice: formatInrPrice(planCatalog.starter_yearly.inr_paise),
+    monthlyPaise: planCatalog.starter.inr_paise, yearlyPaise: planCatalog.starter_yearly.inr_paise,
+    credits: planCatalog.starter.credits,
     icon: Zap,
     description: 'Perfect for getting started',
     features: [
@@ -62,9 +59,9 @@ const plans = [
   {
     id: 'creator',
     name: 'Creator',
-    monthlyPrice: '499', yearlyPrice: '4500',
-    monthlyPaise: 49900, yearlyPaise: 450000,
-    credits: 45,
+    monthlyPrice: formatInrPrice(planCatalog.creator.inr_paise), yearlyPrice: formatInrPrice(planCatalog.creator_yearly.inr_paise),
+    monthlyPaise: planCatalog.creator.inr_paise, yearlyPaise: planCatalog.creator_yearly.inr_paise,
+    credits: planCatalog.creator.credits,
     icon: Crown,
     description: 'Best value for serious creators',
     popular: true,
@@ -81,18 +78,18 @@ const plans = [
   {
     id: 'pro',
     name: 'Pro',
-    monthlyPrice: '799', yearlyPrice: '6500',
-    monthlyPaise: 79900, yearlyPaise: 650000,
-    credits: 120,
+    monthlyPrice: formatInrPrice(planCatalog.pro.inr_paise), yearlyPrice: formatInrPrice(planCatalog.pro_yearly.inr_paise),
+    monthlyPaise: planCatalog.pro.inr_paise, yearlyPaise: planCatalog.pro_yearly.inr_paise,
+    credits: planCatalog.pro.credits,
     icon: Star,
-    description: 'For power users & teams',
+    description: 'For high-volume creators',
     features: [
       '120 video credits / month',
       'Max 3 min per video',
       'Unlimited videos / day',
       'No watermark Â· 25+ styles',
       'All 115+ languages',
-      'Translation + API access',
+      'Translation feature',
       '72 hr download link',
     ],
   },
@@ -114,27 +111,25 @@ function getPlanFeatures(plan, billing) {
 }
 
 const TOPUP_MAP = {
-  starter: { plan_id: 'topup_starter', credits: 10, price: '99' },
-  starter_yearly: { plan_id: 'topup_starter', credits: 10, price: '99' },
-  creator: { plan_id: 'topup_creator', credits: 15, price: '99' },
-  creator_yearly: { plan_id: 'topup_creator', credits: 15, price: '99' },
-  pro: { plan_id: 'topup_pro', credits: 25, price: '149' },
-  pro_yearly: { plan_id: 'topup_pro', credits: 25, price: '149' },
+  starter: { plan_id: 'topup_starter', credits: planCatalog.topup_starter.credits, price: formatInrPrice(planCatalog.topup_starter.inr_paise) },
+  starter_yearly: { plan_id: 'topup_starter', credits: planCatalog.topup_starter.credits, price: formatInrPrice(planCatalog.topup_starter.inr_paise) },
+  creator: { plan_id: 'topup_creator', credits: planCatalog.topup_creator.credits, price: formatInrPrice(planCatalog.topup_creator.inr_paise) },
+  creator_yearly: { plan_id: 'topup_creator', credits: planCatalog.topup_creator.credits, price: formatInrPrice(planCatalog.topup_creator.inr_paise) },
+  pro: { plan_id: 'topup_pro', credits: planCatalog.topup_pro.credits, price: formatInrPrice(planCatalog.topup_pro.inr_paise) },
+  pro_yearly: { plan_id: 'topup_pro', credits: planCatalog.topup_pro.credits, price: formatInrPrice(planCatalog.topup_pro.inr_paise) },
 }
-
-const TOPUP_PAISE = { topup_starter: 9900, topup_creator: 9900, topup_pro: 14900 }
 
 function createIdempotencyKey(scope, planId) {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return `${scope}:${planId}:${crypto.randomUUID()}`
   }
   if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
-    const arr = new Uint8Array(8)
+    const arr = new Uint8Array(16)
     crypto.getRandomValues(arr)
     const hex = Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('')
     return `${scope}:${planId}:${hex}`
   }
-  return `${scope}:${planId}:${Date.now()}`
+  throw new Error('Secure random number generation is unavailable. Payment cannot be started safely.')
 }
 
 export default function PricingModal({ isOpen, onClose, onSelectPlan, user, message, userData = null }) {
@@ -148,8 +143,19 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
 
   const { refreshUserData } = useAuth()
 
+  const refreshAfterVerifiedPayment = async () => {
+    try {
+      await refreshUserData?.()
+    } catch (error) {
+      console.error('Payment succeeded but account refresh failed:', error)
+      toast({
+        title: 'Payment confirmed',
+        description: 'Credits are still syncing. Reopen your account shortly to refresh the balance.',
+      })
+    }
+  }
+
   useEffect(() => {
-    if (DISABLE_PAYMENT_FOR_TESTING) return
     loadRazorpayScript().catch(() => {})
   }, [])
 
@@ -157,17 +163,6 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
     setProcessingPlan(plan.id)
     try {
       const planId = billing === 'yearly' ? `${plan.id}_yearly` : plan.id
-      if (DISABLE_PAYMENT_FOR_TESTING) {
-        toast({
-          title: 'Testing mode plan activated',
-          description: `${plan.name} selected without payment. Restore payment before deploy.`,
-        })
-        if (onSelectPlan) onSelectPlan(planId)
-        await refreshUserData?.()
-        onClose()
-        setProcessingPlan(null)
-        return
-      }
       await loadRazorpayScript()
       if (!window.Razorpay) {
         toast({ variant: 'destructive', title: 'Payment system unavailable', description: 'Please refresh and try again.' })
@@ -185,7 +180,6 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
       const idToken = typeof currentUser.getIdToken === 'function'
         ? await currentUser.getIdToken(true)
         : ''
-      const amount = billing === 'yearly' ? plan.yearlyPaise : plan.monthlyPaise
       const paymentAttemptKey = createIdempotencyKey('plan', planId)
 
       const createOrder = async (token) => apiRequest('/api/create-order', {
@@ -208,29 +202,15 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
         if (parsed.success && parsed.order?.id) orderData = parsed
         else throw new Error(parsed.error || 'Failed to create order')
       } catch (fetchErr) {
-        const isDevBypassEnabled = import.meta.env.DEV || import.meta.env.VITE_USE_DEV_AUTH_BYPASS === '1'
-        const isAuthFailure = /authentication token/i.test(fetchErr?.message || '')
-
-        if (isDevBypassEnabled && isAuthFailure) {
-          try {
-            const retryParsed = await createOrder(LOCAL_DEV_BYPASS_TOKEN)
-            if (retryParsed.success && retryParsed.order?.id) {
-              orderData = retryParsed
-            } else {
-              throw new Error(retryParsed.error || 'Failed to create dev order')
-            }
-          } catch (retryErr) {
-            console.warn('Dev bypass order creation failed', retryErr)
-            throw retryErr
-          }
-        } else {
-          console.warn('Backend order creation failed', fetchErr)
-          throw fetchErr
-        }
+        console.warn('Backend order creation failed', fetchErr)
+        throw fetchErr
       }
 
       if (!orderData?.order?.id) {
         throw new Error('Unable to create a secure payment order. Please try again.')
+      }
+      if (!Number.isSafeInteger(orderData.order.amount) || orderData.order.amount <= 0 || !['INR', 'USD'].includes(orderData.order.currency)) {
+        throw new Error('Payment order returned an invalid amount or currency.')
       }
 
       onClose()
@@ -242,8 +222,8 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
 
       const options = {
         key: keyToUse,
-        amount: orderData.order.amount || amount,
-        currency: 'INR',
+        amount: orderData.order.amount,
+        currency: orderData.order.currency,
         name: 'Lekha Captions',
         description: `${plan.name} Plan${billing === 'yearly' ? ' Â· Yearly' : ''}`,
         order_id: orderData.order.id,
@@ -252,7 +232,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
             // Razorpay checkout can stay open long enough for the pre-checkout
             // token to expire — mint a fresh one for verification.
             const verifyToken = typeof currentUser.getIdToken === 'function'
-              ? await currentUser.getIdToken().catch(() => idToken)
+              ? await currentUser.getIdToken(true)
               : idToken
             const verifyData = await apiRequest('/api/verify-payment', {
               method: 'POST',
@@ -275,12 +255,16 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
               // No page reload: the user may have unsaved captions in the
               // editor (upgrading mid-edit is the common path). Refreshing
               // userData updates credits/plan gating in place.
-              await refreshUserData?.()
+              await refreshAfterVerifiedPayment()
             } else {
               toast({ variant: 'destructive', title: 'Payment verification failed', description: 'Please contact support.' })
             }
           } catch (e) {
-            notifyApiError(e, 'Error verifying payment')
+            console.error('Payment verification pending:', e)
+            toast({
+              title: 'Payment received',
+              description: 'Verification is pending. Credits will be applied by payment reconciliation.',
+            })
           } finally {
             setProcessingPlan(null)
           }
@@ -335,16 +319,6 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
   const handleTopup = async (topup) => {
     setProcessingPlan(topup.plan_id)
     try {
-      if (DISABLE_PAYMENT_FOR_TESTING) {
-        toast({
-          title: 'Testing mode top-up activated',
-          description: `${topup.credits} test credits selected without payment.`,
-        })
-        await refreshUserData?.()
-        onClose()
-        setProcessingPlan(null)
-        return
-      }
       await loadRazorpayScript()
       if (!window.Razorpay) {
         toast({ variant: 'destructive', title: 'Payment system unavailable' })
@@ -379,18 +353,20 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
       if (!keyToUse) {
         throw new Error('Razorpay payment key is not set. Please configure VITE_RAZORPAY_KEY_ID.')
       }
-      const amount = TOPUP_PAISE[topup.plan_id]
+      if (!Number.isSafeInteger(orderData.order.amount) || orderData.order.amount <= 0 || orderData.order.currency !== 'INR') {
+        throw new Error('Top-up order returned an invalid amount or currency.')
+      }
       const options = {
         key: keyToUse,
-        amount: orderData.order.amount || amount,
-        currency: 'INR',
+        amount: orderData.order.amount,
+        currency: orderData.order.currency,
         name: 'Lekha Captions',
         description: `Top-up Â· ${topup.credits} credits`,
         order_id: orderData.order.id,
         handler: async (response) => {
           try {
             const verifyToken = typeof currentUser.getIdToken === 'function'
-              ? await currentUser.getIdToken().catch(() => idToken)
+              ? await currentUser.getIdToken(true)
               : idToken
             const verifyData = await apiRequest('/api/verify-payment', {
               method: 'POST',
@@ -410,11 +386,17 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
             if (verifyData.success) {
               toast({ title: 'Top-up successful', description: `${verifyData.credits_added} credits added.` })
               // No page reload — see handlePayment: preserve unsaved editor work.
-              await refreshUserData?.()
+              await refreshAfterVerifiedPayment()
             } else {
               toast({ variant: 'destructive', title: 'Top-up verification failed', description: 'Please contact support.' })
             }
-          } catch (e) { notifyApiError(e, 'Error verifying top-up') }
+          } catch (e) {
+            console.error('Top-up verification pending:', e)
+            toast({
+              title: 'Payment received',
+              description: 'Top-up verification is pending. Credits will be applied by payment reconciliation.',
+            })
+          }
           finally { setProcessingPlan(null) }
         },
         prefill: { name: user?.displayName || '', email: user?.email || '' },

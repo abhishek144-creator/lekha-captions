@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -34,7 +34,6 @@ export default function CaptionEditor({
   wordPopup,
   user
 }) {
-  const selectedCaption = captions?.find(c => c.id === selectedCaptionId);
   const [showAutoTip, setShowAutoTip] = useState(false);
   const [query, setQuery] = useState('');
   const [editingCaptionId, setEditingCaptionId] = useState(null);

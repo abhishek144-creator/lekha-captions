@@ -11,6 +11,16 @@ const frontendUrl = `http://localhost:${frontendPort}`;
 const frontendApiUrl = `${frontendUrl}/api/version`;
 const npmCommand = process.platform === "win32" ? "cmd.exe" : "npm";
 const npmArgsPrefix = process.platform === "win32" ? ["/c", "npm"] : [];
+const backendEnv = {
+  ...process.env,
+  APP_ENV: process.env.APP_ENV || "development",
+  LOCAL_DEV_AUTH_BYPASS: process.env.LOCAL_DEV_AUTH_BYPASS || "1",
+};
+const frontendEnv = {
+  ...process.env,
+  VITE_BACKEND_PROXY_TARGET: backendUrl,
+  VITE_USE_DEV_AUTH_BYPASS: process.env.VITE_USE_DEV_AUTH_BYPASS || "1",
+};
 
 const children = new Set();
 let shuttingDown = false;
@@ -132,8 +142,7 @@ if (!(await requestReady(`${backendUrl}/api/version`))) {
     "127.0.0.1",
     "--port",
     String(backendPort),
-    "--reload",
-  ]);
+  ], { env: backendEnv });
 
   if (!(await waitFor(`${backendUrl}/api/version`, 90, "Backend"))) {
     shutdown(1);
@@ -153,10 +162,7 @@ if (!(await requestReady(frontendUrl))) {
     "--port",
     String(frontendPort),
   ], {
-    env: {
-      ...process.env,
-      VITE_BACKEND_PROXY_TARGET: backendUrl,
-    },
+    env: frontendEnv,
   });
 
   if (!(await waitFor(frontendUrl, 60, "Frontend"))) {
@@ -180,10 +186,7 @@ if (!(await waitFor(frontendApiUrl, 20, "Frontend API proxy"))) {
       "--port",
       String(frontendPort),
     ], {
-      env: {
-        ...process.env,
-        VITE_BACKEND_PROXY_TARGET: backendUrl,
-      },
+      env: frontendEnv,
     });
     if (!(await waitFor(frontendUrl, 60, "Frontend"))) {
       shutdown(1);

@@ -2,6 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
+@keyframes lekha-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+.lekha-marquee {
+  animation: lekha-marquee 28s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lekha-marquee { animation-play-state: paused; }
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;

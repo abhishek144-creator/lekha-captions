@@ -84,5 +84,14 @@ Minimum runbook:
 
 ## 10) Chaos + Load Testing
 - Load smoke script: `python scripts/load_smoke.py --base-url http://localhost:8000`
+- Real staging media path: `python scripts/staging_smoke.py --base-url https://api.example.com --id-token <firebase-id-token> --video <short-mp4>`
 - Use as pre-release gate for queue/worker resilience.
 - Record every completed drill in `docs/DRILL_LOG.md` with an evidence link.
+
+## 11) Launch Sign-off
+- Run `npm run release:check` and the backend test suite from a clean commit.
+- Run the authenticated staging smoke against the deployed API and worker.
+- Complete one Razorpay test-mode checkout, verify the signed webhook, confirm the
+  entitlement update, and reconcile the payment from the admin endpoint.
+- Confirm `support@lekhacaptions.com`, privacy, security, and alert contacts are monitored.
+- Attach readiness, staging-smoke, payment, restore, and rollback evidence to the release record.
