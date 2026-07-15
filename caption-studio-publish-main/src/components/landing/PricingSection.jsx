@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/AuthContext'
 import { toast } from '@/components/ui/use-toast'
 import { apiRequest } from '@/lib/apiClient'
 import { notifyApiError } from '@/lib/notifyApiError'
+import planCatalog from '../../../shared/planCatalog.json'
 
 const RAZORPAY_KEY_ID = import.meta.env.VITE_RAZORPAY_KEY_ID || ''
 const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
@@ -58,11 +59,11 @@ const plans = [
   {
     id: 'starter',
     name: 'Starter',
-    monthlyInrPrice: '299', yearlyInrPrice: '2500',
-    monthlyUsdPrice: '$3.99', yearlyUsdPrice: '$39.99',
-    monthlyPaise: 29900, yearlyPaise: 250000,
-    monthlyUsdCents: 399, yearlyUsdCents: 3999,
-    credits: 15,
+    monthlyInrPrice: formatInrPrice(planCatalog.starter.inr_paise), yearlyInrPrice: formatInrPrice(planCatalog.starter_yearly.inr_paise),
+    monthlyUsdPrice: `$${(planCatalog.starter.usd_cents / 100).toFixed(2)}`, yearlyUsdPrice: `$${(planCatalog.starter_yearly.usd_cents / 100).toFixed(2)}`,
+    monthlyPaise: planCatalog.starter.inr_paise, yearlyPaise: planCatalog.starter_yearly.inr_paise,
+    monthlyUsdCents: planCatalog.starter.usd_cents, yearlyUsdCents: planCatalog.starter_yearly.usd_cents,
+    credits: planCatalog.starter.credits,
     description: 'Perfect for getting started',
     icon: Zap,
     features: [
@@ -81,11 +82,11 @@ const plans = [
   {
     id: 'creator',
     name: 'Creator',
-    monthlyInrPrice: '499', yearlyInrPrice: '4500',
-    monthlyUsdPrice: '$4.99', yearlyUsdPrice: '$49.99',
-    monthlyPaise: 49900, yearlyPaise: 450000,
-    monthlyUsdCents: 499, yearlyUsdCents: 4999,
-    credits: 45,
+    monthlyInrPrice: formatInrPrice(planCatalog.creator.inr_paise), yearlyInrPrice: formatInrPrice(planCatalog.creator_yearly.inr_paise),
+    monthlyUsdPrice: `$${(planCatalog.creator.usd_cents / 100).toFixed(2)}`, yearlyUsdPrice: `$${(planCatalog.creator_yearly.usd_cents / 100).toFixed(2)}`,
+    monthlyPaise: planCatalog.creator.inr_paise, yearlyPaise: planCatalog.creator_yearly.inr_paise,
+    monthlyUsdCents: planCatalog.creator.usd_cents, yearlyUsdCents: planCatalog.creator_yearly.usd_cents,
+    credits: planCatalog.creator.credits,
     description: 'Best value for serious creators',
     icon: Crown,
     features: [
@@ -105,12 +106,12 @@ const plans = [
   {
     id: 'pro',
     name: 'Pro',
-    monthlyInrPrice: '799', yearlyInrPrice: '6500',
-    monthlyUsdPrice: '$5.99', yearlyUsdPrice: '$59.99',
-    monthlyPaise: 79900, yearlyPaise: 650000,
-    monthlyUsdCents: 599, yearlyUsdCents: 5999,
-    credits: 120,
-    description: 'For power users & teams',
+    monthlyInrPrice: formatInrPrice(planCatalog.pro.inr_paise), yearlyInrPrice: formatInrPrice(planCatalog.pro_yearly.inr_paise),
+    monthlyUsdPrice: `$${(planCatalog.pro.usd_cents / 100).toFixed(2)}`, yearlyUsdPrice: `$${(planCatalog.pro_yearly.usd_cents / 100).toFixed(2)}`,
+    monthlyPaise: planCatalog.pro.inr_paise, yearlyPaise: planCatalog.pro_yearly.inr_paise,
+    monthlyUsdCents: planCatalog.pro.usd_cents, yearlyUsdCents: planCatalog.pro_yearly.usd_cents,
+    credits: planCatalog.pro.credits,
+    description: 'For high-volume creators',
     icon: Star,
     features: [
       '120 video credits / month',
@@ -121,7 +122,6 @@ const plans = [
       'All 115+ languages',
       '1080p HD + 4K export',
       'Translation feature',
-      'API access Â· 3 team seats',
       '72 hr download link',
     ],
     cta: 'Go Pro',
@@ -217,17 +217,18 @@ export default function PricingSection() {
         theme: { color: '#F5A623' },
         handler: async (response) => {
           try {
+            const verifyToken = await currentUser.getIdToken(true)
             const data = await apiRequest(`${API_BASE}/api/verify-payment`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                Authorization: `Bearer ${idToken}`,
+                Authorization: `Bearer ${verifyToken}`,
               },
               body: JSON.stringify({
                 razorpay_order_id: response.razorpay_order_id,
                 razorpay_payment_id: response.razorpay_payment_id,
                 razorpay_signature: response.razorpay_signature,
-                id_token: idToken,
+                id_token: verifyToken,
                 plan_id: planId,
                 idempotency_key: paymentAttemptKey
               })
@@ -240,7 +241,10 @@ export default function PricingSection() {
             }
           } catch (err) {
             console.error('Verify error:', err)
-            notifyApiError(err, 'Payment verification error')
+            toast({
+              title: 'Payment received',
+              description: 'Verification is still pending. Your account will update automatically after reconciliation.',
+            })
           }
           setProcessingPlan(null)
         },
@@ -263,28 +267,30 @@ export default function PricingSection() {
   }
 
   return (
-    <section className="py-24 bg-[#111111] relative">
-      <div className="max-w-6xl mx-auto px-6 relative">
+    <section id="pricing" aria-label="Pricing" className="relative overflow-hidden py-20 sm:py-28">
+      <div className="absolute right-1/4 top-20 h-64 w-64 rounded-full bg-[#BF953F]/10 blur-[120px]" />
+      <div className="relative mx-auto max-w-7xl px-5 sm:px-6">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           className="text-center mb-12"
         >
-          <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
-            Simple, Transparent Pricing
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#F5A623]">Creator-friendly pricing</p>
+          <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-white sm:text-5xl">
+            Simple plans. Serious output.
           </h2>
-          <p className="text-[#949494] mb-8">
+          <p className="mt-4 text-[#949494] mb-8">
             Choose the plan that fits your content schedule.
           </p>
 
           {/* Billing Toggle */}
-          <div className="flex items-center gap-1 justify-center mb-8 bg-zinc-900 border border-white/10 rounded-full p-1 w-fit mx-auto">
+          <div className="flex w-fit items-center gap-1 rounded-full border border-white/10 bg-[#1A1A1A] p-1 mx-auto mb-8">
             <button
               onClick={() => setBilling('monthly')}
               className={`px-5 py-2 rounded-full text-sm font-medium transition-all ${
                 billing === 'monthly'
-                  ? 'bg-zinc-800 text-white shadow-sm'
+                  ? 'bg-white text-black shadow-sm'
                   : 'text-gray-400 hover:text-white'
               }`}
             >
@@ -294,17 +300,17 @@ export default function PricingSection() {
               onClick={() => setBilling('yearly')}
               className={`px-5 py-2 rounded-full text-sm font-medium transition-all flex items-center gap-2 ${
                 billing === 'yearly'
-                  ? 'bg-zinc-800 text-white shadow-sm'
+                  ? 'bg-white text-black shadow-sm'
                   : 'text-gray-400 hover:text-white'
               }`}
             >
               Yearly
-              <span className="text-xs bg-white text-black font-semibold px-1.5 py-0.5 rounded-full">Save up to {maxYearlyDiscount}%</span>
+              <span className="rounded-full bg-[#F5A623] px-1.5 py-0.5 text-xs font-semibold text-black">Save up to {maxYearlyDiscount}%</span>
             </button>
           </div>
         </motion.div>
 
-        <div className="grid md:grid-cols-3 gap-6">
+        <div className="grid gap-6 md:grid-cols-3">
           {plans.map((plan, idx) => (
             <motion.div
               key={plan.id}
@@ -312,7 +318,7 @@ export default function PricingSection() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ delay: idx * 0.1 }}
-              className="relative flex flex-col rounded-2xl p-5 md:p-8 bg-zinc-900 cursor-pointer"
+              className="relative flex cursor-pointer flex-col rounded-2xl bg-[#11100f]/75 p-6 backdrop-blur-xl md:p-8"
               onClick={() => setSelectedPlan(plan.id)}
               style={(plan.popular || selectedPlan === plan.id) ? {
                 background: 'linear-gradient(#18181b, #18181b) padding-box, linear-gradient(135deg, #BF953F 0%, #FCF6BA 45%, #B38728 70%, #AA771C 100%) border-box',
@@ -338,16 +344,16 @@ export default function PricingSection() {
               <div className="flex items-baseline gap-1 mb-1">
                 <span className="text-3xl md:text-4xl font-bold text-white">
                   {billing === 'yearly'
-                    ? (isInternational ? plan.yearlyUsdPrice : formatInrPrice(plan.yearlyPaise))
-                    : (isInternational ? plan.monthlyUsdPrice : formatInrPrice(plan.monthlyPaise))}
+                    ? (isInternational ? plan.yearlyUsdPrice : `₹${formatInrPrice(plan.yearlyPaise)}`)
+                    : (isInternational ? plan.monthlyUsdPrice : `₹${formatInrPrice(plan.monthlyPaise)}`)}
                 </span>
                 <span className="text-gray-400">{billing === 'yearly' ? '/yr' : '/mo'}</span>
               </div>
               {billing === 'yearly' ? (
                 <p className="text-xs text-[#F5A623] mb-5">
                   {isInternational
-                    ? `${plan.yearlyUsdPrice} billed yearly - ~${getDiscountPercent(plan.monthlyUsdCents, plan.yearlyUsdCents)}% off`
-                    : `${formatInrPrice(plan.yearlyPaise)} billed yearly - ~${getDiscountPercent(plan.monthlyPaise, plan.yearlyPaise)}% off`}
+                    ? `${plan.yearlyUsdPrice} billed yearly · ~${getDiscountPercent(plan.monthlyUsdCents, plan.yearlyUsdCents)}% off`
+                    : `₹${formatInrPrice(plan.yearlyPaise)} billed yearly · ~${getDiscountPercent(plan.monthlyPaise, plan.yearlyPaise)}% off`}
                 </p>
               ) : (
                 <div className="mb-5" />
@@ -385,10 +391,11 @@ export default function PricingSection() {
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
-          className="mt-16 bg-[#1E1E1E] rounded-2xl border border-white/10 overflow-hidden"
+          className="mt-16 overflow-hidden rounded-2xl border border-white/10 bg-[#11100f]/75 backdrop-blur-xl"
         >
           <div className="p-6 border-b border-white/10">
-            <h3 className="text-lg font-semibold text-white">Feature Comparison</h3>
+            <h3 className="text-lg font-semibold text-white">Compare every plan</h3>
+            <p className="mt-1 text-sm text-[#949494]">Everything you need to choose your creative cadence.</p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -412,9 +419,7 @@ export default function PricingSection() {
                   ['Daily Limit', '3/day', '5/day', 'Unlimited'],
                   ['Export Quality', '1080p', '1080p + 4K', '1080p + 4K'],
                   ['Languages', '115+', '115+', '115+'],
-                  ['Translation', 'â€”', 'âœ“', 'âœ“'],
-                  ['API Access', 'â€”', 'â€”', 'âœ“'],
-                  ['Team Seats', 'â€”', 'â€”', '3'],
+                  ['Translation', '—', '✓', '✓'],
                   ['Download Link Valid', '2 hours', '24 hours', '72 hours'],
                 ].map(([feature, starter, creator, pro], i) => (
                   <tr key={i} className="hover:bg-zinc-800/30">

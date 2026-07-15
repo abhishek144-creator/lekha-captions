@@ -1,0 +1,18 @@
+{
+  "name": "Lekha Captions",
+  "short_name": "Lekha",
+  "description": "AI-powered multilingual animated captions for videos.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#111111",
+  "theme_color": "#111111",
+  "icons": [
+    {
+      "src": "/lekha-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

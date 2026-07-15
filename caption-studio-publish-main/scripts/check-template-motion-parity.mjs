@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import {
   ADVANCED_TEMPLATE_RUNTIME_CSS,
+  fitLcMotionScheduleToCaption,
   getLcMotionSchedule,
   LEGACY_IMP_ANIMS,
   LEGACY_TEMPLATE_TIMING,
@@ -80,14 +81,33 @@ if (
 ) {
   fail(`LC authored schedule was altered: ${JSON.stringify(lcSchedule)}`);
 }
+for (const captionDurationMs of [420, 750, 1200, 1800, 3000]) {
+  const longLineSchedule = getLcMotionSchedule(Array.from({ length: 12 }, (_, index) => ({
+    animation: index % 3 === 0 ? 'pop' : 'rise',
+    duration: index % 3 === 0 ? '560ms' : '430ms',
+    delay: `${index * 280}ms`,
+    ease: 'ease-out',
+  })));
+  const fitted = fitLcMotionScheduleToCaption(longLineSchedule, captionDurationMs);
+  if (fitted.endMs > captionDurationMs - fitted.finalHoldMs + 0.01) {
+    fail(`LC long line exceeds ${captionDurationMs}ms caption: ${JSON.stringify(fitted)}`);
+  }
+  if (fitted.entries.length !== 12 || fitted.entries.some((entry) => !entry.animation || entry.durationMs <= 0)) {
+    fail(`LC fitting dropped a word animation at ${captionDurationMs}ms: ${JSON.stringify(fitted)}`);
+  }
+}
 if (videoPlayerSource.includes('getLcRevealPlan') || exportRendererSource.includes('getLcRevealPlan')) {
   fail('LC rendering still derives a caption-length-dependent reveal plan');
 }
 if (
   !videoPlayerSource.includes('getLcMotionSchedule')
-  || !videoPlayerSource.includes('selectedBlock.getBoundingClientRect()')
+  || !videoPlayerSource.includes('fitLcMotionScheduleToCaption')
   || !videoPlayerSource.includes('videoRef?.current?.currentTime')
-  || !videoPlayerSource.includes('animation.currentTime = elapsed')
+  || !videoPlayerSource.includes("element.style.animationDelay = `${delayMs - elapsed}ms`")
+  || !videoPlayerSource.includes("word.style.animationPlayState = 'paused'")
+  || !videoPlayerSource.includes('animation-play-state: paused !important;')
+  || !videoPlayerSource.includes('namespaceAppliedLcKeyframes')
+  || !videoPlayerSource.includes('getAppliedLcAnimationName(entry.animation)')
 ) {
   fail('canvas LC renderer does not seek the shared authored schedule from the video clock');
 }
@@ -98,11 +118,61 @@ if (
 ) {
   fail('canvas LC renderer still contains the timer-based reveal lifecycle');
 }
+if (
+  !videoPlayerSource.includes('if (!lcTimelineInitialized) initializeLcTimeline();')
+  || !videoPlayerSource.includes('syncLcTimeline();\n        return;')
+) {
+  fail('canvas LC timeline is not initialized and sampled while paused before playback');
+}
+if (
+  videoPlayerSource.includes('lcAnimations')
+  || videoPlayerSource.includes('selectedBlock.getAnimations')
+  || videoPlayerSource.includes('animation.currentTime = elapsed')
+) {
+  fail('canvas LC rendering still depends on asynchronous CSS Animation object discovery');
+}
 if (!sidebarGallerySource.includes('stampLcMotion') || !sidebarGallerySource.includes('getLcMotionSchedule')) {
   fail('template preview does not use the shared authored LC schedule');
 }
 if (!exportRendererSource.includes('getLcMotionSchedule')) {
   fail('export renderer does not use the shared authored LC schedule');
+}
+if (
+  !exportRendererSource.includes('fitLcMotionScheduleToCaption = ${fitLcMotionScheduleToCaption.toString()}')
+  || !exportRendererSource.includes('fitLcMotionScheduleToCaption(getLcMotionSchedule(lcMotionWords.map')
+) {
+  fail('export renderer does not fit the LC schedule to the caption duration like the canvas');
+}
+if (!exportRendererSource.includes("phase.block.querySelectorAll('.plainwrap')")) {
+  fail('export renderer does not stamp LC plain scenes (.plainwrap) like the canvas');
+}
+if (exportRendererSource.includes("isLcTemplateSet && word.classList.contains('on')")
+  || exportRendererSource.includes("isLcTemplateSet && element.classList.contains('on')")) {
+  fail('export renderer still gates LC static words on the source .on class — the canvas keeps every non-motion LC word visible');
+}
+
+if (
+  !exportRendererSource.includes('const lcHighlightSelector = [')
+  || !exportRendererSource.includes('.lekha-sidebar-export-template-shell[data-template-source="lekha-lc"] .sb.active')
+  || !exportRendererSource.includes('visibleOpacity <= 0.001')
+  || !exportRendererSource.includes("node.style.setProperty('opacity', '1', 'important')")
+) {
+  throw new Error('Template motion parity failed: LC export does not normalize visible highlighted words to full opacity after animation seeking');
+}
+for (const source of [videoPlayerSource, exportRendererSource]) {
+  if (
+    !source.includes("data-template-complex-script")
+    && !source.includes("data-applied-template-complex-script")
+  ) {
+    fail('LC complex-script metric flag is missing from preview or export');
+  }
+  if (
+    !source.includes(".cpt.dropcap > .ln:first-child")
+    || !source.includes("padding-block: 0.12em 0.04em !important")
+    || !source.includes("[data-hero-emphasis='true']")
+  ) {
+    fail('LC hero baseline, computed-highlight weight, or boxed-keyword geometry guard is missing');
+  }
 }
 
 function fail(message) {

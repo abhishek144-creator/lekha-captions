@@ -240,6 +240,17 @@ class VideoProcessor:
         self.client = None # Lazy init
         self._ensure_fallback_font()
 
+    @staticmethod
+    def _escape_ass_text(value):
+        """Neutralize libass override syntax while preserving visible text."""
+        return (
+            str(value or "")
+            .replace("\\", "＼")
+            .replace("{", "｛")
+            .replace("}", "｝")
+            .replace("\r", "")
+        )
+
     def _ensure_fallback_font(self):
         fallback_path = os.path.join(self.fonts_dir, "Inter.ttf")
         if not os.path.exists(fallback_path):
@@ -398,7 +409,7 @@ class VideoProcessor:
                 try:
                     self.client = OpenAI()
                 except Exception as e:
-                    print(f"[Warning] OpenAI Init Warning: {e}. Proceeding to mock fallback.")
+                    print(f"[Warning] OpenAI Init Warning: {e}. Transcription requests will fail unless an explicit test mock is enabled.")
             
             # Clean up logic & variable initialization
             words = []
@@ -572,7 +583,7 @@ class VideoProcessor:
                                 })
             except Exception as api_error:
                 api_error_msg = str(api_error)
-                print(f"[Warning] API Error: {api_error}. Using MOCK CAPTIONS for testing.")
+                print(f"[Warning] Transcription provider error: {api_error}")
 
             if not words and api_error_msg is None and self.client:
                 try:
@@ -608,8 +619,19 @@ class VideoProcessor:
             except Exception:
                 pass
 
-            # If API failed, generate mock captions
+            # Synthetic captions are useful for visual tests, but must never be
+            # presented as real transcription unless the caller explicitly opts in.
             if api_error_msg is not None:
+                mock_enabled = os.environ.get("ALLOW_MOCK_TRANSCRIPTION", "0").strip().lower() in {
+                    "1", "true", "yes", "on"
+                }
+                if not mock_enabled:
+                    return {
+                        "success": False,
+                        "error": "Transcription service failed. Please retry.",
+                        "error_code": "TRANSCRIPTION_PROVIDER_FAILED",
+                    }
+
                 # Get video duration for full-video mock captions
                 try:
                     dur_result = subprocess.run(
@@ -674,6 +696,12 @@ class VideoProcessor:
 
             grouped_captions = self._group_words_by_speech_pace(words, min_words=min_words, max_words=max_words)
             grouped_captions = self._post_process_captions(grouped_captions)
+            if not grouped_captions:
+                return {
+                    "success": False,
+                    "error": "No speech with usable word timestamps was detected.",
+                    "error_code": "NO_SPEECH_DETECTED",
+                }
             return {
                 "success": True,
                 "captions": grouped_captions,
@@ -686,16 +714,9 @@ class VideoProcessor:
             import traceback
             traceback.print_exc()
             print(f"Error: {e}")
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": "Caption generation failed"}
 
     async def burn_only(self, input_p, output_p, captions, style, word_layouts=None):
-        with open("backend_debug.log", "w", encoding="utf-8") as _logf:
-            _logf.write(f"BURNING with style: {json.dumps(style, indent=2)}\n")
-            _logf.write(f"DEBUG: Found {len(captions)} captions, and {len(word_layouts) if word_layouts else 0} word layouts\n")
-            _logf.write(f"CAPTIONS DATA: {json.dumps(captions, indent=2)}\n")
-            if word_layouts:
-                _logf.write(f"WORD LAYOUTS DATA: {json.dumps(word_layouts, indent=2)}\n")
-            
         print(f"BURNING with style: {json.dumps(style, indent=2)}")
         print(f"DEBUG: Found {len(captions)} captions, and {len(word_layouts) if word_layouts else 0} word layouts")
         try:
@@ -772,23 +793,14 @@ class VideoProcessor:
                 output_fwd
             ]
 
-            # Save a debug copy of the ASS file BEFORE running FFmpeg
-            debug_ass_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "last_export_debug.ass")
-            try:
-                import shutil
-                shutil.copy2(ass_path, debug_ass_path)
-                print(f"[Debug] ASS file saved to: {debug_ass_path}")
-                # Count Dialogue lines for quick sanity check
-                with open(ass_path, "r", encoding="utf-8") as _df:
-                    _lines = _df.readlines()
-                    _dialogue_count = sum(1 for l in _lines if l.startswith("Dialogue:"))
-                    print(f"[Debug] ASS file: {len(_lines)} total lines, {_dialogue_count} Dialogue lines")
-                    # Print first 3 Dialogue lines as sample
-                    _sample = [l.strip() for l in _lines if l.startswith("Dialogue:")][:3]
-                    for _s in _sample:
-                        print(f"[Debug] Sample: {_s[:200]}")
-            except Exception as _de:
-                print(f"[Debug] Could not save debug ASS: {_de}")
+            runtime_env = (os.environ.get("APP_ENV") or os.environ.get("ENV") or "").lower()
+            if runtime_env in {"development", "dev", "local"} and os.environ.get("DEBUG_EXPORT_ARTIFACTS", "0") == "1":
+                debug_ass_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "last_export_debug.ass")
+                try:
+                    shutil.copy2(ass_path, debug_ass_path)
+                    print(f"[Debug] ASS artifact saved to: {debug_ass_path}")
+                except Exception as _de:
+                    print(f"[Debug] Could not save debug ASS: {_de}")
 
             print(f"[FFmpeg] Running command: {' '.join(cmd)}")
             result = await asyncio.get_running_loop().run_in_executor(
@@ -799,24 +811,61 @@ class VideoProcessor:
             if result.stderr:
                 print(f"[FFmpeg] stderr (last 1000 chars): {result.stderr[-1000:]}")
 
+            local_output = output_fwd.replace('/', os.sep)
             if result.returncode != 0:
-                return {"success": False, "error": f"FFmpeg failed: {result.stderr[-500:]}"}
+                if os.path.exists(local_output):
+                    os.remove(local_output)
+                return {"success": False, "error": "Video render failed"}
 
-            # Verify output file exists and has size
-            if os.path.exists(output_fwd.replace('/', os.sep)):
-                out_size = os.path.getsize(output_fwd.replace('/', os.sep))
-                print(f"[FFmpeg] Output file size: {out_size} bytes")
-            else:
-                print(f"[FFmpeg] WARNING: Output file not found at {output_fwd}")
+            if not os.path.isfile(local_output) or os.path.getsize(local_output) <= 0:
+                print(f"[FFmpeg] Output file is missing or empty at {output_fwd}")
+                if os.path.exists(local_output):
+                    os.remove(local_output)
+                return {"success": False, "error": "Video render produced no output"}
 
-            if os.path.exists(ass_path):
-                os.remove(ass_path)
+            probe = await asyncio.get_running_loop().run_in_executor(
+                None,
+                lambda: subprocess.run(
+                    [
+                        "ffprobe", "-v", "error", "-select_streams", "v:0",
+                        "-show_entries", "stream=codec_type:format=duration",
+                        "-of", "json", local_output,
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=20,
+                ),
+            )
+            try:
+                probe_data = json.loads(probe.stdout or "{}") if probe.returncode == 0 else {}
+                duration = float((probe_data.get("format") or {}).get("duration") or 0)
+                has_video = any(
+                    stream.get("codec_type") == "video"
+                    for stream in (probe_data.get("streams") or [])
+                )
+            except (TypeError, ValueError, json.JSONDecodeError):
+                duration = 0
+                has_video = False
+            if probe.returncode != 0 or not has_video or duration <= 0:
+                print(f"[FFmpeg] Output validation failed: {probe.stderr[-500:] if probe.stderr else 'invalid media'}")
+                os.remove(local_output)
+                return {"success": False, "error": "Rendered video failed validation"}
+
+            out_size = os.path.getsize(local_output)
+            print(f"[FFmpeg] Validated output file size: {out_size} bytes")
             return {"success": True}
 
         except Exception as e:
             import traceback
             traceback.print_exc()
-            return {"success": False, "error": str(e)}
+            print(f"Video render failed: {e}")
+            return {"success": False, "error": "Video render failed"}
+        finally:
+            if 'ass_path' in locals() and os.path.exists(ass_path):
+                try:
+                    os.remove(ass_path)
+                except OSError:
+                    pass
 
     # Right-side "Basic" templates whose preview renders the authored `.btcard`
     # source markup (Iman, Light Streak, Green Neon Pulse, 3D Shadow, Pulse,
@@ -993,7 +1042,7 @@ class VideoProcessor:
             if result.stderr:
                 print(f"[Template DOM] FFmpeg stderr (last 1000 chars): {result.stderr[-1000:]}")
             if result.returncode != 0:
-                return {"success": False, "error": f"FFmpeg failed: {result.stderr[-500:]}"}
+                return {"success": False, "error": "Video render failed"}
 
             if os.path.exists(output_p):
                 print(f"[Template DOM] Output file size: {os.path.getsize(output_p)} bytes")
@@ -1519,7 +1568,7 @@ class VideoProcessor:
                 st = float(c.get('start_time', 0))
                 et = float(c.get('end_time', 0))
                 if et <= st: continue
-                raw_text = c.get('text', '')
+                raw_text = self._escape_ass_text(c.get('text', ''))
                 if not raw_text.strip(): continue
                 s = self._fmt(st)
                 e = self._fmt(et)
@@ -1527,7 +1576,11 @@ class VideoProcessor:
                 anim = (c.get('animation', 'none') or 'none')
                 ws_map = c.get('word_styles') or {}
                 if not isinstance(ws_map, dict): ws_map = {}
-                words_timing = c.get('words') or []
+                words_timing = [
+                    {**word, 'word': self._escape_ass_text(word.get('word', ''))}
+                    for word in (c.get('words') or [])
+                    if isinstance(word, dict)
+                ]
                 is_te = bool(c.get('is_text_element', False))
 
                 # Extract word layouts for this caption (primary per-word path)
@@ -2051,14 +2104,12 @@ class VideoProcessor:
                         h_str = "{" + "".join(h_base) + "}" + " ".join(parts_h)
                         f.write(f"Dialogue: 2,{self._fmt(w_st2)},{self._fmt(w_et2)},Default,,0,0,0,,{h_str}\n")
 
-        # Debug: log sample Dialogue lines
+        # Log only aggregate render diagnostics; dialogue text may contain PII.
         try:
             with open(ass_path, 'r', encoding='utf-8') as _df:
                 _lines = _df.readlines()
                 _diags = [l.strip() for l in _lines if l.startswith('Dialogue:')]
                 print(f"[ASS] Created: {len(_lines)} lines, {len(_diags)} Dialogue entries")
-                for dl in _diags[:4]:
-                    print(f"[ASS]   {dl[:200]}")
         except Exception:
             pass
 

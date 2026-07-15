@@ -66,18 +66,6 @@ const FontRow = React.memo(({ data, index, style }) => {
 FontRow.displayName = 'FontRow';
 
 
-const fonts = [
-  { value: 'Inter', label: 'Inter' },
-  { value: 'Montserrat', label: 'Montserrat' },
-  { value: 'Poppins', label: 'Poppins' },
-  { value: 'Roboto', label: 'Roboto' },
-  { value: 'Open Sans', label: 'Open Sans' },
-  { value: 'Lato', label: 'Lato' },
-  { value: 'Oswald', label: 'Oswald' },
-  { value: 'Bebas Neue', label: 'Bebas Neue' },
-  { value: 'Playfair Display', label: 'Playfair' },
-];
-
 const presetColors = [
   '#ffffff', '#000000', '#facc15', '#ef4444',
   '#3b82f6', '#F5A623', '#ec4899', '#22c55e'
@@ -109,14 +97,13 @@ const wordAnimations = [
   { value: 'tumble', label: 'Tumble' }
 ];
 
-export default function WordClickPopup({ word, position, onEdit, onClose, onResetPosition, onResetFontSize, currentStyle, onStyleChange, onHistoryRecord, videoContainerRef, isElementWord }) {
+export default function WordClickPopup({ word, position, onEdit, onClose, onResetPosition, onResetFontSize, currentStyle, onStyleChange, onHistoryRecord }) {
   const dragControls = useDragControls();
   const dragX = useMotionValue(0);
   const dragY = useMotionValue(0);
 
   // Local state for active tab - Font first as requested
   const [activeTab, setActiveTab] = useState('font');
-  const [showTextGradient, setShowTextGradient] = useState(false);
   const [showHighlightGradient, setShowHighlightGradient] = useState(false);
   const [customColor1, setCustomColor1] = useState('#f8fafc'); // light
   const [customColor2, setCustomColor2] = useState('#334155'); // dark
@@ -158,7 +145,7 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
     <>
       <div
         className="pointer-events-none fixed inset-0 z-[99998] bg-transparent"
-        onClick={(e) => {
+        onClick={() => {
           onClose();
         }}
       />

@@ -7,8 +7,6 @@ const TEXT_ROW_HEIGHT = 28;      // Increased from 22 for better visibility
 const TEXT_ROWS = 6;             // Keeps your 6 text layers
 const SPEECH_HEIGHT = 38;
 const WAVEFORM_HEIGHT = 86;
-const TOTAL_CONTENT_HEIGHT = (TEXT_ROWS * TEXT_ROW_HEIGHT) + SPEECH_HEIGHT + WAVEFORM_HEIGHT + 16;
-const VISIBLE_HEIGHT = 135;
 const HEADER_HEIGHT = 24;
 const TEXT_TRACK_TOP = HEADER_HEIGHT + 12;
 const SPEECH_TRACK_TOP = TEXT_TRACK_TOP + (TEXT_ROWS * TEXT_ROW_HEIGHT) + 20;
@@ -28,10 +26,8 @@ export default function CaptionTimeline({
   setCaptionsRaw,
   addToHistory = () => { },
   waveformData = null,
-  videoElement = null,
   isPlaying = false,
   setIsPlaying = (_) => { },
-  timelineHeight = 200,
   collapsed = false,
   onToggleCollapsed = () => {},
 }) {
@@ -63,7 +59,6 @@ export default function CaptionTimeline({
 
   const waveformPeaks = React.useMemo(() => getWaveformPeaks(), [getWaveformPeaks]);
   const [zoom, setZoom] = useState(3);
-  const [scrollPos, setScrollPos] = useState(0);
   const timelineRef = useRef(null);
   const scrollContainerRef = useRef(null);
   const scrubBoundsRef = useRef(null);
@@ -86,7 +81,6 @@ export default function CaptionTimeline({
   const [dragType, setDragType] = useState(null);
   const [dragStartX, setDragStartX] = useState(0);
   const [dragStartTime, setDragStartTime] = useState(0);
-  const [snappedTime, setSnappedTime] = useState(null); // Visual feedback for snap
 
   const getPositionPercentage = (time) => {
     if (!duration || duration === 0) return 0;
@@ -153,7 +147,6 @@ export default function CaptionTimeline({
 
     // Calculate where the playhead is relative to the visible window (considering both scroll and pan)
     const visibleLeft = userScroll + panOffset;
-    const visibleRight = visibleLeft + containerWidth;
     const relativeX = playheadX - visibleLeft;
 
     // If playhead is past 85% of visible area, pan forward
@@ -415,11 +408,9 @@ export default function CaptionTimeline({
             let rawStart = dragStartTime + deltaTime;
 
             // Apply Snapping
-            const { time: snappedStart, snapped, snapType } = getSnapTime(rawStart, cap.id, prev);
+            const { time: snappedStart, snapped } = getSnapTime(rawStart, cap.id, prev);
             let newStart = snapped ? snappedStart : rawStart;
 
-            if (snapped) setSnappedTime({ time: newStart, type: snapType });
-            else setSnappedTime(null);
 
             const bounds = getMoveBounds(cap, prev, newStart);
             newStart = Math.max(bounds.minStart, newStart);
@@ -457,11 +448,9 @@ export default function CaptionTimeline({
             let rawStart = dragStartTime + deltaTime;
 
             // Apply Snapping
-            const { time: snappedStart, snapped, snapType } = getSnapTime(rawStart, cap.id, prev);
+            const { time: snappedStart, snapped } = getSnapTime(rawStart, cap.id, prev);
             let newStart = snapped ? snappedStart : rawStart;
 
-            if (snapped) setSnappedTime({ time: newStart, type: snapType });
-            else setSnappedTime(null);
 
             const bounds = getResizeBounds(cap, prev, 'resize-left');
             newStart = Math.max(bounds.minStart, newStart);
@@ -471,11 +460,9 @@ export default function CaptionTimeline({
             let rawEnd = dragStartTime + deltaTime;
 
             // Apply Snapping
-            const { time: snappedEnd, snapped, snapType } = getSnapTime(rawEnd, cap.id, prev);
+            const { time: snappedEnd, snapped } = getSnapTime(rawEnd, cap.id, prev);
             let newEnd = snapped ? snappedEnd : rawEnd;
 
-            if (snapped) setSnappedTime({ time: newEnd, type: snapType });
-            else setSnappedTime(null);
 
             const bounds = getResizeBounds(cap, prev, 'resize-right');
             newEnd = Math.min(bounds.maxEnd, newEnd);
@@ -501,7 +488,6 @@ export default function CaptionTimeline({
       }
       setDraggingElement(null);
       setDragType(null);
-      setSnappedTime(null);
     };
 
     document.addEventListener('mousemove', handleMouseMove);
@@ -520,15 +506,6 @@ export default function CaptionTimeline({
       document.removeEventListener('pointercancel', handleMouseUp);
     };
   }, [draggingElement, dragType, dragStartX, dragStartTime, duration, setCaptionsRaw, setCaptions]);
-
-  // Delete text element handler
-  const handleDeleteTextElement = (e, captionId) => {
-    e.stopPropagation();
-    if (setCaptions) {
-      addToHistory(); // Snapshot pre-delete state for undo
-      setCaptions(prev => prev.filter(c => c.id !== captionId));
-    }
-  };
 
   const waveformBars = React.useMemo(() => {
     const source = waveformData && waveformData.length > 0
@@ -782,8 +759,6 @@ export default function CaptionTimeline({
 
             <div className="absolute border-t border-white/5" style={{ left: `${TRACK_LEFT}px`, right: `${TRACK_RIGHT}px`, top: `${AUDIO_TRACK_TOP + 2}px`, height: `${WAVEFORM_HEIGHT}px` }}>
               {waveformBars.map((amplitude, i) => {
-                const pct = i / Math.max(1, waveformBars.length - 1);
-                const barTime = pct * (duration || 0);
                 const h = Math.max(20, Math.min(WAVEFORM_HEIGHT - 6, Math.pow(Math.max(0.08, amplitude), 0.92) * (WAVEFORM_HEIGHT - 6)));
                 return (
                   <span

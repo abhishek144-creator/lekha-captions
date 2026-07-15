@@ -57,6 +57,40 @@ export function getLcMotionSchedule(nodes = []) {
   };
 }
 
+// LC source scenes were authored against a fixed demo hold, while real speech
+// captions can be much shorter. Fit only when necessary so every animated word
+// reaches its final keyframe before its caption ends. The keyframe name, easing,
+// relative stagger, and relative duration remain unchanged.
+export function fitLcMotionScheduleToCaption(schedule = {}, captionDurationMs = 0) {
+  const durationMs = Math.max(0, Number(captionDurationMs) || 0);
+  const authoredEntries = Array.isArray(schedule?.entries) ? schedule.entries : [];
+  const authoredEndMs = Math.max(
+    Number(schedule?.endMs) || 0,
+    authoredEntries.reduce((latest, entry) => (
+      Math.max(latest, (Number(entry?.delayMs) || 0) + (Number(entry?.durationMs) || 0))
+    ), 0),
+  );
+  if (!durationMs || !authoredEndMs || !authoredEntries.length) {
+    return { entries: authoredEntries, endMs: authoredEndMs, scale: 1, finalHoldMs: 0 };
+  }
+
+  const finalHoldMs = Math.min(180, Math.max(60, durationMs * 0.12));
+  const availableMotionMs = Math.max(1, durationMs - finalHoldMs);
+  const scale = Math.min(1, availableMotionMs / authoredEndMs);
+  const entries = authoredEntries.map((entry) => ({
+    ...entry,
+    durationMs: Math.max(1, (Number(entry?.durationMs) || 0) * scale),
+    delayMs: Math.max(0, (Number(entry?.delayMs) || 0) * scale),
+  }));
+
+  return {
+    entries,
+    endMs: entries.reduce((latest, entry) => Math.max(latest, entry.delayMs + entry.durationMs), 0),
+    scale,
+    finalHoldMs,
+  };
+}
+
 export const LEGACY_TEMPLATE_TIMING = Object.freeze({
   wordStaggerMs: 65,
   wordDurationMs: 280,

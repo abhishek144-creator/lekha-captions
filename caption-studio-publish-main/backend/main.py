@@ -7,17 +7,19 @@ backend_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.dirname(backend_dir)
 env_local = os.path.join(root_dir, ".env.local")
 env_base = os.path.join(root_dir, ".env")
-if os.path.exists(env_local):
-    load_dotenv(dotenv_path=env_local)
-if os.path.exists(env_base):
-    load_dotenv(dotenv_path=env_base)
+_bootstrap_env = (os.environ.get("APP_ENV") or os.environ.get("ENV") or "").strip().lower()
+_bootstrap_is_test = _bootstrap_env in {"test", "testing"} or "pytest" in sys.modules or "unittest" in sys.modules
+if not _bootstrap_is_test or os.environ.get("LOAD_LOCAL_ENV_IN_TESTS") == "1":
+    if os.path.exists(env_local):
+        load_dotenv(dotenv_path=env_local)
+    if os.path.exists(env_base):
+        load_dotenv(dotenv_path=env_base)
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Response
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 import shutil
-import os
 import uuid
 import urllib.request
 import urllib.parse
@@ -33,7 +35,20 @@ import subprocess
 import hmac
 import hashlib
 from fastapi import Request
-from firebase_admin_setup import verify_token, get_db, upload_to_firebase_storage, delete_from_firebase_storage
+from firebase_admin_setup import (
+    verify_token,
+    get_db,
+    upload_to_firebase_storage,
+    delete_from_firebase_storage,
+    delete_user_exports,
+    delete_expired_exports,
+    upload_source_media,
+    download_from_firebase_storage,
+    download_export_from_firebase_storage,
+    delete_expired_uploads,
+    delete_user_uploads,
+    get_storage_bucket,
+)
 from firebase_admin import auth as firebase_auth
 import math
 from google.cloud import firestore
@@ -43,6 +58,10 @@ import logging
 import pathlib
 import re
 import shlex
+import secrets
+import threading
+from collections import deque
+from contextlib import asynccontextmanager
 
 try:
     import razorpay as _razorpay_module
@@ -69,25 +88,53 @@ except ImportError:
     print("[Warning] redis package not installed — durable rate limiting/idempotency disabled")
 
 try:
-    from rq import Queue
+    from rq import Queue, Worker as RQWorker
     from rq.job import Job
     from rq import Retry as RQRetry
     RQ_AVAILABLE = True
 except ImportError:
     Queue = None
+    RQWorker = None
     Job = None
     RQRetry = None
     RQ_AVAILABLE = False
 
-app = FastAPI()
+@asynccontextmanager
+async def app_lifespan(_app: FastAPI):
+    await startup_event()
+    try:
+        yield
+    finally:
+        await shutdown_event()
+
+
+app = FastAPI(lifespan=app_lifespan)
+
+MAX_JSON_BODY_BYTES = 8 * 1024 * 1024
+SECURITY_CSP = (
+    "default-src 'self'; "
+    "base-uri 'self'; object-src 'none'; frame-ancestors 'none'; "
+    "script-src 'self' https://checkout.razorpay.com; "
+    "frame-src https://*.razorpay.com https://*.firebaseapp.com; "
+    "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com "
+    "https://*.firebaseapp.com https://*.razorpay.com; "
+    "img-src 'self' data: blob: https:; media-src 'self' blob: https:; "
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+    "font-src 'self' data: https://fonts.gstatic.com"
+)
 
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
 _logger = logging.getLogger("caption_studio_backend")
 
 
+def _utcnow() -> datetime:
+    """Return naive UTC for compatibility with existing persisted timestamp formats."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 def _json_log(level: str, event: str, **fields):
     record = {
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": _utcnow().isoformat() + "Z",
         "level": level.upper(),
         "event": event,
         **fields,
@@ -122,12 +169,53 @@ def _urlopen_https_only(req, timeout: int = 5):
         raise ValueError("Only https URLs are allowed for outbound requests")
     return urllib.request.urlopen(req, timeout=timeout)  # nosec B310
 
+
+def _apply_security_headers(response: Response) -> Response:
+    response.headers["Content-Security-Policy"] = SECURITY_CSP
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), geolocation=(), microphone=()"
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+    if globals().get("_IS_PRODUCTION", False):
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
+
 @app.middleware("http")
 async def request_logging_middleware(request: Request, call_next):
     rid = _request_id(request)
+    content_type = (request.headers.get("content-type") or "").lower()
+    declared_length = request.headers.get("content-length")
+    if "application/json" in content_type and declared_length:
+        try:
+            if int(declared_length) > MAX_JSON_BODY_BYTES:
+                return _apply_security_headers(JSONResponse(
+                    status_code=413,
+                    content={"success": False, "error": "Request body is too large"},
+                    headers={"X-Request-Id": rid},
+                ))
+        except ValueError:
+            return _apply_security_headers(JSONResponse(
+                status_code=400,
+                content={"success": False, "error": "Invalid Content-Length header"},
+                headers={"X-Request-Id": rid},
+            ))
+    if "application/json" in content_type:
+        body = bytearray()
+        async for chunk in request.stream():
+            body.extend(chunk)
+            if len(body) > MAX_JSON_BODY_BYTES:
+                return _apply_security_headers(JSONResponse(
+                    status_code=413,
+                    content={"success": False, "error": "Request body is too large"},
+                    headers={"X-Request-Id": rid},
+                ))
+        # Starlette's downstream receive wrapper replays this cached body. This
+        # enforces the limit even for chunked requests with no Content-Length.
+        request._body = bytes(body)
     requested_version = (request.headers.get("x-api-version") or "").strip()
     if requested_version and requested_version < API_MIN_SUPPORTED_VERSION:
-        return JSONResponse(
+        return _apply_security_headers(JSONResponse(
             status_code=426,
             content={
                 "success": False,
@@ -142,7 +230,7 @@ async def request_logging_middleware(request: Request, call_next):
                 "X-API-Min-Version": API_MIN_SUPPORTED_VERSION,
                 "Sunset": DEPRECATION_SUNSET_DATE,
             },
-        )
+        ))
     start = time.time()
     try:
         response = await call_next(request)
@@ -177,18 +265,74 @@ async def request_logging_middleware(request: Request, call_next):
     response.headers["X-API-Version"] = API_CURRENT_VERSION
     response.headers["X-API-Min-Version"] = API_MIN_SUPPORTED_VERSION
     response.headers["Sunset"] = DEPRECATION_SUNSET_DATE
-    return response
+    return _apply_security_headers(response)
 
-# Initialize Razorpay Client (Keys will be read from environment variables)
-_IS_PRODUCTION = os.environ.get("ENV", "").strip().lower() == "production"
+# Runtime mode is security-sensitive. Never infer a permissive development mode
+# merely because a deployment forgot to set an environment variable.
+_ENV_RAW = (os.environ.get("APP_ENV") or os.environ.get("ENV") or "").strip().lower()
+_ENV_ALIASES = {
+    "prod": "production", "production": "production",
+    "dev": "development", "local": "development", "development": "development",
+    "test": "test", "testing": "test",
+}
+if not _ENV_RAW and ("pytest" in sys.modules or "unittest" in sys.modules):
+    _ENV_RAW = "test"
+if _ENV_RAW not in _ENV_ALIASES:
+    raise RuntimeError(
+        "APP_ENV must be explicitly set to development, test, or production. "
+        "Refusing to start with an implicit permissive environment."
+    )
+APP_ENV = _ENV_ALIASES[_ENV_RAW]
+_IS_PRODUCTION = APP_ENV == "production"
+_IS_DEVELOPMENT = APP_ENV == "development"
+_IS_TEST = APP_ENV == "test"
 RAZORPAY_KEY_ID = os.environ.get("RAZORPAY_KEY_ID", "")
 RAZORPAY_KEY_SECRET = os.environ.get("RAZORPAY_KEY_SECRET", "")
 RAZORPAY_WEBHOOK_SECRET = os.environ.get("RAZORPAY_WEBHOOK_SECRET", "")
+
+# Fail-safe tripwire: the entire production hardening posture (auth-bypass blocks,
+# mandatory secrets, Redis requirement, CORS restrictions) is gated on ENV. If a
+# real deploy forgets ENV=production, all of that silently relaxes. Live Razorpay
+# keys are an unambiguous signal that this is a production environment — refuse to
+# boot in permissive mode when they are present, so a misconfigured deploy fails
+# loudly instead of running wide open.
+if not _IS_PRODUCTION and RAZORPAY_KEY_ID.startswith("rzp_live_"):
+    raise RuntimeError(
+        "Live Razorpay keys require APP_ENV=production. Refusing to start with "
+        "live payment credentials in a non-production environment."
+    )
+_json_log(
+    "warning" if not _IS_PRODUCTION else "info",
+    "runtime_mode",
+    env=APP_ENV,
+    is_production=_IS_PRODUCTION,
+)
+
 if _IS_PRODUCTION and not RAZORPAY_WEBHOOK_SECRET:
     raise RuntimeError("RAZORPAY_WEBHOOK_SECRET must be set in production (ENV=production).")
-MEDIA_URL_SIGNING_SECRET = os.environ.get("MEDIA_URL_SIGNING_SECRET", "").strip() or RAZORPAY_WEBHOOK_SECRET
+if _IS_PRODUCTION:
+    required_production_settings = {
+        "FIREBASE_SERVICE_ACCOUNT_JSON": os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON", "").strip(),
+        "FIREBASE_STORAGE_BUCKET": os.environ.get("FIREBASE_STORAGE_BUCKET", "").strip(),
+        "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY", "").strip(),
+        "RAZORPAY_KEY_ID": RAZORPAY_KEY_ID.strip(),
+        "RAZORPAY_KEY_SECRET": RAZORPAY_KEY_SECRET.strip(),
+        "ADMIN_EMAILS": os.environ.get("ADMIN_EMAILS", "").strip(),
+        "SECURITY_CONTACT_EMAIL": os.environ.get("SECURITY_CONTACT_EMAIL", "").strip(),
+        "PRIVACY_CONTACT_EMAIL": os.environ.get("PRIVACY_CONTACT_EMAIL", "").strip(),
+    }
+    missing_production_settings = [
+        name for name, value in required_production_settings.items() if not value
+    ]
+    if missing_production_settings:
+        raise RuntimeError(
+            "Missing required production settings: " + ", ".join(missing_production_settings)
+        )
+MEDIA_URL_SIGNING_SECRET = os.environ.get("MEDIA_URL_SIGNING_SECRET", "").strip()
 if _IS_PRODUCTION and not MEDIA_URL_SIGNING_SECRET:
     raise RuntimeError("MEDIA_URL_SIGNING_SECRET must be set in production (ENV=production).")
+if not MEDIA_URL_SIGNING_SECRET:
+    MEDIA_URL_SIGNING_SECRET = secrets.token_urlsafe(48)
 rzp_client = None
 if RAZORPAY_AVAILABLE and RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET:
     rzp_client = _razorpay_module.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
@@ -241,17 +385,16 @@ PLAN_PRICING = {
     'topup_pro':     {'inr_paise': 14900, 'credits': 25, 'is_topup': True, 'allowed_tier': 'pro'},
 }
 
-# Semaphore to limit concurrent renders to 2. This creates a queue invisible to the user!
-render_semaphore = asyncio.Semaphore(2)
+# Runtime billing values come from the shared catalog consumed by the frontend.
+with open(os.path.join(root_dir, "shared", "planCatalog.json"), "r", encoding="utf-8") as plan_catalog_file:
+    PLAN_PRICING = json.load(plan_catalog_file)
+
+MAX_CONCURRENT_RENDERS = max(1, min(int(os.environ.get("MAX_CONCURRENT_RENDERS", "2")), 8))
+render_semaphore = asyncio.Semaphore(MAX_CONCURRENT_RENDERS)
 MAX_CONCURRENT_EXPORTS_PER_USER = 1
+EXPORT_SLOT_TTL_SECONDS = max(30 * 60, int(os.environ.get("EXPORT_SLOT_TTL_SECONDS", "7200")))
 EXPORT_FAILURE_LIMIT = 5
 EXPORT_FAILURE_WINDOW = 15 * 60
-# Failure rate limiting is always enforced in production; the dev default keeps
-# local parity-repair iteration unblocked. Override via env in either direction.
-DISABLE_EXPORT_FAILURE_RATE_LIMIT = os.environ.get(
-    "DISABLE_EXPORT_FAILURE_RATE_LIMIT",
-    "0" if _IS_PRODUCTION else "1",
-) == "1"
 # Export retry and daily quota throttles are disabled by default. Credits and
 # concurrent-export protection remain separate controls.
 DISABLE_EXPORT_DAILY_LIMIT = os.environ.get(
@@ -268,7 +411,7 @@ DISABLE_EXPORT_CREDIT_LIMIT = os.environ.get(
 # In-memory operational state (swap for Redis in multi-instance deployments)
 _export_jobs: Dict[str, Dict[str, Any]] = {}
 _export_idempotency: Dict[str, Dict[str, Any]] = {}
-_active_exports_by_user: Dict[str, int] = {}
+_active_exports_by_user: Dict[str, str] = {}
 _export_failures: Dict[str, list] = {}
 _upload_owners: Dict[str, str] = {}
 
@@ -284,10 +427,14 @@ PAYMENT_RECONCILE_INTERVAL_MINUTES = int(os.environ.get("PAYMENT_RECONCILE_INTER
 PAYMENT_RECONCILE_LOOKBACK_HOURS = int(os.environ.get("PAYMENT_RECONCILE_LOOKBACK_HOURS", "48"))
 PAYMENT_RECONCILE_BATCH_SIZE = int(os.environ.get("PAYMENT_RECONCILE_BATCH_SIZE", "200"))
 PAYMENT_RECONCILE_SECRET = os.environ.get("PAYMENT_RECONCILE_SECRET", "").strip()
+TELEMETRY_BATCH_SIZE = max(1, min(int(os.environ.get("TELEMETRY_BATCH_SIZE", "400")), 450))
+TELEMETRY_QUEUE_LIMIT = max(TELEMETRY_BATCH_SIZE, int(os.environ.get("TELEMETRY_QUEUE_LIMIT", "5000")))
 API_CURRENT_VERSION = os.environ.get("API_CURRENT_VERSION", "2026-04-21")
 API_MIN_SUPPORTED_VERSION = os.environ.get("API_MIN_SUPPORTED_VERSION", "2026-01-01")
 DEPRECATION_SUNSET_DATE = os.environ.get("DEPRECATION_SUNSET_DATE", "2026-12-31")
-ENFORCE_TENANT_ISOLATION = os.environ.get("ENFORCE_TENANT_ISOLATION", "0") == "1"
+ENFORCE_TENANT_ISOLATION = os.environ.get(
+    "ENFORCE_TENANT_ISOLATION", "1" if _IS_PRODUCTION else "0"
+) == "1"
 ENABLE_PROGRESSIVE_DELIVERY = os.environ.get("ENABLE_PROGRESSIVE_DELIVERY", "1") == "1"
 REQUIRE_PAYMENT_IDEMPOTENCY = os.environ.get("REQUIRE_PAYMENT_IDEMPOTENCY", "1") == "1"
 # Rate limiting and payment idempotency fall back to per-process in-memory state
@@ -295,18 +442,23 @@ REQUIRE_PAYMENT_IDEMPOTENCY = os.environ.get("REQUIRE_PAYMENT_IDEMPOTENCY", "1")
 # per-instance and bypassable), so production requires Redis unless this escape
 # hatch is set for a deliberate single-instance deployment.
 ALLOW_INMEMORY_STATE = os.environ.get("ALLOW_INMEMORY_STATE", "0") == "1"
-DEBUG_MODE_ENABLED = os.environ.get("DEBUG_MODE", "").strip().lower() not in ("", "0", "false", "no", "off")
+DEBUG_MODE_ENABLED = _IS_DEVELOPMENT and os.environ.get("DEBUG_MODE", "").strip().lower() not in ("", "0", "false", "no", "off")
 if _IS_PRODUCTION and DEBUG_MODE_ENABLED:
     raise RuntimeError("DEBUG_MODE must not be enabled in production (ENV=production). Set DEBUG_MODE=false or unset it.")
 LOCAL_DEV_AUTH_BYPASS_ENABLED = os.environ.get(
     "LOCAL_DEV_AUTH_BYPASS",
-    "0" if _IS_PRODUCTION else "1",
+    "0",
 ).strip().lower() not in ("", "0", "false", "no", "off")
+LOCAL_DEV_AUTH_BYPASS_ENABLED = _IS_DEVELOPMENT and LOCAL_DEV_AUTH_BYPASS_ENABLED
 if _IS_PRODUCTION and LOCAL_DEV_AUTH_BYPASS_ENABLED:
     raise RuntimeError(
         "LOCAL_DEV_AUTH_BYPASS must not be enabled in production (ENV=production): "
         "it accepts the mock-token auth bypass. Unset it or set it to 0."
     )
+ALLOW_EXPORT_WITHOUT_DB = (
+    not _IS_PRODUCTION
+    and os.environ.get("ALLOW_EXPORT_WITHOUT_DB", "0").strip().lower() in ("1", "true", "yes", "on")
+)
 SLO_EXPORT_SUCCESS_TARGET = float(os.environ.get("SLO_EXPORT_SUCCESS_TARGET", "0.98"))
 SLO_PROCESS_SUCCESS_TARGET = float(os.environ.get("SLO_PROCESS_SUCCESS_TARGET", "0.98"))
 SLO_EXPORT_P95_MS_TARGET = int(os.environ.get("SLO_EXPORT_P95_MS_TARGET", "180000"))
@@ -320,7 +472,7 @@ CONTENT_SAFETY_BLOCKLIST = [
     if t.strip()
 ]
 
-if REDIS_AVAILABLE and REDIS_URL:
+if REDIS_AVAILABLE and REDIS_URL and not _IS_TEST:
     try:
         _redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
         _redis_client.ping()
@@ -354,6 +506,8 @@ async def advanced_janitor_job():
         "exports_deleted": 0,
         "temp_ass_deleted": 0,
         "cache_deleted": 0,
+        "cloud_exports_deleted": 0,
+        "cloud_uploads_deleted": 0,
         "errors": 0,
     }
 
@@ -393,14 +547,14 @@ async def advanced_janitor_job():
     # Cleanup stale temporary ASS artifacts generated during render retries.
     backend_dir = os.path.dirname(os.path.abspath(__file__))
     for f in os.listdir(backend_dir):
-        if not (f.startswith("_tmp_") and f.endswith(".ass")):
+        if not ((f.startswith("_tmp_") and f.endswith(".ass")) or f == "last_export_debug.ass"):
             continue
         filepath = os.path.join(backend_dir, f)
         if not os.path.isfile(filepath):
             continue
         try:
             age = now - os.stat(filepath).st_mtime
-            if age > 7200:  # 2 hours
+            if (f == "last_export_debug.ass" and not DEBUG_MODE_ENABLED) or age > 7200:
                 os.remove(filepath)
                 metrics["temp_ass_deleted"] += 1
         except Exception as e:
@@ -424,7 +578,24 @@ async def advanced_janitor_job():
                 _json_log("warning", "janitor_error", error=str(e), scope="cache")
                 metrics["errors"] += 1
 
-    total_deleted = metrics["uploads_deleted"] + metrics["exports_deleted"] + metrics["temp_ass_deleted"] + metrics["cache_deleted"]
+    try:
+        metrics["cloud_exports_deleted"] = delete_expired_exports()
+    except Exception as e:
+        _json_log("warning", "janitor_error", error=str(e), scope="cloud_exports")
+        metrics["errors"] += 1
+
+    try:
+        metrics["cloud_uploads_deleted"] = delete_expired_uploads()
+    except Exception as e:
+        _json_log("warning", "janitor_error", error=str(e), scope="cloud_uploads")
+        metrics["errors"] += 1
+
+    total_deleted = (
+        metrics["uploads_deleted"] + metrics["exports_deleted"]
+        + metrics["temp_ass_deleted"] + metrics["cache_deleted"]
+        + metrics["cloud_exports_deleted"]
+        + metrics["cloud_uploads_deleted"]
+    )
     if total_deleted > 0 or metrics["errors"] > 0:
         _json_log(
             "info",
@@ -433,14 +604,61 @@ async def advanced_janitor_job():
             exports_deleted=metrics["exports_deleted"],
             temp_ass_deleted=metrics["temp_ass_deleted"],
             cache_deleted=metrics["cache_deleted"],
+            cloud_exports_deleted=metrics["cloud_exports_deleted"],
+            cloud_uploads_deleted=metrics["cloud_uploads_deleted"],
             errors=metrics["errors"],
         )
 
-@app.on_event("startup")
+
+def _claim_scheduled_job(name: str, ttl_seconds: int) -> str:
+    token = uuid.uuid4().hex
+    if _redis_client is None:
+        return token
+    try:
+        return token if _redis_client.set(f"scheduled:{name}", token, nx=True, ex=ttl_seconds) else ""
+    except Exception:
+        return "" if _IS_PRODUCTION else token
+
+
+def _release_scheduled_job(name: str, token: str):
+    if not token or _redis_client is None:
+        return
+    try:
+        _redis_client.eval(
+            "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
+            1,
+            f"scheduled:{name}",
+            token,
+        )
+    except Exception:
+        pass
+
+
+async def scheduled_janitor_job():
+    token = _claim_scheduled_job("janitor", 14 * 60)
+    if not token:
+        return
+    try:
+        await advanced_janitor_job()
+    finally:
+        _release_scheduled_job("janitor", token)
+
+
+async def scheduled_payment_reconciliation_job():
+    token = _claim_scheduled_job("payment_reconciliation", max(PAYMENT_RECONCILE_INTERVAL_MINUTES, 5) * 60 - 5)
+    if not token:
+        return
+    try:
+        await payment_reconciliation_job()
+    finally:
+        _release_scheduled_job("payment_reconciliation", token)
+
 async def startup_event():
+    global _telemetry_flush_task, _simple_janitor_task
+    _telemetry_flush_task = asyncio.create_task(_telemetry_flush_loop())
     if scheduler is not None:
-        scheduler.add_job(advanced_janitor_job, 'interval', minutes=15)
-        scheduler.add_job(payment_reconciliation_job, 'interval', minutes=max(PAYMENT_RECONCILE_INTERVAL_MINUTES, 5))
+        scheduler.add_job(scheduled_janitor_job, 'interval', minutes=15)
+        scheduler.add_job(scheduled_payment_reconciliation_job, 'interval', minutes=max(PAYMENT_RECONCILE_INTERVAL_MINUTES, 5))
         scheduler.start()
         print(
             f"[Scheduler] Janitor every 15m + payment reconciliation every "
@@ -448,7 +666,20 @@ async def startup_event():
         )
     else:
         print("[Janitor] apscheduler not available — running simple asyncio fallback.")
-        asyncio.create_task(_simple_janitor_loop())
+        _simple_janitor_task = asyncio.create_task(_simple_janitor_loop())
+
+
+async def shutdown_event():
+    global _telemetry_flush_task, _simple_janitor_task
+    if _telemetry_flush_task is not None:
+        _telemetry_flush_task.cancel()
+        _telemetry_flush_task = None
+    if _simple_janitor_task is not None:
+        _simple_janitor_task.cancel()
+        _simple_janitor_task = None
+    if scheduler is not None and scheduler.running:
+        scheduler.shutdown(wait=False)
+    await asyncio.to_thread(_flush_telemetry)
 
 async def _simple_janitor_loop():
     """Fallback janitor when apscheduler is not installed — runs every 15 min."""
@@ -501,6 +732,9 @@ TRANSLATE_RATE_LIMIT = 20  # max translation attempts per hour per IP
 _process_rate: Dict[str, list] = {}
 PROCESS_RATE_LIMIT = 20   # max transcription attempts per hour per IP
 
+_detect_language_rate: Dict[str, list] = {}
+DETECT_LANGUAGE_RATE_LIMIT = 10  # max paid language-detection calls per hour per user/IP
+
 _analytics_rate: Dict[str, list] = {}
 ANALYTICS_RATE_LIMIT = 120  # max client analytics events per hour per IP
 
@@ -532,6 +766,56 @@ _analytics_last_alert_ts: Dict[str, float] = {}
 _route_latency_samples: Dict[str, list] = {}
 _payment_idempotency: Dict[str, Dict[str, Any]] = {}
 _tenant_memberships: Dict[str, set] = {}
+_telemetry_buffer = deque()
+_telemetry_lock = threading.Lock()
+_telemetry_flush_task = None
+_simple_janitor_task = None
+
+
+def _retention_deadline(days: int) -> datetime:
+    return datetime.now(timezone.utc) + timedelta(days=max(1, int(days)))
+
+
+def _enqueue_telemetry(collection_name: str, payload: Dict[str, Any], retention_days: int):
+    row = {**payload, "expire_at": _retention_deadline(retention_days)}
+    dropped = False
+    with _telemetry_lock:
+        if len(_telemetry_buffer) >= TELEMETRY_QUEUE_LIMIT:
+            _telemetry_buffer.popleft()
+            dropped = True
+        _telemetry_buffer.append((collection_name, row))
+    if dropped:
+        _json_log("warning", "telemetry_buffer_overflow", collection=collection_name)
+
+
+def _flush_telemetry():
+    db = get_db()
+    if not db:
+        return 0
+    rows = []
+    with _telemetry_lock:
+        while _telemetry_buffer and len(rows) < TELEMETRY_BATCH_SIZE:
+            rows.append(_telemetry_buffer.popleft())
+    if not rows:
+        return 0
+    try:
+        batch = db.batch()
+        for collection_name, payload in rows:
+            batch.set(db.collection(collection_name).document(), payload)
+        batch.commit()
+        return len(rows)
+    except Exception as e:
+        with _telemetry_lock:
+            for row in reversed(rows):
+                _telemetry_buffer.appendleft(row)
+        _json_log("warning", "telemetry_batch_persist_failed", count=len(rows), error=str(e))
+        return 0
+
+
+async def _telemetry_flush_loop():
+    while True:
+        await asyncio.sleep(5)
+        await asyncio.to_thread(_flush_telemetry)
 
 
 class CircuitBreaker:
@@ -587,16 +871,11 @@ def _track_event(event: str, payload: Optional[Dict[str, Any]] = None):
         except Exception:
             pass
     _json_log("info", "analytics_event", name=event, payload=payload or {})
-    db = get_db()
-    if db:
-        try:
-            db.collection("analytics_events").add({
-                "event": event,
-                "payload": payload or {},
-                "timestamp": datetime.utcnow().isoformat() + "Z",
-            })
-        except Exception as e:
-            _json_log("warning", "analytics_event_persist_failed", name=event, error=str(e))
+    _enqueue_telemetry("analytics_events", {
+        "event": event,
+        "payload": payload or {},
+        "timestamp": _utcnow().isoformat() + "Z",
+    }, retention_days=30)
 
 def _track_latency_sample(path: str, duration_ms: int, max_samples: int = 300):
     if path not in ("/api/process", "/api/export"):
@@ -679,13 +958,14 @@ def _build_slo_snapshot() -> Dict[str, Any]:
             "export_total": export_total,
             "process_total": process_total,
         },
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": _utcnow().isoformat() + "Z",
     }
 
 def _tenant_id_from_token(decoded_token: Optional[Dict[str, Any]]) -> str:
     if not decoded_token:
         return ""
-    return (decoded_token.get("org_id") or decoded_token.get("tenant_id") or "").strip()
+    uid = (decoded_token.get("uid") or "").strip()
+    return (decoded_token.get("org_id") or decoded_token.get("tenant_id") or (f"org_{uid}" if uid else "")).strip()
 
 def _is_explicit_dev_auth_token(id_token: str) -> bool:
     return (DEBUG_MODE_ENABLED or LOCAL_DEV_AUTH_BYPASS_ENABLED) and (id_token or "").strip() == "mock-token"
@@ -709,25 +989,27 @@ def _assert_tenant_access(uid: str, decoded_token: Optional[Dict[str, Any]], org
     token_org = _tenant_id_from_token(decoded_token)
     requested_org = (org_id or "").strip()
     if not token_org:
-        raise HTTPException(status_code=403, detail="Tenant isolation enabled but token has no org_id")
+        raise HTTPException(status_code=403, detail="Tenant identity is unavailable")
     if requested_org and requested_org != token_org:
         raise HTTPException(status_code=403, detail="Cross-tenant write is not allowed")
-    _tenant_memberships.setdefault(token_org, set()).add(uid)
+    known_members = _tenant_memberships.setdefault(token_org, set())
+    if uid in known_members:
+        return
     db = get_db()
     if db and uid:
         try:
-            db.collection("tenants").document(token_org).set(
-                {"updated_at": datetime.utcnow().isoformat() + "Z"},
-                merge=True,
-            )
-            db.collection("tenants").document(token_org).collection("members").document(uid).set(
-                {"uid": uid, "org_id": token_org, "updated_at": datetime.utcnow().isoformat() + "Z"},
-                merge=True,
-            )
-            db.collection("users").document(uid).set(
-                {"org_id": token_org, "updated_at": datetime.utcnow().isoformat() + "Z"},
-                merge=True,
-            )
+            tenant_ref = db.collection("tenants").document(token_org)
+            member_ref = tenant_ref.collection("members").document(uid)
+            if member_ref.get().exists:
+                known_members.add(uid)
+                return
+            now_iso = _utcnow().isoformat() + "Z"
+            batch = db.batch()
+            batch.set(tenant_ref, {"updated_at": now_iso}, merge=True)
+            batch.set(member_ref, {"uid": uid, "org_id": token_org, "updated_at": now_iso}, merge=True)
+            batch.set(db.collection("users").document(uid), {"org_id": token_org, "updated_at": now_iso}, merge=True)
+            batch.commit()
+            known_members.add(uid)
         except Exception as e:
             _json_log("warning", "tenant_membership_persist_failed", uid=uid, org_id=token_org, error=str(e))
 
@@ -778,16 +1060,10 @@ def _audit_action(action: str, uid: str = "", metadata: Optional[Dict[str, Any]]
         "action": action,
         "uid": uid or "anonymous",
         "metadata": metadata or {},
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": _utcnow().isoformat() + "Z",
     }
     _json_log("info", "audit_action", **payload)
-    db = get_db()
-    if not db:
-        return
-    try:
-        db.collection("audit_logs").add(payload)
-    except Exception as e:
-        _json_log("warning", "audit_persist_failed", action=action, error=str(e))
+    _enqueue_telemetry("audit_logs", payload, retention_days=365)
 
 
 def _scan_upload_for_threat(file_path: str) -> bool:
@@ -815,15 +1091,67 @@ def _is_content_safety_blocked(*values: str) -> bool:
     joined = " ".join((v or "") for v in values).lower()
     return any(token in joined for token in CONTENT_SAFETY_BLOCKLIST)
 
-def _persist_export_job(job_id: str, payload: Dict[str, Any]):
-    """Persist export job metadata for debugging/analytics. Best-effort."""
+def _persist_export_job(job_id: str, payload: Dict[str, Any]) -> bool:
+    """Persist job state to at least one cross-process store."""
+    persisted = False
+    if _redis_client is not None:
+        try:
+            _redis_client.setex(
+                f"export_job:{job_id}",
+                7 * 24 * 3600,
+                json.dumps(payload, default=str),
+            )
+            persisted = True
+        except Exception as e:
+            _json_log("warning", "export_job_redis_persist_failed", job_id=job_id, error=str(e))
+
     db = get_db()
-    if not db:
-        return
-    try:
-        db.collection("export_jobs").document(job_id).set(payload, merge=True)
-    except Exception as e:
-        _json_log("warning", "export_job_persist_failed", job_id=job_id, error=str(e))
+    if db:
+        for attempt in range(2):
+            try:
+                db.collection("export_jobs").document(job_id).set(
+                    {**payload, "expire_at": _retention_deadline(7)}, merge=True
+                )
+                persisted = True
+                break
+            except Exception as e:
+                _json_log(
+                    "warning",
+                    "export_job_firestore_persist_failed",
+                    job_id=job_id,
+                    attempt=attempt + 1,
+                    error=str(e),
+                )
+                if attempt == 0:
+                    time.sleep(0.05)
+    return persisted
+
+
+def _load_export_job(job_id: str) -> Optional[Dict[str, Any]]:
+    """Load authoritative shared state, falling back to local state in local mode."""
+    if _redis_client is not None:
+        try:
+            raw = _redis_client.get(f"export_job:{job_id}")
+            if raw:
+                job = json.loads(raw)
+                _export_jobs[job_id] = job
+                return job
+        except Exception as e:
+            _json_log("warning", "export_job_redis_load_failed", job_id=job_id, error=str(e))
+
+    db = get_db()
+    if db:
+        try:
+            snap = db.collection("export_jobs").document(job_id).get()
+            if snap.exists:
+                job = snap.to_dict() or {}
+                _export_jobs[job_id] = job
+                return job
+        except Exception as e:
+            _json_log("warning", "export_job_firestore_load_failed", job_id=job_id, error=str(e))
+    if _export_queue is not None and job_id in _export_jobs:
+        raise HTTPException(status_code=503, detail="Export job status is temporarily unavailable")
+    return _export_jobs.get(job_id)
 
 def _idem_get(key: str):
     if not key:
@@ -865,8 +1193,23 @@ def _payment_idem_get(key: str):
         try:
             raw = _redis_client.get(f"pay_idem:{key}")
             return json.loads(raw) if raw else None
-        except Exception:
-            return None
+        except Exception as e:
+            _json_log("error", "payment_idempotency_read_failed", error=str(e))
+            raise HTTPException(status_code=503, detail="Payment safety service is temporarily unavailable") from e
+
+    if _IS_TEST:
+        return _payment_idempotency.get(key)
+    db = get_db()
+    if db:
+        try:
+            doc_id = hashlib.sha256(key.encode("utf-8")).hexdigest()
+            snap = db.collection("payment_idempotency").document(doc_id).get()
+            return snap.to_dict() if snap.exists else None
+        except Exception as e:
+            _json_log("error", "payment_idempotency_firestore_read_failed", error=str(e))
+            raise HTTPException(status_code=503, detail="Payment safety service is temporarily unavailable") from e
+    if _IS_PRODUCTION:
+        raise HTTPException(status_code=503, detail="Payment safety service is unavailable")
     return _payment_idempotency.get(key)
 
 def _payment_idem_set(key: str, value: Dict[str, Any], ttl_seconds: int = 24 * 3600):
@@ -876,9 +1219,97 @@ def _payment_idem_set(key: str, value: Dict[str, Any], ttl_seconds: int = 24 * 3
         try:
             _redis_client.setex(f"pay_idem:{key}", ttl_seconds, json.dumps(value))
             return
-        except Exception:
-            pass
+        except Exception as e:
+            _json_log("error", "payment_idempotency_write_failed", error=str(e))
+            raise HTTPException(status_code=503, detail="Payment safety service is temporarily unavailable") from e
+
+    if _IS_TEST:
+        _payment_idempotency[key] = value
+        return
+    db = get_db()
+    if db:
+        try:
+            doc_id = hashlib.sha256(key.encode("utf-8")).hexdigest()
+            db.collection("payment_idempotency").document(doc_id).set({
+                **value,
+                "key_hash": doc_id,
+                "expire_at": datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds),
+            })
+            return
+        except Exception as e:
+            _json_log("error", "payment_idempotency_firestore_write_failed", error=str(e))
+            raise HTTPException(status_code=503, detail="Payment safety service is temporarily unavailable") from e
+    if _IS_PRODUCTION:
+        raise HTTPException(status_code=503, detail="Payment safety service is unavailable")
     _payment_idempotency[key] = value
+
+def _payment_idem_claim(key: str, ttl_seconds: int = 24 * 3600) -> bool:
+    """Atomically claim a payment operation key before calling Razorpay."""
+    if not key:
+        return True
+    value = {"status": "in_progress", "ts": time.time()}
+    if _redis_client is not None:
+        try:
+            return bool(_redis_client.set(
+                f"pay_idem:{key}", json.dumps(value), ex=ttl_seconds, nx=True
+            ))
+        except Exception as e:
+            _json_log("error", "payment_idempotency_claim_failed", error=str(e))
+            raise HTTPException(status_code=503, detail="Payment safety service is temporarily unavailable") from e
+
+    if _IS_TEST:
+        if key in _payment_idempotency:
+            return False
+        _payment_idempotency[key] = value
+        return True
+    db = get_db()
+    if db:
+        try:
+            doc_id = hashlib.sha256(key.encode("utf-8")).hexdigest()
+            db.collection("payment_idempotency").document(doc_id).create({
+                **value,
+                "key_hash": doc_id,
+                "expire_at": datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds),
+            })
+            return True
+        except AlreadyExists:
+            return False
+        except Exception as e:
+            _json_log("error", "payment_idempotency_firestore_claim_failed", error=str(e))
+            raise HTTPException(status_code=503, detail="Payment safety service is temporarily unavailable") from e
+    if _IS_PRODUCTION:
+        raise HTTPException(status_code=503, detail="Payment safety service is unavailable")
+    if key in _payment_idempotency:
+        return False
+    _payment_idempotency[key] = value
+    return True
+
+def _payment_idem_delete(key: str):
+    if not key:
+        return
+    if _redis_client is not None:
+        try:
+            _redis_client.delete(f"pay_idem:{key}")
+            return
+        except Exception as e:
+            _json_log("error", "payment_idempotency_delete_failed", error=str(e))
+            raise HTTPException(status_code=503, detail="Payment safety service is temporarily unavailable") from e
+
+    if _IS_TEST:
+        _payment_idempotency.pop(key, None)
+        return
+    db = get_db()
+    if db:
+        try:
+            doc_id = hashlib.sha256(key.encode("utf-8")).hexdigest()
+            db.collection("payment_idempotency").document(doc_id).delete()
+            return
+        except Exception as e:
+            _json_log("error", "payment_idempotency_firestore_delete_failed", error=str(e))
+            raise HTTPException(status_code=503, detail="Payment safety service is temporarily unavailable") from e
+    if _IS_PRODUCTION:
+        raise HTTPException(status_code=503, detail="Payment safety service is unavailable")
+    _payment_idempotency.pop(key, None)
 
 def _require_payment_idempotency(uid: str, key: str, op: str) -> str:
     if not REQUIRE_PAYMENT_IDEMPOTENCY:
@@ -886,6 +1317,8 @@ def _require_payment_idempotency(uid: str, key: str, op: str) -> str:
     safe = (key or "").strip()
     if not safe:
         raise HTTPException(status_code=400, detail=f"Missing idempotency key for {op}")
+    if len(safe) > 200 or not re.fullmatch(r"[A-Za-z0-9:._-]+", safe):
+        raise HTTPException(status_code=400, detail="Invalid payment idempotency key")
     return f"{uid}:{op}:{safe}"
 
 def _check_rate(store: Dict[str, list], key: str, limit: int, window: int = 3600):
@@ -914,8 +1347,11 @@ def _check_rate(store: Dict[str, list], key: str, limit: int, window: int = 3600
             _, _, after_count = pipe.execute()
             remaining = max(0, limit - int(after_count or 0))
             return True, 0, remaining
-        except Exception:
-            # On Redis failure, gracefully fall back to in-memory path.
+        except Exception as e:
+            if _IS_PRODUCTION:
+                _json_log("error", "rate_limit_redis_failed", key=key, error=str(e))
+                raise HTTPException(status_code=503, detail="Rate-limit service is temporarily unavailable") from e
+            # Local and test environments may use the per-process fallback.
             pass
 
     now_ts = time.time()
@@ -962,35 +1398,50 @@ def _get_recent_export_failures(uid: str) -> list:
     _export_failures[fail_key] = arr
     return arr
 
-def _acquire_export_slot(uid: str) -> bool:
+def _acquire_export_slot(uid: str, job_id: str) -> bool:
+    if not uid or not job_id:
+        return False
     if _redis_client is not None:
         try:
             k = f"expactive:{uid}"
-            count = int(_redis_client.incr(k))
-            _redis_client.expire(k, 30 * 60)
-            if count > MAX_CONCURRENT_EXPORTS_PER_USER:
-                _redis_client.decr(k)
+            acquired = _redis_client.set(k, job_id, nx=True, ex=EXPORT_SLOT_TTL_SECONDS)
+            if acquired:
+                return True
+            current = _redis_client.get(k)
+            if isinstance(current, bytes):
+                current = current.decode("utf-8", errors="ignore")
+            if current == job_id:
+                _redis_client.expire(k, EXPORT_SLOT_TTL_SECONDS)
+                return True
+            return False
+        except Exception as e:
+            _json_log("error", "export_slot_acquire_failed", uid=uid, job_id=job_id, error=str(e))
+            if _IS_PRODUCTION or _export_queue is not None:
                 return False
-            return True
-        except Exception:
-            pass
-    active_count = _active_exports_by_user.get(uid, 0)
-    if active_count >= MAX_CONCURRENT_EXPORTS_PER_USER:
+    current = _active_exports_by_user.get(uid)
+    if current and current != job_id:
         return False
-    _active_exports_by_user[uid] = active_count + 1
+    _active_exports_by_user[uid] = job_id
     return True
 
-def _release_export_slot(uid: str):
+def _release_export_slot(uid: str, job_id: str):
+    if not uid or not job_id:
+        return
     if _redis_client is not None:
         try:
             k = f"expactive:{uid}"
-            remaining = int(_redis_client.decr(k))
-            if remaining <= 0:
-                _redis_client.delete(k)
+            _redis_client.eval(
+                "if redis.call('get', KEYS[1]) == ARGV[1] then "
+                "return redis.call('del', KEYS[1]) else return 0 end",
+                1,
+                k,
+                job_id,
+            )
             return
         except Exception:
             pass
-    _active_exports_by_user[uid] = max(0, _active_exports_by_user.get(uid, 1) - 1)
+    if _active_exports_by_user.get(uid) == job_id:
+        _active_exports_by_user.pop(uid, None)
 
 def _apply_rate_headers(response: Optional[Response], limit: int, remaining: int, retry_after: int = 0):
     if response is None:
@@ -1002,23 +1453,15 @@ def _apply_rate_headers(response: Optional[Response], limit: int, remaining: int
 
 def _evaluate_export_policy(user_data: Dict[str, Any], now_ts: float):
     credits = int(user_data.get('credits_remaining', 0) or 0)
-    tier = user_data.get('subscription_tier', 'free') or 'free'
+    tier = _normalize_tier_name(user_data.get('subscription_tier', 'free'))
     export_history = user_data.get('export_timestamps', []) or []
     recent_exports = [ts for ts in export_history if ts > (now_ts - 86400)]
 
-    plan_time_expired = False
-    expiry_str = user_data.get('subscription_expiry')
-    if tier != 'free' and expiry_str:
-        try:
-            expiry_date = datetime.fromisoformat(expiry_str.replace('Z', '+00:00'))
-            if expiry_date < datetime.now(expiry_date.tzinfo):
-                plan_time_expired = True
-        except Exception:
-            pass
+    plan_time_expired = _subscription_is_expired(user_data)
+    if tier != 'free' and plan_time_expired:
+        return False, "PLAN_EXPIRED: Your plan has expired. Please renew to continue exporting.", recent_exports
 
     if credits <= 0 and not DISABLE_EXPORT_CREDIT_LIMIT:
-        if tier != 'free' and plan_time_expired:
-            return False, "PLAN_EXPIRED: Your plan has expired and you have no credits left. Please renew to continue exporting.", recent_exports
         return False, "UPGRADE_REQUIRED: You have no credits remaining. Please upgrade your plan to continue exporting.", recent_exports
 
     # Temporary escape hatch during export debugging: keep credit checks, but do not
@@ -1030,11 +1473,57 @@ def _evaluate_export_policy(user_data: Dict[str, Any], now_ts: float):
 
     return True, "", recent_exports
 
+
+def _record_export_usage(
+    db,
+    user_ref,
+    history_item: Dict[str, Any],
+    now_ts: float,
+    export_job_id: str,
+):
+    usage_ref = user_ref.collection("export_usage").document(export_job_id)
+
+    @firestore.transactional
+    def _record(transaction):
+        usage_doc = usage_ref.get(transaction=transaction)
+        if usage_doc.exists:
+            return []
+
+        user_doc = user_ref.get(transaction=transaction)
+        if not user_doc.exists:
+            raise HTTPException(status_code=409, detail="Account changed while the export was processing")
+        current_user = user_doc.to_dict() or {}
+        allowed, policy_error, recent_exports = _evaluate_export_policy(current_user, now_ts)
+        if not allowed:
+            status = 403 if "UPGRADE_REQUIRED" in policy_error or "PLAN_EXPIRED" in policy_error else 429
+            raise HTTPException(status_code=status, detail=policy_error)
+
+        history = [history_item, *(current_user.get("history", []) or [])]
+        dropped_history = history[5:]
+        user_update = {"history": history[:5]}
+        if not DISABLE_EXPORT_CREDIT_LIMIT:
+            user_update["credits_remaining"] = firestore.Increment(-1)
+        if not DISABLE_EXPORT_DAILY_LIMIT:
+            user_update["export_timestamps"] = [*recent_exports, now_ts]
+        transaction.create(usage_ref, {
+            "export_job_id": export_job_id,
+            "file_id": history_item.get("id", ""),
+            "recorded_at": datetime.now(timezone.utc),
+            "expire_at": datetime.now(timezone.utc) + timedelta(days=400),
+        })
+        transaction.update(user_ref, user_update)
+        return dropped_history
+
+    return _record(db.transaction())
+
+
 def _set_export_job(job_id: str, status: str, **kwargs):
     payload = _export_jobs.get(job_id, {})
     payload.update({"status": status, "updated_at": time.time(), **kwargs})
     _export_jobs[job_id] = payload
-    _persist_export_job(job_id, payload)
+    persisted = _persist_export_job(job_id, payload)
+    if _export_queue is not None and not persisted:
+        raise RuntimeError("Export job state could not be persisted to shared storage")
 
 # Allowed upload extensions (module-level constant — not rebuilt per request)
 ALLOWED_EXTENSIONS = {'mp4', 'mov', 'avi', 'mkv', 'webm', 'mp3', 'wav', 'm4a', 'aac'}
@@ -1060,28 +1549,80 @@ def _safe_find_upload(file_id: str) -> Optional[str]:
             candidate = os.path.realpath(os.path.join(UPLOAD_DIR, f))
             if candidate.startswith(real_dir + os.sep):
                 return os.path.join(UPLOAD_DIR, f)
+    metadata = _load_upload_metadata(file_id)
+    remote_path = str(metadata.get("remote_path") or "")
+    extension = str(metadata.get("extension") or pathlib.Path(remote_path).suffix.lstrip(".")).lower()
+    if not remote_path.startswith("uploads/") or extension not in ALLOWED_EXTENSIONS:
+        return None
+    target = os.path.realpath(os.path.join(UPLOAD_DIR, f"{file_id}.{extension}"))
+    if not target.startswith(real_dir + os.sep):
+        return None
+    partial = f"{target}.part-{uuid.uuid4().hex}"
+    try:
+        if not download_from_firebase_storage(remote_path, partial):
+            return None
+        os.replace(partial, target)
+        return target
+    finally:
+        if os.path.exists(partial):
+            try:
+                os.remove(partial)
+            except OSError:
+                pass
     return None
 
 
-def _remember_upload_owner(file_id: str, uid: str):
+def _load_upload_metadata(file_id: str) -> Dict[str, Any]:
+    if not file_id:
+        return {}
+    metadata: Dict[str, Any] = {}
+    if _redis_client is not None:
+        try:
+            raw = _redis_client.get(f"upload_meta:{file_id}")
+            if raw:
+                metadata = json.loads(raw)
+        except Exception:
+            metadata = {}
+    if metadata:
+        return metadata
+    db = get_db()
+    if db:
+        try:
+            snap = db.collection("uploads").document(file_id).get()
+            if snap.exists:
+                metadata = snap.to_dict() or {}
+        except Exception:
+            metadata = {}
+    return metadata
+
+
+def _remember_upload_owner(file_id: str, uid: str, remote_path: str = "", extension: str = ""):
     if not file_id or not uid:
-        return
+        return False
     _upload_owners[file_id] = uid
+    persisted = False
+    metadata = {
+        "file_id": file_id,
+        "uid": uid,
+        "remote_path": remote_path,
+        "extension": extension,
+        "created_at": _utcnow().isoformat() + "Z",
+    }
     if _redis_client is not None:
         try:
             _redis_client.setex(f"upload_owner:{file_id}", 24 * 3600, uid)
+            _redis_client.setex(f"upload_meta:{file_id}", 24 * 3600, json.dumps(metadata))
+            persisted = True
         except Exception:
             pass
     db = get_db()
     if db:
         try:
-            db.collection("uploads").document(file_id).set({
-                "file_id": file_id,
-                "uid": uid,
-                "created_at": datetime.utcnow().isoformat() + "Z",
-            }, merge=True)
+            db.collection("uploads").document(file_id).set(metadata, merge=True)
+            persisted = True
         except Exception as e:
             _json_log("warning", "upload_owner_persist_failed", file_id=file_id, uid=uid, error=str(e))
+    return persisted
 
 
 def _assert_upload_owner(file_id: str, uid: str):
@@ -1094,20 +1635,17 @@ def _assert_upload_owner(file_id: str, uid: str):
         except Exception:
             owner = ""
     if not owner:
-        db = get_db()
-        if db:
-            try:
-                snap = db.collection("uploads").document(file_id).get()
-                if snap.exists:
-                    owner = (snap.to_dict() or {}).get("uid", "")
-            except Exception:
-                owner = ""
-    if owner and owner != uid:
+        owner = str(_load_upload_metadata(file_id).get("uid") or "")
+    if not owner:
+        # Ownership must be provable. Failing open here lets any authenticated
+        # caller reuse a known upload UUID after a restart or metadata outage.
+        raise HTTPException(status_code=403, detail="Upload ownership could not be verified")
+    if owner != uid:
         raise HTTPException(status_code=403, detail="You do not have access to this upload")
 
 
 def _media_token_signature(payload_b64: str) -> str:
-    secret = (MEDIA_URL_SIGNING_SECRET or "local-dev-media-signing-secret").encode("utf-8")
+    secret = MEDIA_URL_SIGNING_SECRET.encode("utf-8")
     return hmac.new(secret, payload_b64.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
@@ -1222,6 +1760,112 @@ def _normalize_tier_name(tier: str) -> str:
     return "free"
 
 
+def _subscription_is_expired(user_data: Optional[Dict[str, Any]], now: Optional[datetime] = None) -> bool:
+    data = user_data or {}
+    tier = _normalize_tier_name(data.get("subscription_tier", "free"))
+    if tier == "free":
+        return False
+    expiry_value = str(
+        data.get("subscription_expiry")
+        or data.get("billing_cycle_end")
+        or ""
+    ).strip()
+    if not expiry_value:
+        # Paid access without an expiry timestamp cannot be verified safely.
+        # Payment and promotion flows are responsible for writing this field.
+        return True
+    try:
+        expiry = datetime.fromisoformat(expiry_value.replace("Z", "+00:00"))
+        if expiry.tzinfo is None:
+            expiry = expiry.replace(tzinfo=timezone.utc)
+        comparison_time = now or datetime.now(timezone.utc)
+        if comparison_time.tzinfo is None:
+            comparison_time = comparison_time.replace(tzinfo=timezone.utc)
+        return expiry <= comparison_time.astimezone(expiry.tzinfo)
+    except (TypeError, ValueError):
+        # Malformed paid-plan expiry data must not silently grant indefinite
+        # entitlements. Repairing the account timestamp restores access.
+        return True
+
+
+def _effective_subscription_tier(user_data: Optional[Dict[str, Any]], now: Optional[datetime] = None) -> str:
+    tier = _normalize_tier_name((user_data or {}).get("subscription_tier", "free"))
+    return "free" if _subscription_is_expired(user_data, now) else tier
+
+
+def _lookup_subscription_tier(uid: str) -> str:
+    """Best-effort read of the caller's current subscription tier from Firestore.
+    Returns 'free' when the DB or user record is unavailable."""
+    if not uid:
+        return "free"
+    db = get_db()
+    if not db:
+        return "free"
+    try:
+        snap = db.collection("users").document(uid).get()
+        if snap.exists:
+            return _effective_subscription_tier(snap.to_dict() or {})
+    except Exception:
+        pass
+    return "free"
+
+
+def _max_video_seconds_for_tier(tier: str) -> int:
+    """Per-plan source-video length cap. Falls back to the global 180s ceiling
+    for tiers (including 'free') that don't advertise a tighter limit."""
+    return int(PLAN_PRICING.get(tier, {}).get("max_video_seconds", 180) or 180)
+
+
+AI_DAILY_LIMITS = {
+    "free": {"process": 3, "translate": 5, "detect_language": 3},
+    "starter": {"process": 10, "translate": 20, "detect_language": 10},
+    "creator": {"process": 30, "translate": 60, "detect_language": 30},
+    "pro": {"process": 100, "translate": 200, "detect_language": 100},
+}
+
+
+def _reserve_ai_quota(uid: str, operation: str) -> None:
+    """Atomically reserve one daily paid-provider call before invoking it."""
+    if operation not in {"process", "translate", "detect_language"}:
+        raise HTTPException(status_code=400, detail="Unknown AI operation")
+    if _IS_TEST:
+        return
+    db = get_db()
+    if not db:
+        if _IS_PRODUCTION:
+            raise HTTPException(status_code=503, detail="AI quota service is temporarily unavailable")
+        return
+
+    user_ref = db.collection("users").document(uid)
+    transaction = db.transaction()
+    today = date.today().isoformat()
+
+    @firestore.transactional
+    def reserve(txn):
+        snap = user_ref.get(transaction=txn)
+        data = snap.to_dict() if snap.exists else {}
+        tier = _normalize_tier_name((data or {}).get("subscription_tier", "free"))
+        base_tier = tier.replace("_yearly", "")
+        limits = AI_DAILY_LIMITS.get(base_tier, AI_DAILY_LIMITS["free"])
+        limit = int(limits[operation])
+        usage = dict((data or {}).get("ai_daily_usage") or {}) if (data or {}).get("ai_usage_date") == today else {}
+        used = int(usage.get(operation, 0) or 0)
+        if used >= limit:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Daily {operation.replace('_', ' ')} quota reached for this plan",
+            )
+        usage[operation] = used + 1
+        txn.set(user_ref, {
+            "uid": uid,
+            "ai_usage_date": today,
+            "ai_daily_usage": usage,
+            "updated_at": _utcnow().isoformat() + "Z",
+        }, merge=True)
+
+    reserve(transaction)
+
+
 def _resolve_export_preset(tier: str, requested_quality: str, requested_fps: int) -> Dict[str, Any]:
     normalized = "pro" if DISABLE_EXPORT_CREDIT_LIMIT else _normalize_tier_name(tier)
     preset = PLAN_EXPORT_PRESETS.get(normalized, PLAN_EXPORT_PRESETS["free"])
@@ -1243,15 +1887,17 @@ def _resolve_export_preset(tier: str, requested_quality: str, requested_fps: int
         "downgraded": (quality != req_quality or fps != requested_fps),
     }
 
-# Fix: Remove hardcoded 'backend/' prefix from abspath as we are running the process from inside backend/
-UPLOAD_DIR = os.path.abspath("uploads")
-EXPORT_DIR = os.path.abspath("exports")
-FONTS_DIR = os.path.abspath("flat_fonts")
-CACHE_DIR = os.path.abspath("cache")
+# Local paths are scratch space only. Resolve them from the project root rather
+# than the process cwd so web and worker commands behave consistently.
+MEDIA_SCRATCH_ROOT = os.path.abspath(os.environ.get("MEDIA_SCRATCH_DIR", root_dir))
+UPLOAD_DIR = os.path.join(MEDIA_SCRATCH_ROOT, "uploads")
+EXPORT_DIR = os.path.join(MEDIA_SCRATCH_ROOT, "exports")
+FONTS_DIR = os.path.join(MEDIA_SCRATCH_ROOT, "flat_fonts")
+CACHE_DIR = os.path.join(MEDIA_SCRATCH_ROOT, "cache")
 TRANSCRIPTION_CACHE_DIR = os.path.join(CACHE_DIR, "transcriptions")
 RENDER_CACHE_DIR = os.path.join(CACHE_DIR, "renders")
 DEAD_LETTER_DIR = os.path.join(CACHE_DIR, "dead_letter")
-EXPORT_RENDERER_VERSION = "2026-07-10-lc-authored-reveal-plan-v33"
+EXPORT_RENDERER_VERSION = "2026-07-11-lc-export-caption-fit-parity-v34"
 
 for d in [UPLOAD_DIR, EXPORT_DIR, FONTS_DIR, CACHE_DIR, TRANSCRIPTION_CACHE_DIR, RENDER_CACHE_DIR, DEAD_LETTER_DIR]:
     os.makedirs(d, exist_ok=True)
@@ -1263,43 +1909,71 @@ class CaptionItem(BaseModel):
     model_config = {"populate_by_name": True}
 
     id: Any
-    text: str
+    text: str = Field(max_length=2_000)
     start_time: float
     end_time: float
-    animation: str = "none"
+    animation: str = Field(default="none", max_length=50)
     is_text_element: bool = False
-    custom_style: Optional[Dict[str, Any]] = None
-    template_id: str = ""
-    template_20_id: str = ""
-    template_source: str = ""
-    template_class: str = ""
-    template_name: str = ""
-    template_layout: str = ""
-    template_effect: str = ""
-    template_markup: str = ""
-    applied_template_style: Optional[Dict[str, Any]] = None
-    word_styles: Dict[str, Any] = {}
-    words: List[Any] = []
+    custom_style: Optional[Dict[str, Any]] = Field(default=None, max_length=200)
+    template_id: str = Field(default="", max_length=100)
+    template_20_id: str = Field(default="", max_length=100)
+    template_source: str = Field(default="", max_length=100)
+    template_class: str = Field(default="", max_length=200)
+    template_name: str = Field(default="", max_length=200)
+    template_layout: str = Field(default="", max_length=100)
+    template_effect: str = Field(default="", max_length=100)
+    template_markup: str = Field(default="", max_length=100_000)
+    applied_template_style: Optional[Dict[str, Any]] = Field(default=None, max_length=200)
+    word_styles: Dict[str, Any] = Field(default_factory=dict, max_length=2_000)
+    words: List[Any] = Field(default_factory=list, max_length=2_000)
     template_index: Optional[int] = Field(default=None, alias="__templateIndex")
     template_phase_index: Optional[int] = None
     imp_word_index: int = -1
-    emphasis_color: str = ""
-    emotional_mode: str = ""
-    audio_emotion_metrics: Optional[Dict[str, Any]] = None
+    imp_word_indices: List[Any] = Field(default_factory=list, max_length=100)
+    emphasis_color: str = Field(default="", max_length=50)
+    emotional_mode: str = Field(default="", max_length=50)
+    audio_emotion_metrics: Optional[Dict[str, Any]] = Field(default=None, max_length=100)
+    # Per-caption preview measurements captured by ExportPanel. Undeclared
+    # fields are silently stripped by Pydantic, which made every caption fall
+    # back to the single style-level measurement in the DOM template renderer
+    # (wrong per-caption font size / lost per-caption line structure).
+    preview_template_line_texts: List[str] = Field(default_factory=list, max_length=50)
+    preview_template_font_px: float = Field(default=0, ge=0, le=1_000)
+    preview_template_box_width_px: float = Field(default=0, ge=0, le=10_000)
+    preview_template_box_height_px: float = Field(default=0, ge=0, le=10_000)
+
+    @model_validator(mode="after")
+    def validate_renderable_caption(self):
+        if not self.text.strip():
+            raise ValueError("Caption text must not be empty")
+        if not math.isfinite(self.start_time) or not math.isfinite(self.end_time):
+            raise ValueError("Caption timestamps must be finite")
+        if self.start_time < 0:
+            raise ValueError("Caption start_time must be non-negative")
+        if self.end_time <= self.start_time:
+            raise ValueError("Caption end_time must be greater than start_time")
+        if self.template_markup and re.search(
+            r"<(?:script|iframe|object|embed|img|svg|link|meta|base|form|input|button|video|audio|source)\b|"
+            r"\bon[a-z0-9_-]+\s*=|\b(?:src|href|srcdoc)\s*=|(?:url\s*\(|@import)",
+            self.template_markup,
+            flags=re.IGNORECASE,
+        ):
+            raise ValueError("Template markup contains unsafe elements or attributes")
+        return self
 
 class ExportRequest(BaseModel):
-    file_id: str
-    captions: List[CaptionItem]
-    style: Dict[str, Any] = {}
-    word_layouts: Dict[str, Any] = {}
-    waveform_data: List[float] = Field(default_factory=list)
-    duration: float = 0
-    id_token: str = ""  # Firebase Auth Token (optional — bypassed in dev mode)
-    idempotency_key: str = ""
-    quality: str = "1080p"  # Export quality: "4k", "1080p", "720p"
-    fps: int = 30  # Frame rate: 24, 30, 60
-    export_aspect_ratio: str = ""  # "", "9:16", "1:1", "16:9"
-    org_id: str = ""
+    file_id: str = Field(min_length=36, max_length=36)
+    captions: List[CaptionItem] = Field(min_length=1, max_length=500)
+    style: Dict[str, Any] = Field(default_factory=dict, max_length=250)
+    word_layouts: Dict[str, Any] = Field(default_factory=dict, max_length=5_000)
+    waveform_data: List[float] = Field(default_factory=list, max_length=50_000)
+    duration: float = Field(default=0, ge=0, le=4 * 60 * 60)
+    id_token: str = Field(default="", max_length=8_192)
+    idempotency_key: str = Field(default="", max_length=200)
+    quality: str = Field(default="1080p", pattern=r"^(4k|1080p|720p)$")
+    fps: int = Field(default=30, ge=24, le=60)
+    export_aspect_ratio: str = Field(default="", pattern=r"^(|9:16|1:1|16:9)$")
+    org_id: str = Field(default="", max_length=128)
 
     def validated_style(self) -> Dict[str, Any]:
         """Return a copy of style with all numeric fields clamped to safe ranges."""
@@ -1330,57 +2004,85 @@ class ExportRequest(BaseModel):
         return s
 
 class CreateOrderRequest(BaseModel):
-    plan_id: str
-    id_token: str
-    currency: str = "INR"
-    idempotency_key: str = ""
-    org_id: str = ""
+    plan_id: str = Field(min_length=1, max_length=50)
+    id_token: str = Field(min_length=1, max_length=8_192)
+    currency: str = Field(default="INR", pattern=r"^(?i:INR|USD)$")
+    idempotency_key: str = Field(default="", max_length=200)
+    org_id: str = Field(default="", max_length=128)
 
 class VerifyPaymentRequest(BaseModel):
-    razorpay_order_id: str
-    razorpay_payment_id: str
-    razorpay_signature: str
-    id_token: str
-    plan_id: str = ""  # echoed back from create-order response
-    idempotency_key: str = ""
-    org_id: str = ""
+    razorpay_order_id: str = Field(min_length=1, max_length=100)
+    razorpay_payment_id: str = Field(min_length=1, max_length=100)
+    razorpay_signature: str = Field(min_length=1, max_length=256)
+    id_token: str = Field(min_length=1, max_length=8_192)
+    plan_id: str = Field(default="", max_length=50)
+    idempotency_key: str = Field(default="", max_length=200)
+    org_id: str = Field(default="", max_length=128)
 
 class ReconcilePaymentsRequest(BaseModel):
-    id_token: str = ""
-    lookback_hours: int = PAYMENT_RECONCILE_LOOKBACK_HOURS
-    limit: int = PAYMENT_RECONCILE_BATCH_SIZE
+    id_token: str = Field(default="", max_length=8_192)
+    lookback_hours: int = Field(default=PAYMENT_RECONCILE_LOOKBACK_HOURS, ge=1, le=24 * 90)
+    limit: int = Field(default=PAYMENT_RECONCILE_BATCH_SIZE, ge=1, le=1_000)
 
 class AdminRecoveryRequest(BaseModel):
-    id_token: str = ""
-    limit: int = 50
+    id_token: str = Field(default="", max_length=8_192)
+    limit: int = Field(default=50, ge=1, le=1_000)
 
 class TenantBackfillRequest(BaseModel):
-    id_token: str = ""
-    limit: int = 500
+    id_token: str = Field(default="", max_length=8_192)
+    limit: int = Field(default=500, ge=1, le=500)
+    cursor: str = Field(default="", max_length=1_500)
 
 class ProcessRequest(BaseModel):
-    file_id: str
-    language: str = "English"
-    min_words: int = 0
-    max_words: int = 0
-    id_token: str = ""  # Firebase Auth Token (optional — bypassed in dev mode)
-    org_id: str = ""
+    file_id: str = Field(min_length=36, max_length=36)
+    language: str = Field(default="English", max_length=50)
+    min_words: int = Field(default=0, ge=0, le=20)
+    max_words: int = Field(default=0, ge=0, le=20)
+    id_token: str = Field(default="", max_length=8_192)
+    org_id: str = Field(default="", max_length=128)
+
+    @model_validator(mode="after")
+    def validate_word_range(self):
+        if self.min_words > 0 and self.max_words > 0 and self.min_words > self.max_words:
+            raise ValueError("min_words must be less than or equal to max_words")
+        return self
 
 class MediaUrlRequest(BaseModel):
-    file_id: str
-    id_token: str = ""
-    org_id: str = ""
+    file_id: str = Field(min_length=36, max_length=36)
+    id_token: str = Field(default="", max_length=8_192)
+    org_id: str = Field(default="", max_length=128)
 
 class TranslateRequest(BaseModel):
-    captions: List[Dict[str, Any]]
-    target_language: str
-    id_token: str = ""
-    org_id: str = ""
+    captions: List[Dict[str, Any]] = Field(min_length=1, max_length=500)
+    target_language: str = Field(min_length=2, max_length=50)
+    id_token: str = Field(default="", max_length=8_192)
+    org_id: str = Field(default="", max_length=128)
 
-class ParitySignatureRequest(BaseModel):
-    captions: List[Dict[str, Any]]
-    style: Dict[str, Any] = {}
-    word_layouts: Dict[str, Any] = {}
+
+def _normalize_export_captions_for_media(
+    captions: List[Dict[str, Any]], media_duration: float
+) -> List[Dict[str, Any]]:
+    if not math.isfinite(media_duration) or media_duration <= 0:
+        raise HTTPException(status_code=422, detail="Source media duration is invalid")
+
+    normalized = []
+    for caption in captions:
+        item = dict(caption)
+        start = float(item.get("start_time", 0))
+        end = float(item.get("end_time", 0))
+        if start >= media_duration:
+            raise HTTPException(
+                status_code=422,
+                detail="A caption starts at or after the end of the source media",
+            )
+        item["end_time"] = min(end, media_duration)
+        if item["end_time"] <= start:
+            raise HTTPException(
+                status_code=422,
+                detail="A caption has no renderable duration within the source media",
+            )
+        normalized.append(item)
+    return normalized
 
 
 def _write_dead_letter(job_id: str, reason: str, payload: Optional[Dict[str, Any]] = None):
@@ -1388,7 +2090,7 @@ def _write_dead_letter(job_id: str, reason: str, payload: Optional[Dict[str, Any
         "job_id": job_id,
         "reason": reason,
         "payload": payload or {},
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": _utcnow().isoformat() + "Z",
     }
     try:
         with open(os.path.join(DEAD_LETTER_DIR, f"{job_id}.json"), "w", encoding="utf-8") as f:
@@ -1399,7 +2101,9 @@ def _write_dead_letter(job_id: str, reason: str, payload: Optional[Dict[str, Any
     db = get_db()
     if db:
         try:
-            db.collection("export_dead_letter").document(job_id).set(data, merge=True)
+            db.collection("export_dead_letter").document(job_id).set(
+                {**data, "expire_at": _retention_deadline(30)}, merge=True
+            )
         except Exception as e:
             _json_log("warning", "dead_letter_db_write_failed", job_id=job_id, error=str(e))
 
@@ -1470,7 +2174,7 @@ def _write_last_export_request_debug(
             "captions_count": len(captions),
             "word_layout_count": len(word_layouts or {}),
             "should_use_dom_template_renderer": should_use_dom,
-            "written_at": datetime.utcnow().isoformat() + "Z",
+            "written_at": _utcnow().isoformat() + "Z",
         }
         with open(os.path.join(CACHE_DIR, "last_export_request_debug.json"), "w", encoding="utf-8") as f:
             json.dump(debug_payload, f, indent=2, ensure_ascii=False)
@@ -1491,6 +2195,9 @@ def _require_export_job_access(request: Request, job: Dict[str, Any]) -> str:
         raise HTTPException(status_code=404, detail="Export job owner not found")
 
     token = _extract_bearer_token(request)
+    if _is_explicit_dev_auth_token(token) and owner_uid == "dev-local-user":
+        return owner_uid
+
     decoded = verify_token(token) if token else None
     if decoded:
         request_uid = (decoded.get("uid") or "").strip()
@@ -1550,7 +2257,11 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
             raise HTTPException(status_code=403 if "UPGRADE_REQUIRED" in policy_error or "PLAN_EXPIRED" in policy_error else 429, detail=policy_error)
         credits = int(user_data.get('credits_remaining', 0) or 0)
     else:
-        _log(rid, "Firestore unavailable; skipping credit policy checks")
+        if not ALLOW_EXPORT_WITHOUT_DB:
+            # Rendering is a metered operation. Continuing without the source of
+            # truth for credits turns a database outage into a billing bypass.
+            raise HTTPException(status_code=503, detail="Account and credit service is temporarily unavailable")
+        _log(rid, "Firestore unavailable; explicit local export bypass enabled")
 
     user_tier = _normalize_tier_name(user_data.get("subscription_tier", "free") if user_data else "free")
     preset = _resolve_export_preset(user_tier, req.quality, req.fps)
@@ -1564,7 +2275,12 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
     if not input_path:
         raise HTTPException(status_code=404, detail="Video not found")
 
-    captions = [c.model_dump(by_alias=True) for c in req.captions]
+    source_meta = _probe_media(input_path)
+    source_duration = float((source_meta.get("format") or {}).get("duration") or 0)
+    captions = _normalize_export_captions_for_media(
+        [c.model_dump(by_alias=True) for c in req.captions],
+        source_duration,
+    )
     # Reuse rendered artifact for identical request payload.
     media_hash = _compute_media_hash(input_path)
     request_hash = hashlib.sha256(json.dumps({
@@ -1575,6 +2291,7 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
         "word_layouts": req.word_layouts,
         "quality": preset["quality"],
         "fps": preset["fps"],
+        "export_aspect_ratio": req.export_aspect_ratio,
     }, sort_keys=True).encode("utf-8")).hexdigest()
     cached_render_path = os.path.join(RENDER_CACHE_DIR, f"{request_hash}.mp4")
     template_export_active = bool(
@@ -1618,9 +2335,13 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
         queue_wait_ms = int((processing_started_at - queue_entered_at) * 1000)
         _set_export_job(export_job_id, "processing", processing_started_at=processing_started_at, queue_wait_ms=queue_wait_ms)
         _log(rid, f"Starting render now job={export_job_id}")
-        result = await processor.burn_only(input_path, output_path, captions, style_with_quality, req.word_layouts)
+        async with render_semaphore:
+            result = await processor.burn_only(
+                input_path, output_path, captions, style_with_quality, req.word_layouts
+            )
         if not result.get('success'):
-            raise HTTPException(status_code=500, detail=result.get('error') or "Render failed")
+            _json_log("error", "video_render_failed", uid=uid, error=str(result.get('error') or "unknown"))
+            raise HTTPException(status_code=500, detail="Video render failed")
         render_finished_at = time.time()
         render_ms = int((render_finished_at - processing_started_at) * 1000)
         if not template_export_active:
@@ -1629,51 +2350,67 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
             except Exception:
                 pass
 
+    try:
+        rendered_meta = _probe_media(output_path)
+        rendered_duration = float((rendered_meta.get("format") or {}).get("duration") or 0)
+        rendered_has_video = any(
+            stream.get("codec_type") == "video"
+            for stream in (rendered_meta.get("streams") or [])
+        )
+        if not os.path.isfile(output_path) or os.path.getsize(output_path) <= 0 or not rendered_has_video or rendered_duration <= 0:
+            raise ValueError("rendered output is empty or has no valid video stream")
+    except Exception as e:
+        for invalid_path in {output_path, cached_render_path}:
+            if os.path.isfile(invalid_path):
+                try:
+                    os.remove(invalid_path)
+                except OSError:
+                    pass
+        _json_log("error", "render_output_validation_failed", uid=uid, job_id=export_job_id, error=str(e))
+        raise HTTPException(status_code=500, detail="Rendered video failed validation") from e
+
     _set_export_job(export_job_id, "finalizing")
     # Serve local exports through signed same-origin media URLs so the browser can
     # fetch them without exposing the exports directory publicly. Firebase remains
     # the durable history/sharing destination when upload succeeds.
     video_url = ""
     firebase_url = None
-    try:
-        remote_path = f"exports/{uid}/{output_filename}"
-        firebase_url = upload_to_firebase_storage(output_path, remote_path, "video/mp4")
-    except Exception as e:
-        _log(rid, f"Firebase upload failed, using local export: {e}")
-
     retention_hours = 2
     if db_available and user_data:
         current_tier = user_data.get('subscription_tier', 'free')
         if current_tier in PLAN_PRICING:
             retention_hours = PLAN_PRICING[current_tier].get('export_retention_hours', 2)
+    try:
+        remote_path = f"exports/{uid}/{output_filename}"
+        firebase_url = upload_to_firebase_storage(
+            output_path, remote_path, "video/mp4", retention_hours
+        )
+    except Exception as e:
+        _log(rid, f"Firebase upload failed, using local export: {e}")
 
-    expires_at = (datetime.utcnow() + timedelta(hours=retention_hours)).isoformat() + "Z"
-    video_url = _signed_export_url(output_filename, uid, retention_hours * 3600, export_job_id[:8])
+    if _IS_PRODUCTION and not firebase_url:
+        raise HTTPException(status_code=503, detail="Rendered media could not be persisted. Please retry.")
+    expires_at = (_utcnow() + timedelta(hours=retention_hours)).isoformat() + "Z"
+    video_url = _signed_export_url(
+        output_filename, uid, retention_hours * 3600, export_job_id[:8]
+    )
 
     if db_available and user_ref is not None:
-        if not DISABLE_EXPORT_DAILY_LIMIT:
-            recent_exports.append(now)
         history_item = {
             "id": req.file_id,
+            "export_job_id": export_job_id,
             "filename": output_filename,
-            "url": firebase_url or video_url,
+            "url": video_url,
             "createdAt": now * 1000,
             "firebase_path": f"exports/{uid}/{output_filename}" if firebase_url else None
         }
-        current_history = user_data.get('history', []) or []
-        current_history.insert(0, history_item)
-        if len(current_history) > 5:
-            current_history = current_history[:5]
-
-        user_update = {'history': current_history}
-        if not DISABLE_EXPORT_CREDIT_LIMIT:
-            # Atomic decrement: a plain `credits - 1` write clobbers any credits
-            # purchased while this export was rendering. Policy already gated on
-            # credits > 0, so this cannot drive the balance below zero.
-            user_update['credits_remaining'] = firestore.Increment(-1)
-        if not DISABLE_EXPORT_DAILY_LIMIT:
-            user_update['export_timestamps'] = recent_exports
-        user_ref.update(user_update)
+        dropped_history = _record_export_usage(
+            db, user_ref, history_item, now, export_job_id
+        )
+        for dropped in dropped_history:
+            dropped_path = dropped.get("firebase_path") if isinstance(dropped, dict) else ""
+            if dropped_path:
+                delete_from_firebase_storage(dropped_path)
 
     payload = {
         "success": True,
@@ -1702,13 +2439,42 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
     return payload
 
 
-def run_export_job_task(export_job_id: str, req_payload: Dict[str, Any], uid: str):
+def run_export_job_task(
+    export_job_id: str,
+    req_payload: Dict[str, Any],
+    uid: str,
+    idempotency_key: str = "",
+    idempotency_request_hash: str = "",
+):
     rid = f"worker-{export_job_id[:8]}"
+    slot_acquired = False
     try:
+        slot_acquired = _acquire_export_slot(uid, export_job_id)
+        if not slot_acquired:
+            raise RuntimeError("Another export currently owns this account's export slot")
         req = ExportRequest(**req_payload)
-        return asyncio.run(_process_export_job_core(req, uid, rid, export_job_id))
+        payload = asyncio.run(_process_export_job_core(req, uid, rid, export_job_id))
+        if idempotency_key:
+            _idem_set(idempotency_key, {
+                "status": "completed",
+                "ts": time.time(),
+                "payload": payload,
+                "request_hash": idempotency_request_hash,
+                "job_id": export_job_id,
+            })
+        return payload
     except Exception as e:
-        _set_export_job(export_job_id, "failed", failed_at=time.time(), error=str(e))
+        try:
+            _set_export_job(export_job_id, "failed", failed_at=time.time(), error=str(e))
+        except Exception as state_error:
+            _json_log(
+                "error",
+                "export_failure_state_persist_failed",
+                job_id=export_job_id,
+                error=str(state_error),
+            )
+        if idempotency_key:
+            _idem_delete(idempotency_key)
         _write_dead_letter(
             export_job_id,
             str(e),
@@ -1716,29 +2482,14 @@ def run_export_job_task(export_job_id: str, req_payload: Dict[str, Any], uid: st
         )
         raise
     finally:
-        _release_export_slot(uid)
-
-# Debug endpoint: view the last exported ASS file (only in DEBUG_MODE, requires auth)
-@app.get("/api/debug/last-ass")
-async def get_last_ass(request: Request):
-    if not DEBUG_MODE_ENABLED:
-        raise HTTPException(status_code=404, detail="Not found")
-    id_token = (request.headers.get("Authorization") or "").removeprefix("Bearer ").strip()
-    if not id_token or not verify_token(id_token):
-        raise HTTPException(status_code=401, detail="Authentication required")
-    ass_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "last_export_debug.ass")
-    if not os.path.exists(ass_path):
-        return {"error": "No debug ASS file found. Export a video first."}
-    with open(ass_path, "r", encoding="utf-8") as f:
-        content = f.read()
-    # Return content only — never expose server filesystem paths
-    return {"ass_content": content}
+        if slot_acquired:
+            _release_export_slot(uid, export_job_id)
 
 # Google Fonts Cache Map
 _cached_google_fonts = None
 
 @app.get("/api/fonts")
-async def get_google_fonts():
+def get_google_fonts():
     global _cached_google_fonts
     if _cached_google_fonts is not None:
         return {"fonts": _cached_google_fonts}
@@ -1778,31 +2529,38 @@ async def upload_video(file: UploadFile = File(...), request: Request = None, re
             _apply_rate_headers(response, UPLOAD_RATE_LIMIT, remaining, retry_after)
             if not allowed:
                 _track_event("upload_rejected_rate_limited")
-                return {"success": False, "error": "Too many uploads. Please wait before trying again."}
+                raise HTTPException(status_code=429, detail="Too many uploads. Please wait before trying again.")
+            user_allowed, user_retry_after, user_remaining = _check_rate(
+                _upload_rate, f"user:{uid}", UPLOAD_RATE_LIMIT, UPLOAD_RATE_WINDOW
+            )
+            if not user_allowed:
+                _apply_rate_headers(response, UPLOAD_RATE_LIMIT, user_remaining, user_retry_after)
+                _track_event("upload_rejected_rate_limited")
+                raise HTTPException(status_code=429, detail="Too many uploads. Please wait before trying again.")
 
         safe_name = os.path.basename(file.filename or "")
         file_ext = pathlib.Path(safe_name).suffix.lstrip(".").lower()
         if _is_content_safety_blocked(file.filename or ""):
             _track_event("upload_rejected_content_safety")
-            return {"success": False, "error": "Upload blocked by content safety policy."}
+            raise HTTPException(status_code=422, detail="Upload blocked by content safety policy.")
         if file_ext not in ALLOWED_EXTENSIONS:
             _track_event("upload_rejected_extension", {"ext": file_ext})
-            return {"success": False, "error": f"File type .{file_ext} not supported. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}"}
+            raise HTTPException(status_code=415, detail=f"File type .{file_ext} not supported. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}")
 
         content_type = (file.content_type or "").lower()
         guessed_type, _ = mimetypes.guess_type(file.filename or "")
         # application/octet-stream is a generic browser fallback — treat extension check as authoritative
         if content_type and content_type != "application/octet-stream" and not any(content_type.startswith(p) for p in ALLOWED_CONTENT_PREFIXES):
             _track_event("upload_rejected_content_type", {"content_type": content_type})
-            return {"success": False, "error": f"Unsupported MIME type: {content_type}"}
+            raise HTTPException(status_code=415, detail=f"Unsupported MIME type: {content_type}")
         if guessed_type and not any(guessed_type.startswith(p) for p in ALLOWED_CONTENT_PREFIXES):
             _track_event("upload_rejected_guess_type", {"guessed_type": guessed_type})
-            return {"success": False, "error": f"Unsupported file type: {guessed_type}"}
+            raise HTTPException(status_code=415, detail=f"Unsupported file type: {guessed_type}")
 
         content_length = int(request.headers.get('content-length', 0)) if request else 0
         if content_length > MAX_UPLOAD_BYTES:
             _track_event("upload_rejected_too_large", {"content_length": content_length})
-            return {"success": False, "error": "File too large. Maximum 500MB allowed."}
+            raise HTTPException(status_code=413, detail="File too large. Maximum 500MB allowed.")
 
         file_id = str(uuid.uuid4())
         file_path = os.path.join(UPLOAD_DIR, f"{file_id}.{file_ext}")
@@ -1829,18 +2587,18 @@ async def upload_video(file: UploadFile = File(...), request: Request = None, re
             except Exception:
                 pass
             _track_event("upload_rejected_too_large", {"content_length": bytes_written})
-            return {"success": False, "error": "File too large. Maximum 500MB allowed."}
+            raise HTTPException(status_code=413, detail="File too large. Maximum 500MB allowed.")
         _log(rid, f"Upload accepted file_id={file_id} ext={file_ext} bytes={bytes_written}")
-        if not _scan_upload_for_threat(file_path):
+        if not await asyncio.to_thread(_scan_upload_for_threat, file_path):
             try:
                 os.remove(file_path)
             except Exception:
                 pass
             _track_event("upload_rejected_malware_scan")
-            return {"success": False, "error": "Upload failed security scan."}
+            raise HTTPException(status_code=422, detail="Upload failed security scan.")
 
         try:
-            metadata = _probe_media(file_path)
+            metadata = await asyncio.to_thread(_probe_media, file_path)
             duration = float((metadata.get("format") or {}).get("duration") or 0)
         except Exception as probe_error:
             try:
@@ -1848,23 +2606,36 @@ async def upload_video(file: UploadFile = File(...), request: Request = None, re
             except Exception:
                 pass
             _track_event("upload_rejected_ffprobe", {"error": str(probe_error)})
-            return {"success": False, "error": f"Invalid media file: {probe_error}"}
+            raise HTTPException(status_code=422, detail=f"Invalid media file: {probe_error}")
 
         max_seconds = 180
         if duration > max_seconds:
             os.remove(file_path)
             _track_event("upload_rejected_duration", {"duration": duration})
-            return {"success": False, "error": f"Video is {duration:.0f}s. Maximum allowed is {max_seconds // 60} minutes."}
+            raise HTTPException(status_code=413, detail=f"Video is {duration:.0f}s. Maximum allowed is {max_seconds // 60} minutes.")
+
+        remote_path = await asyncio.to_thread(
+            upload_source_media, file_path, uid, file_id, file_ext, 6
+        )
+        if _IS_PRODUCTION and not remote_path:
+            try:
+                os.remove(file_path)
+            except OSError:
+                pass
+            raise HTTPException(status_code=503, detail="Durable media storage is unavailable. Please retry.")
 
         _track_event("upload_success", {"ext": file_ext})
-        _remember_upload_owner(file_id, uid)
+        owner_persisted = _remember_upload_owner(file_id, uid, remote_path or "", file_ext)
+        if _IS_PRODUCTION and not owner_persisted:
+            raise HTTPException(status_code=503, detail="Upload ownership could not be persisted. Please retry.")
         _audit_action("upload_success", uid, {"file_id": file_id, "ext": file_ext, "duration": duration})
         return {"success": True, "file_id": file_id, "raw_url": _signed_upload_url(file_id, uid)}
     except HTTPException:
         raise
     except Exception as e:
         _track_event("upload_failed", {"error": str(e)})
-        return {"success": False, "error": str(e)}
+        _json_log("error", "upload_failed", request_id=rid, error=str(e))
+        raise HTTPException(status_code=500, detail=f"Upload failed. Reference: {rid}") from e
 
 @app.post("/api/process")
 async def process_video(req: ProcessRequest, request: Request, response: Response):
@@ -1877,16 +2648,39 @@ async def process_video(req: ProcessRequest, request: Request, response: Respons
     if not allowed:
         _track_event("process_rejected_rate_limited")
         raise HTTPException(status_code=429, detail="Too many transcription requests. Please wait before trying again.")
+    user_allowed, user_retry_after, user_remaining = _check_rate(
+        _process_rate, f"user:{uid}", PROCESS_RATE_LIMIT
+    )
+    if not user_allowed:
+        _apply_rate_headers(response, PROCESS_RATE_LIMIT, user_remaining, user_retry_after)
+        _track_event("process_rejected_rate_limited")
+        raise HTTPException(status_code=429, detail="Too many transcription requests. Please wait before trying again.")
     if not _validate_file_id(req.file_id):
         raise HTTPException(status_code=400, detail="Invalid file_id")
     _assert_upload_owner(req.file_id, uid)
     input_path = _safe_find_upload(req.file_id)
     if not input_path:
         _track_event("process_failed_not_found")
-        return {"success": False, "error": "File not found"}
+        raise HTTPException(status_code=404, detail="File not found")
+
+    # Enforce the per-plan maximum source length. /api/upload only applies a
+    # global 180s ceiling; paid plans advertise tighter caps (starter=120s) that
+    # can only be enforced here, where the caller's tier is known. Checked before
+    # the cache lookup so a result cached by a higher tier can't be replayed to a
+    # lower-tier user with a too-long video.
+    user_tier = _normalize_tier_name(await asyncio.to_thread(_lookup_subscription_tier, uid))
+    max_seconds = _max_video_seconds_for_tier(user_tier)
+    try:
+        _probe_meta = await asyncio.to_thread(_probe_media, input_path)
+        media_duration = float((_probe_meta.get("format") or {}).get("duration") or 0)
+    except Exception:
+        media_duration = 0.0
+    if media_duration > max_seconds + 0.5:
+        _track_event("process_rejected_duration", {"tier": user_tier, "duration": media_duration, "max_seconds": max_seconds})
+        raise HTTPException(status_code=403, detail=f"Your plan allows videos up to {max_seconds}s. This video is {media_duration:.0f}s long.")
 
     try:
-        media_hash = _compute_media_hash(input_path)
+        media_hash = await asyncio.to_thread(_compute_media_hash, input_path)
         cache_path = _build_process_cache_path(media_hash, req.language, req.min_words, req.max_words)
     except Exception:
         media_hash = ""
@@ -1896,18 +2690,37 @@ async def process_video(req: ProcessRequest, request: Request, response: Respons
         try:
             with open(cache_path, "r", encoding="utf-8") as f:
                 cached = json.load(f)
+            if cached.get("success") and not (cached.get("captions") or []):
+                raise HTTPException(
+                    status_code=422,
+                    detail="No speech with usable word timestamps was detected.",
+                )
             cached["cached"] = True
             _track_event("process_cache_hit", {"language": req.language})
             return cached
+        except HTTPException:
+            raise
         except Exception:
             pass
 
-    result = await processor.generate_captions_only(
-        input_path,
-        target_language=req.language,
-        min_words=req.min_words,
-        max_words=req.max_words,
-    )
+    await asyncio.to_thread(_reserve_ai_quota, uid, "process")
+
+    def _generate_captions_in_worker_thread():
+        return asyncio.run(processor.generate_captions_only(
+            input_path,
+            target_language=req.language,
+            min_words=req.min_words,
+            max_words=req.max_words,
+        ))
+
+    result = await asyncio.to_thread(_generate_captions_in_worker_thread)
+
+    if result.get("success") and not (result.get("captions") or []):
+        result = {
+            "success": False,
+            "error": "No speech with usable word timestamps was detected.",
+            "error_code": "NO_SPEECH_DETECTED",
+        }
 
     if result.get("success"):
         _track_event("process_success", {"language": req.language})
@@ -1919,15 +2732,13 @@ async def process_video(req: ProcessRequest, request: Request, response: Respons
                 print(f"[Cache] Failed to write transcription cache: {e}")
     else:
         _track_event("process_failed", {"language": req.language, "error": result.get("error", "unknown")})
+        status_code = 422 if result.get("error_code") == "NO_SPEECH_DETECTED" else 502
+        raise HTTPException(
+            status_code=status_code,
+            detail=result.get("error", "Transcription service failed"),
+        )
 
     return result
-
-@app.post("/api/export-parity-signature")
-async def export_parity_signature(req: ParitySignatureRequest):
-    return {
-        "success": True,
-        "signature": _build_parity_signature(req.captions, req.style, req.word_layouts),
-    }
 
 @app.post("/api/export")
 async def export_video(req: ExportRequest, request: Request, response: Response):
@@ -1941,15 +2752,17 @@ async def export_video(req: ExportRequest, request: Request, response: Response)
     if decoded_token.get("_dev_mode"):
         _log(rid, "Using explicit debug auth bypass token")
 
-    # Temporary escape hatch while export parity issues are under active repair:
-    # keep concurrent-export protection, but allow retries even after repeated failures.
-    if not DISABLE_EXPORT_FAILURE_RATE_LIMIT:
-        now_ts = time.time()
-        recent_failures = _get_recent_export_failures(uid)
-        if len(recent_failures) >= EXPORT_FAILURE_LIMIT:
-            retry_after = max(1, int(EXPORT_FAILURE_WINDOW - (now_ts - min(recent_failures))))
-            response.headers["Retry-After"] = str(retry_after)
-            raise HTTPException(status_code=429, detail="Too many failed export attempts. Please retry after a short wait.")
+    now_ts = time.time()
+    recent_failures = _get_recent_export_failures(uid)
+    if len(recent_failures) >= EXPORT_FAILURE_LIMIT:
+        retry_after = max(1, int(EXPORT_FAILURE_WINDOW - (now_ts - min(recent_failures))))
+        response.headers["Retry-After"] = str(retry_after)
+        raise HTTPException(status_code=429, detail="Too many failed export attempts. Please retry after a short wait.")
+
+    safe_request_snapshot = _sanitize_export_request_payload(req.model_dump(by_alias=True))
+    idempotency_request_hash = hashlib.sha256(
+        json.dumps(safe_request_snapshot, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()
 
     # Idempotency key support to prevent duplicate renders/charges.
     raw_idem = (req.idempotency_key or request.headers.get("x-idempotency-key") or "").strip()
@@ -1962,37 +2775,53 @@ async def export_video(req: ExportRequest, request: Request, response: Response)
     if idem_key:
         cached = _idem_get(idem_key)
         if cached and (time.time() - cached.get("ts", 0) < 6 * 3600):
+            cached_request_hash = cached.get("request_hash", "")
+            if cached_request_hash and cached_request_hash != idempotency_request_hash:
+                raise HTTPException(
+                    status_code=409,
+                    detail="This idempotency key was already used for a different export request.",
+                )
             if cached.get("status") == "completed" and not auto_idem:
                 _log(rid, f"Idempotent replay for key={raw_idem[:16]}")
                 return {**cached["payload"], "idempotent_replay": True}
             if cached.get("status") == "in_progress":
+                if cached.get("payload") and not auto_idem:
+                    return {**cached["payload"], "idempotent_replay": True}
                 raise HTTPException(status_code=409, detail="Export with this idempotency key is already in progress.")
-        _idem_set(idem_key, {"status": "in_progress", "ts": time.time()})
+        _idem_set(idem_key, {
+            "status": "in_progress",
+            "ts": time.time(),
+            "request_hash": idempotency_request_hash,
+        })
 
     # Per-user concurrent export guard.
-    if not _acquire_export_slot(uid):
+    export_job_id = str(uuid.uuid4())
+    if not _acquire_export_slot(uid, export_job_id):
         if idem_key:
             _idem_delete(idem_key)
         raise HTTPException(status_code=429, detail="Another export is already running for this account. Please wait.")
 
-    export_job_id = str(uuid.uuid4())
-    safe_request_snapshot = _sanitize_export_request_payload(req.model_dump(by_alias=True))
-    _set_export_job(
-        export_job_id,
-        "queued",
-        uid=uid,
-        file_id=req.file_id,
-        quality=req.quality,
-        started_at=time.time(),
-        request_snapshot=safe_request_snapshot,
-    )
-
     release_export_slot_in_request = True
     try:
+        _set_export_job(
+            export_job_id,
+            "queued",
+            uid=uid,
+            file_id=req.file_id,
+            quality=req.quality,
+            started_at=time.time(),
+            request_snapshot=safe_request_snapshot,
+        )
         if _export_queue is not None:
             _export_queue.enqueue_call(
                 func=run_export_job_task,
-                args=(export_job_id, safe_request_snapshot, uid),
+                args=(
+                    export_job_id,
+                    safe_request_snapshot,
+                    uid,
+                    idem_key if not auto_idem else "",
+                    idempotency_request_hash,
+                ),
                 job_id=export_job_id,
                 retry=RQRetry(max=3, interval=[10, 30, 60]) if RQRetry else None,
                 result_ttl=24 * 3600,
@@ -2000,19 +2829,40 @@ async def export_video(req: ExportRequest, request: Request, response: Response)
             )
             _audit_action("export_enqueued", uid, {"job_id": export_job_id, "file_id": req.file_id})
             release_export_slot_in_request = False
-            return {
+            queued_payload = {
                 "success": True,
                 "queued": True,
                 "export_job_id": export_job_id,
                 "status": "queued",
             }
+            # Explicit keys remain in progress until the worker stores a terminal result.
+            # Replays with the same explicit key return this queued job while it runs.
+            # Auto keys are cleared because the per-user lease blocks double-clicks.
+            if idem_key:
+                if auto_idem:
+                    _idem_delete(idem_key)
+                else:
+                    _idem_set(idem_key, {
+                        "status": "in_progress",
+                        "ts": time.time(),
+                        "payload": queued_payload,
+                        "request_hash": idempotency_request_hash,
+                        "job_id": export_job_id,
+                    })
+            return queued_payload
 
         payload = await _process_export_job_core(req, uid, rid, export_job_id)
         if idem_key:
             if auto_idem:
                 _idem_delete(idem_key)
             else:
-                _idem_set(idem_key, {"status": "completed", "ts": time.time(), "payload": payload})
+                _idem_set(idem_key, {
+                    "status": "completed",
+                    "ts": time.time(),
+                    "payload": payload,
+                    "request_hash": idempotency_request_hash,
+                    "job_id": export_job_id,
+                })
         return payload
 
     except HTTPException as http_ex:
@@ -2038,23 +2888,14 @@ async def export_video(req: ExportRequest, request: Request, response: Response)
         )
         if idem_key:
             _idem_delete(idem_key)
-        raise HTTPException(status_code=500, detail=f"Export failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Export failed. Reference: {rid}")
     finally:
         if release_export_slot_in_request:
-            _release_export_slot(uid)
+            _release_export_slot(uid, export_job_id)
 
 @app.get("/api/export-status/{job_id}")
-async def export_status(job_id: str, request: Request):
-    job = _export_jobs.get(job_id)
-    if not job:
-        db = get_db()
-        if db:
-            try:
-                snap = db.collection("export_jobs").document(job_id).get()
-                if snap.exists:
-                    job = snap.to_dict() or {}
-            except Exception:
-                pass
+def export_status(job_id: str, request: Request):
+    job = _load_export_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Export job not found")
     _require_export_job_access(request, job)
@@ -2068,17 +2909,8 @@ async def export_status(job_id: str, request: Request):
 
 
 @app.get("/api/export-result/{job_id}")
-async def export_result(job_id: str, request: Request):
-    job = _export_jobs.get(job_id)
-    if not job:
-        db = get_db()
-        if db:
-            try:
-                snap = db.collection("export_jobs").document(job_id).get()
-                if snap.exists:
-                    job = snap.to_dict() or {}
-            except Exception:
-                pass
+def export_result(job_id: str, request: Request):
+    job = _load_export_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Export job not found")
     _require_export_job_access(request, job)
@@ -2091,7 +2923,7 @@ async def export_result(job_id: str, request: Request):
 
 
 @app.post("/api/export-replay/{job_id}")
-async def export_replay(job_id: str, request: Request):
+def export_replay(job_id: str, request: Request):
     if _export_queue is None:
         raise HTTPException(status_code=503, detail="Durable queue is not configured")
     db = get_db()
@@ -2102,26 +2934,55 @@ async def export_replay(job_id: str, request: Request):
         raise HTTPException(status_code=404, detail="Export job not found")
     job = snap.to_dict() or {}
     _require_export_job_access(request, job)
+    if (job.get("status") or "").lower() != "failed":
+        raise HTTPException(
+            status_code=409,
+            detail="Only failed export jobs can be replayed.",
+        )
     request_snapshot = job.get("request_snapshot")
     uid = job.get("uid", "")
     if not request_snapshot:
         raise HTTPException(status_code=400, detail="No request snapshot found to replay")
     new_job_id = str(uuid.uuid4())
-    _set_export_job(new_job_id, "queued", uid=uid, file_id=request_snapshot.get("file_id"), started_at=time.time(), request_snapshot=request_snapshot)
-    _export_queue.enqueue_call(
-        func=run_export_job_task,
-        args=(new_job_id, request_snapshot, uid),
-        job_id=new_job_id,
-        retry=RQRetry(max=3, interval=[10, 30, 60]) if RQRetry else None,
-        result_ttl=24 * 3600,
-        failure_ttl=7 * 24 * 3600,
-    )
+    if not _acquire_export_slot(uid, new_job_id):
+        raise HTTPException(
+            status_code=429,
+            detail="Another export is already running for this account. Please wait.",
+        )
+    try:
+        _set_export_job(
+            new_job_id,
+            "queued",
+            uid=uid,
+            file_id=request_snapshot.get("file_id"),
+            started_at=time.time(),
+            request_snapshot=request_snapshot,
+            replayed_from=job_id,
+        )
+        _export_queue.enqueue_call(
+            func=run_export_job_task,
+            args=(new_job_id, request_snapshot, uid),
+            job_id=new_job_id,
+            retry=RQRetry(max=3, interval=[10, 30, 60]) if RQRetry else None,
+            result_ttl=24 * 3600,
+            failure_ttl=7 * 24 * 3600,
+        )
+    except Exception as e:
+        try:
+            _set_export_job(new_job_id, "failed", failed_at=time.time(), error=str(e))
+        finally:
+            _release_export_slot(uid, new_job_id)
+        raise HTTPException(status_code=503, detail="Export replay could not be queued") from e
     _audit_action("export_replay_enqueued", uid, {"source_job_id": job_id, "new_job_id": new_job_id})
     return {"success": True, "export_job_id": new_job_id, "status": "queued"}
 
 
 @app.get("/api/analytics/summary")
-async def analytics_summary():
+async def analytics_summary(request: Request):
+    # Ops-internal counters and failure rates — admin only. Exposing these
+    # unauthenticated hands anyone a live view of business/operational health.
+    if not _is_admin_token(request=request):
+        raise HTTPException(status_code=403, detail="Admin access required")
     export_success = _analytics_counters.get("export_success", 0)
     export_failed = _analytics_counters.get("export_failed_http", 0) + _analytics_counters.get("export_failed_exception", 0)
     process_success = _analytics_counters.get("process_success", 0)
@@ -2135,12 +2996,12 @@ async def analytics_summary():
             "export_failure_rate": (export_failed / max(export_success + export_failed, 1)),
             "process_failure_rate": (process_failed / max(process_success + process_failed, 1)),
         },
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": _utcnow().isoformat() + "Z",
     }
 
 @app.get("/api/v1/analytics/summary")
-async def analytics_summary_v1():
-    return await analytics_summary()
+async def analytics_summary_v1(request: Request):
+    return await analytics_summary(request)
 
 @app.post("/api/analytics/track")
 async def analytics_track(request: Request, response: Response):
@@ -2189,23 +3050,107 @@ async def api_health():
 async def api_version_v1():
     return await api_version()
 
+
+_dependency_snapshot_cache: Dict[str, Any] = {"checked_at": 0.0, "value": None}
+_dependency_snapshot_lock = threading.Lock()
+
+
+def _runtime_dependency_snapshot() -> Dict[str, Any]:
+    now_ts = time.time()
+    with _dependency_snapshot_lock:
+        cached = _dependency_snapshot_cache.get("value")
+        if cached and now_ts - float(_dependency_snapshot_cache.get("checked_at", 0)) < 15:
+            return cached
+
+    checks: Dict[str, bool] = {
+        "ffmpeg": shutil.which("ffmpeg") is not None,
+        "ffprobe": shutil.which("ffprobe") is not None,
+        "node": shutil.which("node") is not None,
+        "redis": _redis_client is not None,
+        "firestore": False,
+        "storage": False,
+        "export_worker": not DURABLE_QUEUE_ENABLED,
+        "scratch_disk": False,
+    }
+    details: Dict[str, Any] = {}
+    if _redis_client is not None:
+        try:
+            checks["redis"] = bool(_redis_client.ping())
+        except Exception:
+            checks["redis"] = False
+    try:
+        db = get_db()
+        if db:
+            next(iter(db.collection("_readiness_probe").limit(1).stream()), None)
+            checks["firestore"] = True
+    except Exception as e:
+        details["firestore_error"] = str(e)[:200]
+    try:
+        bucket = get_storage_bucket()
+        checks["storage"] = bool(bucket and bucket.exists())
+    except Exception as e:
+        details["storage_error"] = str(e)[:200]
+    if DURABLE_QUEUE_ENABLED and checks["redis"] and RQWorker is not None:
+        try:
+            workers = RQWorker.all(connection=_redis_client)
+            worker_count = 0
+            for worker in workers:
+                queue_names = getattr(worker, "queue_names", [])
+                if callable(queue_names):
+                    queue_names = queue_names()
+                if EXPORT_QUEUE_NAME in set(queue_names or []):
+                    worker_count += 1
+            details["worker_count"] = worker_count
+            checks["export_worker"] = worker_count > 0
+        except Exception as e:
+            details["worker_error"] = str(e)[:200]
+    try:
+        disk = shutil.disk_usage(MEDIA_SCRATCH_ROOT)
+        details["scratch_free_bytes"] = disk.free
+        checks["scratch_disk"] = disk.free >= 2 * 1024 * 1024 * 1024
+    except Exception as e:
+        details["scratch_disk_error"] = str(e)[:200]
+
+    value = {"ready": all(checks.values()), "checks": checks, "details": details}
+    with _dependency_snapshot_lock:
+        _dependency_snapshot_cache.update({"checked_at": now_ts, "value": value})
+    return value
+
 @app.get("/api/slo/status")
-async def slo_status():
+async def slo_status(request: Request):
+    # Detailed SLO targets/actuals — admin only. Health probes should use
+    # /api/health/readiness (boolean) instead.
+    if not _is_admin_token(request=request):
+        raise HTTPException(status_code=403, detail="Admin access required")
     return _build_slo_snapshot()
 
 @app.get("/api/health/readiness")
-async def readiness():
+async def readiness(request: Request):
+    # Public readiness probe: exposes only the boolean gate result. Detailed SLO
+    # actuals and queue wiring are admin-gated (see /api/slo/status) so an
+    # anonymous caller can't read operational internals.
     snapshot = _build_slo_snapshot()
-    return {
+    dependencies = await asyncio.to_thread(_runtime_dependency_snapshot) if _IS_PRODUCTION else {
+        "ready": True,
+        "checks": {},
+        "details": {},
+    }
+    ready = bool(snapshot.get("release_gate_passed", True) and dependencies.get("ready", False))
+    body = {
         "success": True,
-        "ready": snapshot.get("release_gate_passed", True),
-        "slo": snapshot,
-        "queue": {
+        "ready": ready,
+    }
+    if _is_admin_token(request=request):
+        body["slo"] = snapshot
+        body["queue"] = {
             "durable_enabled": DURABLE_QUEUE_ENABLED,
             "queue_name": EXPORT_QUEUE_NAME,
             "connected": _export_queue is not None,
-        },
-    }
+        }
+        body["dependencies"] = dependencies
+    if not ready:
+        return JSONResponse(status_code=503, content=body)
+    return body
 
 @app.get("/api/feature-flags")
 async def feature_flags(request: Request):
@@ -2214,9 +3159,7 @@ async def feature_flags(request: Request):
     decoded = verify_token(token) if token else None
     if not decoded:
         raise HTTPException(status_code=401, detail="Auth required")
-    if decoded.get("admin") is not True and decoded.get("email", "").lower() not in {
-        e.strip().lower() for e in os.environ.get("ADMIN_EMAILS", "").split(",") if e.strip()
-    }:
+    if not _decoded_token_is_admin(decoded):
         raise HTTPException(status_code=403, detail="Admin role required")
     return {
         "success": True,
@@ -2237,26 +3180,6 @@ def _resolve_plan_from_amount_currency(amount_minor: int, currency: str) -> Opti
             return plan_key
     return None
 
-def _parse_ts_maybe(value: Any) -> Optional[datetime]:
-    if not value:
-        return None
-    if isinstance(value, datetime):
-        return value
-    if isinstance(value, str):
-        v = value.strip()
-        if not v:
-            return None
-        if v.endswith("Z"):
-            v = v[:-1] + "+00:00"
-        try:
-            dt = datetime.fromisoformat(v)
-            if dt.tzinfo is not None:
-                dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
-            return dt
-        except Exception:
-            return None
-    return None
-
 def _can_trigger_reconcile(request: Request, req_body: ReconcilePaymentsRequest) -> bool:
     secret_header = (request.headers.get("x-reconcile-secret") or "").strip()
     if PAYMENT_RECONCILE_SECRET and secret_header and hmac.compare_digest(secret_header, PAYMENT_RECONCILE_SECRET):
@@ -2268,15 +3191,23 @@ def _can_trigger_reconcile(request: Request, req_body: ReconcilePaymentsRequest)
     if not decoded:
         return False
 
+    return _decoded_token_is_admin(decoded)
+
+def _decoded_token_is_admin(decoded: Optional[Dict[str, Any]]) -> bool:
+    if not decoded:
+        return False
     if decoded.get("admin") is True:
         return True
-
     allowed_admins = {
         e.strip().lower()
         for e in os.environ.get("ADMIN_EMAILS", "").split(",")
         if e.strip()
     }
-    return bool(allowed_admins and decoded.get("email", "").lower() in allowed_admins)
+    return bool(
+        decoded.get("email_verified") is True
+        and allowed_admins
+        and decoded.get("email", "").lower() in allowed_admins
+    )
 
 def _is_admin_token(id_token: str = "", request: Optional[Request] = None) -> bool:
     token = (id_token or "").strip()
@@ -2287,14 +3218,7 @@ def _is_admin_token(id_token: str = "", request: Optional[Request] = None) -> bo
     decoded = verify_token(token)
     if not decoded:
         return False
-    if decoded.get("admin") is True:
-        return True
-    allowed_admins = {
-        e.strip().lower()
-        for e in os.environ.get("ADMIN_EMAILS", "").split(",")
-        if e.strip()
-    }
-    return bool(allowed_admins and decoded.get("email", "").lower() in allowed_admins)
+    return _decoded_token_is_admin(decoded)
 
 def reconcile_payments_once(
     reason: str = "manual",
@@ -2307,13 +3231,14 @@ def reconcile_payments_once(
 
     lookback = max(int(lookback_hours or 1), 1)
     query_limit = max(1, min(int(limit or PAYMENT_RECONCILE_BATCH_SIZE), 1000))
-    cutoff = datetime.utcnow() - timedelta(hours=lookback)
+    cutoff = _utcnow() - timedelta(hours=lookback)
+    cutoff_iso = cutoff.isoformat() + "Z"
     summary = {
         "success": True,
         "reason": reason,
         "lookback_hours": lookback,
         "limit": query_limit,
-        "cutoff_utc": cutoff.isoformat() + "Z",
+        "cutoff_utc": cutoff_iso,
         "scanned": 0,
         "applied": 0,
         "duplicates": 0,
@@ -2324,23 +3249,20 @@ def reconcile_payments_once(
     try:
         docs = (
             db.collection("payment_webhooks")
-            .order_by("received_at", direction=firestore.Query.DESCENDING)
+            .where(filter=firestore.FieldFilter("event", "==", "payment.captured"))
+            .where(filter=firestore.FieldFilter("status", "==", "captured"))
+            .where(filter=firestore.FieldFilter("reconcile_required", "==", True))
+            .where(filter=firestore.FieldFilter("received_at", ">=", cutoff_iso))
+            .order_by("received_at", direction=firestore.Query.ASCENDING)
             .limit(query_limit)
             .stream()
         )
     except Exception as e:
         _json_log("error", "payment_reconcile_query_failed", error=str(e))
-        return {"success": False, "error": "Failed to query payment webhooks", "details": str(e)}
+        return {"success": False, "error": "Failed to query payment webhooks"}
 
     for doc in docs:
         row = doc.to_dict() or {}
-        received_at = _parse_ts_maybe(row.get("received_at"))
-        if received_at and received_at < cutoff:
-            continue
-
-        if row.get("event") != "payment.captured" or row.get("status") != "captured":
-            continue
-
         summary["scanned"] += 1
         payment_id = (row.get("payment_id") or "").strip()
         notes = row.get("notes") or {}
@@ -2386,6 +3308,10 @@ def reconcile_payments_once(
                 summary["duplicates"] += 1
             else:
                 summary["applied"] += 1
+            doc.reference.update({
+                "reconcile_required": False,
+                "reconciled_at": _utcnow().isoformat() + "Z",
+            })
         except HTTPException as e:
             summary["errors"] += 1
             _json_log(
@@ -2400,10 +3326,13 @@ def reconcile_payments_once(
             summary["errors"] += 1
             _json_log("error", "payment_reconcile_apply_exception", payment_id=payment_id, uid=uid, error=str(e))
 
-    summary["run_at"] = datetime.utcnow().isoformat() + "Z"
+    summary["run_at"] = _utcnow().isoformat() + "Z"
     _json_log("info", "payment_reconcile_summary", **summary)
     try:
-        db.collection("payment_reconcile_runs").add(summary)
+        db.collection("payment_reconcile_runs").add({
+            **summary,
+            "expire_at": _retention_deadline(90),
+        })
     except Exception as e:
         _json_log("warning", "payment_reconcile_persist_failed", error=str(e))
     if summary["errors"] >= RECONCILE_ERROR_ALERT_THRESHOLD or summary["skipped"] >= RECONCILE_SKIPPED_ALERT_THRESHOLD:
@@ -2418,6 +3347,94 @@ async def payment_reconciliation_job():
         reconcile_payments_once(reason="scheduled")
     except Exception as e:
         _json_log("error", "payment_reconcile_job_failed", error=str(e))
+
+
+def _grant_payment_transactionally(
+    db,
+    user_ref,
+    payment_ref,
+    uid: str,
+    plan_id: str,
+    plan_config: Dict[str, Any],
+    payment_id: str,
+    order_id: str,
+    amount_minor: int,
+    currency: str,
+    source: str,
+    org_id: str,
+):
+    now_utc = _utcnow()
+    cycle_start = now_utc.isoformat() + "Z"
+    is_topup = bool(plan_config.get("is_topup", False))
+    credits_to_add = int(plan_config["credits"])
+    cycle_end = None if is_topup else (
+        now_utc + timedelta(days=int(plan_config["days"]))
+    ).isoformat() + "Z"
+
+    @firestore.transactional
+    def _grant(transaction):
+        payment_doc = payment_ref.get(transaction=transaction)
+        if payment_doc.exists:
+            existing = payment_doc.to_dict() or {}
+            return {"success": True, "duplicate": True, "type": existing.get("type", "unknown")}
+
+        user_doc = user_ref.get(transaction=transaction)
+        user_data = user_doc.to_dict() if user_doc.exists else {}
+        payment_type = "topup" if is_topup else "subscription"
+
+        if is_topup:
+            if not user_doc.exists:
+                raise HTTPException(status_code=404, detail="User not found. Purchase a plan first.")
+            base_tier = _effective_subscription_tier(user_data).replace("_yearly", "")
+            if base_tier not in {"starter", "creator", "pro"}:
+                raise HTTPException(status_code=403, detail="UPGRADE_REQUIRED: Top-ups available for paid plans only.")
+            if plan_id != f"topup_{base_tier}":
+                raise HTTPException(status_code=403, detail="This top-up is not available for your current plan.")
+
+        transaction.create(payment_ref, {
+            "payment_id": payment_id,
+            "order_id": order_id,
+            "amount": amount_minor,
+            "currency": (currency or "INR").upper(),
+            "status": "captured",
+            "plan": plan_id,
+            "credits_added": credits_to_add,
+            "type": payment_type,
+            "timestamp": cycle_start,
+            "source": source,
+            **({"org_id": org_id} if org_id else {}),
+        })
+
+        if is_topup:
+            transaction.update(user_ref, {
+                "credits_remaining": firestore.Increment(credits_to_add),
+                "topups_this_cycle": firestore.Increment(1),
+                **({"org_id": org_id} if org_id else {}),
+            })
+            return {"success": True, "credits_added": credits_to_add, "type": "topup"}
+
+        user_update = {
+            "credits_remaining": firestore.Increment(credits_to_add) if user_doc.exists else credits_to_add,
+            "subscription_tier": plan_id,
+            "billing_cycle_start": cycle_start,
+            "billing_cycle_end": cycle_end,
+            "subscription_expiry": cycle_end,
+            "topups_this_cycle": 0,
+            **({"org_id": org_id} if org_id else {}),
+        }
+        if user_doc.exists:
+            transaction.update(user_ref, user_update)
+        else:
+            transaction.set(user_ref, {"uid": uid, "created_at": time.time(), **user_update})
+        return {
+            "success": True,
+            "credits_added": credits_to_add,
+            "billing_cycle_end": cycle_end,
+            "type": "subscription",
+        }
+
+    return _grant(db.transaction())
+
 
 def _apply_successful_payment(uid: str, plan_id: str, payment_id: str, order_id: str, amount_minor: int, currency: str, source: str = "client_verify", org_id: str = ""):
     plan_config = PLAN_PRICING.get(plan_id)
@@ -2447,124 +3464,28 @@ def _apply_successful_payment(uid: str, plan_id: str, payment_id: str, order_id:
         raise HTTPException(status_code=500, detail="Database not initialized")
 
     user_ref = db.collection('users').document(uid)
-    user_doc = user_ref.get()
-    user_data = user_doc.to_dict() if user_doc.exists else {}
-
     payment_ref = user_ref.collection('payments').document(payment_id)
-    payment_doc = payment_ref.get()
-    if payment_doc.exists:
-        return {"success": True, "duplicate": True, "type": payment_doc.to_dict().get("type", "unknown")}
-
-    now_utc = datetime.utcnow()
-    cycle_start = now_utc.isoformat() + "Z"
-    is_topup = plan_config.get('is_topup', False)
-    credits_to_add = int(plan_config['credits'])
-
-    # CONCURRENCY: this function is reached from three independent paths for the
-    # same payment (client verify, Razorpay webhook, reconciliation job). The
-    # payment record is therefore create()d FIRST as an atomic claim — only the
-    # caller that wins the create applies credits, so a payment can never be
-    # credited twice. Credit changes use firestore.Increment so they compose
-    # with concurrent writes (e.g. an export decrement landing mid-purchase)
-    # instead of overwriting them with stale read-modify-write values.
-    def _claim_payment(record):
-        try:
-            payment_ref.create(record)
-            return True
-        except AlreadyExists:
-            return False
-
-    if is_topup:
-        base_tier = user_data.get('subscription_tier', 'free').replace('_yearly', '')
-        if base_tier not in ['starter', 'creator', 'pro']:
-            raise HTTPException(status_code=403, detail="UPGRADE_REQUIRED: Top-ups available for paid plans only.")
-        expected_topup = f"topup_{base_tier}"
-        if plan_id != expected_topup:
-            raise HTTPException(status_code=403, detail="This top-up is not available for your current plan.")
-        if not user_doc.exists:
-            raise HTTPException(status_code=404, detail="User not found. Purchase a plan first.")
-
-        if not _claim_payment({
-            'payment_id': payment_id,
-            'order_id': order_id,
-            'amount': amount_minor,
-            'currency': (currency or "INR").upper(),
-            'status': 'captured',
-            'plan': plan_id,
-            'credits_added': credits_to_add,
-            'type': 'topup',
-            'timestamp': cycle_start,
-            'source': source,
-            **({'org_id': org_id} if org_id else {}),
-        }):
-            return {"success": True, "duplicate": True, "type": "topup"}
-
-        user_ref.update({
-            'credits_remaining': firestore.Increment(credits_to_add),
-            'topups_this_cycle': firestore.Increment(1),
-            **({'org_id': org_id} if org_id else {}),
-        })
-        return {"success": True, "credits_added": credits_to_add, "type": "topup"}
-
-    tier = plan_id
-    days_to_add = int(plan_config['days'])
-    cycle_end = (now_utc + timedelta(days=days_to_add)).isoformat() + "Z"
-
-    if not _claim_payment({
-        'payment_id': payment_id,
-        'order_id': order_id,
-        'amount': amount_minor,
-        'currency': (currency or "INR").upper(),
-        'status': 'captured',
-        'plan': tier,
-        'credits_added': credits_to_add,
-        'type': 'subscription',
-        'timestamp': cycle_start,
-        'source': source,
-        **({'org_id': org_id} if org_id else {}),
-    }):
-        return {"success": True, "duplicate": True, "type": "subscription"}
-
-    if user_doc.exists:
-        user_ref.update({
-            'credits_remaining': firestore.Increment(credits_to_add),
-            'subscription_tier': tier,
-            'billing_cycle_start': cycle_start,
-            'billing_cycle_end': cycle_end,
-            'subscription_expiry': cycle_end,
-            'topups_this_cycle': 0,
-            **({'org_id': org_id} if org_id else {}),
-        })
-    else:
-        user_ref.set({
-            'uid': uid,
-            'credits_remaining': credits_to_add,
-            'subscription_tier': tier,
-            'billing_cycle_start': cycle_start,
-            'billing_cycle_end': cycle_end,
-            'subscription_expiry': cycle_end,
-            'topups_this_cycle': 0,
-            'created_at': time.time(),
-            **({'org_id': org_id} if org_id else {}),
-        })
-
-    return {"success": True, "credits_added": credits_to_add, "billing_cycle_end": cycle_end, "type": "subscription"}
+    return _grant_payment_transactionally(
+        db, user_ref, payment_ref, uid, plan_id, plan_config, payment_id,
+        order_id, amount_minor, currency, source, org_id,
+    )
 
 # --- RAZORPAY SUBSCRIPTION ENDPOINTS ---
 
 @app.post("/api/create-order")
-async def create_order(req: CreateOrderRequest, request: Request, response: Response):
-    client_ip = request.client.host if request.client else "unknown"
-    allowed, retry_after, remaining = _check_rate(_payment_rate, client_ip, PAYMENT_RATE_LIMIT)
-    _apply_rate_headers(response, PAYMENT_RATE_LIMIT, remaining, retry_after)
-    if not allowed:
-        raise HTTPException(status_code=429, detail="Too many payment requests. Please wait before trying again.")
+def create_order(req: CreateOrderRequest, request: Request, response: Response):
     # Verify User
     decoded_token = verify_token(req.id_token)
     if not decoded_token:
         raise HTTPException(status_code=401, detail="Invalid Authentication Token")
     uid = decoded_token.get("uid", "")
     _assert_tenant_access(uid, decoded_token, req.org_id)
+    client_ip = request.client.host if request.client else "unknown"
+    for rate_key in (f"payment:user:{uid}", f"payment:ip:{client_ip}"):
+        allowed, retry_after, remaining = _check_rate(_payment_rate, rate_key, PAYMENT_RATE_LIMIT)
+        _apply_rate_headers(response, PAYMENT_RATE_LIMIT, remaining, retry_after)
+        if not allowed:
+            raise HTTPException(status_code=429, detail="Too many payment requests. Please wait before trying again.")
     pay_idem_key = _require_payment_idempotency(uid, req.idempotency_key or request.headers.get("x-idempotency-key", ""), "create_order")
     cached_payment = _payment_idem_get(pay_idem_key)
     if cached_payment and cached_payment.get("status") == "completed":
@@ -2578,18 +3499,23 @@ async def create_order(req: CreateOrderRequest, request: Request, response: Resp
     # Top-up: validate caller's current tier before creating order
     if plan.get('is_topup'):
         db_tmp = get_db()
-        if db_tmp:
-            uid_tmp = decoded_token.get('uid')
-            ud = db_tmp.collection('users').document(uid_tmp).get()
-            user_tier_tmp = (ud.to_dict() or {}).get('subscription_tier', 'free') if ud.exists else 'free'
-            # Strip _yearly suffix for comparison
-            base_tier = user_tier_tmp.replace('_yearly', '')
-            if base_tier not in ['starter', 'creator', 'pro']:
-                raise HTTPException(status_code=403, detail="UPGRADE_REQUIRED: Top-ups available for paid plans only.")
-            expected = f"topup_{base_tier}"
-            if req.plan_id != expected:
-                raise HTTPException(status_code=403, detail="This top-up is not available for your current plan.")
-    _payment_idem_set(pay_idem_key, {"status": "in_progress", "ts": time.time()})
+        if not db_tmp:
+            raise HTTPException(status_code=503, detail="Account service unavailable; top-up order was not created")
+        uid_tmp = decoded_token.get('uid')
+        ud = db_tmp.collection('users').document(uid_tmp).get()
+        user_tier_tmp = _effective_subscription_tier(ud.to_dict() or {}) if ud.exists else 'free'
+        # Strip _yearly suffix for comparison
+        base_tier = user_tier_tmp.replace('_yearly', '')
+        if base_tier not in ['starter', 'creator', 'pro']:
+            raise HTTPException(status_code=403, detail="UPGRADE_REQUIRED: Top-ups available for paid plans only.")
+        expected = f"topup_{base_tier}"
+        if req.plan_id != expected:
+            raise HTTPException(status_code=403, detail="This top-up is not available for your current plan.")
+    if not _payment_idem_claim(pay_idem_key):
+        concurrent = _payment_idem_get(pay_idem_key)
+        if concurrent and concurrent.get("status") == "completed":
+            return {**concurrent["payload"], "idempotent_replay": True}
+        raise HTTPException(status_code=409, detail="A payment order with this idempotency key is already in progress.")
 
     currency = req.currency.upper() if req.currency else "INR"
     # Top-ups are INR only; USD only applies to subscription plans
@@ -2600,14 +3526,14 @@ async def create_order(req: CreateOrderRequest, request: Request, response: Resp
         amount = plan.get('usd_cents', plan['inr_paise'])
 
     if not RAZORPAY_AVAILABLE or rzp_client is None:
-        _payment_idem_set(pay_idem_key, {"status": "failed", "ts": time.time(), "error": "razorpay unavailable"})
-        return {"success": False, "error": "Payment service unavailable. Please install razorpay package."}
+        _payment_idem_delete(pay_idem_key)
+        raise HTTPException(status_code=503, detail="Payment service unavailable")
 
     try:
         order_data = {
             "amount": amount,
             "currency": currency,
-            "receipt": f"rcpt_{uid[:8]}_{int(time.time())}",
+            "receipt": f"rcpt_{uid[:8]}_{secrets.token_hex(12)}",
             "notes": {
                 "uid": uid,
                 "plan_id": req.plan_id,
@@ -2616,21 +3542,17 @@ async def create_order(req: CreateOrderRequest, request: Request, response: Resp
             }
         }
         order = rzp_client.order.create(data=order_data)
-        payload = {"success": True, "order": order, "plan_id": req.plan_id, "key_id": RAZORPAY_KEY_ID}
-        _payment_idem_set(pay_idem_key, {"status": "completed", "ts": time.time(), "payload": payload})
-        return payload
     except Exception as e:
-        _payment_idem_set(pay_idem_key, {"status": "failed", "ts": time.time(), "error": str(e)})
+        _payment_idem_delete(pay_idem_key)
         _json_log("error", "razorpay_order_create_failed", uid=uid, plan_id=req.plan_id, error=str(e))
-        return {"success": False, "error": "Payment order could not be created. Please try again."}
+        raise HTTPException(status_code=502, detail="Payment order could not be created. Please try again.") from e
+
+    payload = {"success": True, "order": order, "plan_id": req.plan_id, "key_id": RAZORPAY_KEY_ID}
+    _payment_idem_set(pay_idem_key, {"status": "completed", "ts": time.time(), "payload": payload})
+    return payload
 
 @app.post("/api/verify-payment")
-async def verify_payment(req: VerifyPaymentRequest, request: Request, response: Response):
-    client_ip = request.client.host if request.client else "unknown"
-    allowed, retry_after, remaining = _check_rate(_payment_rate, client_ip, PAYMENT_RATE_LIMIT)
-    _apply_rate_headers(response, PAYMENT_RATE_LIMIT, remaining, retry_after)
-    if not allowed:
-        raise HTTPException(status_code=429, detail="Too many payment requests. Please wait before trying again.")
+def verify_payment(req: VerifyPaymentRequest, request: Request, response: Response):
     if not RAZORPAY_AVAILABLE or rzp_client is None:
         raise HTTPException(status_code=503, detail="Payment service unavailable")
 
@@ -2640,6 +3562,12 @@ async def verify_payment(req: VerifyPaymentRequest, request: Request, response: 
         raise HTTPException(status_code=401, detail="Invalid Authentication Token")
     uid = decoded_token.get('uid')
     _assert_tenant_access(uid, decoded_token, req.org_id)
+    client_ip = request.client.host if request.client else "unknown"
+    for rate_key in (f"payment:user:{uid}", f"payment:ip:{client_ip}"):
+        allowed, retry_after, remaining = _check_rate(_payment_rate, rate_key, PAYMENT_RATE_LIMIT)
+        _apply_rate_headers(response, PAYMENT_RATE_LIMIT, remaining, retry_after)
+        if not allowed:
+            raise HTTPException(status_code=429, detail="Too many payment requests. Please wait before trying again.")
     pay_idem_key = _require_payment_idempotency(uid, req.idempotency_key or request.headers.get("x-idempotency-key", ""), "verify_payment")
     cached_payment = _payment_idem_get(pay_idem_key)
     if cached_payment and cached_payment.get("status") == "completed":
@@ -2656,8 +3584,6 @@ async def verify_payment(req: VerifyPaymentRequest, request: Request, response: 
         rzp_client.utility.verify_payment_signature(params_dict)
     except Exception as e:
         raise HTTPException(status_code=400, detail="Payment verification failed")
-    _payment_idem_set(pay_idem_key, {"status": "in_progress", "ts": time.time()})
-
     # Resolve plan from echoed plan_id, then prove the live Razorpay payment/order
     # actually match that plan before granting credits.
     plan_config = PLAN_PRICING.get(req.plan_id) if req.plan_id else None
@@ -2719,9 +3645,11 @@ async def verify_payment(req: VerifyPaymentRequest, request: Request, response: 
     order_notes = order_live.get("notes") or {}
     order_uid = (order_notes.get("uid") or "").strip()
     order_plan_id = (order_notes.get("plan_id") or "").strip()
-    if order_uid and order_uid != uid:
+    if not order_uid or order_uid != uid:
         raise HTTPException(status_code=403, detail="Payment order belongs to a different user.")
-    if order_plan_id and req.plan_id and order_plan_id != req.plan_id:
+    if not order_plan_id:
+        raise HTTPException(status_code=400, detail="Payment order is missing its plan binding.")
+    if req.plan_id and order_plan_id != req.plan_id:
         raise HTTPException(status_code=400, detail="Payment order does not match the selected plan.")
 
     if not req.plan_id and order_plan_id:
@@ -2732,6 +3660,12 @@ async def verify_payment(req: VerifyPaymentRequest, request: Request, response: 
         plan_config = PLAN_PRICING.get(req.plan_id)
     if not plan_config:
         raise HTTPException(status_code=400, detail="Unable to resolve purchased plan")
+
+    if not _payment_idem_claim(pay_idem_key):
+        concurrent = _payment_idem_get(pay_idem_key)
+        if concurrent and concurrent.get("status") == "completed":
+            return {**concurrent["payload"], "idempotent_replay": True}
+        raise HTTPException(status_code=409, detail="Payment verification with this idempotency key is already in progress.")
 
     payload = _apply_successful_payment(
         uid=uid,
@@ -2751,8 +3685,13 @@ async def razorpay_webhook(request: Request):
     if not RAZORPAY_WEBHOOK_SECRET:
         raise HTTPException(status_code=503, detail="Webhook secret not configured")
 
+    declared_length = int(request.headers.get("content-length", "0") or 0)
+    if declared_length > 256 * 1024:
+        raise HTTPException(status_code=413, detail="Webhook payload too large")
     signature = request.headers.get("x-razorpay-signature", "")
     body_bytes = await request.body()
+    if len(body_bytes) > 256 * 1024:
+        raise HTTPException(status_code=413, detail="Webhook payload too large")
     expected = hmac.new(
         RAZORPAY_WEBHOOK_SECRET.encode("utf-8"),
         body_bytes,
@@ -2777,9 +3716,11 @@ async def razorpay_webhook(request: Request):
     notes = payment_entity.get("notes") or {}
 
     db = get_db()
+    webhook_ref = None
     if db:
         try:
-            db.collection("payment_webhooks").document(payment_id or str(uuid.uuid4())).set({
+            webhook_ref = db.collection("payment_webhooks").document(payment_id or str(uuid.uuid4()))
+            webhook_ref.set({
                 "event": event,
                 "payment_id": payment_id,
                 "order_id": order_id,
@@ -2787,7 +3728,9 @@ async def razorpay_webhook(request: Request):
                 "amount": amount_minor,
                 "status": status,
                 "notes": notes,
-                "received_at": datetime.utcnow().isoformat() + "Z",
+                "received_at": _utcnow().isoformat() + "Z",
+                "reconcile_required": event == "payment.captured" and status == "captured",
+                "expire_at": _retention_deadline(90),
             }, merge=True)
         except Exception as e:
             print(f"[Webhook] Failed to persist webhook event: {e}")
@@ -2817,10 +3760,18 @@ async def razorpay_webhook(request: Request):
         source="webhook",
         org_id=org_id,
     )
+    if webhook_ref is not None:
+        try:
+            webhook_ref.update({
+                "reconcile_required": False,
+                "reconciled_at": _utcnow().isoformat() + "Z",
+            })
+        except Exception as e:
+            _json_log("warning", "payment_webhook_reconcile_mark_failed", payment_id=payment_id, error=str(e))
     return {"success": True, "applied": True, "result": result}
 
 @app.post("/api/reconcile-payments")
-async def reconcile_payments(req: ReconcilePaymentsRequest, request: Request):
+def reconcile_payments(req: ReconcilePaymentsRequest, request: Request):
     if not _can_trigger_reconcile(request, req):
         raise HTTPException(status_code=403, detail="Not authorized to run reconciliation")
     summary = reconcile_payments_once(
@@ -2833,7 +3784,7 @@ async def reconcile_payments(req: ReconcilePaymentsRequest, request: Request):
     return summary
 
 @app.post("/api/admin/recovery-summary")
-async def admin_recovery_summary(req: AdminRecoveryRequest):
+def admin_recovery_summary(req: AdminRecoveryRequest):
     if not _is_admin_token(req.id_token):
         raise HTTPException(status_code=403, detail="Admin access required")
     db = get_db()
@@ -2842,16 +3793,31 @@ async def admin_recovery_summary(req: AdminRecoveryRequest):
     lim = max(1, min(int(req.limit or 50), 200))
     dead_letter_rows = []
     reconcile_runs = []
+    failed_queries = []
     try:
         for doc in db.collection("export_dead_letter").order_by("timestamp", direction=firestore.Query.DESCENDING).limit(lim).stream():
             dead_letter_rows.append(doc.to_dict())
-    except Exception:
-        pass
+    except Exception as e:
+        failed_queries.append("export_dead_letter")
+        _json_log("error", "recovery_summary_query_failed", collection="export_dead_letter", error=str(e))
     try:
         for doc in db.collection("payment_reconcile_runs").order_by("run_at", direction=firestore.Query.DESCENDING).limit(lim).stream():
             reconcile_runs.append(doc.to_dict())
-    except Exception:
-        pass
+    except Exception as e:
+        failed_queries.append("payment_reconcile_runs")
+        _json_log("error", "recovery_summary_query_failed", collection="payment_reconcile_runs", error=str(e))
+    if failed_queries:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "message": "Recovery summary is incomplete",
+                "failed_queries": failed_queries,
+                "partial": {
+                    "dead_letter_recent": dead_letter_rows,
+                    "payment_reconcile_recent": reconcile_runs,
+                },
+            },
+        )
     return {
         "success": True,
         "dead_letter_recent": dead_letter_rows,
@@ -2860,45 +3826,74 @@ async def admin_recovery_summary(req: AdminRecoveryRequest):
     }
 
 @app.post("/api/admin/tenant-backfill")
-async def admin_tenant_backfill(req: TenantBackfillRequest):
+def admin_tenant_backfill(req: TenantBackfillRequest):
     if not _is_admin_token(req.id_token):
         raise HTTPException(status_code=403, detail="Admin access required")
     db = get_db()
     if not db:
         raise HTTPException(status_code=503, detail="Database unavailable")
-    lim = max(1, min(int(req.limit or 500), 5000))
+    lim = max(1, min(int(req.limit or 500), 500))
+    users_ref = db.collection("users")
+    query = users_ref.order_by("__name__")
+    if req.cursor:
+        cursor_doc = users_ref.document(req.cursor).get()
+        if not cursor_doc.exists:
+            raise HTTPException(status_code=400, detail="Invalid tenant backfill cursor")
+        query = query.start_after(cursor_doc)
+    docs = list(query.limit(lim + 1).stream())
+    has_more = len(docs) > lim
+    docs = docs[:lim]
+
     scanned = 0
     updated = 0
-    for doc in db.collection("users").limit(lim).stream():
+    writes = 0
+    batch = db.batch()
+    touched_tenants = set()
+
+    def queue_set(ref, data):
+        nonlocal batch, writes
+        if writes >= 400:
+            batch.commit()
+            batch = db.batch()
+            writes = 0
+        batch.set(ref, data, merge=True)
+        writes += 1
+
+    for doc in docs:
         scanned += 1
         data = doc.to_dict() or {}
         uid = data.get("uid") or doc.id
         org_id = (data.get("org_id") or "").strip()
+        now_iso = _utcnow().isoformat() + "Z"
         if not org_id:
             org_id = f"org_{uid}"
-            try:
-                doc.reference.set({"org_id": org_id, "updated_at": datetime.utcnow().isoformat() + "Z"}, merge=True)
-                updated += 1
-            except Exception as e:
-                _json_log("warning", "tenant_backfill_user_failed", uid=uid, error=str(e))
-                continue
-        try:
-            db.collection("tenants").document(org_id).set({"updated_at": datetime.utcnow().isoformat() + "Z"}, merge=True)
-            db.collection("tenants").document(org_id).collection("members").document(uid).set(
-                {"uid": uid, "org_id": org_id, "updated_at": datetime.utcnow().isoformat() + "Z"},
-                merge=True,
-            )
-        except Exception as e:
-            _json_log("warning", "tenant_backfill_member_failed", uid=uid, org_id=org_id, error=str(e))
-    return {"success": True, "scanned": scanned, "updated_users": updated}
+            queue_set(doc.reference, {"org_id": org_id, "updated_at": now_iso})
+            updated += 1
+        tenant_ref = db.collection("tenants").document(org_id)
+        if org_id not in touched_tenants:
+            queue_set(tenant_ref, {"updated_at": now_iso})
+            touched_tenants.add(org_id)
+        queue_set(
+            tenant_ref.collection("members").document(uid),
+            {"uid": uid, "org_id": org_id, "updated_at": now_iso},
+        )
+    if writes:
+        batch.commit()
+    return {
+        "success": True,
+        "scanned": scanned,
+        "updated_users": updated,
+        "next_cursor": docs[-1].id if docs else None,
+        "has_more": has_more,
+    }
 
 
 class RedeemPromoRequest(BaseModel):
-    id_token: str
-    code: str
+    id_token: str = Field(min_length=1, max_length=8_192)
+    code: str = Field(min_length=1, max_length=64)
 
 @app.post("/api/redeem-promo")
-async def redeem_promo(req: RedeemPromoRequest, request: Request, response: Response):
+def redeem_promo(req: RedeemPromoRequest, request: Request, response: Response):
     client_ip = request.client.host if request.client else "unknown"
     allowed, retry_after, remaining = _check_rate(_promo_rate, client_ip, PROMO_RATE_LIMIT)
     _apply_rate_headers(response, PROMO_RATE_LIMIT, remaining, retry_after)
@@ -2932,7 +3927,7 @@ async def redeem_promo(req: RedeemPromoRequest, request: Request, response: Resp
 
         user_doc = user_ref.get(transaction=txn)
         user_email = user_doc.to_dict().get("email", "") if user_doc.exists else ""
-        now = datetime.utcnow()
+        now = _utcnow()
         expiry_date = (now + relativedelta(months=int(promo["duration_months"]))).date().isoformat()
 
         txn.update(code_ref, {
@@ -2965,7 +3960,7 @@ async def redeem_promo(req: RedeemPromoRequest, request: Request, response: Resp
 
 
 @app.post("/api/translate")
-async def translate_captions(req: TranslateRequest, request: Request, response: Response):
+def translate_captions(req: TranslateRequest, request: Request, response: Response):
     client_ip = request.client.host if request.client else "unknown"
     allowed, retry_after, remaining = _check_rate(_translate_rate, client_ip, TRANSLATE_RATE_LIMIT)
     _apply_rate_headers(response, TRANSLATE_RATE_LIMIT, remaining, retry_after)
@@ -2975,13 +3970,21 @@ async def translate_captions(req: TranslateRequest, request: Request, response: 
     if not decoded_token:
         raise HTTPException(status_code=401, detail="Authentication required")
     _assert_tenant_access(decoded_token.get("uid", ""), decoded_token, req.org_id)
+    for caption in req.captions:
+        if len(caption) > 100:
+            raise HTTPException(status_code=400, detail="Caption object is too complex")
+        text_value = caption.get("text", "")
+        if not isinstance(text_value, str) or len(text_value) > 2_000:
+            raise HTTPException(status_code=400, detail="Caption text is invalid")
     if _is_content_safety_blocked(req.target_language, " ".join((c.get("text") or "") for c in req.captions[:30])):
         _track_event("translate_rejected_content_safety")
-        return {"success": False, "error": "Request blocked by content safety policy."}
+        raise HTTPException(status_code=422, detail="Request blocked by content safety policy.")
     breaker = _provider_breakers["openai_translate"]
     if not breaker.allow():
         _track_event("translate_circuit_open")
-        return {"success": False, "error": "Translation service is temporarily unavailable. Please retry shortly."}
+        raise HTTPException(status_code=503, detail="Translation service is temporarily unavailable. Please retry shortly.")
+
+    _reserve_ai_quota(decoded_token.get("uid", ""), "translate")
 
     try:
         from openai import OpenAI
@@ -2992,7 +3995,9 @@ async def translate_captions(req: TranslateRequest, request: Request, response: 
         texts = [cap.get("text", "") for cap in req.captions]
         numbered_text = "\n".join(f"{i+1}. {t}" for i, t in enumerate(texts))
 
-        response = client.chat.completions.create(
+        # Note: use a distinct local name — `response` is the FastAPI Response
+        # param (already used above for rate-limit headers); don't shadow it.
+        completion = client.chat.completions.create(
             model="gpt-4o",
             messages=[
                 {"role": "system", "content": f"You are a professional translator. Translate the following numbered caption lines to {req.target_language}. Keep the numbering. Only return the translated lines, nothing else. Preserve the exact number of lines."},
@@ -3002,7 +4007,7 @@ async def translate_captions(req: TranslateRequest, request: Request, response: 
         )
 
         import re
-        translated_text = response.choices[0].message.content.strip()
+        translated_text = completion.choices[0].message.content.strip()
         translated_lines = []
         for line in translated_text.split("\n"):
             line = line.strip()
@@ -3030,6 +4035,9 @@ async def translate_captions(req: TranslateRequest, request: Request, response: 
                 cleaned = re.sub(r'^\d+[\.\)]\s*', '', line)
                 translated_lines.append(cleaned)
 
+        if len(translated_lines) != len(texts):
+            raise RuntimeError("Translation provider returned an incomplete caption set")
+
         result_captions = []
         for i, cap in enumerate(req.captions):
             new_cap = dict(cap)
@@ -3042,39 +4050,55 @@ async def translate_captions(req: TranslateRequest, request: Request, response: 
     except Exception as e:
         breaker.on_failure()
         _track_event("translate_failed", {"target_language": req.target_language, "error": str(e)})
-        print(f"Translation error: {e}")
-        return {"success": False, "error": str(e)}
+        _json_log("error", "translation_provider_failed", uid=decoded_token.get("uid", ""), error=str(e))
+        raise HTTPException(status_code=502, detail="Translation service failed. Please retry.") from e
 
 class DetectLanguageRequest(BaseModel):
-    file_id: str
-    id_token: str = ""  # Firebase Auth Token (optional — bypassed in dev mode)
-    org_id: str = ""
+    file_id: str = Field(min_length=36, max_length=36)
+    id_token: str = Field(default="", max_length=8_192)
+    org_id: str = Field(default="", max_length=128)
 
 @app.post("/api/detect-language")
-async def detect_language(req: DetectLanguageRequest):
+def detect_language(req: DetectLanguageRequest, request: Request, response: Response):
     # Auth — same dev-mode bypass as /api/export
     decoded_token = _authenticate_media_request(req.id_token, req.org_id)
     uid = (decoded_token.get("uid") or "").strip() or "unknown-user"
+    client_ip = request.client.host if request.client else "unknown"
+    allowed, retry_after, remaining = _check_rate(
+        _detect_language_rate, f"ip:{client_ip}", DETECT_LANGUAGE_RATE_LIMIT
+    )
+    _apply_rate_headers(response, DETECT_LANGUAGE_RATE_LIMIT, remaining, retry_after)
+    if not allowed:
+        raise HTTPException(status_code=429, detail="Too many language detection requests. Please wait before trying again.")
+    user_allowed, user_retry_after, user_remaining = _check_rate(
+        _detect_language_rate, f"user:{uid}", DETECT_LANGUAGE_RATE_LIMIT
+    )
+    if not user_allowed:
+        _apply_rate_headers(response, DETECT_LANGUAGE_RATE_LIMIT, user_remaining, user_retry_after)
+        raise HTTPException(status_code=429, detail="Too many language detection requests. Please wait before trying again.")
     if not _validate_file_id(req.file_id):
         raise HTTPException(status_code=400, detail="Invalid file_id")
     _assert_upload_owner(req.file_id, uid)
     input_path = _safe_find_upload(req.file_id)
     if not input_path:
         _track_event("detect_language_failed_not_found")
-        return {"success": False, "error": "File not found"}
+        raise HTTPException(status_code=404, detail="File not found")
     breaker = _provider_breakers["openai_detect_language"]
     if not breaker.allow():
         _track_event("detect_language_circuit_open")
-        return {"success": False, "error": "Language detection is temporarily unavailable. Please retry shortly."}
+        raise HTTPException(status_code=503, detail="Language detection is temporarily unavailable. Please retry shortly.")
+    _reserve_ai_quota(uid, "detect_language")
     temp_path = ""
     try:
         import tempfile
         with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as _tf:
             temp_path = _tf.name
-        subprocess.run([
+        extract_result = subprocess.run([
             "ffmpeg", "-i", input_path, "-t", "30",
             "-vn", "-acodec", "mp3", "-y", temp_path
         ], capture_output=True)
+        if extract_result.returncode != 0 or not os.path.isfile(temp_path) or os.path.getsize(temp_path) <= 0:
+            raise RuntimeError("Audio extraction failed")
         from openai import OpenAI
         client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
         with open(temp_path, "rb") as af:
@@ -3090,7 +4114,8 @@ async def detect_language(req: DetectLanguageRequest):
     except Exception as e:
         breaker.on_failure()
         _track_event("detect_language_failed", {"error": str(e)})
-        return {"success": False, "error": str(e)}
+        _json_log("error", "language_detection_provider_failed", uid=uid, error=str(e))
+        raise HTTPException(status_code=502, detail="Language detection failed. Please retry.") from e
     finally:
         try:
             if temp_path and os.path.exists(temp_path):
@@ -3099,41 +4124,163 @@ async def detect_language(req: DetectLanguageRequest):
             pass
 
 class DeleteFileRequest(BaseModel):
-    file_id: str
-    id_token: str
-    org_id: str = ""
+    file_id: str = Field(min_length=36, max_length=36)
+    id_token: str = Field(min_length=1, max_length=8_192)
+    org_id: str = Field(default="", max_length=128)
 
 
 class AccountDataRequest(BaseModel):
-    id_token: str
-    org_id: str = ""
+    id_token: str = Field(min_length=1, max_length=8_192)
+    org_id: str = Field(default="", max_length=128)
+    consent_granted: bool = False
+    terms_version: str = Field(default="", max_length=40, pattern=r"^[0-9A-Za-z._-]*$")
+    privacy_version: str = Field(default="", max_length=40, pattern=r"^[0-9A-Za-z._-]*$")
 
 
-@app.post("/api/account-export")
-async def account_export(req: AccountDataRequest):
+class AccountExportRequest(AccountDataRequest):
+    payment_limit: int = Field(default=100, ge=1, le=500)
+    payment_cursor: str = Field(default="", max_length=1_500)
+
+
+def _delete_user_document_tree(db, user_ref):
+    recursive_delete = getattr(db, "recursive_delete", None)
+    if callable(recursive_delete):
+        recursive_delete(user_ref)
+        return
+
+    for collection_name in ("payments", "export_usage"):
+        child_ref = user_ref.collection(collection_name)
+        while True:
+            child_docs = list(child_ref.limit(400).stream())
+            if not child_docs:
+                break
+            if hasattr(db, "batch"):
+                batch = db.batch()
+                for child_doc in child_docs:
+                    batch.delete(child_doc.reference)
+                batch.commit()
+            else:
+                for child_doc in child_docs:
+                    child_doc.reference.delete()
+            if len(child_docs) < 400:
+                break
+    user_ref.delete()
+
+
+def _remove_history_item_transactionally(db, user_ref, file_id: str):
+    @firestore.transactional
+    def _remove(transaction):
+        user_doc = user_ref.get(transaction=transaction)
+        if not user_doc.exists:
+            raise HTTPException(status_code=404, detail="Account not found")
+        history = (user_doc.to_dict() or {}).get("history", []) or []
+        transaction.update(
+            user_ref,
+            {"history": [item for item in history if item.get("id") != file_id]},
+        )
+
+    _remove(db.transaction())
+
+
+def _mark_history_item_deleting_transactionally(db, user_ref, file_id: str):
+    @firestore.transactional
+    def _mark(transaction):
+        user_doc = user_ref.get(transaction=transaction)
+        if not user_doc.exists:
+            raise HTTPException(status_code=404, detail="Account not found")
+        history = (user_doc.to_dict() or {}).get("history", []) or []
+        found = False
+        updated_history = []
+        for item in history:
+            if isinstance(item, dict) and item.get("id") == file_id:
+                found = True
+                updated_history.append({
+                    **item,
+                    "deletion_pending": True,
+                    "deletion_requested_at": datetime.now(timezone.utc).isoformat(),
+                })
+            else:
+                updated_history.append(item)
+        if not found:
+            raise HTTPException(status_code=404, detail="File not found in this account")
+        transaction.update(user_ref, {"history": updated_history})
+
+    _mark(db.transaction())
+
+
+@app.post("/api/account-bootstrap")
+def account_bootstrap(req: AccountDataRequest, request: Request):
+    """Create safe account defaults server-side and return the user's record."""
     decoded_token = verify_token(req.id_token)
     if not decoded_token:
         raise HTTPException(status_code=401, detail="Auth required")
-    uid = decoded_token.get("uid")
+    uid = (decoded_token.get("uid") or "").strip()
+    if not uid:
+        raise HTTPException(status_code=401, detail="Auth required")
     _assert_tenant_access(uid, decoded_token, req.org_id)
     db = get_db()
     if not db:
         raise HTTPException(status_code=503, detail="Database unavailable")
-    user_doc = db.collection("users").document(uid).get()
-    payments = db.collection("users").document(uid).collection("payments").stream()
-    payment_items = [p.to_dict() for p in payments]
-    payload = {
+
+    user_ref = db.collection("users").document(uid)
+    safe_profile = {
         "uid": uid,
-        "user": user_doc.to_dict() if user_doc.exists else {},
-        "payments": payment_items,
-        "exported_at": datetime.utcnow().isoformat() + "Z",
+        "email": str(decoded_token.get("email") or "")[:320],
+        "displayName": str(decoded_token.get("name") or "")[:200],
+        "photoURL": str(decoded_token.get("picture") or "")[:2_048],
     }
-    _audit_action("account_export", uid, {"payment_count": len(payment_items)})
-    return {"success": True, "data": payload}
+    try:
+        user_ref.create({
+            **safe_profile,
+            "credits_remaining": 3,
+            "subscription_tier": "free",
+            "subscription_expiry": None,
+            "export_timestamps": [],
+            "created_at": time.time(),
+        })
+        _audit_action("account_bootstrap_created", uid)
+    except AlreadyExists:
+        # Only identity-provider profile fields may be refreshed here. Billing
+        # and entitlement fields remain server-controlled elsewhere.
+        user_ref.set(safe_profile, merge=True)
+
+    if req.consent_granted:
+        if not req.terms_version or not req.privacy_version:
+            raise HTTPException(status_code=400, detail="Consent document versions are required")
+        consent_key = hashlib.sha256(
+            f"{uid}:{req.terms_version}:{req.privacy_version}:grant".encode("utf-8")
+        ).hexdigest()
+        consent_payload = {
+            "action": "grant",
+            "terms_version": req.terms_version,
+            "privacy_version": req.privacy_version,
+            "captured_at": datetime.now(timezone.utc),
+            "ip_address": request.client.host if request.client else "unknown",
+            "user_agent": (request.headers.get("user-agent") or "")[:500],
+            "capture_method": "login_checkbox",
+        }
+        try:
+            user_ref.collection("consents").document(consent_key).create(consent_payload)
+        except AlreadyExists:
+            pass
+        user_ref.set({
+            "accepted_terms_version": req.terms_version,
+            "accepted_privacy_version": req.privacy_version,
+            "consent_updated_at": datetime.now(timezone.utc),
+        }, merge=True)
+        _audit_action("consent_granted", uid, {
+            "terms_version": req.terms_version,
+            "privacy_version": req.privacy_version,
+        })
+
+    user_doc = user_ref.get()
+    if not user_doc.exists:
+        raise HTTPException(status_code=503, detail="Account initialization unavailable")
+    return {"success": True, "user": user_doc.to_dict() or {}}
 
 
-@app.post("/api/account-delete")
-async def account_delete(req: AccountDataRequest):
+@app.post("/api/account-export")
+def account_export(req: AccountExportRequest):
     decoded_token = verify_token(req.id_token)
     if not decoded_token:
         raise HTTPException(status_code=401, detail="Auth required")
@@ -3144,33 +4291,88 @@ async def account_delete(req: AccountDataRequest):
         raise HTTPException(status_code=503, detail="Database unavailable")
     user_ref = db.collection("users").document(uid)
     user_doc = user_ref.get()
+    payments_ref = user_ref.collection("payments")
+    payment_query = payments_ref.order_by("timestamp", direction=firestore.Query.DESCENDING)
+    if req.payment_cursor:
+        cursor_doc = payments_ref.document(req.payment_cursor).get()
+        if not cursor_doc.exists:
+            raise HTTPException(status_code=400, detail="Invalid payment cursor")
+        payment_query = payment_query.start_after(cursor_doc)
+    page_docs = list(payment_query.limit(req.payment_limit + 1).stream())
+    has_more = len(page_docs) > req.payment_limit
+    page_docs = page_docs[:req.payment_limit]
+    payment_items = [{"id": p.id, **(p.to_dict() or {})} for p in page_docs]
+    payload = {
+        "uid": uid,
+        "user": user_doc.to_dict() if user_doc.exists else {},
+        "payments": payment_items,
+        "next_payment_cursor": page_docs[-1].id if page_docs else None,
+        "has_more_payments": has_more,
+        "exported_at": _utcnow().isoformat() + "Z",
+    }
+    _audit_action("account_export", uid, {"payment_count": len(payment_items)})
+    return {"success": True, "data": payload}
+
+
+@app.post("/api/account-delete")
+def account_delete(req: AccountDataRequest):
+    decoded_token = verify_token(req.id_token)
+    if not decoded_token:
+        raise HTTPException(status_code=401, detail="Auth required")
+    uid = decoded_token.get("uid")
+    _assert_tenant_access(uid, decoded_token, req.org_id)
+    db = get_db()
+    if not db:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    user_ref = db.collection("users").document(uid)
+    user_doc = user_ref.get()
+    history = []
     if user_doc.exists:
+        if hasattr(user_ref, "set"):
+            user_ref.set({
+                "deletion_pending": True,
+                "deletion_requested_at": _utcnow().isoformat() + "Z",
+            }, merge=True)
         history = user_doc.to_dict().get("history", []) or []
-        for h in history:
-            fp = h.get("firebase_path")
-            if fp:
-                delete_from_firebase_storage(fp)
+        for item in history:
+            filename = os.path.basename(str(item.get("filename") or ""))
+            if not filename:
+                continue
+            candidate = os.path.realpath(os.path.join(EXPORT_DIR, filename))
+            if candidate.startswith(os.path.realpath(EXPORT_DIR) + os.sep) and os.path.isfile(candidate):
+                try:
+                    os.remove(candidate)
+                except OSError as e:
+                    _json_log("error", "account_delete_local_cleanup_failed", uid=uid, file=filename, error=str(e))
+                    raise HTTPException(status_code=503, detail="Local export cleanup failed; deletion can be retried") from e
+
+    cloud_cleanup = delete_user_exports(uid)
+    source_cleanup = delete_user_uploads(uid)
+    known_cloud_exports = any(item.get("firebase_path") for item in history if isinstance(item, dict))
+    if (
+        (cloud_cleanup is None and (_IS_PRODUCTION or known_cloud_exports))
+        or (source_cleanup is None and _IS_PRODUCTION)
+    ):
+        _json_log("error", "account_delete_storage_cleanup_failed", uid=uid)
+        raise HTTPException(status_code=503, detail="Cloud export cleanup failed; deletion can be retried")
+    if user_doc.exists:
         try:
-            payment_docs = list(user_ref.collection("payments").stream())
-        except Exception:
-            payment_docs = []
-        for payment_doc in payment_docs:
-            try:
-                payment_doc.reference.delete()
-            except Exception as e:
-                _json_log("warning", "account_delete_payment_delete_failed", uid=uid, payment_id=payment_doc.id, error=str(e))
+            _delete_user_document_tree(db, user_ref)
+        except Exception as e:
+            _json_log("error", "account_delete_firestore_failed", uid=uid, error=str(e))
+            raise HTTPException(status_code=500, detail="Account data cleanup failed; deletion can be retried") from e
     try:
+        # Delete the login identity last. Until this succeeds the user can still
+        # authenticate and retry an otherwise idempotent cleanup request.
         firebase_auth.delete_user(uid)
     except Exception as e:
         _json_log("warning", "account_delete_auth_delete_failed", uid=uid, error=str(e))
-        raise HTTPException(status_code=500, detail="Failed to delete authentication record") from e
-    if user_doc.exists:
-        user_ref.delete()
+        raise HTTPException(status_code=500, detail="Account data was removed, but authentication deletion must be retried") from e
     _audit_action("account_delete", uid)
     return {"success": True}
 
 @app.post("/api/delete-file")
-async def delete_user_file(req: DeleteFileRequest):
+def delete_user_file(req: DeleteFileRequest):
     decoded_token = verify_token(req.id_token)
     if not decoded_token:
         raise HTTPException(status_code=401, detail="Auth required")
@@ -3181,36 +4383,94 @@ async def delete_user_file(req: DeleteFileRequest):
     if not _validate_file_id(req.file_id):
         raise HTTPException(status_code=400, detail="Invalid file_id")
 
-    # Delete local file using exact filename — never substring match
+    db = get_db()
+    if not db:
+        raise HTTPException(status_code=503, detail="Database unavailable; file deletion can be retried")
+    user_ref = db.collection('users').document(uid)
+    user_doc = user_ref.get()
+    if not user_doc.exists:
+        raise HTTPException(status_code=404, detail="Account not found")
+    history = (user_doc.to_dict() or {}).get('history', []) or []
+    matching_items = [
+        item for item in history
+        if isinstance(item, dict) and item.get('id') == req.file_id
+    ]
+    if not matching_items:
+        raise HTTPException(status_code=404, detail="File not found in this account")
+
+    # Persist ownership and retry metadata before touching either storage system.
+    _mark_history_item_deleting_transactionally(db, user_ref, req.file_id)
+
+    failed_cloud_paths = []
+    for item in matching_items:
+        remote_path = item.get('firebase_path')
+        if remote_path and not delete_from_firebase_storage(remote_path):
+            failed_cloud_paths.append(remote_path)
+    if failed_cloud_paths:
+        _json_log("error", "delete_file_storage_cleanup_failed", uid=uid, file_id=req.file_id, count=len(failed_cloud_paths))
+        raise HTTPException(
+            status_code=503,
+            detail={"message": "Cloud file cleanup was incomplete", "retryable": True},
+        )
+
+    # Ownership is now proven. Delete every local render variant for this UUID.
+    local_delete_errors = []
+    local_deleted = 0
     if os.path.exists(EXPORT_DIR):
-        exact_name = f"export_{req.file_id}.mp4"
-        candidate = os.path.realpath(os.path.join(EXPORT_DIR, exact_name))
         real_export_dir = os.path.realpath(EXPORT_DIR)
-        if candidate.startswith(real_export_dir + os.sep) and os.path.isfile(candidate):
+        valid_names = {
+            name for name in os.listdir(EXPORT_DIR)
+            if name == f"export_{req.file_id}.mp4" or name.startswith(f"export_{req.file_id}_")
+        }
+        for name in valid_names:
+            candidate = os.path.realpath(os.path.join(EXPORT_DIR, name))
+            if not candidate.startswith(real_export_dir + os.sep) or not os.path.isfile(candidate):
+                continue
             try:
                 os.remove(candidate)
+                local_deleted += 1
+            except OSError as e:
+                local_delete_errors.append(name)
+                _json_log("error", "delete_file_local_cleanup_failed", uid=uid, file=name, error=str(e))
+    if local_delete_errors:
+        raise HTTPException(
+            status_code=503,
+            detail={"message": "Local file cleanup was incomplete", "files": local_delete_errors, "retryable": True},
+        )
+
+    upload_metadata = _load_upload_metadata(req.file_id)
+    if upload_metadata and str(upload_metadata.get("uid") or "") == uid:
+        source_remote_path = str(upload_metadata.get("remote_path") or "")
+        if source_remote_path and not delete_from_firebase_storage(source_remote_path):
+            raise HTTPException(
+                status_code=503,
+                detail={"message": "Source media cleanup was incomplete", "retryable": True},
+            )
+        for name in list(os.listdir(UPLOAD_DIR)):
+            if name.startswith(req.file_id):
+                candidate = os.path.realpath(os.path.join(UPLOAD_DIR, name))
+                if candidate.startswith(os.path.realpath(UPLOAD_DIR) + os.sep) and os.path.isfile(candidate):
+                    try:
+                        os.remove(candidate)
+                    except OSError:
+                        pass
+        try:
+            db.collection("uploads").document(req.file_id).delete()
+        except Exception:
+            pass
+        if _redis_client is not None:
+            try:
+                _redis_client.delete(f"upload_owner:{req.file_id}", f"upload_meta:{req.file_id}")
             except Exception:
                 pass
+        _upload_owners.pop(req.file_id, None)
 
-    # Remove from Firestore history + delete from Firebase Storage
-    db = get_db()
-    if db:
-        user_ref = db.collection('users').document(uid)
-        user_doc = user_ref.get()
-        if user_doc.exists:
-            history = user_doc.to_dict().get('history', [])
-            # Find and delete Firebase Storage file if exists
-            for h in history:
-                if h.get('id') == req.file_id and h.get('firebase_path'):
-                    delete_from_firebase_storage(h['firebase_path'])
-            user_ref.update({
-                'history': [h for h in history if h.get('id') != req.file_id]
-            })
-    _audit_action("delete_file_success", uid, {"file_id": req.file_id})
-    return {"success": True}
+    _remove_history_item_transactionally(db, user_ref, req.file_id)
+    _audit_action("delete_file_success", uid, {"file_id": req.file_id, "local_files_deleted": local_deleted})
+    return {"success": True, "local_files_deleted": local_deleted}
 
 @app.get("/api/media/upload/{file_id}")
-async def serve_uploaded_media(file_id: str, token: str = ""):
+def serve_uploaded_media(file_id: str, token: str = ""):
     payload = _verify_media_token(token, "upload")
     if payload.get("file_id") != file_id:
         raise HTTPException(status_code=403, detail="Media token does not match this upload")
@@ -3222,7 +4482,7 @@ async def serve_uploaded_media(file_id: str, token: str = ""):
 
 
 @app.post("/api/media/upload-url")
-async def refresh_uploaded_media_url(req: MediaUrlRequest):
+def refresh_uploaded_media_url(req: MediaUrlRequest):
     decoded_token = _authenticate_media_request(req.id_token, req.org_id)
     uid = (decoded_token.get("uid") or "").strip() or "unknown-user"
     if not _validate_file_id(req.file_id):
@@ -3235,7 +4495,7 @@ async def refresh_uploaded_media_url(req: MediaUrlRequest):
 
 
 @app.get("/api/media/export/{filename}")
-async def serve_exported_media(filename: str, token: str = ""):
+def serve_exported_media(filename: str, token: str = ""):
     if not re.match(r"^export_[a-f0-9-]{36}_[a-f0-9]{12}\.mp4$", filename or ""):
         raise HTTPException(status_code=400, detail="Invalid export filename")
     payload = _verify_media_token(token, "export")
@@ -3243,7 +4503,26 @@ async def serve_exported_media(filename: str, token: str = ""):
         raise HTTPException(status_code=403, detail="Media token does not match this export")
     real_export_dir = os.path.realpath(EXPORT_DIR)
     path = os.path.realpath(os.path.join(EXPORT_DIR, filename))
-    if not path.startswith(real_export_dir + os.sep) or not os.path.isfile(path):
+    if not path.startswith(real_export_dir + os.sep):
+        raise HTTPException(status_code=400, detail="Invalid export path")
+    if not os.path.isfile(path):
+        uid = str(payload.get("uid") or "")
+        if not uid or "/" in uid or "\\" in uid:
+            raise HTTPException(status_code=403, detail="Invalid export owner")
+        partial = f"{path}.part-{uuid.uuid4().hex}"
+        try:
+            downloaded = download_export_from_firebase_storage(
+                f"exports/{uid}/{filename}", partial
+            )
+            if downloaded:
+                os.replace(partial, path)
+        finally:
+            if os.path.exists(partial):
+                try:
+                    os.remove(partial)
+                except OSError:
+                    pass
+    if not os.path.isfile(path):
         raise HTTPException(status_code=404, detail="Export not found")
     return FileResponse(
         path,

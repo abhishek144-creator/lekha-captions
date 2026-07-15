@@ -1,8 +1,9 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useLazyVisible } from './useLazyVisible';
 import { Check, RotateCcw, Sparkles, Search, Star } from 'lucide-react';
 import originalTemplateHtml from '../../assets/lekha-captions-T11-T35.html?raw';
 import { findAppliedBasicTemplateMarkup } from './basicTemplateInline.js';
+import { BASIC_TEMPLATE_STYLES, getBasicTemplateStyle } from './basicTemplateCatalog.js';
 import {
   ADVANCED_IMP_ENTRANCES,
   ADVANCED_TEMPLATE_EMPHASIS_COLORS,
@@ -278,34 +279,7 @@ function buildAppliedTemplateStyle(template) {
   };
 }
 
-// Several ids here are ALSO defined in TemplatesTab.jsx (t-106, t-52, t-T4,
-// t-WS1, t-104, t-109, …) and mirrored by TEMPLATE_CANONICAL_STYLES in
-// ExportPanel.jsx. All three must stay in sync — a retune in one place only
-// makes the same template render differently depending on which gallery
-// applied it (and diverge from the export).
-const BASIC_TEMPLATE_STYLE = {
-  't-106': { font_family: 'Noto Sans', font_size: 24, font_weight: '800', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03', has_shadow: true, shadow_color: '#000000', shadow_blur: 3, shadow_offset_x: 1, shadow_offset_y: 2 },
-  't-52': { font_family: 'Inter', font_size: 26, font_weight: '900', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03' },
-  't-T4': { font_family: 'Playfair Display', font_size: 24, font_weight: '700', font_style: 'italic', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03' },
-  't-WS1': { font_family: 'Raleway', font_size: 24, font_weight: '800', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03' },
-  't-115': { font_family: 'Noto Sans', font_size: 28, font_weight: '900', font_style: 'italic', text_color: '#FFFFFF', secondary_color: '#39FF14', highlight_color: '#DDAA03', has_shadow: true, shadow_color: '#39FF14', shadow_blur: 10, shadow_offset_x: 0, shadow_offset_y: 0 },
-  't-104': { font_family: 'Noto Sans', font_size: 26, font_weight: '900', text_color: '#FFFFFF', secondary_color: '#2563EB', highlight_color: '#2563EB', has_stroke: true, stroke_color: '#2563EB', stroke_width: 2 },
-  't-109': { font_family: 'Noto Sans', font_size: 26, font_weight: '900', text_color: '#FFFFFF', secondary_color: '#FF4500', highlight_color: '#FFF200', has_shadow: true, shadow_color: '#FF4500', shadow_offset_x: 3, shadow_offset_y: 3, shadow_blur: 0 },
-  't-95': { font_family: 'Montserrat', font_size: 30, text_color: '#FFFFFF', secondary_color: '#0055FF', highlight_color: '#DDAA03' },
-  't-102': { font_family: 'Noto Sans', font_size: 22, font_weight: '800', text_color: '#1F2022', secondary_color: '#1F2022', highlight_color: '#b07d00', has_background: true, background_color: '#E8E8E8', background_opacity: 1, background_padding: 10 },
-  't-T5': { font_family: 'Montserrat', font_size: 24, font_weight: '800', font_style: 'italic', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03', has_background: true, background_color: '#DDAA03', background_opacity: 1, background_padding: 10 },
-  't-T6': { font_family: 'Montserrat', font_size: 24, font_weight: '800', font_style: 'italic', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03', has_background: true, background_color: '#F97316', background_opacity: 1, background_padding: 8 },
-  't-103': { font_family: 'Noto Sans', font_size: 22, font_weight: '800', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03', has_background: true, background_color: '#1e1e1e', background_opacity: 0.85, background_padding: 10 },
-  't-QW1': { font_family: 'Raleway', font_size: 20, font_weight: '500', font_style: 'italic', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#FFFFFF' },
-  't-36': { font_family: 'Noto Sans', font_size: 26, font_weight: '900', text_color: '#FFFFFF', secondary_color: '#DDAA03', highlight_color: '#DDAA03' },
-  't-105': { font_family: 'Noto Sans', font_size: 24, font_weight: '800', text_color: '#FFFFFF', secondary_color: '#DDAA03', highlight_color: '#DDAA03', has_stroke: true, stroke_color: '#000000', stroke_width: 1, has_shadow: true, shadow_color: '#000000', shadow_blur: 2, shadow_offset_x: 2, shadow_offset_y: 2 },
-  't-124': { font_family: 'Inter', font_size: 26, font_weight: '900', text_color: '#FFFFFF', secondary_color: '#FFFFFF', highlight_color: '#DDAA03', has_shadow: true, shadow_color: '#ffffff', shadow_offset_x: 4, shadow_offset_y: 4, shadow_blur: 0 },
-  't-110': { font_family: 'Noto Sans', font_size: 22, font_weight: '800', text_color: '#FFFFFF', secondary_color: '#0066FF', highlight_color: '#DDAA03' },
-  't-56': { font_family: 'Inter', font_size: 26, font_weight: '900', text_color: '#FFFFFF', secondary_color: '#0066FF', highlight_color: '#DDAA03' },
-  't-119': { font_family: 'Inter', font_size: 24, font_weight: '800', text_color: '#FFFFFF', secondary_color: '#00FFCC', highlight_color: '#DDAA03' },
-  't-12': { font_family: 'Special Elite', font_size: 22, text_color: '#cc0000', secondary_color: '#cc0000', highlight_color: '#cc0000', has_shadow: true, shadow_color: '#cc0000', shadow_blur: 10, shadow_offset_x: 0, shadow_offset_y: 0 },
-};
-
+// Basic visual defaults are shared by both galleries and the export handoff.
 const BASIC_TEMPLATE_MARKUP_OVERRIDES = {
   't-106': findAppliedBasicTemplateMarkup(originalTemplateHtml, { template_id: 't-106' }),
   't-52': findAppliedBasicTemplateMarkup(originalTemplateHtml, { template_id: 't-52' }),
@@ -326,12 +300,12 @@ function buildAppliedBasicTemplateStyle(template) {
     template_layout: 'word-sequence',
     template_effect: template.desc || '',
     template_markup: templateMarkup,
-    ...(BASIC_TEMPLATE_STYLE[template.id] || {}),
+    ...getBasicTemplateStyle(template.id),
     ...(BASIC_TEMPLATE_IMAN_FONT_IDS.has(template.id) ? BASIC_TEMPLATE_IMAN_FONT_STYLE : {}),
     ...(template.id === 't-110' ? { font_family: 'Noto Sans', font_size: 22 } : {}),
-    has_background: BASIC_TEMPLATE_STYLE[template.id]?.has_background || false,
-    has_shadow: BASIC_TEMPLATE_STYLE[template.id]?.has_shadow || false,
-    has_stroke: BASIC_TEMPLATE_STYLE[template.id]?.has_stroke || false,
+    has_background: BASIC_TEMPLATE_STYLES[template.id]?.has_background === true,
+    has_shadow: BASIC_TEMPLATE_STYLES[template.id]?.has_shadow === true,
+    has_stroke: BASIC_TEMPLATE_STYLES[template.id]?.has_stroke === true,
     show_inactive: true,
     text_opacity: 1,
     position_y: 75,
@@ -629,11 +603,11 @@ function buildTemplateColorPreviewCss(templateId, previewStyle = {}, { basic = f
     || normalizedTemplateId === 't-T4'
     || normalizedTemplateId === 't-WS1';
   if (!previewStyle?.template_color_customized && !alwaysSyncSourceColor) return '';
-  const palette = getTemplatePalette(previewStyle, ADVANCED_TEMPLATE_STYLE[templateId] || BASIC_TEMPLATE_STYLE[templateId] || {});
+  const palette = getTemplatePalette(previewStyle, ADVANCED_TEMPLATE_STYLE[templateId] || BASIC_TEMPLATE_STYLES[templateId] || {});
   const highlight = normalizeColor(
     previewStyle.highlight_color
       || ADVANCED_TEMPLATE_STYLE[templateId]?.highlight_color
-      || BASIC_TEMPLATE_STYLE[templateId]?.highlight_color
+      || BASIC_TEMPLATE_STYLES[templateId]?.highlight_color
       || palette.accent,
     palette.accent,
   );
@@ -2082,7 +2056,7 @@ function TemplatePreviewFrame({ template, previewStyle }) {
 function BasicTemplatePreviewFrame({ template, onSelect, previewStyle }) {
   const iframeRef = useRef(null);
   const [containerRef, shown] = useLazyVisible();
-  const palette = getTemplatePalette(previewStyle, BASIC_TEMPLATE_STYLE[template.id] || {});
+  const palette = getTemplatePalette(previewStyle, BASIC_TEMPLATE_STYLES[template.id] || {});
   const srcDoc = useMemo(
     () => (shown ? buildBasicTemplatePreviewDoc(template, { previewStyle }) : ''),
     [template, shown, previewStyle?.template_color_customized, palette.text, palette.accent, palette.background],

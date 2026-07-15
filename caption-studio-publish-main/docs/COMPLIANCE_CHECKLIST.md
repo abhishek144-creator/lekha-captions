@@ -5,15 +5,15 @@ Use this checklist for enterprise and privacy readiness.
 ## Privacy + User Rights
 - [x] User can export account data (`/api/account-export`)
 - [x] User can delete account data (`/api/account-delete`)
-- [ ] Public privacy policy URL is linked in product footer
-- [ ] Data Processing Agreement (DPA) workflow for business customers
+- [x] Public privacy policy URL is linked in product footer
+- [x] DPA requests are routed through Help & Support for business review
 
 ## Data Inventory
-- [ ] Document each datastore, data fields, retention, and legal basis
-- [ ] Record third-party processors (OpenAI, Razorpay, Firebase, etc.)
+- [x] Document each datastore, data fields, retention, and legal basis (`DATA_PROCESSING_INVENTORY.md`)
+- [x] Record third-party processors (OpenAI, Razorpay, Firebase, Sarvam)
 
 ## Consent + Auditability
-- [ ] Capture consent timestamp/version for policy and terms changes
+- [x] Capture consent timestamp/version for policy and terms changes
 - [x] Sensitive actions are audit-logged
 
 ## Security
@@ -22,10 +22,14 @@ Use this checklist for enterprise and privacy readiness.
 - [ ] Periodic pentest checklist sign-off
 
 ## Incident + DR
-- [ ] Incident response contacts and severity matrix
-- [ ] GDPR breach notification procedure: assess and notify the supervisory authority within 72 hours when required
-- [ ] Breach response roles documented: DPO/privacy owner, incident lead, legal, communications, engineering owner
-- [ ] Breach notification templates for supervisory authority and affected users, including nature of breach, data categories, likely impact, mitigation, and contact point
-- [ ] Evidence log for breach decisions, timestamps, communications, containment steps, and legal hold status
-- [ ] Escalation matrix with contact details for privacy, security, legal, support, and executive approvers
+- [x] Incident response roles and severity matrix documented (`INCIDENT_RESPONSE.md`)
+- [x] GDPR 72-hour assessment procedure documented
+- [x] Breach response roles documented
+- [x] Breach notification template fields documented
+- [x] Evidence log requirements documented
+- [ ] Populate monitored production contact addresses and executive approvers
 - [ ] Quarterly backup/restore drill evidence
+
+Launch cannot be signed off while any unchecked item above remains. Verify the
+public support address by sending and answering a test message, and attach real
+pentest and restore evidence rather than checking an item from configuration alone.

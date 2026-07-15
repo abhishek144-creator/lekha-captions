@@ -1,4 +1,4 @@
-import React, { useState } from "react"
+import { useState } from "react"
 import { Navigate } from "react-router-dom"
 import { useAuth } from "@/lib/AuthContext"
 import { apiRequest } from "@/lib/apiClient"
@@ -19,10 +19,10 @@ export default function AdminOps() {
   const run = async (path, body = {}) => {
     setLoading(true)
     try {
-      const idToken = (await currentUser?.getIdToken?.()) || currentUser?.accessToken || ""
+      const idToken = (await currentUser?.getIdToken?.()) || ""
       const data = await apiRequest(path, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({ ...body, id_token: idToken }),
       })
       setOutput(data)

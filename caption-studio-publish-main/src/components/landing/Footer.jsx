@@ -1,46 +1,26 @@
-import React from 'react'
 import { Link } from 'react-router-dom'
+import { createPageUrl } from '@/utils'
 import CaptionStudioLogo from '@/components/dashboard/CaptionStudioLogo'
 
 export default function Footer() {
   return (
-    <footer className="py-12 bg-[#111111] border-t border-[#F5A623]/20">
-      <div className="max-w-6xl mx-auto px-6">
-        <div className="flex flex-col md:flex-row justify-between items-start gap-10 mb-10">
-          {/* Brand */}
-          <div className="flex flex-col gap-3">
+    <footer className="border-t border-white/[0.07] bg-black/20 py-12 backdrop-blur-xl">
+      <div className="mx-auto max-w-7xl px-5 sm:px-6">
+        <div className="flex flex-col justify-between gap-10 md:flex-row">
+          <div>
             <CaptionStudioLogo size="default" showText={true} />
-            <p className="text-[#949494] text-sm max-w-xs">
-              Professional captions in 115+ languages. Built for every creator.
-            </p>
+            <p className="mt-4 max-w-xs text-sm leading-relaxed text-[#949494]">Professional captions in 115+ languages. Built for every creator.</p>
           </div>
-
-          {/* Links */}
-          <div className="flex gap-16">
-            <div>
-              <p className="text-white text-sm font-semibold mb-3">Product</p>
-              <ul className="space-y-2 text-sm text-[#949494]">
-                <li><Link to="/" className="hover:text-white transition-colors">Home</Link></li>
-                <li><Link to="/Dashboard" className="hover:text-white transition-colors">Editor</Link></li>
-              </ul>
-            </div>
-            <div>
-              <p className="text-white text-sm font-semibold mb-3">Help</p>
-              <ul className="space-y-2 text-sm text-[#949494]">
-                <li><Link to="/Faq" className="hover:text-white transition-colors">FAQ</Link></li>
-                <li><Link to="/HelpAndSupport" className="hover:text-white transition-colors">Help &amp; Support</Link></li>
-                <li><Link to="/TermsAndConditions" className="hover:text-white transition-colors">Terms &amp; Conditions</Link></li>
-              </ul>
-            </div>
+          <div className="grid grid-cols-2 gap-x-16 gap-y-8 text-sm">
+            <div><p className="mb-3 font-medium text-white">Product</p><div className="space-y-2.5 text-[#949494]"><Link to={createPageUrl('Home')} className="block transition hover:text-white">Home</Link><Link to={createPageUrl('Dashboard')} className="block transition hover:text-white">Editor</Link></div></div>
+            <div><p className="mb-3 font-medium text-white">Support</p><div className="space-y-2.5 text-[#949494]"><Link to={createPageUrl('Faq')} className="block transition hover:text-white">FAQ</Link><Link to={createPageUrl('HelpAndSupport')} className="block transition hover:text-white">Help &amp; Support</Link><Link to={createPageUrl('TermsAndConditions')} className="block transition hover:text-white">Terms &amp; Conditions</Link><Link to={createPageUrl('PrivacyPolicy')} className="block transition hover:text-white">Privacy Policy</Link></div></div>
           </div>
         </div>
-
-        <div className="border-t border-[#F5A623]/20 pt-6 flex flex-col md:flex-row justify-between items-center gap-3">
-          <p className="text-[#949494]/70 text-sm">© {new Date().getFullYear()} Lekha Captions. All rights reserved.</p>
-          <p className="text-[#949494] text-sm">Built for every language, every creator 🌍</p>
+        <div className="mt-10 flex flex-col gap-2 border-t border-white/[0.07] pt-6 text-xs text-[#949494] sm:flex-row sm:items-center sm:justify-between">
+          <p>© {new Date().getFullYear()} Lekha Captions. All rights reserved.</p>
+          <p>Built for every language, every creator 🌍</p>
         </div>
       </div>
     </footer>
   )
 }
-
