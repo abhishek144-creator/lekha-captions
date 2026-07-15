@@ -19,6 +19,7 @@ export default function Login() {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const isLoginMode = searchParams.get('mode') === 'login';
+    const [consentAccepted, setConsentAccepted] = React.useState(false);
 
     React.useEffect(() => {
         if (user) {
@@ -27,8 +28,15 @@ export default function Login() {
     }, [user, navigate]);
 
     const handleGoogleAuth = async () => {
+        if (!consentAccepted) return;
         try {
-            const result = await loginWithGoogle();
+            const result = await loginWithGoogle({
+                consent: {
+                    granted: true,
+                    termsVersion: '2026-07-14',
+                    privacyVersion: '2026-07-14',
+                },
+            });
             if (!result?.redirected) {
                 navigate('/Dashboard');
             }
@@ -83,7 +91,8 @@ export default function Login() {
                 <button
                     type="button"
                     onClick={handleGoogleAuth}
-                    className="w-full flex items-center justify-center gap-3 rounded-lg border border-white/20 bg-white/5 px-4 py-3 font-medium text-white transition-colors hover:bg-white/10"
+                    disabled={!consentAccepted}
+                    className="w-full flex items-center justify-center gap-3 rounded-lg border border-white/20 bg-white/5 px-4 py-3 font-medium text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                     <GoogleIcon />
                     <span>{primaryCta}</span>
@@ -105,7 +114,8 @@ export default function Login() {
                     <button
                         type="button"
                         onClick={handleGoogleAuth}
-                        className="w-full rounded-lg bg-gradient-to-r from-[#F5A623] to-blue-600 px-4 py-3 font-semibold text-white transition-colors hover:from-[#F5A623] hover:to-blue-700"
+                        disabled={!consentAccepted}
+                        className="w-full rounded-lg bg-gradient-to-r from-[#F5A623] to-blue-600 px-4 py-3 font-semibold text-white transition-colors hover:from-[#F5A623] hover:to-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                         Continue with Google
                     </button>
@@ -118,10 +128,10 @@ export default function Login() {
                     </div>
                 )}
 
-                <div className="mt-8 text-center text-sm text-gray-500">
-                    By proceeding, you agree to the<br />
-                    <a href="/TermsAndConditions" className="text-[#F5A623] hover:underline">Terms of Service</a> and <a href="/TermsAndConditions" className="text-[#F5A623] hover:underline">Privacy Policy</a>
-                </div>
+                <label className="mt-8 flex items-start gap-3 text-sm text-gray-400">
+                    <input type="checkbox" checked={consentAccepted} onChange={(event) => setConsentAccepted(event.target.checked)} className="mt-1" />
+                    <span>I agree to the <a href="/TermsAndConditions" className="text-[#F5A623] hover:underline">Terms of Service</a> and acknowledge the <a href="/PrivacyPolicy" className="text-[#F5A623] hover:underline">Privacy Policy</a>.</span>
+                </label>
 
                 <div className="mt-10 text-center text-sm text-gray-400">
                     {isLoginMode ? (

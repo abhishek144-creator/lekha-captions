@@ -1,0 +1,11 @@
+{
+  "starter": {"inr_paise": 29900, "usd_cents": 399, "credits": 15, "days": 30, "daily_limit": 3, "max_video_seconds": 120, "export_retention_hours": 2, "tier": "starter"},
+  "creator": {"inr_paise": 49900, "usd_cents": 499, "credits": 45, "days": 30, "daily_limit": 5, "max_video_seconds": 180, "export_retention_hours": 24, "tier": "creator"},
+  "pro": {"inr_paise": 79900, "usd_cents": 599, "credits": 120, "days": 30, "daily_limit": null, "max_video_seconds": 180, "export_retention_hours": 72, "tier": "pro"},
+  "starter_yearly": {"inr_paise": 250000, "usd_cents": 3999, "credits": 180, "days": 365, "daily_limit": 3, "max_video_seconds": 120, "export_retention_hours": 2, "tier": "starter_yearly"},
+  "creator_yearly": {"inr_paise": 450000, "usd_cents": 4999, "credits": 540, "days": 365, "daily_limit": 5, "max_video_seconds": 180, "export_retention_hours": 24, "tier": "creator_yearly"},
+  "pro_yearly": {"inr_paise": 650000, "usd_cents": 5999, "credits": 1440, "days": 365, "daily_limit": null, "max_video_seconds": 180, "export_retention_hours": 72, "tier": "pro_yearly"},
+  "topup_starter": {"inr_paise": 9900, "credits": 10, "is_topup": true, "allowed_tier": "starter"},
+  "topup_creator": {"inr_paise": 9900, "credits": 15, "is_topup": true, "allowed_tier": "creator"},
+  "topup_pro": {"inr_paise": 14900, "credits": 25, "is_topup": true, "allowed_tier": "pro"}
+}

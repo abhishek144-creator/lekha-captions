@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
 import {
     auth,
     db,
@@ -9,11 +9,12 @@ import {
     signOut,
     onAuthStateChanged,
     doc,
-    getDoc,
-    setDoc
+    getDoc
 } from '../lib/firebase'
+import { apiRequest } from '../lib/apiClient'
 
 const AuthContext = createContext()
+const PENDING_CONSENT_KEY = 'lekha.pendingConsent'
 
 export function useAuth() {
     return useContext(AuthContext)
@@ -25,33 +26,44 @@ export function AuthProvider({ children }) {
     const [loading, setLoading] = useState(true)
     const [authError, setAuthError] = useState(null)
 
-    const syncUserRecord = async (user) => {
-        const userRef = doc(db, 'users', user.uid)
-        const userSnap = await getDoc(userRef)
-
-        if (!userSnap.exists()) {
-            const newUserDoc = {
-                email: user.email,
-                displayName: user.displayName,
-                photoURL: user.photoURL,
-                credits_remaining: 3,
-                subscription_tier: 'free',
-                subscription_expiry: null,
-                createdAt: new Date().toISOString()
+    const syncUserRecord = async (user, consentOverride = null) => {
+        const idToken = await user.getIdToken()
+        let consent = consentOverride
+        if (!consent && typeof window !== 'undefined') {
+            try {
+                consent = JSON.parse(window.localStorage.getItem(PENDING_CONSENT_KEY) || 'null')
+            } catch {
+                consent = null
             }
-            await setDoc(userRef, newUserDoc)
-            setUserData(newUserDoc)
-            return newUserDoc
         }
-
-        const existingUserDoc = userSnap.data()
-        setUserData(existingUserDoc)
-        return existingUserDoc
+        const result = await apiRequest('/api/account-bootstrap', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${idToken}`,
+            },
+            body: JSON.stringify({
+                id_token: idToken,
+                consent_granted: consent?.granted === true,
+                terms_version: consent?.termsVersion || '',
+                privacy_version: consent?.privacyVersion || '',
+            }),
+        })
+        if (consent?.granted && typeof window !== 'undefined') {
+            window.localStorage.removeItem(PENDING_CONSENT_KEY)
+        }
+        const serverUser = result.user || null
+        setUserData(serverUser)
+        return serverUser
     }
 
-    const loginWithGoogle = async ({ preferRedirect = false } = {}) => {
+    const loginWithGoogle = async ({ preferRedirect = false, consent = null } = {}) => {
         try {
             setAuthError(null)
+
+            if (consent?.granted && typeof window !== 'undefined') {
+                window.localStorage.setItem(PENDING_CONSENT_KEY, JSON.stringify(consent))
+            }
 
             if (preferRedirect) {
                 await signInWithRedirect(auth, googleProvider)
@@ -59,7 +71,7 @@ export function AuthProvider({ children }) {
             }
 
             const result = await signInWithPopup(auth, googleProvider)
-            await syncUserRecord(result.user)
+            await syncUserRecord(result.user, consent)
             return result.user
         } catch (error) {
             console.error('Google Sign In Error:', error)
@@ -109,10 +121,8 @@ export function AuthProvider({ children }) {
                     // clearing unconditionally wiped redirect sign-in failures
                     // before the Login page could display them.
                     setAuthError(null)
-                    // syncUserRecord creates the user doc (with the 3 free
-                    // credits) when it is missing. Redirect sign-ins and
-                    // interrupted first logins reach here without a doc, so
-                    // relying on getDoc alone left userData null forever.
+                    // Account defaults and credits are initialized by the API;
+                    // the browser is never allowed to write entitlement fields.
                     syncUserRecord(user)
                         .catch((error) => {
                             console.warn('Failed to sync user data from Firestore:', error.message)
@@ -129,6 +139,17 @@ export function AuthProvider({ children }) {
             setAuthError(error)
             return () => {}
         }
+    }, [])
+
+    useEffect(() => {
+        if (!auth || typeof window === 'undefined') return undefined
+        const handleForcedLogout = () => {
+            signOut(auth).catch((error) => {
+                console.warn('Failed to clear rejected Firebase session:', error.message)
+            })
+        }
+        window.addEventListener('auth:logout', handleForcedLogout)
+        return () => window.removeEventListener('auth:logout', handleForcedLogout)
     }, [])
 
     const refreshUserData = async () => {

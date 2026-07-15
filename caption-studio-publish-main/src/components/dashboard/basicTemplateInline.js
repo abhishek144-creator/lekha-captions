@@ -89,7 +89,59 @@ export function isHiddenTemplateSlotStyle(styleValue = '') {
 }
 
 export function sanitizeAppliedTemplateMarkup(markup = '', preserveInlineStyles = false) {
-  return String(markup)
+  const source = String(markup);
+  if (typeof DOMParser !== 'undefined') {
+    let doc;
+    try {
+      doc = new DOMParser().parseFromString(source, 'text/html');
+    } catch {
+      return '';
+    }
+    const allowedTags = new Set(['div', 'span', 'p', 'br', 'strong', 'em', 'b', 'i', 'u', 's', 'small', 'mark', 'sub', 'sup']);
+    for (const node of Array.from(doc.body.querySelectorAll('*'))) {
+      if (!allowedTags.has(node.tagName.toLowerCase())) {
+        node.remove();
+        continue;
+      }
+      for (const attribute of Array.from(node.attributes)) {
+        const name = attribute.name.toLowerCase();
+        const value = String(attribute.value || '');
+        if (name === 'style') {
+          const hidden = isHiddenTemplateSlotStyle(value);
+          node.removeAttribute(attribute.name);
+          if (hidden) node.setAttribute('data-basic-hidden-slot', 'true');
+          if (preserveInlineStyles) {
+            const safeStyle = sanitizeTemplateInlineStyle(value).match(/ style="([^"]*)"/)?.[1] || '';
+            if (safeStyle) node.setAttribute('style', safeStyle);
+          }
+          continue;
+        }
+        if (name === 'class') {
+          const safeClasses = value.split(/\s+/)
+            .filter((className) => /^[A-Za-z0-9_-]{1,80}$/.test(className))
+            .filter((className) => !['active', 'visible', 'anim', preserveInlineStyles ? '' : 'on', 'in'].includes(className))
+            .join(' ');
+          if (safeClasses) node.setAttribute('class', safeClasses);
+          else node.removeAttribute(attribute.name);
+          continue;
+        }
+        if (name === 'id') {
+          if (!/^[A-Za-z][A-Za-z0-9_-]{0,79}$/.test(value)) node.removeAttribute(attribute.name);
+          continue;
+        }
+        if (/^(?:data|aria)-[a-z0-9_-]+$/.test(name)) {
+          if (value.length > 500) node.removeAttribute(attribute.name);
+          continue;
+        }
+        if (!['role', 'title'].includes(name)) node.removeAttribute(attribute.name);
+      }
+    }
+    return doc.body.innerHTML;
+  }
+
+  // Non-browser fallback used only before the renderer enters its Puppeteer
+  // page. Actual HTML injection always passes through the DOM allowlist above.
+  return source
     .replace(/<script[\s\S]*?<\/script>/gi, '')
     .replace(/<style[\s\S]*?<\/style>/gi, '')
     .replace(/<(?:iframe|object|embed|link|meta|base|form|input|button|textarea|select)\b[\s\S]*?<\/(?:iframe|object|embed|link|meta|base|form|input|button|textarea|select)>/gi, '')
@@ -185,15 +237,6 @@ export function _astMappedClass(sourceClasses, index, total, fallback) {
     Math.round((index * (sourceClasses.length - 1)) / Math.max(1, total - 1)),
   );
   return sourceClasses[si] || fallback;
-}
-
-export function _astSplitForSlots(words, slotCount) {
-  if (!words.length || !slotCount) return [];
-  const slots = Array.from({ length: slotCount }, () => []);
-  words.forEach((w, i) => {
-    slots[Math.min(slotCount - 1, Math.floor((i * slotCount) / words.length))].push(w);
-  });
-  return slots.map((s) => s.join(' '));
 }
 
 export function _astSplitWordRecordsForSlots(words, slotCount) {

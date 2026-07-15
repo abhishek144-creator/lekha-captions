@@ -1,0 +1,25 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function ownsUser(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    match /users/{uid} {
+      allow read: if ownsUser(uid);
+      // Account, plan, credits, export history, and profile fields are all
+      // written through authenticated server endpoints using the Admin SDK.
+      allow create, update, delete: if false;
+
+      match /payments/{paymentId} {
+        allow read: if ownsUser(uid);
+        allow create, update, delete: if false;
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

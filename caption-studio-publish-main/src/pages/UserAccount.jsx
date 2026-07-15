@@ -19,7 +19,9 @@ import { Button } from '@/components/ui/button'
 import PricingModal from '@/components/dashboard/PricingModal'
 import { useAuth } from '@/lib/AuthContext'
 import { db } from '@/lib/firebase'
-import { collection, getDocs, orderBy, query } from 'firebase/firestore'
+import { collection, getDocs, limit, orderBy, query, startAfter } from 'firebase/firestore'
+
+const PAYMENT_PAGE_SIZE = 25
 
 const PLAN_LIMITS = {
   free_plan: { totalCredits: 3, name: 'Free' },
@@ -39,6 +41,10 @@ export default function UserAccount() {
   const [isRenewalModalOpen, setIsRenewalModalOpen] = useState(false)
   const [payments, setPayments] = useState([])
   const [isLoadingPayments, setIsLoadingPayments] = useState(true)
+  const [isLoadingMorePayments, setIsLoadingMorePayments] = useState(false)
+  const [paymentCursor, setPaymentCursor] = useState(null)
+  const [hasMorePayments, setHasMorePayments] = useState(false)
+  const paymentRequestGeneration = React.useRef(0)
 
   const planId = userData?.subscription_tier || userData?.subscription_plan || 'free'
   const planKey = (planId === 'free' || !planId) ? 'free_plan' : planId
@@ -55,24 +61,67 @@ export default function UserAccount() {
   }, [userData, isFreePlan])
 
   React.useEffect(() => {
+    const generation = ++paymentRequestGeneration.current
+    setPayments([])
+    setPaymentCursor(null)
+    setHasMorePayments(false)
+    setIsLoadingPayments(true)
+
     async function fetchPayments() {
       if (!currentUser?.uid) {
-        setIsLoadingPayments(false)
+        if (generation === paymentRequestGeneration.current) setIsLoadingPayments(false)
         return
       }
       try {
         const paymentsRef = collection(db, 'users', currentUser.uid, 'payments')
-        const q = query(paymentsRef, orderBy('timestamp', 'desc'))
+        const q = query(paymentsRef, orderBy('timestamp', 'desc'), limit(PAYMENT_PAGE_SIZE))
         const querySnapshot = await getDocs(q)
-        setPayments(querySnapshot.docs.map(doc => doc.data()))
+        if (generation !== paymentRequestGeneration.current) return
+        setPayments(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))
+        setPaymentCursor(querySnapshot.docs.at(-1) || null)
+        setHasMorePayments(querySnapshot.docs.length === PAYMENT_PAGE_SIZE)
       } catch (err) {
-        console.error('Error fetching payment history:', err)
+        if (generation === paymentRequestGeneration.current) {
+          console.error('Error fetching payment history:', err)
+        }
       } finally {
-        setIsLoadingPayments(false)
+        if (generation === paymentRequestGeneration.current) setIsLoadingPayments(false)
       }
     }
     fetchPayments()
-  }, [currentUser])
+    return () => {
+      if (generation === paymentRequestGeneration.current) paymentRequestGeneration.current += 1
+    }
+  }, [currentUser?.uid])
+
+  const loadMorePayments = async () => {
+    if (!currentUser?.uid || !paymentCursor || isLoadingMorePayments) return
+    const generation = paymentRequestGeneration.current
+    setIsLoadingMorePayments(true)
+    try {
+      const paymentsRef = collection(db, 'users', currentUser.uid, 'payments')
+      const nextQuery = query(
+        paymentsRef,
+        orderBy('timestamp', 'desc'),
+        startAfter(paymentCursor),
+        limit(PAYMENT_PAGE_SIZE)
+      )
+      const querySnapshot = await getDocs(nextQuery)
+      if (generation !== paymentRequestGeneration.current) return
+      setPayments(current => [
+        ...current,
+        ...querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+      ])
+      setPaymentCursor(querySnapshot.docs.at(-1) || null)
+      setHasMorePayments(querySnapshot.docs.length === PAYMENT_PAGE_SIZE)
+    } catch (err) {
+      if (generation === paymentRequestGeneration.current) {
+        console.error('Error loading more payment history:', err)
+      }
+    } finally {
+      if (generation === paymentRequestGeneration.current) setIsLoadingMorePayments(false)
+    }
+  }
 
   const handleLogout = async () => {
     try {
@@ -98,12 +147,38 @@ export default function UserAccount() {
 
   const formatDate = (value, fallback = 'Recently') => {
     if (!value) return fallback
-    const parsed = typeof value?.toDate === 'function' ? value.toDate() : new Date(value)
+    const normalized = typeof value === 'number' && value < 1_000_000_000_000
+      ? value * 1000
+      : value
+    const parsed = typeof value?.toDate === 'function' ? value.toDate() : new Date(normalized)
     if (Number.isNaN(parsed.getTime())) return fallback
     return parsed.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   }
 
-  const memberSince = formatDate(userData?.createdAt, 'Recently')
+  const downloadPaymentRecord = (payment) => {
+    const record = [
+      'Lekha Captions payment record',
+      `Payment ID: ${payment?.payment_id || payment?.id || 'Unavailable'}`,
+      `Order ID: ${payment?.order_id || 'Unavailable'}`,
+      `Plan: ${payment?.plan || 'Unavailable'}`,
+      `Amount: ${formatPaymentAmount(payment)}`,
+      `Status: ${payment?.status || 'Processed'}`,
+      `Date: ${formatDate(payment?.timestamp, 'Unavailable')}`,
+      '',
+      'This is a payment record, not a tax invoice.',
+    ].join('\n')
+    const blob = new Blob([record], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `lekha-payment-${payment?.payment_id || payment?.id || 'record'}.txt`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  }
+
+  const memberSince = formatDate(userData?.created_at ?? userData?.createdAt, 'Recently')
   const cycleEnd = userData?.billing_cycle_end || userData?.subscription_expiry
   const daysLeft = cycleEnd
     ? Math.max(0, Math.ceil((new Date(cycleEnd) - new Date()) / (1000 * 60 * 60 * 24)))
@@ -304,11 +379,30 @@ export default function UserAccount() {
                       <p className="text-sm font-black">{formatPaymentAmount(payment)}</p>
                       <p className="text-[10px] uppercase tracking-wider text-emerald-400">{payment.status === 'captured' ? 'Paid' : payment.status || 'Processed'}</p>
                     </div>
-                    <button className="hidden sm:flex w-9 h-9 rounded-xl border border-white/10 items-center justify-center text-gray-500 hover:text-white hover:bg-white/10 transition-colors">
+                    <button
+                      type="button"
+                      onClick={() => downloadPaymentRecord(payment)}
+                      aria-label="Download payment record"
+                      title="Download payment record"
+                      className="hidden sm:flex w-9 h-9 rounded-xl border border-white/10 items-center justify-center text-gray-500 hover:text-white hover:bg-white/10 transition-colors"
+                    >
                       <Download className="w-4 h-4" />
                     </button>
                   </div>
                 ))}
+                {hasMorePayments && (
+                  <div className="px-5 py-4 flex justify-center">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={loadMorePayments}
+                      disabled={isLoadingMorePayments}
+                      className="border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]"
+                    >
+                      {isLoadingMorePayments ? 'Loading...' : 'Load more payments'}
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
           </div>

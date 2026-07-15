@@ -15,6 +15,7 @@ caption-studio-publish-main/codex-*.jpg
 caption-studio-publish-main/tmp-*.png
 
 # Local dashboard extraction/backup artifacts
+backups/
 caption-studio-publish-main/dashboard-backups/
 lekha_10_captemplates_batch06_cards.html
 lekha_cpt_throwaway_preview.html

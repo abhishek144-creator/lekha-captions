@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Sparkles, X, Search, Star, RotateCcw } from 'lucide-react';
 import { useLazyVisible } from './useLazyVisible';
 import {
@@ -6,6 +6,7 @@ import {
   templateMatchesQuery,
   useTemplateFavorites,
 } from './templateBrowserUtils.js';
+import { readCssDeclaration } from './templateStyleUtils.js';
 import { getLcMotionSchedule } from './templateMotionConfig.js';
 import '../../styles/advancedTemplateLibrary.css';
 import legacyTemplateHtml from '../../assets/lekha-captions-20-templates.html?raw';
@@ -260,8 +261,7 @@ function pickFirstCssBody(cssText = '', selectors = []) {
 }
 
 function readDeclaration(body = '', property = '') {
-  const match = String(body).match(new RegExp(`${escapeRegExp(property)}\\s*:\\s*([^;]+)`, 'i'));
-  return match?.[1]?.trim() || '';
+  return readCssDeclaration(body, property);
 }
 
 function parseClampOrPxSize(value = '') {
@@ -755,7 +755,7 @@ function buildLcCardMarkup(template = {}, templateIndex = 0) {
 }
 
 function extractLcCards() {
-  return lcTemplateHtmlSets.flatMap((markup, setIndex) => (
+  return lcTemplateHtmlSets.flatMap((markup) => (
     parseLcTemplateSet(markup).map((template, templateIndex) => {
       const formula = `${template.style} Style`;
       const cardMarkup = buildLcCardMarkup(template, templateIndex);
