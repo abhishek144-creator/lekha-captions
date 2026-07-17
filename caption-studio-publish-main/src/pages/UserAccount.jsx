@@ -18,20 +18,38 @@ import {
 import { Button } from '@/components/ui/button'
 import PricingModal from '@/components/dashboard/PricingModal'
 import { useAuth } from '@/lib/AuthContext'
+import { toDateSafe } from '@/lib/subscription'
 import { db } from '@/lib/firebase'
 import { collection, getDocs, limit, orderBy, query, startAfter } from 'firebase/firestore'
+import planCatalog from '../../shared/planCatalog.json'
 
 const PAYMENT_PAGE_SIZE = 25
 
+const FREE_PLAN_CREDITS = 3
+
+const PAID_PLAN_NAMES = {
+  starter: 'Starter',
+  starter_yearly: 'Starter (Yearly)',
+  creator: 'Creator',
+  creator_yearly: 'Creator (Yearly)',
+  pro: 'Pro',
+  pro_yearly: 'Pro (Yearly)',
+}
+
+// Credit totals come from the shared billing catalog the backend grants against,
+// so this page cannot drift from what a plan actually gives. Free is not a
+// catalog plan and has no purchasable entry.
 const PLAN_LIMITS = {
-  free_plan: { totalCredits: 3, name: 'Free' },
-  free: { totalCredits: 3, name: 'Free' },
-  starter: { totalCredits: 15, name: 'Starter' },
-  starter_yearly: { totalCredits: 180, name: 'Starter (Yearly)' },
-  creator: { totalCredits: 45, name: 'Creator' },
-  creator_yearly: { totalCredits: 540, name: 'Creator (Yearly)' },
-  pro: { totalCredits: 120, name: 'Pro' },
-  pro_yearly: { totalCredits: 1440, name: 'Pro (Yearly)' },
+  free_plan: { totalCredits: FREE_PLAN_CREDITS, name: 'Free' },
+  free: { totalCredits: FREE_PLAN_CREDITS, name: 'Free' },
+  ...Object.fromEntries(
+    Object.entries(PAID_PLAN_NAMES).map(([key, name]) => [
+      key,
+      // `?.` — a tier missing from the catalog must not throw at module load
+      // (that white-screens the whole Account page).
+      { totalCredits: planCatalog[key]?.credits ?? FREE_PLAN_CREDITS, name }
+    ])
+  )
 }
 
 export default function UserAccount() {
@@ -55,7 +73,10 @@ export default function UserAccount() {
   const isFreePlan = planId === 'free' || planId === 'free_plan' || !planId
 
   React.useEffect(() => {
-    if (userData?.billing_cycle_end && new Date() > new Date(userData.billing_cycle_end) && !isFreePlan) {
+    // toDateSafe: billing_cycle_end may be a Firestore Timestamp (raw getDoc
+    // path) — `new Date(Timestamp)` is Invalid Date and never triggers renewal.
+    const cycleEndDate = toDateSafe(userData?.billing_cycle_end)
+    if (cycleEndDate && Date.now() > cycleEndDate.getTime() && !isFreePlan) {
       setIsRenewalModalOpen(true)
     }
   }, [userData, isFreePlan])
@@ -179,9 +200,9 @@ export default function UserAccount() {
   }
 
   const memberSince = formatDate(userData?.created_at ?? userData?.createdAt, 'Recently')
-  const cycleEnd = userData?.billing_cycle_end || userData?.subscription_expiry
+  const cycleEnd = toDateSafe(userData?.billing_cycle_end || userData?.subscription_expiry)
   const daysLeft = cycleEnd
-    ? Math.max(0, Math.ceil((new Date(cycleEnd) - new Date()) / (1000 * 60 * 60 * 24)))
+    ? Math.max(0, Math.ceil((cycleEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
     : 0
 
   if (!currentUser) {

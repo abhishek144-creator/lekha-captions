@@ -221,20 +221,26 @@ export default function UploadModal({
 
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const file = e.dataTransfer.files[0];
-      if (file.type.startsWith('video/')) {
-        const maxSize = MAX_UPLOAD_BYTES;
-        const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
-
-        if (file.size > maxSize) {
-          setFileSizeError(`File size (${fileSizeMB}MB) exceeds 500MB limit.`);
-          return;
-        }
-
-        setFileSizeError(null);
-        setSelectedFile(file);
-        setDetectedUpload(null);
-        setStep(2);
+      // Windows reports an EMPTY MIME type for some valid videos (.mkv, some
+      // .mov) — fall back to the extension, and never fail a drop silently.
+      const looksLikeVideo = file.type.startsWith('video/')
+        || (!file.type && /\.(mp4|mov|m4v|webm|mkv|avi)$/i.test(file.name || ''));
+      if (!looksLikeVideo) {
+        setFileSizeError('That file does not look like a video. Please drop an MP4, MOV, or WebM file.');
+        return;
       }
+      const maxSize = MAX_UPLOAD_BYTES;
+      const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+
+      if (file.size > maxSize) {
+        setFileSizeError(`File size (${fileSizeMB}MB) exceeds 500MB limit.`);
+        return;
+      }
+
+      setFileSizeError(null);
+      setSelectedFile(file);
+      setDetectedUpload(null);
+      setStep(2);
     }
   }, []);
 

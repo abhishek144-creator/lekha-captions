@@ -52,6 +52,7 @@ import __Layout from './Layout.jsx'
 
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Home = lazy(() => import('./pages/Home'))
+const HomeV2 = lazy(() => import('./pages/HomeV2'))
 const Login = lazy(() => import('./pages/Login'))
 const UserAccount = lazy(() => import('./pages/UserAccount'))
 const Faq = lazy(() => import('./pages/Faq'))
@@ -63,6 +64,7 @@ const AdminOps = lazy(() => import('./pages/AdminOps'))
 export const PAGES = {
     "Dashboard": Dashboard,
     "Home": Home,
+    "HomeV2": HomeV2,
     "login": Login,
     "UserAccount": UserAccount,
     "Faq": Faq,

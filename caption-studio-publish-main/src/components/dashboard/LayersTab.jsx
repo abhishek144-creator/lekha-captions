@@ -184,9 +184,14 @@ export default function LayersTab({
             <p className="text-xs text-slate-500 mt-1">Upload a video or add text to build the stack.</p>
           </div>
         ) : (
-          layers.map((layer, index) => {
+          layers.map((layer) => {
             const isSelected = selectedCaptionId === layer.id;
             const Icon = layer.isTextElement ? Type : Captions;
+            // Number captions among captions only — the merged text+caption
+            // index mislabeled every caption when text layers were present.
+            const captionNumber = layer.isTextElement
+              ? 0
+              : captionLayers.findIndex((caption) => caption.id === layer.id) + 1;
             return (
               <button
                 key={layer.id}
@@ -207,7 +212,7 @@ export default function LayersTab({
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">
-                        {layer.isTextElement ? 'Text' : `Caption ${index + 1}`}
+                        {layer.isTextElement ? 'Text' : `Caption ${captionNumber}`}
                       </p>
                       <span className="text-[10px] font-mono text-slate-500">
                         {formatTime(layer.start_time)} - {formatTime(layer.end_time)}

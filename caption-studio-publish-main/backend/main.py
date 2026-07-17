@@ -340,52 +340,8 @@ elif RAZORPAY_AVAILABLE:
     _json_log("warning", "razorpay_credentials_missing")
 
 # --- PLAN PRICING (locked — do not change) ---
-PLAN_PRICING = {
-    # Monthly plans
-    'starter': {
-        'inr_paise': 29900, 'usd_cents': 399,
-        'credits': 15, 'days': 30,
-        'daily_limit': 3, 'max_video_seconds': 120,
-        'export_retention_hours': 2, 'tier': 'starter',
-    },
-    'creator': {
-        'inr_paise': 49900, 'usd_cents': 499,
-        'credits': 45, 'days': 30,
-        'daily_limit': 5, 'max_video_seconds': 180,
-        'export_retention_hours': 24, 'tier': 'creator',
-    },
-    'pro': {
-        'inr_paise': 79900, 'usd_cents': 599,
-        'credits': 120, 'days': 30,
-        'daily_limit': None, 'max_video_seconds': 180,
-        'export_retention_hours': 72, 'tier': 'pro',
-    },
-    # Yearly plans (billed as single charge, 365 days)
-    'starter_yearly': {
-        'inr_paise': 250000, 'usd_cents': 3999,
-        'credits': 180, 'days': 365,
-        'daily_limit': 3, 'max_video_seconds': 120,
-        'export_retention_hours': 2, 'tier': 'starter_yearly',
-    },
-    'creator_yearly': {
-        'inr_paise': 450000, 'usd_cents': 4999,
-        'credits': 540, 'days': 365,
-        'daily_limit': 5, 'max_video_seconds': 180,
-        'export_retention_hours': 24, 'tier': 'creator_yearly',
-    },
-    'pro_yearly': {
-        'inr_paise': 650000, 'usd_cents': 5999,
-        'credits': 1440, 'days': 365,
-        'daily_limit': None, 'max_video_seconds': 180,
-        'export_retention_hours': 72, 'tier': 'pro_yearly',
-    },
-    # Top-up packs (add credits only, no tier/expiry change)
-    'topup_starter': {'inr_paise': 9900, 'credits': 10, 'is_topup': True, 'allowed_tier': 'starter'},
-    'topup_creator': {'inr_paise': 9900, 'credits': 15, 'is_topup': True, 'allowed_tier': 'creator'},
-    'topup_pro':     {'inr_paise': 14900, 'credits': 25, 'is_topup': True, 'allowed_tier': 'pro'},
-}
-
-# Runtime billing values come from the shared catalog consumed by the frontend.
+# Billing values live in shared/planCatalog.json, which the frontend imports too.
+# Edit that catalog, not this module: it is the single source of pricing truth.
 with open(os.path.join(root_dir, "shared", "planCatalog.json"), "r", encoding="utf-8") as plan_catalog_file:
     PLAN_PRICING = json.load(plan_catalog_file)
 
@@ -3527,7 +3483,10 @@ def create_order(req: CreateOrderRequest, request: Request, response: Response):
 
     if not RAZORPAY_AVAILABLE or rzp_client is None:
         _payment_idem_delete(pay_idem_key)
-        raise HTTPException(status_code=503, detail="Payment service unavailable")
+        detail = "Payment service unavailable"
+        if _IS_DEVELOPMENT and (not RAZORPAY_KEY_ID or not RAZORPAY_KEY_SECRET):
+            detail = "Payment service is not configured. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET, then restart the backend."
+        raise HTTPException(status_code=503, detail=detail)
 
     try:
         order_data = {

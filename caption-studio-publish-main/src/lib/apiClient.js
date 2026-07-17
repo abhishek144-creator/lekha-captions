@@ -56,6 +56,30 @@ function getLocalDirectBackendUrl(url) {
   }
 }
 
+// FastAPI validation failures (422) put an ARRAY of {loc, msg, type} objects in
+// `detail`; naive string coercion shows "[object Object]" in user-facing toasts.
+// `data` itself stays untouched so marker checks (PLAN_EXPIRED etc.) still work.
+function toReadableErrorMessage(value) {
+  if (typeof value === "string") return value
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => (typeof item === "string" ? item : item?.msg || ""))
+      .filter(Boolean)
+      .join("; ")
+  }
+  if (value && typeof value === "object") {
+    return typeof value.msg === "string" ? value.msg : ""
+  }
+  return ""
+}
+
+function buildApiErrorMessage(data, status) {
+  return toReadableErrorMessage(data?.detail)
+    || toReadableErrorMessage(data?.error)
+    || toReadableErrorMessage(data?.message)
+    || `Request failed (${status})`
+}
+
 function looksLikeProxyConnectionFailure(data) {
   const message = String(data?.detail || data?.error || data?.message || "")
   return /proxy|econnrefused|failed to fetch|socket hang up|networkerror/i.test(message)
@@ -190,12 +214,7 @@ export async function apiFetch(url, options = {}) {
               data = await parseResponseBody(response.clone())
               if (response.ok) return response
               if (!looksLikeProxyConnectionFailure(data)) {
-                const message =
-                  data?.detail ||
-                  data?.error ||
-                  data?.message ||
-                  `Request failed (${response.status})`
-                throw new ApiError(message, { status: response.status, data })
+                throw new ApiError(buildApiErrorMessage(data, response.status), { status: response.status, data })
               }
             } catch (error) {
               if (error instanceof ApiError) throw error
@@ -208,12 +227,7 @@ export async function apiFetch(url, options = {}) {
           }
           throw new ApiError(getBackendUnavailableMessage(), { status: response.status, data })
         }
-        const message =
-          data?.detail ||
-          data?.error ||
-          data?.message ||
-          `Request failed (${response.status})`
-        throw new ApiError(message, { status: response.status, data })
+        throw new ApiError(buildApiErrorMessage(data, response.status), { status: response.status, data })
       }
       return response
     }

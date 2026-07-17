@@ -1,55 +1,142 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { createPageUrl } from '@/utils'
 import { ArrowRight, AudioLines, Check, Play, Sparkles, Wand2 } from 'lucide-react'
-import { motion } from 'framer-motion'
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 
 const stats = [
   ['115+', 'Languages supported'],
-  ['25+', 'Caption styles'],
+  ['100+', 'Caption styles'],
   ['120–180s', 'Shorts & Reels sweet spot'],
 ]
 
-const languages = ['हिन्दी', 'English', 'தமிழ்', 'বাংলা', 'తెలుగు', 'العربية', 'मराठी', 'Français', 'ಕನ್ನಡ', 'Português']
+const rotatingLanguages = [
+  'English',
+  'हिन्दी',
+  'தமிழ்',
+  'বাংলা',
+  'తెలుగు',
+  'العربية',
+  'Español',
+  'Français',
+  'Kiswahili',
+  '日本語',
+  '한국어',
+]
 
-function OpenCaptionStage() {
+const languageGroups = [
+  [
+    'English', 'हिन्दी · Hindi', 'বাংলা · Bengali', 'ਪੰਜਾਬੀ · Punjabi', 'ગુજરાતી · Gujarati', 'मराठी · Marathi',
+    'தமிழ் · Tamil', 'తెలుగు · Telugu', 'ಕನ್ನಡ · Kannada', 'മലയാളം · Malayalam', 'ଓଡ଼ିଆ · Odia', 'অসমীয়া · Assamese',
+    'नेपाली · Nepali', 'සිංහල · Sinhala', 'اردو · Urdu', 'کٲشُر · Kashmiri', 'मैथिली · Maithili', 'संस्कृतम् · Sanskrit',
+    'कोंकणी · Konkani', 'डोगरी · Dogri', 'سنڌي · Sindhi', 'پښتو · Pashto', 'دری · Dari', 'فارسی · Persian',
+    'العربية · Arabic', 'עברית · Hebrew', 'Türkçe · Turkish', 'Kurdî · Kurdish', 'Հայերեն · Armenian', 'ქართული · Georgian',
+  ],
+  [
+    '中文 · Chinese', '日本語 · Japanese', '한국어 · Korean', 'Tiếng Việt · Vietnamese', 'ไทย · Thai', 'ລາວ · Lao',
+    'ភាសាខ្មែរ · Khmer', 'မြန်မာ · Burmese', 'Bahasa Indonesia', 'Bahasa Melayu', 'Tagalog · Filipino', 'Cebuano',
+    'Javanese', 'Sundanese', 'Монгол · Mongolian', 'Қазақша · Kazakh', 'O‘zbek · Uzbek', 'Кыргызча · Kyrgyz',
+    'Тоҷикӣ · Tajik', 'Türkmençe · Turkmen', 'Azərbaycan · Azerbaijani', 'Русский · Russian', 'Українська · Ukrainian', 'Беларуская · Belarusian',
+    'Polski · Polish', 'Čeština · Czech', 'Slovenčina · Slovak', 'Magyar · Hungarian', 'Română · Romanian', 'Български · Bulgarian',
+  ],
+  [
+    'Español · Spanish', 'Português · Portuguese', 'Français · French', 'Deutsch · German', 'Italiano · Italian', 'Nederlands · Dutch',
+    'Català · Catalan', 'Galego · Galician', 'Euskara · Basque', 'Gaeilge · Irish', 'Cymraeg · Welsh', 'Gàidhlig · Scottish Gaelic',
+    'Íslenska · Icelandic', 'Norsk · Norwegian', 'Svenska · Swedish', 'Dansk · Danish', 'Suomi · Finnish', 'Eesti · Estonian',
+    'Latviešu · Latvian', 'Lietuvių · Lithuanian', 'Ελληνικά · Greek', 'Shqip · Albanian', 'Hrvatski · Croatian', 'Српски · Serbian',
+    'Bosanski · Bosnian', 'Slovenščina · Slovenian', 'Македонски · Macedonian', 'Malti · Maltese', 'Lëtzebuergesch · Luxembourgish', 'Yiddish · ייִדיש',
+  ],
+  [
+    'Kiswahili · Swahili', 'Afrikaans', 'isiZulu · Zulu', 'isiXhosa · Xhosa', 'Yorùbá · Yoruba', 'Igbo',
+    'Hausa', 'አማርኛ · Amharic', 'Soomaali · Somali', 'Oromo', 'Kinyarwanda', 'Kirundi',
+    'Lingála · Lingala', 'Luganda', 'Sesotho', 'Setswana', 'Shona', 'Chichewa',
+    'Malagasy', 'Wolof', 'Bambara', 'Akan', 'Eʋegbe · Ewe', 'Tigrinya',
+    'Tamazight', 'Kreyòl Ayisyen · Haitian Creole', 'Papiamento', 'Māori', 'Gagana Sāmoa · Samoan', 'Lea Faka-Tonga · Tongan',
+  ],
+]
+
+const languageBands = [
+  [...languageGroups[0], ...languageGroups[2]],
+  [...languageGroups[1], ...languageGroups[3]],
+]
+
+const floatingWords = [
+  {
+    text: 'SPEAK.',
+    className: 'left-[4%] top-[3%] font-serif italic text-white',
+    motion: { x: [0, 9, 0], y: [0, -8, 0], rotate: [-3, -1, -3] },
+    duration: 7.8,
+  },
+  {
+    text: 'STYLE.',
+    className: 'right-[2%] top-[29%] text-[#6ee7ff]',
+    motion: { x: [0, -8, 0], y: [0, 7, 0], rotate: [2, 0, 2] },
+    duration: 8.6,
+  },
+  {
+    text: 'CONNECT.',
+    className: 'left-[7%] top-[55%] text-[#ff8fa3]',
+    motion: { x: [0, 7, 0], y: [0, -6, 0], rotate: [-1, 1, -1] },
+    duration: 9.2,
+  },
+  {
+    text: 'EVERYWHERE.',
+    className: 'bottom-[3%] right-0 font-serif italic text-[#ffd166]',
+    motion: { x: [0, -10, 0], y: [0, 8, 0], rotate: [1, -1, 1] },
+    duration: 8.1,
+  },
+]
+
+function RollingLanguage() {
+  const [index, setIndex] = useState(0)
+  const shouldReduceMotion = useReducedMotion()
+
+  useEffect(() => {
+    if (shouldReduceMotion) return undefined
+
+    const interval = window.setInterval(() => {
+      setIndex((current) => (current + 1) % rotatingLanguages.length)
+    }, 4200)
+
+    return () => window.clearInterval(interval)
+  }, [shouldReduceMotion])
+
   return (
-    <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.8, delay: 0.18 }} className="relative mx-auto min-h-[31rem] w-full max-w-[35rem] lg:mr-0">
-      <div className="pointer-events-none absolute left-1/2 top-1/2 h-[28rem] w-[28rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#f5a623]/10" />
-      <div className="pointer-events-none absolute left-1/2 top-1/2 h-[20rem] w-[20rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-dashed border-white/[0.07] motion-safe:animate-[spin_38s_linear_infinite]" />
-      <div className="pointer-events-none absolute left-[46%] top-[46%] h-52 w-52 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#f5a623]/15 blur-[90px]" />
+    <span className="relative mt-1 inline-grid min-h-[1.05em] min-w-[7.3ch] max-w-full overflow-hidden align-bottom font-serif font-normal italic text-[#f5a623] sm:min-w-[8.4ch]" aria-hidden="true">
+      <AnimatePresence mode="popLayout" initial={false}>
+        <motion.span
+          key={rotatingLanguages[index]}
+          initial={{ opacity: 0, y: '105%', rotateX: -65, filter: 'blur(8px)' }}
+          animate={{ opacity: 1, y: '0%', rotateX: 0, filter: 'blur(0px)' }}
+          exit={{ opacity: 0, y: '-105%', rotateX: 65, filter: 'blur(8px)' }}
+          transition={{ duration: 0.78, ease: [0.22, 1, 0.36, 1] }}
+          className="col-start-1 row-start-1 whitespace-nowrap pr-3"
+        >
+          {rotatingLanguages[index]}
+        </motion.span>
+      </AnimatePresence>
+      <span className="pointer-events-none absolute bottom-0 left-1 right-2 h-px bg-gradient-to-r from-[#f5a623] via-[#ffd166] to-transparent shadow-[0_0_18px_#f5a623]" />
+    </span>
+  )
+}
 
-      <motion.div animate={{ y: [0, -7, 0], rotate: [-2, -1, -2] }} transition={{ duration: 5.8, repeat: Infinity, ease: 'easeInOut' }} className="absolute left-[3%] top-[5%] w-[72%] -rotate-2 text-left">
-        <p className="mb-3 text-[9px] font-bold uppercase tracking-[0.25em] text-white/25">The Poet · T157</p>
-        <div className="flex items-baseline gap-2 text-3xl font-bold leading-none tracking-[-0.055em] text-white sm:text-4xl">
-          <motion.span initial={{ opacity: 0, x: -24 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.45, delay: 0.2 }}>choose</motion.span>
-          <motion.span initial={{ opacity: 0, rotate: -12, scale: 1.25 }} animate={{ opacity: 1, rotate: 0, scale: 1 }} transition={{ duration: 0.55, delay: 0.38 }} className="font-serif font-normal italic text-[#c9a7ff]">sharp</motion.span>
-          <motion.span initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.45, delay: 0.56 }}>words.</motion.span>
-        </div>
-        <p className="mt-3 text-xs text-white/35">language is leverage.</p>
-      </motion.div>
+function FloatingCopyField() {
+  const shouldReduceMotion = useReducedMotion()
 
-      <motion.div animate={{ x: [0, 7, 0], y: [0, 4, 0] }} transition={{ duration: 6.6, repeat: Infinity, ease: 'easeInOut' }} className="absolute right-0 top-[36%] w-[76%] text-right">
-        <p className="mb-3 text-[9px] font-bold uppercase tracking-[0.25em] text-white/25">The Coach · T158</p>
-        <div className="flex items-center justify-end gap-2">
-          <motion.span initial={{ opacity: 0, scaleY: 0.1 }} animate={{ opacity: 1, scaleY: 1 }} transition={{ duration: 0.42, delay: 0.65 }} className="text-6xl font-black leading-none tracking-[-0.08em] text-[#6ee7ff] sm:text-7xl">[REPS]</motion.span>
-          <div className="text-left text-sm font-semibold uppercase leading-tight text-white/65 sm:text-base"><span className="block">beat</span><span className="block">talent.</span></div>
-        </div>
-        <p className="mt-3 text-xs text-white/35">sore today, strong tomorrow.</p>
-      </motion.div>
-
-      <motion.div animate={{ y: [0, 8, 0], rotate: [1, 2, 1] }} transition={{ duration: 7.2, repeat: Infinity, ease: 'easeInOut' }} className="absolute bottom-[4%] left-[7%] w-[78%] rotate-1">
-        <p className="mb-3 text-[9px] font-bold uppercase tracking-[0.25em] text-white/25">The Calm · T161</p>
-        <div className="flex items-baseline gap-2 text-xl font-semibold leading-none text-white/70 sm:text-2xl">
-          <motion.span initial={{ opacity: 0, clipPath: 'inset(0 100% 0 0)' }} animate={{ opacity: 1, clipPath: 'inset(0 0% 0 0)' }} transition={{ duration: 0.5, delay: 0.75 }}>in the</motion.span>
-          <motion.span initial={{ opacity: 0, scale: 0.35 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.55, delay: 0.95, ease: [0.22, 1, 0.36, 1] }} className="text-5xl font-black tracking-[-0.07em] text-[#ffd166] sm:text-6xl">PAUSE</motion.span>
-        </div>
-        <p className="ml-20 mt-2 text-sm font-semibold text-white/55">is the power.</p>
-      </motion.div>
-
-      <div className="absolute left-[48%] top-[27%] h-1.5 w-1.5 rounded-full bg-[#f5a623] shadow-[0_0_18px_#f5a623]" />
-      <div className="absolute bottom-[24%] right-[9%] text-xl font-light text-white/15">＋</div>
-      <div className="absolute left-[4%] top-[48%] text-lg font-light text-white/15">＋</div>
-    </motion.div>
+  return (
+    <div className="relative mx-auto min-h-[32rem] w-full max-w-[36rem] lg:mr-0" aria-label="Creative floating words">
+      <div aria-hidden="true" className="pointer-events-none absolute left-1/2 top-1/2 h-72 w-72 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#f5a623]/10 blur-[100px]" />
+      {floatingWords.map((word) => (
+        <motion.span
+          key={word.text}
+          animate={shouldReduceMotion ? undefined : word.motion}
+          transition={{ duration: word.duration, repeat: Infinity, ease: 'easeInOut' }}
+          className={`absolute whitespace-nowrap text-[clamp(2.5rem,6.2vw,4.8rem)] font-black leading-none tracking-[-0.07em] ${word.className}`}
+        >
+          {word.text}
+        </motion.span>
+      ))}
+    </div>
   )
 }
 
@@ -80,8 +167,8 @@ export default function HeroSection() {
             </div>
           </motion.div>
 
-          <motion.h1 initial={{ opacity: 0, y: 22 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, delay: 0.08 }} className="mt-7 max-w-4xl text-5xl font-semibold leading-[0.92] tracking-[-0.067em] text-white drop-shadow-[0_8px_34px_rgba(0,0,0,0.65)] sm:text-6xl lg:text-[5.6rem]">
-            Professional Captions in <span className="relative inline-block font-serif font-normal italic text-[#f5a623]">Your Language<span className="absolute -bottom-1 left-2 right-0 h-px bg-gradient-to-r from-transparent via-[#f5a623] to-transparent shadow-[0_0_18px_#f5a623]" /></span>
+          <motion.h1 initial={{ opacity: 0, y: 22 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, delay: 0.08 }} className="mt-7 max-w-4xl text-5xl font-semibold leading-[0.92] tracking-[-0.067em] text-white drop-shadow-[0_8px_34px_rgba(0,0,0,0.65)] sm:text-6xl lg:text-[5.35rem]">
+            Professional Captions in <span className="sr-only">Your Language</span><RollingLanguage />
           </motion.h1>
 
           <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.2 }} className="mt-7 max-w-2xl text-base leading-relaxed text-white/55 sm:text-lg">
@@ -89,20 +176,20 @@ export default function HeroSection() {
           </motion.p>
 
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.3 }} className="mt-9 flex flex-col gap-3 sm:flex-row">
-            <Link to={createPageUrl('Dashboard')} className="group inline-flex items-center justify-center gap-2 rounded-md bg-[#f5a623] px-5 py-3 text-sm font-semibold text-[#15100a] shadow-[0_12px_40px_-12px_rgba(245,166,35,0.7)] transition hover:bg-[#ffb53a]">
+            <Link to={createPageUrl('Dashboard')} className="landing-button group inline-flex items-center justify-center gap-2 rounded-md px-5 py-3 text-sm font-semibold shadow-[0_12px_40px_-12px_rgba(255,255,255,0.45)]">
               <Play className="h-4 w-4 fill-current" /> Upload Video <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
             </Link>
-            <Link to={createPageUrl('Dashboard')} className="inline-flex items-center justify-center rounded-md border border-white/20 bg-black/20 px-5 py-3 text-sm font-semibold text-white backdrop-blur-md transition hover:border-white/35 hover:bg-white/[0.07]">Try for Free</Link>
+            <Link to={createPageUrl('Dashboard')} className="landing-button inline-flex items-center justify-center rounded-md px-5 py-3 text-sm font-semibold">Try for Free</Link>
           </motion.div>
 
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.6, delay: 0.42 }} className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-xs text-white/45">
-            <span className="inline-flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-[#f5a623]" />25+ visual styles</span>
+            <span className="inline-flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-[#f5a623]" />100+ visual styles</span>
             <span className="inline-flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-[#f5a623]" />Precise editing control</span>
             <span className="inline-flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-[#f5a623]" />HD &amp; 4K plan options</span>
           </motion.div>
         </div>
 
-        <OpenCaptionStage />
+        <FloatingCopyField />
       </div>
 
       <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.65, delay: 0.5 }} className="relative mx-auto mt-16 grid max-w-6xl divide-y divide-white/[0.07] overflow-hidden rounded-2xl border border-white/[0.1] bg-black/35 shadow-2xl shadow-black/30 backdrop-blur-xl sm:grid-cols-3 sm:divide-x sm:divide-y-0">
@@ -117,10 +204,18 @@ export default function HeroSection() {
         ))}
       </motion.div>
 
-      <div className="relative mt-10 overflow-hidden border-y border-white/[0.06] bg-black/20 py-3 [mask-image:linear-gradient(to_right,transparent,black_10%,black_90%,transparent)]">
-        <div className="lekha-marquee flex w-max items-center whitespace-nowrap">
-          {[...languages, ...languages].map((language, index) => <span key={`${language}-${index}`} className="mx-5 text-sm font-medium text-white/40"><span className="mr-10 text-[#f5a623]/70">✦</span>{language}</span>)}
-        </div>
+      <div className="relative mt-14 flex flex-col gap-6 overflow-hidden py-7 [mask-image:linear-gradient(to_right,transparent,black_3%,black_97%,transparent)] sm:gap-8" aria-label="Global language coverage">
+        {languageBands.map((band, bandIndex) => (
+          <div key={`language-band-${bandIndex}`} className={`language-ribbon relative left-1/2 w-[112vw] -translate-x-1/2 border-y py-6 sm:py-8 ${bandIndex % 2 === 0 ? 'border-[#f5a623]/20 bg-[#f5a623]/[0.065]' : 'border-[#6ee7ff]/20 bg-[#6ee7ff]/[0.05]'}`}>
+            <div className={`${bandIndex % 2 === 0 ? 'lekha-marquee' : 'lekha-marquee-reverse'} flex w-max items-center whitespace-nowrap`}>
+              {[...band, ...band].map((language, index) => (
+                <span key={`${bandIndex}-${language}-${index}`} className="mx-8 inline-flex items-center gap-8 text-lg font-medium text-white/65 sm:mx-11 sm:gap-11 sm:text-2xl">
+                  <span>{language}</span><span className={bandIndex % 2 === 0 ? 'text-[#f5a623]' : 'text-[#6ee7ff]'}>✦</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
     </section>
   )

@@ -15,17 +15,38 @@ import { apiRequest } from '@/lib/apiClient'
 import { notifyApiError } from '@/lib/notifyApiError'
 import planCatalog from '../../../shared/planCatalog.json'
 
-const DEV_FALLBACK_RAZORPAY_KEY_ID = ''
-const RAZORPAY_KEY_ID = import.meta.env.VITE_RAZORPAY_KEY_ID || DEV_FALLBACK_RAZORPAY_KEY_ID
+const RAZORPAY_KEY_ID = import.meta.env.VITE_RAZORPAY_KEY_ID || ''
 
 const loadRazorpayScript = () => new Promise((resolve, reject) => {
-  if (window.Razorpay) { resolve(true); return }
-  const s = document.createElement('script')
-  s.src = 'https://checkout.razorpay.com/v1/checkout.js'
-  s.async = true
-  s.onload = () => setTimeout(() => resolve(true), 100)
-  s.onerror = () => reject(new Error('Failed to load Razorpay'))
-  document.head.appendChild(s)
+  if (window.Razorpay) {
+    resolve(true)
+    return
+  }
+
+  const existingScript = document.querySelector('script[data-razorpay-checkout]')
+  const script = existingScript || document.createElement('script')
+  const timeout = window.setTimeout(() => {
+    if (!existingScript) script.remove()
+    reject(new Error('Payment checkout took too long to load. Check your connection and try again.'))
+  }, 10000)
+
+  script.onload = () => {
+    window.clearTimeout(timeout)
+    if (window.Razorpay) resolve(true)
+    else reject(new Error('Payment checkout did not initialize. Please refresh and try again.'))
+  }
+  script.onerror = () => {
+    window.clearTimeout(timeout)
+    if (!existingScript) script.remove()
+    reject(new Error('Payment checkout could not load. Check your connection and try again.'))
+  }
+
+  if (!existingScript) {
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js'
+    script.async = true
+    script.dataset.razorpayCheckout = 'true'
+    document.head.appendChild(script)
+  }
 })
 
 function getDiscountPercent(monthlyMinor, yearlyMinor) {
@@ -51,7 +72,7 @@ const plans = [
       '15 video credits / month',
       'Max 2 min per video',
       'Max 3 videos / day',
-      'No watermark Â· 25+ styles',
+      'No watermark · 25+ styles',
       'All 115+ languages',
       '2 hr download link',
     ],
@@ -69,7 +90,7 @@ const plans = [
       '45 video credits / month',
       'Max 3 min per video',
       'Max 5 videos / day',
-      'No watermark Â· 25+ styles',
+      'No watermark · 25+ styles',
       'All 115+ languages',
       'Translation feature',
       '24 hr download link',
@@ -87,7 +108,7 @@ const plans = [
       '120 video credits / month',
       'Max 3 min per video',
       'Unlimited videos / day',
-      'No watermark Â· 25+ styles',
+      'No watermark · 25+ styles',
       'All 115+ languages',
       'Translation feature',
       '72 hr download link',
@@ -225,7 +246,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
         amount: orderData.order.amount,
         currency: orderData.order.currency,
         name: 'Lekha Captions',
-        description: `${plan.name} Plan${billing === 'yearly' ? ' Â· Yearly' : ''}`,
+        description: `${plan.name} Plan${billing === 'yearly' ? ' · Yearly' : ''}`,
         order_id: orderData.order.id,
         handler: async (response) => {
           try {
@@ -305,7 +326,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
       })
       setPromoStatus({
         type: 'success',
-        message: `ðŸŽ‰ Promo activated! Your ${data.plan} plan is free until ${data.expires}`,
+        message: `🎉 Promo activated! Your ${data.plan} plan is free until ${data.expires}`,
       })
       setPromoCode('')
       await refreshUserData()
@@ -361,7 +382,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
         amount: orderData.order.amount,
         currency: orderData.order.currency,
         name: 'Lekha Captions',
-        description: `Top-up Â· ${topup.credits} credits`,
+        description: `Top-up · ${topup.credits} credits`,
         order_id: orderData.order.id,
         handler: async (response) => {
           try {
@@ -557,7 +578,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
                   {processingPlan === topup.plan_id ? (
                     <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Processing...</>
                   ) : (
-                    `Top Up Â· ${topup.price}`
+                    `Top Up · ${topup.price}`
                   )}
                 </Button>
               </div>
@@ -573,7 +594,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
               type="text"
               value={promoCode}
               onChange={e => setPromoCode(e.target.value.toUpperCase())}
-              onKeyDown={e => e.key === 'Enter' && handlePromoRedeem()}
+              onKeyDown={e => e.key === 'Enter' && !promoLoading && handlePromoRedeem()}
               placeholder="Enter code"
               className="flex-1 bg-white/5 border border-white/20 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-white/40"
             />
@@ -593,7 +614,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
         </div>
 
         <p className="text-xs text-gray-600 text-center mt-3">
-          Credits deducted only after successful export Â· Secure payments via Razorpay
+          Credits deducted only after successful export · Secure payments via Razorpay
         </p>
       </DialogContent>
     </Dialog>

@@ -20,15 +20,27 @@ export default function Login() {
     const [searchParams, setSearchParams] = useSearchParams();
     const isLoginMode = searchParams.get('mode') === 'login';
     const [consentAccepted, setConsentAccepted] = React.useState(false);
+    const [isSubmitting, setIsSubmitting] = React.useState(false);
+    const [formError, setFormError] = React.useState('');
+    const requestedReturnTo = searchParams.get('returnTo');
+    const returnTo = requestedReturnTo?.startsWith('/') && !requestedReturnTo.startsWith('//')
+        ? requestedReturnTo
+        : '/Dashboard';
 
     React.useEffect(() => {
         if (user) {
-            navigate('/Dashboard');
+            navigate(returnTo);
         }
-    }, [user, navigate]);
+    }, [user, navigate, returnTo]);
 
     const handleGoogleAuth = async () => {
-        if (!consentAccepted) return;
+        if (!consentAccepted) {
+            setFormError('Please accept the Terms of Service and Privacy Policy to continue.');
+            return;
+        }
+
+        setFormError('');
+        setIsSubmitting(true);
         try {
             const result = await loginWithGoogle({
                 consent: {
@@ -38,19 +50,27 @@ export default function Login() {
                 },
             });
             if (!result?.redirected) {
-                navigate('/Dashboard');
+                navigate(returnTo);
             }
         } catch (error) {
             console.error('Failed to authenticate', error);
+            setFormError(
+                error?.code === 'auth/network-request-failed'
+                    ? 'Google sign-up could not connect. Check your internet connection or browser privacy settings, then try again.'
+                    : error?.message || 'Google sign-up could not start. Please try again.'
+            );
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
     const setMode = (nextMode) => {
-        if (nextMode === 'login') {
-            setSearchParams({ mode: 'login' });
-            return;
-        }
-        setSearchParams({});
+        // Preserve returnTo across mode toggles — dropping it sent users to the
+        // default dashboard instead of the page they came from.
+        const nextParams = {};
+        if (requestedReturnTo) nextParams.returnTo = requestedReturnTo;
+        if (nextMode === 'login') nextParams.mode = 'login';
+        setSearchParams(nextParams);
     };
 
     const title = isLoginMode ? 'Welcome back to Lekha Captions' : 'Welcome to Lekha Captions';
@@ -58,7 +78,6 @@ export default function Login() {
         ? 'Log in with Google to continue editing your projects.'
         : 'Create your account with Google to start captioning right away.';
     const primaryCta = isLoginMode ? 'Log in with Google' : 'Sign up with Google';
-    const emailPlaceholder = isLoginMode ? 'Email login is coming soon' : 'Email signup is coming soon';
     const helperText = isLoginMode
         ? 'Google sign-in works today. Email login is not enabled yet.'
         : 'Google sign-up works today. Email sign-up is not enabled yet.';
@@ -88,50 +107,36 @@ export default function Login() {
                     <p className="text-base text-gray-400">{subtitle}</p>
                 </div>
 
+                <label className="mb-5 flex items-start gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm text-gray-300">
+                    <input
+                        type="checkbox"
+                        checked={consentAccepted}
+                        onChange={(event) => {
+                            setConsentAccepted(event.target.checked);
+                            if (event.target.checked) setFormError('');
+                        }}
+                        className="mt-1"
+                    />
+                    <span>I agree to the <a href="/TermsAndConditions" className="text-[#F5A623] hover:underline">Terms of Service</a> and acknowledge the <a href="/PrivacyPolicy" className="text-[#F5A623] hover:underline">Privacy Policy</a>.</span>
+                </label>
+
                 <button
                     type="button"
                     onClick={handleGoogleAuth}
-                    disabled={!consentAccepted}
+                    disabled={isSubmitting}
                     className="w-full flex items-center justify-center gap-3 rounded-lg border border-white/20 bg-white/5 px-4 py-3 font-medium text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                     <GoogleIcon />
-                    <span>{primaryCta}</span>
+                    <span>{isSubmitting ? 'Connecting to Google...' : primaryCta}</span>
                 </button>
 
-                <div className="my-8 flex items-center">
-                    <span className="flex-1 border-b border-white/10"></span>
-                    <span className="px-4 text-sm text-gray-500">Or</span>
-                    <span className="flex-1 border-b border-white/10"></span>
-                </div>
+                <p className="mt-4 text-center text-xs text-gray-500">{helperText}</p>
 
-                <div className="space-y-4">
-                    <input
-                        type="email"
-                        disabled
-                        placeholder={emailPlaceholder}
-                        className="w-full rounded-lg border border-white/20 bg-white/5 px-4 py-3 text-white outline-none placeholder-gray-500 disabled:cursor-not-allowed disabled:opacity-60"
-                    />
-                    <button
-                        type="button"
-                        onClick={handleGoogleAuth}
-                        disabled={!consentAccepted}
-                        className="w-full rounded-lg bg-gradient-to-r from-[#F5A623] to-blue-600 px-4 py-3 font-semibold text-white transition-colors hover:from-[#F5A623] hover:to-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                        Continue with Google
-                    </button>
-                    <p className="text-center text-xs text-gray-500">{helperText}</p>
-                </div>
-
-                {authError && (
+                {(formError || authError) && (
                     <div className="mt-4 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-                        {authError.message || 'Authentication failed. Please try again.'}
+                        {formError || authError?.message || 'Authentication failed. Please try again.'}
                     </div>
                 )}
-
-                <label className="mt-8 flex items-start gap-3 text-sm text-gray-400">
-                    <input type="checkbox" checked={consentAccepted} onChange={(event) => setConsentAccepted(event.target.checked)} className="mt-1" />
-                    <span>I agree to the <a href="/TermsAndConditions" className="text-[#F5A623] hover:underline">Terms of Service</a> and acknowledge the <a href="/PrivacyPolicy" className="text-[#F5A623] hover:underline">Privacy Policy</a>.</span>
-                </label>
 
                 <div className="mt-10 text-center text-sm text-gray-400">
                     {isLoginMode ? (

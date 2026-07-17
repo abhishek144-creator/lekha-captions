@@ -1,48 +1,87 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { Moon, Sun } from 'lucide-react'
 import { createPageUrl } from '@/utils'
-import HeroSection from '@/components/landing/HeroSection'
-import FeaturesSection from '@/components/landing/FeaturesSection'
-import UseCasesSection from '@/components/landing/UseCasesSection'
-import WorkflowSection from '@/components/landing/WorkflowSection'
+import HeroCinematic from '@/components/landing2/HeroCinematic'
+import LanguagePassportStrip from '@/components/landing2/LanguagePassportStrip'
+import FeatureIndex from '@/components/landing2/FeatureIndex'
+import UseCaseReel from '@/components/landing2/UseCaseReel'
+import WorkflowPlayhead from '@/components/landing2/WorkflowPlayhead'
 import TemplateShowcase from '@/components/landing/TemplateShowcase'
-import LanguageReachSection from '@/components/landing/LanguageReachSection'
 import PricingSection from '@/components/landing/PricingSection'
-import FinalCtaSection from '@/components/landing/FinalCtaSection'
+import FinalCtaKaraoke from '@/components/landing2/FinalCtaKaraoke'
 import Footer from '@/components/landing/Footer'
 import CaptionStudioLogo from '@/components/dashboard/CaptionStudioLogo'
 
-export default function Home() {
+const LANDING_THEME_KEY = 'lekha-landing-theme'
+
+function getInitialTheme() {
+  if (typeof window === 'undefined') return 'dark'
+  const savedTheme = window.localStorage.getItem(LANDING_THEME_KEY)
+  return savedTheme === 'light' || savedTheme === 'dark' ? savedTheme : 'dark'
+}
+
+function ThemeToggle({ theme, onToggle }) {
+  const isLight = theme === 'light'
+
   return (
-    <div className="relative min-h-screen overflow-x-hidden bg-[#070706] text-white">
+    <button
+      type="button"
+      onClick={onToggle}
+      className="landing-theme-toggle inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+      aria-label={`Switch to ${isLight ? 'dark' : 'light'} mode`}
+      aria-pressed={isLight}
+      title={`Switch to ${isLight ? 'dark' : 'light'} mode`}
+    >
+      {isLight ? <Moon className="h-4 w-4" aria-hidden="true" /> : <Sun className="h-4 w-4" aria-hidden="true" />}
+    </button>
+  )
+}
+
+export default function Home() {
+  const [theme, setTheme] = useState(getInitialTheme)
+
+  useEffect(() => {
+    window.localStorage.setItem(LANDING_THEME_KEY, theme)
+  }, [theme])
+
+  const toggleTheme = () => setTheme((currentTheme) => currentTheme === 'dark' ? 'light' : 'dark')
+
+  return (
+    <div className="landing-page relative min-h-screen overflow-x-hidden" data-theme={theme}>
       <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_52%_-12%,rgba(245,166,35,0.21),transparent_34%),radial-gradient(circle_at_105%_28%,rgba(98,50,180,0.13),transparent_28%),radial-gradient(circle_at_-8%_58%,rgba(26,126,136,0.09),transparent_25%),linear-gradient(180deg,#070706_0%,#0c0a08_38%,#070707_100%)]" />
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.022)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.022)_1px,transparent_1px)] bg-[size:72px_72px] [mask-image:linear-gradient(to_bottom,black,transparent_94%)]" />
-        <div className="absolute inset-y-0 left-[7%] w-px bg-gradient-to-b from-transparent via-white/[0.05] to-transparent" />
-        <div className="absolute inset-y-0 right-[7%] w-px bg-gradient-to-b from-transparent via-white/[0.05] to-transparent" />
+        <div className="landing-atmosphere absolute inset-0" />
+        <div className="landing-grid absolute inset-0 bg-[size:72px_72px] [mask-image:linear-gradient(to_bottom,black,transparent_94%)]" />
+        <div className="landing-guide absolute inset-y-0 left-[7%] w-px" />
+        <div className="landing-guide absolute inset-y-0 right-[7%] w-px" />
       </div>
-      <nav className="sticky top-0 z-50 h-16 border-b border-white/[0.07] bg-[#080807]/70 px-5 shadow-[0_10px_50px_rgba(0,0,0,0.18)] backdrop-blur-2xl md:px-8">
+      <nav className="landing-nav sticky top-0 z-50 h-16 border-b px-5 backdrop-blur-2xl md:px-8">
         <div className="mx-auto flex h-full max-w-7xl items-center justify-between">
           <Link to={createPageUrl('Home')} className="transition-opacity hover:opacity-80" aria-label="Lekha Captions home">
             <CaptionStudioLogo size="default" showText={true} />
           </Link>
           <div className="hidden items-center gap-7 sm:flex">
-            <Link to={createPageUrl('Faq')} className="text-sm text-[#949494] transition-colors hover:text-white">FAQ</Link>
-            <Link to={createPageUrl('HelpAndSupport')} className="text-sm text-[#949494] transition-colors hover:text-white">Help &amp; Support</Link>
-            <Link to={createPageUrl('TermsAndConditions')} className="text-sm text-[#949494] transition-colors hover:text-white">Terms</Link>
-            <Link to={createPageUrl('Dashboard')} className="rounded-[4px] border border-white/15 px-3.5 py-2 text-sm font-medium text-white transition hover:border-white/30 hover:bg-white/5">Open editor</Link>
+            <Link to={createPageUrl('Faq')} className="landing-nav-link text-sm transition-colors">FAQ</Link>
+            <Link to={createPageUrl('HelpAndSupport')} className="landing-nav-link text-sm transition-colors">Help &amp; Support</Link>
+            <Link to={createPageUrl('TermsAndConditions')} className="landing-nav-link text-sm transition-colors">Terms</Link>
+            <ThemeToggle theme={theme} onToggle={toggleTheme} />
+            <Link to={createPageUrl('Dashboard')} className="landing-button rounded-[4px] px-3.5 py-2 text-sm font-semibold">Open editor</Link>
           </div>
-          <Link to={createPageUrl('Dashboard')} className="rounded-[4px] bg-white px-3 py-2 text-xs font-semibold text-black sm:hidden">Try free</Link>
+          <div className="flex items-center gap-2 sm:hidden">
+            <ThemeToggle theme={theme} onToggle={toggleTheme} />
+            <Link to={createPageUrl('Dashboard')} className="landing-button rounded-[4px] px-3 py-2 text-xs font-semibold">Try free</Link>
+          </div>
         </div>
       </nav>
-      <main className="relative z-10">
-        <HeroSection />
-        <FeaturesSection />
-        <UseCasesSection />
-        <WorkflowSection />
+      <main className="landing-story relative z-10">
+        <HeroCinematic />
+        <LanguagePassportStrip />
+        <FeatureIndex />
+        <UseCaseReel />
+        <WorkflowPlayhead />
         <TemplateShowcase />
-        <LanguageReachSection />
         <PricingSection />
-        <FinalCtaSection />
+        <FinalCtaKaraoke />
       </main>
       <div className="relative z-10"><Footer /></div>
     </div>

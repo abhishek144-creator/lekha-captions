@@ -692,7 +692,7 @@ export default function StyleControls({
               <div className="flex items-center justify-between mb-1">
                 <Label className="text-[9px] font-medium text-slate-400">Word Spacing</Label>
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-semibold tabular-nums text-slate-100">{captionStyle.word_spacing || 1}</span>
+                  <span className="text-[10px] font-semibold tabular-nums text-slate-100">{captionStyle.word_spacing ?? 1}</span>
                   <Button
                     variant="ghost"
                     size="icon"
@@ -704,7 +704,7 @@ export default function StyleControls({
                 </div>
               </div>
               <Slider
-                value={[captionStyle.word_spacing || 1]}
+                value={[captionStyle.word_spacing ?? 1]}
                 onValueChange={([value]) => updateStyle('word_spacing', value, true)}
                 onPointerDown={() => addToHistory && addToHistory()}
                 min={0}

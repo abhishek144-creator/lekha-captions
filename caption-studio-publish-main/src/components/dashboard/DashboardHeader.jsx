@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { Button } from '@/components/ui/button';
 import CaptionStudioLogo from './CaptionStudioLogo';
+import { isSubscriptionExpired } from '@/lib/subscription';
 import {
   Upload,
   Download,
@@ -39,7 +40,7 @@ export default function DashboardHeader({
     // Free plan users
     if (!userData.subscription_tier || userData.subscription_tier === 'free') return true;
     // Paid plan that has expired
-    if (userData.subscription_expiry && new Date(userData.subscription_expiry) < new Date()) return true;
+    if (isSubscriptionExpired(userData.subscription_expiry)) return true;
     return false;
   })();
 
