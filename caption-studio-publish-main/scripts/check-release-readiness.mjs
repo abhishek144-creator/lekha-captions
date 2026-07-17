@@ -154,8 +154,10 @@ assertIncludes("workers can materialize shared source uploads", storageHelpers, 
 
 const pricingModal = readText("src/components/dashboard/PricingModal.jsx")
 const pricingLanding = readText("src/components/landing/PricingSection.jsx")
+const userAccount = readText("src/pages/UserAccount.jsx")
 assertIncludes("dashboard pricing loads the shared billing catalog", pricingModal, "planCatalog.json")
 assertIncludes("landing pricing loads the shared billing catalog", pricingLanding, "planCatalog.json")
+assertIncludes("account plan limits load the shared billing catalog", userAccount, "planCatalog.json")
 assertExcludes("dashboard pricing does not advertise unfinished API access", pricingModal.toLowerCase(), "api access")
 assertExcludes("landing pricing does not advertise unfinished API access", pricingLanding.toLowerCase(), "api access")
 assertExcludes("landing pricing does not advertise unfinished team seats", pricingLanding.toLowerCase(), "team seats")
@@ -180,6 +182,24 @@ assertIncludes("sitemap contains the privacy route", sitemap, "/PrivacyPolicy</l
 assertIncludes("Vercel serves the Vite SPA fallback", vercelConfig, '"destination": "/index.html"')
 assertIncludes("HTML references the app manifest", htmlDocument, 'href="/manifest.json"')
 assertIncludes("HTML references an existing social preview", htmlDocument, "/landing/template-showcase-1.jpg")
+
+// ExportPanel captures word/template geometry from the live preview via DOM
+// selectors that VideoPlayer must keep emitting. A rename on either side does
+// not error — exports silently degrade to fallback positioning — so pin the
+// contract here.
+const videoPlayerSource = readText("src/components/dashboard/VideoPlayer.jsx")
+const exportPanelSource = readText("src/components/dashboard/ExportPanel.jsx")
+for (const marker of [
+  'data-lekha-player="true"',
+  'data-caption-layer="true"',
+  "data-caption-id",
+  "data-word-key",
+  "data-export-measure",
+  "lekha-applied-basic-template-host",
+]) {
+  assertIncludes(`video player emits export DOM contract marker ${marker}`, videoPlayerSource, marker)
+  assertIncludes(`export panel consumes export DOM contract marker ${marker}`, exportPanelSource, marker)
+}
 
 const renderer = readText("scripts/render_template_overlay.mjs")
 assertIncludes("export renderer uses a DOM tag allowlist", renderer, "const allowedTags = new Set")

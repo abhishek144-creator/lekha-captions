@@ -4,32 +4,13 @@ import { Button } from '@/components/ui/button'
 import { Check, Zap, Crown, Star, Loader2 } from 'lucide-react'
 import { createPageUrl } from '@/utils'
 import { useAuth } from '@/lib/AuthContext'
-import { auth } from '@/lib/firebase'
 import { toast } from '@/components/ui/use-toast'
 import { apiRequest } from '@/lib/apiClient'
 import { notifyApiError } from '@/lib/notifyApiError'
 import planCatalog from '../../../shared/planCatalog.json'
 
 const RAZORPAY_KEY_ID = import.meta.env.VITE_RAZORPAY_KEY_ID || ''
-const PENDING_PURCHASE_KEY = 'lekha.pendingPurchase'
-
-function savePendingPurchase(planId, billing) {
-  try {
-    window.sessionStorage.setItem(PENDING_PURCHASE_KEY, JSON.stringify({ planId, billing }))
-  } catch {
-    // Checkout still falls back to the normal post-signup pricing page.
-  }
-}
-
-function takePendingPurchase() {
-  try {
-    const pending = JSON.parse(window.sessionStorage.getItem(PENDING_PURCHASE_KEY) || 'null')
-    window.sessionStorage.removeItem(PENDING_PURCHASE_KEY)
-    return pending
-  } catch {
-    return null
-  }
-}
+const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
 
 const createIdempotencyKey = (scope, planId) => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -47,20 +28,8 @@ const loadRazorpayScript = () => {
     const script = document.createElement('script')
     script.src = 'https://checkout.razorpay.com/v1/checkout.js'
     script.async = true
-    const timeout = window.setTimeout(() => {
-      script.remove()
-      reject(new Error('Payment checkout took too long to load. Check your connection and try again.'))
-    }, 10000)
-    script.onload = () => {
-      window.clearTimeout(timeout)
-      if (window.Razorpay) resolve(true)
-      else reject(new Error('Payment checkout did not initialize. Please refresh and try again.'))
-    }
-    script.onerror = () => {
-      window.clearTimeout(timeout)
-      script.remove()
-      reject(new Error('Payment checkout could not load. Check your connection and try again.'))
-    }
+    script.onload = () => setTimeout(() => resolve(true), 100)
+    script.onerror = () => reject(new Error('Failed to load Razorpay'))
     document.head.appendChild(script)
   })
 }
@@ -102,7 +71,7 @@ const plans = [
       'Max 2 min per video',
       'Max 3 videos / day',
       'No watermark',
-      '100+ caption styles',
+      '25+ caption styles',
       'All 115+ languages',
       '1080p HD export',
       '2 hr download link',
@@ -125,7 +94,7 @@ const plans = [
       'Max 3 min per video',
       'Max 5 videos / day',
       'No watermark',
-      '100+ caption styles',
+      '25+ caption styles',
       'All 115+ languages',
       '1080p HD + 4K export',
       'Translation feature',
@@ -149,7 +118,7 @@ const plans = [
       'Max 3 min per video',
       'Unlimited videos / day',
       'No watermark',
-      '100+ caption styles',
+      '25+ caption styles',
       'All 115+ languages',
       '1080p HD + 4K export',
       'Translation feature',
@@ -186,19 +155,11 @@ export default function PricingSection() {
   const { currentUser } = useAuth()
 
   useEffect(() => {
+    loadRazorpayScript().catch(() => {})
     setIsInternational(detectInternationalUser())
   }, [])
 
-  const handleSelectPlan = async (plan, requestedBilling = billing) => {
-    const checkoutUser = currentUser || auth?.currentUser
-    if (!checkoutUser) {
-      savePendingPurchase(plan.id, requestedBilling)
-      toast({ variant: 'destructive', title: 'Sign up to continue', description: 'Create your account, then choose your plan.' })
-      const returnTo = encodeURIComponent('/#pricing')
-      window.location.assign(`${createPageUrl('login')}?mode=signup&returnTo=${returnTo}`)
-      return
-    }
-
+  const handleSelectPlan = async (plan) => {
     setProcessingPlan(plan.id)
 
     try {
@@ -209,16 +170,23 @@ export default function PricingSection() {
         return
       }
 
-      const planId = requestedBilling === 'yearly' ? `${plan.id}_yearly` : plan.id
+      const planId = billing === 'yearly' ? `${plan.id}_yearly` : plan.id
       const currency = isInternational ? 'USD' : 'INR'
-      const amount = requestedBilling === 'yearly'
+      const amount = billing === 'yearly'
         ? (currency === 'USD' ? plan.yearlyUsdCents : plan.yearlyPaise)
         : (currency === 'USD' ? plan.monthlyUsdCents : plan.monthlyPaise)
       let keyId = RAZORPAY_KEY_ID
       const paymentAttemptKey = createIdempotencyKey('landing-plan', planId)
 
-      const idToken = await checkoutUser.getIdToken(true)
-      const orderData = await apiRequest('/api/create-order', {
+      if (!currentUser) {
+        toast({ variant: 'destructive', title: 'Login required', description: 'Please log in first to purchase a plan.' })
+        window.location.href = createPageUrl('Login')
+        setProcessingPlan(null)
+        return
+      }
+
+      const idToken = await currentUser.getIdToken(true)
+      const orderData = await apiRequest(`${API_BASE}/api/create-order`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -234,26 +202,23 @@ export default function PricingSection() {
       if (!keyId) {
         throw new Error('Razorpay payment key is not set. Please configure VITE_RAZORPAY_KEY_ID.')
       }
-      if (!Number.isSafeInteger(orderData.order.amount) || orderData.order.amount <= 0 || !['INR', 'USD'].includes(orderData.order.currency)) {
-        throw new Error('Payment order returned an invalid amount or currency.')
-      }
 
       const options = {
         key: keyId,
         amount: orderData.order.amount || amount,
-        currency: orderData.order.currency || currency,
+        currency,
         order_id: orderData.order.id,
         name: 'Lekha Captions',
-        description: `${plan.name} Plan${requestedBilling === 'yearly' ? ' · Yearly' : ''}`,
+        description: `${plan.name} Plan${billing === 'yearly' ? ' Â· Yearly' : ''}`,
         prefill: {
-          name: checkoutUser?.displayName || '',
-          email: checkoutUser?.email || ''
+          name: currentUser?.displayName || '',
+          email: currentUser?.email || ''
         },
         theme: { color: '#F5A623' },
         handler: async (response) => {
           try {
-            const verifyToken = await checkoutUser.getIdToken(true)
-            const data = await apiRequest('/api/verify-payment', {
+            const verifyToken = await currentUser.getIdToken(true)
+            const data = await apiRequest(`${API_BASE}/api/verify-payment`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -301,19 +266,8 @@ export default function PricingSection() {
     }
   }
 
-  useEffect(() => {
-    if (!currentUser) return
-
-    const pending = takePendingPurchase()
-    const pendingPlan = plans.find((plan) => plan.id === pending?.planId)
-    if (!pendingPlan || !['monthly', 'yearly'].includes(pending?.billing)) return
-
-    setBilling(pending.billing)
-    handleSelectPlan(pendingPlan, pending.billing)
-  }, [currentUser])
-
   return (
-    <section id="pricing" aria-label="Pricing" className="landing-section-pricing relative overflow-hidden py-20 sm:py-28">
+    <section id="pricing" aria-label="Pricing" className="relative overflow-hidden py-20 sm:py-28">
       <div className="absolute right-1/4 top-20 h-64 w-64 rounded-full bg-[#BF953F]/10 blur-[120px]" />
       <div className="relative mx-auto max-w-7xl px-5 sm:px-6">
         <motion.div
@@ -331,7 +285,7 @@ export default function PricingSection() {
           </p>
 
           {/* Billing Toggle */}
-          <div className="landing-billing-toggle flex w-fit items-center gap-1 rounded-full border border-white/10 bg-[#1A1A1A] p-1 mx-auto mb-8">
+          <div className="flex w-fit items-center gap-1 rounded-full border border-white/10 bg-[#1A1A1A] p-1 mx-auto mb-8">
             <button
               onClick={() => setBilling('monthly')}
               className={`landing-button px-5 py-2 rounded-full text-sm font-medium transition-all ${
@@ -364,7 +318,7 @@ export default function PricingSection() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ delay: idx * 0.1 }}
-              className="landing-pricing-card relative flex cursor-pointer flex-col rounded-2xl bg-[#11100f]/75 p-6 backdrop-blur-xl md:p-8"
+              className="relative flex cursor-pointer flex-col rounded-2xl bg-[#11100f]/75 p-6 backdrop-blur-xl md:p-8"
               onClick={() => setSelectedPlan(plan.id)}
               style={(plan.popular || selectedPlan === plan.id) ? {
                 background: 'linear-gradient(#18181b, #18181b) padding-box, linear-gradient(135deg, #BF953F 0%, #FCF6BA 45%, #B38728 70%, #AA771C 100%) border-box',
@@ -416,13 +370,13 @@ export default function PricingSection() {
 
               <Button
                 onClick={() => handleSelectPlan(plan)}
-                disabled={Boolean(processingPlan)}
+                disabled={processingPlan === plan.id}
                 className="landing-button mt-auto w-full rounded-[4px] py-6 font-semibold"
               >
                 {processingPlan === plan.id ? (
                   <Loader2 className="w-5 h-5 animate-spin" />
                 ) : (
-                  currentUser ? plan.cta : 'Sign up to purchase'
+                  plan.cta
                 )}
               </Button>
             </motion.div>
@@ -434,7 +388,7 @@ export default function PricingSection() {
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
-          className="landing-pricing-comparison mt-16 overflow-hidden rounded-2xl border border-white/10 bg-[#11100f]/75 backdrop-blur-xl"
+          className="mt-16 overflow-hidden rounded-2xl border border-white/10 bg-[#11100f]/75 backdrop-blur-xl"
         >
           <div className="p-6 border-b border-white/10">
             <h3 className="text-lg font-semibold text-white">Compare every plan</h3>

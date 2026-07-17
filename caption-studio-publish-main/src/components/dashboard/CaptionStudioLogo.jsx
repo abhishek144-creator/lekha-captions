@@ -1,73 +1,38 @@
+const sizeStyles = {
+  small: { mark: 'h-6 w-6', text: 'text-sm', gap: 'gap-2' },
+  default: { mark: 'h-8 w-8', text: 'text-base', gap: 'gap-2.5' },
+  large: { mark: 'h-12 w-12', text: 'text-xl', gap: 'gap-3' },
+}
 
-export default function CaptionStudioLogo({ size = 'default', showText = true }) {
-  const sizes = {
-    small: 'w-6 h-6',
-    default: 'w-8 h-8',
-    large: 'w-12 h-12'
-  };
+function LekhaDialogueMark({ className }) {
+  return (
+    <span aria-hidden="true" className={`${className} relative block shrink-0`}>
+      <span className="absolute left-[1%] top-[4%] h-[58%] w-[73%] -rotate-[9deg] rounded-[42%_42%_42%_18%] bg-[#f5a623] shadow-[0_0_22px_rgba(245,166,35,0.3)]">
+        <span className="absolute -bottom-[11%] left-[14%] h-[24%] w-[24%] rotate-45 rounded-[18%] bg-[#f5a623]" />
+        <span className="absolute left-[22%] top-[34%] h-[12%] w-[50%] rounded-full bg-[#090909]/80" />
+        <span className="absolute left-[22%] top-[58%] h-[10%] w-[34%] rounded-full bg-[#090909]/45" />
+      </span>
+      <span className="absolute bottom-[2%] right-[1%] h-[61%] w-[74%] rotate-[7deg] rounded-[42%_42%_18%_42%] border border-black/10 bg-white shadow-[0_8px_24px_rgba(0,0,0,0.34)]">
+        <span className="absolute -bottom-[11%] right-[14%] h-[24%] w-[24%] rotate-45 rounded-[18%] bg-white" />
+        <span className="absolute left-[20%] top-[31%] h-[12%] w-[54%] rounded-full bg-[#090909]" />
+        <span className="absolute left-[20%] top-[56%] h-[10%] w-[37%] rounded-full bg-[#090909]/55" />
+      </span>
+      <span className="absolute left-[44%] top-[43%] h-[18%] w-[18%] rotate-45 rounded-[22%] border-2 border-[#080807] bg-[#6ee7ff] shadow-[0_0_10px_rgba(110,231,255,0.7)]" />
+    </span>
+  )
+}
 
-  const textSizes = {
-    small: 'text-sm',
-    default: 'text-base',
-    large: 'text-lg'
-  };
+export default function CaptionStudioLogo({ size = 'default', showText = true, forceText = false }) {
+  const styles = sizeStyles[size] || sizeStyles.default
 
   return (
-    <div className="flex items-center gap-2">
-      {/* Logo - Professional play button with subtitles */}
-      <div className={`${sizes[size]} relative flex items-center justify-center`}>
-        <svg
-          viewBox="0 0 40 40"
-          className="w-full h-full"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          {/* Gradient definitions */}
-          <defs>
-            <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#FFE566" />
-              <stop offset="50%" stopColor="#F5A623" />
-              <stop offset="100%" stopColor="#D4891A" />
-            </linearGradient>
-          </defs>
-
-          {/* Main background circle */}
-          <circle cx="20" cy="20" r="19" fill="url(#logoGradient)" />
-
-          {/* Inner circle for depth */}
-          <circle cx="20" cy="20" r="17" fill="#0f0f0f" />
-
-          {/* Play button (triangle) */}
-          <path
-            d="M14 12L28 20L14 28Z"
-            fill="white"
-            opacity="0.95"
-          />
-
-          {/* Subtitle lines below play button */}
-          <line
-            x1="12" y1="32" x2="28" y2="32"
-            stroke="url(#logoGradient)"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            opacity="0.8"
-          />
-          <line
-            x1="12" y1="36" x2="20" y2="36"
-            stroke="url(#logoGradient)"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            opacity="0.6"
-          />
-        </svg>
-      </div>
-
-      {/* Text */}
+    <span className={`inline-flex items-center ${styles.gap}`}>
+      <LekhaDialogueMark className={styles.mark} />
       {showText && (
-        <span className={`${textSizes[size]} hidden sm:inline font-bold bg-gradient-to-r from-[#FFE566] via-[#F5A623] to-[#D4891A] bg-clip-text text-transparent`}>
-          Lekha Captions
+        <span className={`${styles.text} ${forceText ? 'inline-flex' : 'hidden sm:inline-flex'} items-baseline font-semibold tracking-[-0.035em]`}>
+          <span className="text-white">Lekha</span><span className="ml-1 text-[#f5a623]">Captions</span>
         </span>
       )}
-    </div>
-  );
+    </span>
+  )
 }

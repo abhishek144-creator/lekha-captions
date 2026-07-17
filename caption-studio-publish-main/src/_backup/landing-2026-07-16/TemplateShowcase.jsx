@@ -28,7 +28,7 @@ const demos = [
 const proofPoints = [
   ['Real product', 'No mockups'],
   ['115+ languages', 'One workflow'],
-  ['100+ styles', 'Ready to move'],
+  ['25+ styles', 'Ready to move'],
 ]
 
 function FilmCard({ demo, index }) {
@@ -40,7 +40,7 @@ function FilmCard({ demo, index }) {
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, amount: 0.2 }}
       transition={{ delay: index * 0.1, duration: 0.55 }}
-      className="landing-film-card overflow-hidden rounded-[1.5rem] border border-white/[0.11] bg-[#11100f]/75 shadow-[0_35px_85px_-45px_rgba(0,0,0,0.95)] backdrop-blur-xl"
+      className="overflow-hidden rounded-[1.5rem] border border-white/[0.11] bg-[#11100f]/75 shadow-[0_35px_85px_-45px_rgba(0,0,0,0.95)] backdrop-blur-xl"
     >
       <div className="flex h-11 items-center justify-between border-b border-white/[0.08] px-4">
         <div className="flex items-center gap-1.5">
@@ -108,7 +108,7 @@ function FilmCard({ demo, index }) {
 
 export default function TemplateShowcase() {
   return (
-    <section id="templates" aria-label="Caption template demos" className="landing-section-templates relative isolate overflow-hidden py-24 sm:py-32">
+    <section id="templates" aria-label="Caption template demos" className="relative isolate overflow-hidden py-24 sm:py-32">
       <div className="pointer-events-none absolute inset-0 -z-20 bg-[linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:72px_72px] [mask-image:linear-gradient(to_bottom,transparent,black_18%,black_82%,transparent)]" />
       <div className="pointer-events-none absolute -left-48 top-36 -z-10 h-[32rem] w-[32rem] rounded-full bg-[#f5a623]/[0.08] blur-[140px]" />
       <div className="pointer-events-none absolute -right-52 bottom-24 -z-10 h-[28rem] w-[28rem] rounded-full bg-[#f5a623]/[0.05] blur-[130px]" />

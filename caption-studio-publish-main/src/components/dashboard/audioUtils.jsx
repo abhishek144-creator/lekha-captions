@@ -31,8 +31,10 @@ export const extractWaveformData = async (videoElement, numSamples = 300) => {
       samples.push(sum / blockSize);
     }
     
-    // Normalize samples to 0-1 range
-    const maxAmplitude = Math.max(...samples);
+    // Normalize samples to 0-1 range. Guard against a silent track:
+    // dividing by 0 turns every sample into NaN, which breaks the timeline
+    // waveform bars AND the audio-emotion analysis downstream.
+    const maxAmplitude = Math.max(...samples) || 1;
     const normalizedSamples = samples.map(s => s / maxAmplitude);
     
     audioContext.close();

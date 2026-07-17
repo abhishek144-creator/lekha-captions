@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Loader2, Download, Video } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { resolveApiResourceUrl } from './exportPipelineUtils';
+import { toDateSafe } from '@/lib/subscription';
 
 // History Tab component that fetches user's past generated videos
 export default function HistoryTab({ user, userData }) {
@@ -77,7 +78,7 @@ export default function HistoryTab({ user, userData }) {
                                     {item.filename || 'Exported Video'}
                                 </span>
                                 <span className="text-xs text-gray-500">
-                                    {new Date(item.createdAt).toLocaleDateString()}
+                                    {toDateSafe(item.createdAt)?.toLocaleDateString() || 'Recently'}
                                 </span>
                             </div>
                             <Button

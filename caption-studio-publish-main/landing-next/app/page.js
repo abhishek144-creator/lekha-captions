@@ -10,7 +10,7 @@ export const metadata = pageMetadata({
 
 const stats = [
   ['115+', 'Languages supported'],
-  ['25+', 'Caption styles'],
+  ['100+', 'Caption styles'],
   ['120-180s', 'Shorts & Reels sweet spot'],
 ]
 
@@ -341,7 +341,7 @@ export default function HomePage() {
             ))}
           </div>
 
-          <p className="sync-showcase-note">25+ animated caption styles, one tap away</p>
+          <p className="sync-showcase-note">100+ animated caption styles, one tap away</p>
 
           <div className="sync-before-after" aria-label="Caption styling before and after">
             <div>

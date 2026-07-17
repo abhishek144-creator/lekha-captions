@@ -60,6 +60,9 @@ export function AuthProvider({ children }) {
     const loginWithGoogle = async ({ preferRedirect = false, consent = null } = {}) => {
         try {
             setAuthError(null)
+            if (!auth || !googleProvider) {
+                throw new Error('Google sign-up is not configured. Please check the Firebase environment variables.')
+            }
 
             if (consent?.granted && typeof window !== 'undefined') {
                 window.localStorage.setItem(PENDING_CONSENT_KEY, JSON.stringify(consent))
@@ -71,7 +74,20 @@ export function AuthProvider({ children }) {
             }
 
             const result = await signInWithPopup(auth, googleProvider)
-            await syncUserRecord(result.user, consent)
+            try {
+                await syncUserRecord(result.user, consent)
+            } catch (syncError) {
+                console.warn('Signed in, but account setup is still pending:', syncError.message)
+                setUserData({
+                    uid: result.user.uid,
+                    email: result.user.email || '',
+                    displayName: result.user.displayName || '',
+                    photoURL: result.user.photoURL || '',
+                    credits_remaining: 0,
+                    subscription_tier: 'free',
+                    bootstrap_pending: true,
+                })
+            }
             return result.user
         } catch (error) {
             console.error('Google Sign In Error:', error)
@@ -100,9 +116,22 @@ export function AuthProvider({ children }) {
         }
 
         getRedirectResult(auth)
-            .then((result) => {
+            .then(async (result) => {
                 if (result?.user) {
-                    return syncUserRecord(result.user)
+                    try {
+                        await syncUserRecord(result.user)
+                    } catch (syncError) {
+                        console.warn('Signed in after redirect, but account setup is still pending:', syncError.message)
+                        setUserData({
+                            uid: result.user.uid,
+                            email: result.user.email || '',
+                            displayName: result.user.displayName || '',
+                            photoURL: result.user.photoURL || '',
+                            credits_remaining: 0,
+                            subscription_tier: 'free',
+                            bootstrap_pending: true,
+                        })
+                    }
                 }
                 return null
             })

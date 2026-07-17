@@ -86,8 +86,42 @@ const TOP_UP_OFFERS = {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// Template sources that still ship in the bundle. Restored sessions can carry
+// styles from removed sets (e.g. 'lekha-49'): the markup lookup then falls back
+// to the FIRST card of another asset and silently renders the wrong template.
+const LIVE_TEMPLATE_SOURCES = new Set(['', 'lekha-20', 'lekha-lc', 'lekha-basic', 'lekha-advanced']);
+
+const REMOVED_TEMPLATE_FIELDS = [
+  'template_id', 'template_20_id', 'template_source', 'template_class',
+  'template_name', 'template_layout', 'template_effect', 'template_markup',
+  'template_snapshot', 'template_applied_at', 'template_phase_index',
+];
+
+const stripRemovedTemplateSource = (style) => {
+  if (!style || typeof style !== 'object') return style;
+  const sourceIsLive = LIVE_TEMPLATE_SOURCES.has(String(style.template_source || ''));
+  const snapshotIsLive = !style.template_snapshot
+    || LIVE_TEMPLATE_SOURCES.has(String(style.template_snapshot.template_source || ''));
+  if (sourceIsLive && snapshotIsLive) return style;
+  const next = { ...style };
+  REMOVED_TEMPLATE_FIELDS.forEach((key) => { delete next[key]; });
+  return next;
+};
+
+const sanitizeRestoredCaption = (caption) => {
+  if (!caption || typeof caption !== 'object' || caption.isTextElement) return caption;
+  const appliedSource = String(caption.applied_template_style?.template_source ?? caption.template_source ?? '');
+  if (LIVE_TEMPLATE_SOURCES.has(appliedSource) && LIVE_TEMPLATE_SOURCES.has(String(caption.template_source || ''))) {
+    return caption;
+  }
+  const next = { ...caption };
+  REMOVED_TEMPLATE_FIELDS.forEach((key) => { delete next[key]; });
+  delete next.applied_template_style;
+  return next;
+};
+
 const normalizeCaptionStyle = (style = {}) => {
-  const merged = { ...defaultCaptionStyle, ...style };
+  const merged = { ...defaultCaptionStyle, ...stripRemovedTemplateSource(style) };
   if (!merged.template_id && Number(merged.font_size) <= 18 && String(merged.font_weight || '500') === '500') {
     merged.font_size = defaultCaptionStyle.font_size;
     merged.font_weight = defaultCaptionStyle.font_weight;
@@ -257,7 +291,7 @@ export default function Dashboard() {
         if (savedState) {
           const parsed = JSON.parse(savedState);
           if (parsed.videoUrl) setVideoUrl(parsed.videoUrl);
-          if (parsed.captions) setCaptions(parsed.captions);
+          if (parsed.captions) setCaptions(parsed.captions.map(sanitizeRestoredCaption));
           if (parsed.captionStyle) setCaptionStyle(normalizeCaptionStyle(parsed.captionStyle));
           if (parsed.projectId) setProjectId(parsed.projectId);
           if (parsed.duration) setDuration(parsed.duration);
@@ -266,7 +300,7 @@ export default function Dashboard() {
           if (parsed.settings) setSettings(parsed.settings);
           initialEditorStateRef.current = {
             videoUrl: parsed.videoUrl || '',
-            captions: JSON.parse(JSON.stringify(parsed.captions || [])),
+            captions: JSON.parse(JSON.stringify((parsed.captions || []).map(sanitizeRestoredCaption))),
             captionStyle: JSON.parse(JSON.stringify(normalizeCaptionStyle(parsed.captionStyle || defaultCaptionStyle))),
             duration: parsed.duration || 0,
             fileId: parsed.fileId || null,
@@ -1264,6 +1298,7 @@ export default function Dashboard() {
       { label: 'Highlighting key moments', status: step4Ready ? 'complete' : step3Ready ? 'active' : 'upcoming' },
       { label: 'Rendering your preview', status: step4Ready ? 'active' : 'upcoming' },
     ];
+    const completedSteps = progressSteps.filter((step) => step.status === 'complete').length;
     return (
       <div className="relative flex h-full items-center justify-center overflow-hidden bg-[#050505] p-5">
         <div className="absolute inset-x-0 top-0 h-px bg-white/[0.06]" />

@@ -27,8 +27,8 @@ export function Footer() {
         </div>
       </div>
       <div className="container footer-bottom">
-        <p>© {new Date().getFullYear()} Lekha Captions. All rights reserved.</p>
-        <p>Built for every language, every creator 🌍</p>
+        <p>&copy; {new Date().getFullYear()} Lekha Captions. All rights reserved.</p>
+        <p>Creator-friendly captions for audiences everywhere</p>
       </div>
     </footer>
   )

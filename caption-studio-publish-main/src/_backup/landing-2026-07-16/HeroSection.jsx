@@ -6,12 +6,12 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 
 const stats = [
   ['115+', 'Languages supported'],
-  ['100+', 'Caption styles'],
+  ['25+', 'Caption styles'],
   ['120–180s', 'Shorts & Reels sweet spot'],
 ]
 
 const rotatingLanguages = [
-  'English',
+  'Your Language',
   'हिन्दी',
   'தமிழ்',
   'বাংলা',
@@ -183,7 +183,7 @@ export default function HeroSection() {
           </motion.div>
 
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.6, delay: 0.42 }} className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-xs text-white/45">
-            <span className="inline-flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-[#f5a623]" />100+ visual styles</span>
+            <span className="inline-flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-[#f5a623]" />25+ visual styles</span>
             <span className="inline-flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-[#f5a623]" />Precise editing control</span>
             <span className="inline-flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-[#f5a623]" />HD &amp; 4K plan options</span>
           </motion.div>
