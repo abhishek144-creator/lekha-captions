@@ -19,53 +19,41 @@ import {
 } from '../src/components/dashboard/emotionalTemplateUtils.js';
 
 const projectRoot = new URL('../', import.meta.url);
-const advancedSource = await fs.readFile(
+// Normalize CRLF so newline-sensitive source-pattern checks survive Windows
+// autocrlf checkouts.
+const readSource = async (url) => (await fs.readFile(url, 'utf8')).replace(/\r\n/g, '\n');
+const advancedSource = await readSource(
   new URL('src/assets/lekha-captions-T11-T35.html', projectRoot),
-  'utf8',
 );
-const legacySource = await fs.readFile(
+const legacySource = await readSource(
   new URL('src/assets/lekha-captions-20-templates.html', projectRoot),
-  'utf8',
 );
-const newTemplateSource = await fs.readFile(
-  new URL('src/assets/lekha-captions-49-templates.html', projectRoot),
-  'utf8',
-);
-const videoPlayerSource = await fs.readFile(
+const videoPlayerSource = await readSource(
   new URL('src/components/dashboard/VideoPlayer.jsx', projectRoot),
-  'utf8',
 );
-const basicTemplateInlineSource = await fs.readFile(
+const basicTemplateInlineSource = await readSource(
   new URL('src/components/dashboard/basicTemplateInline.js', projectRoot),
-  'utf8',
 );
-const gallerySource = await fs.readFile(
+const gallerySource = await readSource(
   new URL('src/components/dashboard/AdvancedTemplateLibrary.jsx', projectRoot),
-  'utf8',
 );
-const sidebarGallerySource = await fs.readFile(
+const sidebarGallerySource = await readSource(
   new URL('src/components/dashboard/SidebarTemplateGallery20.jsx', projectRoot),
-  'utf8',
 );
-const exportRendererSource = await fs.readFile(
+const exportRendererSource = await readSource(
   new URL('scripts/render_template_overlay.mjs', projectRoot),
-  'utf8',
 );
-const exportPanelSource = await fs.readFile(
+const exportPanelSource = await readSource(
   new URL('src/components/dashboard/ExportPanel.jsx', projectRoot),
-  'utf8',
 );
-const emotionalTemplateUtilsSource = await fs.readFile(
+const emotionalTemplateUtilsSource = await readSource(
   new URL('src/components/dashboard/emotionalTemplateUtils.js', projectRoot),
-  'utf8',
 );
-const templatesTabSource = await fs.readFile(
+const templatesTabSource = await readSource(
   new URL('src/components/dashboard/TemplatesTab.jsx', projectRoot),
-  'utf8',
 );
-const captionTemplatesCss = await fs.readFile(
+const captionTemplatesCss = await readSource(
   new URL('src/styles/captionTemplates.css', projectRoot),
-  'utf8',
 );
 
 const lcSchedule = getLcMotionSchedule([
@@ -523,37 +511,13 @@ for (const card of basicCards) {
     );
   }
 }
-const sanitizedNewTemplateSource = newTemplateSource
-  .replace(/<script[\s\S]*?<\/script>/gi, '')
-  .replace(/\s+bis_skin_checked="[^"]*"/gi, '');
-const newTemplateCards = [];
-const newTemplateCardPattern = /<div class="lk-card\s+([^"]+)"/gi;
-let newTemplateCardMatch;
-while ((newTemplateCardMatch = newTemplateCardPattern.exec(sanitizedNewTemplateSource))) {
-  const cardMarkup = extractCompleteTemplateDiv(sanitizedNewTemplateSource, newTemplateCardMatch.index);
-  if (!cardMarkup) fail(`49-template card ${newTemplateCardMatch[1]} could not be extracted`);
-  newTemplateCards.push({
-    className: newTemplateCardMatch[1],
-    phaseCount: (cardMarkup.match(/class="[^"]*\bsblock\b/g) || []).length,
-    hasMotionMarkup: /\b(?:wbw-line|sw-line|sw|plain-s|pos\d+)/.test(cardMarkup),
-  });
-  newTemplateCardPattern.lastIndex = newTemplateCardMatch.index + cardMarkup.length;
-}
-if (newTemplateCards.length !== 49) {
-  fail(`49-template catalog has ${newTemplateCards.length} cards instead of 49`);
-}
-for (const card of newTemplateCards) {
-  if (card.phaseCount < 1) fail(`49-template ${card.className} has no authored phases`);
-  if (!card.hasMotionMarkup) fail(`49-template ${card.className} has no authored motion/text markup`);
-}
-// The 49-pack is intentionally hidden from the selectable gallery, but it must
-// stay in ALL_TEMPLATE_CARDS so older saved projects that reference it still
-// resolve their preview/export styles. LC templates are the selectable set.
+// The 49-pack was removed entirely (2026-07-17). The selectable set is the
+// legacy 20 plus the LC templates.
 if (!sidebarGallerySource.includes('const TEMPLATE_CARDS = [...LEGACY_TEMPLATE_CARDS]')) {
   fail('left template gallery legacy catalog changed shape');
 }
-if (!/const ALL_TEMPLATE_CARDS = \[[\s\S]*?\.\.\.NEW_TEMPLATE_CARDS,[\s\S]*?\.\.\.LC_TEMPLATE_CARDS,[\s\S]*?\];/.test(sidebarGallerySource)) {
-  fail('left template style map no longer resolves the hidden 49-pack and LC templates');
+if (!/const ALL_TEMPLATE_CARDS = \[[\s\S]*?\.\.\.TEMPLATE_CARDS,[\s\S]*?\.\.\.LC_TEMPLATE_CARDS,[\s\S]*?\];/.test(sidebarGallerySource)) {
+  fail('left template style map no longer resolves the legacy and LC templates');
 }
 if (!sidebarGallerySource.includes("{ id: 'lc-style-1', title: 'LC Style 1', templates: LC_STYLE_1_TEMPLATE_CARDS }")) {
   fail('left template gallery does not render the LC template sections');
@@ -776,5 +740,5 @@ for (const [className, animationName] of Object.entries(LEGACY_IMP_ANIMS)) {
 }
 
 console.log(
-  `Template motion parity passed for ${Object.keys(sourceBlockTypes).length} advanced templates, ${basicCards.length} right basic templates, ${legacyCards.length + newTemplateCards.length} left templates, and ${LEGACY_WBW_CLASSES.length} legacy motion classes.`,
+  `Template motion parity passed for ${Object.keys(sourceBlockTypes).length} advanced templates, ${basicCards.length} right basic templates, ${legacyCards.length} left templates, and ${LEGACY_WBW_CLASSES.length} legacy motion classes.`,
 );

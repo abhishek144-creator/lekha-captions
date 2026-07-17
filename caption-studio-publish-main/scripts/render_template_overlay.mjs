@@ -22,7 +22,6 @@ import {
 } from '../src/components/dashboard/advancedTemplateSourceUtils.js';
 import {
   buildEmotionalCaptionPlan,
-  EMOTIONAL_TEMPLATE_TIMING,
 } from '../src/components/dashboard/emotionalTemplateUtils.js';
 import {
   SOURCE_BASIC_TEMPLATE_IDS,
@@ -1946,15 +1945,12 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         const phaseIndex = Number(shell.dataset.templatePhaseIndex || shell.dataset.captionIndex || 0);
         const impWordIndex = Number(shell.dataset.impWordIndex || -1);
         const templateSource = shell.dataset.templateSource || '';
-        const isNewTemplateSet = templateSource === 'lekha-49';
         const isLcTemplateSet = templateSource === 'lekha-lc';
         const elapsedMs = Math.max(0, (time - captionStart) * 1000);
         const fallbackDuration = 3000;
         // Parity with the live preview's per-source timing. LC nodes retain the
         // authored delay/duration/easing from the original template markup.
-        const wordStagger = isNewTemplateSet
-          ? ${EMOTIONAL_TEMPLATE_TIMING.wordStaggerMs}
-          : ${SIDEBAR_TEMPLATE_WORD_STAGGER_SECONDS * 1000};
+        const wordStagger = ${SIDEBAR_TEMPLATE_WORD_STAGGER_SECONDS * 1000};
         const blocks = Array.from(shell.querySelectorAll('.sb, .sblock'));
         const dots = Array.from(shell.querySelectorAll('.dots i, .lk-dots i'));
 
@@ -1978,13 +1974,11 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           block.querySelectorAll('.sw').forEach((element) => {
             element.classList.remove('in', 'sidebar-export-sw-anim', 'sidebar-export-lc-anim');
             element.style.removeProperty('animation');
-            if (!isNewTemplateSet) {
-              const motion = getSidebarSwMotion(element);
-              element.style.setProperty('--sidebar-export-initial-transform', motion.transform || 'none');
-              element.style.setProperty('--sidebar-export-initial-opacity', motion.opacity || '0');
-              element.style.setProperty('--sidebar-export-initial-clip', motion.clipPath || 'inset(0 0 0 0)');
-              element.style.transformOrigin = motion.origin || '';
-            }
+            const motion = getSidebarSwMotion(element);
+            element.style.setProperty('--sidebar-export-initial-transform', motion.transform || 'none');
+            element.style.setProperty('--sidebar-export-initial-opacity', motion.opacity || '0');
+            element.style.setProperty('--sidebar-export-initial-clip', motion.clipPath || 'inset(0 0 0 0)');
+            element.style.transformOrigin = motion.origin || '';
           });
           block.querySelectorAll('.sw-w').forEach((word) => {
             word.classList.remove('sidebar-export-lc-anim');
@@ -2149,8 +2143,8 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
             word.style.setProperty('transform', 'none');
           }
           const duration = /\\b(imp-|ns[23]-)/.test(word.className)
-            ? (isNewTemplateSet ? ${EMOTIONAL_TEMPLATE_TIMING.supportDurationMs + 160} : ${LEGACY_TEMPLATE_TIMING.wordDurationMs + 160})
-            : (isNewTemplateSet ? ${EMOTIONAL_TEMPLATE_TIMING.supportDurationMs} : ${LEGACY_TEMPLATE_TIMING.wordDurationMs});
+            ? ${LEGACY_TEMPLATE_TIMING.wordDurationMs + 160}
+            : ${LEGACY_TEMPLATE_TIMING.wordDurationMs};
           word.style.setProperty('--sidebar-export-word-duration', duration + 'ms');
           word.style.setProperty('--sidebar-export-word-delay', (phase.phaseStartMs + index * phaseWordStagger) + 'ms');
           word.classList.add('sidebar-export-word-anim');
@@ -2167,14 +2161,9 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
             return;
           }
           const phaseSwStagger = fitSidebarStagger(${SIDEBAR_TEMPLATE_POSITION_STAGGER_SECONDS * 1000}, phase.block.querySelectorAll('.sw').length);
-          if (isNewTemplateSet) {
-            const sourceDelayMs = parseSidebarAnimationDelayMs(element.style.animationDelay || '0s');
-            element.style.animationDelay = (phase.phaseStartMs + sourceDelayMs) + 'ms';
-          } else {
-            element.style.setProperty('--sidebar-export-word-duration', '300ms');
-            element.style.setProperty('--sidebar-export-word-delay', (phase.phaseStartMs + index * phaseSwStagger) + 'ms');
-            element.classList.add('sidebar-export-sw-anim');
-          }
+          element.style.setProperty('--sidebar-export-word-duration', '300ms');
+          element.style.setProperty('--sidebar-export-word-delay', (phase.phaseStartMs + index * phaseSwStagger) + 'ms');
+          element.classList.add('sidebar-export-sw-anim');
         });
         phase.block.querySelectorAll('.sw-w').forEach((word, index) => {
           const lcAnim = isLcTemplateSet ? String(word.dataset.lcAnim || '').trim() : '';
@@ -2188,7 +2177,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
             return;
           }
           const phaseStickyStagger = fitSidebarStagger(
-            isNewTemplateSet ? ${EMOTIONAL_TEMPLATE_TIMING.positionedWordStaggerMs} : ${SIDEBAR_TEMPLATE_POSITION_STAGGER_SECONDS * 1000},
+            ${SIDEBAR_TEMPLATE_POSITION_STAGGER_SECONDS * 1000},
             phase.block.querySelectorAll('.sw-w').length,
           );
           word.style.setProperty('--sidebar-export-word-delay', (phase.phaseStartMs + index * phaseStickyStagger) + 'ms');
@@ -2202,7 +2191,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       const templateSource = caption.template_source || appliedStyle.template_source || globalStyle?.template_source || '';
       const templateMarkup = sanitizeSidebarTemplateMarkup(
         caption.template_markup || appliedStyle.template_markup || globalStyle?.template_markup || '',
-        ['lekha-49', 'lekha-lc'].includes(templateSource),
+        templateSource === 'lekha-lc',
       );
       if (!templateMarkup) return '';
       const colorCustomizedClass = globalStyle?.template_color_customized || appliedStyle.template_color_customized
@@ -2793,11 +2782,9 @@ async function main() {
     : '';
   const hasSidebarTemplate = Boolean(payload.style?.template_20_id);
   const sidebarTemplateHtml = hasSidebarTemplate
-    ? await fs.readFile(path.join(projectRoot, 'src', 'assets', payload.style?.template_source === 'lekha-49'
-      ? 'lekha-captions-49-templates.html'
-      : payload.style?.template_source === 'lekha-lc'
-        ? 'lekha-captions-lc-2.html'
-        : 'lekha-captions-20-templates.html'), 'utf8')
+    ? await fs.readFile(path.join(projectRoot, 'src', 'assets', payload.style?.template_source === 'lekha-lc'
+      ? 'lekha-captions-lc-2.html'
+      : 'lekha-captions-20-templates.html'), 'utf8')
     : '';
   const sidebarTemplateCss = hasSidebarTemplate
     ? payload.style?.template_source === 'lekha-lc'
