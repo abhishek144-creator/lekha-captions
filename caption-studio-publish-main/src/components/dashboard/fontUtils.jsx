@@ -545,7 +545,7 @@ export async function autoLoadFontForText(text) {
 }
 
 // ── Devanagari template-font mapping ────────────────────────────────────────
-// The 69 sidebar templates carry a Latin display font (Bodoni Moda, Bebas Neue,
+// The left sidebar templates carry a Latin display font (Bodoni Moda, Bebas Neue,
 // Oxanium, IBM Plex Mono, …) as their visual identity. Those families have NO
 // Devanagari glyphs, so on Hindi/Marathi captions they silently fall back to a
 // default font — which is why applying a template looked like "nothing happened"

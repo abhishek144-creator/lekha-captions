@@ -4,7 +4,7 @@ import { Play, Pause, Volume2, VolumeX, X, Maximize2, Minimize2, ZoomIn, ZoomOut
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
 import { resolveScriptFont, loadGoogleFont } from './fontUtils';
-import { buildEmotionalCaptionPlan, EMOTIONAL_TEMPLATE_TIMING } from './emotionalTemplateUtils';
+import { buildEmotionalCaptionPlan } from './emotionalTemplateUtils';
 import {
   ADVANCED_IMP_ENTRANCES,
   ADVANCED_TEMPLATE_EMPHASIS_COLORS,
@@ -31,7 +31,6 @@ import '../../styles/captionTemplatesAdvanced.css';
 import '../../styles/advancedTemplateLibrary.css';
 import originalTemplateHtml from '../../assets/lekha-captions-T11-T35.html?raw';
 import sidebarLegacyTemplateHtml from '../../assets/lekha-captions-20-templates.html?raw';
-import sidebarNewTemplateHtml from '../../assets/lekha-captions-49-templates.html?raw';
 import sidebarLcTemplateHtml2 from '../../assets/lekha-captions-lc-2.html?raw';
 import sidebarLcTemplateHtml3 from '../../assets/lekha-captions-lc-3.html?raw';
 import sidebarLcTemplateHtml4 from '../../assets/lekha-captions-lc-4.html?raw';
@@ -436,18 +435,18 @@ function extractHtmlStyle(markup = '') {
 function findAppliedSidebarTemplateMarkup(captionStyle = {}) {
   const className = String(captionStyle?.template_class || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
   if (!className) return '';
-  const source = captionStyle?.template_source === 'lekha-49'
-    ? sidebarNewTemplateHtml
-    : captionStyle?.template_source === 'lekha-lc'
-      ? sidebarLcTemplateHtml
-      : sidebarLegacyTemplateHtml;
-  const cardClassToken = captionStyle?.template_source === 'lekha-49' ? 'lk-card' : 'card';
-  // Match the SPECIFIC template's card (class="lk-card t07"), not just the first lk-card.
+  const source = captionStyle?.template_source === 'lekha-lc'
+    ? sidebarLcTemplateHtml
+    : sidebarLegacyTemplateHtml;
+  const cardClassToken = 'card';
+  // Match the SPECIFIC template's card (class="card a1"), not just the first card.
   const scopedMatch = source.match(new RegExp(`class="[^"]*\\b${escapeRegExp(cardClassToken)}\\b[^"]*\\b${escapeRegExp(className)}\\b[^"]*"`, 'i'));
   const scoped = scopedMatch ? scopedMatch.index : -1;
-  const start = scoped >= 0 ? scoped : source.indexOf(`class="${cardClassToken}`);
-  if (start < 0) return '';
-  return extractAppliedTemplateDiv(source, start);
+  // No first-card fallback: silently rendering a DIFFERENT template on a lookup
+  // miss (renamed/removed class) is worse than degrading to the plain styled
+  // caption path, and it masks the actual failure.
+  if (scoped < 0) return '';
+  return extractAppliedTemplateDiv(source, scoped);
 }
 
 function findAppliedBasicTemplateMarkup(captionStyle = {}) {
@@ -751,10 +750,9 @@ function buildAppliedSidebarTemplateInline(captionText, captionStyle, { activePh
   const normalizedImpWordIndices = resolveImpWordIndicesForWords(String(captionText || '').trim().split(/\s+/).filter(Boolean), impWordIndex, impWordIndices);
   const cacheKey = `${captionStyle?.template_id || ''}|${captionStyle?.template_20_id || ''}|${captionStyle?.template_source || ''}|${captionStyle?.template_class || ''}|${captionStyle?.template_effect || ''}|${getAppliedTemplateMarkupSignature(rawMarkup)}|${activePhase}|${settled ? 1 : 0}|${JSON.stringify(normalizedImpWordIndices)}|${captionText || ''}`;
   if (_appliedInlineCache.has(cacheKey)) return _appliedInlineCache.get(cacheKey);
-  const isNew = captionStyle?.template_source === 'lekha-49';
   const isLc = captionStyle?.template_source === 'lekha-lc';
   const forceContiguousPositioned = false;
-  const result = _buildAppliedSidebarTemplateInlineUncached(rawMarkup, isNew || isLc, captionText, activePhase, settled, impWordIndex, normalizedImpWordIndices, forceContiguousPositioned);
+  const result = _buildAppliedSidebarTemplateInlineUncached(rawMarkup, isLc, captionText, activePhase, settled, impWordIndex, normalizedImpWordIndices, forceContiguousPositioned);
   if (_appliedInlineCache.size > 400) _appliedInlineCache.clear();
   _appliedInlineCache.set(cacheKey, result);
   return result;
@@ -801,8 +799,7 @@ function countAppliedTemplatePhases(captionStyle = {}) {
   const rawMarkup = captionStyle?.template_markup || findAppliedSidebarTemplateMarkup(captionStyle);
   const key = `${captionStyle?.template_id || ''}|${captionStyle?.template_20_id || ''}|${captionStyle?.template_source || ''}|${captionStyle?.template_class || ''}|${captionStyle?.template_effect || ''}|${getAppliedTemplateMarkupSignature(rawMarkup)}`;
   if (_appliedPhaseCache.has(key)) return _appliedPhaseCache.get(key);
-  const isNew = captionStyle?.template_source === 'lekha-49';
-  const markup = sanitizeAppliedTemplateMarkup(rawMarkup, isNew);
+  const markup = sanitizeAppliedTemplateMarkup(rawMarkup, false);
   const matches = markup ? markup.match(/class="[^"]*\b(sblock|sb)\b/g) : null;
   const count = Math.max(1, matches ? matches.length : 1);
   if (_appliedPhaseCache.size > 200) _appliedPhaseCache.clear();
@@ -832,9 +829,9 @@ function countAppliedBasicTemplatePhases(captionStyle = {}) {
   return count;
 }
 
-// The 69-set templates' own CSS (extracted from the HTML assets), minus the
-// document-level resets (html/body/*/.lk-grid) that would corrupt the host app.
-// Injected globally once; the template classes (.lk-card/.sw/.wbw-word/.pos*/…)
+// The left sidebar templates' own CSS (extracted from the HTML assets), minus the
+// document-level resets (html/body/*/.grid) that would corrupt the host app.
+// Injected globally once; the template classes (.card/.sw/.wbw-word/.pos*/…)
 // don't appear anywhere else in-page (the gallery renders them inside iframes),
 // so this is effectively scoped in practice. Host-sizing overrides below undo the
 // fixed card/stage box so the design renders as a transparent caption overlay.
@@ -916,10 +913,8 @@ function namespaceAppliedLcKeyframes(css = '') {
 
 function extractAppliedTemplateCss(source = 'lekha-20') {
   if (_appliedTemplateCssCache.has(source)) return _appliedTemplateCssCache.get(source);
-  const raw = source === 'lekha-49'
-    ? extractHtmlStyle(sidebarNewTemplateHtml)
-    : source === 'lekha-lc'
-      ? extractHtmlStyle(sidebarLcTemplateHtml)
+  const raw = source === 'lekha-lc'
+    ? extractHtmlStyle(sidebarLcTemplateHtml)
     : extractHtmlStyle(sidebarLegacyTemplateHtml);
   const stripped = source === 'lekha-lc'
     ? raw
@@ -1529,28 +1524,18 @@ function AppliedSidebarTemplateSourceRenderer({
     };
 
     const isLcTemplateSet = effectiveStyle?.template_source === 'lekha-lc';
-    const sourceTiming = effectiveStyle?.template_source === 'lekha-49'
+    const sourceTiming = isLcTemplateSet
       ? {
-          wordStaggerMs: EMOTIONAL_TEMPLATE_TIMING.wordStaggerMs,
-          wordDurationMs: EMOTIONAL_TEMPLATE_TIMING.supportDurationMs,
-          positionedWordStaggerMs: EMOTIONAL_TEMPLATE_TIMING.positionedWordStaggerMs,
-          positionedWordDurationMs: EMOTIONAL_TEMPLATE_TIMING.supportDurationMs,
-          holdMs: EMOTIONAL_TEMPLATE_TIMING.holdMs,
-          exitMs: EMOTIONAL_TEMPLATE_TIMING.exitMs,
-          gapMs: EMOTIONAL_TEMPLATE_TIMING.gapMs,
+          // LC nodes use their authored source schedule; these values only
+          // feed the non-word legacy paths.
+          wordStaggerMs: LC_TEMPLATE_TIMING.staggerMs,
+          wordDurationMs: LC_TEMPLATE_TIMING.bodyDurationMs,
+          positionedWordStaggerMs: LC_TEMPLATE_TIMING.staggerMs,
+          positionedWordDurationMs: LC_TEMPLATE_TIMING.bodyDurationMs,
+          holdMs: LC_TEMPLATE_TIMING.holdMs,
+          exitMs: LC_TEMPLATE_TIMING.exitMs,
+          gapMs: LC_TEMPLATE_TIMING.gapMs,
         }
-      : isLcTemplateSet
-        ? {
-            // LC nodes use their authored source schedule; these values only
-            // feed the non-word legacy paths.
-            wordStaggerMs: LC_TEMPLATE_TIMING.staggerMs,
-            wordDurationMs: LC_TEMPLATE_TIMING.bodyDurationMs,
-            positionedWordStaggerMs: LC_TEMPLATE_TIMING.staggerMs,
-            positionedWordDurationMs: LC_TEMPLATE_TIMING.bodyDurationMs,
-            holdMs: LC_TEMPLATE_TIMING.holdMs,
-            exitMs: LC_TEMPLATE_TIMING.exitMs,
-            gapMs: LC_TEMPLATE_TIMING.gapMs,
-          }
       : APPLIED_LEGACY_TEMPLATE_TIMING;
     const WBW_DELAY = sourceTiming.wordStaggerMs;
     const WBW_DUR = sourceTiming.wordDurationMs;
@@ -5575,15 +5560,21 @@ function prepareSourceTemplateWordNode(node) {
   setSourceTemplateStyle(node, 'line-height', 'inherit');
   visualTargets.forEach((target) => {
     const isManagedVisual = target.dataset?.sourceWordVisual === 'true';
-    setSourceTemplateStyle(target, 'display', 'inline-block');
-    setSourceTemplateStyle(target, 'position', isManagedVisual ? 'absolute' : 'relative');
+    // Karaoke pairs keep their authored stacking: .kf-fill paints absolutely on
+    // top of .kf-base inside the relative .kf-word wrapper. Forcing them into
+    // inline flow (position: relative) rendered every karaoke word TWICE, side
+    // by side, on the canvas (t22/t33/t36 phases).
+    const isKaraokeFill = target.classList?.contains('kf-fill');
+    const isKaraokeBase = target.classList?.contains('kf-base');
+    setSourceTemplateStyle(target, 'display', (isKaraokeFill || isKaraokeBase) ? 'block' : 'inline-block');
+    setSourceTemplateStyle(target, 'position', (isManagedVisual || isKaraokeFill) ? 'absolute' : 'relative');
     setSourceTemplateStyle(target, 'z-index', '6');
     setSourceTemplateStyle(target, 'overflow', 'visible');
     setSourceTemplateStyle(target, 'vertical-align', 'baseline');
     setSourceTemplateStyle(target, 'transform-origin', 'center center');
     setSourceTemplateStyle(target, 'pointer-events', 'none');
     setSourceTemplateStyle(target, 'line-height', 'inherit');
-    if (isManagedVisual) {
+    if (isManagedVisual || isKaraokeFill) {
       setSourceTemplateStyle(target, 'left', '0');
       setSourceTemplateStyle(target, 'top', '0');
       // Reset any stale transform, but WITHOUT !important — a per-word entrance
@@ -9077,7 +9068,7 @@ export default function VideoPlayer({
                         left: '50%',
                         transform: 'translateX(-50%)',
                         zIndex: -1,
-                        backgroundColor: `rgba(${parseInt((captionStyle?.background_color || '#000000').slice(1, 3), 16)}, ${parseInt((captionStyle?.background_color || '#000000').slice(3, 5), 16)}, ${parseInt((captionStyle?.background_color || '#000000').slice(5, 7), 16)}, ${captionStyle?.background_opacity || 0.7})`,
+                        backgroundColor: `rgba(${parseInt((captionStyle?.background_color || '#000000').slice(1, 3), 16)}, ${parseInt((captionStyle?.background_color || '#000000').slice(3, 5), 16)}, ${parseInt((captionStyle?.background_color || '#000000').slice(5, 7), 16)}, ${captionStyle?.background_opacity ?? 0.7})`,
                         borderRadius: '6px',
                         width: `${100 * displayBackgroundWidthMultiplier}%`,
                         height: `calc(100% + ${2 * displayBackgroundPadding}px)`,
@@ -9144,7 +9135,7 @@ export default function VideoPlayer({
                         letterSpacing: captionStyle?.letter_spacing ? `${captionStyle.letter_spacing * previewRenderScale}px` : '0px',
                         wordSpacing: `${(captionStyle?.word_spacing ?? 0) * previewRenderScale}px`,
                         textDecoration: captionStyle?.text_decoration || 'none',
-                        opacity: captionStyle?.text_opacity || 1,
+                        opacity: captionStyle?.text_opacity ?? 1,
                         transform: `scale(${captionStyle?.scale || 1})`,
                         padding: hasDetachedWords ? '0px' : `${displayCaptionPadY}px ${displayCaptionPadX}px`,
                         whiteSpace: 'pre-wrap',
@@ -9416,7 +9407,7 @@ export default function VideoPlayer({
                         letterSpacing: captionStyle?.letter_spacing ? `${captionStyle.letter_spacing * previewRenderScale}px` : '0px',
                         wordSpacing: `${(captionStyle?.word_spacing ?? 0) * previewRenderScale}px`,
                         textDecoration: captionStyle?.text_decoration || 'none',
-                        opacity: captionStyle?.text_opacity || 1,
+                        opacity: captionStyle?.text_opacity ?? 1,
                         transform: `scale(${captionStyle?.scale || 1})`,
 
                         animation: caption.animation && caption.animation !== 'none' ? getAnimationStyle(caption.animation, caption.animationSpeed) : 'none',
@@ -9431,7 +9422,9 @@ export default function VideoPlayer({
                         ...(() => {
                           const efx = computeEffectCSS(captionStyle);
                           return {
-                            textShadow: efx.textShadow || (captionStyle?.has_shadow && !captionStyle?.text_gradient ? `${captionStyle?.shadow_offset_x || 0}px ${captionStyle?.shadow_offset_y || 2}px ${captionStyle?.shadow_blur || 4}px ${captionStyle?.shadow_color || 'rgba(0,0,0,0.8)'}` : undefined),
+                            // `??` not `||` — zero offsets/blur are how glow and offset-only
+                            // shadow templates (t-9, t-12, t-57, t-109, t-124) are authored.
+                            textShadow: efx.textShadow || (captionStyle?.has_shadow && !captionStyle?.text_gradient ? `${captionStyle?.shadow_offset_x ?? 0}px ${captionStyle?.shadow_offset_y ?? 2}px ${captionStyle?.shadow_blur ?? 4}px ${captionStyle?.shadow_color || 'rgba(0,0,0,0.8)'}` : undefined),
                             WebkitTextStroke: efx.WebkitTextStroke || (captionStyle?.has_stroke === true && !captionStyle?.text_gradient ? `${captionStyle?.stroke_width || 0.5}px ${captionStyle?.stroke_color || '#000000'}` : '0px transparent'),
                           };
                         })(),

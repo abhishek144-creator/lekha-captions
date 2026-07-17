@@ -139,10 +139,9 @@ async function auditTemplateAsset(page, { name, html, cardSelector, blockSelecto
   return result;
 }
 
-const [advancedHtml, legacyHtml, newTemplateHtml] = await Promise.all([
+const [advancedHtml, legacyHtml] = await Promise.all([
   fs.readFile(path.join(projectRoot, 'src/assets/lekha-captions-T11-T35.html'), 'utf8'),
   fs.readFile(path.join(projectRoot, 'src/assets/lekha-captions-20-templates.html'), 'utf8'),
-  fs.readFile(path.join(projectRoot, 'src/assets/lekha-captions-49-templates.html'), 'utf8'),
 ]);
 
 const browser = await puppeteer.launch({
@@ -176,14 +175,6 @@ try {
     blockSelector: '.sb',
     expectedCards: 20,
   }));
-  audits.push(await auditTemplateAsset(page, {
-    name: 'left 49-template pack',
-    html: newTemplateHtml,
-    cardSelector: '.lk-card',
-    blockSelector: '.sblock',
-    expectedCards: 49,
-  }));
-
   const totalCards = audits.reduce((sum, audit) => sum + audit.cardCount, 0);
   const totalPhases = audits.reduce(
     (sum, audit) => sum + audit.summaries.reduce((phaseSum, summary) => phaseSum + summary.phaseCount, 0),
