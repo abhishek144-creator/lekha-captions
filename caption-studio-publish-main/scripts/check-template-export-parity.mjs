@@ -22,10 +22,6 @@ const legacySidebarHtml = await fs.readFile(
   path.join(projectRoot, 'src', 'assets', 'lekha-captions-20-templates.html'),
   'utf8',
 );
-const newSidebarHtml = await fs.readFile(
-  path.join(projectRoot, 'src', 'assets', 'lekha-captions-49-templates.html'),
-  'utf8',
-);
 const lcSidebarRawHtml = (await Promise.all(
   ['2', '3', '4', '5'].map((suffix) => fs.readFile(
     path.join(projectRoot, 'src', 'assets', `lekha-captions-lc-${suffix}.html`),
@@ -839,42 +835,6 @@ const CASES = [
     },
   },
   {
-    id: 'left-new-drop-cyan',
-    sidebar: true,
-    template20Id: 'T02',
-    templateSource: 'lekha-49',
-    text: 'Drop The Bright Signal',
-    phaseIndex: 0,
-    impWordIndex: 3,
-    requiredColors: ['cyan', 'white'],
-    style: {
-      template_name: 'The Drop',
-      font_family: 'Inter',
-      font_size: 24,
-      font_weight: '800',
-      text_color: '#FFFFFF',
-      secondary_color: '#00E5FF',
-    },
-  },
-  {
-    id: 'left-new-furnace-orange',
-    sidebar: true,
-    template20Id: 'T05',
-    templateSource: 'lekha-49',
-    text: 'Heat Builds Real Motion',
-    phaseIndex: 0,
-    impWordIndex: 1,
-    requiredColors: ['orange', 'white'],
-    style: {
-      template_name: 'The Furnace',
-      font_family: 'Inter',
-      font_size: 24,
-      font_weight: '800',
-      text_color: '#FFFFFF',
-      secondary_color: '#FF6B1A',
-    },
-  },
-  {
     id: 'left-lc-cpt-multi-line-reveal',
     sidebar: true,
     template20Id: 'T166',
@@ -1062,13 +1022,6 @@ function buildExhaustiveSidebarCases() {
       nameClass: 'cnm',
     },
     {
-      source: newSidebarHtml,
-      templateSource: 'lekha-49',
-      cardClass: 'lk-card',
-      idClass: 'lk-cid',
-      nameClass: 'lk-cnm',
-    },
-    {
       source: lcSidebarHtml,
       templateSource: 'lekha-lc',
       cardClass: 'card',
@@ -1101,7 +1054,7 @@ function buildExhaustiveSidebarCases() {
           requiredColors: [],
           style: {
             template_name: templateName || id,
-            font_family: templateSource === 'lekha-lc' ? 'Archivo' : (templateSource === 'lekha-49' ? 'Inter' : 'Noto Sans'),
+            font_family: templateSource === 'lekha-lc' ? 'Archivo' : 'Noto Sans',
             font_size: 24,
             font_weight: '800',
             text_color: '#FFFFFF',
@@ -1302,11 +1255,10 @@ function stripPreviewRuntimeState(markup = '', preserveInlineStyles = false) {
 }
 
 function findSidebarTemplateMarkup(templateSource, templateId) {
-  const isNew = templateSource === 'lekha-49';
   const isLc = templateSource === 'lekha-lc';
-  const source = sanitizeHtml(isLc ? lcSidebarHtml : (isNew ? newSidebarHtml : legacySidebarHtml));
-  const cardClass = isNew ? 'lk-card' : 'card';
-  const idClass = isNew ? 'lk-cid' : 'cid';
+  const source = sanitizeHtml(isLc ? lcSidebarHtml : legacySidebarHtml);
+  const cardClass = 'card';
+  const idClass = 'cid';
   const cardPattern = /<div\b[^>]*class="([^"]*)"[^>]*>/gi;
   let match;
 
@@ -1318,7 +1270,7 @@ function findSidebarTemplateMarkup(templateSource, templateId) {
       cardMarkup.match(new RegExp(`<span class="${idClass}">([\\s\\S]*?)<\\/span>`, 'i'))?.[1] || '',
     );
     if (id === templateId) {
-      return stripPreviewRuntimeState(cardMarkup, isNew || isLc);
+      return stripPreviewRuntimeState(cardMarkup, isLc);
     }
     cardPattern.lastIndex = match.index + Math.max(cardMarkup.length, 1);
   }

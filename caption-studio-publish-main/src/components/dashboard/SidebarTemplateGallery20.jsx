@@ -10,7 +10,6 @@ import { readCssDeclaration } from './templateStyleUtils.js';
 import { getLcMotionSchedule } from './templateMotionConfig.js';
 import '../../styles/advancedTemplateLibrary.css';
 import legacyTemplateHtml from '../../assets/lekha-captions-20-templates.html?raw';
-import newTemplateHtml from '../../assets/lekha-captions-49-templates.html?raw';
 import lcTemplateHtml2 from '../../assets/lekha-captions-lc-2.html?raw';
 import lcTemplateHtml3 from '../../assets/lekha-captions-lc-3.html?raw';
 import lcTemplateHtml4 from '../../assets/lekha-captions-lc-4.html?raw';
@@ -24,7 +23,6 @@ function sanitizeTemplateHtml(value = '') {
 }
 
 const sanitizedLegacyTemplateHtml = sanitizeTemplateHtml(legacyTemplateHtml);
-const sanitizedNewTemplateHtml = sanitizeTemplateHtml(newTemplateHtml);
 const lcTemplateHtmlSets = [lcTemplateHtml2, lcTemplateHtml3, lcTemplateHtml4, lcTemplateHtml5];
 const sanitizedLcTemplateHtml = lcTemplateHtmlSets.map(sanitizeTemplateHtml);
 const LC_FONT_LINKS = `
@@ -34,10 +32,6 @@ const LC_FONT_LINKS = `
 `;
 const legacyTemplateCss = (() => {
   const matches = [...legacyTemplateHtml.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)];
-  return matches.map(m => m[1]).join('\n');
-})();
-const newTemplateCss = (() => {
-  const matches = [...newTemplateHtml.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)];
   return matches.map(m => m[1]).join('\n');
 })();
 const lcTemplateCss = lcTemplateHtmlSets.map(extractOriginalStyle).join('\n');
@@ -72,21 +66,8 @@ const TEMPLATE_STYLE_MAP = {
   D5: { font_family: 'DM Serif Display', font_size: 23, text_color: '#FFFFFF' },
 };
 
-const NEW_TEMPLATE_STYLE_FALLBACK = {
+const TEMPLATE_STYLE_FALLBACK = {
   ...VIGIL_BASE_TEMPLATE_STYLE,
-};
-
-const DUPLICATE_TEMPLATE_RENAMES = {
-  T01: 'Command Frame',
-  T03: 'Keepsake Glow',
-  T08: 'Curtain Lift',
-  T09: 'Lightwell Focus',
-  T11: 'Archive Signal',
-  T13: 'Frequency Cut',
-  T14: 'Fracture Pulse',
-  'V3.1': 'Afterglow Verse',
-  'V4.2': 'Flowstate Caption',
-  'V4.8': 'Sway Marker',
 };
 
 const SIDEBAR_TEMPLATE_NAME_OVERRIDES = {
@@ -110,7 +91,6 @@ const SIDEBAR_TEMPLATE_NAME_OVERRIDES = {
   D3: 'Cyber Pulse',
   D4: 'Royal Marker',
   D5: 'Legacy Serif',
-  ...DUPLICATE_TEMPLATE_RENAMES,
 };
 
 const PROFESSIONAL_TEMPLATE_ADJECTIVES = [
@@ -130,7 +110,7 @@ function buildProfessionalTemplateName(template = {}, index = 0) {
   if (override) return override;
   const source = `${template.format || ''}:${template.id || ''}:${template.name || ''}`;
   const seed = Array.from(source).reduce((total, char) => total + char.charCodeAt(0), index * 17);
-  const sourceOffset = template.format === 'lc' ? 9 : template.format === 'lk' ? 5 : 0;
+  const sourceOffset = template.format === 'lc' ? 9 : 0;
   const adjective = PROFESSIONAL_TEMPLATE_ADJECTIVES[(seed + sourceOffset) % PROFESSIONAL_TEMPLATE_ADJECTIVES.length];
   const noun = PROFESSIONAL_TEMPLATE_NOUNS[((seed * 7) + index + sourceOffset) % PROFESSIONAL_TEMPLATE_NOUNS.length];
   return `${adjective} ${noun}`;
@@ -145,10 +125,7 @@ function replaceMarkupText(markup = '', pattern, replacementText = '') {
   });
 }
 
-function replaceTemplateNameInMarkup(markup = '', template = {}, displayName = '') {
-  if (template.format === 'lk') {
-    return replaceMarkupText(markup, /(<span class="lk-cnm">)([\s\S]*?)(<\/span>)/i, displayName);
-  }
+function replaceTemplateNameInMarkup(markup = '', displayName = '') {
   return replaceMarkupText(markup, /(<span class="cnm">)([\s\S]*?)(<\/span>)/i, ` · ${displayName}`);
 }
 
@@ -158,7 +135,7 @@ function applyProfessionalTemplateName(template = {}, index = 0) {
     ...template,
     originalName: template.originalName || template.name,
     displayName,
-    cardMarkup: replaceTemplateNameInMarkup(template.cardMarkup, template, displayName),
+    cardMarkup: replaceTemplateNameInMarkup(template.cardMarkup, displayName),
   };
 }
 
@@ -211,14 +188,6 @@ function extractCompleteDiv(markup, startIndex) {
   }
 
   return '';
-}
-
-function normalizeTemplateName(value = '') {
-  return stripHtml(value)
-    .replace(/^[^A-Za-z]+/, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase();
 }
 
 function stripPreviewRuntimeState(markup = '', preserveInlineStyles = false) {
@@ -301,11 +270,9 @@ function extractAccentColorFromMarkup(markup = '') {
 }
 
 function extractTemplateStyleFromPreview(template) {
-  const cssText = template.format === 'lk'
-    ? newTemplateCss
-    : template.format === 'lc'
-      ? lcTemplateCss
-      : legacyTemplateCss;
+  const cssText = template.format === 'lc'
+    ? lcTemplateCss
+    : legacyTemplateCss;
   const className = template.cardClass || '';
   const baseRuleBody = pickFirstCssBody(cssText, [
     `.${className} .wbw-line`,
@@ -381,36 +348,6 @@ function extractLegacyCards() {
         cardClass,
         cardMarkup: stripPreviewRuntimeState(cardMarkup),
         format: 'legacy',
-      });
-    }
-
-    cardPattern.lastIndex = match.index + Math.max(cardMarkup.length, 1);
-  }
-
-  return cards;
-}
-
-function extractNewCards() {
-  const cards = [];
-  const cardPattern = /<div class="lk-card [^"]+"/gi;
-  let match;
-
-  while ((match = cardPattern.exec(sanitizedNewTemplateHtml))) {
-    const cardMarkup = extractCompleteDiv(sanitizedNewTemplateHtml, match.index);
-    const id = stripHtml(cardMarkup.match(/<span class="lk-cid">([\s\S]*?)<\/span>/i)?.[1] || '');
-    const name = stripHtml(cardMarkup.match(/<span class="lk-cnm">([\s\S]*?)<\/span>/i)?.[1] || '').replace(/^[^A-Za-z]+/, '');
-    const badges = Array.from(cardMarkup.matchAll(/<span class="lk-badge [^"]*">([\s\S]*?)<\/span>/gi), (parts) => stripHtml(parts[1]));
-    const cardClass = cardMarkup.match(/<div class="lk-card ([^"]+)"/i)?.[1]?.split(/\s+/)?.[0] || '';
-
-    if (id && name) {
-      cards.push({
-        id,
-        name,
-        mood: badges[0] || '',
-        formula: badges[1] || '',
-        cardClass,
-        cardMarkup: stripPreviewRuntimeState(cardMarkup, true),
-        format: 'lk',
       });
     }
 
@@ -784,17 +721,6 @@ const LEGACY_TEMPLATE_CARDS = Array.from(
   }, new Map()).values(),
 );
 
-const NEW_TEMPLATE_CARDS = Array.from(
-  extractNewCards().reduce((uniqueCards, card) => {
-    const uniqueKey = `${card.id}::${normalizeTemplateName(card.name)}`;
-    if (!uniqueKey || uniqueCards.has(uniqueKey)) {
-      return uniqueCards;
-    }
-    uniqueCards.set(uniqueKey, applyProfessionalTemplateName(card, uniqueCards.size));
-    return uniqueCards;
-  }, new Map()).values(),
-);
-
 const LC_TEMPLATE_CARDS = Array.from(
   extractLcCards().reduce((uniqueCards, card) => {
     const uniqueKey = card.id || card.name;
@@ -812,9 +738,6 @@ const LC_STYLE_3_TEMPLATE_CARDS = LC_TEMPLATE_CARDS.filter((template) => templat
 const TEMPLATE_CARDS = [...LEGACY_TEMPLATE_CARDS];
 const ALL_TEMPLATE_CARDS = [
   ...TEMPLATE_CARDS,
-  // Keep hidden 49-pack templates in the style map so older saved projects
-  // that already reference them can still resolve their preview/export styles.
-  ...NEW_TEMPLATE_CARDS,
   ...LC_TEMPLATE_CARDS,
 ];
 const SELECTABLE_TEMPLATE_CARDS = [
@@ -831,9 +754,8 @@ const EXTRACTED_TEMPLATE_STYLE_MAP = Object.fromEntries(
 
 function getTemplatePreviewDotCount(template) {
   const markup = String(template?.cardMarkup || '');
-  const legacyDotsSection = markup.match(/<div[^>]*class="[^"]*\blk-dots\b[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
-  const modernDotsSection = markup.match(/<div[^>]*class="[^"]*\bdots\b[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
-  const dotSource = legacyDotsSection?.[1] || modernDotsSection?.[1] || '';
+  const dotsSection = markup.match(/<div[^>]*class="[^"]*\bdots\b[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
+  const dotSource = dotsSection?.[1] || '';
   const dotMatches = dotSource.match(/<(?:i|span)\b[^>]*>/gi);
   const blockMatches = markup.match(/class="[^"]*\b(?:sb|sblock)\b[^"]*"/gi);
 
@@ -849,17 +771,15 @@ function getTemplatePreviewDotCount(template) {
 function buildTemplateStyle(template) {
   const extractedStyle = EXTRACTED_TEMPLATE_STYLE_MAP[getTemplateStyleKey(template)] || {};
   const baseStyle = TEMPLATE_STYLE_MAP[template.id]
-    || (Object.keys(extractedStyle).length ? extractedStyle : NEW_TEMPLATE_STYLE_FALLBACK);
+    || (Object.keys(extractedStyle).length ? extractedStyle : TEMPLATE_STYLE_FALLBACK);
   const templateAccent = extractAccentColorFromMarkup(template.cardMarkup);
 
   return {
     template_id: `sidebar-${template.id}`,
     template_20_id: template.id,
-    template_source: template.format === 'lk'
-      ? 'lekha-49'
-      : template.format === 'lc'
-        ? 'lekha-lc'
-        : 'lekha-20',
+    template_source: template.format === 'lc'
+      ? 'lekha-lc'
+      : 'lekha-20',
     template_class: template.cardClass || '',
     template_name: template.displayName || template.name || '',
     template_layout: detectTemplatePreviewLayout(template),
@@ -885,252 +805,15 @@ function buildTemplateStyle(template) {
 
 function buildPreviewDoc(template) {
   const previewTemplateId = JSON.stringify(template.id);
-  const sourceStyleHtml = template.format === 'lk'
-    ? sanitizedNewTemplateHtml
-    : template.format === 'lc'
-      ? sanitizedLcTemplateHtml.join('\n')
-      : sanitizedLegacyTemplateHtml;
-  if (template.format === 'lk') {
-    const previewScript = `
-      <script>
-        (() => {
-          const card = document.querySelector('.lk-card');
-          if (!card) return;
-          const sblocks = Array.from(card.querySelectorAll('.sblock'));
-          if (!sblocks.length) return;
-          const dots = Array.from(card.querySelectorAll('.lk-dots i'));
-          const WBW_STAGGER = 300;
-          const STICKY_WAVE_STAGGER = 340;
-          const MIN_PHASE_HOLD = 4800;
-          let current = 0;
-          let timer = null;
-
-          function emitProgress(index) {
-            try {
-              window.parent.postMessage({
-                type: '${TEMPLATE_PREVIEW_PROGRESS_EVENT}',
-                templateId: ${previewTemplateId},
-                activeIndex: index,
-                total: Math.max(dots.length, sblocks.length),
-              }, '*');
-            } catch (error) {
-              void error;
-            }
-          }
-
-          function triggerStickyWave(sblock) {
-            const words = sblock.querySelectorAll('.sw-w');
-            words.forEach((word) => { word.style.opacity = '0.14'; });
-            words.forEach((word, index) => {
-              setTimeout(() => {
-                word.style.opacity = '1';
-              }, index * STICKY_WAVE_STAGGER);
-            });
-          }
-
-          function triggerSW(sblock) {
-            sblock.querySelectorAll('.sw').forEach((element) => {
-              const clone = element.cloneNode(true);
-              element.parentNode.replaceChild(clone, element);
-            });
-          }
-
-          function triggerWBW(sblock) {
-            const words = sblock.querySelectorAll('.wbw-word');
-            words.forEach((word) => {
-              word.style.transition = 'none';
-              word.classList.remove('visible', 'anim');
-            });
-            void sblock.offsetWidth;
-            words.forEach((word) => { word.style.transition = ''; });
-            words.forEach((word, index) => {
-              setTimeout(() => {
-                word.classList.add('visible');
-                if (/\\bns[23]-/.test(word.className)) {
-                  word.classList.add('anim');
-                  setTimeout(() => word.classList.remove('anim'), 900);
-                }
-              }, index * WBW_STAGGER);
-            });
-          }
-
-          function showPhase(index) {
-            sblocks.forEach((sblock) => sblock.classList.remove('active'));
-            const active = sblocks[index];
-            if (!active) return;
-            active.classList.add('active');
-            triggerSW(active);
-            triggerWBW(active);
-            triggerStickyWave(active);
-            dots.forEach((dot, dotIndex) => {
-              dot.className = dotIndex === index ? 'on' : '';
-            });
-            emitProgress(index);
-          }
-
-          function scheduleNext(fromIndex) {
-            if (timer) window.clearTimeout(timer);
-            if (sblocks.length < 2) return;
-            const authoredDuration = parseInt(sblocks[fromIndex]?.dataset?.dur || '0', 10);
-            const duration = Math.max(Number.isFinite(authoredDuration) ? authoredDuration : 0, MIN_PHASE_HOLD);
-            timer = window.setTimeout(() => {
-              current = (fromIndex + 1) % sblocks.length;
-              showPhase(current);
-              scheduleNext(current);
-            }, duration);
-          }
-
-          showPhase(0);
-          scheduleNext(0);
-
-          dots.forEach((dot, index) => {
-            dot.addEventListener('click', () => {
-              current = index;
-              showPhase(index);
-              scheduleNext(index);
-            });
-          });
-
-          window.addEventListener('message', (event) => {
-            const data = event.data || {};
-            if (data.type !== '${TEMPLATE_PREVIEW_JUMP_EVENT}' || data.templateId !== ${previewTemplateId}) return;
-            const index = Number(data.activeIndex);
-            if (!Number.isFinite(index) || !sblocks[index]) return;
-            current = index;
-            showPhase(index);
-            scheduleNext(index);
-          });
-
-          document.addEventListener('visibilitychange', () => {
-            if (document.hidden && timer) {
-              window.clearTimeout(timer);
-              timer = null;
-            } else if (!document.hidden && !timer) {
-              showPhase(current);
-              scheduleNext(current);
-            }
-          });
-        })();
-      </script>
-    `;
-
-    return `
-      <!DOCTYPE html>
-      <html lang="en">
-        <head>
-          <meta charset="UTF-8" />
-          <style>${extractOriginalStyle(sanitizedNewTemplateHtml)}</style>
-          <style>
-            html, body {
-              margin: 0;
-              padding: 0;
-              width: 100%;
-              overflow: hidden;
-              background: transparent !important;
-            }
-            body {
-              min-height: 0;
-            }
-            .lk-card {
-              display: grid !important;
-              grid-template-rows: 1fr !important;
-              width: 100% !important;
-              height: 280px !important;
-              border-radius: 12px !important;
-            }
-            .lk-card-top {
-              display: none !important;
-            }
-            .lk-stage {
-              aspect-ratio: auto !important;
-              height: 280px !important;
-              min-height: 0 !important;
-              overflow: hidden !important;
-            }
-            .sblock {
-              visibility: hidden;
-            }
-            .sblock.active {
-              visibility: visible;
-            }
-            .lk-stage .sblock:not(.active),
-            .lk-stage .sblock:not(.active) * {
-              animation: none !important;
-              transition: none !important;
-            }
-            .lk-stage .sblock:not(.active) .wbw-word,
-            .lk-stage .sblock:not(.active) .sw-w {
-              opacity: 0 !important;
-            }
-            .lk-stage .sblock:not(.active) .sw {
-              opacity: 0;
-            }
-            .lk-stage .sblock.active .wbw-word:not(.visible) {
-              opacity: 0;
-            }
-            .lk-dots {
-              display: none !important;
-            }
-            .lk-dots i {
-              width: 5px !important;
-              height: 5px !important;
-              background: rgba(255, 255, 255, 0.22) !important;
-              cursor: pointer !important;
-            }
-            .lk-dots i.on {
-              background: #fff !important;
-              transform: scale(1.45) !important;
-            }
-            .lk-card .wbw-line {
-              font-size: 16px !important;
-              line-height: 1.75 !important;
-            }
-            .lk-card .plain-s {
-              font-size: 15px !important;
-              line-height: 1.55 !important;
-              letter-spacing: 1px !important;
-            }
-            .lk-card .pos3,
-            .lk-card .pos4,
-            .lk-card .pos5,
-            .lk-card .pos6,
-            .lk-card .pos7,
-            .lk-card .pos9,
-            .lk-card .pos11,
-            .lk-card .pos12,
-            .lk-card .pos16,
-            .lk-card .pos20,
-            .lk-card .pos21,
-            .lk-card .pos22,
-            .lk-card .pos25,
-            .lk-card .pos26,
-            .lk-card .pos30,
-            .lk-card .pos31b,
-            .lk-card .pos31d,
-            .lk-card .pos-stamp,
-            .lk-card .pr {
-              font-size: clamp(14px, 2.8vw, 22px) !important;
-            }
-            .wbw-word,
-            .sw,
-            .sw-w {
-              backface-visibility: hidden;
-              will-change: transform, opacity, clip-path;
-            }
-          </style>
-        </head>
-        <body>${template.cardMarkup}${previewScript}</body>
-      </html>
-    `;
-  }
-
+  const sourceStyleHtml = template.format === 'lc'
+    ? sanitizedLcTemplateHtml.join('\n')
+    : sanitizedLegacyTemplateHtml;
   const previewScript = `
     <script>
       (() => {
         const card = document.querySelector('.card');
         if (!card) return;
         const stage = card.querySelector('.stage');
-        const isNewTemplate = ${template.format === 'lk'};
         const blocks = Array.from(card.querySelectorAll('.sb, .sblock'));
         const dots = Array.from(card.querySelectorAll('.dots i'));
         const label = card.querySelector('.slbl, .stage-lbl');
@@ -1142,26 +825,7 @@ function buildPreviewDoc(template) {
         const POS_STAGGER = 320;
         const POS_DUR = 560;
         const WBW_CLASSES = ['wrise','wslide','wslider','wroll','wwipe','wwipeup','wfade','wscale','wflip','wbounce','wdiag','wexpand','wskew','wstencil','wlift','wbw-rise','wbw-slide'];
-        const IMP_ANIMS = isNewTemplate
-          ? {
-              'imp-bold':'drop-in',
-              'imp-gold':'wipe',
-              'imp-rose':'diagonal-wipe',
-              'imp-cyan':'blur-sharpen',
-              'imp-green':'skew-snap',
-              'imp-purple':'roll',
-              'imp-italic':'rotate-in',
-              'imp-weight':'wipe',
-              'imp-scale':'roll',
-              'imp-size':'blur-sharpen',
-              'imp-underline':'wipe-up',
-              'imp-box':'elastic',
-              'imp-space':'stencil',
-              'imp-flicker':'flicker',
-              'imp-typewrite':'typewrite',
-              'imp-stamp':'stamp'
-            }
-          : {
+        const IMP_ANIMS = {
               'imp-bold':'drop',
               'imp-gold':'wipe',
               'imp-rose':'diagonal-wipe',
