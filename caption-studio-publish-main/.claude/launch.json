@@ -5,7 +5,7 @@
       "name": "caption-studio-dev",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
-      "port": 5173
+      "port": 3000
     },
     {
       "name": "backend",

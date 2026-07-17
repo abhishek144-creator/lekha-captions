@@ -152,15 +152,43 @@ export default function CaptionEditor({
           if (wordIndex < firstWordCount) firstStyles[key] = value;
           else secondStyles[`${newId}-${wordIndex - firstWordCount}`] = value;
         });
+        // Emphasis indices are word positions — after the split each half must
+        // keep only the indices inside its own text (re-based for the second
+        // half), or the highlight lands on the wrong word / silently vanishes.
+        const impIndices = (Array.isArray(c.imp_word_indices) ? c.imp_word_indices : [])
+          .map(Number)
+          .filter((value) => Number.isFinite(value) && value >= 0);
+        const singleImp = Number(c.imp_word_index);
+        if (Number.isFinite(singleImp) && singleImp >= 0 && !impIndices.includes(singleImp)) {
+          impIndices.push(singleImp);
+        }
+        const firstImpIndices = impIndices.filter((value) => value < firstWordCount);
+        const secondImpIndices = impIndices
+          .filter((value) => value >= firstWordCount)
+          .map((value) => value - firstWordCount);
         return [
-          { ...c, text: firstHalf, end_time: midTime, words: firstWords, wordStyles: firstStyles },
           {
+            ...c,
+            text: firstHalf,
+            end_time: midTime,
+            words: firstWords,
+            wordStyles: firstStyles,
+            imp_word_index: firstImpIndices[0] ?? -1,
+            imp_word_indices: firstImpIndices,
+          },
+          // Spread the original so the second half keeps the applied template
+          // identity, animation, and style fields — building it from scratch
+          // silently dropped the template on everything after the split point.
+          {
+            ...c,
             id: newId,
             text: secondHalf,
             start_time: midTime,
             end_time: c.end_time,
             words: secondWords,
-            wordStyles: secondStyles
+            wordStyles: secondStyles,
+            imp_word_index: secondImpIndices[0] ?? -1,
+            imp_word_indices: secondImpIndices,
           }
         ];
       }

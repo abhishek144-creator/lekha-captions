@@ -25,6 +25,7 @@ import { notifyApiError } from '@/lib/notifyApiError';
 import { getClientContext, trackAnalytics } from '@/lib/analytics';
 import { isFeatureEnabled } from '@/lib/featureFlags';
 import { getEffectiveAuthToken } from '@/lib/devAuth';
+import { isSubscriptionExpired } from '@/lib/subscription';
 import { buildEmotionalCaptionPlan } from './emotionalTemplateUtils';
 import { getBasicTemplateExportEffects } from './basicTemplateCatalog.js';
 import {
@@ -41,9 +42,11 @@ import {
 
 import { Progress } from "@/components/ui/progress";
 
-// TESTING PHASE ONLY: unlock export UI while caption/export parity is being tested.
-// Restore before deploy by setting VITE_DISABLE_EXPORT_LIMITS=0 or removing this bypass.
-const DISABLE_EXPORT_LIMITS_FOR_TESTING = import.meta.env.DEV || import.meta.env.VITE_DISABLE_EXPORT_LIMITS === '1';
+// TESTING ONLY: unlock export UI while caption/export parity is being tested.
+// Dev-build only by construction — production builds can never enable this,
+// even if VITE_DISABLE_EXPORT_LIMITS leaks into the build environment. In dev
+// it defaults on; set VITE_DISABLE_EXPORT_LIMITS=0 to exercise the real gates.
+const DISABLE_EXPORT_LIMITS_FOR_TESTING = import.meta.env.DEV && import.meta.env.VITE_DISABLE_EXPORT_LIMITS !== '0';
 
 // Basic template effect defaults come from the same catalog as both galleries.
 // Only structural effects are restored here; user font/color/position choices
@@ -570,8 +573,10 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
     if (!userData) return true;
     if (userData.credits_remaining > 0) return true;
     if (userData.subscription_tier && userData.subscription_tier !== 'free') {
-      if (!userData.subscription_expiry) return true;
-      return new Date(userData.subscription_expiry) > new Date();
+      // isSubscriptionExpired handles Firestore Timestamp objects — after an
+      // export, refreshUserData() replaces the bootstrap JSON (string dates)
+      // with raw getDoc() data, and `new Date(Timestamp)` is Invalid Date.
+      return !isSubscriptionExpired(userData.subscription_expiry);
     }
     return false;
   })();
@@ -1128,7 +1133,9 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
             return { position_x: capVidPos.x, position_y: capVidPos.y };
           })(),
           letter_spacing: _cs?.letter_spacing || 0,
-          word_spacing: _cs?.word_spacing || 1,
+          // `??` not `||` — the Word Spacing slider allows 0 (min=0), and the
+          // preview honors it; `||` silently exported 0 as 1.
+          word_spacing: _cs?.word_spacing ?? 1,
           background_padding: _cs?.background_padding ?? 6,
           background_h_multiplier: _cs?.background_h_multiplier ?? 1.05,
           // Template metadata — passed through so the backend knows the active template

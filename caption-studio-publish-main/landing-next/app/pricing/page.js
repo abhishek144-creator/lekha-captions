@@ -15,7 +15,7 @@ const plans = [
     price: '₹299',
     usd: '$3.99',
     description: 'A simple start for a steady social workflow.',
-    features: ['15 video credits / month', 'Up to 2 minutes per video', '3 videos per day', '25+ caption styles', '115+ languages', '1080p HD export', 'No watermark'],
+    features: ['15 video credits / month', 'Up to 2 minutes per video', '3 videos per day', '100+ caption styles', '115+ languages', '1080p HD export', 'No watermark'],
   },
   {
     name: 'Creator',
@@ -23,14 +23,14 @@ const plans = [
     usd: '$4.99',
     description: 'The sweet spot for serious, multilingual creators.',
     popular: true,
-    features: ['45 video credits / month', 'Up to 3 minutes per video', '5 videos per day', '25+ caption styles', '115+ languages', '1080p HD + 4K export', 'Translation tools', 'No watermark'],
+    features: ['45 video credits / month', 'Up to 3 minutes per video', '5 videos per day', '100+ caption styles', '115+ languages', '1080p HD + 4K export', 'Translation tools', 'No watermark'],
   },
   {
     name: 'Pro',
     price: '₹799',
     usd: '$5.99',
     description: 'More capacity for agencies and high-volume output.',
-    features: ['120 video credits / month', 'Up to 3 minutes per video', 'Unlimited videos per day', '25+ caption styles', '115+ languages', '1080p HD + 4K export', 'Translation tools', 'No watermark'],
+    features: ['120 video credits / month', 'Up to 3 minutes per video', 'Unlimited videos per day', '100+ caption styles', '115+ languages', '1080p HD + 4K export', 'Translation tools', 'No watermark'],
   },
 ]
 
@@ -39,7 +39,7 @@ const comparison = [
   ['Maximum video length', '2 min', '3 min', '3 min'],
   ['Daily video limit', '3', '5', 'Unlimited'],
   ['Languages', '115+', '115+', '115+'],
-  ['Animated styles', '25+', '25+', '25+'],
+  ['Animated styles', '100+', '100+', '100+'],
   ['Export quality', '1080p', '1080p + 4K', '1080p + 4K'],
   ['Translation tools', '—', 'Included', 'Included'],
 ]
