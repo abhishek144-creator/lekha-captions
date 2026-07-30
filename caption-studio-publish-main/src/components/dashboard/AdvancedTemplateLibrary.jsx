@@ -1,9 +1,14 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useMemo, useRef, useState } from 'react';
 import { useLazyVisible } from './useLazyVisible';
-import { Check, RotateCcw, Sparkles, Search, Star } from 'lucide-react';
+import { Check, History, RotateCcw, Sparkles, Search, Star } from 'lucide-react';
 import originalTemplateHtml from '../../assets/lekha-captions-T11-T35.html?raw';
 import { findAppliedBasicTemplateMarkup } from './basicTemplateInline.js';
 import { BASIC_TEMPLATE_STYLES, getBasicTemplateStyle } from './basicTemplateCatalog.js';
+import {
+  LEGACY_TEMPLATE_CARDS,
+  TemplatePreviewFrame as LegacyTemplatePreviewFrame,
+  buildTemplateStyle as buildLegacyTemplateStyle,
+} from './SidebarTemplateGallery20.jsx';
 import {
   ADVANCED_IMP_ENTRANCES,
   ADVANCED_TEMPLATE_EMPHASIS_COLORS,
@@ -14,6 +19,7 @@ import {
   isExportableTemplateCandidate,
   templateMatchesQuery,
   useTemplateFavorites,
+  useRecentTemplates,
 } from './templateBrowserUtils.js';
 import '../../styles/advancedTemplateLibrary.css';
 
@@ -43,93 +49,39 @@ const BASIC_TEMPLATE_PREVIEW_TIMING = Object.freeze({
 });
 
 const REMOVED_ADVANCED_TEMPLATE_IDS = new Set(['t17']);
-
-const ADVANCED_TEMPLATE_CREATIVE_NAMES = {
-  t11: 'Oracle Serif',
-  t12: 'Velvet Confession',
-  t13: 'Founder Signal',
-  t14: 'Literary Gold',
-  t15: 'Surge Cut',
-  t16: 'Motivation Grid',
-  t18: 'Chapter One',
-  t19: 'Defiant Headline',
-  t20: 'Gravity Impact',
-  t21: 'Runway Caption',
-  t22: 'Lyric Glow',
-  t23: 'Punchline Pop',
-  t24: "Philosopher's Turn",
-  t25: 'Handwritten Promise',
-  t26: 'Street Stamp',
-  t27: 'Future Terminal',
-  t28: 'Memory Grain',
-  t29: 'Battle Banner',
-  t30: 'Zen Whisper',
-  t31: 'Press Headline',
-  t32: 'Poetic Frame',
-  t33: 'Documentary Note',
-  t34: 'Anime Burst',
-  t35: 'Secret Serif',
-  t36: 'Karaoke Beam',
-  t37: 'Neon Broadcast',
-  t38: 'Classic Echo',
-  t39: 'Evidence Marker',
-  t40: 'Final Signal',
-};
-
-const BASIC_TEMPLATE_CREATIVE_NAMES = {
-  't-115': 'Neon Authority',
-  't-109': 'Cinema Depth',
-  't-26': 'Editorial Impact',
-  't-102': 'Studio Clarity',
-  't-36': 'Signal Flash',
-  't-105': 'Golden Focus',
-  't-9': 'Ember Command',
-  't-16': 'Soft Focus',
-  't-110': 'Orbit Glow',
-  't-119': 'Gradient Marker',
-  't-12': 'Noir Pulse',
-  't-106': 'Clean Reveal',
-  't-52': 'Luminous Streak',
-  't-103': 'Midnight Focus',
-  't-112': 'Rose Spectrum',
-  't-104': 'Electric Pulse',
-  't-111': 'Crimson Marker',
-  't-T5': 'Golden Caption Bar',
-  't-95': 'Velocity Lines',
-  't-T1': 'Serif Cascade',
-  't-T4': 'Scholar Script',
-  't-WS1': 'Motion Slide',
-  't-56': 'Precision Underline',
-  't-T3': 'Quiet Emphasis',
-  't-57': 'Retro Signal',
-  't-37': 'Clean Wipe',
-};
+const REMOVED_BASIC_TEMPLATE_IDS = new Set([
+  't-12',
+  't-36',
+  't-95',
+  't-103',
+  't-104',
+]);
 
 const FALLBACK_TEMPLATE_PACK = [
-  { id: 't11', code: 'T11', name: 'Oracle Serif', formula: '3-Style', stageLabel: 'CLUSTER', mood: 'spiritual' },
-  { id: 't12', code: 'T12', name: 'Velvet Confession', formula: '2-Style', stageLabel: 'TYPEWRITER', mood: 'intimate' },
-  { id: 't13', code: 'T13', name: 'Founder Signal', formula: '2-Style', stageLabel: 'STAMP IN', mood: 'hustle' },
-  { id: 't14', code: 'T14', name: 'Literary Gold', formula: '3-Style', stageLabel: '3D FLIP', mood: 'literary' },
-  { id: 't15', code: 'T15', name: 'Surge Cut', formula: '2-Style', stageLabel: 'SURGE IN', mood: 'storm' },
-  { id: 't16', code: 'T16', name: 'Motivation Grid', formula: '2-Style', stageLabel: 'STACK RISE', mood: 'countdown' },
-  { id: 't18', code: 'T18', name: 'Chapter One', formula: '3-Style', stageLabel: 'SPLIT TITLE', mood: 'cinematic' },
-  { id: 't19', code: 'T19', name: 'Defiant Headline', formula: '2-Style', stageLabel: 'SLASH WIPE', mood: 'rebellion' },
-  { id: 't20', code: 'T20', name: 'Gravity Impact', formula: '2-Style', stageLabel: 'NEON DROP', mood: 'impact' },
-  { id: 't21', code: 'T21', name: 'Runway Caption', formula: '2-Style', stageLabel: 'VERT REVEAL', mood: 'luxury' },
-  { id: 't22', code: 'T22', name: 'Lyric Glow', formula: '2-Style', stageLabel: 'KARAOKE', mood: 'lyrical' },
-  { id: 't23', code: 'T23', name: 'Punchline Pop', formula: '3-Style', stageLabel: 'SETUP->POP', mood: 'comedy' },
-  { id: 't24', code: 'T24', name: "Philosopher's Turn", formula: '3-Style', stageLabel: 'REDACT REVEAL', mood: 'philosophy' },
-  { id: 't25', code: 'T25', name: 'Handwritten Promise', formula: '2-Style', stageLabel: 'HANDWRITE', mood: 'love' },
-  { id: 't26', code: 'T26', name: 'Street Stamp', formula: '2-Style', stageLabel: 'HARD CUT', mood: 'street' },
-  { id: 't27', code: 'T27', name: 'Future Terminal', formula: '3-Style', stageLabel: 'CENTER EXPAND', mood: 'sci-fi' },
-  { id: 't28', code: 'T28', name: 'Memory Grain', formula: '2-Style', stageLabel: 'GRAIN BLUR', mood: 'nostalgia' },
-  { id: 't29', code: 'T29', name: 'Battle Banner', formula: '2-Style', stageLabel: 'SLAM', mood: 'battle' },
-  { id: 't30', code: 'T30', name: 'Zen Whisper', formula: '1-Style', stageLabel: 'BREATHE', mood: 'zen' },
-  { id: 't31', code: 'T31', name: 'Press Headline', formula: '3-Style', stageLabel: 'TYPEWRITER', mood: 'editorial' },
-  { id: 't32', code: 'T32', name: 'Poetic Frame', formula: '3-Style', stageLabel: 'INK WIPE', mood: 'poetry' },
-  { id: 't33', code: 'T33', name: 'Documentary Note', formula: '3-Style', stageLabel: 'DOC WIPE', mood: 'documentary' },
-  { id: 't34', code: 'T34', name: 'Anime Burst', formula: '2-Style', stageLabel: 'SPEED IN', mood: 'anime' },
-  { id: 't35', code: 'T35', name: 'Secret Serif', formula: '1-Style', stageLabel: 'SECRET REVEAL', mood: 'whisper' },
+  { id: 't11', code: 'T11', name: 'Oracle', formula: '3-Style', stageLabel: 'CLUSTER', mood: 'spiritual' },
+  { id: 't12', code: 'T12', name: 'Velvet', formula: '2-Style', stageLabel: 'TYPEWRITER', mood: 'intimate' },
+  { id: 't13', code: 'T13', name: 'Signal', formula: '2-Style', stageLabel: 'STAMP IN', mood: 'hustle' },
+  { id: 't14', code: 'T14', name: 'Gilded', formula: '3-Style', stageLabel: '3D FLIP', mood: 'literary' },
+  { id: 't15', code: 'T15', name: 'Surge', formula: '2-Style', stageLabel: 'SURGE IN', mood: 'storm' },
+  { id: 't16', code: 'T16', name: 'Grid', formula: '2-Style', stageLabel: 'STACK RISE', mood: 'countdown' },
+  { id: 't18', code: 'T18', name: 'Chapter', formula: '3-Style', stageLabel: 'SPLIT TITLE', mood: 'cinematic' },
+  { id: 't19', code: 'T19', name: 'Defiant', formula: '2-Style', stageLabel: 'SLASH WIPE', mood: 'rebellion' },
+  { id: 't20', code: 'T20', name: 'Gravity', formula: '2-Style', stageLabel: 'NEON DROP', mood: 'impact' },
+  { id: 't21', code: 'T21', name: 'Runway', formula: '2-Style', stageLabel: 'VERT REVEAL', mood: 'luxury' },
+  { id: 't22', code: 'T22', name: 'Lyric', formula: '2-Style', stageLabel: 'KARAOKE', mood: 'lyrical' },
+  { id: 't23', code: 'T23', name: 'Punch', formula: '3-Style', stageLabel: 'SETUP->POP', mood: 'comedy' },
+  { id: 't24', code: 'T24', name: 'Pivot', formula: '3-Style', stageLabel: 'REDACT REVEAL', mood: 'philosophy' },
+  { id: 't25', code: 'T25', name: 'Promise', formula: '2-Style', stageLabel: 'HANDWRITE', mood: 'love' },
+  { id: 't26', code: 'T26', name: 'Street', formula: '2-Style', stageLabel: 'HARD CUT', mood: 'street' },
+  { id: 't27', code: 'T27', name: 'Terminal', formula: '3-Style', stageLabel: 'CENTER EXPAND', mood: 'sci-fi' },
+  { id: 't28', code: 'T28', name: 'Memory', formula: '2-Style', stageLabel: 'GRAIN BLUR', mood: 'nostalgia' },
+  { id: 't29', code: 'T29', name: 'Battle', formula: '2-Style', stageLabel: 'SLAM', mood: 'battle' },
+  { id: 't30', code: 'T30', name: 'Zen', formula: '1-Style', stageLabel: 'BREATHE', mood: 'zen' },
+  { id: 't31', code: 'T31', name: 'Press', formula: '3-Style', stageLabel: 'TYPEWRITER', mood: 'editorial' },
+  { id: 't32', code: 'T32', name: 'Poem', formula: '3-Style', stageLabel: 'INK WIPE', mood: 'poetry' },
+  { id: 't33', code: 'T33', name: 'Archive', formula: '3-Style', stageLabel: 'DOC WIPE', mood: 'documentary' },
+  { id: 't34', code: 'T34', name: 'Burst', formula: '2-Style', stageLabel: 'SPEED IN', mood: 'anime' },
+  { id: 't35', code: 'T35', name: 'Secret', formula: '1-Style', stageLabel: 'SECRET REVEAL', mood: 'whisper' },
 ];
 
 const ADVANCED_TEMPLATE_STYLE = {
@@ -325,7 +277,7 @@ const SOURCE_FALLBACK_TEMPLATE_BLOCKS = {
   t18: [{ id: 't18-b0', type: 'styled', label: 'SPLIT TITLE' }, { id: 't18-b1', type: 'styled', label: 'FADE REVEAL' }, { id: 't18-b2', type: 'plain', label: 'PLAIN' }, { id: 't18-b3', type: 'wbw-rise', label: 'WBW RISE' }],
   t19: [{ id: 't19-b0', type: 'styled', label: 'SLASH WIPE' }, { id: 't19-b1', type: 'styled', label: 'RISE UP' }, { id: 't19-b2', type: 'wbw-rise', label: 'WBW RISE' }, { id: 't19-b3', type: 'wbw-slide', label: 'WBW SLIDE' }],
   t20: [{ id: 't20-b0', type: 'styled', label: 'NEON DROP' }, { id: 't20-b1', type: 'styled', label: 'IMPACT SETTLE' }, { id: 't20-b2', type: 'wbw-rise', label: 'WBW RISE' }, { id: 't20-b3', type: 'wbw-slide', label: 'WBW SLIDE' }],
-  t21: [{ id: 't21-b0', type: 'styled', label: 'VERT REVEAL' }, { id: 't21-b1', type: 'styled', label: 'SPACING COLLAPSE' }, { id: 't21-b2', type: 'wbw-rise', label: 'WBW RISE' }, { id: 't21-b3', type: 'wbw-slide', label: 'WBW SLIDE' }],
+  t21: [{ id: 't21-b0', type: 'styled', label: 'EDITORIAL WORD REVEAL' }, { id: 't21-b1', type: 'styled', label: 'SPACING COLLAPSE' }, { id: 't21-b2', type: 'wbw-rise', label: 'WBW RISE' }, { id: 't21-b3', type: 'wbw-slide', label: 'WBW SLIDE' }],
   t22: [{ id: 't22-b0', type: 'styled', label: 'KARAOKE' }, { id: 't22-b1', type: 'styled', label: 'WAVE IN' }, { id: 't22-b2', type: 'wbw-rise', label: 'WBW RISE' }, { id: 't22-b3', type: 'wbw-slide', label: 'WBW SLIDE' }],
   t23: [{ id: 't23-b0', type: 'styled', label: 'SLIDE-RIGHT' }, { id: 't23-b1', type: 'plain', label: 'PLAIN' }, { id: 't23-b2', type: 'plain', label: 'PLAIN' }, { id: 't23-b3', type: 'styled', label: 'PUNCH POP' }],
   t24: [{ id: 't24-b0', type: 'wbw-rise', label: 'SOFT WIPE' }, { id: 't24-b1', type: 'wbw-rise', label: 'THOUGHT DRIFT' }, { id: 't24-b2', type: 'wbw-slide', label: 'MAP SLIDE' }, { id: 't24-b3', type: 'wbw-rise', label: 'MEMORY STAMP' }, { id: 't24-b4', type: 'wbw-rise', label: 'INNER REVEAL' }],
@@ -429,7 +381,8 @@ function extractTemplateCard(templateId) {
     || blocks[0]?.label
     || fallback.stageLabel;
   const originalName = decodeHtmlEntities(cardMarkup.match(/<span class="tcard-name">([^<]+)<\/span>/i)?.[1]?.trim() || fallback.name);
-  const name = ADVANCED_TEMPLATE_CREATIVE_NAMES[templateId] || originalName;
+  // Preserve the labels supplied with the originally uploaded template cards.
+  const name = originalName || fallback.name;
 
   return {
     ...fallback,
@@ -476,17 +429,15 @@ function extractBasicTemplateCards() {
     const desc = stripHtml(cardMarkup.match(/<div class="btcard-desc">([\s\S]*?)<\/div>/i)?.[1] || '');
     const id = cardMarkup.match(/class="[^"]*\b(t-[^"\s]+)/i)?.[1];
     const bg = cardMarkup.match(/<div class="btcard-preview"[^>]*style="[^"]*background\s*:\s*([^;"]+)/i)?.[1]?.trim() || '#111';
-    const creativeName = BASIC_TEMPLATE_CREATIVE_NAMES[id] || name;
-
     if (name && id && id !== 't-124') {
       cards.push({
         id,
         code: id.replace(/^t-/, ''),
-        name: creativeName,
+        name,
         originalName: name,
         desc,
         bg,
-        cardMarkup: replaceMarkupText(cardMarkup, /(<div class="btcard-name">)([\s\S]*?)(<\/div>)/i, creativeName),
+        cardMarkup,
       });
     }
 
@@ -496,14 +447,34 @@ function extractBasicTemplateCards() {
   return cards;
 }
 
-const BASIC_TEMPLATE_PACK = extractBasicTemplateCards();
+const NATIVE_BASIC_TEMPLATE_PACK = extractBasicTemplateCards()
+  .filter((template) => !REMOVED_BASIC_TEMPLATE_IDS.has(template.id));
+const BASIC_TEMPLATES_BELOW_VELVET_IDS = new Set(
+  (() => {
+    const revealIndex = NATIVE_BASIC_TEMPLATE_PACK.findIndex((template) => template.id === 't-106');
+    const markerIndex = NATIVE_BASIC_TEMPLATE_PACK.findIndex((template) => template.id === 't-119');
+    if (revealIndex < 0 || markerIndex < 0) return [];
+    return NATIVE_BASIC_TEMPLATE_PACK
+      .slice(Math.min(revealIndex, markerIndex), Math.max(revealIndex, markerIndex) + 1)
+      .map((template) => template.id);
+  })(),
+);
+// Keep the first ten legacy templates (A1–B5) in the right-side library.
+const MOVED_LEGACY_TEMPLATE_PACK = LEGACY_TEMPLATE_CARDS.slice(0, 10).map((template) => ({
+  ...template,
+  desc: [template.mood, template.formula].filter(Boolean).join(' · '),
+}));
+const BASIC_TEMPLATE_PACK = [
+  ...NATIVE_BASIC_TEMPLATE_PACK,
+  ...MOVED_LEGACY_TEMPLATE_PACK,
+];
 const BASIC_TEMPLATE_IMAN_FONT_STYLE = { font_family: 'Noto Sans', font_size: 24 };
 const BASIC_TEMPLATE_IMAN_FONT_IDS = new Set(
   (() => {
-    const imanIndex = BASIC_TEMPLATE_PACK.findIndex((template) => template.id === 't-106');
+    const imanIndex = NATIVE_BASIC_TEMPLATE_PACK.findIndex((template) => template.id === 't-106');
     return imanIndex === -1
       ? []
-      : BASIC_TEMPLATE_PACK.slice(imanIndex + 1).map((template) => template.id);
+      : NATIVE_BASIC_TEMPLATE_PACK.slice(imanIndex + 1).map((template) => template.id);
   })(),
 );
 const BASIC_TEMPLATE_ACCENT_ENABLED_IDS = new Set([
@@ -513,10 +484,10 @@ const BASIC_TEMPLATE_ACCENT_ENABLED_IDS = new Set([
 ]);
 const BASIC_TEMPLATE_ACCENT_DISABLED_IDS = new Set(
   (() => {
-    const imanIndex = BASIC_TEMPLATE_PACK.findIndex((template) => template.id === 't-106');
+    const imanIndex = NATIVE_BASIC_TEMPLATE_PACK.findIndex((template) => template.id === 't-106');
     return imanIndex === -1
       ? []
-      : BASIC_TEMPLATE_PACK
+      : NATIVE_BASIC_TEMPLATE_PACK
         .slice(imanIndex)
         .map((template) => template.id)
         .filter((templateId) => !BASIC_TEMPLATE_ACCENT_ENABLED_IDS.has(templateId));
@@ -579,6 +550,18 @@ function postPreviewDotJump(iframeRef, dotIndex) {
     { type: 'lekha-template-preview-jump', index: dotIndex },
     '*',
   );
+}
+
+function getLegacyPreviewDotCount(template) {
+  const markup = String(template?.cardMarkup || '');
+  const dotsSection = markup.match(/<div[^>]*class="[^"]*\bdots\b[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
+  const dotSource = dotsSection?.[1] || '';
+  const dotMatches = dotSource.match(/<(?:i|span)\b[^>]*>/gi);
+  const blockMatches = markup.match(/class="[^"]*\b(?:sb|sblock)\b[^"]*"/gi);
+
+  if (Array.isArray(dotMatches) && dotMatches.length > 0) return dotMatches.length;
+  if (Array.isArray(blockMatches) && blockMatches.length > 0) return blockMatches.length;
+  return 0;
 }
 
 function extractOriginalStyle() {
@@ -788,7 +771,6 @@ function buildTemplateColorPreviewCss(templateId, previewStyle = {}, { basic = f
     #card-t39 .is-emphasis {
       color: ${palette.accent} !important;
       -webkit-text-fill-color: ${palette.accent} !important;
-      opacity: 1 !important;
       text-shadow: 0 0 12px ${palette.accent}66 !important;
     }
     ` : ''}
@@ -1291,6 +1273,7 @@ function buildTemplatePreviewDoc(templateId, options = {}) {
             : ${ADVANCED_TEMPLATE_PREVIEW_TIMING.wordStaggerMs};
           const words = block.querySelectorAll('.w');
           words.forEach((word) => {
+            const isEvidenceEmphasis = '${templateId}' === 't39' && !!word.dataset.imp;
             word.classList.remove('in', 'fx');
             word.style.opacity = '0';
             word.style.clipPath = '';
@@ -1298,7 +1281,11 @@ function buildTemplatePreviewDoc(templateId, options = {}) {
             if (type === 'rise') word.style.transform = 'translateY(20px)';
             else if (type === 'slide' && !word.dataset.imp) word.style.transform = 'translateX(-16px)';
             else if (type === 'seq') word.style.transform = 'scale(0.82)';
-            else if (type === 'seq-fade') word.style.transform = 'none';
+            else if (type === 'seq-fade') {
+              word.style.transform = isEvidenceEmphasis
+                ? 'translateY(18px) scale(0.72) rotate(-2deg)'
+                : 'none';
+            }
             else if (type === 'seq-flip') {
               word.style.transform = 'perspective(320px) rotateX(-90deg)';
               word.style.transformOrigin = 'center bottom';
@@ -1308,6 +1295,7 @@ function buildTemplatePreviewDoc(templateId, options = {}) {
 
           words.forEach((word, fallbackIndex) => {
             const isImp = !!word.dataset.imp;
+            const isEvidenceEmphasis = '${templateId}' === 't39' && isImp;
             const impCls = word.dataset.impCls || '';
             const parsedIndex = parseInt(word.dataset.i, 10);
             const index = Number.isFinite(parsedIndex) ? parsedIndex : fallbackIndex;
@@ -1328,7 +1316,10 @@ function buildTemplatePreviewDoc(templateId, options = {}) {
                   requestAnimationFrame(() => {
                     if (token !== runToken || !block.classList.contains('active')) return;
                     if (type === 'seq-fade') {
-                      word.style.transition = 'opacity ' + dur + 'ms ease';
+                      word.style.transition = isEvidenceEmphasis
+                        ? 'opacity ' + dur + 'ms ease, transform ' + Math.max(320, dur) + 'ms cubic-bezier(0.18,1.45,0.35,1)'
+                        : 'opacity ' + dur + 'ms ease';
+                      if (isEvidenceEmphasis) word.style.transform = 'translateY(0) scale(1) rotate(0deg)';
                     } else {
                       word.style.transition = 'opacity ' + dur + 'ms ease, transform ' + dur + 'ms cubic-bezier(0.34,1.4,0.64,1)';
                       word.style.transform = type === 'seq-flip'
@@ -1551,6 +1542,11 @@ function buildTemplatePreviewDoc(templateId, options = {}) {
           if (!el) return null;
           el.dataset.type = item.type;
           el.dataset.label = item.label;
+          if ('${templateId}' === 't21' && item.id === 't21-b0') {
+            // Recreate the five-word authored Fashion Editorial opener before
+            // the live preview text is injected word-for-word.
+            el.innerHTML = '<span class="editorial-line wbw-rise" data-text="SILENCE IS THE NEW LUXURY"><span class="w" data-i="0" style="--wbw-delay:0ms">SILENCE</span> <span class="w" data-i="1" style="--wbw-delay:65ms">IS</span> <span class="w" data-i="2" style="--wbw-delay:130ms">THE</span> <span class="w" data-i="3" style="--wbw-delay:195ms">NEW</span> <span class="w" data-i="4" style="--wbw-delay:260ms">LUXURY</span></span>';
+          }
           if ('${templateId}' === 't33' && item.id === 't33-b2' && item.type === 'karaoke' && !el.querySelector('.kf-line')) {
             el.textContent = '';
             const line = document.createElement('div');
@@ -1755,7 +1751,10 @@ function buildBasicTemplatePreviewDoc(template, options = {}) {
         const card = document.querySelector('.btcard');
         if (!card) return;
 
-        const fixedHighlightPerLine = ['t-106', 't-52', 't-T4', 't-WS1'].includes('${template.id}');
+        // Some source templates are organised as fixed caption lines rather than
+        // word-indexed spans.  Cycle those lines directly so each preview phase
+        // (including Quiet V3.2's sticky wave) is visible in the card.
+        const fixedHighlightPerLine = ['t-106', 't-52', 't-T4', 't-WS1', 't-QW1'].includes('${template.id}');
         const previewWordIndexForBlock = (blockIndex) => Math.min((Math.max(0, blockIndex) * 4) + 2, wordCount - 1);
         let idx = 2;
         let currentBlock = -1;
@@ -1767,7 +1766,7 @@ function buildBasicTemplatePreviewDoc(template, options = {}) {
           let className = 'word';
           if (wi <= idx) className += ' active';
           if (wi === idx) className += ' current';
-          if (wi === idx && ['t-106', 't-52', 't-T4', 't-WS1'].includes('${template.id}')) className += ' imp';
+          if (wi === idx && ['t-106', 't-52', 't-T4', 't-WS1', 't-QW1'].includes('${template.id}')) className += ' imp';
           return className;
         }
 
@@ -2090,6 +2089,194 @@ function BasicTemplatePreviewFrame({ template, onSelect, previewStyle }) {
   );
 }
 
+function MovedLegacyBasicTemplateCard({
+  template,
+  isActive,
+  templateIsFavorite,
+  currentStyle,
+  previewStyle,
+  defaultStyle,
+  onApplyTemplate,
+  onUpdateTemplate,
+  onToggleFavorite,
+}) {
+  const baseDotCount = useMemo(() => getLegacyPreviewDotCount(template), [template]);
+  const [jumpRequest, setJumpRequest] = useState({ phase: 0, token: 0 });
+  const [previewProgress, setPreviewProgress] = useState({
+    activeIndex: 0,
+    total: baseDotCount,
+  });
+  const totalDots = Math.max(baseDotCount, previewProgress?.total || 0);
+  const activeDotIndex = Math.min(previewProgress?.activeIndex || 0, Math.max(totalDots - 1, 0));
+  const requestPreviewPhase = (index) => {
+    // Scene dots now choose the starting point for the applied sequence too.
+    onApplyTemplate?.({ template_phase_override: index });
+    setJumpRequest((state) => ({ phase: index, token: state.token + 1 }));
+    setPreviewProgress({ activeIndex: index, total: totalDots });
+  };
+
+  return (
+    <div className={`advanced-template-card-shell ${isActive ? 'is-active' : ''}`}>
+      <button
+        type="button"
+        title={templateIsFavorite ? 'Remove from favorites' : 'Add to favorites'}
+        aria-label={templateIsFavorite ? 'Remove from favorites' : 'Add to favorites'}
+        onClick={(event) => {
+          event.stopPropagation();
+          onToggleFavorite?.();
+        }}
+        className={`advanced-template-favorite-button ${templateIsFavorite ? 'is-active' : ''}`}
+      >
+        <Star className="h-3.5 w-3.5" fill={templateIsFavorite ? 'currentColor' : 'none'} />
+      </button>
+      <div
+        data-template-card-id={template.id}
+        data-template-kind="basic-legacy"
+        aria-pressed={isActive}
+        onClick={() => onApplyTemplate?.()}
+        onKeyDown={(event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          onApplyTemplate?.();
+        }}
+        className={`advanced-template-card basic-template-card ${isActive ? 'is-active' : ''}`}
+        role="button"
+        tabIndex={0}
+      >
+        <LegacyTemplatePreviewFrame
+          template={template}
+          jumpRequest={jumpRequest}
+          onProgressChange={setPreviewProgress}
+        />
+        {isActive && <Check className="absolute right-11 top-2 z-10 h-3.5 w-3.5 text-[#ffb629]" />}
+        <div className="advanced-template-card-body">
+          <div className="advanced-template-card-title">
+            <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#ffb629]" />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-2">
+                <p className="truncate">{template.name}</p>
+                {totalDots > 0 && (
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    {Array.from({ length: totalDots }).map((_, index) => (
+                      <button
+                        type="button"
+                        key={`${template.id}-legacy-dot-${index}`}
+                        aria-label={`Use template scene ${index + 1}`}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          requestPreviewPhase(index);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key !== 'Enter' && event.key !== ' ') return;
+                          event.preventDefault();
+                          event.stopPropagation();
+                          requestPreviewPhase(index);
+                        }}
+                        className={`h-[5px] w-[5px] rounded-full border-0 p-0 transition-all cursor-pointer ${
+                          index === activeDotIndex ? 'scale-125 bg-white' : 'bg-white/25'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+              {template.desc && <span>{template.desc}</span>}
+            </div>
+          </div>
+        </div>
+      </div>
+      {isActive && (
+        <TemplateCustomizationPanel
+          currentStyle={previewStyle}
+          defaultStyle={defaultStyle}
+          onUpdate={onUpdateTemplate}
+        />
+      )}
+    </div>
+  );
+}
+
+function BasicTemplateCard({
+  template,
+  currentStyle,
+  isFavorite,
+  onToggleFavorite,
+  onApplyTemplate,
+}) {
+  const isMovedLegacyTemplate = template.format === 'legacy';
+  const isActive = isMovedLegacyTemplate
+    ? currentStyle?.template_20_id === template.id
+    : currentStyle?.template_id === template.id;
+  const defaultStyle = isMovedLegacyTemplate
+    ? buildLegacyTemplateStyle(template)
+    : buildAppliedBasicTemplateStyle(template);
+  const previewStyle = isActive ? { ...defaultStyle, ...currentStyle } : defaultStyle;
+  const applyBasicTemplate = (patch = {}) => onApplyTemplate?.({ ...defaultStyle, ...patch });
+  const updateBasicTemplate = (patch) => onApplyTemplate?.({ ...defaultStyle, ...currentStyle, ...patch });
+
+  if (isMovedLegacyTemplate) {
+    return (
+      <MovedLegacyBasicTemplateCard
+        template={template}
+        isActive={isActive}
+        templateIsFavorite={isFavorite}
+        currentStyle={currentStyle}
+        previewStyle={previewStyle}
+        defaultStyle={defaultStyle}
+        onApplyTemplate={applyBasicTemplate}
+        onUpdateTemplate={updateBasicTemplate}
+        onToggleFavorite={onToggleFavorite}
+      />
+    );
+  }
+
+  return (
+    <div className={`advanced-template-card-shell ${isActive ? 'is-active' : ''}`}>
+      <button
+        type="button"
+        title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+        aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+        onClick={(event) => {
+          event.stopPropagation();
+          onToggleFavorite?.();
+        }}
+        className={`advanced-template-favorite-button ${isFavorite ? 'is-active' : ''}`}
+      >
+        <Star className="h-3.5 w-3.5" fill={isFavorite ? 'currentColor' : 'none'} />
+      </button>
+      <button
+        type="button"
+        data-template-card-id={template.id}
+        data-template-kind="basic"
+        aria-pressed={isActive}
+        onClick={() => applyBasicTemplate()}
+        className={`advanced-template-card basic-template-card ${isActive ? 'is-active' : ''}`}
+      >
+        <BasicTemplatePreviewFrame template={template} onSelect={applyBasicTemplate} previewStyle={previewStyle} />
+        {isActive && <Check className="absolute right-11 top-2 z-10 h-3.5 w-3.5 text-[#ffb629]" />}
+        <div className="advanced-template-card-body">
+          <div className="advanced-template-card-title">
+            <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#ffb629]" />
+            <div className="min-w-0">
+              <p>{template.name}</p>
+              {template.desc && <span>{template.desc}</span>}
+            </div>
+          </div>
+        </div>
+      </button>
+      {isActive && (
+        <TemplateCustomizationPanel
+          currentStyle={previewStyle}
+          defaultStyle={defaultStyle}
+          onUpdate={updateBasicTemplate}
+          hideAccent={BASIC_TEMPLATE_ACCENT_DISABLED_IDS.has(template.id)}
+        />
+      )}
+    </div>
+  );
+}
+
 function TemplateColorInput({ label, value, defaultValue, onChange, onReset }) {
   const color = normalizeColor(value, defaultValue || '#FFFFFF');
   return (
@@ -2205,23 +2392,48 @@ export default function AdvancedTemplateLibrary({
 }) {
   const [templateSearchQuery, setTemplateSearchQuery] = useState('');
   const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [recentsOnly, setRecentsOnly] = useState(false);
   const { isFavorite, toggleFavorite } = useTemplateFavorites();
+  const { isRecent } = useRecentTemplates();
   const visibleAdvancedTemplates = useMemo(
     () => ADVANCED_TEMPLATE_PACK.filter((template) => (
       isExportableTemplateCandidate(template)
       && templateMatchesQuery(template, templateSearchQuery)
       && (!favoritesOnly || isFavorite('advanced-template', template.id))
+      && (!recentsOnly || isRecent('advanced-template', template.id))
     )),
-    [templateSearchQuery, favoritesOnly, isFavorite],
+    [templateSearchQuery, favoritesOnly, isFavorite, recentsOnly, isRecent],
   );
   const visibleBasicTemplates = useMemo(
-    () => BASIC_TEMPLATE_PACK.filter((template) => (
-      isExportableTemplateCandidate(template)
-      && templateMatchesQuery(template, templateSearchQuery)
-      && (!favoritesOnly || isFavorite('basic-template', template.id))
-    )),
-    [templateSearchQuery, favoritesOnly, isFavorite],
+    () => BASIC_TEMPLATE_PACK.filter((template) => {
+      const storageKind = template.format === 'legacy' ? 'sidebar-template' : 'basic-template';
+      return isExportableTemplateCandidate(template)
+        && templateMatchesQuery(template, templateSearchQuery)
+        && (!favoritesOnly || isFavorite(storageKind, template.id))
+        && (!recentsOnly || isRecent(storageKind, template.id));
+    }),
+    [templateSearchQuery, favoritesOnly, isFavorite, recentsOnly, isRecent],
   );
+  const velvetBasicTemplates = visibleBasicTemplates.filter((template) => (
+    BASIC_TEMPLATES_BELOW_VELVET_IDS.has(template.id)
+  ));
+  const remainingBasicTemplates = visibleBasicTemplates.filter((template) => (
+    !BASIC_TEMPLATES_BELOW_VELVET_IDS.has(template.id)
+  ));
+  const velvetIsVisible = visibleAdvancedTemplates.some((template) => template.id === 't12');
+  const renderBasicTemplateCard = (template) => {
+    const storageKind = template.format === 'legacy' ? 'sidebar-template' : 'basic-template';
+    return (
+      <BasicTemplateCard
+        key={`basic-${template.id}-${template.name}`}
+        template={template}
+        currentStyle={currentStyle}
+        isFavorite={isFavorite(storageKind, template.id)}
+        onToggleFavorite={() => toggleFavorite(storageKind, template.id)}
+        onApplyTemplate={onApplyTemplate}
+      />
+    );
+  };
 
   return (
     <div className="h-full flex flex-col text-white">
@@ -2254,6 +2466,15 @@ export default function AdvancedTemplateLibrary({
           >
             <Star className="h-3.5 w-3.5" fill={favoritesOnly ? 'currentColor' : 'none'} />
           </button>
+          <button
+            type="button"
+            aria-pressed={recentsOnly}
+            title="Show recently used"
+            onClick={() => setRecentsOnly((current) => !current)}
+            className={`advanced-template-favorites-filter ${recentsOnly ? 'is-active' : ''}`}
+          >
+            <History className="h-3.5 w-3.5" />
+          </button>
         </div>
 
         <div className="advanced-template-section-label">
@@ -2269,8 +2490,8 @@ export default function AdvancedTemplateLibrary({
           const updateTemplate = (patch) => onApplyTemplate?.({ ...defaultStyle, ...currentStyle, ...patch });
 
           return (
-            <div
-              key={template.id}
+            <Fragment key={template.id}>
+              <div
               className={`advanced-template-card-shell ${isActive ? 'is-active' : ''}`}
             >
               <button
@@ -2312,73 +2533,21 @@ export default function AdvancedTemplateLibrary({
                   onUpdate={updateTemplate}
                 />
               )}
-            </div>
+              </div>
+              {template.id === 't12' && velvetBasicTemplates.length > 0 && (
+                velvetBasicTemplates.map(renderBasicTemplateCard)
+              )}
+            </Fragment>
           );
         })}
         {!visibleAdvancedTemplates.length && (
           <div className="advanced-template-empty-state">No matching advanced templates.</div>
         )}
 
-        <div className="advanced-template-section-label">
-          <span>Basic Templates</span>
-          <small>{visibleBasicTemplates.length}/{BASIC_TEMPLATE_PACK.length}</small>
-        </div>
-        {visibleBasicTemplates.map((template) => {
-          const isActive = currentStyle?.template_id === template.id;
-          const templateIsFavorite = isFavorite('basic-template', template.id);
-          const defaultStyle = buildAppliedBasicTemplateStyle(template);
-          const previewStyle = isActive ? { ...defaultStyle, ...currentStyle } : defaultStyle;
-          const applyBasicTemplate = () => onApplyTemplate?.(defaultStyle);
-          const updateBasicTemplate = (patch) => onApplyTemplate?.({ ...defaultStyle, ...currentStyle, ...patch });
-
-          return (
-            <div
-              key={`basic-${template.id}-${template.name}`}
-              className={`advanced-template-card-shell ${isActive ? 'is-active' : ''}`}
-            >
-              <button
-                type="button"
-                title={templateIsFavorite ? 'Remove from favorites' : 'Add to favorites'}
-                aria-label={templateIsFavorite ? 'Remove from favorites' : 'Add to favorites'}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  toggleFavorite('basic-template', template.id);
-                }}
-                className={`advanced-template-favorite-button ${templateIsFavorite ? 'is-active' : ''}`}
-              >
-                <Star className="h-3.5 w-3.5" fill={templateIsFavorite ? 'currentColor' : 'none'} />
-              </button>
-              <button
-                type="button"
-                data-template-card-id={template.id}
-                data-template-kind="basic"
-                aria-pressed={isActive}
-                onClick={applyBasicTemplate}
-                className={`advanced-template-card basic-template-card ${isActive ? 'is-active' : ''}`}
-              >
-                <BasicTemplatePreviewFrame template={template} onSelect={applyBasicTemplate} previewStyle={previewStyle} />
-                {isActive && <Check className="absolute right-11 top-2 z-10 h-3.5 w-3.5 text-[#ffb629]" />}
-                <div className="advanced-template-card-body">
-                  <div className="advanced-template-card-title">
-                    <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#ffb629]" />
-                    <div className="min-w-0">
-                      <p>{template.name}</p>
-                      {template.desc && <span>{template.desc}</span>}
-                    </div>
-                  </div>
-                </div>
-              </button>
-              {isActive && (
-                <TemplateCustomizationPanel
-                  currentStyle={previewStyle}
-                  defaultStyle={defaultStyle}
-                  onUpdate={updateBasicTemplate}
-                  hideAccent={BASIC_TEMPLATE_ACCENT_DISABLED_IDS.has(template.id)}
-                />
-              )}
-            </div>
-          );
-        })}
+        {!velvetIsVisible && velvetBasicTemplates.length > 0 && (
+          velvetBasicTemplates.map(renderBasicTemplateCard)
+        )}
+        {remainingBasicTemplates.map(renderBasicTemplateCard)}
         {!visibleBasicTemplates.length && (
           <div className="advanced-template-empty-state">No matching basic templates.</div>
         )}
@@ -2387,6 +2556,7 @@ export default function AdvancedTemplateLibrary({
       {showBackButton && onBack && (
         <button
           type="button"
+          data-caption-editor-nav="true"
           onClick={onBack}
           className="mt-4 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white hover:bg-white/[0.08]"
         >

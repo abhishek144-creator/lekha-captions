@@ -58,6 +58,8 @@ const UserAccount = lazy(() => import('./pages/UserAccount'))
 const Faq = lazy(() => import('./pages/Faq'))
 const TermsAndConditions = lazy(() => import('./pages/TermsAndConditions'))
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'))
+const RefundPolicy = lazy(() => import('./pages/RefundPolicy'))
+const AcceptableUsePolicy = lazy(() => import('./pages/AcceptableUsePolicy'))
 const HelpAndSupport = lazy(() => import('./pages/HelpAndSupport'))
 const AdminOps = lazy(() => import('./pages/AdminOps'))
 
@@ -70,6 +72,8 @@ export const PAGES = {
     "Faq": Faq,
     "TermsAndConditions": TermsAndConditions,
     "PrivacyPolicy": PrivacyPolicy,
+    "RefundPolicy": RefundPolicy,
+    "AcceptableUsePolicy": AcceptableUsePolicy,
     "HelpAndSupport": HelpAndSupport,
     "AdminOps": AdminOps,
 }

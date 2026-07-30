@@ -216,6 +216,23 @@ const sourceBlockMarkup = buildAdvancedTemplateBlockMarkupMap(
   advancedSource,
   ORIGINAL_TEMPLATE_BLOCK_TYPES,
 );
+const fashionEditorialOpening = sourceBlockMarkup.t21?.[0] || '';
+const fashionEditorialWords = Array.from(
+  fashionEditorialOpening.matchAll(/class="w"[^>]*data-i="\d+"/g),
+);
+if (
+  !fashionEditorialOpening.includes('SILENCE IS THE NEW LUXURY')
+  || fashionEditorialWords.length !== 5
+  || !advancedSource.includes('@keyframes t21EditorialWordReveal')
+  || !advancedSource.includes('animation: t21EditorialWordReveal')
+) {
+  fail('Fashion Editorial phase 1 is not the authored five-word staggered opener');
+}
+for (const source of [videoPlayerSource, exportRendererSource]) {
+  if (!source.includes("'editorial-line wbw-rise', ''")) {
+    fail('Fashion Editorial phase 1 is not rebuilt word-for-word in preview and export');
+  }
+}
 for (const [templateId, blockTypes] of Object.entries(ORIGINAL_TEMPLATE_BLOCK_TYPES)) {
   const blocks = sourceBlockMarkup[templateId] || [];
   if (blocks.length !== blockTypes.length) {
@@ -268,6 +285,25 @@ if (!exportRendererSource.includes('data-caption-font-weight')) {
 }
 if (!exportRendererSource.includes('data-export-caption-text="true"')) {
   fail('left-template replacement text is not tagged for preview typography parity');
+}
+if (
+  !videoPlayerSource.includes('function getCaptionRevealWordIndex(')
+  || !videoPlayerSource.includes('timedWords[index]?.start')
+  || !videoPlayerSource.includes('const captionHasCptWords = captionHasCreativelyPositionedWords')
+) {
+  fail('canvas CPT reveal does not follow saved transcription word timing');
+}
+const cptPendingSource = videoPlayerSource.match(
+  /const isCptWordPending = \(caption, wordIndex, currentIdx\) => \([\s\S]*?\n  \);/,
+)?.[0] || '';
+if (!cptPendingSource || cptPendingSource.includes('&& isPlaying')) {
+  fail('canvas CPT reveal does not preserve its word-by-word state while paused or scrubbing');
+}
+if (
+  !exportRendererSource.includes('const timedRevealWords = Array.isArray(caption.words)')
+  || !exportRendererSource.includes('points.add(wordStart)')
+) {
+  fail('export CPT segmentation ignores saved transcription word boundaries');
 }
 if (exportRendererSource.includes('segment.start + (segment.duration / 2)')) {
   fail('export samples animated template frames at an uncapped segment midpoint');
@@ -369,8 +405,14 @@ if (!videoPlayerSource.includes('isRecreatedAdvancedTemplateId(templateId)')) {
 if (!exportRendererSource.includes('recreatedAdvancedTemplateIds.has(String(templateId || \'\').trim())')) {
   fail('recreated advanced export templates must bypass authored source markup');
 }
-if (!exportRendererSource.includes("const positionedWords = isAdvancedTemplate ? '' : words")) {
-  fail('advanced template exports must not append detached word-layout overlays over recreated template text');
+// Detached words used to be drawn twice in template exports: once in the caption
+// line and again as an absolutely positioned `export-positioned-word` overlay.
+// The overlay builder is gone for every template now — a displaced word moves at
+// its own slot via `translate` instead — so assert it never comes back rather
+// than asserting the old advanced-template-only guard.
+if (exportRendererSource.includes('export-positioned-word')
+  || exportRendererSource.includes('const positionedWords =')) {
+  fail('template exports must not append detached word-layout overlays over the caption line');
 }
 if (!exportRendererSource.includes("|| renderedTemplateId === 't29'")) {
   fail('Battle Cry export must replay captured canvas line breaks while other recreated templates keep their own structure');
@@ -511,12 +553,12 @@ for (const card of basicCards) {
     );
   }
 }
-// The 49-pack was removed entirely (2026-07-17). The selectable set is the
-// legacy 20 plus the LC templates.
-if (!sidebarGallerySource.includes('const TEMPLATE_CARDS = [...LEGACY_TEMPLATE_CARDS]')) {
-  fail('left template gallery legacy catalog changed shape');
+// The selectable gallery now exposes the LC sections only. Legacy cards remain
+// in the all-card map so saved projects keep their extracted styles and exports.
+if (!sidebarGallerySource.includes('const SELECTABLE_TEMPLATE_CARDS = [...LC_TEMPLATE_CARDS]')) {
+  fail('left template gallery selectable LC catalog changed shape');
 }
-if (!/const ALL_TEMPLATE_CARDS = \[[\s\S]*?\.\.\.TEMPLATE_CARDS,[\s\S]*?\.\.\.LC_TEMPLATE_CARDS,[\s\S]*?\];/.test(sidebarGallerySource)) {
+if (!/const ALL_TEMPLATE_CARDS = \[[\s\S]*?\.\.\.LEGACY_TEMPLATE_CARDS,[\s\S]*?\.\.\.LC_TEMPLATE_CARDS,[\s\S]*?\];/.test(sidebarGallerySource)) {
   fail('left template style map no longer resolves the legacy and LC templates');
 }
 if (!sidebarGallerySource.includes("{ id: 'lc-style-1', title: 'LC Style 1', templates: LC_STYLE_1_TEMPLATE_CARDS }")) {
@@ -696,11 +738,11 @@ const basicPreviewFrame = basicPreviewFrameStart >= 0 && basicPreviewFrameEnd > 
   : '';
 if (!basicPreviewFrame.includes('onSelect')
   || !basicPreviewFrame.includes('onSelect?.();')
-  || !gallerySource.includes('const applyBasicTemplate = () => onApplyTemplate?.(defaultStyle);')
+  || !gallerySource.includes('const applyBasicTemplate = (patch = {}) => onApplyTemplate?.({ ...defaultStyle, ...patch });')
   || !gallerySource.includes('onSelect={applyBasicTemplate}')) {
   fail('right basic preview dot clicks do not apply the selected template');
 }
-if (!templatesTabSource.includes("id: 't-WS1', name: 'Motion Slide'")
+if (!templatesTabSource.includes("id: 't-WS1', name: 'Slide'")
   || !templatesTabSource.includes("template_class: 'btcard t-WS1'")
   || !templatesTabSource.includes("template_source: 'lekha-basic'")
   || !templatesTabSource.includes('PHASED_PREVIEW_WORDS')

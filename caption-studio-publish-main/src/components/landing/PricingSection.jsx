@@ -31,6 +31,41 @@ function takePendingPurchase() {
   }
 }
 
+function restorePricingSection() {
+  if (typeof window === 'undefined') return Promise.resolve(false)
+
+  return new Promise((resolve) => {
+    let completedFrames = 0
+
+    const restorePosition = () => {
+      const pricingSection = document.getElementById('pricing')
+      if (!pricingSection) {
+        resolve(false)
+        return
+      }
+
+      if (window.location.hash !== '#pricing') {
+        const pricingUrl = `${window.location.pathname}${window.location.search}#pricing`
+        window.history.replaceState(window.history.state, '', pricingUrl)
+      }
+
+      pricingSection.scrollIntoView({ behavior: 'auto', block: 'start' })
+
+      // Repeat after one painted frame so checkout cannot lock the page before
+      // React has restored the pricing section's final layout position.
+      if (completedFrames === 0) {
+        completedFrames += 1
+        window.requestAnimationFrame(restorePosition)
+        return
+      }
+
+      resolve(true)
+    }
+
+    window.requestAnimationFrame(restorePosition)
+  })
+}
+
 const createIdempotencyKey = (scope, planId) => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return `${scope}:${planId}:${crypto.randomUUID()}`
@@ -65,15 +100,17 @@ const loadRazorpayScript = () => {
   })
 }
 
+// USD is the default global currency. Local-currency (INR) billing is offered only
+// when the visitor clearly resolves to that billing region.
 const detectInternationalUser = () => {
   try {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
     const lang = navigator.language || ''
-    const indianTZ = ['Asia/Calcutta', 'Asia/Kolkata']
-    const indianLangs = ['hi', 'ta', 'te', 'kn', 'ml', 'mr', 'gu', 'pa', 'bn', 'or', 'as', 'ur']
-    const isIndian = indianTZ.includes(tz) || indianLangs.some(l => lang.startsWith(l))
-    return !isIndian
-  } catch { return false }
+    const localCurrencyTZ = ['Asia/Calcutta', 'Asia/Kolkata']
+    const localCurrencyLangs = ['hi', 'ta', 'te', 'kn', 'ml', 'mr', 'gu', 'pa', 'bn', 'or', 'as', 'ur']
+    const isLocalCurrencyRegion = localCurrencyTZ.includes(tz) || localCurrencyLangs.some(l => lang.startsWith(l))
+    return !isLocalCurrencyRegion
+  } catch { return true }
 }
 
 function getDiscountPercent(monthlyMinor, yearlyMinor) {
@@ -177,7 +214,7 @@ function getPlanFeatures(plan, billing) {
 
 export default function PricingSection() {
   const [processingPlan, setProcessingPlan] = useState(null)
-  const [billing, setBilling] = useState('monthly')
+  const [billing, setBilling] = useState('yearly')
   const [selectedPlan, setSelectedPlan] = useState(null)
   const [isInternational, setIsInternational] = useState(false)
   const maxYearlyDiscount = isInternational
@@ -187,6 +224,13 @@ export default function PricingSection() {
 
   useEffect(() => {
     setIsInternational(detectInternationalUser())
+  }, [])
+
+  useEffect(() => {
+    if (window.location.hash !== '#pricing') return undefined
+
+    restorePricingSection()
+    return undefined
   }, [])
 
   const handleSelectPlan = async (plan, requestedBilling = billing) => {
@@ -308,12 +352,33 @@ export default function PricingSection() {
     const pendingPlan = plans.find((plan) => plan.id === pending?.planId)
     if (!pendingPlan || !['monthly', 'yearly'].includes(pending?.billing)) return
 
-    setBilling(pending.billing)
-    handleSelectPlan(pendingPlan, pending.billing)
+    let cancelled = false
+
+    const resumePendingPurchase = async () => {
+      setBilling(pending.billing)
+      setSelectedPlan(pendingPlan.id)
+      await restorePricingSection()
+      if (cancelled) return
+      await handleSelectPlan(pendingPlan, pending.billing)
+    }
+
+    resumePendingPurchase()
+
+    return () => {
+      cancelled = true
+    }
   }, [currentUser])
 
   return (
     <section id="pricing" aria-label="Pricing" className="landing-section-pricing relative overflow-hidden py-20 sm:py-28">
+      <div aria-hidden="true" className="landing-section-shapes landing-section-shapes-pricing">
+        <span className="landing-extra-shape landing-extra-triangle" />
+        <span className="landing-extra-shape landing-extra-cross" />
+      </div>
+      <div aria-hidden="true" className="landing-light-geometry landing-section-shapes">
+        <span className="landing-extra-shape landing-extra-pill left-[7%] top-[24%]" />
+        <span className="landing-extra-shape landing-extra-chevron bottom-[14%] right-[7%]" />
+      </div>
       <div className="absolute right-1/4 top-20 h-64 w-64 rounded-full bg-[#BF953F]/10 blur-[120px]" />
       <div className="relative mx-auto max-w-7xl px-5 sm:px-6">
         <motion.div
@@ -324,7 +389,7 @@ export default function PricingSection() {
         >
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#F5A623]">Creator-friendly pricing</p>
           <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-white sm:text-5xl">
-            Simple plans. Serious output.
+            Simple plans. <span className="landing-highlight landing-highlight-gold font-serif font-normal italic">Serious output.</span>
           </h2>
           <p className="mt-4 text-[#949494] mb-8">
             Choose the plan that fits your content schedule.

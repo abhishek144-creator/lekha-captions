@@ -11,7 +11,7 @@ const routes = [
     code: 'Seat 2A',
     title: 'Talking-head videos',
     description: 'Clean, readable captions for interviews, vlogs and founder updates.',
-    color: '#b993ff',
+    color: '#70d6a5',
   },
   {
     code: 'Gate T3',
@@ -29,9 +29,11 @@ const routes = [
 
 function Barcode({ color }) {
   return (
-    <div
+    <motion.div
       aria-hidden="true"
       className="h-6 w-40 opacity-55"
+      animate={{ backgroundPositionX: ['0px', '42px'] }}
+      transition={{ duration: 2.8, repeat: Infinity, ease: 'linear' }}
       style={{
         background: `repeating-linear-gradient(90deg, ${color} 0 1px, transparent 1px 4px, ${color} 4px 6px, transparent 6px 10px)`,
       }}
@@ -50,13 +52,18 @@ export default function UseCaseReel() {
       transition={{ duration: 0.76, ease: [0.22, 1, 0.36, 1] }}
       className="landing-section-use-cases relative px-5 py-20 sm:px-6 sm:py-28 lg:px-8"
     >
+      <div aria-hidden="true" className="landing-light-geometry landing-section-shapes">
+        <span className="landing-extra-shape landing-extra-chevron right-[6%] top-[18%]" />
+        <span className="landing-extra-shape landing-extra-hexagon bottom-[14%] left-[5%]" />
+        <span className="landing-extra-shape landing-extra-dots bottom-[24%] right-[12%]" />
+      </div>
       <div className="mx-auto max-w-6xl">
         <div className="max-w-xl">
-          <p className="inline-flex border border-[#6ee7ff]/40 px-4 py-1.5 text-[0.62rem] font-semibold uppercase tracking-[0.32em] text-[#6ee7ff]">
+          <p className="landing-use-case-eyebrow inline-flex border border-[#6ee7ff]/40 px-4 py-1.5 text-[0.62rem] font-semibold uppercase tracking-[0.32em] text-white">
             Boarding · Use cases
           </p>
           <h2 className="mt-5 text-4xl font-semibold leading-none tracking-[-0.055em] text-white sm:text-5xl">
-            Four routes, <span className="font-serif font-normal italic text-[#6ee7ff]">one destination</span>
+            Four routes, <span className="landing-highlight landing-highlight-cyan font-serif font-normal italic">one destination</span>
           </h2>
           <p className="mt-4 max-w-lg text-base leading-7 text-white/62">
             Whatever you shoot, it boards the same flight: raw footage in, ready-to-publish out.

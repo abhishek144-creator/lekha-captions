@@ -28,6 +28,13 @@
       "port": 5050
     },
     {
+      "name": "dist-preview",
+      "runtimeExecutable": "cmd.exe",
+      "runtimeArgs": ["/c", "python -m http.server 4173 --directory C:\\Users\\ADMIN\\Downloads\\caption-studio-publish-main\\caption-studio-publish-main\\dist"],
+      "port": 4173,
+      "autoPort": false
+    },
+    {
       "name": "scratchpad-preview",
       "runtimeExecutable": "cmd.exe",
       "runtimeArgs": ["/c", "python -m http.server 5077 --directory C:\\Users\\ADMIN\\AppData\\Local\\Temp\\claude\\C--Users-ADMIN-Downloads-caption-studio-publish-main\\8c65c1c8-c80b-471f-8ab9-dba93193f759\\scratchpad"],

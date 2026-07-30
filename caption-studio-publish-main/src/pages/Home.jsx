@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom'
 import { Moon, Sun } from 'lucide-react'
 import { createPageUrl } from '@/utils'
 import HeroCinematic from '@/components/landing2/HeroCinematic'
-import LanguagePassportStrip from '@/components/landing2/LanguagePassportStrip'
 import FeatureIndex from '@/components/landing2/FeatureIndex'
 import UseCaseReel from '@/components/landing2/UseCaseReel'
 import WorkflowPlayhead from '@/components/landing2/WorkflowPlayhead'
@@ -51,14 +50,13 @@ export default function Home() {
     <div className="landing-page relative min-h-screen overflow-x-hidden" data-theme={theme}>
       <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
         <div className="landing-atmosphere absolute inset-0" />
-        <div className="landing-grid absolute inset-0 bg-[size:72px_72px] [mask-image:linear-gradient(to_bottom,black,transparent_94%)]" />
         <div className="landing-guide absolute inset-y-0 left-[7%] w-px" />
         <div className="landing-guide absolute inset-y-0 right-[7%] w-px" />
       </div>
-      <nav className="landing-nav sticky top-0 z-50 h-16 border-b px-5 backdrop-blur-2xl md:px-8">
-        <div className="mx-auto flex h-full max-w-7xl items-center justify-between">
+      <nav className="landing-nav sticky top-0 z-50 h-16 border-b px-3 backdrop-blur-2xl sm:px-4 lg:px-5">
+        <div className="mx-auto flex h-full max-w-[90rem] items-center justify-between">
           <Link to={createPageUrl('Home')} className="transition-opacity hover:opacity-80" aria-label="Lekha Captions home">
-            <CaptionStudioLogo size="default" showText={true} />
+            <CaptionStudioLogo size="default" showText={true} beta={true} />
           </Link>
           <div className="hidden items-center gap-7 sm:flex">
             <Link to={createPageUrl('Faq')} className="landing-nav-link text-sm transition-colors">FAQ</Link>
@@ -75,7 +73,6 @@ export default function Home() {
       </nav>
       <main className="landing-story relative z-10">
         <HeroCinematic />
-        <LanguagePassportStrip />
         <FeatureIndex />
         <UseCaseReel />
         <WorkflowPlayhead />

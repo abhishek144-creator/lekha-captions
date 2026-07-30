@@ -12,7 +12,7 @@ export default function Footer() {
               <CaptionStudioLogo size="default" showText={false} />
               <span className="text-2xl font-semibold tracking-[-0.04em] text-white">Lekha Captions</span>
             </div>
-            <p className="mt-5 max-w-sm text-2xl leading-10 text-white/62">Professional captions for every language.</p>
+            <p className="landing-footer-tagline mt-5 max-w-sm text-2xl leading-10 text-white">Professional captions for every language.</p>
           </div>
 
           <div>
@@ -31,6 +31,9 @@ export default function Footer() {
               <Link to={createPageUrl('Faq')} className="block transition hover:text-white">FAQ</Link>
               <Link to={createPageUrl('HelpAndSupport')} className="block transition hover:text-white">Help</Link>
               <Link to={createPageUrl('TermsAndConditions')} className="block transition hover:text-white">Terms</Link>
+              <Link to={createPageUrl('PrivacyPolicy')} className="block transition hover:text-white">Privacy</Link>
+              <Link to={createPageUrl('RefundPolicy')} className="block transition hover:text-white">Refunds</Link>
+              <Link to={createPageUrl('AcceptableUsePolicy')} className="block transition hover:text-white">Acceptable Use</Link>
               <Link to={createPageUrl('HelpAndSupport')} className="block transition hover:text-white">Contact</Link>
             </div>
           </div>

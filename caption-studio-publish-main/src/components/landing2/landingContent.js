@@ -1,20 +1,20 @@
 export const rotatingLanguages = [
   'English',
-  'हिन्दी',
-  'தமிழ்',
-  'বাংলা',
-  'తెలుగు',
-  'العربية',
   'Español',
+  'Português',
   'Français',
-  'Kiswahili',
+  'Deutsch',
+  'العربية',
+  '中文',
   '日本語',
-  '한국어',
+  'हिन्दी',
+  'Kiswahili',
+  'Bahasa',
 ]
 
 const languageGroups = [
   [
-    'English', 'हिन्दी · Hindi', 'বাংলা · Bengali', 'ਪੰਜਾਬੀ · Punjabi', 'ગુજરાતી · Gujarati', 'मराठी · Marathi',
+    'हिन्दी · Hindi', 'বাংলা · Bengali', 'ਪੰਜਾਬੀ · Punjabi', 'ગુજરાતી · Gujarati', 'मराठी · Marathi',
     'தமிழ் · Tamil', 'తెలుగు · Telugu', 'ಕನ್ನಡ · Kannada', 'മലയാളം · Malayalam', 'ଓଡ଼ିଆ · Odia', 'অসমীয়া · Assamese',
     'नेपाली · Nepali', 'සිංහල · Sinhala', 'اردو · Urdu', 'کٲشُر · Kashmiri', 'मैथिली · Maithili', 'संस्कृतम् · Sanskrit',
     'कोंकणी · Konkani', 'डोगरी · Dogri', 'سنڌي · Sindhi', 'پښتو · Pashto', 'دری · Dari', 'فارسی · Persian',
@@ -28,7 +28,7 @@ const languageGroups = [
     'Polski · Polish', 'Čeština · Czech', 'Slovenčina · Slovak', 'Magyar · Hungarian', 'Română · Romanian', 'Български · Bulgarian',
   ],
   [
-    'Español · Spanish', 'Português · Portuguese', 'Français · French', 'Deutsch · German', 'Italiano · Italian', 'Nederlands · Dutch',
+    'English', 'Español · Spanish', 'Português · Portuguese', 'Français · French', 'Deutsch · German', 'Italiano · Italian', 'Nederlands · Dutch',
     'Català · Catalan', 'Galego · Galician', 'Euskara · Basque', 'Gaeilge · Irish', 'Cymraeg · Welsh', 'Gàidhlig · Scottish Gaelic',
     'Íslenska · Icelandic', 'Norsk · Norwegian', 'Svenska · Swedish', 'Dansk · Danish', 'Suomi · Finnish', 'Eesti · Estonian',
     'Latviešu · Latvian', 'Lietuvių · Lithuanian', 'Ελληνικά · Greek', 'Shqip · Albanian', 'Hrvatski · Croatian', 'Српски · Serbian',
@@ -44,8 +44,8 @@ const languageGroups = [
 ]
 
 export const languageBands = [
-  [...languageGroups[0], ...languageGroups[2]],
-  [...languageGroups[1], ...languageGroups[3]],
+  [...languageGroups[2], ...languageGroups[0]],
+  [...languageGroups[3], ...languageGroups[1]],
 ]
 
 export const heroStats = [
@@ -55,8 +55,8 @@ export const heroStats = [
 ]
 
 export const captionDemoPhrases = [
-  { lang: 'हिन्दी', words: ['आपकी', 'कहानी,', 'हर', 'भाषा', 'में'] },
   { lang: 'English', words: ['Your', 'story,', 'in', 'every', 'language'] },
-  { lang: 'தமிழ்', words: ['உங்கள்', 'கதை,', 'எல்லா', 'மொழியிலும்'] },
   { lang: 'Español', words: ['Tu', 'historia,', 'en', 'cada', 'idioma'] },
+  { lang: 'हिन्दी', words: ['आपकी', 'कहानी,', 'हर', 'भाषा', 'में'] },
+  { lang: 'العربية', words: ['قصتك،', 'بكل', 'لغة'] },
 ]

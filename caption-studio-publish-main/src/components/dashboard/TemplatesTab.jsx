@@ -51,157 +51,121 @@ const applyImanFontAfterIman = (templateList) => {
 
 const templates = applyImanFontAfterIman([
   {
-    id: 't-115', name: 'Neon Authority',
+    id: 't-115', name: 'Neon',
     desc: 'White text with pulsing green active glow',
     bg: '#111',
     style: getBasicTemplateStyle('t-115')
   },
   {
-    id: 't-109', name: 'Cinema Depth',
-    desc: 'White text with bold orange 3D shadow on active',
-    bg: '#1a1a1a',
-    style: getBasicTemplateStyle('t-109')
-  },
-  {
-    id: 't-26', name: 'Editorial Impact',
+    id: 't-26', name: 'Impact',
     desc: 'Light bg, black bold text with pink 3D shadow',
     bg: '#e8e8e8',
     style: getBasicTemplateStyle('t-26')
   },
   {
-    id: 't-102', name: 'Studio Clarity',
+    id: 't-102', name: 'Studio',
     desc: 'Clean light bg, dark readable text',
     bg: '#FFFFFF',
     style: getBasicTemplateStyle('t-102')
   },
   {
-    id: 't-36', name: 'Signal Flash',
-    desc: 'Invisible until spoken — active word flashes in colour',
-    bg: '#111',
-    style: getBasicTemplateStyle('t-36')
-  },
-  {
-    id: 't-105', name: 'Golden Focus',
+    id: 't-105', name: 'Gold',
     desc: 'White stroked, yellow glow on speak',
     bg: '#111',
     style: getBasicTemplateStyle('t-105')
   },
   {
-    id: 't-9', name: 'Ember Command',
+    id: 't-9', name: 'Ember',
     desc: 'Words ignite in fire orange glow',
     bg: '#1a0500',
     style: getBasicTemplateStyle('t-9')
   },
   {
-    id: 't-16', name: 'Soft Focus',
+    id: 't-16', name: 'Soft',
     desc: 'Blurred inactive words, sharp spotlight on spoken',
     bg: '#111',
     style: getBasicTemplateStyle('t-16')
   },
   {
-    id: 't-110', name: 'Orbit Glow',
+    id: 't-110', name: 'Orbit',
     desc: 'Glowing dot under active word',
     bg: '#111',
     style: getBasicTemplateStyle('t-110')
   },
   {
-    id: 't-119', name: 'Gradient Marker',
+    id: 't-119', name: 'Marker',
     desc: 'Active word gets blue-cyan gradient box',
     bg: '#111',
     style: getBasicTemplateStyle('t-119')
   },
   {
-    id: 't-12', name: 'Noir Pulse',
-    desc: 'Typewriter font, blood-red glow',
-    bg: '#000',
-    style: getBasicTemplateStyle('t-12')
-  },
-  {
-    id: 't-106', name: 'Clean Reveal',
+    id: 't-106', name: 'Reveal',
     desc: 'Words hidden until spoken — clean instant reveal',
     bg: '#111',
-    style: withBasicTemplateMarkup({ ...getBasicTemplateStyle('t-106'), template_source: 'lekha-basic', template_class: 'btcard t-106', template_name: 'Clean Reveal', template_layout: 'word-sequence', show_inactive: true, has_background: false, has_stroke: false })
+    style: withBasicTemplateMarkup({ ...getBasicTemplateStyle('t-106'), template_source: 'lekha-basic', template_class: 'btcard t-106', template_name: 'Reveal', template_layout: 'word-sequence', show_inactive: true, has_background: false, has_stroke: false })
   },
   {
-    id: 't-52', name: 'Luminous Streak',
+    id: 't-52', name: 'Streak',
     desc: 'Words rise into view as spoken',
     bg: '#111',
-    style: withBasicTemplateMarkup({ ...getBasicTemplateStyle('t-52'), template_source: 'lekha-basic', template_class: 'btcard t-52', template_name: 'Luminous Streak', template_layout: 'word-sequence', show_inactive: true, has_background: false, has_shadow: false, has_stroke: false })
+    style: withBasicTemplateMarkup({ ...getBasicTemplateStyle('t-52'), template_source: 'lekha-basic', template_class: 'btcard t-52', template_name: 'Streak', template_layout: 'word-sequence', show_inactive: true, has_background: false, has_shadow: false, has_stroke: false })
   },
   {
-    id: 't-103', name: 'Midnight Focus',
-    desc: 'Muted words on dark bg, spotlight on speak',
-    bg: '#1e1e1e',
-    style: getBasicTemplateStyle('t-103')
-  },
-  {
-    id: 't-112', name: 'Rose Spectrum',
+    id: 't-112', name: 'Rose',
     desc: 'Hot pink-to-coral gradient text reveal',
     bg: '#111',
     style: getBasicTemplateStyle('t-112')
   },
   {
-    id: 't-104', name: 'Electric Pulse',
-    desc: 'White text with purple stroke glow',
-    bg: '#111',
-    style: getBasicTemplateStyle('t-104')
-  },
-  {
-    id: 't-111', name: 'Crimson Marker',
+    id: 't-111', name: 'Crimson',
     desc: 'Bold red box snaps onto each spoken word',
     bg: '#111',
     style: getBasicTemplateStyle('t-111')
   },
   {
-    id: 't-T5', name: 'Golden Caption Bar',
+    id: 't-T5', name: 'Caption Bar',
     desc: 'Deep yellow pad box for all words',
     bg: '#111',
     style: getBasicTemplateStyle('t-T5')
   },
   {
-    id: 't-95', name: 'Velocity Lines',
-    desc: 'Skewed font with blue speed streaks',
-    bg: '#111',
-    style: getBasicTemplateStyle('t-95')
-  },
-  {
-    id: 't-T1', name: 'Serif Cascade',
+    id: 't-T1', name: 'Cascade',
     desc: 'Italic serif, words stack then flow in',
     bg: '#0d1b2a',
     style: getBasicTemplateStyle('t-T1')
   },
   {
-    id: 't-T4', name: 'Scholar Script',
+    id: 't-T4', name: 'Script',
     desc: 'White italic serif with Motion Slide on line two',
     bg: '#1a0e14',
-    style: withBasicTemplateMarkup({ ...getBasicTemplateStyle('t-T4'), template_source: 'lekha-basic', template_class: 'btcard t-T4', template_name: 'Scholar Script', template_layout: 'word-sequence', show_inactive: true, has_background: false, has_shadow: false, has_stroke: false })
+    style: withBasicTemplateMarkup({ ...getBasicTemplateStyle('t-T4'), template_source: 'lekha-basic', template_class: 'btcard t-T4', template_name: 'Script', template_layout: 'word-sequence', show_inactive: true, has_background: false, has_shadow: false, has_stroke: false })
   },
   {
-    id: 't-WS1', name: 'Motion Slide',
+    id: 't-WS1', name: 'Slide',
     desc: 'Words slide in together with a slight stagger',
     bg: '#0d1117',
-    style: withBasicTemplateMarkup({ ...getBasicTemplateStyle('t-WS1'), template_source: 'lekha-basic', template_class: 'btcard t-WS1', template_name: 'Motion Slide', template_layout: 'word-sequence', show_inactive: true, has_background: false, has_shadow: false, has_stroke: false })
+    style: withBasicTemplateMarkup({ ...getBasicTemplateStyle('t-WS1'), template_source: 'lekha-basic', template_class: 'btcard t-WS1', template_name: 'Slide', template_layout: 'word-sequence', show_inactive: true, has_background: false, has_shadow: false, has_stroke: false })
   },
   {
-    id: 't-56', name: 'Precision Underline',
+    id: 't-56', name: 'Underline',
     desc: 'Active word gets a blue bottom border',
     bg: '#111',
     style: getBasicTemplateStyle('t-56')
   },
   {
-    id: 't-T3', name: 'Quiet Emphasis',
+    id: 't-T3', name: 'Quiet',
     desc: 'Words fade in, key words get green underline',
     bg: '#0a0a0a',
     style: getBasicTemplateStyle('t-T3')
   },
   {
-    id: 't-57', name: 'Retro Signal',
+    id: 't-57', name: 'Retro',
     desc: 'Flicker-on reveal with chromatic aberration',
     bg: '#111',
     style: getBasicTemplateStyle('t-57')
   },
   {
-    id: 't-37', name: 'Clean Wipe',
+    id: 't-37', name: 'Wipe',
     desc: 'Pink uppercase text wipes in from left',
     bg: '#111',
     style: getBasicTemplateStyle('t-37')

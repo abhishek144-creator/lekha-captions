@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import {
   buildPlainText,
   buildSrt,
+  buildTextElementExportStyle,
   formatSrtTimestamp,
   getCaptionedVideoFilename,
   hasExportableVideoContent,
@@ -35,5 +36,31 @@ assert.equal(shouldAttachApiAuth('https://app.example/api/export-file/1', 'https
 assert.equal(shouldAttachApiAuth('https://storage.example/api/export-file/1', 'https://app.example'), false)
 assert.equal(getCaptionedVideoFilename('C:\\fakepath\\my:clip.mov'), 'my_clip_captioned.mp4')
 assert.equal(getCaptionedVideoFilename('.mp4'), 'export_captioned.mp4')
+
+const textElementStyle = buildTextElementExportStyle({
+  left: 12,
+  top: 34,
+  width: 240,
+  rotation: 18,
+  textOpacity: 0,
+  textGradient: 'linear-gradient(to right, #fff, #000)',
+  wordSpacing: 0,
+  backgroundHMultiplier: 0.8,
+  padding: 0,
+  effect_type: 'neon',
+  effect_blur: 0,
+  effect_color: '#00ff00',
+})
+assert.equal(textElementStyle.position_x, 12)
+assert.equal(textElementStyle.position_y, 34)
+assert.equal(textElementStyle.width, 240)
+assert.equal(textElementStyle.rotation, 18)
+assert.equal(textElementStyle.text_opacity, 0)
+assert.equal(textElementStyle.word_spacing, 0)
+assert.equal(textElementStyle.background_h_multiplier, 0.8)
+assert.equal(textElementStyle.background_padding, 0)
+assert.equal(textElementStyle.effect_type, 'neon')
+assert.equal(textElementStyle.effect_blur, 0)
+assert.equal(textElementStyle.effect_color, '#00ff00')
 
 console.log('Export pipeline utility checks passed')

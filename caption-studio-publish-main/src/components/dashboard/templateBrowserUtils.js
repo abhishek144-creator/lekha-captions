@@ -72,6 +72,60 @@ export function useTemplateFavorites() {
   return { favoriteKeys, isFavorite, toggleFavorite };
 }
 
+// ── Recently used templates ────────────────────────────────────────────────
+// Same storage/event discipline as favorites: every gallery instance re-reads
+// on change, and writes always start from fresh storage so concurrent mounts
+// never clobber each other. Keys reuse getTemplateFavoriteKey so a recent
+// entry and a favorite entry for the same card always agree.
+const TEMPLATE_RECENTS_STORAGE_KEY = 'captionStudio.templateRecents.v1';
+const TEMPLATE_RECENTS_CHANGED_EVENT = 'lekha-template-recents-changed';
+const TEMPLATE_RECENTS_LIMIT = 12;
+
+function readRecentTemplateKeys() {
+  if (typeof window === 'undefined') return [];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(TEMPLATE_RECENTS_STORAGE_KEY) || '[]');
+    return Array.isArray(parsed) ? parsed.filter(Boolean).map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function recordRecentTemplate(kind, id) {
+  if (typeof window === 'undefined' || !id) return;
+  const key = getTemplateFavoriteKey(kind, id);
+  const next = [key, ...readRecentTemplateKeys().filter((item) => item !== key)]
+    .slice(0, TEMPLATE_RECENTS_LIMIT);
+  try {
+    window.localStorage.setItem(TEMPLATE_RECENTS_STORAGE_KEY, JSON.stringify(next));
+    window.dispatchEvent(new CustomEvent(TEMPLATE_RECENTS_CHANGED_EVENT));
+  } catch {
+    // Storage unavailable (private mode) — recents are a convenience, skip.
+  }
+}
+
+export function useRecentTemplates() {
+  const [recentKeys, setRecentKeys] = useState(() => readRecentTemplateKeys());
+
+  useEffect(() => {
+    const sync = () => setRecentKeys(readRecentTemplateKeys());
+    window.addEventListener(TEMPLATE_RECENTS_CHANGED_EVENT, sync);
+    window.addEventListener('storage', sync);
+    return () => {
+      window.removeEventListener(TEMPLATE_RECENTS_CHANGED_EVENT, sync);
+      window.removeEventListener('storage', sync);
+    };
+  }, []);
+
+  const recentKeySet = useMemo(() => new Set(recentKeys), [recentKeys]);
+  const isRecent = useCallback(
+    (kind, id) => recentKeySet.has(getTemplateFavoriteKey(kind, id)),
+    [recentKeySet],
+  );
+
+  return { recentKeys, isRecent };
+}
+
 export function normalizeTemplateSearch(value = '') {
   return String(value || '').toLowerCase().replace(/\s+/g, ' ').trim();
 }

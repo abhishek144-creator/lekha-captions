@@ -12,6 +12,7 @@ import {
   ReceiptText,
   ShieldCheck,
   Sparkles,
+  Trash2,
   User,
   WalletCards
 } from 'lucide-react'
@@ -20,6 +21,7 @@ import PricingModal from '@/components/dashboard/PricingModal'
 import { useAuth } from '@/lib/AuthContext'
 import { toDateSafe } from '@/lib/subscription'
 import { db } from '@/lib/firebase'
+import { apiRequest } from '@/lib/apiClient'
 import { collection, getDocs, limit, orderBy, query, startAfter } from 'firebase/firestore'
 import planCatalog from '../../shared/planCatalog.json'
 
@@ -62,6 +64,10 @@ export default function UserAccount() {
   const [isLoadingMorePayments, setIsLoadingMorePayments] = useState(false)
   const [paymentCursor, setPaymentCursor] = useState(null)
   const [hasMorePayments, setHasMorePayments] = useState(false)
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
+  const [deleteConfirmation, setDeleteConfirmation] = useState('')
+  const [deleteError, setDeleteError] = useState('')
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false)
   const paymentRequestGeneration = React.useRef(0)
 
   const planId = userData?.subscription_tier || userData?.subscription_plan || 'free'
@@ -151,6 +157,30 @@ export default function UserAccount() {
       window.location.href = '/'
     } catch (error) {
       console.error('Logout failed:', error)
+    }
+  }
+
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmation !== 'DELETE' || !currentUser) return
+    setDeleteError('')
+    setIsDeletingAccount(true)
+    try {
+      const idToken = await currentUser.getIdToken(true)
+      await apiRequest('/api/account-delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ id_token: idToken }),
+      })
+      localStorage.removeItem('captionEditorState')
+      await logout().catch(() => {})
+      window.location.href = '/?accountDeleted=1'
+    } catch (error) {
+      setDeleteError(error?.message || 'Account deletion could not be completed. Please try again or contact support.')
+    } finally {
+      setIsDeletingAccount(false)
     }
   }
 
@@ -428,6 +458,32 @@ export default function UserAccount() {
             )}
           </div>
         </section>
+
+        <section className="mt-5 rounded-3xl border border-red-500/20 bg-red-500/[0.04] p-5 sm:p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.24em] text-red-300">Danger Zone</p>
+              <h2 className="mt-2 text-xl font-black">Delete account and media</h2>
+              <p className="mt-1 max-w-2xl text-sm text-gray-400">
+                Permanently remove your account, uploaded source files, exports, and account data. Payment records may
+                be retained only where legally required.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setDeleteConfirmation('')
+                setDeleteError('')
+                setIsDeleteModalOpen(true)
+              }}
+              className="shrink-0 border-red-500/40 bg-red-500/10 text-red-200 hover:bg-red-500/20 hover:text-white"
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete Account
+            </Button>
+          </div>
+        </section>
       </main>
 
       {isRenewalModalOpen && (
@@ -446,6 +502,60 @@ export default function UserAccount() {
               </Button>
               <Button className="flex-1 bg-white hover:bg-gray-100 text-black font-semibold rounded-[4px]" onClick={() => { setIsRenewalModalOpen(false); setIsPricingModalOpen(true) }}>
                 View Plans
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isDeleteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-account-title"
+            className="w-full max-w-md rounded-2xl border border-red-500/30 bg-zinc-950 p-6 shadow-2xl"
+          >
+            <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-full bg-red-500/15">
+              <Trash2 className="h-5 w-5 text-red-300" />
+            </div>
+            <h3 id="delete-account-title" className="text-xl font-bold">Permanently delete your account?</h3>
+            <p className="mt-2 text-sm leading-6 text-gray-400">
+              This cannot be undone. Type <span className="font-bold text-white">DELETE</span> to confirm.
+            </p>
+            <label className="mt-5 block text-sm font-semibold text-gray-300" htmlFor="delete-account-confirmation">
+              Confirmation
+            </label>
+            <input
+              id="delete-account-confirmation"
+              value={deleteConfirmation}
+              onChange={(event) => setDeleteConfirmation(event.target.value)}
+              autoComplete="off"
+              className="mt-2 h-11 w-full rounded-xl border border-white/15 bg-white/[0.04] px-3 text-white outline-none focus:border-red-400"
+              placeholder="Type DELETE"
+            />
+            {deleteError && (
+              <p role="alert" className="mt-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+                {deleteError}
+              </p>
+            )}
+            <div className="mt-6 flex gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isDeletingAccount}
+                onClick={() => setIsDeleteModalOpen(false)}
+                className="flex-1 border-white/15 bg-transparent text-white hover:bg-white/10"
+              >
+                Keep Account
+              </Button>
+              <Button
+                type="button"
+                disabled={deleteConfirmation !== 'DELETE' || isDeletingAccount}
+                onClick={handleDeleteAccount}
+                className="flex-1 bg-red-600 text-white hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isDeletingAccount ? 'Deleting...' : 'Delete Forever'}
               </Button>
             </div>
           </div>

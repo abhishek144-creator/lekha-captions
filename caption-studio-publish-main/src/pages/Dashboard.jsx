@@ -12,6 +12,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { extractWaveformData } from '@/components/dashboard/audioUtils';
 import { autoLoadFontForText, loadGoogleFont, resolveScriptFont } from '@/components/dashboard/fontUtils';
 import { buildEmotionalCaptionPlan, EMOTIONAL_TEMPLATE_TIMING } from '@/components/dashboard/emotionalTemplateUtils';
+import { recordRecentTemplate } from '@/components/dashboard/templateBrowserUtils';
 import { apiRequest } from '@/lib/apiClient';
 import { notifyApiError } from '@/lib/notifyApiError';
 import { getClientContext, trackAnalytics } from '@/lib/analytics';
@@ -94,7 +95,7 @@ const LIVE_TEMPLATE_SOURCES = new Set(['', 'lekha-20', 'lekha-lc', 'lekha-basic'
 const REMOVED_TEMPLATE_FIELDS = [
   'template_id', 'template_20_id', 'template_source', 'template_class',
   'template_name', 'template_layout', 'template_effect', 'template_markup',
-  'template_snapshot', 'template_applied_at', 'template_phase_index',
+  'template_snapshot', 'template_applied_at', 'template_phase_index', 'template_phase_override',
 ];
 
 const stripRemovedTemplateSource = (style) => {
@@ -150,6 +151,12 @@ const stripDetachedWordLayout = (wordStyles = {}) => Object.fromEntries(
     return [styleKey, nextStyle];
   }),
 );
+
+const getTemplateSelectionIdentity = (style = {}) => [
+  String(style?.template_source || ''),
+  String(style?.template_20_id || ''),
+  String(style?.template_id || ''),
+].join('::');
 
 export default function Dashboard() {
   const { currentUser, userData } = useAuth();
@@ -370,13 +377,7 @@ export default function Dashboard() {
       return;
     }
 
-    const start = activeTarget.start_time ?? activeTarget.start ?? 0;
-    const end = activeTarget.end_time ?? activeTarget.end ?? start;
-    const stillInTime = currentTime >= start - 0.03 && currentTime <= end + 0.03;
-    if (!stillInTime) {
-      setWordPopup(null);
-    }
-  }, [captions, currentTime, wordPopup]);
+  }, [captions, wordPopup]);
 
   useEffect(() => {
     if (!wordPopup) return;
@@ -387,6 +388,8 @@ export default function Dashboard() {
 
       if (
         target.closest('.lekha-video-frame')
+        || target.closest('[data-caption-editor="true"]')
+        || target.closest('[data-caption-editor-nav="true"]')
         || target.closest('[data-selected-word-box="true"]')
         || target.closest('[data-word-popup-panel="true"]')
         || target.closest('[data-video-control]')
@@ -410,6 +413,8 @@ export default function Dashboard() {
 
       if (
         target.closest('[data-caption-layer="true"]')
+        || target.closest('[data-caption-editor="true"]')
+        || target.closest('[data-caption-editor-nav="true"]')
         || target.closest('[data-text-element-layer="true"]')
         || target.closest('.resize-handle')
         || target.closest('.text-resize-handle')
@@ -844,6 +849,7 @@ export default function Dashboard() {
       template_effect: '',
       template_markup: '',
       template_color_customized: false,
+      template_phase_override: undefined,
       // Both galleries set these (the left set extracts letter/line spacing
       // from its authored CSS; the advanced pack sets line/word spacing and a
       // default phase index), so they are template-owned and must reset too —
@@ -891,6 +897,10 @@ export default function Dashboard() {
     const hasTemplateSelection = !!(
       templateStyleForSnapshot?.template_id
       || templateStyleForSnapshot?.template_20_id
+    );
+    const isNewTemplateSelection = hasTemplateSelection && (
+      getTemplateSelectionIdentity(templateStyleForSnapshot)
+      !== getTemplateSelectionIdentity(captionStyle)
     );
     const templateSnapshot = hasTemplateSelection
       ? JSON.parse(JSON.stringify({
@@ -950,18 +960,25 @@ export default function Dashboard() {
           template_markup: _captionTemplateMarkup,
           emotional_mode: _emotionalMode,
           template_phase_index: _templatePhaseIndex,
+          template_phase_override: _templatePhaseOverride,
           imp_word_index: _impWordIndex,
           imp_word_indices: _impWordIndices,
           emphasis_color: _emphasisColor,
           audio_emotion_metrics: _audioEmotionMetrics,
           ...rest
         } = cap;
-        return rest;
+        return {
+          ...rest,
+          wordStyles: stripDetachedWordLayout(rest.wordStyles || {}),
+        };
       }
       const emotional = emotionalByCaptionId.get(cap.id);
+      const requestedPhaseOffset = Number(templateSnapshot.template_phase_override);
       const templatePhaseIndex = templateSnapshot.template_id === 't17'
         ? 1
-        : emotional?.phaseIndex ?? 0;
+        : Number.isFinite(requestedPhaseOffset)
+          ? requestedPhaseOffset + (emotional?.phaseIndex ?? 0)
+          : emotional?.phaseIndex ?? 0;
       const templateEmphasisColor = templateSnapshot.highlight_color
         || templateSnapshot.emphasis_color
         || templateSnapshot.secondary_color
@@ -969,7 +986,11 @@ export default function Dashboard() {
         || '';
       return {
         ...cap,
-        wordStyles: stripDetachedWordLayout(cap.wordStyles || {}),
+        // A genuinely new template starts from its authored word layout.
+        // Clear every prior per-word override so detached coordinates, source
+        // offsets, resized boxes, and frozen template typography cannot leak
+        // from the previously selected template.
+        wordStyles: isNewTemplateSelection ? {} : stripDetachedWordLayout(cap.wordStyles || {}),
         animation: 'none',
         animationSpeed: 1,
         template_id: templateSnapshot.template_id || '',
@@ -994,6 +1015,24 @@ export default function Dashboard() {
     if (merged.font_family) {
       loadGoogleFont(merged.font_family, [300, 400, 500, 600, 700, 800, 900]).catch(() => {});
     }
+    if (templateSnapshot) {
+      // Kinds mirror the favorite keys each gallery uses, so "Recent" and
+      // favorites always refer to the same card.
+      const sidebarId = templateSnapshot.template_20_id || '';
+      const inspectorId = templateSnapshot.template_id || '';
+      const kind = sidebarId
+        ? 'sidebar-template'
+        : (/^t\d{2}$/.test(inspectorId) ? 'advanced-template' : 'basic-template');
+      const recentId = sidebarId || inspectorId;
+      recordRecentTemplate(kind, recentId);
+      trackAnalytics('template.applied', getClientContext({
+        kind,
+        templateId: recentId,
+        templateName: templateSnapshot.template_name || '',
+        templateSource: templateSnapshot.template_source || '',
+      }));
+    }
+    setWordPopup(null);
     pushHistory(nextCaptions, merged);
   };
   const addToHistory = () => pushHistory(undefined, undefined);
@@ -1120,6 +1159,10 @@ export default function Dashboard() {
   };
 
   const openWordPopup = useCallback((popup) => {
+    if (!popup) {
+      setWordPopup(null);
+      return;
+    }
     setWordPopupOpenCount(prev => prev + 1);
     setWordPopup({
       ...popup,
@@ -1300,23 +1343,23 @@ export default function Dashboard() {
     ];
     const completedSteps = progressSteps.filter((step) => step.status === 'complete').length;
     return (
-      <div className="relative flex h-full items-center justify-center overflow-hidden bg-[#050505] p-5">
-        <div className="absolute inset-x-0 top-0 h-px bg-white/[0.06]" />
+      <div className="relative flex h-full items-center justify-center overflow-hidden bg-[#050505] p-4 sm:p-8">
+        <div aria-hidden="true" className="absolute inset-0 bg-[radial-gradient(circle_at_50%_36%,rgba(246,165,75,0.14),transparent_36%),radial-gradient(circle_at_8%_88%,rgba(255,255,255,0.045),transparent_28%)]" />
+        <div aria-hidden="true" className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.026)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.026)_1px,transparent_1px)] bg-[size:42px_42px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_78%)]" />
         <motion.div
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
-          className="relative w-full max-w-[560px]"
+          className="relative w-full max-w-[680px] overflow-hidden rounded-[28px] border border-white/[0.12] bg-[#0b0b0b]/90 shadow-[0_30px_100px_rgba(0,0,0,0.48)] backdrop-blur-xl"
         >
-          <div className="px-5 py-4 sm:px-7">
-            <div className="flex items-center justify-between gap-3 text-zinc-400">
-              <div className="inline-flex items-center gap-2 text-[10px] font-semibold uppercase text-[#ffd7a4]">
-                <span className="h-1.5 w-1.5 rounded-full bg-[#f6a54b] shadow-[0_0_14px_rgba(246,165,75,0.9)]" />
-                Processing
-              </div>
+          <div className="flex items-center justify-between border-b border-white/[0.08] px-5 py-4 sm:px-7">
+            <div className="inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#ffd7a4]">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#f6a54b] shadow-[0_0_14px_rgba(246,165,75,0.9)]" />
+              Lekha studio
             </div>
+            <span className="rounded-full border border-white/[0.1] bg-white/[0.04] px-3 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-zinc-400">AI processing</span>
           </div>
 
-          <div className="px-5 py-6 sm:px-7 sm:py-8">
+          <div className="px-5 py-7 sm:px-7 sm:py-9">
             <div className="flex items-start gap-4">
               <div className="relative mt-1 flex h-[52px] w-[52px] shrink-0 items-center justify-center">
                 <motion.span
@@ -1336,14 +1379,20 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div className="mt-7 px-1">
-              <p className="text-xs font-medium text-zinc-400">
-                Step {Math.min(completedSteps + 1, progressSteps.length)} of {progressSteps.length}
-              </p>
+            <div className="mt-8 grid grid-cols-[1fr_auto] items-end gap-4 rounded-2xl border border-white/[0.08] bg-white/[0.035] p-4">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-500">Caption workflow</p>
+                <p className="mt-1 text-sm font-medium text-white">Step {Math.min(completedSteps + 1, progressSteps.length)} of {progressSteps.length}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-2xl font-semibold tracking-tight text-[#ffd7a4]">{Math.round((completedSteps / progressSteps.length) * 100)}%</p>
+                <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Prepared</p>
+              </div>
             </div>
 
-            <div className="mt-6 px-1">
-              <div className="space-y-3">
+            <div className="mt-6">
+              <div className="rounded-2xl border border-white/[0.08] bg-black/20 p-4 sm:p-5">
+                <div className="space-y-3">
                 {progressSteps.map((step, index) => {
                   const isComplete = step.status === 'complete';
                   const isActive = step.status === 'active';
@@ -1399,6 +1448,7 @@ export default function Dashboard() {
                 })}
               </div>
             </div>
+          </div>
           </div>
         </motion.div>
       </div>
@@ -1518,6 +1568,15 @@ export default function Dashboard() {
               {!isVideoFullscreen && (
               <div className="relative z-10 shrink-0 flex items-center justify-between px-1 pb-2">
                 <div className="flex items-center gap-3">
+                  {/* Early-access marker. This row is the only editor chrome that
+                      renders at every breakpoint — the left nav rail is lg-only,
+                      so a badge there is invisible to phone and tablet users. */}
+                  <span
+                    title="Lekha Captions is in public beta — please report anything that looks wrong."
+                    className="shrink-0 rounded-full border border-[#F5A623]/40 bg-[#F5A623]/10 px-2 py-0.5 text-[9px] font-bold uppercase leading-none tracking-[0.1em] text-[#F5A623]"
+                  >
+                    Beta
+                  </span>
                   <span className="lekha-micro-label">Preview <span className="text-white">9:16</span></span>
                   <span className="lekha-micro-label">FPS <span className="text-white">24</span></span>
                   <span className="lekha-micro-label">Safe <span className="text-sky-200">On</span></span>
@@ -1683,7 +1742,14 @@ export default function Dashboard() {
           <Suspense fallback={null}>
             <WordClickPopup
               key={wordPopup._openKey ?? wordPopupOpenCount}
-              word={wordPopup.word}
+              word={(() => {
+                if (wordPopup.type === 'element') {
+                  const element = captions.find(cap => cap.id === wordPopup.elementId);
+                  return String(element?.text || '').split(/\s+/).filter(Boolean)[wordPopup.wordIndex] || wordPopup.word;
+                }
+                const liveCaption = captions.find(cap => cap.id === wordPopup.caption?.id);
+                return String(liveCaption?.text || '').split(/\s+/).filter(Boolean)[wordPopup.wordIndex] || wordPopup.word;
+              })()}
               position={wordPopup.position}
               onStyleChange={handleWordStyleChange}
               currentStyle={(() => {
@@ -1697,7 +1763,13 @@ export default function Dashboard() {
                   : `${wordPopup.caption?.id}-${wordPopup.wordIndex}`;
                 return c?.wordStyles?.[key] || {};
               })()}
-              onEdit={() => setWordPopup(null)}
+              onEdit={() => {
+                const targetId = wordPopup.type === 'element'
+                  ? wordPopup.elementId
+                  : wordPopup.caption?.id;
+                setActiveTab('captions');
+                if (targetId) setSelectedCaptionId(targetId);
+              }}
               onClose={() => setWordPopup(null)}
               onResetPosition={() => {
                 if (addToHistory) addToHistory();
@@ -1708,19 +1780,18 @@ export default function Dashboard() {
                   const id = wordPopup.type === 'element' ? wordPopup.elementId : wordPopup.caption?.id;
                   if (c.id !== id) return c;
                   const ws = c.wordStyles || {};
+                  // Delete the position keys instead of writing zeros — a stored
+                  // abs 0,0 reads as "dragged to the top-left corner" in export.
+                  const {
+                    x: _x, y: _y, x_pct: _xp, y_pct: _yp,
+                    abs_x_pct: _ax, abs_y_pct: _ay,
+                    ...restStyle
+                  } = ws[key] || {};
                   return {
                     ...c,
                     wordStyles: {
                       ...ws,
-                      [key]: {
-                        ...(ws[key] || {}),
-                        x: 0,
-                        y: 0,
-                        x_pct: 0,
-                        y_pct: 0,
-                        abs_x_pct: 0,
-                        abs_y_pct: 0,
-                      }
+                      [key]: restStyle
                     }
                   };
                 }));
