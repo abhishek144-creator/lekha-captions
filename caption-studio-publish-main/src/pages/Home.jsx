@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Moon, Sun } from 'lucide-react'
 import { createPageUrl } from '@/utils'
+// Landing-only CSS, imported from the lazy route so it stays out of the entry bundle.
+import '@/styles/landing.css'
 import HeroCinematic from '@/components/landing2/HeroCinematic'
 import FeatureIndex from '@/components/landing2/FeatureIndex'
 import UseCaseReel from '@/components/landing2/UseCaseReel'

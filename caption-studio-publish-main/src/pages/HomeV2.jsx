@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { createPageUrl } from '@/utils'
+// Landing-only CSS, imported from the lazy route so it stays out of the entry bundle.
+import '@/styles/landing.css'
 import { motion, useReducedMotion, useScroll, useSpring } from 'framer-motion'
 import HeroCinematic from '@/components/landing2/HeroCinematic'
 import FeatureIndex from '@/components/landing2/FeatureIndex'
