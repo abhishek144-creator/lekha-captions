@@ -99,6 +99,13 @@ except ImportError:
     RQRetry = None
     RQ_AVAILABLE = False
 
+try:
+    import sentry_sdk
+    SENTRY_AVAILABLE = True
+except ImportError:
+    sentry_sdk = None
+    SENTRY_AVAILABLE = False
+
 @asynccontextmanager
 async def app_lifespan(_app: FastAPI):
     await startup_event()
@@ -286,6 +293,27 @@ APP_ENV = _ENV_ALIASES[_ENV_RAW]
 _IS_PRODUCTION = APP_ENV == "production"
 _IS_DEVELOPMENT = APP_ENV == "development"
 _IS_TEST = APP_ENV == "test"
+
+# --- Error tracking (optional) ------------------------------------------------
+# Structured logs and dead-letter records already capture failures, but they are
+# per-instance and easy to miss in aggregate. Sentry collects them in one place.
+# Entirely inert unless SENTRY_DSN is set, so local and test runs are unchanged.
+# send_default_pii stays False: this service handles user media and payments.
+SENTRY_DSN = os.environ.get("SENTRY_DSN", "").strip()
+if SENTRY_DSN and SENTRY_AVAILABLE and not _IS_TEST:
+    try:
+        sentry_sdk.init(
+            dsn=SENTRY_DSN,
+            environment=APP_ENV,
+            release=os.environ.get("APP_RELEASE") or None,
+            traces_sample_rate=float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0.05")),
+            send_default_pii=False,
+        )
+        _json_log("info", "sentry_initialized", environment=APP_ENV)
+    except Exception as e:
+        _json_log("warning", "sentry_init_failed", error=str(e))
+elif SENTRY_DSN and not SENTRY_AVAILABLE:
+    _json_log("warning", "sentry_dsn_set_but_sdk_missing")
 RAZORPAY_KEY_ID = os.environ.get("RAZORPAY_KEY_ID", "")
 RAZORPAY_KEY_SECRET = os.environ.get("RAZORPAY_KEY_SECRET", "")
 RAZORPAY_WEBHOOK_SECRET = os.environ.get("RAZORPAY_WEBHOOK_SECRET", "")
@@ -349,25 +377,41 @@ MAX_CONCURRENT_RENDERS = max(1, min(int(os.environ.get("MAX_CONCURRENT_RENDERS",
 render_semaphore = asyncio.Semaphore(MAX_CONCURRENT_RENDERS)
 MAX_CONCURRENT_EXPORTS_PER_USER = 1
 EXPORT_SLOT_TTL_SECONDS = max(30 * 60, int(os.environ.get("EXPORT_SLOT_TTL_SECONDS", "7200")))
+PROCESS_SLOT_TTL_SECONDS = max(5 * 60, int(os.environ.get("PROCESS_SLOT_TTL_SECONDS", "1800")))
 EXPORT_FAILURE_LIMIT = 5
 EXPORT_FAILURE_WINDOW = 15 * 60
-# Export retry and daily quota throttles are disabled by default. Credits and
-# concurrent-export protection remain separate controls.
+# Daily export quotas are relaxed locally so template/export debugging is not
+# blocked by plan throttles, but production enforces them: credits alone let a
+# large balance be spent in a single burst of renders.
 DISABLE_EXPORT_DAILY_LIMIT = os.environ.get(
     "DISABLE_EXPORT_DAILY_LIMIT",
-    "1",
+    "0" if _IS_PRODUCTION else "1",
 ) == "1"
-# TESTING PHASE ONLY: local/dev exports should not be blocked by credits.
-# Restore before deploy by setting DISABLE_EXPORT_CREDIT_LIMIT=0 or removing this default.
+# Local/dev exports are not blocked by credits so testing does not burn balance.
+# Production defaults to enforcing credits and refuses to start if the override
+# is set explicitly — an unnoticed "1" here makes every export free.
 DISABLE_EXPORT_CREDIT_LIMIT = os.environ.get(
     "DISABLE_EXPORT_CREDIT_LIMIT",
     "0" if _IS_PRODUCTION else "1",
 ) == "1"
+if _IS_PRODUCTION and DISABLE_EXPORT_CREDIT_LIMIT:
+    raise RuntimeError(
+        "DISABLE_EXPORT_CREDIT_LIMIT must not be enabled in production "
+        "(ENV=production): it bypasses credit deduction so every export is "
+        "free. Unset it or set it to 0."
+    )
+
+# Platform-wide daily ceiling on billable AI provider calls. Per-user quotas cap
+# what any one account can spend; this caps what *everyone together* can spend in
+# a day, so a launch-day traffic spike (or a pile of new free accounts) cannot
+# run up an unbounded transcription bill overnight. 0 disables the ceiling.
+AI_SYSTEM_DAILY_LIMIT = max(0, int(os.environ.get("AI_SYSTEM_DAILY_LIMIT", "500")))
 
 # In-memory operational state (swap for Redis in multi-instance deployments)
 _export_jobs: Dict[str, Dict[str, Any]] = {}
 _export_idempotency: Dict[str, Dict[str, Any]] = {}
 _active_exports_by_user: Dict[str, str] = {}
+_active_processes_by_user: Dict[str, str] = {}
 _export_failures: Dict[str, list] = {}
 _upload_owners: Dict[str, str] = {}
 
@@ -427,6 +471,18 @@ CONTENT_SAFETY_BLOCKLIST = [
     for t in os.environ.get("CONTENT_SAFETY_BLOCKLIST", "child_abuse,terror_manual").split(",")
     if t.strip()
 ]
+# Malware scanning is skipped entirely when CLAMAV_SCAN_CMD is unset, which is
+# silent — a production deploy that never configured a scanner accepts unscanned
+# user uploads and looks healthy. Require it in production, with an explicit
+# opt-out for deployments that scan at another layer (same pattern as
+# ALLOW_INMEMORY_STATE), so the decision is recorded rather than defaulted.
+ALLOW_UNSCANNED_UPLOADS = os.environ.get("ALLOW_UNSCANNED_UPLOADS", "0").strip().lower() in ("1", "true", "yes", "on")
+if _IS_PRODUCTION and not os.environ.get("CLAMAV_SCAN_CMD", "").strip() and not ALLOW_UNSCANNED_UPLOADS:
+    raise RuntimeError(
+        "CLAMAV_SCAN_CMD must be set in production (ENV=production): without it "
+        "user uploads are never scanned for malware. Configure a scanner command, "
+        "or set ALLOW_UNSCANNED_UPLOADS=1 to accept unscanned uploads deliberately."
+    )
 
 if REDIS_AVAILABLE and REDIS_URL and not _IS_TEST:
     try:
@@ -675,6 +731,10 @@ app.add_middleware(
 _upload_rate: Dict[str, list] = {}
 UPLOAD_RATE_LIMIT = 10    # max uploads per hour per IP
 UPLOAD_RATE_WINDOW = 3600  # 1 hour
+
+_signup_rate: Dict[str, list] = {}
+SIGNUP_RATE_LIMIT = 10    # max new account bootstraps per hour per IP
+SIGNUP_USER_RATE_LIMIT = 3  # protects retries/automation targeting one identity
 
 _payment_rate: Dict[str, list] = {}
 PAYMENT_RATE_LIMIT = 10   # max payment attempts per hour per IP
@@ -974,6 +1034,92 @@ def _validate_feature_flag_safety(flag_name: str):
         raise HTTPException(status_code=403, detail="Feature flags are disabled in this environment")
     if not re.match(r"^[a-zA-Z0-9_.-]{2,64}$", flag_name or ""):
         raise HTTPException(status_code=400, detail="Invalid flag name")
+
+
+# --- Service controls (operator kill switches) -------------------------------
+# Durable switches that pause parts of the product without a redeploy. Firestore
+# is the source of truth so an operator can also flip them straight from the
+# Firebase console when the API itself is unhealthy.
+SERVICE_CONTROL_KEYS = (
+    "pause_signups",
+    "pause_payments",
+    "pause_uploads",
+    "pause_transcription",
+    "pause_exports",
+    "maintenance_mode",
+)
+SERVICE_CONTROL_COLLECTION = "ops"
+SERVICE_CONTROL_DOCUMENT = "service_controls"
+SERVICE_CONTROL_CACHE_SECONDS = max(
+    0.0, float(os.environ.get("SERVICE_CONTROL_CACHE_SECONDS", "10"))
+)
+SERVICE_CONTROL_NOTICE_MAX = 280
+_service_control_cache: Dict[str, Any] = {"ts": 0.0, "value": {}}
+
+_SERVICE_CONTROL_MESSAGES = {
+    "maintenance_mode": "Lekha Captions is under maintenance. Please try again shortly.",
+    "pause_signups": "New sign-ups are paused right now. Please try again shortly.",
+    "pause_payments": "Payments are paused right now. You have not been charged — please try again shortly.",
+    "pause_uploads": "Uploads are paused right now. Please try again shortly.",
+    "pause_transcription": "Transcription is paused right now. Your upload is safe — please try again shortly.",
+    "pause_exports": "Exports are paused right now. Your captions are saved — please try again shortly.",
+}
+
+
+def _default_service_controls() -> Dict[str, Any]:
+    controls: Dict[str, Any] = {key: False for key in SERVICE_CONTROL_KEYS}
+    controls["notice"] = ""
+    return controls
+
+
+def _read_service_controls(force: bool = False) -> Dict[str, Any]:
+    now_ts = time.time()
+    cached = _service_control_cache.get("value") or {}
+    if (
+        not force
+        and cached
+        and (now_ts - float(_service_control_cache.get("ts") or 0.0)) < SERVICE_CONTROL_CACHE_SECONDS
+    ):
+        return dict(cached)
+
+    controls = _default_service_controls()
+    db = get_db()
+    if db:
+        try:
+            snap = (
+                db.collection(SERVICE_CONTROL_COLLECTION)
+                .document(SERVICE_CONTROL_DOCUMENT)
+                .get()
+            )
+            if snap.exists:
+                stored = snap.to_dict() or {}
+                for key in SERVICE_CONTROL_KEYS:
+                    controls[key] = bool(stored.get(key, False))
+                controls["notice"] = str(stored.get("notice") or "")[:SERVICE_CONTROL_NOTICE_MAX]
+        except Exception as e:
+            # Fail open: a controls read failure must not take the product down.
+            # The last known state is preferred over an empty default.
+            _json_log("warning", "service_controls_read_failed", error=str(e))
+            if cached:
+                return dict(cached)
+            return controls
+
+    _service_control_cache["ts"] = now_ts
+    _service_control_cache["value"] = dict(controls)
+    return controls
+
+
+def _assert_service_available(control: str) -> None:
+    """Reject the request when an operator has paused this part of the product."""
+    controls = _read_service_controls()
+    for key in ("maintenance_mode", control):
+        if not controls.get(key):
+            continue
+        notice = controls.get("notice") or _SERVICE_CONTROL_MESSAGES.get(
+            key, "This feature is temporarily paused."
+        )
+        _track_event("service_control_blocked", {"control": key})
+        raise HTTPException(status_code=503, detail=notice)
 
 
 def _maybe_alert_failure_ratio(window_key: str, success_count: int, failure_count: int):
@@ -1399,6 +1545,47 @@ def _release_export_slot(uid: str, job_id: str):
     if _active_exports_by_user.get(uid) == job_id:
         _active_exports_by_user.pop(uid, None)
 
+def _acquire_process_slot(uid: str, request_id: str) -> bool:
+    """Allow one paid transcription call per user across all API instances."""
+    if not uid or not request_id:
+        return False
+    if _redis_client is not None:
+        try:
+            return bool(
+                _redis_client.set(
+                    f"procactive:{uid}",
+                    request_id,
+                    nx=True,
+                    ex=PROCESS_SLOT_TTL_SECONDS,
+                )
+            )
+        except Exception as e:
+            _json_log("error", "process_slot_acquire_failed", uid=uid, request_id=request_id, error=str(e))
+            if _IS_PRODUCTION:
+                return False
+    if _active_processes_by_user.get(uid):
+        return False
+    _active_processes_by_user[uid] = request_id
+    return True
+
+def _release_process_slot(uid: str, request_id: str):
+    if not uid or not request_id:
+        return
+    if _redis_client is not None:
+        try:
+            _redis_client.eval(
+                "if redis.call('get', KEYS[1]) == ARGV[1] then "
+                "return redis.call('del', KEYS[1]) else return 0 end",
+                1,
+                f"procactive:{uid}",
+                request_id,
+            )
+            return
+        except Exception:
+            pass
+    if _active_processes_by_user.get(uid) == request_id:
+        _active_processes_by_user.pop(uid, None)
+
 def _apply_rate_headers(response: Optional[Response], limit: int, remaining: int, retry_after: int = 0):
     if response is None:
         return
@@ -1780,6 +1967,49 @@ AI_DAILY_LIMITS = {
 }
 
 
+def _reserve_system_ai_quota(db, operation: str) -> None:
+    """Reserve one call against the platform-wide daily AI ceiling.
+
+    Separate document from the per-user counter so the two can't contend, and
+    fail-open on read/write errors: a counter outage must not take transcription
+    down, since per-user quotas and rate limits still bound the damage.
+    """
+    if AI_SYSTEM_DAILY_LIMIT <= 0:
+        return
+    today = date.today().isoformat()
+    usage_ref = db.collection(SERVICE_CONTROL_COLLECTION).document(f"ai_usage_{today}")
+
+    @firestore.transactional
+    def reserve_system(txn):
+        snap = usage_ref.get(transaction=txn)
+        data = snap.to_dict() if snap.exists else {}
+        total = int((data or {}).get("total", 0) or 0)
+        if total >= AI_SYSTEM_DAILY_LIMIT:
+            raise HTTPException(
+                status_code=503,
+                detail="Lekha Captions has hit today's processing capacity. Please try again tomorrow.",
+            )
+        by_op = dict((data or {}).get("by_operation") or {})
+        by_op[operation] = int(by_op.get(operation, 0) or 0) + 1
+        txn.set(usage_ref, {
+            "date": today,
+            "total": total + 1,
+            "by_operation": by_op,
+            "limit": AI_SYSTEM_DAILY_LIMIT,
+            "updated_at": _utcnow().isoformat() + "Z",
+            "expire_at": _retention_deadline(30),
+        }, merge=True)
+
+    try:
+        reserve_system(db.transaction())
+    except HTTPException:
+        _json_log("error", "ai_system_daily_limit_reached", operation=operation, limit=AI_SYSTEM_DAILY_LIMIT)
+        _track_event("ai_system_daily_limit_reached", {"operation": operation})
+        raise
+    except Exception as e:
+        _json_log("warning", "ai_system_quota_reserve_failed", operation=operation, error=str(e))
+
+
 def _reserve_ai_quota(uid: str, operation: str) -> None:
     """Atomically reserve one daily paid-provider call before invoking it."""
     if operation not in {"process", "translate", "detect_language"}:
@@ -1821,6 +2051,130 @@ def _reserve_ai_quota(uid: str, operation: str) -> None:
 
     reserve(transaction)
 
+    # Platform ceiling is charged only after the per-user reservation succeeds,
+    # so a user who is already over their own quota never consumes shared
+    # capacity. If the platform is full, hand the user's reservation back.
+    try:
+        _reserve_system_ai_quota(db, operation)
+    except HTTPException:
+        _release_ai_quota(uid, operation, release_system=False)
+        raise
+
+
+def _read_system_ai_usage(db) -> Dict[str, Any]:
+    """Today's platform-wide AI spend, for the operator dashboard."""
+    today = date.today().isoformat()
+    snapshot = {
+        "date": today,
+        "total": 0,
+        "by_operation": {},
+        "limit": AI_SYSTEM_DAILY_LIMIT,
+        "remaining": AI_SYSTEM_DAILY_LIMIT,
+    }
+    if not db or AI_SYSTEM_DAILY_LIMIT <= 0:
+        return snapshot
+    try:
+        snap = (
+            db.collection(SERVICE_CONTROL_COLLECTION)
+            .document(f"ai_usage_{today}")
+            .get()
+        )
+        if snap.exists:
+            data = snap.to_dict() or {}
+            total = int(data.get("total", 0) or 0)
+            snapshot["total"] = total
+            snapshot["by_operation"] = dict(data.get("by_operation") or {})
+            snapshot["remaining"] = max(0, AI_SYSTEM_DAILY_LIMIT - total)
+    except Exception as e:
+        _json_log("warning", "ai_system_usage_read_failed", error=str(e))
+    return snapshot
+
+
+def _release_system_ai_quota(db, operation: str) -> None:
+    """Return one call to the platform-wide daily ceiling. Best-effort."""
+    if AI_SYSTEM_DAILY_LIMIT <= 0:
+        return
+    today = date.today().isoformat()
+    usage_ref = db.collection(SERVICE_CONTROL_COLLECTION).document(f"ai_usage_{today}")
+
+    @firestore.transactional
+    def release_system(txn):
+        snap = usage_ref.get(transaction=txn)
+        if not snap.exists:
+            return
+        data = snap.to_dict() or {}
+        # A UTC date rollover means this document is no longer today's counter.
+        if data.get("date") != today:
+            return
+        total = int(data.get("total", 0) or 0)
+        if total <= 0:
+            return
+        by_op = dict(data.get("by_operation") or {})
+        by_op[operation] = max(0, int(by_op.get(operation, 0) or 0) - 1)
+        txn.set(usage_ref, {
+            "total": total - 1,
+            "by_operation": by_op,
+            "updated_at": _utcnow().isoformat() + "Z",
+        }, merge=True)
+
+    try:
+        release_system(db.transaction())
+    except Exception as e:
+        _json_log("warning", "ai_system_quota_release_failed", operation=operation, error=str(e))
+
+
+def _release_ai_quota(uid: str, operation: str, release_system: bool = True) -> None:
+    """Give back a reserved daily call when the paid provider never delivered.
+
+    Quota is reserved *before* the provider call so a burst of concurrent
+    requests can't overshoot the plan limit. When the call then fails for a
+    reason that is ours (provider error, circuit trip, extraction failure), the
+    reservation must be returned — otherwise a user burns their whole daily
+    allowance on our outage. User-caused rejections (no speech in the audio,
+    unsupported input) are *not* released: the provider still ran and billed us.
+
+    Best-effort by design: a failed release must never mask the original error,
+    and the counter self-heals at the next UTC date rollover.
+    """
+    if operation not in {"process", "translate", "detect_language"}:
+        return
+    if _IS_TEST or not uid:
+        return
+    db = get_db()
+    if not db:
+        return
+
+    user_ref = db.collection("users").document(uid)
+    today = date.today().isoformat()
+
+    @firestore.transactional
+    def release(txn):
+        snap = user_ref.get(transaction=txn)
+        if not snap.exists:
+            return
+        data = snap.to_dict() or {}
+        # A date rollover between reserve and release already zeroed the counter.
+        if data.get("ai_usage_date") != today:
+            return
+        usage = dict(data.get("ai_daily_usage") or {})
+        used = int(usage.get(operation, 0) or 0)
+        if used <= 0:
+            return
+        usage[operation] = used - 1
+        txn.set(user_ref, {
+            "ai_daily_usage": usage,
+            "updated_at": _utcnow().isoformat() + "Z",
+        }, merge=True)
+
+    try:
+        release(db.transaction())
+        _json_log("info", "ai_quota_released", uid=uid, operation=operation)
+    except Exception as e:
+        _json_log("warning", "ai_quota_release_failed", uid=uid, operation=operation, error=str(e))
+
+    if release_system:
+        _release_system_ai_quota(db, operation)
+
 
 def _resolve_export_preset(tier: str, requested_quality: str, requested_fps: int) -> Dict[str, Any]:
     normalized = "pro" if DISABLE_EXPORT_CREDIT_LIMIT else _normalize_tier_name(tier)
@@ -1853,7 +2207,7 @@ CACHE_DIR = os.path.join(MEDIA_SCRATCH_ROOT, "cache")
 TRANSCRIPTION_CACHE_DIR = os.path.join(CACHE_DIR, "transcriptions")
 RENDER_CACHE_DIR = os.path.join(CACHE_DIR, "renders")
 DEAD_LETTER_DIR = os.path.join(CACHE_DIR, "dead_letter")
-EXPORT_RENDERER_VERSION = "2026-07-11-lc-export-caption-fit-parity-v34"
+EXPORT_RENDERER_VERSION = "2026-07-30-cpt-instant-reveal-fashion-editorial-v43"
 
 for d in [UPLOAD_DIR, EXPORT_DIR, FONTS_DIR, CACHE_DIR, TRANSCRIPTION_CACHE_DIR, RENDER_CACHE_DIR, DEAD_LETTER_DIR]:
     os.makedirs(d, exist_ok=True)
@@ -1869,6 +2223,7 @@ class CaptionItem(BaseModel):
     start_time: float
     end_time: float
     animation: str = Field(default="none", max_length=50)
+    animation_speed: float = Field(default=1, ge=0.1, le=4)
     is_text_element: bool = False
     custom_style: Optional[Dict[str, Any]] = Field(default=None, max_length=200)
     template_id: str = Field(default="", max_length=100)
@@ -1944,6 +2299,12 @@ class ExportRequest(BaseModel):
             'shadow_offset_x':         (-50, 50),
             'shadow_offset_y':         (-50, 50),
             'letter_spacing':          (-10, 20),
+            'word_spacing':            (0,   20),
+            'line_spacing':            (0.5, 4.0),
+            'text_opacity':            (0,   1),
+            'scale':                   (0.1, 5.0),
+            'box_width':               (0,   2_000),
+            'stroke_width':            (0,   20),
             'line_height':             (0.5, 4.0),
             'outline_width':           (0,   20),
         }
@@ -1983,6 +2344,17 @@ class ReconcilePaymentsRequest(BaseModel):
 class AdminRecoveryRequest(BaseModel):
     id_token: str = Field(default="", max_length=8_192)
     limit: int = Field(default=50, ge=1, le=1_000)
+
+class ServiceControlsRequest(BaseModel):
+    """Partial update: omitted switches keep their current value."""
+    id_token: str = Field(default="", max_length=8_192)
+    maintenance_mode: Optional[bool] = None
+    pause_signups: Optional[bool] = None
+    pause_payments: Optional[bool] = None
+    pause_uploads: Optional[bool] = None
+    pause_transcription: Optional[bool] = None
+    pause_exports: Optional[bool] = None
+    notice: Optional[str] = Field(default=None, max_length=SERVICE_CONTROL_NOTICE_MAX)
 
 class TenantBackfillRequest(BaseModel):
     id_token: str = Field(default="", max_length=8_192)
@@ -2088,7 +2460,7 @@ def _write_last_export_request_debug(
         first_caption = next((c for c in captions if c and not c.get("is_text_element")), {})
         should_use_dom = False
         try:
-            should_use_dom = bool(processor._should_use_dom_template_renderer(style))
+            should_use_dom = bool(processor._should_use_dom_template_renderer(style, captions))
         except Exception:
             should_use_dom = False
         debug_payload = {
@@ -2123,6 +2495,39 @@ def _write_last_export_request_debug(
                     "id": caption.get("id"),
                     "imp_word_index": caption.get("imp_word_index", -1),
                     "emphasis_color": caption.get("emphasis_color", ""),
+                }
+                for caption in captions
+                if caption and not caption.get("is_text_element")
+            ],
+            "caption_word_style_summary": [
+                {
+                    "id": caption.get("id"),
+                    "word_style_count": len(caption.get("word_styles") or {}),
+                    "positioned_words": [
+                        {
+                            "key": key,
+                            "x": word_style.get("x"),
+                            "y": word_style.get("y"),
+                            "x_pct": word_style.get("x_pct"),
+                            "y_pct": word_style.get("y_pct"),
+                            "abs_x_pct": word_style.get("abs_x_pct"),
+                            "abs_y_pct": word_style.get("abs_y_pct"),
+                            "cpt_canvas_x_pct": word_style.get("cptCanvasXPercent"),
+                            "cpt_canvas_y_pct": word_style.get("cptCanvasYPercent"),
+                        }
+                        for key, word_style in (caption.get("word_styles") or {}).items()
+                        if isinstance(word_style, dict)
+                        and (
+                            abs(float(word_style.get("x") or 0)) > 0.01
+                            or abs(float(word_style.get("y") or 0)) > 0.01
+                            or abs(float(word_style.get("x_pct") or 0)) > 0.01
+                            or abs(float(word_style.get("y_pct") or 0)) > 0.01
+                            or word_style.get("abs_x_pct") is not None
+                            or word_style.get("abs_y_pct") is not None
+                            or word_style.get("cptCanvasXPercent") is not None
+                            or word_style.get("cptCanvasYPercent") is not None
+                        )
+                    ][:100],
                 }
                 for caption in captions
                 if caption and not caption.get("is_text_element")
@@ -2476,6 +2881,7 @@ def get_google_fonts():
 async def upload_video(file: UploadFile = File(...), request: Request = None, response: Response = None):
     try:
         rid = _request_id(request)
+        _assert_service_available("pause_uploads")
         token = _extract_bearer_token(request) if request else ""
         decoded_token = _authenticate_media_request(token)
         uid = (decoded_token.get("uid") or "").strip() or "unknown-user"
@@ -2595,6 +3001,7 @@ async def upload_video(file: UploadFile = File(...), request: Request = None, re
 
 @app.post("/api/process")
 async def process_video(req: ProcessRequest, request: Request, response: Response):
+    _assert_service_available("pause_transcription")
     # Auth — same dev-mode bypass as /api/export
     decoded_token = _authenticate_media_request(req.id_token, req.org_id)
     uid = (decoded_token.get("uid") or "").strip() or "unknown-user"
@@ -2659,46 +3066,68 @@ async def process_video(req: ProcessRequest, request: Request, response: Respons
         except Exception:
             pass
 
-    await asyncio.to_thread(_reserve_ai_quota, uid, "process")
-
-    def _generate_captions_in_worker_thread():
-        return asyncio.run(processor.generate_captions_only(
-            input_path,
-            target_language=req.language,
-            min_words=req.min_words,
-            max_words=req.max_words,
-        ))
-
-    result = await asyncio.to_thread(_generate_captions_in_worker_thread)
-
-    if result.get("success") and not (result.get("captions") or []):
-        result = {
-            "success": False,
-            "error": "No speech with usable word timestamps was detected.",
-            "error_code": "NO_SPEECH_DETECTED",
-        }
-
-    if result.get("success"):
-        _track_event("process_success", {"language": req.language})
-        if cache_path:
-            try:
-                with open(cache_path, "w", encoding="utf-8") as f:
-                    json.dump(result, f)
-            except Exception as e:
-                print(f"[Cache] Failed to write transcription cache: {e}")
-    else:
-        _track_event("process_failed", {"language": req.language, "error": result.get("error", "unknown")})
-        status_code = 422 if result.get("error_code") == "NO_SPEECH_DETECTED" else 502
+    process_request_id = uuid.uuid4().hex
+    if not _acquire_process_slot(uid, process_request_id):
         raise HTTPException(
-            status_code=status_code,
-            detail=result.get("error", "Transcription service failed"),
+            status_code=409,
+            detail="A transcription is already running for this account. Wait for it to finish before retrying.",
         )
 
-    return result
+    try:
+        await asyncio.to_thread(_reserve_ai_quota, uid, "process")
+
+        def _generate_captions_in_worker_thread():
+            return asyncio.run(processor.generate_captions_only(
+                input_path,
+                target_language=req.language,
+                min_words=req.min_words,
+                max_words=req.max_words,
+            ))
+
+        try:
+            result = await asyncio.to_thread(_generate_captions_in_worker_thread)
+        except Exception:
+            # The provider never returned a usable result — hand the daily call back.
+            await asyncio.to_thread(_release_ai_quota, uid, "process")
+            raise
+
+        if result.get("success") and not (result.get("captions") or []):
+            result = {
+                "success": False,
+                "error": "No speech with usable word timestamps was detected.",
+                "error_code": "NO_SPEECH_DETECTED",
+            }
+
+        if result.get("success"):
+            _track_event("process_success", {"language": req.language})
+            if cache_path:
+                try:
+                    with open(cache_path, "w", encoding="utf-8") as f:
+                        json.dump(result, f)
+                except Exception as e:
+                    print(f"[Cache] Failed to write transcription cache: {e}")
+        else:
+            _track_event("process_failed", {"language": req.language, "error": result.get("error", "unknown")})
+            is_no_speech = result.get("error_code") == "NO_SPEECH_DETECTED"
+            status_code = 422 if is_no_speech else 502
+            # NO_SPEECH is a real transcription that found nothing — the provider
+            # ran and billed us, so that call stays spent. Anything else is our
+            # failure and the reservation is returned.
+            if not is_no_speech:
+                await asyncio.to_thread(_release_ai_quota, uid, "process")
+            raise HTTPException(
+                status_code=status_code,
+                detail=result.get("error", "Transcription service failed"),
+            )
+
+        return result
+    finally:
+        _release_process_slot(uid, process_request_id)
 
 @app.post("/api/export")
 async def export_video(req: ExportRequest, request: Request, response: Response):
     rid = _request_id(request)
+    _assert_service_available("pause_exports")
     _log(rid, f"Export requested file_id={req.file_id} quality={req.quality}")
     _track_event("export_requested", {"quality": req.quality, "fps": req.fps})
 
@@ -2880,6 +3309,7 @@ def export_result(job_id: str, request: Request):
 
 @app.post("/api/export-replay/{job_id}")
 def export_replay(job_id: str, request: Request):
+    _assert_service_available("pause_exports")
     if _export_queue is None:
         raise HTTPException(status_code=503, detail="Durable queue is not configured")
     db = get_db()
@@ -3126,6 +3556,61 @@ async def feature_flags(request: Request):
             "enable_durable_queue": DURABLE_QUEUE_ENABLED,
         },
     }
+
+@app.get("/api/service-status")
+def service_status():
+    """Unauthenticated so the app can show an accurate banner while paused."""
+    controls = _read_service_controls()
+    return {
+        "success": True,
+        "controls": {key: bool(controls.get(key)) for key in SERVICE_CONTROL_KEYS},
+        "notice": controls.get("notice") or "",
+    }
+
+@app.post("/api/admin/service-controls")
+def admin_service_controls(req: ServiceControlsRequest, request: Request):
+    decoded = verify_token(req.id_token) if req.id_token else None
+    if not decoded and request is not None:
+        header_token = request.headers.get("authorization", "").replace("Bearer ", "").strip()
+        decoded = verify_token(header_token) if header_token else None
+    if not _decoded_token_is_admin(decoded):
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    updates: Dict[str, Any] = {}
+    for key in SERVICE_CONTROL_KEYS:
+        value = getattr(req, key, None)
+        if value is not None:
+            updates[key] = bool(value)
+    if req.notice is not None:
+        updates["notice"] = str(req.notice)[:SERVICE_CONTROL_NOTICE_MAX]
+
+    if not updates:
+        controls = _read_service_controls(force=True)
+        return {"success": True, "changed": False, "controls": controls}
+
+    db = get_db()
+    if not db:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    updates["updated_at"] = _utcnow().isoformat() + "Z"
+    updates["updated_by"] = str((decoded or {}).get("uid") or "")[:128]
+    try:
+        db.collection(SERVICE_CONTROL_COLLECTION).document(SERVICE_CONTROL_DOCUMENT).set(
+            updates, merge=True
+        )
+    except Exception as e:
+        _json_log("error", "service_controls_write_failed", error=str(e))
+        raise HTTPException(status_code=503, detail="Service controls could not be saved") from e
+
+    controls = _read_service_controls(force=True)
+    _audit_action(
+        "service_controls_updated",
+        str((decoded or {}).get("uid") or ""),
+        {key: updates[key] for key in updates if key in SERVICE_CONTROL_KEYS},
+    )
+    _json_log("warning", "service_controls_updated", **{
+        key: bool(controls.get(key)) for key in SERVICE_CONTROL_KEYS
+    })
+    return {"success": True, "changed": True, "controls": controls}
 
 def _resolve_plan_from_amount_currency(amount_minor: int, currency: str) -> Optional[str]:
     c = (currency or "INR").upper()
@@ -3436,6 +3921,9 @@ def create_order(req: CreateOrderRequest, request: Request, response: Response):
         raise HTTPException(status_code=401, detail="Invalid Authentication Token")
     uid = decoded_token.get("uid", "")
     _assert_tenant_access(uid, decoded_token, req.org_id)
+    # Check the durable operator switch before contacting Razorpay. This makes
+    # emergency payment shutdown immediate and guarantees no order is created.
+    _assert_service_available("pause_payments")
     client_ip = request.client.host if request.client else "unknown"
     for rate_key in (f"payment:user:{uid}", f"payment:ip:{client_ip}"):
         allowed, retry_after, remaining = _check_rate(_payment_rate, rate_key, PAYMENT_RATE_LIMIT)
@@ -3782,6 +4270,7 @@ def admin_recovery_summary(req: AdminRecoveryRequest):
         "dead_letter_recent": dead_letter_rows,
         "payment_reconcile_recent": reconcile_runs,
         "slo": _build_slo_snapshot(),
+        "ai_system_usage_today": _read_system_ai_usage(db),
     }
 
 @app.post("/api/admin/tenant-backfill")
@@ -4010,6 +4499,7 @@ def translate_captions(req: TranslateRequest, request: Request, response: Respon
         breaker.on_failure()
         _track_event("translate_failed", {"target_language": req.target_language, "error": str(e)})
         _json_log("error", "translation_provider_failed", uid=decoded_token.get("uid", ""), error=str(e))
+        _release_ai_quota(decoded_token.get("uid", ""), "translate")
         raise HTTPException(status_code=502, detail="Translation service failed. Please retry.") from e
 
 class DetectLanguageRequest(BaseModel):
@@ -4074,6 +4564,7 @@ def detect_language(req: DetectLanguageRequest, request: Request, response: Resp
         breaker.on_failure()
         _track_event("detect_language_failed", {"error": str(e)})
         _json_log("error", "language_detection_provider_failed", uid=uid, error=str(e))
+        _release_ai_quota(uid, "detect_language")
         raise HTTPException(status_code=502, detail="Language detection failed. Please retry.") from e
     finally:
         try:
@@ -4182,6 +4673,23 @@ def account_bootstrap(req: AccountDataRequest, request: Request):
         raise HTTPException(status_code=503, detail="Database unavailable")
 
     user_ref = db.collection("users").document(uid)
+    # Existing accounts keep working while sign-ups are paused; only the first
+    # bootstrap of a brand-new account is blocked.
+    if not user_ref.get().exists:
+        _assert_service_available("pause_signups")
+        client_ip = request.client.host if request.client else "unknown"
+        for rate_key, rate_limit in (
+            (f"signup:ip:{client_ip}", SIGNUP_RATE_LIMIT),
+            (f"signup:user:{uid}", SIGNUP_USER_RATE_LIMIT),
+        ):
+            allowed, _retry_after, _remaining = _check_rate(
+                _signup_rate, rate_key, rate_limit
+            )
+            if not allowed:
+                raise HTTPException(
+                    status_code=429,
+                    detail="Too many account creation attempts. Please wait before trying again.",
+                )
     safe_profile = {
         "uid": uid,
         "email": str(decoded_token.get("email") or "")[:320],

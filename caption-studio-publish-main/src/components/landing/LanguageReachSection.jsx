@@ -1,8 +1,8 @@
 import { motion } from 'framer-motion'
 import { Globe2, Languages, Sparkles } from 'lucide-react'
 
-const regions = ['South Asia', 'Africa', 'Southeast Asia', 'Middle East', 'Europe', 'English-speaking markets']
-const languageExamples = ['हिन्दी', 'தமிழ்', 'తెలుగు', 'বাংলা', 'मराठी', 'العربية', 'English', 'Français']
+const regions = ['North & South America', 'Europe', 'Africa', 'Middle East', 'South Asia', 'East & Southeast Asia']
+const languageExamples = ['English', 'Español', 'Português', 'Français', 'العربية', '中文', 'हिन्दी', 'Kiswahili']
 
 export default function LanguageReachSection() {
   return (
@@ -16,7 +16,7 @@ export default function LanguageReachSection() {
               <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.24em] text-[#f5a623]"><Globe2 className="h-4 w-4" />Language reach</div>
               <p className="mt-5 text-[6rem] font-semibold leading-[0.8] tracking-[-0.09em] text-white sm:text-[8rem]">115<span className="text-[#f5a623]">+</span></p>
               <p className="mt-5 max-w-sm text-lg leading-7 text-white/55">Regional and global languages inside one creator workflow.</p>
-              <p className="mt-4 max-w-md text-sm leading-6 text-white/35">Powered by Sarvam AI for Indian languages and Whisper for global languages.</p>
+              <p className="mt-4 max-w-md text-sm leading-6 text-white/35">Best-in-class speech AI is selected automatically for each language family.</p>
             </motion.div>
 
             <motion.div initial={{ opacity: 0, x: 20 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} className="relative">

@@ -20,9 +20,11 @@ class ApiContractTests(unittest.TestCase):
         main._export_jobs.clear()
         main._export_idempotency.clear()
         main._active_exports_by_user.clear()
+        main._active_processes_by_user.clear()
         main._payment_idempotency.clear()
         main._upload_owners.clear()
         main._payment_rate.clear()
+        main._signup_rate.clear()
         main._upload_rate.clear()
         main._process_rate.clear()
         main._detect_language_rate.clear()
@@ -32,16 +34,93 @@ class ApiContractTests(unittest.TestCase):
         main._export_jobs.clear()
         main._export_idempotency.clear()
         main._active_exports_by_user.clear()
+        main._active_processes_by_user.clear()
         main._payment_idempotency.clear()
         main._upload_owners.clear()
         main._payment_rate.clear()
+        main._signup_rate.clear()
         main._upload_rate.clear()
         main._process_rate.clear()
         main._detect_language_rate.clear()
         main._translate_rate.clear()
 
-    def test_export_daily_limit_disabled_by_default(self):
+    def test_export_daily_limit_relaxed_outside_production(self):
+        # Local/dev runs stay unthrottled so export debugging is not blocked.
         self.assertTrue(main.DISABLE_EXPORT_DAILY_LIMIT)
+
+    def test_export_daily_limit_is_enforced_when_not_disabled(self):
+        user_data = {
+            "subscription_tier": "creator",
+            "subscription_expiry": (datetime.now(timezone.utc) + timedelta(days=5)).isoformat(),
+            "credits_remaining": 40,
+            "export_timestamps": [1_700_000_000.0 - 60] * 5,
+        }
+
+        with patch.object(main, "DISABLE_EXPORT_DAILY_LIMIT", False):
+            allowed, detail, _recent = main._evaluate_export_policy(user_data, 1_700_000_000.0)
+
+        self.assertFalse(allowed)
+        self.assertIn("Limit reached", detail)
+
+    def test_service_controls_default_to_open(self):
+        main._service_control_cache.update({"ts": 0.0, "value": {}})
+        with patch.object(main, "get_db", return_value=None):
+            controls = main._read_service_controls(force=True)
+
+        for key in main.SERVICE_CONTROL_KEYS:
+            self.assertFalse(controls[key], key)
+        main._assert_service_available("pause_exports")
+
+    def test_paused_control_blocks_with_503(self):
+        paused = main._default_service_controls()
+        paused["pause_exports"] = True
+
+        with patch.object(main, "_read_service_controls", return_value=paused):
+            with self.assertRaises(main.HTTPException) as ctx:
+                main._assert_service_available("pause_exports")
+            self.assertEqual(ctx.exception.status_code, 503)
+            # An unrelated switch stays open.
+            main._assert_service_available("pause_uploads")
+
+    def test_maintenance_mode_blocks_every_control(self):
+        paused = main._default_service_controls()
+        paused["maintenance_mode"] = True
+        paused["notice"] = "Back at 9pm IST."
+
+        with patch.object(main, "_read_service_controls", return_value=paused):
+            for key in ("pause_payments", "pause_uploads", "pause_transcription", "pause_exports", "pause_signups"):
+                with self.assertRaises(main.HTTPException) as ctx:
+                    main._assert_service_available(key)
+                self.assertEqual(ctx.exception.status_code, 503)
+                self.assertEqual(ctx.exception.detail, "Back at 9pm IST.")
+
+    def test_service_status_is_public_and_admin_write_requires_admin(self):
+        paused = main._default_service_controls()
+        paused["pause_signups"] = True
+
+        with patch.object(main, "_read_service_controls", return_value=paused):
+            res = self.client.get("/api/service-status")
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.json()["controls"]["pause_signups"])
+        self.assertFalse(res.json()["controls"]["pause_exports"])
+
+        with patch.object(main, "verify_token", return_value=None):
+            denied = self.client.post(
+                "/api/admin/service-controls",
+                json={"id_token": "not-an-admin", "pause_exports": True},
+            )
+        self.assertEqual(denied.status_code, 403)
+
+    def test_service_controls_read_failure_fails_open(self):
+        class ExplodingDb:
+            def collection(self, *_args, **_kwargs):
+                raise RuntimeError("firestore unavailable")
+
+        main._service_control_cache.update({"ts": 0.0, "value": {}})
+        with patch.object(main, "get_db", return_value=ExplodingDb()):
+            controls = main._read_service_controls(force=True)
+
+        self.assertFalse(controls["maintenance_mode"])
 
     def test_expired_paid_plan_is_blocked_even_with_remaining_credits(self):
         expired_at = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
@@ -195,6 +274,29 @@ class ApiContractTests(unittest.TestCase):
         self.assertIn("success", data)
         self.assertIn("captions", data)
 
+    def test_process_slot_allows_only_one_active_request_per_user(self):
+        self.assertTrue(main._acquire_process_slot("process-user", "request-1"))
+        self.assertFalse(main._acquire_process_slot("process-user", "request-2"))
+        main._release_process_slot("process-user", "request-2")
+        self.assertFalse(main._acquire_process_slot("process-user", "request-3"))
+        main._release_process_slot("process-user", "request-1")
+        self.assertTrue(main._acquire_process_slot("process-user", "request-3"))
+
+    @patch("main.verify_token", return_value={"uid": "process-user"})
+    @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
+    def test_process_rejects_duplicate_in_flight_request(self, _safe_find, _verify_token):
+        file_id = "123e4567-e89b-12d3-a456-426614174000"
+        main._upload_owners[file_id] = "process-user"
+        main._active_processes_by_user["process-user"] = "existing-request"
+
+        res = self.client.post(
+            "/api/process",
+            json={"file_id": file_id, "language": "english", "id_token": "token-123"},
+        )
+
+        self.assertEqual(res.status_code, 409)
+        self.assertIn("already running", res.json()["detail"])
+
     @patch("main.verify_token", return_value={"uid": "process-user"})
     @patch("main.processor.generate_captions_only", new_callable=AsyncMock)
     @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
@@ -207,6 +309,66 @@ class ApiContractTests(unittest.TestCase):
             json={"file_id": file_id, "language": "english", "id_token": "token-123"},
         )
         self.assertEqual(res.status_code, 422)
+
+    @patch("main.verify_token", return_value={"uid": "process-user"})
+    @patch("main._release_ai_quota")
+    @patch("main.processor.generate_captions_only", new_callable=AsyncMock)
+    @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
+    def test_process_returns_ai_quota_when_provider_fails(
+        self, _safe_find, mock_process, mock_release, _verify_token
+    ):
+        """A provider-side transcription failure must not burn the daily quota."""
+        mock_process.return_value = {"success": False, "error": "Sarvam request failed"}
+        file_id = "123e4567-e89b-12d3-a456-426614174000"
+        main._upload_owners[file_id] = "process-user"
+
+        res = self.client.post(
+            "/api/process",
+            json={"file_id": file_id, "language": "english", "id_token": "token-123"},
+        )
+
+        self.assertEqual(res.status_code, 502)
+        mock_release.assert_called_once_with("process-user", "process")
+
+    @patch("main.verify_token", return_value={"uid": "process-user"})
+    @patch("main._release_ai_quota")
+    @patch("main.processor.generate_captions_only", new_callable=AsyncMock)
+    @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
+    def test_process_raising_provider_returns_ai_quota(
+        self, _safe_find, mock_process, mock_release, _verify_token
+    ):
+        """An exception from the provider is still our fault — release the hold."""
+        mock_process.side_effect = RuntimeError("provider exploded")
+        file_id = "123e4567-e89b-12d3-a456-426614174000"
+        main._upload_owners[file_id] = "process-user"
+
+        with self.assertRaises(RuntimeError):
+            self.client.post(
+                "/api/process",
+                json={"file_id": file_id, "language": "english", "id_token": "token-123"},
+            )
+
+        mock_release.assert_called_once_with("process-user", "process")
+
+    @patch("main.verify_token", return_value={"uid": "process-user"})
+    @patch("main._release_ai_quota")
+    @patch("main.processor.generate_captions_only", new_callable=AsyncMock)
+    @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
+    def test_process_keeps_ai_quota_when_audio_has_no_speech(
+        self, _safe_find, mock_process, mock_release, _verify_token
+    ):
+        """NO_SPEECH is a real provider run that billed us — the call stays spent."""
+        mock_process.return_value = {"success": True, "captions": []}
+        file_id = "123e4567-e89b-12d3-a456-426614174000"
+        main._upload_owners[file_id] = "process-user"
+
+        res = self.client.post(
+            "/api/process",
+            json={"file_id": file_id, "language": "english", "id_token": "token-123"},
+        )
+
+        self.assertEqual(res.status_code, 422)
+        mock_release.assert_not_called()
 
     def test_request_models_reject_invalid_caption_and_word_range(self):
         export_res = self.client.post(
@@ -1007,6 +1169,58 @@ class ApiContractTests(unittest.TestCase):
     def test_create_order_requires_auth(self):
         res = self.client.post("/api/create-order", json={"plan_id": "starter", "id_token": "invalid-token", "currency": "INR"})
         self.assertEqual(res.status_code, 401)
+
+    @patch("main.verify_token", return_value={"uid": "payment-user"})
+    def test_paused_payments_never_contact_razorpay(self, _verify_token):
+        paused = main._default_service_controls()
+        paused["pause_payments"] = True
+        fake_client = SimpleNamespace()
+
+        with (
+            patch.object(main, "_read_service_controls", return_value=paused),
+            patch.object(main, "rzp_client", fake_client),
+        ):
+            response = self.client.post(
+                "/api/create-order",
+                json={
+                    "plan_id": "starter",
+                    "id_token": "token-123",
+                    "currency": "INR",
+                    "idempotency_key": "paused-payment",
+                },
+            )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("Payments are paused", response.json()["detail"])
+
+    @patch("main.verify_token", return_value={
+        "uid": "new-rate-limited-user",
+        "email": "new@example.com",
+    })
+    def test_account_bootstrap_rate_limits_new_accounts(self, _verify_token):
+        class MissingSnapshot:
+            exists = False
+
+        class FakeUserRef:
+            def get(self):
+                return MissingSnapshot()
+
+            def create(self, _data):
+                raise AssertionError("rate-limited account must not be created")
+
+        fake_db = SimpleNamespace(
+            collection=lambda _name: SimpleNamespace(document=lambda _uid: FakeUserRef()),
+        )
+        with (
+            patch.object(main, "get_db", return_value=fake_db),
+            patch.object(main, "_check_rate", return_value=(False, 60, 0)),
+        ):
+            response = self.client.post(
+                "/api/account-bootstrap",
+                json={"id_token": "token-123"},
+            )
+
+        self.assertEqual(response.status_code, 429)
 
     @patch("main.verify_token", return_value={"uid": "ordinary-user", "email": "user@example.com", "email_verified": True})
     def test_admin_endpoints_reject_non_admin_tokens(self, _verify_token):

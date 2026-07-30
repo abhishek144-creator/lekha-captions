@@ -12,21 +12,21 @@ const stats = [
 
 const rotatingLanguages = [
   'English',
-  'हिन्दी',
-  'தமிழ்',
-  'বাংলা',
-  'తెలుగు',
-  'العربية',
   'Español',
+  'Português',
   'Français',
-  'Kiswahili',
+  'Deutsch',
+  'العربية',
+  '中文',
   '日本語',
-  '한국어',
+  'हिन्दी',
+  'Kiswahili',
+  'Bahasa',
 ]
 
 const languageGroups = [
   [
-    'English', 'हिन्दी · Hindi', 'বাংলা · Bengali', 'ਪੰਜਾਬੀ · Punjabi', 'ગુજરાતી · Gujarati', 'मराठी · Marathi',
+    'हिन्दी · Hindi', 'বাংলা · Bengali', 'ਪੰਜਾਬੀ · Punjabi', 'ગુજરાતી · Gujarati', 'मराठी · Marathi',
     'தமிழ் · Tamil', 'తెలుగు · Telugu', 'ಕನ್ನಡ · Kannada', 'മലയാളം · Malayalam', 'ଓଡ଼ିଆ · Odia', 'অসমীয়া · Assamese',
     'नेपाली · Nepali', 'සිංහල · Sinhala', 'اردو · Urdu', 'کٲشُر · Kashmiri', 'मैथिली · Maithili', 'संस्कृतम् · Sanskrit',
     'कोंकणी · Konkani', 'डोगरी · Dogri', 'سنڌي · Sindhi', 'پښتو · Pashto', 'دری · Dari', 'فارسی · Persian',
@@ -40,7 +40,7 @@ const languageGroups = [
     'Polski · Polish', 'Čeština · Czech', 'Slovenčina · Slovak', 'Magyar · Hungarian', 'Română · Romanian', 'Български · Bulgarian',
   ],
   [
-    'Español · Spanish', 'Português · Portuguese', 'Français · French', 'Deutsch · German', 'Italiano · Italian', 'Nederlands · Dutch',
+    'English', 'Español · Spanish', 'Português · Portuguese', 'Français · French', 'Deutsch · German', 'Italiano · Italian', 'Nederlands · Dutch',
     'Català · Catalan', 'Galego · Galician', 'Euskara · Basque', 'Gaeilge · Irish', 'Cymraeg · Welsh', 'Gàidhlig · Scottish Gaelic',
     'Íslenska · Icelandic', 'Norsk · Norwegian', 'Svenska · Swedish', 'Dansk · Danish', 'Suomi · Finnish', 'Eesti · Estonian',
     'Latviešu · Latvian', 'Lietuvių · Lithuanian', 'Ελληνικά · Greek', 'Shqip · Albanian', 'Hrvatski · Croatian', 'Српски · Serbian',
@@ -56,8 +56,8 @@ const languageGroups = [
 ]
 
 const languageBands = [
-  [...languageGroups[0], ...languageGroups[2]],
-  [...languageGroups[1], ...languageGroups[3]],
+  [...languageGroups[2], ...languageGroups[0]],
+  [...languageGroups[3], ...languageGroups[1]],
 ]
 
 const floatingWords = [
@@ -172,7 +172,7 @@ export default function HeroSection() {
           </motion.h1>
 
           <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.2 }} className="mt-7 max-w-2xl text-base leading-relaxed text-white/55 sm:text-lg">
-            115+ languages. Indic, African, Arab, Southeast Asian, European, and English. Professional captions at creator-friendly pricing.
+            115+ languages across the Americas, Europe, Africa, the Middle East and Asia. Professional captions at creator-friendly pricing.
           </motion.p>
 
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.3 }} className="mt-9 flex flex-col gap-3 sm:flex-row">

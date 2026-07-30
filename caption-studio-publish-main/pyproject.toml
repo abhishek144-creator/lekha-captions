@@ -4,3 +4,11 @@ version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.11"
 dependencies = []
+
+# Pins rootdir and sys.path to this directory so `pytest` collects the backend
+# suite from any working directory. Without this, running pytest from backend/
+# aborts collection entirely ("cannot import name 'firebase_admin_setup' from
+# 'backend'") and silently reports zero tests run.
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+pythonpath = ["."]

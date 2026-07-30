@@ -155,7 +155,7 @@ function createIdempotencyKey(scope, planId) {
 
 export default function PricingModal({ isOpen, onClose, onSelectPlan, user, message, userData = null }) {
   const [processingPlan, setProcessingPlan] = useState(null)
-  const [billing, setBilling] = useState('monthly')
+  const [billing, setBilling] = useState('yearly')
   const [selectedPlan, setSelectedPlan] = useState(null)
   const [promoCode, setPromoCode] = useState('')
   const [promoStatus, setPromoStatus] = useState(null)
@@ -615,6 +615,16 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
 
         <p className="text-xs text-gray-600 text-center mt-3">
           Credits deducted only after successful export · Secure payments via Razorpay
+        </p>
+        <p className="text-xs text-gray-600 text-center mt-2">
+          One-time purchase — no auto-renewal. Unused credits expire at the end of the plan period.
+        </p>
+        <p className="text-xs text-gray-500 text-center mt-2">
+          <a href="/TermsAndConditions" target="_blank" rel="noreferrer" className="underline hover:text-gray-300">Terms</a>
+          <span className="mx-2">·</span>
+          <a href="/RefundPolicy" target="_blank" rel="noreferrer" className="underline hover:text-gray-300">Refund &amp; Cancellation</a>
+          <span className="mx-2">·</span>
+          <a href="/PrivacyPolicy" target="_blank" rel="noreferrer" className="underline hover:text-gray-300">Privacy</a>
         </p>
       </DialogContent>
     </Dialog>

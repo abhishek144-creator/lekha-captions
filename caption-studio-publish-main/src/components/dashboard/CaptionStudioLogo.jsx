@@ -22,7 +22,7 @@ function LekhaDialogueMark({ className }) {
   )
 }
 
-export default function CaptionStudioLogo({ size = 'default', showText = true, forceText = false }) {
+export default function CaptionStudioLogo({ size = 'default', showText = true, forceText = false, beta = false }) {
   const styles = sizeStyles[size] || sizeStyles.default
 
   return (
@@ -31,6 +31,11 @@ export default function CaptionStudioLogo({ size = 'default', showText = true, f
       {showText && (
         <span className={`${styles.text} ${forceText ? 'inline-flex' : 'hidden sm:inline-flex'} items-baseline font-semibold tracking-[-0.035em]`}>
           <span className="text-white">Lekha</span><span className="ml-1 text-[#f5a623]">Captions</span>
+        </span>
+      )}
+      {beta && (
+        <span className="inline-flex shrink-0 items-center rounded-full border border-[#f5a623]/40 bg-[#f5a623]/10 px-1.5 py-0.5 text-[9px] font-bold uppercase leading-none tracking-[0.1em] text-[#f5a623]">
+          Beta
         </span>
       )}
     </span>

@@ -1,18 +1,18 @@
 import { motion } from 'framer-motion'
 
 const bubbles = [
-  { label: 'मराठी', sublabel: 'Marathi', tone: 'border-white/[0.13] text-white/80', style: 'left-[5%] top-10' },
-  { label: 'ગુજરાતી', sublabel: 'Gujarati', tone: 'border-[#f5a623]/40 text-[#f5a623]', style: 'left-[15%] top-14' },
-  { label: 'ਪੰਜਾਬੀ', sublabel: 'Punjabi', tone: 'border-white/[0.13] text-white/75', style: 'left-[25%] top-10' },
+  { label: 'English', sublabel: 'English', tone: 'border-white/[0.13] text-white/80', style: 'left-[5%] top-10' },
+  { label: 'Español', sublabel: 'Spanish', tone: 'border-[#f5a623]/40 text-[#f5a623]', style: 'left-[15%] top-14' },
+  { label: 'العربية', sublabel: 'Arabic', tone: 'border-white/[0.13] text-white/75', style: 'left-[25%] top-10' },
   { label: 'Yorùbá', sublabel: 'Yoruba', tone: 'border-[#52c7ff]/35 text-[#6ee7ff]', style: 'left-[36%] top-[3.8rem]' },
   { label: 'አማርኛ', sublabel: 'Amharic', tone: 'border-white/[0.13] text-white/70', style: 'left-[47%] top-10' },
-  { label: 'Bahasa', sublabel: 'Indonesian', tone: 'border-[#8e71ff]/35 text-[#b993ff]', style: 'left-[58%] top-12' },
+  { label: 'Bahasa', sublabel: 'Indonesian', tone: 'border-[#70d6a5]/35 text-[#70d6a5]', style: 'left-[58%] top-12' },
   { label: 'ไทย', sublabel: 'Thai', tone: 'border-white/[0.13] text-white/70', style: 'left-[69%] top-[4.4rem]' },
   { label: 'Tiếng Việt', sublabel: 'Vietnamese', tone: 'border-[#ff7b9f]/35 text-[#ff8fa3]', style: 'left-[78%] top-9' },
   { label: '한국어', sublabel: 'Korean', tone: 'border-white/[0.13] text-white/70', style: 'right-[6%] top-14' },
   { label: 'Français', sublabel: 'French', tone: 'border-[#f5a623]/35 text-[#ffd166]', style: 'left-[24%] top-[11.2rem]' },
   { label: 'Deutsch', sublabel: 'German', tone: 'border-white/[0.13] text-white/72', style: 'left-[37%] top-[13rem]' },
-  { label: 'Español', sublabel: 'Spanish', tone: 'border-white/[0.13] text-white/72', style: 'left-[47%] top-[11.2rem]' },
+  { label: 'हिन्दी', sublabel: 'Hindi', tone: 'border-white/[0.13] text-white/72', style: 'left-[47%] top-[11.2rem]' },
   { label: 'Português', sublabel: 'Portuguese', tone: 'border-white/[0.13] text-white/72', style: 'left-[58%] top-[12rem]' },
   { label: 'Türkçe', sublabel: 'Turkish', tone: 'border-[#f5a623]/35 text-[#f5a623]', style: 'left-[69%] top-[11.2rem]' },
 ]
@@ -26,8 +26,14 @@ function Bubble({ label, sublabel, tone, style }) {
       transition={{ duration: 0.58, ease: [0.22, 1, 0.36, 1] }}
       className={`landing-language-bubble absolute hidden h-24 w-24 rounded-full border bg-black/30 backdrop-blur-sm sm:flex sm:flex-col sm:items-center sm:justify-center ${tone} ${style}`}
     >
-      <span className="text-[1.15rem] font-semibold leading-none">{label}</span>
-      <span className="mt-2 text-[0.55rem] uppercase tracking-[0.22em] text-white/35">{sublabel}</span>
+      <motion.div
+        animate={{ y: [0, -5, 0], rotate: [0, 1.5, 0] }}
+        transition={{ duration: 4.6, repeat: Infinity, ease: 'easeInOut' }}
+        className="flex flex-col items-center justify-center"
+      >
+        <span className="text-[1.15rem] font-semibold leading-none">{label}</span>
+        <span className="mt-2 text-[0.55rem] uppercase tracking-[0.22em] text-white/35">{sublabel}</span>
+      </motion.div>
     </motion.div>
   )
 }

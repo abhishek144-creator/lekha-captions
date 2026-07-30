@@ -9,32 +9,46 @@ export const metadata = pageMetadata({
   path: '/pricing',
 })
 
+// Yearly is the default everywhere (in-app pricing, the home pricing section and
+// this page), so the headline figure here is the annual one and the monthly rate
+// is the secondary line. Keep the amounts in step with
+// landing-next/components/HomePricingSection.jsx.
 const plans = [
   {
     name: 'Starter',
-    price: '₹299',
-    usd: '$3.99',
+    price: '$39.99',
+    inr: '₹2,500',
+    monthlyPrice: '$3.99',
+    monthlyInr: '₹299',
+    savings: '~16% off monthly',
     description: 'A simple start for a steady social workflow.',
-    features: ['15 video credits / month', 'Up to 2 minutes per video', '3 videos per day', '100+ caption styles', '115+ languages', '1080p HD export', 'No watermark'],
+    features: ['180 video credits / year', 'Up to 2 minutes per video', '3 videos per day', '100+ caption styles', '115+ languages', '1080p HD export', 'No watermark'],
   },
   {
     name: 'Creator',
-    price: '₹499',
-    usd: '$4.99',
+    price: '$49.99',
+    inr: '₹4,500',
+    monthlyPrice: '$4.99',
+    monthlyInr: '₹499',
+    savings: '~16% off monthly',
     description: 'The sweet spot for serious, multilingual creators.',
     popular: true,
-    features: ['45 video credits / month', 'Up to 3 minutes per video', '5 videos per day', '100+ caption styles', '115+ languages', '1080p HD + 4K export', 'Translation tools', 'No watermark'],
+    features: ['540 video credits / year', 'Up to 3 minutes per video', '5 videos per day', '100+ caption styles', '115+ languages', '1080p HD + 4K export', 'Translation tools', 'No watermark'],
   },
   {
     name: 'Pro',
-    price: '₹799',
-    usd: '$5.99',
+    price: '$59.99',
+    inr: '₹6,500',
+    monthlyPrice: '$5.99',
+    monthlyInr: '₹799',
+    savings: '~17% off monthly',
     description: 'More capacity for agencies and high-volume output.',
-    features: ['120 video credits / month', 'Up to 3 minutes per video', 'Unlimited videos per day', '100+ caption styles', '115+ languages', '1080p HD + 4K export', 'Translation tools', 'No watermark'],
+    features: ['1,440 video credits / year', 'Up to 3 minutes per video', 'Unlimited videos per day', '100+ caption styles', '115+ languages', '1080p HD + 4K export', 'Translation tools', 'No watermark'],
   },
 ]
 
 const comparison = [
+  ['Yearly video credits', '180', '540', '1,440'],
   ['Monthly video credits', '15', '45', '120'],
   ['Maximum video length', '2 min', '3 min', '3 min'],
   ['Daily video limit', '3', '5', 'Unlimited'],
@@ -57,14 +71,15 @@ export default function PricingPage() {
       <PageHero eyebrow="Creator-friendly pricing" title="Simple plans. Serious output." description="Choose the captioning capacity that fits your publishing cadence. Every plan includes the style library and all 115+ supported languages." />
       <section className="content-section pricing-content">
         <div className="container">
-          <div className="pricing-note">Monthly prices shown • Annual options are available in the app</div>
+          <div className="pricing-note">Yearly prices shown • Monthly billing is also available in the app</div>
           <div className="pricing-grid">
             {plans.map((plan) => (
               <article className={`price-card${plan.popular ? ' popular' : ''}`} key={plan.name}>
                 {plan.popular && <span className="popular-label">MOST POPULAR</span>}
                 <p className="price-kicker">{plan.name}</p>
-                <h2>{plan.price}<small>/month</small></h2>
-                <p className="usd-price">or {plan.usd}/month for international billing</p>
+                <h2>{plan.price}<small>/year</small></h2>
+                <p className="usd-price">or {plan.inr}/year where local currency billing is available · {plan.savings}</p>
+                <p className="usd-price">Prefer monthly? {plan.monthlyPrice}/month (or {plan.monthlyInr}/month)</p>
                 <p className="plan-description">{plan.description}</p>
                 <a className={`button${plan.popular ? '' : ' button-outline'}`} href={appUrl}>Start creating <span>→</span></a>
                 <ul>

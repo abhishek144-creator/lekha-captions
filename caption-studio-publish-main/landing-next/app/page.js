@@ -36,14 +36,14 @@ const features = [
   {
     key: 'globe',
     title: 'Every Regional Language',
-    description: '115+ languages, powered by Sarvam AI for Indian languages and Whisper for global reach.',
+    description: '115+ languages on every continent, powered by best-in-class speech AI for each language family.',
     preview: 'languages',
     wide: true,
   },
   {
     key: 'sparkles',
     title: 'Multi-Language',
-    description: 'Hindi, Tamil, Telugu, Marathi, Bengali and more — ready when your audience is.',
+    description: 'English, Spanish, Arabic, Portuguese, Hindi, Japanese and more — ready when your audience is.',
     preview: 'translate',
   },
   {
@@ -60,7 +60,7 @@ const features = [
   },
 ]
 
-const languages = ['हिंदी', 'தமிழ்', 'తెలుగు', 'বাংলা', 'मराठी', 'ગુજરાતી', 'ਪੰਜਾਬੀ', 'العربية', 'Kiswahili', 'Français', 'Español', 'Português', 'Bahasa', '한국어', '日本語']
+const languages = ['English', 'Español', 'Português', 'Français', 'Deutsch', 'العربية', '中文', '日本語', '한국어', 'Русский', 'हिंदी', 'தமிழ்', 'বাংলা', 'Kiswahili', 'Bahasa']
 
 const demos = [
   {
@@ -180,12 +180,12 @@ function FeaturePreview({ preview }) {
     case 'languages':
       return (
         <div className="sync-feature-preview sync-feature-preview-languages">
-          <span>हिंदी</span>
-          <span>தமிழ்</span>
-          <span>العربية</span>
-          <span>বাংলা</span>
-          <span>తెలుగు</span>
           <span>English</span>
+          <span>Español</span>
+          <span>العربية</span>
+          <span>中文</span>
+          <span>हिंदी</span>
+          <span>Français</span>
         </div>
       )
     case 'translate':
@@ -193,7 +193,7 @@ function FeaturePreview({ preview }) {
         <div className="sync-feature-preview sync-feature-preview-translate">
           <span>Original</span>
           <b>→</b>
-          <strong>தமிழ்</strong>
+          <strong>Español</strong>
         </div>
       )
     case 'export':
@@ -225,8 +225,8 @@ export default function HomePage() {
     operatingSystem: 'Web',
     url: siteUrl,
     description: siteDescription,
-    featureList: ['Video caption generation in 115+ languages', 'Indic language support', 'Animated caption styles', 'Video caption editing', 'HD and 4K export options'],
-    offers: { '@type': 'AggregateOffer', lowPrice: '299', highPrice: '799', priceCurrency: 'INR', offerCount: '3' },
+    featureList: ['Video caption generation in 115+ languages', 'Worldwide language and script support', 'Animated caption styles', 'Video caption editing', 'HD and 4K export options'],
+    offers: { '@type': 'AggregateOffer', lowPrice: '3.99', highPrice: '5.99', priceCurrency: 'USD', offerCount: '3' },
   }
 
   const organizationJsonLd = {
@@ -255,7 +255,7 @@ export default function HomePage() {
             Professional Captions in <span>Your Language</span>
           </h1>
           <p className="sync-hero-lead">
-            115+ languages. Indic, African, Arab, Southeast Asian, European, and English. Professional captions at creator-friendly pricing.
+            115+ languages across the Americas, Europe, Africa, the Middle East and Asia. Professional captions at creator-friendly pricing.
           </p>
           <div className="sync-hero-actions">
             <a className="sync-primary-cta" href={appUrl}>

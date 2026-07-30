@@ -3,7 +3,7 @@ export const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.lekhacapti
 export const supportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || 'support@lekhacaptions.com'
 
 export const siteDescription =
-  'Create accurate, animated video captions in 115+ languages, including leading Indic languages, with a fast editor built for creators, agencies, and businesses.'
+  'Create accurate, animated video captions in 115+ languages across every major writing system, with a fast editor built for creators, agencies, and businesses worldwide.'
 
 export function pageMetadata({ title, description, path = '/' }) {
   const canonical = path === '/' ? '/' : `${path}/`
@@ -17,7 +17,7 @@ export function pageMetadata({ title, description, path = '/' }) {
       description,
       url: canonical,
       siteName: 'Lekha Captions',
-      locale: 'en_IN',
+      locale: 'en_US',
       type: 'website',
       images: [{ url: '/og.png', width: 1200, height: 630, alt: 'Lekha Captions animated captions in 115+ languages' }],
     },

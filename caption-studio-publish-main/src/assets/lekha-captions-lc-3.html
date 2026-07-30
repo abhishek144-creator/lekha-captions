@@ -366,7 +366,7 @@ T('T188','2 Style · V3',2,[
   N('say it soft, but say it straight.',{mode:'anim',hero:'straight',bodyAnim:'wipe',heroAnim:'swing'})
 ]),
 T('T189','2 Style · V4',2,[
-  C('mirror', L('s','their reel','slidel'), L('xh','VS','tilt',{hero:1}), L('s','your reality','slider')),
+  C('signature', L('xh','Keep the','fade',{font:'script'}), L('h','MOMENTUM.','stretch',{hero:1})),
   N('you compare their peak to your start.',{mode:'anim',hero:'peak',bodyAnim:'rise',heroAnim:'punch'}),
   C('twostep', L('m','run your','climb'), L('h','OWN LANE.','stamp',{hero:1})),
   N('comparison is a thief with good manners.',{mode:'static',hero:'thief'}),
@@ -435,6 +435,7 @@ T('T195','3 Style · V5',3,[
 /* palettes: rotate the master wheel so every template gets 5 distinct hero colors */
 TPLS.forEach((t,i)=>{
   t.pal=[0,1,2,3,4].map(j=>MASTER[(i*3+j*2)%MASTER.length]);
+  if(t.id==='T189') t.pal[0]='#6EE7FF';
   t.meta=[...new Set(t.scenes.filter(s=>s.k==='c').map(s=>s.layout))].join(' \u00b7 ');
 });
 

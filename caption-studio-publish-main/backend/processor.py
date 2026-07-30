@@ -11,6 +11,155 @@ import uuid
 from openai import OpenAI
 from sarvamai import SarvamAI
 
+TRANSCRIPTION_PROVIDER_TIMEOUT_SECONDS = max(
+    15,
+    min(int(os.environ.get("TRANSCRIPTION_PROVIDER_TIMEOUT_SECONDS", "180")), 600),
+)
+AUDIO_EXTRACTION_TIMEOUT_SECONDS = max(
+    15,
+    min(int(os.environ.get("AUDIO_EXTRACTION_TIMEOUT_SECONDS", "120")), 300),
+)
+
+
+def _extract_sarvam_words(response):
+    """Normalize current and legacy Sarvam timestamp response shapes."""
+    if response is None:
+        return []
+
+    if hasattr(response, "model_dump"):
+        response_data = response.model_dump()
+    elif hasattr(response, "dict"):
+        response_data = response.dict()
+    elif isinstance(response, dict):
+        response_data = response
+    else:
+        response_data = {}
+
+    timestamps = getattr(response, "timestamps", None) or response_data.get("timestamps")
+    if hasattr(timestamps, "model_dump"):
+        timestamps_data = timestamps.model_dump()
+    elif hasattr(timestamps, "dict"):
+        timestamps_data = timestamps.dict()
+    elif isinstance(timestamps, dict):
+        timestamps_data = timestamps
+    else:
+        timestamps_data = {}
+
+    timestamp_words = list(
+        getattr(timestamps, "words", None)
+        or timestamps_data.get("words")
+        or []
+    )
+    starts = list(
+        getattr(timestamps, "start_time_seconds", None)
+        or timestamps_data.get("start_time_seconds")
+        or []
+    )
+    ends = list(
+        getattr(timestamps, "end_time_seconds", None)
+        or timestamps_data.get("end_time_seconds")
+        or []
+    )
+    if timestamp_words and len(timestamp_words) == len(starts) == len(ends):
+        return [
+            {"word": str(word), "start": float(start), "end": float(end)}
+            for word, start, end in zip(timestamp_words, starts, ends)
+            if str(word).strip() and float(end) >= float(start)
+        ]
+
+    # Retain compatibility with older SDK payloads that exposed a word list.
+    legacy_words = (
+        list(getattr(response, "words", None) or [])
+        or list(response_data.get("words") or [])
+    )
+    normalized = []
+    for item in legacy_words:
+        if isinstance(item, dict):
+            word = item.get("word") or item.get("text") or ""
+            start = item.get("start", item.get("start_time", 0))
+            end = item.get("end", item.get("end_time", 0))
+        else:
+            word = getattr(item, "word", None) or getattr(item, "text", "")
+            start = getattr(item, "start", None)
+            if start is None:
+                start = getattr(item, "start_time", 0)
+            end = getattr(item, "end", None)
+            if end is None:
+                end = getattr(item, "end_time", 0)
+        if str(word).strip() and float(end or 0) >= float(start or 0):
+            normalized.append({
+                "word": str(word),
+                "start": float(start or 0),
+                "end": float(end or 0),
+            })
+    return normalized
+
+# --- Video encoder selection -------------------------------------------------
+# Burning captions is CPU-bound on libx264, which is what caps concurrent
+# exports on a shared host. When the machine has an NVIDIA card with an NVENC
+# block we hand the encode to the GPU instead and keep libx264 as the fallback.
+# EXPORT_VIDEO_ENCODER pins the choice: "auto" (default) | "cpu" | "nvenc".
+_NVENC_PROBE_CACHE = None
+
+
+def _disable_nvenc(reason):
+    """Stop offering NVENC for the rest of this process."""
+    global _NVENC_PROBE_CACHE
+    if _NVENC_PROBE_CACHE is not False:
+        print(f"[Encoder] Disabling NVENC for this process: {reason}")
+    _NVENC_PROBE_CACHE = False
+
+
+def _nvenc_supported():
+    """True only when ffmpeg lists h264_nvenc AND a real encode actually runs."""
+    global _NVENC_PROBE_CACHE
+    if _NVENC_PROBE_CACHE is not None:
+        return _NVENC_PROBE_CACHE
+    _NVENC_PROBE_CACHE = False
+    try:
+        encoders = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-encoders"],
+            capture_output=True, text=True, timeout=20,
+        )
+        if encoders.returncode != 0 or "h264_nvenc" not in (encoders.stdout or ""):
+            print("[Encoder] NVENC not built into ffmpeg — using libx264.")
+            return False
+        # Listing the encoder is not proof it works: a missing driver, or a card
+        # with no NVENC block at all (e.g. GT 710), only fails at encode time.
+        smoke = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-y", "-f", "lavfi",
+             "-i", "color=c=black:s=256x256:d=0.1",
+             "-c:v", "h264_nvenc", "-f", "null", "-"],
+            capture_output=True, text=True, timeout=60,
+        )
+        _NVENC_PROBE_CACHE = smoke.returncode == 0
+        if not _NVENC_PROBE_CACHE:
+            print("[Encoder] NVENC present but unusable on this host — using libx264.")
+    except Exception as e:
+        print(f"[Encoder] NVENC probe failed ({e}) — using libx264.")
+        _NVENC_PROBE_CACHE = False
+    if _NVENC_PROBE_CACHE:
+        print("[Encoder] NVENC available — GPU encoding enabled.")
+    return _NVENC_PROBE_CACHE
+
+
+def _video_encoder_args(crf, force_cpu=False):
+    """FFmpeg video-codec args for the active encoder.
+
+    libx264 rate-controls with -crf. NVENC has no CRF, so the same number is
+    mapped onto its constant-quality control (-cq with VBR), which is the
+    nearest equivalent and keeps quality comparable across both paths.
+    """
+    mode = (os.environ.get("EXPORT_VIDEO_ENCODER", "auto") or "auto").strip().lower()
+    use_gpu = (not force_cpu) and (
+        mode == "nvenc" or (mode == "auto" and _nvenc_supported())
+    )
+    if use_gpu:
+        return ["-c:v", "h264_nvenc", "-preset", "p4", "-rc", "vbr",
+                "-cq", str(crf), "-b:v", "0"]
+    return ["-c:v", "libx264", "-preset", "fast", "-crf", str(crf)]
+
+
 GOOGLE_FONTS_MAP = {
     'Anton': {'url': 'https://github.com/google/fonts/raw/main/ofl/anton/Anton-Regular.ttf', 'file': 'Anton-Regular.ttf', 'ass_name': 'Anton'},
     'ArchivoBlack': {'url': 'https://github.com/google/fonts/raw/main/ofl/archivoblack/ArchivoBlack-Regular.ttf', 'file': 'ArchivoBlack-Regular.ttf', 'ass_name': 'Archivo Black'},
@@ -74,7 +223,15 @@ GOOGLE_FONTS_MAP = {
 }
 
 INDIC_FONTS = {
-    'devanagari': {'url': 'https://github.com/google/fonts/raw/main/ofl/mukta/Mukta-Regular.ttf', 'file': 'Mukta-Regular.ttf', 'ass_name': 'Mukta'},
+    # This is the SILENT auto-swap target for any Latin-only font on Devanagari
+    # text (see the `_indic_safe` override below) — used on every plain/default
+    # Hindi export, since 'Inter' (the app default) isn't Indic-safe. Verified
+    # by direct FFmpeg/libass burn: Mukta-Regular.ttf renders adjacent
+    # Devanagari words with NO visible space between them ("ये आपको" ->
+    # "येआपको"), while Noto Sans Devanagari renders the identical text
+    # correctly. Mukta itself remains a valid explicit choice in the frontend's
+    # curated font list (fontUtils.jsx) — only the blind default changes here.
+    'devanagari': {'url': 'https://github.com/google/fonts/raw/main/ofl/notosansdevanagari/NotoSansDevanagari%5Bwdth%2Cwght%5D.ttf', 'file': 'NotoSansDevanagari.ttf', 'ass_name': 'Noto Sans Devanagari'},
     'tamil': {'url': 'https://github.com/google/fonts/raw/main/ofl/muktamalar/MuktaMalar-Regular.ttf', 'file': 'MuktaMalar-Regular.ttf', 'ass_name': 'Mukta Malar'},
     'telugu': {'url': 'https://github.com/google/fonts/raw/main/ofl/notosanstelugu/NotoSansTelugu%5Bwdth%2Cwght%5D.ttf', 'file': 'NotoSansTelugu.ttf', 'ass_name': 'Noto Sans Telugu'},
     'bengali': {'url': 'https://github.com/google/fonts/raw/main/ofl/notosansbengali/NotoSansBengali%5Bwdth%2Cwght%5D.ttf', 'file': 'NotoSansBengali.ttf', 'ass_name': 'Noto Sans Bengali'},
@@ -84,6 +241,21 @@ INDIC_FONTS = {
     'gurmukhi': {'url': 'https://github.com/google/fonts/raw/main/ofl/muktavaani/MuktaVaani-Regular.ttf', 'file': 'MuktaVaani-Regular.ttf', 'ass_name': 'Mukta Vaani'},
     'odia': {'url': 'https://github.com/google/fonts/raw/main/ofl/notosansoriya/NotoSansOriya%5Bwdth%2Cwght%5D.ttf', 'file': 'NotoSansOriya.ttf', 'ass_name': 'Noto Sans Oriya'},
     'arabic': {'url': 'https://github.com/google/fonts/raw/main/ofl/notosansarabic/NotoSansArabic%5Bwdth%2Cwght%5D.ttf', 'file': 'NotoSansArabic.ttf', 'ass_name': 'Noto Sans Arabic'},
+    'sinhala': {'url': 'https://github.com/google/fonts/raw/main/ofl/notosanssinhala/NotoSansSinhala%5Bwdth%2Cwght%5D.ttf', 'file': 'NotoSansSinhala.ttf', 'ass_name': 'Noto Sans Sinhala'},
+    'meetei': {'url': 'https://github.com/google/fonts/raw/main/ofl/notosansmeeteimayek/NotoSansMeeteiMayek%5Bwght%5D.ttf', 'file': 'NotoSansMeeteiMayek.ttf', 'ass_name': 'Noto Sans Meetei Mayek'},
+    'olchiki': {'url': 'https://github.com/google/fonts/raw/main/ofl/notosansolchiki/NotoSansOlChiki%5Bwght%5D.ttf', 'file': 'NotoSansOlChiki.ttf', 'ass_name': 'Noto Sans Ol Chiki'},
+    'hebrew': {'url': 'https://github.com/google/fonts/raw/main/ofl/notosanshebrew/NotoSansHebrew%5Bwdth%2Cwght%5D.ttf', 'file': 'NotoSansHebrew.ttf', 'ass_name': 'Noto Sans Hebrew'},
+    'japanese': {'url': 'https://github.com/google/fonts/raw/main/ofl/notosansjp/NotoSansJP%5Bwght%5D.ttf', 'file': 'NotoSansJP.ttf', 'ass_name': 'Noto Sans JP'},
+    'chinese': {'url': 'https://github.com/google/fonts/raw/main/ofl/notosanssc/NotoSansSC%5Bwght%5D.ttf', 'file': 'NotoSansSC.ttf', 'ass_name': 'Noto Sans SC'},
+    'korean': {'url': 'https://github.com/google/fonts/raw/main/ofl/notosanskr/NotoSansKR%5Bwght%5D.ttf', 'file': 'NotoSansKR.ttf', 'ass_name': 'Noto Sans KR'},
+    'thai': {'url': 'https://github.com/google/fonts/raw/main/ofl/notosansthai/NotoSansThai%5Bwdth%2Cwght%5D.ttf', 'file': 'NotoSansThai.ttf', 'ass_name': 'Noto Sans Thai'},
+    'burmese': {'url': 'https://github.com/google/fonts/raw/main/ofl/notosansmyanmar/NotoSansMyanmar%5Bwdth%2Cwght%5D.ttf', 'file': 'NotoSansMyanmar.ttf', 'ass_name': 'Noto Sans Myanmar'},
+    'khmer': {'url': 'https://github.com/google/fonts/raw/main/ofl/notosanskhmer/NotoSansKhmer%5Bwdth%2Cwght%5D.ttf', 'file': 'NotoSansKhmer.ttf', 'ass_name': 'Noto Sans Khmer'},
+    'lao': {'url': 'https://github.com/google/fonts/raw/main/ofl/notosanslao/NotoSansLao%5Bwdth%2Cwght%5D.ttf', 'file': 'NotoSansLao.ttf', 'ass_name': 'Noto Sans Lao'},
+    'tibetan': {'url': 'https://github.com/google/fonts/raw/main/ofl/notoseriftibetan/NotoSerifTibetan%5Bwght%5D.ttf', 'file': 'NotoSerifTibetan.ttf', 'ass_name': 'Noto Serif Tibetan'},
+    'georgian': {'url': 'https://github.com/google/fonts/raw/main/ofl/notosansgeorgian/NotoSansGeorgian%5Bwdth%2Cwght%5D.ttf', 'file': 'NotoSansGeorgian.ttf', 'ass_name': 'Noto Sans Georgian'},
+    'armenian': {'url': 'https://github.com/google/fonts/raw/main/ofl/notosansarmenian/NotoSansArmenian%5Bwdth%2Cwght%5D.ttf', 'file': 'NotoSansArmenian.ttf', 'ass_name': 'Noto Sans Armenian'},
+    'ethiopic': {'url': 'https://github.com/google/fonts/raw/main/ofl/notosansethiopic/NotoSansEthiopic%5Bwdth%2Cwght%5D.ttf', 'file': 'NotoSansEthiopic.ttf', 'ass_name': 'Noto Sans Ethiopic'},
 }
 
 SCRIPT_FONTS_MAP = {
@@ -206,6 +378,9 @@ SCRIPT_FONTS_MAP = {
     'Charm': {'url': 'https://github.com/google/fonts/raw/main/ofl/charm/Charm-Regular.ttf', 'file': 'Charm-Regular.ttf', 'ass_name': 'Charm', 'script': 'thai'},
 }
 
+# Each value is one (start, end) tuple or a list of them. Order matters:
+# _detect_script returns the first script with any matching char, so Japanese
+# kana must be checked before Han so mixed kana+kanji text resolves to Japanese.
 SCRIPT_RANGES = {
     'devanagari': (0x0900, 0x097F),
     'bengali': (0x0980, 0x09FF),
@@ -216,7 +391,22 @@ SCRIPT_RANGES = {
     'telugu': (0x0C00, 0x0C7F),
     'kannada': (0x0C80, 0x0CFF),
     'malayalam': (0x0D00, 0x0D7F),
+    'sinhala': (0x0D80, 0x0DFF),
+    'meetei': [(0xABC0, 0xABFF), (0xAAE0, 0xAAFF)],   # Manipuri (Meetei Mayek)
+    'olchiki': (0x1C50, 0x1C7F),                       # Santali (Ol Chiki)
     'arabic': (0x0600, 0x06FF),
+    'hebrew': (0x0590, 0x05FF),
+    'japanese': [(0x3040, 0x309F), (0x30A0, 0x30FF)],  # kana before Han
+    'chinese': (0x4E00, 0x9FFF),
+    'korean': (0xAC00, 0xD7AF),
+    'thai': (0x0E00, 0x0E7F),
+    'burmese': (0x1000, 0x109F),
+    'khmer': (0x1780, 0x17FF),
+    'lao': (0x0E80, 0x0EFF),
+    'tibetan': (0x0F00, 0x0FFF),                       # Dzongkha
+    'georgian': [(0x10A0, 0x10FF), (0x1C90, 0x1CBF)],
+    'armenian': (0x0530, 0x058F),
+    'ethiopic': (0x1200, 0x137F),                      # Amharic
 }
 
 BOLD_VARIANTS = {
@@ -238,6 +428,7 @@ class VideoProcessor:
         self.template_overlay_script = os.path.join(self.project_root, "scripts", "render_template_overlay.mjs")
         os.makedirs(self.fonts_dir, exist_ok=True)
         self.client = None # Lazy init
+        self._source_basic_template_ids = self._load_source_basic_template_ids()
         self._ensure_fallback_font()
 
     @staticmethod
@@ -265,10 +456,13 @@ class VideoProcessor:
                 print(f"Fallback font download failed: {e}")
 
     def _detect_script(self, text):
-        for script_name, (range_start, range_end) in SCRIPT_RANGES.items():
-            for ch in text:
-                if range_start <= ord(ch) <= range_end:
-                    return script_name
+        for script_name, ranges in SCRIPT_RANGES.items():
+            if isinstance(ranges, tuple):
+                ranges = [ranges]
+            for range_start, range_end in ranges:
+                for ch in text:
+                    if range_start <= ord(ch) <= range_end:
+                        return script_name
         return None
 
     def _ensure_indic_font(self, script_name):
@@ -308,9 +502,39 @@ class VideoProcessor:
         'Mukta Malar': 'tamil',
         'Mukta Mahee': 'gujarati',
         'Mukta Vaani': 'gurmukhi',
+        'Noto Sans Sinhala': 'sinhala',
+        'Noto Sans Meetei Mayek': 'meetei',
+        'Noto Sans Ol Chiki': 'olchiki',
+        'Noto Sans Hebrew': 'hebrew',
+        'Noto Sans JP': 'japanese',
+        'Noto Sans SC': 'chinese',
+        'Noto Sans TC': 'chinese',
+        'Noto Sans KR': 'korean',
+        'Noto Sans Thai': 'thai',
+        'Noto Sans Myanmar': 'burmese',
+        'Noto Sans Khmer': 'khmer',
+        'Noto Sans Lao': 'lao',
+        'Noto Serif Tibetan': 'tibetan',
+        'Noto Sans Georgian': 'georgian',
+        'Noto Sans Armenian': 'armenian',
+        'Noto Sans Ethiopic': 'ethiopic',
     }
 
+    # Font names arrive straight from the client (style.font_family and the
+    # per-word wordStyles[].fontFamily). An unrecognised name reaches the
+    # dynamic Google Fonts resolver, where it becomes BOTH a filesystem path
+    # ("<font_key>-Regular.ttf" joined onto fonts_dir) and the ass_name that is
+    # interpolated into the comma-separated "Style:" line of the ASS file. Google
+    # currently rejects malformed family names, but that is an external service's
+    # validation, not ours — so constrain the name here. All 326 names across
+    # GOOGLE_FONTS_MAP / SCRIPT_FONTS_MAP / INDIC_FONTS / FONT_ALIASES satisfy
+    # this pattern, so no legitimate font is affected.
+    _FONT_KEY_PATTERN = re.compile(r"^[A-Za-z0-9 _-]{1,64}$")
+
     def _ensure_font(self, font_key):
+        if not self._FONT_KEY_PATTERN.match(str(font_key or "")):
+            print(f"Rejected malformed font name {str(font_key)[:80]!r}, falling back to Inter")
+            font_key = "Inter"
         info = GOOGLE_FONTS_MAP.get(font_key)
         if not info:
             for k, v in GOOGLE_FONTS_MAP.items():
@@ -407,7 +631,7 @@ class VideoProcessor:
             # Try to initialize client if not ready
             if not self.client:
                 try:
-                    self.client = OpenAI()
+                    self.client = OpenAI(timeout=TRANSCRIPTION_PROVIDER_TIMEOUT_SECONDS)
                 except Exception as e:
                     print(f"[Warning] OpenAI Init Warning: {e}. Transcription requests will fail unless an explicit test mock is enabled.")
             
@@ -422,7 +646,7 @@ class VideoProcessor:
                 with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as _tf:
                     audio_p = _tf.name
                 subprocess.run(["ffmpeg", "-y", "-i", input_p, "-vn", "-ar", "16000", "-ac", "1", audio_p],
-                               check=True, capture_output=True)
+                               check=True, capture_output=True, timeout=AUDIO_EXTRACTION_TIMEOUT_SECONDS)
             except Exception as ffmpeg_e:
                 print(f"[Warning] FFmpeg audio extraction failed (might have no audio): {ffmpeg_e}")
                 api_error_msg = f"Audio extraction failed: {ffmpeg_e}"
@@ -496,8 +720,10 @@ class VideoProcessor:
                     print("-" * 50)
                     print(f"[Transcribe] Using Sarvam API (saaras:v3) for {target_language} speech...")
                     print("-" * 50)
-                    from sarvamai import SarvamAI # Assuming SarvamAI is the correct class
-                    sarvam_client = SarvamAI(api_key=sarvam_api_key)
+                    sarvam_client = SarvamAI(
+                        api_subscription_key=sarvam_api_key,
+                        timeout=TRANSCRIPTION_PROVIDER_TIMEOUT_SECONDS,
+                    )
                     lang_code = sarvam_langs[target_language.lower()]
                     
                     with open(audio_p, "rb") as f:
@@ -510,37 +736,8 @@ class VideoProcessor:
                         )
                     print(f"Sarvam API Transcription Success. Output type: {type(response)}")
                     
-                    # Manual direct access/json parsing if response is object
-                    # Fallback to internal dict if possible.
-                    # We need to map sarvam words to dict {"word": "Hi", "start": 0.0, "end": 0.5}
-                    
                     try:
-                        # Normalize: convert response to dict first, then extract words
-                        resp_data = response.dict() if hasattr(response, 'dict') else (
-                            response if isinstance(response, dict) else {}
-                        )
-
-                        # Extract raw word list from either attribute or dict form
-                        raw_sarvam_words = (
-                            list(response.words) if hasattr(response, 'words') and response.words
-                            else resp_data.get('words', [])
-                        )
-
-                        # Normalize each word: handle attribute-style objects and dicts
-                        def _normalize_word(w):
-                            if isinstance(w, dict):
-                                return {
-                                    "word": w.get('word') or w.get('text', ''),
-                                    "start": float(w.get('start') or w.get('start_time') or 0),
-                                    "end": float(w.get('end') or w.get('end_time') or 0),
-                                }
-                            return {
-                                "word": getattr(w, 'word', None) or getattr(w, 'text', ''),
-                                "start": float(getattr(w, 'start', None) or getattr(w, 'start_time', 0) or 0),
-                                "end": float(getattr(w, 'end', None) or getattr(w, 'end_time', 0) or 0),
-                            }
-
-                        words = [_normalize_word(w) for w in raw_sarvam_words if w]
+                        words = _extract_sarvam_words(response)
                         print(f"[Sarvam] Parsed {len(words)} words from response")
                         if words:
                             detected_language = target_language.lower()
@@ -562,6 +759,7 @@ class VideoProcessor:
                     with open(audio_p, "rb") as f:
                         transcript = self.client.audio.transcriptions.create(
                             file=f,
+                            timeout=TRANSCRIPTION_PROVIDER_TIMEOUT_SECONDS,
                             **whisper_kwargs
                         )
                         detected_language = (getattr(transcript, "language", "") or detected_language).lower()
@@ -593,6 +791,7 @@ class VideoProcessor:
                             file=f,
                             response_format="verbose_json",
                             timestamp_granularities=["word"],
+                            timeout=TRANSCRIPTION_PROVIDER_TIMEOUT_SECONDS,
                         )
                     detected_language = (getattr(transcript, "language", "") or detected_language).lower()
                     language_confidence = max(language_confidence, 0.55)
@@ -782,16 +981,19 @@ class VideoProcessor:
             print(f"[FFmpeg] Input: {input_fwd}")
             print(f"[FFmpeg] Output: {output_fwd}")
 
-            cmd = [
-                "ffmpeg", "-y", "-i", input_fwd,
-                "-vf", vf_filter,
-                "-map", "0:v:0", "-map", "0:a?",
-                "-c:v", "libx264", "-preset", "fast", "-crf", crf,
-                "-r", str(fps),
-                "-c:a", "aac", "-b:a", audio_bitrate,
-                "-shortest",
-                output_fwd
-            ]
+            def _build_burn_cmd(force_cpu=False):
+                return [
+                    "ffmpeg", "-y", "-i", input_fwd,
+                    "-vf", vf_filter,
+                    "-map", "0:v:0", "-map", "0:a?",
+                    *_video_encoder_args(crf, force_cpu),
+                    "-r", str(fps),
+                    "-c:a", "aac", "-b:a", audio_bitrate,
+                    "-shortest",
+                    output_fwd
+                ]
+
+            cmd = _build_burn_cmd()
 
             runtime_env = (os.environ.get("APP_ENV") or os.environ.get("ENV") or "").lower()
             if runtime_env in {"development", "dev", "local"} and os.environ.get("DEBUG_EXPORT_ARTIFACTS", "0") == "1":
@@ -810,6 +1012,19 @@ class VideoProcessor:
             # Always log FFmpeg stderr (even on success — libass warnings appear here)
             if result.stderr:
                 print(f"[FFmpeg] stderr (last 1000 chars): {result.stderr[-1000:]}")
+
+            # A GPU encode can fail for reasons the probe cannot see (session
+            # limits, driver resets). Never fail an export for that — retry once
+            # on libx264 and stop using NVENC for the rest of this process.
+            if result.returncode != 0 and "h264_nvenc" in cmd:
+                _disable_nvenc("encode failed at runtime")
+                cpu_cmd = _build_burn_cmd(force_cpu=True)
+                print("[FFmpeg] NVENC encode failed — retrying on CPU (libx264).")
+                result = await asyncio.get_running_loop().run_in_executor(
+                    None, lambda: subprocess.run(cpu_cmd, capture_output=True, text=True)
+                )
+                if result.stderr:
+                    print(f"[FFmpeg] CPU retry stderr (last 1000 chars): {result.stderr[-1000:]}")
 
             local_output = output_fwd.replace('/', os.sep)
             if result.returncode != 0:
@@ -871,14 +1086,41 @@ class VideoProcessor:
     # source markup (Iman, Light Streak, Green Neon Pulse, 3D Shadow, Pulse,
     # Horror, …). These must export through the DOM/CSS overlay so the burned
     # video matches the canvas — the ASS approximation cannot reproduce their
-    # creative word layout / per-word motion. Keep in sync with
-    # SOURCE_BASIC_TEMPLATE_IDS in src/components/dashboard/basicTemplateInline.js.
-    _SOURCE_BASIC_TEMPLATE_IDS = {
+    # creative word layout / per-word motion.
+    #
+    # Canonical source: SOURCE_BASIC_TEMPLATE_IDS in
+    # src/components/dashboard/basicTemplateInline.js — parsed at startup by
+    # _load_source_basic_template_ids() so the three consumers (preview, export
+    # overlay, this routing check) can never drift. This embedded set is only
+    # the fallback for deployments where the frontend source tree is absent.
+    _SOURCE_BASIC_TEMPLATE_IDS_FALLBACK = frozenset({
         't-106', 't-52', 't-T4', 't-WS1', 't-115',
         't-104', 't-109', 't-95', 't-102', 't-T5',
         't-T6', 't-103', 't-QW1', 't-36', 't-105',
         't-124', 't-110', 't-56', 't-119', 't-12',
-    }
+    })
+
+    def _load_source_basic_template_ids(self):
+        inline_path = os.path.join(
+            self.project_root, 'src', 'components', 'dashboard', 'basicTemplateInline.js',
+        )
+        try:
+            with open(inline_path, encoding='utf-8') as f:
+                source = f.read()
+            match = re.search(r'SOURCE_BASIC_TEMPLATE_IDS\s*=\s*\[(.*?)\]', source, re.S)
+            if match:
+                ids = frozenset(re.findall(r"'([^']+)'", match.group(1)))
+                if ids:
+                    if ids != self._SOURCE_BASIC_TEMPLATE_IDS_FALLBACK:
+                        print(
+                            '[templates] basicTemplateInline.js id list differs from the '
+                            'embedded fallback — using the frontend list; update '
+                            '_SOURCE_BASIC_TEMPLATE_IDS_FALLBACK in processor.py.'
+                        )
+                    return ids
+        except OSError:
+            pass
+        return self._SOURCE_BASIC_TEMPLATE_IDS_FALLBACK
 
     def _should_use_dom_template_renderer(self, style, captions=None):
         def _template_values(source):
@@ -897,6 +1139,58 @@ class VideoProcessor:
             if isinstance(caption, dict) and not caption.get('is_text_element'):
                 candidates.append(_template_values(caption))
 
+        # ASS is intentionally retained for simple static captions because it is
+        # much cheaper than browser frame capture. Rich editor features need the
+        # DOM/CSS renderer: ASS cannot reproduce gradients, arbitrary text-box
+        # geometry, or the dashboard's line/word animation timing faithfully.
+        if any(
+            isinstance(caption, dict) and (
+                caption.get('is_text_element')
+                or str(caption.get('animation') or 'none') != 'none'
+                or bool(caption.get('word_styles'))
+            )
+            for caption in captions or []
+        ):
+            return True
+        try:
+            style_scale = float(style.get('scale', 1) or 1) if isinstance(style, dict) else 1
+        except (TypeError, ValueError):
+            style_scale = 1
+        try:
+            style_box_width = float(style.get('box_width', 0) or 0) if isinstance(style, dict) else 0
+        except (TypeError, ValueError):
+            style_box_width = 0
+        try:
+            style_line_spacing = float(style.get('line_spacing', 1.4) or 1.4) if isinstance(style, dict) else 1.4
+        except (TypeError, ValueError):
+            style_line_spacing = 1.4
+        try:
+            # `or 0` would be wrong here: an explicit 0 must stay 0 (it differs
+            # from the default and needs the DOM renderer), while a missing or
+            # null value must read as the neutral default so a plain caption
+            # still takes the cheap ASS path.
+            _raw_word_spacing = style.get('word_spacing') if isinstance(style, dict) else None
+            style_word_spacing = float(1 if _raw_word_spacing is None else _raw_word_spacing)
+        except (TypeError, ValueError):
+            style_word_spacing = 1
+        try:
+            style_text_opacity = float(style.get('text_opacity', 1) if style.get('text_opacity') is not None else 1) if isinstance(style, dict) else 1
+        except (TypeError, ValueError):
+            style_text_opacity = 1
+        if isinstance(style, dict) and (
+            bool(style.get('text_gradient'))
+            or bool(style.get('highlight_gradient'))
+            or bool(style.get('highlight_color'))
+            or str(style.get('text_decoration') or 'none') != 'none'
+            or str(style.get('effect_type') or 'none') != 'none'
+            or abs(style_scale - 1) > 0.001
+            or style_box_width > 0
+            or abs(style_line_spacing - 1.4) > 0.001
+            or abs(style_word_spacing - 1) > 0.001
+            or abs(style_text_opacity - 1) > 0.001
+        ):
+            return True
+
         if any(template_20_id for _, template_20_id in candidates):
             return True
         # No-hyphen advanced templates (t11–t40) need DOM/CSS rendering.
@@ -904,7 +1198,7 @@ class VideoProcessor:
             return True
         # Source-markup Basic templates render their `.btcard` design in the
         # preview, so they export through the same DOM overlay for parity.
-        return any(template_id in self._SOURCE_BASIC_TEMPLATE_IDS for template_id, _ in candidates)
+        return any(template_id in self._source_basic_template_ids for template_id, _ in candidates)
 
     def _get_video_duration(self, video_path):
         try:
@@ -1017,23 +1311,24 @@ class VideoProcessor:
             base_chain += "format=rgba[base]"
             filter_complex = f"{base_chain};[1:v]format=rgba[overlay];[base][overlay]overlay=0:0:format=auto[composited];[composited]{scale_filter},format=yuv420p[outv]"
 
-            cmd = [
-                "ffmpeg", "-y",
-                "-i", input_p.replace('\\', '/'),
-                "-f", "concat", "-safe", "0",
-                "-i", frames_txt.replace('\\', '/'),
-                "-filter_complex", filter_complex,
-                "-map", "[outv]",
-                "-map", "0:a?",
-                "-c:v", "libx264",
-                "-preset", "fast",
-                "-crf", crf,
-                "-r", str(fps),
-                "-c:a", "aac",
-                "-b:a", audio_bitrate,
-                "-shortest",
-                output_p.replace('\\', '/'),
-            ]
+            def _build_overlay_cmd(force_cpu=False):
+                return [
+                    "ffmpeg", "-y",
+                    "-i", input_p.replace('\\', '/'),
+                    "-f", "concat", "-safe", "0",
+                    "-i", frames_txt.replace('\\', '/'),
+                    "-filter_complex", filter_complex,
+                    "-map", "[outv]",
+                    "-map", "0:a?",
+                    *_video_encoder_args(crf, force_cpu),
+                    "-r", str(fps),
+                    "-c:a", "aac",
+                    "-b:a", audio_bitrate,
+                    "-shortest",
+                    output_p.replace('\\', '/'),
+                ]
+
+            cmd = _build_overlay_cmd()
 
             print(f"[Template DOM] Quality: {quality}, CRF: {crf}")
             print(f"[Template DOM] filter_complex: {filter_complex}")
@@ -1041,6 +1336,14 @@ class VideoProcessor:
             result = subprocess.run(cmd, capture_output=True, text=True)
             if result.stderr:
                 print(f"[Template DOM] FFmpeg stderr (last 1000 chars): {result.stderr[-1000:]}")
+            # Same GPU safety net as the ASS burn path — a failed NVENC encode
+            # falls back to libx264 rather than failing the export.
+            if result.returncode != 0 and "h264_nvenc" in cmd:
+                _disable_nvenc("overlay encode failed at runtime")
+                print("[Template DOM] NVENC encode failed — retrying on CPU (libx264).")
+                result = subprocess.run(_build_overlay_cmd(force_cpu=True), capture_output=True, text=True)
+                if result.stderr:
+                    print(f"[Template DOM] CPU retry stderr (last 1000 chars): {result.stderr[-1000:]}")
             if result.returncode != 0:
                 return {"success": False, "error": "Video render failed"}
 
@@ -1275,6 +1578,15 @@ class VideoProcessor:
 
         return merged
 
+    @staticmethod
+    def _is_detached_pos(abs_x_pct, abs_y_pct):
+        """Mirror the editor's isWordDetached(): abs 0,0 means the word's
+        position was RESET, not dragged to the top-left corner."""
+        try:
+            return abs(float(abs_x_pct or 0)) > 0.01 or abs(float(abs_y_pct or 0)) > 0.01
+        except (TypeError, ValueError):
+            return False
+
     def _create_styled_ass(self, captions, style, font_info, video_w, video_h, word_layouts=None):
         """
         Generate an ASS subtitle file for FFmpeg burning.
@@ -1377,6 +1689,12 @@ class VideoProcessor:
                 'mukta malar', 'mukta mahee', 'mukta vaani',
                 'rajdhani', 'kalam', 'tiro devanagari hindi',
                 'catamaran', 'arima', 'atma', 'galada',
+                'noto sans sinhala', 'noto sans meetei mayek', 'noto sans ol chiki',
+                'noto sans hebrew', 'noto sans jp', 'noto sans sc', 'noto sans tc',
+                'noto sans kr', 'noto sans thai', 'noto sans myanmar',
+                'noto sans khmer', 'noto sans lao', 'noto serif tibetan',
+                'noto sans georgian', 'noto sans armenian', 'noto sans ethiopic',
+                'sarabun', 'prompt', 'kanit', 'mitr', 'pridi', 'itim', 'charm',
             }
             if indic_font_info and font_name.lower() not in _indic_safe:
                 print(f"[ASS] Font '{font_name}' is Latin-only; overriding to {indic_font_info['ass_name']} for {detected_script}")
@@ -1602,9 +1920,17 @@ class VideoProcessor:
                     if not _pos_tok.strip():
                         continue
                     _pos_ws = ws_map.get(f"{cid}-{_pos_wi}", {})
-                    if isinstance(_pos_ws, dict) and _pos_ws.get('abs_x_pct') is not None:
+                    if (
+                        isinstance(_pos_ws, dict)
+                        and _pos_ws.get('abs_x_pct') is not None
+                        and self._is_detached_pos(_pos_ws.get('abs_x_pct'), _pos_ws.get('abs_y_pct'))
+                    ):
                         positioned.append((_pos_wi, _pos_tok, _pos_ws))
                     _pos_wi += 1
+                # Detached words render ONLY at their dragged position (Layer 1);
+                # every sentence/karaoke line must leave their slot empty, or the
+                # word shows twice: once in the line, once at the dragged spot.
+                detached_wi = {_dwi for (_dwi, _dtok, _dws) in positioned}
 
                 # ─── TEXT ELEMENT ─────────────────────────────────────────
                 if is_te:
@@ -1661,7 +1987,7 @@ class VideoProcessor:
                         wsv2 = ws_map.get(f"{cid}-{wi2}", {})
                         if not isinstance(wsv2, dict): wsv2 = {}
                         ax2 = wsv2.get('abs_x_pct'); ay2 = wsv2.get('abs_y_pct')
-                        if ax2 is not None and ay2 is not None:
+                        if ax2 is not None and ay2 is not None and self._is_detached_pos(ax2, ay2):
                             te_sep.append((wi2, tok2, wsv2))
                         else:
                             ov2 = []; rv2 = []
@@ -1770,6 +2096,7 @@ class VideoProcessor:
                     if _fts > st + 0.05 and _ia > 0.0:
                         for _wi2, _wd2 in enumerate(_aw):
                             if not _wd2: continue
+                            if _wi2 in detached_wi: continue
                             _lyt2 = cap_word_layouts.get(_wi2)
                             if not _lyt2: continue
                             _wx2, _wy2 = _wxy(_lyt2)
@@ -1785,9 +2112,10 @@ class VideoProcessor:
                     for _wi, _wt2 in enumerate(words_timing):
                         _ww = _aw[_wi]
                         if not _ww: continue
-                        _wsc = ws_map.get(f"{cid}-{_wi}", {})
-                        if isinstance(_wsc, dict) and _wsc.get('abs_x_pct') is not None:
-                            continue  # Separately positioned — rendered below
+                        # NOTE: detached (abs-positioned) words still get a timing
+                        # window here — skipping it blanked ALL words for that
+                        # window. The word itself is excluded from rendering by
+                        # the detached_wi check in the inner loop below.
                         _ws2 = float(_wt2.get('start', st))
                         _we2 = float(words_timing[_wi + 1].get('start', et) if _wi + 1 < len(words_timing) else et)
                         if _we2 <= _ws2: _we2 = _ws2 + 0.05
@@ -1796,6 +2124,7 @@ class VideoProcessor:
 
                         for _wi2, _wd2 in enumerate(_aw):
                             if not _wd2: continue
+                            if _wi2 in detached_wi: continue
                             _lyt2 = cap_word_layouts.get(_wi2)
                             if not _lyt2: continue
                             _wx2, _wy2 = _wxy(_lyt2)
@@ -1870,7 +2199,7 @@ class VideoProcessor:
                     ws = ws_map.get(f"{cid}-{word_idx}", {})
                     if not isinstance(ws, dict): ws = {}
                     ax = ws.get('abs_x_pct'); ay = ws.get('abs_y_pct')
-                    if ax is not None and ay is not None:
+                    if ax is not None and ay is not None and self._is_detached_pos(ax, ay):
                         positioned.append((word_idx, tok, ws))
                     else:
                         ov = []; rv = []
@@ -1932,7 +2261,10 @@ class VideoProcessor:
                     _inact_c_fb = _gn_fb(primary_hex, _ia_fb * _pa_fb)
                     _cur_c_fb  = _gn_fb(secondary_hex if (secondary_hex and template_id in _CUR_SEC_FB) else primary_hex, 1.0)
 
-                    all_tpl_words = [_T((wt.get('word') or '').strip()) for wt in words_timing]
+                    all_tpl_words = [
+                        '' if _twi in detached_wi else _T((wt.get('word') or '').strip())
+                        for _twi, wt in enumerate(words_timing)
+                    ]
 
                     # Build tpl_tag WITHOUT global_eff — effects go per-word-state below.
                     # For bg templates global_eff is already '' (has_bg + effect_type=none).
@@ -2001,8 +2333,9 @@ class VideoProcessor:
                     for wi, wt in enumerate(words_timing):
                         ww = _T((wt.get('word') or '').strip())
                         if not ww: continue
-                        ws_chk = ws_map.get(f"{cid}-{wi}", {})
-                        if isinstance(ws_chk, dict) and ws_chk.get('abs_x_pct') is not None: continue
+                        # Detached words keep their timing window (they are blanked
+                        # inside _tpl_line via all_tpl_words) so the rest of the
+                        # sentence never disappears during that word's slot.
                         w_s2 = float(wt.get('start', st))
                         w_e2 = float(wt.get('end', et))
                         if w_e2 <= w_s2: continue
@@ -2022,7 +2355,7 @@ class VideoProcessor:
                             if w_et <= w_st: continue
                             ws2 = ws_map.get(f"{cid}-{wi}", {})
                             if not isinstance(ws2, dict): ws2 = {}
-                            if ws2.get('abs_x_pct') is not None: continue
+                            if wi in detached_wi: continue
                             w_tags = list(tags)
                             if ws2.get('color'):
                                 w_tags = [t for t in w_tags if not t.startswith('\\1c')]
@@ -2083,7 +2416,10 @@ class VideoProcessor:
                 if not used_template_karaoke and highlight_hex and words_timing:
                     h_ass = self._hex_to_ass(highlight_hex, 1.0)
                     h_bord = max(int(bg_padding * scale_factor * bord_factor * bg_h_mult), 2) if has_bg else max(int(scaled_size * 0.08), 2)
-                    all_ww = [_T(wt.get('word', '').strip()) for wt in words_timing if wt.get('word', '').strip()]
+                    all_ww = [
+                        '' if _hwi in detached_wi else _T(wt.get('word', '').strip())
+                        for _hwi, wt in enumerate(words_timing)
+                    ]
                     h_base = [f"\\fn{font_name}", f"\\fs{scaled_size}", f"\\an{ass_align}", f"\\pos({pos_x},{pos_y})"]
                     if bold_flag: h_base.append("\\b1")
                     if italic_flag: h_base.append("\\i1")
@@ -2094,9 +2430,10 @@ class VideoProcessor:
                         if w_et2 <= w_st2: continue
                         ws5 = ws_map.get(f"{cid}-{wi}", {})
                         if not isinstance(ws5, dict): ws5 = {}
-                        if ws5.get('isEmphasis') or ws5.get('abs_x_pct') is not None: continue
+                        if ws5.get('isEmphasis') or wi in detached_wi: continue
                         parts_h = []
                         for j, tw in enumerate(all_ww):
+                            if not tw: continue
                             if j == wi:
                                 parts_h.append(f"{{\\1c{h_ass}\\3c{h_ass}\\4c{h_ass}\\bord{h_bord}\\shad0}}{tw}")
                             else:

@@ -108,38 +108,35 @@ function FilmCard({ demo, index }) {
 
 export default function TemplateShowcase() {
   return (
-    <section id="templates" aria-label="Caption template demos" className="landing-section-templates relative isolate overflow-hidden py-24 sm:py-32">
-      <div className="pointer-events-none absolute inset-0 -z-20 bg-[linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:72px_72px] [mask-image:linear-gradient(to_bottom,transparent,black_18%,black_82%,transparent)]" />
+    <section id="templates" aria-label="Caption template demos" className="landing-section-templates relative isolate overflow-hidden pb-24 pt-8 sm:pb-32 sm:pt-12">
+      <div aria-hidden="true" className="landing-section-shapes landing-section-shapes-templates">
+        <span className="landing-extra-shape landing-extra-diamond" />
+        <span className="landing-extra-shape landing-extra-ring" />
+        <span className="landing-extra-shape landing-extra-cross" />
+      </div>
+      <div aria-hidden="true" className="landing-light-geometry landing-section-shapes">
+        <span className="landing-extra-shape landing-extra-burst left-[9%] top-[18%]" />
+        <span className="landing-extra-shape landing-extra-hexagon bottom-[18%] right-[8%]" />
+      </div>
       <div className="pointer-events-none absolute -left-48 top-36 -z-10 h-[32rem] w-[32rem] rounded-full bg-[#f5a623]/[0.08] blur-[140px]" />
       <div className="pointer-events-none absolute -right-52 bottom-24 -z-10 h-[28rem] w-[28rem] rounded-full bg-[#f5a623]/[0.05] blur-[130px]" />
 
       <div className="mx-auto max-w-7xl px-5 sm:px-6 lg:px-8">
-        <div className="grid items-end gap-8 lg:grid-cols-[1.25fr_0.75fr] lg:gap-20">
-          <motion.div initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.5 }}>
-            <div className="mb-6 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.24em] text-[#f5a623]">
-              <span className="flex h-8 w-8 items-center justify-center rounded-full border border-[#f5a623]/30 bg-[#f5a623]/10">02</span>
-              The motion room
-            </div>
-            <h2 className="max-w-4xl text-4xl font-semibold leading-[0.98] tracking-[-0.055em] text-white sm:text-6xl lg:text-7xl">
-              Watch your words find their <span className="font-serif font-normal italic text-[#f5a623]">rhythm.</span>
-            </h2>
-          </motion.div>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, amount: 0.5 }}
+          className="mx-auto max-w-3xl text-center"
+        >
+          <h2 className="text-3xl font-semibold leading-[1] tracking-[-0.05em] text-white sm:text-5xl lg:text-6xl">
+            Templates that <span className="landing-highlight landing-highlight-violet font-serif font-normal italic">perform.</span>
+          </h2>
+          <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-white/58">
+            A live contact sheet of caption systems—each one rendered in code, timed for attention, and ready to make your words feel directed.
+          </p>
+        </motion.div>
 
-          <motion.div initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.5 }} transition={{ delay: 0.08 }} className="lg:pb-2">
-            <p className="max-w-xl text-base leading-7 text-white/55 sm:text-lg">
-              Watch the editor and the template library together. Both films are captured from the real Lekha product and play side by side.
-            </p>
-            <div className="mt-6 flex items-center gap-2 text-sm text-white/80">
-              <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#f5a623] opacity-50" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-[#f5a623]" />
-              </span>
-              Two live product films
-            </div>
-          </motion.div>
-        </div>
-
-        <div className="mt-14 grid gap-5 md:grid-cols-2 lg:gap-7">
+        <div className="mt-10 grid gap-5 md:grid-cols-2 lg:gap-7">
           {demos.map((demo, index) => <FilmCard key={demo.id} demo={demo} index={index} />)}
         </div>
 

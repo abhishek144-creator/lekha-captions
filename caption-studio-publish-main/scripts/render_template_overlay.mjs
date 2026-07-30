@@ -31,6 +31,10 @@ import {
   APPLIED_BASIC_TEMPLATE_FONT_SCALE,
   normalizeAppliedBasicTemplateFontSize,
 } from '../src/components/dashboard/basicTemplateInline.js';
+import {
+  detectScript,
+  resolveScriptFontFamily,
+} from '../src/components/dashboard/scriptFontResolver.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '..');
@@ -44,6 +48,57 @@ const ADVANCED_TEMPLATE_VARIANTS = {
   t31: 'wbw-rise', t32: 'plain-s', t33: 'wbw-rise', t34: 'wbw-rise', t35: 'wbw-rise',
 };
 const TEMPLATE_CANVAS_FONT_SCALE = 0.88;
+const LINE_ANIMATION_DEFS = {
+  rise: ['source-word-rise', 400, 'ease-out', 'both'],
+  pan: ['source-word-pan', 500, 'ease-in-out', 'both'],
+  fade: ['source-word-fade', 500, 'ease-in', 'both'],
+  pop: ['source-word-pop', 300, 'ease-out', 'both'],
+  wipe: ['source-word-wipe', 400, 'ease-out', 'both'],
+  blur: ['source-word-blur', 500, 'ease-in-out', 'both'],
+  succession: ['source-word-succession', 400, 'ease-out', 'both'],
+  breathe: ['source-word-breathe', 1500, 'ease-in-out', 'infinite'],
+  baseline: ['source-word-baseline', 400, 'ease-out', 'both'],
+  drift: ['source-word-drift', 600, 'ease-in-out', 'both'],
+  tectonic: ['source-word-tectonic', 500, 'ease-out', 'both'],
+  tumble: ['source-word-tumble', 600, 'ease-in-out', 'both'],
+  zoom_in: ['caption-zoom-in', 400, 'ease-out', 'both'],
+  zoom_out: ['caption-zoom-out', 400, 'ease-out', 'both'],
+  fade_in: ['caption-fade-in', 400, 'ease-out', 'both'],
+  slide_up: ['caption-slide-up', 400, 'ease-out', 'both'],
+  slide_down: ['caption-slide-down', 400, 'ease-out', 'both'],
+  slide_left: ['caption-slide-left', 400, 'ease-out', 'both'],
+  slide_right: ['caption-slide-right', 400, 'ease-out', 'both'],
+  fadeInUp: ['caption-fade-in-up', 500, 'ease-out', 'both'],
+  fadeInDown: ['caption-fade-in-down', 500, 'ease-out', 'both'],
+  slideInRight: ['caption-slide-in-right', 500, 'ease-out', 'both'],
+  flipInX: ['caption-flip-in-x', 600, 'ease-out', 'both'],
+  flipInY: ['caption-flip-in-y', 600, 'ease-out', 'both'],
+  blurIn: ['caption-blur-in', 500, 'ease-out', 'both'],
+  zoomInFade: ['caption-zoom-in-fade', 500, 'ease-out', 'both'],
+  bounceInUp: ['caption-bounce-in-up', 600, 'ease-out', 'both'],
+  skewLeft: ['caption-skew-left', 400, 'ease-out', 'both'],
+  missile: ['caption-missile', 500, 'cubic-bezier(0.22,1,0.36,1)', 'both'],
+  shockwave: ['caption-shockwave', 500, 'ease-out', 'both'],
+  typewriter: ['caption-typewriter', 600, 'steps(20,end)', 'both'],
+  slamDown: ['caption-slam-down', 500, 'cubic-bezier(0.22,1,0.36,1)', 'both'],
+  fireCharge: ['caption-fire-charge', 500, 'ease-out', 'both'],
+  stampede: ['caption-stampede', 500, 'cubic-bezier(0.22,1,0.36,1)', 'both'],
+  recoil: ['caption-recoil', 400, 'ease-out', 'both'],
+  irisOpen: ['caption-iris-open', 600, 'ease-out', 'both'],
+  parallaxRise: ['caption-parallax-rise', 700, 'ease-out', 'both'],
+  goldenRatio: ['caption-golden-ratio', 600, 'ease-out', 'both'],
+  curtainSplit: ['caption-curtain-split', 500, 'ease-out', 'both'],
+  prestige: ['caption-prestige', 1000, 'ease-out', 'both'],
+  fadeThroughBlack: ['caption-fade-through-black', 800, 'ease-in-out', 'both'],
+  depthPull: ['caption-depth-pull', 600, 'ease-out', 'both'],
+  slowBurn: ['caption-slow-burn', 1500, 'ease-in', 'both'],
+  diagonalWipe: ['caption-diagonal-wipe', 500, 'ease-out', 'both'],
+  confettiPop: ['caption-confetti-pop', 500, 'ease-out', 'both'],
+  stickerSlap: ['caption-sticker-slap', 400, 'cubic-bezier(0.34,1.56,0.64,1)', 'both'],
+  wobbleEntry: ['caption-wobble-entry', 600, 'ease-out', 'both'],
+  balloonFloat: ['caption-balloon-float', 600, 'ease-out', 'both'],
+  colorSplash: ['caption-color-splash', 500, 'ease-out', 'both'],
+};
 // Match the authored 20-template preview engine exactly.
 const SIDEBAR_TEMPLATE_WORD_STAGGER_SECONDS = LEGACY_TEMPLATE_TIMING.wordStaggerMs / 1000;
 const SIDEBAR_TEMPLATE_POSITION_STAGGER_SECONDS = LEGACY_TEMPLATE_TIMING.positionedWordStaggerMs / 1000;
@@ -67,6 +122,20 @@ function findChromeExecutable() {
 
 function toForwardSlash(inputPath) {
   return inputPath.replace(/\\/g, '/');
+}
+
+// Node-side twin of the in-page captionHasCptWords() (see buildRuntimeScript):
+// frame segmentation runs out here, so it needs its own copy to know that a
+// displaced-word caption changes over time.
+function captionHasCptWordStyles(caption) {
+  return Object.values(caption?.word_styles || {}).some((wordStyle = {}) => (
+    Math.abs(Number(wordStyle?.abs_x_pct) || 0) > 0.01
+    || Math.abs(Number(wordStyle?.abs_y_pct) || 0) > 0.01
+    || Math.abs(Number(wordStyle?.x_pct) || 0) > 0.01
+    || Math.abs(Number(wordStyle?.y_pct) || 0) > 0.01
+    || Math.abs(Number(wordStyle?.x) || 0) > 0.01
+    || Math.abs(Number(wordStyle?.y) || 0) > 0.01
+  ));
 }
 
 function isAdvancedTemplateId(templateId) {
@@ -135,6 +204,38 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
     const scaleTemplateFontSize = (fontSize) =>
       Math.max(12, scaleExportPx((fontSize || 18) * TEMPLATE_CANVAS_FONT_SCALE));
     const APPLIED_BASIC_EXPORT_FONT_SCALE = ${JSON.stringify(APPLIED_BASIC_TEMPLATE_FONT_SCALE)};
+    const LINE_ANIMATION_DEFS = ${JSON.stringify(LINE_ANIMATION_DEFS)};
+
+    const getLineAnimationStyle = (animationType, speed = 1) => {
+      const def = LINE_ANIMATION_DEFS[String(animationType || '')];
+      if (!def) return 'none';
+      const [name, durationMs, timing, fill] = def;
+      const safeSpeed = Math.max(0.1, Number(speed) || 1);
+      const duration = Math.max(1, Math.round(durationMs / safeSpeed));
+      return \`\${name} \${duration}ms \${timing} \${fill}\`;
+    };
+
+    const normalizeComputedFontFamily = (value = '') => String(value || '')
+      .split(',')[0]
+      .replace(/["']/g, '')
+      .trim();
+
+    const applySourceTemplateScriptFonts = (root, script = 'latin') => {
+      if (!root || !script || script === 'latin') return;
+      const scriptConfig = window.__exportScriptFontMaps?.[script] || {};
+      const familyMap = scriptConfig.families || {};
+      const fallbackFamily = scriptConfig.fallback || '';
+      if (!fallbackFamily) return;
+
+      [root, ...root.querySelectorAll('*')].forEach((node) => {
+        if (!(node instanceof HTMLElement)) return;
+        const baseFamily = normalizeComputedFontFamily(getComputedStyle(node).fontFamily);
+        const resolvedFamily = familyMap[baseFamily] || fallbackFamily;
+        if (!resolvedFamily || resolvedFamily === baseFamily) return;
+        node.style.setProperty('font-family', \`'\${resolvedFamily}', sans-serif\`, 'important');
+        node.dataset.exportScriptFont = resolvedFamily;
+      });
+    };
 
     const escapeHtml = (value = '') =>
       String(value)
@@ -1046,7 +1147,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           if (normalized === 1) return wrap('t21-b1', wbwMarkup(full, 'wbw-seq-fade', 'imp-space'));
           if (normalized === 2) return wrap('t21-b2', wbwMarkup(full, 'wbw-rise', 'imp-italic'));
           if (normalized === 3) return wrap('t21-b3', wbwMarkup(full, 'wbw-slide', 'imp-weight'));
-          return wrap('t21-b0', \`<span class="vert-line"><span class="vert-line-inner">\${escapeHtml(upperFull)}</span></span>\`);
+          return wrap('t21-b0', wbwMarkup(full, 'editorial-line wbw-rise', ''));
         case 't22':
           if (normalized === 1) return wrap('t22-b1', \`<span class="wave-txt lekha-template-fit">\${heroMarkup(full, 'imp-gold')}</span>\`);
           if (normalized === 2) return wrap('t22-b2', wbwMarkup(full, 'wbw-rise', 'imp-italic'));
@@ -1128,7 +1229,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           if (normalized === 3) return wrap('t38-b3', wbwMarkup(full, 'wbw-seq-fade', 'imp-italic'));
           return wrap('t38-b0', \`<span class="lekha-template-fit lekha-template-preview-lines">\${resolvedPreviewLines.map((line) => escapeHtml(line)).join('<br>')}</span>\`);
         case 't39':
-          return wrap(\`t39-b\${normalized}\`, wbwMarkup(full, 'wbw-seq-fade', normalized % 2 ? 'imp-rose' : 'imp-gold'));
+          return wrap(\`t39-b\${normalized}\`, wbwMarkup(full, 'wbw-seq-fade', normalized % 2 ? 'imp-rose' : 'imp-gold', { motion: 't39-evidence' }));
         case 't40':
           if (normalized === 2) return wrap('t40-b2', \`<span class="lekha-template-fit">\${stillFramesMarkup(full)}</span>\`);
           return wrap(\`t40-b\${normalized}\`, \`<span class="lekha-template-fit">\${stillFramesMarkup(full)}</span>\`);
@@ -1146,6 +1247,21 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         style: styled[\`\${caption.id}-\${index}\`] || {},
       }));
     };
+
+    // Displacing a word authors a CPT (creatively placed text), which builds up
+    // word by word until the sentence is complete. Mirrors captionHasCptWords()
+    // in VideoPlayer.jsx — the preview keeps pending words mounted at opacity 0
+    // so the line never reflows as words land, and the export must match.
+    const captionHasCptWords = (caption) => (
+      Object.values(caption?.word_styles || {}).some((wordStyle = {}) => (
+        Math.abs(Number(wordStyle?.abs_x_pct) || 0) > 0.01
+        || Math.abs(Number(wordStyle?.abs_y_pct) || 0) > 0.01
+        || Math.abs(Number(wordStyle?.x_pct) || 0) > 0.01
+        || Math.abs(Number(wordStyle?.y_pct) || 0) > 0.01
+        || Math.abs(Number(wordStyle?.x) || 0) > 0.01
+        || Math.abs(Number(wordStyle?.y) || 0) > 0.01
+      ))
+    );
 
     const getWordEffectInlineStyles = (wordStyle = {}) => {
       const type = wordStyle?.effectType || 'none';
@@ -1172,6 +1288,21 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         default: return {};
       }
     };
+
+    const getCaptionEffectInlineStyles = (style = {}) => getWordEffectInlineStyles({
+      effectType: style.effect_type,
+      effectColor: style.effect_color,
+      effectBlur: style.effect_blur,
+      effectOffset: style.effect_offset,
+      effectDirection: style.effect_direction,
+      effectTransparency: style.effect_transparency,
+      effectThickness: style.effect_thickness,
+    });
+
+    const inlineStyleObject = (styles = {}) => Object.entries(styles)
+      .filter(([, value]) => value !== undefined && value !== null && value !== '')
+      .map(([property, value]) => \`\${property}:\${value}\`)
+      .join(';');
 
     const getSourceWordAnimationStyle = (animationType, speed = 1) => {
       const safeSpeed = Math.max(0.25, Number(speed) || 1);
@@ -1204,16 +1335,34 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       '.lekha-sidebar-export-template-shell .wbw-word',
       '.lekha-sidebar-export-template-shell .sw',
       '.lekha-sidebar-export-template-shell .sw-w',
+      '.lekha-sidebar-export-template-shell .plain-word',
       '[data-word-key]',
+      '[data-w]',
       '[data-i]',
     ].join(',');
 
     const getEditableSourceTemplateWords = (root) => {
-      const candidates = Array.from(root.querySelectorAll(sourceTemplateWordSelector));
-      return candidates.filter((node) => {
-        const parentEditable = node.parentElement?.closest?.(sourceTemplateWordSelector);
-        return !parentEditable || !root.contains(parentEditable);
+      const blocks = Array.from(root.querySelectorAll('.sb, .sblock, .lekha-applied-advanced-template'));
+      const scopes = blocks.length ? blocks : [root];
+      const seenNodes = new Set();
+      const editableWords = [];
+      scopes.forEach((scope) => {
+        Array.from(scope.querySelectorAll(sourceTemplateWordSelector)).forEach((node) => {
+          if (seenNodes.has(node)) return;
+          if (node.closest?.('[data-source-word-spacer="true"]')) return;
+          const parentEditable = node.parentElement?.closest?.(sourceTemplateWordSelector);
+          if (parentEditable && scope.contains(parentEditable)) return;
+          seenNodes.add(node);
+          const explicitIndex = Number(node.dataset?.w ?? node.dataset?.i);
+          editableWords.push({
+            node,
+            index: Number.isFinite(explicitIndex) ? explicitIndex : editableWords.length,
+          });
+        });
       });
+      return editableWords
+        .filter(({ index }) => Number.isFinite(index) && index >= 0)
+        .sort((left, right) => left.index - right.index);
     };
 
     const sourceTemplateVisualSelector = '[data-source-word-visual="true"], .kf-base, .kf-fill';
@@ -1232,13 +1381,56 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       return [visual];
     };
 
-    const applySourceTemplateWordStyles = (root, caption) => {
+    // CSS transforms do not apply to non-replaced inline boxes. The managed
+    // visual span this renderer wraps a word in is inline by default, so a
+    // dragged word (CPT) received the correct translate value and still never
+    // moved in the exported video — the preview escapes this because
+    // prepareSourceTemplateWordNode() forces inline-block there. Upgrade the
+    // box only when an offset is actually being applied, so words that merely
+    // carry font/colour overrides keep their current export layout.
+    const ensureTransformableWordTarget = (element) => {
+      if (!element?.style) return;
+      if (getComputedStyle(element).display !== 'inline') return;
+      element.style.setProperty('display', 'inline-block', 'important');
+      element.style.setProperty('transform-origin', 'center center', 'important');
+      element.style.setProperty('white-space', 'nowrap', 'important');
+      element.style.setProperty('overflow', 'visible', 'important');
+      element.style.setProperty('vertical-align', 'baseline', 'important');
+      element.style.setProperty('line-height', 'inherit', 'important');
+    };
+
+    const applySourceTemplateWordStyles = (root, caption, renderTime = 0) => {
       if (!root || !caption) return;
       const nodes = getEditableSourceTemplateWords(root);
       const styles = caption.word_styles || {};
+      const isCptCaption = captionHasCptWords(caption);
+      const currentCptIndex = getCurrentWordIndex(caption, renderTime);
+      const hasRealAbsolutePosition = (wordStyle = {}) => (
+        Number.isFinite(Number(wordStyle.abs_x_pct))
+        && Number.isFinite(Number(wordStyle.abs_y_pct))
+        && (
+          Math.abs(Number(wordStyle.abs_x_pct)) > 0.01
+          || Math.abs(Number(wordStyle.abs_y_pct)) > 0.01
+        )
+      );
       const setImportant = (element, property, value) => {
         if (!element?.style || value === undefined || value === null || value === '') return;
         element.style.setProperty(property, String(value), 'important');
+      };
+      const unlockPositionedWordOverflow = (element) => {
+        let current = element;
+        while (current && root.contains(current)) {
+          setImportant(current, 'overflow', 'visible');
+          setImportant(current, 'overflow-x', 'visible');
+          setImportant(current, 'overflow-y', 'visible');
+          setImportant(current, 'clip-path', 'none');
+          setImportant(current, '-webkit-clip-path', 'none');
+          setImportant(current, 'mask-image', 'none');
+          setImportant(current, '-webkit-mask-image', 'none');
+          setImportant(current, 'contain', 'none');
+          if (current === root) break;
+          current = current.parentElement;
+        }
       };
       const applyTextGradient = (target, gradient) => {
         setImportant(target, 'background-color', 'transparent');
@@ -1252,12 +1444,94 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         setImportant(target, '-webkit-text-fill-color', 'transparent');
         setImportant(target, 'color', 'transparent');
       };
-      nodes.forEach((node, index) => {
+      nodes.forEach(({ node, index }) => {
         const key = \`\${caption.id}-\${index}\`;
         const wordStyle = styles[key] || {};
         node.dataset.wordKey = key;
-        if (!Object.keys(wordStyle).length) return;
+        if (isCptCaption && index > currentCptIndex) {
+          setImportant(node, 'opacity', '0');
+        } else if (isCptCaption) {
+          setImportant(node, 'opacity', '1');
+        }
+        if (!Object.keys(wordStyle).length && !isCptCaption) return;
         const targets = getSourceTemplateVisualTargets(node);
+        if (isCptCaption) {
+          // CPT words reveal cumulatively at their transcription boundaries,
+          // but they appear immediately in the exact final canvas state. Kill
+          // authored template, caption, and per-word entrance motion on both the
+          // editable anchor and its generated visual wrapper.
+          [node, ...targets].forEach((target) => {
+            setImportant(target, 'animation', 'none');
+            setImportant(target, 'animation-delay', '0s');
+            setImportant(target, 'animation-play-state', 'paused');
+            setImportant(target, 'transition', 'none');
+            setImportant(target, 'transform', 'none');
+            setImportant(target, 'clip-path', 'none');
+            setImportant(target, '-webkit-clip-path', 'none');
+            setImportant(target, 'filter', 'none');
+            delete target.dataset.cptWordStart;
+            delete target.dataset.cptWordMotion;
+          });
+        }
+        const isPlainEditorLayer = Boolean(node.closest('.plain-caption-shell, .text-element-shell'));
+        const positionTargets = isPlainEditorLayer ? [node] : targets;
+        const hasSourceXPct = wordStyle.x_pct !== null
+          && wordStyle.x_pct !== ''
+          && Number.isFinite(Number(wordStyle.x_pct));
+        const hasSourceYPct = wordStyle.y_pct !== null
+          && wordStyle.y_pct !== ''
+          && Number.isFinite(Number(wordStyle.y_pct));
+        const sourceOffsetX = hasSourceXPct
+          ? (Number(wordStyle.x_pct) / 100) * window.innerWidth
+          : Number(wordStyle.x || 0) * (window.__exportCanvasScale || 1);
+        const sourceOffsetY = hasSourceYPct
+          ? (Number(wordStyle.y_pct) / 100) * window.innerHeight
+          : Number(wordStyle.y || 0) * (window.__exportCanvasScale || 1);
+        let absoluteWordOffset = null;
+        if (hasRealAbsolutePosition(wordStyle)) {
+          if (node.dataset.exportAbsoluteWordPositioned === 'true') {
+            positionTargets.forEach((target) => target.style.removeProperty('translate'));
+          }
+          const rect = node.getBoundingClientRect();
+          absoluteWordOffset = {
+            x: ((Number(wordStyle.abs_x_pct) / 100) * window.innerWidth) - (rect.left + rect.width / 2),
+            y: ((Number(wordStyle.abs_y_pct) / 100) * window.innerHeight) - (rect.top + rect.height / 2),
+          };
+          node.dataset.exportAbsoluteWordPositioned = 'true';
+        }
+        if (absoluteWordOffset) {
+          unlockPositionedWordOverflow(node);
+          const rotation = Number(wordStyle.rotation || 0) || 0;
+          const scaleX = Number(wordStyle.textScaleX || 1) || 1;
+          setImportant(node, 'z-index', '80');
+          positionTargets.forEach((target) => {
+            target.dataset.exportWordPositionTarget = 'true';
+            ensureTransformableWordTarget(target);
+            setImportant(
+              target,
+              'translate',
+              \`\${Math.round(absoluteWordOffset.x)}px \${Math.round(absoluteWordOffset.y)}px\`,
+            );
+            if (rotation) setImportant(target, 'rotate', \`\${rotation}deg\`);
+            if (Math.abs(scaleX - 1) > 0.001) setImportant(target, 'scale', \`\${scaleX} 1\`);
+          });
+        } else if (Math.abs(sourceOffsetX) > 0.01 || Math.abs(sourceOffsetY) > 0.01) {
+          unlockPositionedWordOverflow(node);
+          positionTargets.forEach((target) => {
+            target.dataset.exportWordPositionTarget = 'true';
+            ensureTransformableWordTarget(target);
+            setImportant(
+              target,
+              'translate',
+              \`\${Math.round(sourceOffsetX)}px \${Math.round(sourceOffsetY)}px\`,
+            );
+          });
+        }
+        if (isPlainEditorLayer && wordStyle.boxWidth) {
+          setImportant(node, 'width', \`\${scaleExportPx(wordStyle.boxWidth)}px\`);
+          setImportant(node, 'white-space', 'normal');
+          setImportant(node, 'overflow-wrap', 'anywhere');
+        }
         const textGradient = typeof wordStyle.textGradient === 'string' ? wordStyle.textGradient.trim() : '';
         if (textGradient) {
           node.dataset.sourceWordGradient = 'true';
@@ -1268,11 +1542,32 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         }
         targets.forEach((target) => {
           if (wordStyle.fontFamily) setImportant(target, 'font-family', wordStyle.fontFamily);
-          if (wordStyle.fontSize) setImportant(target, 'font-size', \`\${scaleTemplateFontSize(wordStyle.fontSize)}px\`);
+          if (wordStyle.fontSize) {
+            const scaledFontSize = isPlainEditorLayer
+              ? scaleExportPx(wordStyle.fontSize)
+              : scaleTemplateFontSize(wordStyle.fontSize);
+            setImportant(target, 'font-size', \`\${scaledFontSize}px\`);
+          }
           if (wordStyle.fontWeight) setImportant(target, 'font-weight', wordStyle.fontWeight);
           if (wordStyle.fontStyle) setImportant(target, 'font-style', wordStyle.fontStyle);
           if (wordStyle.textDecoration) setImportant(target, 'text-decoration', wordStyle.textDecoration);
           if (wordStyle.textTransform) setImportant(target, 'text-transform', wordStyle.textTransform);
+          if (wordStyle.isEmphasis) {
+            const emphasisColor = caption.custom_style?.highlight_color
+              || caption.custom_style?.text_color
+              || caption.applied_template_style?.highlight_color
+              || caption.applied_template_style?.emphasis_color
+              || caption.applied_template_style?.secondary_color
+              || caption.emphasis_color
+              || '#DDAA03';
+            if (!wordStyle.fontWeight) setImportant(target, 'font-weight', '700');
+            if (!wordStyle.fontSize) setImportant(target, 'scale', '1.12');
+            if (!wordStyle.color && !textGradient) {
+              setImportant(target, 'color', emphasisColor);
+              setImportant(target, '-webkit-text-fill-color', emphasisColor);
+            }
+            setImportant(target, 'text-shadow', \`0 0 18px \${emphasisColor}99, 0 0 6px \${emphasisColor}66\`);
+          }
           if (textGradient) {
             applyTextGradient(target, textGradient);
           } else if (wordStyle.color) {
@@ -1290,7 +1585,9 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           Object.entries(getWordEffectInlineStyles(wordStyle)).forEach(([property, value]) => {
             setImportant(target, property, value);
           });
-          const animation = getSourceWordAnimationStyle(wordStyle.animation, wordStyle.animationSpeed || 1);
+          const animation = isCptCaption
+            ? ''
+            : getSourceWordAnimationStyle(wordStyle.animation, wordStyle.animationSpeed || 1);
           if (animation) {
             setImportant(target, 'display', 'inline-block');
             setImportant(target, 'transform-origin', 'center center');
@@ -1444,6 +1741,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           }
 
           const inline = [];
+          if (captionHasCptWords(caption) && index > currentIndex) inline.push('opacity:0');
           if (wordStyle.color) inline.push(\`color:\${wordStyle.color}\`);
           if (wordStyle.fontFamily) inline.push(\`font-family:"\${wordStyle.fontFamily}"\`);
           if (wordStyle.fontSize) inline.push(\`font-size:\${scaleTemplateFontSize(wordStyle.fontSize)}px\`);
@@ -1454,26 +1752,6 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           return \`<span data-word-key="\${word.key}" class="\${className}" style="\${inline.join(';')}">\${escapeHtml(transformText(word.text, globalStyle))}</span>\`;
         })
         .filter(Boolean)
-        .join('');
-
-      const positionedWords = isAdvancedTemplate ? '' : words
-        .filter((word) => word.style?.abs_x_pct !== undefined && word.style?.abs_y_pct !== undefined)
-        .map((word) => {
-          const inline = [
-            'position:absolute',
-            \`left:\${word.style.abs_x_pct}%\`,
-            \`top:\${word.style.abs_y_pct}%\`,
-            'transform:translate(-50%, -50%)',
-            'display:inline-block',
-            'white-space:pre',
-            \`font-family:"\${word.style.fontFamily || globalStyle?.font_family || 'Inter'}"\`,
-            \`font-size:\${scaleTemplateFontSize(word.style.fontSize || globalStyle?.font_size || 18)}px\`,
-            \`font-weight:\${word.style.fontWeight || globalStyle?.font_weight || '500'}\`,
-            \`font-style:\${word.style.fontStyle || globalStyle?.font_style || 'normal'}\`,
-            \`color:\${word.style.color || globalStyle?.text_color || '#ffffff'}\`,
-          ];
-          return \`<span class="export-positioned-word" style="\${inline.join(';')}">\${escapeHtml(transformText(word.text, globalStyle))}</span>\`;
-        })
         .join('');
 
       const hasAppliedTemplate = Boolean(globalStyle?.template_id);
@@ -1529,7 +1807,6 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
                 caption.imp_word_indices || [],
               )}</span>
             </div>
-            \${positionedWords}
           </div>
         \`;
       }
@@ -1546,7 +1823,6 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
               letter-spacing:\${scaleExportPx(globalStyle?.letter_spacing || 0)}px;
             ">\${flowedWords}</span>
           </div>
-          \${positionedWords}
         </div>
       \`;
     };
@@ -1673,7 +1949,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       return slots.map((slot) => slot.join(' '));
     };
 
-    const replaceSidebarWordByWord = (container, words, impWordIndex) => {
+    const replaceSidebarWordByWord = (container, words, impWordIndex, impWordIndices = []) => {
       if (!container || !words.length) return false;
       const isNewWbw = container.classList.contains('wbw-line');
       const selector = isNewWbw ? '.wbw-word' : '.w';
@@ -1685,7 +1961,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       const sourceImpIndex = sourceClasses.findIndex((className) => impPattern.test(className));
       const impClass = sourceImpIndex >= 0 ? sourceClasses[sourceImpIndex].match(impPattern)?.[0] || '' : '';
       const fallbackImpIndex = resolveSidebarTargetImpIndex(sourceImpIndex, sourceClasses.length, words.length, impWordIndex);
-      const targetImpIndices = new Set(resolveImpWordIndicesForWords(words, fallbackImpIndex));
+      const targetImpIndices = new Set(resolveImpWordIndicesForWords(words, fallbackImpIndex, impWordIndices));
       container.innerHTML = words.map((word, index) => {
         const mapped = mappedSidebarClassName(sourceClasses, index, words.length, fallback)
           .replace(/\\b(?:imp-[\\w-]+|ns[23]-[\\w-]+)\\b/g, '')
@@ -1693,31 +1969,31 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           .trim();
         const isEmphasis = targetImpIndices.has(index);
         const emphasis = isEmphasis && impClass ? ' ' + impClass : '';
-        return '<span data-export-caption-text="true" class="' + (mapped || fallback) + emphasis + (isEmphasis ? ' is-emphasis' : '') + '"' + renderSidebarLcAttrs(sourceNodes, index, words.length) + '>' + escapeHtml(word) + '</span>';
+        return '<span data-export-caption-text="true" data-w="' + index + '" class="' + (mapped || fallback) + emphasis + (isEmphasis ? ' is-emphasis' : '') + '"' + renderSidebarLcAttrs(sourceNodes, index, words.length) + '>' + escapeHtml(word) + '</span>';
       }).join(' ');
       return true;
     };
 
-    const replaceSidebarSticky = (container, words, impWordIndex) => {
+    const replaceSidebarSticky = (container, words, impWordIndex, impWordIndices = []) => {
       const stickyWords = Array.from(container.querySelectorAll('.sw-w'));
       if (!stickyWords.length || !words.length) return false;
       const sourceClasses = stickyWords.map((word) => cleanSidebarClassName(word.className, 'sw-w'));
       const impPattern = /\\b(?:imp-[\\w-]+|ns[23]-[\\w-]+)\\b/;
       const sourceImpIndex = sourceClasses.findIndex((className) => impPattern.test(className));
       const fallbackImpIndex = resolveSidebarTargetImpIndex(sourceImpIndex, sourceClasses.length, words.length, impWordIndex);
-      const targetImpIndices = new Set(resolveImpWordIndicesForWords(words, fallbackImpIndex));
+      const targetImpIndices = new Set(resolveImpWordIndicesForWords(words, fallbackImpIndex, impWordIndices));
       container.innerHTML = words.map((word, index) => (
-        '<span data-export-caption-text="true" class="' + mappedSidebarClassName(sourceClasses, index, words.length, 'sw-w') + (targetImpIndices.has(index) ? ' is-emphasis' : '') + '"' + renderSidebarLcAttrs(stickyWords, index, words.length) + '>' + escapeHtml(word) + '</span>'
+        '<span data-export-caption-text="true" data-w="' + index + '" class="' + mappedSidebarClassName(sourceClasses, index, words.length, 'sw-w') + (targetImpIndices.has(index) ? ' is-emphasis' : '') + '"' + renderSidebarLcAttrs(stickyWords, index, words.length) + '>' + escapeHtml(word) + '</span>'
       )).join(' ');
       return true;
     };
 
-    const replaceSidebarLcCaptionText = (container, words, impWordIndex) => {
+    const replaceSidebarLcCaptionText = (container, words, impWordIndex, impWordIndices = []) => {
       const sourceSpans = Array.from(container.querySelectorAll('.w'));
       if (!sourceSpans.length || !words.length) return false;
       const rows = Array.from(new Set(sourceSpans.map((span) => span.parentElement).filter(Boolean)));
       const sourceByRow = rows.map((row) => Array.from(row.querySelectorAll(':scope > .w')));
-      const targetImpIndices = new Set(resolveImpWordIndicesForWords(words, impWordIndex));
+      const targetImpIndices = new Set(resolveImpWordIndicesForWords(words, impWordIndex, impWordIndices));
       const totalSlots = sourceByRow.reduce((sum, rowSpans) => sum + rowSpans.length, 0);
       let wordCursor = 0;
 
@@ -1733,6 +2009,10 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         const sourceClasses = rowSpans.map((span) => cleanSidebarClassName(span.className, 'w'));
         const sourceVisible = rowSpans.map((span) => span.classList.contains('on') && !span.getAttribute('data-lc-anim'));
         const sourceStyles = rowSpans.map((span) => String(span.getAttribute('style') || '').replace(/\\banimation\\s*:[^;]+;?/gi, '').trim());
+        const sourceRowHasUnderline = rowSpans.some((span) => (
+          span.matches('.ul, .ns3hero, .imp-underline')
+        ));
+        const createdRowSpans = [];
         row.textContent = '';
         rowWords.forEach((word, localIndex) => {
           if (localIndex > 0) row.appendChild(document.createTextNode(' '));
@@ -1743,6 +2023,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
             .replace(/\\s+/g, ' ')
             .trim();
           span.dataset.exportCaptionText = 'true';
+          span.dataset.w = String(wordIndex);
           span.className = (className || 'w')
             + (targetImpIndices.has(wordIndex) ? ' is-emphasis' : '')
             + (mappedSidebarClassName(sourceVisible, localIndex, rowWords.length, false) ? ' on' : '');
@@ -1754,18 +2035,25 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           if (sourceStyle) span.setAttribute('style', sourceStyle);
           span.textContent = word;
           row.appendChild(span);
+          createdRowSpans.push(span);
         });
+        const emphasizedRowSpans = createdRowSpans.filter((span) => span.classList.contains('is-emphasis'));
+        if (sourceRowHasUnderline && emphasizedRowSpans.length >= 2) {
+          emphasizedRowSpans.forEach((span) => {
+            span.dataset.pairedEmphasisUnderline = 'true';
+          });
+        }
         wordCursor += rowWordCount;
       });
       return true;
     };
 
-    const replaceSidebarPositioned = (block, words, impWordIndex, forceContiguous = false) => {
+    const replaceSidebarPositioned = (block, words, impWordIndex, impWordIndices = [], forceContiguous = false) => {
       const spans = Array.from(block.querySelectorAll('.sw'));
       if (!spans.length || !words.length) return false;
       const rows = Array.from(new Set(spans.map((span) => span.parentElement).filter(Boolean)));
       const sourceByRow = rows.map((row) => Array.from(row.querySelectorAll(':scope > .sw')));
-      const targetImpIndices = new Set(resolveImpWordIndicesForWords(words, impWordIndex));
+      const targetImpIndices = new Set(resolveImpWordIndicesForWords(words, impWordIndex, impWordIndices));
       if (forceContiguous && sourceByRow.length > 1) {
         const sourceClasses = spans.map((span) => cleanSidebarClassName(span.className, 'sw'));
         const sourceAnims = spans.map((span) => span.getAttribute('data-anim') || 'rise');
@@ -1778,6 +2066,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           if (wordIndex > 0) targetRow.appendChild(document.createTextNode(' '));
           const span = document.createElement('span');
           span.dataset.exportCaptionText = 'true';
+          span.dataset.w = String(wordIndex);
           span.className = mappedSidebarClassName(sourceClasses, wordIndex, words.length, 'sw')
             + (targetImpIndices.has(wordIndex) ? ' is-emphasis' : '');
           span.dataset.anim = mappedSidebarClassName(sourceAnims, wordIndex, words.length, 'rise');
@@ -1804,6 +2093,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           const span = document.createElement('span');
           span.dataset.exportCaptionText = 'true';
           const globalWordIndex = wordCursor + localIndex;
+          span.dataset.w = String(globalWordIndex);
           span.className = mappedSidebarClassName(sourceClasses, localIndex, rowWords.length, 'sw')
             + (targetImpIndices.has(globalWordIndex) ? ' is-emphasis' : '');
           span.dataset.anim = mappedSidebarClassName(sourceAnims, localIndex, rowWords.length, 'rise');
@@ -1819,37 +2109,34 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       return true;
     };
 
-    const replaceSidebarPlain = (block, words, impWordIndex) => {
+    const replaceSidebarPlain = (block, words, impWordIndex, impWordIndices = []) => {
       const plain = Array.from(block.querySelectorAll('.plain-s'))
         .find((element) => !element.classList.contains('wbw') && !element.classList.contains('wbw-line'));
       if (!plain || !words.length) return false;
       plain.dataset.exportCaptionText = 'true';
       plain.textContent = '';
-      const targetImpIndices = new Set(resolveImpWordIndicesForWords(words, impWordIndex));
+      const targetImpIndices = new Set(resolveImpWordIndicesForWords(words, impWordIndex, impWordIndices));
       words.forEach((word, index) => {
         if (index > 0) plain.appendChild(document.createTextNode(' '));
-        if (targetImpIndices.has(index)) {
-          const span = document.createElement('span');
-          span.className = 'is-emphasis';
-          span.dataset.exportCaptionText = 'true';
-          span.textContent = word;
-          plain.appendChild(span);
-        } else {
-          plain.appendChild(document.createTextNode(word));
-        }
+        const span = document.createElement('span');
+        span.className = targetImpIndices.has(index) ? 'is-emphasis' : 'plain-word';
+        span.dataset.exportCaptionText = 'true';
+        span.dataset.w = String(index);
+        span.textContent = word;
+        plain.appendChild(span);
       });
       return true;
     };
 
-    const replaceSidebarTemplateText = (block, captionText, impWordIndex, forceContiguousPositioned = false, templateSource = '') => {
+    const replaceSidebarTemplateText = (block, captionText, impWordIndex, impWordIndices = [], forceContiguousPositioned = false, templateSource = '') => {
       const words = String(captionText || '').trim().split(/\\s+/).filter(Boolean);
-      block.querySelectorAll('.wbw, .wbw-line').forEach((container) => replaceSidebarWordByWord(container, words, impWordIndex));
-      block.querySelectorAll('.sw-line').forEach((container) => replaceSidebarSticky(container, words, impWordIndex));
+      block.querySelectorAll('.wbw, .wbw-line').forEach((container) => replaceSidebarWordByWord(container, words, impWordIndex, impWordIndices));
+      block.querySelectorAll('.sw-line').forEach((container) => replaceSidebarSticky(container, words, impWordIndex, impWordIndices));
       if (templateSource === 'lekha-lc') {
-        block.querySelectorAll('.cpt, .nline').forEach((container) => replaceSidebarLcCaptionText(container, words, impWordIndex));
+        block.querySelectorAll('.cpt, .nline').forEach((container) => replaceSidebarLcCaptionText(container, words, impWordIndex, impWordIndices));
       }
-      replaceSidebarPositioned(block, words, impWordIndex, forceContiguousPositioned);
-      replaceSidebarPlain(block, words, impWordIndex);
+      replaceSidebarPositioned(block, words, impWordIndex, impWordIndices, forceContiguousPositioned);
+      replaceSidebarPlain(block, words, impWordIndex, impWordIndices);
     };
 
     const getSidebarWordMotion = (word) => {
@@ -1944,6 +2231,13 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         const captionDurationMs = Math.max(0, (captionEnd - captionStart) * 1000);
         const phaseIndex = Number(shell.dataset.templatePhaseIndex || shell.dataset.captionIndex || 0);
         const impWordIndex = Number(shell.dataset.impWordIndex || -1);
+        let impWordIndices = [];
+        try {
+          const parsed = JSON.parse(shell.dataset.impWordIndices || '[]');
+          impWordIndices = Array.isArray(parsed) ? parsed : [];
+        } catch {
+          impWordIndices = [];
+        }
         const templateSource = shell.dataset.templateSource || '';
         const isLcTemplateSet = templateSource === 'lekha-lc';
         const elapsedMs = Math.max(0, (time - captionStart) * 1000);
@@ -1955,7 +2249,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         const dots = Array.from(shell.querySelectorAll('.dots i, .lk-dots i'));
 
         blocks.forEach((block) => {
-          replaceSidebarTemplateText(block, captionText, impWordIndex, false, templateSource);
+          replaceSidebarTemplateText(block, captionText, impWordIndex, impWordIndices, false, templateSource);
           block.classList.remove('active');
           block.style.opacity = '0';
           block.style.visibility = 'hidden';
@@ -2004,21 +2298,52 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         // context alphas (rgba support rows) and the bold hero tiers that give
         // each template its identity, and it breaks the weight-based hero
         // detection below.
-        const emphasisAccent = getComputedStyle(shell)
-          .getPropertyValue('--sidebar-emphasis-accent')
-          .trim() || '#DDAA03';
+        const shellStyles = getComputedStyle(shell);
+        const emphasisAccent = shellStyles.getPropertyValue('--template-highlight').trim()
+          || shellStyles.getPropertyValue('--sidebar-emphasis-accent').trim()
+          || '#DDAA03';
+        const getLcEmphasisColor = (word) => (
+          isLcTemplateSet && word.closest('.ln.box')
+            ? '#101114'
+            : emphasisAccent
+        );
         phase.block.querySelectorAll('.is-emphasis').forEach((word) => {
+          const emphasisColor = getLcEmphasisColor(word);
           word.style.setProperty('font-size', 'inherit', 'important');
           word.style.setProperty('line-height', 'inherit', 'important');
           word.style.setProperty('vertical-align', 'baseline', 'important');
-          word.style.setProperty('color', emphasisAccent, 'important');
-          word.style.setProperty('-webkit-text-fill-color', emphasisAccent, 'important');
+          word.style.setProperty('color', emphasisColor, 'important');
+          word.style.setProperty('-webkit-text-fill-color', emphasisColor, 'important');
+        });
+        const emphasisByLine = new Map();
+        phase.block.querySelectorAll('.is-emphasis').forEach((word) => {
+          const line = word.parentElement || phase.block;
+          const lineWords = emphasisByLine.get(line) || [];
+          lineWords.push(word);
+          emphasisByLine.set(line, lineWords);
+        });
+        let hasPairedEmphasis = false;
+        emphasisByLine.forEach((lineWords) => {
+          if (lineWords.length < 2) return;
+          hasPairedEmphasis = true;
+          const hasUnderline = lineWords.some((word) => {
+            const styles = getComputedStyle(word);
+            return word.matches('.ul, .ns3hero, .imp-underline')
+              || styles.textDecorationLine.includes('underline')
+              || (styles.borderBottomStyle !== 'none' && parseFloat(styles.borderBottomWidth) > 0);
+          });
+          if (hasUnderline) {
+            lineWords.forEach((word) => {
+              word.dataset.pairedEmphasisUnderline = 'true';
+            });
+          }
         });
         // Parity with the live preview (recolorEmphasisToHero in VideoPlayer.jsx):
         // the accent colour belongs on the BOLD / hero word(s) — the largest size,
         // or the heaviest weight when sizes are uniform — not the semantic
         // is-emphasis word. Detect the bold tier and move the colour there.
         (function () {
+          if (hasPairedEmphasis) return;
           const heroAtoms = Array.from(phase.block.querySelectorAll('.w, .wbw-word, .sw, .sw-w'));
           if (heroAtoms.length < 2) return;
           const heroMeasure = heroAtoms.map((el) => {
@@ -2054,8 +2379,9 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
             el.style.removeProperty('vertical-align');
           });
           heroPick.forEach((el) => {
-            el.style.setProperty('color', emphasisAccent, 'important');
-            el.style.setProperty('-webkit-text-fill-color', emphasisAccent, 'important');
+            const emphasisColor = getLcEmphasisColor(el);
+            el.style.setProperty('color', emphasisColor, 'important');
+            el.style.setProperty('-webkit-text-fill-color', emphasisColor, 'important');
           });
         })();
         dots.forEach((dot, dotIndex) => {
@@ -2205,6 +2531,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         + ' data-caption-index="' + Number(caption.__templateIndex || 0) + '"'
         + ' data-template-phase-index="' + Number(caption.__templateIndex ?? caption.template_phase_index ?? 0) + '"'
         + ' data-imp-word-index="' + Number(caption.imp_word_index ?? -1) + '"'
+        + ' data-imp-word-indices="' + escapeHtml(JSON.stringify(normalizeImpWordIndices(caption.imp_word_index, caption.imp_word_indices || []))) + '"'
         + ' data-emphasis-color="' + escapeHtml(caption.emphasis_color || '') + '"'
         + ' data-caption-font-weight="' + escapeHtml(globalStyle?.font_weight || appliedStyle.font_weight || '400') + '"'
         + ' data-caption-text-color="' + escapeHtml(globalStyle?.text_color || appliedStyle.text_color || '#FFFFFF') + '"'
@@ -2212,14 +2539,14 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         + ' data-template-complex-script="' + (usesComplexTemplateScript(caption.text || '') ? 'true' : 'false') + '"'
         + ' style="--sidebar-source-font:\\'' + escapeHtml(globalStyle?.font_family || appliedStyle.font_family || 'Inter') + '\\';'
         + '--sidebar-emphasis-accent:' + escapeHtml((() => {
-          const configured = String(caption.emphasis_color || globalStyle?.secondary_color || appliedStyle.secondary_color || globalStyle?.highlight_color || appliedStyle.highlight_color || '').trim();
+          const configured = String(caption.emphasis_color || globalStyle?.highlight_color || globalStyle?.emphasis_color || globalStyle?.secondary_color || appliedStyle.highlight_color || appliedStyle.emphasis_color || appliedStyle.secondary_color || '').trim();
           const textColor = String(globalStyle?.text_color || appliedStyle.text_color || '#FFFFFF').trim();
           return configured && configured.toLowerCase() !== textColor.toLowerCase() ? configured : '#DDAA03';
         })()) + ';'
-        + '--sidebar-template-highlight:' + escapeHtml(globalStyle?.highlight_color || globalStyle?.emphasis_color || globalStyle?.secondary_color || appliedStyle.highlight_color || appliedStyle.emphasis_color || appliedStyle.secondary_color || '#DDAA03') + ';'
+        + '--sidebar-template-highlight:' + escapeHtml(caption.emphasis_color || globalStyle?.highlight_color || globalStyle?.emphasis_color || globalStyle?.secondary_color || appliedStyle.highlight_color || appliedStyle.emphasis_color || appliedStyle.secondary_color || '#DDAA03') + ';'
         + '--template-primary:' + escapeHtml(globalStyle?.text_color || appliedStyle.text_color || '#FFFFFF') + ';'
         + '--template-secondary:' + escapeHtml(globalStyle?.secondary_color || appliedStyle.secondary_color || '#DDAA03') + ';'
-        + '--template-highlight:' + escapeHtml(globalStyle?.highlight_color || globalStyle?.emphasis_color || globalStyle?.secondary_color || appliedStyle.highlight_color || appliedStyle.emphasis_color || appliedStyle.secondary_color || '#DDAA03') + ';'
+        + '--template-highlight:' + escapeHtml(caption.emphasis_color || globalStyle?.highlight_color || globalStyle?.emphasis_color || globalStyle?.secondary_color || appliedStyle.highlight_color || appliedStyle.emphasis_color || appliedStyle.secondary_color || '#DDAA03') + ';'
         + '--template-text-gradient:' + escapeHtml(globalStyle?.text_gradient || appliedStyle.text_gradient || 'none') + ';'
         + '--template-highlight-gradient:' + escapeHtml(globalStyle?.highlight_gradient || appliedStyle.highlight_gradient || 'none') + ';'
         + '--template-karaoke-1:' + escapeHtml(globalStyle?.karaoke_color_1 || globalStyle?.highlight_color || globalStyle?.emphasis_color || globalStyle?.secondary_color || appliedStyle.karaoke_color_1 || appliedStyle.highlight_color || appliedStyle.emphasis_color || appliedStyle.secondary_color || '#DDAA03') + ';'
@@ -2243,28 +2570,41 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       const showInactive = globalStyle?.show_inactive !== false;
       const wordSpacing = \`\${scaleExportPx((globalStyle?.word_spacing ?? 1) * 2)}px\`;
 
+      const isCptCaption = captionHasCptWords(caption);
       const renderPlainWord = (word, index, isLastInLine = false) => {
-          if (!showInactive && index > currentIndex) return '';
-          const wordStyle = word.style || {};
-          const baseColor = wordStyle.color || globalStyle?.text_color || '#ffffff';
-          const inline = [
-            'display:inline-block',
-            'position:relative',
-            \`font-family:"\${wordStyle.fontFamily || globalStyle?.font_family || 'Inter'}"\`,
-            \`font-size:\${scaleExportPx(wordStyle.fontSize || globalStyle?.font_size || 18)}px\`,
-            \`font-weight:\${wordStyle.fontWeight || globalStyle?.font_weight || '500'}\`,
-            \`font-style:\${wordStyle.fontStyle || globalStyle?.font_style || 'normal'}\`,
-            \`color:\${baseColor}\`,
-            !isLastInLine ? \`margin-right:\${wordSpacing}\` : '',
-          ].filter(Boolean);
-          if (globalStyle?.has_stroke) inline.push(\`-webkit-text-stroke:\${globalStyle.stroke_width || 1}px \${globalStyle.stroke_color || '#000000'}\`);
-          if (globalStyle?.has_shadow) inline.push(\`text-shadow:\${globalStyle.shadow_offset_x || 0}px \${globalStyle.shadow_offset_y || 2}px \${globalStyle.shadow_blur || 4}px \${globalStyle.shadow_color || '#000000'}\`);
-          if (wordStyle.backgroundColor) {
-            inline.push(\`background:\${rgbaFromHex(wordStyle.backgroundColor, wordStyle.backgroundOpacity ?? 0.6)}\`);
-            inline.push(\`padding:\${scaleExportPx(wordStyle.backgroundPadding || 2)}px \${scaleExportPx((wordStyle.backgroundPadding || 2) * 2)}px\`);
-            inline.push('border-radius:4px');
-          }
-          return \`<span data-word-key="\${word.key}" style="\${inline.join(';')}">\${escapeHtml(transformText(word.text, globalStyle))}</span>\`;
+        if (!showInactive && index > currentIndex) return '';
+        const wordStyle = word.style || {};
+        const inline = [
+          isCptCaption && index > currentIndex ? 'opacity:0' : '',
+          'display:inline-block',
+          'position:relative',
+          \`font-family:"\${wordStyle.fontFamily || globalStyle?.font_family || 'Inter'}"\`,
+          \`font-size:\${scaleExportPx((wordStyle.fontSize ?? globalStyle?.font_size ?? 18) * (wordStyle.isEmphasis ? 1.2 : 1))}px\`,
+          \`font-weight:\${wordStyle.fontWeight || (wordStyle.isEmphasis ? '700' : (globalStyle?.font_weight || '500'))}\`,
+          \`font-style:\${wordStyle.fontStyle || globalStyle?.font_style || 'normal'}\`,
+          \`color:\${wordStyle.color || (wordStyle.isEmphasis ? (globalStyle?.highlight_color || globalStyle?.secondary_color) : '') || globalStyle?.text_color || '#ffffff'}\`,
+          wordStyle.textDecoration ? \`text-decoration:\${wordStyle.textDecoration}\` : '',
+          wordStyle.textTransform ? \`text-transform:\${wordStyle.textTransform}\` : '',
+          !isLastInLine ? \`margin-right:\${wordSpacing}\` : '',
+        ].filter(Boolean);
+        if (globalStyle?.has_stroke) inline.push(\`-webkit-text-stroke:\${globalStyle.stroke_width ?? 1}px \${globalStyle.stroke_color || '#000000'}\`);
+        if (globalStyle?.has_shadow) inline.push(\`text-shadow:\${globalStyle.shadow_offset_x ?? 0}px \${globalStyle.shadow_offset_y ?? 2}px \${globalStyle.shadow_blur ?? 4}px \${globalStyle.shadow_color || '#000000'}\`);
+        if (wordStyle.isEmphasis && !globalStyle?.has_shadow) {
+          const accent = globalStyle?.highlight_color || globalStyle?.secondary_color || '#DDAA03';
+          inline.push(\`text-shadow:0 0 18px \${accent}99,0 0 6px \${accent}66\`);
+        }
+        const wordGradient = wordStyle.textGradient || globalStyle?.text_gradient || '';
+        if (wordGradient) {
+          inline.push(\`background:\${wordGradient}\`);
+          inline.push('background-clip:text;-webkit-background-clip:text;color:transparent;-webkit-text-fill-color:transparent');
+        }
+        if (wordStyle.backgroundColor || wordStyle.highlightGradient) {
+          inline.push(\`background:\${wordStyle.highlightGradient || rgbaFromHex(wordStyle.backgroundColor, wordStyle.backgroundOpacity ?? 0.6)}\`);
+          inline.push(\`padding:\${scaleExportPx(wordStyle.backgroundPadding ?? 2)}px \${scaleExportPx((wordStyle.backgroundPadding ?? 2) * 2)}px\`);
+          inline.push('border-radius:4px');
+        }
+        Object.entries(getWordEffectInlineStyles(wordStyle)).forEach(([property, value]) => inline.push(\`\${property}:\${value}\`));
+        return \`<span data-word-key="\${word.key}" style="\${inline.join(';')}">\${escapeHtml(transformText(word.text, globalStyle))}</span>\`;
       };
 
       let wordCursor = 0;
@@ -2276,52 +2616,106 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         if (!lineWords.length) return '<span style="display:block;min-height:1em"></span>';
         const lineMarkup = lineWords.map((_, lineWordIndex) => {
           const word = words[wordCursor];
-          const wordIndex = wordCursor;
           wordCursor += 1;
-          return word ? renderPlainWord(word, wordIndex, lineWordIndex === lineWords.length - 1) : '';
+          return word ? renderPlainWord(word, wordCursor - 1, lineWordIndex === lineWords.length - 1) : '';
         }).filter(Boolean).join('');
         return \`<span style="display:block">\${lineMarkup}</span>\`;
       }).join('');
 
+      const lineAnimation = isCptCaption
+        ? 'none'
+        : getLineAnimationStyle(caption.animation, caption.animation_speed || 1);
+      const captionEffect = inlineStyleObject(getCaptionEffectInlineStyles(globalStyle));
+      const captionBackground = globalStyle?.has_background
+        ? \`background:\${rgbaFromHex(globalStyle.background_color || '#000000', globalStyle.background_opacity ?? 0.7)};padding:\${scaleExportPx(globalStyle.background_padding ?? 6)}px \${scaleExportPx((globalStyle.background_padding ?? 6) * 2)}px;border-radius:\${scaleExportPx(8)}px;\`
+        : globalStyle?.highlight_gradient
+          ? \`background:\${globalStyle.highlight_gradient};\`
+          : globalStyle?.highlight_color
+            ? \`background:\${globalStyle.highlight_color};\`
+            : '';
+      const captionGradient = \`color:\${globalStyle?.text_color || '#ffffff'};\`;
+      const captionBoxWidth = Number(globalStyle?.box_width || 0);
+
       return \`
-        <div class="plain-caption-shell">
+        <div class="plain-caption-shell caption-line-animation-shell" data-caption-start="\${Number(caption.start_time ?? 0)}" data-caption-end="\${Number(caption.end_time ?? caption.start_time ?? 0)}" style="display:inline-block;\${captionBoxWidth > 0 ? \`width:\${scaleExportPx(captionBoxWidth)}px;\` : ''}animation:\${lineAnimation};transform-origin:center center;">
           <span class="cap-text" style="
+            display:inline-block;
+            \${captionBoxWidth > 0 ? 'width:100%;' : ''}
             font-family:'\${globalStyle?.font_family || 'Inter'}';
-            font-size:\${scaleExportPx(globalStyle?.font_size || 18)}px;
+            font-size:\${scaleExportPx(globalStyle?.font_size ?? 18)}px;
             font-weight:\${globalStyle?.font_weight || '500'};
             font-style:\${globalStyle?.font_style || 'normal'};
             text-align:\${globalStyle?.text_align || 'center'};
-            line-height:\${scaleExportPx((globalStyle?.font_size || 18) * (globalStyle?.line_spacing || 1.4))}px;
+            line-height:\${scaleExportPx((globalStyle?.font_size ?? 18) * (globalStyle?.line_spacing ?? 1.4))}px;
+            letter-spacing:\${scaleExportPx(globalStyle?.letter_spacing ?? 0)}px;
+            text-decoration:\${globalStyle?.text_decoration || 'none'};
+            text-transform:\${globalStyle?.text_case || 'none'};
+            opacity:\${globalStyle?.text_opacity ?? 1};
+            transform:scale(\${globalStyle?.scale ?? 1});
             white-space:pre-wrap;
-            \${globalStyle?.has_background && !globalStyle?.template_id ? \`background:\${rgbaFromHex(globalStyle.background_color || '#000000', globalStyle.background_opacity ?? 0.7)};padding:\${scaleExportPx(globalStyle.background_padding || 6)}px \${scaleExportPx((globalStyle.background_padding || 6) * 2)}px;border-radius:\${scaleExportPx(8)}px;\` : ''}
-          ">\${wordMarkup}</span>
+            overflow-wrap:anywhere;
+            \${captionBackground}
+            \${captionEffect}
+          "><span class="cap-text-content" style="\${captionGradient}">\${wordMarkup}</span></span>
         </div>
       \`;
     };
 
-    const buildTextElementMarkup = (caption) => {
+    const buildTextElementMarkup = (caption, renderIndex) => {
       const custom = caption.custom_style || {};
+      let wordIndex = 0;
+      const wordMarkup = String(caption.text || '').split(/(\\s+)/).map((part) => {
+        if (!part) return '';
+        if (/^\\s+$/.test(part)) return escapeHtml(part).replace(/\\n/g, '<br/>');
+        const key = \`\${caption.id}-\${wordIndex}\`;
+        wordIndex += 1;
+        const gradientStyle = custom.text_gradient
+          ? \`background:\${custom.text_gradient};background-image:\${custom.text_gradient};background-clip:text;-webkit-background-clip:text;color:transparent;-webkit-text-fill-color:transparent;\`
+          : '';
+        return \`<span data-word-key="\${escapeHtml(key)}" style="\${gradientStyle}">\${escapeHtml(part)}</span>\`;
+      }).join('');
+      const lineAnimation = getLineAnimationStyle(caption.animation, caption.animation_speed || 1);
+      const textGradient = \`color:\${custom.text_color || '#ffffff'};\`;
+      const effectStyle = inlineStyleObject(getCaptionEffectInlineStyles(custom));
       return \`
-        <div class="text-element-shell" style="
+        <div class="text-element-shell" data-caption-render-index="\${renderIndex}" style="
           position:absolute;
           left:\${custom.position_x ?? 50}%;
           top:\${custom.position_y ?? 50}%;
-          transform:translate(-50%, -50%);
+          transform:translate(-50%, -50%) rotate(\${custom.rotation ?? 0}deg);
           text-align:\${custom.text_align || 'center'};
+          width:\${scaleExportPx(custom.width ?? 300)}px;
+          z-index:\${custom.z_index ?? 50};
           pointer-events:none;
         ">
-          <span style="
-            display:inline-block;
+          <span class="caption-line-animation-shell" data-caption-start="\${Number(caption.start_time ?? 0)}" data-caption-end="\${Number(caption.end_time ?? caption.start_time ?? 0)}" style="
+            display:block;
+            width:100%;
+            animation:\${lineAnimation};
+            transform-origin:center center;
+          ">
+          <span class="text-element-content" style="
+            display:block;
+            width:100%;
             white-space:pre-wrap;
             font-family:'\${custom.font_family || 'Inter'}';
-            font-size:\${scaleExportPx(custom.font_size || 18)}px;
+            font-size:\${scaleExportPx(custom.font_size ?? 18)}px;
             font-weight:\${custom.font_weight || '500'};
             font-style:\${custom.font_style || 'normal'};
-            color:\${custom.text_color || '#ffffff'};
-            \${custom.has_background ? \`background:\${rgbaFromHex(custom.background_color || '#000000', custom.background_opacity ?? 0.6)};padding:\${scaleExportPx(custom.padding || 8)}px;border-radius:\${scaleExportPx(8)}px;\` : ''}
-            \${custom.has_stroke ? \`-webkit-text-stroke:\${scaleExportPx(custom.stroke_width || 1)}px \${custom.stroke_color || '#000000'};\` : ''}
-            \${custom.has_shadow ? \`text-shadow:\${scaleExportPx(custom.shadow_offset_x || 0)}px \${scaleExportPx(custom.shadow_offset_y || 2)}px \${scaleExportPx(custom.shadow_blur || 4)}px \${custom.shadow_color || '#000000'};\` : ''}
-          ">\${escapeHtml(String(caption.text || '')).replace(/\\n/g, '<br/>')}</span>
+            text-decoration:\${custom.text_decoration || 'none'};
+            text-transform:\${custom.text_transform || 'none'};
+            letter-spacing:\${scaleExportPx(custom.letter_spacing ?? 0)}px;
+            word-spacing:\${scaleExportPx(custom.word_spacing ?? 0)}px;
+            line-height:\${custom.line_spacing ?? 1.4};
+            opacity:\${custom.text_opacity ?? 1};
+            transform:scale(\${custom.scale ?? 1});
+            transform-origin:center center;
+            word-break:break-all;
+            \${custom.has_background ? \`background:\${rgbaFromHex(custom.background_color || '#000000', custom.background_opacity ?? 0.6)};padding:\${scaleExportPx(custom.background_padding ?? custom.padding ?? 8)}px;border-radius:\${scaleExportPx(custom.border_radius ?? 6)}px;\` : ''}
+            \${custom.has_stroke ? \`-webkit-text-stroke:\${scaleExportPx(custom.stroke_width ?? 1)}px \${custom.stroke_color || '#000000'};\` : ''}
+            \${custom.has_shadow ? \`text-shadow:\${scaleExportPx(custom.shadow_offset_x ?? 0)}px \${scaleExportPx(custom.shadow_offset_y ?? 2)}px \${scaleExportPx(custom.shadow_blur ?? 4)}px \${custom.shadow_color || '#000000'};\` : ''}
+            \${effectStyle}
+          "><span class="text-element-text" style="\${textGradient}">\${wordMarkup}</span></span></span>
         </div>
       \`;
     };
@@ -2535,7 +2929,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       });
 
       root.innerHTML = activeCaptions.map((caption, activeIndex) => {
-        if (caption.is_text_element) return buildTextElementMarkup(caption);
+        if (caption.is_text_element) return buildTextElementMarkup(caption, activeIndex);
         const templateCaptionIndex = Math.max(
           0,
           (payload.captions || [])
@@ -2586,7 +2980,16 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           : renderStyle.template_id
           ? buildTemplateMarkup(captionWithTemplateIndex, renderStyle, time)
           : buildPlainCaptionMarkup(captionWithTemplateIndex, renderStyle, time);
-        return \`<div class="caption-anchor" data-caption-render-index="\${activeIndex}" style="\${base.join(';')}">\${inner}</div>\`;
+        const shouldWrapTemplateAnimation = Boolean(
+          renderStyle.template_id
+          && !captionHasCptWords(caption)
+          && caption.animation
+          && caption.animation !== 'none',
+        );
+        const animatedInner = shouldWrapTemplateAnimation
+          ? \`<div class="caption-line-animation-shell" data-caption-start="\${Number(caption.start_time ?? 0)}" data-caption-end="\${Number(caption.end_time ?? caption.start_time ?? 0)}" style="display:inline-block;animation:\${getLineAnimationStyle(caption.animation, caption.animation_speed || 1)};transform-origin:center center;">\${inner}</div>\`
+          : inner;
+        return \`<div class="caption-anchor" data-caption-render-index="\${activeIndex}" style="\${base.join(';')}">\${animatedInner}</div>\`;
       }).join('');
       activeCaptions.forEach((caption, activeIndex) => {
         const anchor = root.querySelector(\`[data-caption-render-index="\${activeIndex}"]\`);
@@ -2604,7 +3007,8 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
             : templateCaptionIndex,
         };
         const renderStyle = resolveCaptionTemplateStyle(captionWithTemplateIndex);
-        applySourceTemplateWordStyles(anchor, captionWithTemplateIndex);
+        applySourceTemplateScriptFonts(anchor, captionWithTemplateIndex.__export_script);
+        applySourceTemplateWordStyles(anchor, captionWithTemplateIndex, time);
         const captionLineTexts = Array.isArray(caption?.preview_template_line_texts)
           && caption.preview_template_line_texts.length > 0
           ? caption.preview_template_line_texts
@@ -2627,7 +3031,8 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       activeCaptions.forEach((caption, activeIndex) => {
         const anchor = root.querySelector(\`[data-caption-render-index="\${activeIndex}"]\`);
         if (!anchor || caption?.is_text_element) return;
-        applySourceTemplateWordStyles(anchor, caption);
+        applySourceTemplateScriptFonts(anchor, caption.__export_script);
+        applySourceTemplateWordStyles(anchor, caption, time);
       });
     };
   `;
@@ -2649,6 +3054,7 @@ async function main() {
     ).map((entry) => [String(entry.captionId), entry]),
   );
   (payload.captions || []).forEach((caption) => {
+    if (caption) caption.__export_script = detectScript(caption.text || '');
     if (!caption || caption.is_text_element) return;
     const canonical = canonicalEmphasisByCaptionId.get(String(caption.id));
     if (!canonical) return;
@@ -2736,6 +3142,7 @@ async function main() {
   payload.style = resolvedStyle;
   const outputDir = payload.output_dir || path.join(projectRoot, 'tmp-overlay');
   await fs.mkdir(outputDir, { recursive: true });
+  const shouldAuditWordPositions = process.env.TEMPLATE_OVERLAY_POSITION_AUDIT === '1';
 
   const captionCss = await fs.readFile(path.join(projectRoot, 'src', 'styles', 'captionTemplates.css'), 'utf8');
   const advancedCaptionCss = await fs.readFile(path.join(projectRoot, 'src', 'styles', 'captionTemplatesAdvanced.css'), 'utf8');
@@ -2838,19 +3245,66 @@ async function main() {
   const exportT24TemplateMaxWidthPx = exportMeasuredAdvancedTemplateWidthPx
     || Math.round(Math.min(exportTemplateMaxWidth, 260 * exportCssScale));
   const exportSidebarWidth = Math.round(Math.max(160, Math.min(Number(payload.video_width || 360) * 0.94, 320 * exportCssScale)));
+  const sourceTemplateFontFamilies = new Set();
+  const fontFamilyPattern = /font-family\s*:\s*([^;}{]+)/gi;
+  const templateFontSources = [
+    captionCss,
+    advancedCaptionCss,
+    originalTemplateCss,
+    sidebarTemplateCss,
+    ...Object.values(basicTemplateMarkupMap),
+  ];
+  templateFontSources.forEach((source) => {
+    let match;
+    fontFamilyPattern.lastIndex = 0;
+    while ((match = fontFamilyPattern.exec(String(source || '')))) {
+      const family = String(match[1] || '')
+        .split(',')[0]
+        .replace(/(?:&#39;|&quot;|["'])/gi, '')
+        .trim();
+      if (
+        family
+        && !/^(?:inherit|initial|unset|var\(|sans-serif|serif|monospace|cursive)/i.test(family)
+      ) {
+        sourceTemplateFontFamilies.add(family);
+      }
+    }
+  });
+  const scriptSamples = new Map();
+  (payload.captions || []).forEach((caption) => {
+    const script = caption?.__export_script || 'latin';
+    if (script !== 'latin' && !scriptSamples.has(script)) {
+      scriptSamples.set(script, String(caption?.text || ''));
+    }
+  });
+  const exportScriptFontMaps = {};
+  scriptSamples.forEach((sampleText, script) => {
+    const families = {};
+    sourceTemplateFontFamilies.forEach((fontFamily) => {
+      families[fontFamily] = resolveScriptFontFamily(fontFamily, sampleText);
+    });
+    exportScriptFontMaps[script] = {
+      fallback: resolveScriptFontFamily('', sampleText),
+      families,
+    };
+  });
   const exportFontFamilies = new Set([
     payload.style?.font_family,
     ...(payload.captions || []).flatMap((caption) => [
       caption?.applied_template_style?.font_family,
       caption?.custom_style?.font_family,
     ]),
+    ...Object.values(exportScriptFontMaps).flatMap((config) => [
+      config.fallback,
+      ...Object.values(config.families),
+    ]),
   ].filter(Boolean));
-  const exportFontLinks = [...exportFontFamilies]
-    .map((fontFamily) => {
-      const family = encodeURIComponent(String(fontFamily)).replace(/%20/g, '+');
-      return `<link href="https://fonts.googleapis.com/css2?family=${family}:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">`;
-    })
-    .join('\n');
+  const exportFontQuery = [...exportFontFamilies]
+    .map((fontFamily) => `family=${encodeURIComponent(String(fontFamily)).replace(/%20/g, '+')}`)
+    .join('&');
+  const exportFontLinks = exportFontQuery
+    ? `<link href="https://fonts.googleapis.com/css2?${exportFontQuery}&display=swap" rel="stylesheet">`
+    : '';
   console.log(`[Template DOM] sizing preview_width=${previewWidth || 'missing'} video_width=${payload.video_width} css_scale=${exportCssScale.toFixed(4)} target_box=${exportTemplateBoxTargetWidthPx ? `${exportTemplateBoxTargetWidthPx.toFixed(2)}x${exportTemplateBoxTargetHeightPx.toFixed(2)}` : 'auto'}`);
   const runtimeCss = `
     ${sidebarTemplateCss}
@@ -3063,6 +3517,10 @@ async function main() {
       color: var(--sidebar-emphasis-accent, #DDAA03) !important;
       -webkit-text-fill-color: var(--sidebar-emphasis-accent, #DDAA03) !important;
     }
+    .lekha-sidebar-export-template-shell [data-paired-emphasis-underline='true'] {
+      border-bottom: 0.055em solid currentColor !important;
+      padding-bottom: 0.05em !important;
+    }
     .lekha-sidebar-export-template-shell .lc-card .sb .hero,
     .lekha-sidebar-export-template-shell .lc-card .sb .is-emphasis,
     .lekha-sidebar-export-template-shell .lc-card .sb .ns3hero,
@@ -3086,6 +3544,16 @@ async function main() {
       justify-content: center !important;
       line-height: 1.05 !important;
       padding-block: 0.12em 0.04em !important;
+      vertical-align: middle !important;
+      box-sizing: border-box !important;
+    }
+    .lekha-sidebar-export-template-shell[data-template-complex-script='true'] .lc-card .cpt .ln.box {
+      display: inline-flex !important;
+      flex-wrap: wrap !important;
+      align-items: center !important;
+      justify-content: center !important;
+      line-height: 1.16 !important;
+      padding-block: 0.14em 0.06em !important;
       vertical-align: middle !important;
       box-sizing: border-box !important;
     }
@@ -3155,10 +3623,6 @@ async function main() {
       column-gap: 0.24em;
       row-gap: 0.08em;
       line-height: 1.2;
-    }
-    .export-positioned-word {
-      pointer-events: none;
-      white-space: pre;
     }
     .lekha-original-template {
       --gold: #d4af37;
@@ -4528,6 +4992,43 @@ async function main() {
       0% { transform: rotate(-180deg) scale(0.5); opacity: 0; }
       100% { transform: rotate(0) scale(1); opacity: 1; }
     }
+    @keyframes caption-zoom-in { from { transform: scale(0.65); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    @keyframes caption-zoom-out { from { transform: scale(1.35); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    @keyframes caption-fade-in { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes caption-slide-up { from { transform: translateY(34px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    @keyframes caption-slide-down { from { transform: translateY(-34px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    @keyframes caption-slide-left { from { transform: translateX(44px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    @keyframes caption-slide-right { from { transform: translateX(-44px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    @keyframes caption-fade-in-up { from { transform: translateY(22px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    @keyframes caption-fade-in-down { from { transform: translateY(-22px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    @keyframes caption-slide-in-right { from { transform: translateX(40px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    @keyframes caption-flip-in-x { from { transform: perspective(500px) rotateX(-90deg); opacity: 0; } to { transform: perspective(500px) rotateX(0); opacity: 1; } }
+    @keyframes caption-flip-in-y { from { transform: perspective(500px) rotateY(-90deg); opacity: 0; } to { transform: perspective(500px) rotateY(0); opacity: 1; } }
+    @keyframes caption-blur-in { from { filter: blur(14px); opacity: 0; } to { filter: blur(0); opacity: 1; } }
+    @keyframes caption-zoom-in-fade { from { transform: scale(0.65); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    @keyframes caption-bounce-in-up { 0% { transform: translateY(32px); opacity: 0; } 60% { transform: translateY(-8px); opacity: 1; } 80% { transform: translateY(4px); } 100% { transform: translateY(0); opacity: 1; } }
+    @keyframes caption-skew-left { from { transform: translateX(-30px) skewX(20deg); opacity: 0; } to { transform: translateX(0) skewX(0); opacity: 1; } }
+    @keyframes caption-missile { 0% { transform: translateX(-60px) scaleX(0.6); opacity: 0; } 65% { transform: translateX(6px) scaleX(1.04); opacity: 1; } 100% { transform: translateX(0) scaleX(1); opacity: 1; } }
+    @keyframes caption-shockwave { 0% { transform: scale(1.6); opacity: 0; filter: blur(6px); } 55% { transform: scale(0.94); opacity: 1; filter: blur(0); } 100% { transform: scale(1); opacity: 1; } }
+    @keyframes caption-typewriter { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+    @keyframes caption-slam-down { 0% { transform: translateY(-55px) scaleY(1.2); opacity: 0; } 65% { transform: translateY(6px) scaleY(0.94); opacity: 1; } 100% { transform: translateY(0) scaleY(1); opacity: 1; } }
+    @keyframes caption-fire-charge { 0% { transform: translateY(18px) scaleX(0.8); opacity: 0; filter: blur(5px); } 70% { transform: translateY(-4px) scaleX(1.02); opacity: 1; filter: blur(0); } 100% { transform: translateY(0) scaleX(1); opacity: 1; } }
+    @keyframes caption-stampede { 0% { transform: translateX(-55px) scaleX(1.1); opacity: 0; } 70% { transform: translateX(5px) scaleX(0.98); opacity: 1; } 100% { transform: translateX(0) scaleX(1); opacity: 1; } }
+    @keyframes caption-recoil { 0% { transform: translateX(0); } 20% { transform: translateX(-10px); } 60% { transform: translateX(4px); } 100% { transform: translateX(0); } }
+    @keyframes caption-iris-open { from { clip-path: circle(0 at 50% 50%); opacity: 0.4; } to { clip-path: circle(150% at 50% 50%); opacity: 1; } }
+    @keyframes caption-parallax-rise { from { transform: translateY(14px) scale(0.97); opacity: 0; } to { transform: translateY(0) scale(1); opacity: 1; } }
+    @keyframes caption-golden-ratio { from { transform: scaleX(0.618) translateX(-20px); opacity: 0; } to { transform: scaleX(1) translateX(0); opacity: 1; } }
+    @keyframes caption-curtain-split { from { clip-path: inset(0 50%); opacity: 0.5; } to { clip-path: inset(0); opacity: 1; } }
+    @keyframes caption-prestige { from { transform: scale(1.1); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    @keyframes caption-fade-through-black { 0% { opacity: 1; } 35%, 65% { opacity: 0; } 100% { opacity: 1; } }
+    @keyframes caption-depth-pull { from { transform: scale(0.35); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    @keyframes caption-slow-burn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes caption-diagonal-wipe { from { clip-path: inset(0 100% 100% 0); } to { clip-path: inset(0); } }
+    @keyframes caption-confetti-pop { 0% { transform: scale(0.3) rotate(-12deg); opacity: 0; } 55% { transform: scale(1.15) rotate(3deg); opacity: 1; } 75% { transform: scale(0.95) rotate(-1deg); } 100% { transform: scale(1); opacity: 1; } }
+    @keyframes caption-sticker-slap { 0% { transform: scale(1.45) rotate(-6deg); opacity: 0; } 45% { transform: scale(0.94) rotate(1deg); opacity: 1; } 75% { transform: scale(1.02); } 100% { transform: scale(1); opacity: 1; } }
+    @keyframes caption-wobble-entry { 0% { transform: translateX(-22px) rotate(-4deg); opacity: 0; } 35% { transform: translateX(9px) rotate(2deg); opacity: 1; } 65% { transform: translateX(-4px) rotate(-1deg); } 100% { transform: translateX(0); opacity: 1; } }
+    @keyframes caption-balloon-float { 0% { transform: translateY(22px) scale(0.8); opacity: 0; } 65% { transform: translateY(-6px) scale(1.03); opacity: 1; } 100% { transform: translateY(0) scale(1); opacity: 1; } }
+    @keyframes caption-color-splash { 0% { transform: scale(0.85); opacity: 0; filter: saturate(3) brightness(1.6); } 50% { transform: scale(1.06); opacity: 1; filter: saturate(2) brightness(1.3); } 100% { transform: scale(1); opacity: 1; filter: saturate(1) brightness(1); } }
   `;
 
   const runtimeEnv = String(process.env.APP_ENV || process.env.ENV || '').toLowerCase();
@@ -4597,6 +5098,7 @@ async function main() {
         <body>
           <div id="overlay-root"></div>
           <script>window.__exportCanvasScale = ${JSON.stringify(exportCssScale)};</script>
+          <script>window.__exportScriptFontMaps = ${JSON.stringify(exportScriptFontMaps)};</script>
           <script>window.__basicTemplateMarkupMap = ${JSON.stringify(basicTemplateMarkupMap)};</script>
           ${basicTemplateInlineSource ? `<script>${basicTemplateInlineSource}</script>` : ''}
           <script>${buildRuntimeScript(advancedTemplateBlockMarkup)}</script>
@@ -4632,6 +5134,33 @@ async function main() {
       const end = Number(caption.end_time ?? start);
       points.add(start);
       points.add(end);
+      const lineAnimation = LINE_ANIMATION_DEFS[String(caption.animation || '')];
+      const animatedWordStyles = Object.values(caption.word_styles || {})
+        .filter((wordStyle) => wordStyle && LINE_ANIMATION_DEFS[String(wordStyle.animation || '')]);
+      if (lineAnimation || animatedWordStyles.length) {
+        const lineSpeed = Math.max(0.1, Number(caption.animation_speed || 1));
+        const lineWindowSeconds = lineAnimation
+          ? (lineAnimation[3] === 'infinite'
+              ? Math.max(0, end - start)
+              : Math.min(Math.max(0, end - start), (lineAnimation[1] / lineSpeed) / 1000))
+          : 0;
+        const wordWindowSeconds = animatedWordStyles.reduce((maxWindow, wordStyle) => {
+          const definition = LINE_ANIMATION_DEFS[String(wordStyle.animation || '')];
+          const speed = Math.max(0.1, Number(wordStyle.animationSpeed || 1));
+          const windowSeconds = definition[3] === 'infinite'
+            ? Math.max(0, end - start)
+            : (definition[1] / speed) / 1000;
+          return Math.max(maxWindow, windowSeconds);
+        }, 0);
+        const animationEnd = Math.min(end, start + Math.max(lineWindowSeconds, wordWindowSeconds));
+        for (
+          let sample = start + (1 / defaultTemplateSampleFps);
+          sample < animationEnd;
+          sample += (1 / defaultTemplateSampleFps)
+        ) {
+          points.add(sample);
+        }
+      }
       if (templateUsesPreviewTiming) {
         if (caption?.is_text_element) continue;
         const fallbackIndex = nonTextCaptions.findIndex((item) => item?.id === caption?.id);
@@ -4666,9 +5195,8 @@ async function main() {
         const captionTemplateSource = String(caption.template_source || caption.applied_template_style?.template_source || payload.style?.template_source || '').trim();
         const isLcSidebarCaption = captionTemplateSource === 'lekha-lc';
         const durationSeconds = Math.max(0, end - start);
-        // Sampling window for LC: use the source stagger and longest authored
-        // duration. This only overestimates the required frames; it never cuts
-        // off the tail of a real reveal.
+        // Nominal LC schedule from the shared timing constants. Only a fallback
+        // for scenes with no authored motion nodes now — see lcAuthoredCeilingMs.
         const lcSchedule = isLcSidebarCaption
           ? getLcMotionSchedule(Array.from({ length: wordCount }, (_, index) => ({
             animation: 'rise',
@@ -4676,10 +5204,51 @@ async function main() {
             delay: index * LC_TEMPLATE_TIMING.staggerMs,
           })))
           : null;
+        // The frame sampled for a segment is held for that whole segment, so the
+        // sampling window must extend past the LAST word reveal — otherwise the
+        // frame shown for the caption's tail predates the final word and that
+        // word never appears in the exported video.
+        //
+        // Deriving the window from LC_TEMPLATE_TIMING.staggerMs is a guess, and
+        // it is not a conservative one: authored LC scenes use their own stagger
+        // (T167 phase 3 staggers 560ms, twice the assumed 280ms), so the window
+        // closed 250ms before that scene's last reveal. Use the authored
+        // data-lc-* timings instead, bounded by the ceiling that
+        // fitLcMotionScheduleToCaption itself enforces — together those give the
+        // exact motion end rather than an estimate in either direction.
+        const lcAuthoredCeilingMs = (() => {
+          if (!isLcSidebarCaption) return 0;
+          const markup = String(
+            caption.template_markup
+            || caption.applied_template_style?.template_markup
+            || payload.style?.template_markup
+            || '',
+          );
+          const readMax = (pattern) => {
+            let max = 0;
+            for (const match of markup.matchAll(pattern)) {
+              const value = Number(match[1]);
+              if (Number.isFinite(value) && value > max) max = value;
+            }
+            return max;
+          };
+          const maxDelayMs = readMax(/data-lc-delay="(\d+(?:\.\d+)?)"/g);
+          const maxDurationMs = readMax(/data-lc-duration="(\d+(?:\.\d+)?)"/g);
+          // No authored motion nodes (plain/block scenes) — keep the nominal one.
+          if (!maxDelayMs && !maxDurationMs) return lcSchedule.endMs;
+          // Card-wide maxima, so this can only over-reach a given phase, never
+          // fall short of it; the fit ceiling below trims any over-reach.
+          return maxDelayMs + (maxDurationMs || LC_TEMPLATE_TIMING.heroDurationMs);
+        })();
+        // Mirrors fitLcMotionScheduleToCaption: no LC motion can run past this.
+        const lcFitCeilingMs = Math.max(
+          0,
+          (durationSeconds * 1000) - Math.min(180, Math.max(60, durationSeconds * 1000 * 0.12)),
+        );
         const animationWindowSeconds = Math.min(
           durationSeconds,
           isLcSidebarCaption
-            ? ((lcSchedule.endMs + 140) / 1000)
+            ? ((Math.min(lcFitCeilingMs, lcAuthoredCeilingMs) + 140) / 1000)
             : 0.54 + (Math.max(0, wordCount - 1) * SIDEBAR_TEMPLATE_WORD_STAGGER_SECONDS) + 0.42,
         );
         const animationEnd = Math.min(end, start + animationWindowSeconds);
@@ -4725,6 +5294,37 @@ async function main() {
           if (Number.isFinite(wordEnd)) points.add(wordEnd);
         }
       }
+      // A word-by-word reveal changes the overlay at every word boundary. When
+      // the caption carries no per-word timings the reveal falls back to an even
+      // split of the caption, and without these points the whole caption
+      // collapsed into one static frame — the CPT appeared fully formed.
+      const revealsWordByWord = (
+        captionHasCptWordStyles(caption)
+        || payload.style?.show_inactive === false
+      );
+      if (revealsWordByWord && !caption?.is_text_element) {
+        const timedRevealWords = Array.isArray(caption.words)
+          ? caption.words.filter((word) => String(word?.word || word?.text || '').trim())
+          : [];
+        if (timedRevealWords.length) {
+          timedRevealWords.forEach((word) => {
+            const wordStart = Number(word?.start ?? word?.start_time ?? start);
+            const wordEnd = Number(word?.end ?? word?.end_time ?? wordStart);
+            if (Number.isFinite(wordStart)) points.add(wordStart);
+            if (Number.isFinite(wordEnd)) points.add(wordEnd);
+          });
+        } else {
+          const revealWordCount = Math.max(
+            1,
+            String(caption.text || '').trim().split(/\s+/).filter(Boolean).length,
+          );
+          const revealDuration = Math.max(0, end - start);
+          for (let index = 0; index < revealWordCount; index += 1) {
+            const wordStart = start + ((revealDuration * index) / revealWordCount);
+            if (index > 0) points.add(wordStart);
+          }
+        }
+      }
     }
 
     const sorted = [...points]
@@ -4764,6 +5364,8 @@ async function main() {
 
     const frameLines = [];
     const frameFiles = [];
+    const completenessAudits = [];
+    const wordPositionAudits = [];
     const lastIndex = segments.length - 1;
     const blankFramePath = path.join(outputDir, 'frame-blank.png');
 
@@ -4814,7 +5416,7 @@ async function main() {
             try {
               const target = animation.effect?.target?.element || animation.effect?.target;
               const shell = target?.closest?.(
-                '.template-caption-shell, .lekha-sidebar-export-template-shell, .lekha-applied-basic-template-host',
+                '.caption-line-animation-shell, .template-caption-shell, .lekha-sidebar-export-template-shell, .lekha-applied-basic-template-host',
               );
               const captionStart = Number(shell?.dataset?.captionStart || 0);
               const captionEnd = Number(shell?.dataset?.captionEnd || captionStart);
@@ -4955,6 +5557,7 @@ async function main() {
               const isImp = word.dataset.imp === 'true';
               const impClass = word.dataset.impCls || '';
               const wordBlockType = word.dataset.lineMotion || blockType;
+              const isEvidenceEmphasis = wordBlockType === 't39-evidence' && isImp;
               const lineDelayMs = Number(word.dataset.lineDelay || 0);
               const battleMotion = word.dataset.battleMotion || '';
               const battleIndex = Number.isFinite(Number(word.dataset.battleIndex))
@@ -4967,7 +5570,9 @@ async function main() {
                   : (index * Number(timing.wordStaggerMs || 45))
                   + (isImp ? Number(timing.emphasisDelayMs || 60) : 0)
                   + lineDelayMs;
-              const durationMs = sequential
+              const durationMs = isEvidenceEmphasis
+                ? 360
+                : sequential
                 ? Number(timing.sequentialDurationMs || 180)
                 : battleMotion
                   ? (isImp ? 380 : 320)
@@ -4988,6 +5593,9 @@ async function main() {
                 setImportant(word, 'transform', `translateX(${-34 * (1 - eased)}px)`);
               } else if (battleMotion === 'lift-up') {
                 setImportant(word, 'transform', `translateY(${28 * (1 - eased)}px)`);
+              } else if (isEvidenceEmphasis) {
+                setImportant(word, 'transform', `translateY(${18 * (1 - eased)}px) scale(${0.72 + (0.28 * eased)}) rotate(${-2 * (1 - eased)}deg)`);
+                setImportant(word, 'text-shadow', `0 0 ${4 + (10 * eased)}px currentColor`);
               } else if (sequential) {
                 if (blockType === 'wbw-seq-fade') {
                   setImportant(word, 'transform', 'none');
@@ -5080,6 +5688,319 @@ async function main() {
           await new Promise((resolve) => requestAnimationFrame(resolve));
         }, payload, renderTime);
 
+        if (shouldAuditWordPositions) {
+          const frameWordPositions = await page.evaluate((currentPayload, currentTime) => {
+            const root = document.getElementById('overlay-root');
+            const rootRect = root?.getBoundingClientRect();
+            if (!rootRect?.width || !rootRect?.height) return [];
+
+            const nodesByKey = new Map();
+            root.querySelectorAll('[data-word-key]').forEach((node) => {
+              const key = node.getAttribute('data-word-key');
+              if (!key) return;
+              const isActiveTemplateWord = Boolean(node.closest(
+                '.sb.active, .sblock.active, .lekha-applied-advanced-template.active',
+              ));
+              if (!nodesByKey.has(key) || isActiveTemplateWord) nodesByKey.set(key, node);
+            });
+            const activeCaptions = (currentPayload.captions || []).filter((caption) => {
+              const start = Number(caption.start_time ?? 0);
+              const end = Number(caption.end_time ?? start);
+              return currentTime >= start && currentTime < end;
+            });
+
+            return activeCaptions.flatMap((caption) => Object.entries(caption.word_styles || {})
+              .filter(([, wordStyle]) => {
+                const hasAbsolutePosition = (
+                  Number.isFinite(Number(wordStyle?.abs_x_pct))
+                  && Number.isFinite(Number(wordStyle?.abs_y_pct))
+                  && (
+                    Math.abs(Number(wordStyle.abs_x_pct)) > 0.01
+                    || Math.abs(Number(wordStyle.abs_y_pct)) > 0.01
+                  )
+                );
+                const hasRelativeOffset = (
+                  Math.abs(Number(wordStyle?.x || 0)) > 0.01
+                  || Math.abs(Number(wordStyle?.y || 0)) > 0.01
+                );
+                return hasAbsolutePosition || hasRelativeOffset;
+              })
+              .map(([key, wordStyle]) => {
+                const node = nodesByKey.get(key);
+                if (!node) {
+                  return { key, found: false };
+                }
+                const markedTargets = [
+                  ...(node.matches('[data-export-word-position-target="true"]') ? [node] : []),
+                  ...node.querySelectorAll('[data-export-word-position-target="true"]'),
+                ];
+                const rects = (markedTargets.length ? markedTargets : [node])
+                  .map((target) => target.getBoundingClientRect())
+                  .filter((rect) => rect.width > 0 && rect.height > 0);
+                if (!rects.length) {
+                  return { key, found: true, visible: false };
+                }
+                const left = Math.min(...rects.map((rect) => rect.left));
+                const top = Math.min(...rects.map((rect) => rect.top));
+                const right = Math.max(...rects.map((rect) => rect.right));
+                const bottom = Math.max(...rects.map((rect) => rect.bottom));
+                const hasAbsolutePosition = (
+                  Number.isFinite(Number(wordStyle.abs_x_pct))
+                  && Number.isFinite(Number(wordStyle.abs_y_pct))
+                  && (
+                    Math.abs(Number(wordStyle.abs_x_pct)) > 0.01
+                    || Math.abs(Number(wordStyle.abs_y_pct)) > 0.01
+                  )
+                );
+                // A `translate` that is merely *set* proves nothing: CSS
+                // transforms are ignored on non-replaced inline boxes, so a
+                // dragged word can carry the right value and still never move.
+                // Measure the offset the browser actually honours by dropping
+                // the translate, re-measuring, and restoring it.
+                const positionTarget = markedTargets[0] || node;
+                const motionTarget = node.querySelector('[data-cpt-word-motion="true"]') || positionTarget;
+                const targetDisplay = getComputedStyle(positionTarget).display;
+                const measureCenter = (element) => {
+                  const box = element.getBoundingClientRect();
+                  return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+                };
+                const translatedCenter = measureCenter(positionTarget);
+                const clippingAncestors = [];
+                let clippingNode = positionTarget.parentElement;
+                while (clippingNode && clippingNode !== root.parentElement) {
+                  const clippingStyle = getComputedStyle(clippingNode);
+                  const clipsX = /hidden|clip/.test(clippingStyle.overflowX);
+                  const clipsY = /hidden|clip/.test(clippingStyle.overflowY);
+                  if (clipsX || clipsY) {
+                    const clippingRect = clippingNode.getBoundingClientRect();
+                    const positionedRect = positionTarget.getBoundingClientRect();
+                    if (
+                      (clipsX && (
+                        positionedRect.left < clippingRect.left - 0.5
+                        || positionedRect.right > clippingRect.right + 0.5
+                      ))
+                      || (clipsY && (
+                        positionedRect.top < clippingRect.top - 0.5
+                        || positionedRect.bottom > clippingRect.bottom + 0.5
+                      ))
+                    ) {
+                      clippingAncestors.push(
+                        clippingNode.className
+                        || clippingNode.id
+                        || clippingNode.tagName,
+                      );
+                    }
+                  }
+                  if (clippingNode === root) break;
+                  clippingNode = clippingNode.parentElement;
+                }
+                const inlineTranslate = positionTarget.style.getPropertyValue('translate');
+                const inlineTranslatePriority = positionTarget.style.getPropertyPriority('translate');
+                positionTarget.style.setProperty('translate', 'none', 'important');
+                void positionTarget.getBoundingClientRect();
+                const untranslatedCenter = measureCenter(positionTarget);
+                positionTarget.style.removeProperty('translate');
+                if (inlineTranslate) {
+                  positionTarget.style.setProperty('translate', inlineTranslate, inlineTranslatePriority);
+                }
+                void positionTarget.getBoundingClientRect();
+                return {
+                  key,
+                  found: true,
+                  visible: true,
+                  mode: hasAbsolutePosition ? 'absolute' : 'relative',
+                  expected_x_pct: hasAbsolutePosition ? Number(wordStyle.abs_x_pct) : null,
+                  expected_y_pct: hasAbsolutePosition ? Number(wordStyle.abs_y_pct) : null,
+                  source_x: Number(wordStyle.x || 0),
+                  source_y: Number(wordStyle.y || 0),
+                  applied_translate: getComputedStyle(positionTarget).translate,
+                  target_display: targetDisplay,
+                  word_opacity: Number.parseFloat(getComputedStyle(node).opacity || '1'),
+                  target_opacity: Number.parseFloat(getComputedStyle(motionTarget).opacity || '1'),
+                  target_animation_name: getComputedStyle(motionTarget).animationName,
+                  clipped_by_overflow: clippingAncestors.length > 0,
+                  clipping_ancestors: clippingAncestors,
+                  effective_dx: translatedCenter.x - untranslatedCenter.x,
+                  effective_dy: translatedCenter.y - untranslatedCenter.y,
+                  actual_x_pct: (((left + right) / 2 - rootRect.left) / rootRect.width) * 100,
+                  actual_y_pct: (((top + bottom) / 2 - rootRect.top) / rootRect.height) * 100,
+                };
+              }));
+          }, payload, renderTime);
+          wordPositionAudits.push({ time: renderTime, words: frameWordPositions });
+        }
+
+        const endingCaptionAudits = await page.evaluate((currentPayload, currentTime, segmentEnd) => {
+          const normalizeTokens = (value) => String(value || '')
+            .normalize('NFC')
+            .trim()
+            .toLocaleLowerCase()
+            .split(/\s+/)
+            .filter(Boolean);
+          const isVisibleTextParent = (element, boundary) => {
+            if (!(element instanceof HTMLElement)) return false;
+            const rect = element.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) return false;
+            let node = element;
+            while (node && node !== boundary.parentElement) {
+              const computed = getComputedStyle(node);
+              if (
+                computed.display === 'none'
+                || computed.visibility === 'hidden'
+                || Number.parseFloat(computed.opacity || '1') <= 0.001
+              ) {
+                return false;
+              }
+              if (node === boundary) break;
+              node = node.parentElement;
+            }
+            return true;
+          };
+          const containsWordSequence = (renderedTokens, expectedTokens) => {
+            let cursor = 0;
+            for (const token of renderedTokens) {
+              if (token === expectedTokens[cursor]) cursor += 1;
+              if (cursor === expectedTokens.length) return true;
+            }
+            return expectedTokens.length === 0;
+          };
+
+          const activeCaptions = (currentPayload.captions || []).filter((caption) => {
+            const start = Number(caption.start_time ?? 0);
+            const end = Number(caption.end_time ?? start);
+            return currentTime >= start && currentTime < end;
+          });
+
+          return activeCaptions.map((caption, activeIndex) => {
+            const end = Number(caption.end_time ?? caption.start_time ?? 0);
+            const isTemplate = Boolean(
+              caption.template_id
+              || caption.template_20_id
+              || caption.applied_template_style?.template_id
+              || caption.applied_template_style?.template_20_id
+              || currentPayload.style?.template_id
+              || currentPayload.style?.template_20_id
+            );
+            if (!isTemplate || Math.abs(end - segmentEnd) > 0.002) return null;
+            const anchor = document.querySelector(`[data-caption-render-index="${activeIndex}"]`);
+            if (!anchor) {
+              return {
+                captionId: String(caption.id || ''),
+                complete: false,
+                expectedWords: normalizeTokens(caption.text),
+                renderedWords: [],
+                reason: 'missing caption anchor',
+              };
+            }
+
+            const walker = document.createTreeWalker(anchor, NodeFilter.SHOW_TEXT);
+            const visibleText = [];
+            const visualWords = [];
+            let textNode = walker.nextNode();
+            while (textNode) {
+              if (
+                String(textNode.nodeValue || '').trim()
+                && isVisibleTextParent(textNode.parentElement, anchor)
+              ) {
+                visibleText.push(textNode.nodeValue);
+                for (const match of String(textNode.nodeValue || '').matchAll(/\S+/g)) {
+                  const range = document.createRange();
+                  range.setStart(textNode, match.index);
+                  range.setEnd(textNode, match.index + match[0].length);
+                  const rect = Array.from(range.getClientRects())
+                    .find((item) => item.width > 0 && item.height > 0);
+                  range.detach?.();
+                  if (!rect) continue;
+                  visualWords.push({
+                    text: match[0].normalize('NFC').toLocaleLowerCase(),
+                    top: rect.top,
+                    left: rect.left,
+                  });
+                }
+              }
+              textNode = walker.nextNode();
+            }
+            const expectedWords = normalizeTokens(caption.text);
+            const renderedWords = normalizeTokens(visibleText.join(' '));
+            const dedupedVisualWords = visualWords.filter((word, wordIndex) => (
+              visualWords.findIndex((candidate) => (
+                candidate.text === word.text
+                && Math.abs(candidate.top - word.top) < 0.5
+                && Math.abs(candidate.left - word.left) < 0.5
+              )) === wordIndex
+            ));
+            const visualLines = new Map();
+            dedupedVisualWords.forEach((word, wordIndex) => {
+              const lineKey = Math.round(word.top / 4) * 4;
+              const lineWords = visualLines.get(lineKey) || [];
+              lineWords.push({ ...word, wordIndex });
+              visualLines.set(lineKey, lineWords);
+            });
+            const renderedLineTexts = Array.from(visualLines.entries())
+              .sort(([topA], [topB]) => topA - topB)
+              .map(([, lineWords]) => lineWords
+                .sort((left, right) => left.left - right.left || left.wordIndex - right.wordIndex)
+                .map((word) => word.text)
+                .join(' ')
+                .trim())
+              .filter(Boolean);
+            const expectedLineTexts = Array.isArray(caption.preview_template_line_texts)
+              ? caption.preview_template_line_texts
+                .map((line) => normalizeTokens(line).join(' '))
+                .filter(Boolean)
+              : [];
+            const lineComplete = expectedLineTexts.length === 0
+              || (
+                expectedLineTexts.length === renderedLineTexts.length
+                && expectedLineTexts.every((line, lineIndex) => line === renderedLineTexts[lineIndex])
+              );
+            const emphasisByLine = new Map();
+            Array.from(anchor.querySelectorAll('.is-emphasis')).forEach((word) => {
+              if (!isVisibleTextParent(word, anchor)) return;
+              const line = word.parentElement || anchor;
+              const lineWords = emphasisByLine.get(line) || [];
+              const styles = getComputedStyle(word);
+              lineWords.push({
+                text: String(word.textContent || '').trim(),
+                color: styles.color,
+                underlined: styles.textDecorationLine.includes('underline')
+                  || (styles.borderBottomStyle !== 'none' && parseFloat(styles.borderBottomWidth) > 0),
+              });
+              emphasisByLine.set(line, lineWords);
+            });
+            const pairedEmphasisLines = Array.from(emphasisByLine.values())
+              .filter((lineWords) => lineWords.length >= 2);
+            return {
+              captionId: String(caption.id || ''),
+              complete: containsWordSequence(renderedWords, expectedWords) && lineComplete,
+              expectedWords,
+              renderedWords,
+              expectedLineTexts,
+              renderedLineTexts,
+              pairedEmphasisLines,
+              pairedEmphasisColorsMatch: pairedEmphasisLines.every((lineWords) => (
+                new Set(lineWords.map((word) => word.color)).size === 1
+              )),
+              pairedEmphasisUnderlinesMatch: pairedEmphasisLines.every((lineWords) => (
+                !lineWords.some((word) => word.underlined)
+                || lineWords.every((word) => word.underlined)
+              )),
+              script: caption.__export_script || 'latin',
+            };
+          }).filter(Boolean);
+        }, payload, renderTime, segment.end);
+        completenessAudits.push(...endingCaptionAudits);
+        const incompleteAudit = endingCaptionAudits.find((audit) => !audit.complete);
+        if (incompleteAudit) {
+          throw new Error(
+            `[Template DOM] incomplete final template frame for caption ${incompleteAudit.captionId}: `
+            + `expected=${JSON.stringify(incompleteAudit.expectedWords)} `
+            + `rendered=${JSON.stringify(incompleteAudit.renderedWords)} `
+            + `expected_lines=${JSON.stringify(incompleteAudit.expectedLineTexts)} `
+            + `rendered_lines=${JSON.stringify(incompleteAudit.renderedLineTexts)}`
+          );
+        }
+
         await page.screenshot({
           path: framePath,
           omitBackground: true,
@@ -5137,6 +6058,18 @@ async function main() {
 
     await fs.writeFile(path.join(outputDir, 'frames.txt'), `${frameLines.join('\n')}\n`, 'utf8');
     await fs.writeFile(path.join(outputDir, 'segments.json'), JSON.stringify(segments, null, 2), 'utf8');
+    await fs.writeFile(
+      path.join(outputDir, 'template-completeness-audit.json'),
+      JSON.stringify(completenessAudits, null, 2),
+      'utf8',
+    );
+    if (shouldAuditWordPositions) {
+      await fs.writeFile(
+        path.join(outputDir, 'word-position-audit.json'),
+        JSON.stringify(wordPositionAudits, null, 2),
+        'utf8',
+      );
+    }
   } finally {
     await browser.close();
   }

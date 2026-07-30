@@ -24,8 +24,35 @@ import { useAuth } from '@/lib/AuthContext';
 import { getEffectiveAuthToken } from '@/lib/devAuth';
 
 const MAX_UPLOAD_BYTES = 500 * 1024 * 1024; // Keep in sync with backend/main.py
+const SUPPORTED_VIDEO_EXTENSION = /\.(mp4|mov|webm|mkv|avi)$/i;
+const SUPPORTED_VIDEO_ACCEPT = [
+  '.mp4',
+  '.mov',
+  '.webm',
+  '.mkv',
+  '.avi',
+  'video/mp4',
+  'video/quicktime',
+  'video/webm',
+  'video/x-matroska',
+  'video/x-msvideo',
+].join(',');
 
-const indianLanguages = [
+function validateVideoFile(file) {
+  if (!file || !SUPPORTED_VIDEO_EXTENSION.test(file.name || '')) {
+    return 'Unsupported file type. Choose an MP4, MOV, WebM, MKV, or AVI video.';
+  }
+  if (file.type && !file.type.startsWith('video/')) {
+    return 'That file does not look like a video. Choose an MP4, MOV, WebM, MKV, or AVI video.';
+  }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+    return `File size (${fileSizeMB}MB) exceeds 500MB limit.`;
+  }
+  return null;
+}
+
+const southAsianLanguages = [
   { value: 'assamese', label: 'Assamese (অসমীয়া)' },
   { value: 'bengali', label: 'Bengali (বাংলা)' },
   { value: 'bodo', label: 'Bodo (बड़ो)' },
@@ -52,7 +79,7 @@ const indianLanguages = [
   { value: 'urdu', label: 'Urdu (اردو)' },
 ];
 
-const internationalLanguages = [
+const globalLanguages = [
   // --- Africa ---
   { value: 'afrikaans', label: 'Afrikaans' },
   { value: 'amharic', label: 'Amharic (አማርኛ)' },
@@ -223,17 +250,9 @@ export default function UploadModal({
       const file = e.dataTransfer.files[0];
       // Windows reports an EMPTY MIME type for some valid videos (.mkv, some
       // .mov) — fall back to the extension, and never fail a drop silently.
-      const looksLikeVideo = file.type.startsWith('video/')
-        || (!file.type && /\.(mp4|mov|m4v|webm|mkv|avi)$/i.test(file.name || ''));
-      if (!looksLikeVideo) {
-        setFileSizeError('That file does not look like a video. Please drop an MP4, MOV, or WebM file.');
-        return;
-      }
-      const maxSize = MAX_UPLOAD_BYTES;
-      const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
-
-      if (file.size > maxSize) {
-        setFileSizeError(`File size (${fileSizeMB}MB) exceeds 500MB limit.`);
+      const validationError = validateVideoFile(file);
+      if (validationError) {
+        setFileSizeError(validationError);
         return;
       }
 
@@ -248,11 +267,10 @@ export default function UploadModal({
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
 
-      const maxSize = MAX_UPLOAD_BYTES;
-      const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
-
-      if (file.size > maxSize) {
-        setFileSizeError(`File size (${fileSizeMB}MB) exceeds 500MB limit.`);
+      const validationError = validateVideoFile(file);
+      if (validationError) {
+        setFileSizeError(validationError);
+        e.target.value = '';
         return;
       }
 
@@ -339,7 +357,7 @@ export default function UploadModal({
       if (detectData.success && detectData.language) {
         // Try to match Whisper language code to our dropdown values
         const detected = detectData.language.toLowerCase()
-        const allLangs = [...indianLanguages, ...internationalLanguages]
+        const allLangs = [...globalLanguages, ...southAsianLanguages]
         const match = allLangs.find(l =>
           l.value === detected ||
           l.value.startsWith(detected) ||
@@ -410,7 +428,7 @@ export default function UploadModal({
               >
                 <input
                   type="file"
-                  accept="video/*"
+                  accept={SUPPORTED_VIDEO_ACCEPT}
                   onChange={handleFileSelect}
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 />
@@ -429,7 +447,7 @@ export default function UploadModal({
                 <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-4 text-xs text-gray-600">
                   <span className="flex items-center gap-1">
                     <Film className="w-3 h-3" />
-                    MP4, MOV, WebM
+                    MP4, MOV, WebM, MKV, AVI
                   </span>
                   <span>Best for 15-180 seconds</span>
                   <span>Max 500MB</span>
@@ -507,10 +525,10 @@ export default function UploadModal({
                     <SelectItem value="auto" className="text-white hover:bg-white/10 font-medium">
                       🎯 Same as Video (Auto-Detect)
                     </SelectItem>
-                    {filterLangs(indianLanguages).length > 0 && (
+                    {filterLangs(globalLanguages).length > 0 && (
                       <SelectGroup>
-                        <SelectLabel className="text-orange-400 text-xs font-semibold uppercase tracking-wider px-2 mt-2">Indian Languages</SelectLabel>
-                        {filterLangs(indianLanguages).map(lang => (
+                        <SelectLabel className="text-[#F5A623] text-xs font-semibold uppercase tracking-wider px-2 mt-2">Global Languages</SelectLabel>
+                        {filterLangs(globalLanguages).map(lang => (
                           <SelectItem
                             key={lang.value}
                             value={lang.value}
@@ -521,10 +539,10 @@ export default function UploadModal({
                         ))}
                       </SelectGroup>
                     )}
-                    {filterLangs(internationalLanguages).length > 0 && (
+                    {filterLangs(southAsianLanguages).length > 0 && (
                       <SelectGroup>
-                        <SelectLabel className="text-[#F5A623] text-xs font-semibold uppercase tracking-wider px-2 mt-2">International & Regional</SelectLabel>
-                        {filterLangs(internationalLanguages).map(lang => (
+                        <SelectLabel className="text-orange-400 text-xs font-semibold uppercase tracking-wider px-2 mt-2">South Asian Languages</SelectLabel>
+                        {filterLangs(southAsianLanguages).map(lang => (
                           <SelectItem
                             key={lang.value}
                             value={lang.value}

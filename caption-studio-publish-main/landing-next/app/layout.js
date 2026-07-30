@@ -25,7 +25,7 @@ export const metadata = {
     description: siteDescription,
     url: '/',
     siteName: 'Lekha Captions',
-    locale: 'en_IN',
+    locale: 'en_US',
     type: 'website',
     images: [{ url: '/og.png', width: 1200, height: 630, alt: 'Lekha Captions animated captions in 115+ languages' }],
   },

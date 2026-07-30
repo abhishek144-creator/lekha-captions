@@ -1,62 +1,16 @@
-export function detectScript(text) {
-  if (!text || text.trim().length === 0) return 'latin';
+import {
+  detectScript,
+} from './scriptFontResolver'
 
-  const codePoints = [...text].map(char => char.codePointAt(0));
-
-  const scriptCounts = {
-    devanagari: 0,
-    tamil: 0,
-    telugu: 0,
-    kannada: 0,
-    malayalam: 0,
-    gujarati: 0,
-    bengali: 0,
-    punjabi: 0,
-    odia: 0,
-    arabic: 0,
-    chinese: 0,
-    japanese: 0,
-    korean: 0,
-    thai: 0,
-    vietnamese: 0,
-    latin: 0
-  };
-
-  codePoints.forEach(code => {
-    if (code >= 0x0900 && code <= 0x097F) scriptCounts.devanagari++;
-    else if (code >= 0x0980 && code <= 0x09FF) scriptCounts.bengali++;
-    else if (code >= 0x0A00 && code <= 0x0A7F) scriptCounts.punjabi++;
-    else if (code >= 0x0A80 && code <= 0x0AFF) scriptCounts.gujarati++;
-    else if (code >= 0x0B00 && code <= 0x0B7F) scriptCounts.odia++;
-    else if (code >= 0x0B80 && code <= 0x0BFF) scriptCounts.tamil++;
-    else if (code >= 0x0C00 && code <= 0x0C7F) scriptCounts.telugu++;
-    else if (code >= 0x0C80 && code <= 0x0CFF) scriptCounts.kannada++;
-    else if (code >= 0x0D00 && code <= 0x0D7F) scriptCounts.malayalam++;
-    else if (code >= 0x0600 && code <= 0x06FF) scriptCounts.arabic++;
-    else if (code >= 0x4E00 && code <= 0x9FFF) scriptCounts.chinese++;
-    else if (code >= 0x3040 && code <= 0x309F) scriptCounts.japanese++;
-    else if (code >= 0x30A0 && code <= 0x30FF) scriptCounts.japanese++;
-    else if (code >= 0xAC00 && code <= 0xD7AF) scriptCounts.korean++;
-    else if (code >= 0x0E00 && code <= 0x0E7F) scriptCounts.thai++;
-    else if ((code >= 0x0041 && code <= 0x005A) || (code >= 0x0061 && code <= 0x007A)) scriptCounts.latin++;
-  });
-
-  let maxCount = 0;
-  let dominantScript = 'latin';
-
-  Object.entries(scriptCounts).forEach(([script, count]) => {
-    if (count > maxCount) {
-      maxCount = count;
-      dominantScript = script;
-    }
-  });
-
-  return dominantScript;
-}
+export { detectScript }
 
 export const scriptFontMap = {
   devanagari: [
-    { name: 'Noto Sans', weights: [300, 400, 500, 600, 700, 800] },
+    // Google's plain "Noto Sans" family only ships Latin/Cyrillic/Greek glyphs
+    // — it silently falls back to a system font on Devanagari text (verified:
+    // document.fonts.check('"Noto Sans"', hindiText) === false). The script
+    // needs "Noto Sans Devanagari", a genuinely different Google Fonts family.
+    { name: 'Noto Sans Devanagari', weights: [300, 400, 500, 600, 700, 800] },
     { name: 'Mukta', weights: [300, 400, 500, 600, 700, 800] },
     { name: 'Hind', weights: [300, 400, 500, 600, 700] },
     { name: 'Poppins', weights: [300, 400, 500, 600, 700, 800] },
@@ -433,6 +387,51 @@ export const scriptFontMap = {
     { name: 'Bai Jamjuree', weights: [200, 300, 400, 500, 600, 700] },
     { name: 'Srisakdi', weights: [400, 700] }
   ],
+  sinhala: [
+    { name: 'Noto Sans Sinhala', weights: [300, 400, 500, 600, 700, 800] },
+    { name: 'Abhaya Libre', weights: [400, 500, 600, 700, 800] },
+    { name: 'Yaldevi', weights: [200, 300, 400, 500, 600, 700] },
+    { name: 'Gemunu Libre', weights: [200, 300, 400, 500, 600, 700, 800] },
+    { name: 'Stick No Bills', weights: [200, 300, 400, 500, 600, 700, 800] }
+  ],
+  manipuri: [
+    { name: 'Noto Sans Meetei Mayek', weights: [400, 500, 600, 700] }
+  ],
+  santali: [
+    { name: 'Noto Sans Ol Chiki', weights: [400, 500, 600, 700] }
+  ],
+  hebrew: [
+    { name: 'Noto Sans Hebrew', weights: [300, 400, 500, 600, 700, 800] },
+    { name: 'Heebo', weights: [300, 400, 500, 600, 700, 800] },
+    { name: 'Rubik', weights: [300, 400, 500, 600, 700, 800] },
+    { name: 'Assistant', weights: [300, 400, 500, 600, 700, 800] },
+    { name: 'Secular One', weights: [400] }
+  ],
+  burmese: [
+    { name: 'Noto Sans Myanmar', weights: [300, 400, 500, 600, 700] },
+    { name: 'Padauk', weights: [400, 700] }
+  ],
+  khmer: [
+    { name: 'Noto Sans Khmer', weights: [300, 400, 500, 600, 700] },
+    { name: 'Battambang', weights: [300, 400, 700] },
+    { name: 'Kantumruy Pro', weights: [300, 400, 500, 600, 700] }
+  ],
+  lao: [
+    { name: 'Noto Sans Lao', weights: [300, 400, 500, 600, 700] },
+    { name: 'Noto Sans Lao Looped', weights: [300, 400, 500, 600, 700] }
+  ],
+  tibetan: [
+    { name: 'Noto Serif Tibetan', weights: [300, 400, 500, 600, 700] }
+  ],
+  georgian: [
+    { name: 'Noto Sans Georgian', weights: [300, 400, 500, 600, 700, 800] }
+  ],
+  armenian: [
+    { name: 'Noto Sans Armenian', weights: [300, 400, 500, 600, 700, 800] }
+  ],
+  ethiopic: [
+    { name: 'Noto Sans Ethiopic', weights: [300, 400, 500, 600, 700, 800] }
+  ],
   latin: [
     { name: 'Helvetica', weights: [400, 700] },
     { name: 'Arial', weights: [400, 700] },
@@ -522,14 +521,17 @@ export function loadGoogleFont(fontName, weights = [400, 700]) {
 
 export async function autoLoadFontForText(text) {
   const script = detectScript(text);
+  const scriptFonts = scriptFontMap[script];
 
-  // Explicitly handle script-to-font mapping for Hindi/Hinglish vs Global default
-  if (script === 'devanagari') {
+  // Load the script's primary font (e.g. Noto Sans Bengali for Bengali text)
+  // instead of always falling back to the Latin-only Inter font.
+  if (script !== 'latin' && scriptFonts?.length) {
+    const primary = scriptFonts[0];
     try {
-      await loadGoogleFont('Noto Sans', [300, 400, 500, 600, 700, 800]);
-      return { fontFamily: 'Noto Sans', script, fontOptions: scriptFontMap.devanagari, error: null };
+      await loadGoogleFont(primary.name, primary.weights);
+      return { fontFamily: primary.name, script, fontOptions: scriptFonts, error: null };
     } catch (error) {
-      console.warn('Failed to load Noto Sans for Devanagari, falling back to Inter:', error);
+      console.warn(`Failed to load ${primary.name} for ${script}, falling back to Inter:`, error);
       // Fall through to Inter as backup
     }
   }
@@ -612,16 +614,32 @@ function devanagariFallbackFor(font) {
   if (/dm serif|rozha|fat/i.test(f)) return 'Vesper Libre';
   if (/serif|garamond|baskerville|georgia|times|lora|bitter|merriweather|cormorant|spectral|noto serif/i.test(f)) return 'Eczar';
   if (/script|hand|caveat|pacifico|dancing|brush/i.test(f)) return 'Kalam';
-  return 'Noto Sans';
+  return 'Noto Sans Devanagari';
 }
 
-// Return a font family that can actually render `text`. If the text is Devanagari
-// and `fontFamily` is a Latin-only family, swap to a matching Devanagari font.
-// Latin text (or already-Devanagari families) pass through unchanged.
+// Return a font family that can actually render `text`. If the text is in a
+// non-Latin script and `fontFamily` has no glyphs for that script, swap to a
+// font that does. Latin text (or a family already suited to the script)
+// passes through unchanged.
 export function resolveScriptFont(fontFamily, text) {
-  if (!text || detectScript(text) !== 'devanagari') return fontFamily || 'Noto Sans';
-  if (!fontFamily) return 'Noto Sans';
-  const devNames = scriptFontMap.devanagari.map((f) => f.name);
-  if (devNames.includes(fontFamily)) return fontFamily;
-  return LATIN_TO_DEVANAGARI_FONT[fontFamily] || devanagariFallbackFor(fontFamily);
+  const script = text ? detectScript(text) : 'latin';
+  if (script === 'latin') return fontFamily || 'Noto Sans';
+  if (!fontFamily) return scriptFontMap[script]?.[0]?.name || 'Noto Sans';
+
+  // Devanagari has a hand-curated Latin-family -> Devanagari-family map so a
+  // template's typographic "character" (condensed, serif, mono, script, ...)
+  // survives the script swap instead of collapsing onto one generic face.
+  if (script === 'devanagari') {
+    const devNames = scriptFontMap.devanagari.map((f) => f.name);
+    if (devNames.includes(fontFamily)) return fontFamily;
+    return LATIN_TO_DEVANAGARI_FONT[fontFamily] || devanagariFallbackFor(fontFamily);
+  }
+
+  const scriptFonts = scriptFontMap[script];
+  if (!scriptFonts) return fontFamily;
+  const scriptNames = scriptFonts.map((f) => f.name);
+  if (scriptNames.includes(fontFamily)) return fontFamily;
+  // No curated per-family mapping for this script yet — fall back to its
+  // primary Noto face so the text renders instead of falling back to tofu.
+  return scriptFonts[0].name;
 }

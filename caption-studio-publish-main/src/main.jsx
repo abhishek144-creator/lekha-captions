@@ -1,7 +1,6 @@
 import ReactDOM from 'react-dom/client'
 import App from '@/App.jsx'
 import '@/index.css'
-import '@/styles/captionTemplates.css'
 import { AuthProvider } from './lib/AuthContext'
 import { initWebVitalsTracking } from '@/lib/webVitals'
 

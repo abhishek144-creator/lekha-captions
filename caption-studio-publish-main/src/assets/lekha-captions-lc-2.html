@@ -379,7 +379,7 @@ T('T173','2 Style · V3',2,[
   N('truth spoken gently still lands.',{mode:'anim',type:3,hero:'gently',bodyAnim:'type',heroAnim:'swing'})
 ]),
 T('T174','2 Style · V4',2,[
-  C('mirror', L('s','their reel','slidel'), L('xh','VS','tilt',{hero:1}), L('s','your raw cut','slider')),
+  C('pyramid', L('s','STAY IN','rise'), L('h','YOUR LANE.','drop',{hero:1})),
   N('envy taxes the joy you already own.',{mode:'anim',type:2,hero:'joy',bodyAnim:'rise',heroAnim:'stretch'}),
   C('twostep', L('m','run your','climb'), L('h','OWN RACE.','stamp',{hero:1})),
   N('your only rival is yesterday.',{mode:'wbw',type:3,hero:'yesterday'}),
@@ -441,6 +441,7 @@ T('T180','3 Style · V5',3,[
 /* palettes: rotate the master wheel so every template gets 5 distinct hero colors */
 TPLS.forEach((t,i)=>{
   t.pal=[0,1,2,3,4].map(j=>MASTER[(i*3+j*2)%MASTER.length]);
+  if(t.id==='T174') t.pal[0]='#FFD166';
   t.meta=[...new Set(t.scenes.filter(s=>s.k==='c').map(s=>s.layout))].join(' \u00b7 ');
 });
 

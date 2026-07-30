@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import CaptionStudioLogo from '@/components/dashboard/CaptionStudioLogo';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowRight, ChevronDown } from 'lucide-react';
+import SupportPageShell from '@/components/support/SupportPageShell';
 
 const faqs = [
   {
     q: 'What languages does Lekha Captions support?',
-    a: 'Lekha Captions supports 115+ languages including all major Indic languages (Hindi, Marathi, Tamil, Telugu, Bengali, Gujarati, Punjabi, Kannada, Malayalam, Odia), African, Arab, Southeast Asian, European, and English variants.',
+    a: 'Lekha Captions supports 115+ languages worldwide — English variants, European (Spanish, Portuguese, French, German and more), Arabic and Middle Eastern, African (Kiswahili, Yorùbá, Amharic), East and Southeast Asian (Mandarin, Japanese, Korean, Bahasa, Thai, Vietnamese), and all major South Asian languages (Hindi, Marathi, Tamil, Telugu, Bengali, Gujarati, Punjabi, Kannada, Malayalam, Odia).',
   },
   {
     q: 'What video formats are supported?',
@@ -38,77 +38,61 @@ const faqs = [
   },
 ];
 
-function FaqItem({ q, a }) {
+function FaqItem({ q, a, index }) {
   const [open, setOpen] = useState(false);
+
   return (
-    <div
-      className="border border-white/10 rounded-xl overflow-hidden"
-      style={{ background: 'rgba(255,255,255,0.03)' }}
-    >
+    <article className="border-b border-[#171713]/15 last:border-b-0">
       <button
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between px-6 py-4 text-left text-white font-medium text-sm hover:bg-white/5 transition-colors"
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className="group grid w-full grid-cols-[42px_1fr_auto] items-center gap-3 py-6 text-left sm:grid-cols-[58px_1fr_auto] sm:py-7"
       >
-        <span>{q}</span>
-        {open ? <ChevronUp className="w-4 h-4 text-gray-400 shrink-0" /> : <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />}
+        <span className="font-mono text-xs text-[#171713]/35">{String(index + 1).padStart(2, '0')}</span>
+        <span className="pr-4 text-base font-semibold leading-6 tracking-[-0.01em] sm:text-lg">{q}</span>
+        <span className="flex h-9 w-9 items-center justify-center rounded-full border border-[#171713]/20 transition-colors group-hover:border-[#171713] group-hover:bg-[#171713] group-hover:text-white">
+          <ChevronDown className={`h-4 w-4 transition-transform duration-300 ${open ? 'rotate-180' : ''}`} />
+        </span>
       </button>
-      {open && (
-        <div className="px-6 pb-5 text-sm text-gray-400 leading-relaxed border-t border-white/5 pt-4">
-          {a}
+      <div className={`grid transition-[grid-template-rows] duration-300 ease-out ${open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
+        <div className="overflow-hidden">
+          <p className="pb-7 pl-[54px] pr-12 text-sm leading-7 text-[#171713]/65 sm:pl-[74px] sm:pr-20">{a}</p>
         </div>
-      )}
-    </div>
+      </div>
+    </article>
   );
 }
 
 export default function Faq() {
   return (
-    <div className="min-h-screen bg-[#111111] text-white">
-      {/* Nav */}
-      <nav className="border-b border-white/10 px-6 py-4 flex items-center justify-between max-w-6xl mx-auto">
-        <Link to="/">
-          <CaptionStudioLogo size="default" showText={true} />
-        </Link>
-        <div className="flex gap-6 text-sm text-gray-400">
-          <Link to="/HelpAndSupport" className="hover:text-white transition-colors">Support</Link>
-          <Link to="/TermsAndConditions" className="hover:text-white transition-colors">Terms</Link>
-        </div>
-      </nav>
+    <SupportPageShell
+      active="faq"
+      eyebrow="Help Center"
+      title="Frequently Asked Questions"
+      description="Everything you need to know about Lekha Captions."
+      pageCode="01"
+      detail="8 answered questions about creating, editing, and exporting captions."
+    >
+      <div className="mx-auto grid max-w-7xl gap-12 px-6 py-16 sm:px-8 sm:py-20 lg:grid-cols-[280px_minmax(0,1fr)] lg:gap-20 lg:py-24">
+        <aside className="lg:sticky lg:top-8 lg:self-start">
+          <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#171713]/40">Knowledge base / 01</p>
+          <h2 className="mt-4 font-serif text-3xl leading-tight tracking-[-0.025em]">Clear answers, without the fine print.</h2>
+          <div className="mt-8 border-l-2 border-[#F5A623] pl-5">
+            <h3 className="text-sm font-semibold">Still have questions?</h3>
+            <p className="mt-2 text-sm leading-6 text-[#171713]/55">Our support team is here to help.</p>
+            <Link to="/HelpAndSupport" className="mt-5 inline-flex items-center gap-2 text-sm font-semibold transition-all hover:gap-3">
+              Contact Support <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
+        </aside>
 
-      {/* Hero */}
-      <div className="max-w-3xl mx-auto px-6 pt-20 pb-8 text-center">
-        <div className="inline-flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-4 py-1.5 text-xs text-gray-400 mb-6">
-          Help Center
-        </div>
-        <h1 className="text-4xl font-bold mb-4">Frequently Asked Questions</h1>
-        <p className="text-gray-400 text-lg">Everything you need to know about Lekha Captions.</p>
+        <section className="rounded-[1.75rem] border border-[#171713]/15 bg-[#FBF9F4] px-5 shadow-[0_18px_60px_rgba(31,27,20,0.08)] sm:px-8">
+          {faqs.map((item, index) => (
+            <FaqItem key={item.q} {...item} index={index} />
+          ))}
+        </section>
       </div>
-
-      {/* FAQ List */}
-      <div className="max-w-3xl mx-auto px-6 pb-24 space-y-3">
-        {faqs.map((item, i) => (
-          <FaqItem key={i} {...item} />
-        ))}
-      </div>
-
-      {/* Still stuck */}
-      <div className="max-w-3xl mx-auto px-6 pb-24 text-center">
-        <div className="rounded-2xl border border-white/10 bg-white/3 p-10" style={{ background: 'rgba(255,255,255,0.02)' }}>
-          <h2 className="text-xl font-semibold mb-2">Still have questions?</h2>
-          <p className="text-gray-400 text-sm mb-6">Our support team is here to help.</p>
-          <Link
-            to="/HelpAndSupport"
-            className="inline-flex items-center gap-2 bg-white text-black font-semibold text-sm px-6 py-2.5 rounded-full hover:bg-gray-200 transition-colors"
-          >
-            Contact Support
-          </Link>
-        </div>
-      </div>
-
-      {/* Footer */}
-      <footer className="border-t border-white/10 py-8 text-center text-gray-500 text-sm">
-        <p>© {new Date().getFullYear()} Lekha Captions · <Link to="/TermsAndConditions" className="hover:text-gray-300">Terms</Link> · <Link to="/Faq" className="hover:text-gray-300">FAQ</Link></p>
-      </footer>
-    </div>
+    </SupportPageShell>
   );
 }

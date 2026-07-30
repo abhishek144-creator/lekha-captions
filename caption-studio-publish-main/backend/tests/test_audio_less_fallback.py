@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from processor import VideoProcessor
+from processor import VideoProcessor, _extract_sarvam_words
 
 class AudioLessFallbackTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
@@ -69,6 +69,31 @@ class AudioLessFallbackTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(result.get("success"))
             self.assertFalse(os.path.exists(output_path))
             self.assertFalse(os.path.exists(ass_path))
+
+    def test_sarvam_timestamp_arrays_are_normalized(self):
+        response = SimpleNamespace(
+            timestamps=SimpleNamespace(
+                words=["Namaste", "duniya"],
+                start_time_seconds=[0.1, 0.7],
+                end_time_seconds=[0.6, 1.2],
+            )
+        )
+
+        self.assertEqual(
+            _extract_sarvam_words(response),
+            [
+                {"word": "Namaste", "start": 0.1, "end": 0.6},
+                {"word": "duniya", "start": 0.7, "end": 1.2},
+            ],
+        )
+
+    def test_legacy_sarvam_word_shape_remains_supported(self):
+        response = {"words": [{"word": "hello", "start": 0, "end": 0.5}]}
+
+        self.assertEqual(
+            _extract_sarvam_words(response),
+            [{"word": "hello", "start": 0.0, "end": 0.5}],
+        )
 
 if __name__ == "__main__":
     unittest.main()

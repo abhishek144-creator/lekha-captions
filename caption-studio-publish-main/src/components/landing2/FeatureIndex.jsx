@@ -3,9 +3,9 @@ import { Download, Globe2, Languages, Palette, Type, WandSparkles, Zap } from 'l
 
 const catalog = [
   { number: '01', icon: WandSparkles, title: 'AI-powered generation', copy: 'Turn speech into timed, readable captions in a few focused steps.', color: '#f5a623' },
-  { number: '02', icon: Type, title: 'Professional typography', copy: 'Shape hierarchy with premium fonts, sizing and spacing controls.', color: '#b993ff' },
+  { number: '02', icon: Type, title: 'Professional typography', copy: 'Shape hierarchy with premium fonts, sizing and spacing controls.', color: '#70d6a5' },
   { number: '03', icon: Palette, title: 'Custom styling', copy: 'Control colors, highlights, backgrounds and placement.', color: '#ff7b9f' },
-  { number: '04', icon: Globe2, title: 'Regional language reach', copy: 'Create for Indic, African, Arab, Asian and European audiences.', color: '#6ee7ff' },
+  { number: '04', icon: Globe2, title: 'Regional language reach', copy: 'Create for audiences in the Americas, Europe, Africa, the Middle East and Asia.', color: '#6ee7ff' },
   { number: '05', icon: Languages, title: '115+ languages', copy: 'Keep every writing system inside one creator workflow.', color: '#70d6a5' },
   { number: '06', icon: Download, title: 'Flexible export', copy: 'Publish in the formats your next editing step needs.', color: '#86a8ff' },
   { number: '07', icon: Zap, title: 'Built for speed', copy: 'A focused toolset for fast-moving short-form production.', color: '#ffd166' },
@@ -14,6 +14,11 @@ const catalog = [
 export default function FeatureIndex() {
   return (
     <section id="card-catalog" aria-label="Feature card catalog" className="landing-section-features relative px-5 py-20 sm:px-6 sm:py-28 lg:px-8">
+      <div aria-hidden="true" className="landing-light-geometry landing-section-shapes">
+        <span className="landing-extra-shape landing-extra-hexagon right-[7%] top-[14%]" />
+        <span className="landing-extra-shape landing-extra-dots left-[4%] top-[44%]" />
+        <span className="landing-extra-shape landing-extra-frame right-[18%] bottom-[12%]" />
+      </div>
       <div className="mx-auto max-w-6xl">
         <motion.div
           initial={{ opacity: 0, y: 24 }}
@@ -25,7 +30,7 @@ export default function FeatureIndex() {
             Card catalog · Features
           </p>
           <h2 className="mt-5 text-4xl font-semibold leading-none tracking-[-0.055em] text-white sm:text-5xl">
-            Everything filed, <span className="font-serif font-normal italic text-[#f5a623]">nothing lost</span>
+            Everything filed, <span className="landing-highlight landing-highlight-gold font-serif font-normal italic">nothing lost</span>
           </h2>
           <p className="mt-4 text-base text-white/55">Seven index cards from the Lekha drawer. Pull any one out.</p>
         </motion.div>
@@ -38,6 +43,7 @@ export default function FeatureIndex() {
               whileInView={{ opacity: 1, y: 0, rotate: 0 }}
               viewport={{ once: true, amount: 0.25 }}
               transition={{ delay: index * 0.055, duration: 0.56 }}
+              whileHover={{ y: -7, rotate: index % 2 === 0 ? -0.35 : 0.35 }}
               className={`landing-feature-card group relative min-h-[13rem] overflow-hidden border border-white/[0.12] bg-[#0d0c0b]/78 p-6 shadow-[0_18px_50px_-36px_rgba(0,0,0,0.95)] ${index === 0 ? 'md:col-span-2' : ''}`}
             >
               <span className="absolute -left-2 top-1/2 h-4 w-4 -translate-y-1/2 rounded-full bg-[#070706]" />
@@ -53,6 +59,12 @@ export default function FeatureIndex() {
                 <h3 className="text-lg font-semibold text-white">{item.title}</h3>
                 <p className="mt-2 max-w-xl text-sm leading-6 text-white/48">{item.copy}</p>
               </div>
+              <motion.div
+                aria-hidden="true"
+                animate={{ x: ['-120%', '220%'] }}
+                transition={{ delay: index * 0.35, duration: 4.8, repeat: Infinity, repeatDelay: 2.5, ease: 'easeInOut' }}
+                className="pointer-events-none absolute inset-y-0 w-14 skew-x-[-18deg] bg-gradient-to-r from-transparent via-white/[0.035] to-transparent"
+              />
               <div className="absolute inset-x-0 bottom-0 h-px origin-left scale-x-0 transition-transform duration-500 group-hover:scale-x-100" style={{ background: item.color }} />
             </motion.article>
           ))}

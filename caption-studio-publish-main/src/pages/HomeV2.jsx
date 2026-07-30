@@ -3,10 +3,11 @@ import { Link } from 'react-router-dom'
 import { createPageUrl } from '@/utils'
 import { motion, useReducedMotion, useScroll, useSpring } from 'framer-motion'
 import HeroCinematic from '@/components/landing2/HeroCinematic'
-import LanguagePassportStrip from '@/components/landing2/LanguagePassportStrip'
 import FeatureIndex from '@/components/landing2/FeatureIndex'
+import AttentionChoreography from '@/components/landing2/AttentionChoreography'
 import UseCaseReel from '@/components/landing2/UseCaseReel'
 import WorkflowPlayhead from '@/components/landing2/WorkflowPlayhead'
+import FormatCanvasSection from '@/components/landing2/FormatCanvasSection'
 import TemplateShowcase from '@/components/landing/TemplateShowcase'
 import PricingSection from '@/components/landing/PricingSection'
 import FinalCtaKaraoke from '@/components/landing2/FinalCtaKaraoke'
@@ -50,16 +51,15 @@ export default function HomeV2() {
   return (
     <div className="landing-page relative min-h-screen overflow-x-hidden bg-[#070706] text-white">
       <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_52%_-12%,rgba(245,166,35,0.21),transparent_34%),radial-gradient(circle_at_105%_28%,rgba(98,50,180,0.13),transparent_28%),radial-gradient(circle_at_-5%_30%,rgba(98,50,180,0.11),transparent_28%),radial-gradient(circle_at_-8%_58%,rgba(26,126,136,0.09),transparent_25%),linear-gradient(180deg,#070706_0%,#0c0a08_38%,#070707_100%)]" />
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.022)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.022)_1px,transparent_1px)] bg-[size:72px_72px] [mask-image:linear-gradient(to_bottom,black,transparent_94%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_52%_-12%,rgba(245,166,35,0.21),transparent_34%),radial-gradient(circle_at_105%_28%,rgba(13,126,132,0.1),transparent_28%),radial-gradient(circle_at_-5%_30%,rgba(34,113,118,0.09),transparent_28%),radial-gradient(circle_at_-8%_58%,rgba(26,126,136,0.09),transparent_25%),linear-gradient(180deg,#070706_0%,#0c0a08_38%,#070707_100%)]" />
         <div className="absolute inset-y-0 left-[7%] w-px bg-gradient-to-b from-transparent via-white/[0.05] to-transparent" />
         <div className="absolute inset-y-0 right-[7%] w-px bg-gradient-to-b from-transparent via-white/[0.05] to-transparent" />
       </div>
 
-      <nav className="sticky top-0 z-50 h-16 border-b border-white/[0.07] bg-[#080807]/70 px-5 shadow-[0_10px_50px_rgba(0,0,0,0.18)] backdrop-blur-2xl md:px-8">
-        <div className="mx-auto flex h-full max-w-7xl items-center justify-between">
+      <nav className="sticky top-0 z-50 h-16 border-b border-white/[0.07] bg-[#080807]/70 px-3 shadow-[0_10px_50px_rgba(0,0,0,0.18)] backdrop-blur-2xl sm:px-4 lg:px-5">
+        <div className="mx-auto flex h-full max-w-[90rem] items-center justify-between">
           <Link to={createPageUrl('Home')} className="transition-opacity hover:opacity-80" aria-label="Lekha Captions home">
-            <CaptionStudioLogo size="default" showText={true} />
+            <CaptionStudioLogo size="default" showText={true} beta={true} />
           </Link>
           <div className="hidden items-center gap-7 sm:flex">
             <Link to={createPageUrl('Faq')} className="text-sm text-[#949494] transition-colors hover:text-white">FAQ</Link>
@@ -75,10 +75,11 @@ export default function HomeV2() {
 
       <main className="landing-story relative z-10">
         <HeroCinematic />
-        <LanguagePassportStrip />
         <FeatureIndex />
+        <AttentionChoreography />
         <UseCaseReel />
         <WorkflowPlayhead />
+        <FormatCanvasSection />
         <TemplateShowcase />
         <PricingSection />
         <FinalCtaKaraoke />

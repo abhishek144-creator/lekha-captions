@@ -147,6 +147,8 @@ assertIncludes("production requires Redis or explicit in-memory escape hatch", b
 assertIncludes("production requires media signing secret", backendMain, "MEDIA_URL_SIGNING_SECRET must be set in production")
 assertIncludes("production requires durable source storage", backendMain, "Durable media storage is unavailable")
 assertIncludes("backend loads the shared billing catalog", backendMain, 'shared", "planCatalog.json')
+assertIncludes("transcription acquires a per-user in-flight lock", backendMain, "_acquire_process_slot(uid, process_request_id)")
+assertIncludes("transcription always releases its in-flight lock", backendMain, "_release_process_slot(uid, process_request_id)")
 
 const storageHelpers = readText("backend/firebase_admin_setup.py")
 assertIncludes("exports upload to durable storage", storageHelpers, "blob.upload_from_filename(local_path, content_type=content_type)")
@@ -155,30 +157,92 @@ assertIncludes("workers can materialize shared source uploads", storageHelpers, 
 const pricingModal = readText("src/components/dashboard/PricingModal.jsx")
 const pricingLanding = readText("src/components/landing/PricingSection.jsx")
 const userAccount = readText("src/pages/UserAccount.jsx")
+const uploadModal = readText("src/components/dashboard/UploadModal.jsx")
 assertIncludes("dashboard pricing loads the shared billing catalog", pricingModal, "planCatalog.json")
 assertIncludes("landing pricing loads the shared billing catalog", pricingLanding, "planCatalog.json")
 assertIncludes("account plan limits load the shared billing catalog", userAccount, "planCatalog.json")
+assertIncludes("account page exposes permanent account deletion", userAccount, "api/account-delete")
+assertIncludes("upload picker validates selected video files", uploadModal, "validateVideoFile(file)")
 assertExcludes("dashboard pricing does not advertise unfinished API access", pricingModal.toLowerCase(), "api access")
 assertExcludes("landing pricing does not advertise unfinished API access", pricingLanding.toLowerCase(), "api access")
 assertExcludes("landing pricing does not advertise unfinished team seats", pricingLanding.toLowerCase(), "team seats")
 assertIncludes("readiness checks export workers", backendMain, '"export_worker"')
 assertIncludes("tests do not automatically load developer secrets", backendMain, "_bootstrap_is_test")
-assertIncludes("export daily limit defaults to disabled", backendMain, 'DISABLE_EXPORT_DAILY_LIMIT = os.environ.get(')
-assertIncludes("export daily limit disabled default literal is present", backendMain.replace(/\r\n/g, "\n"), '"1",\n) == "1"')
+assertIncludes("export daily limit is configurable", backendMain, 'DISABLE_EXPORT_DAILY_LIMIT = os.environ.get(')
+assertIncludes(
+  "export daily limit is enforced by default in production",
+  backendMain.replace(/\r\n/g, "\n"),
+  '    "DISABLE_EXPORT_DAILY_LIMIT",\n    "0" if _IS_PRODUCTION else "1",\n) == "1"',
+)
 assertIncludes("export failure rate limit is enforced", backendMain, "recent_failures = _get_recent_export_failures(uid)")
 assertExcludes("export failure rate limit has no escape hatch", backendMain, "DISABLE_EXPORT_FAILURE_RATE_LIMIT")
 assertIncludes("exports use signed media URLs", backendMain, "def _signed_export_url")
 assertIncludes("uploads use signed media URLs", backendMain, "def _signed_upload_url")
 
 const homePage = readText("src/pages/Home.jsx")
+const homeV2Page = readText("src/pages/HomeV2.jsx")
+const dashboardPage = readText("src/pages/Dashboard.jsx")
+const toastComponent = readText("src/components/ui/toast.jsx")
 const sitemap = readText("public/sitemap.xml")
 const vercelConfig = readText("vercel.json")
 const htmlDocument = readText("index.html")
 assertIncludes("home links to the support route", homePage, "createPageUrl('HelpAndSupport')")
 assertIncludes("home links to the terms route", homePage, "createPageUrl('TermsAndConditions')")
+assertIncludes("primary landing page visibly identifies the beta", homePage, "beta={true}")
+assertIncludes("alternate landing page visibly identifies the beta", homeV2Page, "beta={true}")
+assertIncludes("editor beta marker renders outside desktop-only navigation", dashboardPage, "renders at every breakpoint")
+assertIncludes("export failure tells the customer no credit was charged", readText("src/components/dashboard/ExportPanel.jsx"), "No credit was charged")
+assertIncludes("multiline failure details preserve line breaks", toastComponent, "whitespace-pre-line")
+assertIncludes("long job references wrap on narrow screens", toastComponent, "break-words")
 assertIncludes("sitemap contains the support route", sitemap, "/HelpAndSupport</loc>")
 assertIncludes("sitemap contains the terms route", sitemap, "/TermsAndConditions</loc>")
 assertIncludes("sitemap contains the privacy route", sitemap, "/PrivacyPolicy</loc>")
+assertIncludes("sitemap contains the refund policy route", sitemap, "/RefundPolicy</loc>")
+assertIncludes("sitemap contains the acceptable use route", sitemap, "/AcceptableUsePolicy</loc>")
+
+// Razorpay requires a reachable refund/cancellation policy, and the checkout
+// surface must link the policies a buyer is agreeing to.
+const pagesConfig = readText("src/pages.config.js")
+const refundPolicy = readText("src/pages/RefundPolicy.jsx")
+const acceptableUse = readText("src/pages/AcceptableUsePolicy.jsx")
+const terms = readText("src/pages/TermsAndConditions.jsx")
+const privacyPolicy = readText("src/pages/PrivacyPolicy.jsx")
+const footer = readText("src/components/landing/Footer.jsx")
+assertIncludes("refund policy route is registered", pagesConfig, '"RefundPolicy": RefundPolicy')
+assertIncludes("acceptable use route is registered", pagesConfig, '"AcceptableUsePolicy": AcceptableUsePolicy')
+assertIncludes("footer links the refund policy", footer, "createPageUrl('RefundPolicy')")
+assertIncludes("footer links the acceptable use policy", footer, "createPageUrl('AcceptableUsePolicy')")
+assertIncludes("checkout links the refund policy", pricingModal, 'href="/RefundPolicy"')
+assertIncludes("refund policy states the credit expiry rule", refundPolicy, "expire at the end of your plan period")
+assertIncludes("refund policy states plans do not auto-renew", refundPolicy, "do not auto-renew")
+assertIncludes("acceptable use policy has an abuse reporting path", acceptableUse, "ABUSE REPORT")
+assertIncludes("terms cover plans and credits", terms, "Plans, Pricing and Credits")
+assertIncludes("terms cover suspension", terms, "Suspension and Termination")
+assertIncludes("terms disclaim guaranteed availability", terms, "Service Availability")
+assertExcludes(
+  "terms name a real governing jurisdiction",
+  terms,
+  "REPLACE_WITH_JURISDICTION",
+)
+assertIncludes("privacy policy states the AI training position", privacyPolicy, "does not use your videos")
+
+// Operator kill switches must stay wired to every expensive entry point.
+assertIncludes("service controls are readable without auth", backendMain, '@app.get("/api/service-status")')
+assertIncludes("service controls are admin-writable", backendMain, '@app.post("/api/admin/service-controls")')
+for (const [label, control] of [
+  ["payments", "pause_payments"],
+  ["uploads", "pause_uploads"],
+  ["transcription", "pause_transcription"],
+  ["exports", "pause_exports"],
+  ["signups", "pause_signups"],
+]) {
+  assertIncludes(
+    `${label} honour the operator kill switch`,
+    backendMain,
+    `_assert_service_available("${control}")`,
+  )
+}
+assertIncludes("new account bootstrap is rate limited", backendMain, "_signup_rate")
 assertIncludes("Vercel serves the Vite SPA fallback", vercelConfig, '"destination": "/index.html"')
 assertIncludes("HTML references the app manifest", htmlDocument, 'href="/manifest.json"')
 assertIncludes("HTML references an existing social preview", htmlDocument, "/landing/template-showcase-1.jpg")

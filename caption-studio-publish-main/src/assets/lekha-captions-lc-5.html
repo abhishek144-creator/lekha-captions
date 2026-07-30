@@ -378,7 +378,7 @@ T('T218','2 Style · V3',2,[
   N('respect people with the real answer.',{mode:'wbw',styledHero:1,keywordStyle:'mark',hero:'real'})
 ]),
 T('T219','2 Style · V4',2,[
-  C('mirror', L('s','their chapter','slidel'), L('xh','VS','tilt',{hero:1}), L('s','your page one','slider')),
+  C('anchor', L('s','START THE','drop'), L('h','NEXT CHAPTER.','rolly',{hero:1})),
   N('you are early, not behind.',{mode:'anim',hero:'early',bodyAnim:'rise',heroAnim:'stretch'}),
   C('twostep', L('m','walk your','climb'), L('h','OWN CLOCK.','stamp',{hero:1})),
   N('comparison steals present joy.',{mode:'wbw',styledHero:1,keywordStyle:'bracket',hero:'present'}),
@@ -433,6 +433,7 @@ T('T225','3 Style · V5',3,[
 /* palettes: rotate the master wheel so every template gets 5 distinct hero colors */
 TPLS.forEach((t,i)=>{
   t.pal=[0,1,2,3,4].map(j=>MASTER[(i*3+j*2)%MASTER.length]);
+  if(t.id==='T219') t.pal[0]='#C9A7FF';
   t.meta=[...new Set(t.scenes.filter(s=>s.k==='c').map(s=>s.layout))].join(' \u00b7 ');
 });
 

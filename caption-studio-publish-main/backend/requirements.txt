@@ -12,3 +12,4 @@ firebase-admin==7.1.0
 sarvamai==0.1.25
 redis==7.4.0
 rq==2.9.0
+sentry-sdk==2.66.0
