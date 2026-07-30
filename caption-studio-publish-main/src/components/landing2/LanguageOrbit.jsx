@@ -1,14 +1,14 @@
 import { motion } from 'framer-motion'
 
-const languageTags = ['हिन्दी', 'தமிழ்', 'తెలుగు', 'বাংলা', 'मराठी', 'العربية', 'English', 'Français']
+const languageTags = ['English', 'Español', 'Português', 'Français', 'العربية', '中文', 'हिन्दी', 'Kiswahili']
 
 const marketCards = [
-  { stamp: 'Admitted · 12 Mar 2026 · LKH-091', title: 'South Asia', copy: 'Hindi, Tamil, Telugu, Bangla, Marathi & more', accent: true },
-  { stamp: 'Admitted · 04 Apr 2026 · LKH-118', title: 'Africa', copy: 'Kiswahili, Yorùbá, Amharic & more' },
-  { stamp: 'Admitted · 19 Feb 2026 · LKH-064', title: 'Southeast Asia', copy: 'Bahasa, Thai, Vietnamese & more' },
-  { stamp: 'Admitted · 27 May 2026 · LKH-203', title: 'Middle East', copy: 'Arabic, Farsi, Urdu & more', accent: true },
+  { stamp: 'Admitted · 30 Jun 2026 · LKH-245', title: 'English-speaking markets', copy: 'US, UK, Australia, Canada & beyond', accent: true },
   { stamp: 'Admitted · 08 Jan 2026 · LKH-032', title: 'Europe', copy: 'French, German, Spanish, Portuguese & more' },
-  { stamp: 'Admitted · 30 Jun 2026 · LKH-245', title: 'English-speaking markets', copy: 'US, UK, Australia, Canada & beyond' },
+  { stamp: 'Admitted · 04 Apr 2026 · LKH-118', title: 'Africa', copy: 'Kiswahili, Yorùbá, Amharic & more' },
+  { stamp: 'Admitted · 27 May 2026 · LKH-203', title: 'Middle East', copy: 'Arabic, Farsi, Hebrew & more', accent: true },
+  { stamp: 'Admitted · 19 Feb 2026 · LKH-064', title: 'East & Southeast Asia', copy: 'Mandarin, Japanese, Bahasa, Thai & more' },
+  { stamp: 'Admitted · 12 Mar 2026 · LKH-091', title: 'South Asia', copy: 'Hindi, Tamil, Telugu, Bangla, Urdu & more' },
 ]
 
 export default function LanguageOrbit() {
@@ -28,7 +28,7 @@ export default function LanguageOrbit() {
                 Built for <span className="font-serif font-normal italic text-[#f5a623]">every language,</span> every creator.
               </h2>
               <p className="mt-5 max-w-sm text-base leading-7 text-white/62">
-                Indic, African, Arab, Southeast Asian and European languages — all first-class.
+                American, European, African, Middle Eastern and Asian languages — all first-class.
               </p>
 
               <div className="mt-7 flex max-w-sm flex-wrap gap-2.5">

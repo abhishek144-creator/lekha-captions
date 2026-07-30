@@ -20,8 +20,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from '@/components/ui/use-toast';
-import { apiFetch, apiRequest } from '@/lib/apiClient';
-import { notifyApiError } from '@/lib/notifyApiError';
+import { apiFetch, apiRequest, getApiErrorMessage } from '@/lib/apiClient';
 import { getClientContext, trackAnalytics } from '@/lib/analytics';
 import { isFeatureEnabled } from '@/lib/featureFlags';
 import { getEffectiveAuthToken } from '@/lib/devAuth';
@@ -31,6 +30,7 @@ import { getBasicTemplateExportEffects } from './basicTemplateCatalog.js';
 import {
   buildPlainText,
   buildSrt,
+  buildTextElementExportStyle,
   getCaptionedVideoFilename,
   hasExportableVideoContent,
   shouldAttachApiAuth,
@@ -47,6 +47,33 @@ import { Progress } from "@/components/ui/progress";
 // even if VITE_DISABLE_EXPORT_LIMITS leaks into the build environment. In dev
 // it defaults on; set VITE_DISABLE_EXPORT_LIMITS=0 to exercise the real gates.
 const DISABLE_EXPORT_LIMITS_FOR_TESTING = import.meta.env.DEV && import.meta.env.VITE_DISABLE_EXPORT_LIMITS !== '0';
+
+const SUPPORT_EMAIL = import.meta.env.VITE_SUPPORT_EMAIL || 'support@lekhacaptions.com';
+
+// The backend already tags 500s with "Reference: <rid>". Surface whichever
+// identifier we hold so a user reporting a failed export can be matched to a
+// server-side log line instead of describing the symptom from memory.
+function extractExportReference(error, jobId) {
+  if (jobId) return jobId;
+  const message = String(error?.message || error?.detail || '');
+  const match = message.match(/Reference:\s*([A-Za-z0-9_-]+)/);
+  return match ? match[1] : '';
+}
+
+function notifyExportFailure(error, jobId) {
+  if (error?.name === 'AbortError') return;
+  const reference = extractExportReference(error, jobId);
+  const baseMessage = getApiErrorMessage(error);
+  const description = reference
+    ? `${baseMessage}\n\nJob reference: ${reference}\nNo credit was charged. Email ${SUPPORT_EMAIL} with this reference if it keeps failing.`
+    : `${baseMessage}\n\nNo credit was charged. Email ${SUPPORT_EMAIL} if it keeps failing.`;
+  toast({
+    variant: 'destructive',
+    title: 'Export failed',
+    description,
+    duration: 15000,
+  });
+}
 
 // Basic template effect defaults come from the same catalog as both galleries.
 // Only structural effects are restored here; user font/color/position choices
@@ -236,7 +263,16 @@ function captureAdvancedTemplateLineTexts(preferredRoot) {
     + '.lekha-original-template .wbw-seq-fade, '
     + '.lekha-original-template .wbw-seq-flip',
   );
-  if (!lineRoot) return [];
+  if (!lineRoot) {
+    const appliedTemplateRoot = root.querySelector?.(
+      '.lekha-applied-basic-template-host .bt-cap-block.is-active, '
+      + '.lekha-applied-template-host .sb.active, '
+      + '.lekha-applied-template-host .sblock.active, '
+      + '.lekha-sidebar-source-template .sb.active, '
+      + '.lekha-sidebar-source-template .sblock.active',
+    );
+    return getVisualTemplateTextLines(appliedTemplateRoot);
+  }
   const words = Array.from(lineRoot.querySelectorAll('.w, .kf-word'))
     .filter((word) => String(word.textContent || '').trim());
   if (!words.length) return [];
@@ -374,6 +410,40 @@ function indexWordElementsByKey(container) {
   return elementsByKey;
 }
 
+function getRenderedWordRect(element) {
+  if (!element || typeof element.getBoundingClientRect !== 'function') return null;
+
+  const visualTargets = Array.from(element.querySelectorAll?.(
+    '[data-source-word-visual="true"], [data-word-drag-visual="true"], .kf-base, .kf-fill'
+  ) || []).filter((target) => {
+    const style = window.getComputedStyle(target);
+    const rect = target.getBoundingClientRect();
+    return (
+      style.display !== 'none'
+      && style.visibility !== 'hidden'
+      && Number(style.opacity || 1) !== 0
+      && rect.width > 0
+      && rect.height > 0
+    );
+  });
+
+  if (!visualTargets.length) return element.getBoundingClientRect();
+
+  const rects = visualTargets.map(target => target.getBoundingClientRect());
+  const left = Math.min(...rects.map(rect => rect.left));
+  const top = Math.min(...rects.map(rect => rect.top));
+  const right = Math.max(...rects.map(rect => rect.right));
+  const bottom = Math.max(...rects.map(rect => rect.bottom));
+  return {
+    left,
+    top,
+    right,
+    bottom,
+    width: right - left,
+    height: bottom - top,
+  };
+}
+
 // Simple queue system to prevent server overload
 const exportQueue = {
   queue: [],
@@ -422,7 +492,8 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
   const [waitStartTime, setWaitStartTime] = useState(null);
   const [showServerBusy, setShowServerBusy] = useState(false);
   const [exportExpiry, setExportExpiry] = useState(null);
-  const [exportAspectRatio, setExportAspectRatio] = useState('9:16');
+  // Keep the established portrait render default while removing the chooser from the export UI.
+  const exportAspectRatio = '9:16';
   const exportInFlightRef = useRef(false);
   const exportAbortRef = useRef(null);
   const backgroundNoticeShownRef = useRef(false);
@@ -645,6 +716,10 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
     exportInFlightRef.current = true;
     backgroundNoticeShownRef.current = false;
     exportAbortRef.current?.abort();
+    // Captured outside the try so the failure handler can quote a job reference
+    // the user can paste into a support request. Without it a failed export is
+    // untraceable in the backend logs.
+    let activeExportJobId = '';
     const exportController = new AbortController();
     exportAbortRef.current = exportController;
     setProgress(10);
@@ -792,7 +867,8 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
               const key = `${capId}-${wIdx}`;
               const el = wordElementsByKey.get(key);
               if (el) {
-                const rect = el.getBoundingClientRect();
+                const rect = getRenderedWordRect(el);
+                if (!rect) return;
 
                 // Calculate center relative to container
                 const centerX = rect.left + rect.width / 2 - containerRect.left;
@@ -838,15 +914,38 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
         setStatusMessage('Note: Using fallback positioning (scroll video into view for best results)');
       }
 
+      // abs 0,0 means "position was reset" (isWordDetached ignores it in the
+      // editor) — never treat it as a real drop point or words fling to the
+      // top-left corner of the exported video.
+      const hasRealAbsPosition = (v) => (
+        v.abs_x_pct !== undefined
+        && v.abs_y_pct !== undefined
+        && (Math.abs(Number(v.abs_x_pct) || 0) > 0.01 || Math.abs(Number(v.abs_y_pct) || 0) > 0.01)
+      );
+      const hasCptCanvasPosition = (v) => (
+        Number.isFinite(Number(v?.cptCanvasXPercent))
+        && Number.isFinite(Number(v?.cptCanvasYPercent))
+      );
+      const hasRelativeCptPosition = (v) => (
+        Math.abs(Number(v?.x_pct) || 0) > 0.01
+        || Math.abs(Number(v?.y_pct) || 0) > 0.01
+        || Math.abs(Number(v?.x) || 0) > 0.01
+        || Math.abs(Number(v?.y) || 0) > 0.01
+      );
+
       const patchWordStyles = (ws) => {
         if (!ws || Object.keys(ws).length === 0) return ws;
         if (!container || !containerRect) return ws;
         const patched = {};
         for (const [k, v] of Object.entries(ws)) {
-          if (v.x !== undefined || v.y !== undefined) {
+          if (hasRealAbsPosition(v)) {
             const wordEl = wordElementsByKey.get(k);
             if (wordEl) {
-              const wordRect = wordEl.getBoundingClientRect();
+              const wordRect = getRenderedWordRect(wordEl);
+              if (!wordRect) {
+                patched[k] = v;
+                continue;
+              }
               const centerX = wordRect.left + wordRect.width / 2 - containerRect.left;
               const centerY = wordRect.top + wordRect.height / 2 - containerRect.top;
               const vidPos = containerToVideo(
@@ -858,26 +957,82 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
                 abs_x_pct: vidPos.x,
                 abs_y_pct: vidPos.y
               };
-            } else if (v.abs_x_pct !== undefined && v.abs_y_pct !== undefined) {
+            } else if (hasRealAbsPosition(v)) {
               const vidPos = containerToVideo(v.abs_x_pct, v.abs_y_pct);
               patched[k] = { ...v, abs_x_pct: vidPos.x, abs_y_pct: vidPos.y };
-            } else {
-              const containerXPct = ((v.x || 0) / cw) * 100;
-              const containerYPct = ((v.y || 0) / ch) * 100;
-              const vidFallback = containerToVideo(
-                (captionStyle?.position_x ?? 50) + containerXPct,
-                (captionStyle?.position_y ?? 75) + containerYPct
-              );
-              patched[k] = { ...v, abs_x_pct: vidFallback.x, abs_y_pct: vidFallback.y };
             }
-          } else if (v.abs_x_pct !== undefined && v.abs_y_pct !== undefined) {
-            const vidPos = containerToVideo(v.abs_x_pct, v.abs_y_pct);
-            patched[k] = { ...v, abs_x_pct: vidPos.x, abs_y_pct: vidPos.y };
+          } else if (hasRelativeCptPosition(v)) {
+            if (hasCptCanvasPosition(v)) {
+              const vidPos = containerToVideo(v.cptCanvasXPercent, v.cptCanvasYPercent);
+              patched[k] = {
+                ...v,
+                abs_x_pct: vidPos.x,
+                abs_y_pct: vidPos.y,
+              };
+              continue;
+            }
+            const wordEl = wordElementsByKey.get(k);
+            if (wordEl) {
+              const wordRect = getRenderedWordRect(wordEl);
+              if (wordRect) {
+                const centerX = wordRect.left + wordRect.width / 2 - containerRect.left;
+                const centerY = wordRect.top + wordRect.height / 2 - containerRect.top;
+                const vidPos = containerToVideo(
+                  (centerX / containerRect.width) * 100,
+                  (centerY / containerRect.height) * 100,
+                );
+                patched[k] = {
+                  ...v,
+                  abs_x_pct: vidPos.x,
+                  abs_y_pct: vidPos.y,
+                };
+                continue;
+              }
+            }
+            // Legacy saved CPTs have only a template-relative offset. Keep it
+            // as the fallback when that caption is not mounted at export time.
+            patched[k] = v;
           } else {
             patched[k] = v;
           }
         }
         return patched;
+      };
+
+      // Recreated advanced templates re-render from authored markup in the
+      // export browser, so per-word font/color snapshots must not flatten the
+      // authored look — but user-dragged word positions still have to survive.
+      // Pass only the geometry fields through; the overlay renderer applies
+      // x/y as translate offsets on the matching source word.
+      // Input MUST already be patchWordStyles() output so abs_x/y_pct are in
+      // video space (what render_template_overlay.mjs measures against), not
+      // preview-container space.
+      const WORD_GEOMETRY_KEYS = [
+        'x',
+        'y',
+        'x_pct',
+        'y_pct',
+        'rotation',
+        'boxWidth',
+        'textScaleX',
+        'cptCanvasXPercent',
+        'cptCanvasYPercent',
+      ];
+      const pickWordGeometryStyles = (patchedWs) => {
+        const out = {};
+        for (const [k, v] of Object.entries(patchedWs || {})) {
+          if (!v || typeof v !== 'object') continue;
+          const picked = {};
+          for (const key of WORD_GEOMETRY_KEYS) {
+            if (v[key] !== undefined) picked[key] = v[key];
+          }
+          if (hasRealAbsPosition(v)) {
+            picked.abs_x_pct = v.abs_x_pct;
+            picked.abs_y_pct = v.abs_y_pct;
+          }
+          if (Object.keys(picked).length) out[k] = picked;
+        }
+        return out;
       };
 
       const idToken = await getEffectiveAuthToken(currentUser);
@@ -997,6 +1152,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
             end_time: cap.end_time,
             __templateIndex: exportTemplateIndex,
             animation: cap.animation || 'none',
+            animation_speed: cap.animationSpeed ?? 1,
             is_text_element: !!isText,
             template_id: capTemplateId,
             template_20_id: !isText ? activeTemplateValue(cap, 'template_20_id') : '',
@@ -1019,40 +1175,11 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
             preview_template_box_height_px: !isText && Number.isFinite(captionPreviewTemplateBoxHeightPx) ? captionPreviewTemplateBoxHeightPx : 0,
             custom_style: isText ? (() => {
               const teVidPos = containerToVideo(cs.left ?? 50, cs.top ?? 50);
-              return {
-                position_x: teVidPos.x, position_y: teVidPos.y,
-                font_family: cs.fontFamily || 'Inter',
-                font_size: cs.fontSize || 18,
-                font_weight: cs.fontWeight || '500',
-                font_style: cs.fontStyle || 'normal',
-                text_color: cs.color || '#ffffff',
-                has_background: cs.hasBackground !== false,
-                background_color: cs.backgroundColor || '#000000',
-                background_opacity: cs.backgroundOpacity ?? 0.6,
-                background_h_multiplier: cs.backgroundHMultiplier || 1.2,
-                text_align: cs.textAlign || 'center',
-                text_transform: cs.textTransform || 'none',
-                padding: cs.padding ?? 8,
-                has_stroke: cs.hasStroke || false,
-                stroke_width: cs.strokeWidth || 1,
-                stroke_color: cs.strokeColor || '#000000',
-                has_shadow: cs.hasShadow || false,
-                shadow_color: cs.shadowColor || '#000000',
-                shadow_blur: cs.shadowBlur ?? 4,
-                shadow_offset_x: cs.shadowOffsetX ?? 0,
-                shadow_offset_y: cs.shadowOffsetY ?? 2,
-                letter_spacing: cs.letterSpacing || 0,
-                effect_type: cs.effectType || 'none',
-                effect_offset: cs.effectOffset ?? 50,
-                effect_direction: cs.effectDirection ?? -45,
-                effect_blur: cs.effectBlur ?? 50,
-                effect_transparency: cs.effectTransparency ?? 40,
-                effect_thickness: cs.effectThickness ?? 50,
-                effect_intensity: cs.effectIntensity ?? 50,
-                effect_color: cs.effectColor || '#000000'
-              };
+              return buildTextElementExportStyle(cs, teVidPos);
             })() : null,
-            word_styles: (!isText && capUsesRecreatedAdvancedTemplate) ? {} : patchWordStyles(cap.wordStyles || {}),
+            word_styles: (!isText && capUsesRecreatedAdvancedTemplate)
+              ? pickWordGeometryStyles(patchWordStyles(cap.wordStyles || {}))
+              : patchWordStyles(cap.wordStyles || {}),
             words: cap.words || []
           };
         }),
@@ -1106,8 +1233,12 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
           has_animation: _cs?.has_animation || false,
           text_align: _cs?.text_align || 'center',
           text_case: _cs?.text_case || 'none',
+          text_decoration: _cs?.text_decoration || 'none',
           is_caps: _cs?.is_caps || false,
           is_bold: _cs?.is_bold || false,
+          scale: _cs?.scale ?? 1,
+          box_width: _cs?.boxWidth ?? 0,
+          display_mode: _cs?.display_mode || 'sentence',
           effect_type: _cs?.effect_type || 'none',
           effect_offset: _cs?.effect_offset ?? 50,
           effect_direction: _cs?.effect_direction ?? -45,
@@ -1206,6 +1337,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
 
       let resolvedResult = result;
       if (result.export_job_id) {
+        activeExportJobId = result.export_job_id;
         await pollExportStatus(result.export_job_id, authHeaders, 10 * 60 * 1000, exportController.signal);
         if (!result.video_url) {
           resolvedResult = await apiRequest(`/api/export-result/${result.export_job_id}`, {
@@ -1285,7 +1417,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
         handlePlanLimitError(planKind);
         return;
       }
-      notifyApiError(error, 'Export failed');
+      notifyExportFailure(error, activeExportJobId);
     } finally {
       setIsExporting(false);
       exportInFlightRef.current = false;
@@ -1342,12 +1474,6 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       gradient: 'from-blue-500 to-cyan-500',
       requiresPlan: false
     },
-  ];
-
-  const exportAspectOptions = [
-    { value: '9:16', label: '9:16', detail: 'Shorts' },
-    { value: '1:1', label: '1:1', detail: 'Square' },
-    { value: '16:9', label: '16:9', detail: 'Wide' },
   ];
 
   const planLabel = userData?.subscription_tier
@@ -1452,32 +1578,6 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
                 </Button>
               </div>
             )}
-            <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
-              <div className="mb-3 flex items-center justify-between px-1">
-                <p className="text-[11px] text-gray-500 uppercase tracking-[0.22em] font-bold">Canvas Size</p>
-                <span className="text-[10px] font-semibold text-gray-500">{exportAspectRatio}</span>
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                {exportAspectOptions.map((option) => {
-                  const isActive = exportAspectRatio === option.value;
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => setExportAspectRatio(option.value)}
-                      className={`rounded-xl border px-3 py-2 text-left transition-colors ${
-                        isActive
-                          ? 'border-[#f5a623]/45 bg-[#f5a623]/14 text-white'
-                          : 'border-white/10 bg-black/20 text-gray-400 hover:bg-white/[0.06] hover:text-white'
-                      }`}
-                    >
-                      <span className="block text-sm font-black">{option.label}</span>
-                      <span className="mt-0.5 block text-[10px] text-gray-500">{option.detail}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
             {/* Video exports */}
             <div className="flex items-center justify-between px-1">
               <div>

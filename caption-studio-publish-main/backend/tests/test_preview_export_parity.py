@@ -74,6 +74,45 @@ class PreviewExportParityTests(unittest.TestCase):
             {"template_id": "t33", "text": "एक क्लबाउस है और यहाँ पे"}
         ]))
 
+    def test_rich_editor_features_select_dom_renderer(self):
+        self.assertTrue(processor._should_use_dom_template_renderer({}, [
+            {"id": "text-1", "is_text_element": True, "text": "Headline"}
+        ]))
+        self.assertTrue(processor._should_use_dom_template_renderer({}, [
+            {"id": "caption-1", "animation": "slide_left", "text": "Animated"}
+        ]))
+        self.assertTrue(processor._should_use_dom_template_renderer({}, [
+            {"id": "caption-1", "word_styles": {"caption-1-0": {"textGradient": "linear-gradient(red, blue)"}}, "text": "Styled"}
+        ]))
+        self.assertTrue(processor._should_use_dom_template_renderer({"text_gradient": "linear-gradient(red, blue)"}))
+        for style in (
+            {"box_width": 320},
+            {"line_spacing": 1.8},
+            {"word_spacing": 0},
+            {"text_opacity": 0.5},
+            {"highlight_color": "#ff0"},
+            {"effect_type": "neon"},
+        ):
+            self.assertTrue(processor._should_use_dom_template_renderer(style))
+        self.assertFalse(processor._should_use_dom_template_renderer({"font_family": "Inter"}, [
+            {"id": "caption-1", "animation": "none", "word_styles": {}, "text": "Simple"}
+        ]))
+
+    def test_animation_speed_survives_request_round_trip(self):
+        request = ExportRequest(
+            file_id="123e4567-e89b-12d3-a456-426614174000",
+            captions=[{
+                "id": "caption-1",
+                "text": "Move quickly",
+                "start_time": 0,
+                "end_time": 2,
+                "animation": "slide_left",
+                "animation_speed": 2.5,
+            }],
+        )
+        payload = request.model_dump(by_alias=True)
+        self.assertEqual(payload["captions"][0]["animation_speed"], 2.5)
+
     def test_local_testing_bypasses_credit_and_quality_limits(self):
         allowed, error, _ = _evaluate_export_policy(
             {"credits_remaining": 0, "subscription_tier": "free", "export_timestamps": [9999999999]},

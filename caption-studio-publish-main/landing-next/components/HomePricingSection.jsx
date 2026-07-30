@@ -76,7 +76,7 @@ const plans = [
 ]
 
 const YEARLY_CREDIT_MULTIPLIER = 12
-const INDIAN_LANGUAGES = ['hi', 'ta', 'te', 'kn', 'ml', 'mr', 'gu', 'pa', 'bn', 'or', 'as', 'ur']
+const LOCAL_CURRENCY_LANGUAGES = ['hi', 'ta', 'te', 'kn', 'ml', 'mr', 'gu', 'pa', 'bn', 'or', 'as', 'ur']
 
 function getDiscountPercent(monthlyMinor, yearlyMinor) {
   const baseline = monthlyMinor * 12
@@ -96,10 +96,11 @@ function detectInternationalUser() {
   try {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
     const lang = navigator.language || ''
-    const isIndian = ['Asia/Calcutta', 'Asia/Kolkata'].includes(tz) || INDIAN_LANGUAGES.some((value) => lang.startsWith(value))
-    return !isIndian
+    const isLocalCurrencyRegion = ['Asia/Calcutta', 'Asia/Kolkata'].includes(tz) || LOCAL_CURRENCY_LANGUAGES.some((value) => lang.startsWith(value))
+    return !isLocalCurrencyRegion
   } catch {
-    return false
+    // USD is the global default when the region cannot be resolved.
+    return true
   }
 }
 
@@ -150,7 +151,7 @@ function CheckIcon() {
 }
 
 export function HomePricingSection() {
-  const [billing, setBilling] = useState('monthly')
+  const [billing, setBilling] = useState('yearly')
   const [selectedPlan, setSelectedPlan] = useState('creator')
   const [isInternational, setIsInternational] = useState(false)
 

@@ -743,28 +743,37 @@ body {
   text-transform: uppercase;
 }
 
-/* Vertical Reveal for T21-b0 */
-.t21-b0 .vert-line {
-  display: block;
-  overflow: hidden;
-  height: 0;
-}
-.t21-b0 .vert-line-inner {
+/* Staggered editorial opening for T21-b0 */
+.t21-b0 .editorial-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  column-gap: 0.42em;
+  row-gap: 0.1em;
+  max-width: 300px;
+  overflow: visible;
   font-family: 'Josefin Sans', sans-serif;
-  font-size: 1.6rem;
+  font-size: 1.35rem;
   font-weight: 700;
   color: #fff;
-  letter-spacing: 0.3em;
+  line-height: 1.08;
+  letter-spacing: 0.18em;
+}
+.t21-b0 .editorial-line .w {
+  display: inline-block;
   opacity: 0;
-  transform: translateY(100%);
+  transform: translateY(115%) skewY(6deg);
+  transform-origin: left bottom;
 }
-.t21-b0.active .vert-line { height: 2.2rem; }
-.t21-b0.active .vert-line-inner {
-  animation: lineReveal 0.4s cubic-bezier(0.4,0,0.2,1) 0.1s forwards;
+.t21-b0.active .editorial-line .w {
+  animation: t21EditorialWordReveal 0.48s cubic-bezier(0.16,1,0.3,1) both;
+  animation-delay: calc(0.08s + var(--wbw-delay, 0ms));
 }
-@keyframes lineReveal {
-  from { opacity: 0; transform: translateY(100%); }
-  to   { opacity: 1; transform: translateY(0); }
+@keyframes t21EditorialWordReveal {
+  0%   { opacity: 0; transform: translateY(115%) skewY(6deg); filter: blur(4px); }
+  65%  { opacity: 1; filter: blur(0); }
+  100% { opacity: 1; transform: translateY(0) skewY(0); filter: blur(0); }
 }
 
 /* Letter Spacing Collapse for T21-b1 */
@@ -3644,8 +3653,8 @@ body {
       <span class="formula-badge f2">2-Style</span>
     </div>
     <div class="stage t21-stage" id="stage-t21" bis_skin_checked="1">
-      <div class="sblock t21-block t21-b0" id="t21-b0" data-type="styled" data-label="VERT REVEAL" style="transition: none; opacity: 0;" bis_skin_checked="1">
-        <div class="vert-line" bis_skin_checked="1"><div class="vert-line-inner" bis_skin_checked="1">SILENCE</div></div>
+      <div class="sblock t21-block t21-b0" id="t21-b0" data-type="styled" data-label="EDITORIAL WORD REVEAL" style="transition: none; opacity: 0;" bis_skin_checked="1">
+        <span class="editorial-line wbw-rise" data-text="SILENCE IS THE NEW LUXURY"><span class="w" data-i="0" style="--wbw-delay:0ms">SILENCE</span> <span class="w" data-i="1" style="--wbw-delay:65ms">IS</span> <span class="w" data-i="2" style="--wbw-delay:130ms">THE</span> <span class="w" data-i="3" style="--wbw-delay:195ms">NEW</span> <span class="w" data-i="4" style="--wbw-delay:260ms">LUXURY</span></span>
       </div>
       <div class="sblock t21-block" id="t21-b1" data-type="wbw-seq-fade" data-label="WBW SEQ FADE" bis_skin_checked="1" style="transition: none; opacity: 0;">
         <span class="wbw-seq-fade" data-text="is the loudest {imp-space:statement}"><span class="w" data-i="0" style="opacity: 0;">is</span> <span class="w" data-i="1" style="opacity: 0;">the</span> <span class="w" data-i="2" style="opacity: 0;">loudest</span> <span class="w imp-space" data-i="3" data-imp="true" data-imp-cls="imp-space" style="opacity: 0;">statement</span></span>
@@ -4979,7 +4988,7 @@ const templates = [
   {
     id: 't21',
     blocks: [
-      { id: 't21-b0', type: 'styled', label: 'VERT REVEAL' },
+      { id: 't21-b0', type: 'styled', label: 'EDITORIAL WORD REVEAL' },
       { id: 't21-b1', type: 'wbw-seq-fade', label: 'WBW SEQ FADE' },
       { id: 't21-b2', type: 'wbw-rise', label: 'WBW RISE' },
       { id: 't21-b3', type: 'wbw-slide', label: 'WBW SLIDE' },

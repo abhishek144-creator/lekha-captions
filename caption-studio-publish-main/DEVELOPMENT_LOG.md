@@ -24,10 +24,10 @@ This is the **Work Diary** for the Lekha Captions project.
 - [ ] **Landing footer bottom** — Bottom section / CTA strip color → gold (`src/components/landing/Footer.jsx`)
 - [ ] **UserAccount.jsx** — Update `PLAN_LIMITS` constant to new 3-plan structure (starter/creator/pro + yearly variants). Replace all purple/blue gradients with gold. Fix `planKey` lookup.
 - [ ] **SidebarNav.jsx** — Update `getPlanDetails()` to map new `starter / creator / pro` tiers with gold color. Remove old purple gradient usage.
-- [ ] **Effects / Emphasis button** — Not working in `StyleControls.jsx` and `WordClickPopup.jsx`. Put effects section in a collapsible `+` icon block in both places. Brainstorm: emphasis effect = bold + scale(1.15) + color highlight + optional shadow/glow on word.
+- [x] **Effects / Emphasis button** — Verified 2026-07-21: works in `StyleControls.jsx` (collapsible `Effects−/+` block present; selecting Neon applies a live multi-layer `text-shadow` glow to caption words in preview). Not re-checked in `WordClickPopup.jsx`.
 - [ ] **Styling tab width** — Increase styling panel width to match caption tab width
 - [ ] **Set remaining env vars before deploy** — `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` (backend `.env` stubs already exist); `VITE_RAZORPAY_KEY_ID` (frontend `.env`); `ALLOWED_ORIGINS` (comma-separated prod domains). `DEV_MODE=false` is already set. **`CREDITS_HMAC_SECRET` is now blank — generate a new secret before deploying** (`python -c "import secrets; print(secrets.token_hex(32))"`). App will fail silently on payments/CORS without these.
-- [ ] **Verify template export fidelity** — User to test all 26+15 templates and confirm exported video matches dashboard preview after Session 5 fixes
+- [x] **Verify template export fidelity** — Verified 2026-07-21: `npm run test:templates:all` (motion + visual + export parity across all-left, LC, all-right-phases, all-basic, all-basic-scaled scopes — ~130 templates) passed with 0 failures.
 - [ ] **Verify Text tab export** — Confirm text boxes added via Text tab (custom color, animation, position) appear correctly in exported video
 - [ ] **Verify FPS in export** — Test 24/30/60 fps selector in Export tab produces correct output video frame rates
 - [ ] **Verify zoom/transition animations** — Test zoom_in, zoom_out, fade_in, slide_up/down/left/right in Animate tab → Basic category work correctly in preview
@@ -811,3 +811,141 @@ fade-style word reveal and can make a line look dim mid-playback.
 - `npm run build`
 - In the dashboard, apply `Startup Hustle` and watch the fourth block: the line
   should stay bright instead of fading through a muted state.
+
+### Session 17 — 2026-07-29
+
+**Theme:** Word-editor reopen, dragged-word export, template reset
+
+Three reports about per-word editing: the floating word editor would not reopen
+on a word that had been dragged, dragged words did not move in the exported
+video, and templates were expected to clear previous drags.
+
+**Durable fix summary**
+
+- `VideoPlayer.jsx` `shouldRevealSequentially()` no longer derives word-by-word
+  reveal from `captionHasDetachedWords()`. Dragging one word used to switch the
+  whole caption to word-by-word reveal, so during playback the dragged word was
+  removed from the DOM until its spoken moment and could not be clicked to
+  reopen the editor. Sequential reveal is now driven only by the explicit
+  display-mode setting (`show_inactive === false`), which is what StyleControls
+  writes.
+- `processor.py` now renders a detached word ONLY at its dragged position.
+  Previously the word-layout path, the template karaoke fallback, and the
+  highlight karaoke path all still drew it inside the sentence line, so it
+  appeared twice — once at the original spot, once at the dragged spot. A shared
+  `detached_wi` set blanks that slot in every line. The per-word timing window is
+  still emitted (skipping it blanked the whole sentence for that word's slot).
+- `processor.py` `_is_detached_pos()` mirrors the editor's `isWordDetached()`:
+  `abs_x_pct/abs_y_pct` of 0,0 means "position reset", not "dragged to the
+  top-left corner". Applied in the template, legacy, and text-element paths.
+- `Dashboard.jsx` "Reset Position" now DELETES the position keys instead of
+  writing zeros, so a reset word is not exported to the corner.
+- `ExportPanel.jsx` `patchWordStyles()` treats zeroed offsets as "no drag", and
+  recreated advanced templates (`RECREATED_ADVANCED_TEMPLATE_IDS`) now send a
+  geometry-only subset of `word_styles` instead of `{}` — drags survive export
+  while the authored per-word look is still left to the template.
+- `main.py` `EXPORT_RENDERER_VERSION` → `2026-07-29-dragged-word-export-parity-v36`
+  so cached renders do not mask the fix.
+
+**Already working (verified, no change needed)**
+
+- Applying a template clears previous drags — `handleApplyTemplate` runs
+  `stripDetachedWordLayout()` over every caption's `wordStyles`. Confirmed live:
+  a word dragged to 64.6%/55% returned to static flow after applying a template.
+- Reopening the editor on an *edited* (not dragged) word works, including when
+  emphasis makes the glyphs wider than the click box — the absolutely positioned
+  visual span is still hit-testable outside its wrapper.
+
+**How to recognize it again**
+
+- A dragged word disappears from the canvas as soon as playback starts, or the
+  word editor will not reopen on it: check `shouldRevealSequentially()`.
+- A dragged word shows TWICE in the exported MP4: a sentence line still contains
+  its slot; check the `detached_wi` blanking.
+- A word jumps to the top-left corner of the export after "Reset Position":
+  something stored `abs_x_pct: 0, abs_y_pct: 0` instead of deleting the keys.
+
+**Fast verification**
+
+- `python -m unittest backend.tests.test_api_contracts backend.tests.test_preview_export_parity` (75 tests OK)
+- `npm run lint`, `npm run test:template-parity`, `npm run test:template-export`
+- `VITE_API_BASE_URL=http://localhost:8000 npm run build`
+  (a bare `npm run build` fails on the env gate — that is pre-existing)
+
+### Session 18 — 2026-07-30
+
+**Theme:** The CPT still did not export — a translate that the browser ignored
+
+The dragged-word export fix from Session 17 set the right offsets and every
+automated check passed, yet the exported MP4 still showed the caption in its
+original flat line. Frames pulled from the user's own 18:39 export confirmed it:
+correct template, correct emphasis colour, zero displacement.
+
+**Root cause**
+
+`applySourceTemplateWordStyles()` in `render_template_overlay.mjs` applies a word
+drag by setting the `translate` property on the word's managed visual span. That
+span is created by `getSourceTemplateVisualTargets()` with no display styling, so
+it is `display: inline` — and CSS transforms do not apply to non-replaced inline
+boxes. The property was set with the correct value and the browser discarded it.
+The preview escapes this because `prepareSourceTemplateWordNode()` in
+`VideoPlayer.jsx` forces `inline-block`; the export renderer had no equivalent.
+
+Both regression checks were blind to it because they only asserted the
+*computed value* of `translate`, never that the word moved.
+
+**Durable fix summary**
+
+- `render_template_overlay.mjs` `ensureTransformableWordTarget()` upgrades an
+  inline position target to `inline-block` before applying an offset. It runs
+  only when an offset is actually applied, so words carrying just font/colour
+  overrides keep their current export layout.
+- The position audit now measures the offset the browser *honours*: it drops the
+  translate, re-measures, restores it, and reports `effective_dx`/`effective_dy`
+  plus `target_display` and `word_opacity`.
+- `check-template-export-parity.mjs` and `check-dragged-word-export-parity.mjs`
+  assert the honoured offset, not the declared one. Verified as a negative
+  control: with the fix disabled the suite fails with
+  `set translate 36px -64px ... but the word only moved 0px/0px (display=inline)`.
+- CPT word-by-word reveal: displacing a word now makes the caption build up word
+  by word until the sentence completes, in preview and export.
+  `captionHasCptWords()` + `isCptWordPending()` (VideoPlayer.jsx) hide pending
+  words with `opacity: 0` while keeping them MOUNTED — unmounting is what broke
+  reopening the word editor in Session 17, so `shouldRevealSequentially()` is
+  untouched. `render_template_overlay.mjs` mirrors it, and frame segmentation
+  now adds word-boundary sample points for reveal-driven captions (without them
+  a plain caption with no per-word timings collapsed to one static frame and the
+  CPT appeared fully formed).
+- `EXPORT_RENDERER_VERSION` → `2026-07-30-cpt-transformable-word-box-v39`.
+- Yearly is now the default on the fourth pricing surface,
+  `landing-next/app/pricing/page.js` (a static server component with no toggle):
+  it headlines the annual price with the monthly rate as the secondary line.
+  `check-pricing-yearly-default.mjs` now guards all four surfaces.
+- `check-template-motion-parity.mjs` asserted a `positionedWords` string that an
+  earlier uncommitted change had already deleted. The guard now asserts the
+  `export-positioned-word` overlay never comes back, and the dead CSS rule it
+  left behind is removed.
+
+**How to recognize it again**
+
+- A dragged word exports at its original spot while the audit shows the correct
+  `applied_translate`: check `target_display` — an inline box silently discards
+  transforms.
+- A CPT appears fully formed on its first frame in the export: the caption
+  probably produced a single static segment; check the reveal sample points.
+
+**Known failure NOT addressed (pre-existing)**
+
+`npm run test:template-export:lc` fails on `left-all-lekha-lc-t167-p3`:
+`incomplete final template frame ... expected=[every,template,must,render]
+rendered=[every,template,must]` — the final frame drops the last word. Verified
+pre-existing by reconstructing this session's files without any of the changes
+above; it still fails. It is an LC reveal-completeness bug, unrelated to word
+drags, and the exhaustive LC scope was not swept for further cases.
+
+**Fast verification**
+
+- `npm run lint`, `VITE_API_BASE_URL=http://localhost:8000 npm run build`
+- `npm run test:contracts` (includes dragged-word export + pricing defaults)
+- `npm run test:template-export` (46 phases), `npm run test:template-parity`
+- `python -m unittest backend.tests.test_api_contracts backend.tests.test_preview_export_parity` (63 tests OK)

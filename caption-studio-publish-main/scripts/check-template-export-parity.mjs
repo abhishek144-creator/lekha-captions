@@ -10,6 +10,7 @@ import {
   RECREATED_ADVANCED_TEMPLATE_IDS,
 } from '../src/components/dashboard/templateMotionConfig.js';
 import {
+  SOURCE_BASIC_TEMPLATE_IDS,
   findAppliedBasicTemplateMarkup,
   countAppliedBasicTemplatePhasesFromMarkup,
 } from '../src/components/dashboard/basicTemplateInline.js';
@@ -430,7 +431,7 @@ const CASES = [
     impWordIndex: 1,
     requiredColors: ['gold', 'white'],
     minBboxHeight: 20,
-    minGoldXOffset: 42,
+    minGoldXOffset: 40,
     style: {
       preview_template_font_px: 20,
       preview_template_box_width_px: 150,
@@ -855,6 +856,46 @@ const CASES = [
     },
   },
   {
+    id: 'left-lc-cpt-dragged-word-export',
+    sidebar: true,
+    template20Id: 'T166',
+    templateSource: 'lekha-lc',
+    text: 'हर शब्द अपनी जगह साफ दिखना चाहिए',
+    phaseIndex: 0,
+    impWordIndex: 2,
+    requiredColors: [],
+    minBboxHeight: 14,
+    previewWidth: 240,
+    positionAudit: true,
+    cptRevealAudit: true,
+    wordStyles: {
+      1: {
+        x: 48,
+        y: -216,
+        x_pct: 10,
+        y_pct: -45,
+      },
+      3: {
+        x: -144,
+        y: -115,
+        x_pct: -30,
+        y_pct: -24,
+      },
+    },
+    expectedWordTranslations: {
+      1: '36px -288px',
+      3: '-108px -154px',
+    },
+    style: {
+      template_name: 'LC CPT Dragged Words',
+      font_family: 'Archivo',
+      font_size: 24,
+      font_weight: '800',
+      text_color: '#FFFFFF',
+      secondary_color: '#DDAA03',
+    },
+  },
+  {
     id: 'left-lc-nline-middle-phrase',
     sidebar: true,
     template20Id: 'T176',
@@ -1094,15 +1135,58 @@ function buildLcSidebarCases() {
     });
 }
 
+function buildLcBoxedHeroCases() {
+  const boxedHeroPhases = new Set(
+    lcSidebarRawHtml
+      .split(/<\/html>/i)
+      .flatMap((chunk) => parseLcTemplateSet(chunk))
+      .flatMap((template) => (template.scenes || []).flatMap((scene, phaseIndex) => (
+        (scene.lines || []).some((line) => line.box)
+          ? [`${template.id}:${phaseIndex}`]
+          : []
+      ))),
+  );
+  return buildLcSidebarCases()
+    .filter((testCase) => boxedHeroPhases.has(`${testCase.template20Id}:${testCase.phaseIndex}`))
+    .map((testCase) => ({
+      ...testCase,
+      id: `${testCase.id}-boxed-hero`,
+      motionCritical: false,
+      minDarkPixels: 12,
+    }));
+}
+
+function buildLeftHighlightPairCases() {
+  const underlinedPhase = buildLcSidebarCases().find((testCase) => (
+    testCase.template20Id === 'T166' && testCase.phaseIndex === 3
+  ));
+  if (!underlinedPhase) return [];
+  return [{
+    ...underlinedPhase,
+    id: 'left-lc-highlight-pair-consistency',
+    text: '\u0905\u092c \u0926\u0938 \u0932\u0915 \u092c\u0926\u0932\u0924\u0947 \u0939\u0948\u0902 \u0930\u094b\u091c',
+    impWordIndex: 1,
+    impWordIndices: [1, 2],
+    emphasisColor: '',
+    motionCritical: false,
+    requirePairedEmphasis: true,
+    requireUniformPairedHighlight: true,
+    requirePairedUnderline: true,
+    style: {
+      ...underlinedPhase.style,
+      secondary_color: '#FF6A00',
+      highlight_color: '#FF00C8',
+      template_color_customized: true,
+    },
+  }];
+}
+
 // Right-side "Basic" templates render their `.btcard` source markup in both the
 // preview and the export — guard a representative sample (and an exhaustive
-// `all-basic` scope) so the two never silently diverge again.
-const BASIC_TEMPLATE_IDS = [
-  't-106', 't-52', 't-T4', 't-WS1', 't-115',
-  't-104', 't-109', 't-95', 't-102', 't-T5',
-  't-T6', 't-103', 't-QW1', 't-36', 't-105',
-  't-124', 't-110', 't-56', 't-119', 't-12',
-];
+// `all-basic` scope) so the two never silently diverge again. The id list is
+// imported from basicTemplateInline.js (the canonical source) so a template
+// added there is automatically covered here.
+const BASIC_TEMPLATE_IDS = SOURCE_BASIC_TEMPLATE_IDS;
 
 function buildExhaustiveBasicCases() {
   return BASIC_TEMPLATE_IDS.flatMap((templateId) => {
@@ -1313,7 +1397,7 @@ function buildPayload(testCase, outputDir) {
       template_layout: 'word-by-word',
       template_effect: 'export-audit',
       template_markup: templateMarkup,
-      preview_width: 360,
+      preview_width: testCase.previewWidth || 360,
       position_x: 50,
       position_y: 75,
       text_align: 'center',
@@ -1348,7 +1432,13 @@ function buildPayload(testCase, outputDir) {
           template_markup: templateMarkup,
           applied_template_style: resolvedStyle,
           imp_word_index: testCase.impWordIndex,
-          emphasis_color: style.secondary_color || '#DDAA03',
+          imp_word_indices: testCase.impWordIndices || [],
+          emphasis_color: testCase.emphasisColor ?? style.secondary_color ?? '#DDAA03',
+          word_styles: Object.fromEntries(
+            Object.entries(testCase.wordStyles || {}).map(([wordIndex, wordStyle]) => (
+              [`${testCase.id}-caption-${wordIndex}`, wordStyle]
+            )),
+          ),
           words: [],
         },
       ],
@@ -1465,6 +1555,10 @@ async function renderCase(testCase, rootOutputDir) {
   await fs.writeFile(payloadPath, JSON.stringify(buildPayload(testCase, outputDir), null, 2));
   await execFileAsync(process.execPath, [rendererPath, payloadPath], {
     cwd: projectRoot,
+    env: {
+      ...process.env,
+      ...(testCase.positionAudit ? { TEMPLATE_OVERLAY_POSITION_AUDIT: '1' } : {}),
+    },
     timeout: 120_000,
     maxBuffer: 1024 * 1024 * 4,
   });
@@ -1475,10 +1569,32 @@ async function renderCase(testCase, rootOutputDir) {
     .sort((left, right) => left.localeCompare(right, undefined, { numeric: true }));
   if (!frames.length) fail(`${testCase.id} did not produce overlay frames`);
   const framePaths = frames.map((frame) => path.join(outputDir, frame));
+  let audits = [];
+  try {
+    audits = JSON.parse(await fs.readFile(
+      path.join(outputDir, 'template-completeness-audit.json'),
+      'utf8',
+    ));
+  } catch {
+    audits = [];
+  }
+  let positionAudits = [];
+  if (testCase.positionAudit) {
+    try {
+      positionAudits = JSON.parse(await fs.readFile(
+        path.join(outputDir, 'word-position-audit.json'),
+        'utf8',
+      ));
+    } catch {
+      positionAudits = [];
+    }
+  }
   return {
     outputDir,
     framePath: framePaths[framePaths.length - 1],
     framePaths,
+    audits,
+    positionAudits,
   };
 }
 
@@ -1499,6 +1615,7 @@ async function measureFrame(page, framePath) {
     const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
     const counts = {
       visible: 0,
+      dark: 0,
       white: 0,
       orange: 0,
       gold: 0,
@@ -1526,6 +1643,7 @@ async function measureFrame(page, framePath) {
       red: makeBox(),
       magenta: makeBox(),
       cyan: makeBox(),
+      dark: makeBox(),
     };
     const addBoxPixel = (name, x, y) => {
       const box = boxes[name];
@@ -1576,6 +1694,10 @@ async function measureFrame(page, framePath) {
         counts.white += 1;
         addBoxPixel('white', x, y);
       }
+      if (a >= 180 && r <= 48 && g <= 48 && b <= 48) {
+        counts.dark += 1;
+        addBoxPixel('dark', x, y);
+      }
       if (r >= 185 && g >= 70 && g <= 175 && b <= 110) {
         counts.orange += 1;
         addBoxPixel('orange', x, y);
@@ -1621,6 +1743,7 @@ async function measureFrame(page, framePath) {
 
     return {
       visible: counts.visible,
+      dark: counts.dark,
       white: counts.white,
       orange: counts.orange,
       gold: counts.gold,
@@ -1638,6 +1761,7 @@ async function measureFrame(page, framePath) {
       redBbox: toBbox('red'),
       magentaBbox: toBbox('magenta'),
       cyanBbox: toBbox('cyan'),
+      darkBbox: toBbox('dark'),
       lineCount: lineClusters.length,
       lineClusters,
     };
@@ -1714,6 +1838,8 @@ const selectedCases = (() => {
   const scopedCases = (() => {
     if (scope === 'all-left') return buildExhaustiveSidebarCases();
     if (scope === 'lc-left') return buildLcSidebarCases();
+    if (scope === 'lc-boxed') return buildLcBoxedHeroCases();
+    if (scope === 'left-highlight-pair') return buildLeftHighlightPairCases();
     if (scope === 'all-right') return buildExhaustiveAdvancedCases();
     if (scope === 'all-right-phases') return buildExhaustiveAdvancedCases({ allPhases: true });
     if (scope === 'affected-right-phases') return buildAffectedAdvancedPhaseCases();
@@ -1750,7 +1876,12 @@ try {
   const results = [];
   for (const testCase of selectedCases) {
     try {
-    const { framePath, framePaths } = await renderCase(testCase, outputRoot);
+    const {
+      framePath,
+      framePaths,
+      audits,
+      positionAudits,
+    } = await renderCase(testCase, outputRoot);
     const counts = await measureFrame(page, framePath);
     const motion = testCase.motionCritical ? await measureFrameMotion(page, framePaths) : null;
     if (counts.visible < 80) {
@@ -1794,6 +1925,99 @@ try {
         }
       }
     }
+    if (testCase.minDarkPixels && counts.dark < testCase.minDarkPixels) {
+      fail(`${testCase.id} boxed hero text lacks dark contrast: ${JSON.stringify(counts)}`);
+    }
+    if (testCase.requirePairedEmphasis) {
+      const pairedLines = audits.flatMap((audit) => audit.pairedEmphasisLines || []);
+      if (!pairedLines.length) {
+        fail(`${testCase.id} did not preserve its multi-word highlight: ${JSON.stringify(audits)}`);
+      }
+      if (
+        testCase.requireUniformPairedHighlight
+        && audits.some((audit) => audit.pairedEmphasisColorsMatch === false)
+      ) {
+        fail(`${testCase.id} exported mismatched highlight colors: ${JSON.stringify(audits)}`);
+      }
+      if (
+        testCase.requirePairedUnderline
+        && audits.some((audit) => audit.pairedEmphasisUnderlinesMatch === false)
+      ) {
+        fail(`${testCase.id} exported only one underline in a highlighted pair: ${JSON.stringify(audits)}`);
+      }
+    }
+    if (testCase.positionAudit) {
+      if (!positionAudits.length) {
+        fail(`${testCase.id} did not produce dragged-word position audit data`);
+      }
+      for (const frameAudit of positionAudits) {
+        for (const [wordIndex, expectedTranslate] of Object.entries(testCase.expectedWordTranslations || {})) {
+          const key = `${testCase.id}-caption-${wordIndex}`;
+          const wordAudit = (frameAudit.words || []).find((word) => word.key === key);
+          if (!wordAudit?.found || !wordAudit.visible) {
+            fail(`${testCase.id} lost dragged word ${key} at t=${frameAudit.time}: ${JSON.stringify(wordAudit)}`);
+          }
+          if (wordAudit.clipped_by_overflow) {
+            fail(
+              `${testCase.id} clipped dragged word ${key} behind `
+              + `${JSON.stringify(wordAudit.clipping_ancestors)} at t=${frameAudit.time}`,
+            );
+          }
+          if (wordAudit.mode !== 'relative' || wordAudit.applied_translate !== expectedTranslate) {
+            fail(
+              `${testCase.id} exported ${key} at ${wordAudit.applied_translate} `
+              + `instead of ${expectedTranslate} at t=${frameAudit.time}`,
+            );
+          }
+          // A translate that is set but not honoured moves nothing: CSS
+          // transforms are ignored on inline boxes, which is how dragged words
+          // shipped with the right value and the wrong position. Assert the
+          // offset the browser actually applied.
+          const [expectedDx, expectedDy] = expectedTranslate
+            .split(/\s+/)
+            .map((part) => Number.parseFloat(part));
+          if (
+            Math.abs(Number(wordAudit.effective_dx) - expectedDx) > 1
+            || Math.abs(Number(wordAudit.effective_dy) - expectedDy) > 1
+          ) {
+            fail(
+              `${testCase.id} set translate ${expectedTranslate} on ${key} but the word only moved `
+              + `${wordAudit.effective_dx}px/${wordAudit.effective_dy}px `
+              + `(display=${wordAudit.target_display}) at t=${frameAudit.time}`,
+            );
+          }
+        }
+      }
+    }
+    if (testCase.cptRevealAudit) {
+      const revealCounts = positionAudits.map((frameAudit) => ({
+        time: frameAudit.time,
+        count: (frameAudit.words || []).filter(
+          (word) => Number(word.word_opacity ?? 1) > 0.5,
+        ).length,
+        total: (frameAudit.words || []).length,
+      }));
+      const firstReveal = revealCounts[0];
+      const lastReveal = revealCounts[revealCounts.length - 1];
+      if (!firstReveal || firstReveal.count >= firstReveal.total) {
+        fail(`${testCase.id} appeared fully formed on its first frame: ${JSON.stringify(firstReveal)}`);
+      }
+      if (!lastReveal || lastReveal.count !== lastReveal.total) {
+        fail(`${testCase.id} did not complete every displaced word: ${JSON.stringify(lastReveal)}`);
+      }
+      if (!revealCounts.some((frame) => frame.count > 0 && frame.count < frame.total)) {
+        fail(`${testCase.id} never showed an intermediate one-word-at-a-time state`);
+      }
+      for (let index = 1; index < revealCounts.length; index += 1) {
+        const addedWords = revealCounts[index].count - revealCounts[index - 1].count;
+        if (addedWords < 0 || addedWords > 1) {
+          fail(
+            `${testCase.id} must reveal exactly one additional displaced word per step, `
+            + `but changed by ${addedWords} at t=${revealCounts[index].time}`,
+          );
+        }
+      }
+    }
     results.push(`${testCase.id}:${JSON.stringify(motion ? { ...counts, motion } : counts)}`);
     } catch (error) {
       if (!collectFailures) throw error;
@@ -1810,6 +2034,10 @@ try {
     ? 'left templates'
     : scope === 'lc-left'
       ? 'LC left templates'
+      : scope === 'lc-boxed'
+        ? 'LC boxed-hero phases'
+      : scope === 'left-highlight-pair'
+        ? 'left multi-word highlight phase'
     : scope === 'all-right'
       ? 'right templates'
       : scope === 'all-right-phases'

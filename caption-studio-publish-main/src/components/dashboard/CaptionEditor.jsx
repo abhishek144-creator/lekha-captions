@@ -230,7 +230,7 @@ export default function CaptionEditor({
     ?.filter(cap => !query.trim() || (cap.text || '').toLowerCase().includes(query.toLowerCase()));
 
   return (
-    <div className="h-full flex flex-col relative z-10">
+    <div data-caption-editor="true" className="h-full flex flex-col relative z-10">
       <span className="pointer-events-none absolute left-2 top-2 z-0 h-[18px] w-[18px] border-l border-t border-white/15" />
       <span className="pointer-events-none absolute left-2 bottom-2 z-0 h-[18px] w-[18px] border-l border-b border-white/15" />
       <div className="relative z-10 flex items-center justify-between mb-5 pl-3">

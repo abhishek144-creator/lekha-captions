@@ -55,6 +55,7 @@ import {
   normalizeAppliedBasicTemplateFontSize,
   getAppliedBasicCurrentWordIndex,
 } from './basicTemplateInline.js';
+import { resolveCptWordSnap } from './cptSmartGuides.js';
 
 const ADVANCED_TEMPLATE_VARIANTS = {
   t01: 'wbw-rise', t02: 'plain-s', t03: 'wbw-rise', t04: 'plain-s', t05: 'wbw-rise',
@@ -91,6 +92,52 @@ function getCaptionTemplateId(caption, fallbackStyle = {}) {
     || fallbackStyle?.template_id
     || ''
   ).trim();
+}
+
+function captionHasCreativelyPositionedWords(caption) {
+  return Object.values(caption?.wordStyles || {}).some((wordStyle = {}) => (
+    Math.abs(Number(wordStyle.abs_x_pct) || 0) > 0.01
+    || Math.abs(Number(wordStyle.abs_y_pct) || 0) > 0.01
+    || Math.abs(Number(wordStyle.x_pct) || 0) > 0.01
+    || Math.abs(Number(wordStyle.y_pct) || 0) > 0.01
+    || Math.abs(Number(wordStyle.x) || 0) > 0.01
+    || Math.abs(Number(wordStyle.y) || 0) > 0.01
+  ))
+}
+
+function getCaptionRevealWordIndex(caption, currentTime, wordCount, templateId = '') {
+  const safeWordCount = Math.max(1, Number(wordCount) || 1)
+  if (isSourceBasicTemplateId(templateId)) {
+    return getAppliedBasicCurrentWordIndex(caption, currentTime, safeWordCount)
+  }
+
+  const timedWords = Array.isArray(caption?.words)
+    ? caption.words.filter((word) => String(word?.word || word?.text || '').trim())
+    : []
+  if (timedWords.length) {
+    let activeIndex = 0
+    for (let index = 0; index < timedWords.length; index += 1) {
+      const start = Number(
+        timedWords[index]?.start
+        ?? timedWords[index]?.start_time
+        ?? caption?.start_time
+        ?? caption?.start
+        ?? 0
+      )
+      if (Number(currentTime || 0) >= start) activeIndex = index
+      else break
+    }
+    return Math.max(0, Math.min(safeWordCount - 1, activeIndex))
+  }
+
+  const start = Number(caption?.start_time ?? caption?.start ?? 0)
+  const end = Number(caption?.end_time ?? caption?.end ?? start)
+  const duration = Math.max(end - start, 0.01)
+  const elapsed = Math.min(Math.max(Number(currentTime || 0) - start, 0), duration)
+  return Math.max(
+    0,
+    Math.min(safeWordCount - 1, Math.floor((elapsed / duration) * safeWordCount)),
+  )
 }
 
 function hasSidebarTemplateStyle(captionStyle) {
@@ -588,6 +635,10 @@ function _astReplaceLcCpt(container, words, impWordIndex, impWordIndices = []) {
     const sourceLcDelays = rowSpans.map((span) => span.getAttribute('data-lc-delay') || '');
     const sourceStyles = rowSpans.map((span) => String(span.getAttribute('style') || '').replace(/\banimation\s*:[^;]+;?/gi, '').trim());
     const sourceVisible = rowSpans.map((span) => span.classList.contains('on') && !span.getAttribute('data-lc-anim'));
+    const sourceRowHasUnderline = rowSpans.some((span) => (
+      span.matches('.ul, .ns3hero, .imp-underline')
+    ));
+    const createdRowSpans = [];
     row.textContent = '';
     rowWords.forEach((word, localIndex) => {
       if (localIndex > 0) row.appendChild(container.ownerDocument.createTextNode(' '));
@@ -612,7 +663,14 @@ function _astReplaceLcCpt(container, words, impWordIndex, impWordIndices = []) {
       span.setAttribute('data-w', String(wordIndex));
       span.textContent = word;
       row.appendChild(span);
+      createdRowSpans.push(span);
     });
+    const emphasizedRowSpans = createdRowSpans.filter((span) => span.classList.contains('is-emphasis'));
+    if (sourceRowHasUnderline && emphasizedRowSpans.length >= 2) {
+      emphasizedRowSpans.forEach((span) => {
+        span.dataset.pairedEmphasisUnderline = 'true';
+      });
+    }
     wordCursor += rowWordCount;
   });
 }
@@ -1020,6 +1078,11 @@ const APPLIED_TEMPLATE_HOST_OVERRIDES = `
     width: 88% !important;
     max-width: 88% !important;
   }
+  .lekha-applied-template-host[data-applied-template-selected="true"] .sb.active .cap,
+  .lekha-applied-template-host[data-applied-template-selected="true"] .sblock.active .cap {
+    outline: 1px solid #b76cff !important;
+    outline-offset: 5px !important;
+  }
   .lekha-applied-template-host .lc-card .stage::after {
     content: none !important;
     display: none !important;
@@ -1053,6 +1116,16 @@ const APPLIED_TEMPLATE_HOST_OVERRIDES = `
     justify-content: center !important;
     line-height: 1.05 !important;
     padding-block: 0.12em 0.04em !important;
+    vertical-align: middle !important;
+    box-sizing: border-box !important;
+  }
+  .lekha-applied-template-host[data-applied-template-complex-script='true'] .lc-card .cpt .ln.box {
+    display: inline-flex !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    justify-content: center !important;
+    line-height: 1.16 !important;
+    padding-block: 0.14em 0.06em !important;
     vertical-align: middle !important;
     box-sizing: border-box !important;
   }
@@ -1224,6 +1297,10 @@ const APPLIED_TEMPLATE_HOST_OVERRIDES = `
     color: var(--sidebar-emphasis-accent, #DDAA03) !important;
     -webkit-text-fill-color: var(--sidebar-emphasis-accent, #DDAA03) !important;
   }
+  .lekha-applied-template-host [data-paired-emphasis-underline='true'] {
+    border-bottom: 0.055em solid currentColor !important;
+    padding-bottom: 0.05em !important;
+  }
   .lekha-applied-template-host .stage .w[class*='imp-'],
   .lekha-applied-template-host .stage .w[class*='ns2-'],
   .lekha-applied-template-host .stage .w[class*='ns3-'],
@@ -1385,6 +1462,8 @@ function AppliedBasicTemplateMarkup({
   hostStyle,
   renderScale = 1,
   onSourceWordClick,
+  onSourceWordPointerDown,
+  isSelected = false,
 }) {
   const hostRef = useRef(null);
   const lastCurrentIndexRef = useRef(-1);
@@ -1428,11 +1507,17 @@ function AppliedBasicTemplateMarkup({
     const cleanup = wireSourceTemplateWordEditing(hostRef.current, {
       caption,
       renderScale,
+      emphasisColor: hostStyle?.['--template-highlight'],
       onSourceWordClick,
+      onSourceWordPointerDown,
+      currentTime,
+      isPlaying,
+      templateBlockType: 'wbw-rise',
+      templateSource: 'lekha-basic',
     });
     applyCurrentIndex(currentIndex);
     return cleanup;
-  }, [applyCurrentIndex, caption, currentIndex, html, onSourceWordClick, renderScale, wordStylesSignature]);
+  }, [applyCurrentIndex, caption, currentIndex, currentTime, hostStyle, html, isPlaying, onSourceWordClick, onSourceWordPointerDown, renderScale, wordStylesSignature]);
 
   return (
     <>
@@ -1455,6 +1540,7 @@ function AppliedBasicTemplateMarkup({
         data-basic-current-index={currentIndex}
         data-basic-word-count={wordCount}
         data-basic-playing={isPlaying ? 'true' : 'false'}
+        data-applied-template-selected={isSelected ? 'true' : 'false'}
         style={hostStyle}
         dangerouslySetInnerHTML={{ __html: html }}
       />
@@ -1487,13 +1573,21 @@ function AppliedSidebarTemplateSourceRenderer({
   emphasisColor = '',
   renderScale = 1,
   onSourceWordClick,
+  onSourceWordPointerDown,
+  isSelected = false,
 }) {
   const hostRef = useRef(null);
   const runnerRef = useRef(null);
   const playbackControlRef = useRef({ currentTime, isPlaying });
   const playStateRef = useRef({ currentTime, isPlaying, startTime, endTime });
   playStateRef.current = { currentTime, isPlaying, startTime, endTime };
-  const configuredAccent = String(emphasisColor || effectiveStyle?.secondary_color || effectiveStyle?.highlight_color || '').trim();
+  const configuredAccent = String(
+    emphasisColor
+      || effectiveStyle?.highlight_color
+      || effectiveStyle?.emphasis_color
+      || effectiveStyle?.secondary_color
+      || '',
+  ).trim();
   const textColor = String(effectiveStyle?.text_color || '#FFFFFF').trim();
   const emphasisAccent = configuredAccent && configuredAccent.toLowerCase() !== textColor.toLowerCase()
     ? configuredAccent
@@ -1899,6 +1993,33 @@ function AppliedSidebarTemplateSourceRenderer({
     };
 
     const recolorEmphasisToHero = (block) => {
+      const emphasisByLine = new Map();
+      block.querySelectorAll('.is-emphasis').forEach((word) => {
+        const line = word.parentElement || block;
+        const lineWords = emphasisByLine.get(line) || [];
+        lineWords.push(word);
+        emphasisByLine.set(line, lineWords);
+      });
+      let hasPairedEmphasis = false;
+      emphasisByLine.forEach((lineWords) => {
+        if (lineWords.length < 2) return;
+        hasPairedEmphasis = true;
+        const hasUnderline = lineWords.some((word) => {
+          const styles = window.getComputedStyle(word);
+          return word.matches('.ul, .ns3hero, .imp-underline')
+            || styles.textDecorationLine.includes('underline')
+            || (styles.borderBottomStyle !== 'none' && parseFloat(styles.borderBottomWidth) > 0);
+        });
+        if (hasUnderline) {
+          lineWords.forEach((word) => {
+            word.dataset.pairedEmphasisUnderline = 'true';
+          });
+        }
+      });
+      // Preserve semantic phrases instead of collapsing them onto one authored
+      // hero atom. Every word in the phrase keeps the same accent and treatment.
+      if (hasPairedEmphasis) return true;
+
       const atoms = Array.from(block.querySelectorAll('.w, .wbw-word, .sw, .sw-w')).filter((el) => (
         !el.closest?.('[data-source-word-gradient="true"]')
       ));
@@ -2257,14 +2378,20 @@ function AppliedSidebarTemplateSourceRenderer({
   }, [currentTime, isPlaying, startTime, endTime]);
 
   useLayoutEffect(() => {
+    applySourceTemplateScriptFont(hostRef.current, captionText);
     const cleanup = wireSourceTemplateWordEditing(hostRef.current, {
       caption,
       renderScale,
+      emphasisColor: emphasisAccent,
       onSourceWordClick,
+      onSourceWordPointerDown,
+      currentTime,
+      isPlaying,
+      templateSource: effectiveStyle?.template_source,
     });
     if (!playStateRef.current.isPlaying) runnerRef.current?.pause?.();
     return cleanup;
-  }, [caption, html, onSourceWordClick, phaseOffset, renderScale, wordStylesSignature]);
+  }, [caption, captionText, currentTime, emphasisAccent, effectiveStyle?.template_source, html, isPlaying, onSourceWordClick, onSourceWordPointerDown, phaseOffset, renderScale, wordStylesSignature]);
 
   return (
     <span
@@ -2286,16 +2413,17 @@ function AppliedSidebarTemplateSourceRenderer({
       data-emotional-mode={effectiveStyle?.emotional_mode || ''}
       data-template-phase-index={phaseOffset}
       data-applied-template-paused={isPlaying ? 'false' : 'true'}
+      data-applied-template-selected={isSelected ? 'true' : 'false'}
       style={{
         '--sidebar-source-color': effectiveStyle?.text_color || '#FFFFFF',
         '--sidebar-source-accent': effectiveStyle?.secondary_color || '#DDAA03',
         '--sidebar-emphasis-accent': emphasisAccent,
-        '--sidebar-template-highlight': effectiveStyle?.highlight_color || effectiveStyle?.emphasis_color || effectiveStyle?.secondary_color || '#DDAA03',
+        '--sidebar-template-highlight': emphasisAccent,
         '--sidebar-source-line-height': effectiveStyle?.line_spacing || 1.25,
         '--sidebar-source-font': resolvedFont,
         '--template-primary': effectiveStyle?.text_color || '#FFFFFF',
         '--template-secondary': effectiveStyle?.secondary_color || '#DDAA03',
-        '--template-highlight': effectiveStyle?.highlight_color || effectiveStyle?.emphasis_color || effectiveStyle?.secondary_color || '#DDAA03',
+        '--template-highlight': emphasisAccent,
         '--template-text-gradient': effectiveStyle?.text_gradient || 'none',
         '--template-highlight-gradient': effectiveStyle?.highlight_gradient || 'none',
         '--template-karaoke-1': effectiveStyle?.karaoke_color_1 || effectiveStyle?.highlight_color || effectiveStyle?.emphasis_color || effectiveStyle?.secondary_color || '#DDAA03',
@@ -4636,7 +4764,7 @@ function renderOriginalTemplateCaption(templateId, text, active = true, blockInd
       if (normalizedBlockIndex === 1) return wrap('t21-b1', renderWbwText(full, 'wbw-seq-fade', 'imp-space', active));
       if (normalizedBlockIndex === 2) return wrap('t21-b2', renderWbwText(full, 'wbw-rise', 'imp-italic', active));
       if (normalizedBlockIndex === 3) return wrap('t21-b3', renderWbwText(full, 'wbw-slide', 'imp-weight', active));
-      return wrap('t21-b0', <span className="vert-line"><span className="vert-line-inner">{upperFull}</span></span>);
+      return wrap('t21-b0', renderWbwText(full, 'editorial-line wbw-rise', '', active));
     case 't22':
       if (normalizedBlockIndex === 1) return wrap('t22-b1', <span className="wave-txt lekha-template-fit">{renderTextWithHero(full, 'imp-gold')}</span>);
       if (normalizedBlockIndex === 2) return wrap('t22-b2', renderWbwText(full, 'wbw-rise', 'imp-italic', active));
@@ -4765,7 +4893,10 @@ function renderOriginalTemplateCaption(templateId, text, active = true, blockInd
         </span>
       ));
     case 't39':
-      return wrap(`t39-b${normalizedBlockIndex}`, renderWbwText(full, 'wbw-seq-fade', normalizedBlockIndex % 2 ? 'imp-rose' : 'imp-gold', active, { impWordIndices: emphasisIndices }));
+      return wrap(`t39-b${normalizedBlockIndex}`, renderWbwText(full, 'wbw-seq-fade', normalizedBlockIndex % 2 ? 'imp-rose' : 'imp-gold', active, {
+        impWordIndices: emphasisIndices,
+        motion: 't39-evidence',
+      }));
     case 't40':
       if (normalizedBlockIndex === 2) return wrap('t40-b2', <span className="lekha-template-fit">{renderStillFramesText(full)}</span>);
       return wrap(`t40-b${normalizedBlockIndex}`, <span className="lekha-template-fit">{renderStillFramesText(full)}</span>);
@@ -4837,6 +4968,7 @@ function applyAdvancedWbwFrame(block, blockType, elapsedMs, settled) {
     const isImp = word.dataset.imp === 'true';
     const impClass = word.dataset.impCls || '';
     const wordBlockType = word.dataset.lineMotion || blockType;
+    const isEvidenceEmphasis = wordBlockType === 't39-evidence' && isImp;
     const lineDelayMs = Number(word.dataset.lineDelay || 0);
     const battleMotion = word.dataset.battleMotion || '';
     const battleIndex = Number.isFinite(Number(word.dataset.battleIndex))
@@ -4849,7 +4981,9 @@ function applyAdvancedWbwFrame(block, blockType, elapsedMs, settled) {
         : (index * ADVANCED_TEMPLATE_TIMING.wordStaggerMs)
         + (isImp ? ADVANCED_TEMPLATE_TIMING.emphasisDelayMs : 0)
         + lineDelayMs;
-    const duration = sequential
+    const duration = isEvidenceEmphasis
+      ? 360
+      : sequential
       ? ADVANCED_TEMPLATE_TIMING.sequentialDurationMs
       : battleMotion
         ? (isImp ? 380 : 320)
@@ -4871,6 +5005,9 @@ function applyAdvancedWbwFrame(block, blockType, elapsedMs, settled) {
       word.style.transform = `translateX(${-34 * (1 - eased)}px)`;
     } else if (battleMotion === 'lift-up') {
       word.style.transform = `translateY(${28 * (1 - eased)}px)`;
+    } else if (isEvidenceEmphasis) {
+      word.style.transform = `translateY(${18 * (1 - eased)}px) scale(${0.72 + (0.28 * eased)}) rotate(${-2 * (1 - eased)}deg)`;
+      word.style.textShadow = `0 0 ${4 + (10 * eased)}px currentColor`;
     } else if (sequential) {
       if (blockType === 'wbw-seq-fade') {
         word.style.transform = 'none';
@@ -5049,6 +5186,39 @@ function syncAdvancedCssAnimations(block, elapsedMs, settled) {
   });
 }
 
+// Some source-markup templates hardcode a decorative font-family on specific
+// sub-elements (t11-t40's raw HTML asset for the whole template; LC's
+// `.lc-card .script`/`.serif` accent classes for just one word/line) that
+// wins over any font resolved onto an ancestor, because a descendant's own
+// CSS declaration always beats inheritance regardless of ancestor !important.
+// All of those declared fonts are Latin-only, so non-Latin captions (the
+// primary use case of this app) silently rendered in a font with no matching
+// glyphs there, with no visible error. Walk every element in the given root
+// and swap each one's *own* resolved font individually.
+function applySourceTemplateScriptFont(root, text) {
+  if (!root || !text) return;
+  const nodes = [root, ...root.querySelectorAll('*')];
+  nodes.forEach((node) => {
+    if (!(node instanceof HTMLElement)) return;
+    let baseFamily = node.dataset.scriptFontBase;
+    if (!baseFamily) {
+      baseFamily = window.getComputedStyle(node).fontFamily.split(',')[0].replace(/["']/g, '').trim();
+      node.dataset.scriptFontBase = baseFamily;
+    }
+    const resolved = resolveScriptFont(baseFamily, text);
+    if (resolved && resolved !== baseFamily) {
+      if (node.dataset.scriptFontOverride !== resolved) {
+        node.style.setProperty('font-family', `'${resolved}', sans-serif`, 'important');
+        node.dataset.scriptFontOverride = resolved;
+        loadGoogleFont(resolved).catch(() => {});
+      }
+    } else if (node.dataset.scriptFontOverride) {
+      node.style.removeProperty('font-family');
+      delete node.dataset.scriptFontOverride;
+    }
+  });
+}
+
 function AppliedAdvancedTemplateCaption({
   caption,
   captionId = '',
@@ -5075,6 +5245,8 @@ function AppliedAdvancedTemplateCaption({
   endTime = 0,
   renderScale = 1,
   onSourceWordClick,
+  onSourceWordPointerDown,
+  isSelected = false,
 }) {
   const hostRef = useRef(null);
   const runnerRef = useRef(null);
@@ -5194,10 +5366,17 @@ function AppliedAdvancedTemplateCaption({
   }, [currentTime, isPlaying, startTime, endTime]);
 
   useLayoutEffect(() => {
+    applySourceTemplateScriptFont(hostRef.current?.querySelector('.lekha-original-template'), text);
     const cleanup = wireSourceTemplateWordEditing(hostRef.current, {
       caption,
       renderScale,
+      emphasisColor: resolvedEmphasisColor,
       onSourceWordClick,
+      onSourceWordPointerDown,
+      currentTime,
+      isPlaying,
+      templateBlockType: getOriginalTemplateBlockType(templateId, blockIndex),
+      templateSource: 'lekha-advanced',
     });
     syncAdvancedTemplateBlockFrame(hostRef.current?.querySelector('.lekha-applied-advanced-template'), {
       templateId,
@@ -5210,7 +5389,7 @@ function AppliedAdvancedTemplateCaption({
     });
     runnerRef.current?.syncCurrent?.();
     return cleanup;
-  }, [blockIndex, caption, currentTime, endTime, isPlaying, onSourceWordClick, renderScale, sourceMarkup, startTime, templateId, text, wordStylesSignature]);
+  }, [blockIndex, caption, currentTime, endTime, isPlaying, onSourceWordClick, onSourceWordPointerDown, renderScale, resolvedEmphasisColor, sourceMarkup, startTime, templateId, text, wordStylesSignature]);
 
   return (
     <span
@@ -5225,6 +5404,7 @@ function AppliedAdvancedTemplateCaption({
       data-advanced-template-id={templateId}
       data-template-phase-index={normalizeTemplatePhaseIndex(templateId, blockIndex)}
       data-template-renderer={sourceMarkup ? 'source' : 'fallback'}
+      data-applied-template-selected={isSelected ? 'true' : 'false'}
       data-export-caption-id={captionId || ''}
       style={{
         display: 'contents',
@@ -5375,6 +5555,12 @@ const SOURCE_TEMPLATE_MANAGED_STYLE_PROPS = [
   'border-radius',
   'padding',
   'animation',
+  'animation-delay',
+  'animation-play-state',
+  'transition',
+  'filter',
+  'clip-path',
+  '-webkit-clip-path',
   'text-shadow',
   '-webkit-text-stroke',
   '-webkit-background-clip',
@@ -5388,6 +5574,7 @@ const SOURCE_TEMPLATE_MANAGED_STYLE_PROPS = [
   'z-index',
   'overflow',
   'translate',
+  'scale',
   'transform',
   'transform-origin',
   'vertical-align',
@@ -5572,7 +5759,9 @@ function prepareSourceTemplateWordNode(node) {
     setSourceTemplateStyle(target, 'overflow', 'visible');
     setSourceTemplateStyle(target, 'vertical-align', 'baseline');
     setSourceTemplateStyle(target, 'transform-origin', 'center center');
-    setSourceTemplateStyle(target, 'pointer-events', 'none');
+    // The visible child carries per-word translate/scale styles. It must remain
+    // hit-testable after moving away from the original inline word box.
+    setSourceTemplateStyle(target, 'pointer-events', 'auto');
     setSourceTemplateStyle(target, 'line-height', 'inherit');
     if (isManagedVisual || isKaraokeFill) {
       setSourceTemplateStyle(target, 'left', '0');
@@ -5682,11 +5871,17 @@ function getSourceTemplateReadableTextColor(node, fallback = '#ffffff') {
   return candidates.find((color) => !isTransparentCssColor(color)) || fallback;
 }
 
-function applySourceTemplateWordStyle(node, wordStyle = {}, renderScale = 1) {
+function applySourceTemplateWordStyle(
+  node,
+  wordStyle = {},
+  renderScale = 1,
+  emphasisColor = '',
+  cptReveal = false,
+) {
   if (!node) return;
   const visualTargets = prepareSourceTemplateWordNode(node);
   const hasStyle = wordStyle && Object.keys(wordStyle).length > 0;
-  if (!hasStyle && node.dataset.sourceWordStyled !== 'true') {
+  if (!hasStyle && !cptReveal && node.dataset.sourceWordStyled !== 'true') {
     delete node.dataset.sourceWordStyled;
     delete node.dataset.sourceWordPositioned;
     delete node.dataset.sourceWordGradient;
@@ -5701,7 +5896,7 @@ function applySourceTemplateWordStyle(node, wordStyle = {}, renderScale = 1) {
   // restart it, replaying the fly-in so the word visibly "bounces" back to its
   // start. Only touch `animation` when the requested value actually changed
   // since the last apply for this word.
-  const animValue = (wordStyle && wordStyle.animation && wordStyle.animation !== 'none')
+  const animValue = (!cptReveal && wordStyle && wordStyle.animation && wordStyle.animation !== 'none')
     ? getSourceWordAnimationStyle(wordStyle.animation, wordStyle.animationSpeed || 1)
     : '';
   const animChanged = animValue !== (node.dataset.sourceWordAnim || '');
@@ -5717,7 +5912,7 @@ function applySourceTemplateWordStyle(node, wordStyle = {}, renderScale = 1) {
     prepareSourceTemplateWordNode(node);
   }
 
-  if (!hasStyle) {
+  if (!hasStyle && !cptReveal) {
     delete node.dataset.sourceWordStyled;
     delete node.dataset.sourceWordGradient;
     delete node.dataset.sourceWordAnim;
@@ -5728,6 +5923,7 @@ function applySourceTemplateWordStyle(node, wordStyle = {}, renderScale = 1) {
 
   const inheritedTextColor = getSourceTemplateReadableTextColor(node);
   const decorationColor = !isTransparentCssColor(wordStyle.color) ? wordStyle.color : inheritedTextColor;
+  const resolvedEmphasisColor = String(emphasisColor || '#DDAA03').trim() || '#DDAA03';
   node.dataset.sourceWordStyled = 'true';
   node.dataset.sourceWordAnim = animValue;
   stabilizeSourceTemplateWordAnchor(node);
@@ -5761,6 +5957,20 @@ function applySourceTemplateWordStyle(node, wordStyle = {}, renderScale = 1) {
     }
     if (wordStyle.textTransform) setSourceTemplateStyle(target, 'text-transform', wordStyle.textTransform);
 
+    if (wordStyle.isEmphasis) {
+      if (!wordStyle.fontWeight) setSourceTemplateStyle(target, 'font-weight', '700');
+      if (!wordStyle.fontSize) setSourceTemplateStyle(target, 'scale', '1.12');
+      if (!wordStyle.color && !textGradient) {
+        setSourceTemplateStyle(target, 'color', resolvedEmphasisColor);
+        setSourceTemplateStyle(target, '-webkit-text-fill-color', resolvedEmphasisColor);
+      }
+      setSourceTemplateStyle(
+        target,
+        'text-shadow',
+        `0 0 18px ${resolvedEmphasisColor}99, 0 0 6px ${resolvedEmphasisColor}66`,
+      );
+    }
+
     if (wordStyle.color && !textGradient) {
       setSourceTemplateStyle(target, 'color', wordStyle.color);
       setSourceTemplateStyle(target, '-webkit-text-fill-color', wordStyle.color);
@@ -5785,7 +5995,19 @@ function applySourceTemplateWordStyle(node, wordStyle = {}, renderScale = 1) {
       setSourceTemplateStyle(target, '-webkit-text-fill-color', wordStyle.color);
     }
 
-    if (animChanged && animValue) {
+    if (cptReveal) {
+      // A displaced-word caption still follows transcription timing, but its
+      // revealed words must appear directly in their final canvas state.
+      setSourceTemplateStyle(target, 'animation', 'none');
+      setSourceTemplateStyle(target, 'animation-delay', '0s');
+      setSourceTemplateStyle(target, 'animation-play-state', 'paused');
+      setSourceTemplateStyle(target, 'transition', 'none');
+      setSourceTemplateStyle(target, 'transform', 'none');
+      setSourceTemplateStyle(target, 'clip-path', 'none');
+      setSourceTemplateStyle(target, '-webkit-clip-path', 'none');
+      setSourceTemplateStyle(target, 'filter', 'none');
+      delete target.dataset.cptWordMotion;
+    } else if (animChanged && animValue) {
       setSourceTemplateStyle(target, 'animation', animValue);
     }
 
@@ -5799,7 +6021,17 @@ function applySourceTemplateWordStyle(node, wordStyle = {}, renderScale = 1) {
   });
 }
 
-function wireSourceTemplateWordEditing(host, { caption, renderScale = 1, onSourceWordClick } = {}) {
+function wireSourceTemplateWordEditing(
+  host,
+  {
+    caption,
+    renderScale = 1,
+    emphasisColor = '',
+    onSourceWordClick,
+    onSourceWordPointerDown,
+    currentTime = 0,
+  } = {},
+) {
   if (!host || !caption) return undefined;
   let pointerDownInfo = null;
   const decorate = () => {
@@ -5810,12 +6042,36 @@ function wireSourceTemplateWordEditing(host, { caption, renderScale = 1, onSourc
     });
     getEditableSourceTemplateWords(host).forEach(({ node, index }) => {
       const styleKey = `${caption.id}-${index}`;
+      const wordCount = Math.max(
+        1,
+        String(caption.text || '').trim().split(/\s+/).filter(Boolean).length,
+      );
+      const currentIdx = getCaptionRevealWordIndex(
+        caption,
+        currentTime,
+        wordCount,
+        getCaptionTemplateId(caption),
+      );
+      const hasCptWords = captionHasCreativelyPositionedWords(caption);
       node.dataset.wordKey = styleKey;
       node.dataset.sourceWordIndex = String(index);
       node.style.setProperty('pointer-events', 'auto', 'important');
       node.style.cursor = 'pointer';
       prepareSourceTemplateWordNode(node);
-      applySourceTemplateWordStyle(node, caption.wordStyles?.[styleKey] || {}, renderScale);
+      applySourceTemplateWordStyle(
+        node,
+        caption.wordStyles?.[styleKey] || {},
+        renderScale,
+        emphasisColor,
+        hasCptWords,
+      );
+      if (hasCptWords && index > currentIdx) {
+        node.style.setProperty('opacity', '0', 'important');
+      } else if (hasCptWords) {
+        node.style.setProperty('opacity', '1', 'important');
+      } else {
+        node.style.removeProperty('opacity');
+      }
     });
   };
 
@@ -5829,8 +6085,35 @@ function wireSourceTemplateWordEditing(host, { caption, renderScale = 1, onSourc
       node: wordNode,
       x: event.clientX,
       y: event.clientY,
+      dragStarted: false,
     };
     event.stopPropagation();
+  };
+
+  const handlePointerMove = (event) => {
+    if (!pointerDownInfo || pointerDownInfo.dragStarted) return;
+    const moved = Math.hypot(
+      (event.clientX || 0) - pointerDownInfo.x,
+      (event.clientY || 0) - pointerDownInfo.y,
+    );
+    if (moved <= 6) return;
+
+    const wordNode = pointerDownInfo.node;
+    const wordIndex = Number(wordNode?.dataset.sourceWordIndex);
+    if (!wordNode || !Number.isFinite(wordIndex)) return;
+
+    pointerDownInfo.dragStarted = true;
+    event.preventDefault();
+    event.stopPropagation();
+    onSourceWordPointerDown?.({
+      event,
+      node: wordNode,
+      caption,
+      wordIndex,
+      word: getSourceWordText(caption, wordIndex, wordNode),
+      startClientX: pointerDownInfo.x,
+      startClientY: pointerDownInfo.y,
+    });
   };
 
   const handlePointerUp = (event) => {
@@ -5838,11 +6121,12 @@ function wireSourceTemplateWordEditing(host, { caption, renderScale = 1, onSourc
     if (!wordNode) return;
     const wordIndex = Number(wordNode.dataset.sourceWordIndex);
     if (!Number.isFinite(wordIndex)) return;
+    const dragStarted = pointerDownInfo?.dragStarted === true;
     const moved = pointerDownInfo
       ? Math.hypot((event.clientX || 0) - pointerDownInfo.x, (event.clientY || 0) - pointerDownInfo.y)
       : 0;
     pointerDownInfo = null;
-    if (moved > 6) return;
+    if (dragStarted || moved > 6) return;
     event.preventDefault();
     event.stopPropagation();
     onSourceWordClick?.({
@@ -5862,11 +6146,13 @@ function wireSourceTemplateWordEditing(host, { caption, renderScale = 1, onSourc
   };
 
   host.addEventListener('pointerdown', handlePointerDown, true);
+  host.addEventListener('pointermove', handlePointerMove, true);
   host.addEventListener('pointerup', handlePointerUp, true);
   host.addEventListener('click', handleClick, true);
   return () => {
     window.cancelAnimationFrame(frame);
     host.removeEventListener('pointerdown', handlePointerDown, true);
+    host.removeEventListener('pointermove', handlePointerMove, true);
     host.removeEventListener('pointerup', handlePointerUp, true);
     host.removeEventListener('click', handleClick, true);
   };
@@ -6463,6 +6749,13 @@ export default function VideoPlayer({
       'tectonic':    ['tectonic',    500,  'ease-out',              'both'],
       'tumble':      ['tumble',      600,  'ease-in-out',           'both'],
       // Advanced – Basic
+      'zoom_in':     ['zoom_in',     400,  'ease-out',              'both'],
+      'zoom_out':    ['zoom_out',    400,  'ease-out',              'both'],
+      'fade_in':     ['fade_in',     400,  'ease-out',              'both'],
+      'slide_up':    ['slide_up',    400,  'ease-out',              'both'],
+      'slide_down':  ['slide_down',  400,  'ease-out',              'both'],
+      'slide_left':  ['slide_left',  400,  'ease-out',              'both'],
+      'slide_right': ['slide_right', 400,  'ease-out',              'both'],
       'fadeInUp':    ['fadeInUp',    500,  'ease-out',              'both'],
       'fadeInDown':  ['fadeInDown',  500,  'ease-out',              'both'],
       'slideInRight':['slideInRight',500,  'ease-out',              'both'],
@@ -6548,6 +6841,20 @@ export default function VideoPlayer({
     return animations[animationType] || 'none';
   };
 
+  const getCptWordMotionStyle = (caption) => (
+    captionHasCreativelyPositionedWords(caption)
+      ? {
+          animation: 'none',
+          animationDelay: '0s',
+          animationPlayState: 'paused',
+          transition: 'none',
+          transform: 'none',
+          clipPath: 'none',
+          filter: 'none',
+        }
+      : null
+  );
+
   const renderWordTextContent = (word, wordStyle = {}, fallbackColor = 'inherit') => {
     const decoration = wordStyle.textDecoration || 'none';
     const textGradient = typeof wordStyle.textGradient === 'string' ? wordStyle.textGradient.trim() : '';
@@ -6610,6 +6917,9 @@ export default function VideoPlayer({
     animation = 'none',
     extraClassName = '',
   ) => {
+    const animationStyle = typeof animation === 'string'
+      ? { animation }
+      : (animation || { animation: 'none' });
     const shouldWrapWord = Boolean(wordStyle.boxWidth);
     const wrapStyle = {
       whiteSpace: shouldWrapWord ? 'normal' : 'nowrap',
@@ -6639,7 +6949,7 @@ export default function VideoPlayer({
             display: 'inline-block',
             width: shouldWrapWord ? '100%' : 'auto',
             maxWidth: shouldWrapWord ? '100%' : 'none',
-            animation,
+            ...animationStyle,
             pointerEvents: 'none',
             ...wrapStyle,
           }}
@@ -6663,13 +6973,100 @@ export default function VideoPlayer({
 
   const openSourceTemplateWordPopup = useCallback(({ event, node, caption, wordIndex, word }) => {
     if (!caption || !node || !setWordPopup) return;
+    if (setSelectedCaptionId) setSelectedCaptionId(caption.id);
     setWordPopup({
       word,
       position: { x: event.clientX, y: event.clientY },
       caption,
       wordIndex,
     });
-  }, [setWordPopup]);
+  }, [setSelectedCaptionId, setWordPopup]);
+
+  const handleCaptionWordPointerIntent = (
+    event,
+    caption,
+    wordIndex,
+    word,
+    { isDetached = false, dragSource = 'direct' } = {},
+  ) => {
+    if (!caption || !event.currentTarget) return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    const target = event.currentTarget;
+    const pointerId = event.pointerId;
+    const startX = event.clientX;
+    const startY = event.clientY;
+    let dragStarted = false;
+
+    const cleanup = () => {
+      document.removeEventListener('pointermove', handlePointerMove);
+      document.removeEventListener('pointerup', handlePointerUp);
+      document.removeEventListener('pointercancel', handlePointerCancel);
+    };
+
+    const handlePointerMove = (moveEvent) => {
+      if (moveEvent.pointerId !== pointerId) return;
+      const moved = Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY);
+      if (moved <= 6) return;
+
+      dragStarted = true;
+      cleanup();
+      handleWordMouseDown({
+        preventDefault: () => moveEvent.preventDefault(),
+        stopPropagation: () => moveEvent.stopPropagation(),
+        clientX: startX,
+        clientY: startY,
+        pointerId,
+        currentTarget: target,
+      }, caption, wordIndex, false, isDetached, dragSource);
+    };
+
+    const handlePointerUp = (upEvent) => {
+      if (upEvent.pointerId !== pointerId) return;
+      cleanup();
+      if (dragStarted || !setWordPopup) return;
+
+      upEvent.preventDefault();
+      upEvent.stopPropagation();
+      const liveCaption = captions?.find(item => item.id === caption.id) || caption;
+      if (setSelectedCaptionId) setSelectedCaptionId(liveCaption.id);
+      setWordPopup({
+        word,
+        position: { x: upEvent.clientX, y: upEvent.clientY },
+        caption: liveCaption,
+        wordIndex,
+      });
+    };
+
+    const handlePointerCancel = (cancelEvent) => {
+      if (cancelEvent.pointerId !== pointerId) return;
+      cleanup();
+    };
+
+    document.addEventListener('pointermove', handlePointerMove, { passive: false });
+    document.addEventListener('pointerup', handlePointerUp);
+    document.addEventListener('pointercancel', handlePointerCancel);
+  };
+
+  const startSourceTemplateWordDrag = useCallback(({
+    event,
+    node,
+    caption,
+    wordIndex,
+    startClientX,
+    startClientY,
+  }) => {
+    if (setSelectedCaptionId) setSelectedCaptionId(caption.id);
+    handleWordMouseDown({
+      preventDefault: () => event.preventDefault(),
+      stopPropagation: () => event.stopPropagation(),
+      clientX: startClientX ?? event.clientX,
+      clientY: startClientY ?? event.clientY,
+      pointerId: event.pointerId,
+      currentTarget: node,
+    }, caption, wordIndex, false, false, 'source-template');
+  }, [captionStyle, setCaptions, setCaptionsRaw, setSelectedCaptionId]);
 
   const activeCaptions = getActiveCaptions();
   const activeTextElements = getActiveTextElements();
@@ -6683,13 +7080,33 @@ export default function VideoPlayer({
     || (wordPopup?.caption?.id === caption.id)
   );
 
+  // Word-by-word reveal is an explicit display-mode choice (StyleControls sets
+  // show_inactive=false for it) — never a side effect of dragging a word.
+  // Deriving it from captionHasDetachedWords() meant one drag silently switched
+  // the whole caption to word-by-word, so the dragged word vanished until its
+  // spoken moment and could no longer be clicked to reopen the word editor.
   const shouldRevealSequentially = (caption) => (
     !isCaptionWordEditingActive(caption)
     && isPlaying
-    && (
-    captionStyle?.show_inactive === false
-    || (captionHasDetachedWords(caption) && !draggingWord)
-    )
+    && captionStyle?.show_inactive === false
+  );
+
+  // Displacing a word authors a CPT (creatively placed text), and a CPT is meant
+  // to build up word by word until the sentence is complete — a drag alone is
+  // enough to opt in, no display-mode change required.
+  const captionHasCptWords = captionHasCreativelyPositionedWords;
+
+  // Pending CPT words stay MOUNTED and hit-testable and are hidden with opacity.
+  // Unmounting them (what shouldRevealSequentially does for the explicit
+  // word-by-word display mode) is exactly what stopped the floating word editor
+  // from reopening on a dragged word, so never reuse that path here. Visibility
+  // follows the playhead even while paused so scrubbing previews the same
+  // cumulative sentence state that export renders.
+  const isCptWordPending = (caption, wordIndex, currentIdx) => (
+    !shouldRevealSequentially(caption)
+    && !isCaptionWordEditingActive(caption)
+    && captionHasCptWords(caption)
+    && wordIndex > currentIdx
   );
 
   const isAdvancedTemplateCaptionEditingActive = (caption) => {
@@ -6707,14 +7124,7 @@ export default function VideoPlayer({
 
   const getCaptionCurrentWordIndex = (caption, wordCount) => {
     const activeTemplateId = caption?.template_id || caption?.applied_template_style?.template_id || captionStyle?.template_id;
-    if (isSourceBasicTemplateId(activeTemplateId)) {
-      return getAppliedBasicCurrentWordIndex(caption, currentTime, wordCount);
-    }
-    const captionDuration = (caption.end_time || caption.end || 0) - (caption.start_time || caption.start || 0);
-    const timeIntoCaption = (currentTime || 0) - (caption.start_time || caption.start || 0);
-    return wordCount > 1 && captionDuration > 0
-      ? Math.max(0, Math.min(wordCount - 1, Math.floor((timeIntoCaption / captionDuration) * wordCount)))
-      : 0;
+    return getCaptionRevealWordIndex(caption, currentTime, wordCount, activeTemplateId);
   };
 
   const renderEditableAdvancedTemplateCaption = (caption, blockIndex = 0) => {
@@ -6767,6 +7177,15 @@ export default function VideoPlayer({
       const wordAnimation = ws.animation && ws.animation !== 'none'
         ? getWordAnimationStyle(ws.animation, ws.animationSpeed || 1)
         : 'none';
+      const cptMotionStyle = getCptWordMotionStyle(
+        caption,
+        ws,
+        wordIndex,
+        wordCount,
+        currentIdx,
+        { templateBlockType: blockType },
+      );
+      const resolvedWordMotionStyle = cptMotionStyle || { animation: wordAnimation };
       const wordUsesWbwClass = options.forceWbwClass ?? isWbwBlock;
       const isTemplateEmphasis = templateImpWordIndices.includes(wordIndex) && !!templateImpClass;
       const emphasisClassName = isTemplateEmphasis
@@ -6796,13 +7215,20 @@ export default function VideoPlayer({
             className={wordClassName}
             style={{
               display: 'inline-block',
+              opacity: isCptWordPending(caption, wordIndex, currentIdx) ? 0 : undefined,
               visibility: detached ? 'hidden' : 'visible',
               cursor: detached
                 ? 'default'
                 : (draggingWord?.captionId === caption.id && draggingWord?.wordIndex === wordIndex ? 'grabbing' : 'grab'),
               animation: 'none',
             }}
-            onPointerDown={detached ? undefined : (e) => handleWordMouseDown(e, caption, wordIndex, false, false, 'template')}
+            onPointerDown={detached ? undefined : (e) => handleCaptionWordPointerIntent(
+              e,
+              caption,
+              wordIndex,
+              word,
+              { dragSource: 'template' },
+            )}
             onClick={(e) => {
               if (detached || Date.now() - lastDragDropTime.current < 150) return;
               if (setWordPopup) {
@@ -6821,7 +7247,7 @@ export default function VideoPlayer({
               style={{
                 display: 'inline-block',
                 transformOrigin: 'center center',
-                animation: wordAnimation,
+                ...resolvedWordMotionStyle,
               }}
             >
               {renderWordTextContent(word, ws, 'inherit')}
@@ -6933,9 +7359,12 @@ export default function VideoPlayer({
     const fontSize = (effectiveStyle?.font_size || 22) * previewRenderScale
     const emotional = emotionalCaptionPlan.get(caption?.id)
     const phaseCount = countAppliedTemplatePhases(effectiveStyle)
-    // Caption order is the canonical phase source. This repairs old projects
-    // where every caption was previously persisted with template_phase_index=0.
-    const selectedPhase = Math.max(0, templateCaptionIndex) % phaseCount
+    // Caption order remains the default. The moved Basic cards can also set a
+    // scene-dot offset, persisted on each caption when the template is applied.
+    const storedPhaseIndex = Number(caption?.template_phase_index)
+    const selectedPhase = (Number.isFinite(storedPhaseIndex)
+      ? Math.max(0, storedPhaseIndex)
+      : Math.max(0, templateCaptionIndex)) % phaseCount
     const impWordIndex = Number(emotional?.impWordIndex ?? caption?.imp_word_index ?? -1)
     const impWordIndices = emotional?.impWordIndices || caption?.imp_word_indices || []
     const emphasisColor = emotional?.emphasisColor || caption?.emphasis_color || ''
@@ -6966,6 +7395,8 @@ export default function VideoPlayer({
             emphasisColor={emphasisColor}
             renderScale={previewRenderScale}
             onSourceWordClick={openSourceTemplateWordPopup}
+            onSourceWordPointerDown={startSourceTemplateWordDrag}
+            isSelected={selectedCaptionId === caption?.id}
           />
         </>
       )
@@ -7159,6 +7590,8 @@ export default function VideoPlayer({
         }}
         renderScale={previewRenderScale}
         onSourceWordClick={openSourceTemplateWordPopup}
+        onSourceWordPointerDown={startSourceTemplateWordDrag}
+        isSelected={selectedCaptionId === caption?.id}
       />
     );
   };
@@ -7195,6 +7628,15 @@ export default function VideoPlayer({
       const templateBlockClass = ws.templateBlockClass || '';
       const templateBlockType = ws.templateBlockType || '';
       const templateWordClass = ws.templateWordClass || '';
+      const cptMotionStyle = getCptWordMotionStyle(
+        caption,
+        ws,
+        wordIndex,
+        wordCount,
+        currentIdx,
+        { templateBlockType },
+      );
+      const resolvedWordMotionStyle = cptMotionStyle || { animation: wordAnimation };
       const wordWrapStyle = ws.boxWidth ? {
         width: '100%',
         maxWidth: '100%',
@@ -7209,7 +7651,7 @@ export default function VideoPlayer({
             word,
             ws,
             'inherit',
-            wordAnimation,
+            resolvedWordMotionStyle,
             templateWordClass,
           )}
         </span>
@@ -7225,6 +7667,7 @@ export default function VideoPlayer({
           ].filter(Boolean).join(' ')}
           style={{
             position: 'absolute',
+            opacity: isCptWordPending(caption, wordIndex, currentIdx) ? 0 : 1,
             left: `${ws.abs_x_pct}%`,
             top: `${ws.abs_y_pct}%`,
             transform: `translate(-50%, -50%) translate(${renderOffsetX}px, ${renderOffsetY}px)${ws.rotation ? ` rotate(${ws.rotation}deg)` : ''}`,
@@ -7251,7 +7694,13 @@ export default function VideoPlayer({
             } : {}),
             ...emphasisStyle,
           }}
-          onPointerDown={(e) => handleWordMouseDown(e, caption, wordIndex, false, true)}
+          onPointerDown={(e) => handleCaptionWordPointerIntent(
+            e,
+            caption,
+            wordIndex,
+            word,
+            { isDetached: true },
+          )}
           onClick={(e) => {
             if (Date.now() - lastDragDropTime.current < 150) return;
             if (setWordPopup) {
@@ -7743,12 +8192,38 @@ export default function VideoPlayer({
     // Use the element that received the event directly
     const targetElement = e.currentTarget;
     if (!targetElement) return;
+    const sourceTemplateVisualElement = dragSource === 'source-template'
+      ? targetElement.querySelector('[data-source-word-visual="true"], .kf-base, .kf-fill')
+      : null;
     const dragPreviewElement = isDetached
       ? targetElement
       : targetElement.querySelector('[data-word-drag-visual="true"]') || targetElement;
+    const dragMovementElement = dragSource === 'source-template'
+      ? targetElement
+      : dragPreviewElement;
+    const dragMeasurementElement = sourceTemplateVisualElement || dragPreviewElement;
+    const isFixedWordEditorDrag = dragMovementElement.matches?.('[data-selected-word-box="true"]') === true;
+    const initialInlineTranslate = dragMovementElement.style.getPropertyValue('translate');
+    const initialInlineTranslatePriority = dragMovementElement.style.getPropertyPriority('translate');
+    const restoreInlineTranslate = () => {
+      if (initialInlineTranslate) {
+        dragMovementElement.style.setProperty(
+          'translate',
+          initialInlineTranslate,
+          initialInlineTranslatePriority
+        );
+      } else {
+        dragMovementElement.style.removeProperty('translate');
+      }
+    };
 
-    if (captionStyle?.template_id && !isElement && !isDetached) {
-      const computedStyle = window.getComputedStyle(dragPreviewElement);
+    if (
+      dragSource !== 'source-template'
+      && captionStyle?.template_id
+      && !isElement
+      && !isDetached
+    ) {
+      const computedStyle = window.getComputedStyle(dragMeasurementElement);
       const styleKey = `${caption.id}-${wordIndex}`;
       const captionUpdater = setCaptionsRaw || setCaptions;
       captionUpdater(prev => prev.map(c => {
@@ -7800,17 +8275,23 @@ export default function VideoPlayer({
     const baselineWidth = fitCanvasSizeRef.current.width || containerWidth;
     const baselineHeight = fitCanvasSizeRef.current.height || containerHeight;
     const containerRectAtStart = videoContainer?.getBoundingClientRect();
-    const wordRectAtStart = dragPreviewElement.getBoundingClientRect();
+    const viewportScaleX = containerRectAtStart?.width
+      ? containerRectAtStart.width / containerWidth
+      : 1;
+    const viewportScaleY = containerRectAtStart?.height
+      ? containerRectAtStart.height / containerHeight
+      : viewportScaleX;
+    const wordRectAtStart = dragMeasurementElement.getBoundingClientRect();
     const startCenterXPct = containerRectAtStart?.width
       ? ((wordRectAtStart.left + wordRectAtStart.width / 2 - containerRectAtStart.left) / containerRectAtStart.width) * 100
       : 50;
     const startCenterYPct = containerRectAtStart?.height
       ? ((wordRectAtStart.top + wordRectAtStart.height / 2 - containerRectAtStart.top) / containerRectAtStart.height) * 100
       : 50;
-    const snapTargetsX = [5, 25, 50, 75, 95];
-    const snapTargetsY = [5, 25, 50, 75, 95];
-    const snapThresholdPct = 2;
-    const getWordSnap = (value, targets) => {
+    const snapTargetsX = [6, 50, 94];
+    const snapTargetsY = [6, 50, 94];
+    const getWordSnap = (value, targets, axisSize) => {
+      const snapThresholdPct = (5 / Math.max(axisSize, 1)) * 100;
       const match = targets.find(target => Math.abs(value - target) <= snapThresholdPct);
       return typeof match === 'number' ? match : null;
     };
@@ -7820,20 +8301,7 @@ export default function VideoPlayer({
       }
 
       const styleKey = `${caption.id}-${wordIndex}`;
-      const rawRect = {
-        left: wordRectAtStart.left + deltaX,
-        right: wordRectAtStart.right + deltaX,
-        top: wordRectAtStart.top + deltaY,
-        bottom: wordRectAtStart.bottom + deltaY,
-        width: wordRectAtStart.width,
-        height: wordRectAtStart.height,
-      };
-      rawRect.centerX = rawRect.left + rawRect.width / 2;
-      rawRect.centerY = rawRect.top + rawRect.height / 2;
-
-      const alignThreshold = 7;
-      const sameColumnThreshold = 18;
-      const visibleWordNodes = Array.from(videoContainer.querySelectorAll('[data-word-key]'))
+      const siblingRects = Array.from(videoContainer.querySelectorAll('[data-word-key]'))
         .filter(node => {
           if (!(node instanceof Element)) return false;
           if (node === targetElement || node === dragPreviewElement) return false;
@@ -7841,149 +8309,53 @@ export default function VideoPlayer({
           if (key === styleKey || !key.startsWith(`${caption.id}-`)) return false;
           const nodeStyle = window.getComputedStyle(node);
           if (nodeStyle.visibility === 'hidden' || nodeStyle.display === 'none' || nodeStyle.opacity === '0') return false;
-          const rect = node.getBoundingClientRect();
+          const visualNode = node.querySelector(
+            '[data-source-word-visual="true"], [data-word-drag-visual="true"], .kf-base, .kf-fill'
+          ) || node;
+          const rect = visualNode.getBoundingClientRect();
           return rect.width > 2 && rect.height > 2;
         })
-        .map(node => ({ node, rect: node.getBoundingClientRect() }));
-
-      let bestX = null;
-      let bestY = null;
-      for (const { rect } of visibleWordNodes) {
-        const targetPoints = [
-          { kind: 'center', value: rect.left + rect.width / 2 },
-          { kind: 'left', value: rect.left },
-          { kind: 'right', value: rect.right },
-        ];
-        const draggedPoints = [
-          { kind: 'center', value: rawRect.centerX },
-          { kind: 'left', value: rawRect.left },
-          { kind: 'right', value: rawRect.right },
-        ];
-
-        for (const targetPoint of targetPoints) {
-          for (const draggedPoint of draggedPoints) {
-            if (targetPoint.kind !== draggedPoint.kind) continue;
-            const distance = targetPoint.value - draggedPoint.value;
-            if (Math.abs(distance) > alignThreshold) continue;
-            if (!bestX || Math.abs(distance) < Math.abs(bestX.distance)) {
-              bestX = { distance, targetRect: rect, x: targetPoint.value, kind: targetPoint.kind };
-            }
-          }
-        }
-
-        const targetYPoints = [
-          { kind: 'middle', value: rect.top + rect.height / 2 },
-          { kind: 'top', value: rect.top },
-          { kind: 'bottom', value: rect.bottom },
-        ];
-        const draggedYPoints = [
-          { kind: 'middle', value: rawRect.centerY },
-          { kind: 'top', value: rawRect.top },
-          { kind: 'bottom', value: rawRect.bottom },
-        ];
-
-        for (const targetPoint of targetYPoints) {
-          for (const draggedPoint of draggedYPoints) {
-            if (targetPoint.kind !== draggedPoint.kind) continue;
-            const distance = targetPoint.value - draggedPoint.value;
-            if (Math.abs(distance) > alignThreshold) continue;
-            if (!bestY || Math.abs(distance) < Math.abs(bestY.distance)) {
-              bestY = { distance, targetRect: rect, y: targetPoint.value, kind: targetPoint.kind };
-            }
-          }
-        }
-      }
-
-      const snappedDeltaX = bestX ? deltaX + bestX.distance : deltaX;
-      const snappedDeltaY = bestY ? deltaY + bestY.distance : deltaY;
-      const snappedRect = {
-        ...rawRect,
-        left: rawRect.left + (bestX?.distance || 0),
-        right: rawRect.right + (bestX?.distance || 0),
-        centerX: rawRect.centerX + (bestX?.distance || 0),
-        top: rawRect.top + (bestY?.distance || 0),
-        bottom: rawRect.bottom + (bestY?.distance || 0),
-        centerY: rawRect.centerY + (bestY?.distance || 0),
-      };
-      const guides = [];
-
-      if (bestX) {
-        const targetRect = bestX.targetRect;
-        const gapTop = Math.min(targetRect.bottom, snappedRect.bottom);
-        const gapBottom = Math.max(targetRect.top, snappedRect.top);
-        const separatedY1 = snappedRect.centerY >= (targetRect.top + targetRect.height / 2)
-          ? targetRect.bottom
-          : snappedRect.bottom;
-        const separatedY2 = snappedRect.centerY >= (targetRect.top + targetRect.height / 2)
-          ? snappedRect.top
-          : targetRect.top;
-        const y1 = Math.abs(separatedY2 - separatedY1) > 2
-          ? separatedY1
-          : gapTop;
-        const y2 = Math.abs(separatedY2 - separatedY1) > 2
-          ? separatedY2
-          : gapBottom;
-
-        guides.push({
-          type: 'vertical',
-          x: bestX.x - containerRectAtStart.left,
-          y1: Math.max(0, Math.min(y1, y2) - containerRectAtStart.top),
-          y2: Math.min(containerRectAtStart.height, Math.max(y1, y2) - containerRectAtStart.top),
+        .map(node => {
+          const visualNode = node.querySelector(
+            '[data-source-word-visual="true"], [data-word-drag-visual="true"], .kf-base, .kf-fill'
+          ) || node;
+          return visualNode.getBoundingClientRect();
         });
-
-      }
-
-      if (bestY) {
-        const targetRect = bestY.targetRect;
-        const gapLeft = Math.min(targetRect.right, snappedRect.right);
-        const gapRight = Math.max(targetRect.left, snappedRect.left);
-        const separatedX1 = snappedRect.centerX >= (targetRect.left + targetRect.width / 2)
-          ? targetRect.right
-          : snappedRect.right;
-        const separatedX2 = snappedRect.centerX >= (targetRect.left + targetRect.width / 2)
-          ? snappedRect.left
-          : targetRect.left;
-        const x1 = Math.abs(separatedX2 - separatedX1) > 2
-          ? separatedX1
-          : gapLeft;
-        const x2 = Math.abs(separatedX2 - separatedX1) > 2
-          ? separatedX2
-          : gapRight;
-
-        guides.push({
-          type: 'horizontal',
-          y: bestY.y - containerRectAtStart.top,
-          x1: Math.max(0, Math.min(x1, x2) - containerRectAtStart.left),
-          x2: Math.min(containerRectAtStart.width, Math.max(x1, x2) - containerRectAtStart.left),
-        });
-      }
-
-      const sameColumnTargets = visibleWordNodes
-        .map(({ rect }) => ({
-          rect,
-          centerDistance: Math.abs((rect.left + rect.width / 2) - snappedRect.centerX),
-        }))
-        .filter(item => item.centerDistance <= sameColumnThreshold)
-        .sort((a, b) => a.centerDistance - b.centerDistance);
-      const nearestColumnTarget = sameColumnTargets[0]?.rect;
-      if (nearestColumnTarget) {
-        const gap = snappedRect.top >= nearestColumnTarget.bottom
-          ? snappedRect.top - nearestColumnTarget.bottom
-          : nearestColumnTarget.top - snappedRect.bottom;
-        if (gap >= 3 && gap <= 36) {
-          const markerX = Math.min(snappedRect.right, nearestColumnTarget.right) + 8;
-          const y1 = snappedRect.top >= nearestColumnTarget.bottom ? nearestColumnTarget.bottom : snappedRect.bottom;
-          const y2 = snappedRect.top >= nearestColumnTarget.bottom ? snappedRect.top : nearestColumnTarget.top;
-          guides.push({
-            type: 'spacing',
-            x: Math.min(containerRectAtStart.width - 8, Math.max(8, markerX - containerRectAtStart.left)),
-            y1: Math.max(0, y1 - containerRectAtStart.top),
-            y2: Math.min(containerRectAtStart.height, y2 - containerRectAtStart.top),
-          });
+      const resolved = resolveCptWordSnap({
+        draggedRect: wordRectAtStart,
+        siblingRects,
+        deltaX,
+        deltaY,
+        alignThreshold: 5,
+        magneticThreshold: 10,
+        minGap: Math.max(4, Math.min(9, wordRectAtStart.height * 0.18)),
+      });
+      const guides = resolved.guides.map((guide) => {
+        if (guide.type === 'vertical') {
+          return {
+            ...guide,
+            x: (guide.x - containerRectAtStart.left) / viewportScaleX,
+            y1: Math.max(0, (guide.y1 - containerRectAtStart.top) / viewportScaleY),
+            y2: Math.min(containerHeight, (guide.y2 - containerRectAtStart.top) / viewportScaleY),
+          };
         }
-      }
+        if (guide.type === 'horizontal' || guide.type === 'spacing-horizontal') {
+          return {
+            ...guide,
+            y: (guide.y - containerRectAtStart.top) / viewportScaleY,
+            x1: Math.max(0, (guide.x1 - containerRectAtStart.left) / viewportScaleX),
+            x2: Math.min(containerWidth, (guide.x2 - containerRectAtStart.left) / viewportScaleX),
+          };
+        }
+        return {
+          ...guide,
+          x: (guide.x - containerRectAtStart.left) / viewportScaleX,
+          y1: Math.max(0, (guide.y1 - containerRectAtStart.top) / viewportScaleY),
+          y2: Math.min(containerHeight, (guide.y2 - containerRectAtStart.top) / viewportScaleY),
+        };
+      });
 
-      return { deltaX: snappedDeltaX, deltaY: snappedDeltaY, guides };
+      return { deltaX: resolved.deltaX, deltaY: resolved.deltaY, guides };
     };
 
     const handleNativeMouseMove = (moveEvent) => {
@@ -8003,15 +8375,17 @@ export default function VideoPlayer({
         }
       }
 
-      const rawCenterXPct = startCenterXPct + (deltaX / containerWidth) * 100;
-      const rawCenterYPct = startCenterYPct + (deltaY / containerHeight) * 100;
-      const snappedXPct = getWordSnap(rawCenterXPct, snapTargetsX);
-      const snappedYPct = getWordSnap(rawCenterYPct, snapTargetsY);
-      const baseDeltaX = deltaX + (typeof snappedXPct === 'number' ? ((snappedXPct - rawCenterXPct) / 100) * containerWidth : 0);
-      const baseDeltaY = deltaY + (typeof snappedYPct === 'number' ? ((snappedYPct - rawCenterYPct) / 100) * containerHeight : 0);
+      const rawCenterXPct = startCenterXPct + (deltaX / Math.max(containerRectAtStart?.width || 0, 1)) * 100;
+      const rawCenterYPct = startCenterYPct + (deltaY / Math.max(containerRectAtStart?.height || 0, 1)) * 100;
+      const snappedXPct = getWordSnap(rawCenterXPct, snapTargetsX, containerRectAtStart?.width || containerWidth);
+      const snappedYPct = getWordSnap(rawCenterYPct, snapTargetsY, containerRectAtStart?.height || containerHeight);
+      const baseDeltaX = deltaX + (typeof snappedXPct === 'number' ? ((snappedXPct - rawCenterXPct) / 100) * (containerRectAtStart?.width || containerWidth) : 0);
+      const baseDeltaY = deltaY + (typeof snappedYPct === 'number' ? ((snappedYPct - rawCenterYPct) / 100) * (containerRectAtStart?.height || containerHeight) : 0);
       const localCptSnap = getLocalCptGuides(baseDeltaX, baseDeltaY);
-      const adjustedDeltaX = localCptSnap.deltaX;
-      const adjustedDeltaY = localCptSnap.deltaY;
+      const adjustedClientDeltaX = localCptSnap.deltaX;
+      const adjustedClientDeltaY = localCptSnap.deltaY;
+      const adjustedDeltaX = adjustedClientDeltaX / (isFixedWordEditorDrag ? 1 : viewportScaleX);
+      const adjustedDeltaY = adjustedClientDeltaY / (isFixedWordEditorDrag ? 1 : viewportScaleY);
       const newX = dragState.initialX + adjustedDeltaX;
       const newY = dragState.initialY + adjustedDeltaY;
       
@@ -8020,6 +8394,8 @@ export default function VideoPlayer({
         y: newY,
         deltaX: adjustedDeltaX,
         deltaY: adjustedDeltaY,
+        clientDeltaX: adjustedClientDeltaX,
+        clientDeltaY: adjustedClientDeltaY,
       };
       setSnapGuides({
         hLines: typeof snappedYPct === 'number' ? [snappedYPct] : [],
@@ -8028,22 +8404,28 @@ export default function VideoPlayer({
       setCptWordGuides(localCptSnap.guides);
       
       // Directly manipulate the DOM for zero-latency dragging
-      if (dragState.isElement) {
+      if (dragState.dragSource === 'source-template') {
+        // Source-template visuals already contain their saved x/y translation.
+        // Move the stable outer anchor by only this gesture's delta so an
+        // existing offset is never applied twice during a second drag.
+        dragMovementElement.style.setProperty(
+          'translate',
+          `${adjustedDeltaX}px ${adjustedDeltaY}px`,
+          'important'
+        );
+      } else if (dragState.isElement) {
         dragPreviewElement.style.setProperty(
           'transform',
           `translate(${newX}px, ${newY}px)`,
           'important'
         );
-      } else if (dragState.isDetached) {
-        dragPreviewElement.style.setProperty(
-          'transform',
-          `translate(-50%, -50%) translate(${adjustedDeltaX}px, ${adjustedDeltaY}px)${customStyle.rotation ? ` rotate(${customStyle.rotation}deg)` : ''}`,
-          'important'
-        );
       } else {
-        dragPreviewElement.style.setProperty(
-          'transform',
-          `translate(-50%, -50%) translate(${adjustedDeltaX}px, ${adjustedDeltaY}px)`,
+        // The word may come from an inline template, an absolutely centered
+        // caption, or the fixed selected-word portal. CSS `translate` composes
+        // with all of those authored transforms without replacing their anchor.
+        dragMovementElement.style.setProperty(
+          'translate',
+          `${adjustedDeltaX}px ${adjustedDeltaY}px`,
           'important'
         );
       }
@@ -8065,12 +8447,17 @@ export default function VideoPlayer({
             : (captionStyle?.font_size || 18);
 
           const containerRect = videoContainer?.getBoundingClientRect();
-          const wordRect = dragPreviewElement.getBoundingClientRect();
+          // Derive the committed position from the same start rectangle and
+          // snapped delta used by the live preview. Reading the mutated DOM here
+          // is unreliable for template words whose animation/transform can
+          // change between pointermove and pointerup.
+          const finalDeltaX = Number(finalCoords.clientDeltaX) || 0;
+          const finalDeltaY = Number(finalCoords.clientDeltaY) || 0;
           const absXPct = containerRect?.width
-            ? ((wordRect.left + wordRect.width / 2 - containerRect.left) / containerRect.width) * 100
+            ? ((wordRectAtStart.left + wordRectAtStart.width / 2 + finalDeltaX - containerRect.left) / containerRect.width) * 100
             : undefined;
           const absYPct = containerRect?.height
-            ? ((wordRect.top + wordRect.height / 2 - containerRect.top) / containerRect.height) * 100
+            ? ((wordRectAtStart.top + wordRectAtStart.height / 2 + finalDeltaY - containerRect.top) / containerRect.height) * 100
             : undefined;
           const detachedPositionDeltaPct = (
             typeof absXPct === 'number'
@@ -8081,7 +8468,11 @@ export default function VideoPlayer({
                 Math.abs(absYPct - startCenterYPct)
               )
             : 0;
-          const shouldDetachWord = !dragState.isElement && detachedPositionDeltaPct > 0.75;
+          const shouldDetachWord = (
+            dragState.dragSource !== 'source-template'
+            && !dragState.isElement
+            && detachedPositionDeltaPct > 0.75
+          );
             
           const captionUpdater = setCaptionsRaw || setCaptions;
           captionUpdater(prev => prev.map(c => {
@@ -8089,7 +8480,16 @@ export default function VideoPlayer({
             const wordStyles = c.wordStyles || {};
             const styleKey = `${c.id}-${dragState.wordIndex}`;
             const currentWordStyle = wordStyles[styleKey] || {};
-            const nextWordStyle = dragState.isElement
+            const nextWordStyle = dragState.dragSource === 'source-template'
+              ? {
+                  ...currentWordStyle,
+                  x: (finalCoords.x / containerWidth) * baselineWidth,
+                  y: (finalCoords.y / containerHeight) * baselineHeight,
+                  x_pct: (finalCoords.x / containerWidth) * 100,
+                  y_pct: (finalCoords.y / containerHeight) * 100,
+                  frozenFontSize: currentWordStyle.frozenFontSize || parentFontSize
+                }
+              : dragState.isElement
               ? {
                   ...currentWordStyle,
                   x: (finalCoords.x / containerWidth) * baselineWidth,
@@ -8115,6 +8515,18 @@ export default function VideoPlayer({
                   y_pct: 0,
                   frozenFontSize: currentWordStyle.frozenFontSize || parentFontSize
                 };
+            if (
+              !dragState.isElement
+              && typeof absXPct === 'number'
+              && typeof absYPct === 'number'
+            ) {
+              // Keep a canvas-space drop point even for source-template words,
+              // which continue to use x/y offsets in the preview. ExportPanel
+              // converts this snapshot to video space so the burned result is
+              // WYSIWYG even when the source template reflows or scales.
+              nextWordStyle.cptCanvasXPercent = absXPct;
+              nextWordStyle.cptCanvasYPercent = absYPct;
+            }
             if (!dragState.isElement && !shouldDetachWord) {
               delete nextWordStyle.abs_x_pct;
               delete nextWordStyle.abs_y_pct;
@@ -8130,16 +8542,15 @@ export default function VideoPlayer({
           }));
 
           requestAnimationFrame(() => {
-            if (dragState.isElement) {
+            if (dragState.dragSource === 'source-template') {
+              restoreInlineTranslate();
+            } else if (dragState.isElement) {
               dragPreviewElement.style.setProperty(
                 'transform',
                 `translate(${finalCoords.x}px, ${finalCoords.y}px)`
               );
             } else {
-              dragPreviewElement.style.setProperty(
-                'transform',
-                `translate(-50%, -50%)${customStyle.rotation ? ` rotate(${customStyle.rotation}deg)` : ''}`
-              );
+              restoreInlineTranslate();
             }
           });
         }
@@ -8547,10 +8958,14 @@ export default function VideoPlayer({
           pointerEvents: 'auto',
         }}
         onPointerDown={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
           if (e.target.closest('.word-resize-handle')) return;
-          handleWordMouseDown(e, selectedDetachedWord.caption, selectedDetachedWord.wordIndex, false, true);
+          handleCaptionWordPointerIntent(
+            e,
+            selectedDetachedWord.caption,
+            selectedDetachedWord.wordIndex,
+            selectedDetachedWord.word,
+            { isDetached: true },
+          );
         }}
         onClick={(e) => {
           e.preventDefault();
@@ -8653,6 +9068,49 @@ export default function VideoPlayer({
     })()
     : null;
 
+  const handleCanvasWordClickCapture = (event) => {
+    if (!setWordPopup || Date.now() - lastDragDropTime.current < 200) return;
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    if (target.closest('.word-resize-handle, [data-selected-word-actions="true"], button, input, textarea, select')) return;
+
+    const wordNode = target.closest('[data-word-key]');
+    const wordKey = wordNode?.getAttribute('data-word-key') || '';
+    if (!wordNode || !wordKey || !videoContainerRef.current?.contains(wordNode)) return;
+
+    const liveTarget = [...(captions || [])]
+      .filter(item => item?.id && wordKey.startsWith(`${item.id}-`))
+      .sort((a, b) => String(b.id).length - String(a.id).length)[0];
+    if (!liveTarget) return;
+
+    const wordIndex = Number(wordKey.slice(String(liveTarget.id).length + 1));
+    if (!Number.isInteger(wordIndex) || wordIndex < 0) return;
+
+    const word = String(liveTarget.text || '').split(/\s+/).filter(Boolean)[wordIndex];
+    if (!word) return;
+
+    // Own all word clicks at the canvas boundary. Some applied templates
+    // rebuild their internal DOM after a style edit, which can discard a
+    // word-level listener; the stable canvas listener remains available.
+    event.preventDefault();
+    event.stopPropagation();
+    if (setSelectedCaptionId) setSelectedCaptionId(liveTarget.id);
+    setWordPopup(liveTarget.isTextElement
+      ? {
+          type: 'element',
+          elementId: liveTarget.id,
+          wordIndex,
+          word,
+          position: { x: event.clientX, y: event.clientY },
+        }
+      : {
+          caption: liveTarget,
+          wordIndex,
+          word,
+          position: { x: event.clientX, y: event.clientY },
+        });
+  };
+
   return (
     <>
     <OriginalAdvancedTemplateStyles />
@@ -8736,6 +9194,7 @@ export default function VideoPlayer({
               cursor: activeCanvasTool === 'move' ? (isCanvasPanning ? 'grabbing' : 'grab') : 'default',
             }}
             onPointerDown={handleCanvasMouseDown}
+            onClickCapture={handleCanvasWordClickCapture}
             onClick={handleVideoSurfaceClick}
           >
           {showLayoutGuides && (
@@ -8750,56 +9209,26 @@ export default function VideoPlayer({
           )}
           {/* CPT snap guide lines */}
           {snapGuides.hLines.map((pct, i) => (
-            <React.Fragment key={`hg-${i}`}>
-              {Math.abs(pct - 50) < 0.01 && (
-                <div
-                  data-legacy-snap-guide="horizontal"
-                  className="pointer-events-none absolute left-0 right-0 z-[998]"
-                  style={{
-                    top: `${pct}%`,
-                    height: '1px',
-                    background: 'rgba(255,60,60,0.85)',
-                    boxShadow: '0 0 4px rgba(255,60,60,0.5)',
-                  }}
-                />
-              )}
-              {Math.abs(pct - 50) < 0.01 && (
-                <div
-                  data-cpt-snap-guide="horizontal"
-                  className="pointer-events-none absolute left-0 right-0 z-[999] border-t border-dashed border-[#ff2f9f]"
-                  style={{
-                    top: `${pct}%`,
-                    boxShadow: '0 0 6px rgba(255,47,159,0.5)',
-                  }}
-                />
-              )}
-            </React.Fragment>
+            <div
+              key={`hg-${i}`}
+              data-cpt-snap-guide="horizontal"
+              className="pointer-events-none absolute left-0 right-0 z-[999] border-t border-dashed border-[#ff2f9f]"
+              style={{
+                top: `${pct}%`,
+                boxShadow: '0 0 6px rgba(255,47,159,0.5)',
+              }}
+            />
           ))}
           {snapGuides.vLines.map((pct, i) => (
-            <React.Fragment key={`vg-${i}`}>
-              {Math.abs(pct - 50) < 0.01 && (
-                <>
-                  <div
-                    data-legacy-snap-guide="vertical"
-                    className="pointer-events-none absolute top-0 bottom-0 z-[998]"
-                    style={{
-                      left: `${pct}%`,
-                      width: '1px',
-                      background: 'rgba(60,120,255,0.85)',
-                      boxShadow: '0 0 4px rgba(60,120,255,0.5)',
-                    }}
-                  />
-                  <div
-                    data-cpt-snap-guide="vertical"
-                    className="pointer-events-none absolute top-0 bottom-0 z-[999] border-l border-[#ff2f9f]"
-                    style={{
-                      left: `${pct}%`,
-                      boxShadow: '0 0 6px rgba(255,47,159,0.5)',
-                    }}
-                  />
-                </>
-              )}
-            </React.Fragment>
+            <div
+              key={`vg-${i}`}
+              data-cpt-snap-guide="vertical"
+              className="pointer-events-none absolute top-0 bottom-0 z-[999] border-l border-dashed border-[#ff2f9f]"
+              style={{
+                left: `${pct}%`,
+                boxShadow: '0 0 6px rgba(255,47,159,0.5)',
+              }}
+            />
           ))}
           {cptWordGuides.length > 0 && (
             <div className="pointer-events-none absolute inset-0 z-[1000]" data-cpt-word-guides="true">
@@ -8836,7 +9265,7 @@ export default function VideoPlayer({
                   );
                 }
 
-                if (guide.type === 'spacing') {
+                if (guide.type === 'spacing-vertical') {
                   const y1 = Math.max(0, Math.min(guide.y1, guide.y2));
                   const height = Math.max(6, Math.abs(guide.y2 - guide.y1));
                   return (
@@ -8852,6 +9281,26 @@ export default function VideoPlayer({
                       <span className="absolute left-[-4px] top-0 h-px w-2 bg-[#f8e36a]" />
                       <span className="absolute left-[-4px] bottom-0 h-px w-2 bg-[#f8e36a]" />
                       <span className="absolute left-0 top-0 h-full border-l border-dashed border-[#f8e36a] shadow-[0_0_7px_rgba(248,227,106,0.55)]" />
+                    </div>
+                  );
+                }
+
+                if (guide.type === 'spacing-horizontal') {
+                  const x1 = Math.max(0, Math.min(guide.x1, guide.x2));
+                  const width = Math.max(6, Math.abs(guide.x2 - guide.x1));
+                  return (
+                    <div
+                      key={`cpt-word-spacing-x-${i}`}
+                      className="absolute"
+                      style={{
+                        left: `${x1}px`,
+                        top: `${guide.y}px`,
+                        width: `${width}px`,
+                      }}
+                    >
+                      <span className="absolute left-0 top-[-4px] h-2 w-px bg-[#f8e36a]" />
+                      <span className="absolute right-0 top-[-4px] h-2 w-px bg-[#f8e36a]" />
+                      <span className="absolute left-0 top-0 w-full border-t border-dashed border-[#f8e36a] shadow-[0_0_7px_rgba(248,227,106,0.55)]" />
                     </div>
                   );
                 }
@@ -9026,7 +9475,7 @@ export default function VideoPlayer({
                 }}
               >
                 <div
-                  className={`border border-solid ${selectedCaptionId === caption.id && !hasDetachedWords ? 'border-[#b76cff]' : 'border-transparent hover:border-[#b76cff]'} relative ${isSidebarTemplate ? (isEditingThis ? 'cursor-text' : 'cursor-pointer') : isDragging ? 'cursor-grabbing' : isEditingThis ? 'cursor-text' : setCaptionStyle && !hasDetachedWords ? 'cursor-grab' : ''} ${!hasDetachedWords ? 'group' : ''} ${activeCaptionTemplateId || ''} ${getTemplateContainerStateClass(activeCaptionTemplateId)}`}
+                  className={`border border-solid ${!isSidebarTemplate && selectedCaptionId === caption.id && !hasDetachedWords ? 'border-[#b76cff]' : !isSidebarTemplate ? 'border-transparent hover:border-[#b76cff]' : 'border-transparent'} relative ${isSidebarTemplate ? (isEditingThis ? 'cursor-text' : 'cursor-pointer') : isDragging ? 'cursor-grabbing' : isEditingThis ? 'cursor-text' : setCaptionStyle && !hasDetachedWords ? 'cursor-grab' : ''} ${!hasDetachedWords ? 'group' : ''} ${activeCaptionTemplateId || ''} ${getTemplateContainerStateClass(activeCaptionTemplateId)}`}
                   style={{
                     backgroundColor: 'transparent',
                     padding: '0px',
@@ -9093,7 +9542,7 @@ export default function VideoPlayer({
                   )}
 
                   {/* Resize handles — shown for regular and templated captions alike */}
-                  {setCaptionStyle && !isEditingThis && !hasDetachedWords && (
+                  {setCaptionStyle && !isEditingThis && !hasDetachedWords && !isSidebarTemplate && (
                     <>
                       {[
                         ['top-left', 'left-0 top-0 -translate-x-1/2 -translate-y-1/2 cursor-nwse-resize'],
@@ -9237,6 +9686,8 @@ export default function VideoPlayer({
                               endTime={caption.end_time || caption.end || caption.start_time || 0}
                               renderScale={previewRenderScale}
                               onSourceWordClick={openSourceTemplateWordPopup}
+                              onSourceWordPointerDown={startSourceTemplateWordDrag}
+                              isSelected={selectedCaptionId === caption.id}
                             />
                           );
                         }
@@ -9262,6 +9713,15 @@ export default function VideoPlayer({
                                   const wordAnimation = wordStyle.animation && wordStyle.animation !== 'none'
                                     ? getWordAnimationStyle(wordStyle.animation, wordStyle.animationSpeed || 1)
                                     : 'none';
+                                  const cptMotionStyle = getCptWordMotionStyle(
+                                    caption,
+                                    wordStyle,
+                                    wordIndex,
+                                    wordCount,
+                                    currentIdx,
+                                    { templateBlockType: 'wbw-rise' },
+                                  );
+                                  const resolvedWordMotionStyle = cptMotionStyle || { animation: wordAnimation };
                                   return (
                                     <span
                                       key={`${wordIndex}-${basicTemplateCurrentIdx}`}
@@ -9276,6 +9736,8 @@ export default function VideoPlayer({
                                         '--basic-word-index': wordIndex,
                                         '--basic-word-delay': `${Math.min(wordIndex, 10) * 80}ms`,
                                         cursor: 'pointer',
+                                        animation: cptMotionStyle ? 'none' : undefined,
+                                        transition: cptMotionStyle ? 'none' : undefined,
                                       }}
                                       onClick={(e) => {
                                         if (setWordPopup) {
@@ -9294,7 +9756,7 @@ export default function VideoPlayer({
                                         style={{
                                           display: 'inline-block',
                                           transformOrigin: 'center center',
-                                          animation: wordAnimation,
+                                          ...resolvedWordMotionStyle,
                                         }}
                                       >
                                         {renderWordTextContent(word, wordStyle, 'inherit')}
@@ -9338,6 +9800,21 @@ export default function VideoPlayer({
                           const wordAnimation = wordStyle.animation && wordStyle.animation !== 'none'
                             ? getWordAnimationStyle(wordStyle.animation, wordStyle.animationSpeed || 1)
                             : 'none';
+                          const cptMotionStyle = getCptWordMotionStyle(
+                            caption,
+                            wordStyle,
+                            wordIndex,
+                            wordCount,
+                            currentIdx,
+                            {
+                              templateBlockType: getOriginalTemplateBlockType(
+                                activeCaptionTemplateId,
+                                Number(caption?.template_phase_index ?? 0),
+                              ),
+                              templateSource: caption?.template_source || captionStyle?.template_source,
+                            },
+                          );
+                          const resolvedWordMotionStyle = cptMotionStyle || { animation: wordAnimation };
 
                           return (
                             <span
@@ -9356,6 +9833,8 @@ export default function VideoPlayer({
                                 visibility: detached ? 'hidden' : 'visible',
                                 '--basic-word-index': wordIndex,
                                 '--basic-word-delay': `${Math.min(wordIndex, 10) * 65}ms`,
+                                animation: cptMotionStyle ? 'none' : undefined,
+                                transition: cptMotionStyle ? 'none' : undefined,
                               }}
                               onClick={(e) => {
                                 if (detached) return;
@@ -9375,7 +9854,7 @@ export default function VideoPlayer({
                                 style={{
                                   display: 'inline-block',
                                   transformOrigin: 'center center',
-                                  animation: wordAnimation,
+                                  ...resolvedWordMotionStyle,
                                 }}
                               >
                                 {renderWordTextContent(word, wordStyle, 'inherit')}
@@ -9410,7 +9889,9 @@ export default function VideoPlayer({
                         opacity: captionStyle?.text_opacity ?? 1,
                         transform: `scale(${captionStyle?.scale || 1})`,
 
-                        animation: caption.animation && caption.animation !== 'none' ? getAnimationStyle(caption.animation, caption.animationSpeed) : 'none',
+                        animation: captionHasCptWords(caption)
+                          ? 'none'
+                          : (caption.animation && caption.animation !== 'none' ? getAnimationStyle(caption.animation, caption.animationSpeed) : 'none'),
                         color: captionStyle?.text_color || '#ffffff',
                         textTransform: captionStyle?.text_case && captionStyle.text_case !== 'none' ? captionStyle.text_case : undefined,
                         padding: hasDetachedWords ? '0px' : `${displayCaptionPadY}px ${displayCaptionPadX}px`,
@@ -9520,6 +10001,21 @@ export default function VideoPlayer({
                           opacity: isCurrentSidebarWord ? 1 : (isPastSidebarWord ? 0.96 : 0.46),
                           textShadow: isCurrentSidebarWord ? `0 0 18px ${sidebarAccent}33` : undefined,
                         } : {};
+                        const cptMotionStyle = getCptWordMotionStyle(
+                          caption,
+                          ws,
+                          wordIndex,
+                          arr.length,
+                          sidebarCurrentIdx,
+                          {
+                            templateSource: captionStyle?.template_source,
+                          },
+                        );
+                        const resolvedWordMotionStyle = cptMotionStyle || {
+                              animation: ws.animation && ws.animation !== 'none'
+                                ? getWordAnimationStyle(ws.animation)
+                                : 'none',
+                            };
 
 
                         const wordNode = (
@@ -9533,6 +10029,11 @@ export default function VideoPlayer({
                               lineHeight: 'inherit',
                               verticalAlign: 'baseline',
                               marginRight: wordIndex < arr.length - 1 ? `${Math.round(layoutFontSize * 0.18 + (captionStyle?.word_spacing ?? 1) * 2)}px` : '0',
+                              opacity: isCptWordPending(caption, wordIndex, getCaptionCurrentWordIndex(caption, arr.length))
+                                ? 0
+                                : undefined,
+                              animation: cptMotionStyle ? 'none' : undefined,
+                              transition: cptMotionStyle ? 'none' : undefined,
                               transform: !detached && isPositioned
                                 ? `translate(${renderOffsetX}px, ${renderOffsetY}px)`
                                 : 'none',
@@ -9541,7 +10042,12 @@ export default function VideoPlayer({
                                 ? 'default'
                                 : (draggingWord?.captionId === caption.id && draggingWord?.wordIndex === wordIndex ? 'grabbing' : 'default'),
                             }}
-                            onPointerDown={detached ? undefined : (e) => handleWordMouseDown(e, caption, wordIndex)}
+                            onPointerDown={detached ? undefined : (e) => handleCaptionWordPointerIntent(
+                              e,
+                              caption,
+                              wordIndex,
+                              word,
+                            )}
                             onClick={(e) => {
                               if (Date.now() - lastDragDropTime.current < 150) return;
                               if (setWordPopup) {
@@ -9601,9 +10107,7 @@ export default function VideoPlayer({
                                   WebkitTextFillColor: 'transparent',
                                   color: 'transparent',
                                 } : {}),
-                                animation: ws.animation && ws.animation !== 'none'
-                                  ? getWordAnimationStyle(ws.animation)
-                                  : 'none',
+                                ...resolvedWordMotionStyle,
                               }}
                             >
                               {word}
@@ -9791,7 +10295,7 @@ export default function VideoPlayer({
                       padding: `${textElementMetrics.textPadY}px ${textElementMetrics.textPadX}px`,
                       whiteSpace: 'pre-wrap',
                       wordBreak: 'break-all',
-                      animation: element.animation && element.animation !== 'none' ? getAnimationStyle(element.animation) : 'none',
+                      animation: element.animation && element.animation !== 'none' ? getAnimationStyle(element.animation, element.animationSpeed) : 'none',
                       ...textElementEffects,
                       ...(style.textGradient ? {
                         backgroundImage: style.textGradient,
@@ -9882,7 +10386,7 @@ export default function VideoPlayer({
                                 display: 'inline-flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                animation: animation && animation !== 'none' ? getAnimationStyle(animation) : 'none',
+                                animation: animation && animation !== 'none' ? getAnimationStyle(animation, wordStyle.animationSpeed) : 'none',
                               }}
                             >
                               {/* BACKGROUND LAYER - Fixed padding, independent of text size */}
@@ -10192,6 +10696,34 @@ export default function VideoPlayer({
           100% { transform: rotate(0) scale(1); opacity: 1; }
         }
         /* ── Advanced – Basic ── */
+        @keyframes zoom_in {
+          0% { transform: scale(0.65); opacity: 0; }
+          100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes zoom_out {
+          0% { transform: scale(1.35); opacity: 0; }
+          100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes fade_in {
+          0% { opacity: 0; }
+          100% { opacity: 1; }
+        }
+        @keyframes slide_up {
+          0% { transform: translateY(34px); opacity: 0; }
+          100% { transform: translateY(0); opacity: 1; }
+        }
+        @keyframes slide_down {
+          0% { transform: translateY(-34px); opacity: 0; }
+          100% { transform: translateY(0); opacity: 1; }
+        }
+        @keyframes slide_left {
+          0% { transform: translateX(44px); opacity: 0; }
+          100% { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes slide_right {
+          0% { transform: translateX(-44px); opacity: 0; }
+          100% { transform: translateX(0); opacity: 1; }
+        }
         @keyframes fadeInUp {
           0% { transform: translateY(22px); opacity: 0; }
           100% { transform: translateY(0); opacity: 1; }

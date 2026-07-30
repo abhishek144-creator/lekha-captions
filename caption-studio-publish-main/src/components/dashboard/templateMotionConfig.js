@@ -382,7 +382,7 @@ export const ORIGINAL_TEMPLATE_BLOCKS = Object.freeze({
     { type: 'wbw-seq-fade', label: 'WBW SEQ FADE' },
   ],
   t21: [
-    { type: 'styled', label: 'VERT REVEAL' },
+    { type: 'styled', label: 'EDITORIAL WORD REVEAL' },
     { type: 'wbw-seq-fade', label: 'WBW SEQ FADE' },
     { type: 'wbw-rise', label: 'WBW RISE' },
     { type: 'wbw-slide', label: 'WBW SLIDE' },

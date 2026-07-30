@@ -8,11 +8,15 @@
     "start": "next start"
   },
   "dependencies": {
-    "next": "latest",
-    "react": "latest",
-    "react-dom": "latest"
+    "next": "^16.2.12",
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
+  },
+  "comments": {
+    "overrides.sharp": "next 16.2.12 pins sharp ^0.34.5, which cannot reach the libvips fixes in 0.35.0 (GHSA-f88m-g3jw-g9cj). Drop this override once next widens its range."
   },
   "overrides": {
-    "postcss": "^8.5.10"
+    "postcss": "^8.5.10",
+    "sharp": "^0.35.3"
   }
 }

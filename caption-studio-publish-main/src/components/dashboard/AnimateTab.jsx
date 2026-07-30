@@ -189,7 +189,7 @@ export default function AnimateTab({ selectedCaption, captions, setCaptions, bas
                     <span className="text-[9px] bg-white/10 text-white border border-white/20 px-1.5 py-0.5 rounded-full font-semibold">Active</span>
                   )}
                 </div>
-                <span className="text-gray-600">44 animations</span>
+                <span className="text-gray-600">{allAdvancedValues.length} animations</span>
               </button>
 
               <AnimatePresence initial={false}>

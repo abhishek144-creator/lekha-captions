@@ -32,6 +32,15 @@ export default function FinalCtaKaraoke() {
       transition={{ duration: 0.82, ease: [0.22, 1, 0.36, 1] }}
       className="landing-section-cta relative px-5 pb-20 pt-14 sm:px-6 sm:pb-28 sm:pt-20 lg:px-8"
     >
+      <div aria-hidden="true" className="landing-section-shapes landing-section-shapes-cta">
+        <span className="landing-extra-shape landing-extra-ring" />
+        <span className="landing-extra-shape landing-extra-diamond" />
+        <span className="landing-extra-shape landing-extra-triangle" />
+      </div>
+      <div aria-hidden="true" className="landing-light-geometry landing-section-shapes">
+        <span className="landing-extra-shape landing-extra-dots bottom-[18%] left-[12%]" />
+        <span className="landing-extra-shape landing-extra-frame right-[15%] top-[13%]" />
+      </div>
       <div className="mx-auto max-w-6xl rounded-[1.3rem] bg-[repeating-linear-gradient(135deg,#6ee7ff_0_14px,transparent_14px_28px,#f5a623_28px_42px,transparent_42px_56px,#ff8fa3_56px_70px,transparent_70px_84px)] p-[9px]">
         <div className="landing-cta-panel overflow-hidden rounded-[1rem] border border-white/[0.09] bg-[#0b0908] shadow-[0_40px_120px_-70px_rgba(0,0,0,1)]">
           <div className="grid lg:grid-cols-[1fr_1fr]">
@@ -51,7 +60,7 @@ export default function FinalCtaKaraoke() {
                   className="max-w-md font-serif text-[2.7rem] leading-[1.04] tracking-[-0.05em] text-white sm:text-[3.25rem]"
                 >
                   <span className="block italic">Your video already</span>
-                  <span className="mt-1 block italic">has a voice.</span>
+                  <span className="landing-highlight landing-highlight-gold mt-1 block italic">has a voice.</span>
                 </motion.h2>
 
                 <p className="mt-7 max-w-sm text-base leading-7 text-white/68">
@@ -68,7 +77,7 @@ export default function FinalCtaKaraoke() {
             <div className="relative flex min-h-[20rem] flex-col justify-between bg-[linear-gradient(180deg,rgba(40,28,8,0.16),transparent_36%)] px-8 py-8 sm:px-12 sm:py-10">
               <div className="flex flex-1 items-center justify-center">
                 <div className="landing-cta-caption rounded-[0.55rem] border border-white/[0.14] bg-black/30 px-6 py-3 text-center text-xl font-semibold text-white shadow-[0_16px_40px_-30px_rgba(0,0,0,0.95)] sm:text-2xl">
-                  तुम्हारा वीडियो, हर भाषा में
+                  Your video, in every language.
                 </div>
               </div>
 
