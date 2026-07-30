@@ -79,10 +79,15 @@ assert.equal(
   'captions without transcription timing should use an even fallback',
 );
 
-const videoPlayerSource = await readFile(
+// VideoPlayer.jsx plus its extracted stylesheet module — read both so the
+// contracts below stay satisfied wherever the declaration actually lives.
+const videoPlayerSource = (await readFile(
   new URL('../src/components/dashboard/VideoPlayer.jsx', import.meta.url),
   'utf8',
-);
+)) + '\n' + (await readFile(
+  new URL('../src/components/dashboard/videoPlayerTemplateStyles.jsx', import.meta.url),
+  'utf8',
+));
 const exportPanelSource = await readFile(
   new URL('../src/components/dashboard/ExportPanel.jsx', import.meta.url),
   'utf8',
