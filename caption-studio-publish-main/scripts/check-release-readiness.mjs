@@ -251,7 +251,9 @@ assertIncludes("HTML references an existing social preview", htmlDocument, "/lan
 // selectors that VideoPlayer must keep emitting. A rename on either side does
 // not error — exports silently degrade to fallback positioning — so pin the
 // contract here.
+// VideoPlayer.jsx plus its extracted stylesheet module count as one renderer.
 const videoPlayerSource = readText("src/components/dashboard/VideoPlayer.jsx")
+  + "\n" + readText("src/components/dashboard/videoPlayerTemplateStyles.jsx")
 const exportPanelSource = readText("src/components/dashboard/ExportPanel.jsx")
 for (const marker of [
   'data-lekha-player="true"',
