@@ -401,11 +401,23 @@ function getRenderedElementCenterPercent(element, containerRect, containerToVide
 
 function indexWordElementsByKey(container) {
   const elementsByKey = new Map();
-  container?.querySelectorAll?.('[data-word-key]').forEach((element) => {
-    const key = element.getAttribute('data-word-key');
-    if (key !== null && !elementsByKey.has(key)) {
-      elementsByKey.set(key, element);
-    }
+  const seen = new Set();
+  const roots = [container];
+  const ownerDocument = container?.ownerDocument;
+  // Selected/detached words are painted through a body portal. Index the
+  // document as well as the canvas so export can measure the exact visible
+  // glyph instead of an older template placeholder with the same word key.
+  if (ownerDocument && ownerDocument !== container) roots.push(ownerDocument);
+  roots.forEach((root) => {
+    root?.querySelectorAll?.('[data-word-key]').forEach((element) => {
+      if (seen.has(element)) return;
+      seen.add(element);
+      const key = element.getAttribute('data-word-key');
+      if (key === null) return;
+      const candidates = elementsByKey.get(key) || [];
+      candidates.push(element);
+      elementsByKey.set(key, candidates);
+    });
   });
   return elementsByKey;
 }
@@ -414,7 +426,7 @@ function getRenderedWordRect(element) {
   if (!element || typeof element.getBoundingClientRect !== 'function') return null;
 
   const visualTargets = Array.from(element.querySelectorAll?.(
-    '[data-source-word-visual="true"], [data-word-drag-visual="true"], .kf-base, .kf-fill'
+    '[data-source-word-visual="true"], [data-word-drag-visual="true"], [data-selected-word-text="true"], .kf-base, .kf-fill'
   ) || []).filter((target) => {
     const style = window.getComputedStyle(target);
     const rect = target.getBoundingClientRect();
@@ -492,6 +504,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
   const [waitStartTime, setWaitStartTime] = useState(null);
   const [showServerBusy, setShowServerBusy] = useState(false);
   const [exportExpiry, setExportExpiry] = useState(null);
+  const [activeExportJobId, setActiveExportJobId] = useState('');
   // Keep the established portrait render default while removing the chooser from the export UI.
   const exportAspectRatio = '9:16';
   const exportInFlightRef = useRef(false);
@@ -571,6 +584,8 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
         return;
       } else if (status === 'failed') {
         throw new Error(statusPayload?.error || 'Export failed');
+      } else if (status === 'cancelled') {
+        throw new DOMException('Export cancelled', 'AbortError');
       }
       await abortableSleep(1200, signal);
     }
@@ -724,6 +739,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
     exportAbortRef.current = exportController;
     setProgress(10);
     setStatusMessage('Preparing export...');
+    setActiveExportJobId('');
     setWaitStartTime(Date.now());
     setShowServerBusy(false);
     trackAnalytics('funnel.export.started', getClientContext({
@@ -865,7 +881,15 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
           if (cap.words && cap.words.length > 0) {
             cap.words.forEach((_, wIdx) => {
               const key = `${capId}-${wIdx}`;
-              const el = wordElementsByKey.get(key);
+              const el = (wordElementsByKey.get(key) || []).find((candidate) => {
+                const style = window.getComputedStyle(candidate);
+                const rect = getRenderedWordRect(candidate);
+                return style.display !== 'none'
+                  && style.visibility !== 'hidden'
+                  && Number(style.opacity || 1) !== 0
+                  && rect?.width > 0
+                  && rect?.height > 0;
+              });
               if (el) {
                 const rect = getRenderedWordRect(el);
                 if (!rect) return;
@@ -933,62 +957,118 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
         || Math.abs(Number(v?.y) || 0) > 0.01
       );
 
-      const patchWordStyles = (ws) => {
-        if (!ws || Object.keys(ws).length === 0) return ws;
+      const captionHasCptWords = (caption) => Object.values(caption?.wordStyles || {}).some((wordStyle = {}) => (
+        hasRealAbsPosition(wordStyle)
+        || hasCptCanvasPosition(wordStyle)
+        || hasRelativeCptPosition(wordStyle)
+      ));
+      const getCanvasWordSnapshot = (key, expectedCanvasPosition = null) => {
+        const candidates = (wordElementsByKey.get(key) || []).map((wordEl) => {
+          const style = window.getComputedStyle(wordEl);
+          const wordRect = getRenderedWordRect(wordEl);
+          if (
+            !wordRect
+            || style.display === 'none'
+            || style.visibility === 'hidden'
+            || Number(style.opacity || 1) === 0
+            || wordRect.width <= 0
+            || wordRect.height <= 0
+          ) return null;
+          const centerXPct = (
+            (wordRect.left + wordRect.width / 2 - containerRect.left)
+            / containerRect.width
+          ) * 100;
+          const centerYPct = (
+            (wordRect.top + wordRect.height / 2 - containerRect.top)
+            / containerRect.height
+          ) * 100;
+          const distance = expectedCanvasPosition
+            ? Math.hypot(
+                centerXPct - Number(expectedCanvasPosition.x),
+                centerYPct - Number(expectedCanvasPosition.y),
+              )
+            : 0;
+          const typographyTarget = wordEl.querySelector?.(
+            '[data-source-word-visual="true"], [data-word-drag-visual="true"], [data-selected-word-text="true"], .kf-base, .kf-fill'
+          ) || wordEl;
+          const typography = window.getComputedStyle(typographyTarget);
+          const paintedFontSize = parseFloat(typography.fontSize || '');
+          const paintedFontFamily = String(typography.fontFamily || '')
+            .split(',')[0]
+            .replace(/["']/g, '')
+            .trim();
+          return {
+            centerXPct,
+            centerYPct,
+            distance,
+            paintedFontSize,
+            paintedFontFamily,
+            paintedFontWeight: typography.fontWeight || '',
+            paintedFontStyle: typography.fontStyle || '',
+          };
+        }).filter(Boolean).sort((left, right) => left.distance - right.distance);
+
+        const best = candidates[0];
+        // Duplicate template placeholders can remain mounted in their original
+        // sentence row. Only trust a painted candidate near the authored CPT
+        // point; otherwise retain the saved drag-release coordinate.
+        if (!best || (expectedCanvasPosition && best.distance > 8)) return null;
+        const vidPos = containerToVideo(best.centerXPct, best.centerYPct);
+        return {
+          abs_x_pct: vidPos.x,
+          abs_y_pct: vidPos.y,
+          ...(Number.isFinite(best.paintedFontSize) && best.paintedFontSize > 0
+            ? { cptPaintedFontSize: best.paintedFontSize }
+            : {}),
+          ...(best.paintedFontFamily ? { cptPaintedFontFamily: best.paintedFontFamily } : {}),
+          ...(best.paintedFontWeight ? { cptPaintedFontWeight: best.paintedFontWeight } : {}),
+          ...(best.paintedFontStyle ? { cptPaintedFontStyle: best.paintedFontStyle } : {}),
+        };
+      };
+
+      const patchWordStyles = (caption) => {
+        const ws = caption?.wordStyles || {};
         if (!container || !containerRect) return ws;
+        const isCptCaption = captionHasCptWords(caption);
+        const wordCount = String(caption?.text || '').trim().split(/\s+/).filter(Boolean).length;
+        const keys = new Set(Object.keys(ws));
+        if (isCptCaption) {
+          for (let index = 0; index < wordCount; index += 1) {
+            keys.add(`${caption.id}-${index}`);
+          }
+        }
         const patched = {};
-        for (const [k, v] of Object.entries(ws)) {
-          if (hasRealAbsPosition(v)) {
-            const wordEl = wordElementsByKey.get(k);
-            if (wordEl) {
-              const wordRect = getRenderedWordRect(wordEl);
-              if (!wordRect) {
-                patched[k] = v;
-                continue;
-              }
-              const centerX = wordRect.left + wordRect.width / 2 - containerRect.left;
-              const centerY = wordRect.top + wordRect.height / 2 - containerRect.top;
-              const vidPos = containerToVideo(
-                (centerX / containerRect.width) * 100,
-                (centerY / containerRect.height) * 100
-              );
-              patched[k] = {
-                ...v,
-                abs_x_pct: vidPos.x,
-                abs_y_pct: vidPos.y
-              };
-            } else if (hasRealAbsPosition(v)) {
-              const vidPos = containerToVideo(v.abs_x_pct, v.abs_y_pct);
-              patched[k] = { ...v, abs_x_pct: vidPos.x, abs_y_pct: vidPos.y };
-            }
+        for (const k of keys) {
+          const v = ws[k] || {};
+          if (hasCptCanvasPosition(v)) {
+            // The drop point identifies the authored CPT and lets us reject
+            // duplicate template placeholders. When the matching painted word
+            // is mounted, its final box is the WYSIWYG source of truth because
+            // font loading, fullscreen and responsive layout can settle after
+            // pointer-up. Fall back to the saved point when it is not mounted.
+            const paintedSnapshot = getCanvasWordSnapshot(k, {
+              x: v.cptCanvasXPercent,
+              y: v.cptCanvasYPercent,
+            });
+            const vidPos = paintedSnapshot || containerToVideo(
+              v.cptCanvasXPercent,
+              v.cptCanvasYPercent,
+            );
+            patched[k] = {
+              ...v,
+              ...(paintedSnapshot || {}),
+              abs_x_pct: paintedSnapshot?.abs_x_pct ?? vidPos.x,
+              abs_y_pct: paintedSnapshot?.abs_y_pct ?? vidPos.y,
+            };
+          } else if (hasRealAbsPosition(v)) {
+            const vidPos = containerToVideo(v.abs_x_pct, v.abs_y_pct);
+            patched[k] = { ...v, abs_x_pct: vidPos.x, abs_y_pct: vidPos.y };
+          } else if (isCptCaption) {
+            // A CPT is one composed canvas state. Pin every word to its measured
+            // centre so the export browser cannot reflow the
+            // undisplaced words around the word that the user dragged.
+            patched[k] = { ...v, ...(getCanvasWordSnapshot(k) || {}) };
           } else if (hasRelativeCptPosition(v)) {
-            if (hasCptCanvasPosition(v)) {
-              const vidPos = containerToVideo(v.cptCanvasXPercent, v.cptCanvasYPercent);
-              patched[k] = {
-                ...v,
-                abs_x_pct: vidPos.x,
-                abs_y_pct: vidPos.y,
-              };
-              continue;
-            }
-            const wordEl = wordElementsByKey.get(k);
-            if (wordEl) {
-              const wordRect = getRenderedWordRect(wordEl);
-              if (wordRect) {
-                const centerX = wordRect.left + wordRect.width / 2 - containerRect.left;
-                const centerY = wordRect.top + wordRect.height / 2 - containerRect.top;
-                const vidPos = containerToVideo(
-                  (centerX / containerRect.width) * 100,
-                  (centerY / containerRect.height) * 100,
-                );
-                patched[k] = {
-                  ...v,
-                  abs_x_pct: vidPos.x,
-                  abs_y_pct: vidPos.y,
-                };
-                continue;
-              }
-            }
             // Legacy saved CPTs have only a template-relative offset. Keep it
             // as the fallback when that caption is not mounted at export time.
             patched[k] = v;
@@ -1017,6 +1097,10 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
         'textScaleX',
         'cptCanvasXPercent',
         'cptCanvasYPercent',
+        'cptPaintedFontSize',
+        'cptPaintedFontFamily',
+        'cptPaintedFontWeight',
+        'cptPaintedFontStyle',
       ];
       const pickWordGeometryStyles = (patchedWs) => {
         const out = {};
@@ -1178,8 +1262,8 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
               return buildTextElementExportStyle(cs, teVidPos);
             })() : null,
             word_styles: (!isText && capUsesRecreatedAdvancedTemplate)
-              ? pickWordGeometryStyles(patchWordStyles(cap.wordStyles || {}))
-              : patchWordStyles(cap.wordStyles || {}),
+              ? pickWordGeometryStyles(patchWordStyles(cap))
+              : patchWordStyles(cap),
             words: cap.words || []
           };
         }),
@@ -1338,6 +1422,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       let resolvedResult = result;
       if (result.export_job_id) {
         activeExportJobId = result.export_job_id;
+        setActiveExportJobId(result.export_job_id);
         await pollExportStatus(result.export_job_id, authHeaders, 10 * 60 * 1000, exportController.signal);
         if (!result.video_url) {
           resolvedResult = await apiRequest(`/api/export-result/${result.export_job_id}`, {
@@ -1429,6 +1514,29 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       setStatusMessage('');
       setWaitStartTime(null);
       setShowServerBusy(false);
+      setActiveExportJobId('');
+    }
+  };
+
+  const handleCancelExport = async () => {
+    if (!activeExportJobId) return;
+    try {
+      const idToken = await getEffectiveAuthToken(currentUser);
+      await apiRequest(`/api/export-cancel/${activeExportJobId}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      exportAbortRef.current?.abort();
+      toast({
+        title: 'Export cancelled',
+        description: 'The queued render was removed. No credit was charged.',
+      });
+    } catch (error) {
+      toast({
+        variant: error?.status === 409 ? 'default' : 'destructive',
+        title: error?.status === 409 ? 'Render already started' : 'Could not cancel export',
+        description: getApiErrorMessage(error),
+      });
     }
   };
 
@@ -1537,6 +1645,16 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
                   <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
                 </div>
               </div>
+              {activeExportJobId && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="mt-4"
+                  onClick={handleCancelExport}
+                >
+                  Cancel queued export
+                </Button>
+              )}
             </div>
 
             <style>{`

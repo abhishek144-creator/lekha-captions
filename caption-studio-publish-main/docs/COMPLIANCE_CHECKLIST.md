@@ -28,7 +28,7 @@ Use this checklist for enterprise and privacy readiness.
 - [x] Breach notification template fields documented
 - [x] Evidence log requirements documented
 - [ ] Populate monitored production contact addresses and executive approvers
-- [ ] Quarterly backup/restore drill evidence
+- [x] Quarterly backup/restore drill evidence (`STAGING_DRILL_EVIDENCE_2026-08-04.md`)
 
 Launch cannot be signed off while any unchecked item above remains. Verify the
 public support address by sending and answering a test message, and attach real

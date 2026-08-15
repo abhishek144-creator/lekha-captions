@@ -61,6 +61,11 @@ import {
   getAppliedBasicCurrentWordIndex,
 } from './basicTemplateInline.js';
 import { resolveCptWordSnap } from './cptSmartGuides.js';
+import {
+  advanceCaptionWordRevealIndex,
+  getCaptionWordRevealIndex,
+  getCaptionWordRevealTimes,
+} from './cptMotion.js';
 
 const ADVANCED_TEMPLATE_VARIANTS = {
   t01: 'wbw-rise', t02: 'plain-s', t03: 'wbw-rise', t04: 'plain-s', t05: 'wbw-rise',
@@ -112,6 +117,9 @@ function captionHasCreativelyPositionedWords(caption) {
 
 function getCaptionRevealWordIndex(caption, currentTime, wordCount, templateId = '') {
   const safeWordCount = Math.max(1, Number(wordCount) || 1)
+  if (captionHasCreativelyPositionedWords(caption)) {
+    return getCaptionWordRevealIndex(caption, currentTime, safeWordCount)
+  }
   if (isSourceBasicTemplateId(templateId)) {
     return getAppliedBasicCurrentWordIndex(caption, currentTime, safeWordCount)
   }
@@ -1107,6 +1115,7 @@ function AppliedBasicTemplateMarkup({
   const hasTextGradient = Boolean(hostStyle?.['--template-text-gradient'] && hostStyle['--template-text-gradient'] !== 'none');
   const hasHighlightGradient = Boolean(hostStyle?.['--template-highlight-gradient'] && hostStyle['--template-highlight-gradient'] !== 'none');
   const wordStylesSignature = JSON.stringify(caption?.wordStyles || {});
+  const hasCptWords = captionHasCreativelyPositionedWords(caption);
 
   const applyCurrentIndex = useCallback((nextIndex) => {
     const normalizedIndex = Math.max(0, Math.min(Math.max(1, wordCount) - 1, Number(nextIndex) || 0));
@@ -1121,6 +1130,10 @@ function AppliedBasicTemplateMarkup({
   }, [applyCurrentIndex, currentIndex, html]);
 
   useEffect(() => {
+    if (hasCptWords) {
+      applyCurrentIndex(currentIndex);
+      return undefined;
+    }
     if (!isPlaying) {
       applyCurrentIndex(getAppliedBasicCurrentWordIndex(caption, currentTime, wordCount));
       return undefined;
@@ -1138,7 +1151,7 @@ function AppliedBasicTemplateMarkup({
     return () => {
       if (rafId) window.cancelAnimationFrame(rafId);
     };
-  }, [applyCurrentIndex, caption, currentTime, isPlaying, videoRef, wordCount]);
+  }, [applyCurrentIndex, caption, currentIndex, currentTime, hasCptWords, isPlaying, videoRef, wordCount]);
 
   useLayoutEffect(() => {
     const cleanup = wireSourceTemplateWordEditing(hostRef.current, {
@@ -3881,12 +3894,16 @@ function applySourceTemplateWordStyle(
   wordStyle = {},
   renderScale = 1,
   emphasisColor = '',
-  cptReveal = false,
+  isCptCaption = false,
 ) {
   if (!node) return;
   const visualTargets = prepareSourceTemplateWordNode(node);
   const hasStyle = wordStyle && Object.keys(wordStyle).length > 0;
-  if (!hasStyle && !cptReveal && node.dataset.sourceWordStyled !== 'true') {
+  const hasSelectedWordAnimation = Boolean(
+    wordStyle?.animation && wordStyle.animation !== 'none',
+  );
+  const shouldFreezeCptMotion = isCptCaption && !hasSelectedWordAnimation;
+  if (!hasStyle && !isCptCaption && node.dataset.sourceWordStyled !== 'true') {
     delete node.dataset.sourceWordStyled;
     delete node.dataset.sourceWordPositioned;
     delete node.dataset.sourceWordGradient;
@@ -3901,7 +3918,7 @@ function applySourceTemplateWordStyle(
   // restart it, replaying the fly-in so the word visibly "bounces" back to its
   // start. Only touch `animation` when the requested value actually changed
   // since the last apply for this word.
-  const animValue = (!cptReveal && wordStyle && wordStyle.animation && wordStyle.animation !== 'none')
+  const animValue = (!shouldFreezeCptMotion && hasSelectedWordAnimation)
     ? getSourceWordAnimationStyle(wordStyle.animation, wordStyle.animationSpeed || 1)
     : '';
   const animChanged = animValue !== (node.dataset.sourceWordAnim || '');
@@ -3917,7 +3934,7 @@ function applySourceTemplateWordStyle(
     prepareSourceTemplateWordNode(node);
   }
 
-  if (!hasStyle && !cptReveal) {
+  if (!hasStyle && !isCptCaption) {
     delete node.dataset.sourceWordStyled;
     delete node.dataset.sourceWordGradient;
     delete node.dataset.sourceWordAnim;
@@ -4000,9 +4017,10 @@ function applySourceTemplateWordStyle(
       setSourceTemplateStyle(target, '-webkit-text-fill-color', wordStyle.color);
     }
 
-    if (cptReveal) {
-      // A displaced-word caption still follows transcription timing, but its
-      // revealed words must appear directly in their final canvas state.
+    if (shouldFreezeCptMotion) {
+      // A displaced-word caption appears directly in its final canvas state.
+      // Positioning must not introduce a second entrance animation unless the
+      // user explicitly chose one in the floating word editor.
       setSourceTemplateStyle(target, 'animation', 'none');
       setSourceTemplateStyle(target, 'animation-delay', '0s');
       setSourceTemplateStyle(target, 'animation-play-state', 'paused');
@@ -4035,6 +4053,7 @@ function wireSourceTemplateWordEditing(
     onSourceWordClick,
     onSourceWordPointerDown,
     currentTime = 0,
+    isPlaying = false,
   } = {},
 ) {
   if (!host || !caption) return undefined;
@@ -4047,6 +4066,7 @@ function wireSourceTemplateWordEditing(
     });
     getEditableSourceTemplateWords(host).forEach(({ node, index }) => {
       const styleKey = `${caption.id}-${index}`;
+      const hasCptWords = captionHasCreativelyPositionedWords(caption);
       const wordCount = Math.max(
         1,
         String(caption.text || '').trim().split(/\s+/).filter(Boolean).length,
@@ -4057,7 +4077,6 @@ function wireSourceTemplateWordEditing(
         wordCount,
         getCaptionTemplateId(caption),
       );
-      const hasCptWords = captionHasCreativelyPositionedWords(caption);
       node.dataset.wordKey = styleKey;
       node.dataset.sourceWordIndex = String(index);
       node.style.setProperty('pointer-events', 'auto', 'important');
@@ -4070,7 +4089,7 @@ function wireSourceTemplateWordEditing(
         emphasisColor,
         hasCptWords,
       );
-      if (hasCptWords && index > currentIdx) {
+      if (hasCptWords && isPlaying && index > currentIdx) {
         node.style.setProperty('opacity', '0', 'important');
       } else if (hasCptWords) {
         node.style.setProperty('opacity', '1', 'important');
@@ -4495,6 +4514,66 @@ export default function VideoPlayer({
   captionsRef.current = captions;
   const isPlayingRef = useRef(isPlaying);
   isPlayingRef.current = isPlaying;
+  const [cptRevealIndexes, setCptRevealIndexes] = useState({});
+  const cptRevealRafRef = useRef(null);
+  const cptRevealTimeRef = useRef(Number(currentTime) || 0);
+
+  // CPT authoring is a fully visible editing state. Once playback starts, use
+  // the video clock to advance cumulative visibility by at most one word per
+  // painted frame, without running any entrance animation.
+  useEffect(() => {
+    if (!isPlaying) {
+      if (cptRevealRafRef.current) {
+        cancelAnimationFrame(cptRevealRafRef.current);
+        cptRevealRafRef.current = null;
+      }
+      cptRevealTimeRef.current = Number(currentTime) || 0;
+      setCptRevealIndexes({});
+      return undefined;
+    }
+
+    const tickCptReveal = () => {
+      const playbackTime = Number(videoRef.current?.currentTime);
+      const effectiveTime = Number.isFinite(playbackTime)
+        ? playbackTime
+        : (Number(currentTime) || 0);
+      const movedBackward = effectiveTime + 0.02 < cptRevealTimeRef.current;
+      cptRevealTimeRef.current = effectiveTime;
+
+      setCptRevealIndexes((previousIndexes) => {
+        let changed = false;
+        const nextIndexes = {};
+
+        (captionsRef.current || []).forEach((caption) => {
+          if (!caption || caption.isTextElement || !captionHasCreativelyPositionedWords(caption)) return;
+          const wordCount = Math.max(
+            1,
+            String(caption.text || '').trim().split(/\s+/).filter(Boolean).length,
+          );
+          const targetIndex = getCaptionWordRevealIndex(caption, effectiveTime, wordCount);
+          const previousIndex = previousIndexes[caption.id];
+          const nextIndex = movedBackward
+            ? targetIndex
+            : advanceCaptionWordRevealIndex(previousIndex, targetIndex);
+          nextIndexes[caption.id] = nextIndex;
+          if (nextIndex !== previousIndex) changed = true;
+        });
+
+        if (Object.keys(previousIndexes).length !== Object.keys(nextIndexes).length) changed = true;
+        return changed ? nextIndexes : previousIndexes;
+      });
+
+      cptRevealRafRef.current = requestAnimationFrame(tickCptReveal);
+    };
+
+    cptRevealRafRef.current = requestAnimationFrame(tickCptReveal);
+    return () => {
+      if (cptRevealRafRef.current) {
+        cancelAnimationFrame(cptRevealRafRef.current);
+        cptRevealRafRef.current = null;
+      }
+    };
+  }, [currentTime, isPlaying]);
 
   useEffect(() => {
     function buildSyncMsg(t) {
@@ -4846,19 +4925,28 @@ export default function VideoPlayer({
     return animations[animationType] || 'none';
   };
 
-  const getCptWordMotionStyle = (caption) => (
-    captionHasCreativelyPositionedWords(caption)
-      ? {
-          animation: 'none',
-          animationDelay: '0s',
-          animationPlayState: 'paused',
-          transition: 'none',
-          transform: 'none',
-          clipPath: 'none',
-          filter: 'none',
-        }
-      : null
-  );
+  const getCptWordMotionStyle = (caption, wordStyle = {}) => {
+    if (!captionHasCreativelyPositionedWords(caption)) return null
+
+    // CPT words need a stable base so their manually authored placement is not
+    // disturbed by template motion. A motion chosen in the floating word editor
+    // is intentional, though, and must be allowed to animate on its inner visual
+    // span instead of being overwritten by this CPT safeguard.
+    const hasSelectedWordAnimation = Boolean(
+      wordStyle?.animation && wordStyle.animation !== 'none',
+    )
+    if (hasSelectedWordAnimation) return null
+
+    return {
+      animation: 'none',
+      animationDelay: '0s',
+      animationPlayState: 'paused',
+      transition: 'none',
+      transform: 'none',
+      clipPath: 'none',
+      filter: 'none',
+    }
+  }
 
   const renderWordTextContent = (word, wordStyle = {}, fallbackColor = 'inherit') => {
     const decoration = wordStyle.textDecoration || 'none';
@@ -5085,6 +5173,12 @@ export default function VideoPlayer({
     || (wordPopup?.caption?.id === caption.id)
   );
 
+  const isCaptionCptAdjustmentActive = (caption) => (
+    (draggingWord && draggingWord.captionId === caption.id)
+    || (resizingWord && resizingWord.captionId === caption.id)
+    || (wordPopup?.caption?.id === caption.id)
+  );
+
   // Word-by-word reveal is an explicit display-mode choice (StyleControls sets
   // show_inactive=false for it) — never a side effect of dragging a word.
   // Deriving it from captionHasDetachedWords() meant one drag silently switched
@@ -5096,24 +5190,17 @@ export default function VideoPlayer({
     && captionStyle?.show_inactive === false
   );
 
-  // Displacing a word authors a CPT (creatively placed text), and a CPT is meant
-  // to build up word by word until the sentence is complete — a drag alone is
-  // enough to opt in, no display-mode change required.
+  // A displaced word authors a CPT. Editing stays fully visible; playback and
+  // export build the sentence cumulatively, one word at a time, with no motion.
   const captionHasCptWords = captionHasCreativelyPositionedWords;
 
-  // Pending CPT words stay MOUNTED and hit-testable and are hidden with opacity.
-  // Unmounting them (what shouldRevealSequentially does for the explicit
-  // word-by-word display mode) is exactly what stopped the floating word editor
-  // from reopening on a dragged word, so never reuse that path here. Visibility
-  // follows the playhead even while paused so scrubbing previews the same
-  // cumulative sentence state that export renders.
   const isCptWordPending = (caption, wordIndex, currentIdx) => (
-    !shouldRevealSequentially(caption)
-    && !isCaptionWordEditingActive(caption)
+    isPlaying
+    && !shouldRevealSequentially(caption)
+    && !isCaptionCptAdjustmentActive(caption)
     && captionHasCptWords(caption)
     && wordIndex > currentIdx
   );
-
   const isAdvancedTemplateCaptionEditingActive = (caption) => {
     const templateId = getCaptionTemplateId(caption, captionStyle);
     if (!isAdvancedTemplateId(templateId)) return false;
@@ -5129,7 +5216,31 @@ export default function VideoPlayer({
 
   const getCaptionCurrentWordIndex = (caption, wordCount) => {
     const activeTemplateId = caption?.template_id || caption?.applied_template_style?.template_id || captionStyle?.template_id;
+    if (
+      isPlaying
+      && captionHasCptWords(caption)
+      && Object.prototype.hasOwnProperty.call(cptRevealIndexes, caption.id)
+    ) {
+      return Math.max(0, Math.min(Math.max(1, wordCount) - 1, cptRevealIndexes[caption.id]));
+    }
     return getCaptionRevealWordIndex(caption, currentTime, wordCount, activeTemplateId);
+  };
+
+  const getCaptionCptRenderTime = (caption) => {
+    if (
+      !isPlaying
+      || !captionHasCptWords(caption)
+      || !Object.prototype.hasOwnProperty.call(cptRevealIndexes, caption.id)
+    ) {
+      return currentTime;
+    }
+    const wordCount = Math.max(
+      1,
+      String(caption.text || '').trim().split(/\s+/).filter(Boolean).length,
+    );
+    const revealTimes = getCaptionWordRevealTimes(caption, wordCount);
+    const revealIndex = Math.max(0, Math.min(wordCount - 1, cptRevealIndexes[caption.id]));
+    return (revealTimes[revealIndex] ?? currentTime) + 0.00001;
   };
 
   const renderEditableAdvancedTemplateCaption = (caption, blockIndex = 0) => {
@@ -5391,7 +5502,7 @@ export default function VideoPlayer({
             effectiveStyle={effectiveStyle}
             resolvedFont={resolvedFont}
             fontSize={fontSize}
-            currentTime={currentTime}
+            currentTime={getCaptionCptRenderTime(caption)}
             isPlaying={isPlaying}
             videoRef={videoRef}
             startTime={caption?.start_time || 0}
@@ -5477,7 +5588,7 @@ export default function VideoPlayer({
                             data-sidebar-word-state={isCurrent ? 'current' : isPast ? 'past' : 'future'}
                             style={{
                               '--sidebar-source-word-delay': `${Math.min(wordIndex, 8) * 70}ms`,
-                              opacity: 1,
+                              opacity: isCptWordPending(caption, wordIndex, currentIdx) ? 0 : 1,
                               animation: 'none',
                               color: ws.color || (isCurrent ? accentColor : primaryColor),
                               fontFamily: ws.fontFamily || 'inherit',
@@ -5570,7 +5681,7 @@ export default function VideoPlayer({
         html={templateHtml}
         currentIndex={currentIdx}
         wordCount={words.length}
-        currentTime={currentTime}
+        currentTime={getCaptionCptRenderTime(caption)}
         isPlaying={isPlaying}
         videoRef={videoRef}
         hostStyle={{
@@ -6190,6 +6301,21 @@ export default function VideoPlayer({
     e.preventDefault();
     e.stopPropagation();
     e.currentTarget.setPointerCapture?.(e.pointerId);
+
+    // A word drag enters editing mode. Stop playback so the canvas stays stable
+    // while the word is positioned and the committed CPT can be inspected.
+    const editingRoot = videoContainerRef.current;
+    if (editingRoot) {
+      const captionWordPrefix = `${caption.id}-`;
+      editingRoot.querySelectorAll('[data-word-key]').forEach((node) => {
+        if (!String(node.getAttribute('data-word-key') || '').startsWith(captionWordPrefix)) return;
+        node.style.setProperty('opacity', '1', 'important');
+      });
+    }
+    if (isPlayingRef.current) {
+      videoRef.current?.pause();
+      setIsPlaying(false);
+    }
 
     const customStyle = caption?.wordStyles?.[`${caption?.id}-${wordIndex}`] || {};
     const renderedOffset = getWordRenderOffset(customStyle);
@@ -6889,6 +7015,19 @@ export default function VideoPlayer({
         : 50;
       const shouldShowCptGuides = Boolean(cptGuideFrameRect && (isAdjustingSelectedWord || showLayoutGuides || activeCanvasTool === 'guides'));
       const shouldShowSelectedCrosshair = !(isDraggingSelectedWord || resizingWord);
+      const selectedCaptionWordCount = String(selectedDetachedWord.caption.text || '')
+        .split(/\s+/)
+        .filter(Boolean)
+        .length;
+      const selectedCaptionCurrentIndex = getCaptionCurrentWordIndex(
+        selectedDetachedWord.caption,
+        selectedCaptionWordCount,
+      );
+      const selectedWordIsPending = isCptWordPending(
+        selectedDetachedWord.caption,
+        selectedDetachedWord.wordIndex,
+        selectedCaptionCurrentIndex,
+      );
       const selectedEmphasisStyle = selectedWordStyle.isEmphasis ? {
         fontWeight: 'bold',
         color: selectedWordStyle.color || selectedEmphasisAccent,
@@ -6917,8 +7056,8 @@ export default function VideoPlayer({
           <div className="absolute top-0 bottom-0 border-l border-dashed border-white/45" style={{ left: '94%' }} />
           {shouldShowSelectedCrosshair && (
             <>
-          <div className="absolute w-20 -translate-x-1/2 border-t border-dashed border-[#ff2f9f] shadow-[0_0_6px_rgba(255,47,159,0.45)]" style={{ left: `${selectedCenterXPct}%`, top: `${selectedCenterYPct}%` }} />
-          <div className="absolute h-20 -translate-y-1/2 border-l border-dashed border-[#ff2f9f] shadow-[0_0_6px_rgba(255,47,159,0.45)]" style={{ left: `${selectedCenterXPct}%`, top: `${selectedCenterYPct}%` }} />
+              <div className="absolute w-20 -translate-x-1/2 border-t border-dashed border-[#ff2f9f] shadow-[0_0_6px_rgba(255,47,159,0.45)]" style={{ left: `${selectedCenterXPct}%`, top: `${selectedCenterYPct}%` }} />
+              <div className="absolute h-20 -translate-y-1/2 border-l border-dashed border-[#ff2f9f] shadow-[0_0_6px_rgba(255,47,159,0.45)]" style={{ left: `${selectedCenterXPct}%`, top: `${selectedCenterYPct}%` }} />
             </>
           )}
         </div>,
@@ -6952,7 +7091,7 @@ export default function VideoPlayer({
           width: selectedWordBoxWidth
             ? `${selectedWordBoxWidth * previewRenderScale * selectedDetachedWordViewport.scale}px`
             : 'auto',
-          ...(selectedWordStyle.backgroundColor || selectedWordStyle.highlightGradient ? {
+          ...(!selectedWordIsPending && (selectedWordStyle.backgroundColor || selectedWordStyle.highlightGradient) ? {
             background: selectedWordStyle.highlightGradient || `rgba(${parseInt(selectedWordStyle.backgroundColor.slice(1,3),16)}, ${parseInt(selectedWordStyle.backgroundColor.slice(3,5),16)}, ${parseInt(selectedWordStyle.backgroundColor.slice(5,7),16)}, ${selectedWordStyle.backgroundOpacity ?? 0.6})`,
             borderRadius: '3px',
             padding: `${(selectedWordStyle.backgroundPadding || 2) * previewRenderScale * selectedDetachedWordViewport.scale}px ${4 * previewRenderScale * selectedDetachedWordViewport.scale}px`,
@@ -7005,6 +7144,7 @@ export default function VideoPlayer({
             overflowWrap: selectedWordBoxWidth ? 'anywhere' : 'normal',
             wordBreak: selectedWordBoxWidth ? 'break-all' : 'normal',
             textAlign: 'center',
+            opacity: selectedWordIsPending ? 0 : 1,
           }}
         >
           {renderWordTextContent(selectedDetachedWord.word, selectedWordStyle, captionStyle?.text_color || '#ffffff')}
@@ -7180,7 +7320,7 @@ export default function VideoPlayer({
             }
             clearActiveSelection();
           }}
-        >
+          >
           {showCornerGuides && (
             <div className="pointer-events-none absolute -inset-[14px] z-[65]">
               <span className="absolute left-0 top-0 h-[18px] w-[18px] border-l border-t border-white/75" />
@@ -7685,7 +7825,7 @@ export default function VideoPlayer({
                               karaokeColor3={effectiveTemplateStyle?.karaoke_color_3 || '#FB923C'}
                               backgroundColor={effectiveTemplateStyle?.background_color || 'transparent'}
                               colorsCustomized={templateColorsCustomized}
-                              currentTime={currentTime}
+                              currentTime={getCaptionCptRenderTime(caption)}
                               isPlaying={isPlaying}
                               startTime={caption.start_time || caption.start || 0}
                               endTime={caption.end_time || caption.end || caption.start_time || 0}
@@ -7740,6 +7880,7 @@ export default function VideoPlayer({
                                       style={{
                                         '--basic-word-index': wordIndex,
                                         '--basic-word-delay': `${Math.min(wordIndex, 10) * 80}ms`,
+                                        opacity: isCptWordPending(caption, wordIndex, currentIdx) ? 0 : undefined,
                                         cursor: 'pointer',
                                         animation: cptMotionStyle ? 'none' : undefined,
                                         transition: cptMotionStyle ? 'none' : undefined,
@@ -7831,6 +7972,7 @@ export default function VideoPlayer({
                                   ? 'default'
                                   : (draggingWord?.captionId === caption.id && draggingWord?.wordIndex === wordIndex ? 'grabbing' : 'pointer'),
                                 display: 'inline-block',
+                                opacity: isCptWordPending(caption, wordIndex, currentIdx) ? 0 : undefined,
                                 marginRight: wordIndex < words.length - 1 ? `${(captionStyle?.word_spacing ?? 1) * 2}px` : '0',
                                 maxWidth: '100%',
                                 whiteSpace: String(word || '').includes('\n') ? 'pre-wrap' : (shouldWrapCaption ? 'normal' : 'nowrap'),
@@ -8034,9 +8176,7 @@ export default function VideoPlayer({
                               lineHeight: 'inherit',
                               verticalAlign: 'baseline',
                               marginRight: wordIndex < arr.length - 1 ? `${Math.round(layoutFontSize * 0.18 + (captionStyle?.word_spacing ?? 1) * 2)}px` : '0',
-                              opacity: isCptWordPending(caption, wordIndex, getCaptionCurrentWordIndex(caption, arr.length))
-                                ? 0
-                                : undefined,
+                              opacity: isCptWordPending(caption, wordIndex, sidebarCurrentIdx) ? 0 : undefined,
                               animation: cptMotionStyle ? 'none' : undefined,
                               transition: cptMotionStyle ? 'none' : undefined,
                               transform: !detached && isPositioned

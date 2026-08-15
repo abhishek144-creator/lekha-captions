@@ -29,7 +29,7 @@ export const APPLIED_TEMPLATE_HOST_OVERRIDES = `
   }
   .lekha-applied-template-host[data-applied-template-source="lekha-lc"] {
     width: var(--applied-template-width, 280px);
-    max-width: min(92vw, 320px);
+    max-width: var(--applied-template-width, 280px);
   }
   .lekha-applied-template-host[data-applied-template-source="lekha-lc"] [data-lc-anim],
   .lekha-applied-template-host[data-applied-template-source="lekha-lc"] .plainwrap,
@@ -98,7 +98,7 @@ export const APPLIED_TEMPLATE_HOST_OVERRIDES = `
   .lekha-applied-template-host[data-applied-template-source="lekha-lc"] .lc-card .stage {
     position: relative !important;
     width: 100% !important;
-    height: min(58vh, calc(var(--applied-template-width, 280px) * 1.28)) !important;
+    height: calc(var(--applied-template-width, 280px) * 1.28) !important;
     min-height: 220px !important;
     aspect-ratio: auto !important;
     container-type: inline-size !important;

@@ -843,7 +843,7 @@ const CASES = [
     text: 'Every Word Must Stay Visible',
     phaseIndex: 0,
     impWordIndex: 2,
-    requiredColors: [],
+    requiredColors: ['gold', 'white'],
     minBboxHeight: 14,
     motionCritical: true,
     style: {
@@ -863,11 +863,12 @@ const CASES = [
     text: 'हर शब्द अपनी जगह साफ दिखना चाहिए',
     phaseIndex: 0,
     impWordIndex: 2,
-    requiredColors: [],
+    requiredColors: ['gold', 'white'],
     minBboxHeight: 14,
     previewWidth: 240,
     positionAudit: true,
     cptRevealAudit: true,
+    expectedFontFamily: 'Poppins',
     wordStyles: {
       1: {
         x: 48,
@@ -881,6 +882,18 @@ const CASES = [
         x_pct: -30,
         y_pct: -24,
       },
+      // T166 maps the final caption token onto its authored hero slot. Its
+      // visual box has different metrics from the source anchor, so keep this
+      // absolute case as a regression for the Hindi word that shifted in the
+      // real exported video.
+      5: {
+        abs_x_pct: 51.79,
+        abs_y_pct: 45.76,
+        x: 0,
+        y: 0,
+        x_pct: 0,
+        y_pct: 0,
+      },
     },
     expectedWordTranslations: {
       1: '36px -288px',
@@ -888,8 +901,40 @@ const CASES = [
     },
     style: {
       template_name: 'LC CPT Dragged Words',
-      font_family: 'Archivo',
+      font_family: 'Poppins',
       font_size: 24,
+      font_weight: '800',
+      text_color: '#FFFFFF',
+      secondary_color: '#DDAA03',
+    },
+  },
+  {
+    id: 'left-lc-cpt-absolute-canvas-composition',
+    sidebar: true,
+    template20Id: 'T166',
+    templateSource: 'lekha-lc',
+    text: 'एक कलबाउटन है और यहाँ पे.',
+    phaseIndex: 0,
+    impWordIndex: 1,
+    requiredColors: ['gold', 'white'],
+    minBboxHeight: 80,
+    previewWidth: 284,
+    positionAudit: true,
+    absoluteCompositionAudit: true,
+    cptRevealAudit: true,
+    expectedFontFamily: 'Poppins',
+    wordStyles: {
+      0: { abs_x_pct: 30.94, abs_y_pct: 33.70, frozenFontSize: 17 },
+      1: { abs_x_pct: 38.22, abs_y_pct: 37.86, frozenFontSize: 17 },
+      2: { abs_x_pct: 53.13, abs_y_pct: 37.83, frozenFontSize: 17 },
+      3: { abs_x_pct: 30.80, abs_y_pct: 42.68, frozenFontSize: 17 },
+      4: { abs_x_pct: 41.88, abs_y_pct: 42.68, frozenFontSize: 17 },
+      5: { abs_x_pct: 51.79, abs_y_pct: 45.76, frozenFontSize: 17 },
+    },
+    style: {
+      template_name: 'LC Absolute Canvas CPT',
+      font_family: 'Poppins',
+      font_size: 17,
       font_weight: '800',
       text_color: '#FFFFFF',
       secondary_color: '#DDAA03',
@@ -1951,11 +1996,50 @@ try {
         fail(`${testCase.id} did not produce dragged-word position audit data`);
       }
       for (const frameAudit of positionAudits) {
+        for (const [wordIndex, wordStyle] of Object.entries(
+          testCase.absoluteCompositionAudit ? (testCase.wordStyles || {}) : {},
+        )) {
+          if (!Number.isFinite(Number(wordStyle?.abs_x_pct)) || !Number.isFinite(Number(wordStyle?.abs_y_pct))) {
+            continue;
+          }
+          const key = `${testCase.id}-caption-${wordIndex}`;
+          const wordAudit = (frameAudit.words || []).find((word) => word.key === key);
+          if (!wordAudit?.found || !wordAudit.visible) {
+            fail(`${testCase.id} lost absolute CPT word ${key} at t=${frameAudit.time}: ${JSON.stringify(wordAudit)}`);
+          }
+          if (
+            testCase.expectedFontFamily
+            && !String(wordAudit.target_font_family || '').includes(testCase.expectedFontFamily)
+          ) {
+            fail(
+              `${testCase.id} changed the canvas font ${testCase.expectedFontFamily} to `
+              + `${wordAudit.target_font_family || 'unknown'}, altering glyph width and word spacing`,
+            );
+          }
+          if (
+            Math.abs(Number(wordAudit.actual_x_pct) - Number(wordStyle.abs_x_pct)) > 0.6
+            || Math.abs(Number(wordAudit.actual_y_pct) - Number(wordStyle.abs_y_pct)) > 0.6
+          ) {
+            fail(
+              `${testCase.id} moved ${key} to ${wordAudit.actual_x_pct}/${wordAudit.actual_y_pct} `
+              + `instead of ${wordStyle.abs_x_pct}/${wordStyle.abs_y_pct} at t=${frameAudit.time}`,
+            );
+          }
+        }
         for (const [wordIndex, expectedTranslate] of Object.entries(testCase.expectedWordTranslations || {})) {
           const key = `${testCase.id}-caption-${wordIndex}`;
           const wordAudit = (frameAudit.words || []).find((word) => word.key === key);
           if (!wordAudit?.found || !wordAudit.visible) {
             fail(`${testCase.id} lost dragged word ${key} at t=${frameAudit.time}: ${JSON.stringify(wordAudit)}`);
+          }
+          if (
+            testCase.expectedFontFamily
+            && !String(wordAudit.target_font_family || '').includes(testCase.expectedFontFamily)
+          ) {
+            fail(
+              `${testCase.id} changed the canvas font ${testCase.expectedFontFamily} to `
+              + `${wordAudit.target_font_family || 'unknown'}, altering glyph width and word spacing`,
+            );
           }
           if (wordAudit.clipped_by_overflow) {
             fail(

@@ -35,6 +35,10 @@ import {
   detectScript,
   resolveScriptFontFamily,
 } from '../src/components/dashboard/scriptFontResolver.js';
+import {
+  getCaptionWordRevealTimes,
+  getCaptionWordStartTime,
+} from '../src/components/dashboard/cptMotion.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '..');
@@ -124,9 +128,8 @@ function toForwardSlash(inputPath) {
   return inputPath.replace(/\\/g, '/');
 }
 
-// Node-side twin of the in-page captionHasCptWords() (see buildRuntimeScript):
-// frame segmentation runs out here, so it needs its own copy to know that a
-// displaced-word caption changes over time.
+// Frame segmentation runs outside the page runtime, so keep a small Node-side
+// twin for detecting captions whose displaced words reveal during playback.
 function captionHasCptWordStyles(caption) {
   return Object.values(caption?.word_styles || {}).some((wordStyle = {}) => (
     Math.abs(Number(wordStyle?.abs_x_pct) || 0) > 0.01
@@ -268,25 +271,17 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       return text;
     };
 
+    const getCaptionWordStartTime = ${getCaptionWordStartTime.toString()};
+    const getCaptionWordRevealTimes = ${getCaptionWordRevealTimes.toString()};
     const getCurrentWordIndex = (caption, time) => {
-      const words = Array.isArray(caption.words) ? caption.words.filter((word) => (word?.word || '').trim()) : [];
-      if (words.length > 0) {
-        let activeIndex = 0;
-        for (let index = 0; index < words.length; index += 1) {
-          const start = Number(words[index]?.start ?? caption.start_time ?? 0);
-          if (time >= start) activeIndex = index;
-          else break;
-        }
-        return activeIndex;
-      }
-
       const splitWords = String(caption.text || '').split(/\\s+/).filter(Boolean);
-      if (splitWords.length <= 1) return 0;
-      const start = Number(caption.start_time ?? 0);
-      const end = Number(caption.end_time ?? start);
-      const duration = Math.max(end - start, 0.01);
-      const elapsed = Math.min(Math.max(time - start, 0), duration);
-      return Math.max(0, Math.min(splitWords.length - 1, Math.floor((elapsed / duration) * splitWords.length)));
+      const revealTimes = getCaptionWordRevealTimes(caption, Math.max(1, splitWords.length));
+      let activeIndex = 0;
+      for (let index = 0; index < revealTimes.length; index += 1) {
+        if (time >= revealTimes[index]) activeIndex = index;
+        else break;
+      }
+      return Math.max(0, Math.min(revealTimes.length - 1, activeIndex));
     };
 
     const resolveAdvancedTemplatePhaseIndex = (caption, fallbackIndex = 0) => {
@@ -1248,10 +1243,8 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       }));
     };
 
-    // Displacing a word authors a CPT (creatively placed text), which builds up
-    // word by word until the sentence is complete. Mirrors captionHasCptWords()
-    // in VideoPlayer.jsx — the preview keeps pending words mounted at opacity 0
-    // so the line never reflows as words land, and the export must match.
+    // Displacing a word authors a CPT. The editor keeps every word visible;
+    // playback/export reveals the final static positions cumulatively.
     const captionHasCptWords = (caption) => (
       Object.values(caption?.word_styles || {}).some((wordStyle = {}) => (
         Math.abs(Number(wordStyle?.abs_x_pct) || 0) > 0.01
@@ -1262,6 +1255,26 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         || Math.abs(Number(wordStyle?.y) || 0) > 0.01
       ))
     );
+
+    const hasAbsoluteWordPosition = (wordStyle = {}) => (
+      Number.isFinite(Number(wordStyle.abs_x_pct))
+      && Number.isFinite(Number(wordStyle.abs_y_pct))
+      && (
+        Math.abs(Number(wordStyle.abs_x_pct)) > 0.01
+        || Math.abs(Number(wordStyle.abs_y_pct)) > 0.01
+      )
+    );
+
+    // ExportPanel expands a canvas CPT into one absolute entry per word. Once
+    // that complete composition exists, render it directly instead of feeding
+    // it back through the source template's sentence-flow markup.
+    const captionHasAbsoluteCptLayout = (caption) => {
+      const words = String(caption?.text || '').trim().split(/\s+/).filter(Boolean);
+      if (!words.length || !captionHasCptWords(caption)) return false;
+      return words.every((_, index) => (
+        hasAbsoluteWordPosition(caption?.word_styles?.[String(caption.id) + '-' + index] || {})
+      ));
+    };
 
     const getWordEffectInlineStyles = (wordStyle = {}) => {
       const type = wordStyle?.effectType || 'none';
@@ -1456,10 +1469,10 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         if (!Object.keys(wordStyle).length && !isCptCaption) return;
         const targets = getSourceTemplateVisualTargets(node);
         if (isCptCaption) {
-          // CPT words reveal cumulatively at their transcription boundaries,
-          // but they appear immediately in the exact final canvas state. Kill
+          // CPT words appear immediately in the exact final canvas state. Kill
           // authored template, caption, and per-word entrance motion on both the
-          // editable anchor and its generated visual wrapper.
+          // editable anchor and its generated visual wrapper without changing
+          // the word's visibility.
           [node, ...targets].forEach((target) => {
             setImportant(target, 'animation', 'none');
             setImportant(target, 'animation-delay', '0s');
@@ -1487,19 +1500,18 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         const sourceOffsetY = hasSourceYPct
           ? (Number(wordStyle.y_pct) / 100) * window.innerHeight
           : Number(wordStyle.y || 0) * (window.__exportCanvasScale || 1);
-        let absoluteWordOffset = null;
+        let absoluteWordPosition = null;
         if (hasRealAbsolutePosition(wordStyle)) {
           if (node.dataset.exportAbsoluteWordPositioned === 'true') {
             positionTargets.forEach((target) => target.style.removeProperty('translate'));
           }
-          const rect = node.getBoundingClientRect();
-          absoluteWordOffset = {
-            x: ((Number(wordStyle.abs_x_pct) / 100) * window.innerWidth) - (rect.left + rect.width / 2),
-            y: ((Number(wordStyle.abs_y_pct) / 100) * window.innerHeight) - (rect.top + rect.height / 2),
+          absoluteWordPosition = {
+            x: (Number(wordStyle.abs_x_pct) / 100) * window.innerWidth,
+            y: (Number(wordStyle.abs_y_pct) / 100) * window.innerHeight,
           };
           node.dataset.exportAbsoluteWordPositioned = 'true';
         }
-        if (absoluteWordOffset) {
+        if (absoluteWordPosition) {
           unlockPositionedWordOverflow(node);
           const rotation = Number(wordStyle.rotation || 0) || 0;
           const scaleX = Number(wordStyle.textScaleX || 1) || 1;
@@ -1507,10 +1519,13 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           positionTargets.forEach((target) => {
             target.dataset.exportWordPositionTarget = 'true';
             ensureTransformableWordTarget(target);
+            const targetRect = target.getBoundingClientRect();
+            const targetOffsetX = absoluteWordPosition.x - (targetRect.left + targetRect.width / 2);
+            const targetOffsetY = absoluteWordPosition.y - (targetRect.top + targetRect.height / 2);
             setImportant(
               target,
               'translate',
-              \`\${Math.round(absoluteWordOffset.x)}px \${Math.round(absoluteWordOffset.y)}px\`,
+              \`\${Math.round(targetOffsetX)}px \${Math.round(targetOffsetY)}px\`,
             );
             if (rotation) setImportant(target, 'rotate', \`\${rotation}deg\`);
             if (Math.abs(scaleX - 1) > 0.001) setImportant(target, 'scale', \`\${scaleX} 1\`);
@@ -2564,6 +2579,106 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         + '>' + templateMarkup + '</div>';
     };
 
+    const buildAbsoluteCptMarkup = (caption, globalStyle, time) => {
+      const words = buildWordMeta(caption);
+      const currentIndex = getCurrentWordIndex(caption, time);
+      const emphasisIndices = new Set(normalizeImpWordIndices(
+        caption.imp_word_index,
+        caption.imp_word_indices || [],
+      ));
+      return '<div class="absolute-cpt-layer" data-absolute-cpt-layer="true">'
+        + words.map((word, index) => {
+          const wordStyle = word.style || {};
+          if (!hasAbsoluteWordPosition(wordStyle)) return '';
+          const isEmphasis = Boolean(wordStyle.isEmphasis || emphasisIndices.has(index));
+          const fontSize = wordStyle.cptPaintedFontSize
+            ?? wordStyle.fontSize
+            ?? wordStyle.frozenFontSize
+            ?? globalStyle?.font_size
+            ?? 18;
+          const accent = caption.emphasis_color
+            || globalStyle?.highlight_color
+            || globalStyle?.emphasis_color
+            || globalStyle?.secondary_color
+            || '#DDAA03';
+          const color = isEmphasis
+            ? (wordStyle.isEmphasis && wordStyle.color ? wordStyle.color : accent)
+            : (wordStyle.color || globalStyle?.text_color || '#ffffff');
+          const scaleX = Number(wordStyle.textScaleX || 1) || 1;
+          const rotation = Number(wordStyle.rotation || 0) || 0;
+          const boxWidth = Number(wordStyle.boxWidth || 0) || 0;
+          const inline = [
+            'position:absolute',
+            'left:' + Number(wordStyle.abs_x_pct) + '%',
+            'top:' + Number(wordStyle.abs_y_pct) + '%',
+            'transform:translate(-50%,-50%)'
+              + (rotation ? ' rotate(' + rotation + 'deg)' : '')
+              + (Math.abs(scaleX - 1) > 0.001 ? ' scaleX(' + scaleX + ')' : ''),
+            'transform-origin:center center',
+            'display:' + (boxWidth ? 'block' : 'inline-block'),
+            'z-index:80',
+            'white-space:' + (boxWidth ? 'normal' : 'nowrap'),
+            'overflow:visible',
+            'opacity:' + (index > currentIndex ? '0' : '1'),
+            'animation:none',
+            'transition:none',
+            'font-family:&quot;' + escapeHtml(
+              wordStyle.cptPaintedFontFamily
+              || wordStyle.fontFamily
+              || globalStyle?.font_family
+              || 'Inter',
+            ) + '&quot;',
+            'font-size:' + scaleExportPx(fontSize) + 'px',
+            'font-weight:' + (
+              wordStyle.cptPaintedFontWeight
+              || wordStyle.fontWeight
+              || (isEmphasis ? '800' : (globalStyle?.font_weight || '500'))
+            ),
+            'font-style:' + (
+              wordStyle.cptPaintedFontStyle
+              || wordStyle.fontStyle
+              || globalStyle?.font_style
+              || 'normal'
+            ),
+            'line-height:' + Number(globalStyle?.line_spacing || 1.25),
+            'color:' + color + ' !important',
+            '-webkit-text-fill-color:' + color + ' !important',
+            wordStyle.textDecoration ? 'text-decoration:' + wordStyle.textDecoration : '',
+            wordStyle.textTransform ? 'text-transform:' + wordStyle.textTransform : '',
+            boxWidth ? 'width:' + scaleExportPx(boxWidth) + 'px' : '',
+            boxWidth ? 'overflow-wrap:anywhere' : '',
+            boxWidth ? 'text-align:center' : '',
+          ].filter(Boolean);
+          const effectStyles = getWordEffectInlineStyles(wordStyle);
+          const effectInline = inlineStyleObject(effectStyles);
+          if (effectInline) inline.push(effectInline);
+          if (wordStyle.backgroundColor || wordStyle.highlightGradient) {
+            inline.push(
+              'background:' + (
+                wordStyle.highlightGradient
+                || rgbaFromHex(wordStyle.backgroundColor, wordStyle.backgroundOpacity ?? 0.6)
+              ),
+            );
+            inline.push('border-radius:' + scaleExportPx(3) + 'px');
+            inline.push('padding:' + scaleExportPx(wordStyle.backgroundPadding ?? 2) + 'px ' + scaleExportPx(4) + 'px');
+          }
+          const textGradient = wordStyle.textGradient || '';
+          if (textGradient) {
+            inline.push('background-image:' + textGradient);
+            inline.push('-webkit-background-clip:text');
+            inline.push('background-clip:text');
+            inline.push('-webkit-text-fill-color:transparent !important');
+          }
+          return '<span data-word-key="' + escapeHtml(word.key) + '"'
+            + ' data-absolute-cpt-word="true"'
+            + ' data-absolute-cpt-emphasis="' + (isEmphasis ? 'true' : 'false') + '"'
+            + ' style="' + inline.join(';') + '">'
+            + escapeHtml(transformText(word.text, globalStyle))
+            + '</span>';
+        }).join('')
+        + '</div>';
+    };
+
     const buildPlainCaptionMarkup = (caption, globalStyle, time) => {
       const words = buildWordMeta(caption);
       const currentIndex = getCurrentWordIndex(caption, time);
@@ -2721,7 +2836,8 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
     };
 
     const resetAdvancedTemplateAnimations = () => {
-      const blocks = Array.from(document.querySelectorAll('.lekha-applied-advanced-template'));
+      const blocks = Array.from(document.querySelectorAll('.lekha-applied-advanced-template'))
+        .filter((block) => !block.closest('[data-caption-cpt="true"]'));
       blocks.forEach((block) => {
         block.classList.remove('active');
         block.style.transition = 'none';
@@ -2946,7 +3062,16 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         const left = renderStyle.position_x ?? style.position_x ?? 50;
         const top = renderStyle.position_y ?? style.position_y ?? 75;
         const isSidebarTemplate = Boolean(renderStyle.template_20_id);
-        const base = isSidebarTemplate
+        const isAbsoluteCpt = captionHasAbsoluteCptLayout(captionWithTemplateIndex);
+        const base = isAbsoluteCpt
+          ? [
+              'position:absolute',
+              'inset:0',
+              'pointer-events:none',
+              'width:100%',
+              'height:100%',
+            ]
+          : isSidebarTemplate
           ? [
               'position:absolute',
               'left:0',
@@ -2973,7 +3098,9 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           && window.__basicTpl.isSourceBasicTemplateId
           && window.__basicTpl.isSourceBasicTemplateId(renderStyle.template_id),
         );
-        const inner = isSidebarTemplate
+        const inner = isAbsoluteCpt
+          ? buildAbsoluteCptMarkup(captionWithTemplateIndex, renderStyle, time)
+          : isSidebarTemplate
           ? buildSidebarTemplateMarkup(captionWithTemplateIndex, renderStyle)
           : isBasicTemplate
           ? buildBasicTemplateCaptionMarkup(captionWithTemplateIndex, renderStyle, time)
@@ -2989,7 +3116,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         const animatedInner = shouldWrapTemplateAnimation
           ? \`<div class="caption-line-animation-shell" data-caption-start="\${Number(caption.start_time ?? 0)}" data-caption-end="\${Number(caption.end_time ?? caption.start_time ?? 0)}" style="display:inline-block;animation:\${getLineAnimationStyle(caption.animation, caption.animation_speed || 1)};transform-origin:center center;">\${inner}</div>\`
           : inner;
-        return \`<div class="caption-anchor" data-caption-render-index="\${activeIndex}" style="\${base.join(';')}">\${animatedInner}</div>\`;
+        return \`<div class="caption-anchor" data-caption-render-index="\${activeIndex}" data-caption-cpt="\${captionHasCptWords(caption) ? 'true' : 'false'}" data-caption-absolute-cpt="\${isAbsoluteCpt ? 'true' : 'false'}" style="\${base.join(';')}">\${animatedInner}</div>\`;
       }).join('');
       activeCaptions.forEach((caption, activeIndex) => {
         const anchor = root.querySelector(\`[data-caption-render-index="\${activeIndex}"]\`);
@@ -3008,7 +3135,9 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         };
         const renderStyle = resolveCaptionTemplateStyle(captionWithTemplateIndex);
         applySourceTemplateScriptFonts(anchor, captionWithTemplateIndex.__export_script);
-        applySourceTemplateWordStyles(anchor, captionWithTemplateIndex, time);
+        if (anchor.dataset.captionAbsoluteCpt !== 'true') {
+          applySourceTemplateWordStyles(anchor, captionWithTemplateIndex, time);
+        }
         const captionLineTexts = Array.isArray(caption?.preview_template_line_texts)
           && caption.preview_template_line_texts.length > 0
           ? caption.preview_template_line_texts
@@ -3031,6 +3160,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       activeCaptions.forEach((caption, activeIndex) => {
         const anchor = root.querySelector(\`[data-caption-render-index="\${activeIndex}"]\`);
         if (!anchor || caption?.is_text_element) return;
+        if (anchor.dataset.captionAbsoluteCpt === 'true') return;
         applySourceTemplateScriptFonts(anchor, caption.__export_script);
         applySourceTemplateWordStyles(anchor, caption, time);
       });
@@ -3056,6 +3186,21 @@ async function main() {
   (payload.captions || []).forEach((caption) => {
     if (caption) caption.__export_script = detectScript(caption.text || '');
     if (!caption || caption.is_text_element) return;
+    const isAuthoredCpt = Object.values(caption.word_styles || {}).some((wordStyle) => (
+      wordStyle
+      && (
+        (Number.isFinite(Number(wordStyle.cptCanvasXPercent))
+          && Number.isFinite(Number(wordStyle.cptCanvasYPercent)))
+        || (Number.isFinite(Number(wordStyle.abs_x_pct))
+          && Number.isFinite(Number(wordStyle.abs_y_pct)))
+        || (Number.isFinite(Number(wordStyle.x_pct))
+          && Number.isFinite(Number(wordStyle.y_pct)))
+      )
+    ));
+    // A CPT's authored emphasis is part of the saved canvas composition. The
+    // emotional-caption planner is appropriate for untouched templates, but
+    // must not replace the user's CPT word selection during export.
+    if (isAuthoredCpt) return;
     const canonical = canonicalEmphasisByCaptionId.get(String(caption.id));
     if (!canonical) return;
     const appliedStyle = caption.applied_template_style || payload.style || {};
@@ -3244,7 +3389,14 @@ async function main() {
     : 0;
   const exportT24TemplateMaxWidthPx = exportMeasuredAdvancedTemplateWidthPx
     || Math.round(Math.min(exportTemplateMaxWidth, 260 * exportCssScale));
-  const exportSidebarWidth = Math.round(Math.max(160, Math.min(Number(payload.video_width || 360) * 0.94, 320 * exportCssScale)));
+  const exportSidebarWidth = Math.round(Math.max(
+    160,
+    (measuredPreviewTemplateBoxWidthPx || 320) * exportCssScale,
+  ));
+  const exportSidebarHeight = Math.round(Math.max(
+    1,
+    (measuredPreviewTemplateBoxHeightPx || (measuredPreviewTemplateBoxWidthPx || 320) * 1.28) * exportCssScale,
+  ));
   const sourceTemplateFontFamilies = new Set();
   const fontFamilyPattern = /font-family\s*:\s*([^;}{]+)/gi;
   const templateFontSources = [
@@ -3268,6 +3420,30 @@ async function main() {
       ) {
         sourceTemplateFontFamilies.add(family);
       }
+    }
+  });
+  // The canvas resolves the selected caption family itself (for example,
+  // Poppins stays Poppins for Devanagari). Those inline/configured families do
+  // not necessarily appear in the template CSS above. If they are omitted from
+  // this map, applySourceTemplateScriptFonts() falls through to the generic
+  // script fallback and export gets different glyph metrics — word centres stay
+  // correct but the narrower glyphs create visibly larger inter-word gaps.
+  const configuredSourceTemplateFontFamilies = [
+    payload.style?.font_family,
+    payload.style?.template_snapshot?.font_family,
+    ...(payload.captions || []).flatMap((caption) => [
+      caption?.applied_template_style?.font_family,
+      caption?.custom_style?.font_family,
+      ...Object.values(caption?.word_styles || {}).map((wordStyle) => wordStyle?.fontFamily),
+    ]),
+  ];
+  configuredSourceTemplateFontFamilies.forEach((fontFamily) => {
+    const family = String(fontFamily || '').trim();
+    if (
+      family
+      && !/^(?:inherit|initial|unset|var\(|sans-serif|serif|monospace|cursive)$/i.test(family)
+    ) {
+      sourceTemplateFontFamilies.add(family);
     }
   });
   const scriptSamples = new Map();
@@ -3294,6 +3470,7 @@ async function main() {
       caption?.applied_template_style?.font_family,
       caption?.custom_style?.font_family,
     ]),
+    ...sourceTemplateFontFamilies,
     ...Object.values(exportScriptFontMaps).flatMap((config) => [
       config.fallback,
       ...Object.values(config.families),
@@ -3339,7 +3516,7 @@ async function main() {
       display: inline-block;
       width: ${exportSidebarWidth}px;
       height: auto;
-      max-width: 94%;
+      max-width: none;
       min-height: 0;
       /* Preview never crops the applied template (matras, descenders, entrance
          motion all paint freely) — keep the export shell unclipped to match. */
@@ -3392,8 +3569,8 @@ async function main() {
       padding: 0 !important;
       margin: 0 !important;
     }
-    .lekha-sidebar-export-template-shell .lc-card .stage {
-      height: auto !important;
+    .lekha-sidebar-export-template-shell[data-template-source="lekha-lc"] .lc-card .stage {
+      height: ${exportSidebarHeight}px !important;
       aspect-ratio: auto !important;
     }
     .lekha-sidebar-export-template-shell[data-template-source="lekha-lc"] {
@@ -3406,9 +3583,11 @@ async function main() {
       box-shadow: none !important;
       background: transparent !important;
     }
-    .lekha-sidebar-export-template-shell .lc-card .sb {
-      position: relative !important;
-      inset: auto !important;
+    .lekha-sidebar-export-template-shell[data-template-source="lekha-lc"] .lc-card .sb {
+      position: absolute !important;
+      inset: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
     }
     .lekha-sidebar-export-template-shell.is-color-customized .lc-card .sb {
       --template-highlight: var(--sidebar-template-highlight, var(--sidebar-emphasis-accent, #DDAA03)) !important;
@@ -3418,13 +3597,13 @@ async function main() {
       visibility: hidden !important;
       opacity: 0 !important;
     }
-    .lekha-sidebar-export-template-shell .lc-card .cap {
-      position: relative !important;
-      left: auto !important;
-      top: auto !important;
-      transform: none !important;
-      width: 100% !important;
-      max-width: 100% !important;
+    .lekha-sidebar-export-template-shell[data-template-source="lekha-lc"] .lc-card .cap {
+      position: absolute !important;
+      left: 50% !important;
+      top: 52% !important;
+      transform: translate(-50%, -50%) !important;
+      width: 88% !important;
+      max-width: 88% !important;
       text-align: center !important;
     }
     .lekha-sidebar-export-template-shell .lc-card .scene,
@@ -5294,36 +5473,20 @@ async function main() {
           if (Number.isFinite(wordEnd)) points.add(wordEnd);
         }
       }
-      // A word-by-word reveal changes the overlay at every word boundary. When
-      // the caption carries no per-word timings the reveal falls back to an even
-      // split of the caption, and without these points the whole caption
-      // collapsed into one static frame — the CPT appeared fully formed.
+      // CPTs and the explicit word-by-word delivery mode both change visibility
+      // at word boundaries, so the compositor needs a segment for every step.
       const revealsWordByWord = (
         captionHasCptWordStyles(caption)
         || payload.style?.show_inactive === false
       );
       if (revealsWordByWord && !caption?.is_text_element) {
-        const timedRevealWords = Array.isArray(caption.words)
-          ? caption.words.filter((word) => String(word?.word || word?.text || '').trim())
-          : [];
-        if (timedRevealWords.length) {
-          timedRevealWords.forEach((word) => {
-            const wordStart = Number(word?.start ?? word?.start_time ?? start);
-            const wordEnd = Number(word?.end ?? word?.end_time ?? wordStart);
-            if (Number.isFinite(wordStart)) points.add(wordStart);
-            if (Number.isFinite(wordEnd)) points.add(wordEnd);
-          });
-        } else {
-          const revealWordCount = Math.max(
-            1,
-            String(caption.text || '').trim().split(/\s+/).filter(Boolean).length,
-          );
-          const revealDuration = Math.max(0, end - start);
-          for (let index = 0; index < revealWordCount; index += 1) {
-            const wordStart = start + ((revealDuration * index) / revealWordCount);
-            if (index > 0) points.add(wordStart);
-          }
-        }
+        const revealWordCount = Math.max(
+          1,
+          String(caption.text || '').trim().split(/\s+/).filter(Boolean).length,
+        );
+        getCaptionWordRevealTimes(caption, revealWordCount).forEach((wordStart, index) => {
+          if (index > 0 && Number.isFinite(wordStart)) points.add(wordStart);
+        });
       }
     }
 
@@ -5479,6 +5642,7 @@ async function main() {
             });
           });
           document.querySelectorAll('.lekha-applied-advanced-template.active').forEach((block) => {
+            if (block.closest('[data-caption-cpt="true"]')) return;
             block.style.transition = 'none';
             block.style.opacity = '1';
             block.style.visibility = 'visible';
@@ -5815,6 +5979,11 @@ async function main() {
                   source_y: Number(wordStyle.y || 0),
                   applied_translate: getComputedStyle(positionTarget).translate,
                   target_display: targetDisplay,
+                  target_font_family: getComputedStyle(positionTarget).fontFamily,
+                  target_font_size: getComputedStyle(positionTarget).fontSize,
+                  target_color: getComputedStyle(positionTarget).color,
+                  target_inline_style: positionTarget.getAttribute('style') || '',
+                  absolute_cpt_emphasis: node.dataset.absoluteCptEmphasis || null,
                   word_opacity: Number.parseFloat(getComputedStyle(node).opacity || '1'),
                   target_opacity: Number.parseFloat(getComputedStyle(motionTarget).opacity || '1'),
                   target_animation_name: getComputedStyle(motionTarget).animationName,

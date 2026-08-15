@@ -10,6 +10,8 @@ const navItems = [
   { label: 'Refunds', to: '/RefundPolicy', key: 'refunds' },
   { label: 'Acceptable Use', to: '/AcceptableUsePolicy', key: 'acceptable-use' },
   { label: 'Privacy', to: '/PrivacyPolicy', key: 'privacy' },
+  { label: 'Limits', to: '/KnownLimitations', key: 'limitations' },
+  { label: 'Updates', to: '/Changelog', key: 'changelog' },
 ];
 
 export default function SupportPageShell({

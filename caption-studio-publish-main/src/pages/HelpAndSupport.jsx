@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, ArrowRight, BookOpen, FileText, MessageCircle, Zap } from 'lucide-react';
 import SupportPageShell from '@/components/support/SupportPageShell';
+import { apiRequest, getApiErrorMessage } from '@/lib/apiClient';
 
 const supportEmail = import.meta.env.VITE_SUPPORT_EMAIL || 'support@lekhacaptions.com';
 
@@ -77,6 +78,9 @@ const emptyReport = {
 
 export default function HelpAndSupport() {
   const [report, setReport] = useState(emptyReport);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const [submittedTicket, setSubmittedTicket] = useState('');
 
   const updateReport = (field) => (event) => {
     setReport((current) => ({ ...current, [field]: event.target.value }));
@@ -100,6 +104,34 @@ export default function HelpAndSupport() {
     ].join('\n');
 
     window.location.href = `mailto:${supportEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  };
+
+  const submitSupportRequest = async (event) => {
+    event.preventDefault();
+    setIsSubmitting(true);
+    setSubmitError('');
+    setSubmittedTicket('');
+
+    try {
+      const result = await apiRequest('/api/support-request', {
+        method: 'POST',
+        body: JSON.stringify({
+          account_email: report.accountEmail,
+          issue_type: report.issueType,
+          job_id: report.jobId,
+          payment_id: report.paymentId,
+          browser_device: report.browserDevice,
+          media_details: report.mediaDetails,
+          description: report.description,
+        }),
+      });
+      setSubmittedTicket(result.ticket_id);
+      setReport(emptyReport);
+    } catch (error) {
+      setSubmitError(getApiErrorMessage(error));
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -193,14 +225,14 @@ export default function HelpAndSupport() {
         <section className="mt-20 grid gap-10 lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-20">
           <div>
             <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#171713]/40">Contact form / 04</p>
-            <h2 className="mt-3 font-serif text-3xl tracking-[-0.025em] sm:text-4xl">Prepare a support report</h2>
+            <h2 className="mt-3 font-serif text-3xl tracking-[-0.025em] sm:text-4xl">Send a support report</h2>
             <p className="mt-4 text-sm leading-6 text-[#171713]/55">
-              This form prepares an email in your mail app. Review it, attach a screenshot if useful, and press send.
+              Submit the details here so the support team can track and respond to your request.
             </p>
           </div>
 
           <form
-            onSubmit={prepareSupportEmail}
+            onSubmit={submitSupportRequest}
             className="grid gap-5 rounded-[1.5rem] border border-[#171713]/15 bg-[#FBF9F4] p-6 sm:grid-cols-2 sm:p-8"
           >
             <label className="grid gap-2 text-sm font-semibold text-[#171713]">
@@ -284,15 +316,33 @@ export default function HelpAndSupport() {
               />
             </label>
             <div className="sm:col-span-2">
+              {submittedTicket ? (
+                <p className="mb-4 rounded-xl border border-[#27AE60]/30 bg-[#27AE60]/10 px-4 py-3 text-sm text-[#176C3A]">
+                  Request received. Your ticket ID is <strong>{submittedTicket}</strong>.
+                </p>
+              ) : null}
+              {submitError ? (
+                <p className="mb-4 rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-700">
+                  {submitError}
+                </p>
+              ) : null}
               <button
                 type="submit"
-                className="inline-flex items-center justify-center gap-2 rounded-full bg-[#151612] px-6 py-3 text-sm font-semibold text-white transition-transform hover:-translate-y-0.5"
+                disabled={isSubmitting}
+                className="inline-flex items-center justify-center gap-2 rounded-full bg-[#151612] px-6 py-3 text-sm font-semibold text-white transition-transform hover:-translate-y-0.5 disabled:cursor-wait disabled:opacity-60"
               >
-                Prepare email
+                {isSubmitting ? 'Submitting...' : 'Submit support request'}
                 <ArrowRight className="h-4 w-4" />
               </button>
+              <button
+                type="button"
+                onClick={prepareSupportEmail}
+                className="ml-3 inline-flex items-center justify-center rounded-full border border-[#171713]/20 px-5 py-3 text-sm font-semibold text-[#171713]"
+              >
+                Open email instead
+              </button>
               <p className="mt-3 text-xs leading-5 text-[#171713]/45">
-                Never include a password, OTP, full card number, or CVV.
+                Never include a password, OTP, full card number, or CVV. Attachments can be sent by email.
               </p>
             </div>
           </form>

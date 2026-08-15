@@ -34,6 +34,8 @@ export default function Footer() {
               <Link to={createPageUrl('PrivacyPolicy')} className="block transition hover:text-white">Privacy</Link>
               <Link to={createPageUrl('RefundPolicy')} className="block transition hover:text-white">Refunds</Link>
               <Link to={createPageUrl('AcceptableUsePolicy')} className="block transition hover:text-white">Acceptable Use</Link>
+              <Link to={createPageUrl('KnownLimitations')} className="block transition hover:text-white">Known limitations</Link>
+              <Link to={createPageUrl('Changelog')} className="block transition hover:text-white">Changelog</Link>
               <Link to={createPageUrl('HelpAndSupport')} className="block transition hover:text-white">Contact</Link>
             </div>
           </div>
