@@ -45,7 +45,9 @@ const payload = {
     words: [
       { word: 'ONE', start: 0, end: 0.1 },
       { word: 'TWO', start: 0.1, end: 0.55 },
-      { word: 'THREE', start: 0.55, end: 0.9 },
+      // Providers can assign adjacent short words the same boundary. The CPT
+      // renderer must still serialize them into separate visible beats.
+      { word: 'THREE', start: 0.1, end: 0.9 },
       { word: 'FOUR', start: 0.9, end: 1 },
     ],
     word_styles: {
@@ -132,10 +134,8 @@ try {
     }
   }
 
-  // A CPT is authored by displacing words, and it must build up word by word
-  // until the sentence is complete — the same reveal the canvas preview shows.
-  // Pending words stay in the markup at opacity 0 so the line never reflows as
-  // each word lands.
+  // Playback/export builds a displaced-word CPT cumulatively. Pending words
+  // remain mounted at opacity 0, and each rendered step adds exactly one word.
   const revealedPerFrame = audit.map((frame) => ({
     time: frame.time,
     revealed: frame.words.filter((word) => Number(word.word_opacity ?? 1) > 0.5).length,
@@ -145,29 +145,34 @@ try {
   const lastFrame = revealedPerFrame[revealedPerFrame.length - 1]
   assert.ok(
     firstFrame.revealed < firstFrame.total,
-    `a CPT must not appear fully formed on its first frame (${firstFrame.revealed}/${firstFrame.total} revealed)`,
+    `a CPT must not appear fully formed on its first playback frame (${firstFrame.revealed}/${firstFrame.total} revealed)`,
   )
   assert.equal(
     lastFrame.revealed,
     lastFrame.total,
-    'a CPT must complete the sentence by the end of the caption',
+    'a CPT must complete the full sentence by the end of the caption',
   )
   for (let index = 1; index < revealedPerFrame.length; index += 1) {
     const addedWords = revealedPerFrame[index].revealed - revealedPerFrame[index - 1].revealed
     assert.ok(
-      addedWords >= 0,
-      'a CPT reveal must only ever add words, never drop one back out '
-      + `(t=${revealedPerFrame[index].time})`,
-    )
-    assert.ok(
-      addedWords <= 1,
-      `a CPT must reveal one word at a time, but ${addedWords} appeared together `
-      + `(t=${revealedPerFrame[index].time})`,
+      addedWords >= 0 && addedWords <= 1,
+      `a CPT must add exactly one word per step, but changed by ${addedWords} at t=${revealedPerFrame[index].time}`,
     )
   }
+  const observedRevealCounts = revealedPerFrame
+    .map((frame) => frame.revealed)
+    .filter((revealed, index, values) => index === 0 || revealed !== values[index - 1])
+  assert.deepEqual(
+    observedRevealCounts,
+    Array.from(
+      { length: lastFrame.total + (firstFrame.revealed === 0 ? 1 : 0) },
+      (_, index) => index + (firstFrame.revealed === 0 ? 0 : 1),
+    ),
+    `export must contain every one-word reveal state (${observedRevealCounts.join(', ')})`,
+  )
 
-  // Dragging converts the line to a CPT: words keep their transcription-driven
-  // reveal boundaries, but no caption, template, or word entrance may run.
+  // Dragging converts the line to a CPT, but no caption, template, or word
+  // entrance may run while its final positions are rendered.
   for (const key of ['drag-test-1', 'drag-test-2', 'drag-test-3']) {
     const wordFrames = audit.flatMap((frame) => frame.words)
       .filter((word) => word.key === key);
@@ -178,7 +183,7 @@ try {
     );
     assert.ok(
       wordFrames.every((word) => Number(word.target_opacity ?? 1) === 0 || Number(word.target_opacity ?? 1) === 1),
-      `${key} used a partial animation opacity instead of an instant reveal`,
+      `${key} used partial animation opacity instead of an instant static reveal`,
     );
   }
 

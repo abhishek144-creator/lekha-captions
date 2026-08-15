@@ -27,11 +27,13 @@ const requiredEvidence = [
   ['payment webhook/reconciliation', /payment|webhook|reconcil/i],
   ['backup restore', /backup|restore/i],
   ['load smoke', /load/i],
-  ['authenticated staging media flow', /staging|upload.*process.*export/i],
+  ['authenticated staging media flow', /authenticated staging|upload.*process.*export/i],
 ]
 
 const missingEvidence = requiredEvidence
-  .filter(([, pattern]) => !evidenceRows.some((cells) => pattern.test(cells.join(' '))))
+  // Match only the drill type and scenario. A generic word such as "staging"
+  // in an evidence filename must not satisfy the authenticated media-flow gate.
+  .filter(([, pattern]) => !evidenceRows.some((cells) => pattern.test(`${cells[1] || ''} ${cells[2] || ''}`)))
   .map(([label]) => label)
 
 for (const cells of evidenceRows) {

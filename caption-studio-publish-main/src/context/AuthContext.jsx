@@ -92,6 +92,11 @@ export function AuthProvider({ children }) {
         } catch (error) {
             console.error('Google Sign In Error:', error)
             const fallbackCodes = new Set([
+                // Some embedded/privacy-restricted browsers surface a blocked
+                // Firebase popup transport as internal-error instead of the
+                // more specific popup-blocked code. Redirect auth does not
+                // depend on the popup channel and is the safe fallback.
+                'auth/internal-error',
                 'auth/popup-blocked',
                 'auth/popup-closed-by-user',
                 'auth/cancelled-popup-request',

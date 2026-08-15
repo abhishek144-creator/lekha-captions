@@ -280,6 +280,13 @@ if (!exportRendererSource.includes(
 )) {
   fail('left-template export does not inherit the preview-resolved caption font');
 }
+if (
+  !exportRendererSource.includes('const configuredSourceTemplateFontFamilies = [')
+  || !exportRendererSource.includes('payload.style?.font_family,')
+  || !exportRendererSource.includes('sourceTemplateFontFamilies.add(family)')
+) {
+  fail('export script-font mapping omits the selected canvas font and can change word spacing');
+}
 if (!exportRendererSource.includes(
   'const sidebarSampleFps = defaultTemplateSampleFps',
 )) {
@@ -291,24 +298,20 @@ if (!exportRendererSource.includes('data-caption-font-weight')) {
 if (!exportRendererSource.includes('data-export-caption-text="true"')) {
   fail('left-template replacement text is not tagged for preview typography parity');
 }
-if (
-  !videoPlayerSource.includes('function getCaptionRevealWordIndex(')
-  || !videoPlayerSource.includes('timedWords[index]?.start')
-  || !videoPlayerSource.includes('const captionHasCptWords = captionHasCreativelyPositionedWords')
-) {
-  fail('canvas CPT reveal does not follow saved transcription word timing');
-}
-const cptPendingSource = videoPlayerSource.match(
-  /const isCptWordPending = \(caption, wordIndex, currentIdx\) => \([\s\S]*?\n  \);/,
-)?.[0] || '';
-if (!cptPendingSource || cptPendingSource.includes('&& isPlaying')) {
-  fail('canvas CPT reveal does not preserve its word-by-word state while paused or scrubbing');
+if (!videoPlayerSource.includes('const isCptWordPending')
+  || !videoPlayerSource.includes('&& !isCaptionCptAdjustmentActive(caption)')
+  || !videoPlayerSource.includes('const [cptRevealIndexes')) {
+  fail('canvas CPT reveal is not isolated to playback outside editing state');
 }
 if (
-  !exportRendererSource.includes('const timedRevealWords = Array.isArray(caption.words)')
+  !exportRendererSource.includes('getCaptionWordRevealTimes(caption, revealWordCount).forEach')
   || !exportRendererSource.includes('points.add(wordStart)')
 ) {
-  fail('export CPT segmentation ignores saved transcription word boundaries');
+  fail('export word-by-word segmentation ignores saved transcription word boundaries');
+}
+if (!exportRendererSource.includes('captionHasCptWordStyles(caption)')
+  || !exportRendererSource.includes('payload.style?.show_inactive === false')) {
+  fail('export does not segment displaced-word CPT sentence completion');
 }
 if (exportRendererSource.includes('segment.start + (segment.duration / 2)')) {
   fail('export samples animated template frames at an uncapped segment midpoint');

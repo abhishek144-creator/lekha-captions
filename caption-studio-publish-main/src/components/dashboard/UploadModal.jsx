@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Dialog,
   DialogContent,
@@ -206,6 +207,7 @@ export default function UploadModal({
   isUploading
 }) {
   const { currentUser } = useAuth();
+  const navigate = useNavigate();
   const [dragActive, setDragActive] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const [language, setLanguage] = useState('auto');
@@ -217,6 +219,15 @@ export default function UploadModal({
   const [isDetecting, setIsDetecting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [detectedUpload, setDetectedUpload] = useState(null);
+
+  const ensureAuthenticated = useCallback(() => {
+    if (!currentUser) {
+      if (onClose) onClose();
+      navigate('/login?mode=signup&returnTo=/Dashboard');
+      return false;
+    }
+    return true;
+  }, [currentUser, navigate, onClose]);
 
   // Reset modal to step 1 (upload page) whenever it opens
   useEffect(() => {
@@ -247,6 +258,7 @@ export default function UploadModal({
     setDragActive(false);
 
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      if (!ensureAuthenticated()) return;
       const file = e.dataTransfer.files[0];
       // Windows reports an EMPTY MIME type for some valid videos (.mkv, some
       // .mov) — fall back to the extension, and never fail a drop silently.
@@ -261,10 +273,11 @@ export default function UploadModal({
       setDetectedUpload(null);
       setStep(2);
     }
-  }, []);
+  }, [ensureAuthenticated]);
 
   const handleFileSelect = (e) => {
     if (e.target.files && e.target.files[0]) {
+      if (!ensureAuthenticated()) return;
       const file = e.target.files[0];
 
       const validationError = validateVideoFile(file);
@@ -282,6 +295,7 @@ export default function UploadModal({
   };
 
   const handleSubmit = () => {
+    if (!ensureAuthenticated()) return;
     if (selectedFile) {
       onUpload(selectedFile, {
         language,
@@ -306,6 +320,7 @@ export default function UploadModal({
 
   // Language detection — uploads file first, then calls detect endpoint
   const handleDetectLanguage = async () => {
+    if (!ensureAuthenticated()) return
     if (!selectedFile) return
     setIsDetecting(true)
     try {
