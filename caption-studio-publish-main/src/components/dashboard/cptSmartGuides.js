@@ -166,21 +166,43 @@ export function resolveCptWordSnap({
   const resolvedCenterY = centerY(resolvedRect);
 
   if (bestX?.mode === 'alignment') {
-    guides.push({
-      type: 'vertical',
-      kind: bestX.kind,
-      x: bestX.value,
-      y1: Math.min(resolvedRect.top, bestX.targetRect.top),
-      y2: Math.max(resolvedRect.bottom, bestX.targetRect.bottom),
+    const target = bestX.targetRect;
+    const matchingEdges = [
+      { kind: 'left', draggedValue: resolvedRect.left, targetValue: target.left },
+      { kind: 'right', draggedValue: resolvedRect.right, targetValue: target.right },
+    ].filter(({ draggedValue, targetValue }) => Math.abs(draggedValue - targetValue) <= 0.75);
+    const verticalGuides = matchingEdges.length > 0
+      ? matchingEdges
+      : [{ kind: bestX.kind, draggedValue: bestX.value, targetValue: bestX.value }];
+
+    verticalGuides.forEach(({ kind, targetValue }) => {
+      guides.push({
+        type: 'vertical',
+        kind,
+        x: targetValue,
+        y1: Math.min(resolvedRect.top, target.top),
+        y2: Math.max(resolvedRect.bottom, target.bottom),
+      });
     });
   }
   if (bestY?.mode === 'alignment') {
-    guides.push({
-      type: 'horizontal',
-      kind: bestY.kind,
-      y: bestY.value,
-      x1: Math.min(resolvedRect.left, bestY.targetRect.left),
-      x2: Math.max(resolvedRect.right, bestY.targetRect.right),
+    const target = bestY.targetRect;
+    const matchingEdges = [
+      { kind: 'top', draggedValue: resolvedRect.top, targetValue: target.top },
+      { kind: 'bottom', draggedValue: resolvedRect.bottom, targetValue: target.bottom },
+    ].filter(({ draggedValue, targetValue }) => Math.abs(draggedValue - targetValue) <= 0.75);
+    const horizontalGuides = matchingEdges.length > 0
+      ? matchingEdges
+      : [{ kind: bestY.kind, draggedValue: bestY.value, targetValue: bestY.value }];
+
+    horizontalGuides.forEach(({ kind, targetValue }) => {
+      guides.push({
+        type: 'horizontal',
+        kind,
+        y: targetValue,
+        x1: Math.min(resolvedRect.left, target.left),
+        x2: Math.max(resolvedRect.right, target.right),
+      });
     });
   }
 

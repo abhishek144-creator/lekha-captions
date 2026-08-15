@@ -1,7 +1,7 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import http from 'node:http'
 
 const backendTarget = process.env.VITE_BACKEND_PROXY_TARGET || 'http://127.0.0.1:8000'
@@ -31,7 +31,7 @@ function requestReady(url, timeoutMs = 1200) {
   return new Promise((resolve) => {
     const req = http.get(url, { timeout: timeoutMs }, (res) => {
       res.resume()
-      resolve(res.statusCode >= 200 && res.statusCode < 500)
+      resolve(res.statusCode >= 200 && res.statusCode < 300)
     })
     req.on('timeout', () => {
       req.destroy()
@@ -46,8 +46,46 @@ function backendAutostartPlugin() {
   let monitor = null
   let starting = false
 
+  function stopStaleWindowsBackend() {
+    if (process.platform !== 'win32') return false
+    const script = `
+$connections = Get-NetTCPConnection -LocalPort ${backendPort} -State Listen -ErrorAction SilentlyContinue
+$pids = @($connections | Select-Object -ExpandProperty OwningProcess -Unique)
+foreach ($ownerPid in $pids) {
+  if (-not $ownerPid) { continue }
+  $proc = Get-CimInstance Win32_Process -Filter "ProcessId=$ownerPid" -ErrorAction SilentlyContinue
+  if (-not $proc) { continue }
+  $name = [string]$proc.Name
+  $command = [string]$proc.CommandLine
+  $looksLikeBackend = ($command -match 'uvicorn') -and ($command -match 'backend\\.main:app')
+  if (($name -match '^(node|npm|cmd|powershell|python)(\\.exe)?$') -and -not $looksLikeBackend) {
+    Stop-Process -Id $proc.ProcessId -Force
+    Write-Output "stopped:$($proc.ProcessId)"
+  }
+}
+`
+    try {
+      const output = execFileSync("powershell.exe", [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        script,
+      ], { encoding: "utf8" })
+      if (output.trim()) {
+        console.log(`[lekha] Replaced stale backend on port ${backendPort}: ${output.trim()}`)
+        return true
+      }
+    } catch (error) {
+      console.warn(`[lekha] Could not stop stale backend: ${error?.message || error}`)
+    }
+    return false
+  }
+
   async function ensureBackendRunning() {
     if (backendAutostartDisabled || !isLocalBackendTarget() || starting) return
+    if (await requestReady(`${backendTarget}/api/version`)) return
+    stopStaleWindowsBackend()
     if (await requestReady(`${backendTarget}/api/version`)) return
     if (backendProcess && !backendProcess.killed) return
 

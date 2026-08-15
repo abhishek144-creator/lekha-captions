@@ -103,6 +103,17 @@ assertIncludes("API client falls back directly to local backend", apiClient, "VI
 assertIncludes("API client local direct backend default is port 8000", apiClient, "http://127.0.0.1:8000")
 assertIncludes("API client applies the production API base to every API route", apiClient, "resolveApiUrl")
 assertIncludes("API client reads the production API origin", apiClient, "VITE_API_BASE_URL")
+assertIncludes("API client creates durable request references", apiClient, "createRequestReference")
+assertIncludes("API client sends request references", apiClient, 'requestHeaders.set("X-Request-Id", requestId)')
+assertIncludes("API errors expose request references", apiClient, "this.requestId = requestId")
+assertIncludes("customer error messages include references", apiClient, "Reference: ${error.requestId}")
+
+const pageConfig = readText("src/pages.config.js")
+assertIncludes("known limitations page is routed", pageConfig, '"KnownLimitations": KnownLimitations')
+assertIncludes("changelog page is routed", pageConfig, '"Changelog": Changelog')
+assertFile("known limitations page exists", "src/pages/KnownLimitations.jsx")
+assertFile("changelog page exists", "src/pages/Changelog.jsx")
+assertFile("support ticket workflow exists", "docs/SUPPORT_TICKET_WORKFLOW.md")
 
 const featureFlags = readText("src/lib/featureFlags.js")
 assertIncludes("local dev auth bypass remains disabled", featureFlags, "localDevAuthBypass: false")
@@ -199,6 +210,8 @@ assertIncludes("sitemap contains the terms route", sitemap, "/TermsAndConditions
 assertIncludes("sitemap contains the privacy route", sitemap, "/PrivacyPolicy</loc>")
 assertIncludes("sitemap contains the refund policy route", sitemap, "/RefundPolicy</loc>")
 assertIncludes("sitemap contains the acceptable use route", sitemap, "/AcceptableUsePolicy</loc>")
+assertIncludes("sitemap contains the known limitations route", sitemap, "/KnownLimitations</loc>")
+assertIncludes("sitemap contains the changelog route", sitemap, "/Changelog</loc>")
 
 // Razorpay requires a reachable refund/cancellation policy, and the checkout
 // surface must link the policies a buyer is agreeing to.

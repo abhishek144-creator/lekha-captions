@@ -62,6 +62,8 @@ const RefundPolicy = lazy(() => import('./pages/RefundPolicy'))
 const AcceptableUsePolicy = lazy(() => import('./pages/AcceptableUsePolicy'))
 const HelpAndSupport = lazy(() => import('./pages/HelpAndSupport'))
 const AdminOps = lazy(() => import('./pages/AdminOps'))
+const KnownLimitations = lazy(() => import('./pages/KnownLimitations'))
+const Changelog = lazy(() => import('./pages/Changelog'))
 
 export const PAGES = {
     "Dashboard": Dashboard,
@@ -76,6 +78,8 @@ export const PAGES = {
     "AcceptableUsePolicy": AcceptableUsePolicy,
     "HelpAndSupport": HelpAndSupport,
     "AdminOps": AdminOps,
+    "KnownLimitations": KnownLimitations,
+    "Changelog": Changelog,
 }
 
 export const pagesConfig = {

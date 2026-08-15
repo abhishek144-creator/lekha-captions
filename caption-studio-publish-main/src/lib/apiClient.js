@@ -2,11 +2,12 @@ import { auth } from '@/lib/firebase'
 import { shouldDispatchAuthLogout } from '@/lib/apiErrorPolicy'
 
 export class ApiError extends Error {
-  constructor(message, { status = 0, data = null } = {}) {
+  constructor(message, { status = 0, data = null, requestId = '' } = {}) {
     super(message || "Request failed")
     this.name = "ApiError"
     this.status = status
     this.data = data
+    this.requestId = requestId
   }
 }
 
@@ -80,6 +81,13 @@ function buildApiErrorMessage(data, status) {
     || `Request failed (${status})`
 }
 
+function createRequestReference() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID()
+  }
+  return `web-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+}
+
 function looksLikeProxyConnectionFailure(data) {
   const message = String(data?.detail || data?.error || data?.message || "")
   return /proxy|econnrefused|failed to fetch|socket hang up|networkerror/i.test(message)
@@ -126,6 +134,12 @@ export async function apiFetch(url, options = {}) {
     : 0
   let controller = null
   let authRefreshAttempted = false
+  const requestId = localApiRequest ? createRequestReference() : ''
+  if (requestId) {
+    const requestHeaders = new Headers(fetchOptions.headers || {})
+    if (!requestHeaders.has("X-Request-Id")) requestHeaders.set("X-Request-Id", requestId)
+    fetchOptions.headers = requestHeaders
+  }
   if (dedupeKey) {
     if (cancelPrevious) {
       cancelRequest(dedupeKey)
@@ -164,7 +178,7 @@ export async function apiFetch(url, options = {}) {
         if (localApiRequest) {
           throw new ApiError(
             getBackendUnavailableMessage(),
-            { status: 0, data: { original_message: error?.message || String(error) } },
+            { status: 0, data: { original_message: error?.message || String(error) }, requestId },
           )
         }
         throw error
@@ -214,7 +228,11 @@ export async function apiFetch(url, options = {}) {
               data = await parseResponseBody(response.clone())
               if (response.ok) return response
               if (!looksLikeProxyConnectionFailure(data)) {
-                throw new ApiError(buildApiErrorMessage(data, response.status), { status: response.status, data })
+                throw new ApiError(buildApiErrorMessage(data, response.status), {
+                  status: response.status,
+                  data,
+                  requestId: response.headers.get("X-Request-Id") || requestId,
+                })
               }
             } catch (error) {
               if (error instanceof ApiError) throw error
@@ -225,9 +243,17 @@ export async function apiFetch(url, options = {}) {
             await sleep(LOCAL_API_RETRY_DELAY_MS)
             continue
           }
-          throw new ApiError(getBackendUnavailableMessage(), { status: response.status, data })
+          throw new ApiError(getBackendUnavailableMessage(), {
+            status: response.status,
+            data,
+            requestId: response.headers.get("X-Request-Id") || requestId,
+          })
         }
-        throw new ApiError(buildApiErrorMessage(data, response.status), { status: response.status, data })
+        throw new ApiError(buildApiErrorMessage(data, response.status), {
+          status: response.status,
+          data,
+          requestId: response.headers.get("X-Request-Id") || requestId,
+        })
       }
       return response
     }
@@ -250,5 +276,7 @@ export function getApiErrorMessage(error, fallback = "Something went wrong. Plea
   if (!error) return fallback
   if (typeof error === "string") return error
   if (error.name === "AbortError") return "Request cancelled"
-  return error.message || fallback
+  const message = error.message || fallback
+  if (!error.requestId || /\breference\s*:/i.test(message)) return message
+  return `${message} Reference: ${error.requestId}`
 }

@@ -65,3 +65,4 @@ tmp/
 
 # dev-only sample video for ?devseed=1 (never commit)
 public/dev-sample.mov
+.netlify/

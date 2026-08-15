@@ -161,9 +161,18 @@ const getTemplateSelectionIdentity = (style = {}) => [
 export default function Dashboard() {
   const { currentUser, userData } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
 
   const [isPricingModalOpen, setIsPricingModalOpen] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+
+  const handleUploadModalOpen = () => {
+    if (!currentUser) {
+      navigate('/login?mode=signup&returnTo=/Dashboard');
+      return;
+    }
+    setIsUploadModalOpen(true);
+  };
   const [isExportPanelOpen, setIsExportPanelOpen] = useState(false);
   // Once opened, ExportPanel stays mounted (hidden) so an in-flight export keeps
   // its progress state when the sheet is closed and reopened. Unmounting it
@@ -471,6 +480,10 @@ export default function Dashboard() {
   }, [videoUrl, captions, captionStyle, projectId, settings, duration, fileId, originalFileName, isLoaded]);
 
   const handleUpload = async (file, uploadSettings) => {
+    if (!currentUser) {
+      navigate('/login?mode=signup&returnTo=/Dashboard');
+      return;
+    }
     setWordPopup(null);
     setIsUploading(true);
     setSettings(uploadSettings);
@@ -1187,8 +1200,6 @@ export default function Dashboard() {
     loadGoogleFont(fontFamily, [300, 400, 500, 600, 700, 800]).catch(() => {});
   }, [captionStyle?.font_family]);
 
-  const navigate = useNavigate();
-
   const [pricingMessage, setPricingMessage] = useState('');
 
   const handleExportClick = () => {
@@ -1471,7 +1482,7 @@ export default function Dashboard() {
   return (
     <div className="h-[100dvh] max-h-[100dvh] bg-[#050505] flex flex-col overflow-hidden text-white">
       <DashboardHeader
-        onUploadClick={() => setIsUploadModalOpen(true)}
+        onUploadClick={handleUploadModalOpen}
         onExportClick={handleExportClick}
         onSaveClick={handleSave}
         isSaving={isSaving}
@@ -1509,7 +1520,7 @@ export default function Dashboard() {
                 Upload your short-form video (best for 15-180 seconds) and we'll generate professional captions instantly.
               </p>
               <Button
-                onClick={() => setIsUploadModalOpen(true)}
+                onClick={handleUploadModalOpen}
                 size="lg"
                 className="bg-white hover:bg-gray-100 text-black font-semibold px-8 rounded-[4px]"
               >

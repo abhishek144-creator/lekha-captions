@@ -59,6 +59,8 @@ import pathlib
 import re
 import shlex
 import secrets
+import socket
+import struct
 import threading
 from collections import deque
 from contextlib import asynccontextmanager
@@ -406,6 +408,12 @@ if _IS_PRODUCTION and DISABLE_EXPORT_CREDIT_LIMIT:
 # a day, so a launch-day traffic spike (or a pile of new free accounts) cannot
 # run up an unbounded transcription bill overnight. 0 disables the ceiling.
 AI_SYSTEM_DAILY_LIMIT = max(0, int(os.environ.get("AI_SYSTEM_DAILY_LIMIT", "500")))
+AI_COST_ESTIMATE_PER_MEDIA_MINUTE_USD = max(
+    0.0, float(os.environ.get("AI_COST_ESTIMATE_PER_MEDIA_MINUTE_USD", "0"))
+)
+RENDER_COST_ESTIMATE_PER_MEDIA_MINUTE_USD = max(
+    0.0, float(os.environ.get("RENDER_COST_ESTIMATE_PER_MEDIA_MINUTE_USD", "0"))
+)
 
 # In-memory operational state (swap for Redis in multi-instance deployments)
 _export_jobs: Dict[str, Dict[str, Any]] = {}
@@ -477,9 +485,14 @@ CONTENT_SAFETY_BLOCKLIST = [
 # opt-out for deployments that scan at another layer (same pattern as
 # ALLOW_INMEMORY_STATE), so the decision is recorded rather than defaulted.
 ALLOW_UNSCANNED_UPLOADS = os.environ.get("ALLOW_UNSCANNED_UPLOADS", "0").strip().lower() in ("1", "true", "yes", "on")
-if _IS_PRODUCTION and not os.environ.get("CLAMAV_SCAN_CMD", "").strip() and not ALLOW_UNSCANNED_UPLOADS:
+if (
+    _IS_PRODUCTION
+    and not os.environ.get("CLAMAV_HOST", "").strip()
+    and not os.environ.get("CLAMAV_SCAN_CMD", "").strip()
+    and not ALLOW_UNSCANNED_UPLOADS
+):
     raise RuntimeError(
-        "CLAMAV_SCAN_CMD must be set in production (ENV=production): without it "
+        "CLAMAV_HOST or CLAMAV_SCAN_CMD must be set in production (ENV=production): without it "
         "user uploads are never scanned for malware. Configure a scanner command, "
         "or set ALLOW_UNSCANNED_UPLOADS=1 to accept unscanned uploads deliberately."
     )
@@ -724,7 +737,7 @@ app.add_middleware(
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type", "Authorization"],
+    allow_headers=["Content-Type", "Authorization", "X-Request-Id", "Idempotency-Key"],
 )
 
 # Simple in-memory rate limiters (ip -> list of timestamps)
@@ -754,16 +767,25 @@ DETECT_LANGUAGE_RATE_LIMIT = 10  # max paid language-detection calls per hour pe
 _analytics_rate: Dict[str, list] = {}
 ANALYTICS_RATE_LIMIT = 120  # max client analytics events per hour per IP
 
+_support_rate: Dict[str, list] = {}
+SUPPORT_RATE_LIMIT = 5  # max public support submissions per hour per IP
+
 # Counters that the release gate (`_build_slo_snapshot`) and failure-ratio
 # alerting read as ground truth. The public /api/analytics/track endpoint must
 # never let a client write these — otherwise an unauthenticated caller could
 # inflate failure counters to trip the readiness gate or fire ops alerts.
 RESERVED_SERVER_ANALYTICS_EVENTS = frozenset({
+    "account_signup",
+    "upload_success",
     "export_success",
+    "export_cancelled",
     "export_failed_http",
     "export_failed_exception",
     "process_success",
     "process_failed",
+    "payment_success",
+    "payment_failed",
+    "support_request_created",
 })
 
 PLAN_EXPORT_PRESETS = {
@@ -778,8 +800,10 @@ PLAN_EXPORT_PRESETS = {
 QUALITY_RANK = {"720p": 1, "1080p": 2, "4k": 3}
 
 _analytics_counters: Dict[str, int] = {}
+_analytics_daily_counters: Dict[str, Dict[str, int]] = {}
 _analytics_last_alert_ts: Dict[str, float] = {}
 _route_latency_samples: Dict[str, list] = {}
+_operational_metric_samples: Dict[str, list] = {}
 _payment_idempotency: Dict[str, Dict[str, Any]] = {}
 _tenant_memberships: Dict[str, set] = {}
 _telemetry_buffer = deque()
@@ -881,9 +905,15 @@ def _log(rid: str, msg: str):
 
 def _track_event(event: str, payload: Optional[Dict[str, Any]] = None):
     _analytics_counters[event] = _analytics_counters.get(event, 0) + 1
+    day_key = _utcnow().date().isoformat()
+    daily = _analytics_daily_counters.setdefault(day_key, {})
+    daily[event] = daily.get(event, 0) + 1
     if _redis_client is not None:
         try:
             _redis_client.hincrby("analytics:counters", event, 1)
+            redis_daily_key = f"analytics:daily:{day_key}"
+            _redis_client.hincrby(redis_daily_key, event, 1)
+            _redis_client.expire(redis_daily_key, 120 * 24 * 3600)
         except Exception:
             pass
     _json_log("info", "analytics_event", name=event, payload=payload or {})
@@ -906,8 +936,78 @@ def _track_latency_sample(path: str, duration_ms: int, max_samples: int = 300):
             _redis_client.rpush(k, int(duration_ms))
             _redis_client.ltrim(k, -max_samples, -1)
             _redis_client.expire(k, 24 * 3600)
+            day_key = _utcnow().date().isoformat()
+            daily_key = f"latency:{day_key}:{path}"
+            _redis_client.rpush(daily_key, int(duration_ms))
+            _redis_client.ltrim(daily_key, -max_samples, -1)
+            _redis_client.expire(daily_key, 120 * 24 * 3600)
         except Exception:
             pass
+
+
+def _track_operational_metric_sample(name: str, value: float, max_samples: int = 2_000):
+    if not math.isfinite(float(value)):
+        return
+    day_key = _utcnow().date().isoformat()
+    sample_key = f"{day_key}:{name}"
+    samples = _operational_metric_samples.setdefault(sample_key, [])
+    samples.append(float(value))
+    if len(samples) > max_samples:
+        del samples[:-max_samples]
+    if _redis_client is not None:
+        try:
+            redis_key = f"opsmetric:{sample_key}"
+            _redis_client.rpush(redis_key, float(value))
+            _redis_client.ltrim(redis_key, -max_samples, -1)
+            _redis_client.expire(redis_key, 120 * 24 * 3600)
+        except Exception:
+            pass
+
+
+def _read_operational_metric_samples(day_key: str, name: str) -> List[float]:
+    sample_key = f"{day_key}:{name}"
+    values = list(_operational_metric_samples.get(sample_key, []))
+    if _redis_client is not None:
+        try:
+            redis_values = [
+                float(value)
+                for value in (_redis_client.lrange(f"opsmetric:{sample_key}", 0, -1) or [])
+            ]
+            if redis_values:
+                values = redis_values
+        except Exception:
+            pass
+    return values
+
+
+def _read_daily_analytics_counters(day_key: str) -> Dict[str, int]:
+    counters = dict(_analytics_daily_counters.get(day_key, {}))
+    if _redis_client is not None:
+        try:
+            redis_counters = _redis_client.hgetall(f"analytics:daily:{day_key}") or {}
+            if redis_counters:
+                counters = {key: int(value) for key, value in redis_counters.items()}
+        except Exception:
+            pass
+    return counters
+
+
+def _read_daily_latency_samples(day_key: str, path: str) -> List[int]:
+    if day_key == _utcnow().date().isoformat():
+        values = list(_route_latency_samples.get(path, []))
+    else:
+        values = []
+    if _redis_client is not None:
+        try:
+            redis_values = [
+                int(value)
+                for value in (_redis_client.lrange(f"latency:{day_key}:{path}", 0, -1) or [])
+            ]
+            if redis_values:
+                values = redis_values
+        except Exception:
+            pass
+    return values
 
 def _p95(values: list) -> int:
     if not values:
@@ -1048,6 +1148,8 @@ SERVICE_CONTROL_KEYS = (
     "pause_exports",
     "maintenance_mode",
 )
+MAX_UPLOAD_DURATION_CONTROL_KEY = "max_upload_duration_seconds"
+GLOBAL_MAX_UPLOAD_DURATION_SECONDS = 180
 SERVICE_CONTROL_COLLECTION = "ops"
 SERVICE_CONTROL_DOCUMENT = "service_controls"
 SERVICE_CONTROL_CACHE_SECONDS = max(
@@ -1069,6 +1171,7 @@ _SERVICE_CONTROL_MESSAGES = {
 def _default_service_controls() -> Dict[str, Any]:
     controls: Dict[str, Any] = {key: False for key in SERVICE_CONTROL_KEYS}
     controls["notice"] = ""
+    controls[MAX_UPLOAD_DURATION_CONTROL_KEY] = GLOBAL_MAX_UPLOAD_DURATION_SECONDS
     return controls
 
 
@@ -1096,6 +1199,17 @@ def _read_service_controls(force: bool = False) -> Dict[str, Any]:
                 for key in SERVICE_CONTROL_KEYS:
                     controls[key] = bool(stored.get(key, False))
                 controls["notice"] = str(stored.get("notice") or "")[:SERVICE_CONTROL_NOTICE_MAX]
+                try:
+                    configured_duration = int(stored.get(
+                        MAX_UPLOAD_DURATION_CONTROL_KEY,
+                        GLOBAL_MAX_UPLOAD_DURATION_SECONDS,
+                    ))
+                except (TypeError, ValueError):
+                    configured_duration = GLOBAL_MAX_UPLOAD_DURATION_SECONDS
+                controls[MAX_UPLOAD_DURATION_CONTROL_KEY] = max(
+                    15,
+                    min(GLOBAL_MAX_UPLOAD_DURATION_SECONDS, configured_duration),
+                )
         except Exception as e:
             # Fail open: a controls read failure must not take the product down.
             # The last known state is preferred over an empty default.
@@ -1169,6 +1283,39 @@ def _audit_action(action: str, uid: str = "", metadata: Optional[Dict[str, Any]]
 
 
 def _scan_upload_for_threat(file_path: str) -> bool:
+    clamd_host = os.environ.get("CLAMAV_HOST", "").strip()
+    if clamd_host:
+        clamd_port = int(os.environ.get("CLAMAV_PORT", "3310"))
+        try:
+            with socket.create_connection((clamd_host, clamd_port), timeout=10) as client:
+                client.settimeout(60)
+                client.sendall(b"zINSTREAM\0")
+                with open(file_path, "rb") as source:
+                    while chunk := source.read(1024 * 1024):
+                        client.sendall(struct.pack("!I", len(chunk)))
+                        client.sendall(chunk)
+                client.sendall(struct.pack("!I", 0))
+
+                response = bytearray()
+                while len(response) < 4096:
+                    part = client.recv(4096 - len(response))
+                    if not part:
+                        break
+                    response.extend(part)
+                    if b"\0" in part:
+                        break
+            scanner_output = response.rstrip(b"\0").decode("utf-8", errors="replace")
+            if scanner_output.endswith(" OK"):
+                return True
+            if scanner_output.endswith(" FOUND"):
+                _json_log("warning", "malware_detected", scanner_output=scanner_output)
+            else:
+                _json_log("warning", "malware_scan_failed", scanner_output=scanner_output or "empty response")
+            return False
+        except Exception as e:
+            _json_log("warning", "malware_scan_failed", error=str(e))
+            return False
+
     scan_cmd = os.environ.get("CLAMAV_SCAN_CMD", "").strip()
     if not scan_cmd:
         return True
@@ -1179,9 +1326,23 @@ def _scan_upload_for_threat(file_path: str) -> bool:
             text=True,
             timeout=20,
         )
-        combined = f"{result.stdout}\n{result.stderr}".lower()
-        infected = "infected" in combined and "0 infected" not in combined
-        return result.returncode == 0 and not infected
+        if result.returncode == 0:
+            return True
+
+        # ClamAV uses exit code 1 for a detected threat and 2 for scanner/runtime
+        # failures. Keep both fail-closed, but distinguish them in operational
+        # logs so a scanner outage is not mistaken for a malware detection.
+        scan_output = f"{result.stdout}\n{result.stderr}".strip()[-1000:]
+        if result.returncode == 1:
+            _json_log("warning", "malware_detected", scanner_output=scan_output)
+        else:
+            _json_log(
+                "warning",
+                "malware_scan_failed",
+                returncode=result.returncode,
+                scanner_output=scan_output,
+            )
+        return False
     except Exception as e:
         _json_log("warning", "malware_scan_failed", error=str(e))
         # Fail closed when scanner is configured but unavailable.
@@ -2207,7 +2368,7 @@ CACHE_DIR = os.path.join(MEDIA_SCRATCH_ROOT, "cache")
 TRANSCRIPTION_CACHE_DIR = os.path.join(CACHE_DIR, "transcriptions")
 RENDER_CACHE_DIR = os.path.join(CACHE_DIR, "renders")
 DEAD_LETTER_DIR = os.path.join(CACHE_DIR, "dead_letter")
-EXPORT_RENDERER_VERSION = "2026-07-30-cpt-instant-reveal-fashion-editorial-v43"
+EXPORT_RENDERER_VERSION = "2026-07-31-canvas-font-metrics-parity-v44"
 
 for d in [UPLOAD_DIR, EXPORT_DIR, FONTS_DIR, CACHE_DIR, TRANSCRIPTION_CACHE_DIR, RENDER_CACHE_DIR, DEAD_LETTER_DIR]:
     os.makedirs(d, exist_ok=True)
@@ -2354,12 +2515,23 @@ class ServiceControlsRequest(BaseModel):
     pause_uploads: Optional[bool] = None
     pause_transcription: Optional[bool] = None
     pause_exports: Optional[bool] = None
+    max_upload_duration_seconds: Optional[int] = Field(default=None, ge=15, le=GLOBAL_MAX_UPLOAD_DURATION_SECONDS)
     notice: Optional[str] = Field(default=None, max_length=SERVICE_CONTROL_NOTICE_MAX)
 
 class TenantBackfillRequest(BaseModel):
     id_token: str = Field(default="", max_length=8_192)
     limit: int = Field(default=500, ge=1, le=500)
     cursor: str = Field(default="", max_length=1_500)
+
+
+class SupportRequest(BaseModel):
+    account_email: str = Field(min_length=3, max_length=320)
+    issue_type: str = Field(min_length=2, max_length=80)
+    job_id: str = Field(default="", max_length=128)
+    payment_id: str = Field(default="", max_length=128)
+    browser_device: str = Field(min_length=2, max_length=300)
+    media_details: str = Field(default="", max_length=500)
+    description: str = Field(min_length=10, max_length=5_000)
 
 class ProcessRequest(BaseModel):
     file_id: str = Field(min_length=36, max_length=36)
@@ -2797,6 +2969,12 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
         payload=payload
     )
     _track_event("export_success", {"quality": preset["quality"], "fps": preset["fps"], "tier": preset["tier"]})
+    _track_operational_metric_sample("export_total_ms", total_ms)
+    _track_operational_metric_sample("export_render_ms", render_ms)
+    _track_operational_metric_sample(
+        "job_cost_usd",
+        (rendered_duration / 60.0) * RENDER_COST_ESTIMATE_PER_MEDIA_MINUTE_USD,
+    )
     return payload
 
 
@@ -2810,6 +2988,14 @@ def run_export_job_task(
     rid = f"worker-{export_job_id[:8]}"
     slot_acquired = False
     try:
+        existing_job = _load_export_job(export_job_id) or {}
+        if (existing_job.get("status") or "").lower() == "cancelled":
+            _json_log("info", "cancelled_export_skipped", job_id=export_job_id, uid=uid)
+            return {
+                "success": False,
+                "status": "cancelled",
+                "export_job_id": export_job_id,
+            }
         slot_acquired = _acquire_export_slot(uid, export_job_id)
         if not slot_acquired:
             raise RuntimeError("Another export currently owns this account's export slot")
@@ -2970,7 +3156,11 @@ async def upload_video(file: UploadFile = File(...), request: Request = None, re
             _track_event("upload_rejected_ffprobe", {"error": str(probe_error)})
             raise HTTPException(status_code=422, detail=f"Invalid media file: {probe_error}")
 
-        max_seconds = 180
+        controls = _read_service_controls()
+        max_seconds = int(controls.get(
+            MAX_UPLOAD_DURATION_CONTROL_KEY,
+            GLOBAL_MAX_UPLOAD_DURATION_SECONDS,
+        ))
         if duration > max_seconds:
             os.remove(file_path)
             _track_event("upload_rejected_duration", {"duration": duration})
@@ -3032,7 +3222,12 @@ async def process_video(req: ProcessRequest, request: Request, response: Respons
     # the cache lookup so a result cached by a higher tier can't be replayed to a
     # lower-tier user with a too-long video.
     user_tier = _normalize_tier_name(await asyncio.to_thread(_lookup_subscription_tier, uid))
-    max_seconds = _max_video_seconds_for_tier(user_tier)
+    controls = _read_service_controls()
+    operator_max_seconds = int(controls.get(
+        MAX_UPLOAD_DURATION_CONTROL_KEY,
+        GLOBAL_MAX_UPLOAD_DURATION_SECONDS,
+    ))
+    max_seconds = min(_max_video_seconds_for_tier(user_tier), operator_max_seconds)
     try:
         _probe_meta = await asyncio.to_thread(_probe_media, input_path)
         media_duration = float((_probe_meta.get("format") or {}).get("duration") or 0)
@@ -3100,6 +3295,12 @@ async def process_video(req: ProcessRequest, request: Request, response: Respons
 
         if result.get("success"):
             _track_event("process_success", {"language": req.language})
+            if media_duration > 0:
+                _track_operational_metric_sample("transcription_media_seconds", media_duration)
+                _track_operational_metric_sample(
+                    "job_cost_usd",
+                    (media_duration / 60.0) * AI_COST_ESTIMATE_PER_MEDIA_MINUTE_USD,
+                )
             if cache_path:
                 try:
                     with open(cache_path, "w", encoding="utf-8") as f:
@@ -3307,6 +3508,60 @@ def export_result(job_id: str, request: Request):
     return payload
 
 
+@app.post("/api/export-cancel/{job_id}")
+def export_cancel(job_id: str, request: Request):
+    job = _load_export_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Export job not found")
+    _require_export_job_access(request, job)
+
+    status = (job.get("status") or "unknown").lower()
+    if status == "cancelled":
+        return {
+            "success": True,
+            "status": "cancelled",
+            "export_job_id": job_id,
+            "idempotent_replay": True,
+            "credit_released": False,
+        }
+    if status != "queued":
+        raise HTTPException(
+            status_code=409,
+            detail="Only a queued export can be cancelled safely. A render already in progress will finish normally.",
+        )
+    if _export_queue is None:
+        raise HTTPException(status_code=503, detail="Durable queue is not configured")
+
+    rq_job = _export_queue.fetch_job(job_id)
+    if rq_job is not None:
+        rq_status = rq_job.get_status(refresh=True)
+        rq_status_value = getattr(rq_status, "value", str(rq_status)).lower()
+        if rq_status_value not in {"queued", "deferred", "scheduled", "stopped", "canceled", "cancelled"}:
+            raise HTTPException(
+                status_code=409,
+                detail="This export has already started and cannot be cancelled safely.",
+            )
+        rq_job.cancel()
+
+    uid = str(job.get("uid") or "")
+    _set_export_job(
+        job_id,
+        "cancelled",
+        cancelled_at=time.time(),
+        cancellation_reason="user_requested",
+        error=None,
+    )
+    _release_export_slot(uid, job_id)
+    _track_event("export_cancelled", {"job_id": job_id})
+    _audit_action("export_cancelled", uid, {"job_id": job_id})
+    return {
+        "success": True,
+        "status": "cancelled",
+        "export_job_id": job_id,
+        "credit_released": False,
+    }
+
+
 @app.post("/api/export-replay/{job_id}")
 def export_replay(job_id: str, request: Request):
     _assert_service_available("pause_exports")
@@ -3369,15 +3624,57 @@ async def analytics_summary(request: Request):
     # unauthenticated hands anyone a live view of business/operational health.
     if not _is_admin_token(request=request):
         raise HTTPException(status_code=403, detail="Admin access required")
-    export_success = _analytics_counters.get("export_success", 0)
-    export_failed = _analytics_counters.get("export_failed_http", 0) + _analytics_counters.get("export_failed_exception", 0)
-    process_success = _analytics_counters.get("process_success", 0)
-    process_failed = _analytics_counters.get("process_failed", 0)
+    day_key = (request.query_params.get("date") or _utcnow().date().isoformat()).strip()
+    try:
+        datetime.strptime(day_key, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="date must use YYYY-MM-DD")
+
+    counters = _read_daily_analytics_counters(day_key)
+    export_success = counters.get("export_success", 0)
+    export_failed = counters.get("export_failed_http", 0) + counters.get("export_failed_exception", 0)
+    process_success = counters.get("process_success", 0)
+    process_failed = counters.get("process_failed", 0)
     _maybe_alert_failure_ratio("export", export_success, export_failed)
     _maybe_alert_failure_ratio("process", process_success, process_failed)
 
+    terminal_success = export_success + process_success
+    terminal_failed = export_failed + process_failed
+    terminal_total = terminal_success + terminal_failed
+    process_latency = _read_daily_latency_samples(day_key, "/api/process")
+    export_latency = _read_daily_latency_samples(day_key, "/api/export")
+    processing_latency = process_latency + export_latency
+    average_processing_ms = (
+        round(sum(processing_latency) / len(processing_latency))
+        if processing_latency else 0
+    )
+    cost_samples = _read_operational_metric_samples(day_key, "job_cost_usd")
+    average_cost_usd = (
+        round(sum(cost_samples) / len(cost_samples), 6)
+        if cost_samples else 0.0
+    )
+
     return {
-        "counters": _analytics_counters,
+        "window": {
+            "kind": "utc_day",
+            "date": day_key,
+            "timezone": "UTC",
+        },
+        "counters": counters,
+        "metrics": {
+            "signups": counters.get("account_signup", 0),
+            "uploads": counters.get("upload_success", 0),
+            "completed_transcriptions": process_success,
+            "completed_exports": export_success,
+            "failure_percentage": round((terminal_failed / max(terminal_total, 1)) * 100, 2),
+            "average_processing_time_ms": average_processing_ms,
+            "processing_p95_ms": _p95(processing_latency),
+            "cost_per_job_usd": average_cost_usd,
+            "cost_is_estimate": True,
+            "successful_payments": counters.get("payment_success", 0),
+            "failed_payments": counters.get("payment_failed", 0),
+            "support_requests": counters.get("support_request_created", 0),
+        },
         "health": {
             "export_failure_rate": (export_failed / max(export_success + export_failed, 1)),
             "process_failure_rate": (process_failed / max(process_success + process_failed, 1)),
@@ -3413,6 +3710,50 @@ async def analytics_track(request: Request, response: Response):
         raise HTTPException(status_code=400, detail="Invalid analytics payload")
     _track_event(event, payload)
     return {"success": True}
+
+
+@app.post("/api/support-request")
+def create_support_request(req: SupportRequest, request: Request, response: Response):
+    client_ip = request.client.host if request.client else "unknown"
+    allowed, retry_after, remaining = _check_rate(
+        _support_rate,
+        f"support:{client_ip}",
+        SUPPORT_RATE_LIMIT,
+    )
+    _apply_rate_headers(response, SUPPORT_RATE_LIMIT, remaining, retry_after)
+    if not allowed:
+        raise HTTPException(status_code=429, detail="Too many support requests. Please wait before trying again.")
+
+    email = req.account_email.strip().lower()
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        raise HTTPException(status_code=422, detail="Enter a valid account email address.")
+    db = get_db()
+    if not db:
+        raise HTTPException(status_code=503, detail="Support intake is temporarily unavailable.")
+
+    ticket_id = f"SUP-{_utcnow().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8].upper()}"
+    received_at = _utcnow().isoformat() + "Z"
+    db.collection("support_requests").document(ticket_id).set({
+        "ticket_id": ticket_id,
+        "account_email": email,
+        "issue_type": req.issue_type.strip(),
+        "job_id": req.job_id.strip(),
+        "payment_id": req.payment_id.strip(),
+        "browser_device": req.browser_device.strip(),
+        "media_details": req.media_details.strip(),
+        "description": req.description.strip(),
+        "status": "open",
+        "received_at": received_at,
+        "updated_at": received_at,
+        "user_agent": (request.headers.get("user-agent") or "")[:500],
+        "expire_at": _retention_deadline(365),
+    })
+    _track_event("support_request_created", {
+        "ticket_id": ticket_id,
+        "issue_type": req.issue_type.strip(),
+    })
+    _send_alert(f"[Lekha Support] New {req.issue_type.strip()} ticket: {ticket_id}")
+    return {"success": True, "ticket_id": ticket_id, "received_at": received_at}
 
 @app.get("/api/version")
 async def api_version():
@@ -3563,7 +3904,13 @@ def service_status():
     controls = _read_service_controls()
     return {
         "success": True,
-        "controls": {key: bool(controls.get(key)) for key in SERVICE_CONTROL_KEYS},
+        "controls": {
+            **{key: bool(controls.get(key)) for key in SERVICE_CONTROL_KEYS},
+            MAX_UPLOAD_DURATION_CONTROL_KEY: int(controls.get(
+                MAX_UPLOAD_DURATION_CONTROL_KEY,
+                GLOBAL_MAX_UPLOAD_DURATION_SECONDS,
+            )),
+        },
         "notice": controls.get("notice") or "",
     }
 
@@ -3581,6 +3928,11 @@ def admin_service_controls(req: ServiceControlsRequest, request: Request):
         value = getattr(req, key, None)
         if value is not None:
             updates[key] = bool(value)
+    if req.max_upload_duration_seconds is not None:
+        updates[MAX_UPLOAD_DURATION_CONTROL_KEY] = max(
+            15,
+            min(GLOBAL_MAX_UPLOAD_DURATION_SECONDS, int(req.max_upload_duration_seconds)),
+        )
     if req.notice is not None:
         updates["notice"] = str(req.notice)[:SERVICE_CONTROL_NOTICE_MAX]
 
@@ -3605,10 +3957,18 @@ def admin_service_controls(req: ServiceControlsRequest, request: Request):
     _audit_action(
         "service_controls_updated",
         str((decoded or {}).get("uid") or ""),
-        {key: updates[key] for key in updates if key in SERVICE_CONTROL_KEYS},
+        {
+            key: updates[key]
+            for key in updates
+            if key in SERVICE_CONTROL_KEYS or key == MAX_UPLOAD_DURATION_CONTROL_KEY
+        },
     )
     _json_log("warning", "service_controls_updated", **{
-        key: bool(controls.get(key)) for key in SERVICE_CONTROL_KEYS
+        **{key: bool(controls.get(key)) for key in SERVICE_CONTROL_KEYS},
+        MAX_UPLOAD_DURATION_CONTROL_KEY: int(controls.get(
+            MAX_UPLOAD_DURATION_CONTROL_KEY,
+            GLOBAL_MAX_UPLOAD_DURATION_SECONDS,
+        )),
     })
     return {"success": True, "changed": True, "controls": controls}
 
@@ -3906,10 +4266,122 @@ def _apply_successful_payment(uid: str, plan_id: str, payment_id: str, order_id:
 
     user_ref = db.collection('users').document(uid)
     payment_ref = user_ref.collection('payments').document(payment_id)
-    return _grant_payment_transactionally(
+    result = _grant_payment_transactionally(
         db, user_ref, payment_ref, uid, plan_id, plan_config, payment_id,
         order_id, amount_minor, currency, source, org_id,
     )
+    if not result.get("duplicate"):
+        _track_event("payment_success", {
+            "plan_id": plan_id,
+            "currency": (currency or "INR").upper(),
+            "amount_minor": int(amount_minor or 0),
+            "payment_id": payment_id,
+        })
+    return result
+
+
+def _apply_refund_webhook_event(
+    db,
+    event: str,
+    refund_entity: Dict[str, Any],
+    payment_entity: Dict[str, Any],
+) -> Dict[str, Any]:
+    refund_id = str(refund_entity.get("id") or "").strip()
+    payment_id = str(refund_entity.get("payment_id") or payment_entity.get("id") or "").strip()
+    if not refund_id or not payment_id:
+        return {"success": True, "ignored": True, "reason": "missing_refund_or_payment_id"}
+
+    notes = payment_entity.get("notes") or {}
+    uid = str(notes.get("uid") or "").strip()
+    if not uid:
+        return {"success": True, "ignored": True, "reason": "missing_uid_note"}
+
+    event_status = event.rsplit(".", 1)[-1].lower()
+    reported_status = str(refund_entity.get("status") or event_status or "pending").lower()
+    if event == "refund.processed":
+        reported_status = "processed"
+    elif event == "refund.failed":
+        reported_status = "failed"
+    elif reported_status not in {"pending", "processed", "failed"}:
+        reported_status = "pending"
+
+    amount_minor = max(0, int(refund_entity.get("amount", 0) or 0))
+    currency = str(refund_entity.get("currency") or payment_entity.get("currency") or "INR").upper()
+    payment_ref = db.collection("users").document(uid).collection("payments").document(payment_id)
+    refund_ref = payment_ref.collection("refunds").document(refund_id)
+
+    @firestore.transactional
+    def _record(transaction):
+        payment_doc = payment_ref.get(transaction=transaction)
+        if not payment_doc.exists:
+            return {"success": True, "ignored": True, "reason": "payment_record_not_found"}
+
+        refund_doc = refund_ref.get(transaction=transaction)
+        previous = refund_doc.to_dict() if refund_doc.exists else {}
+        previous_status = str((previous or {}).get("status") or "").lower()
+        status_rank = {"": 0, "pending": 1, "failed": 2, "processed": 3}
+        effective_status = reported_status
+        if status_rank.get(previous_status, 0) > status_rank.get(reported_status, 0):
+            effective_status = previous_status
+
+        previous_amount = max(0, int((previous or {}).get("amount", amount_minor) or 0))
+        effective_amount = amount_minor or previous_amount
+        old_counted = previous_amount if previous_status == "processed" else 0
+        new_counted = effective_amount if effective_status == "processed" else 0
+
+        payment_data = payment_doc.to_dict() or {}
+        current_refunded = max(0, int(payment_data.get("refunded_amount", 0) or 0))
+        refunded_amount = max(0, current_refunded - old_counted + new_counted)
+        paid_amount = max(0, int(payment_data.get("amount", 0) or 0))
+        if refunded_amount > 0:
+            aggregate_status = "refunded" if paid_amount and refunded_amount >= paid_amount else "partially_refunded"
+        elif effective_status == "failed":
+            aggregate_status = "refund_failed"
+        else:
+            aggregate_status = "refund_pending"
+
+        updated_at = _utcnow().isoformat() + "Z"
+        transaction.set(refund_ref, {
+            "refund_id": refund_id,
+            "payment_id": payment_id,
+            "amount": effective_amount,
+            "currency": currency,
+            "status": effective_status,
+            "event": event,
+            "updated_at": updated_at,
+            "created_at": (previous or {}).get("created_at") or updated_at,
+        }, merge=True)
+        transaction.update(payment_ref, {
+            "refund_status": aggregate_status,
+            "refunded_amount": refunded_amount,
+            "last_refund_id": refund_id,
+            "last_refund_event": event,
+            "refund_updated_at": updated_at,
+        })
+        return {
+            "success": True,
+            "applied": True,
+            "refund_id": refund_id,
+            "payment_id": payment_id,
+            "refund_status": aggregate_status,
+            "refunded_amount": refunded_amount,
+            "idempotent_replay": bool(previous) and old_counted == new_counted and previous_status == effective_status,
+        }
+
+    result = _record(db.transaction())
+    if result.get("applied"):
+        _track_event("payment_refund_updated", {
+            "event": event,
+            "refund_status": result.get("refund_status"),
+            "payment_id": payment_id,
+        })
+        _audit_action("payment_refund_updated", uid, {
+            "event": event,
+            "refund_id": refund_id,
+            "payment_id": payment_id,
+            "refund_status": result.get("refund_status"),
+        })
+    return result
 
 # --- RAZORPAY SUBSCRIPTION ENDPOINTS ---
 
@@ -4155,6 +4627,7 @@ async def razorpay_webhook(request: Request):
 
     event = payload.get("event", "")
     payment_entity = ((payload.get("payload") or {}).get("payment") or {}).get("entity") or {}
+    refund_entity = ((payload.get("payload") or {}).get("refund") or {}).get("entity") or {}
     payment_id = payment_entity.get("id", "")
     order_id = payment_entity.get("order_id", "")
     amount_minor = int(payment_entity.get("amount", 0) or 0)
@@ -4166,14 +4639,17 @@ async def razorpay_webhook(request: Request):
     webhook_ref = None
     if db:
         try:
-            webhook_ref = db.collection("payment_webhooks").document(payment_id or str(uuid.uuid4()))
+            webhook_document_id = refund_entity.get("id") or payment_id or str(uuid.uuid4())
+            webhook_ref = db.collection("payment_webhooks").document(webhook_document_id)
             webhook_ref.set({
                 "event": event,
                 "payment_id": payment_id,
+                "refund_id": refund_entity.get("id", ""),
                 "order_id": order_id,
                 "currency": currency,
                 "amount": amount_minor,
                 "status": status,
+                "refund_status": refund_entity.get("status", ""),
                 "notes": notes,
                 "received_at": _utcnow().isoformat() + "Z",
                 "reconcile_required": event == "payment.captured" and status == "captured",
@@ -4181,6 +4657,19 @@ async def razorpay_webhook(request: Request):
             }, merge=True)
         except Exception as e:
             print(f"[Webhook] Failed to persist webhook event: {e}")
+
+    if event in {"refund.created", "refund.processed", "refund.failed"}:
+        if not db:
+            raise HTTPException(status_code=503, detail="Database unavailable")
+        return _apply_refund_webhook_event(db, event, refund_entity, payment_entity)
+
+    if event == "payment.failed":
+        _track_event("payment_failed", {
+            "payment_id": payment_id,
+            "order_id": order_id,
+            "currency": currency,
+            "amount_minor": amount_minor,
+        })
 
     # Acknowledge non-captured events.
     if event != "payment.captured" or status != "captured":
@@ -4706,6 +5195,7 @@ def account_bootstrap(req: AccountDataRequest, request: Request):
             "created_at": time.time(),
         })
         _audit_action("account_bootstrap_created", uid)
+        _track_event("account_signup", {"uid": uid})
     except AlreadyExists:
         # Only identity-provider profile fields may be refreshed here. Billing
         # and entitlement fields remain server-controlled elsewhere.

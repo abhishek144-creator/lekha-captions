@@ -31,7 +31,7 @@ function requestReady(url, timeoutMs = 1800) {
     const client = parsed.protocol === "https:" ? https : http;
     const req = client.get(parsed, { timeout: timeoutMs }, (res) => {
       res.resume();
-      resolve(res.statusCode >= 200 && res.statusCode < 500);
+      resolve(res.statusCode >= 200 && res.statusCode < 300);
     });
     req.on("timeout", () => {
       req.destroy();
@@ -85,6 +85,42 @@ foreach ($ownerPid in $pids) {
   return false;
 }
 
+function stopStaleWindowsBackend(port) {
+  if (process.platform !== "win32") return false;
+  const script = `
+$connections = Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction SilentlyContinue
+$pids = @($connections | Select-Object -ExpandProperty OwningProcess -Unique)
+foreach ($ownerPid in $pids) {
+  if (-not $ownerPid) { continue }
+  $proc = Get-CimInstance Win32_Process -Filter "ProcessId=$ownerPid" -ErrorAction SilentlyContinue
+  if (-not $proc) { continue }
+  $name = [string]$proc.Name
+  $command = [string]$proc.CommandLine
+  $looksLikeBackend = ($command -match 'uvicorn') -and ($command -match 'backend\\.main:app')
+  if (($name -match '^(node|npm|cmd|powershell|python)(\\.exe)?$') -and -not $looksLikeBackend) {
+    Stop-Process -Id $proc.ProcessId -Force
+    Write-Output "stopped:$($proc.ProcessId)"
+  }
+}
+`;
+  try {
+    const output = execFileSync("powershell.exe", [
+      "-NoProfile",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-Command",
+      script,
+    ], { encoding: "utf8" });
+    if (output.trim()) {
+      console.log(`[dev] Replaced stale backend on port ${port}: ${output.trim()}`);
+      return true;
+    }
+  } catch (error) {
+    console.warn(`[dev] Could not stop stale backend on port ${port}: ${error?.message || error}`);
+  }
+  return false;
+}
+
 function startProcess(label, command, args, options = {}) {
   console.log(`[dev] Starting ${label}: ${command} ${args.join(" ")}`);
   let child;
@@ -134,6 +170,10 @@ console.log(`[dev] Backend:  ${backendUrl}`);
 console.log(`[dev] Frontend: ${frontendUrl}`);
 
 if (!(await requestReady(`${backendUrl}/api/version`))) {
+  stopStaleWindowsBackend(backendPort);
+  if (await requestReady(`${backendUrl}/api/version`)) {
+    console.log("[dev] Backend became ready after replacing a stale listener.");
+  } else {
   startProcess("backend", "python", [
     "-m",
     "uvicorn",
@@ -146,6 +186,7 @@ if (!(await requestReady(`${backendUrl}/api/version`))) {
 
   if (!(await waitFor(`${backendUrl}/api/version`, 90, "Backend"))) {
     shutdown(1);
+  }
   }
 } else {
   console.log("[dev] Backend already ready.");

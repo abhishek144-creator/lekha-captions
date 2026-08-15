@@ -73,10 +73,49 @@ function Test-HttpReady {
   param([string]$Url)
   try {
     $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 2
-    return [int]$response.StatusCode -ge 200 -and [int]$response.StatusCode -lt 500
+    return [int]$response.StatusCode -ge 200 -and [int]$response.StatusCode -lt 300
   } catch {
     return $false
   }
+}
+
+function Stop-StaleBackend {
+  param(
+    [int]$Port,
+    [string]$HealthUrl
+  )
+  if (-not (Test-PortListening $Port)) { return $false }
+  if (Test-HttpReady $HealthUrl) { return $false }
+
+  $owners = @(Get-PortOwnerProcesses $Port)
+  $staleOwners = @($owners | Where-Object {
+    $name = [string]$_.Name
+    $command = [string]$_.CommandLine
+    $looksLikeBackend = ($command -match 'uvicorn') -and ($command -match 'backend\.main:app')
+    ($name -match '^(node|npm|cmd|powershell|python)(\.exe)?$') -and -not $looksLikeBackend
+  })
+
+  if (-not $staleOwners -or $staleOwners.Count -eq 0) {
+    Write-Host "[3/4] Port $Port is in use, but $HealthUrl is not healthy."
+    Write-Host "      The owning process does not look like the Lekha backend, so it was not stopped automatically."
+    throw "Backend port is occupied by a non-responsive process."
+  }
+
+  Write-Host "[3/4] Replacing stale backend on port $Port because its health check is not passing..."
+  foreach ($owner in $staleOwners) {
+    try {
+      Stop-Process -Id $owner.ProcessId -Force -ErrorAction Stop
+      Write-Host "      Stopped stale backend process $($owner.ProcessId)."
+    } catch {
+      throw "Could not stop stale backend process $($owner.ProcessId): $($_.Exception.Message)"
+    }
+  }
+
+  for ($i = 0; $i -lt 15; $i++) {
+    if (-not (Test-PortListening $Port)) { return $true }
+    Start-Sleep -Milliseconds 500
+  }
+  throw "Backend port $Port did not free after stopping stale process."
 }
 
 function Wait-ForHttp {
@@ -135,6 +174,11 @@ if ($InstallDependencies) {
 if (Test-HttpReady "$BackendUrl/api/version") {
   Write-Host "[3/4] Backend already ready at $BackendUrl"
 } else {
+  Stop-StaleBackend -Port $BackendPort -HealthUrl "$BackendUrl/api/version" | Out-Null
+
+  if (Test-HttpReady "$BackendUrl/api/version") {
+    Write-Host "[3/4] Backend became ready after replacing a stale listener."
+  } else {
   if (Test-PortListening $BackendPort) {
     Write-Host "[3/4] Port $BackendPort is in use but /api/version is not responding."
     Write-Host "      Close the process on port $BackendPort, then run start_app.bat again."
@@ -154,6 +198,7 @@ if (Test-HttpReady "$BackendUrl/api/version") {
     throw "Backend did not become ready. The app was not opened because API calls would fail."
   }
   Write-Host "      Backend ready."
+  }
 }
 
 Stop-StaleFrontend -Port $FrontendPort -HealthUrl "$FrontendUrl/api/version" | Out-Null

@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { resolveCptWordSnap } from '../src/components/dashboard/cptSmartGuides.js';
-import { getCaptionWordStartTime } from '../src/components/dashboard/cptMotion.js';
+import {
+  advanceCaptionWordRevealIndex,
+  getCaptionWordRevealIndex,
+  getCaptionWordRevealTimes,
+  getCaptionWordStartTime,
+} from '../src/components/dashboard/cptMotion.js';
 
 const rect = (left, top, width, height) => ({
   left,
@@ -22,6 +27,27 @@ const rect = (left, top, width, height) => ({
   assert.ok(
     result.guides.some((guide) => guide.type === 'horizontal' && guide.kind === 'top'),
     'top-edge alignment should draw a horizontal guide',
+  );
+  assert.ok(
+    result.guides.some((guide) => guide.type === 'horizontal' && guide.kind === 'bottom'),
+    'equal-height words should also draw the lower-edge guide',
+  );
+}
+
+{
+  const result = resolveCptWordSnap({
+    draggedRect: rect(42, 10, 30, 16),
+    siblingRects: [rect(40, 50, 30, 16)],
+    minGap: 6,
+  });
+  assert.equal(result.deltaX, -2, 'left edges should snap together');
+  assert.ok(
+    result.guides.some((guide) => guide.type === 'vertical' && guide.kind === 'left'),
+    'left-edge alignment should draw a vertical guide',
+  );
+  assert.ok(
+    result.guides.some((guide) => guide.type === 'vertical' && guide.kind === 'right'),
+    'equal-width words should also draw the right-edge guide',
   );
 }
 
@@ -71,13 +97,68 @@ assert.equal(
     words: [{ word: 'one', start: 2.1 }, { word: 'two', start: 3.35 }],
   }, 1, 2),
   3.35,
-  'transcription timing must drive the CPT reveal clock',
+  'transcription timing must drive the explicit word-by-word reveal clock',
 );
 assert.equal(
   getCaptionWordStartTime({ start_time: 2, end_time: 6 }, 1, 4),
   3,
   'captions without transcription timing should use an even fallback',
 );
+
+{
+  const caption = {
+    start_time: 2,
+    end_time: 4,
+    words: [
+      { word: 'one', start: 2 },
+      { word: 'two', start: 2 },
+      { word: 'three', start: 2.01 },
+    ],
+  };
+  const revealTimes = getCaptionWordRevealTimes(caption, 3);
+  assert.ok(
+    revealTimes[1] - revealTimes[0] >= 0.049
+    && revealTimes[2] - revealTimes[1] >= 0.049,
+    `duplicate transcript timestamps must be serialized (${revealTimes.join(', ')})`,
+  );
+  assert.equal(
+    getCaptionWordRevealIndex(caption, revealTimes[1] - 0.001, 3),
+    0,
+    'the second word must stay hidden until its own reveal boundary',
+  );
+}
+
+{
+  const caption = {
+    start_time: 0,
+    end_time: 1,
+    words: [
+      { word: 'one', start: 0.94 },
+      { word: 'two', start: 0.94 },
+      { word: 'three', start: 0.94 },
+      { word: 'four', start: 0.95 },
+    ],
+  };
+  const revealTimes = getCaptionWordRevealTimes(caption, 4);
+  const revealFrames = revealTimes.map((time) => Math.floor((time * 24) + 0.0001));
+  assert.equal(
+    new Set(revealFrames).size,
+    revealFrames.length,
+    `every reveal must occupy its own 24fps frame (${revealTimes.join(', ')})`,
+  );
+
+  const paintedIndexes = [];
+  let paintedIndex;
+  for (let paint = 0; paint < 4; paint += 1) {
+    paintedIndex = advanceCaptionWordRevealIndex(paintedIndex, 3);
+    paintedIndexes.push(paintedIndex);
+  }
+  assert.deepEqual(
+    paintedIndexes,
+    [0, 1, 2, 3],
+    'a delayed browser update must catch up one word per paint instead of revealing a group',
+  );
+}
 
 // VideoPlayer.jsx plus its extracted stylesheet module — read both so the
 // contracts below stay satisfied wherever the declaration actually lives.
@@ -103,8 +184,33 @@ assert.match(
 );
 assert.match(
   exportPanelSource,
-  /hasCptCanvasPosition[\s\S]*abs_x_pct: vidPos\.x[\s\S]*abs_y_pct: vidPos\.y/,
-  'export serialization must convert the canvas CPT point to video coordinates',
+  /painted word[\s\S]*getCanvasWordSnapshot\(k,[\s\S]*containerToVideo\([\s\S]*v\.cptCanvasXPercent,[\s\S]*v\.cptCanvasYPercent/,
+  'export serialization must prefer the final painted CPT word and retain the authored point as fallback',
+);
+assert.match(
+  exportPanelSource,
+  /Duplicate template placeholders[\s\S]*best\.distance > 8/,
+  'export serialization must reject duplicate normal-line placeholders far from the authored CPT point',
+);
+assert.match(
+  exportPanelSource + exportRendererSource,
+  /cptPaintedFontSize[\s\S]*cptPaintedFontFamily[\s\S]*cptPaintedFontWeight/,
+  'CPT export must preserve the final painted word metrics as well as its center',
+);
+assert.match(
+  exportPanelSource,
+  /A CPT is one composed canvas state[\s\S]*getCanvasWordSnapshot\(k\)/,
+  'export serialization must snapshot every word in a CPT so undisplaced words cannot reflow',
+);
+assert.doesNotMatch(
+  exportPanelSource + exportRendererSource,
+  /cptPreviewFontPx|cptPreviewFontFamily/,
+  'CPT export must not reapply measured template font sizes and amplify hero classes',
+);
+assert.match(
+  videoPlayerSource,
+  /max-width:\s*var\(--applied-template-width[\s\S]*height:\s*calc\(var\(--applied-template-width[^;]+1\.28\)/,
+  'LC fullscreen must scale the logical template stage uniformly instead of reflowing it',
 );
 assert.match(
   exportRendererSource,
@@ -112,9 +218,44 @@ assert.match(
   'export must unlock clipping ancestors for far-displaced source-template words',
 );
 assert.match(
+  exportRendererSource,
+  /const targetRect = target\.getBoundingClientRect\(\)[\s\S]*absoluteWordPosition\.x[\s\S]*absoluteWordPosition\.y/,
+  'export must center each visual target independently at its saved canvas point',
+);
+assert.match(
+  exportRendererSource,
+  /captionHasAbsoluteCptLayout[\s\S]*buildAbsoluteCptMarkup[\s\S]*data-caption-absolute-cpt/,
+  'a complete canvas CPT must bypass sentence-flow templates and render as absolute words',
+);
+assert.match(
   videoPlayerSource,
-  /captionHasCreativelyPositionedWords\(caption\)[\s\S]*animation:\s*'none'[\s\S]*transition:\s*'none'/,
-  'canvas CPT words must reveal with animation and transition disabled',
+  /captionHasCreativelyPositionedWords\(caption\)[\s\S]*hasSelectedWordAnimation[\s\S]*animation:\s*'none'[\s\S]*transition:\s*'none'/,
+  'canvas CPT words must remain stable unless the floating word editor selects an animation',
+);
+assert.match(
+  videoPlayerSource,
+  /shouldFreezeCptMotion = isCptCaption && !hasSelectedWordAnimation[\s\S]*animValue = \(!shouldFreezeCptMotion && hasSelectedWordAnimation\)[\s\S]*if \(shouldFreezeCptMotion\)/,
+  'source-template CPT words must preserve a floating-editor animation while freezing unselected template motion',
+);
+assert.match(
+  videoPlayerSource,
+  /const isCptWordPending[\s\S]*isPlaying[\s\S]*!isCaptionCptAdjustmentActive[\s\S]*wordIndex > currentIdx/,
+  'CPT reveal must run only during playback and never while a word is being adjusted',
+);
+assert.match(
+  videoPlayerSource,
+  /Editing stays fully visible; playback and[\s\S]*build the sentence cumulatively, one word at a time, with no motion/,
+  'canvas must separate the fully visible editing state from playback reveal',
+);
+assert.match(
+  videoPlayerSource,
+  /hasCptWords && isPlaying && index > currentIdx[\s\S]{0,180}opacity', '0'[\s\S]{0,180}else if \(hasCptWords\)[\s\S]{0,120}opacity', '1'/,
+  'source-template CPT words must reveal only in playback and all show while editing',
+);
+assert.match(
+  videoPlayerSource,
+  /function handleWordMouseDown[\s\S]*isPlayingRef\.current[\s\S]*videoRef\.current\?\.pause\(\)[\s\S]*setIsPlaying\(false\)/,
+  'starting a word drag must pause playback for a stable editing canvas',
 );
 assert.doesNotMatch(
   videoPlayerSource,
@@ -124,7 +265,17 @@ assert.doesNotMatch(
 assert.match(
   exportRendererSource,
   /if \(isCptCaption\)[\s\S]*setImportant\(target, 'animation', 'none'\)[\s\S]*setImportant\(target, 'transition', 'none'\)/,
-  'exported CPT words must disable authored motion while keeping timed reveal',
+  'exported CPT words must disable all authored motion',
+);
+assert.match(
+  exportRendererSource,
+  /isCptCaption && index > currentCptIndex[\s\S]{0,120}opacity', '0'[\s\S]{0,160}else if \(isCptCaption\)[\s\S]{0,120}opacity', '1'/,
+  'exported CPT words must reveal cumulatively',
+);
+assert.match(
+  exportRendererSource,
+  /captionHasCptWordStyles\(caption\)[\s\S]{0,120}payload\.style\?\.show_inactive === false/,
+  'export compositor must segment every CPT word boundary',
 );
 assert.doesNotMatch(
   exportPanelSource,

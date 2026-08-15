@@ -214,6 +214,8 @@ export default function UserAccount() {
       `Plan: ${payment?.plan || 'Unavailable'}`,
       `Amount: ${formatPaymentAmount(payment)}`,
       `Status: ${payment?.status || 'Processed'}`,
+      `Refund status: ${payment?.refund_status || 'Not refunded'}`,
+      `Refunded amount: ${payment?.refunded_amount ? formatPaymentAmount({ ...payment, amount: payment.refunded_amount }) : 'None'}`,
       `Date: ${formatDate(payment?.timestamp, 'Unavailable')}`,
       '',
       'This is a payment record, not a tax invoice.',
@@ -428,7 +430,11 @@ export default function UserAccount() {
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-black">{formatPaymentAmount(payment)}</p>
-                      <p className="text-[10px] uppercase tracking-wider text-emerald-400">{payment.status === 'captured' ? 'Paid' : payment.status || 'Processed'}</p>
+                      <p className={`text-[10px] uppercase tracking-wider ${payment.refund_status ? 'text-amber-400' : 'text-emerald-400'}`}>
+                        {payment.refund_status
+                          ? payment.refund_status.replaceAll('_', ' ')
+                          : payment.status === 'captured' ? 'Paid' : payment.status || 'Processed'}
+                      </p>
                     </div>
                     <button
                       type="button"
