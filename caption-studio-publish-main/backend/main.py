@@ -14,14 +14,20 @@ import json
 from datetime import datetime, timedelta, date, timezone
 from dateutil.relativedelta import relativedelta
 from typing import List, Dict, Any, Optional
-from processor import VideoProcessor
+try:
+    from .processor import VideoProcessor
+except ImportError:  # Direct execution from backend/ remains supported.
+    from processor import VideoProcessor
 import asyncio
 import time
 import subprocess
 import hmac
 import hashlib
 from fastapi import Request
-from firebase_admin_setup import verify_token, get_db, upload_to_firebase_storage, delete_from_firebase_storage
+try:
+    from .firebase_admin_setup import verify_token, get_db, upload_to_firebase_storage, delete_from_firebase_storage
+except ImportError:  # Direct execution from backend/ remains supported.
+    from firebase_admin_setup import verify_token, get_db, upload_to_firebase_storage, delete_from_firebase_storage
 from firebase_admin import auth as firebase_auth
 import math
 from google.cloud import firestore
