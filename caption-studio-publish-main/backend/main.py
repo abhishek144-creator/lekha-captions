@@ -417,8 +417,6 @@ if _IS_PRODUCTION:
         "RAZORPAY_KEY_ID": RAZORPAY_KEY_ID.strip(),
         "RAZORPAY_KEY_SECRET": RAZORPAY_KEY_SECRET.strip(),
         "PAYMENT_RECONCILE_SECRET": os.environ.get("PAYMENT_RECONCILE_SECRET", "").strip(),
-        "SENTRY_DSN": SENTRY_DSN,
-        "SLACK_ALERT_WEBHOOK_URL": os.environ.get("SLACK_ALERT_WEBHOOK_URL", "").strip(),
         "APP_RELEASE": os.environ.get("APP_RELEASE", "").strip(),
         "ADMIN_EMAILS": os.environ.get("ADMIN_EMAILS", "").strip(),
         "SECURITY_CONTACT_EMAIL": os.environ.get("SECURITY_CONTACT_EMAIL", "").strip(),
