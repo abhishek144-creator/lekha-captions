@@ -2,6 +2,32 @@ import React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
 
+const PUBLISHED_AUTH_ORIGINS = {
+    'app.lekhacaptions.com': 'https://lekha-captions-staging.netlify.app',
+};
+
+function getPublishedAuthUrl() {
+    if (typeof window === 'undefined') return '';
+
+    const { hostname } = window.location;
+    let publishedOrigin = PUBLISHED_AUTH_ORIGINS[hostname] || '';
+
+    if (hostname.endsWith('--lekha-captions-staging.netlify.app')) {
+        publishedOrigin = 'https://lekha-captions-staging.netlify.app';
+    } else if (hostname.endsWith('--lekha-captions.netlify.app')) {
+        publishedOrigin = 'https://lekhacaptions.com';
+    }
+
+    if (!publishedOrigin) return '';
+
+    const publishedUrl = new URL(window.location.href);
+    const canonicalOrigin = new URL(publishedOrigin);
+    publishedUrl.protocol = canonicalOrigin.protocol;
+    publishedUrl.host = canonicalOrigin.host;
+    publishedUrl.pathname = '/Login';
+    return publishedUrl.toString();
+}
+
 function GoogleIcon() {
     return (
         <svg className="w-5 h-5" viewBox="0 0 48 48" aria-hidden="true">
@@ -39,6 +65,15 @@ export default function Login() {
             return;
         }
 
+        // Firebase does not support wildcard authorized domains, while every
+        // Netlify agent/deploy preview receives a different hostname. Move the
+        // user to the matching published site before starting Google OAuth.
+        const publishedAuthUrl = getPublishedAuthUrl();
+        if (publishedAuthUrl) {
+            window.location.replace(publishedAuthUrl);
+            return;
+        }
+
         setFormError('');
         setIsSubmitting(true);
         try {
@@ -55,7 +90,9 @@ export default function Login() {
         } catch (error) {
             console.error('Failed to authenticate', error);
             setFormError(
-                error?.code === 'auth/network-request-failed'
+                error?.code === 'auth/unauthorized-domain'
+                    ? 'Google sign-in is not available on this preview address. Open the published app and try again.'
+                    : error?.code === 'auth/network-request-failed'
                     ? 'Google sign-up could not connect. Check your internet connection or browser privacy settings, then try again.'
                     : error?.message || 'Google sign-up could not start. Please try again.'
             );
@@ -133,7 +170,7 @@ export default function Login() {
                 <p className="mt-4 text-center text-xs text-gray-500">{helperText}</p>
 
                 {(formError || authError) && (
-                    <div className="mt-4 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                    <div className="mt-4 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-white">
                         {formError || authError?.message || 'Authentication failed. Please try again.'}
                     </div>
                 )}
