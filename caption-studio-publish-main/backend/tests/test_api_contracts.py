@@ -53,6 +53,37 @@ class ApiContractTests(unittest.TestCase):
         # Local runs must exercise the same quota safeguard as production.
         self.assertFalse(main.DISABLE_EXPORT_DAILY_LIMIT)
 
+    def test_redis_rate_limits_are_isolated_by_endpoint(self):
+        shared_proxy_ip = "100.64.0.4"
+
+        analytics_key = main._rate_limit_redis_key(main._analytics_rate, shared_proxy_ip)
+        process_key = main._rate_limit_redis_key(main._process_rate, shared_proxy_ip)
+        upload_key = main._rate_limit_redis_key(main._upload_rate, shared_proxy_ip)
+
+        self.assertEqual(analytics_key, "rl:analytics:100.64.0.4")
+        self.assertEqual(process_key, "rl:process:100.64.0.4")
+        self.assertEqual(upload_key, "rl:upload:100.64.0.4")
+        self.assertEqual(len({analytics_key, process_key, upload_key}), 3)
+
+    def test_client_rate_key_uses_forwarded_user_ip_behind_railway(self):
+        request = SimpleNamespace(
+            client=SimpleNamespace(host="100.64.0.4"),
+            headers={
+                "x-real-ip": "203.0.113.27",
+                "x-forwarded-for": "198.51.100.18",
+            },
+        )
+
+        self.assertEqual(main._client_rate_key(request), "203.0.113.27")
+
+    def test_client_rate_key_ignores_forwarding_header_for_public_direct_peer(self):
+        request = SimpleNamespace(
+            client=SimpleNamespace(host="8.8.8.8"),
+            headers={"x-forwarded-for": "203.0.113.99"},
+        )
+
+        self.assertEqual(main._client_rate_key(request), "8.8.8.8")
+
     def test_export_daily_limit_is_enforced_when_not_disabled(self):
         user_data = {
             "subscription_tier": "creator",
