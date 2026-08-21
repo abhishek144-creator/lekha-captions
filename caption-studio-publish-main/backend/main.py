@@ -415,9 +415,11 @@ ALLOWED_ORIGINS = [o.strip() for o in _origins_env.split(",") if o.strip()] if _
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=r"https://[a-z0-9-]+--lekha-captions(-staging)?\.netlify\.app",
     allow_credentials=True,
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type", "Authorization"],
+    allow_headers=["Content-Type", "Authorization", "X-Request-Id"],
+    max_age=600,
 )
 
 # Simple in-memory rate limiters (ip -> list of timestamps)

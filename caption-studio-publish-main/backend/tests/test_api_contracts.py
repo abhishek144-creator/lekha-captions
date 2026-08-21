@@ -22,6 +22,19 @@ class ApiContractTests(unittest.TestCase):
         main._export_jobs.clear()
         main._active_exports_by_user.clear()
 
+    def test_netlify_preview_cors_allows_request_reference_header(self):
+        origin = "https://deploy-preview-42--lekha-captions-staging.netlify.app"
+        res = self.client.options(
+            "/api/upload",
+            headers={
+                "Origin": origin,
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "content-type,authorization,x-request-id",
+            },
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.headers.get("access-control-allow-origin"), origin)
+
     @patch("main._scan_upload_for_threat", return_value=True)
     @patch("main._probe_media", return_value={"format": {"duration": 12.3}, "streams": [{"codec_type": "video"}]})
     def test_upload_contract(self, _probe, _scan):
