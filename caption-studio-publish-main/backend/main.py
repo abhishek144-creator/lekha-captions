@@ -56,6 +56,7 @@ from google.cloud import firestore
 from google.api_core.exceptions import AlreadyExists
 import mimetypes
 import logging
+import ipaddress
 import pathlib
 import re
 import shlex
@@ -1676,13 +1677,62 @@ def _require_payment_idempotency(uid: str, key: str, op: str) -> str:
         raise HTTPException(status_code=400, detail="Invalid payment idempotency key")
     return f"{uid}:{op}:{safe}"
 
+_RATE_LIMIT_NAMESPACES = (
+    (_upload_rate, "upload"),
+    (_signup_rate, "signup"),
+    (_payment_rate, "payment"),
+    (_promo_rate, "promo"),
+    (_translate_rate, "translate"),
+    (_process_rate, "process"),
+    (_detect_language_rate, "detect-language"),
+    (_analytics_rate, "analytics"),
+    (_support_rate, "support"),
+)
+
+
+def _rate_limit_namespace(store: Dict[str, list]) -> str:
+    for candidate, namespace in _RATE_LIMIT_NAMESPACES:
+        if store is candidate:
+            return namespace
+    return "generic"
+
+
+def _rate_limit_redis_key(store: Dict[str, list], key: str) -> str:
+    return f"rl:{_rate_limit_namespace(store)}:{key}"
+
+
+def _client_rate_key(request: Request) -> str:
+    """Return the end-user address when Railway is the immediate peer."""
+    peer = (request.client.host if request.client else "").strip()
+    try:
+        peer_is_public = ipaddress.ip_address(peer).is_global
+    except ValueError:
+        peer_is_public = False
+    if peer_is_public:
+        return peer
+
+    # Railway documents X-Real-IP as the original client address. Keep a final
+    # X-Forwarded-For fallback for compatible local/reverse-proxy deployments.
+    forwarded_candidates = [request.headers.get("x-real-ip", "")]
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+    forwarded_candidates.extend(reversed(forwarded_for.split(",")))
+    for candidate in forwarded_candidates:
+        safe_candidate = candidate.strip().strip("[]")
+        try:
+            ipaddress.ip_address(safe_candidate)
+            return safe_candidate
+        except ValueError:
+            continue
+    return peer or "unknown"
+
+
 def _check_rate(store: Dict[str, list], key: str, limit: int, window: int = 3600):
     """Returns (allowed, retry_after_seconds, remaining).
     Mutates *store* in-place to record the current timestamp."""
     if _redis_client is not None:
         try:
             now_ts = time.time()
-            rkey = f"rl:{key}"
+            rkey = _rate_limit_redis_key(store, key)
             pipe = _redis_client.pipeline()
             pipe.zremrangebyscore(rkey, 0, now_ts - window)
             pipe.zcard(rkey)
@@ -3200,7 +3250,7 @@ async def upload_video(file: UploadFile = File(...), request: Request = None, re
         decoded_token = _authenticate_media_request(token)
         uid = (decoded_token.get("uid") or "").strip() or "unknown-user"
         if request:
-            client_ip = request.client.host if request.client else "unknown"
+            client_ip = _client_rate_key(request)
             allowed, retry_after, remaining = _check_rate(_upload_rate, client_ip, UPLOAD_RATE_LIMIT, UPLOAD_RATE_WINDOW)
             _apply_rate_headers(response, UPLOAD_RATE_LIMIT, remaining, retry_after)
             if not allowed:
@@ -3323,7 +3373,7 @@ async def process_video(req: ProcessRequest, request: Request, response: Respons
     # Auth — same dev-mode bypass as /api/export
     decoded_token = _authenticate_media_request(req.id_token, req.org_id)
     uid = (decoded_token.get("uid") or "").strip() or "unknown-user"
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = _client_rate_key(request)
     allowed, retry_after, remaining = _check_rate(_process_rate, client_ip, PROCESS_RATE_LIMIT)
     _apply_rate_headers(response, PROCESS_RATE_LIMIT, remaining, retry_after)
     if not allowed:
@@ -3819,7 +3869,7 @@ async def analytics_track(request: Request, response: Response):
     # Unauthenticated telemetry endpoint: rate-limit per IP so it can't be used
     # as an unbounded Firestore write amplifier (cost/DoS), and reject reserved
     # server counter names so it can't poison the release gate / alerting.
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = _client_rate_key(request)
     allowed, retry_after, remaining = _check_rate(_analytics_rate, client_ip, ANALYTICS_RATE_LIMIT)
     _apply_rate_headers(response, ANALYTICS_RATE_LIMIT, remaining, retry_after)
     if not allowed:
@@ -3842,7 +3892,7 @@ async def analytics_track(request: Request, response: Response):
 
 @app.post("/api/support-request")
 def create_support_request(req: SupportRequest, request: Request, response: Response):
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = _client_rate_key(request)
     allowed, retry_after, remaining = _check_rate(
         _support_rate,
         f"support:{client_ip}",
@@ -4848,7 +4898,7 @@ def create_order(req: CreateOrderRequest, request: Request, response: Response):
     # Check the durable operator switch before contacting Razorpay. This makes
     # emergency payment shutdown immediate and guarantees no order is created.
     _assert_service_available("pause_payments")
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = _client_rate_key(request)
     for rate_key in (f"payment:user:{uid}", f"payment:ip:{client_ip}"):
         allowed, retry_after, remaining = _check_rate(_payment_rate, rate_key, PAYMENT_RATE_LIMIT)
         _apply_rate_headers(response, PAYMENT_RATE_LIMIT, remaining, retry_after)
@@ -4965,7 +5015,7 @@ def verify_payment(req: VerifyPaymentRequest, request: Request, response: Respon
         raise HTTPException(status_code=401, detail="Invalid Authentication Token")
     uid = decoded_token.get('uid')
     _assert_tenant_access(uid, decoded_token, req.org_id)
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = _client_rate_key(request)
     for rate_key in (f"payment:user:{uid}", f"payment:ip:{client_ip}"):
         allowed, retry_after, remaining = _check_rate(_payment_rate, rate_key, PAYMENT_RATE_LIMIT)
         _apply_rate_headers(response, PAYMENT_RATE_LIMIT, remaining, retry_after)
@@ -5392,7 +5442,7 @@ class RedeemPromoRequest(BaseModel):
 
 @app.post("/api/redeem-promo")
 def redeem_promo(req: RedeemPromoRequest, request: Request, response: Response):
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = _client_rate_key(request)
     allowed, retry_after, remaining = _check_rate(_promo_rate, client_ip, PROMO_RATE_LIMIT)
     _apply_rate_headers(response, PROMO_RATE_LIMIT, remaining, retry_after)
     if not allowed:
@@ -5459,7 +5509,7 @@ def redeem_promo(req: RedeemPromoRequest, request: Request, response: Response):
 
 @app.post("/api/translate")
 def translate_captions(req: TranslateRequest, request: Request, response: Response):
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = _client_rate_key(request)
     allowed, retry_after, remaining = _check_rate(_translate_rate, client_ip, TRANSLATE_RATE_LIMIT)
     _apply_rate_headers(response, TRANSLATE_RATE_LIMIT, remaining, retry_after)
     if not allowed:
@@ -5562,7 +5612,7 @@ def detect_language(req: DetectLanguageRequest, request: Request, response: Resp
     # Auth — same dev-mode bypass as /api/export
     decoded_token = _authenticate_media_request(req.id_token, req.org_id)
     uid = (decoded_token.get("uid") or "").strip() or "unknown-user"
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = _client_rate_key(request)
     allowed, retry_after, remaining = _check_rate(
         _detect_language_rate, f"ip:{client_ip}", DETECT_LANGUAGE_RATE_LIMIT
     )
@@ -5727,7 +5777,7 @@ def account_bootstrap(req: AccountDataRequest, request: Request):
     # bootstrap of a brand-new account is blocked.
     if not user_ref.get().exists:
         _assert_service_available("pause_signups")
-        client_ip = request.client.host if request.client else "unknown"
+        client_ip = _client_rate_key(request)
         for rate_key, rate_limit in (
             (f"signup:ip:{client_ip}", SIGNUP_RATE_LIMIT),
             (f"signup:user:{uid}", SIGNUP_USER_RATE_LIMIT),
