@@ -1591,8 +1591,8 @@ class VideoProcessor:
         """
         Generate an ASS subtitle file for FFmpeg burning.
 
-        PRIMARY PATH (when template_id + word_layouts available):
-          Each word is rendered as an independent Dialogue line at its DOM-captured position.
+        COMPATIBILITY PATH (when trusted internal word_layouts are supplied):
+          Each word is rendered as an independent Dialogue line at the supplied position.
           Gives pixel-accurate positioning and per-word effects matching the CSS preview.
 
         FALLBACK PATH (no template or no word_layouts):
@@ -2024,7 +2024,7 @@ class VideoProcessor:
                     continue
 
                 # ─── PRIMARY: WORD-LAYOUT TEMPLATE PATH ───────────────────
-                # Uses DOM-captured word positions (word_layouts) for per-word rendering.
+                # Compatibility path for trusted internal word positions.
                 # Each word is its own Dialogue line at the exact captured position.
                 # This matches the CSS preview: correct positions, per-word colors/effects.
                 if template_id and words_timing and cap_word_layouts:

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
 import {
   buildPlainText,
   buildSrt,
@@ -62,5 +63,14 @@ assert.equal(textElementStyle.background_padding, 0)
 assert.equal(textElementStyle.effect_type, 'neon')
 assert.equal(textElementStyle.effect_blur, 0)
 assert.equal(textElementStyle.effect_color, '#00ff00')
+
+const exportPanelSource = fs.readFileSync(
+  new URL('../src/components/dashboard/ExportPanel.jsx', import.meta.url),
+  'utf8',
+)
+assert.doesNotMatch(exportPanelSource, /word_layouts\s*:/)
+assert.doesNotMatch(exportPanelSource, /preview_template_(?:font|box|line)/)
+assert.doesNotMatch(exportPanelSource, /data-lekha-player/)
+assert.match(exportPanelSource, /Export is server-rendered from persisted editor state/)
 
 console.log('Export pipeline utility checks passed')

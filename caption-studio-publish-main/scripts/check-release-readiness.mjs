@@ -94,6 +94,7 @@ assertFile("Open Graph preview image exists", "public/landing/template-showcase-
 const viteConfig = readText("vite.config.js")
 assertIncludes("Vite dev server auto-starts local backend", viteConfig, "lekha-backend-autostart")
 assertIncludes("Vite dev server monitors backend version endpoint", viteConfig, "/api/version")
+assertIncludes("production frontend requires Firebase App Check", viteConfig, "VITE_FIREBASE_APP_CHECK_SITE_KEY")
 
 const apiClient = readText("src/lib/apiClient.js")
 assertIncludes("API client normalizes backend-unavailable failures", apiClient, "Backend API is not reachable")
@@ -107,6 +108,11 @@ assertIncludes("API client creates durable request references", apiClient, "crea
 assertIncludes("API client sends request references", apiClient, 'requestHeaders.set("X-Request-Id", requestId)')
 assertIncludes("API errors expose request references", apiClient, "this.requestId = requestId")
 assertIncludes("customer error messages include references", apiClient, "Reference: ${error.requestId}")
+assertIncludes("API client sends Firebase App Check tokens", apiClient, 'requestHeaders.set("X-Firebase-AppCheck", appCheckToken)')
+
+const firebaseClient = readText("src/lib/firebase.js")
+assertIncludes("Firebase client initializes App Check", firebaseClient, "initializeAppCheck")
+assertIncludes("Firebase client uses reCAPTCHA Enterprise", firebaseClient, "ReCaptchaEnterpriseProvider")
 
 const pageConfig = readText("src/pages.config.js")
 assertIncludes("known limitations page is routed", pageConfig, '"KnownLimitations": KnownLimitations')
@@ -154,7 +160,13 @@ const backendMain = readText("backend/main.py")
 assertIncludes("production rejects DEBUG_MODE", backendMain, "DEBUG_MODE must not be enabled in production")
 assertIncludes("production requires explicit CORS origins", backendMain, "ALLOWED_ORIGINS must be set in production")
 assertIncludes("production rejects wildcard CORS", backendMain, "Wildcard CORS origins are not allowed in production")
-assertIncludes("production requires Redis or explicit in-memory escape hatch", backendMain, "Redis is required in production")
+assertIncludes("production requires Redis", backendMain, "Redis is required in production")
+assertIncludes("production forbids in-memory state", backendMain, "ALLOW_INMEMORY_STATE is forbidden in production")
+assertIncludes("production forbids unscanned uploads", backendMain, "ALLOW_UNSCANNED_UPLOADS is forbidden in production")
+assertIncludes("production requires durable export queue", backendMain, "ENABLE_DURABLE_QUEUE must be 1 in production")
+assertIncludes("backend enforces Firebase App Check", backendMain, "firebase_app_check.verify_token(token)")
+assertIncludes("backend CORS allows Firebase App Check", backendMain, '"X-Firebase-AppCheck"')
+assertIncludes("admin can dispatch controlled alert tests", backendMain, '"/api/admin/test-alerts"')
 assertIncludes("production requires media signing secret", backendMain, "MEDIA_URL_SIGNING_SECRET must be set in production")
 assertIncludes("production requires durable source storage", backendMain, "Durable media storage is unavailable")
 assertIncludes("backend loads the shared billing catalog", backendMain, 'shared", "planCatalog.json')
@@ -181,9 +193,19 @@ assertIncludes("readiness checks export workers", backendMain, '"export_worker"'
 assertIncludes("tests do not automatically load developer secrets", backendMain, "_bootstrap_is_test")
 assertIncludes("export daily limit is configurable", backendMain, 'DISABLE_EXPORT_DAILY_LIMIT = os.environ.get(')
 assertIncludes(
-  "export daily limit is enforced by default in production",
+  "export daily limit is enforced by default in every environment",
   backendMain.replace(/\r\n/g, "\n"),
-  '    "DISABLE_EXPORT_DAILY_LIMIT",\n    "0" if _IS_PRODUCTION else "1",\n) == "1"',
+  '    "DISABLE_EXPORT_DAILY_LIMIT",\n    "0",\n) == "1"',
+)
+assertIncludes(
+  "production refuses to boot with daily export limits disabled",
+  backendMain,
+  "if _IS_PRODUCTION and DISABLE_EXPORT_DAILY_LIMIT:",
+)
+assertIncludes(
+  "frontend export-limit bypass requires an explicit local opt-in",
+  readText("src/components/dashboard/ExportPanel.jsx"),
+  "import.meta.env.VITE_DISABLE_EXPORT_LIMITS === '1'",
 )
 assertIncludes("export failure rate limit is enforced", backendMain, "recent_failures = _get_recent_export_failures(uid)")
 assertExcludes("export failure rate limit has no escape hatch", backendMain, "DISABLE_EXPORT_FAILURE_RATE_LIMIT")
@@ -260,13 +282,8 @@ assertIncludes("Vercel serves the Vite SPA fallback", vercelConfig, '"destinatio
 assertIncludes("HTML references the app manifest", htmlDocument, 'href="/manifest.json"')
 assertIncludes("HTML references an existing social preview", htmlDocument, "/landing/template-showcase-1.jpg")
 
-// ExportPanel captures word/template geometry from the live preview via DOM
-// selectors that VideoPlayer must keep emitting. A rename on either side does
-// not error — exports silently degrade to fallback positioning — so pin the
-// contract here.
-// VideoPlayer.jsx plus its extracted stylesheet module count as one renderer.
-const videoPlayerSource = readText("src/components/dashboard/VideoPlayer.jsx")
-  + "\n" + readText("src/components/dashboard/videoPlayerTemplateStyles.jsx")
+// Video export is server-authoritative. The editor may keep DOM markers for
+// interaction/debugging, but ExportPanel must never consume them for rendering.
 const exportPanelSource = readText("src/components/dashboard/ExportPanel.jsx")
 for (const marker of [
   'data-lekha-player="true"',
@@ -276,9 +293,10 @@ for (const marker of [
   "data-export-measure",
   "lekha-applied-basic-template-host",
 ]) {
-  assertIncludes(`video player emits export DOM contract marker ${marker}`, videoPlayerSource, marker)
-  assertIncludes(`export panel consumes export DOM contract marker ${marker}`, exportPanelSource, marker)
+  assertExcludes(`export panel does not depend on preview DOM marker ${marker}`, exportPanelSource, marker)
 }
+assertExcludes("export panel does not submit browser word layouts", exportPanelSource, "word_layouts:")
+assertIncludes("backend strips legacy browser render hints", backendMain, "def _strip_client_render_hints")
 
 const renderer = readText("scripts/render_template_overlay.mjs")
 assertIncludes("export renderer uses a DOM tag allowlist", renderer, "const allowedTags = new Set")

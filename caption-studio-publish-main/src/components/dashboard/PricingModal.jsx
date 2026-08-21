@@ -132,12 +132,12 @@ function getPlanFeatures(plan, billing) {
 }
 
 const TOPUP_MAP = {
-  starter: { plan_id: 'topup_starter', credits: planCatalog.topup_starter.credits, price: formatInrPrice(planCatalog.topup_starter.inr_paise) },
-  starter_yearly: { plan_id: 'topup_starter', credits: planCatalog.topup_starter.credits, price: formatInrPrice(planCatalog.topup_starter.inr_paise) },
-  creator: { plan_id: 'topup_creator', credits: planCatalog.topup_creator.credits, price: formatInrPrice(planCatalog.topup_creator.inr_paise) },
-  creator_yearly: { plan_id: 'topup_creator', credits: planCatalog.topup_creator.credits, price: formatInrPrice(planCatalog.topup_creator.inr_paise) },
-  pro: { plan_id: 'topup_pro', credits: planCatalog.topup_pro.credits, price: formatInrPrice(planCatalog.topup_pro.inr_paise) },
-  pro_yearly: { plan_id: 'topup_pro', credits: planCatalog.topup_pro.credits, price: formatInrPrice(planCatalog.topup_pro.inr_paise) },
+  starter: { plan_id: 'topup_starter', credits: planCatalog.topup_starter.credits, price: formatInrPrice(planCatalog.topup_starter.inr_paise), limit: planCatalog.topup_starter.purchase_limit_30d },
+  starter_yearly: { plan_id: 'topup_starter', credits: planCatalog.topup_starter.credits, price: formatInrPrice(planCatalog.topup_starter.inr_paise), limit: planCatalog.topup_starter.purchase_limit_30d },
+  creator: { plan_id: 'topup_creator', credits: planCatalog.topup_creator.credits, price: formatInrPrice(planCatalog.topup_creator.inr_paise), limit: planCatalog.topup_creator.purchase_limit_30d },
+  creator_yearly: { plan_id: 'topup_creator', credits: planCatalog.topup_creator.credits, price: formatInrPrice(planCatalog.topup_creator.inr_paise), limit: planCatalog.topup_creator.purchase_limit_30d },
+  pro: { plan_id: 'topup_pro', credits: planCatalog.topup_pro.credits, price: formatInrPrice(planCatalog.topup_pro.inr_paise), limit: planCatalog.topup_pro.purchase_limit_30d },
+  pro_yearly: { plan_id: 'topup_pro', credits: planCatalog.topup_pro.credits, price: formatInrPrice(planCatalog.topup_pro.inr_paise), limit: planCatalog.topup_pro.purchase_limit_30d },
 }
 
 function createIdempotencyKey(scope, planId) {
@@ -565,6 +565,9 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
                   <p className="text-sm font-semibold text-white mb-0.5">Need more credits?</p>
                   <p className="text-xs text-gray-400">
                     Add {topup.credits} credits to your current plan for {topup.price} - no plan change.
+                  </p>
+                  <p className="mt-1 text-[11px] text-gray-500">
+                    Limit: {topup.limit} {topup.limit === 1 ? 'top-up' : 'top-ups'} per rolling 30 days.
                   </p>
                 </div>
                 <Button

@@ -4,6 +4,9 @@ node_modules/
 backend_debug.log
 build_*.txt
 dist/
+.pytest_cache/
+landing-next/.next/
+landing-next/out/
 __pycache__/
 venv/
 backend/service-account.json
@@ -62,6 +65,8 @@ build_trace*.txt
 # runtime-downloaded fonts and local scratch
 backend/fonts/
 tmp/
+dashboard-backups/
+.codex-logs/
 
 # dev-only sample video for ?devseed=1 (never commit)
 public/dev-sample.mov
