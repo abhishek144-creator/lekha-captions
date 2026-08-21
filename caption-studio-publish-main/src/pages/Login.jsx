@@ -2,26 +2,20 @@ import React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
 
-const PUBLISHED_AUTH_ORIGINS = {
-    'app.lekhacaptions.com': 'https://lekha-captions-staging.netlify.app',
-};
+const PUBLISHED_AUTH_ORIGIN = 'https://app.lekhacaptions.com';
 
 function getPublishedAuthUrl() {
     if (typeof window === 'undefined') return '';
 
     const { hostname } = window.location;
-    let publishedOrigin = PUBLISHED_AUTH_ORIGINS[hostname] || '';
+    const isNetlifyPreview =
+        hostname.endsWith('--lekha-captions-staging.netlify.app') ||
+        hostname.endsWith('--lekha-captions.netlify.app');
 
-    if (hostname.endsWith('--lekha-captions-staging.netlify.app')) {
-        publishedOrigin = 'https://lekha-captions-staging.netlify.app';
-    } else if (hostname.endsWith('--lekha-captions.netlify.app')) {
-        publishedOrigin = 'https://lekhacaptions.com';
-    }
-
-    if (!publishedOrigin) return '';
+    if (!isNetlifyPreview) return '';
 
     const publishedUrl = new URL(window.location.href);
-    const canonicalOrigin = new URL(publishedOrigin);
+    const canonicalOrigin = new URL(PUBLISHED_AUTH_ORIGIN);
     publishedUrl.protocol = canonicalOrigin.protocol;
     publishedUrl.host = canonicalOrigin.host;
     publishedUrl.pathname = '/Login';
