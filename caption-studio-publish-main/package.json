@@ -34,6 +34,7 @@
     "release:tree": "node scripts/check-clean-release-tree.mjs",
     "launch:evidence": "node scripts/check-launch-evidence.mjs",
     "monitor:synthetic": "node scripts/check-synthetic-health.mjs",
+    "sync:firebase-auth-helpers": "node scripts/sync-firebase-auth-helpers.mjs",
     "launch:check": "npm run release:tree && npm run release:check && npm run test:templates:all && npm run security:audit && npm run launch:evidence",
     "perf:check": "node scripts/check-performance-budget.mjs",
     "build:guarded": "vite build && npm run perf:check",

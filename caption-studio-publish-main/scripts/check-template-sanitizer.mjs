@@ -11,6 +11,27 @@ const exportRendererSource = await fs.readFile(
   path.join(root, 'scripts', 'render_template_overlay.mjs'),
   'utf8',
 );
+const capturedTemplatePaths = [
+  path.join(root, 'src', 'assets', 'lekha-captions-T11-T35.html'),
+  path.join(root, 'src', 'assets', 'lekha-captions-20-templates.html'),
+];
+
+for (const capturedTemplatePath of capturedTemplatePaths) {
+  const capturedTemplateSource = await fs.readFile(capturedTemplatePath, 'utf8');
+  for (const forbidden of [
+    'chrome-extension://',
+    'moz-extension://',
+    'bis_use=',
+    'bis_skin_checked=',
+    '__processed_',
+    'grammarly-desktop-integration',
+    'saved from url=',
+  ]) {
+    if (capturedTemplateSource.toLowerCase().includes(forbidden)) {
+      throw new Error(`Captured template contains browser-extension contamination: ${forbidden}`);
+    }
+  }
+}
 
 for (const required of [
   'const allowedTags = new Set',
