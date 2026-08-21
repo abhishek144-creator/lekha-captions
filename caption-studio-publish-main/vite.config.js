@@ -150,6 +150,11 @@ export default defineConfig(({ mode }) => {
       'Production builds require VITE_API_BASE_URL. Set VITE_ALLOW_SAME_ORIGIN_API=1 only when the host reverse-proxies /api to the backend.'
     )
   }
+  if (mode === 'production' && !env.VITE_FIREBASE_APP_CHECK_SITE_KEY) {
+    throw new Error(
+      'Production builds require VITE_FIREBASE_APP_CHECK_SITE_KEY so browser requests can be attested with Firebase App Check.'
+    )
+  }
 
   return {
   plugins: [backendAutostartPlugin(), react()],

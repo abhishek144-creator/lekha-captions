@@ -20,6 +20,7 @@ Use this checklist for enterprise and privacy readiness.
 - [x] Secret handling hardened to env-first mode
 - [x] Dependency scanning in CI workflow
 - [ ] Periodic pentest checklist sign-off
+- [ ] Deploy production Firestore/Storage rules, register App Check, verify enforcement, and record a two-user cross-account isolation test
 
 ## Incident + DR
 - [x] Incident response roles and severity matrix documented (`INCIDENT_RESPONSE.md`)
@@ -27,8 +28,18 @@ Use this checklist for enterprise and privacy readiness.
 - [x] Breach response roles documented
 - [x] Breach notification template fields documented
 - [x] Evidence log requirements documented
-- [ ] Populate monitored production contact addresses and executive approvers
+- [ ] Populate monitored production contact addresses and executive approvers (`PRODUCTION_CONTACTS.md`)
 - [x] Quarterly backup/restore drill evidence (`STAGING_DRILL_EVIDENCE_2026-08-04.md`)
+
+## Paid Beta Release Evidence
+- [ ] Verify public A/CNAME, HTTPS, MX, SPF, DKIM, and DMARC records; send to and reply from `support@lekhacaptions.com`
+- [ ] Record the exact deployed commit and successful production readiness/configuration output
+- [ ] Record one live Razorpay purchase, captured webhook replay, failed payment, reconciliation, and full/partial refund
+- [ ] Record a production malware-scanner startup check and suspicious-file rejection
+- [ ] Record successful Slack/Sentry and provider spending/failure alert deliveries
+- [ ] Complete the authenticated staging upload → process → export → download flow
+- [ ] Complete the real-video matrix: Hindi, English, Hinglish, portrait, landscape, poor audio, corrupt/unsupported, and near-limit media
+- [ ] Obtain legal review and CA confirmation for jurisdiction, GST/tax invoices, international sales, refunds, and chargebacks
 
 Launch cannot be signed off while any unchecked item above remains. Verify the
 public support address by sending and answering a test message, and attach real

@@ -49,6 +49,7 @@ from firebase_admin_setup import (
     delete_user_uploads,
     get_storage_bucket,
 )
+from firebase_admin import app_check as firebase_app_check
 from firebase_admin import auth as firebase_auth
 import math
 from google.cloud import firestore
@@ -157,7 +158,7 @@ def _json_log(level: str, event: str, **fields):
 def _send_alert(text: str):
     _json_log("warning", "ops_alert", text=text)
     if not SLACK_ALERT_WEBHOOK_URL:
-        return
+        return False
     try:
         payload = {"text": text}
         req = urllib.request.Request(
@@ -167,8 +168,10 @@ def _send_alert(text: str):
             method="POST",
         )
         _urlopen_https_only(req, timeout=5)
+        return True
     except Exception as e:
         _json_log("warning", "alert_webhook_failed", error=str(e))
+        return False
 
 
 def _urlopen_https_only(req, timeout: int = 5):
@@ -193,6 +196,9 @@ def _apply_security_headers(response: Response) -> Response:
 @app.middleware("http")
 async def request_logging_middleware(request: Request, call_next):
     rid = _request_id(request)
+    app_check_failure = _verify_firebase_app_check_request(request, rid)
+    if app_check_failure is not None:
+        return _apply_security_headers(app_check_failure)
     content_type = (request.headers.get("content-type") or "").lower()
     declared_length = request.headers.get("content-length")
     if "application/json" in content_type and declared_length:
@@ -296,6 +302,66 @@ _IS_PRODUCTION = APP_ENV == "production"
 _IS_DEVELOPMENT = APP_ENV == "development"
 _IS_TEST = APP_ENV == "test"
 
+FIREBASE_APP_CHECK_ENFORCED = os.environ.get(
+    "FIREBASE_APP_CHECK_ENFORCED",
+    "1" if _IS_PRODUCTION else "0",
+).strip().lower() in ("1", "true", "yes", "on")
+if _IS_PRODUCTION and not FIREBASE_APP_CHECK_ENFORCED:
+    raise RuntimeError(
+        "FIREBASE_APP_CHECK_ENFORCED must be enabled in production. "
+        "Register the web app in Firebase App Check before deploying."
+    )
+
+_APP_CHECK_EXEMPT_PATHS = frozenset({
+    "/api/version",
+    "/api/service-status",
+    "/api/razorpay-webhook",
+    "/api/reconcile-payments",
+})
+_APP_CHECK_EXEMPT_PREFIXES = (
+    "/api/health/",
+    "/api/media/",
+    "/api/admin/",
+    "/api/slo/",
+)
+
+
+def _verify_firebase_app_check_request(request: Request, request_id: str = "") -> Optional[JSONResponse]:
+    """Require Firebase App Check for browser API traffic in production.
+
+    Webhooks, signed media URLs, health probes, and operator-only endpoints use
+    their own authentication and remain callable by non-browser infrastructure.
+    """
+    if not FIREBASE_APP_CHECK_ENFORCED or request.method.upper() == "OPTIONS":
+        return None
+    path = request.url.path
+    if path in _APP_CHECK_EXEMPT_PATHS or any(path.startswith(prefix) for prefix in _APP_CHECK_EXEMPT_PREFIXES):
+        return None
+    token = str(request.headers.get("x-firebase-appcheck") or "").strip()
+    if not token:
+        _json_log("warning", "app_check_missing", path=path, request_id=request_id)
+        return JSONResponse(
+            status_code=403,
+            content={"success": False, "error": "App security verification is required."},
+            headers={"X-Request-Id": request_id} if request_id else None,
+        )
+    try:
+        firebase_app_check.verify_token(token)
+    except Exception as e:
+        _json_log(
+            "warning",
+            "app_check_rejected",
+            path=path,
+            request_id=request_id,
+            error=type(e).__name__,
+        )
+        return JSONResponse(
+            status_code=403,
+            content={"success": False, "error": "App security verification failed."},
+            headers={"X-Request-Id": request_id} if request_id else None,
+        )
+    return None
+
 # --- Error tracking (optional) ------------------------------------------------
 # Structured logs and dead-letter records already capture failures, but they are
 # per-instance and easy to miss in aggregate. Sentry collects them in one place.
@@ -315,6 +381,8 @@ if SENTRY_DSN and SENTRY_AVAILABLE and not _IS_TEST:
     except Exception as e:
         _json_log("warning", "sentry_init_failed", error=str(e))
 elif SENTRY_DSN and not SENTRY_AVAILABLE:
+    if _IS_PRODUCTION:
+        raise RuntimeError("SENTRY_DSN is configured but the Sentry SDK is unavailable in production.")
     _json_log("warning", "sentry_dsn_set_but_sdk_missing")
 RAZORPAY_KEY_ID = os.environ.get("RAZORPAY_KEY_ID", "")
 RAZORPAY_KEY_SECRET = os.environ.get("RAZORPAY_KEY_SECRET", "")
@@ -345,8 +413,13 @@ if _IS_PRODUCTION:
         "FIREBASE_SERVICE_ACCOUNT_JSON": os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON", "").strip(),
         "FIREBASE_STORAGE_BUCKET": os.environ.get("FIREBASE_STORAGE_BUCKET", "").strip(),
         "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY", "").strip(),
+        "SARVAM_API_KEY": os.environ.get("SARVAM_API_KEY", "").strip(),
         "RAZORPAY_KEY_ID": RAZORPAY_KEY_ID.strip(),
         "RAZORPAY_KEY_SECRET": RAZORPAY_KEY_SECRET.strip(),
+        "PAYMENT_RECONCILE_SECRET": os.environ.get("PAYMENT_RECONCILE_SECRET", "").strip(),
+        "SENTRY_DSN": SENTRY_DSN,
+        "SLACK_ALERT_WEBHOOK_URL": os.environ.get("SLACK_ALERT_WEBHOOK_URL", "").strip(),
+        "APP_RELEASE": os.environ.get("APP_RELEASE", "").strip(),
         "ADMIN_EMAILS": os.environ.get("ADMIN_EMAILS", "").strip(),
         "SECURITY_CONTACT_EMAIL": os.environ.get("SECURITY_CONTACT_EMAIL", "").strip(),
         "PRIVACY_CONTACT_EMAIL": os.environ.get("PRIVACY_CONTACT_EMAIL", "").strip(),
@@ -382,13 +455,19 @@ EXPORT_SLOT_TTL_SECONDS = max(30 * 60, int(os.environ.get("EXPORT_SLOT_TTL_SECON
 PROCESS_SLOT_TTL_SECONDS = max(5 * 60, int(os.environ.get("PROCESS_SLOT_TTL_SECONDS", "1800")))
 EXPORT_FAILURE_LIMIT = 5
 EXPORT_FAILURE_WINDOW = 15 * 60
-# Daily export quotas are relaxed locally so template/export debugging is not
-# blocked by plan throttles, but production enforces them: credits alone let a
-# large balance be spent in a single burst of renders.
+# Daily export quotas are enforced in every environment. Set this explicit
+# testing override to 1 only for a deliberate local debugging session; leaving
+# dev unthrottled makes it too easy to ship a disabled production safeguard.
 DISABLE_EXPORT_DAILY_LIMIT = os.environ.get(
     "DISABLE_EXPORT_DAILY_LIMIT",
-    "0" if _IS_PRODUCTION else "1",
+    "0",
 ) == "1"
+if _IS_PRODUCTION and DISABLE_EXPORT_DAILY_LIMIT:
+    raise RuntimeError(
+        "DISABLE_EXPORT_DAILY_LIMIT must not be enabled in production "
+        "(ENV=production): it bypasses the per-plan rolling export quota. "
+        "Unset it or set it to 0."
+    )
 # Local/dev exports are not blocked by credits so testing does not burn balance.
 # Production defaults to enforcing credits and refuses to start if the override
 # is set explicitly — an unnoticed "1" here makes every export free.
@@ -450,6 +529,11 @@ REQUIRE_PAYMENT_IDEMPOTENCY = os.environ.get("REQUIRE_PAYMENT_IDEMPOTENCY", "1")
 # per-instance and bypassable), so production requires Redis unless this escape
 # hatch is set for a deliberate single-instance deployment.
 ALLOW_INMEMORY_STATE = os.environ.get("ALLOW_INMEMORY_STATE", "0") == "1"
+if _IS_PRODUCTION and ALLOW_INMEMORY_STATE:
+    raise RuntimeError(
+        "ALLOW_INMEMORY_STATE is forbidden in production. Configure Redis so "
+        "rate limits, job state, and payment idempotency are shared across instances."
+    )
 DEBUG_MODE_ENABLED = _IS_DEVELOPMENT and os.environ.get("DEBUG_MODE", "").strip().lower() not in ("", "0", "false", "no", "off")
 if _IS_PRODUCTION and DEBUG_MODE_ENABLED:
     raise RuntimeError("DEBUG_MODE must not be enabled in production (ENV=production). Set DEBUG_MODE=false or unset it.")
@@ -485,16 +569,19 @@ CONTENT_SAFETY_BLOCKLIST = [
 # opt-out for deployments that scan at another layer (same pattern as
 # ALLOW_INMEMORY_STATE), so the decision is recorded rather than defaulted.
 ALLOW_UNSCANNED_UPLOADS = os.environ.get("ALLOW_UNSCANNED_UPLOADS", "0").strip().lower() in ("1", "true", "yes", "on")
+if _IS_PRODUCTION and ALLOW_UNSCANNED_UPLOADS:
+    raise RuntimeError(
+        "ALLOW_UNSCANNED_UPLOADS is forbidden in production. Configure CLAMAV_HOST "
+        "or CLAMAV_SCAN_CMD before accepting customer media."
+    )
 if (
     _IS_PRODUCTION
     and not os.environ.get("CLAMAV_HOST", "").strip()
     and not os.environ.get("CLAMAV_SCAN_CMD", "").strip()
-    and not ALLOW_UNSCANNED_UPLOADS
 ):
     raise RuntimeError(
         "CLAMAV_HOST or CLAMAV_SCAN_CMD must be set in production (ENV=production): without it "
-        "user uploads are never scanned for malware. Configure a scanner command, "
-        "or set ALLOW_UNSCANNED_UPLOADS=1 to accept unscanned uploads deliberately."
+        "user uploads are never scanned for malware. Configure a scanner command."
     )
 
 if REDIS_AVAILABLE and REDIS_URL and not _IS_TEST:
@@ -506,13 +593,14 @@ if REDIS_AVAILABLE and REDIS_URL and not _IS_TEST:
         _redis_client = None
         _json_log("warning", "redis_connection_failed", error=str(e))
 
-if _IS_PRODUCTION and _redis_client is None and not ALLOW_INMEMORY_STATE:
+if _IS_PRODUCTION and _redis_client is None:
     raise RuntimeError(
         "Redis is required in production (ENV=production) for cross-instance rate "
-        "limiting and payment idempotency. Set REDIS_URL to a reachable Redis "
-        "instance, or set ALLOW_INMEMORY_STATE=1 to explicitly run a single "
-        "instance with in-memory state."
+        "limiting and payment idempotency. Set REDIS_URL to a reachable Redis instance."
     )
+
+if _IS_PRODUCTION and not DURABLE_QUEUE_ENABLED:
+    raise RuntimeError("ENABLE_DURABLE_QUEUE must be 1 in production.")
 
 _export_queue = None
 if DURABLE_QUEUE_ENABLED and _redis_client is not None and RQ_AVAILABLE:
@@ -737,7 +825,13 @@ app.add_middleware(
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type", "Authorization", "X-Request-Id", "Idempotency-Key"],
+    allow_headers=[
+        "Content-Type",
+        "Authorization",
+        "X-Request-Id",
+        "X-Firebase-AppCheck",
+        "Idempotency-Key",
+    ],
 )
 
 # Simple in-memory rate limiters (ip -> list of timestamps)
@@ -2191,7 +2285,10 @@ def _reserve_ai_quota(uid: str, operation: str) -> None:
     def reserve(txn):
         snap = user_ref.get(transaction=txn)
         data = snap.to_dict() if snap.exists else {}
-        tier = _normalize_tier_name((data or {}).get("subscription_tier", "free"))
+        # Expired paid accounts receive free-tier provider quotas. Export policy
+        # already treats them as free; using the raw stored tier here would let an
+        # expired Pro account keep Pro transcription/translation capacity.
+        tier = _effective_subscription_tier(data or {})
         base_tier = tier.replace("_yearly", "")
         limits = AI_DAILY_LIMITS.get(base_tier, AI_DAILY_LIMITS["free"])
         limit = int(limits[operation])
@@ -2368,7 +2465,7 @@ CACHE_DIR = os.path.join(MEDIA_SCRATCH_ROOT, "cache")
 TRANSCRIPTION_CACHE_DIR = os.path.join(CACHE_DIR, "transcriptions")
 RENDER_CACHE_DIR = os.path.join(CACHE_DIR, "renders")
 DEAD_LETTER_DIR = os.path.join(CACHE_DIR, "dead_letter")
-EXPORT_RENDERER_VERSION = "2026-07-31-canvas-font-metrics-parity-v44"
+EXPORT_RENDERER_VERSION = "2026-08-20-server-authoritative-render-v45"
 
 for d in [UPLOAD_DIR, EXPORT_DIR, FONTS_DIR, CACHE_DIR, TRANSCRIPTION_CACHE_DIR, RENDER_CACHE_DIR, DEAD_LETTER_DIR]:
     os.makedirs(d, exist_ok=True)
@@ -2405,10 +2502,8 @@ class CaptionItem(BaseModel):
     emphasis_color: str = Field(default="", max_length=50)
     emotional_mode: str = Field(default="", max_length=50)
     audio_emotion_metrics: Optional[Dict[str, Any]] = Field(default=None, max_length=100)
-    # Per-caption preview measurements captured by ExportPanel. Undeclared
-    # fields are silently stripped by Pydantic, which made every caption fall
-    # back to the single style-level measurement in the DOM template renderer
-    # (wrong per-caption font size / lost per-caption line structure).
+    # Legacy clients may still send preview measurements. They are accepted for
+    # a rolling upgrade, then stripped before hashing, queueing, and rendering.
     preview_template_line_texts: List[str] = Field(default_factory=list, max_length=50)
     preview_template_font_px: float = Field(default=0, ge=0, le=1_000)
     preview_template_box_width_px: float = Field(default=0, ge=0, le=10_000)
@@ -2437,6 +2532,8 @@ class ExportRequest(BaseModel):
     file_id: str = Field(min_length=36, max_length=36)
     captions: List[CaptionItem] = Field(min_length=1, max_length=500)
     style: Dict[str, Any] = Field(default_factory=dict, max_length=250)
+    # Backward-compatible input only. Browser-measured layout is intentionally
+    # ignored; the worker derives layout from normalized editor state.
     word_layouts: Dict[str, Any] = Field(default_factory=dict, max_length=5_000)
     waveform_data: List[float] = Field(default_factory=list, max_length=50_000)
     duration: float = Field(default=0, ge=0, le=4 * 60 * 60)
@@ -2449,7 +2546,7 @@ class ExportRequest(BaseModel):
 
     def validated_style(self) -> Dict[str, Any]:
         """Return a copy of style with all numeric fields clamped to safe ranges."""
-        s = dict(self.style)
+        s = _strip_client_render_hints(self.style)
         _num_clamps = {
             'font_size':               (8,   200),
             'position_x':              (0,   100),
@@ -2505,6 +2602,9 @@ class ReconcilePaymentsRequest(BaseModel):
 class AdminRecoveryRequest(BaseModel):
     id_token: str = Field(default="", max_length=8_192)
     limit: int = Field(default=50, ge=1, le=1_000)
+
+class AdminAlertTestRequest(BaseModel):
+    id_token: str = Field(default="", max_length=8_192)
 
 class ServiceControlsRequest(BaseModel):
     """Partial update: omitted switches keep their current value."""
@@ -2608,12 +2708,41 @@ def _write_dead_letter(job_id: str, reason: str, payload: Optional[Dict[str, Any
             _json_log("warning", "dead_letter_db_write_failed", job_id=job_id, error=str(e))
 
 
+_CLIENT_RENDER_HINT_FIELDS = {
+    "word_layouts",
+    "preview_width",
+    "preview_height",
+    "preview_container_width",
+    "preview_container_height",
+    "preview_template_font_px",
+    "preview_template_box_width_px",
+    "preview_template_box_height_px",
+    "preview_template_line_texts",
+}
+
+
+def _strip_client_render_hints(value: Any) -> Any:
+    """Return editor state without browser-derived rendering measurements."""
+    if isinstance(value, dict):
+        return {
+            key: _strip_client_render_hints(item)
+            for key, item in value.items()
+            if key not in _CLIENT_RENDER_HINT_FIELDS
+        }
+    if isinstance(value, list):
+        return [_strip_client_render_hints(item) for item in value]
+    return value
+
+
 def _sanitize_export_request_payload(payload: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     if not isinstance(payload, dict):
         return {}
-    sanitized = dict(payload)
+    sanitized = _strip_client_render_hints(payload)
     sanitized.pop("id_token", None)
     sanitized.pop("idempotency_key", None)
+    # Retain the compatibility field for worker model validation, but make its
+    # authoritative value explicit and independent of the submitting browser.
+    sanitized["word_layouts"] = {}
     return sanitized
 
 
@@ -2810,26 +2939,27 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
 
     source_meta = _probe_media(input_path)
     source_duration = float((source_meta.get("format") or {}).get("duration") or 0)
-    captions = _normalize_export_captions_for_media(
+    captions = _strip_client_render_hints(_normalize_export_captions_for_media(
         [c.model_dump(by_alias=True) for c in req.captions],
         source_duration,
-    )
+    ))
+    server_style = req.validated_style()
+    server_word_layouts: Dict[str, Any] = {}
     # Reuse rendered artifact for identical request payload.
     media_hash = _compute_media_hash(input_path)
     request_hash = hashlib.sha256(json.dumps({
         "renderer_version": EXPORT_RENDERER_VERSION,
         "media_hash": media_hash,
         "captions": captions,
-        "style": req.style,
-        "word_layouts": req.word_layouts,
+        "style": server_style,
         "quality": preset["quality"],
         "fps": preset["fps"],
         "export_aspect_ratio": req.export_aspect_ratio,
     }, sort_keys=True).encode("utf-8")).hexdigest()
     cached_render_path = os.path.join(RENDER_CACHE_DIR, f"{request_hash}.mp4")
     template_export_active = bool(
-        req.style.get("template_id")
-        or req.style.get("template_20_id")
+        server_style.get("template_id")
+        or server_style.get("template_20_id")
         or any(
             (caption.get("template_id") or caption.get("template_20_id") or caption.get("applied_template_style"))
             for caption in captions
@@ -2842,7 +2972,7 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
     queue_entered_at = time.time()
     _set_export_job(export_job_id, "queued", queue_entered_at=queue_entered_at)
     style_with_quality = {
-        **req.validated_style(),
+        **server_style,
         'quality': preset["quality"],
         'fps': preset["fps"],
         'export_aspect_ratio': req.export_aspect_ratio if req.export_aspect_ratio in ('9:16', '1:1', '16:9') else '',
@@ -2854,7 +2984,7 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
         fps=preset["fps"],
         style=style_with_quality,
         captions=captions,
-        word_layouts=req.word_layouts,
+        word_layouts=server_word_layouts,
     )
 
     if os.path.exists(cached_render_path) and not template_export_active:
@@ -2870,7 +3000,7 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
         _log(rid, f"Starting render now job={export_job_id}")
         async with render_semaphore:
             result = await processor.burn_only(
-                input_path, output_path, captions, style_with_quality, req.word_layouts
+                input_path, output_path, captions, style_with_quality, server_word_layouts
             )
         if not result.get('success'):
             _json_log("error", "video_render_failed", uid=uid, error=str(result.get('error') or "unknown"))
@@ -3981,6 +4111,192 @@ def _resolve_plan_from_amount_currency(amount_minor: int, currency: str) -> Opti
             return plan_key
     return None
 
+
+TOPUP_PURCHASE_WINDOW_SECONDS = 30 * 24 * 60 * 60
+TOPUP_ORDER_RESERVATION_SECONDS = 2 * 60 * 60
+
+
+def _topup_timestamp_epoch(value: Any) -> Optional[float]:
+    """Normalize Firestore/Python/ISO timestamps used by rolling top-up limits."""
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, datetime):
+        dt = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+        return dt.timestamp()
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return None
+        try:
+            return float(raw)
+        except ValueError:
+            try:
+                dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                if not dt.tzinfo:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt.timestamp()
+            except ValueError:
+                return None
+    return None
+
+
+def _recent_topup_timestamps(user_data: Dict[str, Any], now_ts: Optional[float] = None) -> List[float]:
+    now_epoch = float(now_ts if now_ts is not None else time.time())
+    cutoff = now_epoch - TOPUP_PURCHASE_WINDOW_SECONDS
+    recent: List[float] = []
+    values = user_data.get("topup_timestamps") or []
+    if not isinstance(values, list):
+        values = []
+    for value in values:
+        parsed = _topup_timestamp_epoch(value)
+        if parsed is not None and cutoff < parsed <= now_epoch + 300:
+            recent.append(parsed)
+    return sorted(recent)
+
+
+def _active_topup_reservations(user_data: Dict[str, Any], now_ts: Optional[float] = None) -> List[Dict[str, Any]]:
+    now_epoch = float(now_ts if now_ts is not None else time.time())
+    cutoff = now_epoch - TOPUP_ORDER_RESERVATION_SECONDS
+    active: List[Dict[str, Any]] = []
+    values = user_data.get("topup_order_reservations") or []
+    if not isinstance(values, list):
+        values = []
+    for value in values:
+        if not isinstance(value, dict):
+            continue
+        created_at = _topup_timestamp_epoch(value.get("created_at"))
+        reservation_id = str(value.get("id") or "").strip()
+        if reservation_id and created_at is not None and cutoff < created_at <= now_epoch + 300:
+            active.append({
+                "id": reservation_id,
+                "plan_id": str(value.get("plan_id") or "").strip(),
+                "created_at": created_at,
+            })
+    return sorted(active, key=lambda item: item["created_at"])
+
+
+def _topup_purchase_limit(plan_config: Dict[str, Any]) -> int:
+    try:
+        return max(0, int(plan_config.get("purchase_limit_30d", 0) or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _assert_topup_purchase_available(
+    user_data: Dict[str, Any],
+    plan_config: Dict[str, Any],
+    now_ts: Optional[float] = None,
+) -> None:
+    limit = _topup_purchase_limit(plan_config)
+    if limit <= 0:
+        raise HTTPException(status_code=403, detail="Top-ups are not enabled for this plan.")
+    used = len(_recent_topup_timestamps(user_data, now_ts))
+    reserved = len(_active_topup_reservations(user_data, now_ts))
+    if used + reserved >= limit:
+        noun = "purchase" if limit == 1 else "purchases"
+        raise HTTPException(
+            status_code=429,
+            detail=f"Top-up limit reached: your plan allows {limit} top-up {noun} per rolling 30 days.",
+        )
+
+
+def _reserve_topup_order_slot(db, user_ref, plan_id: str, plan_config: Dict[str, Any]) -> str:
+    """Atomically reserve a short-lived slot before creating a chargeable order."""
+    reservation_id = secrets.token_urlsafe(18)
+    now_ts = time.time()
+
+    @firestore.transactional
+    def _reserve(transaction):
+        user_doc = user_ref.get(transaction=transaction)
+        if not user_doc.exists:
+            raise HTTPException(status_code=404, detail="User not found. Purchase a plan first.")
+        user_data = user_doc.to_dict() or {}
+        base_tier = _effective_subscription_tier(user_data).replace("_yearly", "")
+        if base_tier not in {"starter", "creator", "pro"}:
+            raise HTTPException(status_code=403, detail="UPGRADE_REQUIRED: Top-ups available for paid plans only.")
+        if plan_id != f"topup_{base_tier}":
+            raise HTTPException(status_code=403, detail="This top-up is not available for your current plan.")
+        _assert_topup_purchase_available(user_data, plan_config, now_ts)
+        reservations = _active_topup_reservations(user_data, now_ts)
+        reservations.append({"id": reservation_id, "plan_id": plan_id, "created_at": now_ts})
+        transaction.update(user_ref, {"topup_order_reservations": reservations})
+        return reservation_id
+
+    return _reserve(db.transaction())
+
+
+def _release_topup_order_slot(db, user_ref, reservation_id: str) -> None:
+    if not reservation_id:
+        return
+
+    @firestore.transactional
+    def _release(transaction):
+        user_doc = user_ref.get(transaction=transaction)
+        if not user_doc.exists:
+            return
+        user_data = user_doc.to_dict() or {}
+        reservations = [
+            item for item in _active_topup_reservations(user_data)
+            if item.get("id") != reservation_id
+        ]
+        transaction.update(user_ref, {"topup_order_reservations": reservations})
+
+    _release(db.transaction())
+
+
+def _fetch_bound_order_context(order_id: str, amount_minor: int, currency: str) -> Dict[str, str]:
+    """Resolve the server-authored payment owner and plan from a Razorpay order.
+
+    The app writes uid/plan_id to *order* notes when it creates the order. Razorpay
+    payment webhook entities can have empty or unrelated payment notes, so neither
+    webhook recovery nor reconciliation may use payment notes as the entitlement
+    authority.
+    """
+    order_id = str(order_id or "").strip()
+    if not order_id:
+        raise HTTPException(status_code=400, detail="Payment is missing its order binding.")
+    if not RAZORPAY_AVAILABLE or rzp_client is None:
+        raise HTTPException(status_code=503, detail="Payment order verification is unavailable")
+
+    try:
+        order = rzp_client.order.fetch(order_id)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail="Unable to verify payment order with Razorpay") from e
+
+    order_amount = int(order.get("amount", 0) or 0)
+    order_currency = str(order.get("currency") or "").upper()
+    if order_amount != int(amount_minor or 0) or order_currency != str(currency or "").upper():
+        raise HTTPException(status_code=400, detail="Payment order amount does not match the captured payment.")
+
+    notes = order.get("notes") or {}
+    if not isinstance(notes, dict):
+        notes = {}
+    uid = str(notes.get("uid") or "").strip()
+    plan_id = str(notes.get("plan_id") or "").strip()
+    org_id = str(notes.get("org_id") or "").strip()
+    topup_reservation_id = str(notes.get("topup_reservation_id") or "").strip()
+    if not uid:
+        raise HTTPException(status_code=400, detail="Payment order is missing its user binding.")
+    if not plan_id or plan_id not in PLAN_PRICING:
+        raise HTTPException(status_code=400, detail="Payment order is missing a valid plan binding.")
+
+    expected_minor = (
+        PLAN_PRICING[plan_id].get("usd_cents")
+        if order_currency == "USD"
+        else PLAN_PRICING[plan_id].get("inr_paise")
+    )
+    if expected_minor is None or int(expected_minor) != order_amount:
+        raise HTTPException(status_code=400, detail="Payment order does not match its bound plan.")
+
+    return {
+        "uid": uid,
+        "plan_id": plan_id,
+        "org_id": org_id,
+        "topup_reservation_id": topup_reservation_id,
+    }
+
 def _can_trigger_reconcile(request: Request, req_body: ReconcilePaymentsRequest) -> bool:
     secret_header = (request.headers.get("x-reconcile-secret") or "").strip()
     if PAYMENT_RECONCILE_SECRET and secret_header and hmac.compare_digest(secret_header, PAYMENT_RECONCILE_SECRET):
@@ -4066,31 +4382,32 @@ def reconcile_payments_once(
         row = doc.to_dict() or {}
         summary["scanned"] += 1
         payment_id = (row.get("payment_id") or "").strip()
-        notes = row.get("notes") or {}
-        uid = (notes.get("uid") or "").strip()
-        plan_id = (notes.get("plan_id") or "").strip()
-        org_id = (notes.get("org_id") or "").strip()
         order_id = (row.get("order_id") or "").strip()
         amount_minor = int(row.get("amount", 0) or 0)
         currency = (row.get("currency") or "INR").upper()
 
-        if not uid:
-            summary["skipped"] += 1
-            _json_log("warning", "payment_reconcile_missing_uid", webhook_doc=doc.id)
-            continue
-        if not plan_id:
-            plan_id = _resolve_plan_from_amount_currency(amount_minor, currency) or ""
-        if not plan_id:
-            summary["skipped"] += 1
+        try:
+            order_context = _fetch_bound_order_context(order_id, amount_minor, currency)
+        except HTTPException as e:
+            summary["errors"] += 1
             _json_log(
                 "warning",
-                "payment_reconcile_unknown_plan",
+                "payment_reconcile_order_resolution_failed",
                 webhook_doc=doc.id,
                 payment_id=payment_id,
-                amount=amount_minor,
-                currency=currency,
+                order_id=order_id,
+                status_code=e.status_code,
+                detail=e.detail,
             )
             continue
+        uid = order_context["uid"]
+        plan_id = order_context["plan_id"]
+        org_id = order_context["org_id"]
+        topup_reservation_id = order_context["topup_reservation_id"]
+        try:
+            doc.reference.update({"notes": order_context})
+        except Exception as e:
+            _json_log("warning", "payment_reconcile_context_persist_failed", webhook_doc=doc.id, error=str(e))
         if not payment_id:
             payment_id = f"reconcile_{doc.id}"
 
@@ -4104,6 +4421,7 @@ def reconcile_payments_once(
                 currency=currency,
                 source=f"reconcile:{reason}",
                 org_id=org_id,
+                topup_reservation_id=topup_reservation_id,
             )
             if result.get("duplicate"):
                 summary["duplicates"] += 1
@@ -4163,6 +4481,7 @@ def _grant_payment_transactionally(
     currency: str,
     source: str,
     org_id: str,
+    topup_reservation_id: str = "",
 ):
     now_utc = _utcnow()
     cycle_start = now_utc.isoformat() + "Z"
@@ -4191,6 +4510,30 @@ def _grant_payment_transactionally(
                 raise HTTPException(status_code=403, detail="UPGRADE_REQUIRED: Top-ups available for paid plans only.")
             if plan_id != f"topup_{base_tier}":
                 raise HTTPException(status_code=403, detail="This top-up is not available for your current plan.")
+            recent_topups = _recent_topup_timestamps(user_data, now_utc.replace(tzinfo=timezone.utc).timestamp())
+            active_reservations = _active_topup_reservations(
+                user_data,
+                now_utc.replace(tzinfo=timezone.utc).timestamp(),
+            )
+            matching_reservation = next(
+                (
+                    item for item in active_reservations
+                    if item.get("id") == topup_reservation_id and item.get("plan_id") == plan_id
+                ),
+                None,
+            )
+            limit = _topup_purchase_limit(plan_config)
+            if limit <= 0 or len(recent_topups) >= limit:
+                noun = "purchase" if limit == 1 else "purchases"
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"Top-up limit reached: your plan allows {limit} top-up {noun} per rolling 30 days.",
+                )
+            # Orders created after rolling limits were introduced carry a
+            # reservation token. Token-less orders are still accepted below the
+            # cap so captured orders created during deployment can be recovered.
+            if topup_reservation_id and matching_reservation is None:
+                raise HTTPException(status_code=409, detail="This top-up order reservation has expired or is invalid.")
 
         transaction.create(payment_ref, {
             "payment_id": payment_id,
@@ -4202,20 +4545,34 @@ def _grant_payment_transactionally(
             "credits_added": credits_to_add,
             "type": payment_type,
             "timestamp": cycle_start,
+            "entitlement_cycle_start": (
+                str(user_data.get("billing_cycle_start") or "") if is_topup else cycle_start
+            ),
             "source": source,
+            **({"topup_reservation_id": topup_reservation_id} if topup_reservation_id else {}),
             **({"org_id": org_id} if org_id else {}),
         })
 
         if is_topup:
+            topup_timestamp = now_utc.replace(tzinfo=timezone.utc).timestamp()
+            remaining_reservations = [
+                item for item in active_reservations
+                if item.get("id") != topup_reservation_id
+            ]
             transaction.update(user_ref, {
                 "credits_remaining": firestore.Increment(credits_to_add),
-                "topups_this_cycle": firestore.Increment(1),
+                "topup_timestamps": [*recent_topups, topup_timestamp],
+                "topup_order_reservations": remaining_reservations,
+                "topups_this_cycle": len(recent_topups) + 1,
                 **({"org_id": org_id} if org_id else {}),
             })
             return {"success": True, "credits_added": credits_to_add, "type": "topup"}
 
         user_update = {
-            "credits_remaining": firestore.Increment(credits_to_add) if user_doc.exists else credits_to_add,
+            # A plan purchase starts a new fixed entitlement period. Published
+            # terms say unused credits do not carry over, so the selected plan's
+            # allowance replaces any free/expired/previous-plan balance.
+            "credits_remaining": credits_to_add,
             "subscription_tier": plan_id,
             "billing_cycle_start": cycle_start,
             "billing_cycle_end": cycle_end,
@@ -4237,7 +4594,17 @@ def _grant_payment_transactionally(
     return _grant(db.transaction())
 
 
-def _apply_successful_payment(uid: str, plan_id: str, payment_id: str, order_id: str, amount_minor: int, currency: str, source: str = "client_verify", org_id: str = ""):
+def _apply_successful_payment(
+    uid: str,
+    plan_id: str,
+    payment_id: str,
+    order_id: str,
+    amount_minor: int,
+    currency: str,
+    source: str = "client_verify",
+    org_id: str = "",
+    topup_reservation_id: str = "",
+):
     plan_config = PLAN_PRICING.get(plan_id)
     if not plan_config:
         raise HTTPException(status_code=400, detail=f"Unknown plan: {plan_id}")
@@ -4268,7 +4635,7 @@ def _apply_successful_payment(uid: str, plan_id: str, payment_id: str, order_id:
     payment_ref = user_ref.collection('payments').document(payment_id)
     result = _grant_payment_transactionally(
         db, user_ref, payment_ref, uid, plan_id, plan_config, payment_id,
-        order_id, amount_minor, currency, source, org_id,
+        order_id, amount_minor, currency, source, org_id, topup_reservation_id,
     )
     if not result.get("duplicate"):
         _track_event("payment_success", {
@@ -4292,6 +4659,8 @@ def _apply_refund_webhook_event(
         return {"success": True, "ignored": True, "reason": "missing_refund_or_payment_id"}
 
     notes = payment_entity.get("notes") or {}
+    if not isinstance(notes, dict):
+        notes = {}
     uid = str(notes.get("uid") or "").strip()
     if not uid:
         return {"success": True, "ignored": True, "reason": "missing_uid_note"}
@@ -4307,7 +4676,8 @@ def _apply_refund_webhook_event(
 
     amount_minor = max(0, int(refund_entity.get("amount", 0) or 0))
     currency = str(refund_entity.get("currency") or payment_entity.get("currency") or "INR").upper()
-    payment_ref = db.collection("users").document(uid).collection("payments").document(payment_id)
+    user_ref = db.collection("users").document(uid)
+    payment_ref = user_ref.collection("payments").document(payment_id)
     refund_ref = payment_ref.collection("refunds").document(refund_id)
 
     @firestore.transactional
@@ -4341,6 +4711,71 @@ def _apply_refund_webhook_event(
             aggregate_status = "refund_pending"
 
         updated_at = _utcnow().isoformat() + "Z"
+        credits_added = max(0, int(payment_data.get("credits_added", 0) or 0))
+        previous_reversal_target = max(
+            0, int(payment_data.get("entitlement_reversal_target", 0) or 0)
+        )
+        previous_credits_removed = max(
+            0, int(payment_data.get("entitlement_credits_removed", 0) or 0)
+        )
+        reversal_target = previous_reversal_target
+        credits_removed_now = 0
+        adjustment_required = bool(payment_data.get("entitlement_adjustment_required", False))
+        adjustment_reason = str(payment_data.get("entitlement_adjustment_reason") or "")
+
+        if effective_status == "processed" and paid_amount > 0 and credits_added > 0:
+            reversal_target = min(
+                credits_added,
+                int(math.ceil(credits_added * min(refunded_amount, paid_amount) / paid_amount)),
+            )
+            additional_target = max(0, reversal_target - previous_reversal_target)
+            if additional_target > 0:
+                user_doc = user_ref.get(transaction=transaction)
+                user_data = user_doc.to_dict() if user_doc.exists else {}
+                payment_type = str(payment_data.get("type") or "subscription")
+                payment_plan = str(payment_data.get("plan") or "")
+                payment_cycle = str(
+                    payment_data.get("entitlement_cycle_start")
+                    or (payment_data.get("timestamp") if payment_type == "subscription" else "")
+                    or ""
+                )
+                current_cycle = str((user_data or {}).get("billing_cycle_start") or "")
+                same_cycle = bool(payment_cycle and current_cycle and payment_cycle == current_cycle)
+                same_subscription = str((user_data or {}).get("subscription_tier") or "") == payment_plan
+                current_credits = max(0, int((user_data or {}).get("credits_remaining", 0) or 0))
+                full_refund = refunded_amount >= paid_amount
+
+                if not user_doc.exists:
+                    adjustment_required = True
+                    adjustment_reason = "user_record_not_found"
+                elif payment_type == "subscription" and same_cycle and same_subscription and full_refund:
+                    # A full refund cancels the active fixed-period purchase. Top-up
+                    # credits expire with that plan, so the complete active balance is
+                    # removed and the account returns to the free tier.
+                    credits_removed_now = current_credits
+                    transaction.update(user_ref, {
+                        "credits_remaining": 0,
+                        "subscription_tier": "free",
+                        "subscription_expiry": updated_at,
+                        "billing_cycle_end": updated_at,
+                        "topups_this_cycle": 0,
+                    })
+                    adjustment_required = False
+                    adjustment_reason = ""
+                elif same_cycle and (payment_type == "topup" or same_subscription):
+                    credits_removed_now = min(current_credits, additional_target)
+                    if credits_removed_now:
+                        transaction.update(user_ref, {
+                            "credits_remaining": current_credits - credits_removed_now,
+                        })
+                    adjustment_required = credits_removed_now < additional_target
+                    adjustment_reason = "insufficient_unspent_credits" if adjustment_required else ""
+                else:
+                    # Never remove credits from a newer purchase. Flag the old refund
+                    # for an operator instead of corrupting the current entitlement.
+                    adjustment_required = True
+                    adjustment_reason = "payment_is_not_the_active_entitlement_cycle"
+
         transaction.set(refund_ref, {
             "refund_id": refund_id,
             "payment_id": payment_id,
@@ -4357,6 +4792,10 @@ def _apply_refund_webhook_event(
             "last_refund_id": refund_id,
             "last_refund_event": event,
             "refund_updated_at": updated_at,
+            "entitlement_reversal_target": reversal_target,
+            "entitlement_credits_removed": previous_credits_removed + credits_removed_now,
+            "entitlement_adjustment_required": adjustment_required,
+            "entitlement_adjustment_reason": adjustment_reason,
         })
         return {
             "success": True,
@@ -4365,6 +4804,8 @@ def _apply_refund_webhook_event(
             "payment_id": payment_id,
             "refund_status": aggregate_status,
             "refunded_amount": refunded_amount,
+            "entitlement_credits_removed": previous_credits_removed + credits_removed_now,
+            "entitlement_adjustment_required": adjustment_required,
             "idempotent_replay": bool(previous) and old_counted == new_counted and previous_status == effective_status,
         }
 
@@ -4381,6 +4822,19 @@ def _apply_refund_webhook_event(
             "payment_id": payment_id,
             "refund_status": result.get("refund_status"),
         })
+        if result.get("entitlement_adjustment_required"):
+            _json_log(
+                "error",
+                "refund_entitlement_adjustment_required",
+                uid=uid,
+                payment_id=payment_id,
+                refund_id=refund_id,
+                refund_status=result.get("refund_status"),
+            )
+            _send_alert(
+                "[Caption Studio Alert] Manual refund entitlement adjustment required: "
+                f"uid={uid} payment_id={payment_id} refund_id={refund_id}"
+            )
     return result
 
 # --- RAZORPAY SUBSCRIPTION ENDPOINTS ---
@@ -4412,14 +4866,19 @@ def create_order(req: CreateOrderRequest, request: Request, response: Response):
     if not plan:
         raise HTTPException(status_code=400, detail=f"Unknown plan: {req.plan_id}")
 
+    topup_db = None
+    topup_user_ref = None
+    topup_reservation_id = ""
     # Top-up: validate caller's current tier before creating order
     if plan.get('is_topup'):
-        db_tmp = get_db()
-        if not db_tmp:
+        topup_db = get_db()
+        if not topup_db:
             raise HTTPException(status_code=503, detail="Account service unavailable; top-up order was not created")
         uid_tmp = decoded_token.get('uid')
-        ud = db_tmp.collection('users').document(uid_tmp).get()
-        user_tier_tmp = _effective_subscription_tier(ud.to_dict() or {}) if ud.exists else 'free'
+        topup_user_ref = topup_db.collection('users').document(uid_tmp)
+        ud = topup_user_ref.get()
+        user_data_tmp = ud.to_dict() or {} if ud.exists else {}
+        user_tier_tmp = _effective_subscription_tier(user_data_tmp) if ud.exists else 'free'
         # Strip _yearly suffix for comparison
         base_tier = user_tier_tmp.replace('_yearly', '')
         if base_tier not in ['starter', 'creator', 'pro']:
@@ -4427,11 +4886,24 @@ def create_order(req: CreateOrderRequest, request: Request, response: Response):
         expected = f"topup_{base_tier}"
         if req.plan_id != expected:
             raise HTTPException(status_code=403, detail="This top-up is not available for your current plan.")
+        _assert_topup_purchase_available(user_data_tmp, plan)
     if not _payment_idem_claim(pay_idem_key):
         concurrent = _payment_idem_get(pay_idem_key)
         if concurrent and concurrent.get("status") == "completed":
             return {**concurrent["payload"], "idempotent_replay": True}
         raise HTTPException(status_code=409, detail="A payment order with this idempotency key is already in progress.")
+
+    if plan.get('is_topup'):
+        try:
+            topup_reservation_id = _reserve_topup_order_slot(
+                topup_db,
+                topup_user_ref,
+                req.plan_id,
+                plan,
+            )
+        except Exception:
+            _payment_idem_delete(pay_idem_key)
+            raise
 
     currency = req.currency.upper() if req.currency else "INR"
     # Top-ups are INR only; USD only applies to subscription plans
@@ -4442,6 +4914,8 @@ def create_order(req: CreateOrderRequest, request: Request, response: Response):
         amount = plan.get('usd_cents', plan['inr_paise'])
 
     if not RAZORPAY_AVAILABLE or rzp_client is None:
+        if topup_db is not None and topup_user_ref is not None:
+            _release_topup_order_slot(topup_db, topup_user_ref, topup_reservation_id)
         _payment_idem_delete(pay_idem_key)
         detail = "Payment service unavailable"
         if _IS_DEVELOPMENT and (not RAZORPAY_KEY_ID or not RAZORPAY_KEY_SECRET):
@@ -4457,11 +4931,23 @@ def create_order(req: CreateOrderRequest, request: Request, response: Response):
                 "uid": uid,
                 "plan_id": req.plan_id,
                 "org_id": req.org_id or _tenant_id_from_token(decoded_token),
-                "source": "create_order"
+                "source": "create_order",
+                **({"topup_reservation_id": topup_reservation_id} if topup_reservation_id else {}),
             }
         }
         order = rzp_client.order.create(data=order_data)
     except Exception as e:
+        if topup_db is not None and topup_user_ref is not None:
+            try:
+                _release_topup_order_slot(topup_db, topup_user_ref, topup_reservation_id)
+            except Exception as release_error:
+                _json_log(
+                    "warning",
+                    "topup_reservation_release_failed",
+                    uid=uid,
+                    reservation_id=topup_reservation_id,
+                    error=str(release_error),
+                )
         _payment_idem_delete(pay_idem_key)
         _json_log("error", "razorpay_order_create_failed", uid=uid, plan_id=req.plan_id, error=str(e))
         raise HTTPException(status_code=502, detail="Payment order could not be created. Please try again.") from e
@@ -4562,6 +5048,8 @@ def verify_payment(req: VerifyPaymentRequest, request: Request, response: Respon
         raise HTTPException(status_code=400, detail="Payment order amount does not match the captured payment.")
 
     order_notes = order_live.get("notes") or {}
+    if not isinstance(order_notes, dict):
+        order_notes = {}
     order_uid = (order_notes.get("uid") or "").strip()
     order_plan_id = (order_notes.get("plan_id") or "").strip()
     if not order_uid or order_uid != uid:
@@ -4595,6 +5083,7 @@ def verify_payment(req: VerifyPaymentRequest, request: Request, response: Respon
         currency=currency_paid,
         source="client_verify",
         org_id=req.org_id or _tenant_id_from_token(decoded_token),
+        topup_reservation_id=str(order_notes.get("topup_reservation_id") or "").strip(),
     )
     _payment_idem_set(pay_idem_key, {"status": "completed", "ts": time.time(), "payload": payload})
     return payload
@@ -4661,7 +5150,34 @@ async def razorpay_webhook(request: Request):
     if event in {"refund.created", "refund.processed", "refund.failed"}:
         if not db:
             raise HTTPException(status_code=503, detail="Database unavailable")
-        return _apply_refund_webhook_event(db, event, refund_entity, payment_entity)
+        refund_payment_id = str(refund_entity.get("payment_id") or payment_id or "").strip()
+        if not refund_payment_id or not RAZORPAY_AVAILABLE or rzp_client is None:
+            raise HTTPException(status_code=503, detail="Refund payment verification is unavailable")
+        try:
+            refund_payment_live = rzp_client.payment.fetch(refund_payment_id)
+        except Exception as e:
+            # A non-2xx response asks Razorpay to retry instead of acknowledging a
+            # refund whose entitlement owner could not be established safely.
+            raise HTTPException(status_code=502, detail="Unable to verify refunded payment with Razorpay") from e
+        refund_order_id = str(refund_payment_live.get("order_id") or "").strip()
+        refund_amount_paid = int(refund_payment_live.get("amount", 0) or 0)
+        refund_currency = str(refund_payment_live.get("currency") or "INR").upper()
+        refund_context = _fetch_bound_order_context(
+            refund_order_id,
+            refund_amount_paid,
+            refund_currency,
+        )
+        refund_payment_bound = {**refund_payment_live, "notes": refund_context}
+        if webhook_ref is not None:
+            try:
+                webhook_ref.update({
+                    "payment_id": refund_payment_id,
+                    "order_id": refund_order_id,
+                    "notes": refund_context,
+                })
+            except Exception as e:
+                _json_log("warning", "refund_webhook_context_persist_failed", payment_id=refund_payment_id, error=str(e))
+        return _apply_refund_webhook_event(db, event, refund_entity, refund_payment_bound)
 
     if event == "payment.failed":
         _track_event("payment_failed", {
@@ -4675,16 +5191,18 @@ async def razorpay_webhook(request: Request):
     if event != "payment.captured" or status != "captured":
         return {"success": True, "ignored": True, "event": event}
 
-    uid = notes.get("uid", "")
-    plan_id = notes.get("plan_id", "")
-    org_id = notes.get("org_id", "")
-    if not uid:
-        return {"success": True, "ignored": True, "reason": "missing_uid_note"}
-
-    if not plan_id:
-        plan_id = _resolve_plan_from_amount_currency(amount_minor, currency) or ""
-    if not plan_id:
-        return {"success": True, "ignored": True, "reason": "unknown_plan"}
+    # Resolve the entitlement from the server-created order. Payment notes are
+    # not authoritative and are commonly empty in payment.captured payloads.
+    order_context = _fetch_bound_order_context(order_id, amount_minor, currency)
+    uid = order_context["uid"]
+    plan_id = order_context["plan_id"]
+    org_id = order_context["org_id"]
+    topup_reservation_id = order_context["topup_reservation_id"]
+    if webhook_ref is not None:
+        try:
+            webhook_ref.update({"notes": order_context})
+        except Exception as e:
+            _json_log("warning", "payment_webhook_context_persist_failed", payment_id=payment_id, error=str(e))
 
     result = _apply_successful_payment(
         uid=uid,
@@ -4695,6 +5213,7 @@ async def razorpay_webhook(request: Request):
         currency=currency,
         source="webhook",
         org_id=org_id,
+        topup_reservation_id=topup_reservation_id,
     )
     if webhook_ref is not None:
         try:
@@ -4760,6 +5279,50 @@ def admin_recovery_summary(req: AdminRecoveryRequest):
         "payment_reconcile_recent": reconcile_runs,
         "slo": _build_slo_snapshot(),
         "ai_system_usage_today": _read_system_ai_usage(db),
+    }
+
+
+@app.post("/api/admin/test-alerts")
+def admin_test_alerts(req: AdminAlertTestRequest):
+    """Dispatch controlled Slack and Sentry events for launch evidence."""
+    if not _is_admin_token(req.id_token):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    test_id = f"alert-test-{_utcnow().strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(3)}"
+    slack_dispatched = _send_alert(
+        f"[Caption Studio Test] Production alert delivery test {test_id}. No action required."
+    )
+    sentry_event_id = ""
+    if SENTRY_DSN and SENTRY_AVAILABLE:
+        try:
+            sentry_event_id = str(sentry_sdk.capture_message(
+                f"Caption Studio production alert delivery test {test_id}",
+                level="warning",
+            ) or "")
+            sentry_sdk.flush(timeout=2.0)
+        except Exception as e:
+            _json_log("warning", "sentry_test_alert_failed", test_id=test_id, error=str(e))
+    _audit_action("production_alert_test_dispatched", "admin", {
+        "test_id": test_id,
+        "slack_dispatched": bool(slack_dispatched),
+        "sentry_dispatched": bool(sentry_event_id),
+    })
+    if not slack_dispatched or not sentry_event_id:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "message": "One or more alert channels could not be dispatched.",
+                "test_id": test_id,
+                "slack_dispatched": bool(slack_dispatched),
+                "sentry_dispatched": bool(sentry_event_id),
+            },
+        )
+    return {
+        "success": True,
+        "test_id": test_id,
+        "slack_dispatched": True,
+        "sentry_dispatched": True,
+        "sentry_event_id": sentry_event_id,
+        "delivery_confirmation_required": True,
     }
 
 @app.post("/api/admin/tenant-backfill")
