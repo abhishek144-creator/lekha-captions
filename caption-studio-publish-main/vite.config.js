@@ -21,7 +21,7 @@ const baseSecurityHeaders = {
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(self)',
   'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
 }
-const productionCsp = "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; script-src 'self' https://checkout.razorpay.com; frame-src https://*.razorpay.com https://*.firebaseapp.com; connect-src 'self' https:; img-src 'self' data: blob: https:; media-src 'self' blob: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com"
+const productionCsp = "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; script-src 'self' https://apis.google.com https://checkout.razorpay.com; frame-src https://*.razorpay.com https://*.firebaseapp.com; connect-src 'self' https:; img-src 'self' data: blob: https:; media-src 'self' blob: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com"
 
 function isLocalBackendTarget() {
   return ['localhost', '127.0.0.1'].includes(backendUrl.hostname)
