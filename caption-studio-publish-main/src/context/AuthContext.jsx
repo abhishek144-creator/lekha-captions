@@ -1,8 +1,9 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import {
     auth,
     db,
     googleProvider,
+    signInAnonymously,
     signInWithPopup,
     signInWithRedirect,
     getRedirectResult,
@@ -15,6 +16,7 @@ import { apiRequest } from '../lib/apiClient'
 
 const AuthContext = createContext()
 const PENDING_CONSENT_KEY = 'lekha.pendingConsent'
+const RAZORPAY_REVIEW_MODE = import.meta.env.VITE_RAZORPAY_REVIEW_MODE === '1'
 
 export function useAuth() {
     return useContext(AuthContext)
@@ -25,6 +27,7 @@ export function AuthProvider({ children }) {
     const [userData, setUserData] = useState(null)
     const [loading, setLoading] = useState(true)
     const [authError, setAuthError] = useState(null)
+    const reviewSignInStartedRef = useRef(false)
 
     const syncUserRecord = async (user, consentOverride = null) => {
         const idToken = await user.getIdToken()
@@ -100,6 +103,10 @@ export function AuthProvider({ children }) {
                 'auth/popup-blocked',
                 'auth/popup-closed-by-user',
                 'auth/cancelled-popup-request',
+                // Firebase's popup iframe can report network-request-failed in
+                // embedded/privacy-restricted browsers even while normal HTTPS
+                // requests work. Redirect auth avoids that iframe transport.
+                'auth/network-request-failed',
             ])
 
             if (fallbackCodes.has(error?.code)) {
@@ -147,6 +154,19 @@ export function AuthProvider({ children }) {
 
         try {
             const unsubscribe = onAuthStateChanged(auth, (user) => {
+                if (!user && RAZORPAY_REVIEW_MODE) {
+                    if (reviewSignInStartedRef.current) return
+                    reviewSignInStartedRef.current = true
+                    signInAnonymously(auth)
+                        .catch((error) => {
+                            console.error('Razorpay review session could not start:', error)
+                            setAuthError(error)
+                            setLoading(false)
+                        })
+                    return
+                }
+
+                reviewSignInStartedRef.current = false
                 setCurrentUser(user)
                 setLoading(false)
 
@@ -209,6 +229,7 @@ export function AuthProvider({ children }) {
         navigateToLogin: () => {},
         checkAppState: () => {},
         appPublicSettings: null,
+        isRazorpayReviewMode: RAZORPAY_REVIEW_MODE,
     }
 
     return (
