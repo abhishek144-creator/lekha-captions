@@ -28,6 +28,12 @@ const requiredEvidence = [
   ['backup restore', /backup|restore/i],
   ['load smoke', /load/i],
   ['authenticated staging media flow', /authenticated staging|upload.*process.*export/i],
+  ['live Razorpay payment/refund lifecycle', /live.*(?:razorpay|payment)|(?:razorpay|payment).*refund/i],
+  ['two-user cross-account isolation', /cross-account|two-user|tenant isolation/i],
+  ['production malware rejection', /malware|clamav|suspicious file/i],
+  ['production alert delivery', /alert delivery|sentry.*slack|slack.*sentry/i],
+  ['real-video language/format matrix', /video matrix|hindi.*english.*hinglish/i],
+  ['production Firebase rules/App Check', /firebase rules|app check/i],
 ]
 
 const missingEvidence = requiredEvidence

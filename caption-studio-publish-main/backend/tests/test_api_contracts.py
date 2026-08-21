@@ -1,8 +1,13 @@
+import asyncio
+import hashlib
+import hmac
 import io
+import json
 import os
 import sys
 import tempfile
-from datetime import datetime, timedelta, timezone
+import time
+from datetime import date, datetime, timedelta, timezone
 import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -44,9 +49,9 @@ class ApiContractTests(unittest.TestCase):
         main._detect_language_rate.clear()
         main._translate_rate.clear()
 
-    def test_export_daily_limit_relaxed_outside_production(self):
-        # Local/dev runs stay unthrottled so export debugging is not blocked.
-        self.assertTrue(main.DISABLE_EXPORT_DAILY_LIMIT)
+    def test_export_daily_limit_is_enabled_by_default(self):
+        # Local runs must exercise the same quota safeguard as production.
+        self.assertFalse(main.DISABLE_EXPORT_DAILY_LIMIT)
 
     def test_export_daily_limit_is_enforced_when_not_disabled(self):
         user_data = {
@@ -61,6 +66,39 @@ class ApiContractTests(unittest.TestCase):
 
         self.assertFalse(allowed)
         self.assertIn("Limit reached", detail)
+
+    def test_export_payload_discards_browser_render_measurements(self):
+        payload = {
+            "file_id": "00000000-0000-0000-0000-000000000000",
+            "id_token": "secret",
+            "word_layouts": {"cap-0": {"x": 12, "y": 34}},
+            "style": {
+                "font_size": 30,
+                "preview_width": 540,
+                "preview_template_font_px": 21,
+                "template_snapshot": {"preview_template_box_width_px": 180},
+            },
+            "captions": [{
+                "id": "cap",
+                "text": "Server layout",
+                "preview_template_line_texts": ["Server", "layout"],
+                "applied_template_style": {"preview_template_box_height_px": 50},
+            }],
+        }
+
+        sanitized = main._sanitize_export_request_payload(payload)
+
+        self.assertEqual(sanitized["word_layouts"], {})
+        self.assertNotIn("id_token", sanitized)
+        self.assertEqual(sanitized["style"]["font_size"], 30)
+        self.assertNotIn("preview_width", sanitized["style"])
+        self.assertNotIn("preview_template_font_px", sanitized["style"])
+        self.assertNotIn("preview_template_box_width_px", sanitized["style"]["template_snapshot"])
+        self.assertNotIn("preview_template_line_texts", sanitized["captions"][0])
+        self.assertNotIn(
+            "preview_template_box_height_px",
+            sanitized["captions"][0]["applied_template_style"],
+        )
 
     def test_service_controls_default_to_open(self):
         main._service_control_cache.update({"ts": 0.0, "value": {}})
@@ -121,6 +159,49 @@ class ApiContractTests(unittest.TestCase):
             controls = main._read_service_controls(force=True)
 
         self.assertFalse(controls["maintenance_mode"])
+
+    def test_firebase_app_check_rejects_missing_and_accepts_valid_token(self):
+        request = SimpleNamespace(
+            method="POST",
+            url=SimpleNamespace(path="/api/process"),
+            headers={},
+        )
+        with patch.object(main, "FIREBASE_APP_CHECK_ENFORCED", True):
+            missing = main._verify_firebase_app_check_request(request, "req-app-check")
+        self.assertEqual(missing.status_code, 403)
+
+        request.headers = {"x-firebase-appcheck": "valid-app-check-token"}
+        with (
+            patch.object(main, "FIREBASE_APP_CHECK_ENFORCED", True),
+            patch.object(main.firebase_app_check, "verify_token", return_value={"app_id": "web-app"}) as verify,
+        ):
+            accepted = main._verify_firebase_app_check_request(request, "req-app-check")
+        self.assertIsNone(accepted)
+        verify.assert_called_once_with("valid-app-check-token")
+
+    def test_admin_alert_test_dispatches_slack_and_sentry(self):
+        fake_sentry = SimpleNamespace(
+            capture_message=lambda *_args, **_kwargs: "sentry-event-1",
+            flush=lambda **_kwargs: None,
+        )
+        with (
+            patch.object(main, "_is_admin_token", return_value=True),
+            patch.object(main, "_send_alert", return_value=True),
+            patch.object(main, "SENTRY_DSN", "https://public@example.invalid/1"),
+            patch.object(main, "SENTRY_AVAILABLE", True),
+            patch.object(main, "sentry_sdk", fake_sentry),
+            patch.object(main, "_audit_action"),
+        ):
+            response = self.client.post(
+                "/api/admin/test-alerts",
+                json={"id_token": "admin-token"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["slack_dispatched"])
+        self.assertTrue(payload["sentry_dispatched"])
+        self.assertEqual(payload["sentry_event_id"], "sentry-event-1")
 
     def test_expired_paid_plan_is_blocked_even_with_remaining_credits(self):
         expired_at = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
@@ -972,7 +1053,10 @@ class ApiContractTests(unittest.TestCase):
 
         transaction = FakeTransaction()
         db = SimpleNamespace(transaction=lambda: transaction)
-        user_ref = FakeRef(FakeSnapshot(True, {"subscription_tier": "free"}))
+        user_ref = FakeRef(FakeSnapshot(True, {
+            "subscription_tier": "free",
+            "credits_remaining": 3,
+        }))
         payment_ref = FakeRef(FakeSnapshot(False))
 
         with patch.object(main.firestore, "transactional", new=lambda fn: fn):
@@ -993,8 +1077,282 @@ class ApiContractTests(unittest.TestCase):
 
         self.assertTrue(result["success"])
         self.assertEqual([write[0] for write in transaction.writes], ["create", "update"])
+        self.assertEqual(
+            transaction.writes[1][2]["credits_remaining"],
+            main.PLAN_PRICING["starter"]["credits"],
+        )
         self.assertIs(payment_ref.transaction, transaction)
         self.assertIs(user_ref.transaction, transaction)
+
+    def test_topup_catalog_uses_launch_price_and_plan_limits(self):
+        expected = {
+            "topup_starter": (10, 1),
+            "topup_creator": (15, 2),
+            "topup_pro": (25, 4),
+        }
+        for plan_id, (credits, limit) in expected.items():
+            with self.subTest(plan_id=plan_id):
+                plan = main.PLAN_PRICING[plan_id]
+                self.assertEqual(plan["inr_paise"], 19900)
+                self.assertEqual(plan["credits"], credits)
+                self.assertEqual(plan["purchase_limit_30d"], limit)
+
+    def test_topup_rolling_limit_rejects_used_and_reserved_slots(self):
+        now_ts = 2_000_000_000.0
+        creator_plan = main.PLAN_PRICING["topup_creator"]
+        user_data = {
+            "topup_timestamps": [now_ts - 60],
+            "topup_order_reservations": [
+                {
+                    "id": "reservation-1",
+                    "plan_id": "topup_creator",
+                    "created_at": now_ts - 30,
+                }
+            ],
+        }
+
+        with self.assertRaises(main.HTTPException) as raised:
+            main._assert_topup_purchase_available(user_data, creator_plan, now_ts)
+
+        self.assertEqual(raised.exception.status_code, 429)
+        self.assertIn("2 top-up purchases", raised.exception.detail)
+
+    def test_topup_grant_consumes_reservation_and_records_rolling_usage(self):
+        class FakeSnapshot:
+            def __init__(self, exists, data=None):
+                self.exists = exists
+                self._data = data or {}
+
+            def to_dict(self):
+                return dict(self._data)
+
+        class FakeRef:
+            def __init__(self, snapshot):
+                self.snapshot = snapshot
+
+            def get(self, transaction=None):
+                return self.snapshot
+
+        class FakeTransaction:
+            def __init__(self):
+                self.writes = []
+
+            def create(self, ref, data):
+                self.writes.append(("create", ref, data))
+
+            def update(self, ref, data):
+                self.writes.append(("update", ref, data))
+
+        now_ts = time.time()
+        transaction = FakeTransaction()
+        db = SimpleNamespace(transaction=lambda: transaction)
+        user_ref = FakeRef(FakeSnapshot(True, {
+            "subscription_tier": "creator",
+            "subscription_expiry": (datetime.now(timezone.utc) + timedelta(days=10)).isoformat(),
+            "credits_remaining": 5,
+            "topup_timestamps": [now_ts - 3600],
+            "topup_order_reservations": [{
+                "id": "reserved-order",
+                "plan_id": "topup_creator",
+                "created_at": now_ts - 30,
+            }],
+        }))
+        payment_ref = FakeRef(FakeSnapshot(False))
+
+        with patch.object(main.firestore, "transactional", new=lambda fn: fn):
+            result = main._grant_payment_transactionally(
+                db,
+                user_ref,
+                payment_ref,
+                "topup-user",
+                "topup_creator",
+                main.PLAN_PRICING["topup_creator"],
+                "pay_topup",
+                "order_topup",
+                main.PLAN_PRICING["topup_creator"]["inr_paise"],
+                "INR",
+                "test",
+                "",
+                "reserved-order",
+            )
+
+        self.assertTrue(result["success"])
+        user_update = transaction.writes[1][2]
+        self.assertEqual(user_update["topups_this_cycle"], 2)
+        self.assertEqual(len(user_update["topup_timestamps"]), 2)
+        self.assertEqual(user_update["topup_order_reservations"], [])
+
+    def test_expired_paid_plan_uses_free_ai_quota(self):
+        class FakeSnapshot:
+            exists = True
+
+            def to_dict(self):
+                return {
+                    "subscription_tier": "pro",
+                    "subscription_expiry": (datetime.now(timezone.utc) - timedelta(days=1)).isoformat(),
+                    "ai_usage_date": date.today().isoformat(),
+                    "ai_daily_usage": {"process": main.AI_DAILY_LIMITS["free"]["process"]},
+                }
+
+        class FakeRef:
+            def get(self, transaction=None):
+                return FakeSnapshot()
+
+        fake_ref = FakeRef()
+        fake_db = SimpleNamespace(
+            collection=lambda _name: SimpleNamespace(document=lambda _uid: fake_ref),
+            transaction=lambda: SimpleNamespace(set=lambda *args, **kwargs: None),
+        )
+
+        with (
+            patch.object(main, "get_db", return_value=fake_db),
+            patch.object(main, "_IS_TEST", False),
+            patch.object(main.firestore, "transactional", new=lambda fn: fn),
+        ):
+            with self.assertRaises(main.HTTPException) as raised:
+                main._reserve_ai_quota("expired-pro", "process")
+
+        self.assertEqual(raised.exception.status_code, 429)
+
+    def test_payment_webhook_recovers_binding_from_order_notes(self):
+        secret = "webhook-test-secret"
+        webhook_payload = {
+            "event": "payment.captured",
+            "payload": {
+                "payment": {
+                    "entity": {
+                        "id": "pay_webhook",
+                        "order_id": "order_webhook",
+                        "amount": main.PLAN_PRICING["starter"]["inr_paise"],
+                        "currency": "INR",
+                        "status": "captured",
+                        "notes": {},
+                    }
+                }
+            },
+        }
+        body = json.dumps(webhook_payload, separators=(",", ":")).encode("utf-8")
+        signature = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
+
+        class FakeRequest:
+            def __init__(self, request_body, request_signature):
+                self._request_body = request_body
+                self.headers = {
+                    "content-length": str(len(request_body)),
+                    "x-razorpay-signature": request_signature,
+                }
+
+            async def body(self):
+                return self._request_body
+
+        fake_client = SimpleNamespace(
+            order=SimpleNamespace(fetch=lambda _order_id: {
+                "id": "order_webhook",
+                "amount": main.PLAN_PRICING["starter"]["inr_paise"],
+                "currency": "INR",
+                "notes": {"uid": "webhook-user", "plan_id": "starter", "org_id": ""},
+            })
+        )
+
+        with (
+            patch.object(main, "RAZORPAY_WEBHOOK_SECRET", secret),
+            patch.object(main, "RAZORPAY_AVAILABLE", True),
+            patch.object(main, "rzp_client", fake_client),
+            patch.object(main, "get_db", return_value=None),
+            patch.object(main, "_apply_successful_payment", return_value={"success": True}) as apply_payment,
+        ):
+            result = asyncio.run(main.razorpay_webhook(FakeRequest(body, signature)))
+
+        self.assertTrue(result["applied"])
+        self.assertEqual(apply_payment.call_args.kwargs["uid"], "webhook-user")
+        self.assertEqual(apply_payment.call_args.kwargs["plan_id"], "starter")
+
+    def test_full_refund_revokes_active_subscription_entitlement(self):
+        cycle_start = "2026-08-20T10:00:00Z"
+
+        class FakeSnapshot:
+            def __init__(self, exists, data=None):
+                self.exists = exists
+                self._data = data or {}
+
+            def to_dict(self):
+                return dict(self._data)
+
+        class FakeRef:
+            def __init__(self, snapshot):
+                self.snapshot = snapshot
+                self.collections = {}
+
+            def get(self, transaction=None):
+                return self.snapshot
+
+            def collection(self, name):
+                return self.collections[name]
+
+        class FakeCollection:
+            def __init__(self, docs):
+                self.docs = docs
+
+            def document(self, doc_id):
+                return self.docs[doc_id]
+
+        class FakeTransaction:
+            def __init__(self):
+                self.writes = []
+
+            def update(self, ref, data):
+                self.writes.append(("update", ref, data))
+
+            def set(self, ref, data, merge=False):
+                self.writes.append(("set", ref, data, merge))
+
+        user_ref = FakeRef(FakeSnapshot(True, {
+            "subscription_tier": "starter",
+            "billing_cycle_start": cycle_start,
+            "credits_remaining": 12,
+        }))
+        payment_ref = FakeRef(FakeSnapshot(True, {
+            "payment_id": "pay_refund",
+            "amount": main.PLAN_PRICING["starter"]["inr_paise"],
+            "credits_added": main.PLAN_PRICING["starter"]["credits"],
+            "type": "subscription",
+            "plan": "starter",
+            "timestamp": cycle_start,
+            "entitlement_cycle_start": cycle_start,
+        }))
+        refund_ref = FakeRef(FakeSnapshot(False))
+        payment_ref.collections["refunds"] = FakeCollection({"rfnd_1": refund_ref})
+        user_ref.collections["payments"] = FakeCollection({"pay_refund": payment_ref})
+        transaction = FakeTransaction()
+        fake_db = SimpleNamespace(
+            collection=lambda _name: FakeCollection({"refund-user": user_ref}),
+            transaction=lambda: transaction,
+        )
+
+        with (
+            patch.object(main.firestore, "transactional", new=lambda fn: fn),
+            patch.object(main, "_track_event"),
+            patch.object(main, "_audit_action"),
+        ):
+            result = main._apply_refund_webhook_event(
+                fake_db,
+                "refund.processed",
+                {
+                    "id": "rfnd_1",
+                    "payment_id": "pay_refund",
+                    "amount": main.PLAN_PRICING["starter"]["inr_paise"],
+                    "currency": "INR",
+                    "status": "processed",
+                },
+                {"id": "pay_refund", "currency": "INR", "notes": {"uid": "refund-user"}},
+            )
+
+        user_updates = [write[2] for write in transaction.writes if write[0] == "update" and write[1] is user_ref]
+        self.assertEqual(len(user_updates), 1)
+        self.assertEqual(user_updates[0]["credits_remaining"], 0)
+        self.assertEqual(user_updates[0]["subscription_tier"], "free")
+        self.assertFalse(result["entitlement_adjustment_required"])
+        self.assertEqual(result["entitlement_credits_removed"], 12)
 
     def test_export_usage_is_recorded_once_per_job(self):
         class FakeSnapshot:

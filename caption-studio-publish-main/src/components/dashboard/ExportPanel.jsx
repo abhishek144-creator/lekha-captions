@@ -42,11 +42,10 @@ import {
 
 import { Progress } from "@/components/ui/progress";
 
-// TESTING ONLY: unlock export UI while caption/export parity is being tested.
-// Dev-build only by construction — production builds can never enable this,
-// even if VITE_DISABLE_EXPORT_LIMITS leaks into the build environment. In dev
-// it defaults on; set VITE_DISABLE_EXPORT_LIMITS=0 to exercise the real gates.
-const DISABLE_EXPORT_LIMITS_FOR_TESTING = import.meta.env.DEV && import.meta.env.VITE_DISABLE_EXPORT_LIMITS !== '0';
+// TESTING ONLY: unlock the export UI for an explicitly configured local test.
+// Limits are on by default in every build; a production build cannot bypass
+// them even if a VITE_ value is accidentally supplied at build time.
+const DISABLE_EXPORT_LIMITS_FOR_TESTING = import.meta.env.DEV && import.meta.env.VITE_DISABLE_EXPORT_LIMITS === '1';
 
 const SUPPORT_EMAIL = import.meta.env.VITE_SUPPORT_EMAIL || 'support@lekhacaptions.com';
 
@@ -96,364 +95,6 @@ function getPlanLimitErrorKind(errorOrDetail) {
   if (detail.includes('PLAN_EXPIRED')) return 'expired';
   if (detail.includes('UPGRADE_REQUIRED')) return 'upgrade';
   return null;
-}
-
-function getMaxRenderedFontSize(root) {
-  if (!root) return 0;
-  const candidates = [root, ...root.querySelectorAll('*')];
-  let maxFontSize = 0;
-  candidates.forEach((node) => {
-    const fontSize = parseFloat(window.getComputedStyle(node).fontSize || '');
-    if (Number.isFinite(fontSize) && fontSize > maxFontSize) {
-      maxFontSize = fontSize;
-    }
-  });
-  return maxFontSize;
-}
-
-function getTemplatePreviewFontFloorPx(style) {
-  const configured = Number(style?.font_size || 0);
-  if (!Number.isFinite(configured) || configured <= 0) return 0;
-  return Math.max(12, Math.round(configured * 0.88));
-}
-
-function getRenderedBoxSize(root) {
-  if (!root || typeof root.getBoundingClientRect !== 'function') {
-    return { width: 0, height: 0 };
-  }
-  const rect = root.getBoundingClientRect();
-  return {
-    width: Number.isFinite(rect.width) ? rect.width : 0,
-    height: Number.isFinite(rect.height) ? rect.height : 0,
-  };
-}
-
-function findRenderedTemplateMeasureElement(preferredRoot) {
-  return findLargestRenderedElement('[data-caption-layer="true"] [data-export-measure]', preferredRoot)
-    || findLargestRenderedElement('[data-export-measure]', preferredRoot);
-}
-
-function findCaptionLayerById(container, captionId) {
-  if (!container || captionId === undefined || captionId === null) return null;
-  const targetId = String(captionId);
-  return Array.from(container.querySelectorAll?.('[data-caption-layer="true"]') || [])
-    .find((element) => element.getAttribute('data-caption-id') === targetId) || null;
-}
-
-function findRenderedCaptionTemplateElement(preferredRoot) {
-  if (!preferredRoot) return null;
-  return findLargestRenderedElementInRoot('[data-export-measure]', preferredRoot)
-    || findLargestRenderedElementInRoot('.lekha-original-template .lekha-applied-advanced-template.active', preferredRoot)
-    || findLargestRenderedElementInRoot('.lekha-original-template .lekha-applied-advanced-template', preferredRoot)
-    || findLargestRenderedElementInRoot('.lekha-original-template', preferredRoot)
-    || findLargestRenderedElementInRoot('.lekha-applied-advanced-template.active', preferredRoot)
-    || findLargestRenderedElementInRoot('.lekha-applied-advanced-template', preferredRoot)
-    || findLargestRenderedElementInRoot('.lekha-applied-basic-template-host', preferredRoot)
-    || findLargestRenderedElementInRoot('.lekha-sidebar-source-template', preferredRoot)
-    || findLargestRenderedElementInRoot('.cap-text', preferredRoot);
-}
-
-function normalizeTemplateLineText(value) {
-  return String(value || '').replace(/\s+/g, ' ').trim();
-}
-
-function getExplicitTemplateTextLines(element) {
-  if (!element) return [];
-  const lines = [''];
-  const appendText = (value) => {
-    lines[lines.length - 1] += ` ${value || ''}`;
-  };
-  const walk = (node) => {
-    Array.from(node.childNodes || []).forEach((child) => {
-      if (child.nodeType === 3) {
-        appendText(child.nodeValue || '');
-        return;
-      }
-      if (child.nodeType !== 1) return;
-      if (child.tagName === 'BR') {
-        lines.push('');
-        return;
-      }
-      walk(child);
-    });
-  };
-  walk(element);
-  return lines.map(normalizeTemplateLineText).filter(Boolean);
-}
-
-function getVisualTemplateTextLines(element) {
-  if (!element || typeof document === 'undefined') return [];
-  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-  const words = [];
-  let node = walker.nextNode();
-  while (node) {
-    const text = String(node.nodeValue || '');
-    const matches = text.matchAll(/\S+/g);
-    for (const match of matches) {
-      const range = document.createRange();
-      range.setStart(node, match.index);
-      range.setEnd(node, match.index + match[0].length);
-      const rect = Array.from(range.getClientRects()).find((item) => item.width > 0 && item.height > 0);
-      range.detach?.();
-      if (!rect) continue;
-      words.push({
-        index: words.length,
-        top: rect.top,
-        left: rect.left,
-        text: match[0],
-      });
-    }
-    node = walker.nextNode();
-  }
-  if (!words.length) return [];
-  const lines = new Map();
-  words.forEach((word) => {
-    const lineKey = Math.round(word.top / 4) * 4;
-    const items = lines.get(lineKey) || [];
-    items.push(word);
-    lines.set(lineKey, items);
-  });
-  return Array.from(lines.entries())
-    .sort(([topA], [topB]) => topA - topB)
-    .map(([, items]) => items
-      .sort((left, right) => left.left - right.left || left.index - right.index)
-      .map((item) => item.text)
-      .join(' ')
-      .trim())
-    .filter(Boolean);
-}
-
-function captureAdvancedTemplateLineTexts(preferredRoot) {
-  if (typeof document === 'undefined') return [];
-  const root = preferredRoot || document;
-  const splitTitle = root.querySelector?.(
-    '.lekha-original-template .lekha-applied-advanced-template.active .split-title',
-  ) || root.querySelector?.(
-    '.lekha-original-template .split-title',
-  );
-  if (splitTitle) {
-    const splitLines = ['.split-top', '.split-bot']
-      .map((selector) => normalizeTemplateLineText(splitTitle.querySelector(selector)?.textContent || ''))
-      .filter(Boolean);
-    if (splitLines.length) return splitLines;
-  }
-  const explicitLineRoot = root.querySelector?.(
-    '.lekha-original-template .lekha-applied-advanced-template.active .hand-txt, '
-    + '.lekha-original-template .lekha-applied-advanced-template.active .soft-rise, '
-    + '.lekha-original-template .lekha-applied-advanced-template.active .slow-rise',
-  ) || root.querySelector?.(
-    '.lekha-original-template .hand-txt, '
-    + '.lekha-original-template .soft-rise, '
-    + '.lekha-original-template .slow-rise',
-  );
-  const explicitLines = getExplicitTemplateTextLines(explicitLineRoot);
-  if (explicitLines.length > 1) return explicitLines;
-  const visualLines = getVisualTemplateTextLines(explicitLineRoot);
-  if (visualLines.length > 1) return visualLines;
-  const lineRoot = root.querySelector?.(
-    '.lekha-original-template .lekha-applied-advanced-template.active .wbw-rise, '
-    + '.lekha-original-template .lekha-applied-advanced-template.active .wbw-slide, '
-    + '.lekha-original-template .lekha-applied-advanced-template.active .wbw-seq, '
-    + '.lekha-original-template .lekha-applied-advanced-template.active .wbw-seq-fade, '
-    + '.lekha-original-template .lekha-applied-advanced-template.active .wbw-seq-flip',
-  ) || root.querySelector?.(
-    '.lekha-original-template .wbw-rise, '
-    + '.lekha-original-template .wbw-slide, '
-    + '.lekha-original-template .wbw-seq, '
-    + '.lekha-original-template .wbw-seq-fade, '
-    + '.lekha-original-template .wbw-seq-flip',
-  );
-  if (!lineRoot) {
-    const appliedTemplateRoot = root.querySelector?.(
-      '.lekha-applied-basic-template-host .bt-cap-block.is-active, '
-      + '.lekha-applied-template-host .sb.active, '
-      + '.lekha-applied-template-host .sblock.active, '
-      + '.lekha-sidebar-source-template .sb.active, '
-      + '.lekha-sidebar-source-template .sblock.active',
-    );
-    return getVisualTemplateTextLines(appliedTemplateRoot);
-  }
-  const words = Array.from(lineRoot.querySelectorAll('.w, .kf-word'))
-    .filter((word) => String(word.textContent || '').trim());
-  if (!words.length) return [];
-  const lines = new Map();
-  words.forEach((word, fallbackIndex) => {
-    const top = Number.isFinite(word.offsetTop) ? word.offsetTop : word.getBoundingClientRect().top;
-    const lineKey = Math.round(top / 4) * 4;
-    const items = lines.get(lineKey) || [];
-    items.push({
-      index: fallbackIndex,
-      left: Number.isFinite(word.offsetLeft) ? word.offsetLeft : word.getBoundingClientRect().left,
-      text: String(word.textContent || '').trim(),
-    });
-    lines.set(lineKey, items);
-  });
-  return Array.from(lines.entries())
-    .sort(([topA], [topB]) => topA - topB)
-    .map(([, items]) => items
-      .sort((left, right) => left.left - right.left || left.index - right.index)
-      .map((item) => item.text)
-      .join(' ')
-      .trim())
-    .filter(Boolean);
-}
-
-function findLargestRenderedElement(selector, preferredRoot) {
-  if (typeof document === 'undefined') return null;
-  const roots = [preferredRoot, document].filter(Boolean);
-  const seen = new Set();
-  let best = null;
-  let bestArea = 0;
-
-  roots.forEach((root) => {
-    const matches = typeof root.querySelectorAll === 'function'
-      ? Array.from(root.querySelectorAll(selector))
-      : [];
-    matches.forEach((element) => {
-      if (!element || seen.has(element) || typeof element.getBoundingClientRect !== 'function') return;
-      seen.add(element);
-      const rect = element.getBoundingClientRect();
-      const style = window.getComputedStyle(element);
-      if (
-        !Number.isFinite(rect.width)
-        || !Number.isFinite(rect.height)
-        || rect.width <= 0
-        || rect.height <= 0
-        || style.display === 'none'
-        || style.visibility === 'hidden'
-      ) {
-        return;
-      }
-      const area = rect.width * rect.height;
-      if (area > bestArea) {
-        best = element;
-        bestArea = area;
-      }
-    });
-  });
-
-  return best;
-}
-
-function findLargestRenderedElementInRoot(selector, root) {
-  if (!root || typeof window === 'undefined') return null;
-  const candidates = [
-    ...(typeof root.matches === 'function' && root.matches(selector) ? [root] : []),
-    ...(typeof root.querySelectorAll === 'function' ? Array.from(root.querySelectorAll(selector)) : []),
-  ];
-  let best = null;
-  let bestArea = 0;
-
-  candidates.forEach((element) => {
-    if (!element || typeof element.getBoundingClientRect !== 'function') return;
-    const rect = element.getBoundingClientRect();
-    const style = window.getComputedStyle(element);
-    if (
-      !Number.isFinite(rect.width)
-      || !Number.isFinite(rect.height)
-      || rect.width <= 0
-      || rect.height <= 0
-      || style.display === 'none'
-      || style.visibility === 'hidden'
-    ) {
-      return;
-    }
-    const area = rect.width * rect.height;
-    if (area > bestArea) {
-      best = element;
-      bestArea = area;
-    }
-  });
-
-  return best;
-}
-
-function getRenderedElementCenterPercent(element, containerRect, containerToVideo) {
-  if (
-    !element
-    || !containerRect
-    || typeof element.getBoundingClientRect !== 'function'
-    || typeof containerToVideo !== 'function'
-  ) {
-    return null;
-  }
-  const rect = element.getBoundingClientRect();
-  if (
-    !Number.isFinite(rect.width)
-    || !Number.isFinite(rect.height)
-    || rect.width <= 0
-    || rect.height <= 0
-    || !Number.isFinite(containerRect.width)
-    || !Number.isFinite(containerRect.height)
-    || containerRect.width <= 0
-    || containerRect.height <= 0
-  ) {
-    return null;
-  }
-  const centerXPct = ((rect.left + rect.width / 2 - containerRect.left) / containerRect.width) * 100;
-  const centerYPct = ((rect.top + rect.height / 2 - containerRect.top) / containerRect.height) * 100;
-  const pos = containerToVideo(centerXPct, centerYPct);
-  if (!Number.isFinite(pos?.x) || !Number.isFinite(pos?.y)) {
-    return null;
-  }
-  return pos;
-}
-
-function indexWordElementsByKey(container) {
-  const elementsByKey = new Map();
-  const seen = new Set();
-  const roots = [container];
-  const ownerDocument = container?.ownerDocument;
-  // Selected/detached words are painted through a body portal. Index the
-  // document as well as the canvas so export can measure the exact visible
-  // glyph instead of an older template placeholder with the same word key.
-  if (ownerDocument && ownerDocument !== container) roots.push(ownerDocument);
-  roots.forEach((root) => {
-    root?.querySelectorAll?.('[data-word-key]').forEach((element) => {
-      if (seen.has(element)) return;
-      seen.add(element);
-      const key = element.getAttribute('data-word-key');
-      if (key === null) return;
-      const candidates = elementsByKey.get(key) || [];
-      candidates.push(element);
-      elementsByKey.set(key, candidates);
-    });
-  });
-  return elementsByKey;
-}
-
-function getRenderedWordRect(element) {
-  if (!element || typeof element.getBoundingClientRect !== 'function') return null;
-
-  const visualTargets = Array.from(element.querySelectorAll?.(
-    '[data-source-word-visual="true"], [data-word-drag-visual="true"], [data-selected-word-text="true"], .kf-base, .kf-fill'
-  ) || []).filter((target) => {
-    const style = window.getComputedStyle(target);
-    const rect = target.getBoundingClientRect();
-    return (
-      style.display !== 'none'
-      && style.visibility !== 'hidden'
-      && Number(style.opacity || 1) !== 0
-      && rect.width > 0
-      && rect.height > 0
-    );
-  });
-
-  if (!visualTargets.length) return element.getBoundingClientRect();
-
-  const rects = visualTargets.map(target => target.getBoundingClientRect());
-  const left = Math.min(...rects.map(rect => rect.left));
-  const top = Math.min(...rects.map(rect => rect.top));
-  const right = Math.max(...rects.map(rect => rect.right));
-  const bottom = Math.max(...rects.map(rect => rect.bottom));
-  return {
-    left,
-    top,
-    right,
-    bottom,
-    width: right - left,
-    height: bottom - top,
-  };
 }
 
 // Simple queue system to prevent server overload
@@ -752,48 +393,8 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       setProgress(20);
       setStatusMessage('Sending to render engine...');
 
-      // Prefer the tagged dashboard player — a bare 'video' query breaks silently
-      // if any other <video> (template preview, tutorial, embed) is ever on the page.
-      const videoEl = document.querySelector('video[data-lekha-player="true"]')
-        || document.querySelector('video');
-      const container = videoEl?.parentElement;
-      if (!videoEl || !container) {
-        toast({
-          variant: 'destructive',
-          title: 'Video player not found',
-          description: 'Please make sure the video is loaded and try again.',
-        });
-        setIsExporting(false);
-        exportInFlightRef.current = false;
-        setProgress(0);
-        setStatusMessage('');
-        return;
-      }
-      const cw = container?.offsetWidth || 1;
-      const ch = container?.offsetHeight || 1;
-
-      const containerRect = container?.getBoundingClientRect();
-      if (
-        !containerRect
-        || !Number.isFinite(containerRect.width)
-        || !Number.isFinite(containerRect.height)
-        || containerRect.width <= 0
-        || containerRect.height <= 0
-      ) {
-        throw new Error('The video preview is not visible. Open the preview and try exporting again.');
-      }
-
-      const vnw = videoEl?.videoWidth || cw;
-      const vnh = videoEl?.videoHeight || ch;
-      const vAspect = vnw / vnh;
-      const cAspect = cw / ch;
-      let renderW, renderH, offsetX, offsetY;
-      if (vAspect > cAspect) {
-        renderW = cw; renderH = cw / vAspect; offsetX = 0; offsetY = (ch - renderH) / 2;
-      } else {
-        renderH = ch; renderW = ch * vAspect; offsetX = (cw - renderW) / 2; offsetY = 0;
-      }
-
+      // Export is server-rendered from persisted editor state. The request must
+      // not depend on the preview DOM being mounted, visible, or fully loaded.
       const hasTemplateIdentity = (style = {}) => !!(style?.template_id || style?.template_20_id);
       const captionTemplateSnapshot = captions.find(c => hasTemplateIdentity(c?.applied_template_style))?.applied_template_style;
       const styleTemplateSnapshot = hasTemplateIdentity(captionStyle?.template_snapshot)
@@ -815,129 +416,6 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
         ?? fallback
       );
 
-      const measuredTemplateEl = findRenderedTemplateMeasureElement(container);
-      const templateFontEl =
-        measuredTemplateEl
-        || findLargestRenderedElement('.lekha-applied-advanced-template.active', container)
-        || findLargestRenderedElement('.lekha-applied-advanced-template', container)
-        || findLargestRenderedElement('.lekha-applied-basic-template-host', container)
-        || findLargestRenderedElement('.lekha-sidebar-source-template', container)
-        || findLargestRenderedElement('.cap-text', container);
-      const measuredTemplateFontPx = getMaxRenderedFontSize(templateFontEl);
-      const previewTemplateFontPx = (
-        isAdvancedTemplateId(effectiveExportStyle?.template_id) && measuredTemplateFontPx > 0
-      )
-        ? measuredTemplateFontPx
-        : Math.max(
-            measuredTemplateFontPx,
-            getTemplatePreviewFontFloorPx(effectiveExportStyle),
-          );
-      const previewTemplateBoxEl =
-        measuredTemplateEl
-        || findLargestRenderedElement('.lekha-original-template .lekha-applied-advanced-template.active', container)
-        || findLargestRenderedElement('.lekha-original-template .lekha-applied-advanced-template', container)
-        || findLargestRenderedElement('.lekha-original-template', container)
-        || findLargestRenderedElement('.lekha-applied-basic-template-host', container)
-        || findLargestRenderedElement('.lekha-sidebar-source-template', container)
-        || findLargestRenderedElement('.cap-text', container);
-      const previewTemplateBox = getRenderedBoxSize(previewTemplateBoxEl);
-      const previewTemplateLineTexts = captureAdvancedTemplateLineTexts(container);
-
-      const containerToVideo = (xPct, yPct) => {
-        const xPx = (xPct / 100) * cw;
-        const yPx = (yPct / 100) * ch;
-        return {
-          x: Math.max(0, Math.min(100, ((xPx - offsetX) / renderW) * 100)),
-          y: Math.max(0, Math.min(100, ((yPx - offsetY) / renderH) * 100))
-        };
-      };
-      const previewCaptionAnchorEl = findLargestRenderedElement('[data-caption-layer="true"]', container);
-      const previewCaptionAnchorPos = getRenderedElementCenterPercent(
-        previewCaptionAnchorEl,
-        containerRect,
-        containerToVideo,
-      );
-      const previewTemplateAnchorPos = isAdvancedTemplateId(effectiveExportStyle?.template_id)
-        ? getRenderedElementCenterPercent(
-            previewTemplateBoxEl,
-            containerRect,
-            containerToVideo,
-          )
-        : null;
-
-      // Caption IDs are persisted user data, not safe CSS selector fragments.
-      // Index literal attribute values once so imported IDs containing quotes do
-      // not throw a DOMException and abort the whole export.
-      const wordElementsByKey = indexWordElementsByKey(container);
-
-      // Capture exact word positions from DOM
-      const captureLayout = (caps) => {
-        const layout = {};
-        if (!container || !containerRect) return layout;
-
-        caps.forEach(cap => {
-          if (isRecreatedAdvancedTemplateId(activeTemplateValue(cap, 'template_id'))) return;
-          const capId = cap.id;
-          if (cap.words && cap.words.length > 0) {
-            cap.words.forEach((_, wIdx) => {
-              const key = `${capId}-${wIdx}`;
-              const el = (wordElementsByKey.get(key) || []).find((candidate) => {
-                const style = window.getComputedStyle(candidate);
-                const rect = getRenderedWordRect(candidate);
-                return style.display !== 'none'
-                  && style.visibility !== 'hidden'
-                  && Number(style.opacity || 1) !== 0
-                  && rect?.width > 0
-                  && rect?.height > 0;
-              });
-              if (el) {
-                const rect = getRenderedWordRect(el);
-                if (!rect) return;
-
-                // Calculate center relative to container
-                const centerX = rect.left + rect.width / 2 - containerRect.left;
-                const centerY = rect.top + rect.height / 2 - containerRect.top;
-
-                // Convert to video % coordinates
-                const pos = containerToVideo(
-                  (centerX / containerRect.width) * 100,
-                  (centerY / containerRect.height) * 100
-                );
-
-                // Calculate width/height in video %
-                // note: we need scaled width/height relative to RENDERED video area
-                const widthPct = (rect.width / renderW) * 100;
-                const heightPct = (rect.height / renderH) * 100;
-
-                layout[key] = {
-                  x: pos.x,
-                  y: pos.y,
-                  w: widthPct,
-                  h: heightPct,
-                  // Also capture rotation if we ever need it, but for now 0
-                  rot: 0
-                };
-              }
-            });
-          } else {
-            // Handle whole caption fallback if needed, but we focused on word-level highlight
-          }
-        });
-        return layout;
-      };
-
-      const exportUsesRecreatedAdvancedTemplate = isRecreatedAdvancedTemplateId(effectiveExportStyle?.template_id)
-        || captions.some((cap) => !cap?.isTextElement && isRecreatedAdvancedTemplateId(activeTemplateValue(cap, 'template_id')));
-      const wordLayouts = captureLayout(captions);
-
-      // Bug 9: Warn if word layout capture returned nothing despite captions having words
-      const captionsWithWords = captions.filter(c => c.words && c.words.length > 0 && !c.isTextElement);
-      const layoutKeys = Object.keys(wordLayouts).length;
-      if (captionsWithWords.length > 0 && layoutKeys === 0) {
-        console.warn('[Export] Word layout capture returned 0 entries. Export will use fallback position-based rendering. Make sure the video player is fully visible before exporting.');
-        setStatusMessage('Note: Using fallback positioning (scroll video into view for best results)');
-      }
-
       // abs 0,0 means "position was reset" (isWordDetached ignores it in the
       // editor) — never treat it as a real drop point or words fling to the
       // top-left corner of the exported video.
@@ -946,147 +424,13 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
         && v.abs_y_pct !== undefined
         && (Math.abs(Number(v.abs_x_pct) || 0) > 0.01 || Math.abs(Number(v.abs_y_pct) || 0) > 0.01)
       );
-      const hasCptCanvasPosition = (v) => (
-        Number.isFinite(Number(v?.cptCanvasXPercent))
-        && Number.isFinite(Number(v?.cptCanvasYPercent))
-      );
-      const hasRelativeCptPosition = (v) => (
-        Math.abs(Number(v?.x_pct) || 0) > 0.01
-        || Math.abs(Number(v?.y_pct) || 0) > 0.01
-        || Math.abs(Number(v?.x) || 0) > 0.01
-        || Math.abs(Number(v?.y) || 0) > 0.01
-      );
-
-      const captionHasCptWords = (caption) => Object.values(caption?.wordStyles || {}).some((wordStyle = {}) => (
-        hasRealAbsPosition(wordStyle)
-        || hasCptCanvasPosition(wordStyle)
-        || hasRelativeCptPosition(wordStyle)
-      ));
-      const getCanvasWordSnapshot = (key, expectedCanvasPosition = null) => {
-        const candidates = (wordElementsByKey.get(key) || []).map((wordEl) => {
-          const style = window.getComputedStyle(wordEl);
-          const wordRect = getRenderedWordRect(wordEl);
-          if (
-            !wordRect
-            || style.display === 'none'
-            || style.visibility === 'hidden'
-            || Number(style.opacity || 1) === 0
-            || wordRect.width <= 0
-            || wordRect.height <= 0
-          ) return null;
-          const centerXPct = (
-            (wordRect.left + wordRect.width / 2 - containerRect.left)
-            / containerRect.width
-          ) * 100;
-          const centerYPct = (
-            (wordRect.top + wordRect.height / 2 - containerRect.top)
-            / containerRect.height
-          ) * 100;
-          const distance = expectedCanvasPosition
-            ? Math.hypot(
-                centerXPct - Number(expectedCanvasPosition.x),
-                centerYPct - Number(expectedCanvasPosition.y),
-              )
-            : 0;
-          const typographyTarget = wordEl.querySelector?.(
-            '[data-source-word-visual="true"], [data-word-drag-visual="true"], [data-selected-word-text="true"], .kf-base, .kf-fill'
-          ) || wordEl;
-          const typography = window.getComputedStyle(typographyTarget);
-          const paintedFontSize = parseFloat(typography.fontSize || '');
-          const paintedFontFamily = String(typography.fontFamily || '')
-            .split(',')[0]
-            .replace(/["']/g, '')
-            .trim();
-          return {
-            centerXPct,
-            centerYPct,
-            distance,
-            paintedFontSize,
-            paintedFontFamily,
-            paintedFontWeight: typography.fontWeight || '',
-            paintedFontStyle: typography.fontStyle || '',
-          };
-        }).filter(Boolean).sort((left, right) => left.distance - right.distance);
-
-        const best = candidates[0];
-        // Duplicate template placeholders can remain mounted in their original
-        // sentence row. Only trust a painted candidate near the authored CPT
-        // point; otherwise retain the saved drag-release coordinate.
-        if (!best || (expectedCanvasPosition && best.distance > 8)) return null;
-        const vidPos = containerToVideo(best.centerXPct, best.centerYPct);
-        return {
-          abs_x_pct: vidPos.x,
-          abs_y_pct: vidPos.y,
-          ...(Number.isFinite(best.paintedFontSize) && best.paintedFontSize > 0
-            ? { cptPaintedFontSize: best.paintedFontSize }
-            : {}),
-          ...(best.paintedFontFamily ? { cptPaintedFontFamily: best.paintedFontFamily } : {}),
-          ...(best.paintedFontWeight ? { cptPaintedFontWeight: best.paintedFontWeight } : {}),
-          ...(best.paintedFontStyle ? { cptPaintedFontStyle: best.paintedFontStyle } : {}),
-        };
-      };
-
-      const patchWordStyles = (caption) => {
-        const ws = caption?.wordStyles || {};
-        if (!container || !containerRect) return ws;
-        const isCptCaption = captionHasCptWords(caption);
-        const wordCount = String(caption?.text || '').trim().split(/\s+/).filter(Boolean).length;
-        const keys = new Set(Object.keys(ws));
-        if (isCptCaption) {
-          for (let index = 0; index < wordCount; index += 1) {
-            keys.add(`${caption.id}-${index}`);
-          }
-        }
-        const patched = {};
-        for (const k of keys) {
-          const v = ws[k] || {};
-          if (hasCptCanvasPosition(v)) {
-            // The drop point identifies the authored CPT and lets us reject
-            // duplicate template placeholders. When the matching painted word
-            // is mounted, its final box is the WYSIWYG source of truth because
-            // font loading, fullscreen and responsive layout can settle after
-            // pointer-up. Fall back to the saved point when it is not mounted.
-            const paintedSnapshot = getCanvasWordSnapshot(k, {
-              x: v.cptCanvasXPercent,
-              y: v.cptCanvasYPercent,
-            });
-            const vidPos = paintedSnapshot || containerToVideo(
-              v.cptCanvasXPercent,
-              v.cptCanvasYPercent,
-            );
-            patched[k] = {
-              ...v,
-              ...(paintedSnapshot || {}),
-              abs_x_pct: paintedSnapshot?.abs_x_pct ?? vidPos.x,
-              abs_y_pct: paintedSnapshot?.abs_y_pct ?? vidPos.y,
-            };
-          } else if (hasRealAbsPosition(v)) {
-            const vidPos = containerToVideo(v.abs_x_pct, v.abs_y_pct);
-            patched[k] = { ...v, abs_x_pct: vidPos.x, abs_y_pct: vidPos.y };
-          } else if (isCptCaption) {
-            // A CPT is one composed canvas state. Pin every word to its measured
-            // centre so the export browser cannot reflow the
-            // undisplaced words around the word that the user dragged.
-            patched[k] = { ...v, ...(getCanvasWordSnapshot(k) || {}) };
-          } else if (hasRelativeCptPosition(v)) {
-            // Legacy saved CPTs have only a template-relative offset. Keep it
-            // as the fallback when that caption is not mounted at export time.
-            patched[k] = v;
-          } else {
-            patched[k] = v;
-          }
-        }
-        return patched;
-      };
-
       // Recreated advanced templates re-render from authored markup in the
       // export browser, so per-word font/color snapshots must not flatten the
       // authored look — but user-dragged word positions still have to survive.
       // Pass only the geometry fields through; the overlay renderer applies
       // x/y as translate offsets on the matching source word.
-      // Input MUST already be patchWordStyles() output so abs_x/y_pct are in
-      // video space (what render_template_overlay.mjs measures against), not
-      // preview-container space.
+      // Saved drag coordinates are normalized percentages and can be consumed
+      // directly by the server renderer without reading the live preview DOM.
       const WORD_GEOMETRY_KEYS = [
         'x',
         'y',
@@ -1162,27 +506,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
                   : Number(emotional?.phaseIndex ?? exportTemplateIndex ?? 0)
               )
             : 0;
-          const captionPreviewLineTexts = (
-            !isText
-            && previewTemplateLineTexts.length > 0
-            && normalizeTemplateLineText(cap.text).toLocaleLowerCase() === normalizeTemplateLineText(previewTemplateLineTexts.join(' ')).toLocaleLowerCase()
-          )
-            ? previewTemplateLineTexts
-            : [];
           const capTemplateId = !isText ? activeTemplateValue(cap, 'template_id') : '';
-          const captionLayerEl = !isText ? findCaptionLayerById(container, cap.id) : null;
-          const captionTemplateEl = !isText ? findRenderedCaptionTemplateElement(captionLayerEl) : null;
-          const captionTemplateBox = getRenderedBoxSize(captionTemplateEl);
-          const captionMeasuredTemplateFontPx = getMaxRenderedFontSize(captionTemplateEl);
-          const captionPreviewTemplateFontPx = captionMeasuredTemplateFontPx > 0
-            ? captionMeasuredTemplateFontPx
-            : previewTemplateFontPx;
-          const captionPreviewTemplateBoxWidthPx = captionTemplateBox.width > 0
-            ? captionTemplateBox.width
-            : previewTemplateBox.width;
-          const captionPreviewTemplateBoxHeightPx = captionTemplateBox.height > 0
-            ? captionTemplateBox.height
-            : previewTemplateBox.height;
           const capUsesRecreatedAdvancedTemplate = isRecreatedAdvancedTemplateId(capTemplateId);
           const sourceTemplateAccentColor = isAdvancedTemplateId(capTemplateId)
             ? (ADVANCED_TEMPLATE_EMPHASIS_COLORS[capTemplateId] || '')
@@ -1224,9 +548,6 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
                 karaoke_color_2: activeTemplateValue(cap, 'karaoke_color_2', effectiveExportStyle?.karaoke_color_2 || ''),
                 karaoke_color_3: activeTemplateValue(cap, 'karaoke_color_3', effectiveExportStyle?.karaoke_color_3 || ''),
                 template_color_customized: capTemplateColorsCustomized,
-                preview_template_font_px: Number.isFinite(captionPreviewTemplateFontPx) ? captionPreviewTemplateFontPx : 0,
-                preview_template_box_width_px: Number.isFinite(captionPreviewTemplateBoxWidthPx) ? captionPreviewTemplateBoxWidthPx : 0,
-                preview_template_box_height_px: Number.isFinite(captionPreviewTemplateBoxHeightPx) ? captionPreviewTemplateBoxHeightPx : 0,
               }
             : null;
           return {
@@ -1253,17 +574,10 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
             imp_word_indices: !isText ? (emotional?.impWordIndices || cap.imp_word_indices || []) : [],
             emphasis_color: !isText ? (emotional?.emphasisColor || cap.emphasis_color || '') : '',
             audio_emotion_metrics: !isText ? (cap.audio_emotion_metrics || emotional?.audio || null) : null,
-            preview_template_line_texts: captionPreviewLineTexts,
-            preview_template_font_px: !isText && Number.isFinite(captionPreviewTemplateFontPx) ? captionPreviewTemplateFontPx : 0,
-            preview_template_box_width_px: !isText && Number.isFinite(captionPreviewTemplateBoxWidthPx) ? captionPreviewTemplateBoxWidthPx : 0,
-            preview_template_box_height_px: !isText && Number.isFinite(captionPreviewTemplateBoxHeightPx) ? captionPreviewTemplateBoxHeightPx : 0,
-            custom_style: isText ? (() => {
-              const teVidPos = containerToVideo(cs.left ?? 50, cs.top ?? 50);
-              return buildTextElementExportStyle(cs, teVidPos);
-            })() : null,
+            custom_style: isText ? buildTextElementExportStyle(cs) : null,
             word_styles: (!isText && capUsesRecreatedAdvancedTemplate)
-              ? pickWordGeometryStyles(patchWordStyles(cap))
-              : patchWordStyles(cap),
+              ? pickWordGeometryStyles(cap.wordStyles || {})
+              : { ...(cap.wordStyles || {}) },
             words: cap.words || []
           };
         }),
@@ -1331,22 +645,8 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
           effect_thickness: _cs?.effect_thickness ?? 50,
           effect_intensity: _cs?.effect_intensity ?? 50,
           effect_color: _cs?.effect_color || '#000000',
-          ...(() => {
-            if (previewTemplateAnchorPos) {
-              return {
-                position_x: previewTemplateAnchorPos.x,
-                position_y: previewTemplateAnchorPos.y,
-              };
-            }
-            if (previewCaptionAnchorPos) {
-              return {
-                position_x: previewCaptionAnchorPos.x,
-                position_y: previewCaptionAnchorPos.y,
-              };
-            }
-            const capVidPos = containerToVideo(_cs?.position_x ?? 50, _cs?.position_y ?? 75);
-            return { position_x: capVidPos.x, position_y: capVidPos.y };
-          })(),
+          position_x: _cs?.position_x ?? 50,
+          position_y: _cs?.position_y ?? 75,
           letter_spacing: _cs?.letter_spacing || 0,
           // `??` not `||` — the Word Spacing slider allows 0 (min=0), and the
           // preview honors it; `||` silently exported 0 as 1.
@@ -1370,17 +670,8 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
           template_color_customized: templateColorCustomized,
           export_aspect_ratio: exportAspectRatio,
           show_inactive: _cs?.show_inactive !== false,
-          preview_width: renderW,
-          preview_height: renderH,
-          preview_container_width: cw,
-          preview_container_height: ch,
-          preview_template_font_px: Number.isFinite(previewTemplateFontPx) ? previewTemplateFontPx : 0,
-          preview_template_box_width_px: Number.isFinite(previewTemplateBox.width) ? previewTemplateBox.width : 0,
-          preview_template_box_height_px: Number.isFinite(previewTemplateBox.height) ? previewTemplateBox.height : 0,
-          preview_template_line_texts: previewTemplateLineTexts,
           };
         })(),
-        word_layouts: exportUsesRecreatedAdvancedTemplate ? {} : wordLayouts
       };
 
       setStatusMessage('Rendering captions onto video...');

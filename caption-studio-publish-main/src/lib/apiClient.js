@@ -1,4 +1,4 @@
-import { auth } from '@/lib/firebase'
+import { auth, getFirebaseAppCheckToken } from '@/lib/firebase'
 import { shouldDispatchAuthLogout } from '@/lib/apiErrorPolicy'
 
 export class ApiError extends Error {
@@ -138,6 +138,15 @@ export async function apiFetch(url, options = {}) {
   if (requestId) {
     const requestHeaders = new Headers(fetchOptions.headers || {})
     if (!requestHeaders.has("X-Request-Id")) requestHeaders.set("X-Request-Id", requestId)
+    try {
+      const appCheckToken = await getFirebaseAppCheckToken(false)
+      if (appCheckToken) requestHeaders.set("X-Firebase-AppCheck", appCheckToken)
+    } catch (error) {
+      throw new ApiError(
+        "This browser could not pass the app security check. Refresh and try again.",
+        { status: 403, data: { original_message: error?.message || String(error) }, requestId },
+      )
+    }
     fetchOptions.headers = requestHeaders
   }
   if (dedupeKey) {

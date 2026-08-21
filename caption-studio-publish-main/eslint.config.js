@@ -8,6 +8,7 @@ export default [
   {
     ignores: [
       "dist/**",
+      ".pytest_cache/**",
       "landing-next/**",
       "node_modules/**",
       "backend/**",

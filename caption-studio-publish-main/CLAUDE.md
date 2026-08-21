@@ -42,7 +42,7 @@ caption-studio-publish-main/
 │       ├── StyleControls.jsx       # Font, color, bg, effects UI
 │       ├── TemplatesTab.jsx        # Template list + apply logic
 │       ├── CaptionTimeline.jsx     # Timeline scrubber + drag to reorder
-│       ├── ExportPanel.jsx         # Export flow: DOM capture → backend → FFmpeg
+│       ├── ExportPanel.jsx         # Export flow: editor state → backend worker → renderer/FFmpeg
 │       ├── CaptionEditor.jsx       # Per-caption text + word popup editor
 │       └── fontUtils.jsx           # loadGoogleFont, detectScript, scriptFontMap
 ├── backend/
@@ -66,11 +66,11 @@ caption-studio-publish-main/
 ## Critical Architecture Patterns
 
 ### Export Pipeline
-1. `ExportPanel` captures DOM word positions (bounding boxes) from the live preview
-2. Sends captions + word layouts + style to `POST /api/export`
-3. Backend builds an ASS subtitle file (`_create_styled_ass`)
-4. FFmpeg burns ASS into video (`burn_only`)
-5. Frontend downloads the result
+1. `ExportPanel` serializes persisted editor state; it does not measure the preview DOM
+2. Sends captions + style to authenticated `POST /api/export`
+3. Backend strips legacy browser layout hints and queues a server render
+4. The worker uses the DOM/CSS renderer for authored templates or ASS/FFmpeg for standard captions
+5. Frontend polls the job and downloads the signed result
 
 ### Caption ID Format
 Caption IDs are `${Date.now()}-${idx}` (no spaces). They are used as key prefixes for word layouts: `"${captionId}-${wordIndex}"`. Any spaces in IDs break all word layout lookups.
@@ -81,8 +81,8 @@ Caption IDs are `${Date.now()}-${idx}` (no spaces). They are used as key prefixe
 - Templates are applied via `handleApplyTemplate` which resets `TEMPLATE_OWNED_RESET` props before merging
 
 ### ASS Subtitle Paths
-- **word_layouts path** (precise): uses DOM-captured bounding boxes
-- **fallback path** (position-based): uses `position_y` + text metrics
+- **word_layouts path** (compatibility only): trusted internal callers may supply explicit positions
+- **default server path** (position-based): derives layout from `position_y` + text/font metrics
 - Indic scripts need y-correction: `INDIC_Y_CORRECTIONS` dict in fallback path
 
 ### Firestore / Firebase

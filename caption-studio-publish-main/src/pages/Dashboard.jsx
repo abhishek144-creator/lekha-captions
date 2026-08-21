@@ -18,6 +18,7 @@ import { notifyApiError } from '@/lib/notifyApiError';
 import { getClientContext, trackAnalytics } from '@/lib/analytics';
 import { getEffectiveAuthToken } from '@/lib/devAuth';
 import { resolveApiResourceUrl } from '@/components/dashboard/exportPipelineUtils';
+import planCatalog from '../../shared/planCatalog.json';
 
 const VideoPlayer = lazy(() => import('@/components/dashboard/VideoPlayer'));
 const CaptionTimeline = lazy(() => import('@/components/dashboard/CaptionTimeline'));
@@ -79,10 +80,21 @@ const defaultCaptionStyle = {
 
 const GENERATING_SCREEN_MIN_MS = 10000;
 
+const formatTopUpPrice = (paise) => `Rs ${Math.round(Number(paise || 0) / 100)}`;
+
 const TOP_UP_OFFERS = {
-  starter: { credits: 10, price: 'Rs 99' },
-  creator: { credits: 15, price: 'Rs 99' },
-  pro: { credits: 25, price: 'Rs 149' },
+  starter: {
+    credits: planCatalog.topup_starter.credits,
+    price: formatTopUpPrice(planCatalog.topup_starter.inr_paise),
+  },
+  creator: {
+    credits: planCatalog.topup_creator.credits,
+    price: formatTopUpPrice(planCatalog.topup_creator.inr_paise),
+  },
+  pro: {
+    credits: planCatalog.topup_pro.credits,
+    price: formatTopUpPrice(planCatalog.topup_pro.inr_paise),
+  },
 };
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));

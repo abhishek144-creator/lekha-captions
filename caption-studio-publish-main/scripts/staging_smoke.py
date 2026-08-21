@@ -24,6 +24,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", required=True, help="Deployed staging API origin")
     parser.add_argument("--id-token", required=True, help="Short-lived Firebase ID token for a staging user")
+    parser.add_argument(
+        "--app-check-token",
+        default="",
+        help="Short-lived Firebase App Check token when staging enforces browser attestation",
+    )
     parser.add_argument("--video", required=True, type=pathlib.Path, help="Short MP4 containing clearly spoken audio")
     parser.add_argument("--language", default="english")
     parser.add_argument("--timeout", type=int, default=600, help="Maximum export wait in seconds")
@@ -34,6 +39,8 @@ def main() -> None:
 
     base_url = args.base_url.rstrip("/") + "/"
     headers = {"Authorization": f"Bearer {args.id_token}"}
+    if args.app_check_token:
+        headers["X-Firebase-AppCheck"] = args.app_check_token
     session = requests.Session()
 
     with args.video.open("rb") as media:

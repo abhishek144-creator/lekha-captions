@@ -61,8 +61,9 @@ only when the deployment really reverse-proxies `/api` to the backend.
   Puppeteer, fonts, and FFmpeg match.
 - Run the API plus at least one export worker as specified by `Procfile`.
 - Set `APP_ENV=production`, exact `ALLOWED_ORIGINS`, Firebase Admin and browser
-  configuration, Redis, media URL signing, AI provider keys, Razorpay secrets,
-  public Razorpay key, and monitored contact addresses from `.env.example`.
+  configuration, Firebase App Check, Redis, media URL signing, AI provider keys,
+  Razorpay secrets, public Razorpay key, release identifier, and monitored alert
+  destinations from `.env.example`.
 - Keep `PUPPETEER_DISABLE_SANDBOX=0` in production.
 - Probe `/api/health/readiness`; readiness requires Firestore, storage, Redis,
   scratch capacity, and a healthy export worker.
@@ -77,7 +78,7 @@ After deploying the API and worker, run a real short media flow with a short-liv
 Firebase staging-user token:
 
 ```bash
-python scripts/staging_smoke.py --base-url https://staging-api.example.com --id-token <token> --video <short-spoken-video.mp4>
+python scripts/staging_smoke.py --base-url https://staging-api.example.com --id-token <token> --app-check-token <token> --video <short-spoken-video.mp4>
 ```
 
 Then complete a Razorpay test-mode checkout and signed-webhook/reconciliation

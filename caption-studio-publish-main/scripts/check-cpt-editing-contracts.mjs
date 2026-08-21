@@ -177,6 +177,10 @@ const exportRendererSource = await readFile(
   new URL('./render_template_overlay.mjs', import.meta.url),
   'utf8',
 );
+const backendMainSource = await readFile(
+  new URL('../backend/main.py', import.meta.url),
+  'utf8',
+);
 assert.match(
   videoPlayerSource,
   /nextWordStyle\.cptCanvasXPercent = absXPct[\s\S]*nextWordStyle\.cptCanvasYPercent = absYPct/,
@@ -184,13 +188,13 @@ assert.match(
 );
 assert.match(
   exportPanelSource,
-  /painted word[\s\S]*getCanvasWordSnapshot\(k,[\s\S]*containerToVideo\([\s\S]*v\.cptCanvasXPercent,[\s\S]*v\.cptCanvasYPercent/,
-  'export serialization must prefer the final painted CPT word and retain the authored point as fallback',
+  /Export is server-rendered from persisted editor state[\s\S]*WORD_GEOMETRY_KEYS[\s\S]*cptCanvasXPercent[\s\S]*cptCanvasYPercent/,
+  'export serialization must use persisted CPT geometry without consulting the preview DOM',
 );
-assert.match(
+assert.doesNotMatch(
   exportPanelSource,
-  /Duplicate template placeholders[\s\S]*best\.distance > 8/,
-  'export serialization must reject duplicate normal-line placeholders far from the authored CPT point',
+  /getCanvasWordSnapshot|containerToVideo|data-export-measure/,
+  'export serialization must not derive authoritative layout from client-side DOM measurements',
 );
 assert.match(
   exportPanelSource + exportRendererSource,
@@ -198,9 +202,9 @@ assert.match(
   'CPT export must preserve the final painted word metrics as well as its center',
 );
 assert.match(
-  exportPanelSource,
-  /A CPT is one composed canvas state[\s\S]*getCanvasWordSnapshot\(k\)/,
-  'export serialization must snapshot every word in a CPT so undisplaced words cannot reflow',
+  backendMainSource,
+  /_CLIENT_RENDER_HINT_FIELDS[\s\S]*"word_layouts"[\s\S]*def _strip_client_render_hints/,
+  'the backend must strip legacy client render hints before server-side rendering',
 );
 assert.doesNotMatch(
   exportPanelSource + exportRendererSource,
