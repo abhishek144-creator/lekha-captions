@@ -506,6 +506,7 @@ scheduler = AsyncIOScheduler() if SCHEDULER_AVAILABLE else None
 
 REDIS_URL = os.environ.get("REDIS_URL", "")
 _redis_client = None
+_rq_redis_client = None
 EXPORT_QUEUE_NAME = os.environ.get("EXPORT_QUEUE_NAME", "caption_export_jobs")
 DURABLE_QUEUE_ENABLED = os.environ.get("ENABLE_DURABLE_QUEUE", "1") == "1"
 SLACK_ALERT_WEBHOOK_URL = os.environ.get("SLACK_ALERT_WEBHOOK_URL", "").strip()
@@ -587,9 +588,15 @@ if REDIS_AVAILABLE and REDIS_URL and not _IS_TEST:
     try:
         _redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
         _redis_client.ping()
+        # RQ stores pickled/binary job payloads. Sharing the application's
+        # decode_responses=True client makes failed-job inspection attempt UTF-8
+        # decoding and can strand per-user export leases.
+        _rq_redis_client = redis.Redis.from_url(REDIS_URL)
+        _rq_redis_client.ping()
         _json_log("info", "redis_connected")
     except Exception as e:
         _redis_client = None
+        _rq_redis_client = None
         _json_log("warning", "redis_connection_failed", error=str(e))
 
 if _IS_PRODUCTION and _redis_client is None:
@@ -602,9 +609,9 @@ if _IS_PRODUCTION and not DURABLE_QUEUE_ENABLED:
     raise RuntimeError("ENABLE_DURABLE_QUEUE must be 1 in production.")
 
 _export_queue = None
-if DURABLE_QUEUE_ENABLED and _redis_client is not None and RQ_AVAILABLE:
+if DURABLE_QUEUE_ENABLED and _rq_redis_client is not None and RQ_AVAILABLE:
     try:
-        _export_queue = Queue(EXPORT_QUEUE_NAME, connection=_redis_client, default_timeout=30 * 60)
+        _export_queue = Queue(EXPORT_QUEUE_NAME, connection=_rq_redis_client, default_timeout=30 * 60)
         _json_log("info", "durable_queue_enabled", queue=EXPORT_QUEUE_NAME)
     except Exception as e:
         _export_queue = None
@@ -1818,6 +1825,54 @@ def _acquire_export_slot(uid: str, job_id: str) -> bool:
             if current == job_id:
                 _redis_client.expire(k, EXPORT_SLOT_TTL_SECONDS)
                 return True
+            # A worker can fail before entering run_export_job_task (for
+            # example, when an old worker cannot deserialize a newer argument
+            # contract). In that case its finally block never releases the
+            # lease. Reclaim only when the durable job/RQ state proves the
+            # previous owner is already terminal; never steal a live render.
+            previous_job_id = str(current or "")
+            previous_terminal = False
+            try:
+                previous_job = _load_export_job(previous_job_id) or {}
+                previous_status = str(previous_job.get("status") or "").lower()
+                previous_terminal = previous_status in {
+                    "completed", "failed", "cancelled", "canceled", "stopped",
+                }
+                if not previous_terminal and _export_queue is not None:
+                    rq_job = _export_queue.fetch_job(previous_job_id)
+                    if rq_job is not None:
+                        rq_status = rq_job.get_status(refresh=True)
+                        rq_status_value = str(getattr(rq_status, "value", rq_status)).lower()
+                        previous_terminal = rq_status_value in {
+                            "finished", "failed", "stopped", "cancelled", "canceled",
+                        }
+            except Exception as state_error:
+                _json_log(
+                    "warning",
+                    "export_slot_recovery_check_failed",
+                    uid=uid,
+                    previous_job_id=previous_job_id,
+                    error=type(state_error).__name__,
+                )
+            if previous_terminal:
+                removed = _redis_client.eval(
+                    "if redis.call('get', KEYS[1]) == ARGV[1] then "
+                    "return redis.call('del', KEYS[1]) else return 0 end",
+                    1,
+                    k,
+                    previous_job_id,
+                )
+                if removed:
+                    acquired = _redis_client.set(k, job_id, nx=True, ex=EXPORT_SLOT_TTL_SECONDS)
+                    if acquired:
+                        _json_log(
+                            "warning",
+                            "stale_export_slot_recovered",
+                            uid=uid,
+                            previous_job_id=previous_job_id,
+                            job_id=job_id,
+                        )
+                        return True
             return False
         except Exception as e:
             _json_log("error", "export_slot_acquire_failed", uid=uid, job_id=job_id, error=str(e))
@@ -4330,13 +4385,11 @@ def _fetch_bound_order_context(order_id: str, amount_minor: int, currency: str) 
     if not plan_id or plan_id not in PLAN_PRICING:
         raise HTTPException(status_code=400, detail="Payment order is missing a valid plan binding.")
 
-    expected_minor = (
-        PLAN_PRICING[plan_id].get("usd_cents")
-        if order_currency == "USD"
-        else PLAN_PRICING[plan_id].get("inr_paise")
-    )
-    if expected_minor is None or int(expected_minor) != order_amount:
-        raise HTTPException(status_code=400, detail="Payment order does not match its bound plan.")
+    # The order amount is authoritative for a server-created order. Do not
+    # compare it with today's catalog price: legitimate orders can remain
+    # payable/reconcilable after a later price change. New orders still use the
+    # current catalog price in create_order, while historical captures retain
+    # the price they were created with.
 
     return {
         "uid": uid,
@@ -4470,6 +4523,7 @@ def reconcile_payments_once(
                 source=f"reconcile:{reason}",
                 org_id=org_id,
                 topup_reservation_id=topup_reservation_id,
+                order_amount_validated=True,
             )
             if result.get("duplicate"):
                 summary["duplicates"] += 1
@@ -4652,6 +4706,7 @@ def _apply_successful_payment(
     source: str = "client_verify",
     org_id: str = "",
     topup_reservation_id: str = "",
+    order_amount_validated: bool = False,
 ):
     plan_config = PLAN_PRICING.get(plan_id)
     if not plan_config:
@@ -4662,7 +4717,12 @@ def _apply_successful_payment(
     # verify-time and receive the higher tier / more credits. The signature check
     # only proves the payment matches its order — it does not bind the plan.
     expected_minor = plan_config.get('usd_cents') if (currency or '').upper() == 'USD' else plan_config.get('inr_paise')
-    if expected_minor is None or int(amount_minor or 0) != int(expected_minor):
+    # For a server-validated Razorpay order, the order amount is authoritative
+    # even when the catalog price has since changed. New orders are still priced
+    # from the current catalog in create_order; this preserves older captures
+    # during delayed verification/reconciliation without weakening the binding
+    # between the payment, server-created order, owner, and plan.
+    if not order_amount_validated and (expected_minor is None or int(amount_minor or 0) != int(expected_minor)):
         _json_log(
             "warning",
             "payment_amount_plan_mismatch",
@@ -5132,6 +5192,7 @@ def verify_payment(req: VerifyPaymentRequest, request: Request, response: Respon
         source="client_verify",
         org_id=req.org_id or _tenant_id_from_token(decoded_token),
         topup_reservation_id=str(order_notes.get("topup_reservation_id") or "").strip(),
+        order_amount_validated=True,
     )
     _payment_idem_set(pay_idem_key, {"status": "completed", "ts": time.time(), "payload": payload})
     return payload
@@ -5262,6 +5323,7 @@ async def razorpay_webhook(request: Request):
         source="webhook",
         org_id=org_id,
         topup_reservation_id=topup_reservation_id,
+        order_amount_validated=True,
     )
     if webhook_ref is not None:
         try:

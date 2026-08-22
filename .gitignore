@@ -19,3 +19,9 @@ backups/
 caption-studio-publish-main/dashboard-backups/
 lekha_10_captemplates_batch06_cards.html
 lekha_cpt_throwaway_preview.html
+
+# Local Netlify folder
+.netlify
+
+# Local deployment snapshots generated during verification; never release them.
+.codex_*

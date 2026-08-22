@@ -68,8 +68,8 @@ export default function FinalCtaKaraoke() {
                 </p>
 
                 <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                  <TicketButton accent to={createPageUrl('Dashboard')}>Upload Video</TicketButton>
-                  <TicketButton to={createPageUrl('Dashboard')}>Try for Free</TicketButton>
+                  <TicketButton accent to={`${createPageUrl('Dashboard')}?action=upload`}>Upload Video</TicketButton>
+                  <TicketButton to={`${createPageUrl('Dashboard')}?action=upload`}>Try for Free</TicketButton>
                 </div>
               </div>
             </div>

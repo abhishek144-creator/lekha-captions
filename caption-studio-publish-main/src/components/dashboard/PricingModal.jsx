@@ -236,6 +236,10 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
 
       onClose()
 
+      // Razorpay does not invoke `handler` when checkout is closed before it
+      // confirms a payment. Keep a local outcome flag for explicit feedback.
+      let checkoutResolved = false
+
       const keyToUse = orderData.key_id || RAZORPAY_KEY_ID
       if (!keyToUse) {
         throw new Error('Razorpay payment key is not set. Please configure VITE_RAZORPAY_KEY_ID.')
@@ -249,6 +253,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
         description: `${plan.name} Plan${billing === 'yearly' ? ' · Yearly' : ''}`,
         order_id: orderData.order.id,
         handler: async (response) => {
+          checkoutResolved = true
           try {
             // Razorpay checkout can stay open long enough for the pre-checkout
             // token to expire — mint a fresh one for verification.
@@ -292,11 +297,23 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
         },
         prefill: { name: user?.displayName || '', email: user?.email || '' },
         theme: { color: '#F5A623' },
-        modal: { ondismiss: () => setProcessingPlan(null) },
+        modal: {
+          ondismiss: () => {
+            if (!checkoutResolved) {
+              toast({
+                variant: 'destructive',
+                title: 'Payment not completed',
+                description: 'Razorpay did not confirm this payment. If your bank was debited, do not retry and contact support with the Razorpay payment ID.',
+              })
+            }
+            setProcessingPlan(null)
+          },
+        },
       }
 
       const rzp = new window.Razorpay(options)
       rzp.on('payment.failed', (resp) => {
+        checkoutResolved = true
         toast({ variant: 'destructive', title: 'Payment failed', description: resp.error?.description || 'Unknown error' })
         setProcessingPlan(null)
       })
@@ -377,6 +394,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
       if (!Number.isSafeInteger(orderData.order.amount) || orderData.order.amount <= 0 || orderData.order.currency !== 'INR') {
         throw new Error('Top-up order returned an invalid amount or currency.')
       }
+      let checkoutResolved = false
       const options = {
         key: keyToUse,
         amount: orderData.order.amount,
@@ -385,6 +403,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
         description: `Top-up · ${topup.credits} credits`,
         order_id: orderData.order.id,
         handler: async (response) => {
+          checkoutResolved = true
           try {
             const verifyToken = typeof currentUser.getIdToken === 'function'
               ? await currentUser.getIdToken(true)
@@ -422,10 +441,22 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
         },
         prefill: { name: user?.displayName || '', email: user?.email || '' },
         theme: { color: '#F5A623' },
-        modal: { ondismiss: () => setProcessingPlan(null) },
+        modal: {
+          ondismiss: () => {
+            if (!checkoutResolved) {
+              toast({
+                variant: 'destructive',
+                title: 'Top-up payment not completed',
+                description: 'Razorpay did not confirm this payment. If your bank was debited, do not retry and contact support with the Razorpay payment ID.',
+              })
+            }
+            setProcessingPlan(null)
+          },
+        },
       }
       const rzp = new window.Razorpay(options)
       rzp.on('payment.failed', (resp) => {
+        checkoutResolved = true
         toast({ variant: 'destructive', title: 'Top-up payment failed', description: resp.error?.description || 'Unknown error' })
         setProcessingPlan(null)
       })

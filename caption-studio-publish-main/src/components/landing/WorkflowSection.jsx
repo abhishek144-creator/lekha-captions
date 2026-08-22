@@ -20,7 +20,7 @@ export default function WorkflowSection() {
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#f5a623]">From raw clip to ready</p>
               <h2 className="mt-4 text-4xl font-semibold leading-none tracking-[-0.05em] text-white">Three steps.<br /><span className="font-serif font-normal italic text-[#f5a623]">One flow.</span></h2>
               <p className="mt-5 max-w-sm text-sm leading-6 text-white/45">AI handles the first draft. You keep creative control over every word and frame.</p>
-              <Link to={createPageUrl('Dashboard')} className="landing-button group mt-7 inline-flex items-center gap-2 rounded-md px-4 py-2.5 text-sm font-semibold">Start with a video <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" /></Link>
+              <Link to={`${createPageUrl('Dashboard')}?action=upload`} className="landing-button group mt-7 inline-flex items-center gap-2 rounded-md px-4 py-2.5 text-sm font-semibold">Start with a video <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" /></Link>
             </motion.div>
 
             <div className="grid gap-3">

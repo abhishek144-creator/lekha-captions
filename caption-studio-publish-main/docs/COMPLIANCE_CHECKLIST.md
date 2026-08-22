@@ -20,7 +20,8 @@ Use this checklist for enterprise and privacy readiness.
 - [x] Secret handling hardened to env-first mode
 - [x] Dependency scanning in CI workflow
 - [ ] Periodic pentest checklist sign-off
-- [ ] Deploy production Firestore/Storage rules, register App Check, verify enforcement, and record a two-user cross-account isolation test
+- [x] Deploy production Firestore/Storage rules, register App Check, and verify enforcement (`PRODUCTION_VERIFICATION_2026-08-21.md`)
+- [ ] Record a two-user cross-account isolation test
 
 ## Incident + DR
 - [x] Incident response roles and severity matrix documented (`INCIDENT_RESPONSE.md`)
@@ -32,12 +33,14 @@ Use this checklist for enterprise and privacy readiness.
 - [x] Quarterly backup/restore drill evidence (`STAGING_DRILL_EVIDENCE_2026-08-04.md`)
 
 ## Paid Beta Release Evidence
-- [ ] Verify public A/CNAME, HTTPS, MX, SPF, DKIM, and DMARC records; send to and reply from `support@lekhacaptions.com`
+- [x] Verify public A/CNAME, HTTPS, MX, SPF, DKIM, and DMARC records (`PRODUCTION_VERIFICATION_2026-08-21.md`)
+- [x] Send to and reply from `support@lekhacaptions.com` using an external mailbox (`OWNER_CONFIRMATIONS_2026-08-22.md`)
 - [ ] Record the exact deployed commit and successful production readiness/configuration output
-- [ ] Record one live Razorpay purchase, captured webhook replay, failed payment, reconciliation, and full/partial refund
+- [x] Record one live Razorpay purchase, captured webhook replay, failed payment, reconciliation, and full/partial refund (`RAZORPAY_EVIDENCE_2026-08-22.md`)
 - [ ] Record a production malware-scanner startup check and suspicious-file rejection
 - [ ] Record successful Slack/Sentry and provider spending/failure alert deliveries
 - [ ] Complete the authenticated staging upload → process → export → download flow
+- [x] Complete one authenticated production upload → Hindi process → save/refresh → 1080p export → download flow (`PRODUCTION_VERIFICATION_2026-08-21.md`)
 - [ ] Complete the real-video matrix: Hindi, English, Hinglish, portrait, landscape, poor audio, corrupt/unsupported, and near-limit media
 - [ ] Obtain legal review and CA confirmation for jurisdiction, GST/tax invoices, international sales, refunds, and chargebacks
 

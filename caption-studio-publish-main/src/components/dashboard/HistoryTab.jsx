@@ -1,14 +1,19 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Loader2, Download, Video } from 'lucide-react';
+import { Loader2, Download, Video, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { resolveApiResourceUrl } from './exportPipelineUtils';
 import { toDateSafe } from '@/lib/subscription';
+import { apiRequest, getApiErrorMessage } from '@/lib/apiClient';
+import { getEffectiveAuthToken } from '@/lib/devAuth';
+import { toast } from '@/components/ui/use-toast';
 
 // History Tab component that fetches user's past generated videos
 export default function HistoryTab({ user, userData }) {
     const [historyItems, setHistoryItems] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [deleteConfirmId, setDeleteConfirmId] = useState('');
+    const [deletingId, setDeletingId] = useState('');
 
     useEffect(() => {
         // In the future, this will fetch specifically from a Firebase subcollection 
@@ -25,6 +30,39 @@ export default function HistoryTab({ user, userData }) {
             setLoading(false);
         }
     }, [user, userData]);
+
+    const deleteHistoryItem = async (item) => {
+        const fileId = String(item?.id || '').trim();
+        if (!fileId || deletingId) return;
+
+        setDeletingId(fileId);
+        try {
+            const idToken = await getEffectiveAuthToken(user);
+            if (!idToken) throw new Error('Your session has expired. Please sign in again.');
+
+            await apiRequest('/api/delete-file', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ file_id: fileId, id_token: idToken }),
+                dedupeKey: `delete-file:${fileId}`,
+            });
+
+            setHistoryItems((items) => items.filter((historyItem) => String(historyItem?.id || '') !== fileId));
+            setDeleteConfirmId('');
+            toast({
+                title: 'Video deleted',
+                description: 'The source media, exports, and history entry were removed.',
+            });
+        } catch (error) {
+            toast({
+                variant: 'destructive',
+                title: 'Could not delete video',
+                description: getApiErrorMessage(error, 'Please try again or contact support.'),
+            });
+        } finally {
+            setDeletingId('');
+        }
+    };
 
     if (!user) {
         return (
@@ -77,9 +115,23 @@ export default function HistoryTab({ user, userData }) {
                                 <span className="text-sm font-medium text-white truncate max-w-[150px]">
                                     {item.filename || 'Exported Video'}
                                 </span>
-                                <span className="text-xs text-gray-500">
-                                    {toDateSafe(item.createdAt)?.toLocaleDateString() || 'Recently'}
-                                </span>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs text-gray-500">
+                                        {toDateSafe(item.createdAt)?.toLocaleDateString() || 'Recently'}
+                                    </span>
+                                    {deleteConfirmId !== String(item.id || '') && (
+                                        <button
+                                            type="button"
+                                            title="Delete video"
+                                            aria-label={`Delete ${item.filename || 'video'}`}
+                                            className="rounded-md p-1.5 text-gray-500 transition-colors hover:bg-red-500/15 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-50"
+                                            disabled={Boolean(deletingId)}
+                                            onClick={() => setDeleteConfirmId(String(item.id || ''))}
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                             <Button
                                 variant="secondary"
@@ -98,6 +150,33 @@ export default function HistoryTab({ user, userData }) {
                                 <Download className="w-4 h-4 mr-2" />
                                 Download / View
                             </Button>
+                            {deleteConfirmId === String(item.id || '') && (
+                                <div className="mt-3 rounded-lg border border-red-400/20 bg-red-500/5 p-3">
+                                    <p className="text-xs text-red-200">Delete this video and its exports?</p>
+                                    <div className="mt-2 flex gap-2">
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            className="flex-1 text-gray-300 hover:bg-white/10"
+                                            disabled={deletingId === String(item.id || '')}
+                                            onClick={() => setDeleteConfirmId('')}
+                                        >
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            variant="destructive"
+                                            size="sm"
+                                            className="flex-1"
+                                            disabled={deletingId === String(item.id || '')}
+                                            onClick={() => deleteHistoryItem(item)}
+                                        >
+                                            {deletingId === String(item.id || '') ? 'Deleting…' : 'Delete'}
+                                        </Button>
+                                    </div>
+                                </div>
+                            )}
                         </motion.div>
                     ))}
                 </div>

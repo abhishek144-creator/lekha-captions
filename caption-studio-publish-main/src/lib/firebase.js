@@ -1,4 +1,5 @@
 import { initializeApp } from 'firebase/app';
+import { getAnalytics, isSupported as isAnalyticsSupported } from 'firebase/analytics';
 import { getToken, initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check';
 import { getAuth, GoogleAuthProvider, signInAnonymously, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
@@ -17,7 +18,8 @@ const firebaseConfig = {
     projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
     storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
     messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-    appId: import.meta.env.VITE_FIREBASE_APP_ID
+    appId: import.meta.env.VITE_FIREBASE_APP_ID,
+    measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
 let app;
@@ -25,12 +27,22 @@ let auth;
 let db;
 let googleProvider;
 let appCheck;
+let analytics;
 
 try {
     app = initializeApp(firebaseConfig);
     auth = getAuth(app);
     db = getFirestore(app);
     googleProvider = new GoogleAuthProvider();
+    if (firebaseConfig.measurementId && typeof window !== 'undefined') {
+        isAnalyticsSupported()
+            .then((supported) => {
+                if (supported) analytics = getAnalytics(app);
+            })
+            .catch(() => {
+                // Analytics is optional; unsupported browsers must retain auth/editor access.
+            });
+    }
     const appCheckSiteKey = String(import.meta.env.VITE_FIREBASE_APP_CHECK_SITE_KEY || '').trim();
     if (appCheckSiteKey) {
         appCheck = initializeAppCheck(app, {
@@ -50,4 +62,4 @@ export async function getFirebaseAppCheckToken(forceRefresh = false) {
     return String(result?.token || '');
 }
 
-export { auth, db, googleProvider, appCheck, signInAnonymously, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged, doc, setDoc, getDoc, updateDoc };
+export { auth, db, googleProvider, appCheck, analytics, signInAnonymously, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged, doc, setDoc, getDoc, updateDoc };
