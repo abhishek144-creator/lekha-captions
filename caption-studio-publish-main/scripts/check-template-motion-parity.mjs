@@ -360,8 +360,13 @@ for (const staleInlineColor of [
     fail(`advanced export contains stale inline fallback colour ${staleInlineColor}`);
   }
 }
-if (!exportPanelSource.includes("findLargestRenderedElement('.lekha-applied-advanced-template.active'")) {
-  fail('export request capture does not prefer the active advanced canvas template for font measurement');
+// Export is server-authoritative. The browser preview must not be sampled for
+// advanced-template font or box measurements; doing so reintroduced the
+// preview/export drift this check is intended to prevent.
+if (exportPanelSource.includes('findLargestRenderedElement(')
+  || exportPanelSource.includes('getMaxRenderedFontSize(')
+  || exportPanelSource.includes('preview_template_font_px')) {
+  fail('export request capture still depends on browser-rendered template measurements');
 }
 if (!exportRendererSource.includes('.lekha-original-template .lekha-applied-advanced-template {')
   || !exportRendererSource.includes('font-size: ${exportAdvancedTemplateFontPx}px;')) {
@@ -385,8 +390,7 @@ if (!exportPanelSource.includes('resolvedTemplatePhaseIndex')
   || !exportRendererSource.includes('caption?.template_phase_index')) {
   fail('advanced exports must honor the canvas stored template_phase_index before caption-order fallback');
 }
-if (!exportPanelSource.includes('.lekha-original-template .lekha-applied-advanced-template.active .split-title')
-  || !videoPlayerSource.includes('.lekha-original-template.t18-stage .split-title')
+if (!videoPlayerSource.includes('.lekha-original-template.t18-stage .split-title')
   || !videoPlayerSource.includes("templateId === 't18' && normalizedBlockIndex === 0")) {
   fail('Cinematic Chapter canvas/export parity must preserve split-title line structure');
 }
@@ -625,8 +629,9 @@ if (!videoPlayerSource.includes('data-export-measure="basic-template"')
   || !videoPlayerSource.includes('data-export-measure="advanced-template"')) {
   fail('canvas template renderers do not expose explicit export measurement markers');
 }
-if (!exportPanelSource.includes("findLargestRenderedElement('[data-caption-layer=\"true\"] [data-export-measure]'")) {
-  fail('export request capture does not prefer the active canvas template measurement marker');
+if (!exportPanelSource.includes('template_snapshot')
+  || !exportPanelSource.includes('template_markup')) {
+  fail('export request capture does not submit server-renderable template metadata');
 }
 if (!exportRendererSource.includes('--applied-basic-scale:')
   || !basicTemplateInlineSource.includes('var(--applied-basic-scale, 1)')) {

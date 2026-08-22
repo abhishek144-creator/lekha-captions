@@ -180,7 +180,7 @@ export default function Dashboard() {
 
   const handleUploadModalOpen = () => {
     if (!currentUser) {
-      navigate('/login?mode=signup&returnTo=/Dashboard');
+      navigate(`/login?mode=signup&returnTo=${encodeURIComponent('/Dashboard?action=upload')}`);
       return;
     }
     setIsUploadModalOpen(true);
@@ -303,7 +303,9 @@ export default function Dashboard() {
     settings: JSON.parse(JSON.stringify(overrides.settings ?? settings)),
   }), [captionStyle, captions, duration, fileId, originalFileName, projectId, settings, videoUrl]);
 
-  // Force a clean session natively on page load, unless navigating back from Account
+  // Restore the signed-in user's last saved editor session on a normal refresh.
+  // Starting a new upload remains explicit, and the owner check prevents one
+  // browser account from inheriting another account's locally cached project.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     // DEV-ONLY: let the ?devseed effect own the session; don't wipe it here.
@@ -312,32 +314,36 @@ export default function Dashboard() {
       return;
     }
     const isNavigationRestore = location.state?.restoreSession || params.get('restoreSession') === '1';
+    const shouldStartClean = Boolean(params.get('action') || params.get('session_reset'));
+    const shouldOpenUpload = params.get('action') === 'upload';
 
-    if (isNavigationRestore) {
+    if (isNavigationRestore || !shouldStartClean) {
       try {
         const savedState = localStorage.getItem('captionEditorState');
         if (savedState) {
           const parsed = JSON.parse(savedState);
-          if (parsed.videoUrl) setVideoUrl(parsed.videoUrl);
-          if (parsed.captions) setCaptions(parsed.captions.map(sanitizeRestoredCaption));
-          if (parsed.captionStyle) setCaptionStyle(normalizeCaptionStyle(parsed.captionStyle));
-          if (parsed.projectId) setProjectId(parsed.projectId);
-          if (parsed.duration) setDuration(parsed.duration);
-          if (parsed.fileId) setFileId(parsed.fileId);
-          if (parsed.originalFileName) setOriginalFileName(parsed.originalFileName);
-          if (parsed.settings) setSettings(parsed.settings);
-          initialEditorStateRef.current = {
-            videoUrl: parsed.videoUrl || '',
-            captions: JSON.parse(JSON.stringify((parsed.captions || []).map(sanitizeRestoredCaption))),
-            captionStyle: JSON.parse(JSON.stringify(normalizeCaptionStyle(parsed.captionStyle || defaultCaptionStyle))),
-            duration: parsed.duration || 0,
-            fileId: parsed.fileId || null,
-            originalFileName: parsed.originalFileName || '',
-            projectId: parsed.projectId || null,
-            settings: JSON.parse(JSON.stringify(parsed.settings || { language: 'english', style: 'viral_hook' })),
-          };
-          setIsLoaded(true);
-          return; // Skip wiping logic
+          if (parsed.ownerUid && parsed.ownerUid === currentUser?.uid) {
+            if (parsed.videoUrl) setVideoUrl(parsed.videoUrl);
+            if (parsed.captions) setCaptions(parsed.captions.map(sanitizeRestoredCaption));
+            if (parsed.captionStyle) setCaptionStyle(normalizeCaptionStyle(parsed.captionStyle));
+            if (parsed.projectId) setProjectId(parsed.projectId);
+            if (parsed.duration) setDuration(parsed.duration);
+            if (parsed.fileId) setFileId(parsed.fileId);
+            if (parsed.originalFileName) setOriginalFileName(parsed.originalFileName);
+            if (parsed.settings) setSettings(parsed.settings);
+            initialEditorStateRef.current = {
+              videoUrl: parsed.videoUrl || '',
+              captions: JSON.parse(JSON.stringify((parsed.captions || []).map(sanitizeRestoredCaption))),
+              captionStyle: JSON.parse(JSON.stringify(normalizeCaptionStyle(parsed.captionStyle || defaultCaptionStyle))),
+              duration: parsed.duration || 0,
+              fileId: parsed.fileId || null,
+              originalFileName: parsed.originalFileName || '',
+              projectId: parsed.projectId || null,
+              settings: JSON.parse(JSON.stringify(parsed.settings || { language: 'english', style: 'viral_hook' })),
+            };
+            setIsLoaded(true);
+            return; // Skip wiping logic
+          }
         }
       } catch (e) {
         console.warn('Restore failed:', e);
@@ -354,7 +360,7 @@ export default function Dashboard() {
     setCurrentTime(0);
     setHistory([]);
     setHistoryIndex(-1);
-    setIsUploadModalOpen(false);
+    setIsUploadModalOpen(Boolean(shouldOpenUpload && currentUser));
 
     // Clean up URL parameters if they exist
     if (params.get('action') || params.get('session_reset')) {
@@ -472,6 +478,7 @@ export default function Dashboard() {
         duration,
         fileId,
         originalFileName,
+        ownerUid: currentUser?.uid || '',
         // Note: modal states (isUploadModalOpen etc.) are intentionally NOT saved
         // so modals don't re-open unexpectedly on page reload
         savedAt: Date.now()
@@ -489,11 +496,11 @@ export default function Dashboard() {
     }, 500); // Debounce 500ms
 
     return () => clearTimeout(timeoutId);
-  }, [videoUrl, captions, captionStyle, projectId, settings, duration, fileId, originalFileName, isLoaded]);
+  }, [videoUrl, captions, captionStyle, projectId, settings, duration, fileId, originalFileName, currentUser?.uid, isLoaded]);
 
   const handleUpload = async (file, uploadSettings) => {
     if (!currentUser) {
-      navigate('/login?mode=signup&returnTo=/Dashboard');
+      navigate(`/login?mode=signup&returnTo=${encodeURIComponent('/Dashboard?action=upload')}`);
       return;
     }
     setWordPopup(null);
@@ -703,7 +710,7 @@ export default function Dashboard() {
     try {
       localStorage.setItem('captionEditorState', JSON.stringify({
         videoUrl, captions, captionStyle, projectId, settings, duration,
-        fileId, originalFileName
+        fileId, originalFileName, ownerUid: currentUser?.uid || ''
       }));
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2000);

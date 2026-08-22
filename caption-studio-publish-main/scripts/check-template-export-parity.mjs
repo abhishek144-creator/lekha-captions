@@ -843,7 +843,9 @@ const CASES = [
     text: 'Every Word Must Stay Visible',
     phaseIndex: 0,
     impWordIndex: 2,
-    requiredColors: ['gold', 'white'],
+    // T166's authored accent is the LC set's bright yellow (#ffd166), not the
+    // legacy #DDAA03 gold used by the older sidebar catalog.
+    requiredColors: ['yellow', 'white'],
     minBboxHeight: 14,
     motionCritical: true,
     style: {

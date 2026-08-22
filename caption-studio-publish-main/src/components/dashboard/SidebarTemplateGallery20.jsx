@@ -429,14 +429,153 @@ function parseLcTemplateSet(markup = '') {
   const bodyEnd = source.indexOf('];', bodyStart);
   if (bodyEnd < 0) return [];
   const body = source.slice(bodyStart, bodyEnd);
+
+  // The LC assets are a small, static DSL made only of T/C/L/N calls,
+  // arrays, object literals, strings, numbers, booleans, and comments. Parse
+  // that allow-listed shape directly instead of using Function/eval. The old
+  // evaluator was blocked by the production CSP's intentional lack of
+  // `unsafe-eval`, leaving both live template galleries empty.
+  let cursor = 0;
+  const skipSpace = () => {
+    while (cursor < body.length) {
+      if (/\s/.test(body[cursor])) {
+        cursor += 1;
+      } else if (body.startsWith('//', cursor)) {
+        const end = body.indexOf('\n', cursor + 2);
+        cursor = end < 0 ? body.length : end + 1;
+      } else if (body.startsWith('/*', cursor)) {
+        const end = body.indexOf('*/', cursor + 2);
+        if (end < 0) throw new Error('Unterminated template comment');
+        cursor = end + 2;
+      } else {
+        break;
+      }
+    }
+  };
+  const expect = (token) => {
+    skipSpace();
+    if (!body.startsWith(token, cursor)) {
+      throw new Error(`Expected ${token} at ${cursor}`);
+    }
+    cursor += token.length;
+  };
+  const parseString = () => {
+    skipSpace();
+    const quote = body[cursor++];
+    if (quote !== "'" && quote !== '"') throw new Error(`Expected string at ${cursor}`);
+    let value = '';
+    while (cursor < body.length) {
+      const char = body[cursor++];
+      if (char === quote) return value;
+      if (char === '\\') {
+        const escaped = body[cursor++];
+        const escapes = { n: '\n', r: '\r', t: '\t', b: '\b', f: '\f', v: '\v' };
+        value += escapes[escaped] ?? escaped;
+      } else {
+        value += char;
+      }
+    }
+    throw new Error('Unterminated template string');
+  };
+  const parseIdentifier = () => {
+    skipSpace();
+    const match = body.slice(cursor).match(/^[A-Za-z_$][\w$-]*/);
+    if (!match) throw new Error(`Expected identifier at ${cursor}`);
+    cursor += match[0].length;
+    return match[0];
+  };
+  const parseNumber = () => {
+    skipSpace();
+    const match = body.slice(cursor).match(/^-?(?:\d+\.?\d*|\.\d+)/);
+    if (!match) throw new Error(`Expected number at ${cursor}`);
+    cursor += match[0].length;
+    return Number(match[0]);
+  };
+  const parseExpression = () => {
+    skipSpace();
+    const char = body[cursor];
+    if (char === "'" || char === '"') return parseString();
+    if (char === '{') return parseObject();
+    if (char === '[') return parseArray();
+    if (char === '-' || /\d/.test(char)) return parseNumber();
+    const name = parseIdentifier();
+    skipSpace();
+    if (body[cursor] !== '(') {
+      if (name === 'true') return true;
+      if (name === 'false') return false;
+      if (name === 'null') return null;
+      throw new Error(`Unsupported identifier ${name}`);
+    }
+    cursor += 1;
+    const args = [];
+    skipSpace();
+    while (body[cursor] !== ')') {
+      args.push(parseExpression());
+      skipSpace();
+      if (body[cursor] === ',') {
+        cursor += 1;
+        skipSpace();
+        if (body[cursor] === ')') break;
+      } else {
+        break;
+      }
+    }
+    expect(')');
+    if (name === 'C') return { k: 'c', layout: args[0], lines: args.slice(1) };
+    if (name === 'L') return Object.assign({ cls: args[0], text: args[1], anim: args[2] }, args[3] || {});
+    if (name === 'N') return Object.assign({ k: 'n', text: args[0] }, args[1] || {});
+    if (name === 'T') return { id: args[0], name: args[1], style: args[2], scenes: args[3] };
+    throw new Error(`Unsupported template call ${name}`);
+  };
+  function parseObject() {
+    expect('{');
+    const result = {};
+    skipSpace();
+    while (body[cursor] !== '}') {
+      const key = body[cursor] === "'" || body[cursor] === '"' ? parseString() : parseIdentifier();
+      expect(':');
+      result[key] = parseExpression();
+      skipSpace();
+      if (body[cursor] === ',') {
+        cursor += 1;
+        skipSpace();
+        if (body[cursor] === '}') break;
+      } else {
+        break;
+      }
+    }
+    expect('}');
+    return result;
+  }
+  function parseArray() {
+    expect('[');
+    const result = [];
+    skipSpace();
+    while (body[cursor] !== ']') {
+      result.push(parseExpression());
+      skipSpace();
+      if (body[cursor] === ',') {
+        cursor += 1;
+        skipSpace();
+        if (body[cursor] === ']') break;
+      } else {
+        break;
+      }
+    }
+    expect(']');
+    return result;
+  }
+
   try {
-    return Function(`
-      const C = (layout, ...lines) => ({ k: 'c', layout, lines });
-      const L = (cls, text, anim, o = {}) => Object.assign({ cls, text, anim }, o);
-      const N = (text, o = {}) => Object.assign({ k: 'n', text }, o);
-      const T = (id, name, style, scenes) => ({ id, name, style, scenes });
-      return [${body}];
-    `)();
+    const templates = [];
+    skipSpace();
+    while (cursor < body.length) {
+      templates.push(parseExpression());
+      skipSpace();
+      if (body[cursor] === ',') cursor += 1;
+      skipSpace();
+    }
+    return templates;
   } catch (error) {
     console.warn('Unable to parse LC templates', error);
     return [];

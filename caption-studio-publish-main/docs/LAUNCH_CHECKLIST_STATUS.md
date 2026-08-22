@@ -1,6 +1,6 @@
 # Lekha Captions launch checklist — current status
 
-Updated: 4 August 2026
+Updated: 22 August 2026
 
 For step-by-step instructions beside every remaining ❌ item, use
 [`LAUNCH_FIX_GUIDE.md`](./LAUNCH_FIX_GUIDE.md).
@@ -19,22 +19,29 @@ Items marked **N/A** do not apply to the product as currently offered.
   mobile/desktop Beta labels, support/legal surfaces, and automated checks.
 - ✅ Owner confirms a live Razorpay purchase and refund were completed today.
 - ✅ Owner confirms Razorpay receipt emails were enabled today.
+- ✅ Owner confirms a deliberate failed Razorpay checkout displayed the
+  production failure state and granted no plan or credits today.
+- ✅ Owner confirms the external support-mail send-and-reply test worked today;
+  the Spacemail inbox screenshot shows inbound delivery.
 - ✅ Owner confirms production error, warning, and budget alerts were configured today.
 - ✅ Owner confirms the production malware scanner setting was configured today.
 - ✅ Owner confirms OpenAI/Sarvam retention and training terms were reviewed today.
-- ❌ Attach durable evidence for the external actions above.
-  - Add redacted Razorpay payment/refund IDs, receipt delivery, alert test
-    screenshots, scanner startup output, and provider-policy notes to the release record.
-- ❌ Support domain verification.
-  - `lekhacaptions.com` and `www.lekhacaptions.com` still returned unresolved
-    during the latest check. The inbox may have been created, but it is not
-    externally reachable until DNS/MX records resolve.
+- ✅ Attach durable evidence for the completed external actions above.
+  - Redacted Razorpay lifecycle evidence and owner-confirmed failed-payment and
+    support-mail screenshots are recorded in the release documents. Alert,
+    scanner, and provider-policy evidence remain separate outstanding items.
+- ✅ Support mailbox end-to-end verification.
+  - Root, `www`, `app`, MX, SPF, DKIM, and DMARC resolve publicly and the owner
+    confirmed an external send-to/reply-from test. See
+    `docs/OWNER_CONFIRMATIONS_2026-08-22.md`.
 - ❌ Repository launch-evidence gate.
   - Queue/worker recovery, payment reconciliation, backup restore, frontend
     rollback, account deletion, and the 200-request staging load smoke now have
     durable evidence in `docs/DRILL_LOG.md`.
-  - The complete authenticated upload/process/export flow remains outstanding,
-    along with the periodic security and monitored-contact sign-offs.
+  - One authenticated production Hindi upload/process/save/refresh/1080p
+    export/download flow now has durable evidence. The remaining media matrix,
+    staging-specific flow, and periodic security/monitored-contact sign-offs are
+    still outstanding.
 - ✅ Isolated staging is deployed.
   - Marketing: `https://lekha-captions-staging.netlify.app`
   - Editor: `https://lekha-captions-app-staging.netlify.app`
@@ -50,18 +57,20 @@ Items marked **N/A** do not apply to the product as currently offered.
 
 ## Seven technical must-haves before a paid public beta
 
-1. Complete Google sign-in, sign-out, and sign-in-again in a normal external
-   browser against the deployed Firebase project.
+1. Complete the remaining Google sign-out and sign-in-again check in a normal
+   external browser against the deployed Firebase project. Production Google
+   signup/sign-in already passed on 21 August 2026.
 2. Run a fail-closed malware scanner with enough memory for real uploads.
 3. Pass the authenticated staging media flow, including representative Hindi,
    English, mixed-language, portrait, landscape, poor-audio, near-limit, and
    corrupted-file cases.
-4. Prove Razorpay webhook delivery/replay and one failed-payment path without an
-   incorrect entitlement grant.
+4. ✅ Prove Razorpay webhook delivery/replay and one failed-payment path without
+   an incorrect entitlement grant. See the redacted Razorpay evidence and owner
+   confirmation record.
 5. Rotate legacy credentials and retain production secrets only in the hosting
    providers' secret managers.
-6. Make the support domain and MX records resolve, then pass an external
-   send-and-receive test.
+6. ✅ Pass an external support-mail send-and-receive/reply test; domain, MX, SPF,
+   DKIM, and DMARC resolution now pass. See the owner confirmation record.
 7. Deliver a real test alert to the named launch operator and preserve the
    evidence.
 
@@ -80,8 +89,8 @@ customer-safety paths above.
     Storage rules are implemented; both rulesets and Firestore indexes were
     compiled and deployed to `captionstudio-9dfde` on 4 August 2026.
 - ❌ Users can contact support for refunds through the public domain.
-  - The owner confirms the inbox was created today. Refund pages and support
-    links exist, but the domain still does not resolve externally.
+  - The inbox and all public DNS/mail-auth records now exist. A real message and
+    reply from an external mailbox are still required.
 - ✅ Subscription cancellation is available or clearly not applicable.
   - **N/A:** current plans are fixed-period purchases and do not auto-renew.
 - ✅ Processing costs have firm size, duration, usage, concurrency, retry, and
@@ -102,7 +111,9 @@ customer-safety paths above.
 
 - ✅ Email sign-up status is clear.
   - **N/A:** email/password authentication is not offered.
-- ❌ Complete one real Google sign-in in the production Firebase project.
+- ✅ Complete one real Google sign-in in the production Firebase project.
+  - Passed with Terms/Privacy consent and App Check-protected account bootstrap
+    on 21 August 2026.
 - ✅ Email verification status is clear.
   - **N/A:** Google-only authentication is used.
 - ✅ Forgotten-password status is clear.
@@ -118,11 +129,14 @@ customer-safety paths above.
 
 ### Product media testing
 
-- ❌ Upload and process a short Hindi video.
+- ✅ Upload and process a short Hindi video.
+  - The supplied 21.97 MB MOV generated six timed Hindi caption segments in the
+    production editor on 21 August 2026.
 - ❌ Upload and process a short English video.
 - ❌ Upload and process a mixed Hindi-English video.
-- ❌ Upload and process a vertical Reel video.
-- ❌ Upload and process a landscape video.
+- ✅ Upload and process a vertical Reel video.
+  - The supplied source uses rotation metadata and exported correctly at 9:16.
+- ❌ Upload and process a separate unrotated landscape video.
 - ❌ Upload a file close to the 500 MB maximum.
 - ❌ Test an unsupported file.
 - ❌ Test a corrupted video.
@@ -130,9 +144,13 @@ customer-safety paths above.
 - ✅ Upload progress is visible.
 - ✅ Processing start and progress phases are visible.
 - ✅ Transcription errors use customer-readable wording.
-- ❌ Confirm captions remain saved after a real authenticated refresh.
-- ❌ Confirm a real export matches the editor preview.
+- ✅ Confirm captions remain saved after a real authenticated refresh.
+  - All six captions, timing, media, and styling restored after a full reload.
+- ✅ Confirm a real export contains the editor captions.
+  - A decoded 1080×1920 output frame visibly contains the burned Devanagari
+    caption; see `docs/production-export-frame-2026-08-21.png`.
 - ❌ Confirm a real export downloads on mobile and desktop.
+  - Desktop production download passed; mobile download remains untested.
 - ✅ Failed export jobs can be retried.
 - ✅ System/provider failures return reserved AI allowance.
 - ✅ Failed exports do not charge credits.
@@ -149,9 +167,11 @@ customer-safety paths above.
 - ✅ Enable and test a Razorpay receipt or payment-confirmation email. *(Owner-confirmed.)*
 - ✅ Refreshing/retrying cannot grant the same payment twice in code.
 - ✅ Repeated webhooks are handled idempotently in code.
-- ❌ Replay a real/test webhook and save the evidence.
+- ✅ Replay a real payment webhook twice and save redacted evidence. See
+  [Razorpay redacted evidence](RAZORPAY_EVIDENCE_2026-08-22.md).
 - ✅ Non-captured/failed payments do not activate a plan in code.
-- ❌ Test one failed payment and attach the result.
+- ✅ Test one failed payment and attach the result. *(Owner-confirmed production
+  failure UI; see `docs/OWNER_CONFIRMATIONS_2026-08-22.md`.)*
 - ✅ Recurring cancellation is not required for current non-renewing plans.
 - ✅ Complete one real full or partial refund. *(Owner-confirmed 30 July 2026.)*
 
@@ -197,7 +217,9 @@ customer-safety paths above.
 ### Minimum support setup
 
 - ✅ `support@lekhacaptions.com` inbox created. *(Owner-confirmed.)*
-- ❌ Domain/MX records resolve and an external send/receive test succeeds.
+- ✅ Domain/MX records resolve and an external send/receive test succeeds.
+  - DNS/MX/mail-auth resolution passes; the owner confirmed external
+    send/receive/reply and supplied a live Spacemail inbox screenshot.
 - ✅ Help/Support navigation is present inside the product.
 - ✅ A structured contact form is present.
 - ✅ FAQ/help page is published.
@@ -256,8 +278,9 @@ customer-safety paths above.
 
 ### Refund operations
 
-- ❌ Customer can email the support inbox through the public domain.
-  - Inbox creation is owner-confirmed; DNS/MX reachability is not yet verified.
+- ✅ Customer can email the support inbox through the public domain.
+  - Inbox creation and DNS/MX reachability are verified; the owner confirmed
+    the real external send/reply test. See `docs/OWNER_CONFIRMATIONS_2026-08-22.md`.
 - ✅ Payment, usage, and reason review steps are documented.
 - ✅ Full refund, partial refund, and account-credit decisions are documented.
 - ✅ Razorpay Dashboard/API initiation steps are documented.
@@ -265,7 +288,8 @@ customer-safety paths above.
 - ✅ Refund-confirmation email template is prepared.
 - ✅ Webhook/status tracking is implemented or documented.
 - ✅ Perform one real refund. *(Owner-confirmed.)*
-- ❌ Record redacted payment/refund evidence in the release record.
+- ✅ Record redacted payment/refund evidence in the release record. See
+  [Razorpay redacted evidence](RAZORPAY_EVIDENCE_2026-08-22.md).
 - ❌ Have an Indian lawyer review the final Terms, Privacy, and Refund Policy.
 
 ## 6. Chargeback records
@@ -283,7 +307,8 @@ customer-safety paths above.
     status, timestamps, and one-year expiry.
 - ✅ Export/download delivery information is recorded.
 - ✅ Real refund record created. *(Owner-confirmed.)*
-- ❌ Redacted refund evidence attached and reviewed.
+- ✅ Redacted refund evidence attached and reviewed. See
+  [Razorpay redacted evidence](RAZORPAY_EVIDENCE_2026-08-22.md).
 - ❌ Complete one chargeback/dispute evidence drill.
 
 ## 7. Legal pages
@@ -364,7 +389,9 @@ customer-safety paths above.
 - ✅ Production requires a malware scanner or an explicit unsafe override.
 - ✅ Configure the production malware scanner. *(Owner-confirmed.)*
 - ❌ Attach a successful production scanner startup/test result.
-- ❌ Enable and enforce Firebase App Check.
+- ✅ Firebase App Check is registered and enforced for Firestore and Storage.
+  - Verified in production on 21 August 2026; see
+    `docs/PRODUCTION_VERIFICATION_2026-08-21.md`.
 - ❌ Confirm production and development Firebase projects are separate.
 - ✅ Deploy and inspect the production Firestore/Storage rules.
   - Both rulesets and Firestore indexes were deployed on 4 August 2026.
@@ -440,7 +467,8 @@ customer-safety paths above.
 - ✅ FAQ.
 - ✅ Dedicated known-limitations page.
 - ❌ Working public contact address.
-  - Inbox creation is confirmed, but public DNS/MX is still unresolved.
+  - Inbox creation and public DNS/MX/mail authentication are confirmed, but an
+    external message and reply are not yet recorded.
 - ✅ Public changelog/release-notes page.
 - ✅ The app does not claim 100% transcription accuracy.
 - ✅ Accuracy limitations mention audio quality, accents, noise, language mixing,
@@ -504,6 +532,7 @@ customer-safety paths above.
 - ✅ Failed exports do not consume credits.
 - ✅ Support inbox created. *(Owner-confirmed.)*
 - ❌ Support domain/MX resolves and external send/receive succeeds.
+  - DNS/MX resolves; external send/reply remains.
 - ✅ Terms published.
 - ✅ Privacy Policy published.
 - ✅ Refund Policy published.

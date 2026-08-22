@@ -67,9 +67,9 @@ export default function HomeV2() {
             <Link to={createPageUrl('Faq')} className="text-sm text-[#949494] transition-colors hover:text-white">FAQ</Link>
             <Link to={createPageUrl('HelpAndSupport')} className="text-sm text-[#949494] transition-colors hover:text-white">Help &amp; Support</Link>
             <Link to={createPageUrl('TermsAndConditions')} className="text-sm text-[#949494] transition-colors hover:text-white">Terms</Link>
-            <Link to={createPageUrl('Dashboard')} className="landing-button rounded-[4px] px-3.5 py-2 text-sm font-semibold">Open editor</Link>
+            <Link to={`${createPageUrl('Dashboard')}?action=upload`} className="landing-button rounded-[4px] px-3.5 py-2 text-sm font-semibold">Open editor</Link>
           </div>
-          <Link to={createPageUrl('Dashboard')} className="landing-button rounded-[4px] px-3 py-2 text-xs font-semibold sm:hidden">Try free</Link>
+          <Link to={`${createPageUrl('Dashboard')}?action=upload`} className="landing-button rounded-[4px] px-3 py-2 text-xs font-semibold sm:hidden">Try free</Link>
         </div>
       </nav>
 

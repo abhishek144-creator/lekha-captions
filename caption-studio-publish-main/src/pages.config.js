@@ -47,23 +47,23 @@
  *
  * The mainPage value must match a key in the PAGES object exactly.
  */
-import { lazy } from 'react'
 import __Layout from './Layout.jsx'
+import { lazyWithRefresh } from './lib/lazyWithRefresh'
 
-const Dashboard = lazy(() => import('./pages/Dashboard'))
-const Home = lazy(() => import('./pages/Home'))
-const HomeV2 = lazy(() => import('./pages/HomeV2'))
-const Login = lazy(() => import('./pages/Login'))
-const UserAccount = lazy(() => import('./pages/UserAccount'))
-const Faq = lazy(() => import('./pages/Faq'))
-const TermsAndConditions = lazy(() => import('./pages/TermsAndConditions'))
-const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'))
-const RefundPolicy = lazy(() => import('./pages/RefundPolicy'))
-const AcceptableUsePolicy = lazy(() => import('./pages/AcceptableUsePolicy'))
-const HelpAndSupport = lazy(() => import('./pages/HelpAndSupport'))
-const AdminOps = lazy(() => import('./pages/AdminOps'))
-const KnownLimitations = lazy(() => import('./pages/KnownLimitations'))
-const Changelog = lazy(() => import('./pages/Changelog'))
+const Dashboard = lazyWithRefresh(() => import('./pages/Dashboard'), 'Dashboard')
+const Home = lazyWithRefresh(() => import('./pages/Home'), 'Home')
+const HomeV2 = lazyWithRefresh(() => import('./pages/HomeV2'), 'HomeV2')
+const Login = lazyWithRefresh(() => import('./pages/Login'), 'Login')
+const UserAccount = lazyWithRefresh(() => import('./pages/UserAccount'), 'UserAccount')
+const Faq = lazyWithRefresh(() => import('./pages/Faq'), 'Faq')
+const TermsAndConditions = lazyWithRefresh(() => import('./pages/TermsAndConditions'), 'TermsAndConditions')
+const PrivacyPolicy = lazyWithRefresh(() => import('./pages/PrivacyPolicy'), 'PrivacyPolicy')
+const RefundPolicy = lazyWithRefresh(() => import('./pages/RefundPolicy'), 'RefundPolicy')
+const AcceptableUsePolicy = lazyWithRefresh(() => import('./pages/AcceptableUsePolicy'), 'AcceptableUsePolicy')
+const HelpAndSupport = lazyWithRefresh(() => import('./pages/HelpAndSupport'), 'HelpAndSupport')
+const AdminOps = lazyWithRefresh(() => import('./pages/AdminOps'), 'AdminOps')
+const KnownLimitations = lazyWithRefresh(() => import('./pages/KnownLimitations'), 'KnownLimitations')
+const Changelog = lazyWithRefresh(() => import('./pages/Changelog'), 'Changelog')
 
 export const PAGES = {
     "Dashboard": Dashboard,

@@ -65,11 +65,11 @@ export default function Home() {
             <Link to={createPageUrl('HelpAndSupport')} className="landing-nav-link text-sm transition-colors">Help &amp; Support</Link>
             <Link to={createPageUrl('TermsAndConditions')} className="landing-nav-link text-sm transition-colors">Terms</Link>
             <ThemeToggle theme={theme} onToggle={toggleTheme} />
-            <Link to={createPageUrl('Dashboard')} className="landing-button rounded-[4px] px-3.5 py-2 text-sm font-semibold">Open editor</Link>
+            <Link to={`${createPageUrl('Dashboard')}?action=upload`} className="landing-button rounded-[4px] px-3.5 py-2 text-sm font-semibold">Open editor</Link>
           </div>
           <div className="flex items-center gap-2 sm:hidden">
             <ThemeToggle theme={theme} onToggle={toggleTheme} />
-            <Link to={createPageUrl('Dashboard')} className="landing-button rounded-[4px] px-3 py-2 text-xs font-semibold">Try free</Link>
+            <Link to={`${createPageUrl('Dashboard')}?action=upload`} className="landing-button rounded-[4px] px-3 py-2 text-xs font-semibold">Try free</Link>
           </div>
         </div>
       </nav>

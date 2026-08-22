@@ -282,6 +282,7 @@ export default function PricingSection() {
         throw new Error('Payment order returned an invalid amount or currency.')
       }
 
+      let checkoutResolved = false
       const options = {
         key: keyId,
         amount: orderData.order.amount || amount,
@@ -295,6 +296,7 @@ export default function PricingSection() {
         },
         theme: { color: '#F5A623' },
         handler: async (response) => {
+          checkoutResolved = true
           try {
             const verifyToken = await checkoutUser.getIdToken(true)
             const data = await apiRequest('/api/verify-payment', {
@@ -314,7 +316,9 @@ export default function PricingSection() {
             })
             if (data.success) {
               toast({ title: 'Payment successful', description: 'Credits added to your account.' })
-              window.location.href = createPageUrl('Dashboard')
+              window.setTimeout(() => {
+                window.location.href = `${createPageUrl('Dashboard')}?action=upload`
+              }, 1200)
             } else {
               toast({ variant: 'destructive', title: 'Payment verification failed', description: 'Please contact support.' })
             }
@@ -328,13 +332,24 @@ export default function PricingSection() {
           setProcessingPlan(null)
         },
         modal: {
-          ondismiss: () => setProcessingPlan(null)
+          ondismiss: () => {
+            if (!checkoutResolved) {
+              toast({
+                variant: 'destructive',
+                title: 'Payment not completed',
+                description: 'Razorpay did not confirm this payment. If your bank was debited, do not retry and contact support with the Razorpay payment ID.',
+              })
+            }
+            setProcessingPlan(null)
+          },
         }
       }
 
       const razorpay = new window.Razorpay(options)
       razorpay.on('payment.failed', (resp) => {
+        checkoutResolved = true
         console.error('Payment failed:', resp.error)
+        toast({ variant: 'destructive', title: 'Payment failed', description: resp.error?.description || 'Unknown error' })
         setProcessingPlan(null)
       })
       razorpay.open()
