@@ -6,6 +6,26 @@ from datetime import datetime, timedelta, timezone
 import firebase_admin
 from firebase_admin import credentials, auth, firestore
 try:
+    from .media_storage import (
+        delete_file as delete_s3_file,
+        download_file as download_s3_file,
+        is_configured as s3_is_configured,
+        iter_objects as iter_s3_objects,
+        object_exists as s3_object_exists,
+        signed_download_url as s3_signed_download_url,
+        upload_file as upload_s3_file,
+    )
+except ImportError:  # Direct execution from the backend working directory.
+    from media_storage import (
+        delete_file as delete_s3_file,
+        download_file as download_s3_file,
+        is_configured as s3_is_configured,
+        iter_objects as iter_s3_objects,
+        object_exists as s3_object_exists,
+        signed_download_url as s3_signed_download_url,
+        upload_file as upload_s3_file,
+    )
+try:
     from firebase_admin import storage as fb_storage
 except ImportError:
     fb_storage = None
@@ -97,14 +117,41 @@ def upload_to_firebase_storage(
     Uploads a local file to Firebase Storage.
     Returns a signed download URL valid for the specified hours, or None on failure.
     """
-    bucket = get_storage_bucket()
     safe_remote = str(remote_path or "").strip()
     if (
-        not bucket
-        or not safe_remote.startswith("exports/")
+        not safe_remote.startswith("exports/")
         or not os.path.isfile(local_path)
         or os.path.getsize(local_path) <= 0
     ):
+        return None
+    if s3_is_configured():
+        ttl = max(1, min(int(expiration_hours), 72))
+        try:
+            upload_s3_file(
+                local_path,
+                safe_remote,
+                content_type,
+                {"delete_at_epoch": str(int(time.time() + ttl * 3600))},
+            )
+            db = get_db()
+            if db:
+                schedule_id = hashlib.sha256(safe_remote.encode("utf-8")).hexdigest()
+                db.collection("export_expirations").document(schedule_id).set({
+                    "remote_path": safe_remote,
+                    "expire_at": datetime.now(timezone.utc) + timedelta(hours=ttl),
+                    "created_at": datetime.now(timezone.utc),
+                })
+            print(f"[Storage] Uploaded {safe_remote} to S3-compatible durable storage")
+            return s3_signed_download_url(safe_remote, ttl * 3600)
+        except Exception as e:
+            print(f"[Storage] S3 export upload failed: {e}")
+            try:
+                delete_s3_file(safe_remote)
+            except Exception:
+                pass
+            return None
+    bucket = get_storage_bucket()
+    if not bucket:
         return None
     try:
         blob = bucket.blob(safe_remote)
@@ -146,13 +193,12 @@ def upload_source_media(
     expiration_hours: int = 6,
 ):
     """Persist an uploaded source so API and worker instances share the same bytes."""
-    bucket = get_storage_bucket()
     db = get_db()
     safe_uid = str(uid or "").strip()
     safe_file_id = str(file_id or "").strip()
     safe_ext = str(extension or "").strip().lower().lstrip(".")
     if (
-        not bucket or not db or not safe_uid or not safe_file_id or not safe_ext
+        not safe_uid or not safe_file_id or not safe_ext
         or "/" in safe_uid or "\\" in safe_uid
         or "/" in safe_file_id or "\\" in safe_file_id
         or not safe_ext.isalnum()
@@ -160,10 +206,42 @@ def upload_source_media(
         return None
     remote_path = f"uploads/{safe_uid}/{safe_file_id}.{safe_ext}"
     ttl = max(1, min(int(expiration_hours), 24))
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=ttl)
+    if s3_is_configured():
+        try:
+            upload_s3_file(
+                local_path,
+                remote_path,
+                metadata={
+                    "owner_uid": safe_uid,
+                    "file_id": safe_file_id,
+                    "delete_at_epoch": str(int(expires_at.timestamp())),
+                },
+            )
+            if db:
+                schedule_id = hashlib.sha256(remote_path.encode("utf-8")).hexdigest()
+                db.collection("upload_expirations").document(schedule_id).set({
+                    "remote_path": remote_path,
+                    "uid": safe_uid,
+                    "file_id": safe_file_id,
+                    "expire_at": expires_at,
+                    "created_at": datetime.now(timezone.utc),
+                })
+            print(f"[Storage] Uploaded {remote_path} to S3-compatible durable storage")
+            return remote_path
+        except Exception as e:
+            print(f"[Storage] S3 source upload failed: {e}")
+            try:
+                delete_s3_file(remote_path)
+            except Exception:
+                pass
+            return None
+    bucket = get_storage_bucket()
+    if not bucket or not db:
+        return None
     blob = bucket.blob(remote_path)
     try:
         blob.upload_from_filename(local_path)
-        expires_at = datetime.now(timezone.utc) + timedelta(hours=ttl)
         blob.metadata = {
             **(blob.metadata or {}),
             "owner_uid": safe_uid,
@@ -190,9 +268,17 @@ def upload_source_media(
 
 
 def download_from_firebase_storage(remote_path: str, local_path: str):
-    bucket = get_storage_bucket()
     safe_remote = str(remote_path or "")
-    if not bucket or not safe_remote.startswith("uploads/"):
+    if not safe_remote.startswith("uploads/"):
+        return False
+    if s3_is_configured():
+        try:
+            return download_s3_file(safe_remote, local_path)
+        except Exception as e:
+            print(f"[Storage] S3 source download failed: {e}")
+            return False
+    bucket = get_storage_bucket()
+    if not bucket:
         return False
     try:
         bucket.blob(safe_remote).download_to_filename(local_path)
@@ -203,9 +289,17 @@ def download_from_firebase_storage(remote_path: str, local_path: str):
 
 
 def download_export_from_firebase_storage(remote_path: str, local_path: str):
-    bucket = get_storage_bucket()
     safe_remote = str(remote_path or "")
-    if not bucket or not safe_remote.startswith("exports/"):
+    if not safe_remote.startswith("exports/"):
+        return False
+    if s3_is_configured():
+        try:
+            return download_s3_file(safe_remote, local_path)
+        except Exception as e:
+            print(f"[Storage] S3 export download failed: {e}")
+            return False
+    bucket = get_storage_bucket()
+    if not bucket:
         return False
     try:
         bucket.blob(safe_remote).download_to_filename(local_path)
@@ -216,9 +310,8 @@ def download_export_from_firebase_storage(remote_path: str, local_path: str):
 
 
 def delete_expired_uploads(batch_size: int = 400):
-    bucket = get_storage_bucket()
     db = get_db()
-    if not bucket or not db:
+    if not db:
         return 0
     deleted = 0
     try:
@@ -239,7 +332,8 @@ def delete_expired_uploads(batch_size: int = 400):
                 completed_refs.append(doc.reference)
                 continue
             try:
-                bucket.blob(remote_path).delete()
+                if not delete_from_firebase_storage(remote_path):
+                    raise RuntimeError("durable object deletion failed")
                 deleted += 1
                 completed_refs.append(doc.reference)
                 if file_id:
@@ -263,11 +357,33 @@ def delete_expired_uploads(batch_size: int = 400):
 
 
 def delete_user_uploads(uid: str):
-    bucket = get_storage_bucket()
     safe_uid = str(uid or "").strip()
-    if not bucket or not safe_uid or "/" in safe_uid or "\\" in safe_uid:
+    if not safe_uid or "/" in safe_uid or "\\" in safe_uid:
         return None
     deleted = 0
+    if s3_is_configured():
+        try:
+            for row in iter_s3_objects(prefix=f"uploads/{safe_uid}/"):
+                delete_s3_file(str(row.get("Key") or ""))
+                deleted += 1
+            db = get_db()
+            if db:
+                refs = []
+                for collection_name in ("uploads", "upload_expirations"):
+                    for doc in db.collection(collection_name).where("uid", "==", safe_uid).stream():
+                        refs.append(doc.reference)
+                for start in range(0, len(refs), 400):
+                    batch = db.batch()
+                    for ref in refs[start:start + 400]:
+                        batch.delete(ref)
+                    batch.commit()
+            return deleted
+        except Exception as e:
+            print(f"[Storage] S3 user source cleanup failed: {e}")
+            return None
+    bucket = get_storage_bucket()
+    if not bucket:
+        return None
     try:
         for blob in bucket.list_blobs(prefix=f"uploads/{safe_uid}/"):
             blob.delete()
@@ -290,6 +406,16 @@ def delete_user_uploads(uid: str):
 
 def delete_from_firebase_storage(remote_path: str):
     """Deletes a file from Firebase Storage."""
+    if s3_is_configured():
+        try:
+            if not s3_object_exists(remote_path):
+                return True
+            delete_s3_file(remote_path)
+            print(f"[Storage] Deleted {remote_path} from S3-compatible durable storage")
+            return True
+        except Exception as e:
+            print(f"[Storage] S3 delete failed: {e}")
+            return False
     bucket = get_storage_bucket()
     if not bucket:
         return False
@@ -306,13 +432,22 @@ def delete_from_firebase_storage(remote_path: str):
 
 def delete_user_exports(uid: str):
     """Delete every export owned by a user, including objects omitted from history."""
-    bucket = get_storage_bucket()
-    if not bucket:
-        return None
     safe_uid = str(uid).strip()
     if not safe_uid or "/" in safe_uid or "\\" in safe_uid:
         return None
     deleted = 0
+    if s3_is_configured():
+        try:
+            for row in iter_s3_objects(prefix=f"exports/{safe_uid}/"):
+                delete_s3_file(str(row.get("Key") or ""))
+                deleted += 1
+            return deleted
+        except Exception as e:
+            print(f"[Storage] S3 user export cleanup failed: {e}")
+            return None
+    bucket = get_storage_bucket()
+    if not bucket:
+        return None
     try:
         blobs = bucket.list_blobs(prefix=f"exports/{safe_uid}/", page_size=100)
         for page in blobs.pages:
@@ -335,9 +470,8 @@ def delete_user_exports(uid: str):
 
 def delete_expired_exports(batch_size: int = 400):
     """Delete a bounded batch of exports whose indexed schedule is due."""
-    bucket = get_storage_bucket()
     db = get_db()
-    if not bucket or not db:
+    if not db:
         return 0
     deleted = 0
     try:
@@ -355,7 +489,8 @@ def delete_expired_exports(batch_size: int = 400):
                 completed_refs.append(doc.reference)
                 continue
             try:
-                bucket.blob(remote_path).delete()
+                if not delete_from_firebase_storage(remote_path):
+                    raise RuntimeError("durable object deletion failed")
                 deleted += 1
                 completed_refs.append(doc.reference)
             except Exception as e:
