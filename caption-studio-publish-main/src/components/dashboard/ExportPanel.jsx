@@ -24,7 +24,6 @@ import { apiFetch, apiRequest, getApiErrorMessage } from '@/lib/apiClient';
 import { getClientContext, trackAnalytics } from '@/lib/analytics';
 import { isFeatureEnabled } from '@/lib/featureFlags';
 import { getEffectiveAuthToken } from '@/lib/devAuth';
-import { isSubscriptionExpired } from '@/lib/subscription';
 import { buildEmotionalCaptionPlan } from './emotionalTemplateUtils';
 import { getBasicTemplateExportEffects } from './basicTemplateCatalog.js';
 import {
@@ -63,6 +62,18 @@ function notifyExportFailure(error, jobId) {
   if (error?.name === 'AbortError') return;
   const reference = extractExportReference(error, jobId);
   const baseMessage = getApiErrorMessage(error);
+  // Once a job id exists the request was accepted. A lost status/download
+  // connection does not mean the render failed or that its credit was not
+  // used; the same export request is safely replayable instead.
+  if (jobId) {
+    toast({
+      variant: 'destructive',
+      title: 'Export connection interrupted',
+      description: `${baseMessage}\n\nYour existing export may still finish. Do not start a new export for this video; reopen Export to recover it. Job reference: ${reference || jobId}`,
+      duration: 15000,
+    });
+    return;
+  }
   const description = reference
     ? `${baseMessage}\n\nJob reference: ${reference}\nNo credit was charged. Email ${SUPPORT_EMAIL} with this reference if it keeps failing.`
     : `${baseMessage}\n\nNo credit was charged. Email ${SUPPORT_EMAIL} if it keeps failing.`;
@@ -138,6 +149,19 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
   const { currentUser, userData, refreshUserData } = useAuth();
   // Use auth context directly for consistent, up-to-date auth & credit checks
   const isSignedIn = !!currentUser;
+  const refreshUserDataRef = useRef(refreshUserData);
+
+  useEffect(() => {
+    refreshUserDataRef.current = refreshUserData;
+  }, [refreshUserData]);
+
+  useEffect(() => {
+    // Account bootstrap is server-authoritative. Refresh whenever the export
+    // sheet opens so a just-created free account immediately sees its credits.
+    if (open && currentUser) {
+      Promise.resolve(refreshUserDataRef.current?.()).catch(() => {});
+    }
+  }, [open, currentUser]);
 
   const [isExporting, setIsExporting] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -292,20 +316,24 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
     onClose?.();
   };
 
-  // Unlock for: free plan users with credits > 0, or active subscription users
-  // If signed in but Firestore data hasn't loaded yet, default to unlocked (optimistic)
+  const storedCreditBalance = Number(userData?.credits_remaining);
+  const hasResolvedCreditBalance = Number.isFinite(storedCreditBalance);
+  const isFreeEntitlement = !userData?.subscription_tier
+    || ['free', 'free_plan'].includes(String(userData.subscription_tier).toLowerCase());
+  const creditBalance = hasResolvedCreditBalance
+    ? Math.max(0, isFreeEntitlement ? Math.min(3, storedCreditBalance) : storedCreditBalance)
+    : storedCreditBalance;
+  const hasCreditsRemaining = hasResolvedCreditBalance && creditBalance > 0;
+  const entitlementIsSyncing = !userData || userData.bootstrap_pending || !hasResolvedCreditBalance;
+
+  // The API is the final authority, but the client should accurately reflect a
+  // known balance. An unresolved bootstrap remains clickable so it cannot lock
+  // the three free credits while the account record is arriving.
   const isPlanActive = (() => {
     if (DISABLE_EXPORT_LIMITS_FOR_TESTING) return isSignedIn;
     if (!isSignedIn) return false;
-    if (!userData) return true;
-    if (userData.credits_remaining > 0) return true;
-    if (userData.subscription_tier && userData.subscription_tier !== 'free') {
-      // isSubscriptionExpired handles Firestore Timestamp objects — after an
-      // export, refreshUserData() replaces the bootstrap JSON (string dates)
-      // with raw getDoc() data, and `new Date(Timestamp)` is Invalid Date.
-      return !isSubscriptionExpired(userData.subscription_expiry);
-    }
-    return false;
+    if (entitlementIsSyncing) return true;
+    return hasCreditsRemaining;
   })();
 
   // 4K is available for Creator and above (matches pricing promises)
@@ -899,6 +927,11 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
               Export your video
             </SheetTitle>
             <p className="text-sm text-gray-400 mt-1">Choose a render quality or download caption files for editing elsewhere.</p>
+            {isSignedIn && hasResolvedCreditBalance && (
+              <p className="mt-3 text-xs font-semibold text-emerald-300">
+                {Math.max(0, creditBalance)} export credit{Math.max(0, creditBalance) === 1 ? '' : 's'} remaining
+              </p>
+            )}
           </div>
         </SheetHeader>
 
@@ -997,7 +1030,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
             </div>
             {exportOptions.filter(o => o.requiresPlan).map((option, idx) => {
               const isLocked = !isPlanActive || (option.requiresPro && !is4kAllowed);
-              const lockReason = !isPlanActive ? 'Requires active plan' : (option.requiresPro && !is4kAllowed) ? 'Creator or Pro plan required' : null;
+              const lockReason = !isPlanActive ? 'No export credits remaining' : (option.requiresPro && !is4kAllowed) ? 'Creator or Pro plan required' : null;
               return (
                 <motion.button
                   key={idx}

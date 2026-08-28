@@ -176,10 +176,10 @@ export default function HeroSection() {
           </motion.p>
 
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.3 }} className="mt-9 flex flex-col gap-3 sm:flex-row">
-            <Link to={`${createPageUrl('Dashboard')}?action=upload`} className="landing-button group inline-flex items-center justify-center gap-2 rounded-md px-5 py-3 text-sm font-semibold shadow-[0_12px_40px_-12px_rgba(255,255,255,0.45)]">
+            <Link to={`${createPageUrl('Dashboard')}?entry=editor`} className="landing-button group inline-flex items-center justify-center gap-2 rounded-md px-5 py-3 text-sm font-semibold shadow-[0_12px_40px_-12px_rgba(255,255,255,0.45)]">
               <Play className="h-4 w-4 fill-current" /> Upload Video <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
             </Link>
-            <Link to={`${createPageUrl('Dashboard')}?action=upload`} className="landing-button inline-flex items-center justify-center rounded-md px-5 py-3 text-sm font-semibold">Try for Free</Link>
+            <Link to={`${createPageUrl('Dashboard')}?entry=editor`} className="landing-button inline-flex items-center justify-center rounded-md px-5 py-3 text-sm font-semibold">Try for Free</Link>
           </motion.div>
 
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.6, delay: 0.42 }} className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-xs text-white/45">

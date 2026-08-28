@@ -27,7 +27,7 @@ import planCatalog from '../../shared/planCatalog.json'
 
 const PAYMENT_PAGE_SIZE = 25
 
-const FREE_PLAN_CREDITS = 3
+const FREE_PLAN_CREDITS = planCatalog.free?.credits ?? 3
 
 const PAID_PLAN_NAMES = {
   starter: 'Starter',
@@ -39,8 +39,8 @@ const PAID_PLAN_NAMES = {
 }
 
 // Credit totals come from the shared billing catalog the backend grants against,
-// so this page cannot drift from what a plan actually gives. Free is not a
-// catalog plan and has no purchasable entry.
+// so this page cannot drift from what a plan actually gives. The free plan is
+// present in the catalog for entitlement consistency but is not purchasable.
 const PLAN_LIMITS = {
   free_plan: { totalCredits: FREE_PLAN_CREDITS, name: 'Free' },
   free: { totalCredits: FREE_PLAN_CREDITS, name: 'Free' },
@@ -73,10 +73,16 @@ export default function UserAccount() {
   const planId = userData?.subscription_tier || userData?.subscription_plan || 'free'
   const planKey = (planId === 'free' || !planId) ? 'free_plan' : planId
   const planDetails = PLAN_LIMITS[planKey] || PLAN_LIMITS.free_plan
-  const creditsRemaining = userData?.credits_remaining ?? 0
+  const isFreePlan = planId === 'free' || planId === 'free_plan' || !planId
+  const storedCredits = Number(userData?.credits_remaining)
+  const nonNegativeCredits = Number.isFinite(storedCredits) ? Math.max(0, storedCredits) : 0
+  // The API repairs invalid legacy records. Keep the account screen honest
+  // while that bootstrap request is still arriving or an old response is cached.
+  const creditsRemaining = isFreePlan
+    ? Math.min(FREE_PLAN_CREDITS, nonNegativeCredits)
+    : nonNegativeCredits
   const totalCredits = planDetails.totalCredits || 1
   const creditPct = Math.min(100, Math.round((creditsRemaining / totalCredits) * 100))
-  const isFreePlan = planId === 'free' || planId === 'free_plan' || !planId
 
   React.useEffect(() => {
     // toDateSafe: billing_cycle_end may be a Firestore Timestamp (raw getDoc

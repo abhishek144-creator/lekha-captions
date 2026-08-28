@@ -22,3 +22,19 @@ contents are stored here.
 - The owner confirms the external send-and-reply test worked. The screenshot
   independently confirms inbound delivery; no password, OTP, or message body
   is retained in this repository.
+
+## Invoices, tax, accounting, reserves, and chargebacks
+
+- The owner confirms that the legal business identity, GST details, and invoice
+  settings were configured in Razorpay.
+- The owner confirms that invoice/receipt delivery was tested for a successful
+  payment and a refund.
+- The owner confirms that their CA/accountant reviewed HSN/SAC, GST rate and
+  place-of-supply treatment, international/export-of-service treatment, and
+  credit-note/refund handling.
+- The owner confirms that a monthly revenue/fee/tax/refund ledger, a
+  refund/chargeback/infrastructure reserve, and a redacted chargeback drill
+  were completed.
+- These are owner-confirmed completion statements. Retain the underlying
+  invoices, CA/accountant confirmation, ledger, reserve policy, and redacted
+  drill artifacts outside this repository for audit and dispute handling.

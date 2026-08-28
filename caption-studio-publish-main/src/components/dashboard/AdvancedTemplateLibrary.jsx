@@ -350,6 +350,18 @@ function extractCardMarkup(templateId) {
   return match?.[0]?.trim() || '';
 }
 
+// Production CSP intentionally disallows inline scripts. The template previews
+// run inside srcdoc iframes, so they inherit that policy and must still have a
+// readable first frame when their animation script cannot execute.
+function markPreviewBlockActive(cardMarkup, blockId) {
+  if (!cardMarkup || !blockId) return cardMarkup;
+  const escapedBlockId = String(blockId).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return cardMarkup.replace(
+    new RegExp(`(<div class="[^"]*\\bsblock\\b[^"]*)(" id="${escapedBlockId}"[^>]*>)`, 'i'),
+    '$1 active$2',
+  );
+}
+
 function extractTemplateBlocks(cardMarkup, templateId) {
   const matches = cardMarkup.matchAll(
     /<div class="sblock[^"]*" id="([^"]+)"[^>]*data-type="([^"]+)"[^>]*data-label="([^"]+)"/gi,
@@ -827,6 +839,17 @@ const iframeOverrides = (templateId, previewStyle = {}) => `
       opacity: 1 !important;
       z-index: 2 !important;
     }
+    /* The deployed app CSP blocks inline scripts inside srcdoc previews. Keep
+       the initial authored caption readable until a script can take over. */
+    html:not(.template-preview-script-ready) #card-${templateId} .sblock.active,
+    html:not(.template-preview-script-ready) #card-${templateId} .sblock.active * {
+      visibility: visible !important;
+      opacity: 1 !important;
+      animation: none !important;
+      transition: none !important;
+      transform: none !important;
+      clip-path: none !important;
+    }
     #card-${templateId} .prog-dots {
       height: 22px !important;
       padding: 5px 0 7px !important;
@@ -890,15 +913,19 @@ function buildTemplatePreviewDoc(templateId, options = {}) {
     ? ((Math.trunc(rawPhaseIndex) % blocks.length) + blocks.length) % blocks.length
     : 0;
   const lockToPhase = Boolean(options.lockToPhase && blocks.length);
+  const previewCardMarkup = markPreviewBlockActive(cardMarkup, blocks[initialBlockIndex]?.id);
   const appliedPreviewCaption = {
     text: String(options.captionText || '').trim(),
     impWordIndex: Number.isFinite(Number(options.impWordIndex)) ? Math.trunc(Number(options.impWordIndex)) : -1,
     emphasisColor: resolveAdvancedTemplateEmphasisColor(templateId, options.emphasisColor || '', initialBlockIndex),
   };
   const appliedPreviewConfig = JSON.stringify(appliedPreviewCaption).replace(/</g, '\\u003c');
+  // Keep the exact authored sequencer in production as well. A simplified
+  // runtime made the cards render but dropped each template's real motion.
   const previewScript = `
-    <script>
+    <script nonce="lekha-template-preview-v1">
       (() => {
+        document.documentElement.classList.add('template-preview-script-ready');
         const HOLD = ${ADVANCED_TEMPLATE_PREVIEW_TIMING.holdMs};
         const EXIT = ${ADVANCED_TEMPLATE_PREVIEW_TIMING.exitMs};
         const ENTER = ${ADVANCED_TEMPLATE_PREVIEW_TIMING.enterMs};
@@ -1674,7 +1701,7 @@ function buildTemplatePreviewDoc(templateId, options = {}) {
         <style>${extractOriginalStyle()}</style>
         ${iframeOverrides(templateId, options.previewStyle || {})}
       </head>
-      <body>${cardMarkup}${previewScript}</body>
+      <body>${previewCardMarkup}${previewScript}</body>
     </html>
   `;
 }
@@ -1745,8 +1772,10 @@ const basicIframeOverrides = `
 `;
 
 function buildBasicTemplatePreviewDoc(template, options = {}) {
+  // Basic cards also retain their source timing and word treatment in the
+  // production preview rather than falling back to a generic cycle.
   const previewScript = `
-    <script>
+    <script nonce="lekha-template-preview-v1">
       (() => {
         const card = document.querySelector('.btcard');
         if (!card) return;

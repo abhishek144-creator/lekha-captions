@@ -34,6 +34,9 @@ try {
     auth = getAuth(app);
     db = getFirestore(app);
     googleProvider = new GoogleAuthProvider();
+    // Firebase sign-out does not end the browser's Google session. Always show
+    // Google's account chooser so a returning user can select another email.
+    googleProvider.setCustomParameters({ prompt: 'select_account' });
     if (firebaseConfig.measurementId && typeof window !== 'undefined') {
         isAnalyticsSupported()
             .then((supported) => {

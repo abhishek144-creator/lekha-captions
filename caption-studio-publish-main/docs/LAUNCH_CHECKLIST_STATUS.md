@@ -23,6 +23,9 @@ Items marked **N/A** do not apply to the product as currently offered.
   production failure state and granted no plan or credits today.
 - ✅ Owner confirms the external support-mail send-and-reply test worked today;
   the Spacemail inbox screenshot shows inbound delivery.
+- ✅ Owner confirms invoices, GST/tax treatment, accounting records,
+  refund/chargeback reserves, and a redacted chargeback drill were completed
+  today; see `docs/OWNER_CONFIRMATIONS_2026-08-22.md`.
 - ✅ Owner confirms production error, warning, and budget alerts were configured today.
 - ✅ Owner confirms the production malware scanner setting was configured today.
 - ✅ Owner confirms OpenAI/Sarvam retention and training terms were reviewed today.
@@ -295,7 +298,8 @@ customer-safety paths above.
 ## 6. Chargeback records
 
 - ✅ Razorpay receipt delivery tested. *(Owner-confirmed.)*
-- ❌ Proper tax invoice created and delivered.
+- ✅ Proper tax invoice created and delivered. *(Owner-confirmed; retain
+  redacted invoice evidence.)*
 - ✅ Customer payment-confirmation/receipt email delivered. *(Owner-confirmed.)*
 - ✅ Terms/privacy acceptance timestamp and document versions are stored.
 - ❌ Confirm legally appropriate IP/device evidence and retention with counsel.
@@ -309,7 +313,8 @@ customer-safety paths above.
 - ✅ Real refund record created. *(Owner-confirmed.)*
 - ✅ Redacted refund evidence attached and reviewed. See
   [Razorpay redacted evidence](RAZORPAY_EVIDENCE_2026-08-22.md).
-- ❌ Complete one chargeback/dispute evidence drill.
+- ✅ Complete one chargeback/dispute evidence drill. *(Owner-confirmed; see
+  `docs/OWNER_CONFIRMATIONS_2026-08-22.md`.)*
 
 ## 7. Legal pages
 
@@ -477,16 +482,18 @@ customer-safety paths above.
 ## 13. Business and accounting
 
 - ❌ Dedicated business bank account confirmed.
-- ❌ Proper invoice process confirmed.
+- ✅ Proper invoice process confirmed. *(Owner-confirmed.)*
 - ✅ Payment/refund reconciliation drill completed.
   - The deployed seven-day reconciliation run completed with zero errors and a
     durable Firestore audit record on 5 August 2026.
-- ❌ GST advice obtained from a chartered accountant.
-- ❌ Foreign SaaS/export-of-service tax treatment reviewed.
+- ✅ GST advice obtained from a chartered accountant. *(Owner-confirmed.)*
+- ✅ Foreign SaaS/export-of-service tax treatment reviewed. *(Owner-confirmed.)*
 - ❌ International payments activated and tested in Razorpay.
 - ❌ Final tax-inclusive/exclusive price wording approved.
-- ❌ Monthly revenue, gateway-fee, tax, and refund records established.
-- ❌ Refund/chargeback/infrastructure reserve balance established.
+- ✅ Monthly revenue, gateway-fee, tax, and refund records established.
+  *(Owner-confirmed.)*
+- ✅ Refund/chargeback/infrastructure reserve balance established.
+  *(Owner-confirmed.)*
 
 ## 14. Launch sequence
 

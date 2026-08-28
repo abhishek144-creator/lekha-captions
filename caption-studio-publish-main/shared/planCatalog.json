@@ -1,4 +1,5 @@
 {
+  "free": {"credits": 3, "days": null, "daily_limit": 3, "max_video_seconds": 180, "export_retention_hours": 2, "tier": "free", "is_free": true},
   "starter": {"inr_paise": 29900, "usd_cents": 399, "credits": 15, "days": 30, "daily_limit": 3, "max_video_seconds": 120, "export_retention_hours": 2, "tier": "starter"},
   "creator": {"inr_paise": 49900, "usd_cents": 499, "credits": 45, "days": 30, "daily_limit": 5, "max_video_seconds": 180, "export_retention_hours": 24, "tier": "creator"},
   "pro": {"inr_paise": 79900, "usd_cents": 599, "credits": 120, "days": 30, "daily_limit": null, "max_video_seconds": 180, "export_retention_hours": 72, "tier": "pro"},

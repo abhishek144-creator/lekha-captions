@@ -6,12 +6,14 @@
 // so an external monitor can alert on the exit code alone.
 //
 //   node scripts/check-synthetic-health.mjs --base=https://api.example.com
+//   node scripts/check-synthetic-health.mjs --base=https://api.example.com --expected-release=<release>
 //
 // Env:
 //   SYNTHETIC_BASE_URL        base URL (alternative to --base)
 //   SYNTHETIC_ADMIN_TOKEN     optional admin token; unlocks SLO/queue detail
 //   SYNTHETIC_TIMEOUT_MS      per-request timeout      (default 10000)
 //   SYNTHETIC_MAX_LATENCY_MS  latency budget per probe (default 3000)
+//   SYNTHETIC_EXPECTED_RELEASE exact APP_RELEASE expected from the deployment
 
 const args = new Map(
   process.argv.slice(2)
@@ -26,6 +28,7 @@ const baseUrl = (args.get('base') || process.env.SYNTHETIC_BASE_URL || 'http://1
 const adminToken = (process.env.SYNTHETIC_ADMIN_TOKEN || '').trim()
 const timeoutMs = Number(process.env.SYNTHETIC_TIMEOUT_MS || 10000)
 const maxLatencyMs = Number(process.env.SYNTHETIC_MAX_LATENCY_MS || 3000)
+const expectedRelease = (args.get('expected-release') || process.env.SYNTHETIC_EXPECTED_RELEASE || '').trim()
 
 async function probe(path, { expectStatus = 200, headers = {} } = {}) {
   const url = `${baseUrl}${path}`
@@ -98,7 +101,11 @@ record('readiness /api/health/readiness', readiness, (body) => (
 
 // 3. Version contract — catches a bad deploy serving an unexpected API version.
 record('version   /api/version', await probe('/api/version'), (body) => (
-  body && typeof body.version === 'string' && body.version ? '' : 'response missing version string'
+  !body || typeof body.version !== 'string' || !body.version
+    ? 'response missing version string'
+    : expectedRelease && body.release !== expectedRelease
+      ? `deployment release mismatch (expected ${expectedRelease}, received ${body.release || 'none'})`
+      : ''
 ))
 
 const width = Math.max(...results.map((r) => r.name.length))

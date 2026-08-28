@@ -61,6 +61,38 @@ export function AuthProvider({ children }) {
     }
 
     const loginWithGoogle = async ({ preferRedirect = false, consent = null } = {}) => {
+        const transportFallbackCodes = new Set([
+            'auth/internal-error',
+            'auth/popup-blocked',
+            'auth/popup-closed-by-user',
+            'auth/cancelled-popup-request',
+            'auth/network-request-failed',
+            'auth/operation-not-supported-in-this-environment',
+            'auth/web-storage-unsupported',
+        ])
+
+        const finishPopupSignIn = async () => {
+            const result = await signInWithPopup(auth, googleProvider)
+            try {
+                await syncUserRecord(result.user, consent)
+            } catch (syncError) {
+                console.warn('Signed in, but account setup is still pending:', syncError.message)
+                setUserData({
+                    uid: result.user.uid,
+                    email: result.user.email || '',
+                    displayName: result.user.displayName || '',
+                    photoURL: result.user.photoURL || '',
+                    // Entitlements are still being fetched from the server.
+                    // Leave the balance unknown rather than incorrectly
+                    // locking the three free exports in the editor.
+                    credits_remaining: null,
+                    subscription_tier: 'free',
+                    bootstrap_pending: true,
+                })
+            }
+            return result.user
+        }
+
         try {
             setAuthError(null)
             if (!auth || !googleProvider) {
@@ -72,48 +104,27 @@ export function AuthProvider({ children }) {
             }
 
             if (preferRedirect) {
+                try {
+                    await signInWithRedirect(auth, googleProvider)
+                    return { redirected: true }
+                } catch (redirectError) {
+                    // Some privacy-restricted browsers reject redirect auth
+                    // before navigation. A popup remains a useful secondary
+                    // transport in those environments.
+                    if (!transportFallbackCodes.has(redirectError?.code)) throw redirectError
+                    return await finishPopupSignIn()
+                }
+            }
+
+            try {
+                return await finishPopupSignIn()
+            } catch (popupError) {
+                if (!transportFallbackCodes.has(popupError?.code)) throw popupError
                 await signInWithRedirect(auth, googleProvider)
                 return { redirected: true }
             }
-
-            const result = await signInWithPopup(auth, googleProvider)
-            try {
-                await syncUserRecord(result.user, consent)
-            } catch (syncError) {
-                console.warn('Signed in, but account setup is still pending:', syncError.message)
-                setUserData({
-                    uid: result.user.uid,
-                    email: result.user.email || '',
-                    displayName: result.user.displayName || '',
-                    photoURL: result.user.photoURL || '',
-                    credits_remaining: 0,
-                    subscription_tier: 'free',
-                    bootstrap_pending: true,
-                })
-            }
-            return result.user
         } catch (error) {
             console.error('Google Sign In Error:', error)
-            const fallbackCodes = new Set([
-                // Some embedded/privacy-restricted browsers surface a blocked
-                // Firebase popup transport as internal-error instead of the
-                // more specific popup-blocked code. Redirect auth does not
-                // depend on the popup channel and is the safe fallback.
-                'auth/internal-error',
-                'auth/popup-blocked',
-                'auth/popup-closed-by-user',
-                'auth/cancelled-popup-request',
-                // Firebase's popup iframe can report network-request-failed in
-                // embedded/privacy-restricted browsers even while normal HTTPS
-                // requests work. Redirect auth avoids that iframe transport.
-                'auth/network-request-failed',
-            ])
-
-            if (fallbackCodes.has(error?.code)) {
-                await signInWithRedirect(auth, googleProvider)
-                return { redirected: true }
-            }
-
             setAuthError(error)
             throw error
         }
@@ -139,7 +150,9 @@ export function AuthProvider({ children }) {
                             email: result.user.email || '',
                             displayName: result.user.displayName || '',
                             photoURL: result.user.photoURL || '',
-                            credits_remaining: 0,
+                            // See the popup fallback above. The export panel
+                            // refreshes this authoritative value on open.
+                            credits_remaining: null,
                             subscription_tier: 'free',
                             bootstrap_pending: true,
                         })
@@ -208,10 +221,24 @@ export function AuthProvider({ children }) {
 
     const refreshUserData = async () => {
         if (!currentUser) return
-        const userRef = doc(db, 'users', currentUser.uid)
-        const userSnap = await getDoc(userRef)
-        if (userSnap.exists()) {
-            setUserData(userSnap.data())
+        // The account endpoint is the entitlement authority. Reading Firestore
+        // directly can return a stale/offline cached document immediately after
+        // signup or payment, which made valid credits look unavailable.
+        try {
+            return await syncUserRecord(currentUser)
+        } catch (serverError) {
+            // Keep the direct read only as an offline fallback for an already
+            // initialized account. Do not replace a known server balance with
+            // an empty cache result.
+            if (!db) throw serverError
+            const userRef = doc(db, 'users', currentUser.uid)
+            const userSnap = await getDoc(userRef)
+            if (userSnap.exists()) {
+                const cachedUser = userSnap.data()
+                setUserData(cachedUser)
+                return cachedUser
+            }
+            throw serverError
         }
     }
 

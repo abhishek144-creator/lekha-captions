@@ -93,6 +93,12 @@ function looksLikeProxyConnectionFailure(data) {
   return /proxy|econnrefused|failed to fetch|socket hang up|networkerror/i.test(message)
 }
 
+function isAppCheckRejection(status, data) {
+  if (Number(status) !== 403) return false
+  const message = String(data?.detail || data?.error || data?.message || '')
+  return /app security verification (?:is required|failed)/i.test(message)
+}
+
 function canRetryRequestBody(body) {
   if (!body) return true
   if (typeof body === "string") return true
@@ -134,6 +140,7 @@ export async function apiFetch(url, options = {}) {
     : 0
   let controller = null
   let authRefreshAttempted = false
+  let appCheckRefreshAttempted = false
   const requestId = localApiRequest ? createRequestReference() : ''
   if (requestId) {
     const requestHeaders = new Headers(fetchOptions.headers || {})
@@ -195,6 +202,23 @@ export async function apiFetch(url, options = {}) {
 
       if (!response.ok) {
         let data = await parseResponseBody(response.clone())
+        if (localApiRequest && isAppCheckRejection(response.status, data) && !appCheckRefreshAttempted) {
+          appCheckRefreshAttempted = true
+          try {
+            const refreshedAppCheckToken = await getFirebaseAppCheckToken(true)
+            if (refreshedAppCheckToken) {
+              const headers = new Headers(fetchOptions.headers || {})
+              headers.set("X-Firebase-AppCheck", refreshedAppCheckToken)
+              fetchOptions.headers = headers
+              continue
+            }
+          } catch (error) {
+            throw new ApiError(
+              "This browser could not refresh the app security check. Check the connection, refresh the page, and try again.",
+              { status: 403, data: { original_message: error?.message || String(error) }, requestId },
+            )
+          }
+        }
         if (localApiRequest && response.status === 401 && !authRefreshAttempted && auth?.currentUser?.getIdToken) {
           authRefreshAttempted = true
           try {

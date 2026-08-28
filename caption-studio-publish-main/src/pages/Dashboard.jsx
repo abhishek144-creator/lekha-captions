@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useState, useEffect, useRef, useCallback } from 'react';
+import React, { Suspense, useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { Upload, Sparkles, Captions, Clock3, Layers, Layout, SlidersHorizontal, Type, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -18,21 +18,27 @@ import { notifyApiError } from '@/lib/notifyApiError';
 import { getClientContext, trackAnalytics } from '@/lib/analytics';
 import { getEffectiveAuthToken } from '@/lib/devAuth';
 import { resolveApiResourceUrl } from '@/components/dashboard/exportPipelineUtils';
+import { lazyWithRefresh } from '@/lib/lazyWithRefresh';
+import { uploadFileWithRecovery } from '@/lib/resilientUpload';
+import { processVideoWithRecovery } from '@/lib/resilientProcess';
 import planCatalog from '../../shared/planCatalog.json';
 
-const VideoPlayer = lazy(() => import('@/components/dashboard/VideoPlayer'));
-const CaptionTimeline = lazy(() => import('@/components/dashboard/CaptionTimeline'));
-const CaptionEditor = lazy(() => import('@/components/dashboard/CaptionEditor'));
-const StyleControls = lazy(() => import('@/components/dashboard/StyleControls'));
-const TextTab = lazy(() => import('@/components/dashboard/TextTab'));
-const AnimateTab = lazy(() => import('@/components/dashboard/AnimateTab'));
-const HistoryTab = lazy(() => import('@/components/dashboard/HistoryTab'));
-const LayersTab = lazy(() => import('@/components/dashboard/LayersTab'));
-const UploadModal = lazy(() => import('@/components/dashboard/UploadModal'));
-const ExportPanel = lazy(() => import('@/components/dashboard/ExportPanel'));
-const PricingModal = lazy(() => import('@/components/dashboard/PricingModal'));
-const SidebarTemplateGallery20 = lazy(() => import('@/components/dashboard/SidebarTemplateGallery20'));
-const WordClickPopup = lazy(() => import('@/components/dashboard/WordClickPopup'));
+// Dashboard panels are independently code-split. Recover an outdated browser
+// shell once when a deployment replaces their content-hashed files; otherwise
+// the right-side Styling/Templates panel can fail to mount after a release.
+const VideoPlayer = lazyWithRefresh(() => import('@/components/dashboard/VideoPlayer'), 'VideoPlayer');
+const CaptionTimeline = lazyWithRefresh(() => import('@/components/dashboard/CaptionTimeline'), 'CaptionTimeline');
+const CaptionEditor = lazyWithRefresh(() => import('@/components/dashboard/CaptionEditor'), 'CaptionEditor');
+const StyleControls = lazyWithRefresh(() => import('@/components/dashboard/StyleControls'), 'StyleControls');
+const TextTab = lazyWithRefresh(() => import('@/components/dashboard/TextTab'), 'TextTab');
+const AnimateTab = lazyWithRefresh(() => import('@/components/dashboard/AnimateTab'), 'AnimateTab');
+const HistoryTab = lazyWithRefresh(() => import('@/components/dashboard/HistoryTab'), 'HistoryTab');
+const LayersTab = lazyWithRefresh(() => import('@/components/dashboard/LayersTab'), 'LayersTab');
+const UploadModal = lazyWithRefresh(() => import('@/components/dashboard/UploadModal'), 'UploadModal');
+const ExportPanel = lazyWithRefresh(() => import('@/components/dashboard/ExportPanel'), 'ExportPanel');
+const PricingModal = lazyWithRefresh(() => import('@/components/dashboard/PricingModal'), 'PricingModal');
+const SidebarTemplateGallery20 = lazyWithRefresh(() => import('@/components/dashboard/SidebarTemplateGallery20'), 'SidebarTemplateGallery20');
+const WordClickPopup = lazyWithRefresh(() => import('@/components/dashboard/WordClickPopup'), 'WordClickPopup');
 
 const PanelLoadingFallback = ({ label = 'Loading...' }) => (
   <div className="flex h-full min-h-[160px] items-center justify-center rounded-[14px] border border-white/[0.06] bg-white/[0.02] text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
@@ -180,7 +186,7 @@ export default function Dashboard() {
 
   const handleUploadModalOpen = () => {
     if (!currentUser) {
-      navigate(`/login?mode=signup&returnTo=${encodeURIComponent('/Dashboard?action=upload')}`);
+      navigate(`/login?mode=signup&returnTo=${encodeURIComponent('/Dashboard?entry=editor')}`);
       return;
     }
     setIsUploadModalOpen(true);
@@ -280,8 +286,14 @@ export default function Dashboard() {
   const [wordPopup, setWordPopup] = useState(null);
   const [wordPopupOpenCount, setWordPopupOpenCount] = useState(0);
 
-  // Animation settings
-  const selectedWordForAnimation = null;
+  // A word remains the current animation target while its floating editor is
+  // open, including after it has been dragged to a custom canvas position.
+  const selectedWordForAnimation = wordPopup ? {
+    type: wordPopup.type,
+    captionId: wordPopup.type === 'element' ? wordPopup.elementId : wordPopup.caption?.id,
+    wordIndex: wordPopup.wordIndex,
+    word: wordPopup.word,
+  } : null;
 
   // Waveform data for timeline
   const [waveformData, setWaveformData] = useState(null);
@@ -303,9 +315,9 @@ export default function Dashboard() {
     settings: JSON.parse(JSON.stringify(overrides.settings ?? settings)),
   }), [captionStyle, captions, duration, fileId, originalFileName, projectId, settings, videoUrl]);
 
-  // Restore the signed-in user's last saved editor session on a normal refresh.
-  // Starting a new upload remains explicit, and the owner check prevents one
-  // browser account from inheriting another account's locally cached project.
+  // A direct Dashboard visit always starts with an empty editor. Restore a
+  // locally cached session only for the explicit return path from Account, so
+  // a previously uploaded video never appears when someone opens the app anew.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     // DEV-ONLY: let the ?devseed effect own the session; don't wipe it here.
@@ -314,10 +326,10 @@ export default function Dashboard() {
       return;
     }
     const isNavigationRestore = location.state?.restoreSession || params.get('restoreSession') === '1';
-    const shouldStartClean = Boolean(params.get('action') || params.get('session_reset'));
-    const shouldOpenUpload = params.get('action') === 'upload';
+    const isEditorEntry = params.get('entry') === 'editor';
+    const shouldStartClean = Boolean(params.get('action') || params.get('session_reset') || isEditorEntry);
 
-    if (isNavigationRestore || !shouldStartClean) {
+    if (isNavigationRestore && !shouldStartClean) {
       try {
         const savedState = localStorage.getItem('captionEditorState');
         if (savedState) {
@@ -360,10 +372,12 @@ export default function Dashboard() {
     setCurrentTime(0);
     setHistory([]);
     setHistoryIndex(-1);
-    setIsUploadModalOpen(Boolean(shouldOpenUpload && currentUser));
+    // Navigation only ever lands on the Start Creating Captions screen. The
+    // upload modal is opened exclusively by the visible Upload Video button.
+    setIsUploadModalOpen(false);
 
     // Clean up URL parameters if they exist
-    if (params.get('action') || params.get('session_reset')) {
+    if (params.get('action') || params.get('session_reset') || isEditorEntry) {
       window.history.replaceState({}, '', window.location.pathname);
     }
 
@@ -500,7 +514,7 @@ export default function Dashboard() {
 
   const handleUpload = async (file, uploadSettings) => {
     if (!currentUser) {
-      navigate(`/login?mode=signup&returnTo=${encodeURIComponent('/Dashboard?action=upload')}`);
+      navigate(`/login?mode=signup&returnTo=${encodeURIComponent('/Dashboard?entry=editor')}`);
       return;
     }
     setWordPopup(null);
@@ -514,6 +528,9 @@ export default function Dashboard() {
     initialEditorStateRef.current = null;
     const generationStart = Date.now();
     setGenerationStartedAt(generationStart);
+    const selectedFileName = file?.name || originalFileName || 'video';
+    let acceptedUpload = null;
+    let acceptedPlayableVideoUrl = '';
 
     try {
       const mediaAuthToken = await getEffectiveAuthToken(currentUser);
@@ -525,18 +542,28 @@ export default function Dashboard() {
           raw_url: uploadSettings.preUploadedRawUrl
         };
       } else {
-        const formData = new FormData();
-        formData.append('file', file);
-        uploadData = await apiRequest('/api/upload', {
-          method: 'POST',
-          headers: mediaAuthToken ? { Authorization: `Bearer ${mediaAuthToken}` } : {},
-          body: formData,
+        uploadData = await uploadFileWithRecovery(file, {
+          authorization: mediaAuthToken,
           dedupeKey: 'upload-video',
-          cancelPrevious: true,
         });
         if (!uploadData.success) throw new Error(uploadData.error || 'Upload failed');
         trackAnalytics('funnel.upload.success', getClientContext({ stage: 'upload', fileId: uploadData.file_id || '' }));
       }
+
+      acceptedUpload = uploadData;
+      acceptedPlayableVideoUrl = resolveApiResourceUrl(
+        uploadData.raw_url,
+        import.meta.env.VITE_API_BASE_URL,
+      );
+      if (!acceptedPlayableVideoUrl) throw new Error('Upload completed without a playable media URL');
+
+      // Commit the accepted upload before the longer transcription request.
+      // If the connection changes or transcription is temporarily unavailable,
+      // the editor still opens with the user's video instead of discarding it
+      // and returning to Start Creating Captions.
+      setVideoUrl(acceptedPlayableVideoUrl);
+      setFileId(uploadData.file_id);
+      setOriginalFileName(selectedFileName);
 
       // Parse wordsPerLine range for backend (e.g., "1-2" -> min=1, max=2).
       // "dynamic" (or unset) -> min=5, max=6 so animated templates receive full phrases.
@@ -554,18 +581,12 @@ export default function Dashboard() {
         }
       }
 
-      const processData = await apiRequest('/api/process', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          file_id: uploadData.file_id,
-          language: 'auto',
-          min_words: minWords,
-          max_words: maxWordsVal,
-          id_token: mediaAuthToken,
-        }),
-        dedupeKey: 'process-video',
-        cancelPrevious: true,
+      const processData = await processVideoWithRecovery({
+        file_id: uploadData.file_id,
+        language: 'auto',
+        min_words: minWords,
+        max_words: maxWordsVal,
+        id_token: mediaAuthToken,
       });
       if (!processData.success) throw new Error(processData.error || 'Processing failed');
       trackAnalytics('funnel.process.success', getClientContext({ stage: 'process', language: uploadSettings?.language || 'auto' }));
@@ -614,14 +635,7 @@ export default function Dashboard() {
         }
       }
 
-      const playableVideoUrl = resolveApiResourceUrl(
-        uploadData.raw_url,
-        import.meta.env.VITE_API_BASE_URL,
-      );
-      if (!playableVideoUrl) throw new Error('Upload completed without a playable media URL');
-      setVideoUrl(playableVideoUrl);
-      setFileId(uploadData.file_id);
-      setOriginalFileName(file.name);
+      const playableVideoUrl = acceptedPlayableVideoUrl;
 
       // If style is 'double_line', merge consecutive caption pairs into 2-line captions
       const captionLines = uploadSettings?.style;
@@ -669,7 +683,7 @@ export default function Dashboard() {
         captionStyle: JSON.parse(JSON.stringify(nextCaptionStyle)),
         duration: 0,
         fileId: uploadData.file_id,
-        originalFileName: file.name,
+        originalFileName: selectedFileName,
         projectId: nextProjectId,
         settings: JSON.parse(JSON.stringify(uploadSettings)),
       };
@@ -683,16 +697,25 @@ export default function Dashboard() {
 
     } catch (error) {
       console.error('Upload failed:', error);
-      setVideoUrl('');
-      setFileId(null);
-      setOriginalFileName('');
+      const uploadWasAccepted = Boolean(acceptedUpload?.file_id && acceptedPlayableVideoUrl);
+      setVideoUrl(uploadWasAccepted ? acceptedPlayableVideoUrl : '');
+      setFileId(uploadWasAccepted ? acceptedUpload.file_id : null);
+      setOriginalFileName(uploadWasAccepted ? selectedFileName : '');
       setCaptions([]);
-      setProjectId(null);
+      setProjectId(uploadWasAccepted ? `local_${Date.now()}` : null);
       setDuration(0);
       setCurrentTime(0);
       setWaveformData(null);
-      trackAnalytics('funnel.upload.failed', getClientContext({ stage: 'upload' }));
-      notifyApiError(error, 'Failed to process video')
+      trackAnalytics('funnel.upload.failed', getClientContext({
+        stage: uploadWasAccepted ? 'transcription' : 'upload',
+        status: Number(error?.status || 0),
+        requestReference: error?.requestId || '',
+        uploadAccepted: uploadWasAccepted,
+      }));
+      notifyApiError(
+        error,
+        uploadWasAccepted ? 'Transcription failed — video kept in editor' : 'Failed to process video',
+      )
     } finally {
       const elapsedMs = Date.now() - generationStart;
       const remainingMinDurationMs = Math.max(0, GENERATING_SCREEN_MIN_MS - elapsedMs);
@@ -703,6 +726,17 @@ export default function Dashboard() {
       setIsGenerating(false);
       setGenerationStartedAt(null);
     }
+  };
+
+  const handleRetryTranscription = () => {
+    if (!fileId || !videoUrl || isGenerating) return;
+    // The source upload is already owned by this account. Reuse it instead of
+    // asking the customer to upload again (or consuming another upload slot).
+    handleUpload(null, {
+      ...(settings || {}),
+      preUploadedFileId: fileId,
+      preUploadedRawUrl: videoUrl,
+    });
   };
 
   const handleSave = async () => {
@@ -1323,6 +1357,7 @@ export default function Dashboard() {
         setCaptionStyleRaw={setCaptionStyle}
         addToHistory={addToHistory}
         selectedCaption={captions.find(c => c.id === selectedCaptionId)}
+        selectedWord={selectedWordForAnimation}
         captions={captions}
         setCaptions={updateCaptions}
         setCaptionsRaw={setCaptions}
@@ -1564,6 +1599,23 @@ export default function Dashboard() {
                     className="shrink-0 text-xs font-semibold bg-white text-black px-3 py-1.5 rounded-full hover:bg-gray-100 transition-colors"
                   >
                     Top Up
+                  </button>
+                </div>
+              </div>
+            )}
+            {fileId && captions.length === 0 && (
+              <div className="px-4 pt-2 shrink-0">
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-400/25 bg-amber-400/[0.08] px-4 py-2.5">
+                  <p className="text-sm text-amber-50">
+                    Captions were not generated. Your video is saved — retry without uploading it again.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleRetryTranscription}
+                    disabled={isGenerating}
+                    className="shrink-0 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-black transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Retry captions
                   </button>
                 </div>
               </div>

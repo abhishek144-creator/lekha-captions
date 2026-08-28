@@ -17,34 +17,7 @@ import process from 'node:process'
 
 const repoRoot = path.resolve(import.meta.dirname, '..')
 
-const EXCEPTIONS = [
-  {
-    id: 'GHSA-qwww-vcr4-c8h2',
-    package: 'react-router',
-    workspace: '.',
-    reviewBy: '2026-10-31',
-    reason:
-      'RSC-mode CSRF bypass. Only reachable through the React Server Components / ' +
-      'Server Action request path. This app is a client-only Vite SPA: it imports ' +
-      'BrowserRouter/Routes/Route/Link/Navigate/useLocation/useNavigate/useSearchParams ' +
-      'and nothing else, has no RSC entry, no server actions, and no react-router ' +
-      'server runtime. Patched only in react-router >=8.3.0, which requires ' +
-      'React >=19.2.7; this app is on React 18.3.1. Clear this exception as part of ' +
-      'the React 19 upgrade, not before — react-router-dom 7.11.0 (the only ' +
-      'react-router-dom below the vulnerable range) re-introduces seven advisories ' +
-      'that DO apply here, including open redirect in <Link>/useNavigate and an XSS.',
-  },
-  {
-    id: 'GHSA-mh99-v99m-4gvg',
-    package: 'brace-expansion',
-    workspace: '.',
-    reviewBy: '2026-10-31',
-    reason:
-      'Reached only through eslint -> minimatch, a devDependency. Confirmed absent ' +
-      'from the production tree (`npm ls brace-expansion --omit=dev` is empty), so ' +
-      'it is never bundled or shipped. Lint tooling only.',
-  },
-]
+const EXCEPTIONS = []
 
 const WORKSPACES = [
   { dir: '.', label: 'app' },

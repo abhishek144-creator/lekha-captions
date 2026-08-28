@@ -21,7 +21,7 @@ const baseSecurityHeaders = {
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(self)',
   'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
 }
-const productionCsp = "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; script-src 'self' https://apis.google.com https://www.google.com https://www.gstatic.com https://checkout.razorpay.com; frame-src https://www.google.com https://recaptcha.google.com https://*.razorpay.com https://*.firebaseapp.com; connect-src 'self' https:; img-src 'self' data: blob: https:; media-src 'self' blob: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com"
+const productionCsp = "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; script-src 'self' 'nonce-lekha-template-preview-v1' 'sha256-nuF1+itnyWZpSrGpYCCq2I3cC29kh7Np7md2u0giq4A=' https://apis.google.com https://www.google.com https://www.gstatic.com https://checkout.razorpay.com; frame-src https://www.google.com https://recaptcha.google.com https://*.razorpay.com https://*.firebaseapp.com; connect-src 'self' https:; img-src 'self' data: blob: https:; media-src 'self' blob: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com"
 
 function isLocalBackendTarget() {
   return ['localhost', '127.0.0.1'].includes(backendUrl.hostname)
