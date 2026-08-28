@@ -509,7 +509,10 @@ customer-safety paths above.
 ### Before inviting users
 
 - ❌ Close every unchecked item in the final minimum checklist below.
-- ❌ Name the person monitoring payments, jobs, alerts, and support.
+- ✅ Name the people monitoring payments, jobs, alerts, and support.
+  - The completed primary/backup/escalation roster is retained privately; this
+    repository contains only the sanitized confirmation in
+    `docs/PRODUCTION_CONTACTS.md`.
 - ❌ Invite only 5–10 trusted users.
 - ❌ Observe them without guiding them.
 - ❌ Record where they become confused.

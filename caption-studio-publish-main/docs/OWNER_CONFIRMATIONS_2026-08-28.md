@@ -46,3 +46,11 @@ customer or account data in source control.
 - The owner confirms the scanner startup check and harmless suspicious-file
   rejection were completed, with the rejection and corresponding evidence
   retained outside the repository.
+
+## Operating owners
+
+- The owner confirms that primary, backup, monitored route, and escalation
+  assignments are complete for payments, failed jobs, infrastructure alerts,
+  security/privacy, customer support, and launch/rollback authority.
+- Personal contact details and the roster are retained privately; the repository
+  contains only the sanitized confirmation in `docs/PRODUCTION_CONTACTS.md`.
