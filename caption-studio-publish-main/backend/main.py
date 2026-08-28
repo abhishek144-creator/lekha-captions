@@ -288,6 +288,7 @@ async def request_logging_middleware(request: Request, call_next):
 _ENV_RAW = (os.environ.get("APP_ENV") or os.environ.get("ENV") or "").strip().lower()
 _ENV_ALIASES = {
     "prod": "production", "production": "production",
+    "stage": "staging", "staging": "staging",
     "dev": "development", "local": "development", "development": "development",
     "test": "test", "testing": "test",
 }
@@ -295,13 +296,18 @@ if not _ENV_RAW and ("pytest" in sys.modules or "unittest" in sys.modules):
     _ENV_RAW = "test"
 if _ENV_RAW not in _ENV_ALIASES:
     raise RuntimeError(
-        "APP_ENV must be explicitly set to development, test, or production. "
+        "APP_ENV must be explicitly set to development, staging, test, or production. "
         "Refusing to start with an implicit permissive environment."
     )
 APP_ENV = _ENV_ALIASES[_ENV_RAW]
 _IS_PRODUCTION = APP_ENV == "production"
+_IS_STAGING = APP_ENV == "staging"
 _IS_DEVELOPMENT = APP_ENV == "development"
 _IS_TEST = APP_ENV == "test"
+# Any deployed environment can route a follow-up request to a different API
+# replica or to a worker. Source media must therefore be durable outside local
+# development and tests; accepting local-only uploads causes later 404s.
+_REQUIRES_DURABLE_MEDIA = not (_IS_DEVELOPMENT or _IS_TEST)
 
 FIREBASE_APP_CHECK_ENFORCED = os.environ.get(
     "FIREBASE_APP_CHECK_ENFORCED",
@@ -3402,7 +3408,7 @@ async def upload_video(file: UploadFile = File(...), request: Request = None, re
         remote_path = await asyncio.to_thread(
             upload_source_media, file_path, uid, file_id, file_ext, 6
         )
-        if _IS_PRODUCTION and not remote_path:
+        if _REQUIRES_DURABLE_MEDIA and not remote_path:
             try:
                 os.remove(file_path)
             except OSError:
@@ -3411,7 +3417,7 @@ async def upload_video(file: UploadFile = File(...), request: Request = None, re
 
         _track_event("upload_success", {"ext": file_ext})
         owner_persisted = _remember_upload_owner(file_id, uid, remote_path or "", file_ext)
-        if _IS_PRODUCTION and not owner_persisted:
+        if _REQUIRES_DURABLE_MEDIA and not owner_persisted:
             raise HTTPException(status_code=503, detail="Upload ownership could not be persisted. Please retry.")
         _audit_action("upload_success", uid, {"file_id": file_id, "ext": file_ext, "duration": duration})
         return {"success": True, "file_id": file_id, "raw_url": _signed_upload_url(file_id, uid)}
