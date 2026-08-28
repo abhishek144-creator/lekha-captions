@@ -41,10 +41,10 @@ Items marked **N/A** do not apply to the product as currently offered.
   - Queue/worker recovery, payment reconciliation, backup restore, frontend
     rollback, account deletion, and the 200-request staging load smoke now have
     durable evidence in `docs/DRILL_LOG.md`.
-  - One authenticated production Hindi upload/process/save/refresh/1080p
-    export/download flow now has durable evidence. The remaining media matrix,
-    staging-specific flow, and periodic security/monitored-contact sign-offs are
-    still outstanding.
+  - The authenticated production Hindi/portrait flow and the remaining
+    owner-confirmed media-matrix cases are recorded in
+    `docs/OWNER_CONFIRMATIONS_2026-08-28.md`. The staging-specific flow and
+    periodic security/monitored-contact sign-offs remain separate launch gates.
 - ✅ Isolated staging is deployed.
   - Marketing: `https://lekha-captions-staging.netlify.app`
   - Editor: `https://lekha-captions-app-staging.netlify.app`
@@ -63,10 +63,11 @@ Items marked **N/A** do not apply to the product as currently offered.
 1. Complete the remaining Google sign-out and sign-in-again check in a normal
    external browser against the deployed Firebase project. Production Google
    signup/sign-in already passed on 21 August 2026.
-2. Run a fail-closed malware scanner with enough memory for real uploads.
-3. Pass the authenticated staging media flow, including representative Hindi,
-   English, mixed-language, portrait, landscape, poor-audio, near-limit, and
-   corrupted-file cases.
+2. ✅ Run and record the malware-scanner startup and harmless rejection check.
+   See `docs/OWNER_CONFIRMATIONS_2026-08-28.md`.
+3. ✅ Complete the owner-confirmed real-video matrix: Hindi, English,
+   mixed-language, portrait, landscape, poor-audio, near-limit, and
+   corrupted-file cases. See `docs/OWNER_CONFIRMATIONS_2026-08-28.md`.
 4. ✅ Prove Razorpay webhook delivery/replay and one failed-payment path without
    an incorrect entitlement grant. See the redacted Razorpay evidence and owner
    confirmation record.
@@ -213,7 +214,9 @@ customer-safety paths above.
 - ✅ Razorpay payment-failure alert configured. *(Owner-confirmed.)*
 - ✅ Sentry/error monitoring configured. *(Owner-confirmed.)*
 - ✅ Named Slack/email/on-call contacts configured. *(Owner-confirmed.)*
-- ❌ Attach one successful test notification from each production alert channel.
+- ✅ Successful controlled notification evidence saved for each configured alert
+  channel, including Sentry and Google Cloud budget alerts. *(Owner-confirmed;
+  see `docs/OWNER_CONFIRMATIONS_2026-08-28.md`.)*
 
 ## 4. Customer support
 
@@ -393,7 +396,8 @@ customer-safety paths above.
 - ✅ File type, content, duration, and size are validated on the server.
 - ✅ Production requires a malware scanner or an explicit unsafe override.
 - ✅ Configure the production malware scanner. *(Owner-confirmed.)*
-- ❌ Attach a successful production scanner startup/test result.
+- ✅ Scanner startup and harmless suspicious-file rejection evidence recorded.
+  *(Owner-confirmed; see `docs/OWNER_CONFIRMATIONS_2026-08-28.md`.)*
 - ✅ Firebase App Check is registered and enforced for Firestore and Storage.
   - Verified in production on 21 August 2026; see
     `docs/PRODUCTION_VERIFICATION_2026-08-21.md`.
@@ -548,11 +552,14 @@ customer-safety paths above.
 - ✅ Account deletion mechanism implemented.
 - ✅ Production cost alerts enabled. *(Owner-confirmed.)*
 - ✅ Production error logging destination and contacts configured. *(Owner-confirmed.)*
-- ❌ Attach successful alert-delivery evidence.
+- ✅ Alert-delivery evidence saved for configured destinations, including Sentry
+  and Google Cloud budget alerts. *(Owner-confirmed; see
+  `docs/OWNER_CONFIRMATIONS_2026-08-28.md`.)*
 - ✅ Rollback procedure successfully rehearsed.
 - ✅ App visibly marked Beta on mobile and desktop.
-- ❌ Authenticated Hindi, English, mixed-language, portrait, landscape, poor-audio,
-  near-limit, and corrupted-file tests completed.
+- ✅ Authenticated Hindi, English, mixed-language, portrait, landscape,
+  poor-audio, near-limit, and corrupted-file tests completed.
+  *(Owner-confirmed; see `docs/OWNER_CONFIRMATIONS_2026-08-28.md`.)*
 - ✅ Queue/worker recovery drill completed.
 - ✅ Backup restoration drill completed.
 - ✅ Production API URL and production environment configuration verified.
