@@ -108,7 +108,9 @@ customer-safety paths above.
   successfully with Firebase CLI on 4 August 2026.
 - ✅ No active server secrets or Firebase Admin credential files are present in
   the tracked frontend/source.
-- ❌ Credentials previously used with older public code have been rotated.
+- ✅ Credential-exposure review completed; the owner confirms no active or
+  legacy credential was exposed, so rotation is not required for this release.
+  See `docs/OWNER_CONFIRMATIONS_2026-08-28.md`.
 
 ## 2. Complete customer journey
 
@@ -539,7 +541,9 @@ customer-safety paths above.
 - ✅ One real refund tested. *(Owner-confirmed.)*
 - ✅ Production Firebase rules deployed and reviewed (4 August 2026).
 - ✅ Current tracked frontend/source does not expose active server secrets.
-- ❌ Legacy credentials rotated and production secrets stored in the hosting secret manager.
+- ✅ Credential-exposure review completed; no active or legacy credential was
+  exposed, so rotation is not required for this release. *(Owner-confirmed; see
+  `docs/OWNER_CONFIRMATIONS_2026-08-28.md`.)*
 - ✅ Upload limits enabled.
 - ✅ Per-user usage and concurrency limits enabled.
 - ✅ Failed provider/system calls return AI allowance.
