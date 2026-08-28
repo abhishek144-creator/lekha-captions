@@ -5215,7 +5215,15 @@ async function main() {
   if (disableSandbox && runtimeEnv === 'production') {
     throw new Error('PUPPETEER_DISABLE_SANDBOX is forbidden in production');
   }
-  const browserArgs = ['--disable-gpu', '--disable-dev-shm-usage'];
+  // Railway workers run Chromium as an unprivileged user without a desktop
+  // keyring. Asking Chrome to use its basic (file-backed) credential store
+  // avoids a fatal credentials.cc permission failure before the first page is
+  // created. No browser credentials are used by this offline renderer.
+  const browserArgs = [
+    '--disable-gpu',
+    '--disable-dev-shm-usage',
+    '--password-store=basic',
+  ];
   if (disableSandbox) browserArgs.push('--no-sandbox');
 
   const browser = await puppeteer.launch({
