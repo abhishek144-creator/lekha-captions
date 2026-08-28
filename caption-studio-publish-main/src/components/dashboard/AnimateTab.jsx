@@ -80,15 +80,46 @@ const categoryColors = {
 // Get all advanced animation values as flat array for quick check
 const allAdvancedValues = Object.values(advancedAnimationCategories).flat().map(a => a.value);
 
-export default function AnimateTab({ selectedCaption, captions, setCaptions, basicOnly = false }) {
+export default function AnimateTab({ selectedCaption, selectedWord, captions, setCaptions, basicOnly = false }) {
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const freshSelectedCaption = captions?.find(c => c.id === selectedCaption?.id) || selectedCaption;
-  const currentAnimation = freshSelectedCaption?.animation || 'none';
-  const currentSpeed = freshSelectedCaption?.animationSpeed ?? 1;
+  const selectedWordCaptionId = selectedWord?.captionId || selectedWord?.elementId || selectedWord?.caption?.id;
+  const freshSelectedWordCaption = selectedWordCaptionId
+    ? (captions?.find(c => c.id === selectedWordCaptionId) || selectedWord?.caption)
+    : null;
+  const selectedWordKey = freshSelectedWordCaption && Number.isInteger(selectedWord?.wordIndex)
+    ? `${freshSelectedWordCaption.id}-${selectedWord.wordIndex}`
+    : '';
+  const freshSelectedWordStyle = selectedWordKey
+    ? (freshSelectedWordCaption?.wordStyles?.[selectedWordKey] || {})
+    : null;
+  const isWordTarget = Boolean(freshSelectedWordCaption && selectedWordKey);
+  const hasAnimationTarget = isWordTarget || Boolean(freshSelectedCaption);
+  const currentAnimation = isWordTarget
+    ? (freshSelectedWordStyle?.animation || 'none')
+    : (freshSelectedCaption?.animation || 'none');
+  const currentSpeed = isWordTarget
+    ? (freshSelectedWordStyle?.animationSpeed ?? 1)
+    : (freshSelectedCaption?.animationSpeed ?? 1);
 
   const handleAnimationSelect = (animValue) => {
-    if (freshSelectedCaption && setCaptions) {
+    if (isWordTarget && setCaptions) {
+      setCaptions(prev => prev.map(cap => {
+        if (cap.id !== freshSelectedWordCaption.id) return cap;
+        const wordStyles = cap.wordStyles || {};
+        return {
+          ...cap,
+          wordStyles: {
+            ...wordStyles,
+            [selectedWordKey]: {
+              ...(wordStyles[selectedWordKey] || {}),
+              animation: animValue,
+            },
+          },
+        };
+      }));
+    } else if (freshSelectedCaption && setCaptions) {
       setCaptions(prev => prev.map(cap => {
         if (cap.id === freshSelectedCaption.id) {
           return { ...cap, animation: animValue };
@@ -99,7 +130,22 @@ export default function AnimateTab({ selectedCaption, captions, setCaptions, bas
   };
 
   const handleSpeedChange = (speed) => {
-    if (freshSelectedCaption && setCaptions) {
+    if (isWordTarget && setCaptions) {
+      setCaptions(prev => prev.map(cap => {
+        if (cap.id !== freshSelectedWordCaption.id) return cap;
+        const wordStyles = cap.wordStyles || {};
+        return {
+          ...cap,
+          wordStyles: {
+            ...wordStyles,
+            [selectedWordKey]: {
+              ...(wordStyles[selectedWordKey] || {}),
+              animationSpeed: speed,
+            },
+          },
+        };
+      }), { coalesce: true });
+    } else if (freshSelectedCaption && setCaptions) {
       // coalesce: slider drags fire per tick — collapse the burst into one
       // undo snapshot instead of flooding the history cap.
       setCaptions(prev => prev.map(cap => {
@@ -115,24 +161,30 @@ export default function AnimateTab({ selectedCaption, captions, setCaptions, bas
 
   return (
     <div className={`h-full overflow-y-auto custom-scrollbar ${basicOnly ? 'pr-1' : 'pr-2'}`}>
-      <h2 className={`${basicOnly ? 'text-base mb-4' : 'text-lg mb-6'} font-semibold text-white`}>Animate Line</h2>
+      <h2 className={`${basicOnly ? 'text-base mb-4' : 'text-lg mb-6'} font-semibold text-white`}>
+        {isWordTarget ? 'Animate Word' : 'Animate Line'}
+      </h2>
 
       <div className="space-y-4">
-        {!freshSelectedCaption && (
+        {!hasAnimationTarget && (
           <div className="p-4 rounded-lg bg-white/5 border border-white/10">
             <p className="text-sm text-gray-300">
               Select a caption or text element to apply animation.
             </p>
           </div>
         )}
-        {(freshSelectedCaption || basicOnly) && (
+        {(hasAnimationTarget || basicOnly) && (
           <>
-            {freshSelectedCaption && (
+            {hasAnimationTarget && (
             <div className="p-3 rounded-lg bg-white/5 border border-white/10">
               <p className="text-xs text-gray-400 mb-1">
-                {freshSelectedCaption.isTextElement ? 'Selected Text Element' : 'Selected Caption'}
+                {isWordTarget
+                  ? 'Selected Word'
+                  : (freshSelectedCaption.isTextElement ? 'Selected Text Element' : 'Selected Caption')}
               </p>
-              <p className="text-sm text-white font-medium line-clamp-2">"{freshSelectedCaption.text}"</p>
+              <p className="text-sm text-white font-medium line-clamp-2">
+                "{isWordTarget ? (selectedWord?.word || '') : freshSelectedCaption.text}"
+              </p>
             </div>
             )}
 
@@ -144,12 +196,12 @@ export default function AnimateTab({ selectedCaption, captions, setCaptions, bas
                   <button
                     key={anim.value}
                     onClick={() => handleAnimationSelect(anim.value)}
-                    disabled={!freshSelectedCaption}
+                    disabled={!hasAnimationTarget}
                     className={`
                       relative group overflow-hidden rounded-xl transition-all duration-300 border ${basicOnly ? 'p-2.5' : 'p-3'}
                       ${currentAnimation === anim.value && !isAdvancedActive
                         ? 'bg-white/10 border-white/30 shadow-[0_0_10px_rgba(255,255,255,0.08)]'
-                        : !freshSelectedCaption
+                        : !hasAnimationTarget
                           ? 'bg-zinc-900/30 border-white/5 opacity-70 cursor-not-allowed'
                           : 'bg-zinc-900/50 border-white/5 hover:border-white/20 hover:bg-zinc-800/80'}
                     `}

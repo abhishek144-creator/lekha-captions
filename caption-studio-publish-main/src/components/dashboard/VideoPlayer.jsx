@@ -104,15 +104,19 @@ function getCaptionTemplateId(caption, fallbackStyle = {}) {
   ).trim();
 }
 
-function captionHasCreativelyPositionedWords(caption) {
-  return Object.values(caption?.wordStyles || {}).some((wordStyle = {}) => (
+function wordHasCreativePosition(wordStyle = {}) {
+  return (
     Math.abs(Number(wordStyle.abs_x_pct) || 0) > 0.01
     || Math.abs(Number(wordStyle.abs_y_pct) || 0) > 0.01
     || Math.abs(Number(wordStyle.x_pct) || 0) > 0.01
     || Math.abs(Number(wordStyle.y_pct) || 0) > 0.01
     || Math.abs(Number(wordStyle.x) || 0) > 0.01
     || Math.abs(Number(wordStyle.y) || 0) > 0.01
-  ))
+  )
+}
+
+function captionHasCreativelyPositionedWords(caption) {
+  return Object.values(caption?.wordStyles || {}).some(wordHasCreativePosition)
 }
 
 function getCaptionRevealWordIndex(caption, currentTime, wordCount, templateId = '') {
@@ -3902,8 +3906,12 @@ function applySourceTemplateWordStyle(
   const hasSelectedWordAnimation = Boolean(
     wordStyle?.animation && wordStyle.animation !== 'none',
   );
-  const shouldFreezeCptMotion = isCptCaption && !hasSelectedWordAnimation;
-  if (!hasStyle && !isCptCaption && node.dataset.sourceWordStyled !== 'true') {
+  const shouldFreezeCptMotion = (
+    isCptCaption
+    && wordHasCreativePosition(wordStyle)
+    && !hasSelectedWordAnimation
+  );
+  if (!hasStyle && node.dataset.sourceWordStyled !== 'true') {
     delete node.dataset.sourceWordStyled;
     delete node.dataset.sourceWordPositioned;
     delete node.dataset.sourceWordGradient;
@@ -3921,7 +3929,14 @@ function applySourceTemplateWordStyle(
   const animValue = (!shouldFreezeCptMotion && hasSelectedWordAnimation)
     ? getSourceWordAnimationStyle(wordStyle.animation, wordStyle.animationSpeed || 1)
     : '';
-  const animChanged = animValue !== (node.dataset.sourceWordAnim || '');
+  const animationStillApplied = Boolean(
+    animValue
+    && visualTargets.some(target => target.style.animation === animValue),
+  );
+  const animChanged = (
+    animValue !== (node.dataset.sourceWordAnim || '')
+    || (Boolean(animValue) && !animationStillApplied)
+  );
 
   if (node.dataset.sourceWordStyled === 'true') {
     clearTargets.forEach((target) => {
@@ -3934,7 +3949,7 @@ function applySourceTemplateWordStyle(
     prepareSourceTemplateWordNode(node);
   }
 
-  if (!hasStyle && !isCptCaption) {
+  if (!hasStyle) {
     delete node.dataset.sourceWordStyled;
     delete node.dataset.sourceWordGradient;
     delete node.dataset.sourceWordAnim;
@@ -4926,7 +4941,7 @@ export default function VideoPlayer({
   };
 
   const getCptWordMotionStyle = (caption, wordStyle = {}) => {
-    if (!captionHasCreativelyPositionedWords(caption)) return null
+    if (!captionHasCreativelyPositionedWords(caption) || !wordHasCreativePosition(wordStyle)) return null
 
     // CPT words need a stable base so their manually authored placement is not
     // disturbed by template motion. A motion chosen in the floating word editor
@@ -5092,10 +5107,19 @@ export default function VideoPlayer({
     const startY = event.clientY;
     let dragStarted = false;
 
+    // Keep a detached word's pointer stream attached to the same word even
+    // though its selected editor is rendered in a portal above the canvas.
+    // Without capture, a later click can be swallowed by the portal/canvas and
+    // the word editor never reopens after a drag.
+    target.setPointerCapture?.(pointerId);
+
     const cleanup = () => {
       document.removeEventListener('pointermove', handlePointerMove);
       document.removeEventListener('pointerup', handlePointerUp);
       document.removeEventListener('pointercancel', handlePointerCancel);
+      if (target.hasPointerCapture?.(pointerId)) {
+        target.releasePointerCapture?.(pointerId);
+      }
     };
 
     const handlePointerMove = (moveEvent) => {
@@ -5201,19 +5225,6 @@ export default function VideoPlayer({
     && captionHasCptWords(caption)
     && wordIndex > currentIdx
   );
-  const isAdvancedTemplateCaptionEditingActive = (caption) => {
-    const templateId = getCaptionTemplateId(caption, captionStyle);
-    if (!isAdvancedTemplateId(templateId)) return false;
-    if (draggingWord && draggingWord.captionId === caption.id) return true;
-    if (isRecreatedAdvancedTemplateId(templateId)) return false;
-    const wordStyles = caption.wordStyles || {};
-    return Object.values(wordStyles).some((ws = {}) => (
-      isWordDetached(ws)
-      || Math.abs(ws.x_pct || 0) > 0.01
-      || Math.abs(ws.y_pct || 0) > 0.01
-    ));
-  };
-
   const getCaptionCurrentWordIndex = (caption, wordCount) => {
     const activeTemplateId = caption?.template_id || caption?.applied_template_style?.template_id || captionStyle?.template_id;
     if (
@@ -6506,15 +6517,12 @@ export default function VideoPlayer({
         }
       }
 
-      const rawCenterXPct = startCenterXPct + (deltaX / Math.max(containerRectAtStart?.width || 0, 1)) * 100;
-      const rawCenterYPct = startCenterYPct + (deltaY / Math.max(containerRectAtStart?.height || 0, 1)) * 100;
-      const snappedXPct = getWordSnap(rawCenterXPct, snapTargetsX, containerRectAtStart?.width || containerWidth);
-      const snappedYPct = getWordSnap(rawCenterYPct, snapTargetsY, containerRectAtStart?.height || containerHeight);
-      const baseDeltaX = deltaX + (typeof snappedXPct === 'number' ? ((snappedXPct - rawCenterXPct) / 100) * (containerRectAtStart?.width || containerWidth) : 0);
-      const baseDeltaY = deltaY + (typeof snappedYPct === 'number' ? ((snappedYPct - rawCenterYPct) / 100) * (containerRectAtStart?.height || containerHeight) : 0);
-      const localCptSnap = getLocalCptGuides(baseDeltaX, baseDeltaY);
-      const adjustedClientDeltaX = localCptSnap.deltaX;
-      const adjustedClientDeltaY = localCptSnap.deltaY;
+      // A word must end exactly where the pointer releases it. The former
+      // magnetic/collision snap adjusted the saved delta by a few pixels and
+      // could move neighbouring sentence words visually as well. Keep guides
+      // for caption tools, but word drags have no implicit correction.
+      const adjustedClientDeltaX = deltaX;
+      const adjustedClientDeltaY = deltaY;
       const adjustedDeltaX = adjustedClientDeltaX / (isFixedWordEditorDrag ? 1 : viewportScaleX);
       const adjustedDeltaY = adjustedClientDeltaY / (isFixedWordEditorDrag ? 1 : viewportScaleY);
       const newX = dragState.initialX + adjustedDeltaX;
@@ -6528,11 +6536,8 @@ export default function VideoPlayer({
         clientDeltaX: adjustedClientDeltaX,
         clientDeltaY: adjustedClientDeltaY,
       };
-      setSnapGuides({
-        hLines: typeof snappedYPct === 'number' ? [snappedYPct] : [],
-        vLines: typeof snappedXPct === 'number' ? [snappedXPct] : [],
-      });
-      setCptWordGuides(localCptSnap.guides);
+      setSnapGuides({ hLines: [], vLines: [] });
+      setCptWordGuides([]);
       
       // Directly manipulate the DOM for zero-latency dragging
       if (dragState.dragSource === 'source-template') {
@@ -6562,7 +6567,7 @@ export default function VideoPlayer({
       }
     };
 
-    const handleNativeMouseUp = () => {
+    const handleNativeMouseUp = (upEvent) => {
       document.removeEventListener('mousemove', handleNativeMouseMove);
       document.removeEventListener('mouseup', handleNativeMouseUp);
       document.removeEventListener('pointermove', handleNativeMouseMove);
@@ -6571,7 +6576,24 @@ export default function VideoPlayer({
       
       // Now perform the final React state update to save the new coordinates
       if (hasMoved) {
-        const finalCoords = currentDragCoordinates.current;
+        const previousCoords = currentDragCoordinates.current;
+        const releaseClientDeltaX = Number.isFinite(upEvent?.clientX)
+          ? upEvent.clientX - dragState.startX
+          : (Number(previousCoords?.clientDeltaX) || 0);
+        const releaseClientDeltaY = Number.isFinite(upEvent?.clientY)
+          ? upEvent.clientY - dragState.startY
+          : (Number(previousCoords?.clientDeltaY) || 0);
+        // Commit the actual release point. A pointer-up can arrive a few
+        // pixels beyond the browser's last pointer-move, which previously made
+        // the word jump slightly after it was dropped.
+        const finalCoords = {
+          x: dragState.initialX + releaseClientDeltaX / (isFixedWordEditorDrag ? 1 : viewportScaleX),
+          y: dragState.initialY + releaseClientDeltaY / (isFixedWordEditorDrag ? 1 : viewportScaleY),
+          deltaX: releaseClientDeltaX / (isFixedWordEditorDrag ? 1 : viewportScaleX),
+          deltaY: releaseClientDeltaY / (isFixedWordEditorDrag ? 1 : viewportScaleY),
+          clientDeltaX: releaseClientDeltaX,
+          clientDeltaY: releaseClientDeltaY,
+        };
         if (finalCoords) {
           const parentFontSize = isElement
             ? (caption.customStyle?.fontSize || 18)
@@ -7034,6 +7056,9 @@ export default function VideoPlayer({
         fontSize: `${Math.round(selectedWordFontSize * 1.2)}px`,
         textShadow: `0 0 18px ${selectedEmphasisAccent}99, 0 0 6px ${selectedEmphasisAccent}66`,
       } : {};
+      const selectedWordAnimation = selectedWordStyle.animation && selectedWordStyle.animation !== 'none'
+        ? getAnimationStyle(selectedWordStyle.animation, selectedWordStyle.animationSpeed || 1)
+        : 'none';
 
       return createPortal(
       <>
@@ -7145,6 +7170,8 @@ export default function VideoPlayer({
             wordBreak: selectedWordBoxWidth ? 'break-all' : 'normal',
             textAlign: 'center',
             opacity: selectedWordIsPending ? 0 : 1,
+            animation: selectedWordAnimation,
+            transformOrigin: 'center center',
           }}
         >
           {renderWordTextContent(selectedDetachedWord.word, selectedWordStyle, captionStyle?.text_color || '#ffffff')}
@@ -7785,7 +7812,10 @@ export default function VideoPlayer({
                         whiteSpace: caption.text?.includes('\n') ? 'pre-wrap' : ((shouldWrapCaption || captionStyle?.boxWidth) ? 'normal' : 'nowrap'),
                         overflowWrap: shouldWrapCaption ? 'anywhere' : 'normal',
                         wordBreak: 'normal',
-                        padding: hasDetachedWords ? '0px' : undefined,
+                        // A detached word keeps an invisible spacer in this
+                        // line. Preserve the line padding too, otherwise the
+                        // remaining words jump when one word is moved.
+                        padding: undefined,
                         // Template markup/classes own motion. A generic caption
                         // animation here masks the differences between templates.
                         animation: 'none',
@@ -7795,9 +7825,10 @@ export default function VideoPlayer({
                     >
                       {(() => {
                         if (isAdvancedTemplateId(activeCaptionTemplateId)) {
-                          if (isAdvancedTemplateCaptionEditingActive(caption, advancedTemplatePhaseIndex)) {
-                            return renderEditableAdvancedTemplateCaption(caption, advancedTemplatePhaseIndex);
-                          }
+                          // Keep the authored source renderer mounted during
+                          // word dragging/styling. Replacing it with a generic
+                          // editable renderer reflowed every sibling word and
+                          // changed the caption box mid-gesture.
                           return (
                             <AppliedAdvancedTemplateCaption
                               key={`${caption.id}-${activeCaptionTemplateId}-${advancedTemplatePhaseIndex}-${caption.text}`}
@@ -8041,7 +8072,9 @@ export default function VideoPlayer({
                           : (caption.animation && caption.animation !== 'none' ? getAnimationStyle(caption.animation, caption.animationSpeed) : 'none'),
                         color: captionStyle?.text_color || '#ffffff',
                         textTransform: captionStyle?.text_case && captionStyle.text_case !== 'none' ? captionStyle.text_case : undefined,
-                        padding: hasDetachedWords ? '0px' : `${displayCaptionPadY}px ${displayCaptionPadX}px`,
+                        // Keep the sentence's original layout after a word is
+                        // detached; its own overlay is positioned separately.
+                        padding: `${displayCaptionPadY}px ${displayCaptionPadX}px`,
                         position: 'relative',
                         zIndex: 10,
                         whiteSpace: caption.text?.includes('\n') ? 'pre-wrap' : ((shouldWrapCaption || captionStyle?.boxWidth) ? 'normal' : 'nowrap'),

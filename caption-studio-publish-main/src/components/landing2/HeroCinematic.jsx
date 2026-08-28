@@ -505,7 +505,7 @@ export function CraftPhoneShowcase() {
 
         <div className="mt-5 flex flex-col items-center justify-between gap-3 border-t border-white/[0.08] pt-5 text-center sm:flex-row sm:text-left">
           <p className="font-mono text-[0.54rem] uppercase tracking-[0.24em] text-white/30">Two live reels · Ten source templates · 100+ styles in the full library</p>
-          <Link to={`${createPageUrl('Dashboard')}?action=upload`} className="text-sm font-semibold text-[#ffd166] transition-colors hover:text-white">
+          <Link to={`${createPageUrl('Dashboard')}?entry=editor`} className="text-sm font-semibold text-[#ffd166] transition-colors hover:text-white">
             Explore templates →
           </Link>
         </div>
@@ -555,8 +555,8 @@ export default function HeroCinematic() {
           </motion.p>
 
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 }} className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-            <TicketButton accent to={`${createPageUrl('Dashboard')}?action=upload`}>Upload Video</TicketButton>
-            <TicketButton to={`${createPageUrl('Dashboard')}?action=upload`} className="landing-hero-secondary">Try for Free</TicketButton>
+            <TicketButton accent to={`${createPageUrl('Dashboard')}?entry=editor`}>Upload Video</TicketButton>
+            <TicketButton to={`${createPageUrl('Dashboard')}?entry=editor`} className="landing-hero-secondary">Try for Free</TicketButton>
           </motion.div>
 
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.24 }} className="landing-hero-proof-tags mt-6 flex flex-wrap justify-center gap-3">

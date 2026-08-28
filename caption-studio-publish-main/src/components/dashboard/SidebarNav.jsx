@@ -33,7 +33,10 @@ export default function SidebarNav({ activeTab, setActiveTab, onOpenPricing }) {
   }
 
   const planDetails = getPlanDetails();
-  const creditsLeft = userData?.credits_remaining ?? 0;
+  const storedCredits = Number(userData?.credits_remaining);
+  const creditsLeft = planDetails.name === 'Free'
+    ? Math.min(planDetails.totalCredits, Math.max(0, Number.isFinite(storedCredits) ? storedCredits : 0))
+    : Math.max(0, Number.isFinite(storedCredits) ? storedCredits : 0);
 
   const handleLogout = async () => {
     try {

@@ -71,6 +71,9 @@ export default function Login() {
         setFormError('');
         setIsSubmitting(true);
         try {
+            // Start with the familiar Google account chooser. AuthContext
+            // switches to a same-tab redirect when browser policy blocks the
+            // popup, so signup is not tied to one browser transport.
             const result = await loginWithGoogle({
                 consent: {
                     granted: true,

@@ -24,6 +24,7 @@ class ApiContractTests(unittest.TestCase):
         self.client = TestClient(app)
         main._export_jobs.clear()
         main._export_idempotency.clear()
+        main._upload_idempotency.clear()
         main._active_exports_by_user.clear()
         main._active_processes_by_user.clear()
         main._payment_idempotency.clear()
@@ -38,6 +39,7 @@ class ApiContractTests(unittest.TestCase):
     def tearDown(self):
         main._export_jobs.clear()
         main._export_idempotency.clear()
+        main._upload_idempotency.clear()
         main._active_exports_by_user.clear()
         main._active_processes_by_user.clear()
         main._payment_idempotency.clear()
@@ -362,6 +364,30 @@ class ApiContractTests(unittest.TestCase):
         media_res = self.client.get(data["raw_url"])
         self.assertEqual(media_res.status_code, 200)
 
+    @patch("main._scan_upload_for_threat", return_value=True)
+    @patch("main._probe_media", return_value={"format": {"duration": 12.3}, "streams": [{"codec_type": "video"}]})
+    @patch("main.verify_token", return_value={"uid": "upload-user"})
+    def test_upload_retry_replays_completed_file_without_consuming_rate_slot(self, _verify_token, _probe, _scan):
+        headers = {
+            "Authorization": "Bearer token-123",
+            "Idempotency-Key": "stable-upload-key",
+        }
+        first = self.client.post(
+            "/api/upload",
+            files={"file": ("sample.mp4", io.BytesIO(b"fake-bytes"), "video/mp4")},
+            headers=headers,
+        )
+        self.assertEqual(first.status_code, 200)
+        second = self.client.post(
+            "/api/upload",
+            files={"file": ("sample.mp4", io.BytesIO(b"fake-bytes"), "video/mp4")},
+            headers=headers,
+        )
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(second.json()["file_id"], first.json()["file_id"])
+        self.assertTrue(second.json()["idempotent_replay"])
+        self.assertEqual(len(main._upload_rate["user:upload-user"]), 1)
+
     def test_upload_requires_auth(self):
         files = {"file": ("sample.mp4", io.BytesIO(b"fake-bytes"), "video/mp4")}
         res = self.client.post("/api/upload", files=files)
@@ -385,6 +411,34 @@ class ApiContractTests(unittest.TestCase):
         data = res.json()
         self.assertIn("success", data)
         self.assertIn("captions", data)
+
+    @patch("main.verify_token", return_value={"uid": "process-idempotent-user"})
+    @patch("main.processor.generate_captions_only", new_callable=AsyncMock)
+    @patch("main._compute_media_hash", side_effect=RuntimeError("skip local cache"))
+    @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
+    def test_process_idempotency_replays_after_response_loss(
+        self, _safe_find, _hash, mock_process, _verify_token
+    ):
+        mock_process.return_value = {
+            "success": True,
+            "captions": [{"id": 1, "text": "hello", "start_time": 0, "end_time": 1}],
+        }
+        file_id = "123e4567-e89b-12d3-a456-426614174010"
+        main._upload_owners[file_id] = "process-idempotent-user"
+        request = {
+            "file_id": file_id,
+            "language": "english",
+            "id_token": "token-123",
+            "idempotency_key": "stable-process-key",
+        }
+
+        first = self.client.post("/api/process", json=request)
+        replay = self.client.post("/api/process", json=request)
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(replay.status_code, 200)
+        self.assertTrue(replay.json().get("idempotent_replay"))
+        self.assertEqual(mock_process.await_count, 1)
 
     def test_process_slot_allows_only_one_active_request_per_user(self):
         self.assertTrue(main._acquire_process_slot("process-user", "request-1"))
@@ -707,10 +761,28 @@ class ApiContractTests(unittest.TestCase):
                     "fps": 30,
                 },
             )
+            # Browsers that lose the first response (or users who click twice)
+            # must reconnect to the same queued render rather than spend a
+            # second credit on an identical export.
+            replay = self.client.post(
+                "/api/export",
+                json={
+                    "file_id": "123e4567-e89b-12d3-a456-426614174000",
+                    "captions": [{"id": "1", "text": "Hello", "start_time": 0.0, "end_time": 1.0}],
+                    "style": {},
+                    "word_layouts": {},
+                    "id_token": "secret-token",
+                    "quality": "1080p",
+                    "fps": 30,
+                },
+            )
 
         self.assertEqual(res.status_code, 200)
         payload = res.json()
         self.assertTrue(payload.get("queued"))
+        self.assertEqual(replay.status_code, 200)
+        self.assertTrue(replay.json().get("idempotent_replay"))
+        self.assertEqual(replay.json()["export_job_id"], payload["export_job_id"])
         self.assertEqual(
             main._active_exports_by_user.get("queue-user"),
             payload["export_job_id"],
@@ -1431,18 +1503,23 @@ class ApiContractTests(unittest.TestCase):
 
         db = SimpleNamespace(transaction=make_transaction)
         user_ref = FakeUserRef(FakeSnapshot(True, {
-            "credits_remaining": 2,
+            "credits_remaining": 73,
             "subscription_tier": "free",
             "history": [],
             "export_timestamps": [],
         }))
         history_item = {"id": "file-1", "export_job_id": "job-1"}
 
-        with patch.object(main.firestore, "transactional", new=lambda fn: fn):
+        with (
+            patch.object(main.firestore, "transactional", new=lambda fn: fn),
+            patch.object(main, "DISABLE_EXPORT_CREDIT_LIMIT", False),
+        ):
             main._record_export_usage(db, user_ref, history_item, 100.0, "job-1")
             main._record_export_usage(db, user_ref, history_item, 101.0, "job-1")
 
         self.assertEqual([write[0] for write in transactions[0].writes], ["create", "update"])
+        first_user_update = transactions[0].writes[1][2]
+        self.assertEqual(first_user_update["credits_remaining"], main.FREE_PLAN_CREDITS - 1)
         self.assertEqual(transactions[1].writes, [])
 
     def test_payment_idempotency_fails_closed_when_redis_is_unavailable(self):
@@ -1554,6 +1631,150 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(stored["credits_remaining"], 3)
         self.assertEqual(stored["subscription_tier"], "free")
         self.assertEqual(stored["uid"], "new-user")
+
+    def test_catalog_defines_every_export_entitlement(self):
+        expected_credits = {
+            "free": 3,
+            "starter": 15,
+            "creator": 45,
+            "pro": 120,
+            "starter_yearly": 180,
+            "creator_yearly": 540,
+            "pro_yearly": 1440,
+        }
+        for plan_id, credits in expected_credits.items():
+            plan = main.PLAN_PRICING[plan_id]
+            self.assertEqual(plan["credits"], credits)
+            self.assertIn("daily_limit", plan)
+            self.assertIn("max_video_seconds", plan)
+        self.assertTrue(main.PLAN_PRICING["free"]["is_free"])
+        self.assertEqual(main.FREE_PLAN_CREDITS, 3)
+
+    def test_free_credits_are_exportable_and_zero_balance_is_blocked(self):
+        with (
+            patch.object(main, "DISABLE_EXPORT_CREDIT_LIMIT", False),
+            patch.object(main, "DISABLE_EXPORT_DAILY_LIMIT", False),
+        ):
+            allowed, reason, _history = main._evaluate_export_policy({
+                "subscription_tier": "free",
+                "credits_remaining": main.FREE_PLAN_CREDITS,
+                "export_timestamps": [],
+            }, time.time())
+            self.assertTrue(allowed)
+            self.assertEqual(reason, "")
+
+            allowed, reason, _history = main._evaluate_export_policy({
+                "subscription_tier": "starter",
+                "credits_remaining": 0,
+                "export_timestamps": [],
+                "subscription_expiry": (datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
+            }, time.time())
+            self.assertFalse(allowed)
+            self.assertIn("UPGRADE_REQUIRED", reason)
+
+    @patch("main.verify_token", return_value={"uid": "legacy-free-user", "email": "legacy@example.com"})
+    def test_account_bootstrap_repairs_missing_legacy_free_credits(self, _verify_token):
+        stored = {"uid": "legacy-free-user", "subscription_tier": "free"}
+
+        class FakeSnapshot:
+            exists = True
+
+            def to_dict(self):
+                return dict(stored)
+
+        class FakeTransaction:
+            def set(self, _ref, data, merge=False):
+                if not merge:
+                    raise AssertionError("legacy entitlement repair must merge fields")
+                stored.update(data)
+
+        class FakeUserRef:
+            def get(self, transaction=None):
+                return FakeSnapshot()
+
+            def create(self, _data):
+                raise main.AlreadyExists("already exists")
+
+            def set(self, data, merge=False):
+                if not merge:
+                    raise AssertionError("profile refresh must merge fields")
+                stored.update(data)
+
+        transaction = FakeTransaction()
+        fake_ref = FakeUserRef()
+        fake_db = SimpleNamespace(
+            collection=lambda _name: SimpleNamespace(document=lambda _uid: fake_ref),
+            transaction=lambda: transaction,
+        )
+        with (
+            patch.object(main, "get_db", return_value=fake_db),
+            patch.object(main.firestore, "transactional", new=lambda fn: fn),
+            patch.object(main, "_audit_action"),
+        ):
+            response = self.client.post("/api/account-bootstrap", json={"id_token": "token-123"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(stored["credits_remaining"], main.FREE_PLAN_CREDITS)
+
+    @patch("main.verify_token", return_value={"uid": "invalid-free-user", "email": "invalid@example.com"})
+    def test_account_bootstrap_clamps_out_of_range_free_credits(self, _verify_token):
+        stored = {
+            "uid": "invalid-free-user",
+            "subscription_tier": "free",
+            "credits_remaining": 73,
+        }
+
+        class FakeSnapshot:
+            exists = True
+
+            def to_dict(self):
+                return dict(stored)
+
+        class FakeTransaction:
+            def set(self, _ref, data, merge=False):
+                if not merge:
+                    raise AssertionError("free entitlement repair must merge fields")
+                stored.update(data)
+
+        class FakeUserRef:
+            def get(self, transaction=None):
+                return FakeSnapshot()
+
+            def create(self, _data):
+                raise main.AlreadyExists("already exists")
+
+            def set(self, data, merge=False):
+                if not merge:
+                    raise AssertionError("profile refresh must merge fields")
+                stored.update(data)
+
+        transaction = FakeTransaction()
+        fake_ref = FakeUserRef()
+        fake_db = SimpleNamespace(
+            collection=lambda _name: SimpleNamespace(document=lambda _uid: fake_ref),
+            transaction=lambda: transaction,
+        )
+        with (
+            patch.object(main, "get_db", return_value=fake_db),
+            patch.object(main.firestore, "transactional", new=lambda fn: fn),
+            patch.object(main, "_audit_action"),
+        ):
+            response = self.client.post("/api/account-bootstrap", json={"id_token": "token-123"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(stored["credits_remaining"], main.FREE_PLAN_CREDITS)
+
+    @patch("main.verify_token", return_value={"uid": "payment-user"})
+    def test_free_plan_cannot_be_purchased(self, _verify_token):
+        response = self.client.post("/api/create-order", json={
+            "plan_id": "free",
+            "id_token": "token-123",
+            "currency": "INR",
+            "idempotency_key": "free-plan-must-not-purchase",
+        })
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("cannot be purchased", response.json()["detail"])
 
     def test_create_order_requires_auth(self):
         res = self.client.post("/api/create-order", json={"plan_id": "starter", "id_token": "invalid-token", "currency": "INR"})

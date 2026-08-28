@@ -197,10 +197,9 @@ const plans = [
   }
 ]
 
-const YEARLY_CREDIT_MULTIPLIER = 12
-
 function getPlanCredits(plan, billing) {
-  return billing === 'yearly' ? plan.credits * YEARLY_CREDIT_MULTIPLIER : plan.credits
+  const catalogPlanId = billing === 'yearly' ? `${plan.id}_yearly` : plan.id
+  return planCatalog[catalogPlanId]?.credits ?? plan.credits
 }
 
 function getCreditPeriodLabel(billing) {
@@ -317,7 +316,7 @@ export default function PricingSection() {
             if (data.success) {
               toast({ title: 'Payment successful', description: 'Credits added to your account.' })
               window.setTimeout(() => {
-                window.location.href = `${createPageUrl('Dashboard')}?action=upload`
+                window.location.href = `${createPageUrl('Dashboard')}?entry=editor`
               }, 1200)
             } else {
               toast({ variant: 'destructive', title: 'Payment verification failed', description: 'Please contact support.' })

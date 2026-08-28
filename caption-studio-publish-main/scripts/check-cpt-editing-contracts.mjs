@@ -238,8 +238,28 @@ assert.match(
 );
 assert.match(
   videoPlayerSource,
-  /shouldFreezeCptMotion = isCptCaption && !hasSelectedWordAnimation[\s\S]*animValue = \(!shouldFreezeCptMotion && hasSelectedWordAnimation\)[\s\S]*if \(shouldFreezeCptMotion\)/,
-  'source-template CPT words must preserve a floating-editor animation while freezing unselected template motion',
+  /shouldFreezeCptMotion = \([\s\S]*isCptCaption[\s\S]*wordHasCreativePosition\(wordStyle\)[\s\S]*!hasSelectedWordAnimation[\s\S]*animValue = \(!shouldFreezeCptMotion && hasSelectedWordAnimation\)[\s\S]*if \(shouldFreezeCptMotion\)/,
+  'only the displaced source-template word may freeze; sibling words must retain their authored layout and motion',
+);
+assert.match(
+  videoPlayerSource,
+  /if \(!hasStyle && node\.dataset\.sourceWordStyled !== 'true'\)[\s\S]*if \(!hasStyle\) \{/,
+  'untouched source-template siblings must bypass per-word style rewriting after another word is displaced',
+);
+assert.doesNotMatch(
+  videoPlayerSource,
+  /isAdvancedTemplateCaptionEditingActive/,
+  'advanced-template word editing must not switch the whole caption to a different renderer',
+);
+assert.match(
+  videoPlayerSource,
+  /releaseClientDeltaX = Number\.isFinite\(upEvent\?\.clientX\)[\s\S]*releaseClientDeltaY = Number\.isFinite\(upEvent\?\.clientY\)[\s\S]*x: dragState\.initialX \+ releaseClientDeltaX/,
+  'drag commit must use the actual pointer-up coordinates rather than a stale final move event',
+);
+assert.match(
+  videoPlayerSource,
+  /selectedWordAnimation = selectedWordStyle\.animation[\s\S]*animation: selectedWordAnimation/,
+  'the selected detached-word editor must visibly preview its chosen animation',
 );
 assert.match(
   videoPlayerSource,

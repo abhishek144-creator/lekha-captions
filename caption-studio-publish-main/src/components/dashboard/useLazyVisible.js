@@ -30,11 +30,40 @@ export function useLazyVisible(rootMargin = '150px') {
       return undefined;
     }
 
+    // The galleries scroll inside the inspector panel rather than the window.
+    // Use that element as the observer root so cards reveal as the panel is
+    // scrolled. A viewport-rooted observer can miss nested-scroll updates in
+    // some Chromium/WebView versions and leave the iframe permanently blank.
+    const findScrollParent = (element) => {
+      let parent = element.parentElement;
+      while (parent && parent !== document.body) {
+        const style = window.getComputedStyle(parent);
+        const overflow = `${style.overflow} ${style.overflowY} ${style.overflowX}`;
+        if (/(auto|scroll|overlay)/.test(overflow)) return parent;
+        parent = parent.parentElement;
+      }
+      return null;
+    };
+
+    const root = findScrollParent(node);
     let done = false;
     const reveal = () => {
       if (done) return;
       done = true;
       setVisible(true);
+    };
+
+    const isInView = () => {
+      const rect = node.getBoundingClientRect();
+      const bounds = root?.getBoundingClientRect();
+      const top = bounds?.top ?? 0;
+      const bottom = bounds?.bottom ?? (window.innerHeight || 0);
+      const left = bounds?.left ?? 0;
+      const right = bounds?.right ?? (window.innerWidth || 0);
+      const hasSize = rect.width > 0 && rect.height > 0;
+      return hasSize
+        && rect.top < bottom + 200 && rect.bottom > top - 200
+        && rect.left < right + 200 && rect.right > left - 200;
     };
 
     const observer = new IntersectionObserver(
@@ -44,34 +73,36 @@ export function useLazyVisible(rootMargin = '150px') {
           observer.disconnect();
         }
       },
-      { rootMargin },
+      { root, rootMargin },
     );
     observer.observe(node);
+
+    // Older embedded Chromium builds occasionally do not deliver an
+    // IntersectionObserver callback for a nested overflow container. Keep a
+    // lightweight event fallback so scrolling the gallery always materializes
+    // the card that just entered the viewport.
+    const checkVisibility = () => {
+      if (!done && isInView()) {
+        reveal();
+        observer.disconnect();
+      }
+    };
+    root?.addEventListener('scroll', checkVisibility, { passive: true });
+    window.addEventListener('resize', checkVisibility, { passive: true });
 
     // Fallback for throttled IO (hidden/background tab): reveal cards that are
     // already laid out within the expanded viewport. Layout boxes are computed
     // even when the tab is not painting, so this is reliable.
     const timer = setTimeout(() => {
       if (done) return;
-      const rect = node.getBoundingClientRect();
-      const vh = window.innerHeight || 0;
-      const vw = window.innerWidth || 0;
-      // Require real layout size: a display:none card (e.g. the lg:hidden mobile
-      // dock copy on desktop) reports an all-zero rect, which must NOT count as
-      // "in view" — otherwise the hidden gallery mounts every iframe.
-      const hasSize = rect.width > 0 && rect.height > 0;
-      const inView = hasSize
-        && rect.top < vh + 200 && rect.bottom > -200
-        && rect.left < vw + 200 && rect.right > -200;
-      if (inView) {
-        reveal();
-        observer.disconnect();
-      }
+      checkVisibility();
     }, 1000);
 
     return () => {
       clearTimeout(timer);
       observer.disconnect();
+      root?.removeEventListener('scroll', checkVisibility);
+      window.removeEventListener('resize', checkVisibility);
     };
   }, [visible, rootMargin]);
 

@@ -1,5 +1,6 @@
 import fs from "fs"
 import path from "path"
+import { createHash } from "crypto"
 import { execFileSync } from "child_process"
 
 const root = process.cwd()
@@ -95,6 +96,29 @@ const viteConfig = readText("vite.config.js")
 assertIncludes("Vite dev server auto-starts local backend", viteConfig, "lekha-backend-autostart")
 assertIncludes("Vite dev server monitors backend version endpoint", viteConfig, "/api/version")
 assertIncludes("production frontend requires Firebase App Check", viteConfig, "VITE_FIREBASE_APP_CHECK_SITE_KEY")
+
+// Template-card previews run in srcdoc frames, so the production CSP must allow
+// their small, static runtime by hash. Verify every hosting configuration stays
+// in sync whenever that runtime changes.
+const previewRuntimePath = "src/assets/template-preview-runtime.js"
+assertFile("template preview runtime exists", previewRuntimePath)
+if (fs.existsSync(path.join(root, previewRuntimePath))) {
+  const previewRuntimeHash = `sha256-${createHash("sha256")
+    .update(fs.readFileSync(path.join(root, previewRuntimePath)))
+    .digest("base64")}`
+  for (const [host, cspPath] of [
+    ["Vite", "vite.config.js"],
+    ["Netlify", "netlify.toml"],
+    ["static headers", "public/_headers"],
+    ["Vercel", "vercel.json"],
+  ]) {
+    assertIncludes(
+      `${host} CSP allows the template preview runtime`,
+      readText(cspPath),
+      `'${previewRuntimeHash}'`,
+    )
+  }
+}
 
 const apiClient = readText("src/lib/apiClient.js")
 assertIncludes("API client normalizes backend-unavailable failures", apiClient, "Backend API is not reachable")
@@ -304,6 +328,10 @@ assertIncludes("export renderer blocks arbitrary network requests", renderer, "s
 assertIncludes("production forbids disabling the browser sandbox", renderer, "PUPPETEER_DISABLE_SANDBOX is forbidden in production")
 
 assertFile("container deployment definition exists", "Dockerfile")
+const dockerfile = readText("Dockerfile")
+assertIncludes("container includes Puppeteer NSS runtime library", dockerfile, "libnss3")
+assertIncludes("container scopes the Chromium sandbox workaround to Railway", dockerfile, "PUPPETEER_CONTAINER_NO_SANDBOX=1")
+assertIncludes("export renderer supports the scoped Chromium sandbox workaround", renderer, "PUPPETEER_CONTAINER_NO_SANDBOX")
 assertFile("web and worker process definition exists", "Procfile")
 const procfile = readText("Procfile")
 assertIncludes("process definition starts the API", procfile, "uvicorn backend.main:app")

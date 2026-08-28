@@ -116,10 +116,9 @@ const plans = [
   },
 ]
 
-const YEARLY_CREDIT_MULTIPLIER = 12
-
 function getPlanCredits(plan, billing) {
-  return billing === 'yearly' ? plan.credits * YEARLY_CREDIT_MULTIPLIER : plan.credits
+  const catalogPlanId = billing === 'yearly' ? `${plan.id}_yearly` : plan.id
+  return planCatalog[catalogPlanId]?.credits ?? plan.credits
 }
 
 function getCreditPeriodLabel(billing) {

@@ -45,8 +45,8 @@ export default function FinalCtaSection() {
               <motion.div initial={{ opacity: 0, y: 18 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.4 }} transition={{ delay: 0.12 }}>
                 <p className="mt-7 max-w-lg text-lg leading-8 text-white/50">Give it captions people can see, feel, and understand—wherever they are.</p>
                 <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-                  <Link to={`${createPageUrl('Dashboard')}?action=upload`} className="landing-button group inline-flex items-center justify-center gap-2 rounded-md px-6 py-3.5 text-sm font-semibold"><Play className="h-4 w-4 fill-current" />Start with a video <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" /></Link>
-                  <Link to={`${createPageUrl('Dashboard')}?action=upload`} className="landing-button inline-flex items-center justify-center gap-2 rounded-md px-6 py-3.5 text-sm font-semibold"><Captions className="h-4 w-4" />Open the editor</Link>
+                  <Link to={`${createPageUrl('Dashboard')}?entry=editor`} className="landing-button group inline-flex items-center justify-center gap-2 rounded-md px-6 py-3.5 text-sm font-semibold"><Play className="h-4 w-4 fill-current" />Start with a video <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" /></Link>
+                  <Link to={`${createPageUrl('Dashboard')}?entry=editor`} className="landing-button inline-flex items-center justify-center gap-2 rounded-md px-6 py-3.5 text-sm font-semibold"><Captions className="h-4 w-4" />Open the editor</Link>
                 </div>
               </motion.div>
             </div>

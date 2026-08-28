@@ -5212,11 +5212,17 @@ async function main() {
 
   const runtimeEnv = String(process.env.APP_ENV || process.env.ENV || '').toLowerCase();
   const disableSandbox = process.env.PUPPETEER_DISABLE_SANDBOX === '1';
+  // The hosted Railway runtime denies Chromium's user-namespace sandbox before
+  // a page can launch. This bypass is set only in the hardened container image;
+  // customers and deployed environment variables cannot opt into it.
+  const containerSandboxBypass = process.env.PUPPETEER_CONTAINER_NO_SANDBOX === '1';
   if (disableSandbox && runtimeEnv === 'production') {
     throw new Error('PUPPETEER_DISABLE_SANDBOX is forbidden in production');
   }
   const browserArgs = ['--disable-gpu', '--disable-dev-shm-usage'];
-  if (disableSandbox) browserArgs.push('--no-sandbox');
+  if (disableSandbox || containerSandboxBypass) {
+    browserArgs.push('--no-sandbox', '--disable-setuid-sandbox');
+  }
 
   const browser = await puppeteer.launch({
     headless: true,

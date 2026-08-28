@@ -197,6 +197,7 @@ def _apply_security_headers(response: Response) -> Response:
 @app.middleware("http")
 async def request_logging_middleware(request: Request, call_next):
     rid = _request_id(request)
+    request.state.request_id = rid
     app_check_failure = _verify_firebase_app_check_request(request, rid)
     if app_check_failure is not None:
         return _apply_security_headers(app_check_failure)
@@ -260,6 +261,8 @@ async def request_logging_middleware(request: Request, call_next):
             path=request.url.path,
             status_code=500,
             duration_ms=elapsed_ms,
+            replica_region=RAILWAY_REPLICA_REGION,
+            replica_id=RAILWAY_REPLICA_ID,
             error=str(e),
         )
         raise
@@ -273,6 +276,8 @@ async def request_logging_middleware(request: Request, call_next):
         path=request.url.path,
         status_code=response.status_code,
         duration_ms=elapsed_ms,
+        replica_region=RAILWAY_REPLICA_REGION,
+        replica_id=RAILWAY_REPLICA_ID,
     )
     try:
         _track_latency_sample(request.url.path, elapsed_ms)
@@ -302,6 +307,8 @@ APP_ENV = _ENV_ALIASES[_ENV_RAW]
 _IS_PRODUCTION = APP_ENV == "production"
 _IS_DEVELOPMENT = APP_ENV == "development"
 _IS_TEST = APP_ENV == "test"
+RAILWAY_REPLICA_REGION = os.environ.get("RAILWAY_REPLICA_REGION", "local")
+RAILWAY_REPLICA_ID = os.environ.get("RAILWAY_REPLICA_ID", "local")
 
 FIREBASE_APP_CHECK_ENFORCED = os.environ.get(
     "FIREBASE_APP_CHECK_ENFORCED",
@@ -314,6 +321,7 @@ if _IS_PRODUCTION and not FIREBASE_APP_CHECK_ENFORCED:
     )
 
 _APP_CHECK_EXEMPT_PATHS = frozenset({
+    "/api/health",
     "/api/version",
     "/api/service-status",
     "/api/razorpay-webhook",
@@ -447,6 +455,14 @@ elif RAZORPAY_AVAILABLE:
 with open(os.path.join(root_dir, "shared", "planCatalog.json"), "r", encoding="utf-8") as plan_catalog_file:
     PLAN_PRICING = json.load(plan_catalog_file)
 
+# Free credits belong in the same catalog as paid entitlements, preventing the
+# account bootstrap, export policy, and frontend from drifting over time.
+FREE_PLAN_ID = "free"
+FREE_PLAN = PLAN_PRICING.get(FREE_PLAN_ID) or {}
+FREE_PLAN_CREDITS = int(FREE_PLAN.get("credits", 0) or 0)
+if FREE_PLAN_CREDITS < 1 or not FREE_PLAN.get("is_free"):
+    raise RuntimeError("The plan catalog must define a non-purchasable free plan with credits.")
+
 MAX_CONCURRENT_RENDERS = max(1, min(int(os.environ.get("MAX_CONCURRENT_RENDERS", "2")), 8))
 render_semaphore = asyncio.Semaphore(MAX_CONCURRENT_RENDERS)
 MAX_CONCURRENT_EXPORTS_PER_USER = 1
@@ -496,6 +512,7 @@ RENDER_COST_ESTIMATE_PER_MEDIA_MINUTE_USD = max(
 # In-memory operational state (swap for Redis in multi-instance deployments)
 _export_jobs: Dict[str, Dict[str, Any]] = {}
 _export_idempotency: Dict[str, Dict[str, Any]] = {}
+_upload_idempotency: Dict[str, Dict[str, Any]] = {}
 _active_exports_by_user: Dict[str, str] = {}
 _active_processes_by_user: Dict[str, str] = {}
 _export_failures: Dict[str, list] = {}
@@ -519,6 +536,7 @@ TELEMETRY_QUEUE_LIMIT = max(TELEMETRY_BATCH_SIZE, int(os.environ.get("TELEMETRY_
 API_CURRENT_VERSION = os.environ.get("API_CURRENT_VERSION", "2026-04-21")
 API_MIN_SUPPORTED_VERSION = os.environ.get("API_MIN_SUPPORTED_VERSION", "2026-01-01")
 DEPRECATION_SUNSET_DATE = os.environ.get("DEPRECATION_SUNSET_DATE", "2026-12-31")
+APP_RELEASE = os.environ.get("APP_RELEASE", "").strip()
 ENFORCE_TENANT_ISOLATION = os.environ.get(
     "ENFORCE_TENANT_ISOLATION", "1" if _IS_PRODUCTION else "0"
 ) == "1"
@@ -842,11 +860,15 @@ app.add_middleware(
 
 # Simple in-memory rate limiters (ip -> list of timestamps)
 _upload_rate: Dict[str, list] = {}
-UPLOAD_RATE_LIMIT = 10    # max uploads per hour per IP
+# Authenticated users keep a strict per-account limit, while the shared public
+# address gets a much wider abuse ceiling. Mobile carriers, universities,
+# offices, and public Wi-Fi commonly place many unrelated users behind one IP.
+UPLOAD_USER_RATE_LIMIT = 10
+UPLOAD_SHARED_NETWORK_RATE_LIMIT = 200
 UPLOAD_RATE_WINDOW = 3600  # 1 hour
 
 _signup_rate: Dict[str, list] = {}
-SIGNUP_RATE_LIMIT = 10    # max new account bootstraps per hour per IP
+SIGNUP_SHARED_NETWORK_RATE_LIMIT = 100
 SIGNUP_USER_RATE_LIMIT = 3  # protects retries/automation targeting one identity
 
 _payment_rate: Dict[str, list] = {}
@@ -856,13 +878,16 @@ _promo_rate: Dict[str, list] = {}
 PROMO_RATE_LIMIT = 5      # max promo redemptions per hour per IP
 
 _translate_rate: Dict[str, list] = {}
-TRANSLATE_RATE_LIMIT = 20  # max translation attempts per hour per IP
+TRANSLATE_USER_RATE_LIMIT = 20
+TRANSLATE_SHARED_NETWORK_RATE_LIMIT = 300
 
 _process_rate: Dict[str, list] = {}
-PROCESS_RATE_LIMIT = 20   # max transcription attempts per hour per IP
+PROCESS_USER_RATE_LIMIT = 20
+PROCESS_SHARED_NETWORK_RATE_LIMIT = 300
 
 _detect_language_rate: Dict[str, list] = {}
-DETECT_LANGUAGE_RATE_LIMIT = 10  # max paid language-detection calls per hour per user/IP
+DETECT_LANGUAGE_USER_RATE_LIMIT = 10
+DETECT_LANGUAGE_SHARED_NETWORK_RATE_LIMIT = 200
 
 _analytics_rate: Dict[str, list] = {}
 ANALYTICS_RATE_LIMIT = 120  # max client analytics events per hour per IP
@@ -996,6 +1021,9 @@ _provider_breakers: Dict[str, CircuitBreaker] = {
 def _request_id(request: Optional[Request]) -> str:
     if request is None:
         return str(uuid.uuid4())[:8]
+    state_rid = str(getattr(request.state, "request_id", "") or "").strip()
+    if state_rid:
+        return state_rid[:64]
     rid = request.headers.get("x-request-id")
     return rid.strip()[:64] if rid else str(uuid.uuid4())[:8]
 
@@ -1549,6 +1577,37 @@ def _idem_delete(key: str):
             pass
     _export_idempotency.pop(key, None)
 
+
+def _upload_idem_key(uid: str, upload_reference: str) -> str:
+    """Create a non-guessable storage key for an upload retry receipt."""
+    return hashlib.sha256(f"{uid}:{upload_reference}".encode("utf-8")).hexdigest()
+
+
+def _upload_idem_get(uid: str, upload_reference: str):
+    if not upload_reference:
+        return None
+    key = _upload_idem_key(uid, upload_reference)
+    if _redis_client is not None:
+        try:
+            raw = _redis_client.get(f"upload_idem:{key}")
+            return json.loads(raw) if raw else None
+        except Exception as e:
+            _json_log("warning", "upload_idempotency_read_failed", error=str(e))
+    return _upload_idempotency.get(key)
+
+
+def _upload_idem_set(uid: str, upload_reference: str, value: Dict[str, Any], ttl_seconds: int = 24 * 3600):
+    if not upload_reference:
+        return
+    key = _upload_idem_key(uid, upload_reference)
+    if _redis_client is not None:
+        try:
+            _redis_client.setex(f"upload_idem:{key}", ttl_seconds, json.dumps(value))
+            return
+        except Exception as e:
+            _json_log("warning", "upload_idempotency_write_failed", error=str(e))
+    _upload_idempotency[key] = value
+
 def _payment_idem_get(key: str):
     if not key:
         return None
@@ -1953,8 +2012,18 @@ def _apply_rate_headers(response: Optional[Response], limit: int, remaining: int
         response.headers["Retry-After"] = str(retry_after)
 
 def _evaluate_export_policy(user_data: Dict[str, Any], now_ts: float):
-    credits = int(user_data.get('credits_remaining', 0) or 0)
     tier = _normalize_tier_name(user_data.get('subscription_tier', 'free'))
+    try:
+        credits = int(user_data.get('credits_remaining', 0) or 0)
+    except (TypeError, ValueError):
+        # A malformed legacy value must never become a 500 or an entitlement
+        # bypass. Account bootstrap repairs only missing free balances.
+        credits = 0
+    credits = max(0, credits)
+    if tier == FREE_PLAN_ID:
+        # Never let a stale/manual legacy value turn the Free plan into an
+        # unbounded entitlement. Account bootstrap also persists this repair.
+        credits = _normalize_free_credit_balance(credits)
     export_history = user_data.get('export_timestamps', []) or []
     recent_exports = [ts for ts in export_history if ts > (now_ts - 86400)]
 
@@ -2003,7 +2072,17 @@ def _record_export_usage(
         dropped_history = history[5:]
         user_update = {"history": history[:5]}
         if not DISABLE_EXPORT_CREDIT_LIMIT:
-            user_update["credits_remaining"] = firestore.Increment(-1)
+            current_tier = _normalize_tier_name(current_user.get("subscription_tier", "free"))
+            if current_tier == FREE_PLAN_ID:
+                # Set an exact bounded value so a corrupt Free balance such as
+                # 73 is repaired on the first metered export instead of merely
+                # becoming 72 and remaining exploitable.
+                bounded_balance = _normalize_free_credit_balance(
+                    current_user.get("credits_remaining", 0),
+                )
+                user_update["credits_remaining"] = max(0, bounded_balance - 1)
+            else:
+                user_update["credits_remaining"] = firestore.Increment(-1)
         if not DISABLE_EXPORT_DAILY_LIMIT:
             user_update["export_timestamps"] = [*recent_exports, now_ts]
         transaction.create(usage_ref, {
@@ -2259,6 +2338,15 @@ def _normalize_tier_name(tier: str) -> str:
     if t in ("professional", "business", "pro_plus"):
         return "pro"
     return "free"
+
+
+def _normalize_free_credit_balance(value: Any, *, default: int = 0) -> int:
+    """Keep a Free entitlement inside the catalog-defined 0..N range."""
+    try:
+        credits = int(value)
+    except (TypeError, ValueError):
+        credits = int(default)
+    return max(0, min(FREE_PLAN_CREDITS, credits))
 
 
 def _subscription_is_expired(user_data: Optional[Dict[str, Any]], now: Optional[datetime] = None) -> bool:
@@ -2742,6 +2830,10 @@ class ProcessRequest(BaseModel):
     min_words: int = Field(default=0, ge=0, le=20)
     max_words: int = Field(default=0, ge=0, le=20)
     id_token: str = Field(default="", max_length=8_192)
+    # A stable key lets a browser safely retry after it loses the response while
+    # the transcription is still running.  It is intentionally optional for
+    # backwards-compatible API clients.
+    idempotency_key: str = Field(default="", max_length=200)
     org_id: str = Field(default="", max_length=128)
 
     @model_validator(mode="after")
@@ -2992,7 +3084,7 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
         if not user_doc.exists:
             _log(rid, f"User {uid} missing in Firestore; auto-creating defaults")
             default_user = {
-                'credits_remaining': 3,
+                'credits_remaining': FREE_PLAN_CREDITS,
                 'subscription_tier': 'free',
                 'export_timestamps': [],
                 'created_at': time.time(),
@@ -3020,7 +3112,10 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
         allowed, policy_error, recent_exports = _evaluate_export_policy(user_data, now)
         if not allowed:
             raise HTTPException(status_code=403 if "UPGRADE_REQUIRED" in policy_error or "PLAN_EXPIRED" in policy_error else 429, detail=policy_error)
-        credits = int(user_data.get('credits_remaining', 0) or 0)
+        try:
+            credits = max(0, int(user_data.get('credits_remaining', 0) or 0))
+        except (TypeError, ValueError):
+            credits = 0
     else:
         if not ALLOW_EXPORT_WITHOUT_DB:
             # Rendering is a metered operation. Continuing without the source of
@@ -3296,28 +3391,41 @@ def get_google_fonts():
         print(f"Error fetching fonts: {e}")
         return {"fonts": []}
 
+
+def _cleanup_incomplete_upload(local_path: str = "", remote_path: str = ""):
+    if local_path:
+        try:
+            if os.path.exists(local_path):
+                os.remove(local_path)
+        except OSError as cleanup_error:
+            _json_log("warning", "upload_local_cleanup_failed", error=str(cleanup_error))
+    if remote_path:
+        try:
+            if not delete_from_firebase_storage(remote_path):
+                _json_log("warning", "upload_remote_cleanup_failed", remote_path=remote_path)
+        except Exception as cleanup_error:
+            _json_log("warning", "upload_remote_cleanup_failed", error=str(cleanup_error))
+
+
 @app.post("/api/upload")
 async def upload_video(file: UploadFile = File(...), request: Request = None, response: Response = None):
+    rid = _request_id(request)
+    upload_reference = re.sub(
+        r"[^A-Za-z0-9._:-]",
+        "",
+        str(request.headers.get("idempotency-key") or "")[:128] if request else "",
+    )
+    stage = "request"
+    uid = "unknown-user"
+    file_path = ""
+    remote_path = ""
+    bytes_written = 0
+    completed = False
     try:
-        rid = _request_id(request)
         _assert_service_available("pause_uploads")
         token = _extract_bearer_token(request) if request else ""
         decoded_token = _authenticate_media_request(token)
         uid = (decoded_token.get("uid") or "").strip() or "unknown-user"
-        if request:
-            client_ip = _client_rate_key(request)
-            allowed, retry_after, remaining = _check_rate(_upload_rate, client_ip, UPLOAD_RATE_LIMIT, UPLOAD_RATE_WINDOW)
-            _apply_rate_headers(response, UPLOAD_RATE_LIMIT, remaining, retry_after)
-            if not allowed:
-                _track_event("upload_rejected_rate_limited")
-                raise HTTPException(status_code=429, detail="Too many uploads. Please wait before trying again.")
-            user_allowed, user_retry_after, user_remaining = _check_rate(
-                _upload_rate, f"user:{uid}", UPLOAD_RATE_LIMIT, UPLOAD_RATE_WINDOW
-            )
-            if not user_allowed:
-                _apply_rate_headers(response, UPLOAD_RATE_LIMIT, user_remaining, user_retry_after)
-                _track_event("upload_rejected_rate_limited")
-                raise HTTPException(status_code=429, detail="Too many uploads. Please wait before trying again.")
 
         safe_name = os.path.basename(file.filename or "")
         file_ext = pathlib.Path(safe_name).suffix.lstrip(".").lower()
@@ -3338,7 +3446,38 @@ async def upload_video(file: UploadFile = File(...), request: Request = None, re
             _track_event("upload_rejected_guess_type", {"guessed_type": guessed_type})
             raise HTTPException(status_code=415, detail=f"Unsupported file type: {guessed_type}")
 
+        # A browser can lose the response after the server has finished saving a
+        # video. The recovery client retries with the same key; return that
+        # completed upload before consuming another rate-limit slot or creating
+        # a duplicate object in storage.
+        upload_fingerprint = f"{safe_name}:{content_type}"
+        cached_upload = _upload_idem_get(uid, upload_reference)
+        if cached_upload:
+            if cached_upload.get("fingerprint") != upload_fingerprint:
+                raise HTTPException(
+                    status_code=409,
+                    detail="This upload retry key was already used for a different file.",
+                )
+            cached_file_id = str(cached_upload.get("file_id") or "")
+            if _validate_file_id(cached_file_id):
+                _assert_upload_owner(cached_file_id, uid)
+                _track_event("upload_idempotent_replay")
+                return {
+                    "success": True,
+                    "file_id": cached_file_id,
+                    "raw_url": _signed_upload_url(cached_file_id, uid),
+                    "idempotent_replay": True,
+                }
+
         content_length = int(request.headers.get('content-length', 0)) if request else 0
+        _json_log(
+            "info",
+            "upload_started",
+            request_id=rid,
+            upload_reference=upload_reference,
+            content_length=content_length,
+            content_type=content_type,
+        )
         if content_length > MAX_UPLOAD_BYTES:
             _track_event("upload_rejected_too_large", {"content_length": content_length})
             raise HTTPException(status_code=413, detail="File too large. Maximum 500MB allowed.")
@@ -3349,7 +3488,7 @@ async def upload_video(file: UploadFile = File(...), request: Request = None, re
         # a 500MB read per request is a memory-pressure DoS under concurrency.
         # Enforce the size cap as we write so an oversized (or content-length-spoofed)
         # body is aborted early instead of fully consumed.
-        bytes_written = 0
+        stage = "receiving_body"
         too_large = False
         UPLOAD_CHUNK_SIZE = 1024 * 1024  # 1 MB
         with open(file_path, "wb") as buffer:
@@ -3369,7 +3508,50 @@ async def upload_video(file: UploadFile = File(...), request: Request = None, re
                 pass
             _track_event("upload_rejected_too_large", {"content_length": bytes_written})
             raise HTTPException(status_code=413, detail="File too large. Maximum 500MB allowed.")
+
+        stage = "body_received"
+        _json_log(
+            "info",
+            "upload_body_received",
+            request_id=rid,
+            upload_reference=upload_reference,
+            bytes_received=bytes_written,
+        )
+
+        # Count only fully received uploads. Previously the rate reservation was
+        # consumed before reading the request body, so every Wi-Fi interruption
+        # counted against both the IP and user limits even though no usable file
+        # reached the service. This also lets the browser safely retry a dropped
+        # transfer without locking the account out.
+        if request:
+            client_ip = _client_rate_key(request)
+            allowed, retry_after, remaining = _check_rate(
+                _upload_rate,
+                f"network:{client_ip}",
+                UPLOAD_SHARED_NETWORK_RATE_LIMIT,
+                UPLOAD_RATE_WINDOW,
+            )
+            _apply_rate_headers(response, UPLOAD_SHARED_NETWORK_RATE_LIMIT, remaining, retry_after)
+            if not allowed:
+                try:
+                    os.remove(file_path)
+                except OSError:
+                    pass
+                _track_event("upload_rejected_rate_limited")
+                raise HTTPException(status_code=429, detail="Too many uploads. Please wait before trying again.")
+            user_allowed, user_retry_after, user_remaining = _check_rate(
+                _upload_rate, f"user:{uid}", UPLOAD_USER_RATE_LIMIT, UPLOAD_RATE_WINDOW
+            )
+            _apply_rate_headers(response, UPLOAD_USER_RATE_LIMIT, user_remaining, user_retry_after)
+            if not user_allowed:
+                try:
+                    os.remove(file_path)
+                except OSError:
+                    pass
+                _track_event("upload_rejected_rate_limited")
+                raise HTTPException(status_code=429, detail="Too many uploads. Please wait before trying again.")
         _log(rid, f"Upload accepted file_id={file_id} ext={file_ext} bytes={bytes_written}")
+        stage = "security_scan"
         if not await asyncio.to_thread(_scan_upload_for_threat, file_path):
             try:
                 os.remove(file_path)
@@ -3378,6 +3560,7 @@ async def upload_video(file: UploadFile = File(...), request: Request = None, re
             _track_event("upload_rejected_malware_scan")
             raise HTTPException(status_code=422, detail="Upload failed security scan.")
 
+        stage = "media_probe"
         try:
             metadata = await asyncio.to_thread(_probe_media, file_path)
             duration = float((metadata.get("format") or {}).get("duration") or 0)
@@ -3399,6 +3582,7 @@ async def upload_video(file: UploadFile = File(...), request: Request = None, re
             _track_event("upload_rejected_duration", {"duration": duration})
             raise HTTPException(status_code=413, detail=f"Video is {duration:.0f}s. Maximum allowed is {max_seconds // 60} minutes.")
 
+        stage = "durable_storage"
         remote_path = await asyncio.to_thread(
             upload_source_media, file_path, uid, file_id, file_ext, 6
         )
@@ -3409,36 +3593,100 @@ async def upload_video(file: UploadFile = File(...), request: Request = None, re
                 pass
             raise HTTPException(status_code=503, detail="Durable media storage is unavailable. Please retry.")
 
-        _track_event("upload_success", {"ext": file_ext})
+        stage = "owner_persistence"
         owner_persisted = _remember_upload_owner(file_id, uid, remote_path or "", file_ext)
         if _IS_PRODUCTION and not owner_persisted:
             raise HTTPException(status_code=503, detail="Upload ownership could not be persisted. Please retry.")
+        _upload_idem_set(uid, upload_reference, {
+            "file_id": file_id,
+            "fingerprint": upload_fingerprint,
+            "ts": time.time(),
+        })
+        stage = "completed"
+        completed = True
+        _track_event("upload_success", {
+            "ext": file_ext,
+            "request_id": rid,
+            "upload_reference": upload_reference,
+        })
         _audit_action("upload_success", uid, {"file_id": file_id, "ext": file_ext, "duration": duration})
         return {"success": True, "file_id": file_id, "raw_url": _signed_upload_url(file_id, uid)}
-    except HTTPException:
+    except asyncio.CancelledError:
+        await asyncio.to_thread(_cleanup_incomplete_upload, file_path, remote_path)
+        _track_event("upload_client_disconnected", {
+            "stage": stage,
+            "bytes_received": bytes_written,
+            "request_id": rid,
+            "upload_reference": upload_reference,
+        })
+        _json_log(
+            "warning",
+            "upload_client_disconnected",
+            request_id=rid,
+            upload_reference=upload_reference,
+            stage=stage,
+            bytes_received=bytes_written,
+        )
+        raise
+    except HTTPException as http_error:
+        if not completed:
+            await asyncio.to_thread(_cleanup_incomplete_upload, file_path, remote_path)
+        _json_log(
+            "warning",
+            "upload_rejected",
+            request_id=rid,
+            upload_reference=upload_reference,
+            stage=stage,
+            status_code=http_error.status_code,
+            bytes_received=bytes_written,
+        )
         raise
     except Exception as e:
-        _track_event("upload_failed", {"error": str(e)})
-        _json_log("error", "upload_failed", request_id=rid, error=str(e))
+        if not completed:
+            await asyncio.to_thread(_cleanup_incomplete_upload, file_path, remote_path)
+        disconnected = type(e).__name__ == "ClientDisconnect"
+        event = "upload_client_disconnected" if disconnected else "upload_failed"
+        _track_event(event, {
+            "stage": stage,
+            "bytes_received": bytes_written,
+            "request_id": rid,
+            "upload_reference": upload_reference,
+            "error_type": type(e).__name__,
+        })
+        _json_log(
+            "warning" if disconnected else "error",
+            event,
+            request_id=rid,
+            upload_reference=upload_reference,
+            stage=stage,
+            bytes_received=bytes_written,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        if disconnected:
+            raise HTTPException(status_code=499, detail=f"Upload connection was interrupted. Reference: {rid}") from e
         raise HTTPException(status_code=500, detail=f"Upload failed. Reference: {rid}") from e
 
 @app.post("/api/process")
 async def process_video(req: ProcessRequest, request: Request, response: Response):
+    rid = _request_id(request)
     _assert_service_available("pause_transcription")
     # Auth — same dev-mode bypass as /api/export
     decoded_token = _authenticate_media_request(req.id_token, req.org_id)
     uid = (decoded_token.get("uid") or "").strip() or "unknown-user"
     client_ip = _client_rate_key(request)
-    allowed, retry_after, remaining = _check_rate(_process_rate, client_ip, PROCESS_RATE_LIMIT)
-    _apply_rate_headers(response, PROCESS_RATE_LIMIT, remaining, retry_after)
+    allowed, retry_after, remaining = _check_rate(
+        _process_rate, f"network:{client_ip}", PROCESS_SHARED_NETWORK_RATE_LIMIT
+    )
+    _apply_rate_headers(response, PROCESS_SHARED_NETWORK_RATE_LIMIT, remaining, retry_after)
     if not allowed:
         _track_event("process_rejected_rate_limited")
         raise HTTPException(status_code=429, detail="Too many transcription requests. Please wait before trying again.")
     user_allowed, user_retry_after, user_remaining = _check_rate(
-        _process_rate, f"user:{uid}", PROCESS_RATE_LIMIT
+        _process_rate, f"user:{uid}", PROCESS_USER_RATE_LIMIT
     )
+    _apply_rate_headers(response, PROCESS_USER_RATE_LIMIT, user_remaining, user_retry_after)
     if not user_allowed:
-        _apply_rate_headers(response, PROCESS_RATE_LIMIT, user_remaining, user_retry_after)
         _track_event("process_rejected_rate_limited")
         raise HTTPException(status_code=429, detail="Too many transcription requests. Please wait before trying again.")
     if not _validate_file_id(req.file_id):
@@ -3494,6 +3742,33 @@ async def process_video(req: ProcessRequest, request: Request, response: Respons
         except Exception:
             pass
 
+    # A dropped HTTP response must not make the browser start another paid
+    # transcription.  Keep the receipt in the shared idempotency store, keyed
+    # by both account and the exact transcription settings.
+    raw_process_idem = (req.idempotency_key or request.headers.get("x-idempotency-key") or "").strip()
+    process_idem_key = f"process:{uid}:{raw_process_idem}" if raw_process_idem else ""
+    process_request_hash = hashlib.sha256(json.dumps({
+        "file_id": req.file_id,
+        "language": req.language,
+        "min_words": req.min_words,
+        "max_words": req.max_words,
+    }, sort_keys=True).encode("utf-8")).hexdigest()
+    if process_idem_key:
+        cached_process = _idem_get(process_idem_key)
+        if cached_process:
+            if cached_process.get("request_hash") != process_request_hash:
+                raise HTTPException(
+                    status_code=409,
+                    detail="This transcription idempotency key was already used for a different request.",
+                )
+            if cached_process.get("status") == "completed" and cached_process.get("payload"):
+                return {**cached_process["payload"], "idempotent_replay": True}
+            if cached_process.get("status") == "in_progress":
+                raise HTTPException(
+                    status_code=409,
+                    detail="PROCESS_IN_PROGRESS: Your transcription is still running. Reconnecting automatically.",
+                )
+
     process_request_id = uuid.uuid4().hex
     if not _acquire_process_slot(uid, process_request_id):
         raise HTTPException(
@@ -3502,6 +3777,13 @@ async def process_video(req: ProcessRequest, request: Request, response: Respons
         )
 
     try:
+        if process_idem_key:
+            _idem_set(process_idem_key, {
+                "status": "in_progress",
+                "ts": time.time(),
+                "request_hash": process_request_hash,
+            })
+        _json_log("info", "process_started", request_id=rid, file_id=req.file_id, language=req.language)
         await asyncio.to_thread(_reserve_ai_quota, uid, "process")
 
         def _generate_captions_in_worker_thread():
@@ -3527,7 +3809,8 @@ async def process_video(req: ProcessRequest, request: Request, response: Respons
             }
 
         if result.get("success"):
-            _track_event("process_success", {"language": req.language})
+            _track_event("process_success", {"language": req.language, "request_id": rid})
+            _json_log("info", "process_completed", request_id=rid, caption_count=len(result.get("captions") or []))
             if media_duration > 0:
                 _track_operational_metric_sample("transcription_media_seconds", media_duration)
                 _track_operational_metric_sample(
@@ -3540,8 +3823,25 @@ async def process_video(req: ProcessRequest, request: Request, response: Respons
                         json.dump(result, f)
                 except Exception as e:
                     print(f"[Cache] Failed to write transcription cache: {e}")
+            if process_idem_key:
+                _idem_set(process_idem_key, {
+                    "status": "completed",
+                    "ts": time.time(),
+                    "request_hash": process_request_hash,
+                    "payload": result,
+                })
         else:
-            _track_event("process_failed", {"language": req.language, "error": result.get("error", "unknown")})
+            _track_event("process_failed", {
+                "language": req.language,
+                "error": result.get("error", "unknown"),
+                "request_id": rid,
+            })
+            _json_log(
+                "warning",
+                "process_failed",
+                request_id=rid,
+                error=result.get("error", "unknown"),
+            )
             is_no_speech = result.get("error_code") == "NO_SPEECH_DETECTED"
             status_code = 422 if is_no_speech else 502
             # NO_SPEECH is a real transcription that found nothing — the provider
@@ -3555,6 +3855,12 @@ async def process_video(req: ProcessRequest, request: Request, response: Respons
             )
 
         return result
+    except Exception:
+        # Failed provider calls release their quota in the branches above and
+        # must not leave an in-progress receipt that blocks a real retry.
+        if process_idem_key:
+            _idem_delete(process_idem_key)
+        raise
     finally:
         _release_process_slot(uid, process_request_id)
 
@@ -3585,11 +3891,12 @@ async def export_video(req: ExportRequest, request: Request, response: Response)
 
     # Idempotency key support to prevent duplicate renders/charges.
     raw_idem = (req.idempotency_key or request.headers.get("x-idempotency-key") or "").strip()
-    auto_idem = False
     if not raw_idem:
-        # Auto-key to prevent accidental double-click duplicate renders.
-        raw_idem = f"auto:{req.file_id}:{req.quality}:{req.fps}:{req.export_aspect_ratio or 'source'}"
-        auto_idem = True
+        # Auto-key the exact sanitized request.  This means repeat clicks,
+        # page refreshes, and browser response loss replay the original render
+        # (and its result) instead of consuming another export credit.  A real
+        # editor change has a new hash and is therefore a new export.
+        raw_idem = f"auto:{req.file_id}:{idempotency_request_hash}"
     idem_key = f"{uid}:{raw_idem}" if raw_idem else ""
     if idem_key:
         cached = _idem_get(idem_key)
@@ -3600,11 +3907,11 @@ async def export_video(req: ExportRequest, request: Request, response: Response)
                     status_code=409,
                     detail="This idempotency key was already used for a different export request.",
                 )
-            if cached.get("status") == "completed" and not auto_idem:
+            if cached.get("status") == "completed" and cached.get("payload"):
                 _log(rid, f"Idempotent replay for key={raw_idem[:16]}")
                 return {**cached["payload"], "idempotent_replay": True}
             if cached.get("status") == "in_progress":
-                if cached.get("payload") and not auto_idem:
+                if cached.get("payload"):
                     return {**cached["payload"], "idempotent_replay": True}
                 raise HTTPException(status_code=409, detail="Export with this idempotency key is already in progress.")
         _idem_set(idem_key, {
@@ -3638,7 +3945,7 @@ async def export_video(req: ExportRequest, request: Request, response: Response)
                     export_job_id,
                     safe_request_snapshot,
                     uid,
-                    idem_key if not auto_idem else "",
+                    idem_key,
                     idempotency_request_hash,
                 ),
                 job_id=export_job_id,
@@ -3654,34 +3961,28 @@ async def export_video(req: ExportRequest, request: Request, response: Response)
                 "export_job_id": export_job_id,
                 "status": "queued",
             }
-            # Explicit keys remain in progress until the worker stores a terminal result.
-            # Replays with the same explicit key return this queued job while it runs.
-            # Auto keys are cleared because the per-user lease blocks double-clicks.
+            # Every key remains in progress until the worker stores a terminal
+            # result. Replays return this queued job while it runs, including
+            # automatic keys generated for a double-click-safe browser export.
             if idem_key:
-                if auto_idem:
-                    _idem_delete(idem_key)
-                else:
-                    _idem_set(idem_key, {
-                        "status": "in_progress",
-                        "ts": time.time(),
-                        "payload": queued_payload,
-                        "request_hash": idempotency_request_hash,
-                        "job_id": export_job_id,
-                    })
+                _idem_set(idem_key, {
+                    "status": "in_progress",
+                    "ts": time.time(),
+                    "payload": queued_payload,
+                    "request_hash": idempotency_request_hash,
+                    "job_id": export_job_id,
+                })
             return queued_payload
 
         payload = await _process_export_job_core(req, uid, rid, export_job_id)
         if idem_key:
-            if auto_idem:
-                _idem_delete(idem_key)
-            else:
-                _idem_set(idem_key, {
-                    "status": "completed",
-                    "ts": time.time(),
-                    "payload": payload,
-                    "request_hash": idempotency_request_hash,
-                    "job_id": export_job_id,
-                })
+            _idem_set(idem_key, {
+                "status": "completed",
+                "ts": time.time(),
+                "payload": payload,
+                "request_hash": idempotency_request_hash,
+                "job_id": export_job_id,
+            })
         return payload
 
     except HTTPException as http_ex:
@@ -3993,6 +4294,7 @@ async def api_version():
     return {
         "success": True,
         "version": API_CURRENT_VERSION,
+        "release": APP_RELEASE,
         "min_supported_version": API_MIN_SUPPORTED_VERSION,
         "sunset_date": DEPRECATION_SUNSET_DATE,
         "progressive_delivery_enabled": ENABLE_PROGRESSIVE_DELIVERY,
@@ -4004,6 +4306,7 @@ async def api_health():
         "success": True,
         "ready": True,
         "version": API_CURRENT_VERSION,
+        "release": APP_RELEASE,
     }
 
 @app.get("/api/v1/version")
@@ -4208,6 +4511,8 @@ def admin_service_controls(req: ServiceControlsRequest, request: Request):
 def _resolve_plan_from_amount_currency(amount_minor: int, currency: str) -> Optional[str]:
     c = (currency or "INR").upper()
     for plan_key, p in PLAN_PRICING.items():
+        if p.get("is_free"):
+            continue
         if c == "USD" and amount_minor == p.get("usd_cents"):
             return plan_key
         if c == "INR" and amount_minor == p.get("inr_paise"):
@@ -4711,6 +5016,8 @@ def _apply_successful_payment(
     plan_config = PLAN_PRICING.get(plan_id)
     if not plan_config:
         raise HTTPException(status_code=400, detail=f"Unknown plan: {plan_id}")
+    if plan_config.get("is_free"):
+        raise HTTPException(status_code=400, detail="The free plan cannot be granted through payments.")
 
     # SECURITY: bind the granted plan to the amount actually paid. Without this a
     # client could pay for a cheap plan, then echo an expensive plan_id at
@@ -4973,6 +5280,8 @@ def create_order(req: CreateOrderRequest, request: Request, response: Response):
     plan = PLAN_PRICING.get(req.plan_id)
     if not plan:
         raise HTTPException(status_code=400, detail=f"Unknown plan: {req.plan_id}")
+    if plan.get("is_free"):
+        raise HTTPException(status_code=400, detail="The free plan is granted at signup and cannot be purchased.")
 
     topup_db = None
     topup_user_ref = None
@@ -5571,15 +5880,24 @@ def redeem_promo(req: RedeemPromoRequest, request: Request, response: Response):
 
 @app.post("/api/translate")
 def translate_captions(req: TranslateRequest, request: Request, response: Response):
-    client_ip = _client_rate_key(request)
-    allowed, retry_after, remaining = _check_rate(_translate_rate, client_ip, TRANSLATE_RATE_LIMIT)
-    _apply_rate_headers(response, TRANSLATE_RATE_LIMIT, remaining, retry_after)
-    if not allowed:
-        raise HTTPException(status_code=429, detail="Too many translation requests. Please wait before trying again.")
     decoded_token = verify_token(req.id_token)
     if not decoded_token:
         raise HTTPException(status_code=401, detail="Authentication required")
-    _assert_tenant_access(decoded_token.get("uid", ""), decoded_token, req.org_id)
+    uid = (decoded_token.get("uid") or "").strip() or "unknown-user"
+    _assert_tenant_access(uid, decoded_token, req.org_id)
+    client_ip = _client_rate_key(request)
+    allowed, retry_after, remaining = _check_rate(
+        _translate_rate, f"network:{client_ip}", TRANSLATE_SHARED_NETWORK_RATE_LIMIT
+    )
+    _apply_rate_headers(response, TRANSLATE_SHARED_NETWORK_RATE_LIMIT, remaining, retry_after)
+    if not allowed:
+        raise HTTPException(status_code=429, detail="Too many translation requests. Please wait before trying again.")
+    user_allowed, user_retry_after, user_remaining = _check_rate(
+        _translate_rate, f"user:{uid}", TRANSLATE_USER_RATE_LIMIT
+    )
+    _apply_rate_headers(response, TRANSLATE_USER_RATE_LIMIT, user_remaining, user_retry_after)
+    if not user_allowed:
+        raise HTTPException(status_code=429, detail="Too many translation requests. Please wait before trying again.")
     for caption in req.captions:
         if len(caption) > 100:
             raise HTTPException(status_code=400, detail="Caption object is too complex")
@@ -5676,16 +5994,18 @@ def detect_language(req: DetectLanguageRequest, request: Request, response: Resp
     uid = (decoded_token.get("uid") or "").strip() or "unknown-user"
     client_ip = _client_rate_key(request)
     allowed, retry_after, remaining = _check_rate(
-        _detect_language_rate, f"ip:{client_ip}", DETECT_LANGUAGE_RATE_LIMIT
+        _detect_language_rate,
+        f"network:{client_ip}",
+        DETECT_LANGUAGE_SHARED_NETWORK_RATE_LIMIT,
     )
-    _apply_rate_headers(response, DETECT_LANGUAGE_RATE_LIMIT, remaining, retry_after)
+    _apply_rate_headers(response, DETECT_LANGUAGE_SHARED_NETWORK_RATE_LIMIT, remaining, retry_after)
     if not allowed:
         raise HTTPException(status_code=429, detail="Too many language detection requests. Please wait before trying again.")
     user_allowed, user_retry_after, user_remaining = _check_rate(
-        _detect_language_rate, f"user:{uid}", DETECT_LANGUAGE_RATE_LIMIT
+        _detect_language_rate, f"user:{uid}", DETECT_LANGUAGE_USER_RATE_LIMIT
     )
+    _apply_rate_headers(response, DETECT_LANGUAGE_USER_RATE_LIMIT, user_remaining, user_retry_after)
     if not user_allowed:
-        _apply_rate_headers(response, DETECT_LANGUAGE_RATE_LIMIT, user_remaining, user_retry_after)
         raise HTTPException(status_code=429, detail="Too many language detection requests. Please wait before trying again.")
     if not _validate_file_id(req.file_id):
         raise HTTPException(status_code=400, detail="Invalid file_id")
@@ -5841,7 +6161,7 @@ def account_bootstrap(req: AccountDataRequest, request: Request):
         _assert_service_available("pause_signups")
         client_ip = _client_rate_key(request)
         for rate_key, rate_limit in (
-            (f"signup:ip:{client_ip}", SIGNUP_RATE_LIMIT),
+            (f"signup:network:{client_ip}", SIGNUP_SHARED_NETWORK_RATE_LIMIT),
             (f"signup:user:{uid}", SIGNUP_USER_RATE_LIMIT),
         ):
             allowed, _retry_after, _remaining = _check_rate(
@@ -5861,7 +6181,7 @@ def account_bootstrap(req: AccountDataRequest, request: Request):
     try:
         user_ref.create({
             **safe_profile,
-            "credits_remaining": 3,
+            "credits_remaining": FREE_PLAN_CREDITS,
             "subscription_tier": "free",
             "subscription_expiry": None,
             "export_timestamps": [],
@@ -5873,6 +6193,58 @@ def account_bootstrap(req: AccountDataRequest, request: Request):
         # Only identity-provider profile fields may be refreshed here. Billing
         # and entitlement fields remain server-controlled elsewhere.
         user_ref.set(safe_profile, merge=True)
+
+    # A small number of accounts can predate server-owned entitlements. Repair
+    # an absent or out-of-range Free balance in a transaction. Explicit zero is
+    # preserved, and a concurrent paid-plan grant can never be overwritten.
+    existing_user = user_ref.get()
+    existing_data = existing_user.to_dict() or {} if existing_user.exists else {}
+    existing_is_free = (
+        _normalize_tier_name(existing_data.get("subscription_tier", "free")) == FREE_PLAN_ID
+    )
+    existing_has_credits = "credits_remaining" in existing_data
+    normalized_existing_credits = _normalize_free_credit_balance(
+        existing_data.get("credits_remaining"),
+        default=FREE_PLAN_CREDITS if not existing_has_credits else 0,
+    )
+    if (
+        existing_user.exists
+        and existing_is_free
+        and (
+            not existing_has_credits
+            or existing_data.get("credits_remaining") != normalized_existing_credits
+        )
+    ):
+        @firestore.transactional
+        def _repair_legacy_free_entitlement(transaction):
+            snapshot = user_ref.get(transaction=transaction)
+            if not snapshot.exists:
+                return False
+            data = snapshot.to_dict() or {}
+            if _normalize_tier_name(data.get("subscription_tier", "free")) != FREE_PLAN_ID:
+                return False
+            has_credits = "credits_remaining" in data
+            repaired_credits = _normalize_free_credit_balance(
+                data.get("credits_remaining"),
+                default=FREE_PLAN_CREDITS if not has_credits else 0,
+            )
+            if has_credits and data.get("credits_remaining") == repaired_credits:
+                return False
+            update = {
+                "credits_remaining": repaired_credits,
+                "export_timestamps": data.get("export_timestamps", []) or [],
+            }
+            if not data.get("subscription_tier"):
+                update["subscription_tier"] = FREE_PLAN_ID
+            transaction.set(user_ref, update, merge=True)
+            return {
+                "previous_credits": data.get("credits_remaining") if has_credits else None,
+                "repaired_credits": repaired_credits,
+            }
+
+        repair_result = _repair_legacy_free_entitlement(db.transaction())
+        if repair_result:
+            _audit_action("account_bootstrap_repaired_free_entitlement", uid, repair_result)
 
     if req.consent_granted:
         if not req.terms_version or not req.privacy_version:

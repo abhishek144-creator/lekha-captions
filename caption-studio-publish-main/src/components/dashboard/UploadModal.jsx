@@ -20,6 +20,7 @@ import { Upload, Film, Sparkles, Globe, Palette, Loader2, Info, Wand2 } from 'lu
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from '@/components/ui/use-toast';
 import { apiRequest } from '@/lib/apiClient';
+import { uploadFileWithRecovery } from '@/lib/resilientUpload';
 import { notifyApiError } from '@/lib/notifyApiError';
 import { useAuth } from '@/lib/AuthContext';
 import { getEffectiveAuthToken } from '@/lib/devAuth';
@@ -223,7 +224,7 @@ export default function UploadModal({
   const ensureAuthenticated = useCallback(() => {
     if (!currentUser) {
       if (onClose) onClose();
-      navigate('/login?mode=signup&returnTo=/Dashboard');
+      navigate('/login?mode=signup&returnTo=/Dashboard?entry=editor');
       return false;
     }
     return true;
@@ -336,14 +337,9 @@ export default function UploadModal({
         }
       } else {
         // Upload file first to get file_id (reused later for Generate to avoid double upload)
-        const formData = new FormData()
-        formData.append('file', selectedFile)
-        uploadData = await apiRequest('/api/upload', {
-          method: 'POST',
-          headers: idToken ? { Authorization: `Bearer ${idToken}` } : {},
-          body: formData,
+        uploadData = await uploadFileWithRecovery(selectedFile, {
+          authorization: idToken,
           dedupeKey: 'detect-upload',
-          cancelPrevious: true,
         })
         if (!uploadData.success) {
           toast({
