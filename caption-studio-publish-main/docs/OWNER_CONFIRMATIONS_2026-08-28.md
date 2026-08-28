@@ -47,6 +47,15 @@ customer or account data in source control.
   rejection were completed, with the rejection and corresponding evidence
   retained outside the repository.
 
+## Account isolation and staging media drill
+
+- The owner confirms the two-user cross-account isolation test was completed:
+  content from one authenticated account was not visible to the other account.
+- The owner confirms the authenticated staging journey completed: upload,
+  processing, caption editing and save, refresh persistence, export, download,
+  retry, and deletion. Supporting timestamps and redacted screenshots are kept
+  outside the repository.
+
 ## Operating owners
 
 - The owner confirms that primary, backup, monitored route, and escalation
