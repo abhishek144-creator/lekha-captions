@@ -37,11 +37,11 @@ Use this checklist for enterprise and privacy readiness.
 - [x] Send to and reply from `support@lekhacaptions.com` using an external mailbox (`OWNER_CONFIRMATIONS_2026-08-22.md`)
 - [ ] Record the exact deployed commit and successful production readiness/configuration output
 - [x] Record one live Razorpay purchase, captured webhook replay, failed payment, reconciliation, and full/partial refund (`RAZORPAY_EVIDENCE_2026-08-22.md`)
-- [ ] Record a production malware-scanner startup check and suspicious-file rejection
-- [ ] Record successful Slack/Sentry and provider spending/failure alert deliveries
+- [x] Record a production malware-scanner startup check and suspicious-file rejection (`OWNER_CONFIRMATIONS_2026-08-28.md`)
+- [x] Record successful Slack/Sentry and provider spending/failure alert deliveries (`OWNER_CONFIRMATIONS_2026-08-28.md`)
 - [ ] Complete the authenticated staging upload → process → export → download flow
 - [x] Complete one authenticated production upload → Hindi process → save/refresh → 1080p export → download flow (`PRODUCTION_VERIFICATION_2026-08-21.md`)
-- [ ] Complete the real-video matrix: Hindi, English, Hinglish, portrait, landscape, poor audio, corrupt/unsupported, and near-limit media
+- [x] Complete the real-video matrix: Hindi, English, Hinglish, portrait, landscape, poor audio, corrupt/unsupported, and near-limit media (`OWNER_CONFIRMATIONS_2026-08-28.md`)
 - [ ] Obtain legal review and CA confirmation for jurisdiction, GST/tax invoices, international sales, refunds, and chargebacks
 
 Launch cannot be signed off while any unchecked item above remains. Verify the
