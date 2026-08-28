@@ -18,6 +18,15 @@ customer or account data in source control.
 - The signed-out view exposed no previous project, and the returned Dashboard
   started empty rather than restoring a prior video automatically.
 
+## Credential-exposure review
+
+- The owner confirms that no active or legacy credential was exposed and that a
+  rotation is not required for this release.
+- The tracked-source review found only the expected public Firebase web
+  configuration and a documented Razorpay identifier; it found no secret value.
+- Secret values remain in provider-managed secret stores and are not recorded in
+  this repository or this confirmation file.
+
 ## Real-video matrix
 
 - The owner confirms the authenticated media tests were completed using
