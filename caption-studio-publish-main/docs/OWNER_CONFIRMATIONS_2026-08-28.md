@@ -11,6 +11,13 @@ customer or account data in source control.
 - The release-tree, dependency-audit, frontend build, and backend contract
   checks passed for commit `485687e`.
 
+## Production Google authentication
+
+- The owner confirms that, in a normal external browser, they signed out,
+  closed the app tab, reopened the Dashboard, and signed in again with Google.
+- The signed-out view exposed no previous project, and the returned Dashboard
+  started empty rather than restoring a prior video automatically.
+
 ## Real-video matrix
 
 - The owner confirms the authenticated media tests were completed using

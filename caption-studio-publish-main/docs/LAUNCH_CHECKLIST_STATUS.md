@@ -60,9 +60,10 @@ Items marked **N/A** do not apply to the product as currently offered.
 
 ## Seven technical must-haves before a paid public beta
 
-1. Complete the remaining Google sign-out and sign-in-again check in a normal
-   external browser against the deployed Firebase project. Production Google
-   signup/sign-in already passed on 21 August 2026.
+1. ✅ Complete the Google sign-out and sign-in-again check in a normal external
+   browser against the deployed Firebase project. The signed-out view exposed
+   no prior project and the returned Dashboard started empty. *(Owner-confirmed;
+   see `docs/OWNER_CONFIRMATIONS_2026-08-28.md`.)*
 2. ✅ Run and record the malware-scanner startup and harmless rejection check.
    See `docs/OWNER_CONFIRMATIONS_2026-08-28.md`.
 3. ✅ Complete the owner-confirmed real-video matrix: Hindi, English,
@@ -122,7 +123,9 @@ customer-safety paths above.
   - **N/A:** Google-only authentication is used.
 - ✅ Forgotten-password status is clear.
   - **N/A:** the app does not manage passwords.
-- ❌ Test sign-out and Google sign-in again in production.
+- ✅ Test sign-out and Google sign-in again in production.
+  - Passed in a normal external browser on 28 August 2026. The signed-out view
+    did not expose a prior project, and the returned Dashboard started empty.
 - ✅ Complete one real account-deletion test.
   - Passed on staging with an isolated disposable Firebase identity; Auth,
     Firestore, and Storage deletion were verified end-to-end on 5 August 2026.
