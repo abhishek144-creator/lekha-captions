@@ -19,7 +19,8 @@ Use this checklist for enterprise and privacy readiness.
 ## Security
 - [x] Secret handling hardened to env-first mode
 - [x] Dependency scanning in CI workflow
-- [ ] Periodic pentest checklist sign-off
+- [x] Internal security assessment completed with findings (`INTERNAL_SECURITY_ASSESSMENT_2026-08-29.md`)
+- [ ] Independent periodic pentest checklist sign-off
 - [x] Deploy production Firestore/Storage rules, register App Check, and verify enforcement (`PRODUCTION_VERIFICATION_2026-08-21.md`)
 - [x] Record a two-user cross-account isolation test (`OWNER_CONFIRMATIONS_2026-08-28.md`)
 
@@ -38,7 +39,7 @@ Use this checklist for enterprise and privacy readiness.
 - [ ] Record the exact deployed commit and successful production readiness/configuration output
 - [x] Record one live Razorpay purchase, captured webhook replay, failed payment, reconciliation, and full/partial refund (`RAZORPAY_EVIDENCE_2026-08-22.md`)
 - [x] Record a production malware-scanner startup check and suspicious-file rejection (`OWNER_CONFIRMATIONS_2026-08-28.md`)
-- [x] Record successful Slack/Sentry and provider spending/failure alert deliveries (`OWNER_CONFIRMATIONS_2026-08-28.md`)
+- [ ] Record successful Sentry email and provider spending/failure alert deliveries (Sentry event dispatch reverified on 29 August 2026; mailbox receipt still needs saved evidence)
 - [x] Complete the authenticated staging upload → process → export → download flow (`OWNER_CONFIRMATIONS_2026-08-28.md`)
 - [x] Complete one authenticated production upload → Hindi process → save/refresh → 1080p export → download flow (`PRODUCTION_VERIFICATION_2026-08-21.md`)
 - [x] Complete the real-video matrix: Hindi, English, Hinglish, portrait, landscape, poor audio, corrupt/unsupported, and near-limit media (`OWNER_CONFIRMATIONS_2026-08-28.md`)

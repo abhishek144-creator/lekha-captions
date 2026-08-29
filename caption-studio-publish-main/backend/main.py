@@ -5703,13 +5703,10 @@ def admin_recovery_summary(req: AdminRecoveryRequest):
 
 @app.post("/api/admin/test-alerts")
 def admin_test_alerts(req: AdminAlertTestRequest):
-    """Dispatch controlled Slack and Sentry events for launch evidence."""
+    """Dispatch a controlled Sentry event for launch evidence."""
     if not _is_admin_token(req.id_token):
         raise HTTPException(status_code=403, detail="Admin access required")
     test_id = f"alert-test-{_utcnow().strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(3)}"
-    slack_dispatched = _send_alert(
-        f"[Caption Studio Test] Production alert delivery test {test_id}. No action required."
-    )
     sentry_event_id = ""
     if SENTRY_DSN and SENTRY_AVAILABLE:
         try:
@@ -5722,23 +5719,20 @@ def admin_test_alerts(req: AdminAlertTestRequest):
             _json_log("warning", "sentry_test_alert_failed", test_id=test_id, error=str(e))
     _audit_action("production_alert_test_dispatched", "admin", {
         "test_id": test_id,
-        "slack_dispatched": bool(slack_dispatched),
         "sentry_dispatched": bool(sentry_event_id),
     })
-    if not slack_dispatched or not sentry_event_id:
+    if not sentry_event_id:
         raise HTTPException(
             status_code=503,
             detail={
-                "message": "One or more alert channels could not be dispatched.",
+                "message": "Sentry alert could not be dispatched.",
                 "test_id": test_id,
-                "slack_dispatched": bool(slack_dispatched),
                 "sentry_dispatched": bool(sentry_event_id),
             },
         )
     return {
         "success": True,
         "test_id": test_id,
-        "slack_dispatched": True,
         "sentry_dispatched": True,
         "sentry_event_id": sentry_event_id,
         "delivery_confirmation_required": True,
