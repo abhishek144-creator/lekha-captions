@@ -212,14 +212,13 @@ class ApiContractTests(unittest.TestCase):
         self.assertIsNone(accepted)
         verify.assert_called_once_with("valid-app-check-token")
 
-    def test_admin_alert_test_dispatches_slack_and_sentry(self):
+    def test_admin_alert_test_dispatches_sentry(self):
         fake_sentry = SimpleNamespace(
             capture_message=lambda *_args, **_kwargs: "sentry-event-1",
             flush=lambda **_kwargs: None,
         )
         with (
             patch.object(main, "_is_admin_token", return_value=True),
-            patch.object(main, "_send_alert", return_value=True),
             patch.object(main, "SENTRY_DSN", "https://public@example.invalid/1"),
             patch.object(main, "SENTRY_AVAILABLE", True),
             patch.object(main, "sentry_sdk", fake_sentry),
@@ -232,7 +231,6 @@ class ApiContractTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertTrue(payload["slack_dispatched"])
         self.assertTrue(payload["sentry_dispatched"])
         self.assertEqual(payload["sentry_event_id"], "sentry-event-1")
 
