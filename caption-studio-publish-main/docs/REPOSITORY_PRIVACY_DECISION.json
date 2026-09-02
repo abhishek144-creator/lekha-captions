@@ -1,9 +1,10 @@
 {
   "schema_version": 1,
   "review_date": "2026-09-02",
-  "decision_status": "pending_owner_choice",
+  "decision_status": "approved",
   "recommended_visibility": "private",
-  "approved_visibility": "",
-  "history_rewrite_authorized": false,
+  "approved_visibility": "public_rewritten",
+  "history_rewrite_authorized": true,
+  "owner_authorization_record": "User explicitly declined private visibility and instructed Codex to perform the listed public-history sanitization on 2026-09-02.",
   "review_report": "docs/REPOSITORY_PRIVACY_REVIEW_2026-09-02.md"
 }
