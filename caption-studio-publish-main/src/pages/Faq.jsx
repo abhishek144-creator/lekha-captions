@@ -49,7 +49,7 @@ function FaqItem({ q, a, index }) {
         onClick={() => setOpen((value) => !value)}
         className="group grid w-full grid-cols-[42px_1fr_auto] items-center gap-3 py-6 text-left sm:grid-cols-[58px_1fr_auto] sm:py-7"
       >
-        <span className="font-mono text-xs text-[#171713]/35">{String(index + 1).padStart(2, '0')}</span>
+        <span className="font-mono text-xs text-[#171713]/70">{String(index + 1).padStart(2, '0')}</span>
         <span className="pr-4 text-base font-semibold leading-6 tracking-[-0.01em] sm:text-lg">{q}</span>
         <span className="flex h-9 w-9 items-center justify-center rounded-full border border-[#171713]/20 transition-colors group-hover:border-[#171713] group-hover:bg-[#171713] group-hover:text-white">
           <ChevronDown className={`h-4 w-4 transition-transform duration-300 ${open ? 'rotate-180' : ''}`} />
@@ -76,11 +76,11 @@ export default function Faq() {
     >
       <div className="mx-auto grid max-w-7xl gap-12 px-6 py-16 sm:px-8 sm:py-20 lg:grid-cols-[280px_minmax(0,1fr)] lg:gap-20 lg:py-24">
         <aside className="lg:sticky lg:top-8 lg:self-start">
-          <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#171713]/40">Knowledge base / 01</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#171713]/70">Knowledge base / 01</p>
           <h2 className="mt-4 font-serif text-3xl leading-tight tracking-[-0.025em]">Clear answers, without the fine print.</h2>
           <div className="mt-8 border-l-2 border-[#F5A623] pl-5">
             <h3 className="text-sm font-semibold">Still have questions?</h3>
-            <p className="mt-2 text-sm leading-6 text-[#171713]/55">Our support team is here to help.</p>
+            <p className="mt-2 text-sm leading-6 text-[#171713]/70">Our support team is here to help.</p>
             <Link to="/HelpAndSupport" className="mt-5 inline-flex items-center gap-2 text-sm font-semibold transition-all hover:gap-3">
               Contact Support <ArrowRight className="h-4 w-4" />
             </Link>

@@ -85,6 +85,7 @@ Minimum runbook:
 ## 10) Chaos + Load Testing
 - Load smoke script: `python scripts/load_smoke.py --base-url http://localhost:8000`
 - Real staging media path: `python scripts/staging_smoke.py --base-url https://api.example.com --id-token <firebase-id-token> --video <short-mp4>`
+- Concurrent real-media path: `python scripts/media_load_smoke.py --base-url https://staging-api.example.com --credentials-json <private-disposable-users.json> --video <short-rights-cleared.mp4> --jobs 10 --workers 5`. Run only in isolated staging; it consumes real provider and render capacity.
 - Use as pre-release gate for queue/worker resilience.
 - Record every completed drill in `docs/DRILL_LOG.md` with an evidence link.
 
@@ -95,3 +96,6 @@ Minimum runbook:
   entitlement update, and reconcile the payment from the admin endpoint.
 - Confirm `support@lekhacaptions.com`, privacy, security, and alert contacts are monitored.
 - Attach readiness, staging-smoke, payment, restore, and rollback evidence to the release record.
+- Follow `docs/MASS_LAUNCH_RUNBOOK.md` for DNSSEC recovery, immutable release
+  verification, capacity evidence, browser/accessibility coverage, operational
+  ownership, and professional sign-off. Any incomplete item is a no-go.

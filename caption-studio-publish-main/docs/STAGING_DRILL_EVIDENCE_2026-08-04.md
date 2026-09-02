@@ -6,7 +6,7 @@ Environment: Railway project `lekha-captions-staging`
 ## Queue/worker recovery — PASS
 
 - UTC window: 2026-08-04 16:58
-- Operator: `redacted@users.noreply.github.com` via Codex CLI session
+- Operator: launch operator recorded in the private roster via Codex CLI session
 - Action: restarted worker service `06423f9a-923c-4205-b0b5-9594d3b6fddc`.
 - Deployment: `5b377c6f-d3c0-4566-848d-0c813c9feb2d`.
 - Observed recovery: warm shutdown completed, Firebase Admin initialized, Redis
@@ -18,7 +18,7 @@ Environment: Railway project `lekha-captions-staging`
 ## Load smoke — PASS
 
 - UTC window: 2026-08-04 16:57–16:58
-- Operator: `redacted@users.noreply.github.com` via Codex CLI session
+- Operator: launch operator recorded in the private roster via Codex CLI session
 - Command: `python scripts/load_smoke.py --base-url <staging-api> --requests 200 --workers 25`
 - Result: 200/200 requests completed, no network failures or 5xx responses;
   p95 was 3082.9 ms during cold/trial staging load.
@@ -31,7 +31,7 @@ Environment: Railway project `lekha-captions-staging`
 ## Backup restoration — PASS
 
 - UTC window: 2026-08-04 17:16
-- Operator: `redacted@users.noreply.github.com` via Codex CLI session
+- Operator: launch operator recorded in the private roster via Codex CLI session
 - Scope: three synthetic records in isolated Firestore namespaces; no customer
   records or production collections were copied.
 - Source namespace: `launch_drill_source_8207c596a8ae`
@@ -61,7 +61,7 @@ Environment: Railway project `lekha-captions-staging`
 ## Payment reconciliation — PASS
 
 - UTC window: 2026-08-05 17:22
-- Operator: `redacted@users.noreply.github.com` via Codex CLI session
+- Operator: launch operator recorded in the private roster via Codex CLI session
 - Action: called the deployed `POST /api/reconcile-payments` operator endpoint
   using the Railway-managed reconciliation secret and a seven-day lookback.
 - Result: the run completed successfully; scanned 0 pending records, applied 0,
@@ -76,7 +76,7 @@ Environment: Railway project `lekha-captions-staging`
 ## Frontend rollback — PASS
 
 - UTC window: 2026-08-05 18:00–18:03
-- Operator: `redacted@users.noreply.github.com` via Codex CLI and Netlify dashboard.
+- Operator: launch operator recorded in the private roster via Codex CLI and Netlify dashboard.
 - Previous deployment published: `6a7377b790ab7b455bf487b7`.
 - Rollback verification: the production alias served the previous
   `/assets/index-X56tHEJx.js` asset and returned HTTP 200.
@@ -90,7 +90,7 @@ Environment: Railway project `lekha-captions-staging`
 ## Account deletion — PASS
 
 - UTC window: 2026-08-05 18:06–18:07
-- Operator: `redacted@users.noreply.github.com` via Codex CLI session.
+- Operator: launch operator recorded in the private roster via Codex CLI session.
 - Scope: one disposable custom-token Firebase identity; the operator's real
   account was not used or modified.
 - Setup: called the deployed account-bootstrap endpoint, then seeded a user
@@ -107,7 +107,7 @@ Environment: Railway project `lekha-captions-staging`
 ## Support intake workflow — PASS
 
 - UTC window: 2026-08-06 17:13–17:14
-- Operator: `redacted@users.noreply.github.com` via Codex CLI session.
+- Operator: launch operator recorded in the private roster via Codex CLI session.
 - Scope: one synthetic request using `launch-test@example.com`; no customer data,
   payment ID, or media was included.
 - Action: submitted the deployed public `/api/support-request` form endpoint,
@@ -120,7 +120,7 @@ Environment: Railway project `lekha-captions-staging`
 ## Launch-fix deployment — PASS
 
 - UTC window: 2026-08-06 17:10–17:16
-- Operator: `redacted@users.noreply.github.com` via Codex CLI session.
+- Operator: launch operator recorded in the private roster via Codex CLI session.
 - Netlify editor deploy: `6a74c1efc20aca56dab0c48f` (final deploy,
   including sitemap entries; supersedes `6a74c0201835ce4d05a57eaf`).
 - Railway web deploy: `37210240-0245-4653-85c2-99ae846c41ef`.

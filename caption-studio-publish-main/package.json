@@ -35,6 +35,7 @@
     "release:check": "npm run release:contracts && npm run test:security:xss && npm run ci:frontend",
     "release:tree": "node scripts/check-clean-release-tree.mjs",
     "launch:evidence": "node scripts/check-launch-evidence.mjs",
+    "launch:verify-deployed": "node scripts/check-deployed-release.mjs",
     "monitor:synthetic": "node scripts/check-synthetic-health.mjs",
     "sync:firebase-auth-helpers": "node scripts/sync-firebase-auth-helpers.mjs",
     "launch:check": "npm run release:tree && npm run release:check && npm run test:templates:all && npm run security:audit && npm run launch:evidence",
@@ -47,6 +48,8 @@
     "security:audit": "node scripts/check-dependency-audit.mjs",
     "security:audit:raw": "npm audit --audit-level=high",
     "test:security:xss": "node scripts/check-template-sanitizer.mjs",
+    "test:browser": "npm run build:guarded && playwright test",
+    "test:browser:installed": "playwright test",
     "ci:frontend": "npm run test:contracts && npm run lint && npm run typecheck && npm run build:guarded"
   },
   "dependencies": {
@@ -74,7 +77,9 @@
     "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@eslint/js": "^9.19.0",
+    "@playwright/test": "^1.62.1",
     "@types/node": "^22.13.5",
     "@types/react": "^18.2.66",
     "@types/react-dom": "^18.2.22",

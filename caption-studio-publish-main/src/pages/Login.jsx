@@ -117,7 +117,7 @@ export default function Login() {
         : 'Google sign-up works today. Email sign-up is not enabled yet.';
 
     return (
-        <div className="flex min-h-screen items-center justify-center bg-[#0a0a0a] px-4">
+        <main className="flex min-h-screen items-center justify-center bg-[#0a0a0a] px-4">
             <div className="w-full max-w-md rounded-2xl border border-white/10 bg-zinc-900 p-10 shadow-2xl">
                 <div className="mb-6 flex rounded-xl bg-white/5 p-1">
                     <button
@@ -151,7 +151,7 @@ export default function Login() {
                         }}
                         className="mt-1"
                     />
-                    <span>I agree to the <a href="/TermsAndConditions" className="text-[#F5A623] hover:underline">Terms of Service</a> and acknowledge the <a href="/PrivacyPolicy" className="text-[#F5A623] hover:underline">Privacy Policy</a>.</span>
+                    <span>I agree to the <a href="/TermsAndConditions" className="text-[#F5A623] underline">Terms of Service</a> and acknowledge the <a href="/PrivacyPolicy" className="text-[#F5A623] underline">Privacy Policy</a>.</span>
                 </label>
 
                 <button
@@ -164,7 +164,7 @@ export default function Login() {
                     <span>{isSubmitting ? 'Connecting to Google...' : primaryCta}</span>
                 </button>
 
-                <p className="mt-4 text-center text-xs text-gray-500">{helperText}</p>
+                <p className="mt-4 text-center text-xs text-gray-400">{helperText}</p>
 
                 {(formError || authError) && (
                     <div className="mt-4 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-white">
@@ -180,6 +180,6 @@ export default function Login() {
                     )}
                 </div>
             </div>
-        </div>
+        </main>
     );
 }

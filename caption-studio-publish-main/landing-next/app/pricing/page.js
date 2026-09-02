@@ -98,7 +98,7 @@ export default function PricingPage() {
               </table>
             </div>
           </div>
-          <p className="pricing-disclaimer">Prices and plan availability may vary by region. The editor shows the final billing currency, taxes, annual discounts, and current purchase terms before checkout.</p>
+          <p className="pricing-disclaimer">Prices and plan availability may vary by region. Before payment authorization, checkout shows the final billing currency, applicable taxes, total payable amount, annual discount, and current purchase terms. Plans are one-time purchases and do not auto-renew.</p>
         </div>
       </section>
       <CtaBand title="Pick a plan when your workflow is ready." body="Start in the editor, experience the multilingual caption workflow, and choose the capacity that matches your output." />

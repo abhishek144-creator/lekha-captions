@@ -57,7 +57,7 @@ export default function AcceptableUsePolicy() {
     >
       <div className="mx-auto max-w-7xl px-6 py-16 sm:px-8 sm:py-20 lg:py-24">
         <section className="mb-16 max-w-3xl">
-          <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#171713]/40">Scope / 00</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#171713]/70">Scope / 00</p>
           <p className="mt-5 text-lg leading-9 text-[#171713]/70">
             This policy applies to everything you upload, generate, or export using Lekha Captions. It sits alongside
             our <Link to="/TermsAndConditions" className="font-semibold text-[#B7482F] hover:underline">Terms &amp; Conditions</Link>.
@@ -71,7 +71,7 @@ export default function AcceptableUsePolicy() {
               <ShieldAlert className="h-4 w-4" />
             </span>
             <div>
-              <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#171713]/40">Prohibited / 01</p>
+              <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#171713]/70">Prohibited / 01</p>
               <h2 className="mt-2 font-serif text-3xl tracking-[-0.025em] sm:text-4xl">What you must not do</h2>
             </div>
           </div>
@@ -93,7 +93,7 @@ export default function AcceptableUsePolicy() {
 
         <section className="mt-20 grid gap-10 lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-20">
           <div>
-            <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#171713]/40">Enforcement / 02</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#171713]/70">Enforcement / 02</p>
             <h2 className="mt-3 font-serif text-3xl tracking-[-0.025em] sm:text-4xl">How we act</h2>
           </div>
           <ul className="space-y-4">

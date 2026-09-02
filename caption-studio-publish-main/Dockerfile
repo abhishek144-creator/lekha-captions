@@ -47,8 +47,8 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
-COPY backend/requirements.txt backend/requirements.txt
-RUN python3 -m pip install --break-system-packages --no-cache-dir -r backend/requirements.txt
+COPY backend/requirements.lock backend/requirements.lock
+RUN python3 -m pip install --break-system-packages --no-cache-dir --require-hashes -r backend/requirements.lock
 
 COPY . .
 RUN chown -R node:node /app

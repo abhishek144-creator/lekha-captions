@@ -949,3 +949,43 @@ drags, and the exhaustive LC scope was not swept for further cases.
 - `npm run test:contracts` (includes dragged-word export + pricing defaults)
 - `npm run test:template-export` (46 phases), `npm run test:template-parity`
 - `python -m unittest backend.tests.test_api_contracts backend.tests.test_preview_export_parity` (63 tests OK)
+
+### Session 19 — 2026-09-02
+
+**Theme:** Mass-public-launch gates, external-style security review, and legal
+readiness hardening
+
+- Added immutable frontend/backend release verification, dual-resolver DNS and
+  API synthetic monitoring, realistic authenticated media-capacity tooling,
+  mass-launch/release runbooks, hashed Python dependencies, immutable GitHub
+  Actions, cross-browser Playwright/axe gates, and complete marketing legal
+  routes.
+- Remediated public-page accessibility findings across Chromium, Firefox,
+  WebKit, Pixel 7, and iPhone 15 profiles. The full 55-case suite produced 48
+  passes before a new grievance-link contrast issue was found; all ten affected
+  home/privacy cases then passed after the link received a persistent underline.
+- Completed an external-style AI technical review. npm and Python dependency
+  audits found no known vulnerabilities. Bandit now reports no Medium/High issue;
+  the private Railway worker's platform-required readiness bind has a narrow
+  documented suppression.
+- Narrowed frontend `connect-src` from every HTTPS origin to the Lekha API and
+  explicit Firebase/Google, Razorpay, Sentry, and reCAPTCHA providers. A release
+  contract prevents the broad policy from returning.
+- Added deployment-required legal business, venue, grievance-officer, and
+  grievance-email fields to both frontend builds. Public policies now describe
+  complaint timing, consent withdrawal, privacy rights/escalation, applicable
+  taxes, total payable amount, one-time purchase terms, and invoice handling.
+- Recorded the AI security and India legal/tax reviews without misrepresenting
+  them as accredited pentest, lawyer, or CA certificates.
+- Verification: 194 release contracts, frontend lint/typecheck/build and
+  performance budgets, Next.js marketing build, Bandit Medium/High gate, all
+  affected browser/device tests, npm audit, pip-audit, backend tests, and the
+  complete template matrix.
+
+**Deployment condition**
+
+Production still runs a different backend commit and the frontend has no release
+marker. Direct deployment was intentionally not performed because the hosting
+environment does not expose the newly required real grievance/legal identity
+variables and GitHub CLI is not authenticated. Deploy only one committed SHA
+after those public values are supplied and hosted CI passes.
