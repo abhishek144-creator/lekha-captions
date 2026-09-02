@@ -652,6 +652,9 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
         <p className="text-xs text-gray-600 text-center mt-2">
           One-time purchase — no auto-renewal. Unused credits expire at the end of the plan period.
         </p>
+        <p className="text-xs text-gray-600 text-center mt-2">
+          Checkout shows the final currency, applicable taxes, and total payable amount before payment.
+        </p>
         <p className="text-xs text-gray-500 text-center mt-2">
           <a href="/TermsAndConditions" target="_blank" rel="noreferrer" className="underline hover:text-gray-300">Terms</a>
           <span className="mx-2">·</span>

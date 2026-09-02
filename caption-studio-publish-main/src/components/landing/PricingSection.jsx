@@ -508,6 +508,11 @@ export default function PricingSection() {
           ))}
         </div>
 
+        <p className="mt-5 text-center text-xs text-[#949494]">
+          The checkout shows the final currency, applicable taxes, and total payable amount before you authorize payment.
+          Plans are one-time purchases and do not auto-renew.
+        </p>
+
         {/* Feature Comparison */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}

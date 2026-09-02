@@ -21,7 +21,7 @@ const baseSecurityHeaders = {
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(self)',
   'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
 }
-const productionCsp = "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; script-src 'self' 'nonce-lekha-template-preview-v1' 'sha256-nuF1+itnyWZpSrGpYCCq2I3cC29kh7Np7md2u0giq4A=' https://apis.google.com https://www.google.com https://www.gstatic.com https://checkout.razorpay.com; frame-src https://www.google.com https://recaptcha.google.com https://*.razorpay.com https://*.firebaseapp.com; connect-src 'self' https:; img-src 'self' data: blob: https:; media-src 'self' blob: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com"
+const productionCsp = "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; script-src 'self' 'nonce-lekha-template-preview-v1' 'sha256-nuF1+itnyWZpSrGpYCCq2I3cC29kh7Np7md2u0giq4A=' https://apis.google.com https://www.google.com https://www.gstatic.com https://checkout.razorpay.com; frame-src https://www.google.com https://recaptcha.google.com https://*.razorpay.com https://*.firebaseapp.com; connect-src 'self' https://api.lekhacaptions.com https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://*.razorpay.com https://*.sentry.io https://www.google.com https://www.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' blob: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com"
 
 function isLocalBackendTarget() {
   return ['localhost', '127.0.0.1'].includes(backendUrl.hostname)
@@ -143,21 +143,68 @@ foreach ($ownerPid in $pids) {
   }
 }
 
-export default defineConfig(({ mode }) => {
+function resolveBuildRelease(env) {
+  const configured = String(
+    env.VITE_APP_RELEASE
+      || env.COMMIT_REF
+      || env.RAILWAY_GIT_COMMIT_SHA
+      || '',
+  ).trim()
+  if (configured) return configured
+  try {
+    return execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
+  } catch {
+    return ''
+  }
+}
+
+function releaseMetadataPlugin(release) {
+  return {
+    name: 'lekha-release-metadata',
+    transformIndexHtml: {
+      order: 'pre',
+      handler() {
+        return [{
+          tag: 'meta',
+          attrs: { name: 'lekha-release', content: release },
+          injectTo: 'head',
+        }]
+      },
+    },
+  }
+}
+
+export default defineConfig(({ mode, command }) => {
   const env = { ...loadEnv(mode, process.cwd(), ''), ...process.env }
-  if (mode === 'production' && !env.VITE_API_BASE_URL && env.VITE_ALLOW_SAME_ORIGIN_API !== '1') {
+  const buildRelease = resolveBuildRelease(env)
+  const isProductionBuild = command === 'build' && mode === 'production'
+  if (isProductionBuild && !env.VITE_API_BASE_URL && env.VITE_ALLOW_SAME_ORIGIN_API !== '1') {
     throw new Error(
       'Production builds require VITE_API_BASE_URL. Set VITE_ALLOW_SAME_ORIGIN_API=1 only when the host reverse-proxies /api to the backend.'
     )
   }
-  if (mode === 'production' && !env.VITE_FIREBASE_APP_CHECK_SITE_KEY) {
+  if (isProductionBuild && !env.VITE_FIREBASE_APP_CHECK_SITE_KEY) {
     throw new Error(
       'Production builds require VITE_FIREBASE_APP_CHECK_SITE_KEY so browser requests can be attested with Firebase App Check.'
     )
   }
+  const requiredLegalFields = [
+    'VITE_LEGAL_BUSINESS_NAME',
+    'VITE_LEGAL_BUSINESS_ADDRESS',
+    'VITE_GOVERNING_VENUE',
+    'VITE_GRIEVANCE_OFFICER_NAME',
+    'VITE_GRIEVANCE_EMAIL',
+  ]
+  const missingLegalFields = requiredLegalFields.filter((key) => !String(env[key] || '').trim())
+  if (isProductionBuild && missingLegalFields.length) {
+    throw new Error(`Production builds require legal identity fields: ${missingLegalFields.join(', ')}`)
+  }
+  if (isProductionBuild && !/^[a-f0-9]{40}$/i.test(buildRelease)) {
+    throw new Error('Production builds require a 40-character Git release SHA via VITE_APP_RELEASE, COMMIT_REF, or the current checkout.')
+  }
 
   return {
-  plugins: [backendAutostartPlugin(), react()],
+  plugins: [backendAutostartPlugin(), releaseMetadataPlugin(buildRelease), react()],
   build: {
     rollupOptions: {
       output: {

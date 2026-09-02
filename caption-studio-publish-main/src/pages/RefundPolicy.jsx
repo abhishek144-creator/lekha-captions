@@ -3,6 +3,10 @@ import { Check, X } from 'lucide-react'
 import SupportPageShell from '@/components/support/SupportPageShell'
 
 const supportEmail = import.meta.env.VITE_SUPPORT_EMAIL || 'support@lekhacaptions.com'
+const legalBusinessName = import.meta.env.VITE_LEGAL_BUSINESS_NAME || 'Lekha Captions'
+const legalBusinessAddress = import.meta.env.VITE_LEGAL_BUSINESS_ADDRESS || 'Business address available from support'
+const grievanceOfficerName = import.meta.env.VITE_GRIEVANCE_OFFICER_NAME || 'Grievance Officer'
+const grievanceEmail = import.meta.env.VITE_GRIEVANCE_EMAIL || supportEmail
 
 const eligible = [
   'You were charged twice for the same plan or top-up.',
@@ -27,7 +31,7 @@ const steps = [
   },
   {
     title: 'We review',
-    body: 'We check the payment, your account usage, and any related job or error logs. We aim to respond within one business day. Complex transcription, rendering, or payment issues may need further investigation.',
+    body: 'We check the payment, your account usage, and any related job or error logs. We acknowledge complaints within 48 hours and aim to resolve them within one month. Most requests receive an initial human response within one business day.',
   },
   {
     title: 'We decide',
@@ -56,6 +60,10 @@ const sections = [
     title: 'Chargebacks',
     body: 'If you believe a charge is wrong, please contact us first. A chargeback raised with your bank without contacting us takes longer to resolve for everyone and may result in account suspension while the dispute is investigated. We keep payment, usage, and delivery records so that genuine disputes can be resolved accurately.',
   },
+  {
+    title: 'Escalating a complaint',
+    body: `If support does not resolve your concern, contact ${grievanceOfficerName} at ${grievanceEmail}. Include the earlier support reference and do not send passwords, OTPs, complete card numbers, or CVVs. This process does not limit any consumer remedy available under applicable law.`,
+  },
 ]
 
 export default function RefundPolicy() {
@@ -64,7 +72,7 @@ export default function RefundPolicy() {
       active="refunds"
       eyebrow="Legal"
       title="Refund & Cancellation Policy"
-      description="Version 2026-07-26 · Last updated: July 26, 2026"
+      description="Version 2026-09-02 · Last updated: September 2, 2026"
       pageCode="04"
       accent="#4F8EF7"
       accentGlow="rgba(79, 142, 247, 0.17)"
@@ -72,12 +80,15 @@ export default function RefundPolicy() {
     >
       <div className="mx-auto max-w-7xl px-6 py-16 sm:px-8 sm:py-20 lg:py-24">
         <section className="mb-16 max-w-3xl">
-          <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#171713]/40">Summary / 00</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#171713]/70">Summary / 00</p>
           <p className="mt-5 text-lg leading-9 text-[#171713]/70">
             Lekha Captions plans do not auto-renew, so you will never be charged unexpectedly. If we took your money
             and did not deliver, we refund it. If a job failed because of us, we make it right. Email{' '}
             <a className="font-semibold text-[#1E4FA8] hover:underline" href={`mailto:${supportEmail}`}>{supportEmail}</a>{' '}
             and a human will read it.
+          </p>
+          <p className="mt-4 text-sm leading-7 text-[#171713]/70">
+            Seller: {legalBusinessName} · {legalBusinessAddress}
           </p>
         </section>
 
@@ -114,7 +125,7 @@ export default function RefundPolicy() {
                 </li>
               ))}
             </ul>
-            <p className="mt-6 border-t border-[#171713]/10 pt-5 text-sm leading-7 text-[#171713]/55">
+            <p className="mt-6 border-t border-[#171713]/10 pt-5 text-sm leading-7 text-[#171713]/70">
               Where a significant part of your export allowance has already been used, a refund may be reduced in
               proportion or declined. We look at each request individually.
             </p>
@@ -123,7 +134,7 @@ export default function RefundPolicy() {
 
         <section className="mt-20">
           <div className="mb-8 border-b border-[#171713]/15 pb-5">
-            <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#171713]/40">Process / 01</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#171713]/70">Process / 01</p>
             <h2 className="mt-3 font-serif text-3xl tracking-[-0.025em] sm:text-4xl">How to request a refund</h2>
           </div>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -135,7 +146,7 @@ export default function RefundPolicy() {
               </article>
             ))}
           </div>
-          <p className="mt-6 text-sm leading-7 text-[#171713]/55">
+          <p className="mt-6 text-sm leading-7 text-[#171713]/70">
             We will never ask you for your password, OTP, full card number, or CVV. Nobody from Lekha Captions needs
             them, and any message that asks for them is not from us.
           </p>
@@ -143,7 +154,7 @@ export default function RefundPolicy() {
 
         <section className="mt-20">
           <div className="mb-8 border-b border-[#171713]/15 pb-5">
-            <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#171713]/40">Details / 02</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#171713]/70">Details / 02</p>
             <h2 className="mt-3 font-serif text-3xl tracking-[-0.025em] sm:text-4xl">Plans, credits, and disputes</h2>
           </div>
           <div className="rounded-[1.5rem] border border-[#171713]/15 bg-[#FBF9F4] px-6 sm:px-10">

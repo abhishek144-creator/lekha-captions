@@ -225,6 +225,7 @@ export default function UserAccount() {
       `Date: ${formatDate(payment?.timestamp, 'Unavailable')}`,
       '',
       'This is a payment record, not a tax invoice.',
+      'When a tax invoice applies, it is issued separately using your billing details. Contact support if you did not receive it.',
     ].join('\n')
     const blob = new Blob([record], { type: 'text/plain;charset=utf-8' })
     const url = URL.createObjectURL(blob)

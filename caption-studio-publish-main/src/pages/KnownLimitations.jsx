@@ -48,7 +48,7 @@ export default function KnownLimitations() {
                 <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#F5A623]/15 text-[#9A6200]">
                   <AlertTriangle className="h-4 w-4" />
                 </span>
-                <span className="font-mono text-xs text-[#171713]/30">0{index + 1}</span>
+                <span className="font-mono text-xs text-[#171713]/70">0{index + 1}</span>
               </div>
               <h2 className="mt-7 text-xl font-semibold tracking-[-0.02em]">{item.title}</h2>
               <p className="mt-3 text-sm leading-7 text-[#171713]/60">{item.description}</p>
@@ -61,7 +61,7 @@ export default function KnownLimitations() {
             <CheckCircle2 className="mt-1 h-5 w-5 shrink-0 text-[#176C3A]" />
             <div>
               <h2 className="font-semibold text-[#174F32]">What happens when a job fails</h2>
-              <p className="mt-2 text-sm leading-7 text-[#174F32]/75">
+              <p className="mt-2 text-sm leading-7 text-[#174F32]">
                 Provider or system transcription failures return the reserved daily allowance, and failed exports do not consume an export credit. Error messages include a reference you can send to support.
               </p>
             </div>

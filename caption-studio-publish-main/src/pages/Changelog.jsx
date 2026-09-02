@@ -58,7 +58,7 @@ export default function Changelog() {
           {releases.map((release, index) => (
             <article key={`${release.date}-${release.title}`} className="grid gap-5 rounded-[1.5rem] border border-[#171713]/15 bg-[#FBF9F4] p-6 sm:grid-cols-[180px_1fr] sm:p-8">
               <div>
-                <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#171713]/40">Release {String(releases.length - index).padStart(2, '0')}</p>
+                <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#171713]/70">Release {String(releases.length - index).padStart(2, '0')}</p>
                 <p className="mt-3 text-sm font-semibold text-[#171713]/70">{release.date}</p>
                 {release.status ? <span className="mt-4 inline-flex rounded-full bg-[#55D6BE]/20 px-3 py-1 text-xs font-semibold text-[#176C5A]">{release.status}</span> : null}
               </div>

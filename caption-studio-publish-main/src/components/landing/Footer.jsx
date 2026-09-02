@@ -16,7 +16,7 @@ export default function Footer() {
           </div>
 
           <div>
-            <p className="text-[0.64rem] font-semibold uppercase tracking-[0.34em] text-white/38">Product</p>
+            <p className="text-[0.64rem] font-semibold uppercase tracking-[0.34em] text-white/70">Product</p>
             <div className="mt-6 space-y-3.5 text-xl text-white/86">
               <Link to={createPageUrl('Home')} className="block transition hover:text-white">Features</Link>
               <Link to={createPageUrl('Home')} className="block transition hover:text-white">Pricing</Link>
@@ -26,7 +26,7 @@ export default function Footer() {
           </div>
 
           <div>
-            <p className="text-[0.64rem] font-semibold uppercase tracking-[0.34em] text-white/38">Support</p>
+            <p className="text-[0.64rem] font-semibold uppercase tracking-[0.34em] text-white/70">Support</p>
             <div className="mt-6 space-y-3.5 text-xl text-white/86">
               <Link to={createPageUrl('Faq')} className="block transition hover:text-white">FAQ</Link>
               <Link to={createPageUrl('HelpAndSupport')} className="block transition hover:text-white">Help</Link>
@@ -41,7 +41,7 @@ export default function Footer() {
           </div>
         </div>
 
-        <div className="mt-16 flex flex-col gap-4 border-t border-white/[0.08] pt-6 text-sm text-white/44 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mt-16 flex flex-col gap-4 border-t border-white/[0.08] pt-6 text-sm text-white/70 sm:flex-row sm:items-center sm:justify-between">
           <p>&copy; {new Date().getFullYear()} Lekha Captions. All rights reserved.</p>
           <p className="flex items-center gap-2">
             <span>Creator-friendly captions for audiences everywhere</span>

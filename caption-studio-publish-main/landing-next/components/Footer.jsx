@@ -23,6 +23,8 @@ export function Footer() {
             <a href={`mailto:${supportEmail}`}>{supportEmail}</a>
             <Link href="/terms/">Terms &amp; Conditions</Link>
             <Link href="/privacy/">Privacy Policy</Link>
+            <Link href="/refund/">Refund &amp; Cancellation</Link>
+            <Link href="/acceptable-use/">Acceptable Use</Link>
           </div>
         </div>
       </div>

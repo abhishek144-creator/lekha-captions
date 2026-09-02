@@ -19,7 +19,7 @@ described in `.env.example`.
 
 ```bash
 npm ci
-python -m pip install -r backend/requirements.txt
+python -m pip install --require-hashes -r backend/requirements.lock
 npm run dev
 ```
 
@@ -43,7 +43,7 @@ Run these from the application directory:
 npm run test:templates:all
 npm run release:check
 $env:APP_ENV='test'; python -m unittest backend.tests.test_api_contracts backend.tests.test_smoke_flow backend.tests.test_audio_less_fallback backend.tests.test_preview_export_parity
-python -m pip_audit -r backend/requirements.txt
+python -m pip_audit -r backend/requirements.lock
 cd landing-next
 npm ci
 npm run build

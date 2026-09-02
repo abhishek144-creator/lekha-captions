@@ -5,6 +5,8 @@ backend_debug.log
 build_*.txt
 dist/
 .pytest_cache/
+test-results/
+playwright-report/
 landing-next/.next/
 landing-next/out/
 __pycache__/

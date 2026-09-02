@@ -1,6 +1,11 @@
 export const siteUrl = 'https://lekhacaptions.com'
 export const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.lekhacaptions.com'
 export const supportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || 'support@lekhacaptions.com'
+export const legalBusinessName = process.env.NEXT_PUBLIC_LEGAL_BUSINESS_NAME || 'Lekha Captions'
+export const legalBusinessAddress = process.env.NEXT_PUBLIC_LEGAL_BUSINESS_ADDRESS || 'Business address available from support'
+export const governingVenue = process.env.NEXT_PUBLIC_GOVERNING_VENUE || 'India'
+export const grievanceOfficerName = process.env.NEXT_PUBLIC_GRIEVANCE_OFFICER_NAME || 'Grievance Officer'
+export const grievanceEmail = process.env.NEXT_PUBLIC_GRIEVANCE_EMAIL || supportEmail
 
 export const siteDescription =
   'Create accurate, animated video captions in 115+ languages across every major writing system, with a fast editor built for creators, agencies, and businesses worldwide.'

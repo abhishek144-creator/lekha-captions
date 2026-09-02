@@ -36,7 +36,9 @@ def _start_readiness_server(conn):
             return
 
     port = int(os.environ.get("PORT", "8000"))
-    server = ThreadingHTTPServer(("0.0.0.0", port), ReadinessHandler)
+    # Railway's private health proxy must reach this container listener. The
+    # worker has no public domain and exposes only readiness state.
+    server = ThreadingHTTPServer(("0.0.0.0", port), ReadinessHandler)  # nosec B104
     threading.Thread(target=server.serve_forever, name="worker-readiness", daemon=True).start()
     return server
 

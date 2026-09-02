@@ -1,0 +1,33 @@
+name: Production synthetic monitor
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-synthetic-monitor
+  cancel-in-progress: true
+
+jobs:
+  dns-and-api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: caption-studio-publish-main
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 20.19.0
+      - name: Check validating DNS resolvers and customer-facing API
+        env:
+          SYNTHETIC_BASE_URL: https://api.lekhacaptions.com
+          SYNTHETIC_DNS_HOSTS: lekhacaptions.com,app.lekhacaptions.com,api.lekhacaptions.com
+          SYNTHETIC_TIMEOUT_MS: 15000
+          SYNTHETIC_MAX_LATENCY_MS: 10000
+        run: node scripts/check-synthetic-health.mjs

@@ -149,10 +149,10 @@ export default function HelpAndSupport() {
         <section>
           <div className="mb-8 flex items-end justify-between gap-6 border-b border-[#171713]/15 pb-5">
             <div>
-              <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#171713]/40">Start here / 01</p>
+              <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#171713]/70">Start here / 01</p>
               <h2 className="mt-3 font-serif text-3xl tracking-[-0.025em] sm:text-4xl">Quick Guides</h2>
             </div>
-            <span className="hidden text-sm text-[#171713]/45 sm:block">Choose a workflow</span>
+            <span className="hidden text-sm text-[#171713]/70 sm:block">Choose a workflow</span>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
@@ -165,7 +165,7 @@ export default function HelpAndSupport() {
                   <div className="flex h-11 w-11 items-center justify-center rounded-full text-white" style={{ backgroundColor: topic.color }}>
                     <topic.icon className="h-5 w-5" />
                   </div>
-                  <span className="font-mono text-xs text-[#171713]/30">0{index + 1}</span>
+                  <span className="font-mono text-xs text-[#171713]/70">0{index + 1}</span>
                 </div>
                 <h3 className="mt-9 text-xl font-semibold tracking-[-0.02em]">{topic.title}</h3>
                 <p className="mt-3 max-w-md text-sm leading-6 text-[#171713]/60">{topic.desc}</p>
@@ -177,9 +177,9 @@ export default function HelpAndSupport() {
 
         <section className="mt-20 grid gap-10 lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-20">
           <div>
-            <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#171713]/40">Fix a problem / 02</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#171713]/70">Fix a problem / 02</p>
             <h2 className="mt-3 font-serif text-3xl tracking-[-0.025em] sm:text-4xl">Troubleshooting</h2>
-            <p className="mt-4 text-sm leading-6 text-[#171713]/55">Fast checks for the most common issues.</p>
+            <p className="mt-4 text-sm leading-6 text-[#171713]/70">Fast checks for the most common issues.</p>
           </div>
 
           <div className="overflow-hidden rounded-[1.5rem] border border-[#171713]/15 bg-[#FBF9F4]">
@@ -190,7 +190,7 @@ export default function HelpAndSupport() {
                 </div>
                 <div>
                   <div className="flex items-start gap-3">
-                    <span className="pt-0.5 font-mono text-[10px] text-[#171713]/30">0{index + 1}</span>
+                    <span className="pt-0.5 font-mono text-[10px] text-[#171713]/70">0{index + 1}</span>
                     <h3 className="font-semibold leading-6">{item.issue}</h3>
                   </div>
                   <p className="mt-2 text-sm leading-7 text-[#171713]/60">{item.fix}</p>
@@ -202,9 +202,9 @@ export default function HelpAndSupport() {
 
         <section className="mt-20 grid gap-10 lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-20">
           <div>
-            <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#171713]/40">Report a problem / 03</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#171713]/70">Report a problem / 03</p>
             <h2 className="mt-3 font-serif text-3xl tracking-[-0.025em] sm:text-4xl">What to send us</h2>
-            <p className="mt-4 text-sm leading-6 text-[#171713]/55">
+            <p className="mt-4 text-sm leading-6 text-[#171713]/70">
               The more of this you include, the faster we can fix it.
             </p>
           </div>
@@ -224,9 +224,9 @@ export default function HelpAndSupport() {
 
         <section className="mt-20 grid gap-10 lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-20">
           <div>
-            <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#171713]/40">Contact form / 04</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#171713]/70">Contact form / 04</p>
             <h2 className="mt-3 font-serif text-3xl tracking-[-0.025em] sm:text-4xl">Send a support report</h2>
-            <p className="mt-4 text-sm leading-6 text-[#171713]/55">
+            <p className="mt-4 text-sm leading-6 text-[#171713]/70">
               Submit the details here so the support team can track and respond to your request.
             </p>
           </div>
@@ -270,7 +270,7 @@ export default function HelpAndSupport() {
                 value={report.jobId}
                 onChange={updateReport('jobId')}
                 placeholder="Shown in a failed-job message"
-                className="rounded-xl border border-[#171713]/20 bg-white px-4 py-3 font-normal outline-none placeholder:text-[#171713]/35 focus:border-[#171713]"
+                className="rounded-xl border border-[#171713]/20 bg-white px-4 py-3 font-normal outline-none placeholder:text-[#171713]/60 focus:border-[#171713]"
               />
             </label>
             <label className="grid gap-2 text-sm font-semibold text-[#171713]">
@@ -280,7 +280,7 @@ export default function HelpAndSupport() {
                 value={report.paymentId}
                 onChange={updateReport('paymentId')}
                 placeholder="Only for payment issues"
-                className="rounded-xl border border-[#171713]/20 bg-white px-4 py-3 font-normal outline-none placeholder:text-[#171713]/35 focus:border-[#171713]"
+                className="rounded-xl border border-[#171713]/20 bg-white px-4 py-3 font-normal outline-none placeholder:text-[#171713]/60 focus:border-[#171713]"
               />
             </label>
             <label className="grid gap-2 text-sm font-semibold text-[#171713]">
@@ -291,7 +291,7 @@ export default function HelpAndSupport() {
                 value={report.browserDevice}
                 onChange={updateReport('browserDevice')}
                 placeholder="Chrome on Android, Safari on iPhone..."
-                className="rounded-xl border border-[#171713]/20 bg-white px-4 py-3 font-normal outline-none placeholder:text-[#171713]/35 focus:border-[#171713]"
+                className="rounded-xl border border-[#171713]/20 bg-white px-4 py-3 font-normal outline-none placeholder:text-[#171713]/60 focus:border-[#171713]"
               />
             </label>
             <label className="grid gap-2 text-sm font-semibold text-[#171713]">
@@ -301,7 +301,7 @@ export default function HelpAndSupport() {
                 value={report.mediaDetails}
                 onChange={updateReport('mediaDetails')}
                 placeholder="MP4 · 42 seconds · 18 MB"
-                className="rounded-xl border border-[#171713]/20 bg-white px-4 py-3 font-normal outline-none placeholder:text-[#171713]/35 focus:border-[#171713]"
+                className="rounded-xl border border-[#171713]/20 bg-white px-4 py-3 font-normal outline-none placeholder:text-[#171713]/60 focus:border-[#171713]"
               />
             </label>
             <label className="grid gap-2 text-sm font-semibold text-[#171713] sm:col-span-2">
@@ -312,7 +312,7 @@ export default function HelpAndSupport() {
                 value={report.description}
                 onChange={updateReport('description')}
                 placeholder="Tell us what you expected and what happened instead."
-                className="resize-y rounded-xl border border-[#171713]/20 bg-white px-4 py-3 font-normal leading-6 outline-none placeholder:text-[#171713]/35 focus:border-[#171713]"
+                className="resize-y rounded-xl border border-[#171713]/20 bg-white px-4 py-3 font-normal leading-6 outline-none placeholder:text-[#171713]/60 focus:border-[#171713]"
               />
             </label>
             <div className="sm:col-span-2">
@@ -341,7 +341,7 @@ export default function HelpAndSupport() {
               >
                 Open email instead
               </button>
-              <p className="mt-3 text-xs leading-5 text-[#171713]/45">
+              <p className="mt-3 text-xs leading-5 text-[#171713]/70">
                 Never include a password, OTP, full card number, or CVV. Attachments can be sent by email.
               </p>
             </div>
@@ -356,15 +356,15 @@ export default function HelpAndSupport() {
                 <MessageCircle className="h-5 w-5 text-[#55D6BE]" />
               </div>
               <h2 className="font-serif text-3xl tracking-[-0.025em]">Contact Us</h2>
-              <p className="mt-3 text-sm leading-7 text-white/55">
+              <p className="mt-3 text-sm leading-7 text-white/70">
                 Have a question not answered here? Email us and a human will read it. We normally respond within one
                 business day. Complex transcription, rendering, or payment issues may need further investigation, so
                 we promise you a reply — not always a same-day fix.
               </p>
-              <p className="mt-4 text-sm leading-7 text-white/55">
+              <p className="mt-4 text-sm leading-7 text-white/70">
                 We will never ask you for your password, OTP, full card number, or CVV.
               </p>
-              <p className="mt-4 text-xs text-white/40">
+              <p className="mt-4 text-xs text-white/70">
                 <Link to="/Faq" className="text-white/70 hover:text-white">Browse FAQ</Link> for common questions, or read our{' '}
                 <Link to="/RefundPolicy" className="text-white/70 hover:text-white">Refund &amp; Cancellation Policy</Link>.
               </p>
