@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "review_date": "2026-09-02",
+  "decision_status": "pending_owner_choice",
+  "recommended_visibility": "private",
+  "approved_visibility": "",
+  "history_rewrite_authorized": false,
+  "review_report": "docs/REPOSITORY_PRIVACY_REVIEW_2026-09-02.md"
+}

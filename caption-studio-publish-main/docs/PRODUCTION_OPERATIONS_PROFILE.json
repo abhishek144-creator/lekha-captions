@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "effective_date": "2026-09-02",
+  "approval_status": "approved",
+  "scope": "initial mass-public launch",
+  "objectives": {
+    "availability_percent": 99.5,
+    "rto_minutes": 240,
+    "rpo_minutes": 1440,
+    "sev1_acknowledgement_minutes": 15,
+    "support_first_response_business_hours": 24
+  },
+  "capacity": {
+    "api_replicas": 2,
+    "render_worker_replicas": 1,
+    "max_concurrent_renders_per_worker": 1,
+    "approved_concurrent_media_jobs": 5,
+    "max_worker_replicas_without_new_capacity_test": 3
+  },
+  "queue_thresholds": {
+    "warning_depth": 5,
+    "critical_depth": 10,
+    "warning_oldest_job_minutes": 5,
+    "critical_oldest_job_minutes": 15,
+    "scale_up_after_minutes": 5,
+    "scale_down_below_depth": 2,
+    "scale_down_after_minutes": 30
+  },
+  "provider_and_cost_limits": {
+    "ai_system_daily_calls": 50,
+    "per_user_concurrent_processes": 1,
+    "per_user_concurrent_exports": 1,
+    "budget_warning_percent": 80,
+    "budget_hard_stop_percent": 100,
+    "hard_stop_action": "pause new paid-provider work with service controls"
+  },
+  "ownership": {
+    "on_call_primary": "private production roster",
+    "on_call_backup": "private production roster",
+    "rollback_owner": "executive launch/rollback approver in private production roster",
+    "support_owner": "customer-support owner in private production roster"
+  },
+  "evidence": {
+    "private_roster": "docs/PRODUCTION_CONTACTS.md",
+    "queue_and_restore_drills": "docs/STAGING_DRILL_EVIDENCE_2026-08-04.md",
+    "alert_delivery": "docs/OWNER_CONFIRMATIONS_2026-08-28.md",
+    "capacity_confirmation": "docs/OWNER_CONFIRMATIONS_2026-09-02.md",
+    "incident_process": "docs/INCIDENT_RESPONSE.md",
+    "support_process": "docs/SUPPORT_TICKET_WORKFLOW.md"
+  }
+}

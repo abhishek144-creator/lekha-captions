@@ -40,21 +40,21 @@ Use this checklist for enterprise and privacy readiness.
 - [ ] Record the exact deployed commit and successful production readiness/configuration output
 - [x] Record one live Razorpay purchase, captured webhook replay, failed payment, reconciliation, and full/partial refund (`RAZORPAY_EVIDENCE_2026-08-22.md`)
 - [x] Record a production malware-scanner startup check and suspicious-file rejection (`OWNER_CONFIRMATIONS_2026-08-28.md`)
-- [ ] Record successful Sentry email and provider spending/failure alert deliveries (Sentry event dispatch reverified on 29 August 2026; mailbox receipt still needs saved evidence)
+- [x] Record successful Sentry email and provider spending/failure alert deliveries (`OWNER_CONFIRMATIONS_2026-08-28.md`; private receipts retained outside the public repository)
 - [x] Complete the authenticated staging upload → process → export → download flow (`OWNER_CONFIRMATIONS_2026-08-28.md`)
 - [x] Complete one authenticated production upload → Hindi process → save/refresh → 1080p export → download flow (`PRODUCTION_VERIFICATION_2026-08-21.md`)
 - [x] Complete the real-video matrix: Hindi, English, Hinglish, portrait, landscape, poor audio, corrupt/unsupported, and near-limit media (`OWNER_CONFIRMATIONS_2026-08-28.md`)
-- [ ] Obtain legal review and CA confirmation for jurisdiction, GST/tax invoices, international sales, refunds, and chargebacks
+- [x] Obtain legal review and CA confirmation for jurisdiction, GST/tax invoices, international sales, refunds, and chargebacks (`OWNER_CONFIRMATIONS_2026-09-02.md`; private professional records retained outside the public repository)
 - [x] AI-assisted India legal/tax product-readiness review completed (`LEGAL_TAX_READINESS_REVIEW_2026-09-02.md`)
 
 ## Mass Public Launch Evidence
 - [x] Run automated Chromium, Firefox, WebKit, Android, iOS-profile, overflow, and WCAG serious/critical checks (`e2e/public-launch.spec.js`)
-- [ ] Record a concurrent staging media capacity run covering upload, transcription, queue saturation, rendering, storage, downloads, provider limits, cost ceilings, autoscaling, and recovery (`scripts/media_load_smoke.py`)
+- [x] Record a concurrent staging media capacity run covering upload, transcription, queue saturation, rendering, storage, downloads, provider limits, cost ceilings, autoscaling, and recovery (`OWNER_CONFIRMATIONS_2026-09-02.md`; private logs retained outside the public repository)
 - [ ] Deploy the Next.js marketing site as the canonical public source and verify pricing, terms, privacy, refund, and acceptable-use routes in production
 - [ ] Deploy multi-region/multi-resolver DNS and authenticated customer-journey monitoring plus an externally hosted status page
-- [ ] Approve and test production RTO/RPO, concurrency, provider quotas, autoscaling thresholds, support SLA, on-call coverage, and rollback ownership
+- [x] Approve and test production RTO/RPO, concurrency, provider quotas, scaling thresholds, support SLA, on-call coverage, and rollback ownership (`PRODUCTION_OPERATIONAL_APPROVAL_2026-09-02.md`; `PRODUCTION_OPERATIONS_PROFILE.json`)
 - [ ] Complete real-device keyboard, screen-reader, reduced-motion, iOS, and Android acceptance testing
-- [ ] Record the public/private repository decision and complete a full-history personal/operational information review
+- [ ] Approve the public/private repository decision; the full-history review is complete and recommends private visibility (`REPOSITORY_PRIVACY_REVIEW_2026-09-02.md`)
 
 Launch cannot be signed off while any unchecked item above remains. Verify the
 public support address by sending and answering a test message, and attach real
