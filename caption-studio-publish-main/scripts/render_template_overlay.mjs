@@ -5216,11 +5216,13 @@ async function main() {
   // a page can launch. This bypass is set only in the hardened container image;
   // customers and deployed environment variables cannot opt into it.
   const containerSandboxBypass = process.env.PUPPETEER_CONTAINER_NO_SANDBOX === '1';
+  const ciSandboxBypass = process.env.CI === 'true'
+    && process.env.PUPPETEER_CI_NO_SANDBOX === '1';
   if (disableSandbox && runtimeEnv === 'production') {
     throw new Error('PUPPETEER_DISABLE_SANDBOX is forbidden in production');
   }
   const browserArgs = ['--disable-gpu', '--disable-dev-shm-usage'];
-  if (disableSandbox || containerSandboxBypass) {
+  if (disableSandbox || containerSandboxBypass || ciSandboxBypass) {
     browserArgs.push('--no-sandbox', '--disable-setuid-sandbox');
   }
 

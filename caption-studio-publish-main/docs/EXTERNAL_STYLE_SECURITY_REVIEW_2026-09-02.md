@@ -62,6 +62,12 @@ commit and the live frontend has no release marker.
   Razorpay, Sentry, and reCAPTCHA origins in Vite, Netlify, static-header, and
   Vercel configurations. A release contract now rejects the broad directive.
 
+GitHub-hosted Chromium checks use `--no-sandbox` only when GitHub's `CI=true`
+signal and the workflow's explicit `PUPPETEER_CI_NO_SANDBOX=1` are both present.
+The production renderer continues to reject the general sandbox-disable switch;
+the Railway-only container exception remains separately scoped to the hardened
+container image.
+
 ### SEC-2026-02 — Static preview nonce
 
 - Severity: Low, defense in depth

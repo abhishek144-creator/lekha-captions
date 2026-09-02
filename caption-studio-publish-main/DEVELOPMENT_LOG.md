@@ -981,6 +981,10 @@ readiness hardening
   performance budgets, Next.js marketing build, Bandit Medium/High gate, all
   affected browser/device tests, npm audit, pip-audit, backend tests, and the
   complete template matrix.
+- The first hosted run exposed Ubuntu runner Chromium namespace restrictions.
+  Test browsers now use `--no-sandbox` only when both GitHub's `CI=true` and the
+  explicit workflow-only `PUPPETEER_CI_NO_SANDBOX=1` flag are present; production
+  continues to reject the general sandbox-disable switch.
 
 **Deployment condition**
 

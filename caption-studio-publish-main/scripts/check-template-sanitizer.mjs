@@ -47,7 +47,12 @@ for (const required of [
   }
 }
 
-const browser = await puppeteer.launch({ headless: true });
+const ciSandboxBypass = process.env.CI === 'true'
+  && process.env.PUPPETEER_CI_NO_SANDBOX === '1';
+const browser = await puppeteer.launch({
+  headless: true,
+  args: ciSandboxBypass ? ['--no-sandbox', '--disable-setuid-sandbox'] : [],
+});
 try {
   const page = await browser.newPage();
   await page.setContent('<!doctype html><html><body></body></html>');
