@@ -182,6 +182,46 @@ class ApiContractTests(unittest.TestCase):
             )
         self.assertEqual(denied.status_code, 403)
 
+    def test_authenticated_customer_journey_verifies_auth_and_account_store(self):
+        class FakeSnapshot:
+            exists = True
+
+        class FakeDocument:
+            def get(self):
+                return FakeSnapshot()
+
+        class FakeCollection:
+            def document(self, uid):
+                self.uid = uid
+                return FakeDocument()
+
+        class FakeDb:
+            def collection(self, name):
+                self.name = name
+                return FakeCollection()
+
+        with (
+            patch.object(main, "verify_token", return_value={"uid": "synthetic-user"}),
+            patch.object(main, "get_db", return_value=FakeDb()),
+        ):
+            response = self.client.post(
+                "/api/health/customer-journey",
+                json={"id_token": "valid-token"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {"success": True, "authenticated": True, "account_store": True},
+        )
+
+        with patch.object(main, "verify_token", return_value=None):
+            denied = self.client.post(
+                "/api/health/customer-journey",
+                json={"id_token": "invalid-token"},
+            )
+        self.assertEqual(denied.status_code, 401)
+
     def test_service_controls_read_failure_fails_open(self):
         class ExplodingDb:
             def collection(self, *_args, **_kwargs):

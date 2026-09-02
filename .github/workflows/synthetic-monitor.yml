@@ -30,4 +30,7 @@ jobs:
           SYNTHETIC_DNS_HOSTS: lekhacaptions.com,app.lekhacaptions.com,api.lekhacaptions.com
           SYNTHETIC_TIMEOUT_MS: 15000
           SYNTHETIC_MAX_LATENCY_MS: 10000
+          SYNTHETIC_REQUIRE_AUTH: "1"
+          SYNTHETIC_FIREBASE_API_KEY: ${{ secrets.SYNTHETIC_FIREBASE_API_KEY }}
+          SYNTHETIC_FIREBASE_REFRESH_TOKEN: ${{ secrets.SYNTHETIC_FIREBASE_REFRESH_TOKEN }}
         run: node scripts/check-synthetic-health.mjs

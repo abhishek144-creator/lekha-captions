@@ -3,7 +3,7 @@ import { siteUrl } from '@/lib/site'
 export const dynamic = 'force-static'
 
 export default function sitemap() {
-  const routes = ['/', '/pricing/', '/faq/', '/help/', '/terms/', '/privacy/', '/refund/', '/acceptable-use/']
+  const routes = ['/', '/pricing/', '/faq/', '/help/', '/status/', '/terms/', '/privacy/', '/refund/', '/acceptable-use/']
 
   return routes.map((route) => ({
     url: `${siteUrl}${route === '/' ? '' : route}`,

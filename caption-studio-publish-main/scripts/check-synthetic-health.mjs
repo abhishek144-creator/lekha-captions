@@ -16,6 +16,9 @@
 //   SYNTHETIC_EXPECTED_RELEASE exact APP_RELEASE expected from the deployment
 //   SYNTHETIC_DNS_HOSTS       comma-separated public hostnames checked through
 //                             Google and Cloudflare validating resolvers
+//   SYNTHETIC_REQUIRE_AUTH     fail when authenticated journey secrets are absent
+//   SYNTHETIC_FIREBASE_API_KEY Firebase Web API key for the disposable monitor user
+//   SYNTHETIC_FIREBASE_REFRESH_TOKEN revocable session for the monitor user
 
 const args = new Map(
   process.argv.slice(2)
@@ -32,6 +35,9 @@ const timeoutMs = Number(process.env.SYNTHETIC_TIMEOUT_MS || 10000)
 const maxLatencyMs = Number(process.env.SYNTHETIC_MAX_LATENCY_MS || 3000)
 const expectedRelease = (args.get('expected-release') || process.env.SYNTHETIC_EXPECTED_RELEASE || '').trim()
 const configuredDnsHosts = String(args.get('dns-hosts') || process.env.SYNTHETIC_DNS_HOSTS || '').trim()
+const requireAuthJourney = /^(1|true|yes)$/i.test(String(process.env.SYNTHETIC_REQUIRE_AUTH || ''))
+const firebaseApiKey = String(process.env.SYNTHETIC_FIREBASE_API_KEY || '').trim()
+const firebaseRefreshToken = String(process.env.SYNTHETIC_FIREBASE_REFRESH_TOKEN || '').trim()
 
 function isPublicHostname(hostname) {
   return hostname
@@ -49,7 +55,7 @@ const dnsHosts = (configuredDnsHosts
   .filter(Boolean)
   .filter((host, index, all) => all.indexOf(host) === index)
 
-async function probe(path, { expectStatus = 200, headers = {} } = {}) {
+async function probe(path, { expectStatus = 200, headers = {}, method = 'GET', body: requestBody } = {}) {
   const url = `${baseUrl}${path}`
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
@@ -60,16 +66,18 @@ async function probe(path, { expectStatus = 200, headers = {} } = {}) {
     // turns a forced exit into a libuv assertion crash instead of a clean code.
     const res = await fetch(url, {
       headers: { connection: 'close', ...headers },
+      method,
+      body: requestBody,
       signal: controller.signal,
     })
     const latencyMs = Date.now() - startedAt
-    let body = null
+    let responseBody = null
     try {
-      body = await res.json()
+      responseBody = await res.json()
     } catch {
-      body = null
+      responseBody = null
     }
-    return { ok: res.status === expectStatus, status: res.status, latencyMs, body, url }
+    return { ok: res.status === expectStatus, status: res.status, latencyMs, body: responseBody, url }
   } catch (error) {
     return {
       ok: false,
@@ -77,6 +85,53 @@ async function probe(path, { expectStatus = 200, headers = {} } = {}) {
       latencyMs: Date.now() - startedAt,
       body: null,
       url,
+      error: error.name === 'AbortError' ? `timed out after ${timeoutMs}ms` : error.message,
+    }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function signInSyntheticUser() {
+  const credentialsPresent = firebaseApiKey && firebaseRefreshToken
+  if (!credentialsPresent) {
+    return {
+      ok: !requireAuthJourney,
+      skipped: !requireAuthJourney,
+      status: 0,
+      latencyMs: 0,
+      body: null,
+      error: requireAuthJourney ? 'authenticated journey credentials are not configured' : '',
+    }
+  }
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  const startedAt = Date.now()
+  try {
+    const response = await fetch(
+      `https://securetoken.googleapis.com/v1/token?key=${encodeURIComponent(firebaseApiKey)}`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded', connection: 'close' },
+        body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: firebaseRefreshToken }),
+        signal: controller.signal,
+      },
+    )
+    const responseBody = await response.json().catch(() => null)
+    return {
+      ok: response.ok && typeof responseBody?.id_token === 'string' && responseBody.id_token.length > 0,
+      status: response.status,
+      latencyMs: Date.now() - startedAt,
+      body: responseBody,
+      error: response.ok ? '' : 'Firebase rejected the disposable monitor-user session refresh',
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      status: 0,
+      latencyMs: Date.now() - startedAt,
+      body: null,
       error: error.name === 'AbortError' ? `timed out after ${timeoutMs}ms` : error.message,
     }
   } finally {
@@ -199,6 +254,31 @@ record('service   /api/service-status', await probe('/api/service-status'), (bod
     ? ''
     : 'response missing success:true or service controls'
 ))
+
+// 5. Authenticated customer journey — Firebase session refresh followed by a
+// protected account-store check exercises identity verification and Firestore
+// without spending credits, uploading media, or weakening browser App Check.
+const syntheticSignIn = await signInSyntheticUser()
+if (!syntheticSignIn.skipped) {
+  record('auth      Firebase session', syntheticSignIn)
+  if (syntheticSignIn.ok) {
+    record(
+      'account   /api/health/customer-journey',
+      await probe('/api/health/customer-journey', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id_token: syntheticSignIn.body.id_token, consent_granted: false }),
+      }),
+      (body) => (
+        body?.success === true && body?.authenticated === true && body?.account_store === true
+          ? ''
+          : 'response missing the authenticated account-store contract'
+      ),
+    )
+  } else {
+    failures.push('authenticated account-store check: skipped because the Firebase session refresh failed')
+  }
+}
 
 const width = Math.max(...results.map((r) => r.name.length))
 console.log(`Synthetic health: ${baseUrl}\n`)
