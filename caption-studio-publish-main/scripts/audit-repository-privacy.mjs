@@ -82,7 +82,12 @@ function scanRevision(revision, findings) {
   )
 }
 
-const revisions = git(['rev-list', '--all']).trim().split(/\r?\n/).filter(Boolean)
+// Public-exposure readiness is determined by the checked-out release and every
+// origin-tracking ref. Local-only work branches, recovery refs, and stashes are
+// intentionally excluded: they are not published and may retain the verified
+// local recovery history after a coordinated public rewrite.
+const publicRevisionArgs = ['HEAD', '--remotes=origin']
+const revisions = git(['rev-list', ...publicRevisionArgs]).trim().split(/\r?\n/).filter(Boolean)
 const findings = []
 
 for (const revision of revisions) scanRevision(revision, findings)
@@ -104,7 +109,7 @@ for (const name of worktreeFiles) {
   inspectText(text, name, 'WORKTREE', findings)
 }
 
-const authorRows = git(['log', '--all', '--format=%H%x09%ae']).split(/\r?\n/).filter(Boolean)
+const authorRows = git(['log', ...publicRevisionArgs, '--format=%H%x09%ae']).split(/\r?\n/).filter(Boolean)
 for (const row of authorRows) {
   const [revision, email = ''] = row.split('\t')
   const match = email.match(/@(.+)$/)
