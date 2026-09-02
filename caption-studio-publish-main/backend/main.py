@@ -28,27 +28,46 @@ import base64
 from datetime import datetime, timedelta, date, timezone
 from dateutil.relativedelta import relativedelta
 from typing import List, Dict, Any, Optional
-from processor import VideoProcessor
+try:
+    from .processor import VideoProcessor
+except ImportError:  # Direct execution from backend/ remains supported.
+    from processor import VideoProcessor
 import asyncio
 import time
 import subprocess
 import hmac
 import hashlib
 from fastapi import Request
-from firebase_admin_setup import (
-    verify_token,
-    get_db,
-    upload_to_firebase_storage,
-    delete_from_firebase_storage,
-    delete_user_exports,
-    delete_expired_exports,
-    upload_source_media,
-    download_from_firebase_storage,
-    download_export_from_firebase_storage,
-    delete_expired_uploads,
-    delete_user_uploads,
-    get_storage_bucket,
-)
+try:
+    from .firebase_admin_setup import (
+        verify_token,
+        get_db,
+        upload_to_firebase_storage,
+        delete_from_firebase_storage,
+        delete_user_exports,
+        delete_expired_exports,
+        upload_source_media,
+        download_from_firebase_storage,
+        download_export_from_firebase_storage,
+        delete_expired_uploads,
+        delete_user_uploads,
+        get_storage_bucket,
+    )
+except ImportError:  # Direct execution from backend/ remains supported.
+    from firebase_admin_setup import (
+        verify_token,
+        get_db,
+        upload_to_firebase_storage,
+        delete_from_firebase_storage,
+        delete_user_exports,
+        delete_expired_exports,
+        upload_source_media,
+        download_from_firebase_storage,
+        download_export_from_firebase_storage,
+        delete_expired_uploads,
+        delete_user_uploads,
+        get_storage_bucket,
+    )
 from firebase_admin import app_check as firebase_app_check
 from firebase_admin import auth as firebase_auth
 import math
