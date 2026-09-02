@@ -20,6 +20,7 @@ export function Footer() {
             <h2>Support</h2>
             <Link href="/faq/">FAQ</Link>
             <Link href="/help/">Help & Support</Link>
+            <Link href="/status/">Service Status</Link>
             <a href={`mailto:${supportEmail}`}>{supportEmail}</a>
             <Link href="/terms/">Terms &amp; Conditions</Link>
             <Link href="/privacy/">Privacy Policy</Link>

@@ -3512,6 +3512,121 @@ tr:last-child td {
   color: white;
 }
 
+.status-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(260px, 0.8fr);
+  gap: 32px;
+  align-items: start;
+}
+
+.status-panel,
+.status-support {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.035);
+  padding: 28px;
+}
+
+.status-summary {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  padding-bottom: 24px;
+}
+
+.status-summary h2,
+.status-service h3,
+.status-support h2 {
+  margin: 0;
+  color: white;
+}
+
+.status-summary p,
+.status-service p,
+.status-support p,
+.status-note {
+  color: #a9a9a9;
+}
+
+.status-summary p,
+.status-service p {
+  margin: 6px 0 0;
+}
+
+.status-dot {
+  width: 14px;
+  height: 14px;
+  margin-top: 7px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #f3b94d;
+  box-shadow: 0 0 0 6px rgba(243, 185, 77, 0.12);
+}
+
+.status-ok .status-dot {
+  background: #43d17f;
+  box-shadow: 0 0 0 6px rgba(67, 209, 127, 0.12);
+}
+
+.status-degraded .status-dot {
+  background: #ff6b6b;
+  box-shadow: 0 0 0 6px rgba(255, 107, 107, 0.12);
+}
+
+.status-services {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.status-service {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 20px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.status-service h3 {
+  font-size: 16px;
+}
+
+.status-service p {
+  font-size: 13px;
+}
+
+.status-badge {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: rgba(243, 185, 77, 0.12);
+  color: #f7ca73;
+  padding: 7px 11px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.status-badge-ok {
+  background: rgba(67, 209, 127, 0.12);
+  color: #7ee2a8;
+}
+
+.status-refresh {
+  margin-top: 24px;
+}
+
+.status-refresh:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.status-note {
+  margin: 20px 0 0;
+  font-size: 13px;
+}
+
+.status-support .button {
+  margin-top: 10px;
+}
+
 @keyframes sync-marquee {
   from {
     transform: translateX(0);
@@ -3549,6 +3664,10 @@ tr:last-child td {
 
   .footer-link-groups {
     gap: 28px;
+  }
+
+  .status-layout {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -3632,5 +3751,15 @@ tr:last-child td {
   .sync-pricing-card {
     min-height: 0;
     padding: 26px 22px;
+  }
+
+  .status-panel,
+  .status-support {
+    padding: 22px;
+  }
+
+  .status-service {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }

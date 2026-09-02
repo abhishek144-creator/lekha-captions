@@ -207,7 +207,11 @@ assertIncludes("synthetic monitoring checks Google validating DNS", syntheticMon
 assertIncludes("synthetic monitoring checks Cloudflare validating DNS", syntheticMonitor, "https://cloudflare-dns.com/dns-query")
 assertIncludes("synthetic monitoring accepts every public launch hostname", syntheticMonitor, "SYNTHETIC_DNS_HOSTS")
 assertIncludes("synthetic monitoring exercises a customer-facing API contract", syntheticMonitor, "/api/service-status")
+assertIncludes("synthetic monitoring exercises Firebase authentication", syntheticMonitor, "securetoken.googleapis.com")
+assertIncludes("synthetic monitoring exercises an authenticated account journey", syntheticMonitor, "/api/health/customer-journey")
 assertFile("scheduled production synthetic monitor exists", "../.github/workflows/synthetic-monitor.yml")
+const syntheticWorkflow = readText("../.github/workflows/synthetic-monitor.yml")
+assertIncludes("scheduled synthetic monitoring requires authenticated checks", syntheticWorkflow, 'SYNTHETIC_REQUIRE_AUTH: "1"')
 assertFile("production operations profile exists", "docs/PRODUCTION_OPERATIONS_PROFILE.json")
 assertFile("operational readiness gate exists", "scripts/check-operational-readiness.mjs")
 assertFile("repository privacy decision exists", "docs/REPOSITORY_PRIVACY_DECISION.json")
@@ -219,6 +223,9 @@ assertIncludes("marketing footer links the refund policy", marketingFooter, 'hre
 assertIncludes("marketing footer links acceptable use", marketingFooter, 'href="/acceptable-use/"')
 assertIncludes("marketing sitemap includes the refund policy", marketingSitemap, "'/refund/'")
 assertIncludes("marketing sitemap includes acceptable use", marketingSitemap, "'/acceptable-use/'")
+assertIncludes("marketing footer links the external status page", marketingFooter, 'href="/status/"')
+assertIncludes("marketing sitemap includes the external status page", marketingSitemap, "'/status/'")
+assertFile("externally hosted production status page exists", "landing-next/app/status/page.js")
 
 assertFile("clean release-tree guard exists", "scripts/check-clean-release-tree.mjs")
 assertFile("launch evidence guard exists", "scripts/check-launch-evidence.mjs")
@@ -337,6 +344,7 @@ assertIncludes("consumer complaints have a published response target", terms, "w
 
 // Operator kill switches must stay wired to every expensive entry point.
 assertIncludes("service controls are readable without auth", backendMain, '@app.get("/api/service-status")')
+assertIncludes("authenticated monitoring verifies Firebase and the account store", backendMain, '@app.post("/api/health/customer-journey")')
 assertIncludes("service controls are admin-writable", backendMain, '@app.post("/api/admin/service-controls")')
 for (const [label, control] of [
   ["payments", "pause_payments"],

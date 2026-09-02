@@ -6082,6 +6082,33 @@ class AccountDataRequest(BaseModel):
     privacy_version: str = Field(default="", max_length=40, pattern=r"^[0-9A-Za-z._-]*$")
 
 
+class SyntheticJourneyRequest(BaseModel):
+    id_token: str = Field(min_length=1, max_length=8_192)
+
+
+@app.post("/api/health/customer-journey")
+def authenticated_customer_journey(req: SyntheticJourneyRequest):
+    """Exercise Firebase auth and the account store without returning user data.
+
+    This route sits under the health namespace so a server-side monitor can call
+    it without a browser-generated App Check token. A valid Firebase user token
+    is still mandatory, and the check is read-only and tenant-local.
+    """
+    decoded_token = verify_token(req.id_token)
+    if not decoded_token:
+        raise HTTPException(status_code=401, detail="Auth required")
+    uid = str(decoded_token.get("uid") or "").strip()
+    if not uid:
+        raise HTTPException(status_code=401, detail="Auth required")
+    db = get_db()
+    if not db:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    user_doc = db.collection("users").document(uid).get()
+    if not user_doc.exists:
+        raise HTTPException(status_code=503, detail="Synthetic account record unavailable")
+    return {"success": True, "authenticated": True, "account_store": True}
+
+
 class AccountExportRequest(AccountDataRequest):
     payment_limit: int = Field(default=100, ge=1, le=500)
     payment_cursor: str = Field(default="", max_length=1_500)
