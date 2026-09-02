@@ -208,6 +208,10 @@ assertIncludes("synthetic monitoring checks Cloudflare validating DNS", syntheti
 assertIncludes("synthetic monitoring accepts every public launch hostname", syntheticMonitor, "SYNTHETIC_DNS_HOSTS")
 assertIncludes("synthetic monitoring exercises a customer-facing API contract", syntheticMonitor, "/api/service-status")
 assertFile("scheduled production synthetic monitor exists", "../.github/workflows/synthetic-monitor.yml")
+assertFile("production operations profile exists", "docs/PRODUCTION_OPERATIONS_PROFILE.json")
+assertFile("operational readiness gate exists", "scripts/check-operational-readiness.mjs")
+assertFile("repository privacy decision exists", "docs/REPOSITORY_PRIVACY_DECISION.json")
+assertFile("repository privacy audit exists", "scripts/audit-repository-privacy.mjs")
 
 const marketingFooter = readText("landing-next/components/Footer.jsx")
 const marketingSitemap = readText("landing-next/app/sitemap.js")
