@@ -1,6 +1,6 @@
 # Repository Privacy Review — 2 September 2026
 
-Status: **Review complete; remediation decision pending.**
+Status: **Public-history rewrite approved by the repository owner.**
 
 ## Scope and method
 
@@ -41,8 +41,10 @@ any identifier later found to be a credential, require every collaborator to
 re-clone, and force-push all rewritten branches and tags. That operation is
 disruptive and is not authorized by this review alone.
 
-## Decision required
+## Owner decision
 
-`docs/REPOSITORY_PRIVACY_DECISION.json` remains
-`pending_owner_choice`. The compliance item must remain open until the owner
-chooses `private` or explicitly accepts a coordinated public-history rewrite.
+The owner declined private repository visibility and explicitly authorized a
+coordinated public-history rewrite on 2 September 2026. The machine-readable
+decision is recorded in `docs/REPOSITORY_PRIVACY_DECISION.json`. Completion is
+accepted only after every public branch and tag is force-updated and the
+privacy audit reports zero current and historical findings.
