@@ -96,6 +96,7 @@ jobs:
       - run: pip install --require-hashes -r backend/requirements.lock
       - run: python -m py_compile backend/main.py backend/firebase_admin_setup.py backend/worker.py
       - run: python -m unittest backend.tests.test_api_contracts backend.tests.test_smoke_flow backend.tests.test_caption_postprocess backend.tests.test_preview_export_parity backend.tests.test_audio_less_fallback backend.tests.test_firebase_storage_helpers
+      - run: docker build --tag lekha-captions-ci .
       - run: pip install pip-audit==2.10.1 bandit==1.9.4
       - run: pip-audit -r backend/requirements.lock
       - run: bandit -r backend -x backend/tests -ll -ii
