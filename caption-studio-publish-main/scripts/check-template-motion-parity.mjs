@@ -139,6 +139,9 @@ if (
 ) {
   fail('sidebar template previews are missing the CSP nonce required to run their sequencer');
 }
+if (!sidebarGallerySource.includes('const HOLD = 2200;')) {
+  fail('sidebar template previews must advance quickly enough to make motion visible in the gallery');
+}
 if (!exportRendererSource.includes('getLcMotionSchedule')) {
   fail('export renderer does not use the shared authored LC schedule');
 }
