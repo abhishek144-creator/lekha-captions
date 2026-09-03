@@ -885,6 +885,10 @@ const SELECTABLE_TEMPLATE_CARDS = [...LC_TEMPLATE_CARDS];
 const TOTAL_TEMPLATE_COUNT = SELECTABLE_TEMPLATE_CARDS.length;
 const TEMPLATE_PREVIEW_PROGRESS_EVENT = 'lekha-sidebar-template-preview-progress';
 const TEMPLATE_PREVIEW_JUMP_EVENT = 'lekha-sidebar-template-preview-jump';
+// Matches the nonce in the production CSP. The sidebar cards run in srcdoc
+// iframes, which inherit that policy; without this nonce their sequencer is
+// blocked and every template appears frozen.
+const TEMPLATE_PREVIEW_CSP_NONCE = 'lekha-template-preview-v1';
 const getTemplateStyleKey = (template) => `${template?.format || 'legacy'}::${template?.id || ''}`;
 const EXTRACTED_TEMPLATE_STYLE_MAP = Object.fromEntries(
   ALL_TEMPLATE_CARDS.map((template) => [getTemplateStyleKey(template), extractTemplateStyleFromPreview(template)]),
@@ -947,7 +951,7 @@ function buildPreviewDoc(template) {
     ? sanitizedLcTemplateHtml.join('\n')
     : sanitizedLegacyTemplateHtml;
   const previewScript = `
-    <script>
+    <script nonce="${TEMPLATE_PREVIEW_CSP_NONCE}">
       (() => {
         const card = document.querySelector('.card');
         if (!card) return;

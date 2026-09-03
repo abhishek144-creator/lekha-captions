@@ -7,8 +7,11 @@ import { getFirestore, doc, setDoc, getDoc, updateDoc } from 'firebase/firestore
 // Your web app's Firebase configuration
 // These will be securely loaded from Replit Secrets (Environment Variables)
 const configuredAuthDomain = import.meta.env.VITE_FIREBASE_AUTH_DOMAIN;
+// Both public domains are Firebase-authorized. Keep OAuth on the host the
+// visitor chose so the primary domain never hands them off to app.* mid-flow.
+const hostedAuthDomains = new Set(['lekhacaptions.com', 'app.lekhacaptions.com']);
 const authDomain =
-    typeof window !== 'undefined' && window.location.hostname === 'app.lekhacaptions.com'
+    typeof window !== 'undefined' && hostedAuthDomains.has(window.location.hostname)
         ? window.location.hostname
         : configuredAuthDomain;
 
