@@ -60,6 +60,9 @@ const templatesTabSource = await readSource(
 const captionTemplatesCss = await readSource(
   new URL('src/styles/captionTemplates.css', projectRoot),
 );
+const firebaseSource = await readSource(
+  new URL('src/lib/firebase.js', projectRoot),
+);
 
 const lcSchedule = getLcMotionSchedule([
   { animation: 'rise', duration: '430', delay: '280', ease: 'ease-out' },
@@ -126,6 +129,15 @@ if (
 }
 if (!sidebarGallerySource.includes('stampLcMotion') || !sidebarGallerySource.includes('getLcMotionSchedule')) {
   fail('template preview does not use the shared authored LC schedule');
+}
+if (!firebaseSource.includes("new Set(['lekhacaptions.com', 'app.lekhacaptions.com'])")) {
+  fail('Firebase auth does not keep users on either supported public domain');
+}
+if (
+  !sidebarGallerySource.includes("const TEMPLATE_PREVIEW_CSP_NONCE = 'lekha-template-preview-v1'")
+  || !sidebarGallerySource.includes('<script nonce="${TEMPLATE_PREVIEW_CSP_NONCE}">')
+) {
+  fail('sidebar template previews are missing the CSP nonce required to run their sequencer');
 }
 if (!exportRendererSource.includes('getLcMotionSchedule')) {
   fail('export renderer does not use the shared authored LC schedule');
