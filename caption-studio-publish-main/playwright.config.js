@@ -1,5 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
+const externalBaseURL = String(process.env.PLAYWRIGHT_BASE_URL || '').replace(/\/+$/, '')
+
 export default defineConfig({
   testDir: './e2e',
   timeout: 30_000,
@@ -9,12 +11,12 @@ export default defineConfig({
   workers: process.env.CI ? 4 : undefined,
   reporter: process.env.CI ? [['line'], ['html', { open: 'never' }]] : 'line',
   use: {
-    baseURL: 'http://127.0.0.1:4173',
+    baseURL: externalBaseURL || 'http://127.0.0.1:4173',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
   },
-  webServer: {
+  webServer: externalBaseURL ? undefined : {
     command: 'npm run preview -- --host 127.0.0.1 --port 4173',
     url: 'http://127.0.0.1:4173',
     reuseExistingServer: !process.env.CI,

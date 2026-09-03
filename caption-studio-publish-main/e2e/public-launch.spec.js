@@ -19,7 +19,10 @@ for (const [name, path, visibleCopy] of publicRoutes) {
     const pageErrors = []
     page.on('pageerror', (error) => pageErrors.push(error.message))
 
-    const response = await page.goto(path, { waitUntil: 'networkidle' })
+    // Analytics, media previews, and font requests can keep WebKit's network
+    // busy after the page is already interactive. Assert the rendered UI
+    // instead of treating a quiet network as the readiness signal.
+    const response = await page.goto(path, { waitUntil: 'domcontentloaded' })
     expect(response?.status()).toBe(200)
     await expect(page.locator('body')).toContainText(visibleCopy)
     await expect(page.locator('main')).toBeVisible()
