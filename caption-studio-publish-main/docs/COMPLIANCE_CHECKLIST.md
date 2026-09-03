@@ -54,7 +54,7 @@ Use this checklist for enterprise and privacy readiness.
 - [ ] Deploy multi-region/multi-resolver DNS and authenticated customer-journey monitoring plus an externally hosted status page
 - [x] Approve and test production RTO/RPO, concurrency, provider quotas, scaling thresholds, support SLA, on-call coverage, and rollback ownership (`PRODUCTION_OPERATIONAL_APPROVAL_2026-09-02.md`; `PRODUCTION_OPERATIONS_PROFILE.json`)
 - [ ] Complete real-device keyboard, screen-reader, reduced-motion, iOS, and Android acceptance testing
-- [ ] Approve the public/private repository decision; the full-history review is complete and recommends private visibility (`REPOSITORY_PRIVACY_REVIEW_2026-09-02.md`)
+- [x] Approve the repository visibility decision and sanitize all public history (`REPOSITORY_PRIVACY_REVIEW_2026-09-02.md`; `REPOSITORY_PRIVACY_REWRITE_2026-09-03.md`)
 
 Launch cannot be signed off while any unchecked item above remains. Verify the
 public support address by sending and answering a test message, and attach real
