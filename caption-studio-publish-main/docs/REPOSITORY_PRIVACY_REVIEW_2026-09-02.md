@@ -1,6 +1,6 @@
 # Repository Privacy Review — 2 September 2026
 
-Status: **Public-history rewrite approved by the repository owner.**
+Status: **Public-history rewrite completed and independently re-audited.**
 
 ## Scope and method
 
@@ -48,3 +48,7 @@ coordinated public-history rewrite on 2 September 2026. The machine-readable
 decision is recorded in `docs/REPOSITORY_PRIVACY_DECISION.json`. Completion is
 accepted only after every public branch and tag is force-updated and the
 privacy audit reports zero current and historical findings.
+
+That completion condition was met on 3 September 2026. See
+`docs/REPOSITORY_PRIVACY_REWRITE_2026-09-03.md` for the redacted execution and
+verification record.
