@@ -198,6 +198,7 @@ assertIncludes("GitHub Actions provides Firebase App Check build configuration",
 assertIncludes("GitHub Actions provides grievance contact build configuration", workflow, "VITE_GRIEVANCE_OFFICER_NAME")
 assertIncludes("GitHub Actions runs cross-browser quality gates", workflow, "browser-quality:")
 assertIncludes("GitHub Actions installs hashed backend dependencies", workflow, "--require-hashes -r backend/requirements.lock")
+assertIncludes("GitHub Actions builds the production container", workflow, "docker build --tag lekha-captions-ci .")
 assertExcludes("GitHub Actions does not use mutable action version tags", workflow, "actions/checkout@v")
 assertExcludes("GitHub Actions setup-node is immutably pinned", workflow, "actions/setup-node@v")
 assertExcludes("GitHub Actions setup-python is immutably pinned", workflow, "actions/setup-python@v")
