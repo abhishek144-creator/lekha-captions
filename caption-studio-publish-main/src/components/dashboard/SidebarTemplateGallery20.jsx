@@ -959,7 +959,10 @@ function buildPreviewDoc(template) {
         const blocks = Array.from(card.querySelectorAll('.sb, .sblock'));
         const dots = Array.from(card.querySelectorAll('.dots i'));
         const label = card.querySelector('.slbl, .stage-lbl');
-        const HOLD = 4800;
+        // Gallery cards need obvious motion at a glance. The old 4.8-second
+        // still frame made the templates look frozen before their next scene
+        // was shown. Keep each caption readable, then move to the next line.
+        const HOLD = 2200;
         const EXIT_MS = 560;
         const GAP = 120;
         const WBW_DELAY = 125;
