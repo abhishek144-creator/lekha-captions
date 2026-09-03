@@ -37,6 +37,11 @@ const assertions = [
     message: 'Google sign-in must show the account chooser so users can select a different email after signing out.',
   },
   {
+    ok: /const authDomain = configuredAuthDomain;/.test(firebaseSource)
+      && !/hostedAuthDomains|window\.location\.hostname === 'lekhacaptions\.com'/.test(firebaseSource),
+    message: 'Google OAuth must use the configured Firebase auth domain, not an unregistered custom-domain callback.',
+  },
+  {
     ok: /frame-src\s+'self'\s+https:\/\/www\.google\.com/s.test(netlifyHeaders),
     message: 'The deployed Netlify CSP must allow Firebase\'s same-origin auth iframe.',
   },
