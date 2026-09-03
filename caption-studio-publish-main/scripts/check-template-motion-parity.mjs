@@ -130,8 +130,8 @@ if (
 if (!sidebarGallerySource.includes('stampLcMotion') || !sidebarGallerySource.includes('getLcMotionSchedule')) {
   fail('template preview does not use the shared authored LC schedule');
 }
-if (!firebaseSource.includes("new Set(['lekhacaptions.com', 'app.lekhacaptions.com'])")) {
-  fail('Firebase auth does not keep users on either supported public domain');
+if (!firebaseSource.includes('const authDomain = configuredAuthDomain;')) {
+  fail('Firebase auth does not use the registered Firebase OAuth callback domain');
 }
 if (
   !sidebarGallerySource.includes("const TEMPLATE_PREVIEW_CSP_NONCE = 'lekha-template-preview-v1'")

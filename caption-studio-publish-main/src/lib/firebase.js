@@ -7,13 +7,11 @@ import { getFirestore, doc, setDoc, getDoc, updateDoc } from 'firebase/firestore
 // Your web app's Firebase configuration
 // These will be securely loaded from Replit Secrets (Environment Variables)
 const configuredAuthDomain = import.meta.env.VITE_FIREBASE_AUTH_DOMAIN;
-// Both public domains are Firebase-authorized. Keep OAuth on the host the
-// visitor chose so the primary domain never hands them off to app.* mid-flow.
-const hostedAuthDomains = new Set(['lekhacaptions.com', 'app.lekhacaptions.com']);
-const authDomain =
-    typeof window !== 'undefined' && hostedAuthDomains.has(window.location.hostname)
-        ? window.location.hostname
-        : configuredAuthDomain;
+// Google OAuth only accepts callback URLs registered on its client. Use the
+// Firebase-managed auth domain configured for this project (rather than a
+// visitor's custom website host) so it always returns through the registered
+// /__/auth/handler endpoint and then back to the page that started sign-in.
+const authDomain = configuredAuthDomain;
 
 const firebaseConfig = {
     apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
