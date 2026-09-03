@@ -24,7 +24,10 @@ async function get(url, responseType = 'json') {
   try {
     const response = await fetch(url, { redirect: 'follow', signal: controller.signal })
     if (!response.ok) throw new Error(`${url} returned HTTP ${response.status}`)
-    return responseType === 'text' ? response.text() : response.json()
+    if (responseType === 'text') {
+      return { body: await response.text(), finalUrl: response.url }
+    }
+    return response.json()
   } finally {
     clearTimeout(timer)
   }
@@ -35,12 +38,14 @@ if (!/^[a-f0-9]{40}$/i.test(expected)) {
   throw new Error(`Expected release must be a full 40-character Git SHA; received ${expected || 'empty'}`)
 }
 
-const [version, readiness, frontendHtml] = await Promise.all([
+const [version, readiness, frontendResponse, editorResponse] = await Promise.all([
   get(`${apiOrigin}/api/version`),
   get(`${apiOrigin}/api/health/readiness`),
   get(`${frontendOrigin}/`, 'text'),
+  get(`${frontendOrigin}/Dashboard?entry=editor`, 'text'),
 ])
 
+const frontendHtml = frontendResponse.body
 const frontendRelease = frontendHtml.match(/<meta\s+name=["']lekha-release["']\s+content=["']([^"']+)["']/i)?.[1]
   || frontendHtml.match(/<meta\s+content=["']([^"']+)["']\s+name=["']lekha-release["']/i)?.[1]
   || ''
@@ -48,6 +53,12 @@ const backendRelease = String(version?.release || '')
 
 const failures = []
 if (readiness?.ready !== true) failures.push('backend readiness does not report ready:true')
+if (new URL(frontendResponse.finalUrl).origin !== frontendOrigin) {
+  failures.push(`frontend origin redirected to ${new URL(frontendResponse.finalUrl).origin}`)
+}
+if (new URL(editorResponse.finalUrl).origin !== frontendOrigin) {
+  failures.push(`editor route redirected to ${new URL(editorResponse.finalUrl).origin}`)
+}
 if (backendRelease !== expected) failures.push(`backend release mismatch: expected ${expected}, received ${backendRelease || 'missing'}`)
 if (frontendRelease !== expected) failures.push(`frontend release mismatch: expected ${expected}, received ${frontendRelease || 'missing'}`)
 
