@@ -6,7 +6,7 @@ import threading
 import time
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch, AsyncMock, Mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from fastapi import HTTPException
@@ -95,9 +95,54 @@ class DurableWorkflowTests(unittest.TestCase):
         with self.assertRaises(ConnectionError): self.jobs.dispatch(failing_queue)
         self.assertEqual(self.jobs.get("a", job["job_id"])["status"], "queued")
         with patch("transcription_jobs.time.time", return_value=time.time() + 31):
-            with patch.object(failing_queue, "enqueue") as enqueue:
+            with patch.object(failing_queue, "enqueue", return_value=SimpleNamespace(id="delivery-1")) as enqueue:
                 self.jobs.dispatch(failing_queue)
                 enqueue.assert_called_once()
+
+    def test_healthy_queue_wait_does_not_duplicate_or_fail_transcription(self):
+        job = self.jobs.create("a", self.settings)
+        delivery = SimpleNamespace(id="delivery-1", get_status=lambda **_: "queued")
+        queue = SimpleNamespace(enqueue=Mock(return_value=delivery), fetch_job=Mock(return_value=delivery))
+        started = time.time()
+        for cycle in range(21):
+            with patch("transcription_jobs.time.time", return_value=started + cycle * 31):
+                self.jobs.dispatch(queue)
+        self.assertEqual(self.jobs.get("a", job["job_id"])["status"], "queued")
+        queue.enqueue.assert_called_once()
+        self.assertIsNotNone(self.jobs.claim("a", job["job_id"]))
+
+    def test_lost_queue_delivery_can_be_dispatched_again_before_claim(self):
+        job = self.jobs.create("a", self.settings)
+        delivery = SimpleNamespace(id="delivery-1", get_status=lambda **_: "queued")
+        queue = SimpleNamespace(enqueue=Mock(return_value=delivery), fetch_job=Mock(return_value=None))
+        self.jobs.dispatch(queue)
+        with patch("transcription_jobs.time.time", return_value=time.time() + 31):
+            self.jobs.dispatch(queue)
+        self.assertEqual(queue.enqueue.call_count, 2)
+        self.assertEqual(self.jobs.get("a", job["job_id"])["status"], "queued")
+
+    def test_queue_probe_failure_keeps_job_and_does_not_enqueue_blindly(self):
+        job = self.jobs.create("a", self.settings)
+        delivery = SimpleNamespace(id="delivery-1")
+        queue = SimpleNamespace(enqueue=Mock(return_value=delivery), fetch_job=Mock(side_effect=ConnectionError()))
+        self.jobs.dispatch(queue)
+        with patch("transcription_jobs.time.time", return_value=time.time() + 31):
+            with self.assertRaises(ConnectionError):
+                self.jobs.dispatch(queue)
+        queue.enqueue.assert_called_once()
+        self.assertEqual(self.jobs.get("a", job["job_id"])["status"], "queued")
+
+    def test_exhausted_dispatch_does_not_fail_a_concurrent_worker_claim(self):
+        job = self.jobs.create("a", self.settings)
+        pointer = self.jobs.refs("a", job["job_id"])[2]
+        pointer.update({"attempts": 10, "rq_job_id": "lost-delivery"})
+        def probe(_):
+            self.jobs.claim("a", job["job_id"])
+            return None
+        queue = SimpleNamespace(fetch_job=probe, enqueue=Mock())
+        self.jobs.dispatch(queue)
+        self.assertEqual(self.jobs.get("a", job["job_id"])["status"], "running")
+        queue.enqueue.assert_not_called()
 
     def test_crash_after_claim_becomes_unknown_without_replaying_provider(self):
         job = self.jobs.create("a", self.settings)
