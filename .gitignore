@@ -25,3 +25,9 @@ lekha_cpt_throwaway_preview.html
 
 # Local deployment snapshots generated during verification; never release them.
 .codex_*
+
+# Private business estimates and their local render previews.
+/build_project_estimate_pdf.py
+/Lekha_Captions_Project_Cost_Estimate.pdf
+/output/
+/tmp/

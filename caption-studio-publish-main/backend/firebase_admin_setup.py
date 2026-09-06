@@ -7,6 +7,7 @@ import firebase_admin
 from firebase_admin import credentials, auth, firestore
 try:
     from .media_storage import (
+        bucket_ready as s3_bucket_ready,
         delete_file as delete_s3_file,
         download_file as download_s3_file,
         is_configured as s3_is_configured,
@@ -17,6 +18,7 @@ try:
     )
 except ImportError:  # Direct execution from the backend working directory.
     from media_storage import (
+        bucket_ready as s3_bucket_ready,
         delete_file as delete_s3_file,
         download_file as download_s3_file,
         is_configured as s3_is_configured,
@@ -95,6 +97,13 @@ def get_db():
     except Exception as e:
         print(f"Firestore not available: {e}")
         return None
+
+def storage_backend_ready():
+    if s3_is_configured():
+        return s3_bucket_ready()
+    bucket = get_storage_bucket()
+    return bool(bucket and bucket.exists(timeout=5))
+
 
 def get_storage_bucket():
     if IS_TEST_ENV and not firebase_admin._apps:

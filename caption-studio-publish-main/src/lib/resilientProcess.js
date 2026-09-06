@@ -3,6 +3,7 @@ import { getClientContext, trackAnalytics } from '@/lib/analytics'
 
 const RETRY_DELAYS_MS = [1500, 4000, 8000, 12000]
 const RETRYABLE_STATUSES = new Set([0, 408, 425, 499, 500, 502, 503, 504])
+const activeProcesses = new Map()
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -16,24 +17,34 @@ function createProcessReference() {
 }
 
 function isRetryableProcessError(error) {
+  if (error?.name === 'AbortError') return false
   if (RETRYABLE_STATUSES.has(Number(error?.status || 0))) return true
   return Number(error?.status || 0) === 409
     && String(error?.data?.detail || error?.message || '').includes('PROCESS_IN_PROGRESS')
 }
 
-// The backend stores a receipt for this key. If the browser loses a response,
-// every retry either reconnects to the running transcription or replays the
-// completed captions; it never starts a second provider call.
+// Production acknowledges durable jobs with 202. Poll the same operation;
+// an uncertain provider outcome is terminal and is never automatically replayed.
 export async function processVideoWithRecovery(payload, {
   dedupeKey = 'process-video',
   retryDelaysMs = RETRY_DELAYS_MS,
+  pollDelayMs = 3000,
 } = {}) {
   const processReference = createProcessReference()
+  activeProcesses.set(dedupeKey, processReference)
+  const assertActive = () => {
+    if (activeProcesses.get(dedupeKey) !== processReference) {
+      const error = new Error('Transcription request replaced')
+      error.name = 'AbortError'
+      throw error
+    }
+  }
   let lastError = null
 
   for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
     try {
-      const data = await apiRequest('/api/process', {
+      assertActive()
+      const options = {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -42,7 +53,17 @@ export async function processVideoWithRecovery(payload, {
         body: JSON.stringify({ ...payload, idempotency_key: processReference }),
         dedupeKey,
         cancelPrevious: true,
-      })
+      }
+      let data = await apiRequest('/api/process', options)
+      const deadline = Date.now() + 40 * 60 * 1000
+      while (data?.pending) {
+        assertActive()
+        if (Date.now() >= deadline) throw Object.assign(new Error('Transcription is still pending. Contact support with the job reference.'), { status: 409 })
+        await sleep(pollDelayMs)
+        assertActive()
+        data = await apiRequest('/api/process', options)
+      }
+      assertActive()
       trackAnalytics('funnel.process.transport_success', getClientContext({
         stage: 'process',
         attempt: attempt + 1,

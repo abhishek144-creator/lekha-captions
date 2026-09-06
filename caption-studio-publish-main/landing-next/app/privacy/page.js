@@ -14,6 +14,7 @@ const sections = [
   ['Why we process it', 'With your consent and as necessary to provide the Service you request, we use this data to authenticate you, transcribe and translate media, render exports, enforce plan limits, process payments, provide support, prevent fraud or abuse, comply with law, and operate securely.'],
   ['Service providers', 'Firebase provides authentication, database, and object storage services. OpenAI and Sarvam may process audio or text for transcription or translation. Razorpay processes payments. Providers receive only the information required for their role.'],
   ['Retention', 'Uploaded source media is scheduled for deletion within six hours. Exported media is retained for 2 to 72 hours depending on plan. Limited export history and payment records may remain where needed for service, accounting, fraud prevention, security, or legal obligations.'],
+  ['Local drafts and deletion protection', 'Caption drafts are cached in your browser. When cloud saving succeeds, your account retains the latest draft and up to five recovery snapshots until account deletion. Source videos still follow the media expiry schedule; saved captions do not extend media retention. After account deletion is requested, we retain a minimal record containing the account identifier, request time and status to prevent delayed processing or payment events from recreating the account. This record has no automatic expiry. Contact support about access or retention; it does not contain your videos or captions.'],
   ['Your choices and rights', 'You can export account data or permanently delete your account using the account tools. You may withdraw consent for optional processing or request access, correction, completion, erasure, restriction, or grievance redressal through the grievance contact. Withdrawing consent does not affect processing already lawfully completed and may prevent features that require the data. Some payment or security records may be retained where legally required.'],
   ['Security', 'Media URLs are time-limited, access is authenticated, and entitlement changes are controlled by the server. No system is completely secure, so report suspected security issues through the support options shown in the Service.'],
   ['International processing', 'Our providers may process data in countries other than your own. Where required, we rely on applicable contractual and legal safeguards for those transfers.'],
@@ -27,7 +28,7 @@ export default function PrivacyPage() {
     <>
       <PageHero eyebrow="Legal" title="Privacy policy" description="How Lekha Captions handles account information, uploaded media, generated captions, and service data." />
       <article className="legal-content container narrow">
-        <p className="legal-date">Version 2026-09-02 • Effective September 2, 2026</p>
+        <p className="legal-date">Version 2026-09-06 • Effective September 6, 2026</p>
         {sections.map(([title, body]) => <section key={title}><h2>{title}</h2><p>{body}</p></section>)}
         <p>Privacy and grievance requests: <a href={`mailto:${grievanceEmail}`}>{grievanceEmail}</a>.</p>
         <p className="legal-crosslink">See also our <Link href="/terms/">Terms and Conditions</Link> and <Link href="/acceptable-use/">Acceptable Use Policy</Link>.</p>

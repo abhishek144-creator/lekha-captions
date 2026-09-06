@@ -20,10 +20,11 @@ def main():
     parser.add_argument("--workers", type=int, default=20)
     args = parser.parse_args()
 
-    paths = ["/api/version", "/api/analytics/summary", "/api/slo/status", "/api/health/readiness"]
+    paths = ["/api/version", "/api/health", "/api/service-status", "/api/health/readiness"]
     statuses = {}
     latencies = []
 
+    started = time.monotonic()
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as ex:
         futures = [
             ex.submit(hit, args.base_url, paths[i % len(paths)])
@@ -36,12 +37,16 @@ def main():
 
     latencies.sort()
     p95 = latencies[max(0, int(0.95 * len(latencies)) - 1)] if latencies else 0
+    def percentile(fraction):
+        return latencies[max(0, int(fraction * len(latencies)) - 1)] if latencies else 0
+    elapsed = max(time.monotonic() - started, 0.001)
+    print(f"throughput_rps={len(latencies) / elapsed:.2f} p50_ms={percentile(0.50):.1f} p99_ms={percentile(0.99):.1f}")
     print("Smoke summary:")
     print(f"  total={len(latencies)} p95_ms={p95:.1f}")
     for (path, status), count in sorted(statuses.items(), key=lambda x: (x[0][0], x[0][1])):
         print(f"  {path} status={status} count={count}")
 
-    if any(status == 0 or status >= 500 for (_, status), _ in statuses.items()):
+    if any(status < 200 or status >= 300 for (_, status), _ in statuses.items()):
         raise SystemExit(1)
 
 

@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import path from 'path'
 import { execFileSync, spawn } from 'node:child_process'
 import http from 'node:http'
+import { releaseMetadata } from './scripts/release-metadata.mjs'
 
 const backendTarget = process.env.VITE_BACKEND_PROXY_TARGET || 'http://127.0.0.1:8000'
 const backendUrl = new URL(backendTarget)
@@ -46,46 +47,8 @@ function backendAutostartPlugin() {
   let monitor = null
   let starting = false
 
-  function stopStaleWindowsBackend() {
-    if (process.platform !== 'win32') return false
-    const script = `
-$connections = Get-NetTCPConnection -LocalPort ${backendPort} -State Listen -ErrorAction SilentlyContinue
-$pids = @($connections | Select-Object -ExpandProperty OwningProcess -Unique)
-foreach ($ownerPid in $pids) {
-  if (-not $ownerPid) { continue }
-  $proc = Get-CimInstance Win32_Process -Filter "ProcessId=$ownerPid" -ErrorAction SilentlyContinue
-  if (-not $proc) { continue }
-  $name = [string]$proc.Name
-  $command = [string]$proc.CommandLine
-  $looksLikeBackend = ($command -match 'uvicorn') -and ($command -match 'backend\\.main:app')
-  if (($name -match '^(node|npm|cmd|powershell|python)(\\.exe)?$') -and -not $looksLikeBackend) {
-    Stop-Process -Id $proc.ProcessId -Force
-    Write-Output "stopped:$($proc.ProcessId)"
-  }
-}
-`
-    try {
-      const output = execFileSync("powershell.exe", [
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-Command",
-        script,
-      ], { encoding: "utf8" })
-      if (output.trim()) {
-        console.log(`[lekha] Replaced stale backend on port ${backendPort}: ${output.trim()}`)
-        return true
-      }
-    } catch (error) {
-      console.warn(`[lekha] Could not stop stale backend: ${error?.message || error}`)
-    }
-    return false
-  }
-
   async function ensureBackendRunning() {
     if (backendAutostartDisabled || !isLocalBackendTarget() || starting) return
-    if (await requestReady(`${backendTarget}/api/version`)) return
-    stopStaleWindowsBackend()
     if (await requestReady(`${backendTarget}/api/version`)) return
     if (backendProcess && !backendProcess.killed) return
 
@@ -145,7 +108,8 @@ foreach ($ownerPid in $pids) {
 
 function resolveBuildRelease(env) {
   const configured = String(
-    env.VITE_APP_RELEASE
+    env.APP_RELEASE
+      || env.VITE_APP_RELEASE
       || env.COMMIT_REF
       || env.RAILWAY_GIT_COMMIT_SHA
       || '',
@@ -158,9 +122,12 @@ function resolveBuildRelease(env) {
   }
 }
 
-function releaseMetadataPlugin(release) {
+function releaseMetadataPlugin(release, metadata) {
   return {
     name: 'lekha-release-metadata',
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'release.json', source: JSON.stringify(metadata) })
+    },
     transformIndexHtml: {
       order: 'pre',
       handler() {
@@ -204,7 +171,7 @@ export default defineConfig(({ mode, command }) => {
   }
 
   return {
-  plugins: [backendAutostartPlugin(), releaseMetadataPlugin(buildRelease), react()],
+  plugins: [backendAutostartPlugin(), releaseMetadataPlugin(buildRelease, releaseMetadata(env, 'editor', isProductionBuild)), react()],
   build: {
     rollupOptions: {
       output: {

@@ -10,6 +10,10 @@ import shutil
 import uuid
 from openai import OpenAI
 from sarvamai import SarvamAI
+try:
+    from .media_commands import run_media_command
+except ImportError:
+    from media_commands import run_media_command
 
 TRANSCRIPTION_PROVIDER_TIMEOUT_SECONDS = max(
     15,
@@ -117,7 +121,7 @@ def _nvenc_supported():
         return _NVENC_PROBE_CACHE
     _NVENC_PROBE_CACHE = False
     try:
-        encoders = subprocess.run(
+        encoders = run_media_command(
             ["ffmpeg", "-hide_banner", "-encoders"],
             capture_output=True, text=True, timeout=20,
         )
@@ -126,7 +130,7 @@ def _nvenc_supported():
             return False
         # Listing the encoder is not proof it works: a missing driver, or a card
         # with no NVENC block at all (e.g. GT 710), only fails at encode time.
-        smoke = subprocess.run(
+        smoke = run_media_command(
             ["ffmpeg", "-hide_banner", "-y", "-f", "lavfi",
              "-i", "color=c=black:s=256x256:d=0.1",
              "-c:v", "h264_nvenc", "-f", "null", "-"],
@@ -631,7 +635,7 @@ class VideoProcessor:
             # Try to initialize client if not ready
             if not self.client:
                 try:
-                    self.client = OpenAI(timeout=TRANSCRIPTION_PROVIDER_TIMEOUT_SECONDS)
+                    self.client = OpenAI(timeout=TRANSCRIPTION_PROVIDER_TIMEOUT_SECONDS, max_retries=0)
                 except Exception as e:
                     print(f"[Warning] OpenAI Init Warning: {e}. Transcription requests will fail unless an explicit test mock is enabled.")
             
@@ -645,7 +649,7 @@ class VideoProcessor:
             try:
                 with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as _tf:
                     audio_p = _tf.name
-                subprocess.run(["ffmpeg", "-y", "-i", input_p, "-vn", "-ar", "16000", "-ac", "1", audio_p],
+                run_media_command(["ffmpeg", "-y", "-i", input_p, "-vn", "-ar", "16000", "-ac", "1", audio_p],
                                check=True, capture_output=True, timeout=AUDIO_EXTRACTION_TIMEOUT_SECONDS)
             except Exception as ffmpeg_e:
                 print(f"[Warning] FFmpeg audio extraction failed (might have no audio): {ffmpeg_e}")
@@ -732,7 +736,7 @@ class VideoProcessor:
                             model="saaras:v3",
                             mode="transcribe",
                             language_code=lang_code,
-                            request_options={"additional_body_parameters": {"with_timestamps": True}}
+                            request_options={"max_retries": 0, "additional_body_parameters": {"with_timestamps": True}}
                         )
                     print(f"Sarvam API Transcription Success. Output type: {type(response)}")
                     
@@ -833,7 +837,7 @@ class VideoProcessor:
 
                 # Get video duration for full-video mock captions
                 try:
-                    dur_result = subprocess.run(
+                    dur_result = run_media_command(
                         ["ffprobe", "-v", "error", "-show_entries", "format=duration",
                          "-of", "default=nw=1:nk=1", input_p],
                         capture_output=True, text=True
@@ -916,7 +920,7 @@ class VideoProcessor:
             return {"success": False, "error": "Caption generation failed"}
 
     async def burn_only(self, input_p, output_p, captions, style, word_layouts=None):
-        print(f"BURNING with style: {json.dumps(style, indent=2)}")
+        # Customer style payloads can contain text; keep them out of logs.
         print(f"DEBUG: Found {len(captions)} captions, and {len(word_layouts) if word_layouts else 0} word layouts")
         try:
             font_key = style.get('font_family', 'Inter')
@@ -1006,7 +1010,7 @@ class VideoProcessor:
 
             print(f"[FFmpeg] Running command: {' '.join(cmd)}")
             result = await asyncio.get_running_loop().run_in_executor(
-                None, lambda: subprocess.run(cmd, capture_output=True, text=True)
+                None, lambda: run_media_command(cmd, capture_output=True, text=True)
             )
 
             # Always log FFmpeg stderr (even on success — libass warnings appear here)
@@ -1021,7 +1025,7 @@ class VideoProcessor:
                 cpu_cmd = _build_burn_cmd(force_cpu=True)
                 print("[FFmpeg] NVENC encode failed — retrying on CPU (libx264).")
                 result = await asyncio.get_running_loop().run_in_executor(
-                    None, lambda: subprocess.run(cpu_cmd, capture_output=True, text=True)
+                    None, lambda: run_media_command(cpu_cmd, capture_output=True, text=True)
                 )
                 if result.stderr:
                     print(f"[FFmpeg] CPU retry stderr (last 1000 chars): {result.stderr[-1000:]}")
@@ -1040,7 +1044,7 @@ class VideoProcessor:
 
             probe = await asyncio.get_running_loop().run_in_executor(
                 None,
-                lambda: subprocess.run(
+                lambda: run_media_command(
                     [
                         "ffprobe", "-v", "error", "-select_streams", "v:0",
                         "-show_entries", "stream=codec_type:format=duration",
@@ -1202,7 +1206,7 @@ class VideoProcessor:
 
     def _get_video_duration(self, video_path):
         try:
-            result = subprocess.run(
+            result = run_media_command(
                 [
                     "ffprobe", "-v", "error", "-show_entries", "format=duration",
                     "-of", "default=nw=1:nk=1", video_path
@@ -1292,6 +1296,7 @@ class VideoProcessor:
                 capture_output=True,
                 text=True,
                 cwd=self.project_root,
+                timeout=15 * 60,
             )
             if render_result.stdout:
                 print(f"[Template DOM] stdout: {render_result.stdout[-1000:]}")
@@ -1333,7 +1338,7 @@ class VideoProcessor:
             print(f"[Template DOM] Quality: {quality}, CRF: {crf}")
             print(f"[Template DOM] filter_complex: {filter_complex}")
             print(f"[Template DOM] Running FFmpeg: {' '.join(cmd)}")
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = run_media_command(cmd, capture_output=True, text=True)
             if result.stderr:
                 print(f"[Template DOM] FFmpeg stderr (last 1000 chars): {result.stderr[-1000:]}")
             # Same GPU safety net as the ASS burn path — a failed NVENC encode
@@ -1341,7 +1346,7 @@ class VideoProcessor:
             if result.returncode != 0 and "h264_nvenc" in cmd:
                 _disable_nvenc("overlay encode failed at runtime")
                 print("[Template DOM] NVENC encode failed — retrying on CPU (libx264).")
-                result = subprocess.run(_build_overlay_cmd(force_cpu=True), capture_output=True, text=True)
+                result = run_media_command(_build_overlay_cmd(force_cpu=True), capture_output=True, text=True)
                 if result.stderr:
                     print(f"[Template DOM] CPU retry stderr (last 1000 chars): {result.stderr[-1000:]}")
             if result.returncode != 0:
@@ -1355,7 +1360,7 @@ class VideoProcessor:
 
     def _get_video_dimensions(self, video_path):
         try:
-            result = subprocess.run(
+            result = run_media_command(
                 ["ffprobe", "-v", "error", "-select_streams", "v:0",
                  "-show_entries", "stream=width,height",
                  "-of", "json", video_path],
@@ -1376,7 +1381,7 @@ class VideoProcessor:
 
     def _get_rotation(self, video_path):
         try:
-            result = subprocess.run(
+            result = run_media_command(
                 ["ffprobe", "-v", "error", "-select_streams", "v:0",
                  "-show_entries", "stream_side_data=rotation",
                  "-of", "json", video_path],
@@ -1389,7 +1394,7 @@ class VideoProcessor:
                     if rot is not None:
                         return int(rot)
 
-            result2 = subprocess.run(
+            result2 = run_media_command(
                 ["ffprobe", "-v", "error", "-select_streams", "v:0",
                  "-show_entries", "stream_tags=rotate",
                  "-of", "default=nw=1:nk=1", video_path],

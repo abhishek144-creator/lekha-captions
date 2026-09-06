@@ -5568,6 +5568,24 @@ async function main() {
         await page.evaluate(async (currentPayload, currentTime) => {
           try {
             window.__renderPayload(currentPayload, currentTime);
+            // Fonts are requested lazily when caption glyphs enter the DOM.
+            // The empty-page fonts.ready above cannot settle their geometry.
+            // Rebuild measured word offsets after a newly used font arrives.
+            void document.getElementById('overlay-root').offsetWidth;
+            if (document.fonts.status === 'loading') {
+              let fontTimeout;
+              try {
+                await Promise.race([
+                  document.fonts.ready,
+                  new Promise((_, reject) => {
+                    fontTimeout = setTimeout(() => reject(new Error('Caption fonts did not settle within 15 seconds')), 15000);
+                  }),
+                ]);
+              } finally {
+                clearTimeout(fontTimeout);
+              }
+              window.__renderPayload(currentPayload, currentTime);
+            }
             if (window.__activateTemplateAnimations) {
               await window.__activateTemplateAnimations();
             } else {

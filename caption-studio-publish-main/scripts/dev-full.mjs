@@ -1,4 +1,4 @@
-import { execFileSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import http from "node:http";
 import https from "node:https";
 import process from "node:process";
@@ -50,77 +50,6 @@ async function waitFor(url, seconds, label) {
   return false;
 }
 
-function stopStaleWindowsFrontend(port) {
-  if (process.platform !== "win32") return false;
-  const script = `
-$connections = Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction SilentlyContinue
-$pids = @($connections | Select-Object -ExpandProperty OwningProcess -Unique)
-foreach ($ownerPid in $pids) {
-  if (-not $ownerPid) { continue }
-  $proc = Get-CimInstance Win32_Process -Filter "ProcessId=$ownerPid" -ErrorAction SilentlyContinue
-  if (-not $proc) { continue }
-  $name = [string]$proc.Name
-  $command = [string]$proc.CommandLine
-  if (($name -match '^(node|npm|cmd|powershell)(\\.exe)?$') -and (($command -match 'vite') -or ($command -match 'dev:frontend') -or ($command -match [regex]::Escape('${root.replace(/'/g, "''")}')))) {
-    Stop-Process -Id $proc.ProcessId -Force
-    Write-Output "stopped:$($proc.ProcessId)"
-  }
-}
-`;
-  try {
-    const output = execFileSync("powershell.exe", [
-      "-NoProfile",
-      "-ExecutionPolicy",
-      "Bypass",
-      "-Command",
-      script,
-    ], { encoding: "utf8" });
-    if (output.trim()) {
-      console.log(`[dev] Replaced stale frontend on port ${port}: ${output.trim()}`);
-      return true;
-    }
-  } catch (error) {
-    console.warn(`[dev] Could not stop stale frontend on port ${port}: ${error?.message || error}`);
-  }
-  return false;
-}
-
-function stopStaleWindowsBackend(port) {
-  if (process.platform !== "win32") return false;
-  const script = `
-$connections = Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction SilentlyContinue
-$pids = @($connections | Select-Object -ExpandProperty OwningProcess -Unique)
-foreach ($ownerPid in $pids) {
-  if (-not $ownerPid) { continue }
-  $proc = Get-CimInstance Win32_Process -Filter "ProcessId=$ownerPid" -ErrorAction SilentlyContinue
-  if (-not $proc) { continue }
-  $name = [string]$proc.Name
-  $command = [string]$proc.CommandLine
-  $looksLikeBackend = ($command -match 'uvicorn') -and ($command -match 'backend\\.main:app')
-  if (($name -match '^(node|npm|cmd|powershell|python)(\\.exe)?$') -and -not $looksLikeBackend) {
-    Stop-Process -Id $proc.ProcessId -Force
-    Write-Output "stopped:$($proc.ProcessId)"
-  }
-}
-`;
-  try {
-    const output = execFileSync("powershell.exe", [
-      "-NoProfile",
-      "-ExecutionPolicy",
-      "Bypass",
-      "-Command",
-      script,
-    ], { encoding: "utf8" });
-    if (output.trim()) {
-      console.log(`[dev] Replaced stale backend on port ${port}: ${output.trim()}`);
-      return true;
-    }
-  } catch (error) {
-    console.warn(`[dev] Could not stop stale backend on port ${port}: ${error?.message || error}`);
-  }
-  return false;
-}
-
 function startProcess(label, command, args, options = {}) {
   console.log(`[dev] Starting ${label}: ${command} ${args.join(" ")}`);
   let child;
@@ -129,7 +58,7 @@ function startProcess(label, command, args, options = {}) {
       cwd: root,
       stdio: "inherit",
       env: process.env,
-      windowsHide: false,
+      windowsHide: true,
       ...options,
     });
   } catch (error) {
@@ -138,6 +67,10 @@ function startProcess(label, command, args, options = {}) {
     throw error;
   }
   children.add(child);
+  child.on("error", (error) => {
+    console.error(`[dev] Failed to start ${label}: ${error.message}`);
+    shutdown(1);
+  });
   child.on("exit", (code, signal) => {
     children.delete(child);
     if (!shuttingDown) {
@@ -170,11 +103,7 @@ console.log(`[dev] Backend:  ${backendUrl}`);
 console.log(`[dev] Frontend: ${frontendUrl}`);
 
 if (!(await requestReady(`${backendUrl}/api/version`))) {
-  stopStaleWindowsBackend(backendPort);
-  if (await requestReady(`${backendUrl}/api/version`)) {
-    console.log("[dev] Backend became ready after replacing a stale listener.");
-  } else {
-  startProcess("backend", "python", [
+  startProcess("backend", process.env.PYTHON || "python", [
     "-m",
     "uvicorn",
     "backend.main:app",
@@ -186,7 +115,6 @@ if (!(await requestReady(`${backendUrl}/api/version`))) {
 
   if (!(await waitFor(`${backendUrl}/api/version`, 90, "Backend"))) {
     shutdown(1);
-  }
   }
 } else {
   console.log("[dev] Backend already ready.");
@@ -215,31 +143,8 @@ if (!(await requestReady(frontendUrl))) {
 
 if (!(await waitFor(frontendApiUrl, 20, "Frontend API proxy"))) {
   console.warn(`[dev] ${frontendUrl} is running, but /api is not reaching ${backendUrl}.`);
-  if (stopStaleWindowsFrontend(frontendPort)) {
-    await new Promise((resolve) => setTimeout(resolve, 1200));
-    startProcess("frontend", npmCommand, [
-      ...npmArgsPrefix,
-      "run",
-      "dev:frontend",
-      "--",
-      "--host",
-      "localhost",
-      "--port",
-      String(frontendPort),
-    ], {
-      env: frontendEnv,
-    });
-    if (!(await waitFor(frontendUrl, 60, "Frontend"))) {
-      shutdown(1);
-    }
-    if (!(await waitFor(frontendApiUrl, 30, "Frontend API proxy"))) {
-      console.error(`[dev] Restarted frontend, but /api still cannot reach ${backendUrl}.`);
-      shutdown(1);
-    }
-  } else {
-    console.error(`[dev] Close the existing frontend process on port ${frontendPort}, then run npm run dev again.`);
-    shutdown(1);
-  }
+  console.error(`[dev] Check the existing service on port ${frontendPort} and its API proxy, then run npm run dev again.`);
+  shutdown(1);
 }
 
 console.log("");

@@ -299,6 +299,48 @@ export default function Dashboard() {
   const [waveformData, setWaveformData] = useState(null);
   const initialEditorStateRef = useRef(null);
   const mediaRefreshInFlightRef = useRef(false);
+  const cloudRevisionRef = useRef(0)
+  const cloudSaveChainRef = useRef(Promise.resolve())
+  const [cloudDraft, setCloudDraft] = useState(null)
+  const [cloudSaveMessage, setCloudSaveMessage] = useState('')
+  const [cloudReady, setCloudReady] = useState(false)
+
+  useEffect(() => {
+    let disposed = false
+    setCloudReady(false)
+    setCloudDraft(null)
+    cloudRevisionRef.current = 0
+    if (currentUser) {
+      getEffectiveAuthToken(currentUser).then((id_token) => apiRequest('/api/draft/load', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id_token }),
+      })).then((data) => {
+        if (disposed) return
+        cloudRevisionRef.current = data.revision
+        setCloudDraft(data.draft)
+        setCloudReady(true)
+      }).catch(() => {
+        if (!disposed) setCloudSaveMessage('Cloud drafts are unavailable. Local edits are still kept in this browser.')
+      })
+    }
+    return () => { disposed = true }
+  }, [currentUser])
+
+  const saveCloudDraft = useCallback((draft) => {
+    const save = async () => {
+      if (!cloudReady || !currentUser) throw new Error('Cloud saving is unavailable. Your browser copy is still available.')
+      const id_token = await getEffectiveAuthToken(currentUser)
+      const data = await apiRequest('/api/draft/save', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id_token, draft, expected_revision: cloudRevisionRef.current }),
+      })
+      cloudRevisionRef.current = data.revision
+      setCloudDraft(data.draft)
+      setCloudSaveMessage('Saved to your account')
+    }
+    const pending = cloudSaveChainRef.current.catch(() => {}).then(save)
+    cloudSaveChainRef.current = pending
+    return pending
+  }, [cloudReady, currentUser])
 
   // External Video Sync Signal
   const [seekSignal, setSeekSignal] = useState(null);
@@ -314,6 +356,46 @@ export default function Dashboard() {
     projectId: overrides.projectId ?? projectId,
     settings: JSON.parse(JSON.stringify(overrides.settings ?? settings)),
   }), [captionStyle, captions, duration, fileId, originalFileName, projectId, settings, videoUrl]);
+
+  useEffect(() => {
+    if (!isLoaded || !fileId || !captions.length || !cloudReady) return
+    setCloudSaveMessage('Changes waiting to save')
+    const timer = setTimeout(() => {
+      saveCloudDraft(snapshotEditorState()).catch((error) => setCloudSaveMessage(error.message || 'Cloud save failed. Your browser copy is still available.'))
+    }, 2500)
+    return () => clearTimeout(timer)
+  }, [isLoaded, fileId, captions, cloudReady, snapshotEditorState, saveCloudDraft])
+
+  const restoreCloudDraft = async () => {
+    if (!cloudDraft || !currentUser) return
+    try {
+      const id_token = await getEffectiveAuthToken(currentUser)
+      const media = await apiRequest('/api/media/upload-url', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id_token, file_id: cloudDraft.fileId }),
+      })
+      setCaptions((cloudDraft.captions || []).map(sanitizeRestoredCaption))
+      setCaptionStyle(normalizeCaptionStyle(cloudDraft.captionStyle || defaultCaptionStyle))
+      setSettings(cloudDraft.settings || {})
+      setFileId(cloudDraft.fileId)
+      setProjectId(cloudDraft.projectId || null)
+      setOriginalFileName(cloudDraft.originalFileName || '')
+      setDuration(cloudDraft.duration || 0)
+      setVideoUrl(resolveApiResourceUrl(media.raw_url, import.meta.env.VITE_API_BASE_URL))
+      setCloudSaveMessage('Restored your account draft')
+    } catch {
+      setCloudSaveMessage('The source video is unavailable or expired. Your caption draft is safe; download it below.')
+    }
+  }
+
+  const downloadDraft = (draft) => {
+    const url = URL.createObjectURL(new Blob([JSON.stringify(draft, null, 2)], { type: 'application/json' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'lekha-caption-draft.json'
+    link.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
 
   // A direct Dashboard visit always starts with an empty editor. Restore a
   // locally cached session only for the explicit return path from Account, so
@@ -746,10 +828,12 @@ export default function Dashboard() {
         videoUrl, captions, captionStyle, projectId, settings, duration,
         fileId, originalFileName, ownerUid: currentUser?.uid || ''
       }));
+      await saveCloudDraft(snapshotEditorState())
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2000);
     } catch (error) {
       console.error('Save failed:', error);
+      setCloudSaveMessage(error.message || 'Cloud save failed. Your browser copy is still available.')
     } finally {
       setIsSaving(false);
     }
@@ -1554,6 +1638,12 @@ export default function Dashboard() {
       />
 
       {/* Main content */}
+      {cloudSaveMessage && (
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-4 py-2 text-xs text-gray-300">
+          <p role="status">{cloudSaveMessage}</p>
+          {captions.length > 0 && <button className="shrink-0 underline" onClick={() => downloadDraft(snapshotEditorState())}>Download draft</button>}
+        </div>
+      )}
       <div className="flex-1 overflow-hidden lekha-editor-shell">
         {isGenerating ? (
           renderGeneratingState()
@@ -1581,6 +1671,12 @@ export default function Dashboard() {
                 <Upload className="w-5 h-5 mr-2" />
                 Upload Video
               </Button>
+              {cloudDraft && (
+                <div className="mt-4 flex flex-wrap justify-center gap-4 text-sm">
+                  <button className="underline" onClick={restoreCloudDraft}>Restore saved draft</button>
+                  <button className="underline" onClick={() => downloadDraft(cloudDraft)}>Download saved captions</button>
+                </div>
+              )}
             </motion.div>
           </div>
         ) : (
