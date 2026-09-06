@@ -6,6 +6,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException
+from google.api_core.exceptions import NotFound
 from google.cloud import firestore
 
 
@@ -83,7 +84,7 @@ class TranscriptionJobs:
             return job
         return claim(self.db.transaction())
 
-    def finish(self, uid, job_id, status, payload=None, error=None):
+    def finish(self, uid, job_id, status, payload=None, error=None, expected_status=None):
         ref, lock, outbox, fence = self.refs(uid, job_id)
 
         @firestore.transactional
@@ -92,6 +93,8 @@ class TranscriptionJobs:
             snapshot = ref.get(transaction=tx)
             active = lock.get(transaction=tx)
             if not snapshot.exists or snapshot.to_dict()["status"] in TERMINAL:
+                return False
+            if expected_status is not None and snapshot.to_dict()["status"] != expected_status:
                 return False
             final_status = "cancelled" if deleted else status
             update = {"status": final_status, "updated_at": time.time()}
@@ -125,14 +128,28 @@ class TranscriptionJobs:
                 continue
             if now - pointer.get("last_dispatch", 0) < 30:
                 continue
+            # Waiting behind a render is not a delivery failure. Keep the
+            # existing RQ delivery instead of adding duplicates every 30s and
+            # exhausting the dispatch budget before a worker reaches this job.
+            # Probe failures propagate: do not guess that Redis lost the job.
+            if pointer.get("rq_job_id"):
+                delivery = queue.fetch_job(pointer["rq_job_id"])
+                if delivery and delivery.get_status(refresh=True) in {"queued", "started", "deferred", "scheduled"}:
+                    continue
             if pointer.get("attempts", 0) >= 10:
-                self.finish(uid, job_id, "failed", error="Transcription could not start. Contact support with this job reference.")
+                self.finish(uid, job_id, "failed", error="Transcription could not start. Contact support with this job reference.",
+                            expected_status="queued")
                 continue
             # Marking dispatch is best effort: crash on either side can cause
             # duplicate delivery, which the durable claim deliberately tolerates.
             snapshot.reference.update({"last_dispatch": now, "attempts": firestore.Increment(1)})
-            queue.enqueue("backend.main.run_transcription_job_task", uid, job_id,
-                          job_timeout=30 * 60, result_ttl=3600, failure_ttl=86400)
+            delivery = queue.enqueue("backend.main.run_transcription_job_task", uid, job_id,
+                                     job_timeout=30 * 60, result_ttl=3600, failure_ttl=86400)
+            try:
+                snapshot.reference.update({"rq_job_id": delivery.id})
+            except NotFound:
+                # A fast worker can finish and delete its outbox first.
+                pass
 
     def prepare_deletion(self, uid):
         user = self.db.collection("users").document(uid)
