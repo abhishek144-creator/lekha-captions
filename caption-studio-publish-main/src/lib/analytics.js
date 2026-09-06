@@ -1,5 +1,6 @@
 import { apiRequest } from "@/lib/apiClient"
 import { featureFlags } from "@/lib/featureFlags"
+import { appCheck } from "@/lib/firebase"
 
 const PENDING_ANALYTICS_KEY = "lekha.pendingAnalytics.v1"
 const MAX_PENDING_ANALYTICS_EVENTS = 25
@@ -33,6 +34,7 @@ async function sendAnalyticsEvent(item) {
 }
 
 async function flushPendingAnalytics() {
+  if (!appCheck) return
   if (flushPromise) return flushPromise
   flushPromise = (async () => {
     const pending = readPendingAnalytics()
@@ -54,7 +56,9 @@ async function flushPendingAnalytics() {
 }
 
 export async function trackAnalytics(event, payload = {}) {
-  if (!featureFlags.analyticsDepth) return
+  // Optional telemetry must not start browser attestation for public readers.
+  // A protected application request initializes App Check when it is needed.
+  if (!featureFlags.analyticsDepth || !appCheck) return
   const item = { event, payload, queuedAt: new Date().toISOString() }
   try {
     await flushPendingAnalytics()
