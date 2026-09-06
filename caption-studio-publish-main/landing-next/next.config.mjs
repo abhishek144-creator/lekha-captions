@@ -1,3 +1,6 @@
+import { writeFileSync } from 'node:fs'
+import { releaseMetadata } from '../scripts/release-metadata.mjs'
+
 const requiredProductionEnv = [
   'NEXT_PUBLIC_LEGAL_BUSINESS_NAME',
   'NEXT_PUBLIC_LEGAL_BUSINESS_ADDRESS',
@@ -7,6 +10,7 @@ const requiredProductionEnv = [
 ]
 
 if (process.env.NODE_ENV === 'production') {
+  writeFileSync(new URL('./public/release.json', import.meta.url), JSON.stringify(releaseMetadata(process.env, 'marketing', true)))
   const missing = requiredProductionEnv.filter((key) => !String(process.env[key] || '').trim())
   if (missing.length) {
     throw new Error(`Marketing production build requires legal identity fields: ${missing.join(', ')}`)

@@ -51,3 +51,11 @@ test('production build exposes its release identity', async ({ page }) => {
   const release = await page.locator('meta[name="lekha-release"]').getAttribute('content')
   expect(release).toMatch(/^[a-f0-9]{40}$/i)
 })
+
+
+test('public support content remains available while authentication is unavailable', async ({ page }) => {
+  await page.route(/https:\/\/(?:[^/]+\.)?(?:firebaseapp\.com|identitytoolkit\.googleapis\.com|securetoken\.googleapis\.com)\//, () => {})
+  await page.goto('/Changelog', { waitUntil: 'domcontentloaded' })
+  await expect(page.locator('body')).toContainText(/release notes|what changed/i)
+  await expect(page.locator('main')).toBeVisible()
+})

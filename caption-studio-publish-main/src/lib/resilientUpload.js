@@ -42,6 +42,7 @@ function waitForConnection(maxWaitMs = 15000) {
 }
 
 export function isRetryableUploadError(error) {
+  if (error?.name === 'AbortError') return false
   return RETRYABLE_UPLOAD_STATUSES.has(Number(error?.status || 0))
 }
 

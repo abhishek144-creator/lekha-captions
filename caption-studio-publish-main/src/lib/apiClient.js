@@ -69,7 +69,7 @@ function toReadableErrorMessage(value) {
       .join("; ")
   }
   if (value && typeof value === "object") {
-    return typeof value.msg === "string" ? value.msg : ""
+    return typeof value.message === "string" ? value.message : typeof value.msg === "string" ? value.msg : ""
   }
   return ""
 }
@@ -268,6 +268,7 @@ export async function apiFetch(url, options = {}) {
                 })
               }
             } catch (error) {
+              if (error?.name === "AbortError") throw error
               if (error instanceof ApiError) throw error
               // Fall through to the normal retry/unavailable handling.
             }

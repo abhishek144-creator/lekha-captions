@@ -69,6 +69,23 @@ def upload_file(
     return True
 
 
+def bucket_ready() -> bool:
+    if not is_configured():
+        return False
+    # Bound this diagnostic separately from large media transfers.
+    probe = boto3.client(
+        "s3", endpoint_url=S3_ENDPOINT, region_name=S3_REGION,
+        aws_access_key_id=S3_ACCESS_KEY_ID, aws_secret_access_key=S3_SECRET_ACCESS_KEY,
+        config=Config(signature_version="s3v4", connect_timeout=3, read_timeout=3,
+                      retries={"total_max_attempts": 1}, s3={"addressing_style": S3_ADDRESSING_STYLE}),
+    )
+    try:
+        probe.head_bucket(Bucket=S3_BUCKET)
+        return True
+    finally:
+        probe.close()
+
+
 def download_file(remote_path: str, local_path: str) -> bool:
     client = _client()
     if client is None:

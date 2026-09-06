@@ -546,11 +546,13 @@ class ApiContractTests(unittest.TestCase):
         file_id = "123e4567-e89b-12d3-a456-426614174000"
         main._upload_owners[file_id] = "process-user"
 
-        with self.assertRaises(RuntimeError):
-            self.client.post(
-                "/api/process",
-                json={"file_id": file_id, "language": "english", "id_token": "token-123"},
-            )
+        response = self.client.post(
+            "/api/process",
+            json={"file_id": file_id, "language": "english", "id_token": "token-123"},
+        )
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.json()["error"]["request_id"], response.headers["x-request-id"])
+        self.assertNotIn("provider exploded", response.text)
 
         mock_release.assert_called_once_with("process-user", "process")
 
@@ -734,7 +736,7 @@ class ApiContractTests(unittest.TestCase):
 
         class FakeCollection:
             def document(self, _job_id):
-                return SimpleNamespace(get=lambda: FakeDoc())
+                return SimpleNamespace(get=lambda: FakeDoc() if _job_id == "job-1" else SimpleNamespace(exists=False))
 
         class FakeDb:
             def collection(self, _name):
@@ -1044,6 +1046,9 @@ class ApiContractTests(unittest.TestCase):
                 return [FakePaymentDoc("pay_1"), FakePaymentDoc("pay_2")]
 
         class FakeUserRef:
+            def set(self, data, merge=False):
+                self.last_write = data
+
             def get(self):
                 return FakeUserDoc()
 

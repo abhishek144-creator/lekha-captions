@@ -73,3 +73,6 @@ dashboard-backups/
 # dev-only sample video for ?devseed=1 (never commit)
 public/dev-sample.mov
 .netlify/
+
+# Generated marketing release metadata
+landing-next/public/release.json

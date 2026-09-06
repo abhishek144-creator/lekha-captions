@@ -79,8 +79,8 @@ export default function Login() {
             const result = await loginWithGoogle({
                 consent: {
                     granted: true,
-                    termsVersion: '2026-07-14',
-                    privacyVersion: '2026-07-14',
+                    termsVersion: '2026-09-02',
+                    privacyVersion: '2026-09-06',
                 },
             });
             if (!result?.redirected) {

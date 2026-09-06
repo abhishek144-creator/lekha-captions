@@ -51,7 +51,7 @@ try:
         download_export_from_firebase_storage,
         delete_expired_uploads,
         delete_user_uploads,
-        get_storage_bucket,
+        storage_backend_ready,
     )
 except ImportError:  # Direct execution from backend/ remains supported.
     from firebase_admin_setup import (
@@ -66,7 +66,7 @@ except ImportError:  # Direct execution from backend/ remains supported.
         download_export_from_firebase_storage,
         delete_expired_uploads,
         delete_user_uploads,
-        get_storage_bucket,
+        storage_backend_ready,
     )
 from firebase_admin import app_check as firebase_app_check
 from firebase_admin import auth as firebase_auth
@@ -85,6 +85,20 @@ import struct
 import threading
 from collections import deque
 from contextlib import asynccontextmanager
+try:
+    from .transcription_jobs import TranscriptionJobs
+    from .drafts import read_draft, save_draft
+    from .request_limits import UploadBodyLimitMiddleware
+    from .release_metadata import release_metadata
+    from .media_commands import run_media_command
+    from .job_state import transition as transition_export_job, InvalidJobTransition, LOCAL_LOCK as JOB_STATE_LOCK
+except ImportError:
+    from transcription_jobs import TranscriptionJobs
+    from drafts import read_draft, save_draft
+    from request_limits import UploadBodyLimitMiddleware
+    from release_metadata import release_metadata
+    from media_commands import run_media_command
+    from job_state import transition as transition_export_job, InvalidJobTransition, LOCAL_LOCK as JOB_STATE_LOCK
 
 try:
     import razorpay as _razorpay_module
@@ -167,6 +181,9 @@ def _json_log(level: str, event: str, **fields):
         "timestamp": _utcnow().isoformat() + "Z",
         "level": level.upper(),
         "event": event,
+        "service": os.environ.get("SERVICE_ROLE", "api"),
+        "environment": os.environ.get("APP_ENV", "unknown"),
+        "release": os.environ.get("APP_RELEASE", ""),
         **fields,
     }
     line = json.dumps(record, ensure_ascii=True, default=str)
@@ -220,6 +237,14 @@ async def request_logging_middleware(request: Request, call_next):
     app_check_failure = _verify_firebase_app_check_request(request, rid)
     if app_check_failure is not None:
         return _apply_security_headers(app_check_failure)
+    if request.url.path == "/api/upload":
+        # FastAPI parses multipart before entering the endpoint. Authenticate
+        # here so an unauthenticated request never spools customer-sized media.
+        try:
+            upload_identity = await asyncio.to_thread(_authenticate_media_request, _extract_bearer_token(request))
+        except HTTPException as error:
+            return _apply_security_headers(JSONResponse(status_code=error.status_code,
+                content={"detail": error.detail}, headers={"X-Request-Id": rid}))
     content_type = (request.headers.get("content-type") or "").lower()
     declared_length = request.headers.get("content-length")
     if "application/json" in content_type and declared_length:
@@ -267,6 +292,9 @@ async def request_logging_middleware(request: Request, call_next):
                 "Sunset": DEPRECATION_SUNSET_DATE,
             },
         ))
+    upload_slot_uid = str(upload_identity.get("uid") or "") if request.url.path == "/api/upload" else ""
+    if upload_slot_uid and not _acquire_process_slot(upload_slot_uid, f"upload:{rid}"):
+        return _apply_security_headers(JSONResponse(status_code=429, content={"detail": "Another upload or transcription is active for this account."}, headers={"X-Request-Id": rid}))
     start = time.time()
     try:
         response = await call_next(request)
@@ -284,7 +312,13 @@ async def request_logging_middleware(request: Request, call_next):
             replica_id=RAILWAY_REPLICA_ID,
             error=str(e),
         )
-        raise
+        return _apply_security_headers(JSONResponse(status_code=500, content={
+            "success": False, "error": {"code": "INTERNAL_ERROR",
+            "message": "Something went wrong. Please contact support with this request ID.", "request_id": rid},
+        }, headers={"X-Request-Id": rid, "Cache-Control": "no-store"}))
+    finally:
+        if upload_slot_uid:
+            _release_process_slot(upload_slot_uid, f"upload:{rid}")
     elapsed_ms = int((time.time() - start) * 1000)
     response.headers["X-Request-Id"] = rid
     _json_log(
@@ -340,6 +374,8 @@ if _IS_PRODUCTION and not FIREBASE_APP_CHECK_ENFORCED:
     )
 
 _APP_CHECK_EXEMPT_PATHS = frozenset({
+    "/health",
+    "/ready",
     "/api/health",
     "/api/version",
     "/api/service-status",
@@ -446,6 +482,8 @@ if _IS_PRODUCTION:
         "RAZORPAY_KEY_SECRET": RAZORPAY_KEY_SECRET.strip(),
         "PAYMENT_RECONCILE_SECRET": os.environ.get("PAYMENT_RECONCILE_SECRET", "").strip(),
         "APP_RELEASE": os.environ.get("APP_RELEASE", "").strip(),
+        "APP_BUILD_TIME": os.environ.get("APP_BUILD_TIME", "").strip(),
+        "RELEASE_VERSION": os.environ.get("RELEASE_VERSION", "").strip(),
         "ADMIN_EMAILS": os.environ.get("ADMIN_EMAILS", "").strip(),
         "SECURITY_CONTACT_EMAIL": os.environ.get("SECURITY_CONTACT_EMAIL", "").strip(),
         "PRIVACY_CONTACT_EMAIL": os.environ.get("PRIVACY_CONTACT_EMAIL", "").strip(),
@@ -556,6 +594,7 @@ API_CURRENT_VERSION = os.environ.get("API_CURRENT_VERSION", "2026-04-21")
 API_MIN_SUPPORTED_VERSION = os.environ.get("API_MIN_SUPPORTED_VERSION", "2026-01-01")
 DEPRECATION_SUNSET_DATE = os.environ.get("DEPRECATION_SUNSET_DATE", "2026-12-31")
 APP_RELEASE = os.environ.get("APP_RELEASE", "").strip()
+RELEASE_METADATA = release_metadata()
 ENFORCE_TENANT_ISOLATION = os.environ.get(
     "ENFORCE_TENANT_ISOLATION", "1" if _IS_PRODUCTION else "0"
 ) == "1"
@@ -623,12 +662,12 @@ if (
 
 if REDIS_AVAILABLE and REDIS_URL and not _IS_TEST:
     try:
-        _redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+        _redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True, socket_connect_timeout=5, socket_timeout=5)
         _redis_client.ping()
         # RQ stores pickled/binary job payloads. Sharing the application's
         # decode_responses=True client makes failed-job inspection attempt UTF-8
         # decoding and can strand per-user export leases.
-        _rq_redis_client = redis.Redis.from_url(REDIS_URL)
+        _rq_redis_client = redis.Redis.from_url(REDIS_URL, socket_connect_timeout=5)
         _rq_redis_client.ping()
         _json_log("info", "redis_connected")
     except Exception as e:
@@ -810,8 +849,14 @@ async def scheduled_payment_reconciliation_job():
         _release_scheduled_job("payment_reconciliation", token)
 
 async def startup_event():
-    global _telemetry_flush_task, _simple_janitor_task
+    global _telemetry_flush_task, _simple_janitor_task, _transcription_dispatch_task
     _telemetry_flush_task = asyncio.create_task(_telemetry_flush_loop())
+    if _IS_PRODUCTION:
+        _transcription_dispatch_task = asyncio.create_task(_transcription_dispatch_loop())
+    if os.environ.get("RELEASE_ENVIRONMENT") == "staging":
+        # Current staging shares Firestore: it must not reconcile live payments
+        # or run global customer-media cleanup with staging credentials.
+        return
     if scheduler is not None:
         scheduler.add_job(scheduled_janitor_job, 'interval', minutes=15)
         scheduler.add_job(scheduled_payment_reconciliation_job, 'interval', minutes=max(PAYMENT_RECONCILE_INTERVAL_MINUTES, 5))
@@ -826,7 +871,10 @@ async def startup_event():
 
 
 async def shutdown_event():
-    global _telemetry_flush_task, _simple_janitor_task
+    global _telemetry_flush_task, _simple_janitor_task, _transcription_dispatch_task
+    if _transcription_dispatch_task is not None:
+        _transcription_dispatch_task.cancel()
+        _transcription_dispatch_task = None
     if _telemetry_flush_task is not None:
         _telemetry_flush_task.cancel()
         _telemetry_flush_task = None
@@ -879,6 +927,8 @@ app.add_middleware(
 
 # Simple in-memory rate limiters (ip -> list of timestamps)
 _upload_rate: Dict[str, list] = {}
+app.add_middleware(UploadBodyLimitMiddleware)
+
 # Authenticated users keep a strict per-account limit, while the shared public
 # address gets a much wider abuse ceiling. Mobile carriers, universities,
 # offices, and public Wi-Fi commonly place many unrelated users behind one IP.
@@ -954,6 +1004,7 @@ _telemetry_buffer = deque()
 _telemetry_lock = threading.Lock()
 _telemetry_flush_task = None
 _simple_janitor_task = None
+_transcription_dispatch_task = None
 
 
 def _retention_deadline(days: int) -> datetime:
@@ -1233,6 +1284,33 @@ def _tenant_id_from_token(decoded_token: Optional[Dict[str, Any]]) -> str:
 def _is_explicit_dev_auth_token(id_token: str) -> bool:
     return (DEBUG_MODE_ENABLED or LOCAL_DEV_AUTH_BYPASS_ENABLED) and (id_token or "").strip() == "mock-token"
 
+def _assert_account_not_deleting(uid: str):
+    if not _IS_PRODUCTION:
+        return
+    db = get_db()
+    if db is None:
+        raise HTTPException(status_code=503, detail="Account status is unavailable")
+    try:
+        fence = db.collection("account_deletions").document(uid).get()
+    except Exception as error:
+        raise HTTPException(status_code=503, detail="Account status is unavailable") from error
+    if fence.exists:
+        raise HTTPException(status_code=409, detail="Account deletion is in progress or complete.")
+
+
+def _create_account_if_active(db, user_ref, uid: str, data: Dict[str, Any]):
+    if not _IS_PRODUCTION:
+        return user_ref.create(data)
+    @firestore.transactional
+    def create(transaction):
+        if db.collection("account_deletions").document(uid).get(transaction=transaction).exists:
+            raise HTTPException(status_code=409, detail="Account deletion is in progress or complete.")
+        if user_ref.get(transaction=transaction).exists:
+            raise AlreadyExists("Account already exists")
+        transaction.create(user_ref, data)
+    return create(db.transaction())
+
+
 def _authenticate_media_request(id_token: str, org_id: str = "") -> Dict[str, Any]:
     token = (id_token or "").strip()
     if _is_explicit_dev_auth_token(token):
@@ -1243,6 +1321,7 @@ def _authenticate_media_request(id_token: str, org_id: str = "") -> Dict[str, An
         raise HTTPException(status_code=401, detail="Authentication required")
 
     uid = (decoded_token.get("uid") or "").strip()
+    _assert_account_not_deleting(uid)
     _assert_tenant_access(uid, decoded_token, org_id)
     return decoded_token
 
@@ -1270,7 +1349,6 @@ def _assert_tenant_access(uid: str, decoded_token: Optional[Dict[str, Any]], org
             batch = db.batch()
             batch.set(tenant_ref, {"updated_at": now_iso}, merge=True)
             batch.set(member_ref, {"uid": uid, "org_id": token_org, "updated_at": now_iso}, merge=True)
-            batch.set(db.collection("users").document(uid), {"org_id": token_org, "updated_at": now_iso}, merge=True)
             batch.commit()
             known_members.add(uid)
         except Exception as e:
@@ -1501,10 +1579,10 @@ def _is_content_safety_blocked(*values: str) -> bool:
     joined = " ".join((v or "") for v in values).lower()
     return any(token in joined for token in CONTENT_SAFETY_BLOCKLIST)
 
-def _persist_export_job(job_id: str, payload: Dict[str, Any]) -> bool:
+def _persist_export_job(job_id: str, payload: Dict[str, Any], *, write_redis: bool = True) -> bool:
     """Persist job state to at least one cross-process store."""
-    persisted = False
-    if _redis_client is not None:
+    persisted = not write_redis and _redis_client is not None
+    if write_redis and _redis_client is not None:
         try:
             _redis_client.setex(
                 f"export_job:{job_id}",
@@ -1519,9 +1597,17 @@ def _persist_export_job(job_id: str, payload: Dict[str, Any]) -> bool:
     if db:
         for attempt in range(2):
             try:
-                db.collection("export_jobs").document(job_id).set(
-                    {**payload, "expire_at": _retention_deadline(7)}, merge=True
-                )
+                ref = db.collection("export_jobs").document(job_id)
+                if _redis_client is not None:
+                    @firestore.transactional
+                    def mirror(transaction):
+                        current = ref.get(transaction=transaction)
+                        revision = int((current.to_dict() or {}).get("revision", 0)) if current.exists else 0
+                        if revision < int(payload.get("revision", 0)):
+                            transaction.set(ref, {**payload, "expire_at": _retention_deadline(7)}, merge=True)
+                    mirror(db.transaction())
+                else:
+                    ref.set({**payload, "expire_at": _retention_deadline(7)}, merge=True)
                 persisted = True
                 break
             except Exception as e:
@@ -1559,7 +1645,7 @@ def _load_export_job(job_id: str) -> Optional[Dict[str, Any]]:
                 return job
         except Exception as e:
             _json_log("warning", "export_job_firestore_load_failed", job_id=job_id, error=str(e))
-    if _export_queue is not None and job_id in _export_jobs:
+    if (_IS_PRODUCTION or _export_queue is not None) and job_id in _export_jobs:
         raise HTTPException(status_code=503, detail="Export job status is temporarily unavailable")
     return _export_jobs.get(job_id)
 
@@ -1573,6 +1659,19 @@ def _idem_get(key: str):
         except Exception:
             return None
     return _export_idempotency.get(key)
+
+def _idem_claim(key: str, value: Dict[str, Any]) -> bool:
+    if _redis_client is not None:
+        try:
+            return bool(_redis_client.set(f"idem:{key}", json.dumps(value), nx=True, ex=6 * 3600))
+        except Exception as error:
+            raise HTTPException(status_code=503, detail="Export safety service is unavailable") from error
+    with JOB_STATE_LOCK:
+        if key in _export_idempotency:
+            return False
+        _export_idempotency[key] = value
+        return True
+
 
 def _idem_set(key: str, value: Dict[str, Any], ttl_seconds: int = 6 * 3600):
     if not key:
@@ -1811,32 +1910,34 @@ def _client_rate_key(request: Request) -> str:
     return peer or "unknown"
 
 
+RATE_ADMISSION_SCRIPT = """
+local now = tonumber(ARGV[1])
+local window = tonumber(ARGV[2])
+local limit = tonumber(ARGV[3])
+redis.call('ZREMRANGEBYSCORE', KEYS[1], 0, now - window)
+local count = redis.call('ZCARD', KEYS[1])
+if count >= limit then
+    local oldest = redis.call('ZRANGE', KEYS[1], 0, 0, 'WITHSCORES')
+    local retry = math.max(1, math.ceil(window - (now - tonumber(oldest[2]))))
+    return {0, retry, 0}
+end
+redis.call('ZADD', KEYS[1], now, ARGV[4])
+redis.call('EXPIRE', KEYS[1], window + 5)
+return {1, 0, limit - count - 1}
+"""
+
+
 def _check_rate(store: Dict[str, list], key: str, limit: int, window: int = 3600):
     """Returns (allowed, retry_after_seconds, remaining).
     Mutates *store* in-place to record the current timestamp."""
     if _redis_client is not None:
         try:
             now_ts = time.time()
-            rkey = _rate_limit_redis_key(store, key)
-            pipe = _redis_client.pipeline()
-            pipe.zremrangebyscore(rkey, 0, now_ts - window)
-            pipe.zcard(rkey)
-            _, current_count = pipe.execute()
-            if int(current_count or 0) >= limit:
-                oldest = _redis_client.zrange(rkey, 0, 0, withscores=True)
-                if oldest:
-                    retry_after = max(1, int(window - (now_ts - float(oldest[0][1]))))
-                else:
-                    retry_after = window
-                return False, retry_after, 0
-            member = f"{now_ts}:{uuid.uuid4().hex[:8]}"
-            pipe = _redis_client.pipeline()
-            pipe.zadd(rkey, {member: now_ts})
-            pipe.expire(rkey, window + 5)
-            pipe.zcard(rkey)
-            _, _, after_count = pipe.execute()
-            remaining = max(0, limit - int(after_count or 0))
-            return True, 0, remaining
+            admitted, retry_after, remaining = _redis_client.eval(
+                RATE_ADMISSION_SCRIPT, 1, _rate_limit_redis_key(store, key),
+                now_ts, window, limit, uuid.uuid4().hex,
+            )
+            return bool(admitted), int(retry_after), int(remaining)
         except Exception as e:
             if _IS_PRODUCTION:
                 _json_log("error", "rate_limit_redis_failed", key=key, error=str(e))
@@ -2031,6 +2132,8 @@ def _apply_rate_headers(response: Optional[Response], limit: int, remaining: int
         response.headers["Retry-After"] = str(retry_after)
 
 def _evaluate_export_policy(user_data: Dict[str, Any], now_ts: float):
+    if user_data.get("deletion_pending"):
+        return False, "Account deletion is in progress.", []
     tier = _normalize_tier_name(user_data.get('subscription_tier', 'free'))
     try:
         credits = int(user_data.get('credits_remaining', 0) or 0)
@@ -2117,12 +2220,16 @@ def _record_export_usage(
 
 
 def _set_export_job(job_id: str, status: str, **kwargs):
-    payload = _export_jobs.get(job_id, {})
-    payload.update({"status": status, "updated_at": time.time(), **kwargs})
-    _export_jobs[job_id] = payload
-    persisted = _persist_export_job(job_id, payload)
-    if _export_queue is not None and not persisted:
-        raise RuntimeError("Export job state could not be persisted to shared storage")
+    with JOB_STATE_LOCK:
+        seed = _load_export_job(job_id) or {}
+        payload = transition_export_job(_redis_client, job_id, seed, {
+            "status": status, "updated_at": time.time(), **kwargs,
+        })
+        persisted = _persist_export_job(job_id, payload, write_redis=_redis_client is None)
+        if _export_queue is not None and not persisted:
+            raise RuntimeError("Export job state could not be persisted to shared storage")
+        _export_jobs[job_id] = payload
+        return payload
 
 # Allowed upload extensions (module-level constant — not rebuilt per request)
 ALLOWED_EXTENSIONS = {'mp4', 'mov', 'avi', 'mkv', 'webm', 'mp3', 'wav', 'm4a', 'aac'}
@@ -2198,6 +2305,7 @@ def _load_upload_metadata(file_id: str) -> Dict[str, Any]:
 def _remember_upload_owner(file_id: str, uid: str, remote_path: str = "", extension: str = ""):
     if not file_id or not uid:
         return False
+    _assert_account_not_deleting(uid)
     _upload_owners[file_id] = uid
     persisted = False
     metadata = {
@@ -2322,14 +2430,29 @@ def _build_parity_signature(captions: List[Dict[str, Any]], style: Dict[str, Any
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def _validate_media_signature(file_path: str):
+    with open(file_path, "rb") as media:
+        header = media.read(32)
+    valid = (
+        (len(header) >= 12 and header[4:8] in {b"ftyp", b"moov", b"mdat", b"wide", b"free"})
+        or header.startswith(b"\x1aE\xdf\xa3")  # Matroska / WebM
+        or (header.startswith(b"RIFF") and header[8:12] in {b"WAVE", b"AVI "})
+        or header.startswith(b"ID3")
+        or (len(header) >= 2 and header[0] == 255 and header[1] & 0xE0 == 0xE0)
+    )
+    if not valid:
+        raise ValueError("Unsupported or malformed media signature.")
+
+
 def _probe_media(file_path: str) -> Dict[str, Any]:
+    _validate_media_signature(file_path)
     cmd = [
         "ffprobe", "-v", "error",
         "-show_entries", "format=duration,format_name",
         "-show_entries", "stream=codec_type,codec_name,width,height,duration",
         "-of", "json", file_path
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = run_media_command(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         raise ValueError("Unable to inspect media file with ffprobe.")
     try:
@@ -2345,8 +2468,14 @@ def _probe_media(file_path: str) -> Dict[str, Any]:
         duration = float((meta.get("format") or {}).get("duration") or 0)
     except Exception:
         duration = 0.0
-    if duration <= 0:
+    if not math.isfinite(duration) or duration <= 0:
         raise ValueError("Media duration is invalid.")
+    for stream in streams:
+        if stream.get("codec_type") == "video":
+            width, height = int(stream.get("width") or 0), int(stream.get("height") or 0)
+            # Accept up to 4K UHD in either orientation; bound decoded pixels.
+            if min(width, height) <= 0 or max(width, height) > 4096 or width * height > 3840 * 2160:
+                raise ValueError("Video resolution exceeds the supported 4K pixel limit.")
     return meta
 
 
@@ -2675,7 +2804,7 @@ CACHE_DIR = os.path.join(MEDIA_SCRATCH_ROOT, "cache")
 TRANSCRIPTION_CACHE_DIR = os.path.join(CACHE_DIR, "transcriptions")
 RENDER_CACHE_DIR = os.path.join(CACHE_DIR, "renders")
 DEAD_LETTER_DIR = os.path.join(CACHE_DIR, "dead_letter")
-EXPORT_RENDERER_VERSION = "2026-08-20-server-authoritative-render-v45"
+EXPORT_RENDERER_VERSION = "2026-09-05-font-layout-settling-v46"
 
 for d in [UPLOAD_DIR, EXPORT_DIR, FONTS_DIR, CACHE_DIR, TRANSCRIPTION_CACHE_DIR, RENDER_CACHE_DIR, DEAD_LETTER_DIR]:
     os.makedirs(d, exist_ok=True)
@@ -2860,6 +2989,35 @@ class ProcessRequest(BaseModel):
         if self.min_words > 0 and self.max_words > 0 and self.min_words > self.max_words:
             raise ValueError("min_words must be less than or equal to max_words")
         return self
+
+class DraftRequest(BaseModel):
+    id_token: str = Field(default="", max_length=8192)
+    expected_revision: int = Field(default=0, ge=0)
+    draft: Optional[Dict[str, Any]] = None
+
+
+@app.post("/api/draft/load")
+def load_account_draft(req: DraftRequest):
+    uid = _authenticate_media_request(req.id_token)["uid"]
+    db = get_db()
+    if db is None:
+        raise HTTPException(503, "Cloud draft storage is unavailable")
+    return {"success": True, **read_draft(db, uid)}
+
+
+@app.post("/api/draft/save")
+def save_account_draft(req: DraftRequest):
+    uid = _authenticate_media_request(req.id_token)["uid"]
+    db = get_db()
+    if db is None:
+        raise HTTPException(503, "Cloud draft storage is unavailable")
+    if not req.draft or not _validate_file_id(str(req.draft.get("fileId") or "")):
+        raise HTTPException(422, "Draft requires a valid media reference")
+    previous = read_draft(db, uid)
+    if (previous.get("draft") or {}).get("fileId") != req.draft["fileId"]:
+        _assert_upload_owner(req.draft["fileId"], uid)
+    return {"success": True, **save_draft(db, uid, req.draft, req.expected_revision)}
+
 
 class MediaUrlRequest(BaseModel):
     file_id: str = Field(min_length=36, max_length=36)
@@ -3082,12 +3240,13 @@ def _require_export_job_access(request: Request, job: Dict[str, Any]) -> str:
         return request_uid
 
     db = get_db()
-    if db is None and owner_uid == "dev-local-user":
+    if db is None and _is_explicit_dev_auth_token(token) and owner_uid == "dev-local-user":
         return owner_uid
     raise HTTPException(status_code=401, detail="Authentication required")
 
 
 async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, export_job_id: str):
+    _assert_account_not_deleting(uid)
     db = get_db()
     db_available = db is not None
     now = time.time()
@@ -3101,6 +3260,8 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
         user_doc = user_ref.get()
 
         if not user_doc.exists:
+            if _IS_PRODUCTION:
+                raise HTTPException(status_code=409, detail="Account no longer exists.")
             _log(rid, f"User {uid} missing in Firestore; auto-creating defaults")
             default_user = {
                 'credits_remaining': FREE_PLAN_CREDITS,
@@ -3187,7 +3348,7 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
     output_filename = f"export_{req.file_id}_{request_hash[:12]}.mp4"
     output_path = os.path.join(EXPORT_DIR, output_filename)
     queue_entered_at = time.time()
-    _set_export_job(export_job_id, "queued", queue_entered_at=queue_entered_at)
+    _set_export_job(export_job_id, "processing", queue_entered_at=queue_entered_at)
     style_with_quality = {
         **server_style,
         'quality': preset["quality"],
@@ -3334,8 +3495,15 @@ def run_export_job_task(
 ):
     rid = f"worker-{export_job_id[:8]}"
     slot_acquired = False
+    existing_job = _load_export_job(export_job_id) or {}
+    if existing_job.get("status") == "completed":
+        return existing_job.get("payload") or {}
     try:
-        existing_job = _load_export_job(export_job_id) or {}
+        _set_export_job(export_job_id, "starting", worker_release=APP_RELEASE)
+    except InvalidJobTransition:
+        current = _load_export_job(export_job_id) or {}
+        return {"success": False, "status": current.get("status"), "export_job_id": export_job_id}
+    try:
         if (existing_job.get("status") or "").lower() == "cancelled":
             _json_log("info", "cancelled_export_skipped", job_id=export_job_id, uid=uid)
             return {
@@ -3359,7 +3527,15 @@ def run_export_job_task(
         return payload
     except Exception as e:
         try:
-            _set_export_job(export_job_id, "failed", failed_at=time.time(), error=str(e))
+            from rq import get_current_job
+            rq_job = get_current_job()
+            retryable = not isinstance(e, HTTPException) or e.status_code >= 500
+            retry_pending = bool(rq_job and rq_job.retries_left and retryable)
+            if rq_job and not retryable:
+                rq_job.retries_left = 0
+                rq_job.save()
+            _set_export_job(export_job_id, "retrying" if retry_pending else "failed",
+                            failed_at=time.time(), error="Export failed. Please retry or contact support.")
         except Exception as state_error:
             _json_log(
                 "error",
@@ -3367,7 +3543,7 @@ def run_export_job_task(
                 job_id=export_job_id,
                 error=str(state_error),
             )
-        if idempotency_key:
+        if idempotency_key and not locals().get("retry_pending", False):
             _idem_delete(idempotency_key)
         _write_dead_letter(
             export_job_id,
@@ -3497,7 +3673,7 @@ async def upload_video(file: UploadFile = File(...), request: Request = None, re
             content_length=content_length,
             content_type=content_type,
         )
-        if content_length > MAX_UPLOAD_BYTES:
+        if content_length > MAX_UPLOAD_BYTES + 1024 * 1024:
             _track_event("upload_rejected_too_large", {"content_length": content_length})
             raise HTTPException(status_code=413, detail="File too large. Maximum 500MB allowed.")
 
@@ -3688,10 +3864,69 @@ async def upload_video(file: UploadFile = File(...), request: Request = None, re
 
 @app.post("/api/process")
 async def process_video(req: ProcessRequest, request: Request, response: Response):
+    if not _IS_PRODUCTION:
+        return await _process_video_inline(req, request, response)
+    _assert_service_available("pause_transcription")
+    uid = _authenticate_media_request(req.id_token, req.org_id)["uid"]
+    if not _validate_file_id(req.file_id):
+        raise HTTPException(400, "Invalid file_id")
+    await asyncio.to_thread(_assert_upload_owner, req.file_id, uid)
+    settings = {"file_id": req.file_id, "language": req.language,
+                "min_words": req.min_words, "max_words": req.max_words}
+    jobs = TranscriptionJobs(get_db())
+    job = await asyncio.to_thread(jobs.create, uid, settings)
+    if job["status"] == "completed":
+        return {**job["payload"], "idempotent_replay": True}
+    if job["status"] in {"failed", "unknown", "cancelled"}:
+        raise HTTPException(409, f"{job.get('error') or 'Transcription is no longer active.'} Reference: {job['job_id']}")
+    # Durable admission is enough to acknowledge. The independently running
+    # outbox dispatcher resumes after API restart or an enqueue failure.
+    response.status_code = 202
+    response.headers["Retry-After"] = "3"
+    return {"success": True, "pending": True, "job_id": job["job_id"], "status": job["status"]}
+
+
+async def _transcription_dispatch_loop():
+    while True:
+        try:
+            await asyncio.to_thread(TranscriptionJobs(get_db()).dispatch, _export_queue)
+        except Exception as error:
+            _json_log("warning", "transcription_dispatch_failed", error_type=type(error).__name__)
+        await asyncio.sleep(10)
+
+
+def run_transcription_job_task(uid: str, job_id: str):
+    jobs = TranscriptionJobs(get_db())
+    job = jobs.claim(uid, job_id)
+    if job is None:
+        return {"duplicate_or_cancelled": True}
+    try:
+        _assert_account_not_deleting(uid)
+        req = ProcessRequest(**job["settings"])
+        request = Request({"type": "http", "headers": [], "client": ("worker", 0)})
+        result = asyncio.run(_process_video_inline(req, request, Response(), trusted_uid=uid))
+        # A bounded retry persists the already obtained result; it never calls
+        # the paid provider again if Firestore momentarily loses connectivity.
+        for attempt in range(3):
+            try:
+                jobs.finish(uid, job_id, "completed", payload=result)
+                return {"status": "completed"}
+            except Exception:
+                if attempt == 2:
+                    raise
+                time.sleep(attempt + 1)
+    except Exception as error:
+        known_rejection = isinstance(error, HTTPException) and error.status_code < 500
+        jobs.finish(uid, job_id, "failed" if known_rejection else "unknown",
+                    error="Transcription could not complete. Contact support with this job reference; it will not be repeated automatically.")
+        raise
+
+
+async def _process_video_inline(req: ProcessRequest, request: Request, response: Response, *, trusted_uid=None):
     rid = _request_id(request)
     _assert_service_available("pause_transcription")
     # Auth — same dev-mode bypass as /api/export
-    decoded_token = _authenticate_media_request(req.id_token, req.org_id)
+    decoded_token = {"uid": trusted_uid} if trusted_uid else _authenticate_media_request(req.id_token, req.org_id)
     uid = (decoded_token.get("uid") or "").strip() or "unknown-user"
     client_ip = _client_rate_key(request)
     allowed, retry_after, remaining = _check_rate(
@@ -3817,7 +4052,8 @@ async def process_video(req: ProcessRequest, request: Request, response: Respons
             result = await asyncio.to_thread(_generate_captions_in_worker_thread)
         except Exception:
             # The provider never returned a usable result — hand the daily call back.
-            await asyncio.to_thread(_release_ai_quota, uid, "process")
+            if not trusted_uid:
+                await asyncio.to_thread(_release_ai_quota, uid, "process")
             raise
 
         if result.get("success") and not (result.get("captions") or []):
@@ -3866,7 +4102,7 @@ async def process_video(req: ProcessRequest, request: Request, response: Respons
             # NO_SPEECH is a real transcription that found nothing — the provider
             # ran and billed us, so that call stays spent. Anything else is our
             # failure and the reservation is returned.
-            if not is_no_speech:
+            if not is_no_speech and not trusted_uid:
                 await asyncio.to_thread(_release_ai_quota, uid, "process")
             raise HTTPException(
                 status_code=status_code,
@@ -3933,11 +4169,11 @@ async def export_video(req: ExportRequest, request: Request, response: Response)
                 if cached.get("payload"):
                     return {**cached["payload"], "idempotent_replay": True}
                 raise HTTPException(status_code=409, detail="Export with this idempotency key is already in progress.")
-        _idem_set(idem_key, {
-            "status": "in_progress",
-            "ts": time.time(),
+        if not _idem_claim(idem_key, {
+            "status": "in_progress", "ts": time.time(),
             "request_hash": idempotency_request_hash,
-        })
+        }):
+            raise HTTPException(status_code=409, detail="Export with this idempotency key is already in progress.")
 
     # Per-user concurrent export guard.
     export_job_id = str(uuid.uuid4())
@@ -3958,22 +4194,6 @@ async def export_video(req: ExportRequest, request: Request, response: Response)
             request_snapshot=safe_request_snapshot,
         )
         if _export_queue is not None:
-            _export_queue.enqueue_call(
-                func=run_export_job_task,
-                args=(
-                    export_job_id,
-                    safe_request_snapshot,
-                    uid,
-                    idem_key,
-                    idempotency_request_hash,
-                ),
-                job_id=export_job_id,
-                retry=RQRetry(max=3, interval=[10, 30, 60]) if RQRetry else None,
-                result_ttl=24 * 3600,
-                failure_ttl=7 * 24 * 3600,
-            )
-            _audit_action("export_enqueued", uid, {"job_id": export_job_id, "file_id": req.file_id})
-            release_export_slot_in_request = False
             queued_payload = {
                 "success": True,
                 "queued": True,
@@ -3991,8 +4211,25 @@ async def export_video(req: ExportRequest, request: Request, response: Response)
                     "request_hash": idempotency_request_hash,
                     "job_id": export_job_id,
                 })
+            _export_queue.enqueue_call(
+                func=run_export_job_task,
+                args=(
+                    export_job_id,
+                    safe_request_snapshot,
+                    uid,
+                    idem_key,
+                    idempotency_request_hash,
+                ),
+                job_id=export_job_id,
+                retry=RQRetry(max=3, interval=[10, 30, 60]) if RQRetry else None,
+                result_ttl=24 * 3600,
+                failure_ttl=7 * 24 * 3600,
+            )
+            _audit_action("export_enqueued", uid, {"job_id": export_job_id, "file_id": req.file_id})
+            release_export_slot_in_request = False
             return queued_payload
 
+        _set_export_job(export_job_id, "starting")
         payload = await _process_export_job_core(req, uid, rid, export_job_id)
         if idem_key:
             _idem_set(idem_key, {
@@ -4032,18 +4269,39 @@ async def export_video(req: ExportRequest, request: Request, response: Response)
         if release_export_slot_in_request:
             _release_export_slot(uid, export_job_id)
 
+def _reconcile_export_job(job_id: str, job: Dict[str, Any]):
+    if _export_queue is None or job.get("status") in {"completed", "failed", "cancelled"}:
+        return job
+    try:
+        rq_job = _export_queue.fetch_job(job_id)
+        state = rq_job.get_status(refresh=True) if rq_job else "missing"
+        state = str(getattr(state, "value", state)).lower()
+        age = time.time() - float(job.get("updated_at") or time.time())
+        if state in {"failed", "stopped", "canceled", "cancelled", "finished"} or (state == "missing" and age > 120):
+            job = _set_export_job(job_id, "failed", error="Export was interrupted. Please retry.", failed_at=time.time())
+            _release_export_slot(str(job.get("uid") or ""), job_id)
+        elif state in {"scheduled", "deferred"} and job.get("status") in {"starting", "processing", "finalizing"}:
+            job = _set_export_job(job_id, "retrying", error="Export interrupted; retry scheduled.")
+    except InvalidJobTransition:
+        return _load_export_job(job_id) or job
+    except Exception as error:
+        _json_log("warning", "export_reconciliation_failed", job_id=job_id, error=type(error).__name__)
+    return job
+
+
 @app.get("/api/export-status/{job_id}")
 def export_status(job_id: str, request: Request):
     job = _load_export_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Export job not found")
     _require_export_job_access(request, job)
+    job = _reconcile_export_job(job_id, job)
     # Keep payload concise and avoid leaking internal paths.
     return {
         "job_id": job_id,
         "status": job.get("status", "unknown"),
         "updated_at": job.get("updated_at"),
-        "error": job.get("error"),
+        "error": "Export failed. Please retry or contact support." if job.get("error") else None,
     }
 
 
@@ -4053,8 +4311,9 @@ def export_result(job_id: str, request: Request):
     if not job:
         raise HTTPException(status_code=404, detail="Export job not found")
     _require_export_job_access(request, job)
+    job = _reconcile_export_job(job_id, job)
     if job.get("status") != "completed":
-        return {"success": False, "status": job.get("status", "unknown"), "error": job.get("error")}
+        return {"success": False, "status": job.get("status", "unknown"), "error": "Export failed. Please retry or contact support." if job.get("error") else None}
     payload = job.get("payload") or {}
     if not payload:
         return {"success": False, "status": "completed", "error": "Result payload missing"}
@@ -4085,25 +4344,20 @@ def export_cancel(job_id: str, request: Request):
     if _export_queue is None:
         raise HTTPException(status_code=503, detail="Durable queue is not configured")
 
-    rq_job = _export_queue.fetch_job(job_id)
-    if rq_job is not None:
-        rq_status = rq_job.get_status(refresh=True)
-        rq_status_value = getattr(rq_status, "value", str(rq_status)).lower()
-        if rq_status_value not in {"queued", "deferred", "scheduled", "stopped", "canceled", "cancelled"}:
-            raise HTTPException(
-                status_code=409,
-                detail="This export has already started and cannot be cancelled safely.",
-            )
-        rq_job.cancel()
-
     uid = str(job.get("uid") or "")
-    _set_export_job(
-        job_id,
-        "cancelled",
-        cancelled_at=time.time(),
-        cancellation_reason="user_requested",
-        error=None,
-    )
+    try:
+        _set_export_job(job_id, "cancelled", cancelled_at=time.time(),
+                        cancellation_reason="user_requested", error=None)
+    except InvalidJobTransition as error:
+        raise HTTPException(status_code=409, detail="This export has already started.") from error
+    # Cancellation is durable first. If queue removal fails, a dequeued worker
+    # observes CANCELLED and exits before rendering or charging.
+    try:
+        rq_job = _export_queue.fetch_job(job_id)
+        if rq_job is not None:
+            rq_job.cancel()
+    except Exception as error:
+        _json_log("warning", "cancel_queue_cleanup_failed", job_id=job_id, error=type(error).__name__)
     _release_export_slot(uid, job_id)
     _track_event("export_cancelled", {"job_id": job_id})
     _audit_action("export_cancelled", uid, {"job_id": job_id})
@@ -4313,18 +4567,21 @@ async def api_version():
     return {
         "success": True,
         "version": API_CURRENT_VERSION,
+        **RELEASE_METADATA,
         "release": APP_RELEASE,
         "min_supported_version": API_MIN_SUPPORTED_VERSION,
         "sunset_date": DEPRECATION_SUNSET_DATE,
         "progressive_delivery_enabled": ENABLE_PROGRESSIVE_DELIVERY,
     }
 
+@app.get("/health")
 @app.get("/api/health")
 async def api_health():
     return {
         "success": True,
         "ready": True,
         "version": API_CURRENT_VERSION,
+        **RELEASE_METADATA,
         "release": APP_RELEASE,
     }
 
@@ -4368,8 +4625,7 @@ def _runtime_dependency_snapshot() -> Dict[str, Any]:
     except Exception as e:
         details["firestore_error"] = str(e)[:200]
     try:
-        bucket = get_storage_bucket()
-        checks["storage"] = bool(bucket and bucket.exists())
+        checks["storage"] = storage_backend_ready()
     except Exception as e:
         details["storage_error"] = str(e)[:200]
     if DURABLE_QUEUE_ENABLED and checks["redis"] and RQWorker is not None:
@@ -4381,7 +4637,12 @@ def _runtime_dependency_snapshot() -> Dict[str, Any]:
                 if callable(queue_names):
                     queue_names = queue_names()
                 if EXPORT_QUEUE_NAME in set(queue_names or []):
-                    worker_count += 1
+                    worker_release = _redis_client.hget(worker.key, "app_release")
+                    draining = _redis_client.hget(worker.key, "draining")
+                    if isinstance(worker_release, bytes):
+                        worker_release = worker_release.decode("ascii")
+                    if worker_release == APP_RELEASE and draining not in ("1", b"1"):
+                        worker_count += 1
             details["worker_count"] = worker_count
             checks["export_worker"] = worker_count > 0
         except Exception as e:
@@ -4406,6 +4667,7 @@ async def slo_status(request: Request):
         raise HTTPException(status_code=403, detail="Admin access required")
     return _build_slo_snapshot()
 
+@app.get("/ready")
 @app.get("/api/health/readiness")
 async def readiness(request: Request):
     # Public readiness probe: exposes only the boolean gate result. Detailed SLO
@@ -4673,7 +4935,7 @@ def _release_topup_order_slot(db, user_ref, reservation_id: str) -> None:
     _release(db.transaction())
 
 
-def _fetch_bound_order_context(order_id: str, amount_minor: int, currency: str) -> Dict[str, str]:
+def _fetch_bound_order_context(order_id: str, amount_minor: int, currency: str) -> Dict[str, Any]:
     """Resolve the server-authored payment owner and plan from a Razorpay order.
 
     The app writes uid/plan_id to *order* notes when it creates the order. Razorpay
@@ -4720,6 +4982,7 @@ def _fetch_bound_order_context(order_id: str, amount_minor: int, currency: str) 
         "plan_id": plan_id,
         "org_id": org_id,
         "topup_reservation_id": topup_reservation_id,
+        "order_created_at": int(order.get("created_at") or 0),
     }
 
 def _can_trigger_reconcile(request: Request, req_body: ReconcilePaymentsRequest) -> bool:
@@ -4848,6 +5111,7 @@ def reconcile_payments_once(
                 org_id=org_id,
                 topup_reservation_id=topup_reservation_id,
                 order_amount_validated=True,
+                order_created_at=int(order_context.get("order_created_at") or 0),
             )
             if result.get("duplicate"):
                 summary["duplicates"] += 1
@@ -4908,6 +5172,7 @@ def _grant_payment_transactionally(
     source: str,
     org_id: str,
     topup_reservation_id: str = "",
+    order_created_at: int = 0,
 ):
     now_utc = _utcnow()
     cycle_start = now_utc.isoformat() + "Z"
@@ -4919,6 +5184,10 @@ def _grant_payment_transactionally(
 
     @firestore.transactional
     def _grant(transaction):
+        if _IS_PRODUCTION:
+            deletion_ref = db.collection("account_deletions").document(uid)
+            if deletion_ref.get(transaction=transaction).exists:
+                raise HTTPException(status_code=409, detail="Deleted account payment requires support reconciliation.")
         payment_doc = payment_ref.get(transaction=transaction)
         if payment_doc.exists:
             existing = payment_doc.to_dict() or {}
@@ -4927,6 +5196,13 @@ def _grant_payment_transactionally(
         user_doc = user_ref.get(transaction=transaction)
         user_data = user_doc.to_dict() if user_doc.exists else {}
         payment_type = "topup" if is_topup else "subscription"
+        if user_data.get("deletion_pending"):
+            raise HTTPException(status_code=409, detail="Account deletion is pending; payment needs reconciliation.")
+        latest_order = int(user_data.get("last_subscription_order_created_at") or 0)
+        if not is_topup and latest_order and (not order_created_at or order_created_at < latest_order):
+            # Preserve the newer purchased plan. Keep the capture in the provider
+            # and webhook reconciliation ledger for operator resolution/refund.
+            raise HTTPException(status_code=409, detail="An older payment requires support reconciliation; the current plan was preserved.")
 
         if is_topup:
             if not user_doc.exists:
@@ -5000,6 +5276,7 @@ def _grant_payment_transactionally(
             # allowance replaces any free/expired/previous-plan balance.
             "credits_remaining": credits_to_add,
             "subscription_tier": plan_id,
+            "last_subscription_order_created_at": int(order_created_at or 0),
             "billing_cycle_start": cycle_start,
             "billing_cycle_end": cycle_end,
             "subscription_expiry": cycle_end,
@@ -5031,6 +5308,7 @@ def _apply_successful_payment(
     org_id: str = "",
     topup_reservation_id: str = "",
     order_amount_validated: bool = False,
+    order_created_at: int = 0,
 ):
     plan_config = PLAN_PRICING.get(plan_id)
     if not plan_config:
@@ -5069,7 +5347,7 @@ def _apply_successful_payment(
     payment_ref = user_ref.collection('payments').document(payment_id)
     result = _grant_payment_transactionally(
         db, user_ref, payment_ref, uid, plan_id, plan_config, payment_id,
-        order_id, amount_minor, currency, source, org_id, topup_reservation_id,
+        order_id, amount_minor, currency, source, org_id, topup_reservation_id, order_created_at,
     )
     if not result.get("duplicate"):
         _track_event("payment_success", {
@@ -5118,7 +5396,7 @@ def _apply_refund_webhook_event(
     def _record(transaction):
         payment_doc = payment_ref.get(transaction=transaction)
         if not payment_doc.exists:
-            return {"success": True, "ignored": True, "reason": "payment_record_not_found"}
+            raise HTTPException(status_code=503, detail="Payment record is pending reconciliation; retry the refund event.")
 
         refund_doc = refund_ref.get(transaction=transaction)
         previous = refund_doc.to_dict() if refund_doc.exists else {}
@@ -5521,6 +5799,7 @@ def verify_payment(req: VerifyPaymentRequest, request: Request, response: Respon
         org_id=req.org_id or _tenant_id_from_token(decoded_token),
         topup_reservation_id=str(order_notes.get("topup_reservation_id") or "").strip(),
         order_amount_validated=True,
+        order_created_at=int(order_live.get("created_at") or 0),
     )
     _payment_idem_set(pay_idem_key, {"status": "completed", "ts": time.time(), "payload": payload})
     return payload
@@ -5652,6 +5931,7 @@ async def razorpay_webhook(request: Request):
         org_id=org_id,
         topup_reservation_id=topup_reservation_id,
         order_amount_validated=True,
+        order_created_at=int(order_context.get("order_created_at") or 0),
     )
     if webhook_ref is not None:
         try:
@@ -5847,6 +6127,8 @@ def redeem_promo(req: RedeemPromoRequest, request: Request, response: Response):
 
     @firestore.transactional
     def redeem_in_transaction(txn):
+        if _IS_PRODUCTION and db.collection("account_deletions").document(uid).get(transaction=txn).exists:
+            raise HTTPException(status_code=409, detail="Account deletion is pending.")
         code_doc = code_ref.get(transaction=txn)
         if not code_doc.exists:
             raise HTTPException(status_code=400, detail="Invalid or already used code")
@@ -6037,7 +6319,7 @@ def detect_language(req: DetectLanguageRequest, request: Request, response: Resp
         import tempfile
         with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as _tf:
             temp_path = _tf.name
-        extract_result = subprocess.run([
+        extract_result = run_media_command([
             "ffmpeg", "-i", input_path, "-t", "30",
             "-vn", "-acodec", "mp3", "-y", temp_path
         ], capture_output=True)
@@ -6120,7 +6402,7 @@ def _delete_user_document_tree(db, user_ref):
         recursive_delete(user_ref)
         return
 
-    for collection_name in ("payments", "export_usage"):
+    for collection_name in ("payments", "export_usage", "drafts", "draft_revisions", "transcription_jobs", "operation_locks"):
         child_ref = user_ref.collection(collection_name)
         while True:
             child_docs = list(child_ref.limit(400).stream())
@@ -6194,6 +6476,7 @@ def account_bootstrap(req: AccountDataRequest, request: Request):
     if not db:
         raise HTTPException(status_code=503, detail="Database unavailable")
 
+    _assert_account_not_deleting(uid)
     user_ref = db.collection("users").document(uid)
     # Existing accounts keep working while sign-ups are paused; only the first
     # bootstrap of a brand-new account is blocked.
@@ -6214,12 +6497,13 @@ def account_bootstrap(req: AccountDataRequest, request: Request):
                 )
     safe_profile = {
         "uid": uid,
+        "org_id": _tenant_id_from_token(decoded_token),
         "email": str(decoded_token.get("email") or "")[:320],
         "displayName": str(decoded_token.get("name") or "")[:200],
         "photoURL": str(decoded_token.get("picture") or "")[:2_048],
     }
     try:
-        user_ref.create({
+        _create_account_if_active(db, user_ref, uid, {
             **safe_profile,
             "credits_remaining": FREE_PLAN_CREDITS,
             "subscription_tier": "free",
@@ -6344,10 +6628,17 @@ def account_export(req: AccountExportRequest):
     has_more = len(page_docs) > req.payment_limit
     page_docs = page_docs[:req.payment_limit]
     payment_items = [{"id": p.id, **(p.to_dict() or {})} for p in page_docs]
+    deletion_record = {}
+    if _IS_PRODUCTION:
+        deletion_doc = db.collection("account_deletions").document(uid).get()
+        if deletion_doc.exists:
+            deletion_record = deletion_doc.to_dict() or {}
     payload = {
         "uid": uid,
         "user": user_doc.to_dict() if user_doc.exists else {},
         "payments": payment_items,
+        "deletion_record": deletion_record,
+        "cloud_draft": read_draft(db, uid) if _IS_PRODUCTION else None,
         "next_payment_cursor": page_docs[-1].id if page_docs else None,
         "has_more_payments": has_more,
         "exported_at": _utcnow().isoformat() + "Z",
@@ -6366,6 +6657,18 @@ def account_delete(req: AccountDataRequest):
     db = get_db()
     if not db:
         raise HTTPException(status_code=503, detail="Database unavailable")
+    db.collection("account_deletions").document(uid).set({
+        "status": "pending", "requested_at": _utcnow().isoformat() + "Z",
+    }, merge=True)
+    if _IS_PRODUCTION:
+        TranscriptionJobs(db).prepare_deletion(uid)
+    if _redis_client is not None:
+        try:
+            active = _redis_client.get(f"procactive:{uid}") or _redis_client.get(f"expactive:{uid}")
+        except Exception as error:
+            raise HTTPException(status_code=503, detail="Cannot verify active jobs; retry account deletion.") from error
+        if active:
+            raise HTTPException(status_code=409, detail="Deletion requested. Wait for active media work to finish, then retry deletion.")
     user_ref = db.collection("users").document(uid)
     user_doc = user_ref.get()
     history = []
@@ -6514,6 +6817,7 @@ def delete_user_file(req: DeleteFileRequest):
 @app.get("/api/media/upload/{file_id}")
 def serve_uploaded_media(file_id: str, token: str = ""):
     payload = _verify_media_token(token, "upload")
+    _assert_account_not_deleting(str(payload.get("uid") or ""))
     if payload.get("file_id") != file_id:
         raise HTTPException(status_code=403, detail="Media token does not match this upload")
     path = _safe_find_upload(file_id)
@@ -6541,6 +6845,7 @@ def serve_exported_media(filename: str, token: str = ""):
     if not re.match(r"^export_[a-f0-9-]{36}_[a-f0-9]{12}\.mp4$", filename or ""):
         raise HTTPException(status_code=400, detail="Invalid export filename")
     payload = _verify_media_token(token, "export")
+    _assert_account_not_deleting(str(payload.get("uid") or ""))
     if payload.get("filename") != filename:
         raise HTTPException(status_code=403, detail="Media token does not match this export")
     real_export_dir = os.path.realpath(EXPORT_DIR)
