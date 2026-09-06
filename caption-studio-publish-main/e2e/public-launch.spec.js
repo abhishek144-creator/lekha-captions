@@ -54,8 +54,13 @@ test('production build exposes its release identity', async ({ page }) => {
 
 
 test('public support content remains available while authentication is unavailable', async ({ page }) => {
+  const attestationRequests = []
+  page.on('request', (request) => {
+    if (/\/recaptcha\//.test(request.url())) attestationRequests.push(request.url())
+  })
   await page.route(/https:\/\/(?:[^/]+\.)?(?:firebaseapp\.com|identitytoolkit\.googleapis\.com|securetoken\.googleapis\.com)\//, () => {})
   await page.goto('/Changelog', { waitUntil: 'domcontentloaded' })
   await expect(page.locator('body')).toContainText(/release notes|what changed/i)
   await expect(page.locator('main')).toBeVisible()
+  expect(attestationRequests).toEqual([])
 })
