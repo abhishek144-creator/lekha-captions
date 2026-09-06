@@ -37,7 +37,7 @@ Use this checklist for enterprise and privacy readiness.
 ## Paid Beta Release Evidence
 - [x] Verify public A/CNAME, HTTPS, MX, SPF, DKIM, and DMARC records (`PRODUCTION_VERIFICATION_2026-08-21.md`)
 - [x] Send to and reply from `support@lekhacaptions.com` using an external mailbox (`OWNER_CONFIRMATIONS_2026-08-22.md`)
-- [ ] Record the exact deployed commit and successful production readiness/configuration output
+- [x] Record the exact deployed commit and successful production readiness/configuration output (`DEPLOYED_RELEASE_2026-09-07.md`; application release `44215ef5f53e1cba8dfe6a3c013520475d0412b6`)
 - [x] Record one live Razorpay purchase, captured webhook replay, failed payment, reconciliation, and full/partial refund (`RAZORPAY_EVIDENCE_2026-08-22.md`)
 - [x] Record a production malware-scanner startup check and suspicious-file rejection (`OWNER_CONFIRMATIONS_2026-08-28.md`)
 - [x] Record successful Sentry email and provider spending/failure alert deliveries (`OWNER_CONFIRMATIONS_2026-08-28.md`; private receipts retained outside the public repository)
@@ -50,7 +50,7 @@ Use this checklist for enterprise and privacy readiness.
 ## Mass Public Launch Evidence
 - [x] Run automated Chromium, Firefox, WebKit, Android, iOS-profile, overflow, and WCAG serious/critical checks (`e2e/public-launch.spec.js`)
 - [x] Record a concurrent staging media capacity run covering upload, transcription, queue saturation, rendering, storage, downloads, provider limits, cost ceilings, autoscaling, and recovery (`OWNER_CONFIRMATIONS_2026-09-02.md`; private logs retained outside the public repository)
-- [ ] Deploy the Next.js marketing site as the canonical public source and verify pricing, terms, privacy, refund, and acceptable-use routes in production
+- [x] Deploy the Next.js marketing site as the canonical public source and verify pricing, terms, privacy, refund, and acceptable-use routes in production (`DEPLOYED_RELEASE_2026-09-07.md`)
 - [ ] Deploy multi-region/multi-resolver DNS and authenticated customer-journey monitoring plus an externally hosted status page
 - [x] Approve and test production RTO/RPO, concurrency, provider quotas, scaling thresholds, support SLA, on-call coverage, and rollback ownership (`PRODUCTION_OPERATIONAL_APPROVAL_2026-09-02.md`; `PRODUCTION_OPERATIONS_PROFILE.json`)
 - [ ] Complete real-device keyboard, screen-reader, reduced-motion, iOS, and Android acceptance testing
