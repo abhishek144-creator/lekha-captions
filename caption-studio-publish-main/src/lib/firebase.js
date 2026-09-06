@@ -47,20 +47,26 @@ try {
                 // Analytics is optional; unsupported browsers must retain auth/editor access.
             });
     }
-    const appCheckSiteKey = String(import.meta.env.VITE_FIREBASE_APP_CHECK_SITE_KEY || '').trim();
-    if (appCheckSiteKey) {
-        appCheck = initializeAppCheck(app, {
-            provider: new ReCaptchaEnterpriseProvider(appCheckSiteKey),
-            isTokenAutoRefreshEnabled: true,
-        });
-    } else if (import.meta.env.PROD) {
-        throw new Error('VITE_FIREBASE_APP_CHECK_SITE_KEY is required in production.');
-    }
 } catch (error) {
     console.warn("Firebase failed to initialize. Running in local dev mode without Firebase.", error.message);
 }
 
 export async function getFirebaseAppCheckToken(forceRefresh = false) {
+    // Public pages do not need attestation. Starting reCAPTCHA on module load
+    // produces third-party timeouts in privacy-restricted browsers even when
+    // visitors only read help or legal content. Protected API requests still
+    // initialize the provider and obtain a token before they are sent.
+    if (!appCheck) {
+        const siteKey = String(import.meta.env.VITE_FIREBASE_APP_CHECK_SITE_KEY || '').trim()
+        if (!app || !siteKey) {
+            if (import.meta.env.PROD) throw new Error('App security verification is not configured.')
+            return ''
+        }
+        appCheck = initializeAppCheck(app, {
+            provider: new ReCaptchaEnterpriseProvider(siteKey),
+            isTokenAutoRefreshEnabled: true,
+        })
+    }
     if (!appCheck) return '';
     const result = await getToken(appCheck, forceRefresh);
     return String(result?.token || '');
