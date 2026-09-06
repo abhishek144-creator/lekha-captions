@@ -1,5 +1,10 @@
 # Mass Launch Runbook
 
+Scope update, 7 September 2026: the owner selected essential fixes only. Follow
+`CONTROLLED_LAUNCH_SCOPE.md` for the current controlled launch. This broader
+mass-launch runbook is retained for later expansion; its pentest, CA/legal,
+enterprise and expanded monitoring requirements are optional for the current work.
+
 This is the final go/no-go procedure for a public launch. Start from
 `docs/RELEASE_RECORD_TEMPLATE.md`. Do not interpret a
 successful build as launch approval: every gate below must have current,

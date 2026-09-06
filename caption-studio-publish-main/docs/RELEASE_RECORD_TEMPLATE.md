@@ -37,7 +37,10 @@ personal contact details, and customer data only in the private evidence system.
 - RTO/RPO: `<required>`
 - Support SLA, on-call primary/backup, rollback owner: `<private roster reference>`
 
-## Independent approvals
+## Optional independent approvals
+
+These are non-blocking under the owner's `CONTROLLED_LAUNCH_SCOPE.md`. Record
+existing evidence or `deferred by owner`; never mark an unperformed review passed.
 
 - Penetration test and remediation sign-off: `<evidence link>`
 - Lawyer approval: `<evidence link>`

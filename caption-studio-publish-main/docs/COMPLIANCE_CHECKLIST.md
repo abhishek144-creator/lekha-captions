@@ -1,6 +1,8 @@
 # Compliance Readiness Checklist
 
-Use this checklist for enterprise and privacy readiness.
+Use this checklist for the controlled launch. The owner's essential-only scope
+in `CONTROLLED_LAUNCH_SCOPE.md` supersedes older enterprise/mass-launch approval
+requirements. Optional work is listed separately and is not marked completed.
 
 ## Privacy + User Rights
 - [x] User can export account data (`/api/account-export`)
@@ -21,7 +23,6 @@ Use this checklist for enterprise and privacy readiness.
 - [x] Dependency scanning in CI workflow
 - [x] Internal security assessment completed with findings (`INTERNAL_SECURITY_ASSESSMENT_2026-08-29.md`)
 - [x] External-style AI technical security review and remediation completed (`EXTERNAL_STYLE_SECURITY_REVIEW_2026-09-02.md`)
-- [ ] Independent periodic pentest checklist sign-off
 - [x] Deploy production Firestore/Storage rules, register App Check, and verify enforcement (`PRODUCTION_VERIFICATION_2026-08-21.md`)
 - [x] Record a two-user cross-account isolation test (`OWNER_CONFIRMATIONS_2026-08-28.md`)
 
@@ -47,15 +48,22 @@ Use this checklist for enterprise and privacy readiness.
 - [x] Obtain legal review and CA confirmation for jurisdiction, GST/tax invoices, international sales, refunds, and chargebacks (`OWNER_CONFIRMATIONS_2026-09-02.md`; private professional records retained outside the public repository)
 - [x] AI-assisted India legal/tax product-readiness review completed (`LEGAL_TAX_READINESS_REVIEW_2026-09-02.md`)
 
-## Mass Public Launch Evidence
+## Operating Evidence
 - [x] Run automated Chromium, Firefox, WebKit, Android, iOS-profile, overflow, and WCAG serious/critical checks (`e2e/public-launch.spec.js`)
 - [x] Record a concurrent staging media capacity run covering upload, transcription, queue saturation, rendering, storage, downloads, provider limits, cost ceilings, autoscaling, and recovery (`OWNER_CONFIRMATIONS_2026-09-02.md`; private logs retained outside the public repository)
 - [x] Deploy the Next.js marketing site as the canonical public source and verify pricing, terms, privacy, refund, and acceptable-use routes in production (`DEPLOYED_RELEASE_2026-09-07.md`)
-- [ ] Deploy multi-region/multi-resolver DNS and authenticated customer-journey monitoring plus an externally hosted status page
 - [x] Approve and test production RTO/RPO, concurrency, provider quotas, scaling thresholds, support SLA, on-call coverage, and rollback ownership (`PRODUCTION_OPERATIONAL_APPROVAL_2026-09-02.md`; `PRODUCTION_OPERATIONS_PROFILE.json`)
-- [ ] Complete real-device keyboard, screen-reader, reduced-motion, iOS, and Android acceptance testing
 - [x] Approve the repository visibility decision and sanitize all public history (`REPOSITORY_PRIVACY_REVIEW_2026-09-02.md`; `REPOSITORY_PRIVACY_REWRITE_2026-09-03.md`)
 
-Launch cannot be signed off while any unchecked item above remains. Verify the
-public support address by sending and answering a test message, and attach real
-pentest and restore evidence rather than checking an item from configuration alone.
+## Optional — deferred by the owner
+
+- Independent periodic pentest engagement and professional security sign-off.
+- Additional CA/tax or legal engagements/sign-offs. Earlier owner-confirmed records remain above as historical evidence, not prerequisites for new work.
+- Multi-region/multi-resolver and authenticated-journey monitoring expansion with a separately hosted status site. Existing basic health/error/budget alerts remain essential.
+- Formal physical-device, screen-reader and reduced-motion acceptance program. Core mobile/desktop usability and fixes for observed accessibility failures remain essential.
+- High-traffic upload/scaling projects and enterprise-only capabilities.
+
+Required evidence must be real and retain its date and scope. A passing evidence
+check does not turn historical confirmations into current-release customer tests
+or grant high-traffic/enterprise approval. Optional items do not block this
+controlled launch and must not be reported as completed.
