@@ -1,5 +1,9 @@
 # Lekha Captions — how to close every remaining launch item
 
+Current scope: follow `CONTROLLED_LAUNCH_SCOPE.md`. The owner has deferred
+pentest/CA engagements and optional enterprise/mass-traffic work. Older steps
+below are historical guidance and do not override that essential-only scope.
+
 Updated: 2 August 2026
 
 Use this beside `LAUNCH_CHECKLIST_STATUS.md`. After completing an action, save
