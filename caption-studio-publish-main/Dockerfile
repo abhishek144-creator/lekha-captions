@@ -1,4 +1,4 @@
-FROM node:20-bookworm-slim
+FROM node:22-bookworm-slim
 
 # Railway's container runtime blocks Chromium's user-namespace sandbox. This
 # bypass is intentionally image-scoped, never a customer-controlled option.
