@@ -47,7 +47,37 @@ class TranscriptionJobs:
             existing = ref.get(transaction=tx)
             active = lock.get(transaction=tx)
             if existing.exists:
-                return {"job_id": job_id, **existing.to_dict()}
+                previous = existing.to_dict() or {}
+                # A FAILED job reached a known safe rejection (for example an
+                # unavailable provider).  A fresh user request must be able to
+                # retry it without forcing another video upload.  UNKNOWN is
+                # deliberately not retried: the provider may already have
+                # processed it and charging it again would be unsafe.
+                if previous.get("status") == "failed":
+                    now = time.time()
+                    retried = {
+                        **previous,
+                        "status": "queued",
+                        "updated_at": now,
+                        "error": None,
+                        "retry_count": int(previous.get("retry_count") or 0) + 1,
+                    }
+                    tx.update(ref, {
+                        "status": "queued",
+                        "updated_at": now,
+                        "error": None,
+                        "retry_count": retried["retry_count"],
+                    })
+                    tx.set(lock, {"job_id": job_id, "status": "queued"})
+                    tx.set(outbox, {
+                        "uid": uid,
+                        "job_id": job_id,
+                        "created_at": now,
+                        "attempts": 0,
+                        "last_dispatch": 0,
+                    })
+                    return {"job_id": job_id, **retried}
+                return {"job_id": job_id, **previous}
             if active.exists and (active.to_dict() or {}).get("status") not in TERMINAL:
                 raise HTTPException(409, "Another transcription is active for this account")
             now = time.time()
