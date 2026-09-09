@@ -9,10 +9,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from rq import Worker
 
 try:
-    from .main import EXPORT_QUEUE_NAME, REDIS_URL
+    from .main import EXPORT_QUEUE_NAME, TRANSCRIPTION_QUEUE_NAME, REDIS_URL
     from .release_metadata import release_metadata
 except ImportError:  # Direct execution from backend/ remains supported.
-    from main import EXPORT_QUEUE_NAME, REDIS_URL
+    from main import EXPORT_QUEUE_NAME, TRANSCRIPTION_QUEUE_NAME, REDIS_URL
     from release_metadata import release_metadata
 
 
@@ -82,6 +82,16 @@ def _start_readiness_server(conn):
     return server
 
 
+def worker_queue_names():
+    configured = os.environ.get("WORKER_QUEUES")
+    names = list(dict.fromkeys(name.strip() for name in (
+        configured.split(",") if configured is not None else [EXPORT_QUEUE_NAME, TRANSCRIPTION_QUEUE_NAME]
+    ) if name.strip()))
+    if not names:
+        raise RuntimeError("WORKER_QUEUES must contain at least one queue")
+    return names
+
+
 def run_worker():
     if not REDIS_URL:
         raise RuntimeError("REDIS_URL is required for worker mode.")
@@ -93,9 +103,9 @@ def run_worker():
     # Railway replica fail registration with "active worker already exists".
     host = os.environ.get("HOSTNAME") or socket.gethostname()
     worker_name = f"caption-export-worker-{host}-{uuid.uuid4().hex[:8]}"
-    worker = ReleaseWorker([EXPORT_QUEUE_NAME], connection=conn, name=worker_name, worker_ttl=90)
+    worker = ReleaseWorker(worker_queue_names(), connection=conn, name=worker_name, worker_ttl=90)
     try:
-        worker.work(with_scheduler=True)
+        worker.work(with_scheduler=True, dequeue_strategy="round_robin")
     finally:
         WORKER_STATE["draining"] = True
         server.shutdown()

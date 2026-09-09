@@ -23,12 +23,50 @@ from release_metadata import release_metadata
 from request_limits import UploadBodyLimitMiddleware
 import worker
 import firebase_admin_setup
+from rq import Queue
+from queue_admission import enqueue_bounded
 
 
 class ProductionBoundaryTests(unittest.TestCase):
     def setUp(self):
         self.redis = fakeredis.FakeRedis(decode_responses=True)
         main._export_jobs.clear()
+
+    def test_atomic_backlog_limit_under_concurrent_submissions(self):
+        queue = Queue("bounded-test", connection=self.redis)
+        def submit(index):
+            try:
+                enqueue_bounded(queue, 8, func="operator.add", args=(1, 2), job_id=f"job-{index}")
+                return True
+            except main.HTTPException as error:
+                self.assertIn(error.status_code, (429, 503))
+                return False
+        with ThreadPoolExecutor(16) as pool:
+            accepted = sum(pool.map(submit, range(50)))
+        self.assertGreater(accepted, 0)
+        self.assertLessEqual(accepted, 8)
+        self.assertEqual(queue.count, accepted)
+        self.assertEqual(len(list(self.redis.scan_iter("rq:job:*"))), accepted)
+
+    def test_preparation_timeout_cannot_fail_a_job_that_has_started(self):
+        transition(self.redis, "race", {}, {"status": "queued"})
+        stale = {"status": "queued"}
+        transition(self.redis, "race", {}, {"status": "starting"})
+        with self.assertRaises(InvalidJobTransition):
+            transition(self.redis, "race", stale, {"status": "failed"}, expected_status="queued")
+        self.assertEqual(json.loads(self.redis.get("export_job:race"))["status"], "starting")
+
+    def test_worker_can_isolate_transcription_and_keep_legacy_queue_compatible(self):
+        with (patch.dict(os.environ, {"WORKER_QUEUES": "transcription"}),
+              patch.object(worker, "EXPORT_QUEUE_NAME", "exports")):
+            self.assertEqual(worker.worker_queue_names(), ["transcription"])
+        with patch.dict(os.environ, {}, clear=True):
+            with (patch.object(worker, "EXPORT_QUEUE_NAME", "legacy"),
+                  patch.object(worker, "TRANSCRIPTION_QUEUE_NAME", "legacy")):
+                self.assertEqual(worker.worker_queue_names(), ["legacy"])
+            with (patch.object(worker, "EXPORT_QUEUE_NAME", "exports"),
+                  patch.object(worker, "TRANSCRIPTION_QUEUE_NAME", "transcription")):
+                self.assertEqual(worker.worker_queue_names(), ["exports", "transcription"])
 
     def test_production_missing_queue_never_renders_in_api(self):
         request = main.ExportRequest(file_id="123e4567-e89b-12d3-a456-426614174000",

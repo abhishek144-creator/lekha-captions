@@ -87,6 +87,7 @@ from collections import deque
 from contextlib import asynccontextmanager
 try:
     from .transcription_jobs import TranscriptionJobs
+    from .queue_admission import enqueue_bounded
     from .drafts import read_draft, save_draft
     from .request_limits import UploadBodyLimitMiddleware
     from .release_metadata import release_metadata
@@ -94,6 +95,7 @@ try:
     from .job_state import transition as transition_export_job, InvalidJobTransition, LOCAL_LOCK as JOB_STATE_LOCK
 except ImportError:
     from transcription_jobs import TranscriptionJobs
+    from queue_admission import enqueue_bounded
     from drafts import read_draft, save_draft
     from request_limits import UploadBodyLimitMiddleware
     from release_metadata import release_metadata
@@ -582,6 +584,10 @@ REDIS_URL = os.environ.get("REDIS_URL", "")
 _redis_client = None
 _rq_redis_client = None
 EXPORT_QUEUE_NAME = os.environ.get("EXPORT_QUEUE_NAME", "caption_export_jobs")
+TRANSCRIPTION_QUEUE_NAME = os.environ.get("TRANSCRIPTION_QUEUE_NAME", EXPORT_QUEUE_NAME)
+# Conservative backlog bound for the current 1 GiB queue store; increase only
+# after measuring serialized request sizes and worker throughput.
+EXPORT_MAX_PENDING_JOBS = max(1, int(os.environ.get("EXPORT_MAX_PENDING_JOBS", "16")))
 EXPORT_MAX_QUEUE_WAIT_SECONDS = max(
     30,
     min(int(os.environ.get("EXPORT_MAX_QUEUE_WAIT_SECONDS", "120")), 120),
@@ -699,6 +705,10 @@ if DURABLE_QUEUE_ENABLED and _rq_redis_client is not None and RQ_AVAILABLE:
 
 if _IS_PRODUCTION and _export_queue is None:
     raise RuntimeError("The durable export queue is required in production; refusing API-local rendering.")
+
+_transcription_queue = _export_queue
+if _export_queue is not None and TRANSCRIPTION_QUEUE_NAME != EXPORT_QUEUE_NAME:
+    _transcription_queue = Queue(TRANSCRIPTION_QUEUE_NAME, connection=_rq_redis_client, default_timeout=30 * 60)
 
 async def advanced_janitor_job():
     """Background task to cleanup files based on retention rules."""
@@ -2223,12 +2233,12 @@ def _record_export_usage(
     return _record(db.transaction())
 
 
-def _set_export_job(job_id: str, status: str, **kwargs):
+def _set_export_job(job_id: str, status: str, *, expected_status=None, **kwargs):
     with JOB_STATE_LOCK:
         seed = _load_export_job(job_id) or {}
         payload = transition_export_job(_redis_client, job_id, seed, {
             "status": status, "updated_at": time.time(), **kwargs,
-        })
+        }, expected_status=expected_status)
         persisted = _persist_export_job(job_id, payload, write_redis=_redis_client is None)
         if _export_queue is not None and not persisted:
             raise RuntimeError("Export job state could not be persisted to shared storage")
@@ -3902,7 +3912,7 @@ async def process_video(req: ProcessRequest, request: Request, response: Respons
 async def _transcription_dispatch_loop():
     while True:
         try:
-            await asyncio.to_thread(TranscriptionJobs(get_db()).dispatch, _export_queue)
+            await asyncio.to_thread(TranscriptionJobs(get_db()).dispatch, _transcription_queue)
         except Exception as error:
             _json_log("warning", "transcription_dispatch_failed", error_type=type(error).__name__)
         await asyncio.sleep(10)
@@ -4132,6 +4142,12 @@ async def _process_video_inline(req: ProcessRequest, request: Request, response:
     finally:
         _release_process_slot(uid, process_request_id)
 
+def _enqueue_export_job(**job):
+    if _IS_PRODUCTION:
+        return enqueue_bounded(_export_queue, EXPORT_MAX_PENDING_JOBS, **job)
+    return _export_queue.enqueue_call(**job)
+
+
 @app.post("/api/export")
 async def export_video(req: ExportRequest, request: Request, response: Response):
     rid = _request_id(request)
@@ -4230,7 +4246,7 @@ async def export_video(req: ExportRequest, request: Request, response: Response)
                     "request_hash": idempotency_request_hash,
                     "job_id": export_job_id,
                 })
-            _export_queue.enqueue_call(
+            _enqueue_export_job(
                 func=run_export_job_task,
                 args=(
                     export_job_id,
@@ -4298,6 +4314,14 @@ def _reconcile_export_job(job_id: str, job: Dict[str, Any]):
             job.get("queue_entered_at") or job.get("started_at") or time.time()
         )
         if status == "queued" and queue_age >= EXPORT_MAX_QUEUE_WAIT_SECONDS:
+            job = _set_export_job(
+                job_id,
+                "failed",
+                expected_status="queued",
+                error="Export could not start within two minutes. Please retry. No credit was charged.",
+                failure_code="preparation_timeout",
+                failed_at=time.time(),
+            )
             try:
                 stale_rq_job = _export_queue.fetch_job(job_id)
                 if stale_rq_job is not None:
@@ -4309,13 +4333,6 @@ def _reconcile_export_job(job_id: str, job: Dict[str, Any]):
                     job_id=job_id,
                     error=type(error).__name__,
                 )
-            job = _set_export_job(
-                job_id,
-                "failed",
-                error="Export could not start within two minutes. Please retry. No credit was charged.",
-                failure_code="preparation_timeout",
-                failed_at=time.time(),
-            )
             _release_export_slot(str(job.get("uid") or ""), job_id)
             _idem_delete(str(job.get("idempotency_key") or ""))
             _track_event("export_preparation_timeout", {"job_id": job_id})
@@ -4454,7 +4471,7 @@ def export_replay(job_id: str, request: Request):
             request_snapshot=request_snapshot,
             replayed_from=job_id,
         )
-        _export_queue.enqueue_call(
+        _enqueue_export_job(
             func=run_export_job_task,
             args=(new_job_id, request_snapshot, uid),
             job_id=new_job_id,
@@ -4656,6 +4673,7 @@ def _runtime_dependency_snapshot() -> Dict[str, Any]:
         "firestore": False,
         "storage": False,
         "export_worker": not DURABLE_QUEUE_ENABLED,
+        "transcription_worker": not DURABLE_QUEUE_ENABLED,
         "scratch_disk": False,
     }
     details: Dict[str, Any] = {}
@@ -4678,20 +4696,23 @@ def _runtime_dependency_snapshot() -> Dict[str, Any]:
     if DURABLE_QUEUE_ENABLED and checks["redis"] and RQWorker is not None:
         try:
             workers = RQWorker.all(connection=_redis_client)
-            worker_count = 0
+            worker_counts = {EXPORT_QUEUE_NAME: 0, TRANSCRIPTION_QUEUE_NAME: 0}
             for worker in workers:
                 queue_names = getattr(worker, "queue_names", [])
                 if callable(queue_names):
                     queue_names = queue_names()
-                if EXPORT_QUEUE_NAME in set(queue_names or []):
-                    worker_release = _redis_client.hget(worker.key, "app_release")
-                    draining = _redis_client.hget(worker.key, "draining")
-                    if isinstance(worker_release, bytes):
-                        worker_release = worker_release.decode("ascii")
-                    if worker_release == APP_RELEASE and draining not in ("1", b"1"):
-                        worker_count += 1
-            details["worker_count"] = worker_count
-            checks["export_worker"] = worker_count > 0
+                worker_release = _redis_client.hget(worker.key, "app_release")
+                draining = _redis_client.hget(worker.key, "draining")
+                if isinstance(worker_release, bytes):
+                    worker_release = worker_release.decode("ascii")
+                if worker_release == APP_RELEASE and draining not in ("1", b"1"):
+                    for queue_name in set(queue_names or []):
+                        if queue_name in worker_counts:
+                            worker_counts[queue_name] += 1
+            details["worker_count"] = worker_counts[EXPORT_QUEUE_NAME]
+            details["workers_by_queue"] = worker_counts
+            checks["export_worker"] = worker_counts[EXPORT_QUEUE_NAME] > 0
+            checks["transcription_worker"] = worker_counts[TRANSCRIPTION_QUEUE_NAME] > 0
         except Exception as e:
             details["worker_error"] = str(e)[:200]
     try:

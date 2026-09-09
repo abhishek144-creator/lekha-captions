@@ -7,6 +7,7 @@ import uuid
 from urllib.parse import urljoin
 
 import requests
+from media_job_client import await_transcription
 
 
 def require_ok(response: requests.Response, action: str) -> dict:
@@ -56,6 +57,7 @@ def main() -> None:
     file_id = upload["file_id"]
     print(f"upload ok: {file_id}")
 
+    process_deadline = time.monotonic() + args.timeout
     processed = require_ok(
         session.post(
             urljoin(base_url, "api/process"),
@@ -71,6 +73,10 @@ def main() -> None:
         ),
         "process",
     )
+    processed = await_transcription(session, base_url, {
+        "file_id": file_id, "language": args.language, "min_words": 2, "max_words": 5,
+        "id_token": args.id_token,
+    }, headers, processed, deadline=process_deadline)
     captions = processed.get("captions") or []
     if not captions:
         raise RuntimeError("process succeeded without captions")
