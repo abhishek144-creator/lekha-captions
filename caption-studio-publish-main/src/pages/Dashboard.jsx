@@ -304,6 +304,25 @@ export default function Dashboard() {
   const [cloudDraft, setCloudDraft] = useState(null)
   const [cloudSaveMessage, setCloudSaveMessage] = useState('')
   const [cloudReady, setCloudReady] = useState(false)
+  const [showCaptionRetryNotice, setShowCaptionRetryNotice] = useState(false)
+  const [showLowCreditNotice, setShowLowCreditNotice] = useState(false)
+
+  useEffect(() => {
+    if (!cloudSaveMessage) return undefined
+    const timer = window.setTimeout(() => setCloudSaveMessage(''), 10000)
+    return () => window.clearTimeout(timer)
+  }, [cloudSaveMessage])
+
+  useEffect(() => {
+    if (!showCaptionRetryNotice) return undefined
+    const timer = window.setTimeout(() => setShowCaptionRetryNotice(false), 10000)
+    return () => window.clearTimeout(timer)
+  }, [showCaptionRetryNotice])
+
+  useEffect(() => {
+    if (fileId && captions.length === 0) setShowCaptionRetryNotice(true)
+    else setShowCaptionRetryNotice(false)
+  }, [fileId, captions.length])
 
   useEffect(() => {
     let disposed = false
@@ -788,6 +807,7 @@ export default function Dashboard() {
       setDuration(0);
       setCurrentTime(0);
       setWaveformData(null);
+      setShowCaptionRetryNotice(uploadWasAccepted);
       trackAnalytics('funnel.upload.failed', getClientContext({
         stage: uploadWasAccepted ? 'transcription' : 'upload',
         status: Number(error?.status || 0),
@@ -812,6 +832,7 @@ export default function Dashboard() {
 
   const handleRetryTranscription = () => {
     if (!fileId || !videoUrl || isGenerating) return;
+    setShowCaptionRetryNotice(false);
     // The source upload is already owned by this account. Reuse it instead of
     // asking the customer to upload again (or consuming another upload slot).
     handleUpload(null, {
@@ -1617,6 +1638,19 @@ export default function Dashboard() {
     .replace(/_yearly$/, '');
   const lowCreditTopUpOffer = TOP_UP_OFFERS[subscriptionBaseTier] || null;
 
+  useEffect(() => {
+    const shouldShow = Boolean(
+      lowCreditTopUpOffer && (userData?.credits_remaining ?? 999) <= 5
+    )
+    if (!shouldShow) {
+      setShowLowCreditNotice(false)
+      return undefined
+    }
+    setShowLowCreditNotice(true)
+    const timer = window.setTimeout(() => setShowLowCreditNotice(false), 10000)
+    return () => window.clearTimeout(timer)
+  }, [lowCreditTopUpOffer, userData?.credits_remaining])
+
   return (
     <div className="h-[100dvh] max-h-[100dvh] bg-[#050505] flex flex-col overflow-hidden text-white">
       <DashboardHeader
@@ -1637,13 +1671,46 @@ export default function Dashboard() {
         onUpgradeClick={() => setIsPricingModalOpen(true)}
       />
 
-      {/* Main content */}
-      {cloudSaveMessage && (
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-4 py-2 text-xs text-gray-300">
-          <p role="status">{cloudSaveMessage}</p>
-          {captions.length > 0 && <button className="shrink-0 underline" onClick={() => downloadDraft(snapshotEditorState())}>Download draft</button>}
+      {/* Notices float above the editor and never consume dashboard height. */}
+      {(cloudSaveMessage || showLowCreditNotice || showCaptionRetryNotice) && (
+        <div className="pointer-events-none fixed inset-x-3 top-[4.25rem] z-[70] mx-auto flex max-w-[1320px] flex-col gap-2" aria-live="polite">
+          {cloudSaveMessage && (
+            <div className="pointer-events-auto flex items-center justify-between gap-3 rounded-xl border border-white/15 bg-[#111]/95 px-4 py-2.5 text-xs text-gray-200 shadow-2xl backdrop-blur">
+              <p role="status">{cloudSaveMessage}</p>
+              {captions.length > 0 && <button className="shrink-0 underline" onClick={() => downloadDraft(snapshotEditorState())}>Download draft</button>}
+            </div>
+          )}
+          {showLowCreditNotice && lowCreditTopUpOffer && (
+            <div className="pointer-events-auto flex items-center justify-between gap-3 rounded-xl border border-white/15 bg-[#111]/95 px-4 py-2.5 shadow-2xl backdrop-blur">
+              <p className="text-sm font-medium text-white">
+                Low credits? Add {lowCreditTopUpOffer.credits} credits for {lowCreditTopUpOffer.price} - no plan change needed.
+              </p>
+              <button
+                onClick={() => setIsPricingModalOpen(true)}
+                className="shrink-0 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-black transition-colors hover:bg-gray-100"
+              >
+                Top Up
+              </button>
+            </div>
+          )}
+          {showCaptionRetryNotice && fileId && captions.length === 0 && (
+            <div className="pointer-events-auto flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-400/25 bg-[#1a1608]/95 px-4 py-2.5 shadow-2xl backdrop-blur">
+              <p className="text-sm text-amber-50">
+                Captions were not generated. Your video is saved — retry without uploading it again.
+              </p>
+              <button
+                type="button"
+                onClick={handleRetryTranscription}
+                disabled={isGenerating}
+                className="shrink-0 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-black transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Retry captions
+              </button>
+            </div>
+          )}
         </div>
       )}
+      {/* Main content */}
       <div className="flex-1 overflow-hidden lekha-editor-shell">
         {isGenerating ? (
           renderGeneratingState()
@@ -1682,40 +1749,6 @@ export default function Dashboard() {
         ) : (
           // Editor layout
           <div className="h-full flex flex-col overflow-hidden">
-            {/* Low-credits top-up banner */}
-            {lowCreditTopUpOffer &&
-              (userData.credits_remaining ?? 999) <= 5 && (
-              <div className="px-4 pt-2 shrink-0">
-                <div className="flex items-center justify-between gap-3 bg-white/5 border border-white/15 rounded-xl px-4 py-2.5">
-                  <p className="text-sm text-white font-medium">
-                    Low credits? Add {lowCreditTopUpOffer.credits} credits for {lowCreditTopUpOffer.price} - no plan change needed.
-                  </p>
-                  <button
-                    onClick={() => setIsPricingModalOpen(true)}
-                    className="shrink-0 text-xs font-semibold bg-white text-black px-3 py-1.5 rounded-full hover:bg-gray-100 transition-colors"
-                  >
-                    Top Up
-                  </button>
-                </div>
-              </div>
-            )}
-            {fileId && captions.length === 0 && (
-              <div className="px-4 pt-2 shrink-0">
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-400/25 bg-amber-400/[0.08] px-4 py-2.5">
-                  <p className="text-sm text-amber-50">
-                    Captions were not generated. Your video is saved — retry without uploading it again.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={handleRetryTranscription}
-                    disabled={isGenerating}
-                    className="shrink-0 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-black transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    Retry captions
-                  </button>
-                </div>
-              </div>
-            )}
           <div className={`flex-1 overflow-hidden ${isVideoFullscreen ? 'relative p-0' : 'flex flex-col md:grid md:grid-cols-[minmax(0,1fr)] lg:grid-cols-[48px_285px_minmax(0,1fr)_285px] xl:grid-cols-[48px_300px_minmax(0,1fr)_300px] p-2 md:p-3 gap-2 md:gap-3'}`}>
             {!isVideoFullscreen && (
               <>

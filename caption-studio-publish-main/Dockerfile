@@ -5,6 +5,7 @@ FROM node:22-bookworm-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PUPPETEER_CACHE_DIR=/app/.cache/puppeteer \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
     PUPPETEER_CONTAINER_NO_SANDBOX=1
 
 # Puppeteer renders the authored caption templates during export. Keep the
@@ -16,6 +17,7 @@ RUN apt-get update \
         python3-pip \
         ffmpeg \
         ca-certificates \
+        chromium \
         dumb-init \
         fonts-liberation \
         libasound2 \
@@ -46,6 +48,7 @@ RUN apt-get update \
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
+RUN node --input-type=module -e "import puppeteer from 'puppeteer'; const browser = await puppeteer.launch({headless: true, executablePath: process.env.PUPPETEER_EXECUTABLE_PATH, args: ['--no-sandbox', '--disable-setuid-sandbox']}); const page = await browser.newPage(); await page.setContent('<p>renderer-ready</p>'); await browser.close();"
 
 COPY backend/requirements.lock backend/requirements.lock
 RUN python3 -m pip install --break-system-packages --no-cache-dir --require-hashes -r backend/requirements.lock

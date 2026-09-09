@@ -30,6 +30,37 @@ class ProductionBoundaryTests(unittest.TestCase):
         self.redis = fakeredis.FakeRedis(decode_responses=True)
         main._export_jobs.clear()
 
+    def test_production_missing_queue_never_renders_in_api(self):
+        request = main.ExportRequest(file_id="123e4567-e89b-12d3-a456-426614174000",
+                                     captions=[{"id": "1", "text": "hello", "start_time": 0, "end_time": 1}])
+        from starlette.requests import Request
+        with (patch.object(main, "_IS_PRODUCTION", True), patch.object(main, "_export_queue", None),
+              patch.object(main, "_assert_service_available"), patch.object(main, "_track_event"),
+              patch.object(main, "_authenticate_media_request", return_value={"uid": "owner"}),
+              patch.object(main, "_process_export_job_core", new_callable=AsyncMock) as render,
+              patch.object(main, "_acquire_export_slot") as claim):
+            with self.assertRaises(main.HTTPException) as error:
+                asyncio.run(main.export_video(request, Request({"type": "http", "headers": []}), main.Response()))
+        self.assertEqual(error.exception.status_code, 503)
+        self.assertEqual(error.exception.headers["Retry-After"], "10")
+        render.assert_not_called()
+        claim.assert_not_called()
+
+    def test_export_timing_includes_backlog_and_preserves_admission_on_retry(self):
+        with (patch.object(main, "_redis_client", self.redis), patch.object(main, "get_db", return_value=None),
+              patch.object(main, "_export_queue", None)):
+            main._set_export_job("timing", "queued", started_at=1000)
+            main._set_export_job("timing", "starting")
+            with patch.object(main, "time", SimpleNamespace(time=lambda: 1180)):
+                self.assertEqual(main._mark_export_processing("timing"), (1000, 1180))
+            self.assertEqual(main._load_export_job("timing")["queue_wait_ms"], 180000)
+            main._set_export_job("timing", "retrying")
+            main._set_export_job("timing", "starting")
+            with patch.object(main, "time", SimpleNamespace(time=lambda: 1240)):
+                self.assertEqual(main._mark_export_processing("timing"), (1000, 1240))
+            self.assertEqual(main._load_export_job("timing")["queue_entered_at"], 1000)
+            self.assertEqual(main._load_export_job("timing")["queue_wait_ms"], 180000)
+
     def test_storage_readiness_probes_the_selected_backend(self):
         with (patch.object(firebase_admin_setup, "s3_is_configured", return_value=True),
               patch.object(firebase_admin_setup, "s3_bucket_ready", return_value=True) as s3,
@@ -154,6 +185,29 @@ class ProductionBoundaryTests(unittest.TestCase):
             job = main._set_export_job("job", "starting")
             self.assertEqual(main._reconcile_export_job("job", job)["status"], "failed")
 
+    def test_export_wait_is_capped_at_two_minutes_without_charging(self):
+        rq_job = SimpleNamespace(cancelled=False)
+        rq_job.cancel = lambda: setattr(rq_job, "cancelled", True)
+        queue = SimpleNamespace(fetch_job=lambda _: rq_job)
+        with (patch.object(main, "_redis_client", self.redis), patch.object(main, "get_db", return_value=None),
+              patch.object(main, "_export_queue", queue), patch.object(main, "_track_event")):
+            self.assertTrue(main._acquire_export_slot("owner", "slow-job"))
+            main._idem_set("owner:slow", {"status": "in_progress"})
+            job = main._set_export_job(
+                "slow-job",
+                "queued",
+                uid="owner",
+                queue_entered_at=time.time() - main.EXPORT_MAX_QUEUE_WAIT_SECONDS - 1,
+                idempotency_key="owner:slow",
+            )
+            reconciled = main._reconcile_export_job("slow-job", job)
+
+        self.assertEqual(reconciled["status"], "failed")
+        self.assertEqual(reconciled["failure_code"], "preparation_timeout")
+        self.assertTrue(rq_job.cancelled)
+        self.assertIsNone(main._idem_get("owner:slow"))
+        self.assertNotIn("owner", main._active_exports_by_user)
+
     def test_cancelled_job_skips_processing_even_when_queue_removal_failed(self):
         queue = SimpleNamespace(fetch_job=lambda _: (_ for _ in ()).throw(ConnectionError()))
         with (patch.object(main, "_redis_client", self.redis), patch.object(main, "get_db", return_value=None),
@@ -222,10 +276,25 @@ class ProductionBoundaryTests(unittest.TestCase):
             self.assertFalse(worker._worker_ready(connection))
 
     def test_liveness_is_independent_of_readiness(self):
-        with patch.object(main, "_build_slo_snapshot", return_value={"release_gate_passed": False}):
+        with (patch.object(main, "_IS_PRODUCTION", True),
+              patch.object(main, "_runtime_dependency_snapshot", return_value={"ready": False})):
             client = TestClient(main.app)
             self.assertEqual(client.get("/health").status_code, 200)
             self.assertEqual(client.get("/ready").status_code, 503)
+
+    def test_slow_exports_do_not_remove_healthy_api_from_service(self):
+        with (patch.object(main, "_IS_PRODUCTION", True),
+              patch.object(main, "_runtime_dependency_snapshot", return_value={"ready": True}),
+              patch.object(main, "_build_slo_snapshot", return_value={"release_gate_passed": False})):
+            self.assertEqual(TestClient(main.app).get("/ready").status_code, 200)
+
+    def test_export_slo_measures_completion_not_fast_enqueue(self):
+        with (patch.object(main, "_redis_client", None),
+              patch.dict(main._route_latency_samples, {"/api/export": [10]}),
+              patch.object(main, "_read_operational_metric_samples", return_value=[360000])):
+            snapshot = main._build_slo_snapshot()
+        self.assertEqual(snapshot["actuals"]["export_p95_ms"], 360000)
+        self.assertFalse(snapshot["release_gate_passed"])
 
     def test_worker_shutdown_still_drains_when_redis_is_unavailable(self):
         instance = worker.ReleaseWorker(["test"], connection=self.redis, name="shutdown-test")

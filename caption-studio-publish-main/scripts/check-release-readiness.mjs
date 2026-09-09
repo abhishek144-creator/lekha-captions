@@ -314,6 +314,9 @@ assertIncludes("primary landing page visibly identifies the beta", homePage, "be
 assertIncludes("alternate landing page visibly identifies the beta", homeV2Page, "beta={true}")
 assertIncludes("editor beta marker renders outside desktop-only navigation", dashboardPage, "renders at every breakpoint")
 assertIncludes("export failure tells the customer no credit was charged", readText("src/components/dashboard/ExportPanel.jsx"), "No credit was charged")
+assertIncludes("dashboard notices overlay without consuming editor height", dashboardPage, "pointer-events-none fixed inset-x-3")
+assertIncludes("dashboard notices automatically disappear after ten seconds", dashboardPage, "setShowCaptionRetryNotice(false), 10000")
+assertIncludes("all toast notifications automatically disappear after ten seconds", readText("src/components/ui/use-toast.jsx"), "TOAST_AUTO_DISMISS_MS = 10000")
 assertIncludes("multiline failure details preserve line breaks", toastComponent, "whitespace-pre-line")
 assertIncludes("long job references wrap on narrow screens", toastComponent, "break-words")
 assertIncludes("sitemap contains the support route", sitemap, "/HelpAndSupport</loc>")
@@ -377,6 +380,10 @@ assertIncludes("HTML references an existing social preview", htmlDocument, "/lan
 // Video export is server-authoritative. The editor may keep DOM markers for
 // interaction/debugging, but ExportPanel must never consume them for rendering.
 const exportPanelSource = readText("src/components/dashboard/ExportPanel.jsx")
+assertExcludes("export UI does not expose queue cancellation wording", exportPanelSource, "Cancel queued export")
+assertExcludes("export progress UI does not expose a cancellation control", exportPanelSource, "handleCancelExport")
+assertIncludes("confirmed server export failures are distinguished from connection loss", exportPanelSource, "terminalError.exportStatus = 'failed'")
+assertIncludes("backend caps preparation wait at two minutes", backendMain, "EXPORT_MAX_QUEUE_WAIT_SECONDS = max(")
 for (const marker of [
   'data-lekha-player="true"',
   'data-caption-layer="true"',
@@ -399,6 +406,9 @@ assertIncludes("renderer scopes its CI sandbox workaround", renderer, "process.e
 assertFile("container deployment definition exists", "Dockerfile")
 const dockerfile = readText("Dockerfile")
 assertIncludes("container includes Puppeteer NSS runtime library", dockerfile, "libnss3")
+assertIncludes("container installs a deterministic Chromium executable", dockerfile, "chromium")
+assertIncludes("container declares the Chromium executable for Puppeteer", dockerfile, "PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium")
+assertIncludes("container smoke-tests Chromium during the image build", dockerfile, "renderer-ready")
 assertIncludes("container scopes the Chromium sandbox workaround to Railway", dockerfile, "PUPPETEER_CONTAINER_NO_SANDBOX=1")
 assertIncludes("container installs the hashed backend dependency lock", dockerfile, "--require-hashes -r backend/requirements.lock")
 assertIncludes("export renderer supports the scoped Chromium sandbox workaround", renderer, "PUPPETEER_CONTAINER_NO_SANDBOX")

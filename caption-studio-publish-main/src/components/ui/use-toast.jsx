@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 
 const TOAST_LIMIT = 20;
 const TOAST_REMOVE_DELAY = 1000000;
+const TOAST_AUTO_DISMISS_MS = 10000;
 
 const actionTypes = {
   ADD_TOAST: "ADD_TOAST",
@@ -129,8 +130,8 @@ function dispatch(action) {
 
 function toast({ ...props }) {
   const id = genId();
-  const defaultDuration = props.variant === "destructive" ? 5000 : undefined;
-  const duration = Number.isFinite(Number(props.duration)) ? Number(props.duration) : defaultDuration;
+  // Keep every transient notification predictable and non-blocking.
+  const duration = TOAST_AUTO_DISMISS_MS;
 
   const update = (props) =>
     dispatch({

@@ -582,6 +582,10 @@ REDIS_URL = os.environ.get("REDIS_URL", "")
 _redis_client = None
 _rq_redis_client = None
 EXPORT_QUEUE_NAME = os.environ.get("EXPORT_QUEUE_NAME", "caption_export_jobs")
+EXPORT_MAX_QUEUE_WAIT_SECONDS = max(
+    30,
+    min(int(os.environ.get("EXPORT_MAX_QUEUE_WAIT_SECONDS", "120")), 120),
+)
 DURABLE_QUEUE_ENABLED = os.environ.get("ENABLE_DURABLE_QUEUE", "1") == "1"
 SLACK_ALERT_WEBHOOK_URL = os.environ.get("SLACK_ALERT_WEBHOOK_URL", "").strip()
 PAYMENT_RECONCILE_INTERVAL_MINUTES = int(os.environ.get("PAYMENT_RECONCILE_INTERVAL_MINUTES", "20"))
@@ -692,6 +696,9 @@ if DURABLE_QUEUE_ENABLED and _rq_redis_client is not None and RQ_AVAILABLE:
     except Exception as e:
         _export_queue = None
         _json_log("warning", "durable_queue_init_failed", error=str(e))
+
+if _IS_PRODUCTION and _export_queue is None:
+    raise RuntimeError("The durable export queue is required in production; refusing API-local rendering.")
 
 async def advanced_janitor_job():
     """Background task to cleanup files based on retention rules."""
@@ -1232,14 +1239,11 @@ def _build_slo_snapshot() -> Dict[str, Any]:
     process_total = process_success + process_failed
     export_rate = export_success / max(export_total, 1)
     process_rate = process_success / max(process_total, 1)
-    export_samples = _route_latency_samples.get("/api/export", [])
+    export_samples = _read_operational_metric_samples(_utcnow().date().isoformat(), "export_total_ms")
     process_samples = _route_latency_samples.get("/api/process", [])
     if _redis_client is not None:
         try:
-            r_export = [int(x) for x in _redis_client.lrange("latency:/api/export", 0, -1) or []]
             r_process = [int(x) for x in _redis_client.lrange("latency:/api/process", 0, -1) or []]
-            if r_export:
-                export_samples = r_export
             if r_process:
                 process_samples = r_process
         except Exception:
@@ -3245,6 +3249,20 @@ def _require_export_job_access(request: Request, job: Dict[str, Any]) -> str:
     raise HTTPException(status_code=401, detail="Authentication required")
 
 
+def _mark_export_processing(export_job_id: str):
+    processing_started_at = time.time()
+    job = _load_export_job(export_job_id) or {}
+    # Preserve admission time across queue waits and retries. Starting the clock
+    # in the renderer hid the backlog from the end-to-end export SLO.
+    queue_entered_at = float(job.get("queue_entered_at") or job.get("started_at") or processing_started_at)
+    queue_wait_ms = job.get("queue_wait_ms")
+    if queue_wait_ms is None:
+        queue_wait_ms = max(0, int((processing_started_at - queue_entered_at) * 1000))
+    _set_export_job(export_job_id, "processing", queue_entered_at=queue_entered_at,
+                    processing_started_at=processing_started_at, queue_wait_ms=queue_wait_ms)
+    return queue_entered_at, processing_started_at
+
+
 async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, export_job_id: str):
     _assert_account_not_deleting(uid)
     db = get_db()
@@ -3347,8 +3365,7 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
 
     output_filename = f"export_{req.file_id}_{request_hash[:12]}.mp4"
     output_path = os.path.join(EXPORT_DIR, output_filename)
-    queue_entered_at = time.time()
-    _set_export_job(export_job_id, "processing", queue_entered_at=queue_entered_at)
+    queue_entered_at, processing_started_at = _mark_export_processing(export_job_id)
     style_with_quality = {
         **server_style,
         'quality': preset["quality"],
@@ -3368,13 +3385,9 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
     if os.path.exists(cached_render_path) and not template_export_active:
         shutil.copy2(cached_render_path, output_path)
         render_finished_at = time.time()
-        processing_started_at = queue_entered_at
         render_ms = int((render_finished_at - processing_started_at) * 1000)
         _track_event("render_cache_hit", {"job_id": export_job_id})
     else:
-        processing_started_at = time.time()
-        queue_wait_ms = int((processing_started_at - queue_entered_at) * 1000)
-        _set_export_job(export_job_id, "processing", processing_started_at=processing_started_at, queue_wait_ms=queue_wait_ms)
         _log(rid, f"Starting render now job={export_job_id}")
         async with render_semaphore:
             result = await processor.burn_only(
@@ -4129,6 +4142,9 @@ async def export_video(req: ExportRequest, request: Request, response: Response)
     # 1. Authenticate user
     decoded_token = _authenticate_media_request(req.id_token, req.org_id)
     uid = (decoded_token.get("uid") or "").strip() or "dev-local-user"
+    if _IS_PRODUCTION and _export_queue is None:
+        raise HTTPException(status_code=503, detail="Export service is temporarily unavailable. Please retry shortly.",
+                            headers={"Retry-After": "10"})
     if decoded_token.get("_dev_mode"):
         _log(rid, "Using explicit debug auth bypass token")
 
@@ -4191,6 +4207,9 @@ async def export_video(req: ExportRequest, request: Request, response: Response)
             file_id=req.file_id,
             quality=req.quality,
             started_at=time.time(),
+            queue_entered_at=time.time(),
+            idempotency_key=idem_key,
+            idempotency_request_hash=idempotency_request_hash,
             request_snapshot=safe_request_snapshot,
         )
         if _export_queue is not None:
@@ -4222,6 +4241,7 @@ async def export_video(req: ExportRequest, request: Request, response: Response)
                 ),
                 job_id=export_job_id,
                 retry=RQRetry(max=3, interval=[10, 30, 60]) if RQRetry else None,
+                ttl=EXPORT_MAX_QUEUE_WAIT_SECONDS,
                 result_ttl=24 * 3600,
                 failure_ttl=7 * 24 * 3600,
             )
@@ -4273,6 +4293,33 @@ def _reconcile_export_job(job_id: str, job: Dict[str, Any]):
     if _export_queue is None or job.get("status") in {"completed", "failed", "cancelled"}:
         return job
     try:
+        status = str(job.get("status") or "").lower()
+        queue_age = time.time() - float(
+            job.get("queue_entered_at") or job.get("started_at") or time.time()
+        )
+        if status == "queued" and queue_age >= EXPORT_MAX_QUEUE_WAIT_SECONDS:
+            try:
+                stale_rq_job = _export_queue.fetch_job(job_id)
+                if stale_rq_job is not None:
+                    stale_rq_job.cancel()
+            except Exception as error:
+                _json_log(
+                    "warning",
+                    "export_preparation_timeout_cleanup_failed",
+                    job_id=job_id,
+                    error=type(error).__name__,
+                )
+            job = _set_export_job(
+                job_id,
+                "failed",
+                error="Export could not start within two minutes. Please retry. No credit was charged.",
+                failure_code="preparation_timeout",
+                failed_at=time.time(),
+            )
+            _release_export_slot(str(job.get("uid") or ""), job_id)
+            _idem_delete(str(job.get("idempotency_key") or ""))
+            _track_event("export_preparation_timeout", {"job_id": job_id})
+            return job
         rq_job = _export_queue.fetch_job(job_id)
         state = rq_job.get_status(refresh=True) if rq_job else "missing"
         state = str(getattr(state, "value", state)).lower()
@@ -4673,19 +4720,20 @@ async def readiness(request: Request):
     # Public readiness probe: exposes only the boolean gate result. Detailed SLO
     # actuals and queue wiring are admin-gated (see /api/slo/status) so an
     # anonymous caller can't read operational internals.
-    snapshot = _build_slo_snapshot()
     dependencies = await asyncio.to_thread(_runtime_dependency_snapshot) if _IS_PRODUCTION else {
         "ready": True,
         "checks": {},
         "details": {},
     }
-    ready = bool(snapshot.get("release_gate_passed", True) and dependencies.get("ready", False))
+    # Historical slow exports must not remove every healthy API replica from
+    # service. SLOs remain release/alert signals; readiness reflects dependencies.
+    ready = bool(dependencies.get("ready", False))
     body = {
         "success": True,
         "ready": ready,
     }
     if _is_admin_token(request=request):
-        body["slo"] = snapshot
+        body["slo"] = _build_slo_snapshot()
         body["queue"] = {
             "durable_enabled": DURABLE_QUEUE_ENABLED,
             "queue_name": EXPORT_QUEUE_NAME,

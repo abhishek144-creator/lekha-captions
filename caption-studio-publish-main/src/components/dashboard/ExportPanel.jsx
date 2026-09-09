@@ -65,7 +65,7 @@ function notifyExportFailure(error, jobId) {
   // Once a job id exists the request was accepted. A lost status/download
   // connection does not mean the render failed or that its credit was not
   // used; the same export request is safely replayable instead.
-  if (jobId) {
+  if (jobId && error?.exportStatus !== 'failed') {
     toast({
       variant: 'destructive',
       title: 'Export connection interrupted',
@@ -169,7 +169,6 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
   const [waitStartTime, setWaitStartTime] = useState(null);
   const [showServerBusy, setShowServerBusy] = useState(false);
   const [exportExpiry, setExportExpiry] = useState(null);
-  const [activeExportJobId, setActiveExportJobId] = useState('');
   // Keep the established portrait render default while removing the chooser from the export UI.
   const exportAspectRatio = '9:16';
   const exportInFlightRef = useRef(false);
@@ -235,9 +234,11 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
         continue;
       }
       const status = (statusPayload?.status || '').toLowerCase();
-      if (status === 'queued') {
-        setStatusMessage('Preparing render job...');
+      if (status === 'queued' || status === 'starting') {
+        setStatusMessage('Preparing your export...');
         setProgress(prev => Math.max(prev, 25));
+      } else if (status === 'retrying') {
+        setStatusMessage('Recovering your export. Please keep this page open...');
       } else if (status === 'processing') {
         setStatusMessage('Rendering in progress...');
         setProgress(prev => Math.max(prev, 55));
@@ -248,7 +249,9 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
         setProgress(prev => Math.max(prev, 90));
         return;
       } else if (status === 'failed') {
-        throw new Error(statusPayload?.error || 'Export failed');
+        const terminalError = new Error(statusPayload?.error || 'Export failed');
+        terminalError.exportStatus = 'failed';
+        throw terminalError;
       } else if (status === 'cancelled') {
         throw new DOMException('Export cancelled', 'AbortError');
       }
@@ -263,11 +266,6 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
     const timer = setInterval(() => {
       const elapsedMs = Date.now() - waitStartTime;
       if (elapsedMs > 30000) setShowServerBusy(true);
-      if (elapsedMs > 90000) {
-        setStatusMessage('Almost there... finalizing your video render');
-      } else if (elapsedMs > 45000) {
-        setStatusMessage('Rendering in progress... this can take up to 2 minutes');
-      }
     }, 1000);
 
     return () => clearInterval(timer);
@@ -408,7 +406,6 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
     exportAbortRef.current = exportController;
     setProgress(10);
     setStatusMessage('Preparing export...');
-    setActiveExportJobId('');
     setWaitStartTime(Date.now());
     setShowServerBusy(false);
     trackAnalytics('funnel.export.started', getClientContext({
@@ -741,7 +738,6 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       let resolvedResult = result;
       if (result.export_job_id) {
         activeExportJobId = result.export_job_id;
-        setActiveExportJobId(result.export_job_id);
         await pollExportStatus(result.export_job_id, authHeaders, 10 * 60 * 1000, exportController.signal);
         if (!result.video_url) {
           resolvedResult = await apiRequest(`/api/export-result/${result.export_job_id}`, {
@@ -833,29 +829,6 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       setStatusMessage('');
       setWaitStartTime(null);
       setShowServerBusy(false);
-      setActiveExportJobId('');
-    }
-  };
-
-  const handleCancelExport = async () => {
-    if (!activeExportJobId) return;
-    try {
-      const idToken = await getEffectiveAuthToken(currentUser);
-      await apiRequest(`/api/export-cancel/${activeExportJobId}`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${idToken}` },
-      });
-      exportAbortRef.current?.abort();
-      toast({
-        title: 'Export cancelled',
-        description: 'The queued render was removed. No credit was charged.',
-      });
-    } catch (error) {
-      toast({
-        variant: error?.status === 409 ? 'default' : 'destructive',
-        title: error?.status === 409 ? 'Render already started' : 'Could not cancel export',
-        description: getApiErrorMessage(error),
-      });
     }
   };
 
@@ -953,11 +926,11 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
               </div>
 
               <div className="mt-4">
-                <h3 className="text-xl font-black text-white mb-1">Rendering your video</h3>
+                <h3 className="text-xl font-black text-white mb-1">Creating your video</h3>
                 <p className="text-sm text-gray-400 animate-pulse">{statusMessage || 'Preparing render...'}</p>
                 {showServerBusy && (
                   <p className="text-xs text-amber-400 mt-2 animate-pulse">
-                    High demand right now - render may take up to about 2 minutes.
+                    Your export is still in progress. Timing depends on video length and effects.
                   </p>
                 )}
               </div>
@@ -969,16 +942,6 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
                   <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
                 </div>
               </div>
-              {activeExportJobId && (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="mt-4"
-                  onClick={handleCancelExport}
-                >
-                  Cancel queued export
-                </Button>
-              )}
             </div>
 
             <style>{`
