@@ -30,7 +30,7 @@ class InvalidJobTransition(RuntimeError):
     pass
 
 
-def transition(client, job_id, seed, update):
+def transition(client, job_id, seed, update, *, expected_status=None):
     destination = update["status"]
     allowed = [source for source, targets in TRANSITIONS.items() if destination in targets]
     if client is not None:
@@ -39,6 +39,8 @@ def transition(client, job_id, seed, update):
         for _ in range(8):
             raw = client.get(f"export_job:{job_id}")
             current = json.loads(raw) if raw else seed
+            if expected_status is not None and current.get("status") != expected_status:
+                raise InvalidJobTransition("Job changed before the conditional transition")
             if current.get("status", "") not in allowed:
                 raise InvalidJobTransition(f"Cannot transition {current.get('status', '')} to {destination}")
             result = {**current, **update, "revision": int(current.get("revision", 0)) + 1}
@@ -46,6 +48,8 @@ def transition(client, job_id, seed, update):
                            json.dumps(result, default=str), 7 * 86400):
                 return result
         raise RuntimeError("Export state is busy; retry the operation")
+    if expected_status is not None and seed.get("status") != expected_status:
+        raise InvalidJobTransition("Job changed before the conditional transition")
     if seed.get("status", "") not in allowed:
         raise InvalidJobTransition(f"Cannot transition {seed.get('status', '')} to {destination}")
     return {**seed, **update, "revision": int(seed.get("revision", 0)) + 1}

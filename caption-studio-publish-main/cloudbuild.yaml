@@ -1,0 +1,13 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --build-arg
+      - APP_RELEASE=${_RELEASE_SHA}
+      - --tag
+      - ${_IMAGE_URI}:${_RELEASE_SHA}
+      - .
+images:
+  - ${_IMAGE_URI}:${_RELEASE_SHA}
+options:
+  logging: CLOUD_LOGGING_ONLY

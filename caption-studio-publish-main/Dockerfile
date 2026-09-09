@@ -1,5 +1,8 @@
 FROM node:22-bookworm-slim
 
+ARG APP_RELEASE
+LABEL org.opencontainers.image.revision=${APP_RELEASE}
+
 # Railway's container runtime blocks Chromium's user-namespace sandbox. This
 # bypass is intentionally image-scoped, never a customer-controlled option.
 ENV PYTHONDONTWRITEBYTECODE=1 \

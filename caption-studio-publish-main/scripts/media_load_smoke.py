@@ -17,6 +17,7 @@ import uuid
 from urllib.parse import urljoin
 
 import requests
+from media_job_client import await_transcription
 
 
 def require_ok(response: requests.Response, action: str) -> dict:
@@ -85,6 +86,10 @@ def run_journey(index: int, credential: dict, args: argparse.Namespace) -> dict:
             ),
             "process",
         )
+        processed = await_transcription(session, base_url, {
+            "file_id": file_id, "language": args.language, "min_words": 2, "max_words": 5,
+            "id_token": id_token,
+        }, headers, processed, deadline=stage_started + args.process_timeout, interval=args.poll_interval)
         stages["process"] = time.monotonic() - stage_started
         captions = processed.get("captions") or []
         if not captions:
@@ -119,7 +124,7 @@ def run_journey(index: int, credential: dict, args: argparse.Namespace) -> dict:
                 session.get(urljoin(base_url, f"api/export-status/{job_id}"), headers=headers, timeout=20),
                 "export status",
             )
-            if status.get("status") == "failed":
+            if status.get("status") in {"failed", "cancelled"}:
                 raise RuntimeError(f"export worker failed: {status.get('error')}")
             if status.get("status") == "completed":
                 export = require_ok(
