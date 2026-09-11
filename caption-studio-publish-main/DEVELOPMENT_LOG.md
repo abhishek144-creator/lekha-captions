@@ -993,3 +993,19 @@ marker. Direct deployment was intentionally not performed because the hosting
 environment does not expose the newly required real grievance/legal identity
 variables and GitHub CLI is not authenticated. Deploy only one committed SHA
 after those public values are supplied and hosted CI passes.
+
+## 2026-09-11 — Google Cloud staging backend rollout
+
+- Deployed tested backend release `6d5f530d9acf4a2432f82a16574a5d58a306a3ac`
+  to the existing API and worker VMs; retained previous containers for rollback.
+- Started a separate transcription consumer on the existing worker VM, capped
+  export/transcription resources, and isolated staging transcription from the
+  production outbox. Persisted runtime version 9 and startup/image metadata.
+- Verified API and both workers ready, empty queues, normal HTTPS from the VM,
+  and a successful 10-second 720p sample render in 4.29 seconds. The release had
+  167 passing backend tests and a successful immutable Cloud Build.
+- Verified Redis noeviction/hourly snapshots, restricted IAP SSH, and existing
+  Cloud Run frontend autoscaling. API/worker VM autoscaling remains absent.
+- Public Netlify/Railway traffic is unchanged. Live-payment configuration,
+  spending bounds for scalable infrastructure, and end-to-end/load acceptance
+  remain critical launch gates. See `docs/GCP_DEPLOYMENT_2026-09-11.md`.
