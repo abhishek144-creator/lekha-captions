@@ -1,0 +1,19 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --build-arg
+      - BASE_IMAGE=${_BASE_IMAGE}
+      - --build-arg
+      - APP_RELEASE=${_APP_RELEASE}
+      - --build-arg
+      - RELEASE_VERSION=${_RELEASE_VERSION}
+      - --build-arg
+      - BUILD_TIME=${_BUILD_TIME}
+      - --tag
+      - ${_TARGET_IMAGE}
+      - .
+images:
+  - ${_TARGET_IMAGE}
+options:
+  logging: CLOUD_LOGGING_ONLY

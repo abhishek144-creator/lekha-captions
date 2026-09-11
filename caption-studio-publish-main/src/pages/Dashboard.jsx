@@ -320,9 +320,13 @@ export default function Dashboard() {
   }, [showCaptionRetryNotice])
 
   useEffect(() => {
-    if (fileId && captions.length === 0) setShowCaptionRetryNotice(true)
+    // A source file is stored before its asynchronous transcription finishes.
+    // Do not present that normal in-progress state as a failed transcription.
+    // Once generation has ended without captions, retain the useful retry
+    // action without asking the customer to upload the same video again.
+    if (fileId && captions.length === 0 && !isGenerating) setShowCaptionRetryNotice(true)
     else setShowCaptionRetryNotice(false)
-  }, [fileId, captions.length])
+  }, [fileId, captions.length, isGenerating])
 
   useEffect(() => {
     let disposed = false
