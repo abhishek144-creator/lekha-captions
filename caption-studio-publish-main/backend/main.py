@@ -4074,9 +4074,10 @@ async def _process_video_inline(req: ProcessRequest, request: Request, response:
         try:
             result = await asyncio.to_thread(_generate_captions_in_worker_thread)
         except Exception:
-            # The provider never returned a usable result — hand the daily call back.
-            if not trusted_uid:
-                await asyncio.to_thread(_release_ai_quota, uid, "process")
+            # A failed transcription must never consume a customer's import
+            # allowance. `trusted_uid` only bypasses a second auth check in the
+            # worker; it must not change billing or quota treatment.
+            await asyncio.to_thread(_release_ai_quota, uid, "process")
             raise
 
         if result.get("success") and not (result.get("captions") or []):
@@ -4122,11 +4123,11 @@ async def _process_video_inline(req: ProcessRequest, request: Request, response:
             )
             is_no_speech = result.get("error_code") == "NO_SPEECH_DETECTED"
             status_code = 422 if is_no_speech else 502
-            # NO_SPEECH is a real transcription that found nothing — the provider
-            # ran and billed us, so that call stays spent. Anything else is our
-            # failure and the reservation is returned.
-            if not is_no_speech and not trusted_uid:
-                await asyncio.to_thread(_release_ai_quota, uid, "process")
+            # An unsuccessful caption result, including no detected speech,
+            # does not use the customer's import allowance. The provider may
+            # still have billed Lekha, but that cost is not passed to a user who
+            # received no usable captions.
+            await asyncio.to_thread(_release_ai_quota, uid, "process")
             raise HTTPException(
                 status_code=status_code,
                 detail=result.get("error", "Transcription service failed"),

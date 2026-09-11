@@ -314,12 +314,6 @@ export default function Dashboard() {
   }, [cloudSaveMessage])
 
   useEffect(() => {
-    if (!showCaptionRetryNotice) return undefined
-    const timer = window.setTimeout(() => setShowCaptionRetryNotice(false), 10000)
-    return () => window.clearTimeout(timer)
-  }, [showCaptionRetryNotice])
-
-  useEffect(() => {
     // A source file is stored before its asynchronous transcription finishes.
     // Do not present that normal in-progress state as a failed transcription.
     // Once generation has ended without captions, retain the useful retry
