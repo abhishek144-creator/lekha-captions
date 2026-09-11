@@ -12,7 +12,7 @@ def docker(*args):
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument("action", choices=["prepare", "stop", "start", "rollback"])
+parser.add_argument("action", choices=["prepare", "stop", "start", "start-helper", "rollback"])
 parser.add_argument("role", choices=["api", "worker"])
 parser.add_argument("--image", required=True)
 parser.add_argument("--release", required=True)
@@ -21,6 +21,7 @@ if os.geteuid() != 0 or len(args.release) != 40 or any(c not in "0123456789abcde
     raise SystemExit("Root and an immutable release are required")
 name = f"lekha-{args.role}"
 backup = f"{name}-rollback-{args.release[:8]}"
+helper_backup = f"lekha-transcription-rollback-{args.release[:8]}"
 folder = Path("/etc/lekha/rollbacks") / args.release
 folder.mkdir(parents=True, exist_ok=True, mode=0o700)
 env_file = folder / f"{args.role}.env"
@@ -44,6 +45,21 @@ def wait_ready(container):
     raise RuntimeError(f"{container} failed readiness; previous container retained")
 
 
+def start_transcription_helper():
+    if exists("lekha-transcription"):
+        raise SystemExit("Replacement transcription helper already exists; refusing to overwrite it")
+    scratch = Path("/var/lib/lekha/transcription-scratch")
+    scratch.mkdir(exist_ok=True, mode=0o750)
+    os.chown(scratch, 1000, 1000)
+    docker("run", "-d", "--name", "lekha-transcription", "--restart", "unless-stopped",
+           "--stop-timeout", "1860", "--network", "lekha-internal", "--cpus", "1", "--memory", "2g",
+           "--env-file", str(env_file), "-e", "SERVICE_ROLE=worker", "-e", "PORT=8000",
+           "-e", "MEDIA_SCRATCH_DIR=/scratch", "-e", "CLAMAV_HOST=lekha-clamav",
+           "-e", "WORKER_QUEUES=caption_transcription_jobs_staging",
+           "-v", f"{scratch}:/scratch", args.image)
+    wait_ready("lekha-transcription")
+
+
 if args.action == "prepare":
     if snapshot.exists():
         raise SystemExit("Release already prepared; inspect its rollback snapshot before repeating")
@@ -61,8 +77,11 @@ if args.action == "prepare":
     docker("pull", args.image)
     print(f"{name}: image pulled; root-only rollback saved", flush=True)
 elif args.action == "stop":
-    if not snapshot.exists() or exists(backup):
+    if not snapshot.exists() or exists(backup) or (args.role == "worker" and exists(helper_backup)):
         raise SystemExit("Prepare first; existing rollback must not be overwritten")
+    if args.role == "worker" and exists("lekha-transcription"):
+        docker("stop", "--time", "1860", "lekha-transcription")
+        docker("rename", "lekha-transcription", helper_backup)
     docker("stop", "--time", "1860", name)
     docker("rename", name, backup)
     print(f"{name}: stopped gracefully and retained", flush=True)
@@ -78,17 +97,12 @@ elif args.action == "start":
         options += ["--cpus", "3", "--memory", "10g", "-e", "WORKER_QUEUES=caption_export_jobs"]
     docker(*options, args.image)
     if args.role == "worker":
-        scratch = Path("/var/lib/lekha/transcription-scratch")
-        scratch.mkdir(exist_ok=True, mode=0o750)
-        os.chown(scratch, 1000, 1000)
-        docker("run", "-d", "--name", "lekha-transcription", "--restart", "unless-stopped",
-               "--stop-timeout", "1860", "--network", "lekha-internal", "--cpus", "1", "--memory", "2g",
-               "--env-file", str(env_file), "-e", "SERVICE_ROLE=worker", "-e", "PORT=8000",
-               "-e", "MEDIA_SCRATCH_DIR=/scratch", "-e", "CLAMAV_HOST=lekha-clamav",
-               "-e", "WORKER_QUEUES=caption_transcription_jobs_staging",
-               "-v", f"{scratch}:/scratch", args.image)
-        wait_ready("lekha-transcription")
+        start_transcription_helper()
     wait_ready(name)
+elif args.action == "start-helper":
+    if args.role != "worker":
+        raise SystemExit("Only a worker VM has a transcription helper")
+    start_transcription_helper()
 elif args.action == "rollback":
     if not exists(backup):
         raise SystemExit("No previous container available for rollback")
@@ -98,4 +112,7 @@ elif args.action == "rollback":
             docker("rm", container)
     docker("rename", backup, name)
     docker("start", name)
+    if args.role == "worker" and exists(helper_backup):
+        docker("rename", helper_backup, "lekha-transcription")
+        docker("start", "lekha-transcription")
     print(f"{name}: previous container restored", flush=True)
