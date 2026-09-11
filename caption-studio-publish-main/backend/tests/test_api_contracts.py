@@ -560,10 +560,10 @@ class ApiContractTests(unittest.TestCase):
     @patch("main._release_ai_quota")
     @patch("main.processor.generate_captions_only", new_callable=AsyncMock)
     @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
-    def test_process_keeps_ai_quota_when_audio_has_no_speech(
+    def test_process_returns_ai_quota_when_audio_has_no_speech(
         self, _safe_find, mock_process, mock_release, _verify_token
     ):
-        """NO_SPEECH is a real provider run that billed us — the call stays spent."""
+        """No usable captions means the customer's import allowance is restored."""
         mock_process.return_value = {"success": True, "captions": []}
         file_id = "123e4567-e89b-12d3-a456-426614174000"
         main._upload_owners[file_id] = "process-user"
@@ -574,7 +574,35 @@ class ApiContractTests(unittest.TestCase):
         )
 
         self.assertEqual(res.status_code, 422)
-        mock_release.assert_not_called()
+        mock_release.assert_called_once_with("process-user", "process")
+
+    def test_worker_transcription_failure_returns_ai_quota(self):
+        """The queued worker uses trusted_uid but must receive the same refund."""
+        request = main.Request({"type": "http", "headers": [], "client": ("worker", 0)})
+        req = main.ProcessRequest(
+            file_id="123e4567-e89b-12d3-a456-426614174000",
+            language="english",
+        )
+        with (
+            patch.object(main, "_assert_service_available"),
+            patch.object(main, "_assert_upload_owner"),
+            patch.object(main, "_safe_find_upload", return_value="C:/tmp/sample.mp4"),
+            patch.object(main, "_lookup_subscription_tier", return_value="free"),
+            patch.object(main, "_read_service_controls", return_value={}),
+            patch.object(main, "_probe_media", return_value={"format": {"duration": 1}}),
+            patch.object(main, "_compute_media_hash", side_effect=RuntimeError("skip cache")),
+            patch.object(main, "_acquire_process_slot", return_value=True),
+            patch.object(main, "_release_process_slot"),
+            patch.object(main, "_reserve_ai_quota"),
+            patch.object(main, "_release_ai_quota") as release_quota,
+            patch.object(main.processor, "generate_captions_only", new_callable=AsyncMock,
+                         return_value={"success": False, "error": "provider unavailable"}),
+        ):
+            with self.assertRaises(main.HTTPException) as raised:
+                asyncio.run(main._process_video_inline(req, request, main.Response(), trusted_uid="process-user"))
+
+        self.assertEqual(raised.exception.status_code, 502)
+        release_quota.assert_called_once_with("process-user", "process")
 
     def test_request_models_reject_invalid_caption_and_word_range(self):
         export_res = self.client.post(
