@@ -3939,8 +3939,13 @@ def run_transcription_job_task(uid: str, job_id: str):
                     raise
                 time.sleep(attempt + 1)
     except Exception as error:
-        known_rejection = isinstance(error, HTTPException) and error.status_code < 500
-        jobs.finish(uid, job_id, "failed" if known_rejection else "unknown",
+        # HTTP errors from `_process_video_inline` are confirmed terminal
+        # outcomes (including a provider's explicit failure), so the browser
+        # may safely retry the durable job without uploading again. A raw
+        # exception remains `unknown`: the provider may have completed it just
+        # before the worker failed, and replaying blindly could double-charge.
+        confirmed_failure = isinstance(error, HTTPException)
+        jobs.finish(uid, job_id, "failed" if confirmed_failure else "unknown",
                     error="Transcription could not complete. Contact support with this job reference; it will not be repeated automatically.")
         raise
 

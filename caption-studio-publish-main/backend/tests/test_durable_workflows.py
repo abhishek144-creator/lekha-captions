@@ -179,6 +179,19 @@ class DurableWorkflowTests(unittest.TestCase):
             self.assertEqual(provider.call_count, 1)
         self.assertEqual(len(calls), 2)
 
+    def test_confirmed_worker_failure_is_retryable_without_reupload(self):
+        job = self.jobs.create("a", self.settings)
+        with (patch.object(main, "get_db", return_value=self.db), patch.object(main, "_assert_account_not_deleting"),
+              patch.object(main, "_process_video_inline", new_callable=AsyncMock,
+                           side_effect=HTTPException(502, "provider unavailable"))):
+            with self.assertRaises(HTTPException):
+                main.run_transcription_job_task("a", job["job_id"])
+
+        self.assertEqual(self.jobs.get("a", job["job_id"])["status"], "failed")
+        retry = self.jobs.create("a", self.settings)
+        self.assertEqual(retry["status"], "queued")
+        self.assertEqual(retry["retry_count"], 1)
+
     def test_deleted_account_cannot_claim_or_publish_captions(self):
         job = self.jobs.create("a", self.settings)
         self.db.data["account_deletions/a"] = {"status": "pending"}
