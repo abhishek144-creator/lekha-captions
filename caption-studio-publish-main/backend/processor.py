@@ -161,7 +161,17 @@ def _video_encoder_args(crf, force_cpu=False):
     if use_gpu:
         return ["-c:v", "h264_nvenc", "-preset", "p4", "-rc", "vbr",
                 "-cq", str(crf), "-b:v", "0"]
-    return ["-c:v", "libx264", "-preset", "fast", "-crf", str(crf)]
+    # Constant-quality x264 presets trade compression time for output size, not
+    # visual quality. `veryfast` materially reduces customer wait time on the
+    # CPU-only GCE workers while keeping the existing CRF quality targets.
+    cpu_preset = (os.environ.get("EXPORT_CPU_PRESET", "veryfast") or "veryfast").strip().lower()
+    allowed_cpu_presets = {
+        "ultrafast", "superfast", "veryfast", "faster", "fast", "medium",
+    }
+    if cpu_preset not in allowed_cpu_presets:
+        print(f"[Encoder] Invalid EXPORT_CPU_PRESET={cpu_preset!r}; using veryfast.")
+        cpu_preset = "veryfast"
+    return ["-c:v", "libx264", "-preset", cpu_preset, "-crf", str(crf)]
 
 
 GOOGLE_FONTS_MAP = {
@@ -1234,6 +1244,21 @@ class VideoProcessor:
             return "scale=720:-2:flags=lanczos", "26", "128k"
         return "scale=1080:-2:flags=lanczos", "22", "128k"
 
+    def _get_output_dimensions(self, video_w, video_h, quality, export_aspect_ratio=""):
+        """Return the final even-sized canvas used by the video encoder."""
+        aspect = str(export_aspect_ratio or "").strip()
+        base = 2160 if quality == '4k' else 720 if quality == '720p' else 1080
+        if aspect == "9:16":
+            return base, base * 16 // 9
+        if aspect == "1:1":
+            return base, base
+        if aspect == "16:9":
+            return base * 16 // 9, base
+        if video_w <= 0 or video_h <= 0:
+            return base, base * 16 // 9
+        output_h = max(2, int(round((video_h * base / video_w) / 2) * 2))
+        return base, output_h
+
     def _get_export_fps(self, style):
         try:
             fps = int(style.get('fps', 30) or 30)
@@ -1267,6 +1292,9 @@ class VideoProcessor:
         quality = style.get('quality', '1080p')
         export_aspect_ratio = self._get_export_aspect_ratio(style)
         scale_filter, crf, audio_bitrate = self._get_quality_settings(quality, export_aspect_ratio)
+        output_w, output_h = self._get_output_dimensions(
+            video_w, video_h, quality, export_aspect_ratio
+        )
         fps = self._get_export_fps(style)
         duration = self._get_video_duration(input_p)
         temp_root = os.path.join(self.project_root, ".render_tmp")
@@ -1281,8 +1309,11 @@ class VideoProcessor:
             payload = {
                 "captions": captions,
                 "style": style,
-                "video_width": video_w,
-                "video_height": video_h,
+                # Chromium renders directly at final export resolution. The old
+                # path captured every overlay at source resolution and then
+                # downscaled it, wasting most screenshot pixels on 720p jobs.
+                "video_width": output_w,
+                "video_height": output_h,
                 "duration": duration,
                 "output_dir": overlay_dir,
             }
@@ -1291,6 +1322,7 @@ class VideoProcessor:
 
             render_cmd = ["node", self.template_overlay_script, payload_path]
             print(f"[Template DOM] Rendering overlay frames with: {' '.join(render_cmd)}")
+            overlay_started_at = time.perf_counter()
             render_result = subprocess.run(
                 render_cmd,
                 capture_output=True,
@@ -1298,6 +1330,8 @@ class VideoProcessor:
                 cwd=self.project_root,
                 timeout=15 * 60,
             )
+            overlay_seconds = time.perf_counter() - overlay_started_at
+            print(f"[Template DOM] Overlay frames completed in {overlay_seconds:.2f}s")
             if render_result.stdout:
                 print(f"[Template DOM] stdout: {render_result.stdout[-1000:]}")
             if render_result.returncode != 0:
@@ -1313,8 +1347,8 @@ class VideoProcessor:
             base_chain = "[0:v]"
             if crop_filter:
                 base_chain += f"{crop_filter},"
-            base_chain += "format=rgba[base]"
-            filter_complex = f"{base_chain};[1:v]format=rgba[overlay];[base][overlay]overlay=0:0:format=auto[composited];[composited]{scale_filter},format=yuv420p[outv]"
+            base_chain += f"{scale_filter},format=rgba[base]"
+            filter_complex = f"{base_chain};[1:v]format=rgba[overlay];[base][overlay]overlay=0:0:format=auto,format=yuv420p[outv]"
 
             def _build_overlay_cmd(force_cpu=False):
                 return [
@@ -1338,6 +1372,7 @@ class VideoProcessor:
             print(f"[Template DOM] Quality: {quality}, CRF: {crf}")
             print(f"[Template DOM] filter_complex: {filter_complex}")
             print(f"[Template DOM] Running FFmpeg: {' '.join(cmd)}")
+            encode_started_at = time.perf_counter()
             result = run_media_command(cmd, capture_output=True, text=True)
             if result.stderr:
                 print(f"[Template DOM] FFmpeg stderr (last 1000 chars): {result.stderr[-1000:]}")
@@ -1351,6 +1386,8 @@ class VideoProcessor:
                     print(f"[Template DOM] CPU retry stderr (last 1000 chars): {result.stderr[-1000:]}")
             if result.returncode != 0:
                 return {"success": False, "error": "Video render failed"}
+            encode_seconds = time.perf_counter() - encode_started_at
+            print(f"[Template DOM] Video encode completed in {encode_seconds:.2f}s")
 
             if os.path.exists(output_p):
                 print(f"[Template DOM] Output file size: {os.path.getsize(output_p)} bytes")

@@ -6025,7 +6025,20 @@ async function main() {
           wordPositionAudits.push({ time: renderTime, words: frameWordPositions });
         }
 
-        const endingCaptionAudits = await page.evaluate((currentPayload, currentTime, segmentEnd) => {
+        const hasCaptionEndingAtSegment = (payload.captions || []).some((caption) => {
+          const end = Number(caption.end_time ?? caption.start_time ?? 0);
+          const isTemplate = Boolean(
+            caption.template_id
+            || caption.template_20_id
+            || caption.applied_template_style?.template_id
+            || caption.applied_template_style?.template_20_id
+            || payload.style?.template_id
+            || payload.style?.template_20_id
+          );
+          return isTemplate && Math.abs(end - segment.end) <= 0.002;
+        });
+        const endingCaptionAudits = hasCaptionEndingAtSegment
+          ? await page.evaluate((currentPayload, currentTime, segmentEnd) => {
           const normalizeTokens = (value) => String(value || '')
             .normalize('NFC')
             .trim()
@@ -6183,7 +6196,8 @@ async function main() {
               script: caption.__export_script || 'latin',
             };
           }).filter(Boolean);
-        }, payload, renderTime, segment.end);
+          }, payload, renderTime, segment.end)
+          : [];
         completenessAudits.push(...endingCaptionAudits);
         const incompleteAudit = endingCaptionAudits.find((audit) => !audit.complete);
         if (incompleteAudit) {
