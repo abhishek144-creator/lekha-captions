@@ -32,6 +32,7 @@ import {
   buildTextElementExportStyle,
   getCaptionedVideoFilename,
   hasExportableVideoContent,
+  nextExportProgress,
   shouldAttachApiAuth,
 } from './exportPipelineUtils';
 import {
@@ -174,6 +175,27 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
   const exportInFlightRef = useRef(false);
   const exportAbortRef = useRef(null);
   const backgroundNoticeShownRef = useRef(false);
+  const progressTargetRef = useRef(0);
+
+  const raiseProgressTarget = (target) => {
+    progressTargetRef.current = Math.max(progressTargetRef.current, Math.min(100, target));
+  };
+
+  useEffect(() => {
+    if (!isExporting) return undefined;
+
+    // Backend stage updates raise the ceiling while the visible percentage
+    // moves in small deterministic steps. It never jumps backwards or reaches
+    // 100% before the browser has the complete download.
+    const timer = window.setInterval(() => {
+      setProgress((current) => {
+        const target = progressTargetRef.current;
+        return nextExportProgress(current, target);
+      });
+    }, 100);
+
+    return () => window.clearInterval(timer);
+  }, [isExporting]);
 
   useEffect(() => () => {
     // Closing the sheet intentionally keeps an export alive, but leaving the
@@ -236,17 +258,18 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       const status = (statusPayload?.status || '').toLowerCase();
       if (status === 'queued' || status === 'starting') {
         setStatusMessage('Preparing your export...');
-        setProgress(prev => Math.max(prev, 25));
+        raiseProgressTarget(45);
       } else if (status === 'retrying') {
         setStatusMessage('Recovering your export. Please keep this page open...');
+        raiseProgressTarget(58);
       } else if (status === 'processing') {
         setStatusMessage('Rendering in progress...');
-        setProgress(prev => Math.max(prev, 55));
+        raiseProgressTarget(96);
       } else if (status === 'finalizing') {
         setStatusMessage('Finalizing your export...');
-        setProgress(prev => Math.max(prev, 82));
+        raiseProgressTarget(98);
       } else if (status === 'completed') {
-        setProgress(prev => Math.max(prev, 90));
+        raiseProgressTarget(99);
         return;
       } else if (status === 'failed') {
         const terminalError = new Error(statusPayload?.error || 'Export failed');
@@ -396,6 +419,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
 
     setIsExporting(true);
     exportInFlightRef.current = true;
+    progressTargetRef.current = 18;
     backgroundNoticeShownRef.current = false;
     exportAbortRef.current?.abort();
     // Captured outside the try so the failure handler can quote a job reference
@@ -404,7 +428,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
     let activeExportJobId = '';
     const exportController = new AbortController();
     exportAbortRef.current = exportController;
-    setProgress(10);
+    setProgress(2);
     setStatusMessage('Preparing export...');
     setWaitStartTime(Date.now());
     setShowServerBusy(false);
@@ -415,7 +439,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
     }));
 
     try {
-      setProgress(20);
+      raiseProgressTarget(30);
       setStatusMessage('Sending to render engine...');
 
       // Export is server-rendered from persisted editor state. The request must
@@ -701,30 +725,15 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
 
       setStatusMessage('Rendering captions onto video...');
 
-      // Start simulated progress for smooth UI
-      const progressInterval = setInterval(() => {
-        setProgress(prev => {
-          if (prev < 30) return prev + (Math.random() * 5 + 2); // Fast to 30%
-          if (prev < 50) return prev + (Math.random() * 2 + 1); // Medium to 50%
-          if (prev < 90) return prev + 0.5; // Slow crawl to 90%
-          return prev;
-        });
-      }, 500);
-
-      let result;
-      try {
-        result = await exportQueue.add(() => apiRequest('/api/export', {
-          method: 'POST',
-          signal: exportController.signal,
-          headers: {
-            'Content-Type': 'application/json',
-            ...(isFeatureEnabled('canaryExportFlow') ? { 'x-api-version': '2026-04-21' } : {}),
-          },
-          body: JSON.stringify(exportData)
-        }));
-      } finally {
-        clearInterval(progressInterval);
-      }
+      const result = await exportQueue.add(() => apiRequest('/api/export', {
+        method: 'POST',
+        signal: exportController.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(isFeatureEnabled('canaryExportFlow') ? { 'x-api-version': '2026-04-21' } : {}),
+        },
+        body: JSON.stringify(exportData)
+      }));
 
       if (!result.success) {
         const planKind = getPlanLimitErrorKind(result.detail || result.error || '');
@@ -757,7 +766,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
         setExportExpiry({ hours: resolvedResult.retention_hours, expiresAt: resolvedResult.expires_at })
       }
 
-      setProgress(90);
+      raiseProgressTarget(99);
       setStatusMessage('Preparing download...');
 
       // Firebase Storage URLs are absolute; local URLs are relative
@@ -791,6 +800,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       }));
 
       setProgress(100);
+      progressTargetRef.current = 100;
       setStatusMessage('Export complete!');
       // The backend just decremented a credit — refresh so the plan/credits
       // gating reflects reality instead of the stale pre-export snapshot.
@@ -827,6 +837,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
         exportAbortRef.current = null;
       }
       setProgress(0);
+      progressTargetRef.current = 0;
       setStatusMessage('');
       setWaitStartTime(null);
       setShowServerBusy(false);

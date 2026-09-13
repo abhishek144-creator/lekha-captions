@@ -79,6 +79,16 @@ export function shouldAttachApiAuth(downloadUrl, currentOrigin = '') {
   }
 }
 
+export function nextExportProgress(currentValue, targetValue) {
+  const current = Math.max(0, Math.min(100, Number(currentValue) || 0))
+  const target = Math.max(current, Math.min(100, Number(targetValue) || 0))
+  if (current >= target) return current
+
+  const gap = target - current
+  const step = current < 70 ? 0.4 : current < 90 ? 0.18 : 0.06
+  return Math.min(target, current + Math.min(step, gap))
+}
+
 export function getCaptionedVideoFilename(originalFileName) {
   const leafName = String(originalFileName || '')
     .split(/[\\/]/)

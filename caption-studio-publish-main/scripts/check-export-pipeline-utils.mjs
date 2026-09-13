@@ -7,6 +7,7 @@ import {
   formatSrtTimestamp,
   getCaptionedVideoFilename,
   hasExportableVideoContent,
+  nextExportProgress,
   resolveApiResourceUrl,
   shouldAttachApiAuth,
 } from '../src/components/dashboard/exportPipelineUtils.js'
@@ -37,6 +38,16 @@ assert.equal(shouldAttachApiAuth('https://app.example/api/export-file/1', 'https
 assert.equal(shouldAttachApiAuth('https://storage.example/api/export-file/1', 'https://app.example'), false)
 assert.equal(getCaptionedVideoFilename('C:\\fakepath\\my:clip.mov'), 'my_clip_captioned.mp4')
 assert.equal(getCaptionedVideoFilename('.mp4'), 'export_captioned.mp4')
+
+const progressSamples = [2]
+for (let index = 0; index < 300; index += 1) {
+  progressSamples.push(nextExportProgress(progressSamples.at(-1), 96))
+}
+assert.ok(progressSamples.every((value, index) => index === 0 || value >= progressSamples[index - 1]))
+assert.ok(progressSamples.every((value) => value <= 96))
+assert.ok(progressSamples.at(-1) > 90)
+assert.equal(nextExportProgress(48, 40), 48)
+assert.equal(nextExportProgress(99.98, 100), 100)
 
 const textElementStyle = buildTextElementExportStyle({
   left: 12,
@@ -71,6 +82,7 @@ const exportPanelSource = fs.readFileSync(
 assert.doesNotMatch(exportPanelSource, /word_layouts\s*:/)
 assert.doesNotMatch(exportPanelSource, /preview_template_(?:font|box|line)/)
 assert.doesNotMatch(exportPanelSource, /data-lekha-player/)
+assert.doesNotMatch(exportPanelSource, /Math\.random\(\).*progress/)
 assert.match(exportPanelSource, /Export is server-rendered from persisted editor state/)
 
 console.log('Export pipeline utility checks passed')
