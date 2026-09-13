@@ -74,6 +74,12 @@ class PreviewExportParityTests(unittest.TestCase):
             {"template_id": "t33", "text": "एक क्लबाउस है और यहाँ पे"}
         ]))
 
+    def test_dom_overlay_uses_final_export_dimensions(self):
+        self.assertEqual(processor._get_output_dimensions(1080, 1920, "720p"), (720, 1280))
+        self.assertEqual(processor._get_output_dimensions(1920, 1080, "1080p"), (1080, 608))
+        self.assertEqual(processor._get_output_dimensions(1920, 1080, "1080p", "16:9"), (1920, 1080))
+        self.assertEqual(processor._get_output_dimensions(1080, 1920, "4k", "1:1"), (2160, 2160))
+
     def test_rich_editor_features_select_dom_renderer(self):
         self.assertTrue(processor._should_use_dom_template_renderer({}, [
             {"id": "text-1", "is_text_element": True, "text": "Headline"}
