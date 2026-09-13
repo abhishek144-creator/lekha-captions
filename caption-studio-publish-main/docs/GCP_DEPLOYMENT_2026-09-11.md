@@ -1,5 +1,7 @@
 # Google Cloud deployment — 11 September 2026
 
+**Update:** the API and worker single-instance risks documented below were fixed on 12 September. See [Google Cloud scaling deployment — 12 September 2026](GCP_SCALING_DEPLOYMENT_2026-09-12.md) for the current managed-instance-group, autoscaling, load-balancer, quota, and verification state.
+
 ## Result
 
 Critical backend fixes are deployed and healthy on **Google Cloud staging**. Public traffic remains on Netlify/Railway. This is **not yet approved for a mass-user public launch**, and a universal five-minute export completion time has not been demonstrated.
