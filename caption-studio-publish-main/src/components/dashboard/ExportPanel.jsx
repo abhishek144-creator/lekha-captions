@@ -739,12 +739,13 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       if (result.export_job_id) {
         activeExportJobId = result.export_job_id;
         await pollExportStatus(result.export_job_id, authHeaders, 10 * 60 * 1000, exportController.signal);
-        if (!result.video_url) {
-          resolvedResult = await apiRequest(`/api/export-result/${result.export_job_id}`, {
-            headers: authHeaders,
-            signal: exportController.signal
-          });
-        }
+        // Always resolve the completed receipt again. The API returns a fresh,
+        // short-lived media token, so an idempotent replay can download the
+        // existing render without a duplicate job or another credit.
+        resolvedResult = await apiRequest(`/api/export-result/${result.export_job_id}`, {
+          headers: authHeaders,
+          signal: exportController.signal
+        });
       }
 
       if (resolvedResult?.success === false) {

@@ -5,6 +5,8 @@ assert.equal(shouldDispatchAuthLogout(401, { detail: 'Invalid authentication tok
 assert.equal(shouldDispatchAuthLogout(403, { detail: 'UPGRADE_REQUIRED: no credits' }), false)
 assert.equal(shouldDispatchAuthLogout(403, { detail: 'Forbidden' }), false)
 assert.equal(shouldDispatchAuthLogout(401, { detail: 'PLAN_EXPIRED: renew subscription' }), false)
+assert.equal(shouldDispatchAuthLogout(401, { detail: 'Media token expired' }), false)
+assert.equal(shouldDispatchAuthLogout(401, { detail: 'Invalid media token' }), false)
 assert.equal(shouldDispatchAuthLogout(429, { detail: 'QUOTA_EXCEEDED' }), false)
 
 console.log('API error policy checks passed')

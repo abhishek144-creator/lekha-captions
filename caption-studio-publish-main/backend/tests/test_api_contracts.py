@@ -741,6 +741,36 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.json().get("status"), "completed")
 
+    @patch("main.verify_token", return_value={"uid": "owner-uid"})
+    def test_export_result_refreshes_expired_media_token_without_new_job(self, _verify_token):
+        job_id = "123e4567-e89b-12d3-a456-426614174099"
+        filename = "export_123e4567-e89b-12d3-a456-426614174099_abcdef123456.mp4"
+        expired_url = main._signed_export_url(filename, "owner-uid", 60, "old")
+        main._export_jobs[job_id] = {
+            "uid": "owner-uid",
+            "status": "completed",
+            "payload": {
+                "success": True,
+                "video_url": expired_url,
+                "export_job_id": job_id,
+            },
+        }
+
+        with patch.object(main.time, "time", return_value=time.time() + 120):
+            response = self.client.get(
+                f"/api/export-result/{job_id}",
+                headers={"Authorization": "Bearer owner-token"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        refreshed = response.json()
+        self.assertNotEqual(refreshed["video_url"], expired_url)
+        self.assertIn("download_url_expires_at", refreshed)
+        token = refreshed["video_url"].split("token=", 1)[1].split("&", 1)[0]
+        verified = main._verify_media_token(token, "export")
+        self.assertEqual(verified["filename"], filename)
+        self.assertEqual(verified["uid"], "owner-uid")
+
     @patch("main.verify_token")
     def test_export_replay_requires_owner_auth(self, mock_verify_token):
         job = {

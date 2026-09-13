@@ -2418,6 +2418,36 @@ def _signed_export_url(filename: str, uid: str, ttl_seconds: int, cache_bust: st
     return f"/api/media/export/{filename}?token={token}{suffix}"
 
 
+def _refresh_completed_export_payload(payload: Dict[str, Any], uid: str, job_id: str) -> Dict[str, Any]:
+    """Return an authorized recovery payload with a fresh, short-lived download token."""
+    refreshed = dict(payload or {})
+    if not refreshed.get("success"):
+        return refreshed
+
+    filename = str(refreshed.get("export_filename") or "").strip()
+    if not filename:
+        raw_url = str(refreshed.get("video_url") or "")
+        filename = os.path.basename(urllib.parse.urlsplit(raw_url).path)
+    if not re.fullmatch(r"export_[a-f0-9-]{36}_[a-f0-9]{12}\.mp4", filename):
+        return refreshed
+
+    # Completed-job receipts live longer than the original media token so a
+    # response lost during download can be recovered without another render or
+    # credit. Storage retention remains authoritative: this token only grants a
+    # brief retry window and the media endpoint still returns 404 after cleanup.
+    recovery_ttl_seconds = 15 * 60
+    refreshed["video_url"] = _signed_export_url(
+        filename,
+        uid,
+        recovery_ttl_seconds,
+        f"{job_id[:8]}-{int(time.time())}",
+    )
+    refreshed["download_url_expires_at"] = (
+        _utcnow() + timedelta(seconds=recovery_ttl_seconds)
+    ).isoformat() + "Z"
+    return refreshed
+
+
 def _compute_media_hash(file_path: str) -> str:
     digest = hashlib.sha256()
     with open(file_path, "rb") as f:
@@ -4202,7 +4232,10 @@ async def export_video(req: ExportRequest, request: Request, response: Response)
                 )
             if cached.get("status") == "completed" and cached.get("payload"):
                 _log(rid, f"Idempotent replay for key={raw_idem[:16]}")
-                return {**cached["payload"], "idempotent_replay": True}
+                recovery_payload = _refresh_completed_export_payload(
+                    cached["payload"], uid, str(cached.get("job_id") or "")
+                )
+                return {**recovery_payload, "idempotent_replay": True}
             if cached.get("status") == "in_progress":
                 if cached.get("payload"):
                     return {**cached["payload"], "idempotent_replay": True}
@@ -4387,7 +4420,7 @@ def export_result(job_id: str, request: Request):
     payload = job.get("payload") or {}
     if not payload:
         return {"success": False, "status": "completed", "error": "Result payload missing"}
-    return payload
+    return _refresh_completed_export_payload(payload, str(job.get("uid") or ""), job_id)
 
 
 @app.post("/api/export-cancel/{job_id}")
