@@ -1,4 +1,4 @@
-const NON_AUTH_ERROR_MARKERS = /PLAN_EXPIRED|UPGRADE_REQUIRED|INSUFFICIENT_CREDITS|QUOTA_EXCEEDED/
+const NON_AUTH_ERROR_MARKERS = /PLAN_EXPIRED|UPGRADE_REQUIRED|INSUFFICIENT_CREDITS|QUOTA_EXCEEDED|media token/i
 
 export function shouldDispatchAuthLogout(status, data = null) {
   if (Number(status) !== 401) return false
