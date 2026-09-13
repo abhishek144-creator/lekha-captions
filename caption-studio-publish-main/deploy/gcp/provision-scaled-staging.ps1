@@ -88,7 +88,7 @@ function Ensure-GroupTemplate {
 Ensure-HealthCheck $apiHealth
 Ensure-HealthCheck $workerHealth
 Ensure-Template $apiTemplate api e2-standard-2 lekha-api-mig
-Ensure-Template $workerTemplate worker e2-standard-4 lekha-worker-mig
+Ensure-Template $workerTemplate worker n2-standard-4 lekha-worker-mig
 
 & gcloud compute firewall-rules describe lekha-allow-health-checks --project=$ProjectId *> $null
 if ($LASTEXITCODE -ne 0) {
@@ -106,7 +106,8 @@ Invoke-Gcloud compute instance-groups managed set-named-ports $apiGroup `
 Invoke-Gcloud compute instance-groups managed update $apiGroup `
     --project=$ProjectId --region=$Region --health-check=$apiHealth --initial-delay=180
 Invoke-Gcloud compute instance-groups managed update $workerGroup `
-    --project=$ProjectId --region=$Region --health-check=$workerHealth --initial-delay=180
+    --project=$ProjectId --region=$Region --health-check=$workerHealth --initial-delay=180 `
+    --target-distribution-shape=balanced --instance-redistribution-type=none
 
 Ensure-GroupTemplate $apiGroup $apiTemplate
 Ensure-GroupTemplate $workerGroup $workerTemplate
