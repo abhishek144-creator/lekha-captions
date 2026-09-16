@@ -1,8 +1,8 @@
 param(
     [string]$ProjectId = "project-0cc7c839-b9c7-4734-ad0",
     [string]$Region = "asia-south1",
-    [string]$Release = "d4f3cb17ef5fcb273c66f702bdd72355c8f6b9e8",
-    [string]$ImageUri = "asia-south1-docker.pkg.dev/project-0cc7c839-b9c7-4734-ad0/caption-studio/app@sha256:abb303e1f1281ef34853453a5edd318a8663079e8fac74aba8f8bcf1bebbb462"
+    [string]$Release = "71831b836d6bd31ec7eee2fadda3aae5f4b76a42",
+    [string]$ImageUri = "asia-south1-docker.pkg.dev/project-0cc7c839-b9c7-4734-ad0/caption-studio/app@sha256:ae882c49d5d5e4cd255de9a684f377ec9c80b145ccff9beecb96809661d10423"
 )
 
 $ErrorActionPreference = "Stop"
@@ -11,8 +11,8 @@ $zones = "asia-south1-a,asia-south1-b,asia-south1-c"
 $serviceAccount = "602676673096-compute@developer.gserviceaccount.com"
 $startupScript = Join-Path $PSScriptRoot "gce-startup.sh"
 $suffix = $Release.Substring(0, 7)
-$apiTemplate = "lekha-api-staging-$suffix-pdbal50"
-$workerTemplate = "lekha-worker-staging-$suffix-pdbal50"
+$apiTemplate = "lekha-api-staging-$suffix-private-pdbal50"
+$workerTemplate = "lekha-worker-staging-$suffix-private-pdstd50"
 $apiGroup = "lekha-api-staging-mig"
 $workerGroup = "lekha-worker-staging-mig"
 $apiHealth = "lekha-api-staging-mig-health"
@@ -40,19 +40,36 @@ function Ensure-Template {
         [string]$Name,
         [string]$Role,
         [string]$MachineType,
-        [string]$Tag
+        [string]$Tag,
+        [string]$DiskType
     )
     & gcloud compute instance-templates describe $Name --project=$ProjectId *> $null
     if ($LASTEXITCODE -eq 0) { return }
     Invoke-Gcloud compute instance-templates create $Name `
         --project=$ProjectId --machine-type=$MachineType `
         --network=default --subnet=default --region=$Region `
-        --network-tier=PREMIUM --maintenance-policy=MIGRATE `
+        --no-address --maintenance-policy=MIGRATE `
         --service-account=$serviceAccount --scopes=cloud-platform `
         --tags=$Tag --image-family=debian-12 --image-project=debian-cloud `
-        --boot-disk-size=50GB --boot-disk-type=pd-balanced --boot-disk-auto-delete `
+        --boot-disk-size=50GB --boot-disk-type=$DiskType --boot-disk-auto-delete `
         --metadata="service-role=$Role,image-uri=$ImageUri,runtime-secret=lekha-runtime-env,region=$Region" `
         --metadata-from-file="startup-script=$startupScript"
+}
+
+$router = "lekha-egress-router"
+$nat = "lekha-egress-nat"
+& gcloud compute routers describe $router --project=$ProjectId --region=$Region *> $null
+if ($LASTEXITCODE -ne 0) {
+    Invoke-Gcloud compute routers create $router `
+        --project=$ProjectId --region=$Region --network=default
+}
+& gcloud compute routers nats describe $nat `
+    --project=$ProjectId --router=$router --region=$Region *> $null
+if ($LASTEXITCODE -ne 0) {
+    Invoke-Gcloud compute routers nats create $nat `
+        --project=$ProjectId --router=$router --region=$Region `
+        --auto-allocate-nat-external-ips --nat-all-subnet-ip-ranges `
+        --min-ports-per-vm=128 --enable-logging --log-filter=ERRORS_ONLY
 }
 
 function Ensure-RegionalGroup {
@@ -87,8 +104,8 @@ function Ensure-GroupTemplate {
 
 Ensure-HealthCheck $apiHealth
 Ensure-HealthCheck $workerHealth
-Ensure-Template $apiTemplate api e2-standard-2 lekha-api-mig
-Ensure-Template $workerTemplate worker n2-standard-4 lekha-worker-mig
+Ensure-Template $apiTemplate api e2-standard-2 lekha-api-mig pd-balanced
+Ensure-Template $workerTemplate worker n2-custom-4-12288 lekha-worker-mig pd-standard
 
 & gcloud compute firewall-rules describe lekha-allow-health-checks --project=$ProjectId *> $null
 if ($LASTEXITCODE -ne 0) {
@@ -99,7 +116,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Ensure-RegionalGroup $apiGroup $apiTemplate 2
-Ensure-RegionalGroup $workerGroup $workerTemplate 2
+Ensure-RegionalGroup $workerGroup $workerTemplate 3
 
 Invoke-Gcloud compute instance-groups managed set-named-ports $apiGroup `
     --project=$ProjectId --region=$Region --named-ports=http:8000
@@ -137,13 +154,13 @@ Invoke-Gcloud compute instance-groups managed set-autoscaling $apiGroup `
     --target-cpu-utilization=0.60 --cool-down-period=900 `
     "--scale-in-control=max-scaled-in-replicas=1,time-window=1800"
 
-# Two warm workers remove the single-worker failure mode. A render normally
-# occupies most of an e2-standard-4 VM, so CPU gives a bounded scale-out signal.
+# Three warm workers remove the single-worker failure mode. A render normally
+# occupies most of a four-vCPU VM, so CPU gives a bounded fallback scale-out signal.
 # Automatic scale-in is disabled because Compute Engine cannot prove an RQ job
 # has drained; an operator can shrink the group only after pending and started
 # registries are empty.
 Invoke-Gcloud compute instance-groups managed set-autoscaling $workerGroup `
-    --project=$ProjectId --region=$Region --min-num-replicas=2 --max-num-replicas=5 `
-    --target-cpu-utilization=0.45 --cool-down-period=900 --mode=only-scale-out
+    --project=$ProjectId --region=$Region --min-num-replicas=3 --max-num-replicas=20 `
+    --target-cpu-utilization=0.45 --cool-down-period=180 --mode=only-scale-out
 
 Write-Host "Scaled staging groups configured. Verify every instance and queue before stopping either rollback VM."

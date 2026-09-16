@@ -17,7 +17,11 @@ updates = {
     "APP_BUILD_TIME": "2026-09-09T14:40:32Z",
     "RELEASE_ENVIRONMENT": "staging",
     "TRANSCRIPTION_QUEUE_NAME": "caption_transcription_jobs_staging",
-    "EXPORT_MAX_PENDING_JOBS": "16",
+    "EXPORT_MAX_PENDING_JOBS": "80",
+    "EXPORT_MAX_QUEUE_WAIT_SECONDS": "600",
+    "QUEUE_METRICS_ENABLED": "1",
+    "QUEUE_METRICS_INTERVAL_SECONDS": "30",
+    "WORKER_MIG_NAME": "lekha-worker-staging-mig",
 }
 lines = [line for line in raw.splitlines() if line.partition("=")[0] not in updates]
 lines.extend(f"{key}={value}" for key, value in updates.items())

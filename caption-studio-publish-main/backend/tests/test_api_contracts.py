@@ -889,7 +889,7 @@ class ApiContractTests(unittest.TestCase):
         job = main._export_jobs[payload["export_job_id"]]
         self.assertNotIn("id_token", job.get("request_snapshot", {}))
         self.assertEqual(captured["args"][1].get("id_token"), None)
-        self.assertEqual(captured["ttl"], 120)
+        self.assertEqual(captured["ttl"], 600)
 
         res_second = self.client.post(
             "/api/export",

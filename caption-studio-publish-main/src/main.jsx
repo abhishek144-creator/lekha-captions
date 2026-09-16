@@ -3,6 +3,7 @@ import App from '@/App.jsx'
 import '@/index.css'
 import { AuthProvider } from './lib/AuthContext'
 import { initWebVitalsTracking } from '@/lib/webVitals'
+import { initializeFrontendMonitoring } from '@/lib/frontendMonitoring'
 
 // Firebase auth treats localhost and 127.0.0.1 as different domains.
 // Normalize local dev traffic to localhost so Google auth works in dev.
@@ -16,6 +17,7 @@ if (
   window.location.replace(redirectUrl.toString())
 }
 
+initializeFrontendMonitoring()
 initWebVitalsTracking()
 
 ReactDOM.createRoot(document.getElementById('root')).render(

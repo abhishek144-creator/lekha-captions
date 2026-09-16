@@ -5547,6 +5547,11 @@ async function main() {
     await page.screenshot({
       path: blankFramePath,
       omitBackground: true,
+      // Caption exports favor throughput over PNG compression ratio. Chromium's
+      // fast encoder preserves the rendered pixels while avoiding expensive
+      // per-frame compression work; the temporary files are removed after the
+      // final video is encoded.
+      optimizeForSpeed: true,
     });
 
     for (let index = 0; index < segments.length; index += 1) {
@@ -6213,6 +6218,7 @@ async function main() {
         await page.screenshot({
           path: framePath,
           omitBackground: true,
+          optimizeForSpeed: true,
         });
         renderedFramePath = framePath;
       }
