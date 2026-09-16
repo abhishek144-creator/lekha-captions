@@ -72,6 +72,15 @@ only when the deployment really reverse-proxies `/api` to the backend.
 - Deploy `landing-next/` separately with `NEXT_PUBLIC_APP_URL` and
   `NEXT_PUBLIC_SUPPORT_EMAIL`.
 
+## Google Cloud migration
+
+The staged Google Cloud deployment uses Compute Engine for the API and export
+worker, Memorystore Redis, Firebase for the existing Auth/Firestore/Storage
+services, and Artifact Registry for the shared Docker image. It leaves Netlify
+and Railway production untouched until staging verification passes. See
+[`deploy/gcp/README.md`](deploy/gcp/README.md) for the bootstrap, secret,
+staging, and cutover procedure.
+
 ## Staging sign-off
 
 After deploying the API and worker, run a real short media flow with a short-lived

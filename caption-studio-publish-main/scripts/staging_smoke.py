@@ -44,6 +44,16 @@ def main() -> None:
         headers["X-Firebase-AppCheck"] = args.app_check_token
     session = requests.Session()
 
+    require_ok(
+        session.post(
+            urljoin(base_url, "api/account-bootstrap"),
+            json={"id_token": args.id_token},
+            headers=headers,
+            timeout=30,
+        ),
+        "account bootstrap",
+    )
+
     with args.video.open("rb") as media:
         upload = require_ok(
             session.post(

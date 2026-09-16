@@ -9,8 +9,11 @@ def enqueue_bounded(queue, max_pending, **job):
             try:
                 pipeline.watch(queue.key)
                 if pipeline.llen(queue.key) >= max_pending:
-                    raise HTTPException(429, "Export capacity is temporarily full. Please retry shortly.",
-                                        headers={"Retry-After": "10"})
+                    raise HTTPException(
+                        status_code=429,
+                        detail="Export capacity is temporarily full. Retry after 5 mins.",
+                        headers={"Retry-After": "300"},
+                    )
                 pipeline.multi()
                 delivery = queue.enqueue_call(pipeline=pipeline, **job)
                 pipeline.execute()

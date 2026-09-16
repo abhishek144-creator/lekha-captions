@@ -590,7 +590,7 @@ TRANSCRIPTION_QUEUE_NAME = os.environ.get("TRANSCRIPTION_QUEUE_NAME", EXPORT_QUE
 EXPORT_MAX_PENDING_JOBS = max(1, int(os.environ.get("EXPORT_MAX_PENDING_JOBS", "16")))
 EXPORT_MAX_QUEUE_WAIT_SECONDS = max(
     30,
-    min(int(os.environ.get("EXPORT_MAX_QUEUE_WAIT_SECONDS", "120")), 120),
+    min(int(os.environ.get("EXPORT_MAX_QUEUE_WAIT_SECONDS", "120")), 600),
 )
 DURABLE_QUEUE_ENABLED = os.environ.get("ENABLE_DURABLE_QUEUE", "1") == "1"
 SLACK_ALERT_WEBHOOK_URL = os.environ.get("SLACK_ALERT_WEBHOOK_URL", "").strip()
@@ -710,16 +710,14 @@ _transcription_queue = _export_queue
 if _export_queue is not None and TRANSCRIPTION_QUEUE_NAME != EXPORT_QUEUE_NAME:
     _transcription_queue = Queue(TRANSCRIPTION_QUEUE_NAME, connection=_rq_redis_client, default_timeout=30 * 60)
 
-async def advanced_janitor_job():
-    """Background task to cleanup files based on retention rules."""
-    now = time.time()
+def cleanup_local_media_artifacts(now: float = None) -> Dict[str, int]:
+    """Delete expired scratch files for the current API or worker container."""
+    now = float(now if now is not None else time.time())
     metrics = {
         "uploads_deleted": 0,
         "exports_deleted": 0,
         "temp_ass_deleted": 0,
         "cache_deleted": 0,
-        "cloud_exports_deleted": 0,
-        "cloud_uploads_deleted": 0,
         "errors": 0,
     }
 
@@ -789,6 +787,17 @@ async def advanced_janitor_job():
             except Exception as e:
                 _json_log("warning", "janitor_error", error=str(e), scope="cache")
                 metrics["errors"] += 1
+
+    return metrics
+
+
+async def advanced_janitor_job():
+    """Clean local scratch files and durable objects based on retention rules."""
+    metrics = cleanup_local_media_artifacts()
+    metrics.update({
+        "cloud_exports_deleted": 0,
+        "cloud_uploads_deleted": 0,
+    })
 
     try:
         metrics["cloud_exports_deleted"] = delete_expired_exports()
@@ -4357,7 +4366,11 @@ def _reconcile_export_job(job_id: str, job: Dict[str, Any]):
                 job_id,
                 "failed",
                 expected_status="queued",
-                error="Export could not start within two minutes. Please retry. No credit was charged.",
+                error=(
+                    f"Export could not start within "
+                    f"{max(1, math.ceil(EXPORT_MAX_QUEUE_WAIT_SECONDS / 60))} minutes. "
+                    "Please retry. No credit was charged."
+                ),
                 failure_code="preparation_timeout",
                 failed_at=time.time(),
             )
