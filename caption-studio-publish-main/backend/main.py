@@ -93,6 +93,7 @@ try:
     from .release_metadata import release_metadata
     from .media_commands import run_media_command
     from .job_state import transition as transition_export_job, InvalidJobTransition, LOCAL_LOCK as JOB_STATE_LOCK
+    from .gcp_queue_metrics import publish_queue_snapshot, queue_snapshot
 except ImportError:
     from transcription_jobs import TranscriptionJobs
     from queue_admission import enqueue_bounded
@@ -101,6 +102,7 @@ except ImportError:
     from release_metadata import release_metadata
     from media_commands import run_media_command
     from job_state import transition as transition_export_job, InvalidJobTransition, LOCAL_LOCK as JOB_STATE_LOCK
+    from gcp_queue_metrics import publish_queue_snapshot, queue_snapshot
 
 try:
     import razorpay as _razorpay_module
@@ -585,13 +587,19 @@ _redis_client = None
 _rq_redis_client = None
 EXPORT_QUEUE_NAME = os.environ.get("EXPORT_QUEUE_NAME", "caption_export_jobs")
 TRANSCRIPTION_QUEUE_NAME = os.environ.get("TRANSCRIPTION_QUEUE_NAME", EXPORT_QUEUE_NAME)
-# Conservative backlog bound for the current 1 GiB queue store; increase only
-# after measuring serialized request sizes and worker throughput.
-EXPORT_MAX_PENDING_JOBS = max(1, int(os.environ.get("EXPORT_MAX_PENDING_JOBS", "16")))
+# Production accepts an 80-job waiting backlog. Keep this default aligned with
+# the deployment scripts so a missing override cannot silently reduce capacity.
+EXPORT_MAX_PENDING_JOBS = max(1, int(os.environ.get("EXPORT_MAX_PENDING_JOBS", "80")))
 EXPORT_MAX_QUEUE_WAIT_SECONDS = max(
     30,
-    min(int(os.environ.get("EXPORT_MAX_QUEUE_WAIT_SECONDS", "120")), 600),
+    min(int(os.environ.get("EXPORT_MAX_QUEUE_WAIT_SECONDS", "600")), 600),
 )
+QUEUE_METRICS_ENABLED = os.environ.get("QUEUE_METRICS_ENABLED", "0") == "1"
+QUEUE_METRICS_INTERVAL_SECONDS = max(
+    15,
+    min(int(os.environ.get("QUEUE_METRICS_INTERVAL_SECONDS", "30")), 60),
+)
+WORKER_MIG_NAME = os.environ.get("WORKER_MIG_NAME", "lekha-worker-staging-mig").strip()
 DURABLE_QUEUE_ENABLED = os.environ.get("ENABLE_DURABLE_QUEUE", "1") == "1"
 SLACK_ALERT_WEBHOOK_URL = os.environ.get("SLACK_ALERT_WEBHOOK_URL", "").strip()
 PAYMENT_RECONCILE_INTERVAL_MINUTES = int(os.environ.get("PAYMENT_RECONCILE_INTERVAL_MINUTES", "20"))
@@ -874,11 +882,39 @@ async def scheduled_payment_reconciliation_job():
     finally:
         _release_scheduled_job("payment_reconciliation", token)
 
+
+def _publish_queue_metrics_once():
+    # Multiple Uvicorn processes and API replicas start this loop. A short
+    # Redis lease ensures only one process writes the per-group time series.
+    token = _claim_scheduled_job("gcp_queue_metrics", QUEUE_METRICS_INTERVAL_SECONDS - 2)
+    if not token or _export_queue is None or Job is None:
+        return
+    depth, oldest_age_seconds = queue_snapshot(_export_queue, Job)
+    publish_queue_snapshot(
+        depth,
+        oldest_age_seconds,
+        EXPORT_QUEUE_NAME,
+        WORKER_MIG_NAME,
+    )
+
+
+async def _queue_metrics_loop():
+    while True:
+        try:
+            await asyncio.to_thread(_publish_queue_metrics_once)
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            _json_log("warning", "queue_metrics_publish_failed", error=str(error))
+        await asyncio.sleep(QUEUE_METRICS_INTERVAL_SECONDS)
+
 async def startup_event():
-    global _telemetry_flush_task, _simple_janitor_task, _transcription_dispatch_task
+    global _telemetry_flush_task, _simple_janitor_task, _transcription_dispatch_task, _queue_metrics_task
     _telemetry_flush_task = asyncio.create_task(_telemetry_flush_loop())
     if _IS_PRODUCTION:
         _transcription_dispatch_task = asyncio.create_task(_transcription_dispatch_loop())
+    if QUEUE_METRICS_ENABLED:
+        _queue_metrics_task = asyncio.create_task(_queue_metrics_loop())
     if os.environ.get("RELEASE_ENVIRONMENT") == "staging":
         # Current staging shares Firestore: it must not reconcile live payments
         # or run global customer-media cleanup with staging credentials.
@@ -897,7 +933,10 @@ async def startup_event():
 
 
 async def shutdown_event():
-    global _telemetry_flush_task, _simple_janitor_task, _transcription_dispatch_task
+    global _telemetry_flush_task, _simple_janitor_task, _transcription_dispatch_task, _queue_metrics_task
+    if _queue_metrics_task is not None:
+        _queue_metrics_task.cancel()
+        _queue_metrics_task = None
     if _transcription_dispatch_task is not None:
         _transcription_dispatch_task.cancel()
         _transcription_dispatch_task = None
@@ -1031,6 +1070,7 @@ _telemetry_lock = threading.Lock()
 _telemetry_flush_task = None
 _simple_janitor_task = None
 _transcription_dispatch_task = None
+_queue_metrics_task = None
 
 
 def _retention_deadline(days: int) -> datetime:

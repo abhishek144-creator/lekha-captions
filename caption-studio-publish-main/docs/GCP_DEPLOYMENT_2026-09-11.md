@@ -26,7 +26,7 @@ This report supersedes the access/deployment status in the 9 September initial a
 
 ## Deployed critical changes
 
-- Atomic Redis queue admission prevents concurrent submissions exceeding the configured pending limit of 16. Overload is rejected with retry guidance; this is a capacity guard, not a throughput guarantee.
+- Atomic Redis queue admission prevents concurrent submissions exceeding the configured pending limit of 80. Overload is rejected with retry guidance; this is a capacity guard, not a throughput guarantee.
 - A dedicated transcription worker prevents long exports from monopolizing transcription capacity. Both workers use the existing worker VM: export has 3 CPU / 10 GiB limits; transcription has 1 CPU / 2 GiB limits. One process consumes each queue.
 - Staging transcription uses a separate queue and environment-scoped durable outbox, avoiding consumption of production transcription work in the shared Firebase project.
 - Queue timeout transitions use conditional state updates, avoiding a race that could fail/cancel work that had already started. Readiness requires matching-release workers for both queues.
