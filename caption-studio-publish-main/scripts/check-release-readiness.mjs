@@ -133,7 +133,7 @@ const previewRuntimePath = "src/assets/template-preview-runtime.js"
 assertFile("template preview runtime exists", previewRuntimePath)
 if (fs.existsSync(path.join(root, previewRuntimePath))) {
   const previewRuntimeHash = `sha256-${createHash("sha256")
-    .update(fs.readFileSync(path.join(root, previewRuntimePath)))
+    .update(readText(previewRuntimePath).replace(/\r\n/g, "\n"))
     .digest("base64")}`
   for (const [host, cspPath] of [
     ["Vite", "vite.config.js"],
