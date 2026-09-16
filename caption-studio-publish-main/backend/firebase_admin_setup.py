@@ -318,6 +318,58 @@ def download_export_from_firebase_storage(remote_path: str, local_path: str):
         return False
 
 
+def _delete_orphaned_firebase_objects(
+    prefix: str,
+    max_age_hours: int,
+    batch_size: int,
+    *,
+    delete_upload_metadata: bool = False,
+):
+    """Delete expired Firebase objects even if their Firestore schedule is missing."""
+    if s3_is_configured() or batch_size <= 0:
+        return 0
+    bucket = get_storage_bucket()
+    if not bucket:
+        return 0
+    db = get_db()
+    now = datetime.now(timezone.utc)
+    now_epoch = int(now.timestamp())
+    deleted = 0
+    for blob in bucket.list_blobs(prefix=prefix):
+        if deleted >= batch_size:
+            break
+        metadata = blob.metadata or {}
+        try:
+            deadline = int(metadata.get("delete_at_epoch") or 0)
+        except (TypeError, ValueError):
+            deadline = 0
+        created_at = blob.time_created
+        if created_at is not None and created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        expired = deadline > 0 and deadline <= now_epoch
+        if not deadline and created_at is not None:
+            expired = now - created_at >= timedelta(hours=max_age_hours)
+        if not expired:
+            continue
+        try:
+            remote_path = str(blob.name or "")
+            blob.delete()
+            deleted += 1
+            if db and remote_path:
+                schedule_collection = "upload_expirations" if prefix == "uploads/" else "export_expirations"
+                schedule_id = hashlib.sha256(remote_path.encode("utf-8")).hexdigest()
+                db.collection(schedule_collection).document(schedule_id).delete()
+                if delete_upload_metadata:
+                    file_id = str(metadata.get("file_id") or "")
+                    if not file_id:
+                        file_id = os.path.basename(remote_path).rsplit(".", 1)[0]
+                    if file_id:
+                        db.collection("uploads").document(file_id).delete()
+        except Exception as e:
+            print(f"[Storage] Orphan expiry cleanup failed for {prefix}: {e}")
+    return deleted
+
+
 def delete_expired_uploads(batch_size: int = 400):
     db = get_db()
     if not db:
@@ -359,6 +411,9 @@ def delete_expired_uploads(batch_size: int = 400):
             for ref in upload_refs:
                 batch.delete(ref)
             batch.commit()
+        deleted += _delete_orphaned_firebase_objects(
+            "uploads/", 6, max(0, int(batch_size) - deleted), delete_upload_metadata=True
+        )
         return deleted
     except Exception as e:
         print(f"[Storage] Expired source cleanup failed: {e}")
@@ -513,6 +568,9 @@ def delete_expired_exports(batch_size: int = 400):
             for ref in completed_refs:
                 batch.delete(ref)
             batch.commit()
+        deleted += _delete_orphaned_firebase_objects(
+            "exports/", 72, max(0, int(batch_size) - deleted)
+        )
         return deleted
     except Exception as e:
         print(f"[Storage] Expired export cleanup failed: {e}")

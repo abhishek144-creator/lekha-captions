@@ -9,14 +9,38 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from rq import Worker
 
 try:
-    from .main import EXPORT_QUEUE_NAME, TRANSCRIPTION_QUEUE_NAME, REDIS_URL
+    from .main import (
+        EXPORT_QUEUE_NAME,
+        TRANSCRIPTION_QUEUE_NAME,
+        REDIS_URL,
+        cleanup_local_media_artifacts,
+    )
     from .release_metadata import release_metadata
 except ImportError:  # Direct execution from backend/ remains supported.
-    from main import EXPORT_QUEUE_NAME, TRANSCRIPTION_QUEUE_NAME, REDIS_URL
+    from main import (
+        EXPORT_QUEUE_NAME,
+        TRANSCRIPTION_QUEUE_NAME,
+        REDIS_URL,
+        cleanup_local_media_artifacts,
+    )
     from release_metadata import release_metadata
 
 
 WORKER_STATE = {"heartbeat_at": 0.0, "draining": False}
+LOCAL_CLEANUP_INTERVAL_SECONDS = 15 * 60
+
+
+def _local_cleanup_loop(stop_event):
+    """Prune this container's scratch volume; API janitors cannot see worker disks."""
+    while not stop_event.is_set():
+        try:
+            metrics = cleanup_local_media_artifacts()
+            deleted = sum(value for key, value in metrics.items() if key.endswith("_deleted"))
+            if deleted or metrics.get("errors"):
+                print(json.dumps({"event": "worker_local_janitor", **metrics}), flush=True)
+        except Exception as error:
+            print(json.dumps({"event": "worker_local_janitor_failed", "error": str(error)}), flush=True)
+        stop_event.wait(LOCAL_CLEANUP_INTERVAL_SECONDS)
 
 
 class ReleaseWorker(Worker):
@@ -99,6 +123,14 @@ def run_worker():
     conn.ping()
     health_conn = redis.Redis.from_url(REDIS_URL, socket_connect_timeout=5, socket_timeout=5)
     server = _start_readiness_server(health_conn)
+    cleanup_stop = threading.Event()
+    cleanup_thread = threading.Thread(
+        target=_local_cleanup_loop,
+        args=(cleanup_stop,),
+        name="worker-local-janitor",
+        daemon=True,
+    )
+    cleanup_thread.start()
     # Every replica needs a distinct RQ identity; a fixed name makes the second
     # Railway replica fail registration with "active worker already exists".
     host = os.environ.get("HOSTNAME") or socket.gethostname()
@@ -108,6 +140,8 @@ def run_worker():
         worker.work(with_scheduler=True, dequeue_strategy="round_robin")
     finally:
         WORKER_STATE["draining"] = True
+        cleanup_stop.set()
+        cleanup_thread.join(timeout=5)
         server.shutdown()
         server.server_close()
         health_conn.close()

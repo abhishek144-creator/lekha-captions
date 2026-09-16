@@ -1,0 +1,32 @@
+{
+  "javascript": "valid",
+  "internalAnchors": 13,
+  "uniqueIds": 29,
+  "pricing": "12 catalog-matched prices and credit allocations",
+  "styles": "3 working previews",
+  "media": "both local videos loaded, Escape closes and pauses",
+  "mobileMenu": "open, navigate, and Escape verified",
+  "viewportWidths": [
+    1440,
+    1024,
+    768,
+    620,
+    390,
+    320
+  ],
+  "horizontalOverflow": false,
+  "browserErrors": [],
+  "directFileOpen": true,
+  "automatedAccessibility": [
+    {
+      "width": 1440,
+      "violations": []
+    },
+    {
+      "width": 390,
+      "violations": []
+    }
+  ],
+  "html5ParsingErrors": [],
+  "existingFilesVerifiedUnchanged": 374
+}

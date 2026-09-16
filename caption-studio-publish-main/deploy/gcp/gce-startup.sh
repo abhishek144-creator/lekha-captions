@@ -54,7 +54,9 @@ docker run -d --name lekha-clamav --restart unless-stopped \
 
 role_options=()
 if [[ "$service_role" == "worker" ]]; then
-  role_options=(--cpus 3 --memory 10g -e WORKER_QUEUES=caption_export_jobs)
+  # Three render CPUs keep FFmpeg throughput high. An 8 GiB ceiling leaves
+  # 4 GiB on the 12 GiB host for transcription, ClamAV, Docker, and the OS.
+  role_options=(--cpus 3 --memory 8g -e WORKER_QUEUES=caption_export_jobs)
 fi
 docker run -d --name "lekha-${service_role}" --restart no \
   "${role_options[@]}" \

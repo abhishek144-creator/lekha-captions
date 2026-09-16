@@ -1,0 +1,270 @@
+[
+  {
+    "canIpForward": false,
+    "cpuPlatform": "Intel Broadwell",
+    "creationTimestamp": "2026-09-07T04:30:44.332-07:00",
+    "deletionProtection": false,
+    "disks": [
+      {
+        "architecture": "X86_64",
+        "autoDelete": true,
+        "boot": true,
+        "deviceName": "persistent-disk-0",
+        "diskSizeGb": "100",
+        "guestOsFeatures": [
+          {
+            "type": "UEFI_COMPATIBLE"
+          },
+          {
+            "type": "VIRTIO_SCSI_MULTIQUEUE"
+          },
+          {
+            "type": "GVNIC"
+          },
+          {
+            "type": "SEV_CAPABLE"
+          },
+          {
+            "type": "SEV_LIVE_MIGRATABLE_V2"
+          }
+        ],
+        "index": 0,
+        "interface": "SCSI",
+        "kind": "compute#attachedDisk",
+        "licenses": [
+          "https://www.googleapis.com/compute/v1/projects/debian-cloud/global/licenses/debian-12-bookworm"
+        ],
+        "mode": "READ_WRITE",
+        "source": "https://www.googleapis.com/compute/v1/projects/project-0cc7c839-b9c7-4734-ad0/zones/asia-south1-a/disks/lekha-api-staging",
+        "type": "PERSISTENT"
+      }
+    ],
+    "fingerprint": "VWgETawg1SU=",
+    "id": "5804947697147518640",
+    "kind": "compute#instance",
+    "labelFingerprint": "42WmSpB8rSM=",
+    "lastStartTimestamp": "2026-09-07T04:31:02.248-07:00",
+    "machineType": "https://www.googleapis.com/compute/v1/projects/project-0cc7c839-b9c7-4734-ad0/zones/asia-south1-a/machineTypes/e2-standard-4",
+    "metadata": {
+      "fingerprint": "bs_60kiQLYA=",
+      "items": [
+        {
+          "key": "image-uri",
+          "value": "asia-south1-docker.pkg.dev/project-0cc7c839-b9c7-4734-ad0/caption-studio/app@sha256:abb303e1f1281ef34853453a5edd318a8663079e8fac74aba8f8bcf1bebbb462"
+        },
+        {
+          "key": "public-host",
+          "value": "34-93-113-193.sslip.io"
+        },
+        {
+          "key": "region",
+          "value": "asia-south1"
+        },
+        {
+          "key": "runtime-secret",
+          "value": "lekha-runtime-env"
+        },
+        {
+          "key": "service-role",
+          "value": "api"
+        },
+        {
+          "key": "startup-script",
+          "value": "#!/usr/bin/env bash\n# Runs from Compute Engine instance metadata. It is intentionally safe to rerun:\n# the previous application container is replaced only after the new image pulls.\nset -euo pipefail\n\nmetadata_value() {\n  curl -fsS -H \"Metadata-Flavor: Google\" \\\n    \"http://metadata.google.internal/computeMetadata/v1/instance/attributes/$1\"\n}\n\nservice_role=\"$(metadata_value service-role)\"\nimage_uri=\"$(metadata_value image-uri)\"\nruntime_secret=\"$(metadata_value runtime-secret)\"\nregion=\"$(metadata_value region)\"\n\nif [[ \"$service_role\" != \"api\" && \"$service_role\" != \"worker\" ]]; then\n  echo \"SERVICE_ROLE must be api or worker\" >&2\n  exit 64\nfi\n\napt-get update\napt-get install -y --no-install-recommends ca-certificates curl docker.io google-cloud-cli\nsystemctl enable --now docker\n\nregistry_host=\"${region}-docker.pkg.dev\"\ngcloud auth configure-docker \"$registry_host\" --quiet\n\ninstall -d -m 0750 -o 1000 -g 1000 /var/lib/lekha/scratch\ninstall -d -m 0750 /etc/lekha\ngcloud secrets versions access latest --secret=\"$runtime_secret\" > /etc/lekha/runtime.env\nchmod 0600 /etc/lekha/runtime.env\n\ndocker network inspect lekha-internal >/dev/null 2>&1 || docker network create lekha-internal\n\ndocker pull \"$image_uri\"\n# RQ handles SIGTERM by finishing its current job. Never SIGKILL an active\n# render during a routine deployment; allow its 30-minute job timeout plus\n# cleanup before Docker's final stop deadline. Drain before restarting ClamAV.\nif docker container inspect \"lekha-${service_role}\" >/dev/null 2>&1; then\n  docker stop --time 1860 \"lekha-${service_role}\"\n  docker rm \"lekha-${service_role}\"\nfi\nif [[ \"$service_role\" == \"worker\" ]] && docker container inspect lekha-transcription >/dev/null 2>&1; then\n  docker stop --time 1860 lekha-transcription\n  docker rm lekha-transcription\nfi\n\n# The production API refuses uploads when no malware scanner is configured.\n# A scanner is local to each VM so the app container never publishes its port.\ndocker rm -f lekha-clamav >/dev/null 2>&1 || true\ndocker pull clamav/clamav:1.4_base\ndocker run -d --name lekha-clamav --restart unless-stopped \\\n  --network lekha-internal clamav/clamav:1.4_base\n\nrole_options=()\nif [[ \"$service_role\" == \"worker\" ]]; then\n  role_options=(--cpus 3 --memory 10g -e WORKER_QUEUES=caption_export_jobs)\nfi\ndocker run -d --name \"lekha-${service_role}\" --restart no \\\n  \"${role_options[@]}\" \\\n  --stop-timeout 1860 \\\n  --network lekha-internal \\\n  --env-file /etc/lekha/runtime.env \\\n  -e \"SERVICE_ROLE=${service_role}\" \\\n  -e \"PORT=8000\" \\\n  -e \"MEDIA_SCRATCH_DIR=/scratch\" \\\n  -e \"CLAMAV_HOST=lekha-clamav\" \\\n  -v /var/lib/lekha/scratch:/scratch \\\n  -p 8000:8000 \\\n  \"$image_uri\"\n\nif [[ \"$service_role\" == \"worker\" ]]; then\n  install -d -m 0750 -o 1000 -g 1000 /var/lib/lekha/transcription-scratch\n  docker run -d --name lekha-transcription --restart unless-stopped \\\n    --stop-timeout 1860 --network lekha-internal --cpus 1 --memory 2g \\\n    --env-file /etc/lekha/runtime.env \\\n    -e SERVICE_ROLE=worker -e PORT=8000 -e MEDIA_SCRATCH_DIR=/scratch \\\n    -e CLAMAV_HOST=lekha-clamav -e WORKER_QUEUES=caption_transcription_jobs_staging \\\n    -v /var/lib/lekha/transcription-scratch:/scratch \"$image_uri\"\nfi\n\n# Give staging browsers a real HTTPS origin without changing production DNS.\n# The hostname is supplied only on the API VM and resolves directly to its\n# reserved address. Caddy persists ACME state across instance restarts.\nif [[ \"$service_role\" == \"api\" ]]; then\n  public_host=\"$(metadata_value public-host 2>/dev/null || true)\"\n  if [[ -n \"$public_host\" ]]; then\n    docker pull caddy:2.10-alpine\n    docker volume create lekha-caddy-data >/dev/null\n    docker volume create lekha-caddy-config >/dev/null\n    docker rm -f lekha-edge >/dev/null 2>&1 || true\n    docker run -d --name lekha-edge --restart unless-stopped \\\n      --network lekha-internal \\\n      -p 80:80 -p 443:443 -p 443:443/udp \\\n      -v lekha-caddy-data:/data \\\n      -v lekha-caddy-config:/config \\\n      caddy:2.10-alpine \\\n      caddy reverse-proxy --from \"https://${public_host}\" --to lekha-api:8000\n  fi\nfi\n\n# Surface startup failures in the Compute Engine serial console so a fresh VM\n# can be diagnosed without granting interactive SSH access. Keep automatic\n# restart disabled until this first process proves it can stay up.\nsleep 20\nif [[ \"$(docker inspect -f '{{.State.Running}}' \"lekha-${service_role}\" 2>/dev/null || true)\" != \"true\" ]]; then\n  docker logs --tail 300 \"lekha-${service_role}\" >&2 || true\n  exit 1\nfi\ndocker update --restart unless-stopped \"lekha-${service_role}\"\ndocker logs --tail 80 \"lekha-${service_role}\" || true\n"
+        }
+      ],
+      "kind": "compute#metadata"
+    },
+    "name": "lekha-api-staging",
+    "networkInterfaces": [
+      {
+        "accessConfigs": [
+          {
+            "kind": "compute#accessConfig",
+            "name": "external-nat",
+            "natIP": "34.93.113.193",
+            "networkTier": "PREMIUM",
+            "type": "ONE_TO_ONE_NAT"
+          }
+        ],
+        "fingerprint": "JG_-81iLLp4=",
+        "kind": "compute#networkInterface",
+        "name": "nic0",
+        "network": "https://www.googleapis.com/compute/v1/projects/project-0cc7c839-b9c7-4734-ad0/global/networks/default",
+        "networkIP": "10.160.0.2",
+        "stackType": "IPV4_ONLY",
+        "subnetwork": "https://www.googleapis.com/compute/v1/projects/project-0cc7c839-b9c7-4734-ad0/regions/asia-south1/subnetworks/default"
+      }
+    ],
+    "resourceStatus": {
+      "effectiveInstanceMetadata": {
+        "vmDnsSettingMetadataValue": "ZonalOnly"
+      }
+    },
+    "satisfiesPzi": true,
+    "scheduling": {
+      "automaticRestart": true,
+      "onHostMaintenance": "MIGRATE",
+      "preemptible": false,
+      "provisioningModel": "STANDARD"
+    },
+    "selfLink": "https://www.googleapis.com/compute/v1/projects/project-0cc7c839-b9c7-4734-ad0/zones/asia-south1-a/instances/lekha-api-staging",
+    "serviceAccounts": [
+      {
+        "email": "602676673096-compute@developer.gserviceaccount.com",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      }
+    ],
+    "shieldedInstanceConfig": {
+      "enableIntegrityMonitoring": true,
+      "enableSecureBoot": false,
+      "enableVtpm": true
+    },
+    "shieldedInstanceIntegrityPolicy": {
+      "updateAutoLearnPolicy": true
+    },
+    "startRestricted": false,
+    "status": "RUNNING",
+    "tags": {
+      "fingerprint": "w0aK636Sd90=",
+      "items": [
+        "lekha-api"
+      ]
+    },
+    "zone": "https://www.googleapis.com/compute/v1/projects/project-0cc7c839-b9c7-4734-ad0/zones/asia-south1-a"
+  },
+  {
+    "canIpForward": false,
+    "cpuPlatform": "Intel Broadwell",
+    "creationTimestamp": "2026-09-07T04:34:10.215-07:00",
+    "deletionProtection": false,
+    "disks": [
+      {
+        "architecture": "X86_64",
+        "autoDelete": true,
+        "boot": true,
+        "deviceName": "persistent-disk-0",
+        "diskSizeGb": "100",
+        "guestOsFeatures": [
+          {
+            "type": "UEFI_COMPATIBLE"
+          },
+          {
+            "type": "VIRTIO_SCSI_MULTIQUEUE"
+          },
+          {
+            "type": "GVNIC"
+          },
+          {
+            "type": "SEV_CAPABLE"
+          },
+          {
+            "type": "SEV_LIVE_MIGRATABLE_V2"
+          }
+        ],
+        "index": 0,
+        "interface": "SCSI",
+        "kind": "compute#attachedDisk",
+        "licenses": [
+          "https://www.googleapis.com/compute/v1/projects/debian-cloud/global/licenses/debian-12-bookworm"
+        ],
+        "mode": "READ_WRITE",
+        "source": "https://www.googleapis.com/compute/v1/projects/project-0cc7c839-b9c7-4734-ad0/zones/asia-south1-a/disks/lekha-worker-staging",
+        "type": "PERSISTENT"
+      }
+    ],
+    "fingerprint": "1_-9ehMncDg=",
+    "id": "8264551519105523678",
+    "kind": "compute#instance",
+    "labelFingerprint": "42WmSpB8rSM=",
+    "lastStartTimestamp": "2026-09-07T04:34:17.712-07:00",
+    "machineType": "https://www.googleapis.com/compute/v1/projects/project-0cc7c839-b9c7-4734-ad0/zones/asia-south1-a/machineTypes/e2-standard-4",
+    "metadata": {
+      "fingerprint": "fAs-X207hKM=",
+      "items": [
+        {
+          "key": "image-uri",
+          "value": "asia-south1-docker.pkg.dev/project-0cc7c839-b9c7-4734-ad0/caption-studio/app@sha256:abb303e1f1281ef34853453a5edd318a8663079e8fac74aba8f8bcf1bebbb462"
+        },
+        {
+          "key": "region",
+          "value": "asia-south1"
+        },
+        {
+          "key": "runtime-secret",
+          "value": "lekha-runtime-env"
+        },
+        {
+          "key": "service-role",
+          "value": "worker"
+        },
+        {
+          "key": "startup-script",
+          "value": "#!/usr/bin/env bash\n# Runs from Compute Engine instance metadata. It is intentionally safe to rerun:\n# the previous application container is replaced only after the new image pulls.\nset -euo pipefail\n\nmetadata_value() {\n  curl -fsS -H \"Metadata-Flavor: Google\" \\\n    \"http://metadata.google.internal/computeMetadata/v1/instance/attributes/$1\"\n}\n\nservice_role=\"$(metadata_value service-role)\"\nimage_uri=\"$(metadata_value image-uri)\"\nruntime_secret=\"$(metadata_value runtime-secret)\"\nregion=\"$(metadata_value region)\"\n\nif [[ \"$service_role\" != \"api\" && \"$service_role\" != \"worker\" ]]; then\n  echo \"SERVICE_ROLE must be api or worker\" >&2\n  exit 64\nfi\n\napt-get update\napt-get install -y --no-install-recommends ca-certificates curl docker.io google-cloud-cli\nsystemctl enable --now docker\n\nregistry_host=\"${region}-docker.pkg.dev\"\ngcloud auth configure-docker \"$registry_host\" --quiet\n\ninstall -d -m 0750 -o 1000 -g 1000 /var/lib/lekha/scratch\ninstall -d -m 0750 /etc/lekha\ngcloud secrets versions access latest --secret=\"$runtime_secret\" > /etc/lekha/runtime.env\nchmod 0600 /etc/lekha/runtime.env\n\ndocker network inspect lekha-internal >/dev/null 2>&1 || docker network create lekha-internal\n\ndocker pull \"$image_uri\"\n# RQ handles SIGTERM by finishing its current job. Never SIGKILL an active\n# render during a routine deployment; allow its 30-minute job timeout plus\n# cleanup before Docker's final stop deadline. Drain before restarting ClamAV.\nif docker container inspect \"lekha-${service_role}\" >/dev/null 2>&1; then\n  docker stop --time 1860 \"lekha-${service_role}\"\n  docker rm \"lekha-${service_role}\"\nfi\nif [[ \"$service_role\" == \"worker\" ]] && docker container inspect lekha-transcription >/dev/null 2>&1; then\n  docker stop --time 1860 lekha-transcription\n  docker rm lekha-transcription\nfi\n\n# The production API refuses uploads when no malware scanner is configured.\n# A scanner is local to each VM so the app container never publishes its port.\ndocker rm -f lekha-clamav >/dev/null 2>&1 || true\ndocker pull clamav/clamav:1.4_base\ndocker run -d --name lekha-clamav --restart unless-stopped \\\n  --network lekha-internal clamav/clamav:1.4_base\n\nrole_options=()\nif [[ \"$service_role\" == \"worker\" ]]; then\n  role_options=(--cpus 3 --memory 10g -e WORKER_QUEUES=caption_export_jobs)\nfi\ndocker run -d --name \"lekha-${service_role}\" --restart no \\\n  \"${role_options[@]}\" \\\n  --stop-timeout 1860 \\\n  --network lekha-internal \\\n  --env-file /etc/lekha/runtime.env \\\n  -e \"SERVICE_ROLE=${service_role}\" \\\n  -e \"PORT=8000\" \\\n  -e \"MEDIA_SCRATCH_DIR=/scratch\" \\\n  -e \"CLAMAV_HOST=lekha-clamav\" \\\n  -v /var/lib/lekha/scratch:/scratch \\\n  -p 8000:8000 \\\n  \"$image_uri\"\n\nif [[ \"$service_role\" == \"worker\" ]]; then\n  install -d -m 0750 -o 1000 -g 1000 /var/lib/lekha/transcription-scratch\n  docker run -d --name lekha-transcription --restart unless-stopped \\\n    --stop-timeout 1860 --network lekha-internal --cpus 1 --memory 2g \\\n    --env-file /etc/lekha/runtime.env \\\n    -e SERVICE_ROLE=worker -e PORT=8000 -e MEDIA_SCRATCH_DIR=/scratch \\\n    -e CLAMAV_HOST=lekha-clamav -e WORKER_QUEUES=caption_transcription_jobs_staging \\\n    -v /var/lib/lekha/transcription-scratch:/scratch \"$image_uri\"\nfi\n\n# Give staging browsers a real HTTPS origin without changing production DNS.\n# The hostname is supplied only on the API VM and resolves directly to its\n# reserved address. Caddy persists ACME state across instance restarts.\nif [[ \"$service_role\" == \"api\" ]]; then\n  public_host=\"$(metadata_value public-host 2>/dev/null || true)\"\n  if [[ -n \"$public_host\" ]]; then\n    docker pull caddy:2.10-alpine\n    docker volume create lekha-caddy-data >/dev/null\n    docker volume create lekha-caddy-config >/dev/null\n    docker rm -f lekha-edge >/dev/null 2>&1 || true\n    docker run -d --name lekha-edge --restart unless-stopped \\\n      --network lekha-internal \\\n      -p 80:80 -p 443:443 -p 443:443/udp \\\n      -v lekha-caddy-data:/data \\\n      -v lekha-caddy-config:/config \\\n      caddy:2.10-alpine \\\n      caddy reverse-proxy --from \"https://${public_host}\" --to lekha-api:8000\n  fi\nfi\n\n# Surface startup failures in the Compute Engine serial console so a fresh VM\n# can be diagnosed without granting interactive SSH access. Keep automatic\n# restart disabled until this first process proves it can stay up.\nsleep 20\nif [[ \"$(docker inspect -f '{{.State.Running}}' \"lekha-${service_role}\" 2>/dev/null || true)\" != \"true\" ]]; then\n  docker logs --tail 300 \"lekha-${service_role}\" >&2 || true\n  exit 1\nfi\ndocker update --restart unless-stopped \"lekha-${service_role}\"\ndocker logs --tail 80 \"lekha-${service_role}\" || true\n"
+        }
+      ],
+      "kind": "compute#metadata"
+    },
+    "name": "lekha-worker-staging",
+    "networkInterfaces": [
+      {
+        "accessConfigs": [
+          {
+            "kind": "compute#accessConfig",
+            "name": "external-nat",
+            "natIP": "34.100.142.92",
+            "networkTier": "PREMIUM",
+            "type": "ONE_TO_ONE_NAT"
+          }
+        ],
+        "fingerprint": "UYMgRJhHt0U=",
+        "kind": "compute#networkInterface",
+        "name": "nic0",
+        "network": "https://www.googleapis.com/compute/v1/projects/project-0cc7c839-b9c7-4734-ad0/global/networks/default",
+        "networkIP": "10.160.0.3",
+        "stackType": "IPV4_ONLY",
+        "subnetwork": "https://www.googleapis.com/compute/v1/projects/project-0cc7c839-b9c7-4734-ad0/regions/asia-south1/subnetworks/default"
+      }
+    ],
+    "resourceStatus": {
+      "effectiveInstanceMetadata": {
+        "vmDnsSettingMetadataValue": "ZonalOnly"
+      }
+    },
+    "satisfiesPzi": true,
+    "scheduling": {
+      "automaticRestart": true,
+      "onHostMaintenance": "MIGRATE",
+      "preemptible": false,
+      "provisioningModel": "STANDARD"
+    },
+    "selfLink": "https://www.googleapis.com/compute/v1/projects/project-0cc7c839-b9c7-4734-ad0/zones/asia-south1-a/instances/lekha-worker-staging",
+    "serviceAccounts": [
+      {
+        "email": "602676673096-compute@developer.gserviceaccount.com",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      }
+    ],
+    "shieldedInstanceConfig": {
+      "enableIntegrityMonitoring": true,
+      "enableSecureBoot": false,
+      "enableVtpm": true
+    },
+    "shieldedInstanceIntegrityPolicy": {
+      "updateAutoLearnPolicy": true
+    },
+    "startRestricted": false,
+    "status": "RUNNING",
+    "tags": {
+      "fingerprint": "G1u1KZp-GyY=",
+      "items": [
+        "lekha-worker"
+      ]
+    },
+    "zone": "https://www.googleapis.com/compute/v1/projects/project-0cc7c839-b9c7-4734-ad0/zones/asia-south1-a"
+  }
+]

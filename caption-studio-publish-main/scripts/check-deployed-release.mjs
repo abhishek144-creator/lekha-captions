@@ -12,7 +12,7 @@ const args = new Map(
 )
 
 const apiOrigin = String(args.get('api') || process.env.DEPLOY_VERIFY_API_URL || 'https://api.lekhacaptions.com').replace(/\/+$/, '')
-const frontendOrigin = String(args.get('frontend') || process.env.DEPLOY_VERIFY_FRONTEND_URL || 'https://app.lekhacaptions.com').replace(/\/+$/, '')
+const frontendOrigin = String(args.get('frontend') || process.env.DEPLOY_VERIFY_FRONTEND_URL || 'https://lekhacaptions.com').replace(/\/+$/, '')
 const timeoutMs = Number(process.env.DEPLOY_VERIFY_TIMEOUT_MS || 15_000)
 
 function currentCommit() {

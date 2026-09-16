@@ -1,0 +1,11 @@
+defaultService: https://www.googleapis.com/compute/v1/projects/project-0cc7c839-b9c7-4734-ad0/global/backendServices/lekha-api-staging-backend
+fingerprint: TQOZeRBeD40=
+hostRules:
+- hosts:
+  - app.lekhacaptions.com
+  - lekhacaptions.com
+  pathMatcher: lekha-frontend-staging
+name: lekha-api-staging-url-map
+pathMatchers:
+- defaultService: https://www.googleapis.com/compute/v1/projects/project-0cc7c839-b9c7-4734-ad0/global/backendServices/lekha-frontend-staging-backend
+  name: lekha-frontend-staging

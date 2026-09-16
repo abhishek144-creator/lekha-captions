@@ -56,6 +56,15 @@ def run_journey(index: int, credential: dict, args: argparse.Namespace) -> dict:
     started = time.monotonic()
 
     try:
+        require_ok(
+            session.post(
+                urljoin(base_url, "api/account-bootstrap"),
+                json={"id_token": id_token},
+                headers=headers,
+                timeout=30,
+            ),
+            "account bootstrap",
+        )
         stage_started = time.monotonic()
         with args.video.open("rb") as media:
             upload = require_ok(

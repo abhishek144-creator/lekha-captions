@@ -4,7 +4,7 @@
 
 [build.environment]
   NODE_VERSION = "20"
-  NEXT_PUBLIC_APP_URL = "https://app.lekhacaptions.com"
+  NEXT_PUBLIC_APP_URL = "https://lekhacaptions.com"
 
 [[headers]]
   for = "/*"

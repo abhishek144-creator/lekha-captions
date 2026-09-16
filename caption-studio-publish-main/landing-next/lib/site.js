@@ -1,5 +1,5 @@
 export const siteUrl = 'https://lekhacaptions.com'
-export const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.lekhacaptions.com'
+export const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://lekhacaptions.com'
 export const supportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || 'support@lekhacaptions.com'
 export const legalBusinessName = process.env.NEXT_PUBLIC_LEGAL_BUSINESS_NAME || 'Lekha Captions'
 export const legalBusinessAddress = process.env.NEXT_PUBLIC_LEGAL_BUSINESS_ADDRESS || 'Business address available from support'

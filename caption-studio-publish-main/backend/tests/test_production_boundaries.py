@@ -48,6 +48,17 @@ class ProductionBoundaryTests(unittest.TestCase):
         self.assertEqual(queue.count, accepted)
         self.assertEqual(len(list(self.redis.scan_iter("rq:job:*"))), accepted)
 
+    def test_full_export_queue_advises_a_five_minute_retry(self):
+        queue = Queue("bounded-retry", connection=self.redis)
+        enqueue_bounded(queue, 1, func="operator.add", args=(1, 2), job_id="first")
+
+        with self.assertRaises(main.HTTPException) as error:
+            enqueue_bounded(queue, 1, func="operator.add", args=(1, 2), job_id="second")
+
+        self.assertEqual(error.exception.status_code, 429)
+        self.assertEqual(error.exception.detail, "Export capacity is temporarily full. Retry after 5 mins.")
+        self.assertEqual(error.exception.headers["Retry-After"], "300")
+
     def test_preparation_timeout_cannot_fail_a_job_that_has_started(self):
         transition(self.redis, "race", {}, {"status": "queued"})
         stale = {"status": "queued"}
@@ -223,7 +234,7 @@ class ProductionBoundaryTests(unittest.TestCase):
             job = main._set_export_job("job", "starting")
             self.assertEqual(main._reconcile_export_job("job", job)["status"], "failed")
 
-    def test_export_wait_is_capped_at_two_minutes_without_charging(self):
+    def test_export_wait_expires_after_configured_window_without_charging(self):
         rq_job = SimpleNamespace(cancelled=False)
         rq_job.cancel = lambda: setattr(rq_job, "cancelled", True)
         queue = SimpleNamespace(fetch_job=lambda _: rq_job)
