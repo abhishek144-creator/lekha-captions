@@ -5,10 +5,24 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import json
 import os
+import urllib.parse
 import urllib.request
 
 
 METADATA_ROOT = "http://metadata.google.internal/computeMetadata/v1"
+_ALLOWED_ENDPOINTS = {
+    ("http", "metadata.google.internal", 80),
+    ("https", "monitoring.googleapis.com", 443),
+}
+
+
+def _open_google_request(request: urllib.request.Request, timeout: int):
+    parsed = urllib.parse.urlsplit(request.full_url)
+    default_port = 443 if parsed.scheme == "https" else 80
+    endpoint = (parsed.scheme, parsed.hostname, parsed.port or default_port)
+    if parsed.username or parsed.password or endpoint not in _ALLOWED_ENDPOINTS:
+        raise ValueError("Refusing a request outside the approved Google endpoints")
+    return urllib.request.urlopen(request, timeout=timeout)  # nosec B310: scheme, host, and port are allowlisted above.
 
 
 def _metadata(path: str) -> str:
@@ -16,7 +30,7 @@ def _metadata(path: str) -> str:
         f"{METADATA_ROOT}/{path}",
         headers={"Metadata-Flavor": "Google"},
     )
-    with urllib.request.urlopen(request, timeout=3) as response:
+    with _open_google_request(request, timeout=3) as response:
         return response.read().decode("utf-8").strip()
 
 
@@ -87,6 +101,6 @@ def publish_queue_snapshot(
             "Content-Type": "application/json",
         },
     )
-    with urllib.request.urlopen(request, timeout=8) as response:
+    with _open_google_request(request, timeout=8) as response:
         if response.status not in (200, 201):
             raise RuntimeError(f"Monitoring write returned HTTP {response.status}")

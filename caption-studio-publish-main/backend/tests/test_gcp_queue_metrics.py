@@ -1,5 +1,8 @@
 from datetime import datetime, timedelta, timezone
 import json
+import urllib.request
+
+import pytest
 
 from backend import gcp_queue_metrics
 
@@ -29,6 +32,12 @@ def test_queue_snapshot_reports_depth_and_oldest_age():
     depth, age = gcp_queue_metrics.queue_snapshot(_Queue(), _Job)
     assert depth == 7
     assert 94 <= age <= 97
+
+
+def test_google_request_rejects_unapproved_endpoint():
+    request = urllib.request.Request("file:///tmp/metadata")
+    with pytest.raises(ValueError, match="approved Google endpoints"):
+        gcp_queue_metrics._open_google_request(request, timeout=3)
 
 
 def test_publish_queue_snapshot_writes_group_metrics(monkeypatch):
