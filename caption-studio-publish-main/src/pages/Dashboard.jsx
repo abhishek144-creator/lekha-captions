@@ -323,6 +323,12 @@ export default function Dashboard() {
   }, [fileId, captions.length, isGenerating])
 
   useEffect(() => {
+    if (!showCaptionRetryNotice) return undefined
+    const timer = window.setTimeout(() => setShowCaptionRetryNotice(false), 10000)
+    return () => window.clearTimeout(timer)
+  }, [showCaptionRetryNotice])
+
+  useEffect(() => {
     let disposed = false
     setCloudReady(false)
     setCloudDraft(null)
