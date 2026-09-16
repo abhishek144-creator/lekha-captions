@@ -22,7 +22,8 @@ def _open_google_request(request: urllib.request.Request, timeout: int):
     endpoint = (parsed.scheme, parsed.hostname, parsed.port or default_port)
     if parsed.username or parsed.password or endpoint not in _ALLOWED_ENDPOINTS:
         raise ValueError("Refusing a request outside the approved Google endpoints")
-    return urllib.request.urlopen(request, timeout=timeout)  # nosec B310: scheme, host, and port are allowlisted above.
+    # The scheme, host, and port are constrained by the allowlist above.
+    return urllib.request.urlopen(request, timeout=timeout)  # nosec B310
 
 
 def _metadata(path: str) -> str:
