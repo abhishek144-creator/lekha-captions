@@ -60,16 +60,21 @@ user throughput promise.
 
 ### Animated-export hotfix
 
-Commit `aaf9867` enables Chromium's speed-optimized lossless PNG encoder for
-temporary animated-caption frames. A 40-frame 720x1280 benchmark fell from
-10.826 seconds to 4.716 seconds while the T167 motion and visual parity suite
-continued to pass. The production worker MIG was rolled to image digest
-`sha256:25a8928e71da08c58e318183c9736237d8f8546a3feb79e17395786ee4cf7fc7`;
+Commits `aaf9867` and `86801bf` enable Chromium's speed-optimized lossless PNG
+encoder, reuse immutable sidebar-caption DOM across sampled frames, and remove
+an unnecessary real-time animation-frame wait after explicitly seeking the
+animation clocks. The motion and visual parity suites continue to pass at the
+requested 30 fps sampling rate.
+
+On the production Google Cloud worker type, the same 11.168-second, 720x1280
+T167 workload with 336 animated frames fell from 32.244 seconds on the previous
+image to 20.942 seconds with the final hotfix, a 35% reduction. The production
+worker MIG was rolled to image digest
+`sha256:9c1f743071f47e43c8ce94beebf6cf6ac8ed78c1de31cdb14ce9e02d5774cb18`;
 all three workers reached healthy state on instance template
-`lekha-worker-export-fast-aaf9867-20260916`. The previously uploaded T167 source
-had already expired, so its historical 31.979-second render could not be
-replayed after deployment. New live-job timing remains the authoritative
-end-to-end confirmation.
+`lekha-worker-export-fast-86801bf-20260916`. The original customer upload had
+already expired, so the comparison used a fresh equivalent T167 render rather
+than replaying customer media.
 
 ## Media retention
 
