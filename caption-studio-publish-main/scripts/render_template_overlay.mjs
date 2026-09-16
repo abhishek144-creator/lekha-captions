@@ -2240,6 +2240,10 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
 
     const activateSidebarTemplateShells = (root, time) => {
       root.querySelectorAll('.lekha-sidebar-export-template-shell').forEach((shell) => {
+        // A caption remains active across many sampled frames. Its source
+        // markup and animation schedule are immutable, so initialize them once
+        // and let the explicit animation seek below advance the existing DOM.
+        if (shell.dataset.exportInitialized === 'true') return;
         const captionText = shell.dataset.captionText || '';
         const captionStart = Number(shell.dataset.captionStart || 0);
         const captionEnd = Number(shell.dataset.captionEnd || captionStart);
@@ -2524,6 +2528,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           word.style.setProperty('--sidebar-export-word-delay', (phase.phaseStartMs + index * phaseStickyStagger) + 'ms');
           word.classList.add('sidebar-export-sticky-anim');
         });
+        shell.dataset.exportInitialized = 'true';
       });
     };
 
@@ -3044,7 +3049,22 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         return time >= start && time < end;
       });
 
-      root.innerHTML = activeCaptions.map((caption, activeIndex) => {
+      const hasActiveSidebarCaption = activeCaptions.some((caption) => Boolean(
+        caption?.template_20_id
+        || caption?.applied_template_style?.template_20_id
+        || style.template_20_id,
+      ));
+      const activeCaptionSignature = activeCaptions.map((caption) => [
+        caption?.id || '',
+        Number(caption?.start_time ?? 0),
+        Number(caption?.end_time ?? caption?.start_time ?? 0),
+      ].join(':')).join('|');
+      const canReuseSidebarDom = hasActiveSidebarCaption
+        && root.childElementCount > 0
+        && root.dataset.activeCaptionSignature === activeCaptionSignature;
+
+      if (!canReuseSidebarDom) {
+        root.innerHTML = activeCaptions.map((caption, activeIndex) => {
         if (caption.is_text_element) return buildTextElementMarkup(caption, activeIndex);
         const templateCaptionIndex = Math.max(
           0,
@@ -3117,7 +3137,9 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           ? \`<div class="caption-line-animation-shell" data-caption-start="\${Number(caption.start_time ?? 0)}" data-caption-end="\${Number(caption.end_time ?? caption.start_time ?? 0)}" style="display:inline-block;animation:\${getLineAnimationStyle(caption.animation, caption.animation_speed || 1)};transform-origin:center center;">\${inner}</div>\`
           : inner;
         return \`<div class="caption-anchor" data-caption-render-index="\${activeIndex}" data-caption-cpt="\${captionHasCptWords(caption) ? 'true' : 'false'}" data-caption-absolute-cpt="\${isAbsoluteCpt ? 'true' : 'false'}" style="\${base.join(';')}">\${animatedInner}</div>\`;
-      }).join('');
+        }).join('');
+        root.dataset.activeCaptionSignature = activeCaptionSignature;
+      }
       activeCaptions.forEach((caption, activeIndex) => {
         const anchor = root.querySelector(\`[data-caption-render-index="\${activeIndex}"]\`);
         if (!anchor) return;
@@ -5880,7 +5902,10 @@ async function main() {
               word.classList.toggle('fx', progress >= 1 && impClass === 'imp-flicker');
             });
           });
-          await new Promise((resolve) => requestAnimationFrame(resolve));
+          // All animation clocks above are paused and explicitly seeked. A
+          // forced layout makes those styles capture-ready without waiting for
+          // a real-time animation frame for every exported overlay image.
+          void document.getElementById('overlay-root')?.offsetHeight;
         }, payload, renderTime);
 
         if (shouldAuditWordPositions) {
