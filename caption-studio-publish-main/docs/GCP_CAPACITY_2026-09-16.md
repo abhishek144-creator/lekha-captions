@@ -44,6 +44,12 @@ denied. Worker boot disks therefore use `pd-standard`, whose regional quota is
 4,096 GB. Twenty 50-GB worker disks consume 1,000 GB. API disks remain
 `pd-balanced` because four API replicas use at most 200 GB.
 
+The regional instance quota is 24. This permits the configured maximum of 20
+workers plus four API replicas, but leaves no surge headroom while both pools
+are simultaneously at their maximum. A request for 30 was denied. Routine
+zero-downtime rollouts have headroom at normal scale; a rollout at the absolute
+ceiling must first drain or reduce capacity, or obtain a quota increase.
+
 ## Timing evidence
 
 Only four completed export samples were available at deployment time. Their
