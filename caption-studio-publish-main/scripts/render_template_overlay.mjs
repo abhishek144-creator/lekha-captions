@@ -2684,6 +2684,15 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         + '</div>';
     };
 
+    const updateAbsoluteCptRevealState = (root, caption, time) => {
+      if (!root || !caption) return;
+      const currentIndex = getCurrentWordIndex(caption, time);
+      Array.from(root.querySelectorAll('[data-absolute-cpt-word="true"]'))
+        .forEach((word, index) => {
+          word.style.setProperty('opacity', index <= currentIndex ? '1' : '0');
+        });
+    };
+
     const buildPlainCaptionMarkup = (caption, globalStyle, time) => {
       const words = buildWordMeta(caption);
       const currentIndex = getCurrentWordIndex(caption, time);
@@ -3157,7 +3166,12 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         };
         const renderStyle = resolveCaptionTemplateStyle(captionWithTemplateIndex);
         applySourceTemplateScriptFonts(anchor, captionWithTemplateIndex.__export_script);
-        if (anchor.dataset.captionAbsoluteCpt !== 'true') {
+        if (anchor.dataset.captionAbsoluteCpt === 'true') {
+          // Sidebar DOM is intentionally reused between sampled frames. Keep
+          // the cumulative CPT reveal state moving even though its markup is
+          // no longer rebuilt on every frame.
+          updateAbsoluteCptRevealState(anchor, captionWithTemplateIndex, time);
+        } else {
           applySourceTemplateWordStyles(anchor, captionWithTemplateIndex, time);
         }
         const captionLineTexts = Array.isArray(caption?.preview_template_line_texts)
