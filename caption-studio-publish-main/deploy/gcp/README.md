@@ -135,6 +135,11 @@ and the same 40-character release SHA as the backend. Package `dist/` together
 with `deploy/gcp/frontend/Dockerfile` and
 `deploy/gcp/frontend/nginx.conf`, then build and deploy it:
 
+`deploy/gcp/frontend-release/cloudbuild.yaml` accepts an optional
+`_SENTRY_DSN` substitution. Leave it unset to use the first-party sanitized
+frontend exception endpoint, or pass the public browser DSN when a Sentry
+project is configured.
+
 ```bash
 gcloud builds submit FRONTEND_PACKAGE_DIR \
   --tag=asia-south1-docker.pkg.dev/PROJECT_ID/caption-studio/frontend:RELEASE

@@ -167,10 +167,10 @@ Invoke-Gcloud compute instance-groups managed set-autoscaling $apiGroup `
 # Three warm workers remove the single-worker failure mode. A render normally
 # occupies most of a four-vCPU VM, so CPU gives a bounded fallback scale-out signal.
 # Workers protect themselves from MIG scale-in while a job is active. Scale-in
-# is therefore enabled conservatively, one idle instance per ten-minute window.
+# is therefore enabled in bounded batches of five idle instances per five-minute window.
 Invoke-Gcloud compute instance-groups managed set-autoscaling $workerGroup `
     --project=$ProjectId --region=$Region --min-num-replicas=3 --max-num-replicas=20 `
     --target-cpu-utilization=0.45 --cool-down-period=180 --mode=on `
-    "--scale-in-control=max-scaled-in-replicas=1,time-window=600"
+    "--scale-in-control=max-scaled-in-replicas=5,time-window=300"
 
 Write-Host "Scaled staging groups configured. Verify every instance and queue before stopping either rollback VM."
