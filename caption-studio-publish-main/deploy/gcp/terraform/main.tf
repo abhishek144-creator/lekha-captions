@@ -222,9 +222,9 @@ resource "google_compute_region_instance_group_manager" "api" {
 }
 
 resource "google_compute_region_instance_group_manager" "worker" {
-  name                             = "lekha-worker-staging-mig"
-  region                           = var.region
-  distribution_policy_zones        = var.zones
+  name                      = "lekha-worker-staging-mig"
+  region                    = var.region
+  distribution_policy_zones = var.zones
   # Rendering is a regional batch workload. ANY avoids a prolonged capacity
   # outage when one zone cannot allocate the custom worker machine type; the
   # MIG still spans every configured zone and replaces unhealthy instances.
@@ -280,9 +280,9 @@ resource "google_compute_region_autoscaler" "worker" {
     }
     scale_in_control {
       max_scaled_in_replicas {
-        fixed = 1
+        fixed = 5
       }
-      time_window_sec = 600
+      time_window_sec = 300
     }
   }
 }

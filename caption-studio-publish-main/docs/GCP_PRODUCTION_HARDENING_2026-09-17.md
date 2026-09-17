@@ -4,12 +4,14 @@
 
 - Primary website: `https://lekhacaptions.com`
 - Public API: `https://api.lekhacaptions.com`
-- Application release: `b2924ed98c8d6da2afafbb6df89311de431523f9`
-- Infrastructure follow-up: `0b127c75b9c9e70a979a825f5d2ac1cf8dbc7398`
+- GitHub `main` and application release: `d8824f5d998ec9daec8de31c7a803408755841de`
+- Frontend revision: `lekha-frontend-staging-00014-d4l` (100% traffic)
+- Runtime secret version: `26`
 - Runtime environment: `production`
 - API readiness and the public root both returned HTTP 200 after rollout.
 
-The API and frontend publish the same application release. Render and
+The API, frontend, render workers, and transcription workers publish the same
+application release. Render and
 transcription workers use separate role-specific images. Instance metadata pins
 a numeric Secret Manager version, and new workers boot from a pre-baked runtime
 image instead of installing packages or pulling application images at startup.
@@ -26,7 +28,7 @@ image instead of installing packages or pulling application images at startup.
 | Maximum queue wait | 600 seconds |
 | Full-capacity response | HTTP retry guidance of 300 seconds |
 | Worker scale-out | Queue depth, one waiting export per desired worker, plus a 45% CPU fallback |
-| Worker scale-in | Active-job instance protection and at most one removal per 600 seconds |
+| Worker scale-in | Active-job instance protection and at most five idle removals per 300 seconds |
 
 Google approved the project-wide Compute Engine CPU quota increase from 32 to
 100 vCPUs. This covers 20 four-vCPU workers, the two normal API instances, and

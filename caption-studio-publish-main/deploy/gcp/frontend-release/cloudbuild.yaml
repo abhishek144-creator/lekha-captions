@@ -11,17 +11,13 @@ steps:
       - --build-arg
       - BUILD_TIME=${_BUILD_TIME}
       - --build-arg
-      - SENTRY_DSN=$$SENTRY_DSN
+      - SENTRY_DSN=${_SENTRY_DSN}
       - --tag
       - ${_TARGET_IMAGE}
       - .
-    secretEnv:
-      - SENTRY_DSN
 images:
   - ${_TARGET_IMAGE}
 options:
   logging: CLOUD_LOGGING_ONLY
-availableSecrets:
-  secretManager:
-    - versionName: projects/${PROJECT_ID}/secrets/lekha-frontend-sentry-dsn/versions/${_SENTRY_SECRET_VERSION}
-      env: SENTRY_DSN
+substitutions:
+  _SENTRY_DSN: ''
