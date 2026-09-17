@@ -58,6 +58,24 @@ encouraging but insufficient to claim 100-user performance. A controlled
 10/25/50/100 concurrent media test is still required before publishing a mass
 user throughput promise.
 
+### Animated-export hotfix
+
+Commits `aaf9867` and `86801bf` enable Chromium's speed-optimized lossless PNG
+encoder, reuse immutable sidebar-caption DOM across sampled frames, and remove
+an unnecessary real-time animation-frame wait after explicitly seeking the
+animation clocks. The motion and visual parity suites continue to pass at the
+requested 30 fps sampling rate.
+
+On the production Google Cloud worker type, the same 11.168-second, 720x1280
+T167 workload with 336 animated frames fell from 32.244 seconds on the previous
+image to 20.942 seconds with the final hotfix, a 35% reduction. The production
+worker MIG was rolled to image digest
+`sha256:9c1f743071f47e43c8ce94beebf6cf6ac8ed78c1de31cdb14ce9e02d5774cb18`;
+all three workers reached healthy state on instance template
+`lekha-worker-export-fast-86801bf-20260916`. The original customer upload had
+already expired, so the comparison used a fresh equivalent T167 render rather
+than replaying customer media.
+
 ## Media retention
 
 Temporary render artifacts are deleted immediately where possible. Local

@@ -1,0 +1,9 @@
+project_id                  = "project-0cc7c839-b9c7-4734-ad0"
+release                     = "0000000000000000000000000000000000000000"
+runtime_image               = "projects/PROJECT/global/images/lekha-runtime-RELEASE"
+api_image_uri               = "asia-south1-docker.pkg.dev/PROJECT/caption-studio/api@sha256:DIGEST"
+render_image_uri            = "asia-south1-docker.pkg.dev/PROJECT/caption-studio/render@sha256:DIGEST"
+transcription_image_uri     = "asia-south1-docker.pkg.dev/PROJECT/caption-studio/transcription@sha256:DIGEST"
+runtime_secret_version      = 1
+runtime_service_account     = "SERVICE_ACCOUNT@PROJECT.iam.gserviceaccount.com"
+media_bucket_name           = "lekha-media-PROJECT"

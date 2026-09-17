@@ -3,6 +3,7 @@ import { getClientContext, trackAnalytics } from '@/lib/analytics'
 
 const DEFAULT_RETRY_DELAYS_MS = [1500, 4000, 8000]
 const RETRYABLE_UPLOAD_STATUSES = new Set([0, 408, 425, 499, 500, 502, 503, 504])
+const RESUMABLE_CHUNK_BYTES = 8 * 1024 * 1024
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -46,6 +47,58 @@ export function isRetryableUploadError(error) {
   return RETRYABLE_UPLOAD_STATUSES.has(Number(error?.status || 0))
 }
 
+function putResumableChunk(uploadUrl, blob, start, total, contentType) {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest()
+    request.open('PUT', uploadUrl)
+    request.setRequestHeader('Content-Type', contentType || 'application/octet-stream')
+    request.setRequestHeader('Content-Range', `bytes ${start}-${start + blob.size - 1}/${total}`)
+    request.onload = () => {
+      if ([200, 201, 308].includes(request.status)) resolve(request.status)
+      else reject(Object.assign(new Error('Direct upload chunk failed'), { status: request.status }))
+    }
+    request.onerror = () => reject(Object.assign(new Error('Direct upload connection failed'), { status: 0 }))
+    request.send(blob)
+  })
+}
+
+async function uploadDirectToStorage(file, authorization) {
+  if (typeof XMLHttpRequest === 'undefined') return null
+  const initialized = await apiRequest('/api/uploads/init', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(authorization ? { Authorization: `Bearer ${authorization}` } : {}),
+    },
+    body: JSON.stringify({
+      filename: file.name,
+      content_type: file.type || 'application/octet-stream',
+      size_bytes: file.size,
+    }),
+    dedupeKey: 'direct-upload-init',
+  })
+  if (!initialized?.direct_upload_available || !initialized?.upload_url) return null
+  for (let start = 0; start < file.size; start += RESUMABLE_CHUNK_BYTES) {
+    const end = Math.min(file.size, start + RESUMABLE_CHUNK_BYTES)
+    await putResumableChunk(
+      initialized.upload_url,
+      file.slice(start, end),
+      start,
+      file.size,
+      file.type,
+    )
+  }
+  return apiRequest('/api/uploads/complete', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(authorization ? { Authorization: `Bearer ${authorization}` } : {}),
+    },
+    body: JSON.stringify({ file_id: initialized.file_id }),
+    dedupeKey: 'direct-upload-complete',
+  })
+}
+
 export async function uploadFileWithRecovery(file, {
   authorization = '',
   dedupeKey = 'upload-video',
@@ -55,6 +108,27 @@ export async function uploadFileWithRecovery(file, {
   const uploadReference = createUploadReference()
   const startedAt = Date.now()
   let lastError = null
+
+  try {
+    const directResult = await uploadDirectToStorage(file, authorization)
+    if (directResult?.success) {
+      trackAnalytics('funnel.upload.transport_success', getClientContext({
+        stage: 'direct-storage-upload',
+        attempt: 1,
+        elapsedMs: Date.now() - startedAt,
+        fileSizeBucket: fileSizeBucket(file?.size),
+        uploadReference,
+      }))
+      return directResult
+    }
+  } catch (error) {
+    lastError = error
+    trackAnalytics('funnel.upload.direct_fallback', getClientContext({
+      stage: 'direct-storage-upload',
+      status: Number(error?.status || 0),
+      uploadReference,
+    }))
+  }
 
   for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
     await waitForConnection()

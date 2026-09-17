@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Runs from Compute Engine instance metadata. It is intentionally safe to rerun:
-# the previous application container is replaced only after the new image pulls.
+# Runs from pre-baked Compute Engine image metadata. It is intentionally safe to
+# rerun and never installs packages or pulls mutable runtime dependencies.
 set -euo pipefail
 
 metadata_value() {
@@ -9,17 +9,23 @@ metadata_value() {
 }
 
 service_role="$(metadata_value service-role)"
-image_uri="$(metadata_value image-uri)"
+legacy_image_uri="$(metadata_value image-uri 2>/dev/null || true)"
+api_image_uri="$(metadata_value api-image-uri 2>/dev/null || true)"
+render_image_uri="$(metadata_value render-image-uri 2>/dev/null || true)"
+transcription_image_uri="$(metadata_value transcription-image-uri 2>/dev/null || true)"
 runtime_secret="$(metadata_value runtime-secret)"
+runtime_secret_version="$(metadata_value runtime-secret-version)"
 region="$(metadata_value region)"
+worker_mig_name="$(metadata_value worker-mig-name 2>/dev/null || true)"
+boot_epoch="$(date +%s)"
 
 if [[ "$service_role" != "api" && "$service_role" != "worker" ]]; then
   echo "SERVICE_ROLE must be api or worker" >&2
   exit 64
 fi
 
-apt-get update
-apt-get install -y --no-install-recommends ca-certificates curl docker.io google-cloud-cli
+command -v docker >/dev/null || { echo "Baked image is missing Docker" >&2; exit 70; }
+command -v gcloud >/dev/null || { echo "Baked image is missing Google Cloud CLI" >&2; exit 70; }
 systemctl enable --now docker
 
 registry_host="${region}-docker.pkg.dev"
@@ -27,12 +33,25 @@ gcloud auth configure-docker "$registry_host" --quiet
 
 install -d -m 0750 -o 1000 -g 1000 /var/lib/lekha/scratch
 install -d -m 0750 /etc/lekha
-gcloud secrets versions access latest --secret="$runtime_secret" > /etc/lekha/runtime.env
+if [[ ! "$runtime_secret_version" =~ ^[0-9]+$ ]]; then
+  echo "runtime-secret-version must pin a numeric Secret Manager version" >&2
+  exit 64
+fi
+gcloud secrets versions access "$runtime_secret_version" --secret="$runtime_secret" > /etc/lekha/runtime.env
 chmod 0600 /etc/lekha/runtime.env
 
 docker network inspect lekha-internal >/dev/null 2>&1 || docker network create lekha-internal
 
-docker pull "$image_uri"
+if [[ "$service_role" == "api" ]]; then
+  image_uri="${api_image_uri:-$legacy_image_uri}"
+else
+  image_uri="${render_image_uri:-$legacy_image_uri}"
+fi
+[[ -n "$image_uri" ]] || { echo "Role image URI is required" >&2; exit 64; }
+docker image inspect "$image_uri" >/dev/null 2>&1 || {
+  echo "Pre-baked VM image is missing $image_uri" >&2
+  exit 70
+}
 # RQ handles SIGTERM by finishing its current job. Never SIGKILL an active
 # render during a routine deployment; allow its 30-minute job timeout plus
 # cleanup before Docker's final stop deadline. Drain before restarting ClamAV.
@@ -48,7 +67,10 @@ fi
 # The production API refuses uploads when no malware scanner is configured.
 # A scanner is local to each VM so the app container never publishes its port.
 docker rm -f lekha-clamav >/dev/null 2>&1 || true
-docker pull clamav/clamav:1.4_base
+docker image inspect clamav/clamav:1.4_base >/dev/null 2>&1 || {
+  echo "Pre-baked VM image is missing ClamAV" >&2
+  exit 70
+}
 docker run -d --name lekha-clamav --restart unless-stopped \
   --network lekha-internal clamav/clamav:1.4_base
 
@@ -67,18 +89,28 @@ docker run -d --name "lekha-${service_role}" --restart no \
   -e "PORT=8000" \
   -e "MEDIA_SCRATCH_DIR=/scratch" \
   -e "CLAMAV_HOST=lekha-clamav" \
+  -e "VM_BOOT_EPOCH=${boot_epoch}" \
+  -e "WORKER_MIG_NAME=${worker_mig_name}" \
+  -e "WORKER_MIG_REGION=${region}" \
   -v /var/lib/lekha/scratch:/scratch \
   -p 8000:8000 \
   "$image_uri"
 
 if [[ "$service_role" == "worker" ]]; then
+  helper_image_uri="${transcription_image_uri:-$image_uri}"
+  docker image inspect "$helper_image_uri" >/dev/null 2>&1 || {
+    echo "Pre-baked VM image is missing $helper_image_uri" >&2
+    exit 70
+  }
   install -d -m 0750 -o 1000 -g 1000 /var/lib/lekha/transcription-scratch
   docker run -d --name lekha-transcription --restart unless-stopped \
     --stop-timeout 1860 --network lekha-internal --cpus 1 --memory 2g \
     --env-file /etc/lekha/runtime.env \
     -e SERVICE_ROLE=worker -e PORT=8000 -e MEDIA_SCRATCH_DIR=/scratch \
     -e CLAMAV_HOST=lekha-clamav -e WORKER_QUEUES=caption_transcription_jobs_staging \
-    -v /var/lib/lekha/transcription-scratch:/scratch "$image_uri"
+    -e "VM_BOOT_EPOCH=${boot_epoch}" -e "WORKER_MIG_NAME=${worker_mig_name}" \
+    -e "WORKER_MIG_REGION=${region}" \
+    -v /var/lib/lekha/transcription-scratch:/scratch "$helper_image_uri"
 fi
 
 # Give staging browsers a real HTTPS origin without changing production DNS.
@@ -87,7 +119,10 @@ fi
 if [[ "$service_role" == "api" ]]; then
   public_host="$(metadata_value public-host 2>/dev/null || true)"
   if [[ -n "$public_host" ]]; then
-    docker pull caddy:2.10-alpine
+    docker image inspect caddy:2.10-alpine >/dev/null 2>&1 || {
+      echo "Pre-baked VM image is missing Caddy" >&2
+      exit 70
+    }
     docker volume create lekha-caddy-data >/dev/null
     docker volume create lekha-caddy-config >/dev/null
     docker rm -f lekha-edge >/dev/null 2>&1 || true
