@@ -1,8 +1,11 @@
 param(
     [string]$ProjectId = "project-0cc7c839-b9c7-4734-ad0",
     [string]$Region = "asia-south1",
-    [string]$Release = "71831b836d6bd31ec7eee2fadda3aae5f4b76a42",
-    [string]$ImageUri = "asia-south1-docker.pkg.dev/project-0cc7c839-b9c7-4734-ad0/caption-studio/app@sha256:ae882c49d5d5e4cd255de9a684f377ec9c80b145ccff9beecb96809661d10423"
+    [Parameter(Mandatory = $true)][string]$Release,
+    [Parameter(Mandatory = $true)][string]$ApiImageUri,
+    [Parameter(Mandatory = $true)][string]$RenderImageUri,
+    [Parameter(Mandatory = $true)][string]$TranscriptionImageUri,
+    [string]$BaseImageFamily = "lekha-runtime-stable"
 )
 
 $ErrorActionPreference = "Stop"
@@ -17,6 +20,12 @@ $apiGroup = "lekha-api-staging-mig"
 $workerGroup = "lekha-worker-staging-mig"
 $apiHealth = "lekha-api-staging-mig-health"
 $workerHealth = "lekha-worker-staging-mig-health"
+$runtimeSecretVersion = (& gcloud secrets versions list lekha-runtime-env `
+    --project=$ProjectId --filter="state=ENABLED" --sort-by="~name" `
+    --limit=1 --format="value(name)").Trim()
+if ($runtimeSecretVersion -notmatch '^\d+$') {
+    throw "An enabled numeric lekha-runtime-env secret version is required"
+}
 
 function Invoke-Gcloud {
     param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
@@ -45,14 +54,15 @@ function Ensure-Template {
     )
     & gcloud compute instance-templates describe $Name --project=$ProjectId *> $null
     if ($LASTEXITCODE -eq 0) { return }
+    $roleImage = if ($Role -eq "api") { $ApiImageUri } else { $RenderImageUri }
     Invoke-Gcloud compute instance-templates create $Name `
         --project=$ProjectId --machine-type=$MachineType `
         --network=default --subnet=default --region=$Region `
         --no-address --maintenance-policy=MIGRATE `
         --service-account=$serviceAccount --scopes=cloud-platform `
-        --tags=$Tag --image-family=debian-12 --image-project=debian-cloud `
+        --tags=$Tag --image-family=$BaseImageFamily --image-project=$ProjectId `
         --boot-disk-size=50GB --boot-disk-type=$DiskType --boot-disk-auto-delete `
-        --metadata="service-role=$Role,image-uri=$ImageUri,runtime-secret=lekha-runtime-env,region=$Region" `
+        --metadata="service-role=$Role,image-uri=$roleImage,api-image-uri=$ApiImageUri,render-image-uri=$RenderImageUri,transcription-image-uri=$TranscriptionImageUri,runtime-secret=lekha-runtime-env,runtime-secret-version=$runtimeSecretVersion,region=$Region,worker-mig-name=$workerGroup" `
         --metadata-from-file="startup-script=$startupScript"
 }
 
@@ -156,11 +166,11 @@ Invoke-Gcloud compute instance-groups managed set-autoscaling $apiGroup `
 
 # Three warm workers remove the single-worker failure mode. A render normally
 # occupies most of a four-vCPU VM, so CPU gives a bounded fallback scale-out signal.
-# Automatic scale-in is disabled because Compute Engine cannot prove an RQ job
-# has drained; an operator can shrink the group only after pending and started
-# registries are empty.
+# Workers protect themselves from MIG scale-in while a job is active. Scale-in
+# is therefore enabled conservatively, one idle instance per ten-minute window.
 Invoke-Gcloud compute instance-groups managed set-autoscaling $workerGroup `
     --project=$ProjectId --region=$Region --min-num-replicas=3 --max-num-replicas=20 `
-    --target-cpu-utilization=0.45 --cool-down-period=180 --mode=only-scale-out
+    --target-cpu-utilization=0.45 --cool-down-period=180 --mode=on `
+    "--scale-in-control=max-scaled-in-replicas=1,time-window=600"
 
 Write-Host "Scaled staging groups configured. Verify every instance and queue before stopping either rollback VM."

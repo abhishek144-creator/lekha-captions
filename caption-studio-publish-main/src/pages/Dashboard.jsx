@@ -1,6 +1,6 @@
 import React, { Suspense, useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Upload, Sparkles, Captions, Clock3, Layers, Layout, SlidersHorizontal, Type, Check } from 'lucide-react';
+import { Upload, Sparkles, Captions, Clock3, Layers, Layout, SlidersHorizontal, Type, Check, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -20,6 +20,7 @@ import { getEffectiveAuthToken } from '@/lib/devAuth';
 import { resolveApiResourceUrl } from '@/components/dashboard/exportPipelineUtils';
 import { lazyWithRefresh } from '@/lib/lazyWithRefresh';
 import { uploadFileWithRecovery } from '@/lib/resilientUpload';
+import { useCloudProjects } from '@/hooks/useCloudProjects'
 import { processVideoWithRecovery } from '@/lib/resilientProcess';
 import planCatalog from '../../shared/planCatalog.json';
 
@@ -299,11 +300,22 @@ export default function Dashboard() {
   const [waveformData, setWaveformData] = useState(null);
   const initialEditorStateRef = useRef(null);
   const mediaRefreshInFlightRef = useRef(false);
-  const cloudRevisionRef = useRef(0)
-  const cloudSaveChainRef = useRef(Promise.resolve())
-  const [cloudDraft, setCloudDraft] = useState(null)
   const [cloudSaveMessage, setCloudSaveMessage] = useState('')
-  const [cloudReady, setCloudReady] = useState(false)
+  const { cloudDraft, cloudProjects, cloudReady, saveCloudDraft, selectCloudProject, deleteCloudProject } = useCloudProjects({
+    currentUser,
+    getAuthToken: getEffectiveAuthToken,
+    projectId,
+    setProjectId,
+    onMessage: setCloudSaveMessage,
+  })
+  const handleDeleteCloudProject = useCallback(async () => {
+    const selectedId = cloudDraft?.projectId || projectId
+    if (!selectedId) return
+    const selected = cloudProjects.find((item) => item.project_id === selectedId)
+    const name = selected?.name || 'this project'
+    if (!window.confirm(`Delete ${name}? This removes its saved revisions from your account.`)) return
+    await deleteCloudProject(selectedId)
+  }, [cloudDraft?.projectId, cloudProjects, deleteCloudProject, projectId])
   const [showCaptionRetryNotice, setShowCaptionRetryNotice] = useState(false)
   const [showLowCreditNotice, setShowLowCreditNotice] = useState(false)
 
@@ -327,43 +339,6 @@ export default function Dashboard() {
     const timer = window.setTimeout(() => setShowCaptionRetryNotice(false), 10000)
     return () => window.clearTimeout(timer)
   }, [showCaptionRetryNotice])
-
-  useEffect(() => {
-    let disposed = false
-    setCloudReady(false)
-    setCloudDraft(null)
-    cloudRevisionRef.current = 0
-    if (currentUser) {
-      getEffectiveAuthToken(currentUser).then((id_token) => apiRequest('/api/draft/load', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id_token }),
-      })).then((data) => {
-        if (disposed) return
-        cloudRevisionRef.current = data.revision
-        setCloudDraft(data.draft)
-        setCloudReady(true)
-      }).catch(() => {
-        if (!disposed) setCloudSaveMessage('Cloud drafts are unavailable. Local edits are still kept in this browser.')
-      })
-    }
-    return () => { disposed = true }
-  }, [currentUser])
-
-  const saveCloudDraft = useCallback((draft) => {
-    const save = async () => {
-      if (!cloudReady || !currentUser) throw new Error('Cloud saving is unavailable. Your browser copy is still available.')
-      const id_token = await getEffectiveAuthToken(currentUser)
-      const data = await apiRequest('/api/draft/save', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id_token, draft, expected_revision: cloudRevisionRef.current }),
-      })
-      cloudRevisionRef.current = data.revision
-      setCloudDraft(data.draft)
-      setCloudSaveMessage('Saved to your account')
-    }
-    const pending = cloudSaveChainRef.current.catch(() => {}).then(save)
-    cloudSaveChainRef.current = pending
-    return pending
-  }, [cloudReady, currentUser])
 
   // External Video Sync Signal
   const [seekSignal, setSeekSignal] = useState(null);
@@ -1743,9 +1718,28 @@ export default function Dashboard() {
                 Upload Video
               </Button>
               {cloudDraft && (
-                <div className="mt-4 flex flex-wrap justify-center gap-4 text-sm">
-                  <button className="underline" onClick={restoreCloudDraft}>Restore saved draft</button>
-                  <button className="underline" onClick={() => downloadDraft(cloudDraft)}>Download saved captions</button>
+                <div className="mt-4 space-y-3 text-sm">
+                  {cloudProjects.length > 1 && (
+                    <label className="mx-auto flex max-w-xs flex-col gap-1 text-left text-xs text-gray-400">
+                      Saved projects
+                      <select
+                        value={cloudDraft.projectId || projectId || ''}
+                        onChange={(event) => selectCloudProject(event.target.value)}
+                        className="rounded-lg border border-white/15 bg-zinc-900 px-3 py-2 text-sm text-white"
+                      >
+                        {cloudProjects.map((project) => (
+                          <option key={project.project_id} value={project.project_id}>{project.name}</option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  <div className="flex flex-wrap justify-center gap-4">
+                    <button className="underline" onClick={restoreCloudDraft}>Restore selected project</button>
+                    <button className="underline" onClick={() => downloadDraft(cloudDraft)}>Download saved captions</button>
+                    <button className="inline-flex items-center gap-1 text-red-300 underline" onClick={handleDeleteCloudProject}>
+                      <Trash2 className="h-3.5 w-3.5" /> Delete selected project
+                    </button>
+                  </div>
                 </div>
               )}
             </motion.div>
