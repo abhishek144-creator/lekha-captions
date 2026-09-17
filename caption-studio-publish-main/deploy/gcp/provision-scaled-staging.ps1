@@ -134,7 +134,7 @@ Invoke-Gcloud compute instance-groups managed update $apiGroup `
     --project=$ProjectId --region=$Region --health-check=$apiHealth --initial-delay=180
 Invoke-Gcloud compute instance-groups managed update $workerGroup `
     --project=$ProjectId --region=$Region --health-check=$workerHealth --initial-delay=180 `
-    --target-distribution-shape=balanced --instance-redistribution-type=none
+    --target-distribution-shape=any --instance-redistribution-type=none
 
 Ensure-GroupTemplate $apiGroup $apiTemplate
 Ensure-GroupTemplate $workerGroup $workerTemplate

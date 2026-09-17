@@ -225,7 +225,10 @@ resource "google_compute_region_instance_group_manager" "worker" {
   name                             = "lekha-worker-staging-mig"
   region                           = var.region
   distribution_policy_zones        = var.zones
-  distribution_policy_target_shape = "BALANCED"
+  # Rendering is a regional batch workload. ANY avoids a prolonged capacity
+  # outage when one zone cannot allocate the custom worker machine type; the
+  # MIG still spans every configured zone and replaces unhealthy instances.
+  distribution_policy_target_shape = "ANY"
   base_instance_name               = "lekha-worker-staging-mig"
   version { instance_template = google_compute_instance_template.worker.id }
   auto_healing_policies {
