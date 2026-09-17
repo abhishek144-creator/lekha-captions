@@ -47,7 +47,9 @@ cleanup() {
 }
 trap cleanup EXIT
 umask 077
-gcloud secrets versions access latest --secret="$runtime_secret" > "$runtime_file"
+runtime_secret_version="$(gcloud secrets versions list "$runtime_secret" --filter='state=ENABLED' --sort-by='~name' --limit=1 --format='value(name)')"
+[[ "$runtime_secret_version" =~ ^[0-9]+$ ]] || { echo "No enabled numeric runtime secret version" >&2; exit 64; }
+gcloud secrets versions access "$runtime_secret_version" --secret="$runtime_secret" > "$runtime_file"
 
 # Docker's --env-file parser keeps surrounding quotes as part of the value.
 # Normalize values copied from developer-style .env files before publishing a

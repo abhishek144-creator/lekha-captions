@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from transcription_jobs import TranscriptionJobs
-from drafts import normalize_draft, read_draft, save_draft
+from drafts import delete_project, list_projects, normalize_draft, read_draft, save_draft
 import main
 
 
@@ -40,7 +40,8 @@ class Ref:
     def collection(self, name): return self.document(name)
     def get(self, **_):
         data = copy.deepcopy(self.db.data.get(self.path))
-        return SimpleNamespace(exists=data is not None, to_dict=lambda: data, reference=self)
+        return SimpleNamespace(exists=data is not None, to_dict=lambda: data, reference=self,
+                               id=self.path.rsplit("/", 1)[-1])
     def set(self, data): self.db.data[self.path] = copy.deepcopy(data)
     def update(self, data):
         for key, value in data.items():
@@ -251,8 +252,24 @@ class DurableWorkflowTests(unittest.TestCase):
     def test_drafts_survive_browser_loss_and_keep_five_recovery_revisions(self):
         for index in range(9): save_draft(self.db, "a", {**self.draft, "duration": index}, index)
         self.assertEqual(read_draft(self.db, "a")["revision"], 9)
-        self.assertEqual(len([k for k in self.db.data if k.startswith("users/a/draft_revisions/")]), 5)
+        self.assertEqual(len([k for k in self.db.data if k.startswith("users/a/projects/current/revisions/")]), 5)
         self.assertIsNone(read_draft(self.db, "b")["draft"])
+
+    def test_multiple_projects_are_isolated_and_listed(self):
+        first = {**self.draft, "projectId": "project-one", "projectName": "First"}
+        second = {**self.draft, "projectId": "project-two", "projectName": "Second"}
+        save_draft(self.db, "a", first, 0, "project-one")
+        save_draft(self.db, "a", second, 0, "project-two")
+        self.assertEqual(read_draft(self.db, "a", "project-one")["draft"]["projectName"], "First")
+        self.assertEqual(read_draft(self.db, "a", "project-two")["draft"]["projectName"], "Second")
+        self.assertEqual({row["project_id"] for row in list_projects(self.db, "a")}, {"project-one", "project-two"})
+
+    def test_project_delete_removes_project_and_recovery_revisions(self):
+        draft = {**self.draft, "projectId": "delete-me", "projectName": "Delete me"}
+        save_draft(self.db, "a", draft, 0, "delete-me")
+        self.assertTrue(delete_project(self.db, "a", "delete-me"))
+        self.assertIsNone(read_draft(self.db, "a", "delete-me")["draft"])
+        self.assertFalse(any(key.startswith("users/a/projects/delete-me/") for key in self.db.data))
 
     def test_draft_save_cannot_recreate_deleted_account(self):
         self.db.data["account_deletions/a"] = {"status": "pending"}

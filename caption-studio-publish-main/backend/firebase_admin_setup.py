@@ -5,6 +5,7 @@ import time
 from datetime import datetime, timedelta, timezone
 import firebase_admin
 from firebase_admin import credentials, auth, firestore
+from google.cloud import storage as gcs_storage
 try:
     from .media_storage import (
         bucket_ready as s3_bucket_ready,
@@ -33,6 +34,7 @@ except ImportError:
     fb_storage = None
 
 STORAGE_BUCKET = os.environ.get('FIREBASE_STORAGE_BUCKET', '')
+GCS_MEDIA_BUCKET = os.environ.get('GCS_MEDIA_BUCKET', '').strip()
 ALLOW_FIREBASE_SERVICE_ACCOUNT_PATH = os.environ.get('ALLOW_FIREBASE_SERVICE_ACCOUNT_PATH', '0') == '1'
 IS_TEST_ENV = (os.environ.get("APP_ENV") or os.environ.get("ENV") or "").strip().lower() in {"test", "testing"}
 
@@ -109,12 +111,108 @@ def get_storage_bucket():
     if IS_TEST_ENV and not firebase_admin._apps:
         return None
     try:
+        if GCS_MEDIA_BUCKET:
+            return gcs_storage.Client().bucket(GCS_MEDIA_BUCKET)
         if fb_storage is None:
             return None
         return fb_storage.bucket()
     except Exception as e:
         print(f"Firebase Storage not available: {e}")
         return None
+
+
+def create_resumable_source_upload(uid: str, file_id: str, extension: str,
+                                   content_type: str, size_bytes: int, origin: str = ""):
+    """Create a short-lived GCS resumable session without proxying media through the API."""
+    if s3_is_configured():
+        return None
+    safe_uid = str(uid or "").strip()
+    safe_file_id = str(file_id or "").strip()
+    safe_ext = str(extension or "").strip().lower().lstrip(".")
+    if (not safe_uid or not safe_file_id or not safe_ext or not safe_ext.isalnum()
+            or "/" in safe_uid or "\\" in safe_uid or "/" in safe_file_id or "\\" in safe_file_id):
+        return None
+    bucket = get_storage_bucket()
+    db = get_db()
+    if not bucket or not db:
+        return None
+    remote_path = f"uploads/{safe_uid}/{safe_file_id}.{safe_ext}"
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=6)
+    blob = bucket.blob(remote_path)
+    blob.metadata = {
+        "owner_uid": safe_uid,
+        "file_id": safe_file_id,
+        "delete_at_epoch": str(int(expires_at.timestamp())),
+        "upload_state": "pending_scan",
+    }
+    session_url = blob.create_resumable_upload_session(
+        content_type=content_type or "application/octet-stream",
+        size=max(1, int(size_bytes)),
+        origin=origin or None,
+        timeout=15,
+    )
+    db.collection("direct_upload_intents").document(safe_file_id).set({
+        "uid": safe_uid,
+        "file_id": safe_file_id,
+        "remote_path": remote_path,
+        "extension": safe_ext,
+        "content_type": content_type or "application/octet-stream",
+        "size_bytes": int(size_bytes),
+        "expires_at": expires_at,
+        "created_at": datetime.now(timezone.utc),
+    })
+    return {"session_url": session_url, "remote_path": remote_path, "expires_at": expires_at.isoformat()}
+
+
+def finalize_resumable_source_upload(uid: str, file_id: str):
+    """Verify ownership and size before admitting a directly uploaded object."""
+    if s3_is_configured():
+        return None
+    bucket = get_storage_bucket()
+    db = get_db()
+    if not bucket or not db:
+        return None
+    intent_ref = db.collection("direct_upload_intents").document(str(file_id))
+    intent_snapshot = intent_ref.get()
+    if not intent_snapshot.exists:
+        return None
+    intent = intent_snapshot.to_dict() or {}
+    if str(intent.get("uid") or "") != str(uid or ""):
+        return None
+    remote_path = str(intent.get("remote_path") or "")
+    if not remote_path.startswith(f"uploads/{uid}/"):
+        return None
+    blob = bucket.blob(remote_path)
+    blob.reload(timeout=15)
+    expected_size = int(intent.get("size_bytes") or 0)
+    actual_size = int(blob.size or 0)
+    if expected_size <= 0 or actual_size != expected_size:
+        blob.delete()
+        intent_ref.delete()
+        return None
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=6)
+    blob.metadata = {
+        **(blob.metadata or {}),
+        "owner_uid": str(uid),
+        "file_id": str(file_id),
+        "delete_at_epoch": str(int(expires_at.timestamp())),
+        "upload_state": "pending_scan",
+    }
+    blob.patch()
+    schedule_id = hashlib.sha256(remote_path.encode("utf-8")).hexdigest()
+    db.collection("upload_expirations").document(schedule_id).set({
+        "remote_path": remote_path,
+        "uid": str(uid),
+        "file_id": str(file_id),
+        "expire_at": expires_at,
+        "created_at": datetime.now(timezone.utc),
+    })
+    intent_ref.delete()
+    return {
+        "remote_path": remote_path,
+        "extension": str(intent.get("extension") or ""),
+        "size_bytes": actual_size,
+    }
 
 def upload_to_firebase_storage(
     local_path: str,
@@ -376,6 +474,18 @@ def delete_expired_uploads(batch_size: int = 400):
         return 0
     deleted = 0
     try:
+        stale_intents = list(
+            db.collection("direct_upload_intents")
+            .where("expires_at", "<=", datetime.now(timezone.utc))
+            .limit(max(1, min(int(batch_size), 100)))
+            .stream()
+        )
+        for intent_doc in stale_intents:
+            intent = intent_doc.to_dict() or {}
+            remote_path = str(intent.get("remote_path") or "")
+            if remote_path.startswith("uploads/"):
+                delete_from_firebase_storage(remote_path)
+            intent_doc.reference.delete()
         due_docs = list(
             db.collection("upload_expirations")
             .where("expire_at", "<=", datetime.now(timezone.utc))

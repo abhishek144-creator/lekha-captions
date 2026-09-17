@@ -52,6 +52,8 @@ try:
         delete_expired_uploads,
         delete_user_uploads,
         storage_backend_ready,
+        create_resumable_source_upload,
+        finalize_resumable_source_upload,
     )
 except ImportError:  # Direct execution from backend/ remains supported.
     from firebase_admin_setup import (
@@ -67,6 +69,8 @@ except ImportError:  # Direct execution from backend/ remains supported.
         delete_expired_uploads,
         delete_user_uploads,
         storage_backend_ready,
+        create_resumable_source_upload,
+        finalize_resumable_source_upload,
     )
 from firebase_admin import app_check as firebase_app_check
 from firebase_admin import auth as firebase_auth
@@ -88,7 +92,9 @@ from contextlib import asynccontextmanager
 try:
     from .transcription_jobs import TranscriptionJobs
     from .queue_admission import enqueue_bounded
-    from .drafts import read_draft, save_draft
+    from .drafts import read_draft
+    from .project_api import create_project_router
+    from .direct_upload_api import create_direct_upload_router
     from .request_limits import UploadBodyLimitMiddleware
     from .release_metadata import release_metadata
     from .media_commands import run_media_command
@@ -97,7 +103,9 @@ try:
 except ImportError:
     from transcription_jobs import TranscriptionJobs
     from queue_admission import enqueue_bounded
-    from drafts import read_draft, save_draft
+    from drafts import read_draft
+    from project_api import create_project_router
+    from direct_upload_api import create_direct_upload_router
     from request_limits import UploadBodyLimitMiddleware
     from release_metadata import release_metadata
     from media_commands import run_media_command
@@ -3083,33 +3091,12 @@ class ProcessRequest(BaseModel):
             raise ValueError("min_words must be less than or equal to max_words")
         return self
 
-class DraftRequest(BaseModel):
-    id_token: str = Field(default="", max_length=8192)
-    expected_revision: int = Field(default=0, ge=0)
-    draft: Optional[Dict[str, Any]] = None
-
-
-@app.post("/api/draft/load")
-def load_account_draft(req: DraftRequest):
-    uid = _authenticate_media_request(req.id_token)["uid"]
-    db = get_db()
-    if db is None:
-        raise HTTPException(503, "Cloud draft storage is unavailable")
-    return {"success": True, **read_draft(db, uid)}
-
-
-@app.post("/api/draft/save")
-def save_account_draft(req: DraftRequest):
-    uid = _authenticate_media_request(req.id_token)["uid"]
-    db = get_db()
-    if db is None:
-        raise HTTPException(503, "Cloud draft storage is unavailable")
-    if not req.draft or not _validate_file_id(str(req.draft.get("fileId") or "")):
-        raise HTTPException(422, "Draft requires a valid media reference")
-    previous = read_draft(db, uid)
-    if (previous.get("draft") or {}).get("fileId") != req.draft["fileId"]:
-        _assert_upload_owner(req.draft["fileId"], uid)
-    return {"success": True, **save_draft(db, uid, req.draft, req.expected_revision)}
+app.include_router(create_project_router(
+    _authenticate_media_request,
+    get_db,
+    _validate_file_id,
+    _assert_upload_owner,
+))
 
 
 class MediaUrlRequest(BaseModel):
@@ -3704,6 +3691,23 @@ def _cleanup_incomplete_upload(local_path: str = "", remote_path: str = ""):
             _json_log("warning", "upload_remote_cleanup_failed", error=str(cleanup_error))
 
 
+app.include_router(create_direct_upload_router(
+    authenticate=_authenticate_media_request,
+    extract_token=_extract_bearer_token,
+    assert_service_available=_assert_service_available,
+    allowed_extensions=ALLOWED_EXTENSIONS,
+    allowed_content_prefixes=ALLOWED_CONTENT_PREFIXES,
+    allowed_origins=ALLOWED_ORIGINS,
+    max_upload_bytes=MAX_UPLOAD_BYTES,
+    create_session=create_resumable_source_upload,
+    finalize_session=finalize_resumable_source_upload,
+    remember_owner=_remember_upload_owner,
+    delete_object=delete_from_firebase_storage,
+    signed_upload_url=_signed_upload_url,
+    audit_action=_audit_action,
+))
+
+
 @app.post("/api/upload")
 async def upload_video(file: UploadFile = File(...), request: Request = None, response: Response = None):
     rid = _request_id(request)
@@ -4057,6 +4061,21 @@ async def _process_video_inline(req: ProcessRequest, request: Request, response:
     if not input_path:
         _track_event("process_failed_not_found")
         raise HTTPException(status_code=404, detail="File not found")
+    upload_metadata = _load_upload_metadata(req.file_id)
+    if not upload_metadata.get("security_scanned_at"):
+        if not await asyncio.to_thread(_scan_upload_for_threat, input_path):
+            remote_path = str(upload_metadata.get("remote_path") or "")
+            if remote_path:
+                await asyncio.to_thread(delete_from_firebase_storage, remote_path)
+            raise HTTPException(status_code=422, detail="Upload failed security scan.")
+        scanned_at = _utcnow().isoformat() + "Z"
+        db = get_db()
+        if db:
+            await asyncio.to_thread(
+                db.collection("uploads").document(req.file_id).set,
+                {"security_scanned_at": scanned_at},
+                merge=True,
+            )
 
     # Enforce the per-plan maximum source length. /api/upload only applies a
     # global 180s ceiling; paid plans advertise tighter caps (starter=120s) that
@@ -6562,6 +6581,13 @@ def _delete_user_document_tree(db, user_ref):
     if callable(recursive_delete):
         recursive_delete(user_ref)
         return
+
+    for project_doc in user_ref.collection("projects").limit(100).stream():
+        project_ref = project_doc.reference
+        if hasattr(project_ref, "collection"):
+            for revision_doc in project_ref.collection("revisions").limit(10).stream():
+                revision_doc.reference.delete()
+        project_ref.delete()
 
     for collection_name in ("payments", "export_usage", "drafts", "draft_revisions", "transcription_jobs", "operation_locks"):
         child_ref = user_ref.collection(collection_name)

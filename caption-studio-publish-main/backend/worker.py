@@ -16,6 +16,8 @@ try:
         cleanup_local_media_artifacts,
     )
     from .release_metadata import release_metadata
+    from .gcp_scale_in import ScaleInProtector
+    from .gcp_queue_metrics import publish_worker_cold_start
 except ImportError:  # Direct execution from backend/ remains supported.
     from main import (
         EXPORT_QUEUE_NAME,
@@ -24,6 +26,8 @@ except ImportError:  # Direct execution from backend/ remains supported.
         cleanup_local_media_artifacts,
     )
     from release_metadata import release_metadata
+    from gcp_scale_in import ScaleInProtector
+    from gcp_queue_metrics import publish_worker_cold_start
 
 
 WORKER_STATE = {"heartbeat_at": 0.0, "draining": False}
@@ -44,6 +48,8 @@ def _local_cleanup_loop(stop_event):
 
 
 class ReleaseWorker(Worker):
+    scale_in_protector = ScaleInProtector()
+
     def heartbeat(self, timeout=None, pipeline=None):
         super().heartbeat(timeout=timeout, pipeline=pipeline)
         metadata = release_metadata("worker")
@@ -62,6 +68,21 @@ class ReleaseWorker(Worker):
             # Redis may be the reason for shutdown; still let RQ drain locally.
             pass
         return super().request_stop(signum, frame)
+
+    def perform_job(self, job, queue):
+        protected = False
+        try:
+            protected = self.scale_in_protector.set(True)
+        except Exception as error:
+            print(json.dumps({"event": "scale_in_protection_failed", "error": str(error)}), flush=True)
+        try:
+            return super().perform_job(job, queue)
+        finally:
+            if protected:
+                try:
+                    self.scale_in_protector.set(False)
+                except Exception as error:
+                    print(json.dumps({"event": "scale_in_unprotect_failed", "error": str(error)}), flush=True)
 
 
 def _worker_ready(conn):
@@ -136,6 +157,16 @@ def run_worker():
     host = os.environ.get("HOSTNAME") or socket.gethostname()
     worker_name = f"caption-export-worker-{host}-{uuid.uuid4().hex[:8]}"
     worker = ReleaseWorker(worker_queue_names(), connection=conn, name=worker_name, worker_ttl=90)
+    boot_epoch = int(float(os.environ.get("VM_BOOT_EPOCH", "0") or 0))
+    if boot_epoch > 0:
+        try:
+            publish_worker_cold_start(
+                int(time.time()) - boot_epoch,
+                os.environ.get("WORKER_MIG_NAME", "unknown"),
+                host,
+            )
+        except Exception as error:
+            print(json.dumps({"event": "worker_cold_start_metric_failed", "error": str(error)}), flush=True)
     try:
         worker.work(with_scheduler=True, dequeue_strategy="round_robin")
     finally:

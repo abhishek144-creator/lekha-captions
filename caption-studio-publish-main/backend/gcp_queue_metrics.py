@@ -105,3 +105,28 @@ def publish_queue_snapshot(
     with _open_google_request(request, timeout=8) as response:
         if response.status not in (200, 201):
             raise RuntimeError(f"Monitoring write returned HTTP {response.status}")
+
+
+def publish_worker_cold_start(seconds: int, worker_group: str, instance_name: str) -> None:
+    project_id = _project_id()
+    timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    body = json.dumps({"timeSeries": [{
+        "metric": {
+            "type": "custom.googleapis.com/lekha/worker_cold_start_seconds",
+            "labels": {"worker_group": worker_group, "instance": instance_name},
+        },
+        "resource": {"type": "global", "labels": {"project_id": project_id}},
+        "points": [{
+            "interval": {"endTime": timestamp},
+            "value": {"int64Value": str(max(0, int(seconds)))},
+        }],
+    }]}).encode("utf-8")
+    request = urllib.request.Request(
+        f"https://monitoring.googleapis.com/v3/projects/{project_id}/timeSeries",
+        data=body,
+        method="POST",
+        headers={"Authorization": f"Bearer {_access_token()}", "Content-Type": "application/json"},
+    )
+    with _open_google_request(request, timeout=8) as response:
+        if response.status not in (200, 201):
+            raise RuntimeError(f"Monitoring write returned HTTP {response.status}")

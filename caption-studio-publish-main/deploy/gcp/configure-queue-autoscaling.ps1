@@ -12,7 +12,8 @@ $ErrorActionPreference = "Stop"
     --project=$ProjectId --region=$Region `
     --min-num-replicas=3 --max-num-replicas=20 `
     --target-cpu-utilization=0.45 --cool-down-period=180 `
-    --mode=only-scale-out `
+    --mode=on `
+    '--scale-in-control=max-scaled-in-replicas=1,time-window=600' `
     --update-stackdriver-metric=custom.googleapis.com/lekha/export_queue_depth `
     '--stackdriver-metric-filter=resource.type = global AND metric.labels.queue = caption_export_jobs AND metric.labels.worker_group = lekha-worker-staging-mig' `
     --stackdriver-metric-single-instance-assignment=1 `

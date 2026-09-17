@@ -41,6 +41,13 @@ const assertions = [
     message: 'Every retry series must carry one stable upload reference for production tracing.',
   },
   {
+    ok: /\/api\/uploads\/init/.test(resilientUpload)
+      && /RESUMABLE_CHUNK_BYTES[\s\S]*Content-Range/s.test(resilientUpload)
+      && /\/api\/uploads\/complete/.test(resilientUpload)
+      && /create_direct_upload_router/s.test(backend),
+    message: 'Large browser media must use an authenticated resumable direct-to-GCS upload before the API proxy fallback.',
+  },
+  {
     ok: /if too_large:[\s\S]*Count only fully received uploads[\s\S]*_check_rate\([\s\S]*_upload_rate,[\s\S]*f"network:\{client_ip\}"/s.test(backend),
     message: 'Interrupted request bodies must not consume the backend upload rate limit.',
   },
