@@ -2,7 +2,7 @@ import os
 import tempfile
 import unittest
 from datetime import timedelta
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from backend import firebase_admin_setup as storage_helpers
 
@@ -28,6 +28,10 @@ class FakeBlob:
         if not isinstance(expiration, timedelta):
             raise AssertionError("signed URL expiration must be a timedelta")
         return "https://storage.test/signed-export"
+
+    def create_resumable_upload_session(self, **kwargs):
+        self.resumable_options = kwargs
+        return "https://storage.test/resumable-session"
 
     def download_to_filename(self, local_path):
         with open(local_path, "wb") as output:
@@ -72,6 +76,37 @@ class FakeDb:
 
 
 class FirebaseStorageHelperTests(unittest.TestCase):
+    def test_configured_gcs_bucket_uses_google_storage_client(self):
+        expected_bucket = object()
+        client = MagicMock()
+        client.bucket.return_value = expected_bucket
+        with (
+            patch.object(storage_helpers, "IS_TEST_ENV", False),
+            patch.object(storage_helpers, "GCS_MEDIA_BUCKET", "private-media"),
+            patch.object(storage_helpers.gcs_storage, "Client", return_value=client),
+        ):
+            bucket = storage_helpers.get_storage_bucket()
+        self.assertIs(bucket, expected_bucket)
+        client.bucket.assert_called_once_with("private-media")
+
+    def test_direct_upload_session_is_owner_scoped_and_scheduled(self):
+        bucket = FakeBucket()
+        db = FakeDb()
+        with (
+            patch.object(storage_helpers, "get_storage_bucket", return_value=bucket),
+            patch.object(storage_helpers, "get_db", return_value=db),
+            patch.object(storage_helpers, "s3_is_configured", return_value=False),
+        ):
+            result = storage_helpers.create_resumable_source_upload(
+                "user-1", "123e4567-e89b-12d3-a456-426614174000", "mp4",
+                "video/mp4", 4096, "https://lekhacaptions.com",
+            )
+        self.assertEqual(result["session_url"], "https://storage.test/resumable-session")
+        self.assertEqual(bucket.requested_paths, ["uploads/user-1/123e4567-e89b-12d3-a456-426614174000.mp4"])
+        self.assertEqual(bucket.fake_blob.resumable_options["size"], 4096)
+        self.assertEqual(bucket.fake_blob.metadata["upload_state"], "pending_scan")
+        self.assertIn("direct_upload_intents", db.collections)
+
     def test_export_upload_persists_object_and_expiration_schedule(self):
         bucket = FakeBucket()
         db = FakeDb()

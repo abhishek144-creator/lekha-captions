@@ -32,6 +32,28 @@ This is the **Work Diary** for the Lekha Captions project.
 - [ ] **Verify FPS in export** — Test 24/30/60 fps selector in Export tab produces correct output video frame rates
 - [ ] **Verify zoom/transition animations** — Test zoom_in, zoom_out, fade_in, slide_up/down/left/right in Animate tab → Basic category work correctly in preview
 
+## 2026-09-17 — Production queue, media, and infrastructure hardening
+
+- Deployed application release `b2924ed98c8d6da2afafbb6df89311de431523f9`
+  with separate API, render, and transcription images and a pre-baked worker
+  runtime. API/frontend release metadata now agrees and reports `production`.
+- Moved the active queue to Standard HA Redis 7.2 and added authenticated direct
+  resumable GCS uploads, a private lifecycle-managed media bucket, multi-project
+  workspaces with revisions, numeric Secret Manager pinning, Cloud Armor, and
+  Terraform definitions for the production infrastructure.
+- Enabled queue-depth autoscaling from 3 to 20 workers with CPU fallback,
+  active-job instance protection, conservative scale-in, regional `ANY`
+  placement, an 80-job pending limit, ten-minute queue lifetime, and five-minute
+  retry guidance.
+- Google approved 100 global Compute Engine vCPUs. A controlled 100-job 720p
+  capacity probe used all 20 workers and completed 100/100 with zero failures in
+  131.153 seconds. Worker cold start measured 20–22 seconds across 34 samples.
+  All queues returned to zero after the test.
+- Verified public root/API readiness, Cloud Armor on both backends, HA Redis,
+  GCS CORS/lifecycle cleanup, protected direct-upload/project routes, and clean
+  Git state. Detailed evidence is in
+  `docs/GCP_PRODUCTION_HARDENING_2026-09-17.md`.
+
 ---
 
 ### Session 13 — 2026-06-09

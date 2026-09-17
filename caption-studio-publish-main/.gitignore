@@ -76,3 +76,10 @@ public/dev-sample.mov
 
 # Generated marketing release metadata
 landing-next/public/release.json
+
+# Terraform local cache/state; commit configuration and lock file only.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+terraform.tfvars

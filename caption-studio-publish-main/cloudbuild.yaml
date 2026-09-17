@@ -2,12 +2,36 @@ steps:
   - name: gcr.io/cloud-builders/docker
     args:
       - build
+      - --target
+      - api
       - --build-arg
       - APP_RELEASE=${_RELEASE_SHA}
       - --tag
-      - ${_IMAGE_URI}:${_RELEASE_SHA}
+      - ${_API_IMAGE_URI}:${_RELEASE_SHA}
+      - .
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --target
+      - transcription
+      - --build-arg
+      - APP_RELEASE=${_RELEASE_SHA}
+      - --tag
+      - ${_TRANSCRIPTION_IMAGE_URI}:${_RELEASE_SHA}
+      - .
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --target
+      - render
+      - --build-arg
+      - APP_RELEASE=${_RELEASE_SHA}
+      - --tag
+      - ${_RENDER_IMAGE_URI}:${_RELEASE_SHA}
       - .
 images:
-  - ${_IMAGE_URI}:${_RELEASE_SHA}
+  - ${_API_IMAGE_URI}:${_RELEASE_SHA}
+  - ${_TRANSCRIPTION_IMAGE_URI}:${_RELEASE_SHA}
+  - ${_RENDER_IMAGE_URI}:${_RELEASE_SHA}
 options:
   logging: CLOUD_LOGGING_ONLY

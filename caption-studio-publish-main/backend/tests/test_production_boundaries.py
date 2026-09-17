@@ -123,6 +123,45 @@ class ProductionBoundaryTests(unittest.TestCase):
             self.assertFalse(firebase_admin_setup.storage_backend_ready())
             firebase.return_value.exists.assert_called_once_with(timeout=5)
 
+    def test_api_readiness_does_not_require_node_with_durable_workers(self):
+        class Redis:
+            @staticmethod
+            def ping(): return True
+
+            @staticmethod
+            def hget(_key, field):
+                if field == "app_release":
+                    return main.APP_RELEASE
+                return None
+
+        class Database:
+            @staticmethod
+            def collection(_name):
+                return SimpleNamespace(limit=lambda _limit: SimpleNamespace(stream=lambda: iter([])))
+
+        worker = SimpleNamespace(
+            key="worker:ready",
+            queue_names=[main.EXPORT_QUEUE_NAME, main.TRANSCRIPTION_QUEUE_NAME],
+        )
+        real_which = main.shutil.which
+
+        def without_node(binary):
+            return None if binary == "node" else real_which(binary) or f"/usr/bin/{binary}"
+
+        main._dependency_snapshot_cache.update({"checked_at": 0.0, "value": None})
+        with (patch.object(main, "DURABLE_QUEUE_ENABLED", True),
+              patch.object(main, "_redis_client", Redis()),
+              patch.object(main, "get_db", return_value=Database()),
+              patch.object(main, "storage_backend_ready", return_value=True),
+              patch.object(main, "RQWorker", SimpleNamespace(all=lambda connection: [worker])),
+              patch.object(main.shutil, "which", side_effect=without_node),
+              patch.object(main.shutil, "disk_usage", return_value=SimpleNamespace(free=3 * 1024 ** 3))):
+            snapshot = main._runtime_dependency_snapshot()
+
+        self.assertTrue(snapshot["checks"]["node"])
+        self.assertTrue(snapshot["ready"])
+        main._dependency_snapshot_cache.update({"checked_at": 0.0, "value": None})
+
     def test_queued_export_cannot_start_after_account_deletion_request(self):
         with (patch.object(main, "_assert_account_not_deleting", side_effect=main.HTTPException(409, "Deletion requested")),
               patch.object(main, "get_db") as database):
