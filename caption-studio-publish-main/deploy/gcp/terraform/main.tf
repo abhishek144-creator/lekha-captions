@@ -88,6 +88,15 @@ resource "google_storage_bucket_iam_member" "runtime_media" {
   member = "serviceAccount:${var.runtime_service_account}"
 }
 
+# Object Admin intentionally excludes bucket metadata. The readiness probe calls
+# buckets.get before admitting traffic, so grant that narrow permission without
+# broadening the runtime identity to full Storage Admin.
+resource "google_storage_bucket_iam_member" "runtime_media_bucket_viewer" {
+  bucket = google_storage_bucket.media.name
+  role   = "roles/storage.bucketViewer"
+  member = "serviceAccount:${var.runtime_service_account}"
+}
+
 resource "google_project_iam_custom_role" "worker_scale_protection" {
   role_id     = "lekhaWorkerScaleProtection"
   title       = "Lekha worker scale-in protection"
