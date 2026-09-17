@@ -4779,7 +4779,12 @@ def _runtime_dependency_snapshot() -> Dict[str, Any]:
     checks: Dict[str, bool] = {
         "ffmpeg": shutil.which("ffmpeg") is not None,
         "ffprobe": shutil.which("ffprobe") is not None,
-        "node": shutil.which("node") is not None,
+        # The API image does not render videos when the durable queue is enabled;
+        # Chromium/Node live only in the render-worker image. Requiring Node on
+        # the API would permanently fail load-balancer health checks after the
+        # production images are split by role. Inline rendering still requires
+        # Node when the durable queue is disabled.
+        "node": DURABLE_QUEUE_ENABLED or shutil.which("node") is not None,
         "redis": _redis_client is not None,
         "firestore": False,
         "storage": False,
