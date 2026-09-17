@@ -34,7 +34,7 @@ This is the **Work Diary** for the Lekha Captions project.
 
 ## 2026-09-17 — Production queue, media, and infrastructure hardening
 
-- Deployed application release `b2924ed98c8d6da2afafbb6df89311de431523f9`
+- Deployed application release `d8824f5d998ec9daec8de31c7a803408755841de`
   with separate API, render, and transcription images and a pre-baked worker
   runtime. API/frontend release metadata now agrees and reports `production`.
 - Moved the active queue to Standard HA Redis 7.2 and added authenticated direct
@@ -53,6 +53,10 @@ This is the **Work Diary** for the Lekha Captions project.
   GCS CORS/lifecycle cleanup, protected direct-upload/project routes, and clean
   Git state. Detailed evidence is in
   `docs/GCP_PRODUCTION_HARDENING_2026-09-17.md`.
+- Fixed the Windows deployment helper to use a securely deleted temporary file
+  for Secret Manager updates, made the optional frontend Sentry DSN build input
+  work without a configured third-party account, and balanced idle scale-in at
+  five protected workers per five-minute window.
 
 ---
 

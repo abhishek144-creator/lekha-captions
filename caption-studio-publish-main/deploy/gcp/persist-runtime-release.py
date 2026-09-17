@@ -1,7 +1,9 @@
 """Update non-secret release settings without printing runtime credentials."""
 import argparse
+import os
 import shutil
 import subprocess
+import tempfile
 from datetime import datetime, timezone
 
 parser = argparse.ArgumentParser()
@@ -39,8 +41,24 @@ updates = {
 }
 lines = [line for line in raw.splitlines() if line.partition("=")[0] not in updates]
 lines.extend(f"{key}={value}" for key, value in updates.items())
-result = subprocess.run(base + ["add", "lekha-runtime-env", "--data-file=-", "--quiet"],
-                        input="\n".join(lines) + "\n", text=True, capture_output=True)
-if result.returncode:
-    raise SystemExit("Runtime secret update failed; credentials withheld")
+runtime_path = ""
+try:
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", newline="\n", delete=False, suffix=".env"
+    ) as runtime_file:
+        runtime_file.write("\n".join(lines) + "\n")
+        runtime_path = runtime_file.name
+    result = subprocess.run(
+        base + ["add", "lekha-runtime-env", f"--data-file={runtime_path}", "--quiet"],
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode:
+        raise SystemExit("Runtime secret update failed; credentials withheld")
+finally:
+    if runtime_path:
+        try:
+            os.remove(runtime_path)
+        except FileNotFoundError:
+            pass
 print("Runtime release settings saved as a new secret version; previous versions retained")
