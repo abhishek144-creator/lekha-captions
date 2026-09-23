@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 import firebase_admin
 from firebase_admin import credentials, auth, firestore
 from google.cloud import storage as gcs_storage
+from google.api_core.exceptions import NotFound
 try:
     from .media_storage import (
         bucket_ready as s3_bucket_ready,
@@ -179,17 +180,33 @@ def finalize_resumable_source_upload(uid: str, file_id: str):
     intent = intent_snapshot.to_dict() or {}
     if str(intent.get("uid") or "") != str(uid or ""):
         return None
+    if intent.get("status") == "cancelled":
+        return None
+    intent_expiry = intent.get("expires_at")
+    if (intent.get("status") != "completed" and isinstance(intent_expiry, datetime)
+            and intent_expiry.replace(tzinfo=intent_expiry.tzinfo or timezone.utc)
+            <= datetime.now(timezone.utc)):
+        return None
     remote_path = str(intent.get("remote_path") or "")
     if not remote_path.startswith(f"uploads/{uid}/"):
         return None
     blob = bucket.blob(remote_path)
-    blob.reload(timeout=15)
+    try:
+        blob.reload(timeout=15)
+    except NotFound:
+        return None
     expected_size = int(intent.get("size_bytes") or 0)
     actual_size = int(blob.size or 0)
     if expected_size <= 0 or actual_size != expected_size:
         blob.delete()
         intent_ref.delete()
         return None
+    if intent.get("status") == "completed":
+        return {
+            "remote_path": remote_path,
+            "extension": str(intent.get("extension") or ""),
+            "size_bytes": actual_size,
+        }
     expires_at = datetime.now(timezone.utc) + timedelta(hours=6)
     blob.metadata = {
         **(blob.metadata or {}),
@@ -207,12 +224,72 @@ def finalize_resumable_source_upload(uid: str, file_id: str):
         "expire_at": expires_at,
         "created_at": datetime.now(timezone.utc),
     })
-    intent_ref.delete()
+    # Keep the receipt until expiry so a lost completion response can be retried
+    # without turning a valid, already-uploaded object into a 409.
+    if not _transition_direct_upload_intent(
+        db, intent_ref, uid, remote_path, "completed", expires_at=expires_at,
+    ):
+        return None
     return {
         "remote_path": remote_path,
         "extension": str(intent.get("extension") or ""),
         "size_bytes": actual_size,
     }
+
+
+@firestore.transactional
+def _commit_direct_upload_intent_transition(transaction, intent_ref, uid, remote_path,
+                                            target_status, expires_at):
+    snapshot = intent_ref.get(transaction=transaction)
+    if not snapshot.exists:
+        return False
+    intent = snapshot.to_dict() or {}
+    if (str(intent.get("uid") or "") != str(uid or "")
+            or str(intent.get("remote_path") or "") != remote_path):
+        return False
+    current_status = intent.get("status")
+    if current_status == target_status:
+        return True
+    if current_status in {"cancelled", "completed"}:
+        return False
+    now = datetime.now(timezone.utc)
+    update = {"status": target_status}
+    if target_status == "completed":
+        update.update({"completed_at": now, "expires_at": expires_at})
+    else:
+        update["cancelled_at"] = now
+    transaction.set(intent_ref, update, merge=True)
+    return True
+
+
+def _transition_direct_upload_intent(db, intent_ref, uid, remote_path, target_status,
+                                     expires_at=None):
+    return _commit_direct_upload_intent_transition(
+        db.transaction(), intent_ref, uid, remote_path, target_status, expires_at,
+    )
+
+
+def cancel_resumable_source_upload(uid: str, file_id: str) -> bool:
+    """Revoke an unfinished intent; its session URI should be deleted by the browser."""
+    db = get_db()
+    if not db:
+        return False
+    intent_ref = db.collection("direct_upload_intents").document(str(file_id))
+    snapshot = intent_ref.get()
+    if not snapshot.exists:
+        return False
+    intent = snapshot.to_dict() or {}
+    if str(intent.get("uid") or "") != str(uid or "") or intent.get("status") == "completed":
+        return False
+    remote_path = str(intent.get("remote_path") or "")
+    if not remote_path.startswith(f"uploads/{uid}/"):
+        return False
+    if not _transition_direct_upload_intent(db, intent_ref, uid, remote_path, "cancelled"):
+        return False
+    # Keep the intent for the six-hour janitor: a client holding an old bearer
+    # session might still finish uploading after this point. Avoid deleting an
+    # object here because a concurrent completion may have already accepted it.
+    return True
 
 def upload_to_firebase_storage(
     local_path: str,

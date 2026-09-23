@@ -66,7 +66,7 @@ resource "google_storage_bucket" "media" {
 
   cors {
     origin          = ["https://lekhacaptions.com", "https://www.lekhacaptions.com"]
-    method          = ["PUT", "OPTIONS"]
+    method          = ["PUT", "DELETE", "OPTIONS"]
     response_header = ["Content-Type", "Content-Range", "Range", "X-Goog-Upload-Status"]
     max_age_seconds = 3600
   }

@@ -93,6 +93,33 @@ function queryResumableOffset(uploadUrl, total) {
   })
 }
 
+async function cancelDirectUpload(initialized, authorization) {
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null
+  const timeout = controller ? setTimeout(() => controller.abort(), 5000) : null
+  try {
+    await fetch(initialized.upload_url, {
+      method: 'DELETE',
+      ...(controller ? { signal: controller.signal } : {}),
+    })
+  } catch {
+    // The API marks the intent cancelled even if storage deletion is unavailable.
+  } finally {
+    if (timeout) clearTimeout(timeout)
+  }
+  try {
+    await apiRequest('/api/uploads/cancel', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authorization ? { Authorization: `Bearer ${authorization}` } : {}),
+      },
+      body: JSON.stringify({ file_id: initialized.file_id }),
+    })
+  } catch {
+    // The server-side lease expires; keep the original upload error visible.
+  }
+}
+
 async function uploadDirectToStorage(file, authorization, retryDelaysMs, onProgress, onRetry) {
   if (typeof XMLHttpRequest === 'undefined') return null
   const initialized = await apiRequest('/api/uploads/init', {
@@ -111,48 +138,61 @@ async function uploadDirectToStorage(file, authorization, retryDelaysMs, onProgr
   if (!initialized?.direct_upload_available || !initialized?.upload_url) return null
   let offset = 0
   let retries = 0
-  while (offset < file.size) {
-    const end = Math.min(file.size, offset + RESUMABLE_CHUNK_BYTES)
-    try {
-      const previousOffset = offset
-      const result = await putResumableChunk(
-        initialized.upload_url, file.slice(offset, end), offset, file.size,
-        file.type, onProgress,
-      )
-      offset = result.offset
-      if (offset <= previousOffset) throw Object.assign(new Error('Storage did not acknowledge upload progress'), { status: 503 })
-      onProgress?.(offset)
-      retries = 0
-    } catch (error) {
-      if (!(isRetryableUploadError(error) || Number(error?.status) === 429)
-          || retries >= retryDelaysMs.length) throw error
-      onRetry?.({ attempt: retries + 1, nextAttempt: retries + 2, error })
-      await waitForConnection()
-      await sleep(retryDelaysMs[retries] + Math.floor(Math.random() * 300))
-      retries += 1
-      while (true) {
-        try {
-          offset = await queryResumableOffset(initialized.upload_url, file.size)
-          break
-        } catch (queryError) {
-          if (!isRetryableUploadError(queryError) || retries >= retryDelaysMs.length) throw queryError
-          await waitForConnection()
-          await sleep(retryDelaysMs[retries] + Math.floor(Math.random() * 300))
-          retries += 1
+  try {
+    while (offset < file.size) {
+      const end = Math.min(file.size, offset + RESUMABLE_CHUNK_BYTES)
+      try {
+        const previousOffset = offset
+        const result = await putResumableChunk(
+          initialized.upload_url, file.slice(offset, end), offset, file.size,
+          file.type, onProgress,
+        )
+        offset = result.offset
+        if (offset <= previousOffset) throw Object.assign(new Error('Storage did not acknowledge upload progress'), { status: 503 })
+        onProgress?.(offset)
+        retries = 0
+      } catch (error) {
+        if (!(isRetryableUploadError(error) || Number(error?.status) === 429)
+            || retries >= retryDelaysMs.length) throw error
+        onRetry?.({ attempt: retries + 1, nextAttempt: retries + 2, error })
+        await waitForConnection()
+        await sleep(retryDelaysMs[retries] + Math.floor(Math.random() * 300))
+        retries += 1
+        while (true) {
+          try {
+            offset = await queryResumableOffset(initialized.upload_url, file.size)
+            break
+          } catch (queryError) {
+            if (!isRetryableUploadError(queryError) || retries >= retryDelaysMs.length) throw queryError
+            await waitForConnection()
+            await sleep(retryDelaysMs[retries] + Math.floor(Math.random() * 300))
+            retries += 1
+          }
         }
+        onProgress?.(offset)
       }
-      onProgress?.(offset)
+    }
+  } catch (error) {
+    await cancelDirectUpload(initialized, authorization)
+    throw error
+  }
+  for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
+    try {
+      return await apiRequest('/api/uploads/complete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authorization ? { Authorization: `Bearer ${authorization}` } : {}),
+        },
+        body: JSON.stringify({ file_id: initialized.file_id }),
+        dedupeKey: 'direct-upload-complete',
+      })
+    } catch (error) {
+      if (!(isRetryableUploadError(error) || Number(error?.status) === 409)
+          || attempt >= retryDelaysMs.length) throw error
+      await sleep(retryDelaysMs[attempt])
     }
   }
-  return apiRequest('/api/uploads/complete', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(authorization ? { Authorization: `Bearer ${authorization}` } : {}),
-    },
-    body: JSON.stringify({ file_id: initialized.file_id }),
-    dedupeKey: 'direct-upload-complete',
-  })
 }
 
 export async function uploadFileWithRecovery(file, {

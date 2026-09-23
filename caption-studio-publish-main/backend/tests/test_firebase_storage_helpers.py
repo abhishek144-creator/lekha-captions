@@ -2,6 +2,7 @@ import os
 import tempfile
 import unittest
 from datetime import timedelta
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from backend import firebase_admin_setup as storage_helpers
@@ -76,6 +77,91 @@ class FakeDb:
 
 
 class FirebaseStorageHelperTests(unittest.TestCase):
+    def test_upload_cancellation_requires_intent_owner(self):
+        file_id = "123e4567-e89b-12d3-a456-426614174000"
+        intent_ref = MagicMock()
+        intent_ref.get.return_value = SimpleNamespace(
+            exists=True,
+            to_dict=lambda: {"uid": "other-user",
+                             "remote_path": f"uploads/other-user/{file_id}.mp4"},
+        )
+        db = MagicMock()
+        db.collection.return_value.document.return_value = intent_ref
+        with patch.object(storage_helpers, "get_db", return_value=db):
+            self.assertFalse(storage_helpers.cancel_resumable_source_upload("user-1", file_id))
+        intent_ref.set.assert_not_called()
+
+    def test_cancelled_direct_upload_rejects_completion(self):
+        file_id = "123e4567-e89b-12d3-a456-426614174000"
+        intent_ref = MagicMock()
+        intent_ref.get.return_value = SimpleNamespace(
+            exists=True,
+            to_dict=lambda: {"uid": "user-1", "status": "cancelled",
+                             "remote_path": f"uploads/user-1/{file_id}.mp4"},
+        )
+        db = MagicMock()
+        db.collection.return_value.document.return_value = intent_ref
+        with (
+            patch.object(storage_helpers, "get_storage_bucket", return_value=MagicMock()),
+            patch.object(storage_helpers, "get_db", return_value=db),
+            patch.object(storage_helpers, "s3_is_configured", return_value=False),
+        ):
+            self.assertIsNone(storage_helpers.finalize_resumable_source_upload("user-1", file_id))
+        intent_ref.set.assert_not_called()
+
+    def test_direct_upload_completion_is_idempotent_after_response_loss(self):
+        file_id = "123e4567-e89b-12d3-a456-426614174000"
+        remote_path = f"uploads/user-1/{file_id}.mp4"
+        pending = {"uid": "user-1", "remote_path": remote_path,
+                   "extension": "mp4", "size_bytes": 100}
+        completed = {**pending, "status": "completed"}
+        intent_ref = MagicMock()
+        intent_ref.get.side_effect = [
+            SimpleNamespace(exists=True, to_dict=lambda: pending),
+            SimpleNamespace(exists=True, to_dict=lambda: pending),
+            SimpleNamespace(exists=True, to_dict=lambda: completed),
+        ]
+        expiration_ref = MagicMock()
+        db = MagicMock()
+        def collection(name):
+            result = MagicMock()
+            result.document.return_value = intent_ref if name == "direct_upload_intents" else expiration_ref
+            return result
+        db.collection.side_effect = collection
+        blob = MagicMock()
+        blob.size = 100
+        blob.metadata = {}
+        bucket = MagicMock()
+        bucket.blob.return_value = blob
+        with (
+            patch.object(storage_helpers, "get_storage_bucket", return_value=bucket),
+            patch.object(storage_helpers, "get_db", return_value=db),
+            patch.object(storage_helpers, "s3_is_configured", return_value=False),
+        ):
+            first = storage_helpers.finalize_resumable_source_upload("user-1", file_id)
+            second = storage_helpers.finalize_resumable_source_upload("user-1", file_id)
+        self.assertEqual(first, second)
+        self.assertEqual(first["remote_path"], remote_path)
+        blob.patch.assert_called_once()
+        expiration_ref.set.assert_called_once()
+        db.transaction.return_value.set.assert_called_once()
+        intent_ref.delete.assert_not_called()
+
+    def test_completed_intent_cannot_be_cancelled_in_transaction(self):
+        file_id = "123e4567-e89b-12d3-a456-426614174000"
+        remote_path = f"uploads/user-1/{file_id}.mp4"
+        intent_ref = MagicMock()
+        intent_ref.get.return_value = SimpleNamespace(
+            exists=True,
+            to_dict=lambda: {"uid": "user-1", "remote_path": remote_path,
+                             "status": "completed"},
+        )
+        db = MagicMock()
+        db.collection.return_value.document.return_value = intent_ref
+        with patch.object(storage_helpers, "get_db", return_value=db):
+            self.assertFalse(storage_helpers.cancel_resumable_source_upload("user-1", file_id))
+        db.transaction.return_value.set.assert_not_called()
+
     def test_configured_gcs_bucket_uses_google_storage_client(self):
         expected_bucket = object()
         client = MagicMock()
