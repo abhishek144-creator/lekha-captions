@@ -97,8 +97,9 @@ jobs:
       - run: python -m py_compile backend/main.py backend/firebase_admin_setup.py backend/worker.py
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: pip install -r backend/requirements-test.txt
-      - run: python -m unittest discover -s backend/tests -v
+      - run: python -m pytest backend/tests -q
       - run: docker build --tag lekha-captions-ci .
+      - run: docker run --rm --entrypoint npm lekha-captions-ci run test:render-browser-reuse
       - run: pip install pip-audit==2.10.1 bandit==1.9.4
       - run: pip-audit -r backend/requirements.lock
       - run: bandit -r backend -x backend/tests -ll -ii

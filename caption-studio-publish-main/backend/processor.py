@@ -442,6 +442,7 @@ class VideoProcessor:
         self.project_root = os.path.dirname(self.backend_dir)
         self.template_overlay_script = os.path.join(self.project_root, "scripts", "render_template_overlay.mjs")
         os.makedirs(self.fonts_dir, exist_ok=True)
+        self._packaged_font_matches = {}
         self.client = None # Lazy init
         self._source_basic_template_ids = self._load_source_basic_template_ids()
         self._ensure_fallback_font()
@@ -459,6 +460,8 @@ class VideoProcessor:
 
     def _ensure_fallback_font(self):
         fallback_path = os.path.join(self.fonts_dir, "Inter.ttf")
+        if self._packaged_font_available("Inter"):
+            return
         if not os.path.exists(fallback_path):
             try:
                 info = GOOGLE_FONTS_MAP.get('Inter')
@@ -485,6 +488,8 @@ class VideoProcessor:
         if not info:
             return None
         font_path = os.path.join(self.fonts_dir, info['file'])
+        if self._packaged_font_available(info['ass_name']):
+            return info
         if not os.path.exists(font_path):
             try:
                 print(f"Downloading Indic font for {script_name}: {info['file']}")
@@ -545,6 +550,25 @@ class VideoProcessor:
     # GOOGLE_FONTS_MAP / SCRIPT_FONTS_MAP / INDIC_FONTS / FONT_ALIASES satisfy
     # this pattern, so no legitimate font is affected.
     _FONT_KEY_PATTERN = re.compile(r"^[A-Za-z0-9 _-]{1,64}$")
+
+    def _packaged_font_available(self, family):
+        if os.environ.get("PREFER_PACKAGED_RENDER_FONTS") != "1" or not shutil.which("fc-match"):
+            return False
+        if family in self._packaged_font_matches:
+            return self._packaged_font_matches[family]
+        try:
+            result = subprocess.run(
+                ["fc-match", "-f", "%{family}\n", family],
+                capture_output=True, text=True, timeout=3, check=True,
+            )
+            wanted = re.sub(r"[^a-z0-9]", "", family.lower())
+            found = [re.sub(r"[^a-z0-9]", "", name.lower())
+                     for name in result.stdout.strip().split(",")]
+            matched = wanted in found
+        except (OSError, subprocess.SubprocessError):
+            matched = False
+        self._packaged_font_matches[family] = matched
+        return matched
 
     def _ensure_font(self, font_key):
         if not self._FONT_KEY_PATTERN.match(str(font_key or "")):
@@ -609,6 +633,8 @@ class VideoProcessor:
             font_key = 'Inter'
 
         font_path = os.path.join(self.fonts_dir, info['file'])
+        if self._packaged_font_available(info['ass_name']):
+            return info
         if not os.path.exists(font_path):
             try:
                 print(f"Downloading font: {font_key}")

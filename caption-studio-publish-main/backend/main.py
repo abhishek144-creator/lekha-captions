@@ -104,7 +104,8 @@ try:
     from .release_metadata import release_metadata
     from .media_commands import run_media_command
     from .job_state import transition as transition_export_job, InvalidJobTransition, LOCAL_LOCK as JOB_STATE_LOCK
-    from .gcp_queue_metrics import publish_queue_snapshot, queue_snapshot
+    from .gcp_queue_metrics import publish_queue_snapshot, queue_snapshot, queued_render_work_seconds
+    from .render_capacity import estimate_render_work_seconds, render_class
 except ImportError:
     from transcription_jobs import TranscriptionJobs
     from queue_admission import enqueue_bounded
@@ -116,7 +117,8 @@ except ImportError:
     from release_metadata import release_metadata
     from media_commands import run_media_command
     from job_state import transition as transition_export_job, InvalidJobTransition, LOCAL_LOCK as JOB_STATE_LOCK
-    from gcp_queue_metrics import publish_queue_snapshot, queue_snapshot
+    from gcp_queue_metrics import publish_queue_snapshot, queue_snapshot, queued_render_work_seconds
+    from render_capacity import estimate_render_work_seconds, render_class
 
 try:
     import razorpay as _razorpay_module
@@ -904,11 +906,13 @@ def _publish_queue_metrics_once():
     if not token or _export_queue is None or Job is None:
         return
     depth, oldest_age_seconds = queue_snapshot(_export_queue, Job)
+    pending_work_seconds = queued_render_work_seconds(_export_queue, Job)
     publish_queue_snapshot(
         depth,
         oldest_age_seconds,
         EXPORT_QUEUE_NAME,
         WORKER_MIG_NAME,
+        pending_work_seconds=pending_work_seconds,
     )
 
 
@@ -2382,6 +2386,41 @@ def _load_upload_metadata(file_id: str) -> Dict[str, Any]:
     return metadata
 
 
+def _remember_source_duration(file_id: str, duration_seconds: float):
+    if not math.isfinite(duration_seconds) or duration_seconds <= 0:
+        return
+    if _redis_client is not None:
+        try:
+            _redis_client.setex(f"upload_duration:{file_id}", 24 * 3600, duration_seconds)
+        except Exception as error:
+            _json_log("warning", "upload_duration_cache_failed", error=type(error).__name__)
+    db = get_db()
+    if db:
+        try:
+            db.collection("uploads").document(file_id).set(
+                {"duration_seconds": duration_seconds}, merge=True,
+            )
+        except Exception as error:
+            _json_log("warning", "upload_duration_persist_failed", error=type(error).__name__)
+
+
+def _source_duration_hint(file_id: str, uid: str) -> float:
+    metadata = _load_upload_metadata(file_id)
+    if str(metadata.get("uid") or "") != str(uid):
+        return 0
+    if _redis_client is not None:
+        try:
+            cached = _redis_client.get(f"upload_duration:{file_id}")
+            if cached is not None:
+                return float(cached)
+        except Exception:
+            pass
+    try:
+        return float(metadata.get("duration_seconds") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 def _remember_upload_owner(file_id: str, uid: str, remote_path: str = "", extension: str = ""):
     if not file_id or not uid:
         return False
@@ -3591,6 +3630,7 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
         source_duration_seconds=round(source_duration, 3),
         rendered_duration_seconds=round(rendered_duration, 3),
         output_size_bytes=output_size_bytes, cache_hit=cache_hit,
+        estimated_render_seconds=recorded_job.get("estimated_render_seconds"),
         template_export=template_export_active, quality=preset["quality"],
         fps=preset["fps"],
     )
@@ -4181,6 +4221,7 @@ async def _process_video_inline(req: ProcessRequest, request: Request, response:
     if media_duration > max_seconds + 0.5:
         _track_event("process_rejected_duration", {"tier": user_tier, "duration": media_duration, "max_seconds": max_seconds})
         raise HTTPException(status_code=403, detail=f"Your plan allows videos up to {max_seconds}s. This video is {media_duration:.0f}s long.")
+    await asyncio.to_thread(_remember_source_duration, req.file_id, media_duration)
 
     try:
         media_hash = await asyncio.to_thread(_compute_media_hash, input_path)
@@ -4407,6 +4448,10 @@ async def export_video(req: ExportRequest, request: Request, response: Response)
 
     release_export_slot_in_request = True
     try:
+        duration_hint = await asyncio.to_thread(_source_duration_hint, req.file_id, uid)
+        estimated_render_seconds = estimate_render_work_seconds(
+            duration_hint, safe_request_snapshot,
+        )
         _set_export_job(
             export_job_id,
             "queued",
@@ -4417,6 +4462,7 @@ async def export_video(req: ExportRequest, request: Request, response: Response)
             queue_entered_at=time.time(),
             idempotency_key=idem_key,
             idempotency_request_hash=idempotency_request_hash,
+            estimated_render_seconds=estimated_render_seconds,
             request_snapshot=safe_request_snapshot,
         )
         if _export_queue is not None:
@@ -4447,6 +4493,8 @@ async def export_video(req: ExportRequest, request: Request, response: Response)
                     idempotency_request_hash,
                 ),
                 job_id=export_job_id,
+                meta={"estimated_render_seconds": estimated_render_seconds,
+                      "render_class": render_class(safe_request_snapshot)},
                 retry=RQRetry(max=3, interval=[10, 30, 60]) if RQRetry else None,
                 ttl=EXPORT_MAX_QUEUE_WAIT_SECONDS,
                 result_ttl=24 * 3600,
@@ -4572,6 +4620,7 @@ def export_status(job_id: str, request: Request):
         "status": job.get("status", "unknown"),
         "updated_at": job.get("updated_at"),
         "queue_wait_ms": job.get("queue_wait_ms"),
+        "estimated_render_seconds": job.get("estimated_render_seconds"),
         "preparation_ms": job.get("preparation_ms"),
         "render_ms": job.get("render_ms"),
         "finalization_ms": job.get("finalization_ms"),
