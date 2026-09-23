@@ -20,8 +20,8 @@ deployed merely because they merged.
   webhook secret, and HTTPS Sentry DSN. The live key pair passed a read-only
   Razorpay orders API check. Credentials are not copied into this repository.
 - GCP runtime secret version **27** holds those Railway values and preserves
-  the other fields from version 26. It was read back and compared byte for
-  byte. It is staged only; no instance template points to it.
+  the other fields from version 26. It was read back and compared with the
+  prepared payload. It is staged only; no instance template points to it.
 - `lekha-frontend-sentry-dsn` version **1** holds the public DSN from runtime
   version 27. No frontend image has been rebuilt with it.
 
@@ -69,4 +69,5 @@ python scripts/run_full_journey_burst.py --base-url https://api.lekhacaptions.co
 ```
 
 The runner records success counts, individual journey durations, and p50,
-p95, and p99 journey and export times. It exits nonzero if any journey fails.
+p95, and p99 journey and export times. It deletes test media after each
+journey and exits nonzero if any journey fails.

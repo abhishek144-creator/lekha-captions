@@ -55,7 +55,7 @@ def run_journey(index, account, args):
         sys.executable, str(Path(__file__).with_name("staging_smoke.py")),
         "--base-url", args.base_url, "--video", str(args.video),
         "--language", args.language, "--timeout", str(args.timeout),
-        "--upload-path", args.upload_path,
+        "--upload-path", args.upload_path, "--cleanup",
     ]
     started = time.monotonic()
     try:

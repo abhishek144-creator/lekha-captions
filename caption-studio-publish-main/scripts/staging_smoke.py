@@ -1,10 +1,12 @@
 """Run a real authenticated upload -> transcription -> export smoke in staging."""
 
 import argparse
+import atexit
 import json
 import os
 import pathlib
 import re
+import sys
 import time
 import uuid
 from urllib.parse import urljoin
@@ -79,6 +81,18 @@ def upload_direct(session, base_url, video, headers):
     ), "direct upload completion")
 
 
+def cleanup_file(session, base_url, file_id, id_token, headers):
+    try:
+        response = session.post(
+            urljoin(base_url, "api/delete-file"),
+            json={"file_id": file_id, "id_token": id_token},
+            headers=headers, timeout=30,
+        )
+        require_ok(response, "test media cleanup")
+    except (requests.RequestException, RuntimeError) as exc:
+        print(f"Test media cleanup failed for {file_id}: {exc}", file=sys.stderr)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", required=True, help="Deployed staging API origin")
@@ -91,6 +105,8 @@ def main() -> None:
     )
     parser.add_argument("--video", required=True, type=pathlib.Path, help="Short MP4 containing clearly spoken audio")
     parser.add_argument("--upload-path", choices=("api", "direct"), default="api")
+    parser.add_argument("--cleanup", action="store_true",
+                        help="Delete test media on exit, including after a failed journey")
     parser.add_argument("--language", default="english")
     parser.add_argument("--timeout", type=int, default=600, help="Maximum export wait in seconds")
     args = parser.parse_args()
@@ -133,6 +149,8 @@ def main() -> None:
                 "upload",
             )
     file_id = upload["file_id"]
+    if args.cleanup:
+        atexit.register(cleanup_file, session, base_url, file_id, args.id_token, headers)
     upload_seconds = time.monotonic() - upload_started
     print(f"upload ok: {file_id}")
 
