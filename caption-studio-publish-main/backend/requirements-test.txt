@@ -1,1 +1,2 @@
 fakeredis[lua]==2.31.0
+pytest==9.1.1

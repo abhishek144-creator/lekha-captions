@@ -66,21 +66,42 @@ def queue_snapshot(queue, job_class) -> tuple[int, int]:
     return depth, age
 
 
+def queued_render_work_seconds(queue, job_class, fallback_seconds=120) -> int:
+    """Sum shadow work estimates for the bounded pending export queue."""
+    depth = int(queue.count)
+    if depth <= 0:
+        return 0
+    job_ids = queue.get_job_ids(offset=0, length=min(depth, 100))
+    total = 0
+    for job_id in job_ids:
+        try:
+            job = job_class.fetch(job_id, connection=queue.connection)
+            estimate = int((job.meta or {}).get("estimated_render_seconds") or fallback_seconds)
+        except Exception:
+            estimate = fallback_seconds
+        total += min(3600, max(15, estimate))
+    return total
+
+
 def publish_queue_snapshot(
     depth: int,
     oldest_age_seconds: int,
     queue_name: str,
     worker_group: str,
+    pending_work_seconds: int | None = None,
 ) -> None:
     """Write one global time series for each queue signal."""
     project_id = _project_id()
     timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     labels = {"queue": queue_name, "worker_group": worker_group}
     series = []
-    for metric_name, value in (
+    measurements = [
         ("export_queue_depth", depth),
         ("export_oldest_job_age_seconds", oldest_age_seconds),
-    ):
+    ]
+    if pending_work_seconds is not None:
+        measurements.append(("pending_render_work_seconds", pending_work_seconds))
+    for metric_name, value in measurements:
         series.append({
             "metric": {
                 "type": f"custom.googleapis.com/lekha/{metric_name}",

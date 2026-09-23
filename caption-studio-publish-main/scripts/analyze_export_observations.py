@@ -74,6 +74,13 @@ def summarize(observations, billing_cost_usd=None):
     totals = [float(row["total_ms"]) / 1000 for row in completed
               if row.get("total_ms") is not None]
     measured = len(completed) + len(failures)
+    prediction_pairs = [
+        (float(row["render_ms"]) / 1000, float(row["estimated_render_seconds"]))
+        for row in completed
+        if not row.get("cache_hit") and row.get("render_ms") is not None
+        and row.get("estimated_render_seconds") is not None
+        and float(row["estimated_render_seconds"]) > 0
+    ]
     result = {
         "completed": len(completed),
         "failed": len(failures),
@@ -87,6 +94,16 @@ def summarize(observations, billing_cost_usd=None):
                                  for row in completed) / (1024 ** 3), 4),
         "cache_hit_rate": round(sum(bool(row.get("cache_hit")) for row in completed)
                                 / len(completed), 4) if completed else None,
+        "render_prediction": {
+            "samples": len(prediction_pairs),
+            "actual_to_estimate_ratio": _percentiles(
+                [actual / estimate for actual, estimate in prediction_pairs]
+            ),
+            "absolute_percentage_error": _percentiles(
+                [abs(actual - estimate) / actual for actual, estimate in prediction_pairs
+                 if actual > 0]
+            ),
+        },
         "billing_cost_usd": billing_cost_usd,
         "cost_per_successful_export_usd": None,
         "cost_per_rendered_video_minute_usd": None,
