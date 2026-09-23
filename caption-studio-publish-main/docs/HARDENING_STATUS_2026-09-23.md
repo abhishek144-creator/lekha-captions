@@ -28,6 +28,10 @@ deployed merely because they merged.
   version 27. Cloud Run revision `lekha-frontend-staging-00015-fbq` serves a
   frontend image built from its immutable digest and has a nonempty public
   Sentry runtime configuration.
+- Terraform now tracks all 17 declared production resources in the versioned
+  remote state at `gs://lekha-terraform-state-602676673096/production/gcp`.
+  A refreshed adoption plan on 24 September 2026 reported zero additions,
+  changes, or destroys.
 
 ## Remaining production gates
 
@@ -36,15 +40,12 @@ deployed merely because they merged.
    runtime is now pinned to the supplied live credentials.
 2. Trigger and confirm an intentional sanitized frontend exception in the
    configured Sentry project. The deployed page now receives its DSN.
-3. Import existing GCP resources into Terraform state and review a no-replace
-   plan. `terraform validate` passes, but definitions alone do not manage
-   the existing resources.
-4. Run 100 controlled authenticated upload, transcription, export, and download
+3. Run 100 controlled authenticated upload, transcription, export, and download
    journeys with 100 disposable funded test accounts. No such token set is
    available in this workspace, so capacity has not been demonstrated.
-5. Build and deploy the marketing site to apply its corrected editor CTA and
+4. Build and deploy the marketing site to apply its corrected editor CTA and
    Node 22 build setting. The code change alone does not change its live site.
-6. Continue decomposing the remaining large core modules as behavior-specific
+5. Continue decomposing the remaining large core modules as behavior-specific
    changes are made. Extracting the queue metrics module did not complete the
    wider refactor.
 
