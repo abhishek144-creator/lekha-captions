@@ -12,12 +12,17 @@ import concurrent.futures
 import json
 import pathlib
 import statistics
+import threading
 import time
 import uuid
 from urllib.parse import urljoin
 
 import requests
 from media_job_client import await_transcription
+
+
+class PermanentUploadError(RuntimeError):
+    pass
 
 
 def require_ok(response: requests.Response, action: str) -> dict:
@@ -37,6 +42,87 @@ def percentile(values: list[float], fraction: float) -> float:
     ordered = sorted(values)
     index = max(0, min(len(ordered) - 1, int(len(ordered) * fraction) - 1))
     return ordered[index]
+
+
+def _acknowledged_bytes(response, size: int) -> int:
+    if response.status_code in (200, 201):
+        return size
+    if response.status_code != 308:
+        raise RuntimeError(f"Cloud Storage upload returned HTTP {response.status_code}")
+    reported = response.headers.get("Range", "")
+    if not reported:
+        return 0
+    if not reported.startswith("bytes=0-"):
+        raise RuntimeError("Cloud Storage returned an invalid upload range")
+    try:
+        received = int(reported.split("-", 1)[1]) + 1
+    except ValueError as exc:
+        raise RuntimeError("Cloud Storage returned an invalid upload range") from exc
+    if received < 0 or received > size:
+        raise RuntimeError("Cloud Storage acknowledged an impossible upload range")
+    return received
+
+
+def upload_direct(session: requests.Session, base_url: str, headers: dict,
+                  video: pathlib.Path, *, chunk_bytes: int = 8 * 1024 * 1024,
+                  timeout: int = 180) -> dict:
+    size = video.stat().st_size
+    initiated = require_ok(session.post(
+        urljoin(base_url, "api/uploads/init"),
+        json={"filename": video.name, "content_type": "video/mp4", "size_bytes": size},
+        headers=headers, timeout=30,
+    ), "direct upload initiation")
+    if not initiated.get("direct_upload_available"):
+        raise RuntimeError("Direct upload is unavailable; cannot measure the customer path")
+    session_url = initiated["upload_url"]
+    offset = 0
+    failures = 0
+    with video.open("rb") as media:
+        while offset < size:
+            media.seek(offset)
+            chunk = media.read(min(chunk_bytes, size - offset))
+            if not chunk:
+                raise RuntimeError("Source media ended before its declared size")
+            try:
+                response = session.put(
+                    session_url, data=chunk,
+                    headers={"Content-Length": str(len(chunk)),
+                             "Content-Range": f"bytes {offset}-{offset + len(chunk) - 1}/{size}"},
+                    timeout=timeout,
+                )
+                if 400 <= response.status_code < 500 and response.status_code != 429:
+                    raise PermanentUploadError(f"Cloud Storage rejected upload with HTTP {response.status_code}")
+                acknowledged = _acknowledged_bytes(response, size)
+            except PermanentUploadError:
+                raise
+            except (requests.RequestException, RuntimeError):
+                failures += 1
+                if failures > 6:
+                    raise RuntimeError("Direct upload did not recover after six retries") from None
+                time.sleep(min(2 ** failures, 8))
+                try:
+                    status = session.put(session_url, data=b"",
+                                         headers={"Content-Length": "0",
+                                                  "Content-Range": f"bytes */{size}"},
+                                         timeout=20)
+                    offset = _acknowledged_bytes(status, size)
+                except (requests.RequestException, RuntimeError):
+                    pass
+                continue
+            if acknowledged < offset or acknowledged > offset + len(chunk):
+                raise RuntimeError("Cloud Storage acknowledged an inconsistent upload offset")
+            if acknowledged == offset:
+                failures += 1
+                if failures > 6:
+                    raise RuntimeError("Cloud Storage made no progress after six retries")
+                time.sleep(min(2 ** failures, 8))
+                continue
+            offset = acknowledged
+            failures = 0
+    return require_ok(session.post(
+        urljoin(base_url, "api/uploads/complete"),
+        json={"file_id": initiated["file_id"]}, headers=headers, timeout=30,
+    ), "direct upload completion")
 
 
 def run_journey(index: int, credential: dict, args: argparse.Namespace) -> dict:
@@ -66,16 +152,20 @@ def run_journey(index: int, credential: dict, args: argparse.Namespace) -> dict:
             "account bootstrap",
         )
         stage_started = time.monotonic()
-        with args.video.open("rb") as media:
-            upload = require_ok(
-                session.post(
-                    urljoin(base_url, "api/upload"),
-                    files={"file": (args.video.name, media, "video/mp4")},
-                    headers=headers,
-                    timeout=args.upload_timeout,
-                ),
-                "upload",
-            )
+        if args.upload_mode == "direct":
+            upload = upload_direct(session, base_url, headers, args.video,
+                                   timeout=args.upload_timeout)
+        else:
+            with args.video.open("rb") as media:
+                upload = require_ok(
+                    session.post(
+                        urljoin(base_url, "api/upload"),
+                        files={"file": (args.video.name, media, "video/mp4")},
+                        headers=headers,
+                        timeout=args.upload_timeout,
+                    ),
+                    "upload",
+                )
         stages["upload"] = time.monotonic() - stage_started
         file_id = upload["file_id"]
 
@@ -103,6 +193,11 @@ def run_journey(index: int, credential: dict, args: argparse.Namespace) -> dict:
         captions = processed.get("captions") or []
         if not captions:
             raise RuntimeError("process succeeded without captions")
+        if args.export_barrier is not None:
+            try:
+                args.export_barrier.wait()
+            except threading.BrokenBarrierError as exc:
+                raise RuntimeError("Synchronized export burst could not start") from exc
 
         stage_started = time.monotonic()
         export = require_ok(
@@ -136,6 +231,8 @@ def run_journey(index: int, credential: dict, args: argparse.Namespace) -> dict:
             if status.get("status") in {"failed", "cancelled"}:
                 raise RuntimeError(f"export worker failed: {status.get('error')}")
             if status.get("status") == "completed":
+                if status.get("queue_wait_ms") is not None:
+                    stages["queue_wait"] = float(status["queue_wait_ms"]) / 1000
                 export = require_ok(
                     session.get(urljoin(base_url, f"api/export-result/{job_id}"), headers=headers, timeout=20),
                     "export result",
@@ -162,6 +259,8 @@ def run_journey(index: int, credential: dict, args: argparse.Namespace) -> dict:
             "total_seconds": time.monotonic() - started,
         }
     except Exception as exc:
+        if args.export_barrier is not None:
+            args.export_barrier.abort()
         return {
             "index": index,
             "ok": False,
@@ -189,8 +288,13 @@ def main() -> None:
     parser.add_argument("--base-url", required=True, help="Isolated staging API origin")
     parser.add_argument("--credentials-json", required=True, type=pathlib.Path)
     parser.add_argument("--video", required=True, type=pathlib.Path)
+    parser.add_argument("--upload-mode", default="direct", choices=["direct", "proxy"])
     parser.add_argument("--jobs", type=int, default=0, help="Defaults to the number of disposable users")
-    parser.add_argument("--workers", type=int, default=5)
+    parser.add_argument("--workers", type=int, default=0,
+                        help="Concurrent journeys; defaults to one per test identity")
+    parser.add_argument("--synchronize-exports", action="store_true",
+                        help="Submit all exports together after transcription")
+    parser.add_argument("--barrier-timeout", type=int, default=1800)
     parser.add_argument("--language", default="english")
     parser.add_argument("--quality", default="720p", choices=["720p", "1080p"])
     parser.add_argument("--fps", type=int, default=30, choices=[24, 30, 60])
@@ -213,11 +317,17 @@ def main() -> None:
     if not isinstance(users, list) or not users:
         raise SystemExit("Credentials JSON must contain a non-empty users array")
     jobs = args.jobs or len(users)
+    if not 1 <= jobs <= 100:
+        raise SystemExit("Use between 1 and 100 disposable staging identities")
     if jobs > len(users):
         raise SystemExit("Use at least one disposable staging identity per job")
+    worker_count = args.workers or jobs
+    if args.synchronize_exports and worker_count < jobs:
+        raise SystemExit("Synchronized exports require at least one worker per journey")
+    args.export_barrier = threading.Barrier(jobs, timeout=args.barrier_timeout) if args.synchronize_exports else None
     selected = users[:jobs]
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=min(args.workers, jobs)) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(worker_count, jobs)) as executor:
         results = list(executor.map(lambda pair: run_journey(pair[0], pair[1], args), enumerate(selected, start=1)))
 
     successes = [result for result in results if result["ok"]]
@@ -236,7 +346,7 @@ def main() -> None:
                 "p50": statistics.median([result["stages_seconds"][stage] for result in successes]),
                 "p95": percentile([result["stages_seconds"][stage] for result in successes], 0.95),
             }
-            for stage in ("upload", "process", "export", "download")
+            for stage in ("upload", "process", "queue_wait", "export", "download")
             if successes and all(stage in result["stages_seconds"] for result in successes)
         },
         "failures": [

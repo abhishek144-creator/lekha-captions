@@ -82,6 +82,42 @@ assert.deepEqual(ranges, [
 ])
 assert.equal(progress.at(-1).uploadedBytes, file.size)
 
+let revokedSession = false
+const cancelledPaths = []
+class FailedRequest extends FakeRequest {
+  send() {
+    this.status = 403
+    this.onload()
+  }
+}
+const cancelledUpload = vm.runInContext(`${source}\nuploadFileWithRecovery`, vm.createContext({
+  XMLHttpRequest: FailedRequest,
+  apiRequest: async (path) => {
+    cancelledPaths.push(path)
+    if (path === '/api/uploads/init') return {
+      success: true, direct_upload_available: true,
+      upload_url: 'https://storage.test/session', file_id: 'fixture',
+    }
+    if (path === '/api/uploads/cancel') return { success: true }
+    throw new Error(`Unexpected API request: ${path}`)
+  },
+  fetch: async (_url, options) => {
+    revokedSession = options.method === 'DELETE'
+    return { status: 499 }
+  },
+  AbortController,
+  setTimeout,
+  clearTimeout,
+  navigator: { onLine: true },
+  getClientContext: (value) => value,
+  trackAnalytics: () => {},
+  crypto: globalThis.crypto,
+  Math,
+}))
+await assert.rejects(cancelledUpload(file, { retryDelaysMs: [] }), /Direct upload chunk failed/)
+assert.equal(revokedSession, true)
+assert.deepEqual(cancelledPaths, ['/api/uploads/init', '/api/uploads/cancel'])
+
 const unavailable = vm.runInContext(`${source}\nuploadFileWithRecovery`, vm.createContext({
   XMLHttpRequest: FakeRequest,
   apiRequest: async () => ({ success: false, direct_upload_available: false }),

@@ -54,6 +54,7 @@ try:
         delete_user_uploads,
         storage_backend_ready,
         create_resumable_source_upload,
+        cancel_resumable_source_upload,
         finalize_resumable_source_upload,
     )
 except ImportError:  # Direct execution from backend/ remains supported.
@@ -72,6 +73,7 @@ except ImportError:  # Direct execution from backend/ remains supported.
         delete_user_uploads,
         storage_backend_ready,
         create_resumable_source_upload,
+        cancel_resumable_source_upload,
         finalize_resumable_source_upload,
     )
 from firebase_admin import app_check as firebase_app_check
@@ -97,6 +99,7 @@ try:
     from .drafts import read_draft
     from .project_api import create_project_router
     from .direct_upload_api import create_direct_upload_router
+    from .upload_admission import reserve_upload, release_upload
     from .request_limits import UploadBodyLimitMiddleware
     from .release_metadata import release_metadata
     from .media_commands import run_media_command
@@ -108,6 +111,7 @@ except ImportError:
     from drafts import read_draft
     from project_api import create_project_router
     from direct_upload_api import create_direct_upload_router
+    from upload_admission import reserve_upload, release_upload
     from request_limits import UploadBodyLimitMiddleware
     from release_metadata import release_metadata
     from media_commands import run_media_command
@@ -3346,6 +3350,7 @@ def _mark_export_processing(export_job_id: str):
 
 async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, export_job_id: str):
     _assert_account_not_deleting(uid)
+    queue_entered_at, processing_started_at = _mark_export_processing(export_job_id)
     db = get_db()
     db_available = db is not None
     now = time.time()
@@ -3446,7 +3451,7 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
 
     output_filename = f"export_{req.file_id}_{request_hash[:12]}.mp4"
     output_path = os.path.join(EXPORT_DIR, output_filename)
-    queue_entered_at, processing_started_at = _mark_export_processing(export_job_id)
+    render_started_at = time.time()
     style_with_quality = {
         **server_style,
         'quality': preset["quality"],
@@ -3466,9 +3471,11 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
     if os.path.exists(cached_render_path) and not template_export_active:
         shutil.copy2(cached_render_path, output_path)
         render_finished_at = time.time()
-        render_ms = int((render_finished_at - processing_started_at) * 1000)
+        render_ms = int((render_finished_at - render_started_at) * 1000)
+        cache_hit = True
         _track_event("render_cache_hit", {"job_id": export_job_id})
     else:
+        cache_hit = False
         _log(rid, f"Starting render now job={export_job_id}")
         async with render_semaphore:
             result = await processor.burn_only(
@@ -3478,7 +3485,7 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
             _json_log("error", "video_render_failed", uid=uid, error=str(result.get('error') or "unknown"))
             raise HTTPException(status_code=500, detail="Video render failed")
         render_finished_at = time.time()
-        render_ms = int((render_finished_at - processing_started_at) * 1000)
+        render_ms = int((render_finished_at - render_started_at) * 1000)
         if not template_export_active:
             try:
                 shutil.copy2(output_path, cached_render_path)
@@ -3562,13 +3569,30 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
     }
     completed_at = time.time()
     total_ms = int((completed_at - queue_entered_at) * 1000)
-    _set_export_job(
+    preparation_ms = int((render_started_at - processing_started_at) * 1000)
+    finalization_ms = int((completed_at - render_finished_at) * 1000)
+    output_size_bytes = os.path.getsize(output_path)
+    recorded_job = _set_export_job(
         export_job_id,
         "completed",
         completed_at=completed_at,
         render_ms=render_ms,
+        preparation_ms=preparation_ms,
+        finalization_ms=finalization_ms,
         total_ms=total_ms,
         payload=payload
+    )
+    _json_log(
+        "info", "export_observation", job_id=export_job_id,
+        status="completed",
+        queue_wait_ms=int(recorded_job.get("queue_wait_ms") or 0),
+        preparation_ms=preparation_ms, render_ms=render_ms,
+        finalization_ms=finalization_ms, total_ms=total_ms,
+        source_duration_seconds=round(source_duration, 3),
+        rendered_duration_seconds=round(rendered_duration, 3),
+        output_size_bytes=output_size_bytes, cache_hit=cache_hit,
+        template_export=template_export_active, quality=preset["quality"],
+        fps=preset["fps"],
     )
     _track_event("export_success", {"quality": preset["quality"], "fps": preset["fps"], "tier": preset["tier"]})
     _track_operational_metric_sample("export_total_ms", total_ms)
@@ -3637,6 +3661,14 @@ def run_export_job_task(
                 job_id=export_job_id,
                 error=str(state_error),
             )
+        failed_job = _load_export_job(export_job_id) or {}
+        entered_at = float(failed_job.get("queue_entered_at") or time.time())
+        _json_log(
+            "warning", "export_observation", job_id=export_job_id,
+            status="retrying" if locals().get("retry_pending", False) else "failed",
+            queue_wait_ms=failed_job.get("queue_wait_ms"),
+            elapsed_ms=max(0, int((time.time() - entered_at) * 1000)),
+        )
         if idempotency_key and not locals().get("retry_pending", False):
             _idem_delete(idempotency_key)
         _write_dead_letter(
@@ -3696,6 +3728,48 @@ def _cleanup_incomplete_upload(local_path: str = "", remote_path: str = ""):
             _json_log("warning", "upload_remote_cleanup_failed", error=str(cleanup_error))
 
 
+DIRECT_UPLOAD_MAX_ACTIVE = max(1, int(os.environ.get("DIRECT_UPLOAD_MAX_ACTIVE", "2")))
+DIRECT_UPLOAD_MAX_HOURLY = max(1, int(os.environ.get("DIRECT_UPLOAD_MAX_HOURLY", "12")))
+DIRECT_UPLOAD_SHARED_NETWORK_HOURLY = max(
+    100, int(os.environ.get("DIRECT_UPLOAD_SHARED_NETWORK_HOURLY", "200")),
+)
+DIRECT_UPLOAD_MAX_OUTSTANDING_BYTES = max(
+    MAX_UPLOAD_BYTES,
+    int(os.environ.get("DIRECT_UPLOAD_MAX_OUTSTANDING_BYTES", str(1024 * 1024 * 1024))),
+)
+
+
+def _reserve_direct_upload_slot(uid: str, file_id: str, size_bytes: int):
+    if _redis_client is None and not _IS_PRODUCTION:
+        return
+    reserve_upload(
+        _redis_client, uid, file_id, size_bytes,
+        max_active=DIRECT_UPLOAD_MAX_ACTIVE,
+        max_outstanding_bytes=DIRECT_UPLOAD_MAX_OUTSTANDING_BYTES,
+        max_hourly=DIRECT_UPLOAD_MAX_HOURLY,
+    )
+
+
+def _limit_direct_upload_network(request: Request):
+    network = _client_rate_key(request)
+    allowed, retry_after, _remaining = _check_rate(
+        _upload_rate, f"direct_network:{network}", DIRECT_UPLOAD_SHARED_NETWORK_HOURLY,
+        UPLOAD_RATE_WINDOW,
+    )
+    if not allowed:
+        raise HTTPException(429, "Too many uploads from this network",
+                            headers={"Retry-After": str(retry_after)})
+
+
+def _release_direct_upload_slot(uid: str, file_id: str, *, undo_hourly: bool = False):
+    try:
+        release_upload(_redis_client, uid, file_id, undo_hourly=undo_hourly)
+    except Exception as exc:
+        # The active lease has a bounded TTL; a transient Redis failure should
+        # not turn a completed upload into a failed customer response.
+        _json_log("warning", "direct_upload_slot_release_failed", error=str(exc))
+
+
 app.include_router(create_direct_upload_router(
     authenticate=_authenticate_media_request,
     extract_token=_extract_bearer_token,
@@ -3707,9 +3781,13 @@ app.include_router(create_direct_upload_router(
     create_session=create_resumable_source_upload,
     finalize_session=finalize_resumable_source_upload,
     remember_owner=_remember_upload_owner,
-    delete_object=delete_from_firebase_storage,
     signed_upload_url=_signed_upload_url,
     audit_action=_audit_action,
+    reserve_slot=_reserve_direct_upload_slot,
+    release_slot=_release_direct_upload_slot,
+    cancel_session=cancel_resumable_source_upload,
+    assert_account_active=_assert_account_not_deleting,
+    rate_limit_network=_limit_direct_upload_network,
 ))
 
 
@@ -4439,6 +4517,12 @@ def _reconcile_export_job(job_id: str, job: Dict[str, Any]):
                 failure_code="preparation_timeout",
                 failed_at=time.time(),
             )
+            if job.get("status") == "failed":
+                _json_log(
+                    "warning", "export_observation", job_id=job_id, status="failed",
+                    queue_wait_ms=max(0, int(queue_age * 1000)),
+                    failure_code="preparation_timeout",
+                )
             try:
                 stale_rq_job = _export_queue.fetch_job(job_id)
                 if stale_rq_job is not None:
@@ -4460,6 +4544,11 @@ def _reconcile_export_job(job_id: str, job: Dict[str, Any]):
         age = time.time() - float(job.get("updated_at") or time.time())
         if state in {"failed", "stopped", "canceled", "cancelled", "finished"} or (state == "missing" and age > 120):
             job = _set_export_job(job_id, "failed", error="Export was interrupted. Please retry.", failed_at=time.time())
+            if job.get("status") == "failed":
+                _json_log(
+                    "warning", "export_observation", job_id=job_id, status="failed",
+                    queue_wait_ms=job.get("queue_wait_ms"), failure_code="worker_interrupted",
+                )
             _release_export_slot(str(job.get("uid") or ""), job_id)
         elif state in {"scheduled", "deferred"} and job.get("status") in {"starting", "processing", "finalizing"}:
             job = _set_export_job(job_id, "retrying", error="Export interrupted; retry scheduled.")
@@ -4482,6 +4571,11 @@ def export_status(job_id: str, request: Request):
         "job_id": job_id,
         "status": job.get("status", "unknown"),
         "updated_at": job.get("updated_at"),
+        "queue_wait_ms": job.get("queue_wait_ms"),
+        "preparation_ms": job.get("preparation_ms"),
+        "render_ms": job.get("render_ms"),
+        "finalization_ms": job.get("finalization_ms"),
+        "total_ms": job.get("total_ms"),
         "error": "Export failed. Please retry or contact support." if job.get("error") else None,
     }
 
