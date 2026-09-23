@@ -395,6 +395,26 @@ def download_from_firebase_storage(remote_path: str, local_path: str):
         return False
 
 
+def signed_export_download_url(remote_path: str, ttl_seconds: int = 600):
+    """Return a short-lived private storage URL; callers must authorize ownership first."""
+    safe_remote = str(remote_path or "")
+    if not safe_remote.startswith("exports/") or ".." in safe_remote.split("/"):
+        return None
+    ttl = max(60, min(int(ttl_seconds), 900))
+    try:
+        if s3_is_configured():
+            url = s3_signed_download_url(safe_remote, ttl)
+        else:
+            bucket = get_storage_bucket()
+            if not bucket:
+                return None
+            url = bucket.blob(safe_remote).generate_signed_url(expiration=timedelta(seconds=ttl))
+        return url if isinstance(url, str) and url.startswith("https://") else None
+    except Exception:
+        # A missing signing permission must preserve the existing download path.
+        return None
+
+
 def download_export_from_firebase_storage(remote_path: str, local_path: str):
     safe_remote = str(remote_path or "")
     if not safe_remote.startswith("exports/"):
