@@ -34,6 +34,18 @@ variable "runtime_secret_version" {
 variable "runtime_service_account" {
   type = string
 }
+variable "api_instance_template_name" {
+  type = string
+}
+variable "worker_instance_template_name" {
+  type = string
+}
+variable "api_autoscaler_name" {
+  type = string
+}
+variable "worker_autoscaler_name" {
+  type = string
+}
 variable "media_bucket_name" {
   type        = string
   description = "Private bucket used for resumable source uploads and rendered exports"

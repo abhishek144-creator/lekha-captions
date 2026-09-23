@@ -1,5 +1,4 @@
 locals {
-  release_short = substr(var.release, 0, 12)
   common_metadata = {
     api-image-uri           = var.api_image_uri
     render-image-uri        = var.render_image_uri
@@ -34,8 +33,10 @@ resource "google_compute_security_policy" "edge" {
     }
   }
   rule {
-    action   = "allow"
-    priority = 2147483647
+    action      = "allow"
+    priority    = 2147483647
+    description = "default rule"
+    preview     = false
     match {
       versioned_expr = "SRC_IPS_V1"
       config {
@@ -100,7 +101,7 @@ resource "google_storage_bucket_iam_member" "runtime_media_bucket_viewer" {
 resource "google_project_iam_custom_role" "worker_scale_protection" {
   role_id     = "lekhaWorkerScaleProtection"
   title       = "Lekha worker scale-in protection"
-  description = "Allows a worker to protect or unprotect itself while processing a job"
+  description = "Allows a worker to protect or unprotect itself in the regional MIG while processing a job"
   permissions = [
     "compute.instanceGroupManagers.get",
     "compute.instanceGroupManagers.update",
@@ -139,8 +140,9 @@ resource "google_compute_health_check" "api" {
   healthy_threshold   = 2
   unhealthy_threshold = 3
   http_health_check {
-    port         = 8000
-    request_path = "/api/health/readiness"
+    port               = 8000
+    port_specification = "USE_FIXED_PORT"
+    request_path       = "/api/health/readiness"
   }
 }
 
@@ -151,13 +153,14 @@ resource "google_compute_health_check" "worker" {
   healthy_threshold   = 2
   unhealthy_threshold = 3
   http_health_check {
-    port         = 8000
-    request_path = "/api/health/readiness"
+    port               = 8000
+    port_specification = "USE_FIXED_PORT"
+    request_path       = "/api/health/readiness"
   }
 }
 
 resource "google_compute_instance_template" "api" {
-  name_prefix  = "lekha-api-${local.release_short}-"
+  name         = var.api_instance_template_name
   machine_type = "e2-standard-2"
   tags         = ["lekha-api-mig"]
   disk {
@@ -172,13 +175,16 @@ resource "google_compute_instance_template" "api" {
     email  = var.runtime_service_account
     scopes = ["cloud-platform"]
   }
-  metadata                = merge(local.common_metadata, { service-role = "api" })
-  metadata_startup_script = file("${path.module}/../gce-startup.sh")
+  metadata = merge(local.common_metadata, {
+    service-role     = "api"
+    image-uri        = var.api_image_uri
+    "startup-script" = replace(file("${path.module}/../gce-startup.sh"), "\r\n", "\n")
+  })
   lifecycle { create_before_destroy = true }
 }
 
 resource "google_compute_instance_template" "worker" {
-  name_prefix  = "lekha-worker-${local.release_short}-"
+  name         = var.worker_instance_template_name
   machine_type = "n2-custom-4-12288"
   tags         = ["lekha-worker-mig"]
   disk {
@@ -193,8 +199,11 @@ resource "google_compute_instance_template" "worker" {
     email  = var.runtime_service_account
     scopes = ["cloud-platform"]
   }
-  metadata                = merge(local.common_metadata, { service-role = "worker" })
-  metadata_startup_script = file("${path.module}/../gce-startup.sh")
+  metadata = merge(local.common_metadata, {
+    service-role     = "worker"
+    image-uri        = var.render_image_uri
+    "startup-script" = replace(file("${path.module}/../gce-startup.sh"), "\r\n", "\n")
+  })
   lifecycle { create_before_destroy = true }
 }
 
@@ -213,11 +222,12 @@ resource "google_compute_region_instance_group_manager" "api" {
     initial_delay_sec = 180
   }
   update_policy {
-    type                  = "PROACTIVE"
-    minimal_action        = "REPLACE"
-    max_surge_fixed       = 3
-    max_unavailable_fixed = 0
-    replacement_method    = "SUBSTITUTE"
+    type                           = "PROACTIVE"
+    minimal_action                 = "REPLACE"
+    max_surge_fixed                = 3
+    max_unavailable_fixed          = 0
+    replacement_method             = "SUBSTITUTE"
+    most_disruptive_allowed_action = "REPLACE"
   }
 }
 
@@ -236,17 +246,18 @@ resource "google_compute_region_instance_group_manager" "worker" {
     initial_delay_sec = 180
   }
   update_policy {
-    type                         = "PROACTIVE"
-    minimal_action               = "REPLACE"
-    max_surge_fixed              = 3
-    max_unavailable_fixed        = 0
-    replacement_method           = "SUBSTITUTE"
-    instance_redistribution_type = "NONE"
+    type                           = "PROACTIVE"
+    minimal_action                 = "REPLACE"
+    max_surge_fixed                = 3
+    max_unavailable_fixed          = 0
+    replacement_method             = "SUBSTITUTE"
+    instance_redistribution_type   = "NONE"
+    most_disruptive_allowed_action = "REPLACE"
   }
 }
 
 resource "google_compute_region_autoscaler" "api" {
-  name   = "lekha-api-staging-autoscaler"
+  name   = var.api_autoscaler_name
   region = var.region
   target = google_compute_region_instance_group_manager.api.id
   autoscaling_policy {
@@ -264,7 +275,7 @@ resource "google_compute_region_autoscaler" "api" {
 }
 
 resource "google_compute_region_autoscaler" "worker" {
-  name   = "lekha-worker-staging-autoscaler"
+  name   = var.worker_autoscaler_name
   region = var.region
   target = google_compute_region_instance_group_manager.worker.id
   autoscaling_policy {
@@ -273,10 +284,9 @@ resource "google_compute_region_autoscaler" "worker" {
     cooldown_period = 180
     cpu_utilization { target = 0.45 }
     metric {
-      name   = "custom.googleapis.com/lekha/export_queue_depth"
-      target = 1
-      type   = "GAUGE"
-      filter = "resource.type = global AND metric.labels.queue = caption_export_jobs AND metric.labels.worker_group = lekha-worker-staging-mig"
+      name                       = "custom.googleapis.com/lekha/export_queue_depth"
+      single_instance_assignment = 1
+      filter                     = "resource.type = global AND metric.labels.queue = caption_export_jobs AND metric.labels.worker_group = lekha-worker-staging-mig"
     }
     scale_in_control {
       max_scaled_in_replicas {
