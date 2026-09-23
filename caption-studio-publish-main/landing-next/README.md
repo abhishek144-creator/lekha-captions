@@ -16,7 +16,7 @@ Create a **new Netlify site** for the marketing site. Do not reuse the dashboard
 - Base directory: `landing-next`
 - Build command: `npm run build`
 - Publish directory: `out`
-- Environment variable: `NEXT_PUBLIC_APP_URL=https://lekhacaptions.com`
+- Environment variable: `NEXT_PUBLIC_APP_URL=https://lekhacaptions.com/Dashboard?entry=editor`
 - Production domain: `lekhacaptions.com`
 - App/editor domain: `lekhacaptions.com`
 
