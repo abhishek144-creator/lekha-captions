@@ -34,11 +34,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PUPPETEER_CACHE_DIR=/app/.cache/puppeteer \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
     PUPPETEER_CONTAINER_NO_SANDBOX=1 \
+    RENDER_BROWSER_REUSE=1 \
+    PREFER_PACKAGED_RENDER_FONTS=1 \
     SERVICE_ROLE=worker \
     WORKER_QUEUES=caption_export_jobs
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         python3 python3-pip ffmpeg ca-certificates chromium dumb-init fonts-liberation \
+        fontconfig fonts-inter fonts-noto-core \
         libasound2 libatk-bridge2.0-0 libatk1.0-0 libcairo2 libcups2 libdbus-1-3 \
         libdrm2 libgbm1 libglib2.0-0 libgtk-3-0 libnspr4 libnss3 libpango-1.0-0 \
         libpangocairo-1.0-0 libx11-6 libx11-xcb1 libxcb1 libxcomposite1 \
@@ -57,7 +60,7 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD python3 -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/api/health/readiness' % os.environ.get('PORT', '8000'), timeout=4)" || exit 1
 ENTRYPOINT ["dumb-init", "--"]
-CMD ["python3", "-m", "backend.worker"]
+CMD ["sh", "-c", "node scripts/render_browser_daemon.mjs & exec python3 -m backend.worker"]
 
 # Preserve the historical default for local builds while deployments select an
 # explicit api, render, or transcription target.

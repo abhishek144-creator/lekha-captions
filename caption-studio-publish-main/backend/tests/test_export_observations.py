@@ -16,7 +16,8 @@ class ExportObservationsTests(unittest.TestCase):
             {"event": "export_observation", "job_id": "a", "status": "retrying"},
             {"event": "export_observation", "job_id": "a", "status": "completed",
              "queue_wait_ms": 1000, "render_ms": 5000, "total_ms": 8000,
-             "rendered_duration_seconds": 60, "output_size_bytes": 1024},
+             "rendered_duration_seconds": 60, "output_size_bytes": 1024,
+             "estimated_render_seconds": 10},
             {"event": "export_observation", "job_id": "b", "status": "failed"},
         ]
         result = summarize(records, billing_cost_usd=0.5)
@@ -24,6 +25,7 @@ class ExportObservationsTests(unittest.TestCase):
         self.assertEqual(result["queue_wait_seconds"]["p95"], 1.0)
         self.assertEqual(result["cost_per_successful_export_usd"], 0.5)
         self.assertEqual(result["cost_per_rendered_video_minute_usd"], 0.5)
+        self.assertEqual(result["render_prediction"]["actual_to_estimate_ratio"]["p95"], 0.5)
 
     def test_unknown_billing_is_not_reported_as_zero(self):
         result = summarize([])

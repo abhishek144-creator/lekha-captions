@@ -1,8 +1,8 @@
 import fs from 'fs/promises';
-import { existsSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import puppeteer from 'puppeteer';
+import { browserLaunchOptions, connectWarmBrowser } from './render_browser_runtime.mjs';
 import {
   ADVANCED_IMP_ENTRANCES,
   ADVANCED_TEMPLATE_EMPHASIS_COLORS,
@@ -106,23 +106,6 @@ const LINE_ANIMATION_DEFS = {
 // Match the authored 20-template preview engine exactly.
 const SIDEBAR_TEMPLATE_WORD_STAGGER_SECONDS = LEGACY_TEMPLATE_TIMING.wordStaggerMs / 1000;
 const SIDEBAR_TEMPLATE_POSITION_STAGGER_SECONDS = LEGACY_TEMPLATE_TIMING.positionedWordStaggerMs / 1000;
-
-function findChromeExecutable() {
-  const candidates = [
-    process.env.PUPPETEER_EXECUTABLE_PATH,
-    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-    'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
-    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-  ].filter(Boolean);
-  return candidates.find((candidate) => {
-    try {
-      return existsSync(candidate);
-    } catch {
-      return false;
-    }
-  });
-}
 
 function toForwardSlash(inputPath) {
   return inputPath.replace(/\\/g, '/');
@@ -5246,35 +5229,29 @@ async function main() {
     @keyframes caption-color-splash { 0% { transform: scale(0.85); opacity: 0; filter: saturate(3) brightness(1.6); } 50% { transform: scale(1.06); opacity: 1; filter: saturate(2) brightness(1.3); } 100% { transform: scale(1); opacity: 1; filter: saturate(1) brightness(1); } }
   `;
 
-  const runtimeEnv = String(process.env.APP_ENV || process.env.ENV || '').toLowerCase();
-  const disableSandbox = process.env.PUPPETEER_DISABLE_SANDBOX === '1';
-  // The hosted Railway runtime denies Chromium's user-namespace sandbox before
-  // a page can launch. This bypass is set only in the hardened container image;
-  // customers and deployed environment variables cannot opt into it.
-  const containerSandboxBypass = process.env.PUPPETEER_CONTAINER_NO_SANDBOX === '1';
-  const ciSandboxBypass = process.env.CI === 'true'
-    && process.env.PUPPETEER_CI_NO_SANDBOX === '1';
-  if (disableSandbox && runtimeEnv === 'production') {
-    throw new Error('PUPPETEER_DISABLE_SANDBOX is forbidden in production');
+  const viewport = {
+    width: payload.video_width,
+    height: payload.video_height,
+    deviceScaleFactor: 1,
+  };
+  let browser = await connectWarmBrowser(puppeteer);
+  let isolatedContext = null;
+  if (browser) {
+    try {
+      isolatedContext = await browser.createBrowserContext();
+    } catch {
+      browser.disconnect();
+      if (process.env.RENDER_BROWSER_REQUIRE_WARM === '1') {
+        throw new Error('Required warm render browser cannot create an isolated context');
+      }
+      browser = null;
+    }
   }
-  const browserArgs = ['--disable-gpu', '--disable-dev-shm-usage'];
-  if (disableSandbox || containerSandboxBypass || ciSandboxBypass) {
-    browserArgs.push('--no-sandbox', '--disable-setuid-sandbox');
-  }
-
-  const browser = await puppeteer.launch({
-    headless: true,
-    executablePath: findChromeExecutable(),
-    args: browserArgs,
-    defaultViewport: {
-      width: payload.video_width,
-      height: payload.video_height,
-      deviceScaleFactor: 1,
-    },
-  });
+  if (!browser) browser = await puppeteer.launch(browserLaunchOptions(viewport));
 
   try {
-    const page = await browser.newPage();
+    const page = isolatedContext ? await isolatedContext.newPage() : await browser.newPage();
+    await page.setViewport(viewport);
     // Font stylesheets can take longer than Puppeteer's 30-second default on
     // cold CI runners. Keep the wait bounded, but leave enough room for the
     // same assets the export subsequently verifies via document.fonts.ready.
@@ -6325,7 +6302,15 @@ async function main() {
       );
     }
   } finally {
-    await browser.close();
+    if (isolatedContext) {
+      try {
+        await isolatedContext.close();
+      } finally {
+        browser.disconnect();
+      }
+    } else {
+      await browser.close();
+    }
   }
 }
 

@@ -405,10 +405,12 @@ assertExcludes("export panel does not submit browser word layouts", exportPanelS
 assertIncludes("backend strips legacy browser render hints", backendMain, "def _strip_client_render_hints")
 
 const renderer = readText("scripts/render_template_overlay.mjs")
+const browserRuntime = readText("scripts/render_browser_runtime.mjs")
 assertIncludes("export renderer uses a DOM tag allowlist", renderer, "const allowedTags = new Set")
 assertIncludes("export renderer blocks arbitrary network requests", renderer, "setRequestInterception(true)")
-assertIncludes("production forbids disabling the browser sandbox", renderer, "PUPPETEER_DISABLE_SANDBOX is forbidden in production")
-assertIncludes("renderer scopes its CI sandbox workaround", renderer, "process.env.CI === 'true'")
+assertIncludes("export renderer uses the guarded browser launcher", renderer, "browserLaunchOptions(viewport)")
+assertIncludes("production forbids disabling the browser sandbox", browserRuntime, "PUPPETEER_DISABLE_SANDBOX is forbidden in production")
+assertIncludes("renderer scopes its CI sandbox workaround", browserRuntime, "process.env.CI === 'true'")
 
 assertFile("container deployment definition exists", "Dockerfile")
 const dockerfile = readText("Dockerfile")
@@ -418,7 +420,7 @@ assertIncludes("container declares the Chromium executable for Puppeteer", docke
 assertIncludes("container smoke-tests Chromium during the image build", dockerfile, "renderer-ready")
 assertIncludes("container scopes the Chromium sandbox workaround to Railway", dockerfile, "PUPPETEER_CONTAINER_NO_SANDBOX=1")
 assertIncludes("container installs the hashed backend dependency lock", dockerfile, "--require-hashes -r backend/requirements.lock")
-assertIncludes("export renderer supports the scoped Chromium sandbox workaround", renderer, "PUPPETEER_CONTAINER_NO_SANDBOX")
+assertIncludes("export renderer supports the scoped Chromium sandbox workaround", browserRuntime, "PUPPETEER_CONTAINER_NO_SANDBOX")
 assertFile("web and worker process definition exists", "Procfile")
 const procfile = readText("Procfile")
 assertIncludes("process definition starts the API", procfile, "uvicorn backend.main:app")

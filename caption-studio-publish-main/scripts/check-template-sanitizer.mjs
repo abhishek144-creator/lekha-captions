@@ -11,6 +11,10 @@ const exportRendererSource = await fs.readFile(
   path.join(root, 'scripts', 'render_template_overlay.mjs'),
   'utf8',
 );
+const browserRuntimeSource = await fs.readFile(
+  path.join(root, 'scripts', 'render_browser_runtime.mjs'),
+  'utf8',
+);
 const capturedTemplatePaths = [
   path.join(root, 'src', 'assets', 'lekha-captions-T11-T35.html'),
   path.join(root, 'src', 'assets', 'lekha-captions-20-templates.html'),
@@ -41,7 +45,9 @@ for (const required of [
 ]) {
   const haystack = required.startsWith('Template markup')
     ? await fs.readFile(path.join(root, 'backend', 'main.py'), 'utf8')
-    : exportRendererSource;
+    : required.includes('PUPPETEER_DISABLE_SANDBOX')
+      ? browserRuntimeSource
+      : exportRendererSource;
   if (!haystack.includes(required)) {
     throw new Error(`Export renderer security control is missing: ${required}`);
   }
