@@ -199,6 +199,7 @@ export default function Dashboard() {
   const [exportPanelMounted, setExportPanelMounted] = useState(false);
   const [isPlanExpiredModalOpen, setIsPlanExpiredModalOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [mediaUploadProgress, setMediaUploadProgress] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationStartedAt, setGenerationStartedAt] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -599,6 +600,7 @@ export default function Dashboard() {
     }
     setWordPopup(null);
     setIsUploading(true);
+    setMediaUploadProgress(null);
     setSettings(uploadSettings);
     setIsUploadModalOpen(false);
     setIsGenerating(true);
@@ -625,12 +627,14 @@ export default function Dashboard() {
         uploadData = await uploadFileWithRecovery(file, {
           authorization: mediaAuthToken,
           dedupeKey: 'upload-video',
+          onProgress: setMediaUploadProgress,
         });
         if (!uploadData.success) throw new Error(uploadData.error || 'Upload failed');
         trackAnalytics('funnel.upload.success', getClientContext({ stage: 'upload', fileId: uploadData.file_id || '' }));
       }
 
       acceptedUpload = uploadData;
+      setIsUploading(false);
       acceptedPlayableVideoUrl = resolveApiResourceUrl(
         uploadData.raw_url,
         import.meta.env.VITE_API_BASE_URL,
@@ -804,6 +808,7 @@ export default function Dashboard() {
         await sleep(remainingMinDurationMs);
       }
       setIsUploading(false);
+      setMediaUploadProgress(null);
       setIsGenerating(false);
       setGenerationStartedAt(null);
     }
@@ -1481,6 +1486,22 @@ export default function Dashboard() {
     ? Math.max(0, Math.floor(((generationTicker || Date.now()) - generationStartedAt) / 1000))
     : 0;
   const renderGeneratingState = () => {
+    if (isUploading) {
+      const uploaded = mediaUploadProgress?.uploadedBytes || 0
+      const total = mediaUploadProgress?.totalBytes || 0
+      return (
+        <div className="flex h-full items-center justify-center bg-[#050505] p-6">
+          <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#111] p-8 text-white" role="status" aria-live="polite">
+            <h2 className="text-2xl font-semibold">Uploading video</h2>
+            <p className="mt-3 text-sm text-zinc-400">
+              {(uploaded / (1024 * 1024)).toFixed(1)} / {(total / (1024 * 1024)).toFixed(1)} MiB
+              {total > 0 ? ` · ${mediaUploadProgress.percent}%` : ' · Authorizing upload'}
+            </p>
+            <progress className="mt-5 w-full accent-[#F5A623]" max={total || 1} value={uploaded} aria-label="Video upload progress" />
+          </div>
+        </div>
+      )
+    }
     const step2Ready = generationElapsedSeconds >= 3;
     const step3Ready = generationElapsedSeconds >= 6;
     const step4Ready = generationElapsedSeconds >= 9;
