@@ -14,28 +14,28 @@ deployed merely because they merged.
   transcription images are pinned by digest.
 - Redis is Standard HA. Both API and frontend backend services have the
   `lekha-edge-security` Cloud Armor policy attached.
-- The live worker template is pinned to runtime secret version **26**. That
-  version contains Razorpay test mode and no Sentry DSN.
+- API and worker managed groups are pinned to runtime secret version **27**.
+  The replacement templates preserve the existing immutable application image
+  digests, private network, machine sizes, and zero-unavailable update policy.
 - The old Railway production `web` service contains a live Razorpay key pair,
   webhook secret, and HTTPS Sentry DSN. The live key pair passed a read-only
   Razorpay orders API check. Credentials are not copied into this repository.
 - GCP runtime secret version **27** holds those Railway values and preserves
-  the other fields from version 26. It was read back and compared with the
-  prepared payload. It is staged only; no instance template points to it.
+  the other fields from version 26. Both active managed-group templates pin it;
+  a non-sensitive verification confirmed its Razorpay key is live mode and its
+  Sentry DSN is present.
 - `lekha-frontend-sentry-dsn` version **1** holds the public DSN from runtime
-  version 27. No frontend image has been rebuilt with it.
+  version 27. Cloud Run revision `lekha-frontend-staging-00015-fbq` serves a
+  frontend image built from its immutable digest and has a nonempty public
+  Sentry runtime configuration.
 
 ## Remaining production gates
 
-1. Verify the live Razorpay webhook endpoint, event subscriptions, and signing
-   secret in the Razorpay account against the GCP API route. Then perform a
-   controlled real payment, webhook replay, and refund/reconciliation check
-   before pinning runtime version 27. A successful read-only API call does not
-   prove the webhook configuration.
-2. Build a frontend release with the staged Sentry DSN, deploy it, and verify
-   an intentional test exception appears in the correct Sentry project.
-   Browser code already supports the DSN, but the running frontend does not
-   have it yet.
+1. Confirm the reported Razorpay real transaction, webhook, replay, and
+   refund/reconciliation evidence is retained with the release record. The
+   runtime is now pinned to the supplied live credentials.
+2. Trigger and confirm an intentional sanitized frontend exception in the
+   configured Sentry project. The deployed page now receives its DSN.
 3. Import existing GCP resources into Terraform state and review a no-replace
    plan. `terraform validate` passes, but definitions alone do not manage
    the existing resources.
