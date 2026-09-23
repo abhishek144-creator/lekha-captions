@@ -3,8 +3,8 @@
   publish = "out"
 
 [build.environment]
-  NODE_VERSION = "20"
-  NEXT_PUBLIC_APP_URL = "https://lekhacaptions.com"
+  NODE_VERSION = "22"
+  NEXT_PUBLIC_APP_URL = "https://lekhacaptions.com/Dashboard?entry=editor"
 
 [[headers]]
   for = "/*"
