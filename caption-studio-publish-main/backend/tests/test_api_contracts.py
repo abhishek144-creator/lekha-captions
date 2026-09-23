@@ -22,6 +22,13 @@ from main import app
 class ApiContractTests(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(app)
+        # Contract fixtures use synthetic bytes, so default to valid probed
+        # metadata. Tests for malformed media override this patch explicitly.
+        media_probe = patch.object(main, "_probe_media", return_value={
+            "format": {"duration": 12.3}, "streams": [{"codec_type": "video"}],
+        })
+        media_probe.start()
+        self.addCleanup(media_probe.stop)
         main._export_jobs.clear()
         main._export_idempotency.clear()
         main._upload_idempotency.clear()
@@ -402,6 +409,18 @@ class ApiContractTests(unittest.TestCase):
         media_res = self.client.get(data["raw_url"])
         self.assertEqual(media_res.status_code, 200)
 
+    def test_proxy_upload_rejects_media_above_its_configured_limit(self):
+        with (
+            patch.object(main, "MAX_PROXY_UPLOAD_BYTES", 10),
+            patch.object(main, "verify_token", return_value={"uid": "upload-user"}),
+        ):
+            response = self.client.post(
+                "/api/upload",
+                files={"file": ("sample.mp4", io.BytesIO(b"not-a-video" * 4), "video/mp4")},
+                headers={"Authorization": "Bearer token-123"},
+            )
+        self.assertEqual(response.status_code, 413)
+
     @patch("main._scan_upload_for_threat", return_value=True)
     @patch("main._probe_media", return_value={"format": {"duration": 12.3}, "streams": [{"codec_type": "video"}]})
     @patch("main.verify_token", return_value={"uid": "upload-user"})
@@ -603,6 +622,42 @@ class ApiContractTests(unittest.TestCase):
 
         self.assertEqual(raised.exception.status_code, 502)
         release_quota.assert_called_once_with("process-user", "process")
+
+    def test_corrupt_direct_upload_is_rejected_before_paid_transcription(self):
+        request = main.Request({"type": "http", "headers": [], "client": ("worker", 0)})
+        req = main.ProcessRequest(
+            file_id="123e4567-e89b-12d3-a456-426614174000",
+            language="english",
+        )
+        with (
+            patch.object(main, "_assert_service_available"),
+            patch.object(main, "_assert_upload_owner"),
+            patch.object(main, "_safe_find_upload", return_value="C:/tmp/corrupt.mp4"),
+            patch.object(main, "_load_upload_metadata", return_value={"security_scanned_at": "done"}),
+            patch.object(main, "_lookup_subscription_tier", return_value="free"),
+            patch.object(main, "_read_service_controls", return_value={}),
+            patch.object(main, "_probe_media", side_effect=ValueError("corrupt media")),
+            patch.object(main.processor, "generate_captions_only", new_callable=AsyncMock) as provider,
+        ):
+            with self.assertRaises(main.HTTPException) as raised:
+                asyncio.run(main._process_video_inline(req, request, main.Response(), trusted_uid="process-user"))
+        self.assertEqual(raised.exception.status_code, 422)
+        provider.assert_not_called()
+
+    def test_owned_export_download_redirects_to_short_lived_storage_url(self):
+        filename = "export_123e4567-e89b-12d3-a456-426614174000_abcdef123456.mp4"
+        token = main._create_media_token({
+            "kind": "export", "uid": "owner-1", "filename": filename,
+            "exp": int(main.time.time()) + 60,
+        })
+        with (
+            patch.object(main, "_assert_account_not_deleting"),
+            patch.object(main, "signed_export_download_url", return_value="https://storage.test/private") as sign,
+        ):
+            response = main.serve_exported_media(filename, token)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["location"], "https://storage.test/private")
+        sign.assert_called_once_with(f"exports/owner-1/{filename}")
 
     def test_request_models_reject_invalid_caption_and_word_range(self):
         export_res = self.client.post(
