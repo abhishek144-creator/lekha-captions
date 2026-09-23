@@ -24,6 +24,7 @@
     "test:pricing-defaults": "node scripts/check-pricing-yearly-default.mjs",
     "test:google-auth": "node scripts/check-google-auth-redirect.mjs",
     "test:cross-network-upload": "node scripts/check-cross-network-upload-recovery.mjs && node scripts/check-recovery-behavior.mjs && node scripts/check-direct-upload-resume.mjs",
+    "test:render-browser-reuse": "node scripts/check-render-browser-reuse.mjs",
     "test:template-export:all-right": "node scripts/check-template-export-parity.mjs --scope=all-right",
     "test:template-export:all-right-phases": "node scripts/check-template-export-parity.mjs --scope=all-right-phases",
     "test:template-export:all-basic": "node scripts/check-template-export-parity.mjs --scope=all-basic",
