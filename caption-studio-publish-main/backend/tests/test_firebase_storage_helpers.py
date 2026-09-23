@@ -151,6 +151,18 @@ class FirebaseStorageHelperTests(unittest.TestCase):
         self.assertIsNone(url)
         self.assertTrue(bucket.fake_blob.deleted)
 
+    def test_signed_export_download_is_private_short_lived_and_path_scoped(self):
+        bucket = FakeBucket()
+        with (
+            patch.object(storage_helpers, "get_storage_bucket", return_value=bucket),
+            patch.object(storage_helpers, "s3_is_configured", return_value=False),
+        ):
+            url = storage_helpers.signed_export_download_url("exports/user-1/output.mp4", 600)
+            rejected = storage_helpers.signed_export_download_url("uploads/user-1/input.mp4")
+        self.assertEqual(url, "https://storage.test/signed-export")
+        self.assertIsNone(rejected)
+        self.assertEqual(bucket.requested_paths, ["exports/user-1/output.mp4"])
+
     def test_source_download_materializes_shared_upload(self):
         bucket = FakeBucket(FakeBlob(download_bytes=b"uploaded-source"))
         with tempfile.TemporaryDirectory() as tmpdir:

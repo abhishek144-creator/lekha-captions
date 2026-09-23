@@ -20,12 +20,11 @@ import { Upload, Film, Sparkles, Globe, Palette, Loader2, Info, Wand2 } from 'lu
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from '@/components/ui/use-toast';
 import { apiRequest } from '@/lib/apiClient';
-import { uploadFileWithRecovery } from '@/lib/resilientUpload';
+import { MAX_VIDEO_UPLOAD_BYTES, uploadFileWithRecovery } from '@/lib/resilientUpload';
 import { notifyApiError } from '@/lib/notifyApiError';
 import { useAuth } from '@/lib/AuthContext';
 import { getEffectiveAuthToken } from '@/lib/devAuth';
 
-const MAX_UPLOAD_BYTES = 500 * 1024 * 1024; // Keep in sync with backend/main.py
 const SUPPORTED_VIDEO_EXTENSION = /\.(mp4|mov|webm|mkv|avi)$/i;
 const SUPPORTED_VIDEO_ACCEPT = [
   '.mp4',
@@ -44,12 +43,12 @@ function validateVideoFile(file) {
   if (!file || !SUPPORTED_VIDEO_EXTENSION.test(file.name || '')) {
     return 'Unsupported file type. Choose an MP4, MOV, WebM, MKV, or AVI video.';
   }
-  if (file.type && !file.type.startsWith('video/')) {
+  if (file.type && file.type !== 'application/octet-stream' && !file.type.startsWith('video/')) {
     return 'That file does not look like a video. Choose an MP4, MOV, WebM, MKV, or AVI video.';
   }
-  if (file.size > MAX_UPLOAD_BYTES) {
+  if (file.size > MAX_VIDEO_UPLOAD_BYTES) {
     const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
-    return `File size (${fileSizeMB}MB) exceeds 500MB limit.`;
+    return `File size (${fileSizeMB} MiB) exceeds the 500 MiB limit.`;
   }
   return null;
 }
@@ -461,7 +460,7 @@ export default function UploadModal({
                     MP4, MOV, WebM, MKV, AVI
                   </span>
                   <span>Best for 15-180 seconds</span>
-                  <span>Max 500MB</span>
+                    <span>Max 500 MiB</span>
                 </div>
               </div>
 

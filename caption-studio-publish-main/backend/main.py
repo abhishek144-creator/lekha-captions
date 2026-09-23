@@ -16,7 +16,7 @@ if not _bootstrap_is_test or os.environ.get("LOAD_LOCAL_ENV_IN_TESTS") == "1":
         load_dotenv(dotenv_path=env_base)
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Response
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, model_validator
 import shutil
@@ -49,6 +49,7 @@ try:
         upload_source_media,
         download_from_firebase_storage,
         download_export_from_firebase_storage,
+        signed_export_download_url,
         delete_expired_uploads,
         delete_user_uploads,
         storage_backend_ready,
@@ -66,6 +67,7 @@ except ImportError:  # Direct execution from backend/ remains supported.
         upload_source_media,
         download_from_firebase_storage,
         download_export_from_firebase_storage,
+        signed_export_download_url,
         delete_expired_uploads,
         delete_user_uploads,
         storage_backend_ready,
@@ -2304,7 +2306,10 @@ def _set_export_job(job_id: str, status: str, *, expected_status=None, **kwargs)
 
 # Allowed upload extensions (module-level constant — not rebuilt per request)
 ALLOWED_EXTENSIONS = {'mp4', 'mov', 'avi', 'mkv', 'webm', 'mp3', 'wav', 'm4a', 'aac'}
-MAX_UPLOAD_BYTES = 500 * 1024 * 1024  # 500 MB
+MAX_UPLOAD_BYTES = 500 * 1024 * 1024  # 500 MiB = 524,288,000 bytes
+# A configured GCS deployment must not let browser clients bypass direct upload
+# by sending a large multipart body through the control API.
+MAX_PROXY_UPLOAD_BYTES = 8 * 1024 * 1024 if os.environ.get("GCS_MEDIA_BUCKET") else MAX_UPLOAD_BYTES
 ALLOWED_CONTENT_PREFIXES = ("video/", "audio/")
 
 def _validate_file_id(file_id: str) -> bool:
@@ -3779,14 +3784,14 @@ async def upload_video(file: UploadFile = File(...), request: Request = None, re
             content_length=content_length,
             content_type=content_type,
         )
-        if content_length > MAX_UPLOAD_BYTES + 1024 * 1024:
+        if content_length > MAX_PROXY_UPLOAD_BYTES + 1024 * 1024:
             _track_event("upload_rejected_too_large", {"content_length": content_length})
-            raise HTTPException(status_code=413, detail="File too large. Maximum 500MB allowed.")
+            raise HTTPException(status_code=413, detail="Large files must use direct storage upload.")
 
         file_id = str(uuid.uuid4())
         file_path = os.path.join(UPLOAD_DIR, f"{file_id}.{file_ext}")
         # Stream to disk in chunks rather than buffering the whole file in RAM —
-        # a 500MB read per request is a memory-pressure DoS under concurrency.
+        # a 500 MiB read per request is a memory-pressure DoS under concurrency.
         # Enforce the size cap as we write so an oversized (or content-length-spoofed)
         # body is aborted early instead of fully consumed.
         stage = "receiving_body"
@@ -3798,7 +3803,7 @@ async def upload_video(file: UploadFile = File(...), request: Request = None, re
                 if not chunk:
                     break
                 bytes_written += len(chunk)
-                if bytes_written > MAX_UPLOAD_BYTES:
+                if bytes_written > MAX_PROXY_UPLOAD_BYTES:
                     too_large = True
                     break
                 buffer.write(chunk)
@@ -3808,7 +3813,7 @@ async def upload_video(file: UploadFile = File(...), request: Request = None, re
             except Exception:
                 pass
             _track_event("upload_rejected_too_large", {"content_length": bytes_written})
-            raise HTTPException(status_code=413, detail="File too large. Maximum 500MB allowed.")
+            raise HTTPException(status_code=413, detail="Large files must use direct storage upload.")
 
         stage = "body_received"
         _json_log(
@@ -4092,8 +4097,9 @@ async def _process_video_inline(req: ProcessRequest, request: Request, response:
     try:
         _probe_meta = await asyncio.to_thread(_probe_media, input_path)
         media_duration = float((_probe_meta.get("format") or {}).get("duration") or 0)
-    except Exception:
-        media_duration = 0.0
+    except Exception as probe_error:
+        _track_event("process_rejected_ffprobe", {"file_id": req.file_id, "error": str(probe_error)})
+        raise HTTPException(status_code=422, detail="Invalid media file") from probe_error
     if media_duration > max_seconds + 0.5:
         _track_event("process_rejected_duration", {"tier": user_tier, "duration": media_duration, "max_seconds": max_seconds})
         raise HTTPException(status_code=403, detail=f"Your plan allows videos up to {max_seconds}s. This video is {media_duration:.0f}s long.")
@@ -7040,6 +7046,9 @@ def serve_exported_media(filename: str, token: str = ""):
     _assert_account_not_deleting(str(payload.get("uid") or ""))
     if payload.get("filename") != filename:
         raise HTTPException(status_code=403, detail="Media token does not match this export")
+    direct_url = signed_export_download_url(f"exports/{payload['uid']}/{filename}")
+    if direct_url:
+        return RedirectResponse(direct_url, status_code=302, headers={"Cache-Control": "no-store"})
     real_export_dir = os.path.realpath(EXPORT_DIR)
     path = os.path.realpath(os.path.join(EXPORT_DIR, filename))
     if not path.startswith(real_export_dir + os.sep):

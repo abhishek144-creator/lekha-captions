@@ -4,6 +4,8 @@ import { getClientContext, trackAnalytics } from '@/lib/analytics'
 const DEFAULT_RETRY_DELAYS_MS = [1500, 4000, 8000]
 const RETRYABLE_UPLOAD_STATUSES = new Set([0, 408, 425, 499, 500, 502, 503, 504])
 const RESUMABLE_CHUNK_BYTES = 8 * 1024 * 1024
+export const MAX_VIDEO_UPLOAD_BYTES = 500 * 1024 * 1024
+const DIRECT_REQUIRED_BYTES = 8 * 1024 * 1024
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -47,22 +49,51 @@ export function isRetryableUploadError(error) {
   return RETRYABLE_UPLOAD_STATUSES.has(Number(error?.status || 0))
 }
 
-function putResumableChunk(uploadUrl, blob, start, total, contentType) {
+function acknowledgedOffset(request) {
+  const range = request.getResponseHeader('Range')
+  const match = /^bytes=0-(\d+)$/i.exec(range || '')
+  return match ? Number(match[1]) + 1 : 0
+}
+
+function putResumableChunk(uploadUrl, blob, start, total, contentType, onProgress) {
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest()
     request.open('PUT', uploadUrl)
     request.setRequestHeader('Content-Type', contentType || 'application/octet-stream')
     request.setRequestHeader('Content-Range', `bytes ${start}-${start + blob.size - 1}/${total}`)
     request.onload = () => {
-      if ([200, 201, 308].includes(request.status)) resolve(request.status)
+      if ([200, 201, 308].includes(request.status)) resolve({
+        status: request.status,
+        offset: request.status === 308 ? acknowledgedOffset(request) : total,
+      })
       else reject(Object.assign(new Error('Direct upload chunk failed'), { status: request.status }))
     }
     request.onerror = () => reject(Object.assign(new Error('Direct upload connection failed'), { status: 0 }))
+    request.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress?.(Math.min(total, start + event.loaded))
+    }
     request.send(blob)
   })
 }
 
-async function uploadDirectToStorage(file, authorization) {
+function queryResumableOffset(uploadUrl, total) {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest()
+    request.open('PUT', uploadUrl)
+    request.setRequestHeader('Content-Range', `bytes */${total}`)
+    request.onload = () => {
+      if ([200, 201, 308].includes(request.status)) {
+        resolve(request.status === 308 ? acknowledgedOffset(request) : total)
+      } else {
+        reject(Object.assign(new Error('Could not check upload progress'), { status: request.status }))
+      }
+    }
+    request.onerror = () => reject(Object.assign(new Error('Upload connection unavailable'), { status: 0 }))
+    request.send()
+  })
+}
+
+async function uploadDirectToStorage(file, authorization, retryDelaysMs, onProgress, onRetry) {
   if (typeof XMLHttpRequest === 'undefined') return null
   const initialized = await apiRequest('/api/uploads/init', {
     method: 'POST',
@@ -78,15 +109,40 @@ async function uploadDirectToStorage(file, authorization) {
     dedupeKey: 'direct-upload-init',
   })
   if (!initialized?.direct_upload_available || !initialized?.upload_url) return null
-  for (let start = 0; start < file.size; start += RESUMABLE_CHUNK_BYTES) {
-    const end = Math.min(file.size, start + RESUMABLE_CHUNK_BYTES)
-    await putResumableChunk(
-      initialized.upload_url,
-      file.slice(start, end),
-      start,
-      file.size,
-      file.type,
-    )
+  let offset = 0
+  let retries = 0
+  while (offset < file.size) {
+    const end = Math.min(file.size, offset + RESUMABLE_CHUNK_BYTES)
+    try {
+      const previousOffset = offset
+      const result = await putResumableChunk(
+        initialized.upload_url, file.slice(offset, end), offset, file.size,
+        file.type, onProgress,
+      )
+      offset = result.offset
+      if (offset <= previousOffset) throw Object.assign(new Error('Storage did not acknowledge upload progress'), { status: 503 })
+      onProgress?.(offset)
+      retries = 0
+    } catch (error) {
+      if (!(isRetryableUploadError(error) || Number(error?.status) === 429)
+          || retries >= retryDelaysMs.length) throw error
+      onRetry?.({ attempt: retries + 1, nextAttempt: retries + 2, error })
+      await waitForConnection()
+      await sleep(retryDelaysMs[retries] + Math.floor(Math.random() * 300))
+      retries += 1
+      while (true) {
+        try {
+          offset = await queryResumableOffset(initialized.upload_url, file.size)
+          break
+        } catch (queryError) {
+          if (!isRetryableUploadError(queryError) || retries >= retryDelaysMs.length) throw queryError
+          await waitForConnection()
+          await sleep(retryDelaysMs[retries] + Math.floor(Math.random() * 300))
+          retries += 1
+        }
+      }
+      onProgress?.(offset)
+    }
   }
   return apiRequest('/api/uploads/complete', {
     method: 'POST',
@@ -104,13 +160,22 @@ export async function uploadFileWithRecovery(file, {
   dedupeKey = 'upload-video',
   retryDelaysMs = DEFAULT_RETRY_DELAYS_MS,
   onRetry = null,
+  onProgress = null,
 } = {}) {
+  if (!file?.size || file.size > MAX_VIDEO_UPLOAD_BYTES) {
+    throw Object.assign(new Error('Video must be at most 500 MiB'), { status: 413 })
+  }
   const uploadReference = createUploadReference()
   const startedAt = Date.now()
   let lastError = null
+  const reportProgress = (uploadedBytes) => onProgress?.({
+    uploadedBytes,
+    totalBytes: file.size,
+    percent: Math.round(uploadedBytes * 100 / file.size),
+  })
 
   try {
-    const directResult = await uploadDirectToStorage(file, authorization)
+    const directResult = await uploadDirectToStorage(file, authorization, retryDelaysMs, reportProgress, onRetry)
     if (directResult?.success) {
       trackAnalytics('funnel.upload.transport_success', getClientContext({
         stage: 'direct-storage-upload',
@@ -123,11 +188,16 @@ export async function uploadFileWithRecovery(file, {
     }
   } catch (error) {
     lastError = error
+    if (file.size > DIRECT_REQUIRED_BYTES || !isRetryableUploadError(error)) throw error
     trackAnalytics('funnel.upload.direct_fallback', getClientContext({
       stage: 'direct-storage-upload',
       status: Number(error?.status || 0),
       uploadReference,
     }))
+  }
+
+  if (file.size > DIRECT_REQUIRED_BYTES) {
+    throw lastError || new Error('Direct storage upload is unavailable. Please retry shortly.')
   }
 
   for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
