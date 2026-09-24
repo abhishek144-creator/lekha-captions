@@ -9,6 +9,7 @@ runs at most one journey so per-user concurrency controls are not bypassed.
 
 import argparse
 import concurrent.futures
+import hashlib
 import json
 import mimetypes
 import pathlib
@@ -135,6 +136,26 @@ def upload_direct(session: requests.Session, base_url: str, headers: dict,
             time.sleep(2 ** attempt)
 
 
+def video_for_journey(args: argparse.Namespace, index: int) -> pathlib.Path:
+    """Pick a test video deterministically, cycling through distinct inputs."""
+    videos = list(getattr(args, "videos", []) or [])
+    if not videos:
+        legacy_video = getattr(args, "video", None)
+        if legacy_video:
+            videos = [legacy_video]
+    if not videos:
+        raise RuntimeError("At least one test video is required")
+    return videos[(index - 1) % len(videos)]
+
+
+def video_sha256(video: pathlib.Path) -> str:
+    digest = hashlib.sha256()
+    with video.open("rb") as media:
+        for chunk in iter(lambda: media.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def run_journey(index: int, credential: dict, args: argparse.Namespace) -> dict:
     origins = [origin.strip().rstrip("/") + "/" for origin in args.base_url.split(",") if origin.strip()]
     base_url = origins[(index - 1) % len(origins)]
@@ -147,6 +168,11 @@ def run_journey(index: int, credential: dict, args: argparse.Namespace) -> dict:
     if app_check_token:
         headers["X-Firebase-AppCheck"] = app_check_token
     session = requests.Session()
+    video = video_for_journey(args, index)
+    source_media = {
+        "name": video.name,
+        "sha256": getattr(args, "video_fingerprints", {}).get(video),
+    }
     file_id = ""
     job_id = ""
     stages: dict[str, float] = {}
@@ -165,15 +191,15 @@ def run_journey(index: int, credential: dict, args: argparse.Namespace) -> dict:
             )
         stage_started = time.monotonic()
         if args.upload_mode == "direct":
-            upload = upload_direct(session, base_url, headers, args.video,
+            upload = upload_direct(session, base_url, headers, video,
                                    timeout=args.upload_timeout)
         else:
-            with args.video.open("rb") as media:
-                content_type = mimetypes.guess_type(args.video.name)[0] or "application/octet-stream"
+            with video.open("rb") as media:
+                content_type = mimetypes.guess_type(video.name)[0] or "application/octet-stream"
                 upload = require_ok(
                     session.post(
                         urljoin(base_url, "api/upload"),
-                        files={"file": (args.video.name, media, content_type)},
+                        files={"file": (video.name, media, content_type)},
                         headers=headers,
                         timeout=args.upload_timeout,
                     ),
@@ -277,6 +303,7 @@ def run_journey(index: int, credential: dict, args: argparse.Namespace) -> dict:
             "job_id": job_id,
             "admission_retries": admission_retries,
             "bytes": len(download.content),
+            "source_media": source_media,
             "stages_seconds": stages,
             "total_seconds": time.monotonic() - started,
         }
@@ -289,6 +316,7 @@ def run_journey(index: int, credential: dict, args: argparse.Namespace) -> dict:
             "file_id": file_id,
             "job_id": job_id,
             "error": str(exc),
+            "source_media": source_media,
             "stages_seconds": stages,
             "total_seconds": time.monotonic() - started,
         }
@@ -312,7 +340,10 @@ def main() -> None:
     parser.add_argument("--credentials-json", required=True, type=pathlib.Path)
     parser.add_argument("--results-json", type=pathlib.Path,
                         help="Write per-journey IDs and timing for audit and cleanup")
-    parser.add_argument("--video", required=True, type=pathlib.Path)
+    parser.add_argument("--video", required=True, type=pathlib.Path, action="append",
+                        help="Rights-cleared test video. Repeat to cycle through distinct media.")
+    parser.add_argument("--require-unique-media", action="store_true",
+                        help="Require one bytewise distinct --video input per journey.")
     parser.add_argument("--upload-mode", default="direct", choices=["direct", "proxy"])
     parser.add_argument("--jobs", type=int, default=0, help="Defaults to the number of disposable users")
     parser.add_argument("--workers", type=int, default=0,
@@ -336,8 +367,9 @@ def main() -> None:
     if not [origin for origin in args.base_url.split(",") if origin.strip()]:
         raise SystemExit("At least one isolated staging API origin is required")
 
-    if not args.video.is_file():
-        raise SystemExit(f"Video does not exist: {args.video}")
+    args.videos = args.video
+    if missing_video := next((video for video in args.videos if not video.is_file()), None):
+        raise SystemExit(f"Video does not exist: {missing_video}")
     if not args.credentials_json.is_file():
         raise SystemExit(f"Credentials file does not exist: {args.credentials_json}")
     data = json.loads(args.credentials_json.read_text(encoding="utf-8"))
@@ -352,6 +384,13 @@ def main() -> None:
     worker_count = args.workers or jobs
     if args.synchronize_exports and worker_count < jobs:
         raise SystemExit("Synchronized exports require at least one worker per journey")
+    args.video_fingerprints = {}
+    if args.require_unique_media:
+        if len(args.videos) < jobs:
+            raise SystemExit("Unique-media runs require at least one --video input per journey")
+        args.video_fingerprints = {video: video_sha256(video) for video in args.videos}
+        if len(set(args.video_fingerprints.values())) < jobs:
+            raise SystemExit("Unique-media runs require bytewise distinct --video inputs")
     args.export_barrier = threading.Barrier(jobs, timeout=args.barrier_timeout) if args.synchronize_exports else None
     selected = users[:jobs]
 
