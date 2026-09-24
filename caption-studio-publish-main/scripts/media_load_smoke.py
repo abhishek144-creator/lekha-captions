@@ -135,6 +135,18 @@ def upload_direct(session: requests.Session, base_url: str, headers: dict,
             time.sleep(2 ** attempt)
 
 
+def video_for_journey(args: argparse.Namespace, index: int) -> pathlib.Path:
+    """Pick a test video deterministically, cycling through distinct inputs."""
+    videos = list(getattr(args, "videos", []) or [])
+    if not videos:
+        legacy_video = getattr(args, "video", None)
+        if legacy_video:
+            videos = [legacy_video]
+    if not videos:
+        raise RuntimeError("At least one test video is required")
+    return videos[(index - 1) % len(videos)]
+
+
 def run_journey(index: int, credential: dict, args: argparse.Namespace) -> dict:
     origins = [origin.strip().rstrip("/") + "/" for origin in args.base_url.split(",") if origin.strip()]
     base_url = origins[(index - 1) % len(origins)]
@@ -147,6 +159,7 @@ def run_journey(index: int, credential: dict, args: argparse.Namespace) -> dict:
     if app_check_token:
         headers["X-Firebase-AppCheck"] = app_check_token
     session = requests.Session()
+    video = video_for_journey(args, index)
     file_id = ""
     job_id = ""
     stages: dict[str, float] = {}
@@ -165,15 +178,15 @@ def run_journey(index: int, credential: dict, args: argparse.Namespace) -> dict:
             )
         stage_started = time.monotonic()
         if args.upload_mode == "direct":
-            upload = upload_direct(session, base_url, headers, args.video,
+            upload = upload_direct(session, base_url, headers, video,
                                    timeout=args.upload_timeout)
         else:
-            with args.video.open("rb") as media:
-                content_type = mimetypes.guess_type(args.video.name)[0] or "application/octet-stream"
+            with video.open("rb") as media:
+                content_type = mimetypes.guess_type(video.name)[0] or "application/octet-stream"
                 upload = require_ok(
                     session.post(
                         urljoin(base_url, "api/upload"),
-                        files={"file": (args.video.name, media, content_type)},
+                        files={"file": (video.name, media, content_type)},
                         headers=headers,
                         timeout=args.upload_timeout,
                     ),
@@ -312,7 +325,8 @@ def main() -> None:
     parser.add_argument("--credentials-json", required=True, type=pathlib.Path)
     parser.add_argument("--results-json", type=pathlib.Path,
                         help="Write per-journey IDs and timing for audit and cleanup")
-    parser.add_argument("--video", required=True, type=pathlib.Path)
+    parser.add_argument("--video", required=True, type=pathlib.Path, action="append",
+                        help="Rights-cleared test video. Repeat to cycle through distinct media.")
     parser.add_argument("--upload-mode", default="direct", choices=["direct", "proxy"])
     parser.add_argument("--jobs", type=int, default=0, help="Defaults to the number of disposable users")
     parser.add_argument("--workers", type=int, default=0,
@@ -336,8 +350,9 @@ def main() -> None:
     if not [origin for origin in args.base_url.split(",") if origin.strip()]:
         raise SystemExit("At least one isolated staging API origin is required")
 
-    if not args.video.is_file():
-        raise SystemExit(f"Video does not exist: {args.video}")
+    args.videos = args.video
+    if missing_video := next((video for video in args.videos if not video.is_file()), None):
+        raise SystemExit(f"Video does not exist: {missing_video}")
     if not args.credentials_json.is_file():
         raise SystemExit(f"Credentials file does not exist: {args.credentials_json}")
     data = json.loads(args.credentials_json.read_text(encoding="utf-8"))
