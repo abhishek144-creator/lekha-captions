@@ -508,6 +508,10 @@ if _IS_PRODUCTION:
         "SECURITY_CONTACT_EMAIL": os.environ.get("SECURITY_CONTACT_EMAIL", "").strip(),
         "PRIVACY_CONTACT_EMAIL": os.environ.get("PRIVACY_CONTACT_EMAIL", "").strip(),
     }
+    if os.environ.get("GCS_MEDIA_BUCKET", "").strip():
+        required_production_settings["GCS_SIGNING_SERVICE_ACCOUNT"] = os.environ.get(
+            "GCS_SIGNING_SERVICE_ACCOUNT", ""
+        ).strip()
     missing_production_settings = [
         name for name, value in required_production_settings.items() if not value
     ]

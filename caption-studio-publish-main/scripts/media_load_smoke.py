@@ -121,10 +121,18 @@ def upload_direct(session: requests.Session, base_url: str, headers: dict,
                 continue
             offset = acknowledged
             failures = 0
-    return require_ok(session.post(
-        urljoin(base_url, "api/uploads/complete"),
-        json={"file_id": initiated["file_id"]}, headers=headers, timeout=30,
-    ), "direct upload completion")
+    # Completion is idempotent in the API: a dropped tunnel response must not
+    # turn an already uploaded object into a failed customer journey.
+    for attempt in range(4):
+        try:
+            return require_ok(session.post(
+                urljoin(base_url, "api/uploads/complete"),
+                json={"file_id": initiated["file_id"]}, headers=headers, timeout=30,
+            ), "direct upload completion")
+        except requests.RequestException:
+            if attempt == 3:
+                raise
+            time.sleep(2 ** attempt)
 
 
 def run_journey(index: int, credential: dict, args: argparse.Namespace) -> dict:
@@ -144,15 +152,16 @@ def run_journey(index: int, credential: dict, args: argparse.Namespace) -> dict:
     started = time.monotonic()
 
     try:
-        require_ok(
-            session.post(
-                urljoin(base_url, "api/account-bootstrap"),
-                json={"id_token": id_token},
-                headers=headers,
-                timeout=30,
-            ),
-            "account bootstrap",
-        )
+        if credential.get("bootstrap", True):
+            require_ok(
+                session.post(
+                    urljoin(base_url, "api/account-bootstrap"),
+                    json={"id_token": id_token},
+                    headers=headers,
+                    timeout=30,
+                ),
+                "account bootstrap",
+            )
         stage_started = time.monotonic()
         if args.upload_mode == "direct":
             upload = upload_direct(session, base_url, headers, args.video,
@@ -203,26 +212,32 @@ def run_journey(index: int, credential: dict, args: argparse.Namespace) -> dict:
                 raise RuntimeError("Synchronized export burst could not start") from exc
 
         stage_started = time.monotonic()
-        export = require_ok(
-            session.post(
-                urljoin(base_url, "api/export"),
-                json={
-                    "file_id": file_id,
-                    "captions": captions,
-                    "style": {},
-                    "word_layouts": {},
-                    "id_token": id_token,
-                    "idempotency_key": f"media-load-{uuid.uuid4()}",
-                    "quality": args.quality,
-                    "fps": args.fps,
-                },
-                headers=headers,
-                timeout=args.export_submit_timeout,
-            ),
-            "export",
-        )
-        job_id = str(export.get("export_job_id") or "")
+        export_request = {
+            "file_id": file_id,
+            "captions": captions,
+            "style": {},
+            "word_layouts": {},
+            "id_token": id_token,
+            "idempotency_key": f"media-load-{uuid.uuid4()}",
+            "quality": args.quality,
+            "fps": args.fps,
+        }
         deadline = time.monotonic() + args.export_wait_timeout
+        admission_retries = 0
+        while True:
+            submitted = session.post(
+                urljoin(base_url, "api/export"), json=export_request,
+                headers=headers, timeout=args.export_submit_timeout,
+            )
+            if submitted.status_code not in {429, 503}:
+                export = require_ok(submitted, "export")
+                break
+            retry_after = min(max(int(submitted.headers.get("Retry-After", "5")), 1), 300)
+            if time.monotonic() + retry_after >= deadline:
+                raise RuntimeError(f"export admission remained full after {admission_retries} retries")
+            admission_retries += 1
+            time.sleep(retry_after)
+        job_id = str(export.get("export_job_id") or "")
         while export.get("queued") or export.get("status") in {"queued", "started", "processing"}:
             if not job_id or time.monotonic() >= deadline:
                 raise RuntimeError(f"export did not complete within {args.export_wait_timeout}s (job={job_id})")
@@ -257,6 +272,7 @@ def run_journey(index: int, credential: dict, args: argparse.Namespace) -> dict:
             "ok": True,
             "file_id": file_id,
             "job_id": job_id,
+            "admission_retries": admission_retries,
             "bytes": len(download.content),
             "stages_seconds": stages,
             "total_seconds": time.monotonic() - started,
@@ -290,6 +306,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", required=True, help="Isolated staging API origin")
     parser.add_argument("--credentials-json", required=True, type=pathlib.Path)
+    parser.add_argument("--results-json", type=pathlib.Path,
+                        help="Write per-journey IDs and timing for audit and cleanup")
     parser.add_argument("--video", required=True, type=pathlib.Path)
     parser.add_argument("--upload-mode", default="direct", choices=["direct", "proxy"])
     parser.add_argument("--jobs", type=int, default=0, help="Defaults to the number of disposable users")
@@ -356,7 +374,14 @@ def main() -> None:
             {"index": result["index"], "error": result.get("error", "unknown")}
             for result in results if not result["ok"]
         ],
+        "admission_retries": sum(result.get("admission_retries", 0) for result in results),
     }
+    if args.results_json:
+        args.results_json.parent.mkdir(parents=True, exist_ok=True)
+        args.results_json.write_text(
+            json.dumps({"summary": summary, "journeys": results}, indent=2),
+            encoding="utf-8",
+        )
     print(json.dumps(summary, indent=2))
     if success_rate < args.minimum_success_rate:
         raise SystemExit(1)
