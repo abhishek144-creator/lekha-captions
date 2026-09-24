@@ -5,17 +5,23 @@ autoscaling, Cloud NAT, health checks, Standard HA Redis, the private media
 bucket, immutable instance templates, and Cloud Armor policy. Keep secret values outside Terraform; only
 the numeric Secret Manager version is supplied.
 
-Existing resources must be imported once before the first plan. Never apply a
-plan that proposes replacing Redis or either MIG unexpectedly. Copy
-`terraform.tfvars.example` to an ignored `terraform.tfvars`, set immutable image
-digests and the release SHA, then run `terraform init`, `terraform import`,
-`terraform plan -out=plan.tfplan`, and review the saved plan before apply.
+Production state is stored in the versioned, public-access-blocked GCS bucket
+`gs://lekha-terraform-state-602676673096` under the `production/gcp` prefix.
+On 24 September 2026, all 17 existing production resources declared here were
+imported into that state. The adoption plan completed with zero additions,
+changes, or destroys.
 
-The current production resources can be adopted without recreation with these
-one-time imports (run only after filling `terraform.tfvars`):
+Copy `terraform.tfvars.example` to an ignored `terraform.tfvars`, set the live
+immutable image digests, exact resource names, numeric secret version, and
+release SHA, then use this workflow:
 
 ```powershell
-terraform import google_compute_security_policy.edge projects/project-0cc7c839-b9c7-4734-ad0/global/securityPolicies/lekha-edge-security
-terraform import google_redis_instance.queue projects/project-0cc7c839-b9c7-4734-ad0/locations/asia-south1/instances/lekha-redis-ha
-terraform import google_storage_bucket.media lekha-media-project-0cc7c839-b9c7-4734-ad0
+terraform init
+terraform validate
+terraform plan -input=false -out=plan.tfplan
+terraform show -no-color plan.tfplan
 ```
+
+Review every saved plan before applying it. Stop if Terraform proposes an
+unexpected replacement of Redis, an instance template, or either managed
+instance group. Do not repeat the imports against the existing remote state.
