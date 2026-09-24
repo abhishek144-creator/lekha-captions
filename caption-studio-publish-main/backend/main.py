@@ -508,6 +508,10 @@ if _IS_PRODUCTION:
         "SECURITY_CONTACT_EMAIL": os.environ.get("SECURITY_CONTACT_EMAIL", "").strip(),
         "PRIVACY_CONTACT_EMAIL": os.environ.get("PRIVACY_CONTACT_EMAIL", "").strip(),
     }
+    if os.environ.get("GCS_MEDIA_BUCKET", "").strip():
+        required_production_settings["GCS_SIGNING_SERVICE_ACCOUNT"] = os.environ.get(
+            "GCS_SIGNING_SERVICE_ACCOUNT", ""
+        ).strip()
     missing_production_settings = [
         name for name, value in required_production_settings.items() if not value
     ]
@@ -1456,7 +1460,8 @@ SERVICE_CONTROL_KEYS = (
 )
 MAX_UPLOAD_DURATION_CONTROL_KEY = "max_upload_duration_seconds"
 GLOBAL_MAX_UPLOAD_DURATION_SECONDS = 180
-SERVICE_CONTROL_COLLECTION = "ops"
+_RELEASE_ENVIRONMENT = os.environ.get("RELEASE_ENVIRONMENT", "production").strip().lower()
+SERVICE_CONTROL_COLLECTION = "ops" if _RELEASE_ENVIRONMENT == "production" else f"ops_{_RELEASE_ENVIRONMENT}"
 SERVICE_CONTROL_DOCUMENT = "service_controls"
 SERVICE_CONTROL_CACHE_SECONDS = max(
     0.0, float(os.environ.get("SERVICE_CONTROL_CACHE_SECONDS", "10"))

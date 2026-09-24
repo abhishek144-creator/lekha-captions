@@ -11,6 +11,7 @@ from unittest.mock import patch, AsyncMock, Mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
+from google.api_core.exceptions import Aborted
 from transcription_jobs import TranscriptionJobs
 from drafts import delete_project, list_projects, normalize_draft, read_draft, save_draft
 import main
@@ -79,6 +80,22 @@ class DurableWorkflowTests(unittest.TestCase):
             results = list(pool.map(lambda _: self.jobs.create("a", self.settings), range(32)))
         self.assertEqual(len({r["job_id"] for r in results}), 1)
         self.assertEqual(len([k for k in self.db.data if k.startswith("transcription_outbox/")]), 1)
+
+    def test_transient_firestore_abort_retries_durable_admission(self):
+        with (patch.object(self.db, "transaction", side_effect=[Aborted("contention"), Tx(self.db)]) as transaction,
+              patch("transcription_jobs.time.sleep")):
+            job = self.jobs.create("a", self.settings)
+        self.assertEqual(job["status"], "queued")
+        self.assertEqual(transaction.call_count, 2)
+
+    def test_persistent_firestore_abort_returns_retryable_response(self):
+        with (patch.object(self.db, "transaction", side_effect=Aborted("contention")) as transaction,
+              patch("transcription_jobs.time.sleep")):
+            with self.assertRaises(HTTPException) as raised:
+                self.jobs.create("a", self.settings)
+        self.assertEqual(raised.exception.status_code, 503)
+        self.assertEqual(raised.exception.headers["Retry-After"], "2")
+        self.assertEqual(transaction.call_count, 4)
 
     def test_changed_settings_cannot_queue_second_operation_for_account(self):
         self.jobs.create("a", self.settings)
