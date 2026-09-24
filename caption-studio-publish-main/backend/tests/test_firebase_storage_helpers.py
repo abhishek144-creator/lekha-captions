@@ -25,9 +25,11 @@ class FakeBlob:
     def delete(self):
         self.deleted = True
 
-    def generate_signed_url(self, expiration):
+    def generate_signed_url(self, expiration, **kwargs):
         if not isinstance(expiration, timedelta):
             raise AssertionError("signed URL expiration must be a timedelta")
+        if kwargs.get("version") != "v4":
+            raise AssertionError("signed URL must use V4")
         return "https://storage.test/signed-export"
 
     def create_resumable_upload_session(self, **kwargs):
