@@ -9,6 +9,7 @@ runs at most one journey so per-user concurrency controls are not bypassed.
 
 import argparse
 import concurrent.futures
+import hashlib
 import json
 import mimetypes
 import pathlib
@@ -147,6 +148,14 @@ def video_for_journey(args: argparse.Namespace, index: int) -> pathlib.Path:
     return videos[(index - 1) % len(videos)]
 
 
+def video_sha256(video: pathlib.Path) -> str:
+    digest = hashlib.sha256()
+    with video.open("rb") as media:
+        for chunk in iter(lambda: media.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def run_journey(index: int, credential: dict, args: argparse.Namespace) -> dict:
     origins = [origin.strip().rstrip("/") + "/" for origin in args.base_url.split(",") if origin.strip()]
     base_url = origins[(index - 1) % len(origins)]
@@ -160,6 +169,10 @@ def run_journey(index: int, credential: dict, args: argparse.Namespace) -> dict:
         headers["X-Firebase-AppCheck"] = app_check_token
     session = requests.Session()
     video = video_for_journey(args, index)
+    source_media = {
+        "name": video.name,
+        "sha256": getattr(args, "video_fingerprints", {}).get(video),
+    }
     file_id = ""
     job_id = ""
     stages: dict[str, float] = {}
@@ -290,6 +303,7 @@ def run_journey(index: int, credential: dict, args: argparse.Namespace) -> dict:
             "job_id": job_id,
             "admission_retries": admission_retries,
             "bytes": len(download.content),
+            "source_media": source_media,
             "stages_seconds": stages,
             "total_seconds": time.monotonic() - started,
         }
@@ -302,6 +316,7 @@ def run_journey(index: int, credential: dict, args: argparse.Namespace) -> dict:
             "file_id": file_id,
             "job_id": job_id,
             "error": str(exc),
+            "source_media": source_media,
             "stages_seconds": stages,
             "total_seconds": time.monotonic() - started,
         }
@@ -327,6 +342,8 @@ def main() -> None:
                         help="Write per-journey IDs and timing for audit and cleanup")
     parser.add_argument("--video", required=True, type=pathlib.Path, action="append",
                         help="Rights-cleared test video. Repeat to cycle through distinct media.")
+    parser.add_argument("--require-unique-media", action="store_true",
+                        help="Require one bytewise distinct --video input per journey.")
     parser.add_argument("--upload-mode", default="direct", choices=["direct", "proxy"])
     parser.add_argument("--jobs", type=int, default=0, help="Defaults to the number of disposable users")
     parser.add_argument("--workers", type=int, default=0,
@@ -367,6 +384,13 @@ def main() -> None:
     worker_count = args.workers or jobs
     if args.synchronize_exports and worker_count < jobs:
         raise SystemExit("Synchronized exports require at least one worker per journey")
+    args.video_fingerprints = {}
+    if args.require_unique_media:
+        if len(args.videos) < jobs:
+            raise SystemExit("Unique-media runs require at least one --video input per journey")
+        args.video_fingerprints = {video: video_sha256(video) for video in args.videos}
+        if len(set(args.video_fingerprints.values())) < jobs:
+            raise SystemExit("Unique-media runs require bytewise distinct --video inputs")
     args.export_barrier = threading.Barrier(jobs, timeout=args.barrier_timeout) if args.synchronize_exports else None
     selected = users[:jobs]
 
