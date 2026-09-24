@@ -182,8 +182,8 @@ def run_journey(index: int, credential: dict, args: argparse.Namespace) -> dict:
         file_id = upload["file_id"]
 
         stage_started = time.monotonic()
-        processed = require_ok(
-            session.post(
+        for process_attempt in range(4):
+            process_response = session.post(
                 urljoin(base_url, "api/process"),
                 json={
                     "file_id": file_id,
@@ -194,9 +194,11 @@ def run_journey(index: int, credential: dict, args: argparse.Namespace) -> dict:
                 },
                 headers=headers,
                 timeout=args.process_timeout,
-            ),
-            "process",
-        )
+            )
+            if process_response.status_code != 503 or process_attempt == 3:
+                processed = require_ok(process_response, "process")
+                break
+            time.sleep(min(max(int(process_response.headers.get("Retry-After", "2")), 1), 10))
         processed = await_transcription(session, base_url, {
             "file_id": file_id, "language": args.language, "min_words": 2, "max_words": 5,
             "id_token": id_token,
