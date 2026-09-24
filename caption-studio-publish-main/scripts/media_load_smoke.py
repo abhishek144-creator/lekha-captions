@@ -10,6 +10,7 @@ runs at most one journey so per-user concurrency controls are not bypassed.
 import argparse
 import concurrent.futures
 import json
+import mimetypes
 import pathlib
 import statistics
 import threading
@@ -67,9 +68,10 @@ def upload_direct(session: requests.Session, base_url: str, headers: dict,
                   video: pathlib.Path, *, chunk_bytes: int = 8 * 1024 * 1024,
                   timeout: int = 180) -> dict:
     size = video.stat().st_size
+    content_type = mimetypes.guess_type(video.name)[0] or "application/octet-stream"
     initiated = require_ok(session.post(
         urljoin(base_url, "api/uploads/init"),
-        json={"filename": video.name, "content_type": "video/mp4", "size_bytes": size},
+        json={"filename": video.name, "content_type": content_type, "size_bytes": size},
         headers=headers, timeout=30,
     ), "direct upload initiation")
     if not initiated.get("direct_upload_available"):
@@ -157,10 +159,11 @@ def run_journey(index: int, credential: dict, args: argparse.Namespace) -> dict:
                                    timeout=args.upload_timeout)
         else:
             with args.video.open("rb") as media:
+                content_type = mimetypes.guess_type(args.video.name)[0] or "application/octet-stream"
                 upload = require_ok(
                     session.post(
                         urljoin(base_url, "api/upload"),
-                        files={"file": (args.video.name, media, "video/mp4")},
+                        files={"file": (args.video.name, media, content_type)},
                         headers=headers,
                         timeout=args.upload_timeout,
                     ),
