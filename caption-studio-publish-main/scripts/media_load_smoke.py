@@ -136,7 +136,8 @@ def upload_direct(session: requests.Session, base_url: str, headers: dict,
 
 
 def run_journey(index: int, credential: dict, args: argparse.Namespace) -> dict:
-    base_url = args.base_url.rstrip("/") + "/"
+    origins = [origin.strip().rstrip("/") + "/" for origin in args.base_url.split(",") if origin.strip()]
+    base_url = origins[(index - 1) % len(origins)]
     id_token = str(credential.get("id_token") or "").strip()
     app_check_token = str(credential.get("app_check_token") or "").strip()
     if not id_token:
@@ -306,7 +307,8 @@ def run_journey(index: int, credential: dict, args: argparse.Namespace) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--base-url", required=True, help="Isolated staging API origin")
+    parser.add_argument("--base-url", required=True,
+                        help="One or more comma-separated isolated staging API origins")
     parser.add_argument("--credentials-json", required=True, type=pathlib.Path)
     parser.add_argument("--results-json", type=pathlib.Path,
                         help="Write per-journey IDs and timing for audit and cleanup")
@@ -330,6 +332,9 @@ def main() -> None:
     parser.add_argument("--poll-interval", type=float, default=3.0)
     parser.add_argument("--cleanup", action=argparse.BooleanOptionalAction, default=True)
     args = parser.parse_args()
+
+    if not [origin for origin in args.base_url.split(",") if origin.strip()]:
+        raise SystemExit("At least one isolated staging API origin is required")
 
     if not args.video.is_file():
         raise SystemExit(f"Video does not exist: {args.video}")
