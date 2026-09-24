@@ -1,4 +1,6 @@
 #!include:.gitignore
+!backend/flat_fonts/
+!backend/flat_fonts/**
 .git
 .gitignore
 .gcloudignore
