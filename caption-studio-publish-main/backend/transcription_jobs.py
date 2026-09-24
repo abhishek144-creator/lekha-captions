@@ -2,11 +2,12 @@
 import hashlib
 import json
 import os
+import random
 import time
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException
-from google.api_core.exceptions import NotFound
+from google.api_core.exceptions import Aborted, NotFound
 from google.cloud import firestore
 
 
@@ -87,7 +88,20 @@ class TranscriptionJobs:
             tx.set(lock, {"job_id": job_id, "status": "queued"})
             tx.create(outbox, {"uid": uid, "job_id": job_id, "created_at": now, "attempts": 0, "last_dispatch": 0})
             return {"job_id": job_id, **job}
-        return create(self.db.transaction())
+        # Firestore can still abort a transaction after its own retry budget is
+        # exhausted during a burst. The deterministic job ID makes an outer
+        # retry safe even when a commit succeeded but its response was lost.
+        for attempt in range(4):
+            try:
+                return create(self.db.transaction())
+            except Aborted as exc:
+                if attempt == 3:
+                    raise HTTPException(
+                        status_code=503,
+                        detail="Transcription admission is busy. Please retry shortly.",
+                        headers={"Retry-After": "2"},
+                    ) from exc
+                time.sleep(0.1 * (2 ** attempt) + random.uniform(0, 0.1))
 
     def claim(self, uid, job_id):
         ref, lock, outbox, fence = self.refs(uid, job_id)

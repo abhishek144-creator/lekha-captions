@@ -6,6 +6,8 @@ from datetime import datetime, timedelta, timezone
 import firebase_admin
 from firebase_admin import credentials, auth, firestore
 from google.cloud import storage as gcs_storage
+from google.auth import default as google_auth_default
+from google.auth.transport.requests import Request as GoogleAuthRequest
 from google.api_core.exceptions import NotFound
 try:
     from .media_storage import (
@@ -36,6 +38,7 @@ except ImportError:
 
 STORAGE_BUCKET = os.environ.get('FIREBASE_STORAGE_BUCKET', '')
 GCS_MEDIA_BUCKET = os.environ.get('GCS_MEDIA_BUCKET', '').strip()
+GCS_SIGNING_SERVICE_ACCOUNT = os.environ.get('GCS_SIGNING_SERVICE_ACCOUNT', '').strip()
 ALLOW_FIREBASE_SERVICE_ACCOUNT_PATH = os.environ.get('ALLOW_FIREBASE_SERVICE_ACCOUNT_PATH', '0') == '1'
 IS_TEST_ENV = (os.environ.get("APP_ENV") or os.environ.get("ENV") or "").strip().lower() in {"test", "testing"}
 
@@ -120,6 +123,22 @@ def get_storage_bucket():
     except Exception as e:
         print(f"Firebase Storage not available: {e}")
         return None
+
+
+def _signed_gcs_download_url(blob, expiration):
+    """Use IAM signBlob on VMs, which have token-only GCE credentials."""
+    if not GCS_SIGNING_SERVICE_ACCOUNT:
+        return blob.generate_signed_url(expiration=expiration, version="v4")
+    credentials, _ = google_auth_default(
+        scopes=["https://www.googleapis.com/auth/cloud-platform"]
+    )
+    credentials.refresh(GoogleAuthRequest())
+    return blob.generate_signed_url(
+        expiration=expiration,
+        version="v4",
+        service_account_email=GCS_SIGNING_SERVICE_ACCOUNT,
+        access_token=credentials.token,
+    )
 
 
 def create_resumable_source_upload(uid: str, file_id: str, extension: str,
@@ -361,7 +380,7 @@ def upload_to_firebase_storage(
         except Exception:
             blob.delete()
             raise
-        url = blob.generate_signed_url(expiration=timedelta(hours=ttl))
+        url = _signed_gcs_download_url(blob, timedelta(hours=ttl))
         print(f"[Storage] Uploaded {safe_remote} to Firebase Storage")
         return url
     except Exception as e:
@@ -485,7 +504,7 @@ def signed_export_download_url(remote_path: str, ttl_seconds: int = 600):
             bucket = get_storage_bucket()
             if not bucket:
                 return None
-            url = bucket.blob(safe_remote).generate_signed_url(expiration=timedelta(seconds=ttl))
+            url = _signed_gcs_download_url(bucket.blob(safe_remote), timedelta(seconds=ttl))
         return url if isinstance(url, str) and url.startswith("https://") else None
     except Exception:
         # A missing signing permission must preserve the existing download path.
