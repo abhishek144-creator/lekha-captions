@@ -8,7 +8,7 @@ from unittest.mock import patch
 import requests
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "scripts"))
-from media_load_smoke import _acknowledged_bytes, upload_direct, video_for_journey
+from media_load_smoke import _acknowledged_bytes, upload_direct, video_for_journey, video_sha256
 
 
 class FakeResponse:
@@ -88,6 +88,18 @@ class MediaLoadSmokeTests(unittest.TestCase):
         args = SimpleNamespace(videos=videos)
         self.assertEqual([video_for_journey(args, index) for index in range(1, 6)],
                          [videos[0], videos[1], videos[2], videos[0], videos[1]])
+
+    def test_video_fingerprint_changes_with_the_content(self):
+        class InMemoryVideo:
+            def __init__(self, content):
+                self.content = content
+
+            def open(self, mode):
+                assert mode == "rb"
+                return io.BytesIO(self.content)
+
+        self.assertNotEqual(video_sha256(InMemoryVideo(b"first media")),
+                            video_sha256(InMemoryVideo(b"second media")))
 
 
 if __name__ == "__main__":
