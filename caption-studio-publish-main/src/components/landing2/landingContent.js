@@ -49,7 +49,7 @@ export const languageBands = [
 ]
 
 export const heroStats = [
-  ['115+', 'Languages supported'],
+  ['Global', 'Language options'],
   ['100+', 'Caption styles'],
   ['120–180s', 'Shorts & Reels sweet spot'],
 ]

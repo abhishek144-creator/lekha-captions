@@ -10,7 +10,7 @@ const rotatingHeroLanguages = [
 const proofTags = ['100+ visual styles', 'Precise editing control', 'HD & 4K plan options']
 
 const stats = [
-  { value: '115+', label: 'Languages' },
+  { value: 'Global', label: 'Language options' },
   { value: '100+', label: 'Caption styles' },
   { value: '120-180s', label: 'Typical turnaround' },
 ]
@@ -551,7 +551,7 @@ export default function HeroCinematic() {
           </motion.h1>
 
           <motion.p initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }} className="landing-hero-subtext mt-6 max-w-[35rem] text-base leading-8 text-white/72">
-            115+ languages across the Americas, Europe, Africa, the Middle East and Asia. Professional captions at <span className="landing-hero-subtext-highlight font-serif italic text-white/92">creator-friendly</span> pricing.
+            Explore transcription choices across languages and writing systems around the world. Professional captions at <span className="landing-hero-subtext-highlight font-serif italic text-white/92">creator-friendly</span> pricing.
           </motion.p>
 
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 }} className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">

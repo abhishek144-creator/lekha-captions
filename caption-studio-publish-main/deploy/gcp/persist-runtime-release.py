@@ -32,12 +32,15 @@ updates = {
     "APP_ENV": "production",
     "REDIS_URL": f"redis://{redis_host}:6379/0",
     "GCS_MEDIA_BUCKET": "lekha-media-project-0cc7c839-b9c7-4734-ad0",
-    "TRANSCRIPTION_QUEUE_NAME": "caption_transcription_jobs_staging",
+    "EXPORT_QUEUE_NAME": "caption_export_jobs",
+    "TRANSCRIPTION_QUEUE_NAME": "caption_transcription_jobs",
+    "MEDIA_SCAN_QUEUE_NAME": "caption_media_scan_jobs",
     "EXPORT_MAX_PENDING_JOBS": "80",
     "EXPORT_MAX_QUEUE_WAIT_SECONDS": "600",
     "QUEUE_METRICS_ENABLED": "1",
     "QUEUE_METRICS_INTERVAL_SECONDS": "30",
     "WORKER_MIG_NAME": "lekha-worker-staging-mig",
+    "TRANSCRIPTION_MIG_NAME": "lekha-transcription-staging-mig",
 }
 lines = [line for line in raw.splitlines() if line.partition("=")[0] not in updates]
 lines.extend(f"{key}={value}" for key, value in updates.items())

@@ -4,7 +4,7 @@ import vm from 'node:vm'
 
 // Execute the actual recovery functions with only the network and analytics
 // dependencies replaced. No browser, provider calls, or real retry delays.
-async function loadRecovery(file, exportedName, request) {
+async function loadRecovery(file, exportedName, request, origin = 'http://localhost:3000') {
   const source = (await fs.readFile(new URL(file, import.meta.url), 'utf8'))
     .replace(/^import .+ from .+$/gm, '')
     .replace(/^export /gm, '')
@@ -15,11 +15,31 @@ async function loadRecovery(file, exportedName, request) {
     setTimeout,
     FormData,
     crypto: globalThis.crypto,
+    location: { hostname: new URL(origin).hostname },
   })
   return vm.runInContext(`${source}\n${exportedName}`, context)
 }
 
 const file = new File(['video'], 'test.mp4', { type: 'video/mp4' })
+
+// Production must fail closed when direct object-storage upload is unavailable;
+// only localhost development may use the API proxy fallback exercised below.
+let productionUploadCalls = 0
+const productionUpload = await loadRecovery(
+  '../src/lib/resilientUpload.js',
+  'uploadFileWithRecovery',
+  async () => {
+    productionUploadCalls += 1
+    return { success: true }
+  },
+  'https://app.lekha.example',
+)
+await assert.rejects(
+  productionUpload(file, { retryDelaysMs: [0] }),
+  /Direct storage upload is unavailable/,
+)
+assert.equal(productionUploadCalls, 0, 'production must not fall back to the API upload proxy')
+
 let pendingCalls = 0
 const pendingRecovery = await loadRecovery('../src/lib/resilientProcess.js', 'processVideoWithRecovery', async () => {
   pendingCalls += 1

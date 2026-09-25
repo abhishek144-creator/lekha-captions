@@ -57,6 +57,92 @@ def _percentiles(values):
             (("p50", 0.5), ("p95", 0.95), ("p99", 0.99))}
 
 
+def _seconds(rows, field):
+    return [float(row[field]) / 1000 for row in rows if row.get(field) is not None]
+
+
+def _workload_summary(rows):
+    durations = [max(0.0, float(row.get("rendered_duration_seconds") or 0))
+                 for row in rows]
+    return {
+        "samples": len(rows),
+        "rendered_video_minutes": round(sum(durations) / 60, 3),
+        "queue_wait_seconds": _percentiles(_seconds(rows, "queue_wait_ms")),
+        "preparation_seconds": _percentiles(_seconds(rows, "preparation_ms")),
+        "render_seconds": _percentiles(_seconds(rows, "render_ms")),
+        "finalization_seconds": _percentiles(_seconds(rows, "finalization_ms")),
+        "end_to_end_export_seconds": _percentiles(_seconds(rows, "total_ms")),
+        "cache_hit_rate": round(sum(bool(row.get("cache_hit")) for row in rows) / len(rows), 4)
+        if rows else None,
+    }
+
+
+def _duration_bucket(row):
+    seconds = max(0.0, float(row.get("source_duration_seconds") or 0))
+    if seconds <= 60:
+        return "short_0_60s"
+    if seconds <= 180:
+        return "medium_61_180s"
+    if seconds <= 600:
+        return "long_181_600s"
+    return "very_long_over_600s"
+
+
+def _resolution(row, prefix):
+    width = int(row.get(f"{prefix}_width") or 0)
+    height = int(row.get(f"{prefix}_height") or 0)
+    return f"{width}x{height}" if width > 0 and height > 0 else "unknown"
+
+
+def _renderer(row):
+    value = str(row.get("renderer") or "").strip().lower()
+    if value in {"ass", "dom"}:
+        return value
+    return "dom" if row.get("template_export") else "ass"
+
+
+def _work_ratio_calibration(rows):
+    """Derive shadow-model ratios from measured renders without changing runtime policy."""
+    grouped = {"ass": [], "dom": []}
+    for row in rows:
+        if row.get("cache_hit") or row.get("render_ms") is None:
+            continue
+        duration = float(
+            row.get("source_duration_seconds")
+            or row.get("rendered_duration_seconds")
+            or 0
+        )
+        actual_seconds = float(row["render_ms"]) / 1000
+        if duration <= 0 or actual_seconds <= 0:
+            continue
+        quality_factor = 1.5 if str(row.get("quality") or "").lower() == "1080p" else 1
+        fps = max(1, int(row.get("fps") or 30))
+        fps_factor = min(2, max(0.8, fps / 30))
+        # Mirrors estimate_render_work_seconds(). The ten-second fixed term is
+        # removed before solving for the empirical media-duration ratio.
+        ratio = (actual_seconds - 10) / (duration * quality_factor * fps_factor)
+        grouped[_renderer(row)].append(min(20, max(0.1, ratio)))
+    return {
+        renderer: {
+            "samples": len(values),
+            "empirical_ratio": _percentiles(values),
+            "runtime_environment_variable": (
+                "EXPORT_DOM_WORK_RATIO" if renderer == "dom"
+                else "EXPORT_ASS_WORK_RATIO"
+            ),
+        }
+        for renderer, values in grouped.items()
+    }
+
+
+def _group(rows, key):
+    groups = {}
+    for row in rows:
+        label = str(key(row) or "unknown")
+        groups.setdefault(label, []).append(row)
+    return {label: _workload_summary(groups[label]) for label in sorted(groups)}
+
+
 def summarize(observations, billing_cost_usd=None):
     terminal = {}
     for row in observations:
@@ -87,7 +173,9 @@ def summarize(observations, billing_cost_usd=None):
         "terminal_success_rate": round(len(completed) / measured, 4) if measured else None,
         "rendered_video_minutes": round(minutes, 3),
         "queue_wait_seconds": _percentiles(queue_waits),
+        "preparation_seconds": _percentiles(_seconds(completed, "preparation_ms")),
         "render_seconds": _percentiles(render_times),
+        "finalization_seconds": _percentiles(_seconds(completed, "finalization_ms")),
         "end_to_end_export_seconds": _percentiles(totals),
         "accepted_jobs_over_5_minute_queue_wait": sum(value > 300 for value in queue_waits),
         "output_gib": round(sum(float(row.get("output_size_bytes") or 0)
@@ -104,9 +192,31 @@ def summarize(observations, billing_cost_usd=None):
                  if actual > 0]
             ),
         },
+        "render_work_calibration": _work_ratio_calibration(completed),
         "billing_cost_usd": billing_cost_usd,
         "cost_per_successful_export_usd": None,
         "cost_per_rendered_video_minute_usd": None,
+        "by_workload": {
+            "renderer": _group(completed, _renderer),
+            "quality": _group(completed, lambda row: row.get("quality") or "unknown"),
+            "fps": _group(completed, lambda row: row.get("fps") or "unknown"),
+            "duration_bucket": _group(completed, _duration_bucket),
+            "source_resolution": _group(completed, lambda row: _resolution(row, "source")),
+            "output_resolution": _group(completed, lambda row: _resolution(row, "output")),
+            "aspect_ratio": _group(
+                completed, lambda row: row.get("export_aspect_ratio") or "source"
+            ),
+            "profile": _group(
+                completed,
+                lambda row: "|".join((
+                    _renderer(row),
+                    str(row.get("quality") or "unknown"),
+                    f"{row.get('fps') or 'unknown'}fps",
+                    _duration_bucket(row),
+                    _resolution(row, "output"),
+                )),
+            ),
+        },
     }
     if billing_cost_usd is not None:
         if billing_cost_usd < 0:

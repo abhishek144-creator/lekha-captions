@@ -1,7 +1,7 @@
 import os
 import tempfile
 import unittest
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -12,6 +12,9 @@ class FakeBlob:
     def __init__(self, download_bytes=b"source-bytes"):
         self.download_bytes = download_bytes
         self.metadata = {}
+        self.generation = "1"
+        self.crc32c = "crc32c"
+        self.md5_hash = "md5"
         self.uploaded = None
         self.patched = False
         self.deleted = False
@@ -35,6 +38,9 @@ class FakeBlob:
     def create_resumable_upload_session(self, **kwargs):
         self.resumable_options = kwargs
         return "https://storage.test/resumable-session"
+
+    def reload(self, timeout=None):
+        self.reload_timeout = timeout
 
     def download_to_filename(self, local_path):
         with open(local_path, "wb") as output:
@@ -194,6 +200,38 @@ class FirebaseStorageHelperTests(unittest.TestCase):
         self.assertEqual(bucket.fake_blob.resumable_options["size"], 4096)
         self.assertEqual(bucket.fake_blob.metadata["upload_state"], "pending_scan")
         self.assertIn("direct_upload_intents", db.collections)
+        self.assertTrue(any(write.get("session_url") == "https://storage.test/resumable-session" for write in db.writes))
+
+    def test_direct_upload_resume_requires_owner_and_exact_file_fingerprint(self):
+        file_id = "123e4567-e89b-12d3-a456-426614174000"
+        intent_ref = MagicMock()
+        intent_ref.get.return_value = SimpleNamespace(
+            exists=True,
+            to_dict=lambda: {
+                "uid": "user-1",
+                "filename": "video.mp4",
+                "content_type": "video/mp4",
+                "size_bytes": 4096,
+                "last_modified": 1234,
+                "session_url": "https://storage.test/resumable-session",
+                "expires_at": datetime.now(timezone.utc) + timedelta(hours=1),
+            },
+        )
+        db = MagicMock()
+        db.collection.return_value.document.return_value = intent_ref
+        with patch.object(storage_helpers, "get_db", return_value=db):
+            resumed = storage_helpers.resume_resumable_source_upload(
+                "user-1", file_id, "video.mp4", "video/mp4", 4096, 1234,
+            )
+            wrong_file = storage_helpers.resume_resumable_source_upload(
+                "user-1", file_id, "different.mp4", "video/mp4", 4096, 1234,
+            )
+            wrong_owner = storage_helpers.resume_resumable_source_upload(
+                "user-2", file_id, "video.mp4", "video/mp4", 4096, 1234,
+            )
+        self.assertEqual(resumed["session_url"], "https://storage.test/resumable-session")
+        self.assertIsNone(wrong_file)
+        self.assertIsNone(wrong_owner)
 
     def test_export_upload_persists_object_and_expiration_schedule(self):
         bucket = FakeBucket()
@@ -219,6 +257,34 @@ class FirebaseStorageHelperTests(unittest.TestCase):
         self.assertTrue(bucket.fake_blob.patched)
         self.assertEqual(db.collections, ["export_expirations"])
         self.assertTrue(any(write.get("remote_path") == "exports/user-1/export-1.mp4" for write in db.writes))
+
+    def test_render_cache_is_tenant_scoped_and_restorable(self):
+        bucket = FakeBucket()
+        cache_key = "a" * 64
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source_path = os.path.join(tmpdir, "cache.mp4")
+            restored_path = os.path.join(tmpdir, "restored.mp4")
+            with open(source_path, "wb") as source:
+                source.write(b"rendered-video")
+            with (
+                patch.object(storage_helpers, "get_storage_bucket", return_value=bucket),
+                patch.object(storage_helpers, "s3_is_configured", return_value=False),
+            ):
+                self.assertTrue(storage_helpers.upload_render_cache(
+                    "user-1", cache_key, source_path,
+                ))
+                self.assertTrue(storage_helpers.download_render_cache(
+                    "user-1", cache_key, restored_path,
+                ))
+                self.assertTrue(storage_helpers.delete_render_cache(
+                    "user-1", cache_key,
+                ))
+        self.assertEqual(
+            bucket.requested_paths,
+            [f"render-cache/user-1/{cache_key}.mp4"] * 3,
+        )
+        self.assertTrue(bucket.fake_blob.patched)
+        self.assertTrue(bucket.fake_blob.deleted)
 
     def test_export_upload_rolls_back_when_expiration_schedule_is_unavailable(self):
         bucket = FakeBucket()

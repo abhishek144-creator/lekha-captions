@@ -6,7 +6,7 @@ import { siteDescription, siteUrl } from '@/lib/site'
 export const metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: 'Lekha Captions — Animated captions in 115+ languages',
+    default: 'Lekha Captions — Animated captions for global creators',
     template: '%s | Lekha Captions',
   },
   description: siteDescription,
@@ -21,17 +21,17 @@ export const metadata = {
     apple: '/lekha-icon.svg',
   },
   openGraph: {
-    title: 'Lekha Captions — Animated captions in 115+ languages',
+    title: 'Lekha Captions — Animated captions for global creators',
     description: siteDescription,
     url: '/',
     siteName: 'Lekha Captions',
     locale: 'en_US',
     type: 'website',
-    images: [{ url: '/og.png', width: 1200, height: 630, alt: 'Lekha Captions animated captions in 115+ languages' }],
+    images: [{ url: '/og.png', width: 1200, height: 630, alt: 'Lekha Captions animated multilingual captions' }],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Lekha Captions — Animated captions in 115+ languages',
+    title: 'Lekha Captions — Animated captions for global creators',
     description: siteDescription,
     images: ['/og.png'],
   },

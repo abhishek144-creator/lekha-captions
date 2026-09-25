@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import {
   buildPlainText,
   buildSrt,
+  buildVtt,
   buildTextElementExportStyle,
   formatSrtTimestamp,
   getCaptionedVideoFilename,
@@ -11,6 +12,7 @@ import {
   resolveApiResourceUrl,
   shouldAttachApiAuth,
 } from '../src/components/dashboard/exportPipelineUtils.js'
+import { analyzeCaptionQuality } from '../src/components/dashboard/captionQualityUtils.js'
 
 const mixedCaptions = [
   { id: 'late', text: '  Later  ', start_time: 2, end_time: 1 },
@@ -24,6 +26,8 @@ assert.equal(formatSrtTimestamp(-5), '00:00:00,000')
 assert.equal(buildPlainText(mixedCaptions), 'First\nLater')
 assert.match(buildSrt(mixedCaptions), /^1\n00:00:00,250 --> 00:00:01,500\nFirst/m)
 assert.match(buildSrt(mixedCaptions), /2\n00:00:02,000 --> 00:00:02,001\nLater/)
+assert.match(buildVtt(mixedCaptions), /^WEBVTT\n\n00:00:00\.250 --> 00:00:01\.500\nFirst/m)
+assert.match(buildVtt(mixedCaptions), /00:00:02\.000 --> 00:00:02\.001\nLater/)
 assert.equal(hasExportableVideoContent([{ text: '   ' }, null]), false)
 assert.equal(hasExportableVideoContent(null), false)
 assert.equal(buildSrt(null), '')
@@ -38,6 +42,16 @@ assert.equal(shouldAttachApiAuth('https://app.example/api/export-file/1', 'https
 assert.equal(shouldAttachApiAuth('https://storage.example/api/export-file/1', 'https://app.example'), false)
 assert.equal(getCaptionedVideoFilename('C:\\fakepath\\my:clip.mov'), 'my_clip_captioned.mp4')
 assert.equal(getCaptionedVideoFilename('.mp4'), 'export_captioned.mp4')
+
+const qualityReport = analyzeCaptionQuality([
+  { text: 'TODO ??', start_time: 0, end_time: 0.2, position_x: 2 },
+  { text: 'A readable caption', start_time: 2.5, end_time: 4 },
+], { position_y: 75 })
+assert.equal(qualityReport.captionCount, 2)
+assert.equal(qualityReport.counts.uncertain, 1)
+assert.equal(qualityReport.counts.reading, 1)
+assert.equal(qualityReport.counts.timing, 1)
+assert.equal(qualityReport.counts.safeArea, 1)
 
 const progressSamples = [2]
 for (let index = 0; index < 300; index += 1) {

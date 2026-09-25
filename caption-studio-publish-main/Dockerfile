@@ -23,7 +23,7 @@ FROM python-runtime AS api
 CMD ["sh", "-c", "exec python3 -m uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers ${WEB_CONCURRENCY:-2} --limit-concurrency ${UVICORN_LIMIT_CONCURRENCY:-64} --backlog ${UVICORN_BACKLOG:-512} --timeout-keep-alive ${UVICORN_KEEP_ALIVE_SECONDS:-10}"]
 
 FROM python-runtime AS transcription
-ENV SERVICE_ROLE=worker WORKER_QUEUES=caption_transcription_jobs_staging
+ENV SERVICE_ROLE=worker WORKER_QUEUES=caption_media_scan_jobs,caption_transcription_jobs
 CMD ["python3", "-m", "backend.worker"]
 
 FROM node:22-bookworm-slim AS render
@@ -36,6 +36,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PUPPETEER_CONTAINER_NO_SANDBOX=1 \
     RENDER_BROWSER_REUSE=1 \
     PREFER_PACKAGED_RENDER_FONTS=1 \
+    RENDER_FONT_BUNDLE_PATH=/app/.render_fonts/fonts.css \
+    RENDER_FONT_BUNDLE_REQUIRED=1 \
     SERVICE_ROLE=worker \
     WORKER_QUEUES=caption_export_jobs
 RUN apt-get update \
@@ -54,7 +56,11 @@ RUN node --input-type=module -e "import puppeteer from 'puppeteer'; const browse
 COPY backend/requirements.lock backend/requirements.lock
 RUN python3 -m pip install --break-system-packages --no-cache-dir --require-hashes -r backend/requirements.lock
 COPY . .
-RUN chown -R node:node /app
+RUN install -d /usr/local/share/fonts/truetype/lekha \
+    && cp backend/flat_fonts/*.ttf /usr/local/share/fonts/truetype/lekha/ \
+    && fc-cache -f \
+    && node scripts/build_render_font_bundle.mjs /app/.render_fonts/fonts.css \
+    && chown -R node:node /app
 USER node
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \

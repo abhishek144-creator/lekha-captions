@@ -5,7 +5,53 @@ const DEFAULT_RETRY_DELAYS_MS = [1500, 4000, 8000]
 const RETRYABLE_UPLOAD_STATUSES = new Set([0, 408, 425, 499, 500, 502, 503, 504])
 const RESUMABLE_CHUNK_BYTES = 8 * 1024 * 1024
 export const MAX_VIDEO_UPLOAD_BYTES = 500 * 1024 * 1024
-const DIRECT_REQUIRED_BYTES = 8 * 1024 * 1024
+const DIRECT_UPLOAD_RECEIPT_KEY = 'lekha.pendingDirectUpload.v1'
+
+const proxyFallbackAllowed = () => {
+  const hostname = String(globalThis.location?.hostname || '').toLowerCase()
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1'
+}
+
+const fileFingerprint = (file) => ({
+  filename: String(file?.name || ''),
+  content_type: String(file?.type || 'application/octet-stream'),
+  size_bytes: Number(file?.size || 0),
+  last_modified: Math.max(0, Number(file?.lastModified || 0)),
+})
+
+const readUploadReceipt = (file) => {
+  if (typeof localStorage === 'undefined') return null
+  try {
+    const receipt = JSON.parse(localStorage.getItem(DIRECT_UPLOAD_RECEIPT_KEY) || 'null')
+    if (!receipt?.file_id || !receipt?.fingerprint) return null
+    const fingerprint = fileFingerprint(file)
+    return JSON.stringify(receipt.fingerprint) === JSON.stringify(fingerprint) ? receipt : null
+  } catch {
+    return null
+  }
+}
+
+const saveUploadReceipt = (file, initialized) => {
+  if (typeof localStorage === 'undefined') return
+  localStorage.setItem(DIRECT_UPLOAD_RECEIPT_KEY, JSON.stringify({
+    file_id: initialized.file_id,
+    fingerprint: fileFingerprint(file),
+    expires_at: initialized.expires_at || '',
+  }))
+}
+
+const clearUploadReceipt = (fileId = '') => {
+  if (typeof localStorage === 'undefined') return
+  if (fileId) {
+    try {
+      const receipt = JSON.parse(localStorage.getItem(DIRECT_UPLOAD_RECEIPT_KEY) || 'null')
+      if (receipt?.file_id !== fileId) return
+    } catch {
+      // An unreadable receipt is safe to remove.
+    }
+  }
+  localStorage.removeItem(DIRECT_UPLOAD_RECEIPT_KEY)
+}
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -122,23 +168,39 @@ async function cancelDirectUpload(initialized, authorization) {
 
 async function uploadDirectToStorage(file, authorization, retryDelaysMs, onProgress, onRetry) {
   if (typeof XMLHttpRequest === 'undefined') return null
-  const initialized = await apiRequest('/api/uploads/init', {
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(authorization ? { Authorization: `Bearer ${authorization}` } : {}),
+  }
+  const fingerprint = fileFingerprint(file)
+  const receipt = readUploadReceipt(file)
+  let initialized = null
+  if (receipt) {
+    try {
+      initialized = await apiRequest('/api/uploads/resume', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ ...fingerprint, file_id: receipt.file_id }),
+        dedupeKey: 'direct-upload-resume',
+      })
+    } catch (error) {
+      if (![404, 409].includes(Number(error?.status))) throw error
+      clearUploadReceipt(receipt.file_id)
+    }
+  }
+  if (!initialized) initialized = await apiRequest('/api/uploads/init', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(authorization ? { Authorization: `Bearer ${authorization}` } : {}),
-    },
-    body: JSON.stringify({
-      filename: file.name,
-      content_type: file.type || 'application/octet-stream',
-      size_bytes: file.size,
-    }),
+    headers,
+    body: JSON.stringify(fingerprint),
     dedupeKey: 'direct-upload-init',
   })
   if (!initialized?.direct_upload_available || !initialized?.upload_url) return null
+  saveUploadReceipt(file, initialized)
   let offset = 0
   let retries = 0
   try {
+    if (initialized.resumed) offset = await queryResumableOffset(initialized.upload_url, file.size)
+    onProgress?.(offset)
     while (offset < file.size) {
       const end = Math.min(file.size, offset + RESUMABLE_CHUNK_BYTES)
       try {
@@ -173,12 +235,15 @@ async function uploadDirectToStorage(file, authorization, retryDelaysMs, onProgr
       }
     }
   } catch (error) {
-    await cancelDirectUpload(initialized, authorization)
+    if (!(isRetryableUploadError(error) || Number(error?.status) === 429)) {
+      await cancelDirectUpload(initialized, authorization)
+      clearUploadReceipt(initialized.file_id)
+    }
     throw error
   }
   for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
     try {
-      return await apiRequest('/api/uploads/complete', {
+      const result = await apiRequest('/api/uploads/complete', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -187,6 +252,8 @@ async function uploadDirectToStorage(file, authorization, retryDelaysMs, onProgr
         body: JSON.stringify({ file_id: initialized.file_id }),
         dedupeKey: 'direct-upload-complete',
       })
+      clearUploadReceipt(initialized.file_id)
+      return result
     } catch (error) {
       if (!(isRetryableUploadError(error) || Number(error?.status) === 409)
           || attempt >= retryDelaysMs.length) throw error
@@ -208,11 +275,40 @@ export async function uploadFileWithRecovery(file, {
   const uploadReference = createUploadReference()
   const startedAt = Date.now()
   let lastError = null
-  const reportProgress = (uploadedBytes) => onProgress?.({
-    uploadedBytes,
-    totalBytes: file.size,
-    percent: Math.round(uploadedBytes * 100 / file.size),
-  })
+  let previousProgressBytes = null
+  let previousProgressAt = startedAt
+  let smoothedBytesPerSecond = 0
+  const reportProgress = (uploadedBytes) => {
+    const now = Date.now()
+    const safeUploadedBytes = Math.max(0, Math.min(file.size, Number(uploadedBytes) || 0))
+    if (previousProgressBytes === null) {
+      // A resumed upload begins at the authoritative storage offset. Do not
+      // count bytes sent before this browser session when estimating speed.
+      previousProgressBytes = safeUploadedBytes
+      previousProgressAt = now
+    } else {
+      const elapsedMs = now - previousProgressAt
+      const byteDelta = Math.max(0, safeUploadedBytes - previousProgressBytes)
+      if (elapsedMs >= 250 && byteDelta > 0) {
+        const currentRate = byteDelta * 1000 / elapsedMs
+        smoothedBytesPerSecond = smoothedBytesPerSecond > 0
+          ? smoothedBytesPerSecond * 0.7 + currentRate * 0.3
+          : currentRate
+        previousProgressBytes = safeUploadedBytes
+        previousProgressAt = now
+      }
+    }
+    const remainingBytes = Math.max(0, file.size - safeUploadedBytes)
+    onProgress?.({
+      uploadedBytes: safeUploadedBytes,
+      totalBytes: file.size,
+      percent: Math.round(safeUploadedBytes * 100 / file.size),
+      bytesPerSecond: Math.round(smoothedBytesPerSecond),
+      remainingSeconds: smoothedBytesPerSecond > 0
+        ? Math.ceil(remainingBytes / smoothedBytesPerSecond)
+        : null,
+    })
+  }
 
   try {
     const directResult = await uploadDirectToStorage(file, authorization, retryDelaysMs, reportProgress, onRetry)
@@ -228,7 +324,7 @@ export async function uploadFileWithRecovery(file, {
     }
   } catch (error) {
     lastError = error
-    if (file.size > DIRECT_REQUIRED_BYTES || !isRetryableUploadError(error)) throw error
+    if (!proxyFallbackAllowed() || !isRetryableUploadError(error)) throw error
     trackAnalytics('funnel.upload.direct_fallback', getClientContext({
       stage: 'direct-storage-upload',
       status: Number(error?.status || 0),
@@ -236,7 +332,7 @@ export async function uploadFileWithRecovery(file, {
     }))
   }
 
-  if (file.size > DIRECT_REQUIRED_BYTES) {
+  if (!proxyFallbackAllowed()) {
     throw lastError || new Error('Direct storage upload is unavailable. Please retry shortly.')
   }
 
