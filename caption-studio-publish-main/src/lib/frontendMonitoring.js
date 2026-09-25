@@ -8,7 +8,9 @@ let sentryClientPromise = null
 let sentryInitialized = false
 
 function reportFirstParty(error, componentStack, reference) {
-  const apiBase = String(import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+  const apiBase = String(
+    globalThis.__LEKHA_RUNTIME_CONFIG__?.apiBaseUrl ?? import.meta.env.VITE_API_BASE_URL ?? '',
+  ).replace(/\/$/, '')
   const payload = JSON.stringify({
     event: 'frontend.exception',
     payload: {

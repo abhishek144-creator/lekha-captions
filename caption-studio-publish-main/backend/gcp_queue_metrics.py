@@ -66,11 +66,40 @@ def queue_snapshot(queue, job_class) -> tuple[int, int]:
     return depth, age
 
 
+def queue_capacity_snapshot(queues, job_class, active_workers: int = 1) -> tuple[int, int, int, int]:
+    """Aggregate depth, age, work units, and predicted wait across render queues."""
+    depth = 0
+    oldest_age = 0
+    work_units = 0
+    estimated_seconds = 0
+    now = datetime.now(timezone.utc)
+    for queue in queues:
+        queue_ids = queue.get_job_ids(offset=0, length=max(0, int(queue.count)))
+        depth += len(queue_ids)
+        for job_id in queue_ids:
+            try:
+                job = job_class.fetch(job_id, connection=queue.connection)
+            except Exception:
+                continue
+            queued_at = job.enqueued_at or job.created_at
+            if queued_at:
+                if queued_at.tzinfo is None:
+                    queued_at = queued_at.replace(tzinfo=timezone.utc)
+                oldest_age = max(oldest_age, max(0, int((now - queued_at).total_seconds())))
+            meta = getattr(job, "meta", {}) or {}
+            work_units += max(1, int(meta.get("render_work_units", 1)))
+            estimated_seconds += max(1, int(meta.get("estimated_render_seconds", 1)))
+    predicted_wait = int((estimated_seconds + max(1, int(active_workers)) - 1) / max(1, int(active_workers)))
+    return depth, oldest_age, work_units, predicted_wait
+
+
 def publish_queue_snapshot(
     depth: int,
     oldest_age_seconds: int,
     queue_name: str,
     worker_group: str,
+    pending_work_units: int = 0,
+    predicted_wait_seconds: int = 0,
 ) -> None:
     """Write one global time series for each queue signal."""
     project_id = _project_id()
@@ -80,6 +109,8 @@ def publish_queue_snapshot(
     for metric_name, value in (
         ("export_queue_depth", depth),
         ("export_oldest_job_age_seconds", oldest_age_seconds),
+        ("pending_render_work_units", pending_work_units),
+        ("predicted_queue_wait_seconds", predicted_wait_seconds),
     ):
         series.append({
             "metric": {

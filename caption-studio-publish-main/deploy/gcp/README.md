@@ -39,14 +39,20 @@ Cloud Run frontend -> HTTPS/Caddy -> API VM -> Memorystore Redis -> RQ worker VM
                                            +-> Firebase Auth / Firestore / Storage
 ```
 
-The API and worker use the same Docker image. Each Compute Engine VM has an
-attached disk for disposable render scratch, plus a local private ClamAV
-container. Firebase Storage remains the durable location for uploads and
-exports; the VM disk must never be treated as durable media storage.
+The current staging API/worker VM deployment remains available during the
+Cloud Run migration. The target path is Firebase Hosting for the editor and
+FastAPI on Cloud Run for API traffic; the API enqueues exports to the regional
+render MIG and transcription jobs to their separate MIG. Upload media travels
+directly to private Cloud Storage using resumable uploads. VM disks remain
+disposable scratch space.
 
-Cloud Run is intentionally not used for the current deployment because the API
-accepts 500 MiB HTTP/1 uploads and the renderer needs substantial FFmpeg and
-Chromium scratch space. Cloud Run is used only for the static frontend.
+Terraform now declares the Cloud Run API and Hosting site. Apply the reviewed
+Terraform plan, set a pinned frontend build-config version in Secret Manager,
+then run the Firebase Hosting Cloud Build from the same reviewed release SHA.
+Keep the existing Cloud Run frontend and GCE API/MIG available until the
+Hosting rewrite, App Check domain, and authenticated media journey have been
+verified. Hosting-to-Cloud-Run requests have a 60-second proxy timeout, so
+exports and transcriptions must stay asynchronous queue jobs.
 
 ## Prerequisites
 

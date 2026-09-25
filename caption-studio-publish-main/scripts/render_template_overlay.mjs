@@ -1,4 +1,5 @@
 import fs from 'fs/promises';
+import http from 'http';
 import { existsSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -3515,7 +3516,8 @@ async function main() {
   const exportFontQuery = [...exportFontFamilies]
     .map((fontFamily) => `family=${encodeURIComponent(String(fontFamily)).replace(/%20/g, '+')}`)
     .join('&');
-  const exportFontLinks = exportFontQuery
+  const prebakedFontsOnly = process.env.PREBAKED_FONTS_ONLY === '1';
+  const exportFontLinks = !prebakedFontsOnly && exportFontQuery
     ? `<link href="https://fonts.googleapis.com/css2?${exportFontQuery}&display=swap" rel="stylesheet">`
     : '';
   console.log(`[Template DOM] sizing preview_width=${previewWidth || 'missing'} video_width=${payload.video_width} css_scale=${exportCssScale.toFixed(4)} target_box=${exportTemplateBoxTargetWidthPx ? `${exportTemplateBoxTargetWidthPx.toFixed(2)}x${exportTemplateBoxTargetHeightPx.toFixed(2)}` : 'auto'}`);
@@ -5262,19 +5264,65 @@ async function main() {
     browserArgs.push('--no-sandbox', '--disable-setuid-sandbox');
   }
 
-  const browser = await puppeteer.launch({
-    headless: true,
-    executablePath: findChromeExecutable(),
-    args: browserArgs,
-    defaultViewport: {
+  const endpointFile = process.env.PUPPETEER_WS_ENDPOINT_FILE;
+  let ownsBrowser = true;
+  let browser;
+  let fontBaseUrl = '';
+  let ownedFontServer;
+  if (endpointFile) {
+    try {
+      const endpointInfo = JSON.parse(await fs.readFile(endpointFile, 'utf8'));
+      browser = await puppeteer.connect({ browserWSEndpoint: endpointInfo.browserWSEndpoint });
+      fontBaseUrl = endpointInfo.fontBaseUrl || '';
+      ownsBrowser = false;
+    } catch (error) {
+      console.warn(`[Template DOM] warm browser unavailable, using isolated browser: ${error.message}`);
+    }
+  }
+  if (!browser) {
+    browser = await puppeteer.launch({
+      headless: true,
+      executablePath: findChromeExecutable(),
+      args: browserArgs,
+    });
+  }
+  if (prebakedFontsOnly && !fontBaseUrl) {
+    const fontsRoot = path.join(projectRoot, 'fonts');
+    ownedFontServer = http.createServer(async (request, response) => {
+      try {
+        const requested = decodeURIComponent(new URL(request.url, 'http://localhost').pathname).replace(/^\/+/, '');
+        const candidate = path.resolve(fontsRoot, requested);
+        if (!candidate.startsWith(`${fontsRoot}${path.sep}`)) {
+          response.writeHead(403).end();
+          return;
+        }
+        const contents = await fs.readFile(candidate);
+        response.writeHead(200, {
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'public, max-age=86400, immutable',
+          'Content-Type': candidate.endsWith('.css') ? 'text/css; charset=utf-8' : 'font/ttf',
+        });
+        response.end(contents);
+      } catch {
+        response.writeHead(404).end();
+      }
+    });
+    await new Promise((resolve) => ownedFontServer.listen(0, '127.0.0.1', resolve));
+    fontBaseUrl = `http://127.0.0.1:${ownedFontServer.address().port}`;
+  }
+  const prebakedFontsCss = prebakedFontsOnly
+    ? (await fs.readFile(path.join(projectRoot, 'fonts', 'export-fonts.css'), 'utf8'))
+      .replaceAll('__FONT_BASE_URL__', fontBaseUrl)
+    : '';
+
+  let page;
+  try {
+    page = await browser.newPage();
+    await page.setViewport({
       width: payload.video_width,
       height: payload.video_height,
       deviceScaleFactor: 1,
-    },
-  });
-
-  try {
-    const page = await browser.newPage();
+    });
     // Font stylesheets can take longer than Puppeteer's 30-second default on
     // cold CI runners. Keep the wait bounded, but leave enough room for the
     // same assets the export subsequently verifies via document.fonts.ready.
@@ -5288,7 +5336,11 @@ async function main() {
       }
       try {
         const parsed = new URL(rawUrl);
-        if (parsed.protocol === 'https:' && ['fonts.googleapis.com', 'fonts.gstatic.com'].includes(parsed.hostname)) {
+        if (prebakedFontsOnly && fontBaseUrl && parsed.origin === new URL(fontBaseUrl).origin) {
+          request.continue();
+          return;
+        }
+        if (!prebakedFontsOnly && parsed.protocol === 'https:' && ['fonts.googleapis.com', 'fonts.gstatic.com'].includes(parsed.hostname)) {
           request.continue();
           return;
         }
@@ -5306,16 +5358,19 @@ async function main() {
         pageErrors.push(message.text());
       }
     });
-    await page.setContent(`
+    const pageHtml = `
       <!doctype html>
       <html>
         <head>
           <meta charset="utf-8" />
           <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src data: https://fonts.gstatic.com; img-src data:; connect-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'" />
+          ${prebakedFontsOnly ? '<!-- production fonts are installed in the image' : ''}
           <link rel="preconnect" href="https://fonts.googleapis.com">
           <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
           ${exportFontLinks}
+          ${prebakedFontsOnly ? `<style>${prebakedFontsCss}</style>` : ''}
           <link href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Archivo+Black&family=Bangers&family=Bebas+Neue&family=Bitter:wght@400;700&family=Bodoni+Moda:opsz,wght@6..96,400;700&family=Bungee&family=Caveat:wght@400;700&family=Cinzel:wght@400;700;900&family=Cormorant+Garamond:ital,wght@0,300;0,600;0,700;1,300;1,600&family=Crimson+Text:ital,wght@0,400;0,600;1,400;1,600&family=Darker+Grotesque:wght@400;700;900&family=Dela+Gothic+One&family=DM+Serif+Display:ital@0;1&family=Exo+2:wght@400;700;900&family=IBM+Plex+Mono:wght@400;700&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;700;800;900&family=Josefin+Sans:wght@300;400;700&family=Libre+Baskerville:wght@400;700&family=Lora:ital,wght@0,400;0,700;1,400;1,700&family=Montserrat:wght@400;500;700;800;900&family=Noto+Sans:wght@400;600;700;800;900&family=Oswald:wght@300;400;600;700&family=Overpass+Mono:wght@400;700&family=Permanent+Marker&family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=Questrial&family=Righteous&family=Rubik:wght@400;700;900&family=Silkscreen:wght@400;700&family=Special+Elite&family=Space+Mono:wght@400;700&family=Spectral:ital,wght@0,400;0,600;1,400;1,600&family=Staatliches&family=Syne:wght@400;600;700;800&family=Teko:wght@400;600;700&family=Unbounded:wght@300;700;900&display=swap" rel="stylesheet">
+          ${prebakedFontsOnly ? '-->' : ''}
           <style>${runtimeCss}</style>
         </head>
         <body>
@@ -5327,7 +5382,16 @@ async function main() {
           <script>${buildRuntimeScript(advancedTemplateBlockMarkup)}</script>
         </body>
       </html>
-    `, { waitUntil: 'networkidle0' });
+    `;
+    const renderedPageHtml = prebakedFontsOnly
+      ? pageHtml
+        .replace(
+          /<meta http-equiv="Content-Security-Policy" content="[^"]*"\s*\/>/,
+          `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; font-src data: ${fontBaseUrl}; img-src data:; connect-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'" />`,
+        )
+        .replace(/<link href="https:\/\/fonts\.googleapis\.com\/css2\?family=Abril[^>]*>/, '')
+      : pageHtml;
+    await page.setContent(renderedPageHtml, { waitUntil: 'networkidle0' });
 
     await page.addStyleTag({ content: captionCss });
     await page.addStyleTag({ content: advancedCaptionCss });
@@ -6325,7 +6389,10 @@ async function main() {
       );
     }
   } finally {
-    await browser.close();
+    await page?.close().catch(() => {});
+    if (ownsBrowser) await browser.close();
+    else browser.disconnect();
+    if (ownedFontServer) await new Promise((resolve) => ownedFontServer.close(resolve));
   }
 }
 

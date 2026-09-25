@@ -153,6 +153,7 @@ class ProductionBoundaryTests(unittest.TestCase):
               patch.object(main, "_redis_client", Redis()),
               patch.object(main, "get_db", return_value=Database()),
               patch.object(main, "storage_backend_ready", return_value=True),
+              patch.object(main, "_malware_scanner_ready", return_value=True),
               patch.object(main, "RQWorker", SimpleNamespace(all=lambda connection: [worker])),
               patch.object(main.shutil, "which", side_effect=without_node),
               patch.object(main.shutil, "disk_usage", return_value=SimpleNamespace(free=3 * 1024 ** 3))):

@@ -34,11 +34,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PUPPETEER_CACHE_DIR=/app/.cache/puppeteer \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
     PUPPETEER_CONTAINER_NO_SANDBOX=1 \
+    PREBAKED_FONTS_ONLY=1 \
+    ENABLE_CHROMIUM_POOL=1 \
     SERVICE_ROLE=worker \
     WORKER_QUEUES=caption_export_jobs
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        python3 python3-pip ffmpeg ca-certificates chromium dumb-init fonts-liberation \
+        python3 python3-pip ffmpeg ca-certificates chromium dumb-init fontconfig fonts-liberation \
         libasound2 libatk-bridge2.0-0 libatk1.0-0 libcairo2 libcups2 libdbus-1-3 \
         libdrm2 libgbm1 libglib2.0-0 libgtk-3-0 libnspr4 libnss3 libpango-1.0-0 \
         libpangocairo-1.0-0 libx11-6 libx11-xcb1 libxcb1 libxcomposite1 \
@@ -51,6 +53,8 @@ RUN node --input-type=module -e "import puppeteer from 'puppeteer'; const browse
 COPY backend/requirements.lock backend/requirements.lock
 RUN python3 -m pip install --break-system-packages --no-cache-dir --require-hashes -r backend/requirements.lock
 COPY . .
+RUN python3 -m backend.prebake_fonts --fonts-dir /app/fonts --system-fonts-dir /usr/local/share/fonts/lekha \
+    && fc-cache -f
 RUN chown -R node:node /app
 USER node
 EXPOSE 8000
