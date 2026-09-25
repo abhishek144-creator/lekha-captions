@@ -12,6 +12,7 @@ try:
     from .main import (
         EXPORT_QUEUE_NAME,
         TRANSCRIPTION_QUEUE_NAME,
+        MEDIA_SCAN_QUEUE_NAME,
         REDIS_URL,
         cleanup_local_media_artifacts,
     )
@@ -22,6 +23,7 @@ except ImportError:  # Direct execution from backend/ remains supported.
     from main import (
         EXPORT_QUEUE_NAME,
         TRANSCRIPTION_QUEUE_NAME,
+        MEDIA_SCAN_QUEUE_NAME,
         REDIS_URL,
         cleanup_local_media_artifacts,
     )
@@ -130,7 +132,9 @@ def _start_readiness_server(conn):
 def worker_queue_names():
     configured = os.environ.get("WORKER_QUEUES")
     names = list(dict.fromkeys(name.strip() for name in (
-        configured.split(",") if configured is not None else [EXPORT_QUEUE_NAME, TRANSCRIPTION_QUEUE_NAME]
+        configured.split(",")
+        if configured is not None
+        else [EXPORT_QUEUE_NAME, MEDIA_SCAN_QUEUE_NAME, TRANSCRIPTION_QUEUE_NAME]
     ) if name.strip()))
     if not names:
         raise RuntimeError("WORKER_QUEUES must contain at least one queue")

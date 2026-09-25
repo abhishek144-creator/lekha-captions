@@ -81,6 +81,67 @@ assert.deepEqual(ranges, [
   `bytes ${chunkBytes}-${file.size - 1}/${file.size}`,
 ])
 assert.equal(progress.at(-1).uploadedBytes, file.size)
+assert.equal(typeof progress.at(-1).bytesPerSecond, 'number')
+assert.ok(Object.hasOwn(progress.at(-1), 'remainingSeconds'))
+
+// A page reload keeps only a non-secret file fingerprint. Re-selecting the
+// exact same file asks the authenticated API for the stored resumable session.
+const stored = new Map()
+stored.set('lekha.pendingDirectUpload.v1', JSON.stringify({
+  file_id: 'resume-fixture',
+  fingerprint: {
+    filename: file.name,
+    content_type: file.type,
+    size_bytes: file.size,
+    last_modified: file.lastModified,
+  },
+}))
+const localStorage = {
+  getItem: (key) => stored.get(key) || null,
+  setItem: (key, value) => stored.set(key, value),
+  removeItem: (key) => stored.delete(key),
+}
+const reloadRanges = []
+class ReloadRequest extends FakeRequest {
+  send() {
+    const range = this.headers['Content-Range']
+    reloadRanges.push(range)
+    if (range === `bytes */${file.size}`) {
+      this.status = 308
+      this.range = `bytes=0-${chunkBytes - 1}`
+    } else {
+      this.status = 200
+    }
+    this.onload()
+  }
+}
+const reloadPaths = []
+const resumedUpload = vm.runInContext(`${source}\nuploadFileWithRecovery`, vm.createContext({
+  XMLHttpRequest: ReloadRequest,
+  localStorage,
+  apiRequest: async (path) => {
+    reloadPaths.push(path)
+    if (path === '/api/uploads/resume') return {
+      success: true, direct_upload_available: true, resumed: true,
+      upload_url: 'https://storage.test/session', file_id: 'resume-fixture',
+    }
+    if (path === '/api/uploads/complete') return { success: true, file_id: 'resume-fixture' }
+    throw new Error(`Unexpected API proxy request: ${path}`)
+  },
+  getClientContext: (value) => value,
+  trackAnalytics: () => {},
+  crypto: globalThis.crypto,
+  navigator: { onLine: true },
+  setTimeout,
+  Math,
+}))
+assert.equal((await resumedUpload(file, { retryDelaysMs: [] })).success, true)
+assert.deepEqual(reloadPaths, ['/api/uploads/resume', '/api/uploads/complete'])
+assert.deepEqual(reloadRanges, [
+  `bytes */${file.size}`,
+  `bytes ${chunkBytes}-${file.size - 1}/${file.size}`,
+])
+assert.equal(stored.has('lekha.pendingDirectUpload.v1'), false)
 
 // This represents the supported maximum without allocating a 500 MiB test
 // buffer. It verifies the same resumable request sequence a browser uses for
@@ -173,6 +234,8 @@ assert.deepEqual(largeRanges.slice(0, 3), [
 ])
 assert.equal(largeRanges.at(-1), `bytes ${maxAllowedFile.size - chunkBytes / 2}-${maxAllowedFile.size - 1}/${maxAllowedFile.size}`)
 assert.equal(largeProgress.at(-1).uploadedBytes, maxAllowedFile.size)
+assert.equal(typeof largeProgress.at(-1).bytesPerSecond, 'number')
+assert.ok(Object.hasOwn(largeProgress.at(-1), 'remainingSeconds'))
 
 let revokedSession = false
 const cancelledPaths = []

@@ -22,6 +22,7 @@ import { useAuth } from '@/lib/AuthContext'
 import { toDateSafe } from '@/lib/subscription'
 import { db } from '@/lib/firebase'
 import { apiRequest } from '@/lib/apiClient'
+import { clearUserLocalDrafts } from '@/lib/localDraftStorage'
 import { collection, getDocs, limit, orderBy, query, startAfter } from 'firebase/firestore'
 import planCatalog from '../../shared/planCatalog.json'
 
@@ -159,7 +160,7 @@ export default function UserAccount() {
   const handleLogout = async () => {
     try {
       await logout()
-      localStorage.removeItem('captionEditorState')
+      clearUserLocalDrafts(currentUser?.uid)
       window.location.href = '/'
     } catch (error) {
       console.error('Logout failed:', error)
@@ -180,7 +181,7 @@ export default function UserAccount() {
         },
         body: JSON.stringify({ id_token: idToken }),
       })
-      localStorage.removeItem('captionEditorState')
+      clearUserLocalDrafts(currentUser.uid)
       await logout().catch(() => {})
       window.location.href = '/?accountDeleted=1'
     } catch (error) {

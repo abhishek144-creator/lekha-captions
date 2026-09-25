@@ -8,7 +8,7 @@ export function Footer() {
       <div className="container footer-grid footer-grid-current">
         <div className="footer-intro">
           <Brand />
-          <p>Professional captions in 115+ languages. Built for every creator.</p>
+          <p>Professional captions for global creators. Built for your publishing workflow.</p>
         </div>
         <div className="footer-link-groups">
           <div className="footer-link-group">

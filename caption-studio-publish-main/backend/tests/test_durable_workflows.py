@@ -298,3 +298,26 @@ class DurableWorkflowTests(unittest.TestCase):
         self.assertNotIn("secret", str(draft))
         for invalid in [{**self.draft, "captions": [{}] * 501}, {**self.draft, "duration": float("nan")}, {**self.draft, "settings": "bad"}]:
             with self.assertRaises(HTTPException): normalize_draft(invalid)
+
+    def test_draft_preserves_bounded_language_tracks(self):
+        normalized = normalize_draft({
+            **self.draft,
+            "captionTracks": [
+                {"id": "source", "language": "en", "label": "Original", "captions": [{"text": "Hello"}]},
+                {"id": "translation-hi", "language": "hi", "label": "Hindi", "captions": [{"text": "नमस्ते"}]},
+            ],
+            "activeCaptionTrackId": "translation-hi",
+        })
+        self.assertEqual(normalized["activeCaptionTrackId"], "translation-hi")
+        self.assertEqual(normalized["captionTracks"][1]["captions"][0]["text"], "नमस्ते")
+
+    def test_draft_rejects_missing_active_or_unbounded_language_tracks(self):
+        track = {"id": "source", "captions": [{"text": "Hello"}]}
+        invalid = [
+            {**self.draft, "captionTracks": [track], "activeCaptionTrackId": "missing"},
+            {**self.draft, "captionTracks": [track] * 21, "activeCaptionTrackId": "source"},
+            {**self.draft, "captionTracks": [{"id": "source", "captions": [{}] * 501}], "activeCaptionTrackId": "source"},
+        ]
+        for candidate in invalid:
+            with self.assertRaises(HTTPException):
+                normalize_draft(candidate)

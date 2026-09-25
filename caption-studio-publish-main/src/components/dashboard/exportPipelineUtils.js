@@ -37,6 +37,10 @@ export function formatSrtTimestamp(value) {
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')},${String(milliseconds).padStart(3, '0')}`
 }
 
+export function formatVttTimestamp(value) {
+  return formatSrtTimestamp(value).replace(',', '.')
+}
+
 export function buildSrt(captions = []) {
   return getTimedSpeechCaptions(captions)
     .map((caption, index) => {
@@ -46,6 +50,16 @@ export function buildSrt(captions = []) {
       return `${index + 1}\n${formatSrtTimestamp(start)} --> ${formatSrtTimestamp(end)}\n${getCaptionText(caption).trim()}\n`
     })
     .join('\n')
+}
+
+export function buildVtt(captions = []) {
+  const cues = getTimedSpeechCaptions(captions).map((caption) => {
+    const start = toFiniteSeconds(caption.start_time)
+    const requestedEnd = toFiniteSeconds(caption.end_time, start)
+    const end = Math.max(start + 0.001, requestedEnd)
+    return `${formatVttTimestamp(start)} --> ${formatVttTimestamp(end)}\n${getCaptionText(caption).trim()}`
+  })
+  return cues.length ? `WEBVTT\n\n${cues.join('\n\n')}\n` : ''
 }
 
 export function buildPlainText(captions = []) {

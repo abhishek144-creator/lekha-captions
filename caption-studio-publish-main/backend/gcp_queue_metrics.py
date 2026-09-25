@@ -89,15 +89,19 @@ def publish_queue_snapshot(
     queue_name: str,
     worker_group: str,
     pending_work_seconds: int | None = None,
+    metric_prefix: str = "export",
 ) -> None:
     """Write one global time series for each queue signal."""
     project_id = _project_id()
     timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     labels = {"queue": queue_name, "worker_group": worker_group}
     series = []
+    safe_prefix = str(metric_prefix or "").strip().lower()
+    if safe_prefix not in {"export", "transcription"}:
+        raise ValueError("Unsupported queue metric prefix")
     measurements = [
-        ("export_queue_depth", depth),
-        ("export_oldest_job_age_seconds", oldest_age_seconds),
+        (f"{safe_prefix}_queue_depth", depth),
+        (f"{safe_prefix}_oldest_job_age_seconds", oldest_age_seconds),
     ]
     if pending_work_seconds is not None:
         measurements.append(("pending_render_work_seconds", pending_work_seconds))

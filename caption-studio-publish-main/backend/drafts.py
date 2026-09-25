@@ -23,7 +23,10 @@ def normalize_project_id(value, *, create=False):
 
 
 def normalize_draft(value):
-    allowed = {"captions", "captionStyle", "projectId", "projectName", "settings", "duration", "fileId", "originalFileName"}
+    allowed = {
+        "captions", "captionStyle", "captionTracks", "activeCaptionTrackId",
+        "projectId", "projectName", "settings", "duration", "fileId", "originalFileName",
+    }
     draft = {key: data for key, data in value.items() if key in allowed}
     if not isinstance(draft.get("settings") or {}, dict):
         raise HTTPException(422, "Invalid draft settings")
@@ -33,6 +36,33 @@ def normalize_draft(value):
         raise HTTPException(422, "Draft must contain at most 500 captions")
     if any(not isinstance(caption, dict) or not isinstance(caption.get("text", ""), str) for caption in draft["captions"]):
         raise HTTPException(422, "Invalid caption data")
+    tracks = draft.get("captionTracks", [])
+    if not isinstance(tracks, list) or len(tracks) > 20:
+        raise HTTPException(422, "Invalid caption tracks")
+    normalized_tracks = []
+    for track in tracks:
+        if not isinstance(track, dict):
+            raise HTTPException(422, "Invalid caption track")
+        track_id = str(track.get("id") or "").strip()
+        captions = track.get("captions")
+        if not track_id or len(track_id) > 100 or not isinstance(captions, list) or len(captions) > 500:
+            raise HTTPException(422, "Invalid caption track")
+        if any(not isinstance(caption, dict) or not isinstance(caption.get("text", ""), str) for caption in captions):
+            raise HTTPException(422, "Invalid caption track data")
+        normalized_tracks.append({
+            **track,
+            "id": track_id,
+            "language": str(track.get("language") or "")[:80],
+            "label": str(track.get("label") or track_id)[:120],
+        })
+    if "captionTracks" in draft:
+        draft["captionTracks"] = normalized_tracks
+        active_track_id = str(draft.get("activeCaptionTrackId") or "source").strip()
+        if len(active_track_id) > 100:
+            raise HTTPException(422, "Invalid active caption track")
+        if normalized_tracks and active_track_id not in {track["id"] for track in normalized_tracks}:
+            raise HTTPException(422, "Active caption track is missing")
+        draft["activeCaptionTrackId"] = active_track_id
     project_name = str(draft.get("projectName") or draft.get("originalFileName") or "Untitled project").strip()
     draft["projectName"] = project_name[:120] or "Untitled project"
     try:

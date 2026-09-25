@@ -64,7 +64,7 @@ export default function FinalCtaKaraoke() {
                 </motion.h2>
 
                 <p className="mt-7 max-w-sm text-base leading-7 text-white/68">
-                  Give it 115+ more. Captions your audience can actually read — in their language.
+                  Reach more people. Captions your audience can read in their language.
                 </p>
 
                 <div className="mt-8 flex flex-col gap-3 sm:flex-row">
