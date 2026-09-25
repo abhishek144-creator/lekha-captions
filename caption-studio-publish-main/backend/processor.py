@@ -235,6 +235,14 @@ GOOGLE_FONTS_MAP = {
     'SpaceMono': {'url': 'https://github.com/google/fonts/raw/main/ofl/spacemono/SpaceMono-Regular.ttf', 'file': 'SpaceMono-Regular.ttf', 'ass_name': 'Space Mono'},
     'Staatliches': {'url': 'https://github.com/google/fonts/raw/main/ofl/staatliches/Staatliches-Regular.ttf', 'file': 'Staatliches-Regular.ttf', 'ass_name': 'Staatliches'},
     'Unbounded': {'url': 'https://github.com/google/fonts/raw/main/ofl/unbounded/Unbounded%5Bwght%5D.ttf', 'file': 'Unbounded.ttf', 'ass_name': 'Unbounded'},
+    # Fonts used by built-in template markup as well as the editor's selection list.
+    'Bungee': {'url': 'https://github.com/google/fonts/raw/main/ofl/bungee/Bungee-Regular.ttf', 'file': 'Bungee-Regular.ttf', 'ass_name': 'Bungee'},
+    'InstrumentSerif': {'url': 'https://github.com/google/fonts/raw/main/ofl/instrumentserif/InstrumentSerif-Regular.ttf', 'file': 'InstrumentSerif-Regular.ttf', 'ass_name': 'Instrument Serif'},
+    'InstrumentSerifItalic': {'url': 'https://github.com/google/fonts/raw/main/ofl/instrumentserif/InstrumentSerif-Italic.ttf', 'file': 'InstrumentSerif-Italic.ttf', 'ass_name': 'Instrument Serif', 'style': 'italic'},
+    'Spectral': {'url': 'https://github.com/google/fonts/raw/main/ofl/spectral/Spectral%5Bwght%5D.ttf', 'file': 'Spectral.ttf', 'ass_name': 'Spectral', 'weight': '200 800'},
+    'SpectralItalic': {'url': 'https://github.com/google/fonts/raw/main/ofl/spectral/Spectral-Italic%5Bwght%5D.ttf', 'file': 'Spectral-Italic.ttf', 'ass_name': 'Spectral', 'weight': '200 800', 'style': 'italic'},
+    'Syne': {'url': 'https://github.com/google/fonts/raw/main/ofl/syne/Syne%5Bwght%5D.ttf', 'file': 'Syne.ttf', 'ass_name': 'Syne', 'weight': '400 800'},
+    'Teko': {'url': 'https://github.com/google/fonts/raw/main/ofl/teko/Teko%5Bwght%5D.ttf', 'file': 'Teko.ttf', 'ass_name': 'Teko', 'weight': '300 700'},
 }
 
 INDIC_FONTS = {
@@ -434,6 +442,12 @@ BOLD_VARIANTS = {
     'LibreBaskerville': {'url': 'https://github.com/google/fonts/raw/main/ofl/librebaskerville/LibreBaskerville-Bold.ttf', 'file': 'LibreBaskerville-Bold.ttf'},
 }
 
+_RUNTIME_ENV = (os.environ.get("APP_ENV") or os.environ.get("ENV") or "").strip().lower()
+ALLOW_RUNTIME_FONT_DOWNLOADS = (
+    _RUNTIME_ENV not in {"production", "prod"}
+    and os.environ.get("ALLOW_RUNTIME_FONT_DOWNLOADS", "1") == "1"
+)
+
 
 class VideoProcessor:
     def __init__(self, fonts_dir):
@@ -442,6 +456,23 @@ class VideoProcessor:
         self.project_root = os.path.dirname(self.backend_dir)
         self.template_overlay_script = os.path.join(self.project_root, "scripts", "render_template_overlay.mjs")
         os.makedirs(self.fonts_dir, exist_ok=True)
+        if not ALLOW_RUNTIME_FONT_DOWNLOADS:
+            baked_fonts_dir = os.path.join(self.project_root, "fonts")
+            configured_queues = os.environ.get("WORKER_QUEUES", "")
+            is_render_worker = (
+                os.environ.get("SERVICE_ROLE", "").strip().lower() == "worker"
+                and any("export" in name for name in configured_queues.split(","))
+            )
+            if not os.path.isdir(baked_fonts_dir) and is_render_worker:
+                raise RuntimeError("Render image is missing its pre-baked production fonts")
+            if os.path.isdir(baked_fonts_dir):
+                for filename in os.listdir(baked_fonts_dir):
+                    if not filename.lower().endswith((".ttf", ".otf")):
+                        continue
+                    source_path = os.path.join(baked_fonts_dir, filename)
+                    target_path = os.path.join(self.fonts_dir, filename)
+                    if os.path.isfile(source_path) and not os.path.exists(target_path):
+                        shutil.copy2(source_path, target_path)
         self.client = None # Lazy init
         self._source_basic_template_ids = self._load_source_basic_template_ids()
         self._ensure_fallback_font()
@@ -459,7 +490,7 @@ class VideoProcessor:
 
     def _ensure_fallback_font(self):
         fallback_path = os.path.join(self.fonts_dir, "Inter.ttf")
-        if not os.path.exists(fallback_path):
+        if not os.path.exists(fallback_path) and ALLOW_RUNTIME_FONT_DOWNLOADS:
             try:
                 info = GOOGLE_FONTS_MAP.get('Inter')
                 if info:
@@ -485,7 +516,7 @@ class VideoProcessor:
         if not info:
             return None
         font_path = os.path.join(self.fonts_dir, info['file'])
-        if not os.path.exists(font_path):
+        if not os.path.exists(font_path) and ALLOW_RUNTIME_FONT_DOWNLOADS:
             try:
                 print(f"Downloading Indic font for {script_name}: {info['file']}")
                 r = requests.get(info['url'], allow_redirects=True, timeout=20)
@@ -499,6 +530,8 @@ class VideoProcessor:
             except Exception as e:
                 print(f"Failed to download {script_name} font: {e}")
                 return None
+        if not os.path.exists(font_path):
+            return None
         return info
 
     FONT_ALIASES = {
@@ -580,7 +613,7 @@ class VideoProcessor:
                     info = indic_info
                     font_key = alias_script
                     print(f"Font '{font_key}' matched via alias to INDIC_FONTS: {indic_info['ass_name']}")
-        if not info:
+        if not info and ALLOW_RUNTIME_FONT_DOWNLOADS:
             # Try to fetch from Google Fonts API dynamically
             try:
                 headers = {'User-Agent': 'Mozilla/5.0 (Linux; U; Android 4.1.1; en-gb; Build/KLP) AppleWebKit/534.30 (KHTML, like Gecko) Version/4.0 Safari/534.30'}
@@ -609,7 +642,7 @@ class VideoProcessor:
             font_key = 'Inter'
 
         font_path = os.path.join(self.fonts_dir, info['file'])
-        if not os.path.exists(font_path):
+        if not os.path.exists(font_path) and ALLOW_RUNTIME_FONT_DOWNLOADS:
             try:
                 print(f"Downloading font: {font_key}")
                 r = requests.get(info['url'], allow_redirects=True, timeout=15)
@@ -626,8 +659,15 @@ class VideoProcessor:
                 info = GOOGLE_FONTS_MAP.get('Inter')
                 font_path = os.path.join(self.fonts_dir, info['file'])
 
+        if not os.path.exists(font_path) and not ALLOW_RUNTIME_FONT_DOWNLOADS:
+            print(f"Pre-baked font missing for {font_key}; using Inter")
+            info = GOOGLE_FONTS_MAP['Inter']
+            font_path = os.path.join(self.fonts_dir, info['file'])
+            if not os.path.exists(font_path):
+                raise RuntimeError("Render image is missing the required pre-baked Inter font")
+
         # Ensure the fallback font (Inter) is also downloaded if not present
-        if not os.path.exists(font_path):
+        if not os.path.exists(font_path) and ALLOW_RUNTIME_FONT_DOWNLOADS:
             try:
                 print(f"Downloading fallback font: {info['file']}")
                 r = requests.get(info['url'], allow_redirects=True, timeout=15)

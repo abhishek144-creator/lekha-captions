@@ -1,1 +1,1 @@
-window.__LEKHA_RUNTIME_CONFIG__ = Object.freeze({ sentryDsn: '' })
+window.__LEKHA_RUNTIME_CONFIG__ = Object.freeze({ sentryDsn: '', apiBaseUrl: '' })

@@ -20,7 +20,9 @@ const LOCAL_API_RETRY_DELAY_MS = 450
 const LOCAL_DIRECT_BACKEND_URL = String(
   import.meta.env.VITE_DIRECT_BACKEND_URL || (import.meta.env.DEV ? "http://127.0.0.1:8000" : ""),
 ).replace(/\/+$/, "")
-const API_BASE_URL = String(import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "")
+const API_BASE_URL = String(
+  globalThis.__LEKHA_RUNTIME_CONFIG__?.apiBaseUrl ?? import.meta.env.VITE_API_BASE_URL ?? "",
+).replace(/\/+$/, "")
 
 function resolveApiUrl(url) {
   if (!API_BASE_URL || typeof url !== "string" || !url.startsWith("/api")) return url

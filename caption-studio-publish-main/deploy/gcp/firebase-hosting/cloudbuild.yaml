@@ -1,0 +1,38 @@
+steps:
+  - name: node:22-bookworm
+    entrypoint: bash
+    secretEnv:
+      - FRONTEND_BUILD_CONFIG
+      - SENTRY_DSN
+    env:
+      - PUPPETEER_SKIP_DOWNLOAD=true
+    args:
+      - -ceu
+      - |
+        [[ "${_APP_RELEASE}" =~ ^[a-f0-9]{40}$ ]]
+        printf '%s\n' "$$FRONTEND_BUILD_CONFIG" > .env.production
+        npm ci
+        APP_RELEASE="${_APP_RELEASE}" \
+          VITE_APP_RELEASE="${_APP_RELEASE}" \
+          APP_BUILD_TIME="${_BUILD_TIME}" \
+          RELEASE_VERSION="${_RELEASE_VERSION}" \
+          RELEASE_ENVIRONMENT=production \
+          VITE_API_BASE_URL='' \
+          VITE_ALLOW_SAME_ORIGIN_API=1 \
+          npm run build
+        SENTRY_DSN="$$SENTRY_DSN" node scripts/write-firebase-runtime-config.mjs
+        npx --yes firebase-tools@14.12.0 deploy --only hosting --project "${PROJECT_ID}" --non-interactive
+availableSecrets:
+  secretManager:
+    - versionName: projects/$PROJECT_ID/secrets/lekha-frontend-build-config/versions/${_FRONTEND_CONFIG_VERSION}
+      env: FRONTEND_BUILD_CONFIG
+    - versionName: projects/$PROJECT_ID/secrets/lekha-frontend-sentry-dsn/versions/${_SENTRY_DSN_VERSION}
+      env: SENTRY_DSN
+options:
+  logging: CLOUD_LOGGING_ONLY
+substitutions:
+  _APP_RELEASE: ''
+  _BUILD_TIME: ''
+  _RELEASE_VERSION: ''
+  _FRONTEND_CONFIG_VERSION: '1'
+  _SENTRY_DSN_VERSION: '1'

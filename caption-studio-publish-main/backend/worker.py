@@ -18,6 +18,7 @@ try:
     from .release_metadata import release_metadata
     from .gcp_scale_in import ScaleInProtector
     from .gcp_queue_metrics import publish_worker_cold_start
+    from .browser_pool import ChromiumPool
 except ImportError:  # Direct execution from backend/ remains supported.
     from main import (
         EXPORT_QUEUE_NAME,
@@ -28,6 +29,7 @@ except ImportError:  # Direct execution from backend/ remains supported.
     from release_metadata import release_metadata
     from gcp_scale_in import ScaleInProtector
     from gcp_queue_metrics import publish_worker_cold_start
+    from browser_pool import ChromiumPool
 
 
 WORKER_STATE = {"heartbeat_at": 0.0, "draining": False}
@@ -57,6 +59,7 @@ class ReleaseWorker(Worker):
             "app_release": metadata["release"],
             "release_metadata": json.dumps(metadata),
             "draining": "1" if WORKER_STATE["draining"] else "0",
+            "worker_group": os.environ.get("WORKER_MIG_NAME", "unknown").strip(),
         })
         WORKER_STATE["heartbeat_at"] = time.monotonic()
 
@@ -144,6 +147,12 @@ def run_worker():
     conn.ping()
     health_conn = redis.Redis.from_url(REDIS_URL, socket_connect_timeout=5, socket_timeout=5)
     server = _start_readiness_server(health_conn)
+    queue_names = worker_queue_names()
+    browser_pool = None
+    if os.environ.get("ENABLE_CHROMIUM_POOL", "1") == "1" and any("export" in name for name in queue_names):
+        browser_pool = ChromiumPool(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        if not browser_pool.start():
+            print(json.dumps({"event": "chromium_pool_start_failed", "fallback": "per-job"}), flush=True)
     cleanup_stop = threading.Event()
     cleanup_thread = threading.Thread(
         target=_local_cleanup_loop,
@@ -156,7 +165,7 @@ def run_worker():
     # Railway replica fail registration with "active worker already exists".
     host = os.environ.get("HOSTNAME") or socket.gethostname()
     worker_name = f"caption-export-worker-{host}-{uuid.uuid4().hex[:8]}"
-    worker = ReleaseWorker(worker_queue_names(), connection=conn, name=worker_name, worker_ttl=90)
+    worker = ReleaseWorker(queue_names, connection=conn, name=worker_name, worker_ttl=90)
     boot_epoch = int(float(os.environ.get("VM_BOOT_EPOCH", "0") or 0))
     if boot_epoch > 0:
         try:
@@ -175,6 +184,8 @@ def run_worker():
         cleanup_thread.join(timeout=5)
         server.shutdown()
         server.server_close()
+        if browser_pool is not None:
+            browser_pool.stop()
         health_conn.close()
         conn.close()
 

@@ -11,10 +11,20 @@ terraform {
       source  = "hashicorp/google"
       version = "~> 7.0"
     }
+    google-beta = {
+      source  = "hashicorp/google-beta"
+      version = "~> 7.0"
+    }
   }
 }
 
 provider "google" {
+  project                         = var.project_id
+  region                          = var.region
+  add_terraform_attribution_label = false
+}
+
+provider "google-beta" {
   project                         = var.project_id
   region                          = var.region
   add_terraform_attribution_label = false
