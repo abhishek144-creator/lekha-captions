@@ -53,11 +53,16 @@ if args.action == "prepare":
     env = dict(item.split("=", 1) for item in config["Config"]["Env"])
     env.update(APP_RELEASE=args.release, RELEASE_VERSION=f"gcp-staging-{args.release[:7]}",
                APP_BUILD_TIME="2026-09-09T14:40:32Z", RELEASE_ENVIRONMENT="staging",
-               EXPORT_QUEUE_NAME="caption_export_jobs", TRANSCRIPTION_QUEUE_NAME="caption_transcription_jobs",
+               EXPORT_QUEUE_NAME="caption_export_jobs", FAST_EXPORT_QUEUE_NAME="caption_export_fast",
+               HEAVY_EXPORT_QUEUE_NAME="caption_export_heavy", GPU_EXPORT_QUEUE_NAME="caption_export_gpu",
+               TRANSCRIPTION_QUEUE_NAME="caption_transcription_jobs",
                MEDIA_SCAN_QUEUE_NAME="caption_media_scan_jobs",
                EXPORT_MAX_PENDING_JOBS="80",
                EXPORT_MAX_QUEUE_WAIT_SECONDS="600", QUEUE_METRICS_ENABLED="1",
-               QUEUE_METRICS_INTERVAL_SECONDS="30", WORKER_MIG_NAME="lekha-worker-staging-mig")
+               QUEUE_METRICS_INTERVAL_SECONDS="30", WORKER_MIG_NAME="lekha-worker-staging-mig",
+               SPOT_WORKER_MIG_NAME="lekha-worker-spot-staging-mig",
+               GPU_WORKER_MIG_NAME="lekha-worker-gpu-staging-mig",
+               TRANSCRIPTION_PROVIDER_FAILOVER="1")
     if any("\n" in value or "\r" in value for value in env.values()):
         raise SystemExit("Multiline environment value cannot safely use Docker env-file")
     env_file.write_text("".join(f"{key}={value}\n" for key, value in env.items()))
@@ -79,7 +84,8 @@ elif args.action == "start":
                "-e", "MEDIA_SCRATCH_DIR=/scratch", "-e", "CLAMAV_HOST=lekha-clamav",
                "-v", "/var/lib/lekha/scratch:/scratch", "-p", "8000:8000"]
     if args.role in {"worker", "render"}:
-        options += ["--cpus", "3", "--memory", "10g", "-e", "WORKER_QUEUES=caption_export_jobs"]
+        options += ["--cpus", "3", "--memory", "8g", "-e",
+                    "WORKER_QUEUES=caption_export_fast,caption_export_jobs,caption_export_heavy"]
     elif args.role == "transcription":
         options += ["--cpus", "1", "--memory", "2g", "-e",
                     "WORKER_QUEUES=caption_media_scan_jobs,caption_transcription_jobs"]

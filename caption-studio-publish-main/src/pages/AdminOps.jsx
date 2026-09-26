@@ -38,6 +38,7 @@ export default function AdminOps() {
   const [maxDurationSeconds, setMaxDurationSeconds] = useState("180")
   const [metrics, setMetrics] = useState(null)
   const [metricsWindow, setMetricsWindow] = useState(null)
+  const [funnel, setFunnel] = useState(null)
 
   const isAdmin = userData?.role === "admin" || userData?.roles?.includes("admin")
 
@@ -61,6 +62,7 @@ export default function AdminOps() {
       })
       setMetrics(data?.metrics || null)
       setMetricsWindow(data?.window || null)
+      setFunnel(data?.funnel || null)
     } catch (e) {
       notifyApiError(e, "Could not read production metrics")
     }
@@ -150,6 +152,25 @@ export default function AdminOps() {
             <p className="mt-3 text-xs text-zinc-500">
               Cost uses configured provider and render estimates. Operational counters are server-owned.
             </p>
+            <div className="mt-5 overflow-hidden rounded border border-zinc-800">
+              <div className="grid grid-cols-3 bg-zinc-950 px-4 py-2 text-xs text-zinc-500">
+                <span>Funnel stage</span><span className="text-right">Completed</span><span className="text-right">Next-stage rate</span>
+              </div>
+              {[
+                ["Sign-ups", "signups", null],
+                ["Uploads", "uploads", "upload_to_transcription_pct"],
+                ["Transcriptions", "transcriptions", "transcription_to_export_pct"],
+                ["Exports started", "exports_started", null],
+                ["Exports completed", "exports_completed", "export_to_payment_pct"],
+                ["Payments", "payments", null],
+              ].map(([label, key, rateKey]) => (
+                <div key={key} className="grid grid-cols-3 border-t border-zinc-800 px-4 py-2 text-sm">
+                  <span>{label}</span>
+                  <span className="text-right font-semibold">{funnel?.[key] ?? "—"}</span>
+                  <span className="text-right text-zinc-400">{rateKey && funnel ? `${funnel[rateKey]}%` : "—"}</span>
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
 

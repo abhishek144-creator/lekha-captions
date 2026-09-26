@@ -1,4 +1,4 @@
-import React, { Suspense, useState, useEffect, useRef, useCallback } from 'react';
+import React, { Suspense, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Upload, Sparkles, Captions, Clock3, Layers, Layout, SlidersHorizontal, Type, Check, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -380,7 +380,10 @@ export default function Dashboard() {
   const mediaRefreshInFlightRef = useRef(false);
   const [cloudSaveMessage, setCloudSaveMessage] = useState('')
   const [localRecoveryDraft, setLocalRecoveryDraft] = useState(null)
-  const { cloudDraft, cloudProjects, cloudReady, saveCloudDraft, selectCloudProject, deleteCloudProject } = useCloudProjects({
+  const {
+    cloudDraft, cloudProjects, cloudReady, saveCloudDraft, selectCloudProject,
+    deleteCloudProject, renameCloudProject, duplicateCloudProject,
+  } = useCloudProjects({
     currentUser,
     getAuthToken: getEffectiveAuthToken,
     projectId,
@@ -395,6 +398,30 @@ export default function Dashboard() {
     if (!window.confirm(`Delete ${name}? This removes its saved revisions from your account.`)) return
     await deleteCloudProject(selectedId)
   }, [cloudDraft?.projectId, cloudProjects, deleteCloudProject, projectId])
+  const [projectSearch, setProjectSearch] = useState('')
+  const [projectSort, setProjectSort] = useState('recent')
+  const [projectNameInput, setProjectNameInput] = useState('')
+  const selectedCloudProjectId = cloudDraft?.projectId || projectId || ''
+  const visibleCloudProjects = useMemo(() => {
+    const query = projectSearch.trim().toLowerCase()
+    const projects = cloudProjects.filter((item) => !query || String(item.name || '').toLowerCase().includes(query))
+    return [...projects].sort((left, right) => {
+      if (projectSort === 'name') return String(left.name || '').localeCompare(String(right.name || ''))
+      return String(right.saved_at || '').localeCompare(String(left.saved_at || ''))
+    })
+  }, [cloudProjects, projectSearch, projectSort])
+  useEffect(() => {
+    const selected = cloudProjects.find((item) => item.project_id === selectedCloudProjectId)
+    setProjectNameInput(selected?.name || '')
+  }, [cloudProjects, selectedCloudProjectId])
+  const handleRenameCloudProject = useCallback(async () => {
+    if (!selectedCloudProjectId || !projectNameInput.trim()) return
+    await renameCloudProject(selectedCloudProjectId, projectNameInput)
+  }, [projectNameInput, renameCloudProject, selectedCloudProjectId])
+  const handleDuplicateCloudProject = useCallback(async () => {
+    if (!selectedCloudProjectId) return
+    await duplicateCloudProject(selectedCloudProjectId)
+  }, [duplicateCloudProject, selectedCloudProjectId])
   const [showCaptionRetryNotice, setShowCaptionRetryNotice] = useState(false)
   const [showLowCreditNotice, setShowLowCreditNotice] = useState(false)
   const [translationNotice, setTranslationNotice] = useState('')
@@ -2052,22 +2079,50 @@ export default function Dashboard() {
               </Button>
               {cloudDraft && (
                 <div className="mt-4 space-y-3 text-sm">
-                  {cloudProjects.length > 1 && (
-                    <label className="mx-auto flex max-w-xs flex-col gap-1 text-left text-xs text-gray-400">
-                      Saved projects
+                  {cloudProjects.length > 0 && (
+                    <div className="mx-auto grid max-w-sm gap-2 text-left text-xs text-gray-400">
+                      <div className="grid grid-cols-[1fr_auto] gap-2">
+                        <input
+                          value={projectSearch}
+                          onChange={(event) => setProjectSearch(event.target.value)}
+                          placeholder="Search projects"
+                          className="min-w-0 rounded-lg border border-white/15 bg-zinc-900 px-3 py-2 text-sm text-white"
+                        />
+                        <select
+                          value={projectSort}
+                          onChange={(event) => setProjectSort(event.target.value)}
+                          aria-label="Sort projects"
+                          className="rounded-lg border border-white/15 bg-zinc-900 px-2 py-2 text-sm text-white"
+                        >
+                          <option value="recent">Recent</option>
+                          <option value="name">Name</option>
+                        </select>
+                      </div>
                       <select
-                        value={cloudDraft.projectId || projectId || ''}
+                        value={visibleCloudProjects.some((item) => item.project_id === selectedCloudProjectId) ? selectedCloudProjectId : ''}
                         onChange={(event) => selectCloudProject(event.target.value)}
                         className="rounded-lg border border-white/15 bg-zinc-900 px-3 py-2 text-sm text-white"
                       >
-                        {cloudProjects.map((project) => (
+                        {!visibleCloudProjects.length && <option value="">No matching projects</option>}
+                        {visibleCloudProjects.map((project) => (
                           <option key={project.project_id} value={project.project_id}>{project.name}</option>
                         ))}
                       </select>
-                    </label>
+                      <div className="grid grid-cols-[1fr_auto] gap-2">
+                        <input
+                          value={projectNameInput}
+                          onChange={(event) => setProjectNameInput(event.target.value)}
+                          maxLength={120}
+                          aria-label="Selected project name"
+                          className="min-w-0 rounded-lg border border-white/15 bg-zinc-900 px-3 py-2 text-sm text-white"
+                        />
+                        <button className="rounded-lg border border-white/15 px-3 py-2 font-semibold text-white" onClick={handleRenameCloudProject}>Rename</button>
+                      </div>
+                    </div>
                   )}
                   <div className="flex flex-wrap justify-center gap-4">
                     <button className="underline" onClick={restoreCloudDraft}>Restore selected project</button>
+                    <button className="underline" onClick={handleDuplicateCloudProject}>Duplicate project</button>
                     <button className="underline" onClick={() => downloadDraft(cloudDraft)}>Download saved captions</button>
                     <button className="inline-flex items-center gap-1 text-red-300 underline" onClick={handleDeleteCloudProject}>
                       <Trash2 className="h-3.5 w-3.5" /> Delete selected project

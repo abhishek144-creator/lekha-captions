@@ -682,6 +682,7 @@ class VideoProcessor:
             detected_language = (target_language or "unknown").lower()
             language_confidence = 0.6
             audio_p = None
+            transcription_source = ""
 
             try:
                 with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as _tf:
@@ -783,6 +784,7 @@ class VideoProcessor:
                         if words:
                             detected_language = target_language.lower()
                             language_confidence = 0.85
+                            transcription_source = "sarvam"
                     except Exception as parse_e:
                         print(f"Failed to parse Sarvam response: {parse_e}")
                         words = []
@@ -820,12 +822,21 @@ class VideoProcessor:
                                     "start": float(getattr(w, 'start', 0) or 0),
                                     "end": float(getattr(w, 'end', 0) or 0),
                                 })
+                    if words:
+                        transcription_source = "whisper"
             except Exception as api_error:
                 api_error_msg = str(api_error)
                 print(f"[Warning] Transcription provider error: {api_error}")
 
-            if not words and api_error_msg is None and self.client:
+            failover_enabled = os.environ.get("TRANSCRIPTION_PROVIDER_FAILOVER", "1").strip().lower() in {
+                "1", "true", "yes", "on"
+            }
+            sarvam_failed = bool(is_indian_lang and sarvam_api_key and api_error_msg)
+            audio_ready = bool(audio_p and os.path.exists(audio_p) and os.path.getsize(audio_p) > 0)
+            if not words and self.client and audio_ready and (api_error_msg is None or (sarvam_failed and failover_enabled)):
                 try:
+                    if sarvam_failed:
+                        print("[Transcribe] Sarvam failed; using configured OpenAI failover.")
                     with open(audio_p, "rb") as f:
                         transcript = self.client.audio.transcriptions.create(
                             model="whisper-1",
@@ -849,6 +860,9 @@ class VideoProcessor:
                                 "start": float(getattr(w, 'start', 0) or 0),
                                 "end": float(getattr(w, 'end', 0) or 0),
                             })
+                    if words:
+                        api_error_msg = None
+                        transcription_source = "whisper_failover" if sarvam_failed else "whisper"
                 except Exception as fallback_error:
                     api_error_msg = str(fallback_error)
 
@@ -947,7 +961,9 @@ class VideoProcessor:
                 "captions": grouped_captions,
                 "detected_language": detected_language,
                 "language_confidence": round(max(0.0, min(1.0, language_confidence)), 2),
-                "transcription_source": "sarvam" if is_indian_lang and sarvam_api_key else "whisper",
+                "transcription_source": transcription_source or (
+                    "sarvam" if is_indian_lang and sarvam_api_key else "whisper"
+                ),
             }
 
         except Exception as e:

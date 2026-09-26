@@ -115,5 +115,55 @@ export function useCloudProjects({ currentUser, getAuthToken, projectId, setProj
     }
   }, [cloudProjects, currentUser, getAuthToken, onMessage, selectCloudProject, setProjectId])
 
-  return { cloudDraft, cloudProjects, cloudReady, saveCloudDraft, selectCloudProject, deleteCloudProject }
+  const renameCloudProject = useCallback(async (targetProjectId, name) => {
+    if (!currentUser || !targetProjectId || !name?.trim()) return false
+    try {
+      const idToken = await getAuthToken(currentUser)
+      const data = await apiRequest('/api/projects/rename', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id_token: idToken, project_id: targetProjectId, name: name.trim() }),
+      })
+      revisionRef.current = data.revision
+      setCloudDraft(data.draft)
+      setCloudProjects((projects) => projects.map((item) => (
+        item.project_id === targetProjectId ? { ...item, name: data.draft.projectName, revision: data.revision, saved_at: data.saved_at } : item
+      )))
+      onMessage('Project renamed')
+      return true
+    } catch (error) {
+      onMessage(error.message || 'Project could not be renamed')
+      return false
+    }
+  }, [currentUser, getAuthToken, onMessage])
+
+  const duplicateCloudProject = useCallback(async (targetProjectId, name = '') => {
+    if (!currentUser || !targetProjectId) return false
+    try {
+      const idToken = await getAuthToken(currentUser)
+      const data = await apiRequest('/api/projects/duplicate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id_token: idToken, project_id: targetProjectId, name: name.trim() }),
+      })
+      revisionRef.current = data.revision
+      setCloudDraft(data.draft)
+      setProjectId(data.project_id)
+      setCloudProjects((projects) => [{
+        project_id: data.project_id,
+        name: data.draft.projectName,
+        revision: data.revision,
+        saved_at: data.saved_at,
+        file_id: data.draft.fileId || '',
+      }, ...projects])
+      onMessage('Project duplicated')
+      return true
+    } catch (error) {
+      onMessage(error.message || 'Project could not be duplicated')
+      return false
+    }
+  }, [currentUser, getAuthToken, onMessage, setProjectId])
+
+  return {
+    cloudDraft, cloudProjects, cloudReady, saveCloudDraft, selectCloudProject,
+    deleteCloudProject, renameCloudProject, duplicateCloudProject,
+  }
 }

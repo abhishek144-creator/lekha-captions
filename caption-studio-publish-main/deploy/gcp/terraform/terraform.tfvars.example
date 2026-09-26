@@ -7,12 +7,15 @@ transcription_image_uri     = "asia-south1-docker.pkg.dev/PROJECT/caption-studio
 runtime_secret_version      = 1
 runtime_service_account     = "SERVICE_ACCOUNT@PROJECT.iam.gserviceaccount.com"
 media_bucket_name           = "lekha-media-PROJECT"
-render_worker_machine_type  = "n2-highcpu-8"
-render_worker_min_replicas  = 0
-render_worker_max_replicas  = 3
+render_worker_machine_type  = "n2-custom-4-12288"
+render_worker_min_replicas  = 3
+render_worker_max_replicas  = 20
 render_worker_disk_size_gb  = 100
 render_worker_disk_type     = "pd-ssd"
 spot_render_worker_max_replicas = 5
+enable_gpu_pool                   = false
+gpu_runtime_image                = "projects/PROJECT/global/images/lekha-gpu-runtime-RELEASE"
+gpu_render_worker_max_replicas   = 4
 
 # Enables the production Cloud Run API, its private Redis connector, serverless
 # NEG, and OIDC-authenticated maintenance jobs. Load-balancer traffic is still

@@ -58,6 +58,21 @@ variable "export_queue_name" {
   description = "RQ queue consumed only by heavyweight render workers"
   default     = "caption_export_jobs"
 }
+variable "fast_export_queue_name" {
+  type        = string
+  description = "Priority RQ queue for short render work"
+  default     = "caption_export_fast"
+}
+variable "heavy_export_queue_name" {
+  type        = string
+  description = "RQ queue for long render work and Spot overflow"
+  default     = "caption_export_heavy"
+}
+variable "gpu_export_queue_name" {
+  type        = string
+  description = "RQ queue used only when the optional G2/L4 pool is enabled"
+  default     = "caption_export_gpu"
+}
 variable "transcription_queue_name" {
   type        = string
   description = "RQ queue consumed only by the independently scaled transcription pool"
@@ -71,17 +86,17 @@ variable "media_scan_queue_name" {
 variable "render_worker_max_replicas" {
   type        = number
   description = "Maximum queue-driven render worker count"
-  default     = 3
+  default     = 20
 }
 variable "render_worker_min_replicas" {
   type        = number
-  description = "Minimum render workers; zero lets idle render capacity scale completely to zero"
-  default     = 0
+  description = "Minimum on-demand render workers"
+  default     = 3
 }
 variable "render_worker_machine_type" {
   type        = string
   description = "Benchmark-backed production render worker shape"
-  default     = "n2-highcpu-8"
+  default     = "n2-custom-4-12288"
 }
 variable "render_worker_disk_size_gb" {
   type        = number
@@ -97,6 +112,21 @@ variable "spot_render_worker_max_replicas" {
   type        = number
   description = "Interruptible overflow capacity; zero disables the Spot MIG"
   default     = 5
+}
+variable "enable_gpu_pool" {
+  type        = bool
+  description = "Create an optional G2/L4 render pool; keep false until a matched cost and visual-parity benchmark passes"
+  default     = false
+}
+variable "gpu_runtime_image" {
+  type        = string
+  description = "GPU-driver-enabled Compute Engine image used by the optional G2/L4 pool"
+  default     = ""
+}
+variable "gpu_render_worker_max_replicas" {
+  type        = number
+  description = "Maximum optional G2/L4 workers"
+  default     = 4
 }
 variable "transcription_worker_max_replicas" {
   type        = number

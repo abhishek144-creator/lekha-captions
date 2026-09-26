@@ -5,6 +5,7 @@ param(
     [Parameter(Mandatory = $true)][string]$ApiImageUri,
     [Parameter(Mandatory = $true)][string]$RenderImageUri,
     [Parameter(Mandatory = $true)][string]$TranscriptionImageUri,
+    [Parameter(Mandatory = $true)][int]$RuntimeSecretVersion,
     [string]$BaseImageFamily = "lekha-runtime-stable"
 )
 
@@ -22,11 +23,8 @@ $workerGroup = "lekha-worker-staging-mig"
 $transcriptionGroup = "lekha-transcription-staging-mig"
 $apiHealth = "lekha-api-staging-mig-health"
 $workerHealth = "lekha-worker-staging-mig-health"
-$runtimeSecretVersion = (& gcloud secrets versions list lekha-runtime-env `
-    --project=$ProjectId --filter="state=ENABLED" --sort-by="~name" `
-    --limit=1 --format="value(name)").Trim()
-if ($runtimeSecretVersion -notmatch '^\d+$') {
-    throw "An enabled numeric lekha-runtime-env secret version is required"
+if ($RuntimeSecretVersion -lt 1) {
+    throw "RuntimeSecretVersion must pin a positive numeric lekha-runtime-env version"
 }
 
 function Invoke-Gcloud {
@@ -57,7 +55,7 @@ function Ensure-Template {
     & gcloud compute instance-templates describe $Name --project=$ProjectId *> $null
     if ($LASTEXITCODE -eq 0) { return }
     $roleImage = if ($Role -eq "api") { $ApiImageUri } elseif ($Role -eq "transcription") { $TranscriptionImageUri } else { $RenderImageUri }
-    $queueName = if ($Role -eq "transcription") { "caption_media_scan_jobs,caption_transcription_jobs" } elseif ($Role -eq "render") { "caption_export_jobs" } else { "" }
+    $queueName = if ($Role -eq "transcription") { "caption_media_scan_jobs,caption_transcription_jobs" } elseif ($Role -eq "render") { "caption_export_fast,caption_export_jobs,caption_export_heavy" } else { "" }
     $migName = if ($Role -eq "transcription") { $transcriptionGroup } else { $workerGroup }
     Invoke-Gcloud compute instance-templates create $Name `
         --project=$ProjectId --machine-type=$MachineType `
@@ -66,7 +64,7 @@ function Ensure-Template {
         --service-account=$serviceAccount --scopes=cloud-platform `
         --tags=$Tag --image-family=$BaseImageFamily --image-project=$ProjectId `
         --boot-disk-size=50GB --boot-disk-type=$DiskType --boot-disk-auto-delete `
-        --metadata="service-role=$Role,worker-queue-name=$queueName,image-uri=$roleImage,api-image-uri=$ApiImageUri,render-image-uri=$RenderImageUri,transcription-image-uri=$TranscriptionImageUri,runtime-secret=lekha-runtime-env,runtime-secret-version=$runtimeSecretVersion,region=$Region,worker-mig-name=$migName" `
+        --metadata="service-role=$Role,worker-queue-name=$queueName,image-uri=$roleImage,api-image-uri=$ApiImageUri,render-image-uri=$RenderImageUri,transcription-image-uri=$TranscriptionImageUri,runtime-secret=lekha-runtime-env,runtime-secret-version=$RuntimeSecretVersion,region=$Region,worker-mig-name=$migName" `
         --metadata-from-file="startup-script=$startupScript"
 }
 
@@ -131,7 +129,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Ensure-RegionalGroup $apiGroup $apiTemplate 2
-Ensure-RegionalGroup $workerGroup $workerTemplate 0
+Ensure-RegionalGroup $workerGroup $workerTemplate 3
 Ensure-RegionalGroup $transcriptionGroup $transcriptionTemplate 0
 
 Invoke-Gcloud compute instance-groups managed set-named-ports $apiGroup `
@@ -174,11 +172,13 @@ Invoke-Gcloud compute instance-groups managed set-autoscaling $apiGroup `
     --target-cpu-utilization=0.60 --cool-down-period=900 `
     "--scale-in-control=max-scaled-in-replicas=1,time-window=1800"
 
-# Queue metrics are non-instance signals, so both pools can scale from zero.
-# Workers protect themselves from MIG scale-in while a job is active.
+# Work-based metrics distinguish short and expensive renders. Workers protect
+# themselves from MIG scale-in while a job is active.
 Invoke-Gcloud compute instance-groups managed set-autoscaling $workerGroup `
-    --project=$ProjectId --region=$Region --min-num-replicas=0 --max-num-replicas=20 `
-    --custom-metric-utilization="metric=custom.googleapis.com/lekha/export_queue_depth,utilization-target=1,utilization-target-type=GAUGE" `
+    --project=$ProjectId --region=$Region --min-num-replicas=3 --max-num-replicas=20 `
+    --update-stackdriver-metric=custom.googleapis.com/lekha/pending_render_work_seconds `
+    "--stackdriver-metric-filter=resource.type = global AND metric.labels.queue = render_all AND metric.labels.worker_group = $workerGroup" `
+    --stackdriver-metric-single-instance-assignment=120 `
     --cool-down-period=180 --mode=on `
     "--scale-in-control=max-scaled-in-replicas=5,time-window=300"
 Invoke-Gcloud compute instance-groups managed set-autoscaling $transcriptionGroup `

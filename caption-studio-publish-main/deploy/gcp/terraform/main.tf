@@ -227,9 +227,9 @@ resource "google_compute_instance_template" "worker" {
   }
   metadata = merge(local.common_metadata, {
     service-role            = "render"
-    worker-queue-name       = var.export_queue_name
-    worker-container-cpus   = "7"
-    worker-container-memory = "7g"
+    worker-queue-name       = "${var.fast_export_queue_name},${var.export_queue_name},${var.heavy_export_queue_name}"
+    worker-container-cpus   = "3"
+    worker-container-memory = "8g"
   })
   metadata_startup_script = file("${path.module}/../gce-startup.sh")
   lifecycle { create_before_destroy = true }
@@ -354,11 +354,17 @@ resource "google_compute_region_autoscaler" "worker" {
     min_replicas    = var.render_worker_min_replicas
     max_replicas    = var.render_worker_max_replicas
     cooldown_period = 180
+    cpu_utilization { target = 0.45 }
     metric {
-      name   = "custom.googleapis.com/lekha/export_queue_depth"
-      target = 1
+      name                       = "custom.googleapis.com/lekha/pending_render_work_seconds"
+      single_instance_assignment = 120
+      filter                     = "resource.type = global AND metric.labels.queue = render_all AND metric.labels.worker_group = lekha-worker-staging-mig"
+    }
+    metric {
+      name   = "custom.googleapis.com/lekha/predicted_queue_wait_seconds"
       type   = "GAUGE"
-      filter = "resource.type = global AND metric.labels.queue = ${var.export_queue_name} AND metric.labels.worker_group = lekha-worker-staging-mig"
+      target = 120
+      filter = "resource.type = global AND metric.labels.queue = render_all AND metric.labels.worker_group = lekha-worker-staging-mig"
     }
     scale_in_control {
       max_scaled_in_replicas {
@@ -420,9 +426,9 @@ resource "google_compute_instance_template" "worker_spot" {
   metadata = merge(local.common_metadata, {
     service-role            = "render"
     worker-mig-name         = "lekha-worker-spot-staging-mig"
-    worker-queue-name       = var.export_queue_name
-    worker-container-cpus   = "7"
-    worker-container-memory = "7g"
+    worker-queue-name       = var.heavy_export_queue_name
+    worker-container-cpus   = "3"
+    worker-container-memory = "8g"
   })
   metadata_startup_script = file("${path.module}/../gce-startup.sh")
   lifecycle { create_before_destroy = true }
@@ -460,16 +466,108 @@ resource "google_compute_region_autoscaler" "worker_spot" {
     max_replicas    = var.spot_render_worker_max_replicas
     cooldown_period = 180
     metric {
-      name   = "custom.googleapis.com/lekha/export_queue_depth"
-      target = 2
+      name                       = "custom.googleapis.com/lekha/pending_render_work_seconds"
+      single_instance_assignment = 240
+      filter                     = "resource.type = global AND metric.labels.queue = render_heavy AND metric.labels.worker_group = lekha-worker-spot-staging-mig"
+    }
+    metric {
+      name   = "custom.googleapis.com/lekha/predicted_queue_wait_seconds"
       type   = "GAUGE"
-      # Both pools deliberately observe the same queue-depth series. The Spot
-      # pool's higher target makes it overflow capacity after the baseline pool.
-      filter = "resource.type = global AND metric.labels.queue = ${var.export_queue_name} AND metric.labels.worker_group = lekha-worker-staging-mig"
+      target = 180
+      filter = "resource.type = global AND metric.labels.queue = render_heavy AND metric.labels.worker_group = lekha-worker-spot-staging-mig"
     }
     scale_in_control {
       max_scaled_in_replicas { fixed = 2 }
       time_window_sec = 300
+    }
+  }
+}
+
+# This pool is deliberately disabled by default. Enabling it requires a baked
+# image with NVIDIA drivers and a matched visual-quality/cost benchmark.
+resource "google_compute_instance_template" "worker_gpu" {
+  count        = var.enable_gpu_pool ? 1 : 0
+  name_prefix  = "lekha-worker-gpu-${local.release_short}-"
+  machine_type = "g2-standard-4"
+  tags         = ["lekha-worker-mig"]
+  disk {
+    source_image = var.gpu_runtime_image
+    disk_size_gb = var.render_worker_disk_size_gb
+    disk_type    = var.render_worker_disk_type
+    auto_delete  = true
+    boot         = true
+  }
+  network_interface { network = "default" }
+  scheduling {
+    on_host_maintenance = "TERMINATE"
+  }
+  service_account {
+    email  = var.runtime_service_account
+    scopes = ["cloud-platform"]
+  }
+  metadata = merge(local.common_metadata, {
+    service-role            = "render"
+    worker-mig-name         = "lekha-worker-gpu-staging-mig"
+    worker-queue-name       = var.gpu_export_queue_name
+    worker-container-cpus   = "3"
+    worker-container-memory = "14g"
+    worker-gpu-enabled      = "1"
+  })
+  metadata_startup_script = file("${path.module}/../gce-startup.sh")
+  lifecycle {
+    create_before_destroy = true
+    precondition {
+      condition     = !var.enable_gpu_pool || length(trimspace(var.gpu_runtime_image)) > 0
+      error_message = "gpu_runtime_image is required when enable_gpu_pool is true"
+    }
+  }
+}
+
+resource "google_compute_region_instance_group_manager" "worker_gpu" {
+  count                            = var.enable_gpu_pool ? 1 : 0
+  name                             = "lekha-worker-gpu-staging-mig"
+  region                           = var.region
+  distribution_policy_zones        = var.zones
+  distribution_policy_target_shape = "ANY"
+  base_instance_name               = "lekha-worker-gpu"
+  version { instance_template = google_compute_instance_template.worker_gpu[0].id }
+  auto_healing_policies {
+    health_check      = google_compute_health_check.worker.id
+    initial_delay_sec = 240
+  }
+  update_policy {
+    type                         = "PROACTIVE"
+    minimal_action               = "REPLACE"
+    max_surge_fixed              = 1
+    max_unavailable_fixed        = 0
+    replacement_method           = "SUBSTITUTE"
+    instance_redistribution_type = "NONE"
+  }
+}
+
+resource "google_compute_region_autoscaler" "worker_gpu" {
+  count  = var.enable_gpu_pool ? 1 : 0
+  name   = "lekha-worker-gpu-staging-autoscaler"
+  region = var.region
+  target = google_compute_region_instance_group_manager.worker_gpu[0].id
+  autoscaling_policy {
+    min_replicas    = 0
+    max_replicas    = var.gpu_render_worker_max_replicas
+    cooldown_period = 240
+    metric {
+      name                       = "custom.googleapis.com/lekha/pending_render_work_seconds"
+      single_instance_assignment = 240
+      filter                     = "resource.type = global AND metric.labels.queue = render_gpu AND metric.labels.worker_group = lekha-worker-gpu-staging-mig"
+    }
+    metric {
+      name   = "custom.googleapis.com/lekha/predicted_queue_wait_seconds"
+      type   = "GAUGE"
+      target = 180
+      filter = "resource.type = global AND metric.labels.queue = render_gpu AND metric.labels.worker_group = lekha-worker-gpu-staging-mig"
+    }
+    scale_in_control {
+      max_scaled_in_replicas { fixed = 1 }
+      time_window_sec = 900
     }
   }
 }

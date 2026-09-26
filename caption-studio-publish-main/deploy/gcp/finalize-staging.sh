@@ -9,6 +9,7 @@ region="${REGION:-asia-south1}"
 zone="${ZONE:-asia-south1-a}"
 redis_name="${REDIS_NAME:-lekha-redis-staging}"
 runtime_secret="${RUNTIME_SECRET:-lekha-runtime-env}"
+runtime_secret_version="${RUNTIME_SECRET_VERSION:-}"
 api_vm="${API_VM:-lekha-api-staging}"
 worker_vm="${WORKER_VM:-lekha-worker-staging}"
 startup_script="${STARTUP_SCRIPT:-$HOME/gce-startup-https.sh}"
@@ -21,6 +22,10 @@ build_time="${APP_BUILD_TIME:-2026-09-07T12:23:54Z}"
 if [[ ! -f "$startup_script" ]]; then
   echo "Startup script not found: $startup_script" >&2
   exit 66
+fi
+if [[ ! "$runtime_secret_version" =~ ^[1-9][0-9]*$ ]]; then
+  echo "RUNTIME_SECRET_VERSION must pin a positive numeric Secret Manager version." >&2
+  exit 64
 fi
 
 gcloud config set project "$project_id" >/dev/null
@@ -47,8 +52,6 @@ cleanup() {
 }
 trap cleanup EXIT
 umask 077
-runtime_secret_version="$(gcloud secrets versions list "$runtime_secret" --filter='state=ENABLED' --sort-by='~name' --limit=1 --format='value(name)')"
-[[ "$runtime_secret_version" =~ ^[0-9]+$ ]] || { echo "No enabled numeric runtime secret version" >&2; exit 64; }
 gcloud secrets versions access "$runtime_secret_version" --secret="$runtime_secret" > "$runtime_file"
 
 # Docker's --env-file parser keeps surrounding quotes as part of the value.
@@ -115,12 +118,14 @@ ensure_random_secret RAZORPAY_WEBHOOK_SECRET
 ensure_random_secret PAYMENT_RECONCILE_SECRET
 ensure_random_secret MEDIA_URL_SIGNING_SECRET
 
-gcloud secrets versions add "$runtime_secret" --data-file="$runtime_file" >/dev/null
+new_runtime_secret_version="$(gcloud secrets versions add "$runtime_secret" --data-file="$runtime_file" --format='value(name)')"
+[[ "$new_runtime_secret_version" =~ ^[1-9][0-9]*$ ]] || { echo "Secret Manager did not return the new numeric version" >&2; exit 70; }
 
 gcloud compute instances add-metadata "$api_vm" --zone="$zone" \
-  --metadata="public-host=${public_host}" \
+  --metadata="public-host=${public_host},runtime-secret=${runtime_secret},runtime-secret-version=${new_runtime_secret_version}" \
   --metadata-from-file="startup-script=${startup_script}" >/dev/null
 gcloud compute instances add-metadata "$worker_vm" --zone="$zone" \
+  --metadata="runtime-secret=${runtime_secret},runtime-secret-version=${new_runtime_secret_version}" \
   --metadata-from-file="startup-script=${startup_script}" >/dev/null
 for vm in "$api_vm" "$worker_vm"; do
   gcloud compute instances reset "$vm" --zone="$zone" --quiet >/dev/null
