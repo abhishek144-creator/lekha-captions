@@ -2,7 +2,7 @@ export const faqs = [
   {
     question: 'What languages does Lekha Captions support?',
     answer:
-      'Lekha Captions supports 115+ languages, including Hindi, Marathi, Tamil, Telugu, Bengali, Gujarati, Punjabi, Kannada, Malayalam, Odia, English variants, Arabic, and many African, Southeast Asian, and European languages.',
+      'Open the language selector during upload to see the transcription choices currently available. Translation choices can differ, and availability may vary by language and provider.',
   },
   {
     question: 'Can I edit captions after they are generated?',
@@ -27,12 +27,12 @@ export const faqs = [
   {
     question: 'How do I export a captioned video?',
     answer:
-      'Choose Export in the editor to render captions directly onto your video. Supported plans can also provide subtitle formats and higher-resolution exports.',
+      'Choose Export to render captions onto your video or download SRT, WebVTT, or plain-text caption files.',
   },
   {
     question: 'Is uploaded content private?',
     answer:
-      'Uploaded media is processed to provide the service and is not used to train models. Source and exported media are retained temporarily according to the published privacy policy.',
+      'Uploaded media may be processed by the service providers named in the privacy policy for storage, transcription, translation, and rendering. Lekha Captions does not train its own AI models on your content. Source and exported media are retained temporarily according to the published privacy policy.',
   },
   {
     question: 'How do I start?',

@@ -42,6 +42,27 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '..');
+const PACKAGED_RENDER_FONT_FAMILIES = new Set([
+  'Baloo 2', 'Baloo Bhai 2', 'Baloo Da 2', 'Baloo Tamma 2', 'Catamaran',
+  'Inter', 'Kalam', 'Mandali', 'Manjari', 'Marcellus', 'Montserrat',
+  'Mukta', 'Mukta Mahee', 'Mukta Malar', 'Noto Sans', 'Noto Sans Bengali',
+  'Noto Sans Devanagari', 'Noto Sans Kannada', 'Noto Sans Malayalam',
+  'Noto Sans Telugu', 'Poppins', 'Rajdhani', 'Roboto',
+].map((family) => family.toLowerCase()));
+let bundledRenderFontCss = '';
+let bundledRenderFontFamilies = new Set();
+
+function needsRemoteRenderFont(fontFamily) {
+  if (process.env.PREFER_PACKAGED_RENDER_FONTS !== '1') return true;
+  const normalized = String(fontFamily || '')
+    .split(',')[0]
+    .replace(/["']/g, '')
+    .trim()
+    .toLowerCase();
+  return normalized
+    ? !PACKAGED_RENDER_FONT_FAMILIES.has(normalized) && !bundledRenderFontFamilies.has(normalized)
+    : false;
+}
 const ADVANCED_TEMPLATE_VARIANTS = {
   t01: 'wbw-rise', t02: 'plain-s', t03: 'wbw-rise', t04: 'plain-s', t05: 'wbw-rise',
   t06: 'wbw-rise', t07: 'wbw-rise', t08: 'wbw-rise', t09: 'wbw-rise', t10: 'wbw-rise',
@@ -3194,6 +3215,28 @@ async function main() {
   }
 
   const payload = JSON.parse((await fs.readFile(payloadPath, 'utf8')).replace(/^\uFEFF/, ''));
+  const renderFontBundlePath = String(process.env.RENDER_FONT_BUNDLE_PATH || '').trim();
+  if (renderFontBundlePath) {
+    try {
+      const [css, manifestRaw] = await Promise.all([
+        fs.readFile(renderFontBundlePath, 'utf8'),
+        fs.readFile(`${renderFontBundlePath}.json`, 'utf8'),
+      ]);
+      const manifest = JSON.parse(manifestRaw);
+      if (!css.includes('@font-face') || !Array.isArray(manifest.families)) {
+        throw new Error('invalid bundled font manifest');
+      }
+      const digest = (await import('crypto')).createHash('sha256').update(css).digest('hex');
+      if (digest !== manifest.sha256) throw new Error('bundled font digest mismatch');
+      bundledRenderFontCss = css;
+      bundledRenderFontFamilies = new Set(manifest.families.map((family) => String(family).toLowerCase()));
+    } catch (error) {
+      if (process.env.RENDER_FONT_BUNDLE_REQUIRED === '1') throw error;
+      console.warn(`[Template DOM] bundled fonts unavailable: ${error.message}`);
+    }
+  } else if (process.env.RENDER_FONT_BUNDLE_REQUIRED === '1') {
+    throw new Error('RENDER_FONT_BUNDLE_PATH is required');
+  }
   const canonicalEmphasisByCaptionId = new Map(
     buildEmotionalCaptionPlan(
       payload.captions || [],
@@ -3495,7 +3538,8 @@ async function main() {
       ...Object.values(config.families),
     ]),
   ].filter(Boolean));
-  const exportFontQuery = [...exportFontFamilies]
+  const remoteExportFontFamilies = [...exportFontFamilies].filter(needsRemoteRenderFont);
+  const exportFontQuery = remoteExportFontFamilies
     .map((fontFamily) => `family=${encodeURIComponent(String(fontFamily)).replace(/%20/g, '+')}`)
     .join('&');
   const exportFontLinks = exportFontQuery
@@ -5292,8 +5336,7 @@ async function main() {
           <link rel="preconnect" href="https://fonts.googleapis.com">
           <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
           ${exportFontLinks}
-          <link href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Archivo+Black&family=Bangers&family=Bebas+Neue&family=Bitter:wght@400;700&family=Bodoni+Moda:opsz,wght@6..96,400;700&family=Bungee&family=Caveat:wght@400;700&family=Cinzel:wght@400;700;900&family=Cormorant+Garamond:ital,wght@0,300;0,600;0,700;1,300;1,600&family=Crimson+Text:ital,wght@0,400;0,600;1,400;1,600&family=Darker+Grotesque:wght@400;700;900&family=Dela+Gothic+One&family=DM+Serif+Display:ital@0;1&family=Exo+2:wght@400;700;900&family=IBM+Plex+Mono:wght@400;700&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;700;800;900&family=Josefin+Sans:wght@300;400;700&family=Libre+Baskerville:wght@400;700&family=Lora:ital,wght@0,400;0,700;1,400;1,700&family=Montserrat:wght@400;500;700;800;900&family=Noto+Sans:wght@400;600;700;800;900&family=Oswald:wght@300;400;600;700&family=Overpass+Mono:wght@400;700&family=Permanent+Marker&family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=Questrial&family=Righteous&family=Rubik:wght@400;700;900&family=Silkscreen:wght@400;700&family=Special+Elite&family=Space+Mono:wght@400;700&family=Spectral:ital,wght@0,400;0,600;1,400;1,600&family=Staatliches&family=Syne:wght@400;600;700;800&family=Teko:wght@400;600;700&family=Unbounded:wght@300;700;900&display=swap" rel="stylesheet">
-          <style>${runtimeCss}</style>
+          <style>${bundledRenderFontCss}\n${runtimeCss}</style>
         </head>
         <body>
           <div id="overlay-root"></div>

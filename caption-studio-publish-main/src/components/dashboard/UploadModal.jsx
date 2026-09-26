@@ -502,7 +502,7 @@ export default function UploadModal({
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-sm text-gray-400 flex items-center gap-2">
                     <Globe className="w-4 h-4" />
-                    Caption Language
+                    Caption output language
                   </label>
                   <button
                     onClick={handleDetectLanguage}
@@ -533,7 +533,7 @@ export default function UploadModal({
                       />
                     </div>
                     <SelectItem value="auto" className="text-white hover:bg-white/10 font-medium">
-                      🎯 Same as Video (Auto-Detect)
+                      🎯 Keep original speech language (auto-detect)
                     </SelectItem>
                     {filterLangs(globalLanguages).length > 0 && (
                       <SelectGroup>
@@ -565,6 +565,7 @@ export default function UploadModal({
                     )}
                   </SelectContent>
                 </Select>
+                <p className="mt-2 text-[11px] leading-5 text-gray-500">Choosing another language creates an editable translation track and keeps the original transcript. Translation availability varies by language.</p>
               </div>
 
               <div>
@@ -622,7 +623,7 @@ export default function UploadModal({
                     className="mt-2 p-3 rounded-lg bg-[#F5A623]/10 border border-[#F5A623]/20 text-xs text-gray-300 space-y-1.5"
                   >
                     <p className="font-semibold text-[#F5A623]">How Dynamic (Auto) works:</p>
-                    <p>Syncs captions to the exact millisecond of each spoken word using audio timestamps.</p>
+                    <p>Uses available word-level audio timestamps to help synchronize captions for review.</p>
                     <p>Shows 5-6 word phrases by default so animated templates keep their intended layout.</p>
                     <p>Uses phrase-sized chunks unless punctuation or a long silence creates a natural break.</p>
                     <p>For punchier captions, choose a shorter fixed range before generating.</p>

@@ -5,6 +5,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from dotenv import load_dotenv
 backend_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.dirname(backend_dir)
+runtime_env_file = (os.environ.get("RUNTIME_ENV_FILE") or "").strip()
+if runtime_env_file:
+    if not os.path.isabs(runtime_env_file) or not os.path.isfile(runtime_env_file):
+        raise RuntimeError("RUNTIME_ENV_FILE must be an existing absolute file")
+    load_dotenv(dotenv_path=runtime_env_file, override=False)
 env_local = os.path.join(root_dir, ".env.local")
 env_base = os.path.join(root_dir, ".env")
 _bootstrap_env = (os.environ.get("APP_ENV") or os.environ.get("ENV") or "").strip().lower()
@@ -54,8 +59,13 @@ try:
         delete_user_uploads,
         storage_backend_ready,
         create_resumable_source_upload,
+        resume_resumable_source_upload,
         cancel_resumable_source_upload,
         finalize_resumable_source_upload,
+        set_source_upload_state,
+        download_render_cache,
+        upload_render_cache,
+        delete_render_cache,
     )
 except ImportError:  # Direct execution from backend/ remains supported.
     from firebase_admin_setup import (
@@ -73,8 +83,13 @@ except ImportError:  # Direct execution from backend/ remains supported.
         delete_user_uploads,
         storage_backend_ready,
         create_resumable_source_upload,
+        resume_resumable_source_upload,
         cancel_resumable_source_upload,
         finalize_resumable_source_upload,
+        set_source_upload_state,
+        download_render_cache,
+        upload_render_cache,
+        delete_render_cache,
     )
 from firebase_admin import app_check as firebase_app_check
 from firebase_admin import auth as firebase_auth
@@ -86,39 +101,62 @@ import logging
 import ipaddress
 import pathlib
 import re
-import shlex
 import secrets
-import socket
-import struct
 import threading
 from collections import deque
 from contextlib import asynccontextmanager
 try:
     from .transcription_jobs import TranscriptionJobs
-    from .queue_admission import enqueue_bounded
+    from .queue_admission import enqueue_bounded_across_queues
     from .drafts import read_draft
     from .project_api import create_project_router
     from .direct_upload_api import create_direct_upload_router
+    from .api.maintenance import create_maintenance_router
     from .upload_admission import reserve_upload, release_upload
     from .request_limits import UploadBodyLimitMiddleware
     from .release_metadata import release_metadata
     from .media_commands import run_media_command
     from .job_state import transition as transition_export_job, InvalidJobTransition, LOCAL_LOCK as JOB_STATE_LOCK
-    from .gcp_queue_metrics import publish_queue_snapshot, queue_snapshot, queued_render_work_seconds
-    from .render_capacity import estimate_render_work_seconds, render_class
+    from .gcp_queue_metrics import publish_queue_snapshot, queue_snapshot, render_queue_snapshot
+    from .rendering.capacity import (
+        FAST_EXPORT_QUEUE_NAME,
+        GPU_EXPORT_QUEUE_NAME,
+        HEAVY_EXPORT_QUEUE_NAME,
+        NORMAL_EXPORT_QUEUE_NAME,
+        RENDER_QUEUE_NAMES,
+        estimate_render_capacity,
+    )
+    from .rendering.cache import render_cache_eligible, render_cache_identity
+    from .services.media_scan_jobs import MediaScanJobs
+    from .services.scheduler_auth import require_scheduler_authorization
+    from .services.malware import scan_upload_for_threat
+    from .services.upload_security import UploadSecurityService
 except ImportError:
     from transcription_jobs import TranscriptionJobs
-    from queue_admission import enqueue_bounded
+    from queue_admission import enqueue_bounded_across_queues
     from drafts import read_draft
     from project_api import create_project_router
     from direct_upload_api import create_direct_upload_router
+    from api.maintenance import create_maintenance_router
     from upload_admission import reserve_upload, release_upload
     from request_limits import UploadBodyLimitMiddleware
     from release_metadata import release_metadata
     from media_commands import run_media_command
     from job_state import transition as transition_export_job, InvalidJobTransition, LOCAL_LOCK as JOB_STATE_LOCK
-    from gcp_queue_metrics import publish_queue_snapshot, queue_snapshot, queued_render_work_seconds
-    from render_capacity import estimate_render_work_seconds, render_class
+    from gcp_queue_metrics import publish_queue_snapshot, queue_snapshot, render_queue_snapshot
+    from rendering.capacity import (
+        FAST_EXPORT_QUEUE_NAME,
+        GPU_EXPORT_QUEUE_NAME,
+        HEAVY_EXPORT_QUEUE_NAME,
+        NORMAL_EXPORT_QUEUE_NAME,
+        RENDER_QUEUE_NAMES,
+        estimate_render_capacity,
+    )
+    from rendering.cache import render_cache_eligible, render_cache_identity
+    from services.media_scan_jobs import MediaScanJobs
+    from services.scheduler_auth import require_scheduler_authorization
+    from services.malware import scan_upload_for_threat
+    from services.upload_security import UploadSecurityService
 
 try:
     import razorpay as _razorpay_module
@@ -605,8 +643,10 @@ scheduler = AsyncIOScheduler() if SCHEDULER_AVAILABLE else None
 REDIS_URL = os.environ.get("REDIS_URL", "")
 _redis_client = None
 _rq_redis_client = None
-EXPORT_QUEUE_NAME = os.environ.get("EXPORT_QUEUE_NAME", "caption_export_jobs")
-TRANSCRIPTION_QUEUE_NAME = os.environ.get("TRANSCRIPTION_QUEUE_NAME", EXPORT_QUEUE_NAME)
+EXPORT_QUEUE_NAME = NORMAL_EXPORT_QUEUE_NAME
+GPU_RENDER_ENABLED = os.environ.get("GPU_RENDER_ENABLED", "0") == "1"
+TRANSCRIPTION_QUEUE_NAME = os.environ.get("TRANSCRIPTION_QUEUE_NAME", "caption_transcription_jobs")
+MEDIA_SCAN_QUEUE_NAME = os.environ.get("MEDIA_SCAN_QUEUE_NAME", "caption_media_scan_jobs")
 # Production accepts an 80-job waiting backlog. Keep this default aligned with
 # the deployment scripts so a missing override cannot silently reduce capacity.
 EXPORT_MAX_PENDING_JOBS = max(1, int(os.environ.get("EXPORT_MAX_PENDING_JOBS", "80")))
@@ -620,12 +660,20 @@ QUEUE_METRICS_INTERVAL_SECONDS = max(
     min(int(os.environ.get("QUEUE_METRICS_INTERVAL_SECONDS", "30")), 60),
 )
 WORKER_MIG_NAME = os.environ.get("WORKER_MIG_NAME", "lekha-worker-staging-mig").strip()
+SPOT_WORKER_MIG_NAME = os.environ.get("SPOT_WORKER_MIG_NAME", "lekha-worker-spot-staging-mig").strip()
+GPU_WORKER_MIG_NAME = os.environ.get("GPU_WORKER_MIG_NAME", "lekha-worker-gpu-staging-mig").strip()
+TRANSCRIPTION_MIG_NAME = os.environ.get(
+    "TRANSCRIPTION_MIG_NAME", "lekha-transcription-staging-mig"
+).strip()
+RUN_API_BACKGROUND_TASKS = os.environ.get("RUN_API_BACKGROUND_TASKS", "1") == "1"
 DURABLE_QUEUE_ENABLED = os.environ.get("ENABLE_DURABLE_QUEUE", "1") == "1"
 SLACK_ALERT_WEBHOOK_URL = os.environ.get("SLACK_ALERT_WEBHOOK_URL", "").strip()
 PAYMENT_RECONCILE_INTERVAL_MINUTES = int(os.environ.get("PAYMENT_RECONCILE_INTERVAL_MINUTES", "20"))
 PAYMENT_RECONCILE_LOOKBACK_HOURS = int(os.environ.get("PAYMENT_RECONCILE_LOOKBACK_HOURS", "48"))
 PAYMENT_RECONCILE_BATCH_SIZE = int(os.environ.get("PAYMENT_RECONCILE_BATCH_SIZE", "200"))
 PAYMENT_RECONCILE_SECRET = os.environ.get("PAYMENT_RECONCILE_SECRET", "").strip()
+SCHEDULER_SERVICE_ACCOUNT_EMAIL = os.environ.get("SCHEDULER_SERVICE_ACCOUNT_EMAIL", "").strip()
+SCHEDULER_OIDC_AUDIENCE = os.environ.get("SCHEDULER_OIDC_AUDIENCE", "").strip()
 TELEMETRY_BATCH_SIZE = max(1, min(int(os.environ.get("TELEMETRY_BATCH_SIZE", "400")), 450))
 TELEMETRY_QUEUE_LIMIT = max(TELEMETRY_BATCH_SIZE, int(os.environ.get("TELEMETRY_QUEUE_LIMIT", "5000")))
 API_CURRENT_VERSION = os.environ.get("API_CURRENT_VERSION", "2026-04-21")
@@ -723,12 +771,21 @@ if _IS_PRODUCTION and not DURABLE_QUEUE_ENABLED:
     raise RuntimeError("ENABLE_DURABLE_QUEUE must be 1 in production.")
 
 _export_queue = None
+_export_queues = {}
 if DURABLE_QUEUE_ENABLED and _rq_redis_client is not None and RQ_AVAILABLE:
     try:
-        _export_queue = Queue(EXPORT_QUEUE_NAME, connection=_rq_redis_client, default_timeout=30 * 60)
-        _json_log("info", "durable_queue_enabled", queue=EXPORT_QUEUE_NAME)
+        configured_render_queues = list(RENDER_QUEUE_NAMES)
+        if GPU_RENDER_ENABLED:
+            configured_render_queues.append(GPU_EXPORT_QUEUE_NAME)
+        _export_queues = {
+            queue_name: Queue(queue_name, connection=_rq_redis_client, default_timeout=30 * 60)
+            for queue_name in configured_render_queues
+        }
+        _export_queue = _export_queues[EXPORT_QUEUE_NAME]
+        _json_log("info", "durable_queue_enabled", queues=list(_export_queues))
     except Exception as e:
         _export_queue = None
+        _export_queues = {}
         _json_log("warning", "durable_queue_init_failed", error=str(e))
 
 if _IS_PRODUCTION and _export_queue is None:
@@ -737,6 +794,9 @@ if _IS_PRODUCTION and _export_queue is None:
 _transcription_queue = _export_queue
 if _export_queue is not None and TRANSCRIPTION_QUEUE_NAME != EXPORT_QUEUE_NAME:
     _transcription_queue = Queue(TRANSCRIPTION_QUEUE_NAME, connection=_rq_redis_client, default_timeout=30 * 60)
+_media_scan_queue = _transcription_queue
+if _export_queue is not None and MEDIA_SCAN_QUEUE_NAME not in {EXPORT_QUEUE_NAME, TRANSCRIPTION_QUEUE_NAME}:
+    _media_scan_queue = Queue(MEDIA_SCAN_QUEUE_NAME, connection=_rq_redis_client, default_timeout=20 * 60)
 
 def cleanup_local_media_artifacts(now: float = None) -> Dict[str, int]:
     """Delete expired scratch files for the current API or worker container."""
@@ -909,15 +969,96 @@ def _publish_queue_metrics_once():
     token = _claim_scheduled_job("gcp_queue_metrics", QUEUE_METRICS_INTERVAL_SECONDS - 2)
     if not token or _export_queue is None or Job is None:
         return
-    depth, oldest_age_seconds = queue_snapshot(_export_queue, Job)
-    pending_work_seconds = queued_render_work_seconds(_export_queue, Job)
+    render_queues = list(_export_queues.values()) or [_export_queue]
+    active_workers = 1
+    workers = []
+    if RQWorker is not None:
+        try:
+            workers = RQWorker.all(connection=_rq_redis_client)
+            render_names = set(_export_queues) or {EXPORT_QUEUE_NAME}
+            active_workers = sum(
+                1 for worker in workers
+                if render_names.intersection(set(
+                    worker.queue_names() if callable(getattr(worker, "queue_names", None))
+                    else getattr(worker, "queue_names", [])
+                ))
+            ) or 1
+        except Exception:
+            active_workers = 1
+            workers = []
+    depth, oldest_age_seconds, pending_work_seconds, predicted_wait_seconds = render_queue_snapshot(
+        render_queues, Job, active_workers=active_workers,
+    )
     publish_queue_snapshot(
         depth,
         oldest_age_seconds,
-        EXPORT_QUEUE_NAME,
+        "render_all",
         WORKER_MIG_NAME,
         pending_work_seconds=pending_work_seconds,
+        metric_prefix="export",
+        predicted_wait_seconds=predicted_wait_seconds,
     )
+    if HEAVY_EXPORT_QUEUE_NAME in _export_queues:
+        spot_workers = 0
+        for worker in workers:
+            try:
+                group = _rq_redis_client.hget(worker.key, "worker_group") or b""
+                if isinstance(group, bytes):
+                    group = group.decode("utf-8", "replace")
+                if group == SPOT_WORKER_MIG_NAME:
+                    spot_workers += 1
+            except Exception:
+                continue
+        heavy_depth, heavy_age, heavy_work, heavy_wait = render_queue_snapshot(
+            [_export_queues[HEAVY_EXPORT_QUEUE_NAME]], Job, active_workers=spot_workers or 1,
+        )
+        publish_queue_snapshot(
+            heavy_depth,
+            heavy_age,
+            "render_heavy",
+            SPOT_WORKER_MIG_NAME,
+            pending_work_seconds=heavy_work,
+            metric_prefix="export",
+            predicted_wait_seconds=heavy_wait,
+        )
+    if GPU_RENDER_ENABLED and GPU_EXPORT_QUEUE_NAME in _export_queues:
+        gpu_workers = 0
+        for worker in workers:
+            try:
+                group = _rq_redis_client.hget(worker.key, "worker_group") or b""
+                if isinstance(group, bytes):
+                    group = group.decode("utf-8", "replace")
+                if group == GPU_WORKER_MIG_NAME:
+                    gpu_workers += 1
+            except Exception:
+                continue
+        gpu_depth, gpu_age, gpu_work, gpu_wait = render_queue_snapshot(
+            [_export_queues[GPU_EXPORT_QUEUE_NAME]], Job, active_workers=gpu_workers or 1,
+        )
+        publish_queue_snapshot(
+            gpu_depth,
+            gpu_age,
+            "render_gpu",
+            GPU_WORKER_MIG_NAME,
+            pending_work_seconds=gpu_work,
+            metric_prefix="export",
+            predicted_wait_seconds=gpu_wait,
+        )
+    if _transcription_queue is not None and TRANSCRIPTION_QUEUE_NAME != EXPORT_QUEUE_NAME:
+        transcription_depth, transcription_oldest = queue_snapshot(
+            _transcription_queue, Job,
+        )
+        if _media_scan_queue is not None and MEDIA_SCAN_QUEUE_NAME != TRANSCRIPTION_QUEUE_NAME:
+            scan_depth, scan_oldest = queue_snapshot(_media_scan_queue, Job)
+            transcription_depth += scan_depth
+            transcription_oldest = max(transcription_oldest, scan_oldest)
+        publish_queue_snapshot(
+            transcription_depth,
+            transcription_oldest,
+            TRANSCRIPTION_QUEUE_NAME,
+            TRANSCRIPTION_MIG_NAME,
+            metric_prefix="transcription",
+        )
 
 
 async def _queue_metrics_loop():
@@ -933,6 +1074,9 @@ async def _queue_metrics_loop():
 async def startup_event():
     global _telemetry_flush_task, _simple_janitor_task, _transcription_dispatch_task, _queue_metrics_task
     _telemetry_flush_task = asyncio.create_task(_telemetry_flush_loop())
+    if not RUN_API_BACKGROUND_TASKS:
+        _json_log("info", "api_background_tasks_disabled")
+        return
     if _IS_PRODUCTION:
         _transcription_dispatch_task = asyncio.create_task(_transcription_dispatch_loop())
     if QUEUE_METRICS_ENABLED:
@@ -1594,70 +1738,7 @@ def _audit_action(action: str, uid: str = "", metadata: Optional[Dict[str, Any]]
 
 
 def _scan_upload_for_threat(file_path: str) -> bool:
-    clamd_host = os.environ.get("CLAMAV_HOST", "").strip()
-    if clamd_host:
-        clamd_port = int(os.environ.get("CLAMAV_PORT", "3310"))
-        try:
-            with socket.create_connection((clamd_host, clamd_port), timeout=10) as client:
-                client.settimeout(60)
-                client.sendall(b"zINSTREAM\0")
-                with open(file_path, "rb") as source:
-                    while chunk := source.read(1024 * 1024):
-                        client.sendall(struct.pack("!I", len(chunk)))
-                        client.sendall(chunk)
-                client.sendall(struct.pack("!I", 0))
-
-                response = bytearray()
-                while len(response) < 4096:
-                    part = client.recv(4096 - len(response))
-                    if not part:
-                        break
-                    response.extend(part)
-                    if b"\0" in part:
-                        break
-            scanner_output = response.rstrip(b"\0").decode("utf-8", errors="replace")
-            if scanner_output.endswith(" OK"):
-                return True
-            if scanner_output.endswith(" FOUND"):
-                _json_log("warning", "malware_detected", scanner_output=scanner_output)
-            else:
-                _json_log("warning", "malware_scan_failed", scanner_output=scanner_output or "empty response")
-            return False
-        except Exception as e:
-            _json_log("warning", "malware_scan_failed", error=str(e))
-            return False
-
-    scan_cmd = os.environ.get("CLAMAV_SCAN_CMD", "").strip()
-    if not scan_cmd:
-        return True
-    try:
-        result = subprocess.run(
-            shlex.split(scan_cmd) + ["--no-summary", file_path],
-            capture_output=True,
-            text=True,
-            timeout=20,
-        )
-        if result.returncode == 0:
-            return True
-
-        # ClamAV uses exit code 1 for a detected threat and 2 for scanner/runtime
-        # failures. Keep both fail-closed, but distinguish them in operational
-        # logs so a scanner outage is not mistaken for a malware detection.
-        scan_output = f"{result.stdout}\n{result.stderr}".strip()[-1000:]
-        if result.returncode == 1:
-            _json_log("warning", "malware_detected", scanner_output=scan_output)
-        else:
-            _json_log(
-                "warning",
-                "malware_scan_failed",
-                returncode=result.returncode,
-                scanner_output=scan_output,
-            )
-        return False
-    except Exception as e:
-        _json_log("warning", "malware_scan_failed", error=str(e))
-        # Fail closed when scanner is configured but unavailable.
-        return False
+    return scan_upload_for_threat(file_path, log=_json_log)
 
 def _is_content_safety_blocked(*values: str) -> bool:
     if not CONTENT_SAFETY_BLOCKLIST:
@@ -2426,7 +2507,8 @@ def _source_duration_hint(file_id: str, uid: str) -> float:
         return 0
 
 
-def _remember_upload_owner(file_id: str, uid: str, remote_path: str = "", extension: str = ""):
+def _remember_upload_owner(file_id: str, uid: str, remote_path: str = "", extension: str = "",
+                           source_metadata: Optional[Dict[str, Any]] = None):
     if not file_id or not uid:
         return False
     _assert_account_not_deleting(uid)
@@ -2438,6 +2520,7 @@ def _remember_upload_owner(file_id: str, uid: str, remote_path: str = "", extens
         "remote_path": remote_path,
         "extension": extension,
         "created_at": _utcnow().isoformat() + "Z",
+        **(source_metadata or {}),
     }
     if _redis_client is not None:
         try:
@@ -2454,6 +2537,44 @@ def _remember_upload_owner(file_id: str, uid: str, remote_path: str = "", extens
         except Exception as e:
             _json_log("warning", "upload_owner_persist_failed", file_id=file_id, uid=uid, error=str(e))
     return persisted
+
+
+def _update_upload_metadata(file_id: str, values: Dict[str, Any]) -> Dict[str, Any]:
+    metadata = {**_load_upload_metadata(file_id), **values}
+    if _redis_client is not None:
+        try:
+            _redis_client.setex(f"upload_meta:{file_id}", 24 * 3600, json.dumps(metadata))
+        except Exception as error:
+            _json_log("warning", "upload_metadata_cache_failed", file_id=file_id,
+                      error_type=type(error).__name__)
+    db = get_db()
+    if db:
+        db.collection("uploads").document(file_id).set(values, merge=True)
+    return metadata
+
+
+def _mark_upload_security_state(file_id: str, uid: str, state: str,
+                                *, scanned_at: str = "") -> Dict[str, Any]:
+    values: Dict[str, Any] = {"upload_state": state}
+    if scanned_at:
+        values["security_scanned_at"] = scanned_at
+    metadata = _update_upload_metadata(file_id, values)
+    remote_path = str(metadata.get("remote_path") or "")
+    if remote_path:
+        set_source_upload_state(uid, file_id, remote_path, state)
+    return metadata
+
+
+def _assert_upload_clean(file_id: str) -> Dict[str, Any]:
+    return _upload_security_service().assert_clean(file_id)
+
+
+def _ensure_upload_clean(file_id: str, uid: str, input_path: str) -> Dict[str, Any]:
+    return _upload_security_service().ensure_clean(file_id, uid, input_path)
+
+
+def _source_media_identity(file_id: str, input_path: str) -> str:
+    return _upload_security_service().source_identity(file_id, input_path)
 
 
 def _assert_upload_owner(file_id: str, uid: str):
@@ -2567,6 +2688,18 @@ def _compute_media_hash(file_path: str) -> str:
                 break
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _upload_security_service() -> UploadSecurityService:
+    return UploadSecurityService(
+        load_metadata=_load_upload_metadata,
+        mark_state=_mark_upload_security_state,
+        scan=_scan_upload_for_threat,
+        delete_remote=delete_from_firebase_storage,
+        utc_timestamp=lambda: _utcnow().isoformat() + "Z",
+        compute_hash=_compute_media_hash,
+        update_metadata=_update_upload_metadata,
+    )
 
 
 def _build_process_cache_path(media_hash: str, language: str, min_words: int, max_words: int) -> str:
@@ -3459,12 +3592,20 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
     if not _validate_file_id(req.file_id):
         raise HTTPException(status_code=400, detail="Invalid file_id")
     _assert_upload_owner(req.file_id, uid)
+    _assert_upload_clean(req.file_id)
     input_path = _safe_find_upload(req.file_id)
     if not input_path:
         raise HTTPException(status_code=404, detail="Video not found")
 
     source_meta = _probe_media(input_path)
     source_duration = float((source_meta.get("format") or {}).get("duration") or 0)
+    source_video_stream = next(
+        (stream for stream in (source_meta.get("streams") or [])
+         if stream.get("codec_type") == "video"),
+        {},
+    )
+    source_width = int(source_video_stream.get("width") or 0)
+    source_height = int(source_video_stream.get("height") or 0)
     captions = _strip_client_render_hints(_normalize_export_captions_for_media(
         [c.model_dump(by_alias=True) for c in req.captions],
         source_duration,
@@ -3472,16 +3613,17 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
     server_style = req.validated_style()
     server_word_layouts: Dict[str, Any] = {}
     # Reuse rendered artifact for identical request payload.
-    media_hash = _compute_media_hash(input_path)
-    request_hash = hashlib.sha256(json.dumps({
-        "renderer_version": EXPORT_RENDERER_VERSION,
-        "media_hash": media_hash,
-        "captions": captions,
-        "style": server_style,
-        "quality": preset["quality"],
-        "fps": preset["fps"],
-        "export_aspect_ratio": req.export_aspect_ratio,
-    }, sort_keys=True).encode("utf-8")).hexdigest()
+    media_hash = _source_media_identity(req.file_id, input_path)
+    request_hash = render_cache_identity(
+        uid=uid,
+        renderer_version=EXPORT_RENDERER_VERSION,
+        media_hash=media_hash,
+        captions=captions,
+        style=server_style,
+        quality=preset["quality"],
+        fps=preset["fps"],
+        export_aspect_ratio=req.export_aspect_ratio,
+    )
     cached_render_path = os.path.join(RENDER_CACHE_DIR, f"{request_hash}.mp4")
     template_export_active = bool(
         server_style.get("template_id")
@@ -3491,6 +3633,10 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
             for caption in captions
             if caption and not caption.get("is_text_element")
         )
+    )
+    cache_eligible = render_cache_eligible(
+        template_export_active=template_export_active,
+        template_cache_enabled=os.environ.get("ENABLE_TEMPLATE_RENDER_CACHE", "1") == "1",
     )
 
     output_filename = f"export_{req.file_id}_{request_hash[:12]}.mp4"
@@ -3512,7 +3658,11 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
         word_layouts=server_word_layouts,
     )
 
-    if os.path.exists(cached_render_path) and not template_export_active:
+    if cache_eligible and not os.path.exists(cached_render_path):
+        await asyncio.to_thread(
+            download_render_cache, uid, request_hash, cached_render_path,
+        )
+    if os.path.exists(cached_render_path) and cache_eligible:
         shutil.copy2(cached_render_path, output_path)
         render_finished_at = time.time()
         render_ms = int((render_finished_at - render_started_at) * 1000)
@@ -3530,19 +3680,18 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
             raise HTTPException(status_code=500, detail="Video render failed")
         render_finished_at = time.time()
         render_ms = int((render_finished_at - render_started_at) * 1000)
-        if not template_export_active:
-            try:
-                shutil.copy2(output_path, cached_render_path)
-            except Exception:
-                pass
 
     try:
         rendered_meta = _probe_media(output_path)
         rendered_duration = float((rendered_meta.get("format") or {}).get("duration") or 0)
-        rendered_has_video = any(
-            stream.get("codec_type") == "video"
-            for stream in (rendered_meta.get("streams") or [])
+        rendered_video_stream = next(
+            (stream for stream in (rendered_meta.get("streams") or [])
+             if stream.get("codec_type") == "video"),
+            {},
         )
+        rendered_has_video = bool(rendered_video_stream)
+        rendered_width = int(rendered_video_stream.get("width") or 0)
+        rendered_height = int(rendered_video_stream.get("height") or 0)
         if not os.path.isfile(output_path) or os.path.getsize(output_path) <= 0 or not rendered_has_video or rendered_duration <= 0:
             raise ValueError("rendered output is empty or has no valid video stream")
     except Exception as e:
@@ -3552,8 +3701,22 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
                     os.remove(invalid_path)
                 except OSError:
                     pass
+        if cache_hit:
+            await asyncio.to_thread(delete_render_cache, uid, request_hash)
         _json_log("error", "render_output_validation_failed", uid=uid, job_id=export_job_id, error=str(e))
         raise HTTPException(status_code=500, detail="Rendered video failed validation") from e
+
+    if not cache_hit and cache_eligible:
+        try:
+            shutil.copy2(output_path, cached_render_path)
+            await asyncio.to_thread(
+                upload_render_cache, uid, request_hash, cached_render_path, 24,
+            )
+        except Exception as error:
+            _json_log(
+                "warning", "render_cache_persist_failed", job_id=export_job_id,
+                error_type=type(error).__name__,
+            )
 
     _set_export_job(export_job_id, "finalizing")
     # Serve local exports through signed same-origin media URLs so the browser can
@@ -3636,8 +3799,11 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
         rendered_duration_seconds=round(rendered_duration, 3),
         output_size_bytes=output_size_bytes, cache_hit=cache_hit,
         estimated_render_seconds=recorded_job.get("estimated_render_seconds"),
+        renderer="dom" if template_export_active else "ass",
         template_export=template_export_active, quality=preset["quality"],
-        fps=preset["fps"],
+        fps=preset["fps"], export_aspect_ratio=req.export_aspect_ratio or "source",
+        source_width=source_width, source_height=source_height,
+        output_width=rendered_width, output_height=rendered_height,
     )
     _track_event("export_success", {"quality": preset["quality"], "fps": preset["fps"], "tier": preset["tier"]})
     _track_operational_metric_sample("export_total_ms", total_ms)
@@ -3815,6 +3981,25 @@ def _release_direct_upload_slot(uid: str, file_id: str, *, undo_hourly: bool = F
         _json_log("warning", "direct_upload_slot_release_failed", error=str(exc))
 
 
+def _schedule_media_scan(uid: str, file_id: str):
+    """Persist scan intent before best-effort immediate queue delivery."""
+    jobs = MediaScanJobs(get_db())
+    if not jobs.create(uid, file_id):
+        return
+    try:
+        jobs.dispatch(
+            _media_scan_queue,
+            retry=RQRetry(max=3, interval=[30, 120, 300]) if RQRetry else None,
+        )
+    except Exception as error:
+        _json_log(
+            "warning",
+            "media_scan_immediate_dispatch_failed",
+            file_id=file_id,
+            error_type=type(error).__name__,
+        )
+
+
 app.include_router(create_direct_upload_router(
     authenticate=_authenticate_media_request,
     extract_token=_extract_bearer_token,
@@ -3831,8 +4016,10 @@ app.include_router(create_direct_upload_router(
     reserve_slot=_reserve_direct_upload_slot,
     release_slot=_release_direct_upload_slot,
     cancel_session=cancel_resumable_source_upload,
+    resume_session=resume_resumable_source_upload,
     assert_account_active=_assert_account_not_deleting,
     rate_limit_network=_limit_direct_upload_network,
+    enqueue_scan=_schedule_media_scan,
 ))
 
 
@@ -3855,6 +4042,13 @@ async def upload_video(file: UploadFile = File(...), request: Request = None, re
         token = _extract_bearer_token(request) if request else ""
         decoded_token = _authenticate_media_request(token)
         uid = (decoded_token.get("uid") or "").strip() or "unknown-user"
+
+        if _IS_PRODUCTION and os.environ.get("GCS_MEDIA_BUCKET", "").strip():
+            raise HTTPException(
+                status_code=409,
+                detail="Production uploads must use the direct resumable storage flow.",
+                headers={"X-Lekha-Upload-Transport": "direct-resumable"},
+            )
 
         safe_name = os.path.basename(file.filename or "")
         file_ext = pathlib.Path(safe_name).suffix.lstrip(".").lower()
@@ -3993,6 +4187,7 @@ async def upload_video(file: UploadFile = File(...), request: Request = None, re
         try:
             metadata = await asyncio.to_thread(_probe_media, file_path)
             duration = float((metadata.get("format") or {}).get("duration") or 0)
+            content_sha256 = await asyncio.to_thread(_compute_media_hash, file_path)
         except Exception as probe_error:
             try:
                 os.remove(file_path)
@@ -4023,9 +4218,25 @@ async def upload_video(file: UploadFile = File(...), request: Request = None, re
             raise HTTPException(status_code=503, detail="Durable media storage is unavailable. Please retry.")
 
         stage = "owner_persistence"
-        owner_persisted = _remember_upload_owner(file_id, uid, remote_path or "", file_ext)
+        scanned_at = _utcnow().isoformat() + "Z"
+        owner_persisted = _remember_upload_owner(
+            file_id,
+            uid,
+            remote_path or "",
+            file_ext,
+            source_metadata={
+                "upload_state": "clean",
+                "security_scanned_at": scanned_at,
+                "content_sha256": content_sha256,
+                "size_bytes": bytes_written,
+            },
+        )
         if _IS_PRODUCTION and not owner_persisted:
             raise HTTPException(status_code=503, detail="Upload ownership could not be persisted. Please retry.")
+        if remote_path:
+            await asyncio.to_thread(
+                set_source_upload_state, uid, file_id, remote_path, "clean",
+            )
         _upload_idem_set(uid, upload_reference, {
             "file_id": file_id,
             "fingerprint": upload_fingerprint,
@@ -4113,8 +4324,18 @@ async def process_video(req: ProcessRequest, request: Request, response: Respons
         return {**job["payload"], "idempotent_replay": True}
     if job["status"] in {"failed", "unknown", "cancelled"}:
         raise HTTPException(409, f"{job.get('error') or 'Transcription is no longer active.'} Reference: {job['job_id']}")
-    # Durable admission is enough to acknowledge. The independently running
-    # outbox dispatcher resumes after API restart or an enqueue failure.
+    # Dispatch immediately on the request path. The durable outbox remains the
+    # recovery mechanism for a Redis outage or a crash between commit/enqueue;
+    # it is no longer the primary delivery path.
+    try:
+        await asyncio.to_thread(jobs.dispatch, _transcription_queue)
+    except Exception as error:
+        _json_log(
+            "warning",
+            "transcription_immediate_dispatch_failed",
+            job_id=job["job_id"],
+            error_type=type(error).__name__,
+        )
     response.status_code = 202
     response.headers["Retry-After"] = "3"
     return {"success": True, "pending": True, "job_id": job["job_id"], "status": job["status"]}
@@ -4124,9 +4345,39 @@ async def _transcription_dispatch_loop():
     while True:
         try:
             await asyncio.to_thread(TranscriptionJobs(get_db()).dispatch, _transcription_queue)
+            await asyncio.to_thread(_dispatch_media_scans_once)
         except Exception as error:
             _json_log("warning", "transcription_dispatch_failed", error_type=type(error).__name__)
         await asyncio.sleep(10)
+
+
+def _dispatch_media_scans_once():
+    return MediaScanJobs(get_db()).dispatch(
+        _media_scan_queue,
+        retry=RQRetry(max=3, interval=[30, 120, 300]) if RQRetry else None,
+    )
+
+
+def _require_scheduler_secret(request: Request):
+    require_scheduler_authorization(
+        request,
+        shared_secret=PAYMENT_RECONCILE_SECRET,
+        service_account_email=SCHEDULER_SERVICE_ACCOUNT_EMAIL,
+        oidc_audience=SCHEDULER_OIDC_AUDIENCE,
+        rejected_callback=lambda error: _json_log(
+            "warning", "scheduler_oidc_rejected", error_type=type(error).__name__,
+        ),
+    )
+
+
+app.include_router(create_maintenance_router(
+    authorize=_require_scheduler_secret,
+    dispatch_transcription=lambda: TranscriptionJobs(get_db()).dispatch(_transcription_queue),
+    dispatch_media_scans=_dispatch_media_scans_once,
+    run_janitor=scheduled_janitor_job,
+    publish_queue_metrics=_publish_queue_metrics_once,
+    reconcile_payments=scheduled_payment_reconciliation_job,
+))
 
 
 def run_transcription_job_task(uid: str, job_id: str):
@@ -4161,6 +4412,31 @@ def run_transcription_job_task(uid: str, job_id: str):
         raise
 
 
+def run_media_scan_job_task(uid: str, file_id: str):
+    """Materialize and scan one upload; duplicate deliveries are harmless."""
+    _assert_account_not_deleting(uid)
+    _assert_upload_owner(file_id, uid)
+    metadata = _load_upload_metadata(file_id)
+    if str(metadata.get("upload_state") or "").lower() in {"clean", "rejected"}:
+        MediaScanJobs(get_db()).finish(file_id)
+        return {"status": str(metadata.get("upload_state"))}
+    input_path = _safe_find_upload(file_id)
+    if not input_path:
+        raise RuntimeError("Uploaded media could not be materialized for scanning")
+    try:
+        result = _ensure_upload_clean(file_id, uid, input_path)
+        MediaScanJobs(get_db()).finish(file_id)
+        return {"status": str(result.get("upload_state") or "clean")}
+    except HTTPException:
+        # A malware rejection is terminal and already persisted by
+        # _ensure_upload_clean. Scanner/runtime failures stay in the outbox.
+        current = _load_upload_metadata(file_id)
+        if str(current.get("upload_state") or "").lower() == "rejected":
+            MediaScanJobs(get_db()).finish(file_id)
+            return {"status": "rejected"}
+        raise
+
+
 async def _process_video_inline(req: ProcessRequest, request: Request, response: Response, *, trusted_uid=None):
     rid = _request_id(request)
     _assert_service_available("pause_transcription")
@@ -4189,21 +4465,7 @@ async def _process_video_inline(req: ProcessRequest, request: Request, response:
     if not input_path:
         _track_event("process_failed_not_found")
         raise HTTPException(status_code=404, detail="File not found")
-    upload_metadata = _load_upload_metadata(req.file_id)
-    if not upload_metadata.get("security_scanned_at"):
-        if not await asyncio.to_thread(_scan_upload_for_threat, input_path):
-            remote_path = str(upload_metadata.get("remote_path") or "")
-            if remote_path:
-                await asyncio.to_thread(delete_from_firebase_storage, remote_path)
-            raise HTTPException(status_code=422, detail="Upload failed security scan.")
-        scanned_at = _utcnow().isoformat() + "Z"
-        db = get_db()
-        if db:
-            await asyncio.to_thread(
-                db.collection("uploads").document(req.file_id).set,
-                {"security_scanned_at": scanned_at},
-                merge=True,
-            )
+    await asyncio.to_thread(_ensure_upload_clean, req.file_id, uid, input_path)
 
     # Enforce the per-plan maximum source length. /api/upload only applies a
     # global 180s ceiling; paid plans advertise tighter caps (starter=120s) that
@@ -4376,10 +4638,21 @@ async def _process_video_inline(req: ProcessRequest, request: Request, response:
     finally:
         _release_process_slot(uid, process_request_id)
 
-def _enqueue_export_job(**job):
+def _render_queue_for(queue_name):
+    queue = _export_queues.get(queue_name)
+    if queue is None and not _IS_PRODUCTION:
+        return _export_queue
+    if queue is None:
+        raise HTTPException(503, "The selected render queue is unavailable.", headers={"Retry-After": "10"})
+    return queue
+
+
+def _enqueue_export_job(render_queue, **job):
     if _IS_PRODUCTION:
-        return enqueue_bounded(_export_queue, EXPORT_MAX_PENDING_JOBS, **job)
-    return _export_queue.enqueue_call(**job)
+        return enqueue_bounded_across_queues(
+            render_queue, list(_export_queues.values()), EXPORT_MAX_PENDING_JOBS, **job,
+        )
+    return render_queue.enqueue_call(**job)
 
 
 @app.post("/api/export")
@@ -4454,9 +4727,7 @@ async def export_video(req: ExportRequest, request: Request, response: Response)
     release_export_slot_in_request = True
     try:
         duration_hint = await asyncio.to_thread(_source_duration_hint, req.file_id, uid)
-        estimated_render_seconds = estimate_render_work_seconds(
-            duration_hint, safe_request_snapshot,
-        )
+        capacity = estimate_render_capacity(duration_hint, safe_request_snapshot)
         _set_export_job(
             export_job_id,
             "queued",
@@ -4467,7 +4738,10 @@ async def export_video(req: ExportRequest, request: Request, response: Response)
             queue_entered_at=time.time(),
             idempotency_key=idem_key,
             idempotency_request_hash=idempotency_request_hash,
-            estimated_render_seconds=estimated_render_seconds,
+            estimated_render_seconds=capacity["estimated_render_seconds"],
+            render_work_units=capacity["render_work_units"],
+            render_class=capacity["render_class"],
+            queue_name=capacity["queue_name"],
             request_snapshot=safe_request_snapshot,
         )
         if _export_queue is not None:
@@ -4489,6 +4763,7 @@ async def export_video(req: ExportRequest, request: Request, response: Response)
                     "job_id": export_job_id,
                 })
             _enqueue_export_job(
+                _render_queue_for(capacity["queue_name"]),
                 func=run_export_job_task,
                 args=(
                     export_job_id,
@@ -4498,8 +4773,12 @@ async def export_video(req: ExportRequest, request: Request, response: Response)
                     idempotency_request_hash,
                 ),
                 job_id=export_job_id,
-                meta={"estimated_render_seconds": estimated_render_seconds,
-                      "render_class": render_class(safe_request_snapshot)},
+                meta={
+                    "estimated_render_seconds": capacity["estimated_render_seconds"],
+                    "render_work_units": capacity["render_work_units"],
+                    "render_class": capacity["render_class"],
+                    "renderer": capacity["renderer"],
+                },
                 retry=RQRetry(max=3, interval=[10, 30, 60]) if RQRetry else None,
                 ttl=EXPORT_MAX_QUEUE_WAIT_SECONDS,
                 result_ttl=24 * 3600,
@@ -4727,6 +5006,8 @@ def export_replay(job_id: str, request: Request):
             detail="Another export is already running for this account. Please wait.",
         )
     try:
+        duration_hint = _source_duration_hint(str(request_snapshot.get("file_id") or ""), uid)
+        capacity = estimate_render_capacity(duration_hint, request_snapshot)
         _set_export_job(
             new_job_id,
             "queued",
@@ -4735,11 +5016,22 @@ def export_replay(job_id: str, request: Request):
             started_at=time.time(),
             request_snapshot=request_snapshot,
             replayed_from=job_id,
+            estimated_render_seconds=capacity["estimated_render_seconds"],
+            render_work_units=capacity["render_work_units"],
+            render_class=capacity["render_class"],
+            queue_name=capacity["queue_name"],
         )
         _enqueue_export_job(
+            _render_queue_for(capacity["queue_name"]),
             func=run_export_job_task,
             args=(new_job_id, request_snapshot, uid),
             job_id=new_job_id,
+            meta={
+                "estimated_render_seconds": capacity["estimated_render_seconds"],
+                "render_work_units": capacity["render_work_units"],
+                "render_class": capacity["render_class"],
+                "renderer": capacity["renderer"],
+            },
             retry=RQRetry(max=3, interval=[10, 30, 60]) if RQRetry else None,
             result_ttl=24 * 3600,
             failure_ttl=7 * 24 * 3600,
@@ -4789,6 +5081,23 @@ async def analytics_summary(request: Request):
         round(sum(cost_samples) / len(cost_samples), 6)
         if cost_samples else 0.0
     )
+    funnel = {
+        "signups": counters.get("account_signup", 0),
+        "uploads": max(counters.get("upload_success", 0), counters.get("funnel.upload.success", 0)),
+        "transcriptions": max(process_success, counters.get("funnel.process.success", 0)),
+        "exports_started": counters.get("funnel.export.started", 0),
+        "exports_completed": max(export_success, counters.get("funnel.export.success", 0)),
+        "payments": counters.get("payment_success", 0),
+    }
+    funnel["upload_to_transcription_pct"] = round(
+        funnel["transcriptions"] / max(funnel["uploads"], 1) * 100, 2,
+    )
+    funnel["transcription_to_export_pct"] = round(
+        funnel["exports_completed"] / max(funnel["transcriptions"], 1) * 100, 2,
+    )
+    funnel["export_to_payment_pct"] = round(
+        funnel["payments"] / max(funnel["exports_completed"], 1) * 100, 2,
+    )
 
     return {
         "window": {
@@ -4815,6 +5124,7 @@ async def analytics_summary(request: Request):
             "export_failure_rate": (export_failed / max(export_success + export_failed, 1)),
             "process_failure_rate": (process_failed / max(process_success + process_failed, 1)),
         },
+        "funnel": funnel,
         "timestamp": _utcnow().isoformat() + "Z",
     }
 
@@ -4942,8 +5252,6 @@ def _runtime_dependency_snapshot() -> Dict[str, Any]:
         "redis": _redis_client is not None,
         "firestore": False,
         "storage": False,
-        "export_worker": not DURABLE_QUEUE_ENABLED,
-        "transcription_worker": not DURABLE_QUEUE_ENABLED,
         "scratch_disk": False,
     }
     details: Dict[str, Any] = {}
@@ -4966,7 +5274,11 @@ def _runtime_dependency_snapshot() -> Dict[str, Any]:
     if DURABLE_QUEUE_ENABLED and checks["redis"] and RQWorker is not None:
         try:
             workers = RQWorker.all(connection=_redis_client)
-            worker_counts = {EXPORT_QUEUE_NAME: 0, TRANSCRIPTION_QUEUE_NAME: 0}
+            render_queue_names = list(_export_queues) or [EXPORT_QUEUE_NAME]
+            worker_counts = {
+                queue_name: 0
+                for queue_name in (*render_queue_names, TRANSCRIPTION_QUEUE_NAME, MEDIA_SCAN_QUEUE_NAME)
+            }
             for worker in workers:
                 queue_names = getattr(worker, "queue_names", [])
                 if callable(queue_names):
@@ -4979,10 +5291,39 @@ def _runtime_dependency_snapshot() -> Dict[str, Any]:
                     for queue_name in set(queue_names or []):
                         if queue_name in worker_counts:
                             worker_counts[queue_name] += 1
-            details["worker_count"] = worker_counts[EXPORT_QUEUE_NAME]
+            details["worker_count"] = max(
+                (worker_counts[queue_name] for queue_name in render_queue_names),
+                default=0,
+            )
             details["workers_by_queue"] = worker_counts
-            checks["export_worker"] = worker_counts[EXPORT_QUEUE_NAME] > 0
-            checks["transcription_worker"] = worker_counts[TRANSCRIPTION_QUEUE_NAME] > 0
+            render_queue_depths = {}
+            for queue_name in render_queue_names:
+                queue = _export_queues.get(queue_name)
+                if queue is None and queue_name == EXPORT_QUEUE_NAME:
+                    queue = _export_queue
+                render_queue_depths[queue_name] = int(queue.count) if queue is not None else 0
+            queue_depths = {
+                **render_queue_depths,
+                TRANSCRIPTION_QUEUE_NAME: (
+                    int(_transcription_queue.count)
+                    if _transcription_queue is not None else 0
+                ),
+                MEDIA_SCAN_QUEUE_NAME: (
+                    int(_media_scan_queue.count)
+                    if _media_scan_queue is not None else 0
+                ),
+            }
+            details["queue_depths"] = queue_depths
+            details["capacity_state"] = {
+                queue_name: (
+                    "idle_scaled_to_zero"
+                    if queue_depths[queue_name] == 0 and worker_counts[queue_name] == 0
+                    else "available"
+                    if worker_counts[queue_name] > 0
+                    else "awaiting_autoscaler"
+                )
+                for queue_name in worker_counts
+            }
         except Exception as e:
             details["worker_error"] = str(e)[:200]
     try:
@@ -5027,7 +5368,7 @@ async def readiness(request: Request):
         body["slo"] = _build_slo_snapshot()
         body["queue"] = {
             "durable_enabled": DURABLE_QUEUE_ENABLED,
-            "queue_name": EXPORT_QUEUE_NAME,
+            "queue_names": list(_export_queues) or [EXPORT_QUEUE_NAME],
             "connected": _export_queue is not None,
         }
         body["dependencies"] = dependencies
@@ -6648,6 +6989,7 @@ def detect_language(req: DetectLanguageRequest, request: Request, response: Resp
     if not input_path:
         _track_event("detect_language_failed_not_found")
         raise HTTPException(status_code=404, detail="File not found")
+    _ensure_upload_clean(req.file_id, uid, input_path)
     breaker = _provider_breakers["openai_detect_language"]
     if not breaker.allow():
         _track_event("detect_language_circuit_open")

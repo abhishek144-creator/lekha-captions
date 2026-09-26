@@ -9,10 +9,18 @@ export default [
     ignores: [
       "dist/**",
       ".pytest_cache/**",
+      ".codex_test_tmp/**",
+      ".render_tmp/**",
+      ".codex-logs/**",
+      ".netlify/**",
       "landing-next/**",
       "node_modules/**",
       "backend/**",
       "attached_assets/**",
+      "playwright-report/**",
+      "test-artifacts/**",
+      "test-results/**",
+      "tmp/**",
     ],
   },
   {

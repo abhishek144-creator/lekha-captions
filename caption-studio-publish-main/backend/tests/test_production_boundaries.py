@@ -24,7 +24,7 @@ from request_limits import UploadBodyLimitMiddleware
 import worker
 import firebase_admin_setup
 from rq import Queue
-from queue_admission import enqueue_bounded
+from queue_admission import enqueue_bounded, enqueue_bounded_across_queues
 
 
 class ProductionBoundaryTests(unittest.TestCase):
@@ -59,6 +59,26 @@ class ProductionBoundaryTests(unittest.TestCase):
         self.assertEqual(error.exception.detail, "Export capacity is temporarily full. Retry after 5 mins.")
         self.assertEqual(error.exception.headers["Retry-After"], "300")
 
+    def test_render_classes_share_one_atomic_backlog_limit(self):
+        fast = Queue("fast", connection=self.redis)
+        normal = Queue("normal", connection=self.redis)
+        heavy = Queue("heavy", connection=self.redis)
+        queues = [fast, normal, heavy]
+        enqueue_bounded_across_queues(
+            fast, queues, 2, func="operator.add", args=(1, 2), job_id="fast-job",
+        )
+        enqueue_bounded_across_queues(
+            heavy, queues, 2, func="operator.add", args=(1, 2), job_id="heavy-job",
+        )
+
+        with self.assertRaises(main.HTTPException) as error:
+            enqueue_bounded_across_queues(
+                normal, queues, 2, func="operator.add", args=(1, 2), job_id="normal-job",
+            )
+
+        self.assertEqual(error.exception.status_code, 429)
+        self.assertEqual(sum(queue.count for queue in queues), 2)
+
     def test_preparation_timeout_cannot_fail_a_job_that_has_started(self):
         transition(self.redis, "race", {}, {"status": "queued"})
         stale = {"status": "queued"}
@@ -73,11 +93,16 @@ class ProductionBoundaryTests(unittest.TestCase):
             self.assertEqual(worker.worker_queue_names(), ["transcription"])
         with patch.dict(os.environ, {}, clear=True):
             with (patch.object(worker, "EXPORT_QUEUE_NAME", "legacy"),
-                  patch.object(worker, "TRANSCRIPTION_QUEUE_NAME", "legacy")):
+                  patch.object(worker, "TRANSCRIPTION_QUEUE_NAME", "legacy"),
+                  patch.object(worker, "MEDIA_SCAN_QUEUE_NAME", "legacy")):
                 self.assertEqual(worker.worker_queue_names(), ["legacy"])
             with (patch.object(worker, "EXPORT_QUEUE_NAME", "exports"),
-                  patch.object(worker, "TRANSCRIPTION_QUEUE_NAME", "transcription")):
-                self.assertEqual(worker.worker_queue_names(), ["exports", "transcription"])
+                  patch.object(worker, "TRANSCRIPTION_QUEUE_NAME", "transcription"),
+                  patch.object(worker, "MEDIA_SCAN_QUEUE_NAME", "media-scans")):
+                self.assertEqual(
+                    worker.worker_queue_names(),
+                    ["exports", "media-scans", "transcription"],
+                )
 
     def test_production_missing_queue_never_renders_in_api(self):
         request = main.ExportRequest(file_id="123e4567-e89b-12d3-a456-426614174000",
@@ -123,6 +148,30 @@ class ProductionBoundaryTests(unittest.TestCase):
             self.assertFalse(firebase_admin_setup.storage_backend_ready())
             firebase.return_value.exists.assert_called_once_with(timeout=5)
 
+    def test_processing_state_rejects_pending_or_rejected_media_for_export(self):
+        with patch.object(main, "_load_upload_metadata", return_value={"upload_state": "pending_scan"}):
+            with self.assertRaises(main.HTTPException) as pending:
+                main._assert_upload_clean("file")
+        self.assertEqual(pending.exception.status_code, 409)
+        self.assertEqual(pending.exception.headers["Retry-After"], "3")
+        with patch.object(main, "_load_upload_metadata", return_value={"upload_state": "rejected"}):
+            with self.assertRaises(main.HTTPException) as rejected:
+                main._assert_upload_clean("file")
+        self.assertEqual(rejected.exception.status_code, 422)
+        with patch.object(main, "_load_upload_metadata", return_value={"upload_state": "clean"}):
+            self.assertEqual(main._assert_upload_clean("file")["upload_state"], "clean")
+
+    def test_export_reuses_upload_identity_without_rehashing_source(self):
+        with (
+            patch.object(main, "_load_upload_metadata", return_value={
+                "storage_generation": "42", "storage_crc32c": "checksum",
+            }),
+            patch.object(main, "_compute_media_hash") as compute_hash,
+        ):
+            identity = main._source_media_identity("file", "source.mp4")
+        self.assertEqual(identity, "storage:42:checksum")
+        compute_hash.assert_not_called()
+
     def test_api_readiness_does_not_require_node_with_durable_workers(self):
         class Redis:
             @staticmethod
@@ -160,6 +209,35 @@ class ProductionBoundaryTests(unittest.TestCase):
 
         self.assertTrue(snapshot["checks"]["node"])
         self.assertTrue(snapshot["ready"])
+        self.assertNotIn("export_worker", snapshot["checks"])
+        self.assertNotIn("transcription_worker", snapshot["checks"])
+        main._dependency_snapshot_cache.update({"checked_at": 0.0, "value": None})
+
+    def test_api_readiness_accepts_healthy_scale_to_zero_worker_state(self):
+        database = SimpleNamespace(
+            collection=lambda _name: SimpleNamespace(
+                limit=lambda _limit: SimpleNamespace(stream=lambda: iter([]))
+            )
+        )
+        redis_client = SimpleNamespace(ping=lambda: True)
+        empty_queue = SimpleNamespace(count=0)
+        main._dependency_snapshot_cache.update({"checked_at": 0.0, "value": None})
+        with (
+            patch.object(main, "DURABLE_QUEUE_ENABLED", True),
+            patch.object(main, "_redis_client", redis_client),
+            patch.object(main, "_export_queue", empty_queue),
+            patch.object(main, "_transcription_queue", empty_queue),
+            patch.object(main, "get_db", return_value=database),
+            patch.object(main, "storage_backend_ready", return_value=True),
+            patch.object(main, "RQWorker", SimpleNamespace(all=lambda connection: [])),
+            patch.object(main.shutil, "disk_usage", return_value=SimpleNamespace(free=3 * 1024 ** 3)),
+        ):
+            snapshot = main._runtime_dependency_snapshot()
+        self.assertTrue(snapshot["ready"])
+        self.assertTrue(all(
+            state == "idle_scaled_to_zero"
+            for state in snapshot["details"]["capacity_state"].values()
+        ))
         main._dependency_snapshot_cache.update({"checked_at": 0.0, "value": None})
 
     def test_queued_export_cannot_start_after_account_deletion_request(self):

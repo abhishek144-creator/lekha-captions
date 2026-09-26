@@ -20,16 +20,15 @@ This is the **Work Diary** for the Lekha Captions project.
 - [ ] **Timeline fix** — Speech track background is showing gold stripe. Only the individual caption *blocks* should be gold, not the entire track row background. Fix in `src/components/dashboard/CaptionTimeline.jsx`
 - [ ] **Gradient gold buttons** — Replace flat `bg-[#F5A623]` buttons with gradient: `bg-gradient-to-r from-[#FFE566] to-[#F5A623] hover:from-[#F5A623] hover:to-[#D4891A]` across all CTA buttons (14 files)
 - [ ] **Text gradient** — Apply `bg-gradient-to-r from-[#F5A623] to-[#FFD700] bg-clip-text text-transparent` to key headings, logo, and accent text
-- [ ] **Razorpay demo fallback** — `PricingModal.jsx` `handlePayment`: hardcoded `rzp_test_*` key removed (security fix). Now `RAZORPAY_KEY_ID = ''` in local dev unless `VITE_RAZORPAY_KEY_ID` is set. Need to implement graceful fallback: use key from backend `create-order` response (`orderData.key_id`) and only throw if that is also empty. Currently checkout never opens on local dev without env var.
+- [x] **Razorpay key handoff** — Verified 2026-09-26: checkout uses the server-authoritative `create-order` response `key_id` and only falls back to the optional frontend key.
 - [ ] **Landing footer bottom** — Bottom section / CTA strip color → gold (`src/components/landing/Footer.jsx`)
-- [ ] **UserAccount.jsx** — Update `PLAN_LIMITS` constant to new 3-plan structure (starter/creator/pro + yearly variants). Replace all purple/blue gradients with gold. Fix `planKey` lookup.
-- [ ] **SidebarNav.jsx** — Update `getPlanDetails()` to map new `starter / creator / pro` tiers with gold color. Remove old purple gradient usage.
+- [x] **Account plan mapping** — Verified 2026-09-26: Starter, Creator, Pro, and yearly variants are mapped in the account page and sidebar.
 - [x] **Effects / Emphasis button** — Verified 2026-07-21: works in `StyleControls.jsx` (collapsible `Effects−/+` block present; selecting Neon applies a live multi-layer `text-shadow` glow to caption words in preview). Not re-checked in `WordClickPopup.jsx`.
 - [ ] **Styling tab width** — Increase styling panel width to match caption tab width
-- [ ] **Set remaining env vars before deploy** — `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` (backend `.env` stubs already exist); `VITE_RAZORPAY_KEY_ID` (frontend `.env`); `ALLOWED_ORIGINS` (comma-separated prod domains). `DEV_MODE=false` is already set. **`CREDITS_HMAC_SECRET` is now blank — generate a new secret before deploying** (`python -c "import secrets; print(secrets.token_hex(32))"`). App will fail silently on payments/CORS without these.
+- [ ] **Verify the next pinned runtime secret** — Confirm the selected numeric Secret Manager version contains live Razorpay, Firebase, provider, CORS, signing, and monitoring values before rollout. Never record those values in this file.
 - [x] **Verify template export fidelity** — Verified 2026-07-21: `npm run test:templates:all` (motion + visual + export parity across all-left, LC, all-right-phases, all-basic, all-basic-scaled scopes — ~130 templates) passed with 0 failures.
 - [ ] **Verify Text tab export** — Confirm text boxes added via Text tab (custom color, animation, position) appear correctly in exported video
-- [ ] **Verify FPS in export** — Test 24/30/60 fps selector in Export tab produces correct output video frame rates
+- [x] **FPS validation** — Verified in code/tests: the API accepts plan-authorized 24/30/60 FPS values and the renderer defaults invalid or missing values to 30 FPS. Representative production media remains part of release acceptance.
 - [ ] **Verify zoom/transition animations** — Test zoom_in, zoom_out, fade_in, slide_up/down/left/right in Animate tab → Basic category work correctly in preview
 
 ## 2026-09-17 — Production queue, media, and infrastructure hardening

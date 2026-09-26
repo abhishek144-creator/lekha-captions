@@ -1,4 +1,4 @@
-import React, { Suspense, useState, useEffect, useRef, useCallback } from 'react';
+import React, { Suspense, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Upload, Sparkles, Captions, Clock3, Layers, Layout, SlidersHorizontal, Type, Check, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -140,6 +140,58 @@ const sanitizeRestoredCaption = (caption) => {
   return next;
 };
 
+const getLanguageDisplayName = (value) => {
+  const language = String(value || '').trim();
+  if (!language) return 'Original';
+  const languageCode = language.toLowerCase().split(/[-_]/)[0];
+  if (/^[a-z]{2,3}$/.test(languageCode) && typeof Intl.DisplayNames === 'function') {
+    try {
+      return new Intl.DisplayNames(['en'], { type: 'language' }).of(languageCode) || language;
+    } catch {
+      // Keep the provider label if the browser does not recognize its code.
+    }
+  }
+  return language.replace(/_/g, ' ').replace(/\b\w/g, (character) => character.toUpperCase());
+};
+
+const getLanguageIdentity = (value) => {
+  const languageBase = String(value || '').trim().toLowerCase().split(/[-_]/)[0];
+  return getLanguageDisplayName(languageBase).trim().toLocaleLowerCase('en');
+};
+
+const normalizeRestoredCaptionTrackState = (tracks, captions, activeTrackId, language = 'Original') => {
+  const safeCaptions = Array.isArray(captions) ? captions.map(sanitizeRestoredCaption) : [];
+  const seenIds = new Set();
+  const restored = [];
+  if (Array.isArray(tracks)) {
+    tracks.forEach((track) => {
+      const id = typeof track?.id === 'string' ? track.id.trim() : '';
+      if (!id || !Array.isArray(track.captions) || seenIds.has(id)) return;
+      seenIds.add(id);
+      restored.push({
+        ...track,
+        id,
+        captions: track.captions.map(sanitizeRestoredCaption),
+      });
+    });
+  }
+  if (!restored.length && safeCaptions.length) {
+    const trackLanguage = String(language || 'Original');
+    restored.push({
+      id: 'source',
+      language: trackLanguage,
+      label: `Original · ${trackLanguage}`,
+      captions: safeCaptions,
+    });
+  }
+  const selectedTrack = restored.find((track) => track.id === activeTrackId) || restored[0] || null;
+  return {
+    tracks: restored,
+    activeTrackId: selectedTrack?.id || 'source',
+    captions: selectedTrack?.captions || safeCaptions,
+  };
+};
+
 const normalizeCaptionStyle = (style = {}) => {
   const merged = { ...defaultCaptionStyle, ...stripRemovedTemplateSource(style) };
   if (!merged.template_id && Number(merged.font_size) <= 18 && String(merged.font_weight || '500') === '500') {
@@ -177,8 +229,30 @@ const getTemplateSelectionIdentity = (style = {}) => [
   String(style?.template_id || ''),
 ].join('::');
 
+const localDraftKey = (uid, projectId = 'latest') => (
+  `lekha.captionDraft.${String(uid || 'signed-out')}.${String(projectId || 'latest')}`
+)
+
+const readLocalDraft = (uid) => {
+  if (!uid) return null
+  const candidates = [
+    localStorage.getItem(localDraftKey(uid)),
+    localStorage.getItem('captionEditorState'),
+  ]
+  for (const serialized of candidates) {
+    if (!serialized) continue
+    try {
+      const parsed = JSON.parse(serialized)
+      if (parsed?.ownerUid === uid && (parsed.fileId || parsed.videoUrl || parsed.captions?.length)) return parsed
+    } catch (error) {
+      console.warn('Ignoring an unreadable local caption draft:', error)
+    }
+  }
+  return null
+}
+
 export default function Dashboard() {
-  const { currentUser, userData } = useAuth();
+  const { currentUser, userData, isLoadingAuth } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -236,6 +310,8 @@ export default function Dashboard() {
   const SNAP_THRESHOLD = 20;     // px distance to trigger a snap
 
   const [captions, setCaptions] = useState([]);
+  const [captionTracks, setCaptionTracks] = useState([]);
+  const [activeCaptionTrackId, setActiveCaptionTrackId] = useState('source');
   const [selectedCaptionId, setSelectedCaptionId] = useState(null);
   const [captionStyle, setCaptionStyle] = useState(defaultCaptionStyle);
 
@@ -300,9 +376,14 @@ export default function Dashboard() {
   // Waveform data for timeline
   const [waveformData, setWaveformData] = useState(null);
   const initialEditorStateRef = useRef(null);
+  const recoveryInitializedRef = useRef(false);
   const mediaRefreshInFlightRef = useRef(false);
   const [cloudSaveMessage, setCloudSaveMessage] = useState('')
-  const { cloudDraft, cloudProjects, cloudReady, saveCloudDraft, selectCloudProject, deleteCloudProject } = useCloudProjects({
+  const [localRecoveryDraft, setLocalRecoveryDraft] = useState(null)
+  const {
+    cloudDraft, cloudProjects, cloudReady, saveCloudDraft, selectCloudProject,
+    deleteCloudProject, renameCloudProject, duplicateCloudProject,
+  } = useCloudProjects({
     currentUser,
     getAuthToken: getEffectiveAuthToken,
     projectId,
@@ -317,8 +398,33 @@ export default function Dashboard() {
     if (!window.confirm(`Delete ${name}? This removes its saved revisions from your account.`)) return
     await deleteCloudProject(selectedId)
   }, [cloudDraft?.projectId, cloudProjects, deleteCloudProject, projectId])
+  const [projectSearch, setProjectSearch] = useState('')
+  const [projectSort, setProjectSort] = useState('recent')
+  const [projectNameInput, setProjectNameInput] = useState('')
+  const selectedCloudProjectId = cloudDraft?.projectId || projectId || ''
+  const visibleCloudProjects = useMemo(() => {
+    const query = projectSearch.trim().toLowerCase()
+    const projects = cloudProjects.filter((item) => !query || String(item.name || '').toLowerCase().includes(query))
+    return [...projects].sort((left, right) => {
+      if (projectSort === 'name') return String(left.name || '').localeCompare(String(right.name || ''))
+      return String(right.saved_at || '').localeCompare(String(left.saved_at || ''))
+    })
+  }, [cloudProjects, projectSearch, projectSort])
+  useEffect(() => {
+    const selected = cloudProjects.find((item) => item.project_id === selectedCloudProjectId)
+    setProjectNameInput(selected?.name || '')
+  }, [cloudProjects, selectedCloudProjectId])
+  const handleRenameCloudProject = useCallback(async () => {
+    if (!selectedCloudProjectId || !projectNameInput.trim()) return
+    await renameCloudProject(selectedCloudProjectId, projectNameInput)
+  }, [projectNameInput, renameCloudProject, selectedCloudProjectId])
+  const handleDuplicateCloudProject = useCallback(async () => {
+    if (!selectedCloudProjectId) return
+    await duplicateCloudProject(selectedCloudProjectId)
+  }, [duplicateCloudProject, selectedCloudProjectId])
   const [showCaptionRetryNotice, setShowCaptionRetryNotice] = useState(false)
   const [showLowCreditNotice, setShowLowCreditNotice] = useState(false)
+  const [translationNotice, setTranslationNotice] = useState('')
 
   useEffect(() => {
     if (!cloudSaveMessage) return undefined
@@ -348,13 +454,95 @@ export default function Dashboard() {
   const snapshotEditorState = useCallback((overrides = {}) => ({
     videoUrl,
     captions: JSON.parse(JSON.stringify(overrides.captions ?? captions)),
+    captionTracks: JSON.parse(JSON.stringify(overrides.captionTracks ?? captionTracks)),
+    activeCaptionTrackId: overrides.activeCaptionTrackId ?? activeCaptionTrackId,
     captionStyle: JSON.parse(JSON.stringify(overrides.captionStyle ?? captionStyle)),
     duration: overrides.duration ?? duration,
     fileId: overrides.fileId ?? fileId,
     originalFileName: overrides.originalFileName ?? originalFileName,
     projectId: overrides.projectId ?? projectId,
     settings: JSON.parse(JSON.stringify(overrides.settings ?? settings)),
-  }), [captionStyle, captions, duration, fileId, originalFileName, projectId, settings, videoUrl]);
+  }), [activeCaptionTrackId, captionStyle, captionTracks, captions, duration, fileId, originalFileName, projectId, settings, videoUrl]);
+
+  useEffect(() => {
+    if (!activeCaptionTrackId || !captions.length) return
+    setCaptionTracks((tracks) => {
+      if (!tracks.some((track) => track.id === activeCaptionTrackId)) return tracks
+      return tracks.map((track) => (
+        track.id === activeCaptionTrackId ? { ...track, captions } : track
+      ))
+    })
+  }, [activeCaptionTrackId, captions])
+
+  const selectCaptionTrack = (trackId) => {
+    const track = captionTracks.find((item) => item.id === trackId)
+    if (!track) return
+    setActiveCaptionTrackId(track.id)
+    setCaptions(JSON.parse(JSON.stringify(track.captions || [])))
+    setSelectedCaptionId(null)
+    setWordPopup(null)
+    setHistory([])
+    setHistoryIndex(-1)
+    setRedoStack([])
+  }
+
+  const handleAddTranslationTrack = async (language) => {
+    const targetLanguage = String(language || '').trim()
+    if (!targetLanguage) throw new Error('Enter a language name first.')
+    if (captionTracks.length >= 20) throw new Error('This project already has the maximum of 20 language tracks.')
+    const sourceTrack = captionTracks.find((track) => track.id === 'source') || captionTracks[0]
+    if (!sourceTrack?.captions?.length) throw new Error('The original caption track is not available.')
+    const existing = captionTracks.find((track) => String(track.language || '').toLowerCase() === targetLanguage.toLowerCase())
+    if (existing) {
+      setTranslationNotice('')
+      selectCaptionTrack(existing.id)
+      return existing
+    }
+
+    const idToken = await getEffectiveAuthToken(currentUser)
+    const result = await apiRequest('/api/translate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        captions: sourceTrack.captions.filter((caption) => !caption.isTextElement),
+        target_language: targetLanguage,
+        id_token: idToken || '',
+      }),
+      dedupeKey: `translate-track-${targetLanguage.toLowerCase()}`,
+      cancelPrevious: true,
+    })
+    if (!result.success || !Array.isArray(result.captions)) {
+      throw new Error(result.error || `Could not translate captions to ${targetLanguage}.`)
+    }
+
+    const translated = new Map(result.captions.map((caption) => [caption.id, caption.text]))
+    const translatedCaptions = sourceTrack.captions.map((caption) => ({
+      ...caption,
+      text: translated.get(caption.id) || caption.text,
+      words: [],
+      wordStyles: {},
+    }))
+    const slug = targetLanguage.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 72) || 'language'
+    let trackId = `translation-${slug}`
+    if (captionTracks.some((track) => track.id === trackId)) trackId = `${trackId}-${Date.now().toString(36)}`
+    const nextTrack = {
+      id: trackId,
+      language: targetLanguage,
+      label: `${targetLanguage} · translated`,
+      captions: translatedCaptions,
+    }
+    setCaptionTracks((tracks) => [...tracks, nextTrack])
+    setActiveCaptionTrackId(trackId)
+    setCaptions(translatedCaptions)
+    setTranslationNotice('')
+    setSelectedCaptionId(null)
+    setWordPopup(null)
+    setHistory([])
+    setHistoryIndex(-1)
+    setRedoStack([])
+    trackAnalytics('funnel.translate.success', getClientContext({ stage: 'translate', targetLanguage }))
+    return nextTrack
+  }
 
   useEffect(() => {
     if (!isLoaded || !fileId || !captions.length || !cloudReady) return
@@ -373,7 +561,17 @@ export default function Dashboard() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id_token, file_id: cloudDraft.fileId }),
       })
-      setCaptions((cloudDraft.captions || []).map(sanitizeRestoredCaption))
+      const restoredCaptions = (cloudDraft.captions || []).map(sanitizeRestoredCaption)
+      const restoredEditorState = normalizeRestoredCaptionTrackState(
+        cloudDraft.captionTracks,
+        restoredCaptions,
+        cloudDraft.activeCaptionTrackId,
+        cloudDraft.settings?.language || 'Original',
+      )
+      setCaptions(restoredEditorState.captions)
+      setCaptionTracks(restoredEditorState.tracks)
+      setActiveCaptionTrackId(restoredEditorState.activeTrackId)
+      setTranslationNotice('')
       setCaptionStyle(normalizeCaptionStyle(cloudDraft.captionStyle || defaultCaptionStyle))
       setSettings(cloudDraft.settings || {})
       setFileId(cloudDraft.fileId)
@@ -396,10 +594,63 @@ export default function Dashboard() {
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
 
-  // A direct Dashboard visit always starts with an empty editor. Restore a
-  // locally cached session only for the explicit return path from Account, so
-  // a previously uploaded video never appears when someone opens the app anew.
+  const applyLocalDraft = useCallback((parsed) => {
+    if (!parsed || parsed.ownerUid !== currentUser?.uid) return false
+    const restoredCaptions = (parsed.captions || []).map(sanitizeRestoredCaption)
+    const restoredEditorState = normalizeRestoredCaptionTrackState(
+      parsed.captionTracks,
+      restoredCaptions,
+      parsed.activeCaptionTrackId,
+      parsed.settings?.language || 'Original',
+    )
+    if (parsed.videoUrl) setVideoUrl(parsed.videoUrl)
+    setCaptions(restoredEditorState.captions)
+    setCaptionTracks(restoredEditorState.tracks)
+    setActiveCaptionTrackId(restoredEditorState.activeTrackId)
+    setCaptionStyle(normalizeCaptionStyle(parsed.captionStyle || defaultCaptionStyle))
+    setProjectId(parsed.projectId || null)
+    setDuration(parsed.duration || 0)
+    setFileId(parsed.fileId || null)
+    setOriginalFileName(parsed.originalFileName || '')
+    setSettings(parsed.settings || { language: 'english', style: 'viral_hook' })
+    initialEditorStateRef.current = {
+      videoUrl: parsed.videoUrl || '',
+      captions: JSON.parse(JSON.stringify(restoredEditorState.captions)),
+      captionTracks: JSON.parse(JSON.stringify(restoredEditorState.tracks)),
+      activeCaptionTrackId: restoredEditorState.activeTrackId,
+      captionStyle: JSON.parse(JSON.stringify(normalizeCaptionStyle(parsed.captionStyle || defaultCaptionStyle))),
+      duration: parsed.duration || 0,
+      fileId: parsed.fileId || null,
+      originalFileName: parsed.originalFileName || '',
+      projectId: parsed.projectId || null,
+      settings: JSON.parse(JSON.stringify(parsed.settings || { language: 'english', style: 'viral_hook' })),
+    }
+    setLocalRecoveryDraft(null)
+    return true
+  }, [currentUser?.uid])
+
+  const discardLocalDraft = useCallback(() => {
+    if (!currentUser?.uid || !localRecoveryDraft) return
+    localStorage.removeItem(localDraftKey(currentUser.uid))
+    if (localRecoveryDraft.projectId) {
+      localStorage.removeItem(localDraftKey(currentUser.uid, localRecoveryDraft.projectId))
+    }
+    const legacy = localStorage.getItem('captionEditorState')
+    if (legacy) {
+      try {
+        if (JSON.parse(legacy)?.ownerUid === currentUser.uid) localStorage.removeItem('captionEditorState')
+      } catch {
+        localStorage.removeItem('captionEditorState')
+      }
+    }
+    setLocalRecoveryDraft(null)
+  }, [currentUser?.uid, localRecoveryDraft])
+
+  // Keep a same-account recovery copy until the customer explicitly continues
+  // or discards it. Normal dashboard entry must never erase unsynced work.
   useEffect(() => {
+    if (isLoadingAuth || recoveryInitializedRef.current) return
+    recoveryInitializedRef.current = true
     const params = new URLSearchParams(window.location.search);
     // DEV-ONLY: let the ?devseed effect own the session; don't wipe it here.
     if (import.meta.env.DEV && params.has('devseed')) {
@@ -409,44 +660,18 @@ export default function Dashboard() {
     const isNavigationRestore = location.state?.restoreSession || params.get('restoreSession') === '1';
     const isEditorEntry = params.get('entry') === 'editor';
     const shouldStartClean = Boolean(params.get('action') || params.get('session_reset') || isEditorEntry);
+    const savedDraft = readLocalDraft(currentUser?.uid)
 
-    if (isNavigationRestore && !shouldStartClean) {
-      try {
-        const savedState = localStorage.getItem('captionEditorState');
-        if (savedState) {
-          const parsed = JSON.parse(savedState);
-          if (parsed.ownerUid && parsed.ownerUid === currentUser?.uid) {
-            if (parsed.videoUrl) setVideoUrl(parsed.videoUrl);
-            if (parsed.captions) setCaptions(parsed.captions.map(sanitizeRestoredCaption));
-            if (parsed.captionStyle) setCaptionStyle(normalizeCaptionStyle(parsed.captionStyle));
-            if (parsed.projectId) setProjectId(parsed.projectId);
-            if (parsed.duration) setDuration(parsed.duration);
-            if (parsed.fileId) setFileId(parsed.fileId);
-            if (parsed.originalFileName) setOriginalFileName(parsed.originalFileName);
-            if (parsed.settings) setSettings(parsed.settings);
-            initialEditorStateRef.current = {
-              videoUrl: parsed.videoUrl || '',
-              captions: JSON.parse(JSON.stringify((parsed.captions || []).map(sanitizeRestoredCaption))),
-              captionStyle: JSON.parse(JSON.stringify(normalizeCaptionStyle(parsed.captionStyle || defaultCaptionStyle))),
-              duration: parsed.duration || 0,
-              fileId: parsed.fileId || null,
-              originalFileName: parsed.originalFileName || '',
-              projectId: parsed.projectId || null,
-              settings: JSON.parse(JSON.stringify(parsed.settings || { language: 'english', style: 'viral_hook' })),
-            };
-            setIsLoaded(true);
-            return; // Skip wiping logic
-          }
-        }
-      } catch (e) {
-        console.warn('Restore failed:', e);
-      }
+    if (savedDraft && isNavigationRestore && !shouldStartClean && applyLocalDraft(savedDraft)) {
+      setIsLoaded(true)
+      return
     }
-
-    localStorage.removeItem('captionEditorState');
+    if (savedDraft) setLocalRecoveryDraft(savedDraft)
 
     setVideoUrl('');
     setCaptions([]);
+    setCaptionTracks([]);
+    setActiveCaptionTrackId('source');
     setCaptionStyle(defaultCaptionStyle);
     setProjectId(null);
     setDuration(0);
@@ -463,7 +688,7 @@ export default function Dashboard() {
     }
 
     setIsLoaded(true);
-  }, []);
+  }, [applyLocalDraft, currentUser?.uid, isLoadingAuth, location.state?.restoreSession]);
 
   useEffect(() => {
     if (!videoUrl) setWordPopup(null);
@@ -561,12 +786,14 @@ export default function Dashboard() {
 
   // Auto-save to localStorage whenever state changes (debounced)
   useEffect(() => {
-    if (!isLoaded) return;
+    if (!isLoaded || localRecoveryDraft) return;
 
     const timeoutId = setTimeout(() => {
       const stateToSave = {
         videoUrl,
         captions,
+        captionTracks,
+        activeCaptionTrackId,
         captionStyle,
         projectId,
         settings,
@@ -582,16 +809,24 @@ export default function Dashboard() {
       try {
         const serialized = JSON.stringify(stateToSave);
         // Only save if under 5MB to prevent quota errors
-        if (serialized.length < 5 * 1024 * 1024) {
-          localStorage.setItem('captionEditorState', serialized);
+        if (serialized.length >= 5 * 1024 * 1024) {
+          setCloudSaveMessage('This draft is too large for browser recovery. Download it now and confirm cloud save before closing the tab.')
+          return
         }
+        const ownerUid = currentUser?.uid || ''
+        if (!ownerUid) return
+        localStorage.setItem(localDraftKey(ownerUid), serialized)
+        if (projectId) localStorage.setItem(localDraftKey(ownerUid, projectId), serialized)
+        // Retain one legacy copy during migration; reads remain owner-checked.
+        localStorage.setItem('captionEditorState', serialized)
       } catch (e) {
         console.warn('Failed to save state:', e);
+        setCloudSaveMessage('Browser recovery storage is full or unavailable. Download this draft and confirm cloud save before closing the tab.')
       }
     }, 500); // Debounce 500ms
 
     return () => clearTimeout(timeoutId);
-  }, [videoUrl, captions, captionStyle, projectId, settings, duration, fileId, originalFileName, currentUser?.uid, isLoaded]);
+  }, [videoUrl, captions, captionTracks, activeCaptionTrackId, captionStyle, projectId, settings, duration, fileId, originalFileName, currentUser?.uid, isLoaded, localRecoveryDraft]);
 
   const handleUpload = async (file, uploadSettings) => {
     if (!currentUser) {
@@ -607,6 +842,9 @@ export default function Dashboard() {
     setHistory([]);
     setHistoryIndex(-1);
     setRedoStack([]);
+    setCaptionTracks([]);
+    setActiveCaptionTrackId('source');
+    setTranslationNotice('');
     initialEditorStateRef.current = null;
     const generationStart = Date.now();
     setGenerationStartedAt(generationStart);
@@ -675,27 +913,32 @@ export default function Dashboard() {
       if (!processData.success) throw new Error(processData.error || 'Processing failed');
       trackAnalytics('funnel.process.success', getClientContext({ stage: 'process', language: uploadSettings?.language || 'auto' }));
 
-      let generatedCaptions = (processData.captions || []).map((cap, idx) => ({
+      let sourceCaptions = (processData.captions || []).map((cap, idx) => ({
         text: cap?.text || '',
         start_time: cap?.start_time || 0,
         end_time: cap?.end_time || 3,
         id: `${Date.now()}-${idx}`,
         words: cap?.words || []
       }));
-      if (generatedCaptions.length === 0) {
+      if (sourceCaptions.length === 0) {
         throw new Error('No speech with usable word timestamps was detected. Try another video or add captions manually.');
       }
 
-      // Auto-translate if user selected a specific caption language (not 'auto')
+      // Keep translated text in its own track so creating another language
+      // never destroys the original transcript or its timing.
       const targetLang = uploadSettings?.language;
-      if (targetLang && targetLang !== 'auto' && generatedCaptions.length > 0) {
+      const detectedLanguage = processData.detected_language || processData.language || 'Original';
+      const sourceLanguage = getLanguageDisplayName(detectedLanguage);
+      const sameLanguage = getLanguageIdentity(detectedLanguage) === getLanguageIdentity(targetLang);
+      let translatedCaptions = null;
+      if (targetLang && targetLang !== 'auto' && !sameLanguage && sourceCaptions.length > 0) {
         try {
           const translateToken = await getEffectiveAuthToken(currentUser);
           const translateData = await apiRequest('/api/translate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              captions: generatedCaptions.filter(c => !c.isTextElement),
+              captions: sourceCaptions.filter(c => !c.isTextElement),
               target_language: targetLang,
               id_token: translateToken || '',
             }),
@@ -706,42 +949,73 @@ export default function Dashboard() {
             trackAnalytics('funnel.translate.success', getClientContext({ stage: 'translate', targetLanguage: targetLang }));
             const translatedMap = new Map();
             translateData.captions.forEach(tc => { if (tc.id) translatedMap.set(tc.id, tc.text); });
-            generatedCaptions = generatedCaptions.map(c => {
-              if (c.isTextElement || !translatedMap.has(c.id)) return c;
-              return { ...c, text: translatedMap.get(c.id) };
-            });
+            translatedCaptions = sourceCaptions.map((caption) => ({
+              ...caption,
+              text: translatedMap.get(caption.id) || caption.text,
+              // Word timestamps belong to the source language and cannot be
+              // safely aligned with translated words.
+              words: [],
+              wordStyles: {},
+            }));
           } else {
             throw new Error(translateData.error || `Translation to ${targetLang} failed`);
           }
         } catch (translateErr) {
           trackAnalytics('funnel.translate.failed', getClientContext({ stage: 'translate', targetLanguage: targetLang }));
-          throw new Error(`Could not translate captions to ${targetLang}. Please retry.`, { cause: translateErr });
+          console.warn(`Translation to ${targetLang} failed; keeping the original language track.`, translateErr);
+          setTranslationNotice(`Original captions are ready. Translation to ${targetLang} failed; you can retry from Language tracks.`);
         }
       }
 
       const playableVideoUrl = acceptedPlayableVideoUrl;
 
-      // If style is 'double_line', merge consecutive caption pairs into 2-line captions
+      // If style is 'double_line', merge matching pairs with the same IDs in
+      // each language so the editor can compare and switch tracks reliably.
       const captionLines = uploadSettings?.style;
-      if (captionLines === 'double_line' && generatedCaptions.length > 1) {
-        const merged = [];
-        for (let i = 0; i < generatedCaptions.length; i += 2) {
-          if (i + 1 < generatedCaptions.length) {
-            merged.push({
-              text: generatedCaptions[i].text + '\n' + generatedCaptions[i + 1].text,
-              start_time: generatedCaptions[i].start_time,
-              end_time: generatedCaptions[i + 1].end_time,
-              id: `${Date.now()}-${merged.length}`,
-              words: [...(generatedCaptions[i].words || []), ...(generatedCaptions[i + 1].words || [])]
-            });
-          } else {
-            merged.push(generatedCaptions[i]);
+      if (captionLines === 'double_line' && sourceCaptions.length > 1) {
+        const sharedIdPrefix = `${Date.now()}-merged`;
+        const mergePairs = (items) => {
+          const merged = [];
+          for (let i = 0; i < items.length; i += 2) {
+            if (i + 1 < items.length) {
+              merged.push({
+                text: `${items[i].text}\n${items[i + 1].text}`,
+                start_time: items[i].start_time,
+                end_time: items[i + 1].end_time,
+                id: `${sharedIdPrefix}-${merged.length}`,
+                words: [...(items[i].words || []), ...(items[i + 1].words || [])],
+              });
+            } else {
+              merged.push({ ...items[i], id: `${sharedIdPrefix}-${merged.length}` });
+            }
           }
-        }
-        generatedCaptions = merged;
+          return merged;
+        };
+        sourceCaptions = mergePairs(sourceCaptions);
+        if (translatedCaptions) translatedCaptions = mergePairs(translatedCaptions);
       }
 
+      const nextCaptionTracks = [{
+        id: 'source',
+        language: sourceLanguage,
+        label: `Original · ${sourceLanguage}`,
+        captions: sourceCaptions,
+      }];
+      const translatedTrackId = translatedCaptions ? `translation-${String(targetLang).toLowerCase()}` : null;
+      if (translatedCaptions) {
+        nextCaptionTracks.push({
+          id: translatedTrackId,
+          language: targetLang,
+          label: `${targetLang} · translated`,
+          captions: translatedCaptions,
+        });
+      }
+      const nextActiveTrackId = translatedTrackId || 'source';
+      const generatedCaptions = translatedCaptions || sourceCaptions;
+
       setCaptions(generatedCaptions);
+      setCaptionTracks(nextCaptionTracks);
+      setActiveCaptionTrackId(nextActiveTrackId);
 
       let nextCaptionStyle = {
         ...defaultCaptionStyle,
@@ -764,6 +1038,8 @@ export default function Dashboard() {
       initialEditorStateRef.current = {
         videoUrl: playableVideoUrl,
         captions: JSON.parse(JSON.stringify(generatedCaptions)),
+        captionTracks: JSON.parse(JSON.stringify(nextCaptionTracks)),
+        activeCaptionTrackId: nextActiveTrackId,
         captionStyle: JSON.parse(JSON.stringify(nextCaptionStyle)),
         duration: 0,
         fileId: uploadData.file_id,
@@ -786,6 +1062,8 @@ export default function Dashboard() {
       setFileId(uploadWasAccepted ? acceptedUpload.file_id : null);
       setOriginalFileName(uploadWasAccepted ? selectedFileName : '');
       setCaptions([]);
+      setCaptionTracks([]);
+      setActiveCaptionTrackId('source');
       setProjectId(uploadWasAccepted ? `local_${Date.now()}` : null);
       setDuration(0);
       setCurrentTime(0);
@@ -829,10 +1107,13 @@ export default function Dashboard() {
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      localStorage.setItem('captionEditorState', JSON.stringify({
-        videoUrl, captions, captionStyle, projectId, settings, duration,
+      const serialized = JSON.stringify({
+        videoUrl, captions, captionTracks, activeCaptionTrackId, captionStyle, projectId, settings, duration,
         fileId, originalFileName, ownerUid: currentUser?.uid || ''
-      }));
+      })
+      localStorage.setItem(localDraftKey(currentUser?.uid), serialized)
+      if (projectId) localStorage.setItem(localDraftKey(currentUser?.uid, projectId), serialized)
+      localStorage.setItem('captionEditorState', serialized)
       await saveCloudDraft(snapshotEditorState())
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2000);
@@ -1281,7 +1562,15 @@ export default function Dashboard() {
     setTimelineHeight(42);
     setSettings(JSON.parse(JSON.stringify(initialState.settings)));
     setVideoUrl(initialState.videoUrl || '');
-    setCaptions(JSON.parse(JSON.stringify(initialState.captions || [])));
+    const restoredEditorState = normalizeRestoredCaptionTrackState(
+      initialState.captionTracks,
+      initialState.captions,
+      initialState.activeCaptionTrackId,
+      initialState.settings?.language || 'Original',
+    );
+    setCaptions(JSON.parse(JSON.stringify(restoredEditorState.captions)));
+    setCaptionTracks(JSON.parse(JSON.stringify(restoredEditorState.tracks)));
+    setActiveCaptionTrackId(restoredEditorState.activeTrackId);
     setCaptionStyle(JSON.parse(JSON.stringify(initialState.captionStyle || defaultCaptionStyle)));
     setProjectId(initialState.projectId || null);
     setDuration(initialState.duration || 0);
@@ -1293,10 +1582,18 @@ export default function Dashboard() {
   };
 
   const handleNewProject = () => {
+    if (currentUser?.uid) {
+      localStorage.removeItem(localDraftKey(currentUser.uid))
+      if (projectId) localStorage.removeItem(localDraftKey(currentUser.uid, projectId))
+    }
     localStorage.removeItem('captionEditorState');
     initialEditorStateRef.current = null;
     setVideoUrl('');
     setCaptions([]);
+    setCaptionTracks([]);
+    setActiveCaptionTrackId('source');
+    setLocalRecoveryDraft(null)
+    setTranslationNotice('');
     setCaptionStyle(defaultCaptionStyle);
     setProjectId(null);
     setDuration(0);
@@ -1357,6 +1654,11 @@ export default function Dashboard() {
           <CaptionEditor
             captions={captions}
             setCaptions={updateCaptions}
+            captionTracks={captionTracks}
+            activeCaptionTrackId={activeCaptionTrackId}
+            onSelectTrack={selectCaptionTrack}
+            onTranslateTrack={handleAddTranslationTrack}
+            captionStyle={captionStyle}
             selectedCaptionId={selectedCaptionId}
             setSelectedCaptionId={setSelectedCaptionId}
             onSeek={handleSeek}
@@ -1489,6 +1791,19 @@ export default function Dashboard() {
     if (isUploading) {
       const uploaded = mediaUploadProgress?.uploadedBytes || 0
       const total = mediaUploadProgress?.totalBytes || 0
+      const bytesPerSecond = mediaUploadProgress?.bytesPerSecond || 0
+      const remainingSeconds = mediaUploadProgress?.remainingSeconds
+      const transferDetails = []
+      if (bytesPerSecond > 0) {
+        transferDetails.push(`${(bytesPerSecond / (1024 * 1024)).toFixed(1)} MiB/s`)
+      }
+      if (Number.isFinite(remainingSeconds) && remainingSeconds > 0) {
+        transferDetails.push(
+          remainingSeconds < 60
+            ? `about ${remainingSeconds}s remaining`
+            : `about ${Math.ceil(remainingSeconds / 60)} min remaining`,
+        )
+      }
       return (
         <div className="flex h-full items-center justify-center bg-[#050505] p-6">
           <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#111] p-8 text-white" role="status" aria-live="polite">
@@ -1496,6 +1811,7 @@ export default function Dashboard() {
             <p className="mt-3 text-sm text-zinc-400">
               {(uploaded / (1024 * 1024)).toFixed(1)} / {(total / (1024 * 1024)).toFixed(1)} MiB
               {total > 0 ? ` · ${mediaUploadProgress.percent}%` : ' · Authorizing upload'}
+              {transferDetails.length > 0 ? ` · ${transferDetails.join(' · ')}` : ''}
             </p>
             <progress className="mt-5 w-full accent-[#F5A623]" max={total || 1} value={uploaded} aria-label="Video upload progress" />
           </div>
@@ -1672,12 +1988,18 @@ export default function Dashboard() {
       />
 
       {/* Notices float above the editor and never consume dashboard height. */}
-      {(cloudSaveMessage || showLowCreditNotice || showCaptionRetryNotice) && (
+      {(cloudSaveMessage || showLowCreditNotice || showCaptionRetryNotice || translationNotice) && (
         <div className="pointer-events-none fixed inset-x-3 top-[4.25rem] z-[70] mx-auto flex max-w-[1320px] flex-col gap-2" aria-live="polite">
           {cloudSaveMessage && (
             <div className="pointer-events-auto flex items-center justify-between gap-3 rounded-xl border border-white/15 bg-[#111]/95 px-4 py-2.5 text-xs text-gray-200 shadow-2xl backdrop-blur">
               <p role="status">{cloudSaveMessage}</p>
               {captions.length > 0 && <button className="shrink-0 underline" onClick={() => downloadDraft(snapshotEditorState())}>Download draft</button>}
+            </div>
+          )}
+          {translationNotice && (
+            <div className="pointer-events-auto flex items-center justify-between gap-3 rounded-xl border border-amber-300/25 bg-[#1a1608]/95 px-4 py-2.5 text-xs text-amber-50 shadow-2xl backdrop-blur">
+              <p role="status">{translationNotice}</p>
+              <button type="button" onClick={() => setTranslationNotice('')} className="shrink-0 underline">Dismiss</button>
             </div>
           )}
           {showLowCreditNotice && lowCreditTopUpOffer && (
@@ -1728,34 +2050,79 @@ export default function Dashboard() {
                 Start Creating Captions
               </h2>
               <p className="text-gray-500 mb-6">
-                Upload your short-form video (best for 15-180 seconds) and we'll generate professional captions instantly.
+                Upload your short-form video (best for 15-180 seconds) and create editable, timed captions.
               </p>
+              {localRecoveryDraft && (
+                <div className="mb-5 rounded-xl border border-amber-300/25 bg-amber-300/[0.06] p-4 text-left">
+                  <p className="text-sm font-semibold text-amber-50">Unsynced browser draft available</p>
+                  <p className="mt-1 text-xs leading-5 text-amber-100/65">
+                    {localRecoveryDraft.originalFileName || localRecoveryDraft.projectName || 'Caption project'}
+                    {localRecoveryDraft.savedAt ? ` · saved ${new Date(localRecoveryDraft.savedAt).toLocaleString()}` : ''}
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-3 text-xs font-semibold">
+                    <button type="button" className="rounded-lg bg-amber-200 px-3 py-2 text-slate-950" onClick={() => applyLocalDraft(localRecoveryDraft)}>Continue draft</button>
+                    <button type="button" className="rounded-lg border border-white/15 px-3 py-2 text-white" onClick={discardLocalDraft}>Discard draft</button>
+                    <button type="button" className="px-1 py-2 text-amber-100 underline" onClick={() => downloadDraft(localRecoveryDraft)}>Download copy</button>
+                  </div>
+                </div>
+              )}
               <Button
-                onClick={handleUploadModalOpen}
+                onClick={() => {
+                  if (localRecoveryDraft) discardLocalDraft()
+                  handleUploadModalOpen()
+                }}
                 size="lg"
                 className="bg-white hover:bg-gray-100 text-black font-semibold px-8 rounded-[4px]"
               >
                 <Upload className="w-5 h-5 mr-2" />
-                Upload Video
+                {localRecoveryDraft ? 'Start New' : 'Upload Video'}
               </Button>
               {cloudDraft && (
                 <div className="mt-4 space-y-3 text-sm">
-                  {cloudProjects.length > 1 && (
-                    <label className="mx-auto flex max-w-xs flex-col gap-1 text-left text-xs text-gray-400">
-                      Saved projects
+                  {cloudProjects.length > 0 && (
+                    <div className="mx-auto grid max-w-sm gap-2 text-left text-xs text-gray-400">
+                      <div className="grid grid-cols-[1fr_auto] gap-2">
+                        <input
+                          value={projectSearch}
+                          onChange={(event) => setProjectSearch(event.target.value)}
+                          placeholder="Search projects"
+                          className="min-w-0 rounded-lg border border-white/15 bg-zinc-900 px-3 py-2 text-sm text-white"
+                        />
+                        <select
+                          value={projectSort}
+                          onChange={(event) => setProjectSort(event.target.value)}
+                          aria-label="Sort projects"
+                          className="rounded-lg border border-white/15 bg-zinc-900 px-2 py-2 text-sm text-white"
+                        >
+                          <option value="recent">Recent</option>
+                          <option value="name">Name</option>
+                        </select>
+                      </div>
                       <select
-                        value={cloudDraft.projectId || projectId || ''}
+                        value={visibleCloudProjects.some((item) => item.project_id === selectedCloudProjectId) ? selectedCloudProjectId : ''}
                         onChange={(event) => selectCloudProject(event.target.value)}
                         className="rounded-lg border border-white/15 bg-zinc-900 px-3 py-2 text-sm text-white"
                       >
-                        {cloudProjects.map((project) => (
+                        {!visibleCloudProjects.length && <option value="">No matching projects</option>}
+                        {visibleCloudProjects.map((project) => (
                           <option key={project.project_id} value={project.project_id}>{project.name}</option>
                         ))}
                       </select>
-                    </label>
+                      <div className="grid grid-cols-[1fr_auto] gap-2">
+                        <input
+                          value={projectNameInput}
+                          onChange={(event) => setProjectNameInput(event.target.value)}
+                          maxLength={120}
+                          aria-label="Selected project name"
+                          className="min-w-0 rounded-lg border border-white/15 bg-zinc-900 px-3 py-2 text-sm text-white"
+                        />
+                        <button className="rounded-lg border border-white/15 px-3 py-2 font-semibold text-white" onClick={handleRenameCloudProject}>Rename</button>
+                      </div>
+                    </div>
                   )}
                   <div className="flex flex-wrap justify-center gap-4">
                     <button className="underline" onClick={restoreCloudDraft}>Restore selected project</button>
+                    <button className="underline" onClick={handleDuplicateCloudProject}>Duplicate project</button>
                     <button className="underline" onClick={() => downloadDraft(cloudDraft)}>Download saved captions</button>
                     <button className="inline-flex items-center gap-1 text-red-300 underline" onClick={handleDeleteCloudProject}>
                       <Trash2 className="h-3.5 w-3.5" /> Delete selected project
@@ -2052,6 +2419,8 @@ export default function Dashboard() {
               open={isExportPanelOpen}
               onClose={() => setIsExportPanelOpen(false)}
               captions={captions}
+              videoUrl={videoUrl}
+              captionTrackLabel={captionTracks.find((track) => track.id === activeCaptionTrackId)?.label || 'Original'}
               captionStyle={captionStyle}
               waveformData={waveformData}
               duration={duration}

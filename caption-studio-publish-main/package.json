@@ -20,7 +20,7 @@
     "test:template-export:left-highlight-pair": "node scripts/check-template-export-parity.mjs --scope=left-highlight-pair",
     "test:lc-playback": "node scripts/check-lc-playback-completeness.mjs",
     "test:dragged-word-export": "node scripts/check-export-font-readiness.mjs && node scripts/check-dragged-word-export-parity.mjs",
-    "test:cpt-editing": "node scripts/check-cpt-editing-contracts.mjs",
+    "test:cpt-editing": "node scripts/check-cpt-editing-contracts.mjs && node scripts/check-caption-editing-invariants.mjs",
     "test:pricing-defaults": "node scripts/check-pricing-yearly-default.mjs",
     "test:google-auth": "node scripts/check-google-auth-redirect.mjs",
     "test:cross-network-upload": "node scripts/check-cross-network-upload-recovery.mjs && node scripts/check-recovery-behavior.mjs && node scripts/check-direct-upload-resume.mjs",

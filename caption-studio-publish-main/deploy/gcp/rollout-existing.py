@@ -12,8 +12,8 @@ def docker(*args):
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument("action", choices=["prepare", "stop", "start", "start-helper", "rollback"])
-parser.add_argument("role", choices=["api", "worker"])
+parser.add_argument("action", choices=["prepare", "stop", "start", "rollback"])
+parser.add_argument("role", choices=["api", "render", "transcription", "worker"])
 parser.add_argument("--image", required=True)
 parser.add_argument("--release", required=True)
 args = parser.parse_args()
@@ -21,7 +21,6 @@ if os.geteuid() != 0 or len(args.release) != 40 or any(c not in "0123456789abcde
     raise SystemExit("Root and an immutable release are required")
 name = f"lekha-{args.role}"
 backup = f"{name}-rollback-{args.release[:8]}"
-helper_backup = f"lekha-transcription-rollback-{args.release[:8]}"
 folder = Path("/etc/lekha/rollbacks") / args.release
 folder.mkdir(parents=True, exist_ok=True, mode=0o700)
 env_file = folder / f"{args.role}.env"
@@ -45,21 +44,6 @@ def wait_ready(container):
     raise RuntimeError(f"{container} failed readiness; previous container retained")
 
 
-def start_transcription_helper():
-    if exists("lekha-transcription"):
-        raise SystemExit("Replacement transcription helper already exists; refusing to overwrite it")
-    scratch = Path("/var/lib/lekha/transcription-scratch")
-    scratch.mkdir(exist_ok=True, mode=0o750)
-    os.chown(scratch, 1000, 1000)
-    docker("run", "-d", "--name", "lekha-transcription", "--restart", "unless-stopped",
-           "--stop-timeout", "1860", "--network", "lekha-internal", "--cpus", "1", "--memory", "2g",
-           "--env-file", str(env_file), "-e", "SERVICE_ROLE=worker", "-e", "PORT=8000",
-           "-e", "MEDIA_SCRATCH_DIR=/scratch", "-e", "CLAMAV_HOST=lekha-clamav",
-           "-e", "WORKER_QUEUES=caption_transcription_jobs_staging",
-           "-v", f"{scratch}:/scratch", args.image)
-    wait_ready("lekha-transcription")
-
-
 if args.action == "prepare":
     if snapshot.exists():
         raise SystemExit("Release already prepared; inspect its rollback snapshot before repeating")
@@ -69,9 +53,16 @@ if args.action == "prepare":
     env = dict(item.split("=", 1) for item in config["Config"]["Env"])
     env.update(APP_RELEASE=args.release, RELEASE_VERSION=f"gcp-staging-{args.release[:7]}",
                APP_BUILD_TIME="2026-09-09T14:40:32Z", RELEASE_ENVIRONMENT="staging",
-               TRANSCRIPTION_QUEUE_NAME="caption_transcription_jobs_staging", EXPORT_MAX_PENDING_JOBS="80",
+               EXPORT_QUEUE_NAME="caption_export_jobs", FAST_EXPORT_QUEUE_NAME="caption_export_fast",
+               HEAVY_EXPORT_QUEUE_NAME="caption_export_heavy", GPU_EXPORT_QUEUE_NAME="caption_export_gpu",
+               TRANSCRIPTION_QUEUE_NAME="caption_transcription_jobs",
+               MEDIA_SCAN_QUEUE_NAME="caption_media_scan_jobs",
+               EXPORT_MAX_PENDING_JOBS="80",
                EXPORT_MAX_QUEUE_WAIT_SECONDS="600", QUEUE_METRICS_ENABLED="1",
-               QUEUE_METRICS_INTERVAL_SECONDS="30", WORKER_MIG_NAME="lekha-worker-staging-mig")
+               QUEUE_METRICS_INTERVAL_SECONDS="30", WORKER_MIG_NAME="lekha-worker-staging-mig",
+               SPOT_WORKER_MIG_NAME="lekha-worker-spot-staging-mig",
+               GPU_WORKER_MIG_NAME="lekha-worker-gpu-staging-mig",
+               TRANSCRIPTION_PROVIDER_FAILOVER="1")
     if any("\n" in value or "\r" in value for value in env.values()):
         raise SystemExit("Multiline environment value cannot safely use Docker env-file")
     env_file.write_text("".join(f"{key}={value}\n" for key, value in env.items()))
@@ -79,11 +70,8 @@ if args.action == "prepare":
     docker("pull", args.image)
     print(f"{name}: image pulled; root-only rollback saved", flush=True)
 elif args.action == "stop":
-    if not snapshot.exists() or exists(backup) or (args.role == "worker" and exists(helper_backup)):
+    if not snapshot.exists() or exists(backup):
         raise SystemExit("Prepare first; existing rollback must not be overwritten")
-    if args.role == "worker" and exists("lekha-transcription"):
-        docker("stop", "--time", "1860", "lekha-transcription")
-        docker("rename", "lekha-transcription", helper_backup)
     docker("stop", "--time", "1860", name)
     docker("rename", name, backup)
     print(f"{name}: stopped gracefully and retained", flush=True)
@@ -95,26 +83,21 @@ elif args.action == "start":
                "-e", f"SERVICE_ROLE={args.role}", "-e", "PORT=8000",
                "-e", "MEDIA_SCRATCH_DIR=/scratch", "-e", "CLAMAV_HOST=lekha-clamav",
                "-v", "/var/lib/lekha/scratch:/scratch", "-p", "8000:8000"]
-    if args.role == "worker":
-        options += ["--cpus", "3", "--memory", "10g", "-e", "WORKER_QUEUES=caption_export_jobs"]
+    if args.role in {"worker", "render"}:
+        options += ["--cpus", "3", "--memory", "8g", "-e",
+                    "WORKER_QUEUES=caption_export_fast,caption_export_jobs,caption_export_heavy"]
+    elif args.role == "transcription":
+        options += ["--cpus", "1", "--memory", "2g", "-e",
+                    "WORKER_QUEUES=caption_media_scan_jobs,caption_transcription_jobs"]
     docker(*options, args.image)
-    if args.role == "worker":
-        start_transcription_helper()
     wait_ready(name)
-elif args.action == "start-helper":
-    if args.role != "worker":
-        raise SystemExit("Only a worker VM has a transcription helper")
-    start_transcription_helper()
 elif args.action == "rollback":
     if not exists(backup):
         raise SystemExit("No previous container available for rollback")
-    for container in (["lekha-transcription", name] if args.role == "worker" else [name]):
+    for container in [name]:
         if exists(container):
             docker("stop", "--time", "1860", container)
             docker("rm", container)
     docker("rename", backup, name)
     docker("start", name)
-    if args.role == "worker" and exists(helper_backup):
-        docker("rename", helper_backup, "lekha-transcription")
-        docker("start", "lekha-transcription")
     print(f"{name}: previous container restored", flush=True)

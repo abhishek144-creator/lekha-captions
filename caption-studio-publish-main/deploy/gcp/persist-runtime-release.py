@@ -10,14 +10,19 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--gcloud", default="gcloud")
 parser.add_argument("--project", required=True)
 parser.add_argument("--release", required=True)
+parser.add_argument("--source-version", required=True, type=int)
 parser.add_argument("--region", default="asia-south1")
 parser.add_argument("--redis-instance", default="lekha-redis-ha")
 args = parser.parse_args()
 if len(args.release) != 40 or any(c not in "0123456789abcdef" for c in args.release):
     raise SystemExit("A full commit SHA is required")
+if args.source_version < 1:
+    raise SystemExit("--source-version must be a positive numeric Secret Manager version")
 gcloud = shutil.which(args.gcloud) or shutil.which(f"{args.gcloud}.cmd") or args.gcloud
 base = [gcloud, "--project", args.project, "secrets", "versions"]
-raw = subprocess.check_output(base + ["access", "latest", "--secret=lekha-runtime-env"], text=True)
+raw = subprocess.check_output(
+    base + ["access", str(args.source_version), "--secret=lekha-runtime-env"], text=True,
+)
 redis_host = subprocess.check_output([
     gcloud, "redis", "instances", "describe", args.redis_instance,
     f"--region={args.region}", f"--project={args.project}", "--format=value(host)",
@@ -32,12 +37,22 @@ updates = {
     "APP_ENV": "production",
     "REDIS_URL": f"redis://{redis_host}:6379/0",
     "GCS_MEDIA_BUCKET": "lekha-media-project-0cc7c839-b9c7-4734-ad0",
-    "TRANSCRIPTION_QUEUE_NAME": "caption_transcription_jobs_staging",
+    "EXPORT_QUEUE_NAME": "caption_export_jobs",
+    "FAST_EXPORT_QUEUE_NAME": "caption_export_fast",
+    "HEAVY_EXPORT_QUEUE_NAME": "caption_export_heavy",
+    "GPU_EXPORT_QUEUE_NAME": "caption_export_gpu",
+    "GPU_RENDER_ENABLED": "0",
+    "TRANSCRIPTION_QUEUE_NAME": "caption_transcription_jobs",
+    "MEDIA_SCAN_QUEUE_NAME": "caption_media_scan_jobs",
     "EXPORT_MAX_PENDING_JOBS": "80",
     "EXPORT_MAX_QUEUE_WAIT_SECONDS": "600",
     "QUEUE_METRICS_ENABLED": "1",
     "QUEUE_METRICS_INTERVAL_SECONDS": "30",
     "WORKER_MIG_NAME": "lekha-worker-staging-mig",
+    "SPOT_WORKER_MIG_NAME": "lekha-worker-spot-staging-mig",
+    "GPU_WORKER_MIG_NAME": "lekha-worker-gpu-staging-mig",
+    "TRANSCRIPTION_MIG_NAME": "lekha-transcription-staging-mig",
+    "TRANSCRIPTION_PROVIDER_FAILOVER": "1",
 }
 lines = [line for line in raw.splitlines() if line.partition("=")[0] not in updates]
 lines.extend(f"{key}={value}" for key, value in updates.items())

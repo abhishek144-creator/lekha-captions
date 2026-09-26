@@ -35,6 +35,15 @@ npm ci
 npm run dev
 ```
 
+## Secret handling
+
+Keep populated environment files and service-account credentials out of Git;
+use `.env.example` only as a key inventory and store deployed values in the
+platform secret manager. This repository's history contains an obsolete
+Razorpay test key identifier from an earlier revision. Treat any credential
+that was ever committed as exposed: rotate or revoke it before deployment even
+when it no longer appears in the current tree.
+
 ## Release checks
 
 Run these from the application directory:
@@ -57,16 +66,16 @@ only when the deployment really reverse-proxies `/api` to the backend.
 
 ## Production deployment contract
 
-- Use the `Dockerfile` image for both the API and worker so Python, Node,
-  Puppeteer, fonts, and FFmpeg match.
-- Run the API plus at least one export worker as specified by `Procfile`.
+- Build the explicit `api`, `render`, and `transcription` Docker targets from
+  one immutable release. Render and transcription workers scale independently.
 - Set `APP_ENV=production`, exact `ALLOWED_ORIGINS`, Firebase Admin and browser
   configuration, Firebase App Check, Redis, media URL signing, AI provider keys,
   Razorpay secrets, public Razorpay key, release identifier, and monitored alert
   destinations from `.env.example`.
 - Keep `PUPPETEER_DISABLE_SANDBOX=0` in production.
 - Probe `/api/health/readiness`; readiness requires Firestore, storage, Redis,
-  scratch capacity, and a healthy export worker.
+  and scratch capacity. Zero workers with empty queues is a healthy scaled-down
+  state; alert only when queued work remains without capacity.
 - Source uploads and completed exports belong in Firebase Storage. Local
   `uploads/`, `exports/`, and `cache/` directories are disposable scratch space.
 - Deploy `landing-next/` separately with `NEXT_PUBLIC_APP_URL` and
@@ -74,9 +83,9 @@ only when the deployment really reverse-proxies `/api` to the backend.
 
 ## Google Cloud migration
 
-The staged Google Cloud deployment uses Compute Engine for the API and export
-worker, Memorystore Redis, Firebase for the existing Auth/Firestore/Storage
-services, and Artifact Registry for the shared Docker image. It leaves Netlify
+The staged Google Cloud deployment uses Compute Engine for the API plus
+independently autoscaled render and transcription MIGs, Memorystore Redis,
+Firebase for Auth/Firestore/Storage, and Artifact Registry. It leaves Netlify
 and Railway production untouched until staging verification passes. See
 [`deploy/gcp/README.md`](deploy/gcp/README.md) for the bootstrap, secret,
 staging, and cutover procedure.

@@ -8,7 +8,7 @@ export const grievanceOfficerName = process.env.NEXT_PUBLIC_GRIEVANCE_OFFICER_NA
 export const grievanceEmail = process.env.NEXT_PUBLIC_GRIEVANCE_EMAIL || supportEmail
 
 export const siteDescription =
-  'Create accurate, animated video captions in 115+ languages across every major writing system, with a fast editor built for creators, agencies, and businesses worldwide.'
+  'Create polished, animated video captions in languages from around the world with an editor built for creators, agencies, and businesses.'
 
 export function pageMetadata({ title, description, path = '/' }) {
   const canonical = path === '/' ? '/' : `${path}/`
@@ -24,7 +24,7 @@ export function pageMetadata({ title, description, path = '/' }) {
       siteName: 'Lekha Captions',
       locale: 'en_US',
       type: 'website',
-      images: [{ url: '/og.png', width: 1200, height: 630, alt: 'Lekha Captions animated captions in 115+ languages' }],
+      images: [{ url: '/og.png', width: 1200, height: 630, alt: 'Lekha Captions animated multilingual captions' }],
     },
     twitter: {
       card: 'summary_large_image',

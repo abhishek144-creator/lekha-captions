@@ -1,8 +1,11 @@
 import { motion } from 'framer-motion'
 import { Globe2, Languages, Sparkles } from 'lucide-react'
 
-const regions = ['North & South America', 'Europe', 'Africa', 'Middle East', 'South Asia', 'East & Southeast Asia']
-const languageExamples = ['English', 'Español', 'Português', 'Français', 'العربية', '中文', 'हिन्दी', 'Kiswahili']
+const languageDetails = [
+  { title: 'Transcription', copy: 'Choose an available language or keep the original speech language.' },
+  { title: 'Separate translations', copy: 'Create editable language tracks while keeping the source captions.' },
+  { title: 'Review before export', copy: 'Availability and results vary by language and provider.' },
+]
 
 export default function LanguageReachSection() {
   return (
@@ -14,19 +17,19 @@ export default function LanguageReachSection() {
           <div className="relative grid gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
             <motion.div initial={{ opacity: 0, x: -20 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }}>
               <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.24em] text-[#f5a623]"><Globe2 className="h-4 w-4" />Language reach</div>
-              <p className="mt-5 text-[6rem] font-semibold leading-[0.8] tracking-[-0.09em] text-white sm:text-[8rem]">115<span className="text-[#f5a623]">+</span></p>
-              <p className="mt-5 max-w-sm text-lg leading-7 text-white/55">Regional and global languages inside one creator workflow.</p>
-              <p className="mt-4 max-w-md text-sm leading-6 text-white/35">Best-in-class speech AI is selected automatically for each language family.</p>
+              <p className="mt-5 text-5xl font-semibold leading-[0.95] tracking-[-0.06em] text-white sm:text-6xl">Language<br /><span className="text-[#f5a623]">choices</span></p>
+              <p className="mt-5 max-w-sm text-lg leading-7 text-white/55">Explore the transcription and translation options currently available in the editor.</p>
+              <p className="mt-4 max-w-md text-sm leading-6 text-white/35">Language support and results vary by provider. Review every caption before publishing.</p>
             </motion.div>
 
             <motion.div initial={{ opacity: 0, x: 20 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} className="relative">
               <div className="grid gap-3 sm:grid-cols-2">
-                {regions.map((region, index) => <div key={region} className="flex items-center gap-3 rounded-xl border border-white/[0.07] bg-white/[0.025] px-4 py-3 text-sm text-white/65"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#f5a623]/10 text-[9px] font-bold text-[#f5a623]">{String(index + 1).padStart(2, '0')}</span>{region}</div>)}
+                {languageDetails.map((item, index) => <div key={item.title} className="rounded-xl border border-white/[0.07] bg-white/[0.025] p-4">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-white/80"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#f5a623]/10 text-[9px] font-bold text-[#f5a623]">{String(index + 1).padStart(2, '0')}</span>{item.title}</div>
+                  <p className="mt-3 text-xs leading-5 text-white/45">{item.copy}</p>
+                </div>)}
               </div>
-              <div className="mt-6 flex flex-wrap gap-2">
-                {languageExamples.map((language, index) => <span key={language} className={`rounded-full border px-3 py-1.5 text-xs ${index % 3 === 0 ? 'border-[#f5a623]/20 bg-[#f5a623]/[0.06] text-[#f5a623]' : 'border-white/[0.08] bg-black/20 text-white/40'}`}>{language}</span>)}
-              </div>
-              <div className="mt-6 flex items-center gap-2 text-xs text-white/35"><Languages className="h-4 w-4 text-[#6ee7ff]" />One editor, many writing systems <Sparkles className="ml-auto h-4 w-4 text-[#f5a623]" /></div>
+              <div className="mt-6 flex items-center gap-2 text-xs text-white/35"><Languages className="h-4 w-4 text-[#6ee7ff]" />Check the editor for current options <Sparkles className="ml-auto h-4 w-4 text-[#f5a623]" /></div>
             </motion.div>
           </div>
         </div>

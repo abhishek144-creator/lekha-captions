@@ -18,6 +18,12 @@ for (const [name, path, visibleCopy] of publicRoutes) {
   test(`${name} renders without serious accessibility or overflow failures`, async ({ page }) => {
     const pageErrors = []
     page.on('pageerror', (error) => pageErrors.push(error.message))
+    // Public rendering and accessibility must not depend on Google/Firebase
+    // attestation or identity endpoints being reachable from the CI runner.
+    await page.route(
+      /https:\/\/(?:[^/]+\.)?(?:google\.com|gstatic\.com|firebaseapp\.com|googleapis\.com|securetoken\.googleapis\.com)\//,
+      (route) => route.abort(),
+    )
 
     // Analytics, media previews, and font requests can keep WebKit's network
     // busy after the page is already interactive. Assert the rendered UI

@@ -142,7 +142,8 @@ def _signed_gcs_download_url(blob, expiration):
 
 
 def create_resumable_source_upload(uid: str, file_id: str, extension: str,
-                                   content_type: str, size_bytes: int, origin: str = ""):
+                                   content_type: str, size_bytes: int, origin: str = "",
+                                   filename: str = "", last_modified: int = 0):
     """Create a short-lived GCS resumable session without proxying media through the API."""
     if s3_is_configured():
         return None
@@ -178,10 +179,52 @@ def create_resumable_source_upload(uid: str, file_id: str, extension: str,
         "extension": safe_ext,
         "content_type": content_type or "application/octet-stream",
         "size_bytes": int(size_bytes),
+        "filename": str(filename or "")[:255],
+        "last_modified": max(0, int(last_modified or 0)),
+        # This bearer session is service-only state. The browser persists only
+        # a non-secret file fingerprint and must authenticate to retrieve it.
+        "session_url": session_url,
         "expires_at": expires_at,
         "created_at": datetime.now(timezone.utc),
     })
     return {"session_url": session_url, "remote_path": remote_path, "expires_at": expires_at.isoformat()}
+
+
+def resume_resumable_source_upload(uid: str, file_id: str, filename: str,
+                                   content_type: str, size_bytes: int,
+                                   last_modified: int = 0):
+    """Return an active session only to its owner after exact file matching."""
+    db = get_db()
+    if not db:
+        return None
+    snapshot = db.collection("direct_upload_intents").document(str(file_id)).get()
+    if not snapshot.exists:
+        return None
+    intent = snapshot.to_dict() or {}
+    expires_at = intent.get("expires_at")
+    if (str(intent.get("uid") or "") != str(uid or "")
+            or intent.get("status") in {"cancelled", "completed"}
+            or not isinstance(expires_at, datetime)
+            or expires_at.replace(tzinfo=expires_at.tzinfo or timezone.utc) <= datetime.now(timezone.utc)):
+        return None
+    expected = (
+        str(intent.get("filename") or ""),
+        str(intent.get("content_type") or "application/octet-stream"),
+        int(intent.get("size_bytes") or 0),
+        int(intent.get("last_modified") or 0),
+    )
+    actual = (
+        str(filename or "")[:255],
+        str(content_type or "application/octet-stream"),
+        int(size_bytes or 0),
+        max(0, int(last_modified or 0)),
+    )
+    if expected != actual:
+        return None
+    session_url = str(intent.get("session_url") or "")
+    if not session_url.startswith("https://"):
+        return None
+    return {"session_url": session_url, "expires_at": expires_at.isoformat()}
 
 
 def finalize_resumable_source_upload(uid: str, file_id: str):
@@ -225,6 +268,10 @@ def finalize_resumable_source_upload(uid: str, file_id: str):
             "remote_path": remote_path,
             "extension": str(intent.get("extension") or ""),
             "size_bytes": actual_size,
+            "storage_generation": str(blob.generation or ""),
+            "storage_crc32c": str(blob.crc32c or ""),
+            "storage_md5_hash": str(blob.md5_hash or ""),
+            "upload_state": "pending_scan",
         }
     expires_at = datetime.now(timezone.utc) + timedelta(hours=6)
     blob.metadata = {
@@ -253,7 +300,42 @@ def finalize_resumable_source_upload(uid: str, file_id: str):
         "remote_path": remote_path,
         "extension": str(intent.get("extension") or ""),
         "size_bytes": actual_size,
+        "storage_generation": str(blob.generation or ""),
+        "storage_crc32c": str(blob.crc32c or ""),
+        "storage_md5_hash": str(blob.md5_hash or ""),
+        "upload_state": "pending_scan",
     }
+
+
+def set_source_upload_state(uid: str, file_id: str, remote_path: str, state: str) -> bool:
+    """Mirror the authoritative upload security state onto the GCS object."""
+    safe_uid = str(uid or "").strip()
+    safe_file_id = str(file_id or "").strip()
+    safe_remote = str(remote_path or "").strip()
+    safe_state = str(state or "").strip().lower()
+    if (
+        safe_state not in {"pending_scan", "clean", "rejected"}
+        or not safe_uid
+        or not safe_file_id
+        or not safe_remote.startswith(f"uploads/{safe_uid}/{safe_file_id}.")
+    ):
+        return False
+    if s3_is_configured():
+        # Firestore remains authoritative for S3-compatible deployments. The
+        # existing S3 adapter does not currently expose a metadata-patch call.
+        return True
+    bucket = get_storage_bucket()
+    if not bucket:
+        return False
+    try:
+        blob = bucket.blob(safe_remote)
+        blob.reload(timeout=15)
+        blob.metadata = {**(blob.metadata or {}), "upload_state": safe_state}
+        blob.patch()
+        return True
+    except Exception as error:
+        print(f"[Storage] Source upload state update failed: {error}")
+        return False
 
 
 @firestore.transactional
@@ -488,6 +570,107 @@ def download_from_firebase_storage(remote_path: str, local_path: str):
         return os.path.isfile(local_path) and os.path.getsize(local_path) > 0
     except Exception as e:
         print(f"[Storage] Source download failed: {e}")
+        return False
+
+
+def _render_cache_path(uid: str, cache_key: str) -> str:
+    safe_uid = str(uid or "").strip()
+    safe_key = str(cache_key or "").strip().lower()
+    if (
+        not safe_uid
+        or "/" in safe_uid
+        or "\\" in safe_uid
+        or len(safe_key) != 64
+        or any(character not in "0123456789abcdef" for character in safe_key)
+    ):
+        return ""
+    return f"render-cache/{safe_uid}/{safe_key}.mp4"
+
+
+def download_render_cache(uid: str, cache_key: str, local_path: str) -> bool:
+    """Restore a short-lived deterministic render cached by another worker."""
+    remote_path = _render_cache_path(uid, cache_key)
+    if not remote_path:
+        return False
+    if s3_is_configured():
+        try:
+            return bool(download_s3_file(remote_path, local_path))
+        except Exception:
+            return False
+    bucket = get_storage_bucket()
+    if not bucket:
+        return False
+    try:
+        blob = bucket.blob(remote_path)
+        blob.reload(timeout=10)
+        delete_at = int((blob.metadata or {}).get("delete_at_epoch") or 0)
+        if delete_at and delete_at <= int(time.time()):
+            blob.delete()
+            return False
+        blob.download_to_filename(local_path)
+        return os.path.isfile(local_path) and os.path.getsize(local_path) > 0
+    except NotFound:
+        return False
+    except Exception as error:
+        print(f"[Storage] Render cache download failed: {error}")
+        return False
+
+
+def upload_render_cache(uid: str, cache_key: str, local_path: str,
+                        expiration_hours: int = 24) -> bool:
+    """Persist a validated render so scale-to-zero workers can share the cache."""
+    remote_path = _render_cache_path(uid, cache_key)
+    if (
+        not remote_path
+        or not os.path.isfile(local_path)
+        or os.path.getsize(local_path) <= 0
+    ):
+        return False
+    ttl = max(1, min(int(expiration_hours), 72))
+    metadata = {"delete_at_epoch": str(int(time.time() + ttl * 3600))}
+    if s3_is_configured():
+        try:
+            upload_s3_file(local_path, remote_path, "video/mp4", metadata)
+            return True
+        except Exception as error:
+            print(f"[Storage] S3 render cache upload failed: {error}")
+            return False
+    bucket = get_storage_bucket()
+    if not bucket:
+        return False
+    try:
+        blob = bucket.blob(remote_path)
+        blob.upload_from_filename(local_path, content_type="video/mp4")
+        blob.metadata = {**(blob.metadata or {}), **metadata}
+        blob.patch()
+        return True
+    except Exception as error:
+        print(f"[Storage] Render cache upload failed: {error}")
+        return False
+
+
+def delete_render_cache(uid: str, cache_key: str) -> bool:
+    """Remove a corrupt or otherwise unusable shared render cache entry."""
+    remote_path = _render_cache_path(uid, cache_key)
+    if not remote_path:
+        return False
+    if s3_is_configured():
+        try:
+            delete_s3_file(remote_path)
+            return True
+        except Exception as error:
+            print(f"[Storage] S3 render cache delete failed: {error}")
+            return False
+    bucket = get_storage_bucket()
+    if not bucket:
+        return False
+    try:
+        bucket.blob(remote_path).delete()
+        return True
+    except NotFound:
+        return True
+    except Exception as error:
+        print(f"[Storage] Render cache delete failed: {error}")
         return False
 
 

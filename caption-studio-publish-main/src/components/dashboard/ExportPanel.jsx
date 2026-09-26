@@ -29,6 +29,7 @@ import { getBasicTemplateExportEffects } from './basicTemplateCatalog.js';
 import {
   buildPlainText,
   buildSrt,
+  buildVtt,
   buildTextElementExportStyle,
   getCaptionedVideoFilename,
   hasExportableVideoContent,
@@ -41,6 +42,7 @@ import {
 } from './templateMotionConfig';
 
 import { Progress } from "@/components/ui/progress";
+import CaptionQualityPanel from './CaptionQualityPanel';
 
 // TESTING ONLY: unlock the export UI for an explicitly configured local test.
 // Limits are on by default in every build; a production build cannot bypass
@@ -146,7 +148,62 @@ const exportQueue = {
   }
 };
 
-export default function ExportPanel({ open, onClose, captions, captionStyle, waveformData, duration, fileId, originalFileName, onUpgradeClick }) {
+const ASPECT_OPTIONS = [
+  { value: '9:16', label: '9:16', detail: 'Shorts · Reels · Stories' },
+  { value: '1:1', label: '1:1', detail: 'Square posts' },
+  { value: '16:9', label: '16:9', detail: 'YouTube · landscape' },
+];
+
+function ExportFramePreview({ videoUrl, aspectRatio, showSafeArea }) {
+  const [sourceSize, setSourceSize] = useState(null);
+  useEffect(() => setSourceSize(null), [videoUrl]);
+  const sourceAspect = sourceSize?.width && sourceSize?.height
+    ? sourceSize.width / sourceSize.height
+    : 16 / 9;
+  const targetAspect = aspectRatio === '9:16' ? 9 / 16 : aspectRatio === '1:1' ? 1 : 16 / 9;
+  const cropWidth = sourceAspect > targetAspect ? (targetAspect / sourceAspect) * 100 : 100;
+  const cropHeight = sourceAspect > targetAspect ? 100 : (sourceAspect / targetAspect) * 100;
+  const cropLeft = (100 - cropWidth) / 2;
+  const cropTop = (100 - cropHeight) / 2;
+  const previewWidth = Math.min(440, 220 * sourceAspect);
+
+  return (
+    <div className="flex justify-center rounded-xl border border-white/10 bg-black/45 p-3">
+      <div className="relative overflow-hidden rounded-lg bg-[#161616]" style={{ width: `${previewWidth}px`, maxWidth: '100%', aspectRatio: `${sourceAspect}` }}>
+        {videoUrl ? (
+          <video
+            src={videoUrl}
+            muted
+            playsInline
+            preload="metadata"
+            aria-label="Video crop preview"
+            onLoadedMetadata={(event) => setSourceSize({ width: event.currentTarget.videoWidth, height: event.currentTarget.videoHeight })}
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        ) : (
+          <div className="absolute inset-0 grid place-items-center text-[10px] text-slate-500">Video preview unavailable</div>
+        )}
+        <div className="absolute inset-0 bg-black/45" />
+        {cropLeft > 0.5 && <>
+          <div className="absolute inset-y-0 left-0 bg-black/65" style={{ width: `${cropLeft}%` }} />
+          <div className="absolute inset-y-0 right-0 bg-black/65" style={{ width: `${cropLeft}%` }} />
+        </>}
+        {cropTop > 0.5 && <>
+          <div className="absolute inset-x-0 top-0 bg-black/65" style={{ height: `${cropTop}%` }} />
+          <div className="absolute inset-x-0 bottom-0 bg-black/65" style={{ height: `${cropTop}%` }} />
+        </>}
+        <div className="absolute border border-amber-300/90" style={{ left: `${cropLeft}%`, top: `${cropTop}%`, width: `${cropWidth}%`, height: `${cropHeight}%` }} />
+        {showSafeArea && (
+          <div className="absolute border border-dashed border-sky-100/70" style={{ left: `${cropLeft + cropWidth * 0.08}%`, top: `${cropTop + cropHeight * 0.1}%`, width: `${cropWidth * 0.84}%`, height: `${cropHeight * 0.8}%` }}>
+            <span className="absolute left-1 top-1 rounded bg-black/65 px-1 py-0.5 text-[8px] font-semibold uppercase tracking-wide text-sky-100">Safe area</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function ExportPanel({ open, onClose, captions, captionStyle, waveformData, duration, fileId, originalFileName, videoUrl, captionTrackLabel, onUpgradeClick }) {
   const { currentUser, userData, refreshUserData } = useAuth();
   // Use auth context directly for consistent, up-to-date auth & credit checks
   const isSignedIn = !!currentUser;
@@ -170,12 +227,20 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
   const [waitStartTime, setWaitStartTime] = useState(null);
   const [showServerBusy, setShowServerBusy] = useState(false);
   const [exportExpiry, setExportExpiry] = useState(null);
-  // Keep the established portrait render default while removing the chooser from the export UI.
-  const exportAspectRatio = '9:16';
+  const [exportAspectRatio, setExportAspectRatio] = useState('9:16');
+  const [showSafeArea, setShowSafeArea] = useState(true);
+  const [reviewConfirmed, setReviewConfirmed] = useState(false);
+  const [notifyWhenComplete, setNotifyWhenComplete] = useState(() => (
+    typeof window !== 'undefined' && window.localStorage?.getItem('lekha.exportCompletionNotification') === '1'
+  ));
   const exportInFlightRef = useRef(false);
   const exportAbortRef = useRef(null);
   const backgroundNoticeShownRef = useRef(false);
   const progressTargetRef = useRef(0);
+
+  useEffect(() => {
+    if (open) setReviewConfirmed(false);
+  }, [open]);
 
   const raiseProgressTarget = (target) => {
     progressTargetRef.current = Math.max(progressTargetRef.current, Math.min(100, target));
@@ -315,6 +380,15 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
     downloadFile(srt, 'captions.srt', 'text/plain');
   };
 
+  const handleDownloadVTT = () => {
+    const vtt = buildVtt(captions);
+    if (!vtt) {
+      toast({ variant: 'destructive', title: 'No captions to export' });
+      return;
+    }
+    downloadFile(vtt, 'captions.vtt', 'text/vtt');
+  };
+
   const handleDownloadText = () => {
     const text = buildPlainText(captions);
     if (!text) {
@@ -415,6 +489,15 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
         title: 'No captions to export',
       });
       return;
+    }
+
+    if (notifyWhenComplete && typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      try {
+        await Notification.requestPermission();
+      } catch {
+        // The in-app completion message remains available when the browser
+        // blocks notification permission or the operating system denies it.
+      }
     }
 
     setIsExporting(true);
@@ -802,6 +885,21 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       setProgress(100);
       progressTargetRef.current = 100;
       setStatusMessage('Export complete!');
+      toast({
+        title: 'Export complete',
+        description: `${getCaptionedVideoFilename(originalFileName)} is ready and downloading.`,
+        duration: 10000,
+      });
+      if (notifyWhenComplete && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        try {
+          new Notification('Lekha export complete', {
+            body: `${getCaptionedVideoFilename(originalFileName)} is ready.`,
+            tag: activeExportJobId || 'lekha-export-complete',
+          });
+        } catch {
+          // Some mobile browsers expose Notification but reject construction.
+        }
+      }
       // The backend just decremented a credit — refresh so the plan/credits
       // gating reflects reality instead of the stale pre-export snapshot.
       // Auth-context implementations have historically varied between async and
@@ -879,6 +977,14 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       requiresPlan: false
     },
     {
+      icon: FileText,
+      title: 'WebVTT subtitles',
+      description: 'VTT file for web video players',
+      action: handleDownloadVTT,
+      gradient: 'from-teal-600 to-cyan-400',
+      requiresPlan: false
+    },
+    {
       icon: FileJson,
       title: 'Plain text',
       description: 'Clean transcript copy',
@@ -912,6 +1018,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
               Export your video
             </SheetTitle>
             <p className="text-sm text-gray-400 mt-1">Choose a render quality or download caption files for editing elsewhere.</p>
+            {captionTrackLabel && <p className="mt-2 text-xs text-sky-200/80">Using language track: {captionTrackLabel}</p>}
             {isSignedIn && hasResolvedCreditBalance && (
               <p className="mt-3 text-xs font-semibold text-emerald-300">
                 {Math.max(0, creditBalance)} export credit{Math.max(0, creditBalance) === 1 ? '' : 's'} remaining
@@ -1003,16 +1110,80 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
               </div>
               <Sparkles className="w-4 h-4 text-[#f5a623]" />
             </div>
+            <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.025] p-4">
+              <div>
+                <p className="text-xs font-bold text-white">Delivery format</p>
+                <p className="mt-1 text-[11px] leading-5 text-gray-500">Choose the output frame. The preview shades the center-cropped edges.</p>
+              </div>
+              <div className="grid grid-cols-3 gap-2" role="group" aria-label="Output aspect ratio">
+                {ASPECT_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    aria-pressed={exportAspectRatio === option.value}
+                    onClick={() => setExportAspectRatio(option.value)}
+                    className={`rounded-xl border px-2 py-2 text-left transition-colors ${exportAspectRatio === option.value ? 'border-[#f5a623]/55 bg-[#f5a623]/10 text-white' : 'border-white/10 bg-black/20 text-gray-400 hover:border-white/20 hover:text-white'}`}
+                  >
+                    <span className="block text-xs font-black">{option.label}</span>
+                    <span className="mt-1 block text-[9px] leading-3 text-gray-500">{option.detail}</span>
+                  </button>
+                ))}
+              </div>
+              <ExportFramePreview videoUrl={videoUrl} aspectRatio={exportAspectRatio} showSafeArea={showSafeArea} />
+              <label className="flex cursor-pointer items-center gap-2 text-[11px] text-gray-400">
+                <input type="checkbox" checked={showSafeArea} onChange={(event) => setShowSafeArea(event.target.checked)} className="accent-sky-300" />
+                Show platform safe-area guide
+              </label>
+            </div>
+            <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.025] p-4">
+              <div>
+                <p className="text-xs font-bold text-white">Review before rendering</p>
+                <p className="mt-1 text-[11px] leading-5 text-gray-500">Check transcript wording, timing, reading density, and placement. The automated checks cannot judge names or meaning.</p>
+              </div>
+              <CaptionQualityPanel captions={captions} captionStyle={captionStyle} compact />
+              <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-white/10 bg-black/20 p-3 text-xs leading-5 text-gray-300">
+                <input type="checkbox" checked={reviewConfirmed} onChange={(event) => setReviewConfirmed(event.target.checked)} className="mt-1 accent-[#f5a623]" />
+                <span>I reviewed this language track and corrected the captions that needed changes.</span>
+              </label>
+            </div>
+            <label className="flex cursor-pointer items-start gap-2.5 rounded-2xl border border-white/10 bg-white/[0.025] p-4 text-xs leading-5 text-gray-300">
+              <input
+                type="checkbox"
+                checked={notifyWhenComplete}
+                onChange={(event) => {
+                  const enabled = event.target.checked
+                  setNotifyWhenComplete(enabled)
+                  window.localStorage?.setItem('lekha.exportCompletionNotification', enabled ? '1' : '0')
+                }}
+                className="mt-1 accent-[#f5a623]"
+              />
+              <span>
+                Notify me when a background export finishes.
+                <span className="mt-0.5 block text-[11px] text-gray-500">Your browser may ask for notification permission when you start the export.</span>
+              </span>
+            </label>
             {exportOptions.filter(o => o.requiresPlan).map((option, idx) => {
-              const isLocked = !isPlanActive || (option.requiresPro && !is4kAllowed);
-              const lockReason = !isPlanActive ? 'No export credits remaining' : (option.requiresPro && !is4kAllowed) ? 'Creator or Pro plan required' : null;
+              const isPlanLocked = !isPlanActive || (option.requiresPro && !is4kAllowed);
+              const isLocked = !reviewConfirmed || isPlanLocked;
+              const lockReason = !reviewConfirmed
+                ? 'Review captions before rendering'
+                : !isPlanActive
+                  ? 'No export credits remaining'
+                  : (option.requiresPro && !is4kAllowed)
+                    ? 'Creator or Pro plan required'
+                    : null;
               return (
                 <motion.button
                   key={idx}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: idx * 0.07 }}
-                  onClick={isLocked ? onUpgradeClick : option.action}
+                  onClick={() => {
+                    if (!reviewConfirmed) return;
+                    if (isPlanLocked) onUpgradeClick?.();
+                    else option.action();
+                  }}
+                  disabled={!reviewConfirmed}
                   className={`w-full p-4 rounded-2xl border transition-all flex items-center gap-4 group text-left ${isLocked
                     ? 'bg-white/[0.025] border-white/8 opacity-70'
                     : 'bg-white/[0.045] border-white/10 hover:bg-white/[0.075] hover:border-[#f5a623]/35 cursor-pointer'
@@ -1047,8 +1218,9 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: (idx + 3) * 0.07 }}
-                onClick={option.action}
-                className="w-full p-4 rounded-2xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.07] hover:border-white/20 transition-all flex items-center gap-4 group cursor-pointer"
+                onClick={reviewConfirmed ? option.action : undefined}
+                disabled={!reviewConfirmed}
+                className={`w-full p-4 rounded-2xl border border-white/10 transition-all flex items-center gap-4 group ${reviewConfirmed ? 'bg-white/[0.04] hover:bg-white/[0.07] hover:border-white/20 cursor-pointer' : 'bg-white/[0.02] opacity-50 cursor-not-allowed'}`}
               >
                 <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${option.gradient} p-0.5`}>
                   <div className="w-full h-full rounded-2xl bg-[#101010] flex items-center justify-center group-hover:bg-[#181818] transition-colors">

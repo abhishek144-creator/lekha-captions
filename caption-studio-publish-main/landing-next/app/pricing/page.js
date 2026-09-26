@@ -5,7 +5,7 @@ import { appUrl, pageMetadata, siteUrl } from '@/lib/site'
 
 export const metadata = pageMetadata({
   title: 'Pricing',
-  description: 'Compare Lekha Captions plans for creators, agencies, and businesses. Get 115+ languages, animated caption styles, video editing, and high-quality export.',
+  description: 'Compare Lekha Captions plans for creators, agencies, and businesses. Get multilingual caption tools, animated styles, editing, and high-quality export.',
   path: '/pricing',
 })
 
@@ -22,7 +22,7 @@ const plans = [
     monthlyInr: '₹299',
     savings: '~16% off monthly',
     description: 'A simple start for a steady social workflow.',
-    features: ['180 video credits / year', 'Up to 2 minutes per video', '3 videos per day', '100+ caption styles', '115+ languages', '1080p HD export', 'No watermark'],
+    features: ['180 video credits / year', 'Up to 2 minutes per video', '3 videos per day', '100+ caption styles', 'Available transcription languages', '1080p HD export', 'No watermark'],
   },
   {
     name: 'Creator',
@@ -33,7 +33,7 @@ const plans = [
     savings: '~16% off monthly',
     description: 'The sweet spot for serious, multilingual creators.',
     popular: true,
-    features: ['540 video credits / year', 'Up to 3 minutes per video', '5 videos per day', '100+ caption styles', '115+ languages', '1080p HD + 4K export', 'Translation tools', 'No watermark'],
+    features: ['540 video credits / year', 'Up to 3 minutes per video', '5 videos per day', '100+ caption styles', 'Available transcription and translation languages', '1080p HD + 4K export', 'Translation tools', 'No watermark'],
   },
   {
     name: 'Pro',
@@ -43,7 +43,7 @@ const plans = [
     monthlyInr: '₹799',
     savings: '~17% off monthly',
     description: 'More capacity for agencies and high-volume output.',
-    features: ['1,440 video credits / year', 'Up to 3 minutes per video', 'Unlimited videos per day', '100+ caption styles', '115+ languages', '1080p HD + 4K export', 'Translation tools', 'No watermark'],
+    features: ['1,440 video credits / year', 'Up to 3 minutes per video', 'Unlimited videos per day', '100+ caption styles', 'Available transcription and translation languages', '1080p HD + 4K export', 'Translation tools', 'No watermark'],
   },
 ]
 
@@ -52,7 +52,7 @@ const comparison = [
   ['Monthly video credits', '15', '45', '120'],
   ['Maximum video length', '2 min', '3 min', '3 min'],
   ['Daily video limit', '3', '5', 'Unlimited'],
-  ['Languages', '115+', '115+', '115+'],
+  ['Transcription language choices', 'Included', 'Included', 'Included'],
   ['Animated styles', '100+', '100+', '100+'],
   ['Export quality', '1080p', '1080p + 4K', '1080p + 4K'],
   ['Translation tools', '—', 'Included', 'Included'],
@@ -68,7 +68,7 @@ export default function PricingPage() {
         url: `${siteUrl}/pricing/`,
         description: 'Plans for multilingual animated video captioning.',
       }} />
-      <PageHero eyebrow="Creator-friendly pricing" title="Simple plans. Serious output." description="Choose the captioning capacity that fits your publishing cadence. Every plan includes the style library and all 115+ supported languages." />
+      <PageHero eyebrow="Creator-friendly pricing" title="Simple plans. Serious output." description="Choose the captioning capacity that fits your publishing cadence. Every plan includes the style library and available transcription language choices; Creator and Pro also include translation tools." />
       <section className="content-section pricing-content">
         <div className="container">
           <div className="pricing-note">Yearly prices shown • Monthly billing is also available in the app</div>

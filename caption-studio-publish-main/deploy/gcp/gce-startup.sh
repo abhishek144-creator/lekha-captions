@@ -17,10 +17,17 @@ runtime_secret="$(metadata_value runtime-secret)"
 runtime_secret_version="$(metadata_value runtime-secret-version)"
 region="$(metadata_value region)"
 worker_mig_name="$(metadata_value worker-mig-name 2>/dev/null || true)"
+worker_queue_name="$(metadata_value worker-queue-name 2>/dev/null || true)"
+worker_container_cpus="$(metadata_value worker-container-cpus 2>/dev/null || true)"
+worker_container_memory="$(metadata_value worker-container-memory 2>/dev/null || true)"
+worker_gpu_enabled="$(metadata_value worker-gpu-enabled 2>/dev/null || true)"
 boot_epoch="$(date +%s)"
 
-if [[ "$service_role" != "api" && "$service_role" != "worker" ]]; then
-  echo "SERVICE_ROLE must be api or worker" >&2
+if [[ "$service_role" == "worker" ]]; then
+  service_role="render"
+fi
+if [[ "$service_role" != "api" && "$service_role" != "render" && "$service_role" != "transcription" ]]; then
+  echo "SERVICE_ROLE must be api, render, or transcription" >&2
   exit 64
 fi
 
@@ -42,11 +49,11 @@ chmod 0600 /etc/lekha/runtime.env
 
 docker network inspect lekha-internal >/dev/null 2>&1 || docker network create lekha-internal
 
-if [[ "$service_role" == "api" ]]; then
-  image_uri="${api_image_uri:-$legacy_image_uri}"
-else
-  image_uri="${render_image_uri:-$legacy_image_uri}"
-fi
+case "$service_role" in
+  api) image_uri="${api_image_uri:-$legacy_image_uri}" ;;
+  render) image_uri="${render_image_uri:-$legacy_image_uri}" ;;
+  transcription) image_uri="${transcription_image_uri:-$legacy_image_uri}" ;;
+esac
 [[ -n "$image_uri" ]] || { echo "Role image URI is required" >&2; exit 64; }
 docker image inspect "$image_uri" >/dev/null 2>&1 || {
   echo "Pre-baked VM image is missing $image_uri" >&2
@@ -58,10 +65,6 @@ docker image inspect "$image_uri" >/dev/null 2>&1 || {
 if docker container inspect "lekha-${service_role}" >/dev/null 2>&1; then
   docker stop --time 1860 "lekha-${service_role}"
   docker rm "lekha-${service_role}"
-fi
-if [[ "$service_role" == "worker" ]] && docker container inspect lekha-transcription >/dev/null 2>&1; then
-  docker stop --time 1860 lekha-transcription
-  docker rm lekha-transcription
 fi
 
 # The production API refuses uploads when no malware scanner is configured.
@@ -75,10 +78,17 @@ docker run -d --name lekha-clamav --restart unless-stopped \
   --network lekha-internal clamav/clamav:1.4_base
 
 role_options=()
-if [[ "$service_role" == "worker" ]]; then
-  # Three render CPUs keep FFmpeg throughput high. An 8 GiB ceiling leaves
-  # 4 GiB on the 12 GiB host for transcription, ClamAV, Docker, and the OS.
-  role_options=(--cpus 3 --memory 8g -e WORKER_QUEUES=caption_export_jobs)
+if [[ "$service_role" == "render" ]]; then
+  # One RQ render per VM; metadata keeps the container limit aligned with the
+  # benchmark-selected machine profile while reserving capacity for the OS and scanner.
+  role_options=(--cpus "${worker_container_cpus:-7}" --memory "${worker_container_memory:-7g}" -e "WORKER_QUEUES=${worker_queue_name:-caption_export_fast,caption_export_jobs,caption_export_heavy}")
+  if [[ "$worker_gpu_enabled" == "1" ]]; then
+    command -v nvidia-smi >/dev/null || { echo "GPU runtime image is missing NVIDIA drivers" >&2; exit 70; }
+    nvidia-smi >/dev/null || { echo "NVIDIA GPU is unavailable" >&2; exit 70; }
+    role_options+=(--gpus all -e GPU_RENDER_ENABLED=1)
+  fi
+elif [[ "$service_role" == "transcription" ]]; then
+  role_options=(--cpus 1 --memory 2g -e "WORKER_QUEUES=${worker_queue_name:-caption_media_scan_jobs,caption_transcription_jobs}")
 fi
 docker run -d --name "lekha-${service_role}" --restart no \
   "${role_options[@]}" \
@@ -95,23 +105,6 @@ docker run -d --name "lekha-${service_role}" --restart no \
   -v /var/lib/lekha/scratch:/scratch \
   -p 8000:8000 \
   "$image_uri"
-
-if [[ "$service_role" == "worker" ]]; then
-  helper_image_uri="${transcription_image_uri:-$image_uri}"
-  docker image inspect "$helper_image_uri" >/dev/null 2>&1 || {
-    echo "Pre-baked VM image is missing $helper_image_uri" >&2
-    exit 70
-  }
-  install -d -m 0750 -o 1000 -g 1000 /var/lib/lekha/transcription-scratch
-  docker run -d --name lekha-transcription --restart unless-stopped \
-    --stop-timeout 1860 --network lekha-internal --cpus 1 --memory 2g \
-    --env-file /etc/lekha/runtime.env \
-    -e SERVICE_ROLE=worker -e PORT=8000 -e MEDIA_SCRATCH_DIR=/scratch \
-    -e CLAMAV_HOST=lekha-clamav -e WORKER_QUEUES=caption_transcription_jobs_staging \
-    -e "VM_BOOT_EPOCH=${boot_epoch}" -e "WORKER_MIG_NAME=${worker_mig_name}" \
-    -e "WORKER_MIG_REGION=${region}" \
-    -v /var/lib/lekha/transcription-scratch:/scratch "$helper_image_uri"
-fi
 
 # Give staging browsers a real HTTPS origin without changing production DNS.
 # The hostname is supplied only on the API VM and resolves directly to its
