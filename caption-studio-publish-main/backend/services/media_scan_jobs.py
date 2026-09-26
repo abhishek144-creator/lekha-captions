@@ -66,8 +66,6 @@ class MediaScanJobs:
                 status = delivery.get_status(refresh=True)
                 if status in {"queued", "started", "deferred", "scheduled"}:
                     continue
-                # RQ retains terminal jobs by id. Remove that delivery before
-                # retrying so the durable outbox remains the source of truth.
                 delivery.delete()
             snapshot.reference.set({
                 "last_dispatch": now,

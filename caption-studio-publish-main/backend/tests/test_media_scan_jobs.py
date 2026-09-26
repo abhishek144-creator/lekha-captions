@@ -1,6 +1,6 @@
 import unittest
 
-from backend.media_scan_jobs import MediaScanJobs
+from backend.services.media_scan_jobs import MediaScanJobs
 
 
 class Snapshot:

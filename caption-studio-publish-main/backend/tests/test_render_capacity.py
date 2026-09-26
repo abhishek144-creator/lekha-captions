@@ -1,4 +1,4 @@
-from backend.render_capacity import estimate_render_work_seconds, render_class
+from backend.rendering.capacity import estimate_render_work_seconds, render_class
 
 
 def test_render_class_distinguishes_template_work():
