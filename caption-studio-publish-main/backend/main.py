@@ -111,34 +111,38 @@ try:
     from .drafts import read_draft
     from .project_api import create_project_router
     from .direct_upload_api import create_direct_upload_router
+    from .api.maintenance import create_maintenance_router
     from .upload_admission import reserve_upload, release_upload
     from .request_limits import UploadBodyLimitMiddleware
     from .release_metadata import release_metadata
     from .media_commands import run_media_command
     from .job_state import transition as transition_export_job, InvalidJobTransition, LOCAL_LOCK as JOB_STATE_LOCK
     from .gcp_queue_metrics import publish_queue_snapshot, queue_snapshot, queued_render_work_seconds
-    from .render_capacity import estimate_render_work_seconds, render_class
-    from .render_cache import render_cache_eligible, render_cache_identity
-    from .media_scan_jobs import MediaScanJobs
-    from .scheduler_auth import require_scheduler_authorization
-    from .malware_scanner import scan_upload_for_threat
+    from .rendering.capacity import estimate_render_work_seconds, render_class
+    from .rendering.cache import render_cache_eligible, render_cache_identity
+    from .services.media_scan_jobs import MediaScanJobs
+    from .services.scheduler_auth import require_scheduler_authorization
+    from .services.malware import scan_upload_for_threat
+    from .services.upload_security import UploadSecurityService
 except ImportError:
     from transcription_jobs import TranscriptionJobs
     from queue_admission import enqueue_bounded
     from drafts import read_draft
     from project_api import create_project_router
     from direct_upload_api import create_direct_upload_router
+    from api.maintenance import create_maintenance_router
     from upload_admission import reserve_upload, release_upload
     from request_limits import UploadBodyLimitMiddleware
     from release_metadata import release_metadata
     from media_commands import run_media_command
     from job_state import transition as transition_export_job, InvalidJobTransition, LOCAL_LOCK as JOB_STATE_LOCK
     from gcp_queue_metrics import publish_queue_snapshot, queue_snapshot, queued_render_work_seconds
-    from render_capacity import estimate_render_work_seconds, render_class
-    from render_cache import render_cache_eligible, render_cache_identity
-    from media_scan_jobs import MediaScanJobs
-    from scheduler_auth import require_scheduler_authorization
-    from malware_scanner import scan_upload_for_threat
+    from rendering.capacity import estimate_render_work_seconds, render_class
+    from rendering.cache import render_cache_eligible, render_cache_identity
+    from services.media_scan_jobs import MediaScanJobs
+    from services.scheduler_auth import require_scheduler_authorization
+    from services.malware import scan_upload_for_threat
+    from services.upload_security import UploadSecurityService
 
 try:
     import razorpay as _razorpay_module
@@ -2471,53 +2475,15 @@ def _mark_upload_security_state(file_id: str, uid: str, state: str,
 
 
 def _assert_upload_clean(file_id: str) -> Dict[str, Any]:
-    metadata = _load_upload_metadata(file_id)
-    state = str(metadata.get("upload_state") or "").strip().lower()
-    if state == "clean" or metadata.get("security_scanned_at"):
-        return metadata
-    if state == "rejected":
-        raise HTTPException(status_code=422, detail="Upload failed security scan.")
-    raise HTTPException(
-        status_code=409,
-        detail="Upload is awaiting its security scan. Please retry shortly.",
-        headers={"Retry-After": "3"},
-    )
+    return _upload_security_service().assert_clean(file_id)
 
 
 def _ensure_upload_clean(file_id: str, uid: str, input_path: str) -> Dict[str, Any]:
-    metadata = _load_upload_metadata(file_id)
-    state = str(metadata.get("upload_state") or "").strip().lower()
-    if state == "clean" or metadata.get("security_scanned_at"):
-        if state != "clean":
-            return _mark_upload_security_state(file_id, uid, "clean",
-                                               scanned_at=str(metadata["security_scanned_at"]))
-        return metadata
-    if state == "rejected":
-        raise HTTPException(status_code=422, detail="Upload failed security scan.")
-    if not _scan_upload_for_threat(input_path):
-        rejected = _mark_upload_security_state(file_id, uid, "rejected")
-        remote_path = str(rejected.get("remote_path") or "")
-        if remote_path:
-            delete_from_firebase_storage(remote_path)
-        raise HTTPException(status_code=422, detail="Upload failed security scan.")
-    scanned_at = _utcnow().isoformat() + "Z"
-    return _mark_upload_security_state(file_id, uid, "clean", scanned_at=scanned_at)
+    return _upload_security_service().ensure_clean(file_id, uid, input_path)
 
 
 def _source_media_identity(file_id: str, input_path: str) -> str:
-    metadata = _load_upload_metadata(file_id)
-    content_sha256 = str(metadata.get("content_sha256") or "").strip().lower()
-    if len(content_sha256) == 64:
-        return f"sha256:{content_sha256}"
-    generation = str(metadata.get("storage_generation") or "").strip()
-    checksum = str(
-        metadata.get("storage_crc32c") or metadata.get("storage_md5_hash") or ""
-    ).strip()
-    if generation and checksum:
-        return f"storage:{generation}:{checksum}"
-    content_sha256 = _compute_media_hash(input_path)
-    _update_upload_metadata(file_id, {"content_sha256": content_sha256})
-    return f"sha256:{content_sha256}"
+    return _upload_security_service().source_identity(file_id, input_path)
 
 
 def _assert_upload_owner(file_id: str, uid: str):
@@ -2631,6 +2597,18 @@ def _compute_media_hash(file_path: str) -> str:
                 break
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _upload_security_service() -> UploadSecurityService:
+    return UploadSecurityService(
+        load_metadata=_load_upload_metadata,
+        mark_state=_mark_upload_security_state,
+        scan=_scan_upload_for_threat,
+        delete_remote=delete_from_firebase_storage,
+        utc_timestamp=lambda: _utcnow().isoformat() + "Z",
+        compute_hash=_compute_media_hash,
+        update_metadata=_update_upload_metadata,
+    )
 
 
 def _build_process_cache_path(media_hash: str, language: str, min_words: int, max_words: int) -> str:
@@ -4301,40 +4279,14 @@ def _require_scheduler_secret(request: Request):
     )
 
 
-@app.post("/api/maintenance/transcription-dispatch")
-async def dispatch_transcription_outbox(request: Request):
-    """Cloud Scheduler recovery hook; normal requests enqueue immediately."""
-    _require_scheduler_secret(request)
-    await asyncio.to_thread(TranscriptionJobs(get_db()).dispatch, _transcription_queue)
-    return {"success": True}
-
-
-@app.post("/api/maintenance/media-scan-dispatch")
-async def dispatch_media_scan_outbox(request: Request):
-    _require_scheduler_secret(request)
-    dispatched = await asyncio.to_thread(_dispatch_media_scans_once)
-    return {"success": True, "dispatched": dispatched}
-
-
-@app.post("/api/maintenance/janitor")
-async def run_maintenance_janitor(request: Request):
-    _require_scheduler_secret(request)
-    await scheduled_janitor_job()
-    return {"success": True}
-
-
-@app.post("/api/maintenance/queue-metrics")
-async def publish_maintenance_queue_metrics(request: Request):
-    _require_scheduler_secret(request)
-    await asyncio.to_thread(_publish_queue_metrics_once)
-    return {"success": True}
-
-
-@app.post("/api/maintenance/payment-reconciliation")
-async def run_maintenance_payment_reconciliation(request: Request):
-    _require_scheduler_secret(request)
-    await scheduled_payment_reconciliation_job()
-    return {"success": True}
+app.include_router(create_maintenance_router(
+    authorize=_require_scheduler_secret,
+    dispatch_transcription=lambda: TranscriptionJobs(get_db()).dispatch(_transcription_queue),
+    dispatch_media_scans=_dispatch_media_scans_once,
+    run_janitor=scheduled_janitor_job,
+    publish_queue_metrics=_publish_queue_metrics_once,
+    reconcile_payments=scheduled_payment_reconciliation_job,
+))
 
 
 def run_transcription_job_task(uid: str, job_id: str):

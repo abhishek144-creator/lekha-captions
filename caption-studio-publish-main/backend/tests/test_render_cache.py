@@ -1,6 +1,6 @@
 import unittest
 
-from backend.render_cache import render_cache_eligible, render_cache_identity
+from backend.rendering.cache import render_cache_eligible, render_cache_identity
 
 
 def _identity(**overrides):

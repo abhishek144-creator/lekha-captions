@@ -1,4 +1,4 @@
-"""Shadow estimates for queued render work; production admission remains count based."""
+"""Shadow estimates for queued render work; admission remains count based."""
 
 import math
 import os
@@ -18,7 +18,7 @@ def render_class(request):
 
 
 def estimate_render_work_seconds(duration_seconds, request):
-    """Bounded, configurable first estimate; compare with observations before scaling."""
+    """Return a bounded configurable estimate used for shadow observations."""
     try:
         duration = float(duration_seconds)
     except (TypeError, ValueError):
