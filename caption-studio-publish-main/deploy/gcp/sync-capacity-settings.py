@@ -7,11 +7,14 @@ import subprocess
 parser = argparse.ArgumentParser()
 parser.add_argument("--gcloud", default="gcloud")
 parser.add_argument("--project", required=True)
+parser.add_argument("--source-version", required=True, type=int)
 args = parser.parse_args()
+if args.source_version < 1:
+    raise SystemExit("--source-version must be a positive numeric Secret Manager version")
 
 base = [args.gcloud, "--project", args.project, "secrets", "versions"]
 raw = subprocess.check_output(
-    base + ["access", "latest", "--secret=lekha-runtime-env"],
+    base + ["access", str(args.source_version), "--secret=lekha-runtime-env"],
     text=True,
 )
 updates = {
@@ -31,4 +34,4 @@ result = subprocess.run(
 )
 if result.returncode:
     raise SystemExit("Capacity settings update failed; credentials withheld")
-print("Capacity and queue telemetry settings saved; previous secret versions retained")
+print("Capacity and queue telemetry settings saved as a new version; previous versions retained")

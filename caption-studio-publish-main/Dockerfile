@@ -39,7 +39,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     RENDER_FONT_BUNDLE_PATH=/app/.render_fonts/fonts.css \
     RENDER_FONT_BUNDLE_REQUIRED=1 \
     SERVICE_ROLE=worker \
-    WORKER_QUEUES=caption_export_jobs
+    WORKER_QUEUES=caption_export_fast,caption_export_jobs,caption_export_heavy
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         python3 python3-pip ffmpeg ca-certificates chromium dumb-init fonts-liberation \

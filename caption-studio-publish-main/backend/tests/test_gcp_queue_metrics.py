@@ -54,6 +54,15 @@ def test_queued_render_work_uses_job_estimates_and_bounded_fallback():
     assert gcp_queue_metrics.queued_render_work_seconds(Queue(), Job) == 195
 
 
+def test_render_queue_snapshot_aggregates_work_and_predicts_wait(monkeypatch):
+    queues = [type("Queue", (), {"count": 0})(), type("Queue", (), {"count": 0})()]
+    snapshots = iter([(2, 30), (3, 45)])
+    work = iter([120, 360])
+    monkeypatch.setattr(gcp_queue_metrics, "queue_snapshot", lambda *_args: next(snapshots))
+    monkeypatch.setattr(gcp_queue_metrics, "queued_render_work_seconds", lambda *_args, **_kwargs: next(work))
+    assert gcp_queue_metrics.render_queue_snapshot(queues, object, active_workers=4) == (5, 45, 480, 120)
+
+
 def test_google_request_rejects_unapproved_endpoint():
     request = urllib.request.Request("file:///tmp/metadata")
     try:
@@ -87,8 +96,10 @@ def test_publish_queue_snapshot_writes_group_metrics(monkeypatch):
     monkeypatch.setattr(gcp_queue_metrics, "_access_token", lambda: "token")
     monkeypatch.setattr(gcp_queue_metrics.urllib.request, "urlopen", _urlopen)
 
-    gcp_queue_metrics.publish_queue_snapshot(12, 240, "exports", "worker-mig",
-                                             pending_work_seconds=420)
+    gcp_queue_metrics.publish_queue_snapshot(
+        12, 240, "exports", "worker-mig",
+        pending_work_seconds=420, predicted_wait_seconds=105,
+    )
 
     assert captured["url"].endswith("/projects/project-id/timeSeries")
     values = {
@@ -98,6 +109,7 @@ def test_publish_queue_snapshot_writes_group_metrics(monkeypatch):
     assert values["custom.googleapis.com/lekha/export_queue_depth"] == "12"
     assert values["custom.googleapis.com/lekha/export_oldest_job_age_seconds"] == "240"
     assert values["custom.googleapis.com/lekha/pending_render_work_seconds"] == "420"
+    assert values["custom.googleapis.com/lekha/predicted_queue_wait_seconds"] == "105"
     for item in captured["body"]["timeSeries"]:
         assert item["metric"]["labels"] == {
             "queue": "exports",

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
+import math
 import os
 import urllib.parse
 import urllib.request
@@ -83,6 +84,23 @@ def queued_render_work_seconds(queue, job_class, fallback_seconds=120) -> int:
     return total
 
 
+def render_queue_snapshot(queues, job_class, active_workers=1, fallback_seconds=120):
+    """Aggregate depth, oldest age, work, and predicted wait across queues."""
+    depth = 0
+    oldest_age = 0
+    pending_work_seconds = 0
+    for queue in queues:
+        queue_depth, queue_age = queue_snapshot(queue, job_class)
+        depth += queue_depth
+        oldest_age = max(oldest_age, queue_age)
+        pending_work_seconds += queued_render_work_seconds(
+            queue, job_class, fallback_seconds=fallback_seconds,
+        )
+    worker_count = max(1, int(active_workers or 0))
+    predicted_wait_seconds = math.ceil(pending_work_seconds / worker_count)
+    return depth, oldest_age, pending_work_seconds, predicted_wait_seconds
+
+
 def publish_queue_snapshot(
     depth: int,
     oldest_age_seconds: int,
@@ -90,6 +108,7 @@ def publish_queue_snapshot(
     worker_group: str,
     pending_work_seconds: int | None = None,
     metric_prefix: str = "export",
+    predicted_wait_seconds: int | None = None,
 ) -> None:
     """Write one global time series for each queue signal."""
     project_id = _project_id()
@@ -105,6 +124,8 @@ def publish_queue_snapshot(
     ]
     if pending_work_seconds is not None:
         measurements.append(("pending_render_work_seconds", pending_work_seconds))
+    if predicted_wait_seconds is not None:
+        measurements.append(("predicted_queue_wait_seconds", predicted_wait_seconds))
     for metric_name, value in measurements:
         series.append({
             "metric": {

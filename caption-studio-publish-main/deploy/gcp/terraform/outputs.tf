@@ -6,6 +6,10 @@ output "transcription_instance_group" { value = google_compute_region_instance_g
 output "spot_worker_instance_group" {
   value = try(google_compute_region_instance_group_manager.worker_spot[0].instance_group, null)
 }
+output "gpu_worker_instance_group" {
+  description = "Optional G2/L4 render worker group; null while disabled"
+  value       = try(google_compute_region_instance_group_manager.worker_gpu[0].instance_group, null)
+}
 output "cloud_run_api_uri" {
   description = "Parallel API candidate URI; null until enable_cloud_run_api is true"
   value       = try(google_cloud_run_v2_service.api[0].uri, null)

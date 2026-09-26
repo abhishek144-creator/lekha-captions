@@ -107,7 +107,7 @@ from collections import deque
 from contextlib import asynccontextmanager
 try:
     from .transcription_jobs import TranscriptionJobs
-    from .queue_admission import enqueue_bounded
+    from .queue_admission import enqueue_bounded_across_queues
     from .drafts import read_draft
     from .project_api import create_project_router
     from .direct_upload_api import create_direct_upload_router
@@ -117,8 +117,15 @@ try:
     from .release_metadata import release_metadata
     from .media_commands import run_media_command
     from .job_state import transition as transition_export_job, InvalidJobTransition, LOCAL_LOCK as JOB_STATE_LOCK
-    from .gcp_queue_metrics import publish_queue_snapshot, queue_snapshot, queued_render_work_seconds
-    from .rendering.capacity import estimate_render_work_seconds, render_class
+    from .gcp_queue_metrics import publish_queue_snapshot, queue_snapshot, render_queue_snapshot
+    from .rendering.capacity import (
+        FAST_EXPORT_QUEUE_NAME,
+        GPU_EXPORT_QUEUE_NAME,
+        HEAVY_EXPORT_QUEUE_NAME,
+        NORMAL_EXPORT_QUEUE_NAME,
+        RENDER_QUEUE_NAMES,
+        estimate_render_capacity,
+    )
     from .rendering.cache import render_cache_eligible, render_cache_identity
     from .services.media_scan_jobs import MediaScanJobs
     from .services.scheduler_auth import require_scheduler_authorization
@@ -126,7 +133,7 @@ try:
     from .services.upload_security import UploadSecurityService
 except ImportError:
     from transcription_jobs import TranscriptionJobs
-    from queue_admission import enqueue_bounded
+    from queue_admission import enqueue_bounded_across_queues
     from drafts import read_draft
     from project_api import create_project_router
     from direct_upload_api import create_direct_upload_router
@@ -136,8 +143,15 @@ except ImportError:
     from release_metadata import release_metadata
     from media_commands import run_media_command
     from job_state import transition as transition_export_job, InvalidJobTransition, LOCAL_LOCK as JOB_STATE_LOCK
-    from gcp_queue_metrics import publish_queue_snapshot, queue_snapshot, queued_render_work_seconds
-    from rendering.capacity import estimate_render_work_seconds, render_class
+    from gcp_queue_metrics import publish_queue_snapshot, queue_snapshot, render_queue_snapshot
+    from rendering.capacity import (
+        FAST_EXPORT_QUEUE_NAME,
+        GPU_EXPORT_QUEUE_NAME,
+        HEAVY_EXPORT_QUEUE_NAME,
+        NORMAL_EXPORT_QUEUE_NAME,
+        RENDER_QUEUE_NAMES,
+        estimate_render_capacity,
+    )
     from rendering.cache import render_cache_eligible, render_cache_identity
     from services.media_scan_jobs import MediaScanJobs
     from services.scheduler_auth import require_scheduler_authorization
@@ -629,7 +643,8 @@ scheduler = AsyncIOScheduler() if SCHEDULER_AVAILABLE else None
 REDIS_URL = os.environ.get("REDIS_URL", "")
 _redis_client = None
 _rq_redis_client = None
-EXPORT_QUEUE_NAME = os.environ.get("EXPORT_QUEUE_NAME", "caption_export_jobs")
+EXPORT_QUEUE_NAME = NORMAL_EXPORT_QUEUE_NAME
+GPU_RENDER_ENABLED = os.environ.get("GPU_RENDER_ENABLED", "0") == "1"
 TRANSCRIPTION_QUEUE_NAME = os.environ.get("TRANSCRIPTION_QUEUE_NAME", "caption_transcription_jobs")
 MEDIA_SCAN_QUEUE_NAME = os.environ.get("MEDIA_SCAN_QUEUE_NAME", "caption_media_scan_jobs")
 # Production accepts an 80-job waiting backlog. Keep this default aligned with
@@ -645,6 +660,8 @@ QUEUE_METRICS_INTERVAL_SECONDS = max(
     min(int(os.environ.get("QUEUE_METRICS_INTERVAL_SECONDS", "30")), 60),
 )
 WORKER_MIG_NAME = os.environ.get("WORKER_MIG_NAME", "lekha-worker-staging-mig").strip()
+SPOT_WORKER_MIG_NAME = os.environ.get("SPOT_WORKER_MIG_NAME", "lekha-worker-spot-staging-mig").strip()
+GPU_WORKER_MIG_NAME = os.environ.get("GPU_WORKER_MIG_NAME", "lekha-worker-gpu-staging-mig").strip()
 TRANSCRIPTION_MIG_NAME = os.environ.get(
     "TRANSCRIPTION_MIG_NAME", "lekha-transcription-staging-mig"
 ).strip()
@@ -754,12 +771,21 @@ if _IS_PRODUCTION and not DURABLE_QUEUE_ENABLED:
     raise RuntimeError("ENABLE_DURABLE_QUEUE must be 1 in production.")
 
 _export_queue = None
+_export_queues = {}
 if DURABLE_QUEUE_ENABLED and _rq_redis_client is not None and RQ_AVAILABLE:
     try:
-        _export_queue = Queue(EXPORT_QUEUE_NAME, connection=_rq_redis_client, default_timeout=30 * 60)
-        _json_log("info", "durable_queue_enabled", queue=EXPORT_QUEUE_NAME)
+        configured_render_queues = list(RENDER_QUEUE_NAMES)
+        if GPU_RENDER_ENABLED:
+            configured_render_queues.append(GPU_EXPORT_QUEUE_NAME)
+        _export_queues = {
+            queue_name: Queue(queue_name, connection=_rq_redis_client, default_timeout=30 * 60)
+            for queue_name in configured_render_queues
+        }
+        _export_queue = _export_queues[EXPORT_QUEUE_NAME]
+        _json_log("info", "durable_queue_enabled", queues=list(_export_queues))
     except Exception as e:
         _export_queue = None
+        _export_queues = {}
         _json_log("warning", "durable_queue_init_failed", error=str(e))
 
 if _IS_PRODUCTION and _export_queue is None:
@@ -943,16 +969,81 @@ def _publish_queue_metrics_once():
     token = _claim_scheduled_job("gcp_queue_metrics", QUEUE_METRICS_INTERVAL_SECONDS - 2)
     if not token or _export_queue is None or Job is None:
         return
-    depth, oldest_age_seconds = queue_snapshot(_export_queue, Job)
-    pending_work_seconds = queued_render_work_seconds(_export_queue, Job)
+    render_queues = list(_export_queues.values()) or [_export_queue]
+    active_workers = 1
+    workers = []
+    if RQWorker is not None:
+        try:
+            workers = RQWorker.all(connection=_rq_redis_client)
+            render_names = set(_export_queues) or {EXPORT_QUEUE_NAME}
+            active_workers = sum(
+                1 for worker in workers
+                if render_names.intersection(set(
+                    worker.queue_names() if callable(getattr(worker, "queue_names", None))
+                    else getattr(worker, "queue_names", [])
+                ))
+            ) or 1
+        except Exception:
+            active_workers = 1
+            workers = []
+    depth, oldest_age_seconds, pending_work_seconds, predicted_wait_seconds = render_queue_snapshot(
+        render_queues, Job, active_workers=active_workers,
+    )
     publish_queue_snapshot(
         depth,
         oldest_age_seconds,
-        EXPORT_QUEUE_NAME,
+        "render_all",
         WORKER_MIG_NAME,
         pending_work_seconds=pending_work_seconds,
         metric_prefix="export",
+        predicted_wait_seconds=predicted_wait_seconds,
     )
+    if HEAVY_EXPORT_QUEUE_NAME in _export_queues:
+        spot_workers = 0
+        for worker in workers:
+            try:
+                group = _rq_redis_client.hget(worker.key, "worker_group") or b""
+                if isinstance(group, bytes):
+                    group = group.decode("utf-8", "replace")
+                if group == SPOT_WORKER_MIG_NAME:
+                    spot_workers += 1
+            except Exception:
+                continue
+        heavy_depth, heavy_age, heavy_work, heavy_wait = render_queue_snapshot(
+            [_export_queues[HEAVY_EXPORT_QUEUE_NAME]], Job, active_workers=spot_workers or 1,
+        )
+        publish_queue_snapshot(
+            heavy_depth,
+            heavy_age,
+            "render_heavy",
+            SPOT_WORKER_MIG_NAME,
+            pending_work_seconds=heavy_work,
+            metric_prefix="export",
+            predicted_wait_seconds=heavy_wait,
+        )
+    if GPU_RENDER_ENABLED and GPU_EXPORT_QUEUE_NAME in _export_queues:
+        gpu_workers = 0
+        for worker in workers:
+            try:
+                group = _rq_redis_client.hget(worker.key, "worker_group") or b""
+                if isinstance(group, bytes):
+                    group = group.decode("utf-8", "replace")
+                if group == GPU_WORKER_MIG_NAME:
+                    gpu_workers += 1
+            except Exception:
+                continue
+        gpu_depth, gpu_age, gpu_work, gpu_wait = render_queue_snapshot(
+            [_export_queues[GPU_EXPORT_QUEUE_NAME]], Job, active_workers=gpu_workers or 1,
+        )
+        publish_queue_snapshot(
+            gpu_depth,
+            gpu_age,
+            "render_gpu",
+            GPU_WORKER_MIG_NAME,
+            pending_work_seconds=gpu_work,
+            metric_prefix="export",
+            predicted_wait_seconds=gpu_wait,
+        )
     if _transcription_queue is not None and TRANSCRIPTION_QUEUE_NAME != EXPORT_QUEUE_NAME:
         transcription_depth, transcription_oldest = queue_snapshot(
             _transcription_queue, Job,
@@ -4547,10 +4638,21 @@ async def _process_video_inline(req: ProcessRequest, request: Request, response:
     finally:
         _release_process_slot(uid, process_request_id)
 
-def _enqueue_export_job(**job):
+def _render_queue_for(queue_name):
+    queue = _export_queues.get(queue_name)
+    if queue is None and not _IS_PRODUCTION:
+        return _export_queue
+    if queue is None:
+        raise HTTPException(503, "The selected render queue is unavailable.", headers={"Retry-After": "10"})
+    return queue
+
+
+def _enqueue_export_job(render_queue, **job):
     if _IS_PRODUCTION:
-        return enqueue_bounded(_export_queue, EXPORT_MAX_PENDING_JOBS, **job)
-    return _export_queue.enqueue_call(**job)
+        return enqueue_bounded_across_queues(
+            render_queue, list(_export_queues.values()), EXPORT_MAX_PENDING_JOBS, **job,
+        )
+    return render_queue.enqueue_call(**job)
 
 
 @app.post("/api/export")
@@ -4625,9 +4727,7 @@ async def export_video(req: ExportRequest, request: Request, response: Response)
     release_export_slot_in_request = True
     try:
         duration_hint = await asyncio.to_thread(_source_duration_hint, req.file_id, uid)
-        estimated_render_seconds = estimate_render_work_seconds(
-            duration_hint, safe_request_snapshot,
-        )
+        capacity = estimate_render_capacity(duration_hint, safe_request_snapshot)
         _set_export_job(
             export_job_id,
             "queued",
@@ -4638,7 +4738,10 @@ async def export_video(req: ExportRequest, request: Request, response: Response)
             queue_entered_at=time.time(),
             idempotency_key=idem_key,
             idempotency_request_hash=idempotency_request_hash,
-            estimated_render_seconds=estimated_render_seconds,
+            estimated_render_seconds=capacity["estimated_render_seconds"],
+            render_work_units=capacity["render_work_units"],
+            render_class=capacity["render_class"],
+            queue_name=capacity["queue_name"],
             request_snapshot=safe_request_snapshot,
         )
         if _export_queue is not None:
@@ -4660,6 +4763,7 @@ async def export_video(req: ExportRequest, request: Request, response: Response)
                     "job_id": export_job_id,
                 })
             _enqueue_export_job(
+                _render_queue_for(capacity["queue_name"]),
                 func=run_export_job_task,
                 args=(
                     export_job_id,
@@ -4669,8 +4773,12 @@ async def export_video(req: ExportRequest, request: Request, response: Response)
                     idempotency_request_hash,
                 ),
                 job_id=export_job_id,
-                meta={"estimated_render_seconds": estimated_render_seconds,
-                      "render_class": render_class(safe_request_snapshot)},
+                meta={
+                    "estimated_render_seconds": capacity["estimated_render_seconds"],
+                    "render_work_units": capacity["render_work_units"],
+                    "render_class": capacity["render_class"],
+                    "renderer": capacity["renderer"],
+                },
                 retry=RQRetry(max=3, interval=[10, 30, 60]) if RQRetry else None,
                 ttl=EXPORT_MAX_QUEUE_WAIT_SECONDS,
                 result_ttl=24 * 3600,
@@ -4898,6 +5006,8 @@ def export_replay(job_id: str, request: Request):
             detail="Another export is already running for this account. Please wait.",
         )
     try:
+        duration_hint = _source_duration_hint(str(request_snapshot.get("file_id") or ""), uid)
+        capacity = estimate_render_capacity(duration_hint, request_snapshot)
         _set_export_job(
             new_job_id,
             "queued",
@@ -4906,11 +5016,22 @@ def export_replay(job_id: str, request: Request):
             started_at=time.time(),
             request_snapshot=request_snapshot,
             replayed_from=job_id,
+            estimated_render_seconds=capacity["estimated_render_seconds"],
+            render_work_units=capacity["render_work_units"],
+            render_class=capacity["render_class"],
+            queue_name=capacity["queue_name"],
         )
         _enqueue_export_job(
+            _render_queue_for(capacity["queue_name"]),
             func=run_export_job_task,
             args=(new_job_id, request_snapshot, uid),
             job_id=new_job_id,
+            meta={
+                "estimated_render_seconds": capacity["estimated_render_seconds"],
+                "render_work_units": capacity["render_work_units"],
+                "render_class": capacity["render_class"],
+                "renderer": capacity["renderer"],
+            },
             retry=RQRetry(max=3, interval=[10, 30, 60]) if RQRetry else None,
             result_ttl=24 * 3600,
             failure_ttl=7 * 24 * 3600,
@@ -4960,6 +5081,23 @@ async def analytics_summary(request: Request):
         round(sum(cost_samples) / len(cost_samples), 6)
         if cost_samples else 0.0
     )
+    funnel = {
+        "signups": counters.get("account_signup", 0),
+        "uploads": max(counters.get("upload_success", 0), counters.get("funnel.upload.success", 0)),
+        "transcriptions": max(process_success, counters.get("funnel.process.success", 0)),
+        "exports_started": counters.get("funnel.export.started", 0),
+        "exports_completed": max(export_success, counters.get("funnel.export.success", 0)),
+        "payments": counters.get("payment_success", 0),
+    }
+    funnel["upload_to_transcription_pct"] = round(
+        funnel["transcriptions"] / max(funnel["uploads"], 1) * 100, 2,
+    )
+    funnel["transcription_to_export_pct"] = round(
+        funnel["exports_completed"] / max(funnel["transcriptions"], 1) * 100, 2,
+    )
+    funnel["export_to_payment_pct"] = round(
+        funnel["payments"] / max(funnel["exports_completed"], 1) * 100, 2,
+    )
 
     return {
         "window": {
@@ -4986,6 +5124,7 @@ async def analytics_summary(request: Request):
             "export_failure_rate": (export_failed / max(export_success + export_failed, 1)),
             "process_failure_rate": (process_failed / max(process_success + process_failed, 1)),
         },
+        "funnel": funnel,
         "timestamp": _utcnow().isoformat() + "Z",
     }
 
@@ -5135,10 +5274,10 @@ def _runtime_dependency_snapshot() -> Dict[str, Any]:
     if DURABLE_QUEUE_ENABLED and checks["redis"] and RQWorker is not None:
         try:
             workers = RQWorker.all(connection=_redis_client)
+            render_queue_names = list(_export_queues) or [EXPORT_QUEUE_NAME]
             worker_counts = {
-                EXPORT_QUEUE_NAME: 0,
-                TRANSCRIPTION_QUEUE_NAME: 0,
-                MEDIA_SCAN_QUEUE_NAME: 0,
+                queue_name: 0
+                for queue_name in (*render_queue_names, TRANSCRIPTION_QUEUE_NAME, MEDIA_SCAN_QUEUE_NAME)
             }
             for worker in workers:
                 queue_names = getattr(worker, "queue_names", [])
@@ -5152,10 +5291,19 @@ def _runtime_dependency_snapshot() -> Dict[str, Any]:
                     for queue_name in set(queue_names or []):
                         if queue_name in worker_counts:
                             worker_counts[queue_name] += 1
-            details["worker_count"] = worker_counts[EXPORT_QUEUE_NAME]
+            details["worker_count"] = max(
+                (worker_counts[queue_name] for queue_name in render_queue_names),
+                default=0,
+            )
             details["workers_by_queue"] = worker_counts
+            render_queue_depths = {}
+            for queue_name in render_queue_names:
+                queue = _export_queues.get(queue_name)
+                if queue is None and queue_name == EXPORT_QUEUE_NAME:
+                    queue = _export_queue
+                render_queue_depths[queue_name] = int(queue.count) if queue is not None else 0
             queue_depths = {
-                EXPORT_QUEUE_NAME: int(_export_queue.count) if _export_queue is not None else 0,
+                **render_queue_depths,
                 TRANSCRIPTION_QUEUE_NAME: (
                     int(_transcription_queue.count)
                     if _transcription_queue is not None else 0
@@ -5220,7 +5368,7 @@ async def readiness(request: Request):
         body["slo"] = _build_slo_snapshot()
         body["queue"] = {
             "durable_enabled": DURABLE_QUEUE_ENABLED,
-            "queue_name": EXPORT_QUEUE_NAME,
+            "queue_names": list(_export_queues) or [EXPORT_QUEUE_NAME],
             "connected": _export_queue is not None,
         }
         body["dependencies"] = dependencies

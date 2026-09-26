@@ -24,7 +24,7 @@ from request_limits import UploadBodyLimitMiddleware
 import worker
 import firebase_admin_setup
 from rq import Queue
-from queue_admission import enqueue_bounded
+from queue_admission import enqueue_bounded, enqueue_bounded_across_queues
 
 
 class ProductionBoundaryTests(unittest.TestCase):
@@ -58,6 +58,26 @@ class ProductionBoundaryTests(unittest.TestCase):
         self.assertEqual(error.exception.status_code, 429)
         self.assertEqual(error.exception.detail, "Export capacity is temporarily full. Retry after 5 mins.")
         self.assertEqual(error.exception.headers["Retry-After"], "300")
+
+    def test_render_classes_share_one_atomic_backlog_limit(self):
+        fast = Queue("fast", connection=self.redis)
+        normal = Queue("normal", connection=self.redis)
+        heavy = Queue("heavy", connection=self.redis)
+        queues = [fast, normal, heavy]
+        enqueue_bounded_across_queues(
+            fast, queues, 2, func="operator.add", args=(1, 2), job_id="fast-job",
+        )
+        enqueue_bounded_across_queues(
+            heavy, queues, 2, func="operator.add", args=(1, 2), job_id="heavy-job",
+        )
+
+        with self.assertRaises(main.HTTPException) as error:
+            enqueue_bounded_across_queues(
+                normal, queues, 2, func="operator.add", args=(1, 2), job_id="normal-job",
+            )
+
+        self.assertEqual(error.exception.status_code, 429)
+        self.assertEqual(sum(queue.count for queue in queues), 2)
 
     def test_preparation_timeout_cannot_fail_a_job_that_has_started(self):
         transition(self.redis, "race", {}, {"status": "queued"})

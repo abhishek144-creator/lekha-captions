@@ -524,7 +524,12 @@ export default function PricingSection() {
             <h3 className="text-lg font-semibold text-white">Compare every plan</h3>
             <p className="mt-1 text-sm text-[#949494]">Everything you need to choose your creative cadence.</p>
           </div>
-          <div className="overflow-x-auto">
+          <div
+            className="overflow-x-auto"
+            role="region"
+            aria-label="Plan comparison"
+            tabIndex={0}
+          >
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-[#161616]">

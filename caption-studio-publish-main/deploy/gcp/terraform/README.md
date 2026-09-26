@@ -26,13 +26,13 @@ version, verify signed private downloads and the exact application SHA, then
 continue the release only after the canary succeeds.
 
 Render and transcription capacity are intentionally separate. The baseline
-render pool uses benchmark-profiled `n2-highcpu-8` workers and scales from zero;
-its bounded Spot overflow pool also scales from zero. Transcription, including
-the eager media-scan queue, scales independently from zero. The API
-readiness probe must remain healthy when both queues and both worker pools are
-empty. Before enabling a scale-to-zero policy, verify the API or an
-external scheduled publisher continuously emits zero-valued queue metrics;
-stale/missing metrics must alert rather than silently strand queued work.
+render pool uses the verified `n2-custom-4-12288` profile and scales from 3 to
+20. Fast, normal, and heavy queues share one atomic admission ceiling. Pending
+render seconds and predicted wait drive scaling, with CPU retained as a safety
+signal. The bounded Spot overflow pool consumes heavy work and scales from
+zero. Transcription and eager media scanning scale independently from zero.
+The optional G2/L4 pool stays disabled until a matched cost and visual-parity
+benchmark passes and a driver-enabled `gpu_runtime_image` is supplied.
 
 `enable_cloud_run_api=true` creates a parallel Cloud Run API candidate, private
 Redis connector, serverless NEG, least-privilege scheduler identity, and five
@@ -42,7 +42,7 @@ instances, mounts the pinned runtime Secret Manager version, and runs with
 does not attach the NEG to the public load balancer or remove the GCE API MIG;
 those are explicit canary/cutover/rollback steps after staging acceptance.
 
-The Spot pool consumes the same idempotent render queue and has minimum zero.
+The Spot pool consumes the idempotent heavy-render queue and has minimum zero.
 Run the documented early/middle/late preemption drill before raising its maximum
 in production. If Spot reliability is unacceptable, set
 `spot_render_worker_max_replicas=0`; the baseline pool remains available.

@@ -91,7 +91,12 @@ reuse Railway Redis for staging or production migration.
 
 For the currently provisioned staging project, `finalize-staging.sh` completes
 the Redis/secret/VM handoff and verifies the public staging health endpoint. It
-is idempotent and keeps the Netlify and Railway production services untouched.
+keeps the Netlify and Railway production services untouched. Set
+`RUNTIME_SECRET_VERSION` to the reviewed numeric source version before running
+it; the script creates a new version and pins both VMs to that returned number.
+Operational Python helpers and `provision-scaled-staging.ps1` likewise require
+an explicit `--source-version` or `-RuntimeSecretVersion`. They never read a
+credential payload through the mutable `latest` alias.
 
 ## Build the image
 

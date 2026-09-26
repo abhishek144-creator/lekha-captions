@@ -59,6 +59,7 @@ class ReleaseWorker(Worker):
             "app_release": metadata["release"],
             "release_metadata": json.dumps(metadata),
             "draining": "1" if WORKER_STATE["draining"] else "0",
+            "worker_group": os.environ.get("WORKER_MIG_NAME", "unknown"),
         })
         WORKER_STATE["heartbeat_at"] = time.monotonic()
 

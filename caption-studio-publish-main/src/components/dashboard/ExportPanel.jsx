@@ -230,6 +230,9 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
   const [exportAspectRatio, setExportAspectRatio] = useState('9:16');
   const [showSafeArea, setShowSafeArea] = useState(true);
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
+  const [notifyWhenComplete, setNotifyWhenComplete] = useState(() => (
+    typeof window !== 'undefined' && window.localStorage?.getItem('lekha.exportCompletionNotification') === '1'
+  ));
   const exportInFlightRef = useRef(false);
   const exportAbortRef = useRef(null);
   const backgroundNoticeShownRef = useRef(false);
@@ -486,6 +489,15 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
         title: 'No captions to export',
       });
       return;
+    }
+
+    if (notifyWhenComplete && typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      try {
+        await Notification.requestPermission();
+      } catch {
+        // The in-app completion message remains available when the browser
+        // blocks notification permission or the operating system denies it.
+      }
     }
 
     setIsExporting(true);
@@ -873,6 +885,21 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       setProgress(100);
       progressTargetRef.current = 100;
       setStatusMessage('Export complete!');
+      toast({
+        title: 'Export complete',
+        description: `${getCaptionedVideoFilename(originalFileName)} is ready and downloading.`,
+        duration: 10000,
+      });
+      if (notifyWhenComplete && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        try {
+          new Notification('Lekha export complete', {
+            body: `${getCaptionedVideoFilename(originalFileName)} is ready.`,
+            tag: activeExportJobId || 'lekha-export-complete',
+          });
+        } catch {
+          // Some mobile browsers expose Notification but reject construction.
+        }
+      }
       // The backend just decremented a credit — refresh so the plan/credits
       // gating reflects reality instead of the stale pre-export snapshot.
       // Auth-context implementations have historically varied between async and
@@ -1119,6 +1146,22 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
                 <span>I reviewed this language track and corrected the captions that needed changes.</span>
               </label>
             </div>
+            <label className="flex cursor-pointer items-start gap-2.5 rounded-2xl border border-white/10 bg-white/[0.025] p-4 text-xs leading-5 text-gray-300">
+              <input
+                type="checkbox"
+                checked={notifyWhenComplete}
+                onChange={(event) => {
+                  const enabled = event.target.checked
+                  setNotifyWhenComplete(enabled)
+                  window.localStorage?.setItem('lekha.exportCompletionNotification', enabled ? '1' : '0')
+                }}
+                className="mt-1 accent-[#f5a623]"
+              />
+              <span>
+                Notify me when a background export finishes.
+                <span className="mt-0.5 block text-[11px] text-gray-500">Your browser may ask for notification permission when you start the export.</span>
+              </span>
+            </label>
             {exportOptions.filter(o => o.requiresPlan).map((option, idx) => {
               const isPlanLocked = !isPlanActive || (option.requiresPro && !is4kAllowed);
               const isLocked = !reviewConfirmed || isPlanLocked;

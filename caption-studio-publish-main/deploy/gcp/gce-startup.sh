@@ -20,6 +20,7 @@ worker_mig_name="$(metadata_value worker-mig-name 2>/dev/null || true)"
 worker_queue_name="$(metadata_value worker-queue-name 2>/dev/null || true)"
 worker_container_cpus="$(metadata_value worker-container-cpus 2>/dev/null || true)"
 worker_container_memory="$(metadata_value worker-container-memory 2>/dev/null || true)"
+worker_gpu_enabled="$(metadata_value worker-gpu-enabled 2>/dev/null || true)"
 boot_epoch="$(date +%s)"
 
 if [[ "$service_role" == "worker" ]]; then
@@ -80,7 +81,12 @@ role_options=()
 if [[ "$service_role" == "render" ]]; then
   # One RQ render per VM; metadata keeps the container limit aligned with the
   # benchmark-selected machine profile while reserving capacity for the OS and scanner.
-  role_options=(--cpus "${worker_container_cpus:-7}" --memory "${worker_container_memory:-7g}" -e "WORKER_QUEUES=${worker_queue_name:-caption_export_jobs}")
+  role_options=(--cpus "${worker_container_cpus:-7}" --memory "${worker_container_memory:-7g}" -e "WORKER_QUEUES=${worker_queue_name:-caption_export_fast,caption_export_jobs,caption_export_heavy}")
+  if [[ "$worker_gpu_enabled" == "1" ]]; then
+    command -v nvidia-smi >/dev/null || { echo "GPU runtime image is missing NVIDIA drivers" >&2; exit 70; }
+    nvidia-smi >/dev/null || { echo "NVIDIA GPU is unavailable" >&2; exit 70; }
+    role_options+=(--gpus all -e GPU_RENDER_ENABLED=1)
+  fi
 elif [[ "$service_role" == "transcription" ]]; then
   role_options=(--cpus 1 --memory 2g -e "WORKER_QUEUES=${worker_queue_name:-caption_media_scan_jobs,caption_transcription_jobs}")
 fi
