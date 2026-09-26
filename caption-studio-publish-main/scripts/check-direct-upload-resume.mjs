@@ -237,6 +237,98 @@ assert.equal(largeProgress.at(-1).uploadedBytes, maxAllowedFile.size)
 assert.equal(typeof largeProgress.at(-1).bytesPerSecond, 'number')
 assert.ok(Object.hasOwn(largeProgress.at(-1), 'remainingSeconds'))
 
+// This represents the supported maximum without allocating a 500 MiB test
+// buffer. It verifies the same resumable request sequence a browser uses for
+// the complete limit, including recovery after an interrupted first chunk.
+const maxAllowedFile = {
+  name: 'max-allowed.mp4',
+  type: 'video/mp4',
+  size: 500 * 1024 * 1024,
+  slice(start, end) {
+    return { size: end - start }
+  },
+}
+let firstLargeChunkFailed = false
+const largeRanges = []
+const largeProgress = []
+const largeApiPaths = []
+
+class LargeFileRequest {
+  upload = {}
+  headers = {}
+  status = 0
+
+  open(method, url) {
+    this.url = url
+    assert.equal(method, 'PUT')
+    assert.equal(url, 'https://storage.test/session')
+  }
+
+  setRequestHeader(name, value) {
+    this.headers[name] = value
+  }
+
+  getResponseHeader(name) {
+    return name === 'Range' ? this.range : null
+  }
+
+  send() {
+    const range = this.headers['Content-Range']
+    largeRanges.push(range)
+    if (!firstLargeChunkFailed) {
+      firstLargeChunkFailed = true
+      this.status = 0
+      this.onerror()
+      return
+    }
+    if (range === `bytes */${maxAllowedFile.size}`) {
+      this.status = 308
+      this.range = `bytes=0-${chunkBytes * 2 - 1}`
+      this.onload()
+      return
+    }
+    const match = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(range)
+    assert.ok(match, `Expected a resumable data range, got ${range}`)
+    const start = Number(match[1])
+    const end = Number(match[2])
+    assert.equal(Number(match[3]), maxAllowedFile.size)
+    assert.equal(end - start + 1, Math.min(chunkBytes, maxAllowedFile.size - start))
+    this.status = end + 1 === maxAllowedFile.size ? 200 : 308
+    this.range = `bytes=0-${end}`
+    this.upload.onprogress?.({ lengthComputable: true, loaded: end - start + 1 })
+    this.onload()
+  }
+}
+
+const maxResult = await vm.runInContext(`${source}\nuploadFileWithRecovery`, vm.createContext({
+  XMLHttpRequest: LargeFileRequest,
+  apiRequest: async (path) => {
+    largeApiPaths.push(path)
+    if (path === '/api/uploads/init') return {
+      success: true, direct_upload_available: true,
+      upload_url: 'https://storage.test/session', file_id: 'max-fixture',
+    }
+    if (path === '/api/uploads/complete') return { success: true, file_id: 'max-fixture' }
+    throw new Error(`Unexpected API proxy request: ${path}`)
+  },
+  getClientContext: (value) => value,
+  trackAnalytics: () => {},
+  crypto: globalThis.crypto,
+  navigator: { onLine: true },
+  setTimeout,
+  Math: { ...Math, random: () => 0, round: Math.round, max: Math.max, min: Math.min, floor: Math.floor },
+}))(maxAllowedFile, { retryDelaysMs: [0], onProgress: (value) => largeProgress.push(value) })
+
+assert.equal(maxResult.success, true)
+assert.deepEqual(largeApiPaths, ['/api/uploads/init', '/api/uploads/complete'])
+assert.deepEqual(largeRanges.slice(0, 3), [
+  `bytes 0-${chunkBytes - 1}/${maxAllowedFile.size}`,
+  `bytes */${maxAllowedFile.size}`,
+  `bytes ${chunkBytes * 2}-${chunkBytes * 3 - 1}/${maxAllowedFile.size}`,
+])
+assert.equal(largeRanges.at(-1), `bytes ${maxAllowedFile.size - chunkBytes / 2}-${maxAllowedFile.size - 1}/${maxAllowedFile.size}`)
+assert.equal(largeProgress.at(-1).uploadedBytes, maxAllowedFile.size)
+
 let revokedSession = false
 const cancelledPaths = []
 class FailedRequest extends FakeRequest {
