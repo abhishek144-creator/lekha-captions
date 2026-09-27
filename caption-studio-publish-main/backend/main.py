@@ -5228,12 +5228,16 @@ def export_cancel(job_id: str, request: Request):
 
     status = (job.get("status") or "unknown").lower()
     if status == "cancelled":
+        idempotency_key = str(job.get("idempotency_key") or "")
+        if idempotency_key:
+            _idem_delete(idempotency_key)
         return {
             "success": True,
             "status": "cancelled",
             "export_job_id": job_id,
             "idempotent_replay": True,
             "credit_released": False,
+            "retry_allowed": True,
         }
     if status != "queued":
         raise HTTPException(
@@ -5249,6 +5253,13 @@ def export_cancel(job_id: str, request: Request):
                         cancellation_reason="user_requested", error=None)
     except InvalidJobTransition as error:
         raise HTTPException(status_code=409, detail="This export has already started.") from error
+    # A cancelled queue receipt must not pin the exact same editor state to a
+    # terminal job for six hours. Clearing it lets the customer intentionally
+    # submit the unchanged export again while the durable job record remains
+    # available for audit and status history.
+    idempotency_key = str(job.get("idempotency_key") or "")
+    if idempotency_key:
+        _idem_delete(idempotency_key)
     _release_export_pending_work(job_id)
     # Cancellation is durable first. If queue removal fails, a dequeued worker
     # observes CANCELLED and exits before rendering or charging.
@@ -5267,6 +5278,7 @@ def export_cancel(job_id: str, request: Request):
         "status": "cancelled",
         "export_job_id": job_id,
         "credit_released": False,
+        "retry_allowed": True,
     }
 
 

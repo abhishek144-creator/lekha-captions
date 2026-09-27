@@ -1,44 +1,11 @@
-import { Captions, Eye, Layers, Plus, Type, X } from 'lucide-react';
-
-const BRAND_KIT_STYLE_FIELDS = [
-  'font_family',
-  'font_size',
-  'font_weight',
-  'font_style',
-  'line_spacing',
-  'word_spacing',
-  'letter_spacing',
-  'text_align',
-  'text_case',
-  'text_color',
-  'text_gradient',
-  'text_opacity',
-  'highlight_color',
-  'highlight_gradient',
-  'secondary_color',
-  'has_background',
-  'background_color',
-  'background_opacity',
-  'background_padding',
-  'background_h_multiplier',
-  'has_stroke',
-  'stroke_width',
-  'stroke_color',
-  'has_shadow',
-  'shadow_color',
-  'shadow_blur',
-  'shadow_offset_x',
-  'shadow_offset_y',
-  'position_x',
-  'position_y',
-];
-
-function extractBrandKitStyle(style = {}) {
-  return BRAND_KIT_STYLE_FIELDS.reduce((kitStyle, field) => {
-    if (style[field] !== undefined) kitStyle[field] = style[field];
-    return kitStyle;
-  }, {});
-}
+import { useRef, useState } from 'react';
+import { Captions, Download, Eye, Layers, Plus, Type, Upload, X } from 'lucide-react';
+import {
+  createBrandKitDocument,
+  extractBrandKitStyle,
+  mergeBrandKits,
+  parseBrandKitDocument,
+} from './brandKitUtils';
 
 export default function LayersTab({
   captions = [],
@@ -52,6 +19,8 @@ export default function LayersTab({
   onBrandKitsChange,
   preferenceSyncStatus = 'loading',
 }) {
+  const brandKitFileRef = useRef(null);
+  const [brandKitMessage, setBrandKitMessage] = useState('');
   const captionLayers = captions.filter((caption) => !caption.isTextElement);
   const textLayers = captions.filter((caption) => caption.isTextElement);
   const layers = [...textLayers, ...captionLayers].sort((a, b) => (a.start_time || 0) - (b.start_time || 0));
@@ -89,6 +58,32 @@ export default function LayersTab({
     onBrandKitsChange?.((current) => current.filter((kit) => kit.id !== kitId));
   };
 
+  const exportBrandKits = () => {
+    if (!brandKits.length) return;
+    const document = createBrandKitDocument(brandKits);
+    const url = URL.createObjectURL(new Blob([JSON.stringify(document, null, 2)], { type: 'application/json' }));
+    const link = window.document.createElement('a');
+    link.href = url;
+    link.download = `lekha-brand-kits-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setBrandKitMessage(`Exported ${document.brand_kits.length} brand kit${document.brand_kits.length === 1 ? '' : 's'}.`);
+  };
+
+  const importBrandKits = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    try {
+      if (file.size > 256 * 1024) throw new Error('Brand-kit files must be smaller than 256 KB.');
+      const imported = parseBrandKitDocument(await file.text());
+      onBrandKitsChange?.((current) => mergeBrandKits(current, imported));
+      setBrandKitMessage(`Imported ${imported.length} brand kit${imported.length === 1 ? '' : 's'} into your editor preferences.`);
+    } catch (error) {
+      setBrandKitMessage(error instanceof Error ? error.message : 'Brand kits could not be imported.');
+    }
+  };
+
   return (
     <div className="h-full flex flex-col text-white">
       <div className="mb-4">
@@ -110,15 +105,25 @@ export default function LayersTab({
               {preferenceSyncStatus === 'synced' ? 'Synced to your account' : preferenceSyncStatus === 'saving' ? 'Saving…' : 'Saved in this browser'}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={saveBrandKit}
-            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.05] px-2.5 text-[10px] font-semibold text-slate-200 transition-colors hover:bg-white/[0.09]"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Save
-          </button>
+          <div className="flex shrink-0 items-center gap-1">
+            <input ref={brandKitFileRef} type="file" accept="application/json,.json" className="hidden" onChange={importBrandKits} />
+            <button type="button" onClick={() => brandKitFileRef.current?.click()} aria-label="Import brand kits" title="Import brand kits from JSON" className="flex h-8 w-8 items-center justify-center rounded-md border border-white/10 bg-white/[0.05] text-slate-300 hover:bg-white/[0.09] hover:text-white">
+              <Upload className="h-3.5 w-3.5" />
+            </button>
+            <button type="button" onClick={exportBrandKits} disabled={!brandKits.length} aria-label="Export brand kits" title="Export brand kits as JSON" className="flex h-8 w-8 items-center justify-center rounded-md border border-white/10 bg-white/[0.05] text-slate-300 hover:bg-white/[0.09] hover:text-white disabled:cursor-not-allowed disabled:opacity-35">
+              <Download className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={saveBrandKit}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.05] px-2.5 text-[10px] font-semibold text-slate-200 transition-colors hover:bg-white/[0.09]"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Save
+            </button>
+          </div>
         </div>
+        {brandKitMessage && <p className="mb-3 text-[10px] leading-4 text-sky-200" role="status">{brandKitMessage}</p>}
         {brandKits.length > 0 && (
           <div className="space-y-2">
             {brandKits.map((kit) => (
