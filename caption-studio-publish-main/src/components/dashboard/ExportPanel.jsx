@@ -16,7 +16,8 @@ import {
   FileJson,
   Video,
   Lock,
-  Sparkles
+  Sparkles,
+  XCircle
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from '@/components/ui/use-toast';
@@ -284,6 +285,9 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
     typeof window !== 'undefined' && window.localStorage?.getItem('lekha.exportCompletionNotification') === '1'
   ));
   const [recoverableExport, setRecoverableExport] = useState(null);
+  const [activeExportJobId, setActiveExportJobId] = useState('');
+  const [activeExportStatus, setActiveExportStatus] = useState('');
+  const [isCancellingExport, setIsCancellingExport] = useState(false);
   const exportInFlightRef = useRef(false);
   const exportAbortRef = useRef(null);
   const backgroundNoticeShownRef = useRef(false);
@@ -377,6 +381,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
         continue;
       }
       const status = (statusPayload?.status || '').toLowerCase();
+      setActiveExportStatus(status);
       if (status === 'queued' || status === 'starting') {
         const queuePosition = Number(statusPayload?.queue_position);
         const queueDepth = Number(statusPayload?.queue_depth);
@@ -602,6 +607,8 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
     setProgress(10);
     setQueueEstimate(null);
     setStatusMessage('Reconnecting to your export...');
+    setActiveExportJobId(receipt.jobId);
+    setActiveExportStatus('reconnecting');
     setWaitStartTime(Date.now());
     const controller = new AbortController();
     exportAbortRef.current = controller;
@@ -639,6 +646,54 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       setQueueEstimate(null);
       setWaitStartTime(null);
       setShowServerBusy(false);
+      setActiveExportJobId('');
+      setActiveExportStatus('');
+      setIsCancellingExport(false);
+    }
+  };
+
+  const handleCancelExport = async () => {
+    if (!activeExportJobId || activeExportStatus !== 'queued' || isCancellingExport) return;
+    setIsCancellingExport(true);
+    try {
+      const idToken = await getEffectiveAuthToken(currentUser);
+      const result = await apiRequest(`/api/export-cancel/${activeExportJobId}`, {
+        method: 'POST',
+        headers: idToken ? { Authorization: `Bearer ${idToken}` } : {},
+      });
+      if (result?.status !== 'cancelled') throw new Error('The queued export could not be cancelled.');
+      removeActiveExport(currentUser?.uid, fileId);
+      setRecoverableExport(null);
+      setActiveExportStatus('cancelled');
+      setStatusMessage('Queued export cancelled.');
+      trackAnalytics('funnel.export.cancelled', getClientContext({
+        stage: 'export',
+        job_id: activeExportJobId,
+      }));
+      toast({
+        title: 'Export cancelled',
+        description: 'The queued export was removed before rendering started.',
+        duration: 10000,
+      });
+      exportAbortRef.current?.abort();
+    } catch (error) {
+      if (error?.status === 409) {
+        setActiveExportStatus('starting');
+        toast({
+          title: 'Export already started',
+          description: 'This render has already started and will continue safely in the background.',
+          duration: 10000,
+        });
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Could not cancel export',
+          description: getApiErrorMessage(error),
+          duration: 10000,
+        });
+      }
+    } finally {
+      setIsCancellingExport(false);
     }
   };
 
@@ -683,12 +738,14 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
     // Captured outside the try so the failure handler can quote a job reference
     // the user can paste into a support request. Without it a failed export is
     // untraceable in the backend logs.
-    let activeExportJobId = '';
+    let acceptedExportJobId = '';
     const exportController = new AbortController();
     exportAbortRef.current = exportController;
     setProgress(2);
     setQueueEstimate(null);
     setStatusMessage('Preparing export...');
+    setActiveExportJobId('');
+    setActiveExportStatus('submitting');
     setWaitStartTime(Date.now());
     setShowServerBusy(false);
     trackAnalytics('funnel.export.started', getClientContext({
@@ -998,7 +1055,9 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
 
       let resolvedResult = result;
       if (result.export_job_id) {
-        activeExportJobId = result.export_job_id;
+        acceptedExportJobId = result.export_job_id;
+        setActiveExportJobId(result.export_job_id);
+        setActiveExportStatus('queued');
         const receipt = {
           jobId: result.export_job_id,
           fileId,
@@ -1022,7 +1081,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
         resolvedResult,
         authHeaders,
         signal: exportController.signal,
-        jobId: activeExportJobId,
+        jobId: acceptedExportJobId,
         quality: effectiveQuality,
         filename: originalFileName,
       });
@@ -1049,7 +1108,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
         removeActiveExport(currentUser?.uid, fileId);
         setRecoverableExport(null);
       }
-      notifyExportFailure(error, activeExportJobId);
+      notifyExportFailure(error, acceptedExportJobId);
     } finally {
       setIsExporting(false);
       exportInFlightRef.current = false;
@@ -1063,6 +1122,9 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       setQueueEstimate(null);
       setWaitStartTime(null);
       setShowServerBusy(false);
+      setActiveExportJobId('');
+      setActiveExportStatus('');
+      setIsCancellingExport(false);
     }
   };
 
@@ -1181,6 +1243,19 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
                   <p className="text-xs text-amber-400 mt-2 animate-pulse">
                     Your export is still in progress. Timing depends on video length and effects.
                   </p>
+                )}
+                {activeExportJobId && activeExportStatus === 'queued' && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCancelExport}
+                    disabled={isCancellingExport}
+                    className="mt-4 border-white/15 bg-black/30 text-white hover:bg-white/10"
+                  >
+                    <XCircle className="mr-2 h-4 w-4" />
+                    {isCancellingExport ? 'Cancelling…' : 'Cancel queued export'}
+                  </Button>
                 )}
               </div>
 

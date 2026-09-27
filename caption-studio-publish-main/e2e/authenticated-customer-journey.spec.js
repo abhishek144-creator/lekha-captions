@@ -33,6 +33,17 @@ test.describe('authenticated customer journey', () => {
     await page.getByRole('button', { name: /^Save$/i }).click()
     await expect(page.getByText(/Saved|cloud/i)).toBeVisible({ timeout: 30_000 })
 
+    await page.getByRole('button', { name: /^Export$/i }).click()
+    await expect(page.getByRole('heading', { name: 'Export your video' })).toBeVisible()
+    await page.getByRole('button', { name: /Square/i }).click()
+    await expect(page.getByRole('button', { name: /Square/i })).toHaveAttribute('aria-pressed', 'true')
+    await page.getByText(/I reviewed this language track/i).click()
+    const subtitleDownloadPromise = page.waitForEvent('download')
+    await page.getByRole('button', { name: /WebVTT subtitles/i }).click()
+    const subtitleDownload = await subtitleDownloadPromise
+    expect(subtitleDownload.suggestedFilename()).toMatch(/\.vtt$/)
+    await page.keyboard.press('Escape')
+
     await page.reload({ waitUntil: 'domcontentloaded' })
     await expect(page.getByText(/Continue draft|Authenticated journey correction/i).first()).toBeVisible({ timeout: 30_000 })
   })

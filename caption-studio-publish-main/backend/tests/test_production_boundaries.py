@@ -433,9 +433,12 @@ class ProductionBoundaryTests(unittest.TestCase):
         with (patch.object(main, "_redis_client", self.redis), patch.object(main, "get_db", return_value=None),
               patch.object(main, "_export_queue", queue), patch.object(main, "verify_token", return_value={"uid": "a"}),
               patch.object(main, "_process_export_job_core", new_callable=AsyncMock) as core):
-            main._set_export_job("job", "queued", uid="a")
+            main._idem_set("a:auto:same", {"status": "in_progress", "job_id": "job", "ts": time.time()})
+            main._set_export_job("job", "queued", uid="a", idempotency_key="a:auto:same")
             response = TestClient(main.app).post("/api/export-cancel/job", headers={"Authorization": "Bearer a"})
             self.assertEqual(response.status_code, 200)
+            self.assertTrue(response.json()["retry_allowed"])
+            self.assertIsNone(main._idem_get("a:auto:same"))
             self.assertEqual(main.run_export_job_task("job", {}, "a")["status"], "cancelled")
             core.assert_not_called()
 
