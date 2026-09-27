@@ -14,6 +14,12 @@ from fastapi.testclient import TestClient
 from google.api_core.exceptions import Aborted
 from transcription_jobs import TranscriptionJobs
 from drafts import delete_project, list_projects, normalize_draft, read_draft, save_draft
+from editor_preferences import (
+    normalize_brand_kits,
+    normalize_glossary_terms,
+    read_editor_preferences,
+    save_editor_preferences,
+)
 import main
 
 
@@ -321,3 +327,29 @@ class DurableWorkflowTests(unittest.TestCase):
         for candidate in invalid:
             with self.assertRaises(HTTPException):
                 normalize_draft(candidate)
+
+    def test_editor_preferences_are_account_scoped_and_portable(self):
+        saved = save_editor_preferences(self.db, "a", {
+            "brand_kits": [{
+                "id": "kit-1", "name": "Launch", "style": {
+                    "font_family": "Inter", "text_color": "#ffffff", "unsafe": "drop-me",
+                },
+            }],
+            "glossary_terms": [{"id": "term-1", "source": "Lekha", "replacement": "लेखा"}],
+        })
+        self.assertTrue(saved["exists"])
+        self.assertNotIn("unsafe", saved["brand_kits"][0]["style"])
+        self.assertEqual(read_editor_preferences(self.db, "a")["glossary_terms"][0]["replacement"], "लेखा")
+        self.assertFalse(read_editor_preferences(self.db, "b")["exists"])
+
+    def test_editor_preferences_are_bounded_and_require_an_active_account(self):
+        with self.assertRaises(HTTPException):
+            normalize_brand_kits([{"id": str(index), "style": {"text_color": "#ffffff"}} for index in range(9)])
+        with self.assertRaises(HTTPException):
+            normalize_glossary_terms([
+                {"source": "Same", "replacement": "One"},
+                {"source": "same", "replacement": "Two"},
+            ])
+        self.db.data["account_deletions/a"] = {"status": "pending"}
+        with self.assertRaises(HTTPException):
+            save_editor_preferences(self.db, "a", {"brand_kits": []})

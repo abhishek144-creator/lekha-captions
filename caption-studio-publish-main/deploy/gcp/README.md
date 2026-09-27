@@ -34,9 +34,10 @@ those owner acceptance checks pass.
 ## Target shape
 
 ```text
-Cloud Run frontend -> HTTPS/Caddy -> API VM -> Memorystore Redis -> RQ worker VM
-                                           |                    |
-                                           +-> Firebase Auth / Firestore / Storage
+Firebase Hosting -> HTTPS load balancer -> Cloud Run API -> Memorystore Redis
+                                              |          -> baseline render MIG
+                                              |          -> Spot overflow MIG
+                                              +-> Firebase Auth / Firestore / Storage
 ```
 
 The API and worker use the same Docker image. Each Compute Engine VM has an
@@ -44,9 +45,16 @@ attached disk for disposable render scratch, plus a local private ClamAV
 container. Firebase Storage remains the durable location for uploads and
 exports; the VM disk must never be treated as durable media storage.
 
-Cloud Run is intentionally not used for the current deployment because the API
+Cloud Run is not used for rendering because the API
 accepts 500 MiB HTTP/1 uploads and the renderer needs substantial FFmpeg and
-Chromium scratch space. Cloud Run is used only for the static frontend.
+Chromium scratch space. The static frontend is deployed to Firebase Hosting;
+Cloud Run serves only the API candidate.
+
+Render admission is bounded atomically across the fast, normal, heavy, and
+optional GPU queues by both job count and predicted work-seconds. Cloud
+Monitoring publishes pending work and predicted wait; the baseline, Spot, and
+optional GPU autoscalers consume those signals. Export status exposes a
+queue-specific position and ETA instead of making the browser infer progress.
 
 ## Prerequisites
 
@@ -132,29 +140,23 @@ The current staging VM instead reserves `34.93.113.193` and runs Caddy beside
 the API container. Caddy terminates HTTPS for `34-93-113-193.sslip.io`; only
 ports 80/443 are public and the original port-8000 firewall rule is disabled.
 
-## Deploy the staging frontend
+## Deploy the staging frontend to Firebase Hosting
 
 Build the Vite app with the HTTPS staging API as `VITE_API_BASE_URL`, the normal
 Firebase browser configuration, the App Check site key, legal identity fields,
-and the same 40-character release SHA as the backend. Package `dist/` together
-with `deploy/gcp/frontend/Dockerfile` and
-`deploy/gcp/frontend/nginx.conf`, then build and deploy it:
+and the same 40-character release SHA as the backend. The hosting pipeline
+builds `dist/` and deploys only the Firebase Hosting target from `firebase.json`.
 
-`deploy/gcp/frontend-release/cloudbuild.yaml` accepts an optional
-`_SENTRY_DSN` substitution. Leave it unset to use the first-party sanitized
-frontend exception endpoint, or pass the public browser DSN when a Sentry
-project is configured.
-
-```bash
-gcloud builds submit FRONTEND_PACKAGE_DIR \
-  --tag=asia-south1-docker.pkg.dev/PROJECT_ID/caption-studio/frontend:RELEASE
-gcloud run deploy lekha-frontend-staging \
-  --image=asia-south1-docker.pkg.dev/PROJECT_ID/caption-studio/frontend@IMAGE_DIGEST \
-  --region=asia-south1 --allow-unauthenticated --port=8080 \
-  --cpu=1 --memory=512Mi --concurrency=80 --min=0 --max=20
+```powershell
+gcloud builds submit . --config=deploy/gcp/firebase-hosting/cloudbuild.yaml --substitutions="_VITE_API_BASE_URL=https://STAGING_API,_VITE_FIREBASE_API_KEY=VALUE,_VITE_FIREBASE_AUTH_DOMAIN=VALUE,_VITE_FIREBASE_PROJECT_ID=PROJECT_ID,_VITE_FIREBASE_STORAGE_BUCKET=VALUE,_VITE_FIREBASE_MESSAGING_SENDER_ID=VALUE,_VITE_FIREBASE_APP_ID=VALUE,_VITE_FIREBASE_APP_CHECK_SITE_KEY=VALUE,_VITE_LEGAL_BUSINESS_NAME=VALUE,_VITE_LEGAL_BUSINESS_ADDRESS=VALUE,_VITE_GOVERNING_VENUE=VALUE,_VITE_GRIEVANCE_OFFICER_NAME=VALUE,_VITE_GRIEVANCE_EMAIL=VALUE,_RELEASE=FULL_40_CHARACTER_SHA"
 ```
 
-Add the resulting `run.app` hostnames to both Firebase Authentication's
+Provide every `_VITE_*` and `_RELEASE` substitution declared by the build
+configuration. Keep the legal identity values consistent with the public policy
+pages; configure these substitutions on the Cloud Build trigger for routine
+releases rather than checking them into source control.
+
+Add the resulting Firebase Hosting hostname to both Firebase Authentication's
 authorized domains and the reCAPTCHA Enterprise/App Check key's allowed
 domains. Append the frontend origins to the backend's `ALLOWED_ORIGINS` secret
 before restarting the API VM.

@@ -265,6 +265,9 @@ resource "google_compute_region_instance_group_manager" "api" {
   region                    = var.region
   distribution_policy_zones = var.zones
   base_instance_name        = "lekha-api-staging-mig"
+  # The request-driven API runs on Cloud Run. This zero-sized MIG is retained
+  # only as a rollback definition and must never create idle API VMs.
+  target_size = 0
   version { instance_template = google_compute_instance_template.api.id }
   named_port {
     name = "http"
@@ -328,24 +331,6 @@ resource "google_compute_region_instance_group_manager" "transcription" {
   }
 }
 
-resource "google_compute_region_autoscaler" "api" {
-  name   = "lekha-api-staging-autoscaler"
-  region = var.region
-  target = google_compute_region_instance_group_manager.api.id
-  autoscaling_policy {
-    min_replicas    = 2
-    max_replicas    = 4
-    cooldown_period = 900
-    cpu_utilization { target = 0.60 }
-    scale_in_control {
-      max_scaled_in_replicas {
-        fixed = 1
-      }
-      time_window_sec = 1800
-    }
-  }
-}
-
 resource "google_compute_region_autoscaler" "worker" {
   name   = "lekha-worker-staging-autoscaler"
   region = var.region
@@ -354,7 +339,6 @@ resource "google_compute_region_autoscaler" "worker" {
     min_replicas    = var.render_worker_min_replicas
     max_replicas    = var.render_worker_max_replicas
     cooldown_period = 180
-    cpu_utilization { target = 0.45 }
     metric {
       name                       = "custom.googleapis.com/lekha/pending_render_work_seconds"
       single_instance_assignment = 120
@@ -368,7 +352,7 @@ resource "google_compute_region_autoscaler" "worker" {
     }
     scale_in_control {
       max_scaled_in_replicas {
-        fixed = 5
+        fixed = 1
       }
       time_window_sec = 300
     }
@@ -391,7 +375,7 @@ resource "google_compute_region_autoscaler" "transcription" {
     }
     scale_in_control {
       max_scaled_in_replicas {
-        fixed = 2
+        fixed = 1
       }
       time_window_sec = 300
     }
@@ -572,18 +556,9 @@ resource "google_compute_region_autoscaler" "worker_gpu" {
   }
 }
 
-# Cloud Run is created in parallel with the API MIG. Its serverless NEG is the
-# explicit hand-off point for a measured load-balancer cutover; Terraform never
-# silently moves production traffic merely because this candidate is enabled.
-resource "google_vpc_access_connector" "api" {
-  count         = var.enable_cloud_run_api ? 1 : 0
-  name          = "lekha-api-connector"
-  region        = var.region
-  network       = "default"
-  ip_cidr_range = var.cloud_run_vpc_connector_cidr
-  min_instances = 2
-  max_instances = 3
-}
+# Cloud Run is created in parallel with the zero-sized rollback API MIG. Its
+# serverless NEG is the explicit hand-off point for a measured load-balancer
+# cutover; Terraform never silently moves production traffic.
 
 resource "google_service_account" "scheduler" {
   count        = var.enable_cloud_run_api ? 1 : 0
@@ -617,8 +592,11 @@ resource "google_cloud_run_v2_service" "api" {
       max_instance_count = var.cloud_run_api_max_instances
     }
     vpc_access {
-      connector = google_vpc_access_connector.api[0].id
-      egress    = "PRIVATE_RANGES_ONLY"
+      egress = "PRIVATE_RANGES_ONLY"
+      network_interfaces {
+        network    = var.cloud_run_vpc_network
+        subnetwork = var.cloud_run_vpc_subnetwork
+      }
     }
     volumes {
       name = "runtime-env"

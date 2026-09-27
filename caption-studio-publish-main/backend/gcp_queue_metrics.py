@@ -84,6 +84,41 @@ def queued_render_work_seconds(queue, job_class, fallback_seconds=120) -> int:
     return total
 
 
+def job_queue_prediction(queue, job_class, job_id, active_workers=1, fallback_seconds=120):
+    """Return a bounded queue position and ETA for one pending RQ job."""
+    depth = max(0, int(queue.count))
+    if depth <= 0:
+        return None
+    job_ids = [
+        value.decode("utf-8", "replace") if isinstance(value, bytes) else str(value)
+        for value in queue.get_job_ids(offset=0, length=min(depth, 100))
+    ]
+    target_id = str(job_id)
+    try:
+        index = job_ids.index(target_id)
+    except ValueError:
+        return None
+
+    estimates = []
+    for queued_id in job_ids[: index + 1]:
+        try:
+            queued_job = job_class.fetch(queued_id, connection=queue.connection)
+            estimate = int((queued_job.meta or {}).get("estimated_render_seconds") or fallback_seconds)
+        except Exception:
+            estimate = fallback_seconds
+        estimates.append(min(3600, max(15, estimate)))
+    workers = max(1, int(active_workers or 0))
+    work_ahead = sum(estimates[:-1])
+    return {
+        "queue_position": index + 1,
+        "jobs_ahead": index,
+        "queue_depth": depth,
+        "estimated_queue_wait_seconds": math.ceil(work_ahead / workers),
+        "estimated_completion_seconds": math.ceil((work_ahead + estimates[-1]) / workers),
+        "active_workers": workers,
+    }
+
+
 def render_queue_snapshot(queues, job_class, active_workers=1, fallback_seconds=120):
     """Aggregate depth, oldest age, work, and predicted wait across queues."""
     depth = 0

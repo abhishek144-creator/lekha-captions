@@ -24,7 +24,12 @@ from request_limits import UploadBodyLimitMiddleware
 import worker
 import firebase_admin_setup
 from rq import Queue
-from queue_admission import enqueue_bounded, enqueue_bounded_across_queues
+from queue_admission import (
+    PENDING_WORK_LEDGER_KEY,
+    enqueue_bounded,
+    enqueue_bounded_across_queues,
+    release_pending_work,
+)
 
 
 class ProductionBoundaryTests(unittest.TestCase):
@@ -78,6 +83,55 @@ class ProductionBoundaryTests(unittest.TestCase):
 
         self.assertEqual(error.exception.status_code, 429)
         self.assertEqual(sum(queue.count for queue in queues), 2)
+
+    def test_predicted_work_admission_is_atomic_across_render_classes(self):
+        fast = Queue("work-fast", connection=self.redis)
+        heavy = Queue("work-heavy", connection=self.redis)
+        queues = [fast, heavy]
+
+        def submit(index):
+            target = fast if index % 2 == 0 else heavy
+            try:
+                enqueue_bounded_across_queues(
+                    target,
+                    queues,
+                    80,
+                    max_pending_work_seconds=300,
+                    estimated_work_seconds=75,
+                    func="operator.add",
+                    args=(1, 2),
+                    job_id=f"work-job-{index}",
+                )
+                return True
+            except main.HTTPException as error:
+                self.assertEqual(error.status_code, 429)
+                self.assertIn("Predicted export wait", error.detail)
+                return False
+
+        with ThreadPoolExecutor(12) as pool:
+            accepted = sum(pool.map(submit, range(20)))
+
+        self.assertEqual(accepted, 4)
+        self.assertEqual(sum(queue.count for queue in queues), 4)
+        self.assertEqual(
+            sum(int(value) for value in self.redis.hvals(PENDING_WORK_LEDGER_KEY)),
+            300,
+        )
+        release_pending_work(self.redis, "work-job-0")
+        self.assertIsNone(self.redis.hget(PENDING_WORK_LEDGER_KEY, "work-job-0"))
+
+    def test_job_reconciliation_selects_the_recorded_render_queue(self):
+        normal = object()
+        heavy = object()
+        with (
+            patch.object(main, "_export_queue", normal),
+            patch.object(main, "_export_queues", {"caption_export_heavy": heavy}),
+        ):
+            self.assertIs(
+                main._queue_for_export_job_record({"queue_name": "caption_export_heavy"}),
+                heavy,
+            )
+            self.assertIs(main._queue_for_export_job_record({}), normal)
 
     def test_preparation_timeout_cannot_fail_a_job_that_has_started(self):
         transition(self.redis, "race", {}, {"status": "queued"})

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -44,6 +44,9 @@ export default function CaptionEditor({
   onSelectTrack,
   onTranslateTrack,
   captionStyle,
+  glossaryTerms = [],
+  onGlossaryChange,
+  preferenceSyncStatus = 'loading',
 }) {
   const [showAutoTip, setShowAutoTip] = useState(false);
   const [query, setQuery] = useState('');
@@ -58,6 +61,9 @@ export default function CaptionEditor({
   const [languageError, setLanguageError] = useState('');
   const [soundCue, setSoundCue] = useState('[music]');
   const [captionEditMessage, setCaptionEditMessage] = useState('');
+  const [glossarySource, setGlossarySource] = useState('');
+  const [glossaryReplacement, setGlossaryReplacement] = useState('');
+  const searchInputRef = useRef(null);
 
   const otherTrack = captionTracks.find((track) => track.id !== activeCaptionTrackId);
 
@@ -72,6 +78,17 @@ export default function CaptionEditor({
       return () => clearTimeout(timer);
     }
   }, [user?.email]);
+
+  useEffect(() => {
+    const focusTranscriptSearch = (event) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'k') return;
+      event.preventDefault();
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    };
+    window.addEventListener('keydown', focusTranscriptSearch);
+    return () => window.removeEventListener('keydown', focusTranscriptSearch);
+  }, []);
 
   const updateCaption = (id, updates) => {
     // coalesce: per-keystroke text edits collapse into one undo snapshot per
@@ -97,6 +114,47 @@ export default function CaptionEditor({
             String(caption.text || '').replace(new RegExp(escaped, 'gi'), replaceText),
           )
     )));
+  };
+
+  const addGlossaryTerm = () => {
+    const source = glossarySource.trim();
+    const replacement = glossaryReplacement.trim();
+    if (!source || !replacement) return;
+    const identity = source.toLocaleLowerCase();
+    onGlossaryChange?.((current) => [
+      {
+        id: `glossary-${Date.now()}`,
+        source,
+        replacement,
+        case_sensitive: false,
+        updated_at: new Date().toISOString(),
+      },
+      ...current.filter((term) => String(term.source || '').toLocaleLowerCase() !== identity),
+    ].slice(0, 100));
+    setGlossarySource('');
+    setGlossaryReplacement('');
+  };
+
+  const applyGlossary = () => {
+    if (!glossaryTerms.length) return;
+    let changedCount = 0;
+    const nextCaptions = captions.map((caption) => {
+      if (caption.isTextElement) return caption;
+      let nextText = String(caption.text || '');
+      glossaryTerms.forEach((term) => {
+        const source = String(term.source || '').trim();
+        if (!source) return;
+        const escaped = source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        nextText = nextText.replace(new RegExp(escaped, term.case_sensitive ? 'g' : 'gi'), term.replacement);
+      });
+      if (nextText === String(caption.text || '')) return caption;
+      changedCount += 1;
+      return reconcileCaptionText(caption, nextText);
+    });
+    if (changedCount) setCaptions(nextCaptions);
+    setCaptionEditMessage(changedCount
+      ? `Applied glossary corrections to ${changedCount} caption${changedCount === 1 ? '' : 's'}. Review changed word timings.`
+      : 'No glossary terms matched this language track.');
   };
 
   const addCaptionAnnotation = (caption, label) => {
@@ -285,6 +343,7 @@ export default function CaptionEditor({
       <div className="relative z-10 mb-4">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
         <input
+          ref={searchInputRef}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search transcript..."
@@ -294,6 +353,30 @@ export default function CaptionEditor({
           Ctrl K
         </span>
       </div>
+      <details className="relative z-10 mb-4 rounded-xl border border-white/10 bg-black/20 p-3">
+        <summary className="cursor-pointer list-none text-[11px] font-semibold text-sky-200">Account glossary</summary>
+        <div className="mt-3 space-y-3">
+          <p className="text-[10px] leading-4 text-slate-500">
+            Keep names, brands, and specialist terms consistent across projects. {preferenceSyncStatus === 'synced' ? 'Glossary is synced to your account.' : 'Changes are saved locally until account sync is available.'}
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <input aria-label="Incorrect or source term" value={glossarySource} onChange={(event) => setGlossarySource(event.target.value)} placeholder="Heard as…" maxLength={120} className="min-w-0 rounded-lg border border-white/10 bg-black/40 px-2.5 py-2 text-xs text-white placeholder:text-slate-500" />
+            <input aria-label="Preferred glossary term" value={glossaryReplacement} onChange={(event) => setGlossaryReplacement(event.target.value)} placeholder="Replace with…" maxLength={120} className="min-w-0 rounded-lg border border-white/10 bg-black/40 px-2.5 py-2 text-xs text-white placeholder:text-slate-500" />
+            <button type="button" onClick={addGlossaryTerm} disabled={!glossarySource.trim() || !glossaryReplacement.trim()} className="rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2 text-[11px] font-semibold text-white disabled:opacity-40">Save term</button>
+            <button type="button" onClick={applyGlossary} disabled={!glossaryTerms.length} className="rounded-lg bg-sky-200 px-3 py-2 text-[11px] font-bold text-slate-950 disabled:opacity-40">Apply to track</button>
+          </div>
+          {glossaryTerms.length > 0 && (
+            <div className="max-h-32 space-y-1.5 overflow-y-auto pr-1">
+              {glossaryTerms.map((term) => (
+                <div key={term.id || term.source} className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/25 px-2.5 py-2 text-[10px]">
+                  <span className="min-w-0 flex-1 truncate text-slate-300">{term.source} → <strong className="text-white">{term.replacement}</strong></span>
+                  <button type="button" aria-label={`Remove glossary term ${term.source}`} onClick={() => onGlossaryChange?.((current) => current.filter((item) => item.id !== term.id))} className="text-slate-500 hover:text-white"><X className="h-3.5 w-3.5" /></button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </details>
       {captionEditMessage && <p role="status" className="relative z-10 -mt-2 mb-3 text-[11px] text-amber-200">{captionEditMessage}</p>}
       <div className="relative z-10 mb-4">
         <button type="button" onClick={() => setShowReplace((value) => !value)} className="text-[11px] font-semibold text-sky-200 hover:text-white">

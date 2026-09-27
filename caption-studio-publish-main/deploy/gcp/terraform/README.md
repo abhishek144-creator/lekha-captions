@@ -1,7 +1,7 @@
 # Lekha Google Cloud Terraform
 
-This directory is the source of truth for the API migration candidate, render
-and transcription regional MIGs, autoscaling, Cloud NAT, health checks,
+This directory is the source of truth for the scale-to-zero Cloud Run API,
+render and transcription regional MIGs, autoscaling, Cloud NAT, health checks,
 Standard HA Redis, private media bucket, immutable instance templates, and
 Cloud Armor policy. Keep secret values outside Terraform; only the numeric
 Secret Manager version is supplied.
@@ -26,31 +26,46 @@ version, verify signed private downloads and the exact application SHA, then
 continue the release only after the canary succeeds.
 
 Render and transcription capacity are intentionally separate. The baseline
-render pool uses the verified `n2-custom-4-12288` profile and scales from 3 to
-20. Fast, normal, and heavy queues share one atomic admission ceiling. Pending
-render seconds and predicted wait drive scaling, with CPU retained as a safety
-signal. The bounded Spot overflow pool consumes heavy work and scales from
-zero. Transcription and eager media scanning scale independently from zero.
-The optional G2/L4 pool stays disabled until a matched cost and visual-parity
+render pool uses the verified `n2-custom-4-12288` profile and scales from 0 to
+3 from both pending render work-seconds and predicted queue wait. Fast, normal,
+and heavy queues share atomic count and predicted-work admission ceilings; the
+default accepts no more than 1,800 estimated work-seconds. Export status returns
+the selected queue's position and estimated wait/completion for the customer UI.
+Transcription and eager media scanning
+scale independently from 0 to 2. The Spot overflow pool scales from 0 to 1 by
+default and is hard-capped at 2. The optional G2/L4 pool stays
+disabled and is hard-capped at 1 until a matched cost and visual-parity
 benchmark passes and a driver-enabled `gpu_runtime_image` is supplied.
 
-`enable_cloud_run_api=true` creates a parallel Cloud Run API candidate, private
-Redis connector, serverless NEG, least-privilege scheduler identity, and five
-OIDC-authenticated Cloud Scheduler jobs. The service defaults to zero minimum
-instances, mounts the pinned runtime Secret Manager version, and runs with
-`RUN_API_BACKGROUND_TASKS=0`. Enabling it
-does not attach the NEG to the public load balancer or remove the GCE API MIG;
-those are explicit canary/cutover/rollback steps after staging acceptance.
+`enable_cloud_run_api=true` creates the Cloud Run API, Direct VPC egress to
+private Redis, a serverless NEG, least-privilege scheduler identity, and five
+OIDC-authenticated Cloud Scheduler jobs. Direct VPC egress avoids the fixed
+minimum instance cost of a Serverless VPC Access connector. The service scales
+from 0 to 4 instances, mounts the pinned runtime Secret Manager version, and
+runs with `RUN_API_BACKGROUND_TASKS=0`. The GCE API MIG remains defined at
+target size zero only for rollback. Attaching the NEG to the public load
+balancer remains an explicit canary/cutover step after staging acceptance.
+
+The enforced production ceilings are: Cloud Run API 0..4 revisions (each
+revision requests 2 vCPU and 3 GiB across the API and ClamAV containers),
+render 0..3 VMs (4 vCPU and 12 GiB each), transcription 0..2 VMs (2 vCPU and
+8 GiB each), Spot 0..1 by default, and GPU 0 by default. Terraform validation
+rejects a nonzero idle minimum or a higher ceiling without a reviewed code
+change. Scale-to-zero removes VM and Cloud Run instance charges while idle;
+Redis, load balancing, NAT, IP addresses, logging, and stored disks/objects can
+still have fixed or usage-based charges and must be reviewed separately.
 
 The Spot pool consumes the idempotent heavy-render queue and has minimum zero.
-Run the documented early/middle/late preemption drill before raising its maximum
-in production. If Spot reliability is unacceptable, set
-`spot_render_worker_max_replicas=0`; the baseline pool remains available.
+It is enabled by default with one burst worker, uses retry-safe jobs, and never
+replaces the baseline pool. Run the documented early/middle/late preemption
+drill before raising its maximum to two.
 
 Firebase Hosting configuration is in the repository root. Build `dist/`, select
 the intended Firebase project explicitly, preview, then deploy hosting only.
 The SPA points at its configured API origin; the wildcard rewrite serves only
 frontend routes and does not proxy `/api` traffic.
+
+Bill-backed cost reconciliation is documented in `../COST_ACCOUNTING.md`.
 
 The current production resources can be adopted without recreation with these
 one-time imports (run only after filling `terraform.tfvars`):

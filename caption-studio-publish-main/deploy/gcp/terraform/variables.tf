@@ -86,12 +86,22 @@ variable "media_scan_queue_name" {
 variable "render_worker_max_replicas" {
   type        = number
   description = "Maximum queue-driven render worker count"
-  default     = 20
+  default     = 3
+
+  validation {
+    condition     = var.render_worker_max_replicas >= 1 && var.render_worker_max_replicas <= 3
+    error_message = "render_worker_max_replicas must stay between 1 and 3; raise this guardrail only with measured load-test and cost evidence."
+  }
 }
 variable "render_worker_min_replicas" {
   type        = number
-  description = "Minimum on-demand render workers"
-  default     = 3
+  description = "Minimum on-demand render workers; production must scale to zero while queues are empty"
+  default     = 0
+
+  validation {
+    condition     = var.render_worker_min_replicas == 0
+    error_message = "render_worker_min_replicas must be zero so idle render VMs are not billed."
+  }
 }
 variable "render_worker_machine_type" {
   type        = string
@@ -110,8 +120,13 @@ variable "render_worker_disk_type" {
 }
 variable "spot_render_worker_max_replicas" {
   type        = number
-  description = "Interruptible overflow capacity; zero disables the Spot MIG"
-  default     = 5
+  description = "Bounded interruptible overflow capacity for the retry-safe heavy-render queue"
+  default     = 1
+
+  validation {
+    condition     = var.spot_render_worker_max_replicas >= 0 && var.spot_render_worker_max_replicas <= 2
+    error_message = "spot_render_worker_max_replicas must stay between 0 and 2."
+  }
 }
 variable "enable_gpu_pool" {
   type        = bool
@@ -126,12 +141,22 @@ variable "gpu_runtime_image" {
 variable "gpu_render_worker_max_replicas" {
   type        = number
   description = "Maximum optional G2/L4 workers"
-  default     = 4
+  default     = 1
+
+  validation {
+    condition     = var.gpu_render_worker_max_replicas >= 0 && var.gpu_render_worker_max_replicas <= 1
+    error_message = "gpu_render_worker_max_replicas must stay between 0 and 1."
+  }
 }
 variable "transcription_worker_max_replicas" {
   type        = number
   description = "Maximum independently queue-driven transcription worker count"
-  default     = 10
+  default     = 2
+
+  validation {
+    condition     = var.transcription_worker_max_replicas >= 1 && var.transcription_worker_max_replicas <= 2
+    error_message = "transcription_worker_max_replicas must stay between 1 and 2."
+  }
 }
 variable "enable_cloud_run_api" {
   type        = bool
@@ -141,19 +166,34 @@ variable "enable_cloud_run_api" {
 variable "cloud_run_api_min_instances" {
   type    = number
   default = 0
+
+  validation {
+    condition     = var.cloud_run_api_min_instances == 0
+    error_message = "cloud_run_api_min_instances must be zero so an idle API has no instance charge."
+  }
 }
 variable "cloud_run_api_max_instances" {
   type    = number
-  default = 20
+  default = 4
+
+  validation {
+    condition     = var.cloud_run_api_max_instances >= 1 && var.cloud_run_api_max_instances <= 4
+    error_message = "cloud_run_api_max_instances must stay between 1 and 4."
+  }
 }
 variable "cloud_run_api_concurrency" {
   type    = number
   default = 40
 }
-variable "cloud_run_vpc_connector_cidr" {
+variable "cloud_run_vpc_network" {
   type        = string
-  description = "Unused /28 used by the Serverless VPC Access connector"
-  default     = "10.8.0.0/28"
+  description = "VPC network used by Cloud Run Direct VPC egress"
+  default     = "default"
+}
+variable "cloud_run_vpc_subnetwork" {
+  type        = string
+  description = "Regional subnetwork used by Cloud Run Direct VPC egress"
+  default     = "default"
 }
 variable "clamav_image_uri" {
   type        = string

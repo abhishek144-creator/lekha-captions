@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import {
   AlertCircle,
   ArrowLeft,
+  Bell,
   CalendarDays,
   CheckCircle2,
   Crown,
@@ -14,6 +15,7 @@ import {
   Sparkles,
   Trash2,
   User,
+  Users,
   WalletCards
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -69,6 +71,14 @@ export default function UserAccount() {
   const [deleteConfirmation, setDeleteConfirmation] = useState('')
   const [deleteError, setDeleteError] = useState('')
   const [isDeletingAccount, setIsDeletingAccount] = useState(false)
+  const [isExportingData, setIsExportingData] = useState(false)
+  const [accountExportError, setAccountExportError] = useState('')
+  const [notifications, setNotifications] = useState([])
+  const [workspaces, setWorkspaces] = useState([])
+  const [workspaceName, setWorkspaceName] = useState('')
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteToken, setInviteToken] = useState('')
+  const [workspaceMessage, setWorkspaceMessage] = useState('')
   const paymentRequestGeneration = React.useRef(0)
 
   const planId = userData?.subscription_tier || userData?.subscription_plan || 'free'
@@ -127,6 +137,99 @@ export default function UserAccount() {
       if (generation === paymentRequestGeneration.current) paymentRequestGeneration.current += 1
     }
   }, [currentUser?.uid])
+
+  React.useEffect(() => {
+    let cancelled = false
+    async function fetchNotifications() {
+      if (!currentUser) return
+      try {
+        const idToken = await currentUser.getIdToken()
+        const result = await apiRequest('/api/notifications?limit=30', {
+          headers: { Authorization: `Bearer ${idToken}` },
+        })
+        if (!cancelled) setNotifications(result.notifications || [])
+      } catch (error) {
+        if (!cancelled) console.error('Could not load notifications:', error)
+      }
+    }
+    fetchNotifications()
+    return () => { cancelled = true }
+  }, [currentUser])
+
+  const refreshWorkspaces = React.useCallback(async () => {
+    if (!currentUser) return
+    const idToken = await currentUser.getIdToken()
+    const result = await apiRequest('/api/workspaces', {
+      headers: { Authorization: `Bearer ${idToken}` },
+    })
+    setWorkspaces(result.workspaces || [])
+  }, [currentUser])
+
+  React.useEffect(() => {
+    refreshWorkspaces().catch(error => console.error('Could not load workspaces:', error))
+  }, [refreshWorkspaces])
+
+  const createWorkspace = async () => {
+    if (!workspaceName.trim() || !currentUser) return
+    const idToken = await currentUser.getIdToken()
+    await apiRequest('/api/workspaces', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+      body: JSON.stringify({ name: workspaceName.trim() }),
+    })
+    setWorkspaceName('')
+    setWorkspaceMessage('Workspace created.')
+    await refreshWorkspaces()
+  }
+
+  const inviteWorkspaceMember = async (workspaceId) => {
+    if (!inviteEmail.trim() || !currentUser) return
+    const idToken = await currentUser.getIdToken()
+    const result = await apiRequest(`/api/workspaces/${workspaceId}/invites`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+      body: JSON.stringify({ email: inviteEmail.trim(), role: 'member' }),
+    })
+    setWorkspaceMessage(`Invite token (shown once): ${result.invite_token}`)
+    setInviteEmail('')
+  }
+
+  const acceptWorkspaceInvite = async () => {
+    if (!inviteToken.trim() || !currentUser) return
+    const idToken = await currentUser.getIdToken()
+    await apiRequest('/api/workspace-invites/accept', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+      body: JSON.stringify({ token: inviteToken.trim() }),
+    })
+    setInviteToken('')
+    setWorkspaceMessage('Workspace invite accepted.')
+    await refreshWorkspaces()
+  }
+
+  const deleteWorkspace = async (workspace) => {
+    if (!currentUser || workspace.role !== 'owner') return
+    if (!window.confirm(`Delete ${workspace.name} and all of its shared project revisions?`)) return
+    const idToken = await currentUser.getIdToken()
+    await apiRequest(`/api/workspaces/${workspace.workspace_id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${idToken}` },
+    })
+    setWorkspaceMessage('Workspace deleted.')
+    await refreshWorkspaces()
+  }
+
+  const markNotificationRead = async (item) => {
+    if (!currentUser || item.read_at) return
+    const idToken = await currentUser.getIdToken()
+    const result = await apiRequest(`/api/notifications/${item.id}/read`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${idToken}` },
+    })
+    setNotifications(current => current.map(value => (
+      value.id === item.id ? { ...value, read_at: result.read_at } : value
+    )))
+  }
 
   const loadMorePayments = async () => {
     if (!currentUser?.uid || !paymentCursor || isLoadingMorePayments) return
@@ -188,6 +291,51 @@ export default function UserAccount() {
       setDeleteError(error?.message || 'Account deletion could not be completed. Please try again or contact support.')
     } finally {
       setIsDeletingAccount(false)
+    }
+  }
+
+  const handleAccountExport = async () => {
+    if (!currentUser || isExportingData) return
+    setIsExportingData(true)
+    setAccountExportError('')
+    try {
+      const idToken = await currentUser.getIdToken(true)
+      const payments = []
+      const seenCursors = new Set()
+      let cursor = ''
+      let accountData = null
+      do {
+        const result = await apiRequest('/api/account-export', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({ id_token: idToken, payment_limit: 500, payment_cursor: cursor }),
+        })
+        const page = result.data || {}
+        if (!accountData) accountData = page
+        payments.push(...(Array.isArray(page.payments) ? page.payments : []))
+        const nextCursor = page.has_more_payments ? String(page.next_payment_cursor || '') : ''
+        if (!nextCursor || seenCursors.has(nextCursor)) break
+        seenCursors.add(nextCursor)
+        cursor = nextCursor
+      } while (cursor)
+
+      const exported = { ...(accountData || {}), payments }
+      const blob = new Blob([JSON.stringify(exported, null, 2)], { type: 'application/json;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `lekha-account-export-${new Date().toISOString().slice(0, 10)}.json`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch (error) {
+      setAccountExportError(error?.message || 'Your account export could not be prepared. Please try again.')
+    } finally {
+      setIsExportingData(false)
     }
   }
 
@@ -327,6 +475,110 @@ export default function UserAccount() {
               </Button>
             </div>
           </div>
+        </section>
+
+        <section className="mt-5 rounded-3xl border border-white/10 bg-[#101010]/90 p-5 sm:p-6">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.24em] text-gray-500 font-bold">Team Workspaces</p>
+              <h2 className="text-xl font-black mt-1">Shared, revisioned projects</h2>
+            </div>
+            <Users className="w-6 h-6 text-gray-500" />
+          </div>
+          <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+            <input
+              value={workspaceName}
+              onChange={event => setWorkspaceName(event.target.value)}
+              maxLength={100}
+              placeholder="Workspace name"
+              className="min-w-0 flex-1 rounded-xl border border-white/10 bg-black px-4 py-2 text-sm outline-none focus:border-white/30"
+            />
+            <Button type="button" onClick={() => createWorkspace().catch(error => setWorkspaceMessage(error.message))}>
+              Create workspace
+            </Button>
+          </div>
+          <div className="mt-3 flex flex-col gap-3 sm:flex-row">
+            <input
+              value={inviteToken}
+              onChange={event => setInviteToken(event.target.value)}
+              placeholder="Paste an invite token"
+              className="min-w-0 flex-1 rounded-xl border border-white/10 bg-black px-4 py-2 text-sm outline-none focus:border-white/30"
+            />
+            <Button type="button" variant="outline" onClick={() => acceptWorkspaceInvite().catch(error => setWorkspaceMessage(error.message))}>
+              Accept invite
+            </Button>
+          </div>
+          <div className="mt-4 space-y-3">
+            {workspaces.map(workspace => (
+              <div key={workspace.workspace_id} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-bold">{workspace.name}</p>
+                    <p className="text-xs text-gray-500 capitalize">{workspace.role}</p>
+                  </div>
+                  {['owner', 'admin'].includes(workspace.role) && (
+                    <div className="flex min-w-0 gap-2">
+                      <input
+                        type="email"
+                        value={inviteEmail}
+                        onChange={event => setInviteEmail(event.target.value)}
+                        placeholder="teammate@example.com"
+                        className="min-w-0 rounded-xl border border-white/10 bg-black px-3 py-2 text-xs outline-none focus:border-white/30"
+                      />
+                      <Button type="button" variant="outline" onClick={() => inviteWorkspaceMember(workspace.workspace_id).catch(error => setWorkspaceMessage(error.message))}>
+                        Invite
+                      </Button>
+                    </div>
+                  )}
+                </div>
+                {workspace.role === 'owner' && (
+                  <button
+                    type="button"
+                    className="mt-3 text-xs text-red-300 hover:text-red-200"
+                    onClick={() => deleteWorkspace(workspace).catch(error => setWorkspaceMessage(error.message))}
+                  >
+                    Delete workspace
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+          {workspaceMessage && <p className="mt-3 break-all text-xs text-[#f5a623]">{workspaceMessage}</p>}
+        </section>
+
+        <section className="mt-5 rounded-3xl border border-white/10 bg-[#101010]/90 overflow-hidden">
+          <div className="px-5 py-5 border-b border-white/10 flex items-center justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.24em] text-gray-500 font-bold">Notifications</p>
+              <h2 className="text-xl font-black mt-1">Background export updates</h2>
+            </div>
+            <Bell className="w-6 h-6 text-gray-500" />
+          </div>
+          {notifications.length === 0 ? (
+            <p className="px-5 py-8 text-sm text-gray-500">Completed background exports will appear here.</p>
+          ) : (
+            <div className="divide-y divide-white/[0.06]">
+              {notifications.map(item => (
+                <button
+                  type="button"
+                  key={item.id}
+                  onClick={() => {
+                    markNotificationRead(item).catch(error => console.error('Could not mark notification read:', error))
+                    if (item.action_url) window.location.assign(item.action_url)
+                  }}
+                  className="w-full px-5 py-4 text-left hover:bg-white/[0.03] transition-colors"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className={`text-sm ${item.read_at ? 'text-gray-300' : 'font-bold text-white'}`}>{item.title}</p>
+                      <p className="mt-1 text-xs text-gray-500">{item.message}</p>
+                    </div>
+                    {!item.read_at && <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#f5a623]" />}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </section>
 
         <section className="grid lg:grid-cols-[1.05fr_1.6fr] gap-5 mt-5">
@@ -470,6 +722,23 @@ export default function UserAccount() {
                 )}
               </div>
             )}
+          </div>
+        </section>
+
+        <section className="mt-5 rounded-3xl border border-white/10 bg-[#101010]/90 p-5 sm:p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.24em] text-gray-500">Your Data</p>
+              <h2 className="mt-2 text-xl font-black">Download account export</h2>
+              <p className="mt-1 max-w-2xl text-sm text-gray-400">
+                Download your profile, payment records, saved caption projects, language tracks, brand kits, and glossary as JSON.
+              </p>
+              {accountExportError && <p role="alert" className="mt-2 text-sm text-red-300">{accountExportError}</p>}
+            </div>
+            <Button type="button" variant="outline" disabled={isExportingData} onClick={handleAccountExport} className="shrink-0 border-white/15 bg-white/[0.04] text-white hover:bg-white/10">
+              <Download className="mr-2 h-4 w-4" />
+              {isExportingData ? 'Preparing…' : 'Download My Data'}
+            </Button>
           </div>
         </section>
 

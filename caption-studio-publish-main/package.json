@@ -39,6 +39,7 @@
     "launch:verify-deployed": "node scripts/check-deployed-release.mjs",
     "monitor:synthetic": "node scripts/check-synthetic-health.mjs",
     "ops:check": "node scripts/check-operational-readiness.mjs",
+    "benchmark:renderers": "python scripts/benchmark_renderers.py",
     "privacy:audit": "node scripts/audit-repository-privacy.mjs",
     "sync:firebase-auth-helpers": "node scripts/sync-firebase-auth-helpers.mjs",
     "launch:check": "npm run release:tree && npm run release:check && npm run test:templates:all && npm run security:audit && npm run ops:check && npm run privacy:audit && npm run launch:evidence",
@@ -53,6 +54,8 @@
     "test:security:xss": "node scripts/check-template-sanitizer.mjs",
     "test:browser": "npm run build:guarded && playwright test",
     "test:browser:installed": "playwright test",
+    "test:browser:authenticated": "playwright test e2e/authenticated-customer-journey.spec.js --project=chromium",
+    "test:browser:large-upload": "playwright test e2e/large-upload-recovery.spec.js --project=chromium",
     "ci:frontend": "npm run test:contracts && npm run lint && npm run typecheck && npm run build:guarded",
     "test:release-metadata": "node scripts/check-release-metadata.mjs"
   },

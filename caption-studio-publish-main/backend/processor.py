@@ -13,8 +13,10 @@ from openai import OpenAI
 from sarvamai import SarvamAI
 try:
     from .media_commands import run_media_command
+    from .provider_health import transcription_provider_health
 except ImportError:
     from media_commands import run_media_command
+    from provider_health import transcription_provider_health
 
 TRANSCRIPTION_PROVIDER_TIMEOUT_SECONDS = max(
     15,
@@ -750,11 +752,15 @@ class VideoProcessor:
 
             is_indian_lang = target_language.lower() in sarvam_langs
             sarvam_api_key = os.environ.get("SARVAM_API_KEY")
+            active_provider = ""
 
             try:
                 if api_error_msg is not None:
                     raise Exception(api_error_msg)
                 if is_indian_lang and sarvam_api_key:
+                    active_provider = "sarvam"
+                    if not transcription_provider_health.allow_request("sarvam"):
+                        raise RuntimeError("Sarvam circuit is open")
                     # Assuming 'file_name' and 'logger' are available or can be mocked for this context
                     # For this specific change, we'll just add the print statements.
                     # If `logger` or `file_name` are not defined, this will cause an error.
@@ -782,13 +788,22 @@ class VideoProcessor:
                         words = _extract_sarvam_words(response)
                         print(f"[Sarvam] Parsed {len(words)} words from response")
                         if words:
+                            transcription_provider_health.record_success("sarvam")
                             detected_language = target_language.lower()
                             language_confidence = 0.85
                             transcription_source = "sarvam"
+                        else:
+                            transcription_provider_health.record_failure("sarvam")
+                            api_error_msg = "Sarvam returned no timestamped words"
                     except Exception as parse_e:
                         print(f"Failed to parse Sarvam response: {parse_e}")
+                        transcription_provider_health.record_failure("sarvam")
                         words = []
+                        api_error_msg = "Sarvam response could not be parsed"
                 else:
+                    active_provider = "openai"
+                    if not transcription_provider_health.allow_request("openai"):
+                        raise RuntimeError("OpenAI circuit is open")
                     if not self.client:
                         raise Exception("No OpenAI Client")
                     whisper_lang = whisper_lang_codes.get(target_language.lower())
@@ -823,9 +838,15 @@ class VideoProcessor:
                                     "end": float(getattr(w, 'end', 0) or 0),
                                 })
                     if words:
+                        transcription_provider_health.record_success("openai")
                         transcription_source = "whisper"
+                    else:
+                        transcription_provider_health.record_failure("openai")
+                        api_error_msg = "OpenAI returned no timestamped words"
             except Exception as api_error:
                 api_error_msg = str(api_error)
+                if active_provider:
+                    transcription_provider_health.record_failure(active_provider)
                 print(f"[Warning] Transcription provider error: {api_error}")
 
             failover_enabled = os.environ.get("TRANSCRIPTION_PROVIDER_FAILOVER", "1").strip().lower() in {
@@ -833,7 +854,8 @@ class VideoProcessor:
             }
             sarvam_failed = bool(is_indian_lang and sarvam_api_key and api_error_msg)
             audio_ready = bool(audio_p and os.path.exists(audio_p) and os.path.getsize(audio_p) > 0)
-            if not words and self.client and audio_ready and (api_error_msg is None or (sarvam_failed and failover_enabled)):
+            openai_available = transcription_provider_health.allow_request("openai")
+            if not words and self.client and audio_ready and openai_available and (api_error_msg is None or (sarvam_failed and failover_enabled)):
                 try:
                     if sarvam_failed:
                         print("[Transcribe] Sarvam failed; using configured OpenAI failover.")
@@ -861,9 +883,14 @@ class VideoProcessor:
                                 "end": float(getattr(w, 'end', 0) or 0),
                             })
                     if words:
+                        transcription_provider_health.record_success("openai")
                         api_error_msg = None
                         transcription_source = "whisper_failover" if sarvam_failed else "whisper"
+                    else:
+                        transcription_provider_health.record_failure("openai")
+                        api_error_msg = "OpenAI returned no timestamped words"
                 except Exception as fallback_error:
+                    transcription_provider_health.record_failure("openai")
                     api_error_msg = str(fallback_error)
 
             # Clean up temp file (file is now closed)

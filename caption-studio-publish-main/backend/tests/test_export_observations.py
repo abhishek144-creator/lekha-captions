@@ -3,7 +3,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "scripts"))
-from analyze_export_observations import _record, summarize
+from analyze_export_observations import _record, summarize, summarize_billing
 
 
 class ExportObservationsTests(unittest.TestCase):
@@ -48,6 +48,54 @@ class ExportObservationsTests(unittest.TestCase):
     def test_unknown_billing_is_not_reported_as_zero(self):
         result = summarize([])
         self.assertIsNone(result["cost_per_rendered_video_minute_usd"])
+
+    def test_reconciles_actual_billing_export_cost_and_credits(self):
+        billing = summarize_billing([
+            {
+                "usage_start_time": "2026-09-27T00:00:00Z",
+                "usage_end_time": "2026-09-27T01:00:00Z",
+                "service": {"description": "Compute Engine"},
+                "cost": 1.25,
+                "credits": [{"amount": -0.25}],
+                "currency": "USD",
+            },
+            {
+                "usage_start_time": "2026-09-28T00:00:00Z",
+                "usage_end_time": "2026-09-28T01:00:00Z",
+                "service": {"description": "Cloud Storage"},
+                "cost": 99,
+                "currency": "USD",
+            },
+        ], "2026-09-27T00:00:00Z", "2026-09-28T00:00:00Z")
+        records = [{
+            "event": "export_observation", "job_id": "a", "status": "completed",
+            "rendered_duration_seconds": 120,
+        }]
+        result = summarize(records, billing=billing)
+        self.assertEqual(billing["net_cost_usd"], 1.0)
+        self.assertEqual(billing["row_count"], 1)
+        self.assertEqual(result["cost_per_successful_export_usd"], 1.0)
+        self.assertEqual(result["cost_per_rendered_video_minute_usd"], 0.5)
+        self.assertEqual(result["billing"]["source"], "gcp_detailed_billing_export")
+
+    def test_combines_provider_invoice_cost_with_cloud_bill(self):
+        billing = {"net_cost_usd": 3.0, "source": "gcp_detailed_billing_export"}
+        records = [{
+            "event": "export_observation", "job_id": "a", "status": "completed",
+            "rendered_duration_seconds": 60,
+        }]
+        result = summarize(
+            records,
+            billing=billing,
+            provider_billing=[{
+                "provider": "openai", "invoice_id": "i-1", "currency": "USD",
+                "original_net_cost": 2, "net_cost_usd": 2, "source_sha256": "a" * 64,
+            }],
+            usd_to_inr_rate=85,
+        )
+        self.assertEqual(result["billing_cost_usd"], 5)
+        self.assertEqual(result["cost_per_successful_export_usd"], 5)
+        self.assertEqual(result["usd_to_inr_rate"], 85)
 
 
 if __name__ == "__main__":

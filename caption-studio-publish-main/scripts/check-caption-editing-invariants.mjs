@@ -5,6 +5,7 @@ import {
   reconcileCaptionText,
   splitCaptionAtBoundary,
 } from '../src/components/dashboard/captionEditingUtils.js'
+import { analyzeCaptionQuality, captionContrastRatio } from '../src/components/dashboard/captionQualityUtils.js'
 
 const source = {
   id: 'caption-1',
@@ -75,5 +76,20 @@ const compactSplit = splitCaptionAtBoundary({
 }, compactSplitPosition, 'compact-2')
 assert.equal(compactSplit.captions.length, 2, 'non-space-delimited scripts must split at word boundaries')
 assert.equal(compactSplit.captions.map((caption) => caption.text).join(''), compactText)
+
+assert.ok(captionContrastRatio('#ffffff', '#000000') > 20)
+assert.ok(captionContrastRatio('#777777', '#888888') < 4.5)
+const contrastReview = analyzeCaptionQuality([
+  { id: 'low-contrast', text: 'Readable words', start_time: 0, end_time: 2 },
+], {
+  text_color: '#777777',
+  background_color: '#888888',
+  background_opacity: 1,
+  has_background: true,
+  has_stroke: false,
+  has_shadow: false,
+})
+assert.equal(contrastReview.counts.contrast, 1)
+assert.ok(contrastReview.details.some((item) => item.key === 'contrast'))
 
 console.log('Caption editing invariants passed.')

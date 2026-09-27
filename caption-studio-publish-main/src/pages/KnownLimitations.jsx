@@ -20,8 +20,8 @@ const limitations = [
     description: 'The editor preview runs in the browser and final video rendering runs on the server. Complex animated templates can show small timing or typography differences.',
   },
   {
-    title: 'Google sign-in only',
-    description: 'The current beta supports Google sign-in. Email/password accounts, team workspaces, and real-time collaborative editing are not currently offered.',
+    title: 'Google sign-in and revision-based collaboration',
+    description: 'The current beta supports Google sign-in. Team workspaces can share revisioned projects, but simultaneous cursor-level editing is not currently offered; conflicting saves ask the later editor to reload.',
   },
   {
     title: 'Modern browsers work best',
