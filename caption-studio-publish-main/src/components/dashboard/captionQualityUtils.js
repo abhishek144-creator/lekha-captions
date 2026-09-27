@@ -1,5 +1,26 @@
 const captionText = (caption) => String(caption?.text || '').trim()
 
+const parseHexColor = (value) => {
+  const hex = String(value || '').trim().replace(/^#/, '')
+  if (!/^[0-9a-f]{6}$/i.test(hex)) return null
+  return [0, 2, 4].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16) / 255)
+}
+
+const relativeLuminance = (rgb) => {
+  if (!rgb) return null
+  const linear = rgb.map((channel) => (
+    channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
+  ))
+  return (0.2126 * linear[0]) + (0.7152 * linear[1]) + (0.0722 * linear[2])
+}
+
+export function captionContrastRatio(textColor, backgroundColor) {
+  const text = relativeLuminance(parseHexColor(textColor))
+  const background = relativeLuminance(parseHexColor(backgroundColor))
+  if (text === null || background === null) return null
+  return (Math.max(text, background) + 0.05) / (Math.min(text, background) + 0.05)
+}
+
 export function analyzeCaptionQuality(captions = [], captionStyle = {}) {
   const timed = (Array.isArray(captions) ? captions : [])
     .filter((caption) => caption && !caption.isTextElement && captionText(caption))
@@ -9,7 +30,7 @@ export function analyzeCaptionQuality(captions = [], captionStyle = {}) {
       || left.index - right.index
     ))
 
-  const counts = { uncertain: 0, timing: 0, reading: 0, safeArea: 0 }
+  const counts = { uncertain: 0, timing: 0, reading: 0, safeArea: 0, contrast: 0 }
   const details = []
 
   timed.forEach(({ caption }, index) => {
@@ -39,6 +60,21 @@ export function analyzeCaptionQuality(captions = [], captionStyle = {}) {
     }
   })
 
+  const hasProtectiveEffect = Boolean(captionStyle.has_stroke || captionStyle.has_shadow)
+  if (timed.length) {
+    if (captionStyle.has_background) {
+      const contrast = captionContrastRatio(captionStyle.text_color || '#ffffff', captionStyle.background_color || '#000000')
+      const backgroundOpacity = Number(captionStyle.background_opacity ?? 1)
+      if ((contrast !== null && contrast < 4.5) || (backgroundOpacity < 0.65 && !hasProtectiveEffect)) {
+        counts.contrast = timed.length
+      }
+    } else if (!hasProtectiveEffect) {
+      // A video frame changes continuously, so unprotected text cannot make a
+      // dependable contrast promise even when its chosen color is bright.
+      counts.contrast = timed.length
+    }
+  }
+
   if (counts.uncertain) details.push({
     key: 'uncertain',
     title: 'Possible transcript artifacts',
@@ -58,6 +94,13 @@ export function analyzeCaptionQuality(captions = [], captionStyle = {}) {
     key: 'safe-area',
     title: 'Check the platform safe area',
     detail: `${counts.safeArea} caption${counts.safeArea === 1 ? '' : 's'} use a position close to the edge of the output frame.`,
+  })
+  if (counts.contrast) details.push({
+    key: 'contrast',
+    title: 'Improve caption contrast',
+    detail: captionStyle.has_background
+      ? 'The selected text and background colors are below the recommended 4.5:1 contrast ratio, or the background is too transparent without a protective outline.'
+      : 'Captions have no background, outline, or shadow. Add one so changing video frames cannot make the text unreadable.',
   })
 
   return { captionCount: timed.length, counts, details }

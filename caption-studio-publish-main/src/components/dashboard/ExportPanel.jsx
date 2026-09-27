@@ -50,6 +50,55 @@ import CaptionQualityPanel from './CaptionQualityPanel';
 const DISABLE_EXPORT_LIMITS_FOR_TESTING = import.meta.env.DEV && import.meta.env.VITE_DISABLE_EXPORT_LIMITS === '1';
 
 const SUPPORT_EMAIL = import.meta.env.VITE_SUPPORT_EMAIL || 'support@lekhacaptions.com';
+const ACTIVE_EXPORT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+const formatQueueEta = (seconds) => {
+  const safeSeconds = Number(seconds);
+  if (!Number.isFinite(safeSeconds) || safeSeconds < 0) return '';
+  if (safeSeconds < 60) return 'under a minute';
+  const minutes = Math.max(1, Math.ceil(safeSeconds / 60));
+  return `about ${minutes} min`;
+};
+
+const activeExportStorageKey = (uid, fileId) => (
+  uid && fileId ? `lekha.activeExport.${uid}.${fileId}` : ''
+);
+
+function readActiveExport(uid, fileId) {
+  const key = activeExportStorageKey(uid, fileId);
+  if (!key || typeof window === 'undefined') return null;
+  try {
+    const receipt = JSON.parse(window.localStorage.getItem(key) || 'null');
+    if (!receipt?.jobId || Date.now() - Number(receipt.createdAt || 0) > ACTIVE_EXPORT_MAX_AGE_MS) {
+      window.localStorage.removeItem(key);
+      return null;
+    }
+    return receipt;
+  } catch {
+    window.localStorage.removeItem(key);
+    return null;
+  }
+}
+
+function storeActiveExport(uid, fileId, receipt) {
+  const key = activeExportStorageKey(uid, fileId);
+  if (!key || typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(receipt));
+  } catch {
+    // The running export still succeeds when browser storage is unavailable.
+  }
+}
+
+function removeActiveExport(uid, fileId) {
+  const key = activeExportStorageKey(uid, fileId);
+  if (!key || typeof window === 'undefined') return;
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // Ignore browsers that deny storage access.
+  }
+}
 
 // The backend already tags 500s with "Reference: <rid>". Surface whichever
 // identifier we hold so a user reporting a failed export can be matched to a
@@ -224,6 +273,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
   const [isExporting, setIsExporting] = useState(false);
   const [progress, setProgress] = useState(0);
   const [statusMessage, setStatusMessage] = useState('');
+  const [queueEstimate, setQueueEstimate] = useState(null);
   const [waitStartTime, setWaitStartTime] = useState(null);
   const [showServerBusy, setShowServerBusy] = useState(false);
   const [exportExpiry, setExportExpiry] = useState(null);
@@ -233,6 +283,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
   const [notifyWhenComplete, setNotifyWhenComplete] = useState(() => (
     typeof window !== 'undefined' && window.localStorage?.getItem('lekha.exportCompletionNotification') === '1'
   ));
+  const [recoverableExport, setRecoverableExport] = useState(null);
   const exportInFlightRef = useRef(false);
   const exportAbortRef = useRef(null);
   const backgroundNoticeShownRef = useRef(false);
@@ -241,6 +292,11 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
   useEffect(() => {
     if (open) setReviewConfirmed(false);
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    setRecoverableExport(readActiveExport(currentUser?.uid, fileId));
+  }, [currentUser?.uid, fileId, open]);
 
   const raiseProgressTarget = (target) => {
     progressTargetRef.current = Math.max(progressTargetRef.current, Math.min(100, target));
@@ -322,15 +378,31 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       }
       const status = (statusPayload?.status || '').toLowerCase();
       if (status === 'queued' || status === 'starting') {
-        setStatusMessage('Preparing your export...');
+        const queuePosition = Number(statusPayload?.queue_position);
+        const queueDepth = Number(statusPayload?.queue_depth);
+        const etaLabel = formatQueueEta(statusPayload?.estimated_completion_seconds);
+        if (status === 'queued' && Number.isFinite(queuePosition) && queuePosition > 0) {
+          setQueueEstimate({
+            position: queuePosition,
+            depth: Number.isFinite(queueDepth) && queueDepth > 0 ? queueDepth : queuePosition,
+            etaLabel,
+          });
+          setStatusMessage(`Queued ${queuePosition} of ${Math.max(queuePosition, queueDepth || 0)}${etaLabel ? ` · ${etaLabel}` : ''}`);
+        } else {
+          setQueueEstimate(null);
+          setStatusMessage('Preparing your export...');
+        }
         raiseProgressTarget(45);
       } else if (status === 'retrying') {
+        setQueueEstimate(null);
         setStatusMessage('Recovering your export. Please keep this page open...');
         raiseProgressTarget(58);
       } else if (status === 'processing') {
+        setQueueEstimate(null);
         setStatusMessage('Rendering in progress...');
         raiseProgressTarget(96);
       } else if (status === 'finalizing') {
+        setQueueEstimate(null);
         setStatusMessage('Finalizing your export...');
         raiseProgressTarget(98);
       } else if (status === 'completed') {
@@ -467,6 +539,109 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
     }
   };
 
+  const downloadCompletedExport = async ({ resolvedResult, authHeaders, signal, jobId, quality, filename }) => {
+    if (resolvedResult?.success === false) {
+      const terminalError = new Error(resolvedResult.error || 'Export completed without a usable video. Please retry.');
+      terminalError.exportStatus = 'failed';
+      throw terminalError;
+    }
+    if (resolvedResult.retention_hours) {
+      setExportExpiry({ hours: resolvedResult.retention_hours, expiresAt: resolvedResult.expires_at });
+    }
+    raiseProgressTarget(99);
+    setStatusMessage('Preparing download...');
+    const downloadUrl = resolvedResult.video_url;
+    if (!downloadUrl) throw new Error('Export completed but no download link was returned. Please retry.');
+    const downloadHeaders = shouldAttachApiAuth(downloadUrl, window.location.origin) ? authHeaders : {};
+    const videoResponse = await apiFetch(downloadUrl, { headers: downloadHeaders, signal });
+    const blob = await videoResponse.blob();
+    if (blob.size === 0) throw new Error('The exported video download was empty. Please retry.');
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = getCaptionedVideoFilename(filename || originalFileName);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    removeActiveExport(currentUser?.uid, fileId);
+    setRecoverableExport(null);
+    trackAnalytics('funnel.export.success', getClientContext({
+      stage: 'export',
+      quality,
+      plan: userData?.subscription_tier || 'free'
+    }));
+    setProgress(100);
+    progressTargetRef.current = 100;
+    setStatusMessage('Export complete!');
+    toast({
+      title: 'Export complete',
+      description: `${getCaptionedVideoFilename(filename || originalFileName)} is ready and downloading.`,
+      duration: 10000,
+    });
+    if (notifyWhenComplete && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      try {
+        new Notification('Lekha export complete', {
+          body: `${getCaptionedVideoFilename(filename || originalFileName)} is ready.`,
+          tag: jobId || 'lekha-export-complete',
+        });
+      } catch {
+        // Some mobile browsers expose Notification but reject construction.
+      }
+    }
+    Promise.resolve().then(() => refreshUserData?.()).catch(() => {});
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  };
+
+  const handleResumeExport = async () => {
+    const receipt = recoverableExport || readActiveExport(currentUser?.uid, fileId);
+    if (!receipt?.jobId || exportInFlightRef.current) return;
+    setIsExporting(true);
+    exportInFlightRef.current = true;
+    progressTargetRef.current = 35;
+    setProgress(10);
+    setQueueEstimate(null);
+    setStatusMessage('Reconnecting to your export...');
+    setWaitStartTime(Date.now());
+    const controller = new AbortController();
+    exportAbortRef.current = controller;
+    try {
+      const idToken = await getEffectiveAuthToken(currentUser);
+      const authHeaders = idToken ? { Authorization: `Bearer ${idToken}` } : {};
+      await pollExportStatus(receipt.jobId, authHeaders, 10 * 60 * 1000, controller.signal);
+      const resolvedResult = await apiRequest(`/api/export-result/${receipt.jobId}`, {
+        headers: authHeaders,
+        signal: controller.signal,
+      });
+      await downloadCompletedExport({
+        resolvedResult,
+        authHeaders,
+        signal: controller.signal,
+        jobId: receipt.jobId,
+        quality: receipt.quality || 'recovered',
+        filename: receipt.originalFileName,
+      });
+    } catch (error) {
+      if (error?.name !== 'AbortError') {
+        if (error?.exportStatus === 'failed' || error?.status === 404) {
+          removeActiveExport(currentUser?.uid, fileId);
+          setRecoverableExport(null);
+        }
+        notifyExportFailure(error, receipt.jobId);
+      }
+    } finally {
+      setIsExporting(false);
+      exportInFlightRef.current = false;
+      if (exportAbortRef.current === controller) exportAbortRef.current = null;
+      setProgress(0);
+      progressTargetRef.current = 0;
+      setStatusMessage('');
+      setQueueEstimate(null);
+      setWaitStartTime(null);
+      setShowServerBusy(false);
+    }
+  };
+
   const handleExportVideo = async (quality) => {
     if (exportInFlightRef.current) {
       toast({
@@ -512,6 +687,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
     const exportController = new AbortController();
     exportAbortRef.current = exportController;
     setProgress(2);
+    setQueueEstimate(null);
     setStatusMessage('Preparing export...');
     setWaitStartTime(Date.now());
     setShowServerBusy(false);
@@ -598,16 +774,9 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       const idToken = await getEffectiveAuthToken(currentUser);
       throwIfAborted(exportController.signal);
       const authHeaders = idToken ? { Authorization: `Bearer ${idToken}` } : {};
-      let effectiveQuality = quality;
-      const prefersDataSave = !!navigator?.connection?.saveData;
-      const lowBandwidth = (navigator?.connection?.effectiveType || '').includes('2g');
-      if ((prefersDataSave || lowBandwidth) && quality === '4k') {
-        effectiveQuality = '1080p';
-        toast({
-          title: 'Adaptive export quality',
-          description: 'Network conditions detected. Using 1080p for a faster, safer export.',
-        });
-      }
+      // Export rendering happens on the server. Browser connection hints must
+      // never silently lower the customer-selected encoded output quality.
+      const effectiveQuality = quality;
 
       const exportEmotionalById = new Map(
         buildEmotionalCaptionPlan(
@@ -830,6 +999,15 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       let resolvedResult = result;
       if (result.export_job_id) {
         activeExportJobId = result.export_job_id;
+        const receipt = {
+          jobId: result.export_job_id,
+          fileId,
+          originalFileName,
+          quality: effectiveQuality,
+          createdAt: Date.now(),
+        };
+        storeActiveExport(currentUser?.uid, fileId, receipt);
+        setRecoverableExport(receipt);
         await pollExportStatus(result.export_job_id, authHeaders, 10 * 60 * 1000, exportController.signal);
         // Always resolve the completed receipt again. The API returns a fresh,
         // short-lived media token, so an idempotent replay can download the
@@ -840,73 +1018,14 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
         });
       }
 
-      if (resolvedResult?.success === false) {
-        throw new Error(resolvedResult.error || 'Export completed without a usable video. Please retry.');
-      }
-
-      // Store expiry info
-      if (resolvedResult.retention_hours) {
-        setExportExpiry({ hours: resolvedResult.retention_hours, expiresAt: resolvedResult.expires_at })
-      }
-
-      raiseProgressTarget(99);
-      setStatusMessage('Preparing download...');
-
-      // Firebase Storage URLs are absolute; local URLs are relative
-      const downloadUrl = resolvedResult.video_url
-      if (!downloadUrl) {
-        throw new Error('Export completed but no download link was returned. Please retry.');
-      }
-      const downloadHeaders = shouldAttachApiAuth(downloadUrl, window.location.origin) ? authHeaders : {};
-      const videoResponse = await apiFetch(downloadUrl, {
-        headers: downloadHeaders,
-        signal: exportController.signal
-      });
-      const blob = await videoResponse.blob();
-      if (blob.size === 0) {
-        throw new Error('The exported video download was empty. Please retry.');
-      }
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = getCaptionedVideoFilename(originalFileName);
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      // Revoking synchronously can cancel a just-started download in Safari and
-      // Firefox. Release it after the browser has consumed the click instead.
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      trackAnalytics('funnel.export.success', getClientContext({
-        stage: 'export',
+      await downloadCompletedExport({
+        resolvedResult,
+        authHeaders,
+        signal: exportController.signal,
+        jobId: activeExportJobId,
         quality: effectiveQuality,
-        plan: userData?.subscription_tier || 'free'
-      }));
-
-      setProgress(100);
-      progressTargetRef.current = 100;
-      setStatusMessage('Export complete!');
-      toast({
-        title: 'Export complete',
-        description: `${getCaptionedVideoFilename(originalFileName)} is ready and downloading.`,
-        duration: 10000,
+        filename: originalFileName,
       });
-      if (notifyWhenComplete && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-        try {
-          new Notification('Lekha export complete', {
-            body: `${getCaptionedVideoFilename(originalFileName)} is ready.`,
-            tag: activeExportJobId || 'lekha-export-complete',
-          });
-        } catch {
-          // Some mobile browsers expose Notification but reject construction.
-        }
-      }
-      // The backend just decremented a credit — refresh so the plan/credits
-      // gating reflects reality instead of the stale pre-export snapshot.
-      // Auth-context implementations have historically varied between async and
-      // synchronous refresh functions. Normalize both so a successful download
-      // is never turned into a false "Export failed" error by `.catch` on void.
-      Promise.resolve().then(() => refreshUserData?.()).catch(() => {});
-      await new Promise(resolve => setTimeout(resolve, 1000));
 
     } catch (error) {
       // Cancelled exports are not failures — skip failure analytics and toasts.
@@ -926,6 +1045,10 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
         handlePlanLimitError(planKind);
         return;
       }
+      if (error?.exportStatus === 'failed') {
+        removeActiveExport(currentUser?.uid, fileId);
+        setRecoverableExport(null);
+      }
       notifyExportFailure(error, activeExportJobId);
     } finally {
       setIsExporting(false);
@@ -937,6 +1060,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       setProgress(0);
       progressTargetRef.current = 0;
       setStatusMessage('');
+      setQueueEstimate(null);
       setWaitStartTime(null);
       setShowServerBusy(false);
     }
@@ -1047,6 +1171,12 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
               <div className="mt-4">
                 <h3 className="text-xl font-black text-white mb-1">Creating your video</h3>
                 <p className="text-sm text-gray-400 animate-pulse">{statusMessage || 'Preparing render...'}</p>
+                {queueEstimate && (
+                  <p className="mt-2 text-xs text-sky-200/80" aria-live="polite">
+                    {queueEstimate.position - 1} job{queueEstimate.position - 1 === 1 ? '' : 's'} ahead
+                    {queueEstimate.etaLabel ? ` · estimated completion ${queueEstimate.etaLabel}` : ''}
+                  </p>
+                )}
                 {showServerBusy && (
                   <p className="text-xs text-amber-400 mt-2 animate-pulse">
                     Your export is still in progress. Timing depends on video length and effects.
@@ -1071,6 +1201,17 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
           </div>
         ) : (
           <div className="mt-5 space-y-5">
+            {recoverableExport && isSignedIn && (
+              <div className="rounded-2xl border border-sky-300/25 bg-sky-300/[0.07] p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-bold text-sky-100">Existing export found</p>
+                    <p className="mt-1 text-xs leading-5 text-sky-100/65">Reconnect to job {recoverableExport.jobId} and download it without starting another render or spending another credit.</p>
+                  </div>
+                  <Button type="button" size="sm" onClick={handleResumeExport} className="shrink-0 bg-sky-100 text-slate-950 hover:bg-white">Resume</Button>
+                </div>
+              </div>
+            )}
             {/* Not signed in: Sign up prompt */}
             {!isSignedIn && (
               <div className="p-4 rounded-2xl bg-white/[0.05] border border-white/10 text-center">

@@ -1,0 +1,7 @@
+{
+  "name": "@lekha-captions/sdk",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": "./index.js",
+  "sideEffects": false
+}

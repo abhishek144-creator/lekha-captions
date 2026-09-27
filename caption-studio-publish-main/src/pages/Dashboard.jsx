@@ -21,6 +21,7 @@ import { resolveApiResourceUrl } from '@/components/dashboard/exportPipelineUtil
 import { lazyWithRefresh } from '@/lib/lazyWithRefresh';
 import { uploadFileWithRecovery } from '@/lib/resilientUpload';
 import { useCloudProjects } from '@/hooks/useCloudProjects'
+import { useEditorPreferences } from '@/hooks/useEditorPreferences'
 import { processVideoWithRecovery } from '@/lib/resilientProcess';
 import planCatalog from '../../shared/planCatalog.json';
 
@@ -314,6 +315,13 @@ export default function Dashboard() {
   const [activeCaptionTrackId, setActiveCaptionTrackId] = useState('source');
   const [selectedCaptionId, setSelectedCaptionId] = useState(null);
   const [captionStyle, setCaptionStyle] = useState(defaultCaptionStyle);
+  const {
+    brandKits,
+    setBrandKits,
+    glossaryTerms,
+    setGlossaryTerms,
+    syncStatus: editorPreferenceSyncStatus,
+  } = useEditorPreferences(currentUser)
 
   // DEV-ONLY seed: load a sample video + Hindi captions instantly for verifying
   // template rendering without the upload/transcribe flow. Activate with ?devseed=1.
@@ -383,6 +391,7 @@ export default function Dashboard() {
   const {
     cloudDraft, cloudProjects, cloudReady, saveCloudDraft, selectCloudProject,
     deleteCloudProject, renameCloudProject, duplicateCloudProject,
+    workspaces, activeWorkspaceId, switchProjectScope,
   } = useCloudProjects({
     currentUser,
     getAuthToken: getEffectiveAuthToken,
@@ -557,10 +566,12 @@ export default function Dashboard() {
     if (!cloudDraft || !currentUser) return
     try {
       const id_token = await getEffectiveAuthToken(currentUser)
-      const media = await apiRequest('/api/media/upload-url', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id_token, file_id: cloudDraft.fileId }),
-      })
+      const media = cloudDraft._workspaceRawUrl
+        ? { raw_url: cloudDraft._workspaceRawUrl }
+        : await apiRequest('/api/media/upload-url', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id_token, file_id: cloudDraft.fileId }),
+          })
       const restoredCaptions = (cloudDraft.captions || []).map(sanitizeRestoredCaption)
       const restoredEditorState = normalizeRestoredCaptionTrackState(
         cloudDraft.captionTracks,
@@ -1666,6 +1677,9 @@ export default function Dashboard() {
             onOpenWordPopup={(caption, wordIndex, position, word) => openWordPopup({ caption, wordIndex, position, word })}
             wordPopup={wordPopup}
             user={currentUser}
+            glossaryTerms={glossaryTerms}
+            onGlossaryChange={setGlossaryTerms}
+            preferenceSyncStatus={editorPreferenceSyncStatus}
           />
         </Suspense>
       );
@@ -1732,6 +1746,9 @@ export default function Dashboard() {
             captionStyle={captionStyle}
             setCaptionStyle={updateCaptionStyle}
             addToHistory={addToHistory}
+            brandKits={brandKits}
+            onBrandKitsChange={setBrandKits}
+            preferenceSyncStatus={editorPreferenceSyncStatus}
           />
         </Suspense>
       );
@@ -2077,6 +2094,21 @@ export default function Dashboard() {
                 <Upload className="w-5 h-5 mr-2" />
                 {localRecoveryDraft ? 'Start New' : 'Upload Video'}
               </Button>
+              {workspaces.length > 0 && (
+                <label className="mx-auto mt-4 block max-w-sm text-left text-xs text-gray-400">
+                  Project workspace
+                  <select
+                    value={activeWorkspaceId}
+                    onChange={(event) => switchProjectScope(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-white/15 bg-zinc-900 px-3 py-2 text-sm text-white"
+                  >
+                    <option value="">Personal projects</option>
+                    {workspaces.map((workspace) => (
+                      <option key={workspace.workspace_id} value={workspace.workspace_id}>{workspace.name}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
               {cloudDraft && (
                 <div className="mt-4 space-y-3 text-sm">
                   {cloudProjects.length > 0 && (

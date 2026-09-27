@@ -19,6 +19,7 @@ raw = subprocess.check_output(
 )
 updates = {
     "EXPORT_MAX_PENDING_JOBS": "80",
+    "EXPORT_MAX_PENDING_WORK_SECONDS": "1800",
     "EXPORT_MAX_QUEUE_WAIT_SECONDS": "600",
     "QUEUE_METRICS_ENABLED": "1",
     "QUEUE_METRICS_INTERVAL_SECONDS": "30",

@@ -63,6 +63,38 @@ def test_render_queue_snapshot_aggregates_work_and_predicts_wait(monkeypatch):
     assert gcp_queue_metrics.render_queue_snapshot(queues, object, active_workers=4) == (5, 45, 480, 120)
 
 
+def test_job_queue_prediction_reports_position_and_work_eta():
+    class Queue:
+        count = 3
+        connection = object()
+
+        @staticmethod
+        def get_job_ids(offset=0, length=100):
+            assert (offset, length) == (0, 3)
+            return ["first", "target", "last"]
+
+    class Job:
+        @staticmethod
+        def fetch(job_id, connection):
+            assert connection is Queue.connection
+            estimates = {"first": 90, "target": 150, "last": 30}
+            return type("QueuedJob", (), {"meta": {"estimated_render_seconds": estimates[job_id]}})()
+
+    prediction = gcp_queue_metrics.job_queue_prediction(
+        Queue(), Job, "target", active_workers=2,
+    )
+
+    assert prediction == {
+        "queue_position": 2,
+        "jobs_ahead": 1,
+        "queue_depth": 3,
+        "estimated_queue_wait_seconds": 45,
+        "estimated_completion_seconds": 120,
+        "active_workers": 2,
+    }
+    assert gcp_queue_metrics.job_queue_prediction(Queue(), Job, "missing") is None
+
+
 def test_google_request_rejects_unapproved_endpoint():
     request = urllib.request.Request("file:///tmp/metadata")
     try:

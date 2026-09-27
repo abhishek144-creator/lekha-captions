@@ -45,6 +45,7 @@ updates = {
     "TRANSCRIPTION_QUEUE_NAME": "caption_transcription_jobs",
     "MEDIA_SCAN_QUEUE_NAME": "caption_media_scan_jobs",
     "EXPORT_MAX_PENDING_JOBS": "80",
+    "EXPORT_MAX_PENDING_WORK_SECONDS": "1800",
     "EXPORT_MAX_QUEUE_WAIT_SECONDS": "600",
     "QUEUE_METRICS_ENABLED": "1",
     "QUEUE_METRICS_INTERVAL_SECONDS": "30",
@@ -53,6 +54,9 @@ updates = {
     "GPU_WORKER_MIG_NAME": "lekha-worker-gpu-staging-mig",
     "TRANSCRIPTION_MIG_NAME": "lekha-transcription-staging-mig",
     "TRANSCRIPTION_PROVIDER_FAILOVER": "1",
+    "TRANSCRIPTION_PROVIDER_FAILURE_THRESHOLD": "3",
+    "TRANSCRIPTION_PROVIDER_COOLDOWN_SECONDS": "60",
+    "PUBLIC_API_KEY_HOURLY_LIMIT": "1000",
 }
 lines = [line for line in raw.splitlines() if line.partition("=")[0] not in updates]
 lines.extend(f"{key}={value}" for key, value in updates.items())

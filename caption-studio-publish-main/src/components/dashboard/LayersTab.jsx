@@ -1,7 +1,5 @@
-import React from 'react';
 import { Captions, Eye, Layers, Plus, Type, X } from 'lucide-react';
 
-const BRAND_KIT_STORAGE_KEY = 'captionStudio.brandKits.v1';
 const BRAND_KIT_STYLE_FIELDS = [
   'font_family',
   'font_size',
@@ -35,16 +33,6 @@ const BRAND_KIT_STYLE_FIELDS = [
   'position_y',
 ];
 
-function readBrandKits() {
-  if (typeof window === 'undefined') return [];
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(BRAND_KIT_STORAGE_KEY) || '[]');
-    return Array.isArray(parsed) ? parsed.filter((kit) => kit?.id && kit?.style) : [];
-  } catch {
-    return [];
-  }
-}
-
 function extractBrandKitStyle(style = {}) {
   return BRAND_KIT_STYLE_FIELDS.reduce((kitStyle, field) => {
     if (style[field] !== undefined) kitStyle[field] = style[field];
@@ -60,20 +48,13 @@ export default function LayersTab({
   captionStyle,
   setCaptionStyle,
   addToHistory,
+  brandKits = [],
+  onBrandKitsChange,
+  preferenceSyncStatus = 'loading',
 }) {
   const captionLayers = captions.filter((caption) => !caption.isTextElement);
   const textLayers = captions.filter((caption) => caption.isTextElement);
   const layers = [...textLayers, ...captionLayers].sort((a, b) => (a.start_time || 0) - (b.start_time || 0));
-  const [brandKits, setBrandKits] = React.useState(() => readBrandKits());
-
-  React.useEffect(() => {
-    try {
-      window.localStorage.setItem(BRAND_KIT_STORAGE_KEY, JSON.stringify(brandKits));
-    } catch {
-      // Brand kits are a convenience preset; editing should continue if storage is unavailable.
-    }
-  }, [brandKits]);
-
   const formatTime = (seconds = 0) => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
@@ -89,8 +70,9 @@ export default function LayersTab({
       id: `brand-kit-${Date.now()}`,
       name: `Brand Kit ${nextIndex}`,
       style: extractBrandKitStyle(captionStyle),
+      updated_at: new Date().toISOString(),
     };
-    setBrandKits((current) => [nextKit, ...current].slice(0, 8));
+    onBrandKitsChange?.((current) => [nextKit, ...current].slice(0, 8));
   };
 
   const applyBrandKit = (kit) => {
@@ -104,7 +86,7 @@ export default function LayersTab({
   };
 
   const deleteBrandKit = (kitId) => {
-    setBrandKits((current) => current.filter((kit) => kit.id !== kitId));
+    onBrandKitsChange?.((current) => current.filter((kit) => kit.id !== kitId));
   };
 
   return (
@@ -123,6 +105,9 @@ export default function LayersTab({
             <p className="text-[9px] font-bold uppercase tracking-[0.22em] text-slate-400">Brand Kits</p>
             <p className="mt-1 truncate text-[10px] text-slate-500">
               {getCurrentValue('font_family', 'Inter')} - {getCurrentValue('position_y', 75)}%
+            </p>
+            <p className="mt-1 text-[9px] text-slate-600">
+              {preferenceSyncStatus === 'synced' ? 'Synced to your account' : preferenceSyncStatus === 'saving' ? 'Saving…' : 'Saved in this browser'}
             </p>
           </div>
           <button

@@ -128,8 +128,8 @@ if ($LASTEXITCODE -ne 0) {
         "--target-tags=lekha-api-mig,lekha-worker-mig"
 }
 
-Ensure-RegionalGroup $apiGroup $apiTemplate 2
-Ensure-RegionalGroup $workerGroup $workerTemplate 3
+Ensure-RegionalGroup $apiGroup $apiTemplate 0
+Ensure-RegionalGroup $workerGroup $workerTemplate 0
 Ensure-RegionalGroup $transcriptionGroup $transcriptionTemplate 0
 
 Invoke-Gcloud compute instance-groups managed set-named-ports $apiGroup `
@@ -164,27 +164,27 @@ if ($redirectMapExists -and $LASTEXITCODE -eq 0) {
         --project=$ProjectId --url-map=lekha-api-staging-http-redirect
 }
 
-# Two smaller API replicas preserve the previous four-vCPU baseline while
-# removing the single-instance failure mode. Connection draining on the load
-# balancer protects active uploads during later scale-in or rolling updates.
-Invoke-Gcloud compute instance-groups managed set-autoscaling $apiGroup `
-    --project=$ProjectId --region=$Region --min-num-replicas=2 --max-num-replicas=4 `
-    --target-cpu-utilization=0.60 --cool-down-period=900 `
-    "--scale-in-control=max-scaled-in-replicas=1,time-window=1800"
+# The request-driven API belongs on Cloud Run with minimum zero. Keep this GCE
+# group only as a zero-sized rollback definition; never restore a CPU-driven
+# API autoscaler that creates idle instances.
+& gcloud compute instance-groups managed stop-autoscaling $apiGroup `
+    --project=$ProjectId --region=$Region --quiet *> $null
+Invoke-Gcloud compute instance-groups managed resize $apiGroup `
+    --project=$ProjectId --region=$Region --size=0 --quiet
 
 # Work-based metrics distinguish short and expensive renders. Workers protect
 # themselves from MIG scale-in while a job is active.
 Invoke-Gcloud compute instance-groups managed set-autoscaling $workerGroup `
-    --project=$ProjectId --region=$Region --min-num-replicas=3 --max-num-replicas=20 `
+    --project=$ProjectId --region=$Region --min-num-replicas=0 --max-num-replicas=3 `
     --update-stackdriver-metric=custom.googleapis.com/lekha/pending_render_work_seconds `
     "--stackdriver-metric-filter=resource.type = global AND metric.labels.queue = render_all AND metric.labels.worker_group = $workerGroup" `
     --stackdriver-metric-single-instance-assignment=120 `
     --cool-down-period=180 --mode=on `
-    "--scale-in-control=max-scaled-in-replicas=5,time-window=300"
+    "--scale-in-control=max-scaled-in-replicas=1,time-window=300"
 Invoke-Gcloud compute instance-groups managed set-autoscaling $transcriptionGroup `
-    --project=$ProjectId --region=$Region --min-num-replicas=0 --max-num-replicas=10 `
+    --project=$ProjectId --region=$Region --min-num-replicas=0 --max-num-replicas=2 `
     --custom-metric-utilization="metric=custom.googleapis.com/lekha/transcription_queue_depth,utilization-target=1,utilization-target-type=GAUGE" `
     --cool-down-period=180 --mode=on `
-    "--scale-in-control=max-scaled-in-replicas=2,time-window=300"
+    "--scale-in-control=max-scaled-in-replicas=1,time-window=300"
 
-Write-Host "Scaled staging groups configured. Verify every instance and queue before stopping either rollback VM."
+Write-Host "Scale-to-zero staging configured: legacy API target 0, render 0..3, transcription 0..2."

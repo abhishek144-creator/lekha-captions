@@ -23,7 +23,15 @@ const METRIC_CARDS = [
   ["failure_percentage", "Failure percentage", "%"],
   ["average_processing_time_ms", "Average processing time", "ms"],
   ["processing_p95_ms", "Processing p95", "ms"],
-  ["cost_per_job_usd", "Estimated cost per job", "USD"],
+  ["cost_per_successful_export_usd", "Actual cost / successful video", "USD"],
+  ["cost_per_rendered_video_minute_usd", "Actual cost / rendered minute", "USD"],
+  ["actual_net_cost_usd", "Actual net infrastructure/API cost", "USD"],
+  ["provider_net_cost_usd", "Provider invoiced cost", "USD"],
+  ["actual_net_cost_inr", "Actual total cost", "₹"],
+  ["cost_per_successful_export_inr", "Actual cost / successful video", "₹"],
+  ["customer_acquisition_cost_inr", "Customer acquisition cost", "₹"],
+  ["gross_revenue_inr", "Gross revenue", "₹"],
+  ["estimated_cost_per_successful_export_usd", "Forecast cost / successful video", "USD"],
   ["successful_payments", "Successful payments"],
   ["failed_payments", "Failed payments"],
   ["support_requests", "Support requests"],
@@ -39,6 +47,7 @@ export default function AdminOps() {
   const [metrics, setMetrics] = useState(null)
   const [metricsWindow, setMetricsWindow] = useState(null)
   const [funnel, setFunnel] = useState(null)
+  const [providerHealth, setProviderHealth] = useState(null)
 
   const isAdmin = userData?.role === "admin" || userData?.roles?.includes("admin")
 
@@ -63,6 +72,10 @@ export default function AdminOps() {
       setMetrics(data?.metrics || null)
       setMetricsWindow(data?.window || null)
       setFunnel(data?.funnel || null)
+      const health = await apiRequest("/api/admin/provider-health", {
+        headers: { Authorization: `Bearer ${idToken}` },
+      })
+      setProviderHealth(health)
     } catch (e) {
       notifyApiError(e, "Could not read production metrics")
     }
@@ -143,14 +156,17 @@ export default function AdminOps() {
                 <div key={key} className="rounded border border-zinc-800 bg-zinc-950 px-4 py-3">
                   <p className="text-xs text-zinc-500">{label}</p>
                   <p className="mt-1 text-xl font-semibold">
-                    {metrics ? metrics[key] ?? 0 : "—"}
+                    {metrics ? metrics[key] ?? "—" : "—"}
                     {unit ? <span className="ml-1 text-xs font-normal text-zinc-500">{unit}</span> : null}
                   </p>
                 </div>
               ))}
             </div>
             <p className="mt-3 text-xs text-zinc-500">
-              Cost uses configured provider and render estimates. Operational counters are server-owned.
+              {metrics?.cost_source?.startsWith("gcp_detailed_billing_export")
+                ? "Actual cost is reconciled from Google Cloud billing and any attached provider invoices, including credits."
+                : "Actual cost is not reconciled for this day yet; the forecast remains separately labelled."}
+              {metrics?.cost_source ? ` Source: ${metrics.cost_source}.` : ""}
             </p>
             <div className="mt-5 overflow-hidden rounded border border-zinc-800">
               <div className="grid grid-cols-3 bg-zinc-950 px-4 py-2 text-xs text-zinc-500">
@@ -158,6 +174,7 @@ export default function AdminOps() {
               </div>
               {[
                 ["Sign-ups", "signups", null],
+                ["Activated accounts", "activations", "signup_to_activation_pct"],
                 ["Uploads", "uploads", "upload_to_transcription_pct"],
                 ["Transcriptions", "transcriptions", "transcription_to_export_pct"],
                 ["Exports started", "exports_started", null],
@@ -170,6 +187,23 @@ export default function AdminOps() {
                   <span className="text-right text-zinc-400">{rateKey && funnel ? `${funnel[rateKey]}%` : "—"}</span>
                 </div>
               ))}
+            </div>
+            <div className="mt-5 rounded border border-zinc-800 bg-zinc-950 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Transcription provider health</p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                {Object.entries(providerHealth?.providers || {}).map(([name, health]) => (
+                  <div key={name} className="rounded border border-zinc-800 px-3 py-2 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="capitalize">{name}</span>
+                      <span className={health.status === "healthy" ? "text-emerald-400" : "text-amber-400"}>{health.status}</span>
+                    </div>
+                    <p className="mt-1 text-xs text-zinc-500">Consecutive failures: {health.consecutive_failures}</p>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-3 text-xs text-zinc-500">
+                Circuit opens after {providerHealth?.policy?.failure_threshold ?? "—"} failures; Sarvam traffic fails over to OpenAI.
+              </p>
             </div>
           </CardContent>
         </Card>

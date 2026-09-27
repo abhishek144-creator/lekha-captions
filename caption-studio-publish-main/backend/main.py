@@ -107,9 +107,16 @@ from collections import deque
 from contextlib import asynccontextmanager
 try:
     from .transcription_jobs import TranscriptionJobs
-    from .queue_admission import enqueue_bounded_across_queues
-    from .drafts import read_draft
+    from .queue_admission import enqueue_bounded_across_queues, release_pending_work
+    from .drafts import list_projects, read_draft
     from .project_api import create_project_router
+    from .editor_preferences import create_editor_preferences_router, read_editor_preferences
+    from .cost_reconciliation import create_cost_reconciliation_router
+    from .analytics_api import create_analytics_router
+    from .notifications import create_notification, create_notification_router
+    from .public_api import create_public_api_router
+    from .workspace_api import create_workspace_router
+    from .provider_health import transcription_provider_health
     from .direct_upload_api import create_direct_upload_router
     from .api.maintenance import create_maintenance_router
     from .upload_admission import reserve_upload, release_upload
@@ -117,7 +124,7 @@ try:
     from .release_metadata import release_metadata
     from .media_commands import run_media_command
     from .job_state import transition as transition_export_job, InvalidJobTransition, LOCAL_LOCK as JOB_STATE_LOCK
-    from .gcp_queue_metrics import publish_queue_snapshot, queue_snapshot, render_queue_snapshot
+    from .gcp_queue_metrics import job_queue_prediction, publish_queue_snapshot, queue_snapshot, render_queue_snapshot
     from .rendering.capacity import (
         FAST_EXPORT_QUEUE_NAME,
         GPU_EXPORT_QUEUE_NAME,
@@ -133,9 +140,16 @@ try:
     from .services.upload_security import UploadSecurityService
 except ImportError:
     from transcription_jobs import TranscriptionJobs
-    from queue_admission import enqueue_bounded_across_queues
-    from drafts import read_draft
+    from queue_admission import enqueue_bounded_across_queues, release_pending_work
+    from drafts import list_projects, read_draft
     from project_api import create_project_router
+    from editor_preferences import create_editor_preferences_router, read_editor_preferences
+    from cost_reconciliation import create_cost_reconciliation_router
+    from analytics_api import create_analytics_router
+    from notifications import create_notification, create_notification_router
+    from public_api import create_public_api_router
+    from workspace_api import create_workspace_router
+    from provider_health import transcription_provider_health
     from direct_upload_api import create_direct_upload_router
     from api.maintenance import create_maintenance_router
     from upload_admission import reserve_upload, release_upload
@@ -143,7 +157,7 @@ except ImportError:
     from release_metadata import release_metadata
     from media_commands import run_media_command
     from job_state import transition as transition_export_job, InvalidJobTransition, LOCAL_LOCK as JOB_STATE_LOCK
-    from gcp_queue_metrics import publish_queue_snapshot, queue_snapshot, render_queue_snapshot
+    from gcp_queue_metrics import job_queue_prediction, publish_queue_snapshot, queue_snapshot, render_queue_snapshot
     from rendering.capacity import (
         FAST_EXPORT_QUEUE_NAME,
         GPU_EXPORT_QUEUE_NAME,
@@ -650,6 +664,10 @@ MEDIA_SCAN_QUEUE_NAME = os.environ.get("MEDIA_SCAN_QUEUE_NAME", "caption_media_s
 # Production accepts an 80-job waiting backlog. Keep this default aligned with
 # the deployment scripts so a missing override cannot silently reduce capacity.
 EXPORT_MAX_PENDING_JOBS = max(1, int(os.environ.get("EXPORT_MAX_PENDING_JOBS", "80")))
+EXPORT_MAX_PENDING_WORK_SECONDS = max(
+    60,
+    int(os.environ.get("EXPORT_MAX_PENDING_WORK_SECONDS", "1800")),
+)
 EXPORT_MAX_QUEUE_WAIT_SECONDS = max(
     30,
     min(int(os.environ.get("EXPORT_MAX_QUEUE_WAIT_SECONDS", "600")), 600),
@@ -1201,6 +1219,7 @@ SUPPORT_RATE_LIMIT = 5  # max public support submissions per hour per IP
 # inflate failure counters to trip the readiness gate or fire ops alerts.
 RESERVED_SERVER_ANALYTICS_EVENTS = frozenset({
     "account_signup",
+    "account_activation",
     "upload_success",
     "export_success",
     "export_cancelled",
@@ -1553,6 +1572,12 @@ def _authenticate_media_request(id_token: str, org_id: str = "") -> Dict[str, An
     _assert_account_not_deleting(uid)
     _assert_tenant_access(uid, decoded_token, org_id)
     return decoded_token
+
+
+def _authenticate_bearer_request(request: Request) -> Dict[str, Any]:
+    authorization = (request.headers.get("authorization") or "").strip()
+    token = authorization[7:].strip() if authorization.lower().startswith("bearer ") else ""
+    return _authenticate_media_request(token)
 
 def _assert_tenant_access(uid: str, decoded_token: Optional[Dict[str, Any]], org_id: str = ""):
     if not ENFORCE_TENANT_ISOLATION:
@@ -2185,7 +2210,8 @@ def _acquire_export_slot(uid: str, job_id: str) -> bool:
                     "completed", "failed", "cancelled", "canceled", "stopped",
                 }
                 if not previous_terminal and _export_queue is not None:
-                    rq_job = _export_queue.fetch_job(previous_job_id)
+                    previous_queue = _queue_for_export_job_record(previous_job)
+                    rq_job = previous_queue.fetch_job(previous_job_id) if previous_queue else None
                     if rq_job is not None:
                         rq_status = rq_job.get_status(refresh=True)
                         rq_status_value = str(getattr(rq_status, "value", rq_status)).lower()
@@ -3204,6 +3230,12 @@ class ExportRequest(BaseModel):
             s.pop('export_aspect_ratio', None)
         return s
 
+
+class BatchExportRequest(BaseModel):
+    id_token: str = Field(default="", max_length=8_192)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    exports: List[ExportRequest] = Field(min_length=1, max_length=10)
+
 class CreateOrderRequest(BaseModel):
     plan_id: str = Field(min_length=1, max_length=50)
     id_token: str = Field(min_length=1, max_length=8_192)
@@ -3789,6 +3821,21 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
         total_ms=total_ms,
         payload=payload
     )
+    try:
+        create_notification(
+            db,
+            uid,
+            kind="export_completed",
+            title="Your video is ready",
+            message="Your background export finished successfully.",
+            action_url=video_url,
+            resource_id=export_job_id,
+        )
+    except Exception as error:
+        _json_log(
+            "warning", "export_notification_persist_failed",
+            job_id=export_job_id, error=type(error).__name__,
+        )
     _json_log(
         "info", "export_observation", job_id=export_job_id,
         status="completed",
@@ -3824,6 +3871,9 @@ def run_export_job_task(
 ):
     rid = f"worker-{export_job_id[:8]}"
     slot_acquired = False
+    # RQ has removed the job ID from the pending list before invoking us. Keep
+    # the atomic admission ledger aligned with pending work, not active work.
+    _release_export_pending_work(export_job_id)
     existing_job = _load_export_job(export_job_id) or {}
     if existing_job.get("status") == "completed":
         return existing_job.get("payload") or {}
@@ -4020,6 +4070,10 @@ app.include_router(create_direct_upload_router(
     assert_account_active=_assert_account_not_deleting,
     rate_limit_network=_limit_direct_upload_network,
     enqueue_scan=_schedule_media_scan,
+))
+app.include_router(create_editor_preferences_router(
+    _authenticate_media_request,
+    get_db,
 ))
 
 
@@ -4437,6 +4491,33 @@ def run_media_scan_job_task(uid: str, file_id: str):
         raise
 
 
+def _mark_account_activated(uid: str) -> bool:
+    """Record the first successful transcription once for the business funnel."""
+    database = get_db()
+    if database is None or not uid:
+        return False
+    user_ref = database.collection("users").document(uid)
+
+    @firestore.transactional
+    def activate(transaction):
+        snapshot = user_ref.get(transaction=transaction)
+        current = snapshot.to_dict() if snapshot.exists else {}
+        if current.get("activated_at"):
+            return False
+        transaction.set(
+            user_ref,
+            {"activated_at": _utcnow().isoformat() + "Z", "activation_event": "first_transcription"},
+            merge=True,
+        )
+        return True
+
+    try:
+        return bool(activate(database.transaction()))
+    except Exception as error:
+        _json_log("warning", "account_activation_persist_failed", uid=uid, error=type(error).__name__)
+        return False
+
+
 async def _process_video_inline(req: ProcessRequest, request: Request, response: Response, *, trusted_uid=None):
     rid = _request_id(request)
     _assert_service_available("pause_transcription")
@@ -4584,6 +4665,8 @@ async def _process_video_inline(req: ProcessRequest, request: Request, response:
 
         if result.get("success"):
             _track_event("process_success", {"language": req.language, "request_id": rid})
+            if await asyncio.to_thread(_mark_account_activated, uid):
+                _track_event("account_activation", {"source": "first_transcription"})
             _json_log("info", "process_completed", request_id=rid, caption_count=len(result.get("captions") or []))
             if media_duration > 0:
                 _track_operational_metric_sample("transcription_media_seconds", media_duration)
@@ -4647,12 +4730,35 @@ def _render_queue_for(queue_name):
     return queue
 
 
+def _queue_for_export_job_record(job: Dict[str, Any]):
+    queue_name = str((job or {}).get("queue_name") or EXPORT_QUEUE_NAME)
+    return _export_queues.get(queue_name) or _export_queue
+
+
 def _enqueue_export_job(render_queue, **job):
     if _IS_PRODUCTION:
+        estimated_work_seconds = (job.get("meta") or {}).get("estimated_render_seconds")
         return enqueue_bounded_across_queues(
-            render_queue, list(_export_queues.values()), EXPORT_MAX_PENDING_JOBS, **job,
+            render_queue,
+            list(_export_queues.values()),
+            EXPORT_MAX_PENDING_JOBS,
+            max_pending_work_seconds=EXPORT_MAX_PENDING_WORK_SECONDS,
+            estimated_work_seconds=estimated_work_seconds,
+            **job,
         )
     return render_queue.enqueue_call(**job)
+
+
+def _release_export_pending_work(job_id: str):
+    if _rq_redis_client is None:
+        return
+    try:
+        release_pending_work(_rq_redis_client, job_id)
+    except Exception as error:
+        _json_log(
+            "warning", "export_pending_work_release_failed",
+            job_id=job_id, error=type(error).__name__,
+        )
 
 
 @app.post("/api/export")
@@ -4828,10 +4934,143 @@ async def export_video(req: ExportRequest, request: Request, response: Response)
         if release_export_slot_in_request:
             _release_export_slot(uid, export_job_id)
 
+
+@app.post("/api/batch/exports", status_code=202)
+async def create_export_batch(req: BatchExportRequest, request: Request):
+    """Queue up to ten independent exports with one idempotent request.
+
+    Items use the normal tiered render queues and billing path. The worker's
+    account slot serializes items for one customer, preventing a batch from
+    bypassing the single-account concurrency and credit controls.
+    """
+    _assert_service_available("pause_exports")
+    decoded = _authenticate_media_request(req.id_token)
+    uid = (decoded.get("uid") or "").strip()
+    if _export_queue is None:
+        raise HTTPException(503, "Batch export service is temporarily unavailable", headers={"Retry-After": "10"})
+
+    idem_key = f"batch:{uid}:{req.idempotency_key}"
+    cached = _idem_get(idem_key)
+    if cached and cached.get("payload"):
+        return {**cached["payload"], "idempotent_replay": True}
+
+    batch_id = str(uuid.uuid4())
+    accepted = []
+    rejected = []
+    for index, item in enumerate(req.exports):
+        job_id = str(uuid.uuid4())
+        try:
+            _assert_upload_owner(item.file_id, uid)
+            _assert_upload_clean(item.file_id)
+            safe_snapshot = _sanitize_export_request_payload(item.model_dump(by_alias=True))
+            duration_hint = await asyncio.to_thread(_source_duration_hint, item.file_id, uid)
+            capacity = estimate_render_capacity(duration_hint, safe_snapshot)
+            _set_export_job(
+                job_id,
+                "queued",
+                uid=uid,
+                batch_id=batch_id,
+                batch_index=index,
+                file_id=item.file_id,
+                quality=item.quality,
+                started_at=time.time(),
+                queue_entered_at=time.time(),
+                estimated_render_seconds=capacity["estimated_render_seconds"],
+                render_work_units=capacity["render_work_units"],
+                render_class=capacity["render_class"],
+                queue_name=capacity["queue_name"],
+                request_snapshot=safe_snapshot,
+            )
+            _enqueue_export_job(
+                _render_queue_for(capacity["queue_name"]),
+                func=run_export_job_task,
+                args=(job_id, safe_snapshot, uid, "", ""),
+                job_id=job_id,
+                meta={
+                    "batch_id": batch_id,
+                    "batch_index": index,
+                    "estimated_render_seconds": capacity["estimated_render_seconds"],
+                    "render_work_units": capacity["render_work_units"],
+                    "render_class": capacity["render_class"],
+                    "renderer": capacity["renderer"],
+                },
+                retry=RQRetry(max=12, interval=[10, 15, 20, 30]) if RQRetry else None,
+                ttl=EXPORT_MAX_QUEUE_WAIT_SECONDS,
+                result_ttl=24 * 3600,
+                failure_ttl=7 * 24 * 3600,
+            )
+            accepted.append({"index": index, "job_id": job_id, "file_id": item.file_id})
+        except Exception as error:
+            try:
+                _set_export_job(job_id, "failed", failed_at=time.time(), error="Batch item was not admitted")
+            except Exception:
+                pass
+            rejected.append({
+                "index": index,
+                "file_id": item.file_id,
+                "reason": error.detail if isinstance(error, HTTPException) else "Capacity unavailable",
+            })
+
+    if not accepted:
+        raise HTTPException(429, "No batch items could be admitted", headers={"Retry-After": "10"})
+    payload = {
+        "success": True,
+        "batch_id": batch_id,
+        "accepted": accepted,
+        "rejected": rejected,
+        "status_url": f"/api/batch/exports/{batch_id}",
+    }
+    _idem_set(idem_key, {"status": "completed", "ts": time.time(), "payload": payload})
+    database = get_db()
+    if database is not None:
+        database.collection("export_batches").document(batch_id).set({
+            "batch_id": batch_id,
+            "uid": uid,
+            "job_ids": [item["job_id"] for item in accepted],
+            "created_at": time.time(),
+            "expire_at": _retention_deadline(30),
+            "rejected": rejected,
+        })
+    _audit_action("export_batch_enqueued", uid, {"batch_id": batch_id, "count": len(accepted)})
+    return payload
+
+
+@app.get("/api/batch/exports/{batch_id}")
+def get_export_batch(batch_id: str, request: Request):
+    uid = _authenticate_bearer_request(request)["uid"]
+    database = get_db()
+    if database is None:
+        raise HTTPException(503, "Batch status storage is unavailable")
+    snapshot = database.collection("export_batches").document(batch_id).get()
+    batch = snapshot.to_dict() if snapshot.exists else None
+    if not batch:
+        raise HTTPException(404, "Export batch not found")
+    if batch.get("uid") != uid:
+        raise HTTPException(403, "Export batch does not belong to this account")
+    jobs = []
+    for job_id in batch.get("job_ids") or []:
+        job = _load_export_job(str(job_id)) or {}
+        jobs.append({
+            "job_id": job_id,
+            "status": job.get("status", "unknown"),
+            "error": "Export failed. Please retry." if job.get("error") else None,
+        })
+    terminal = sum(1 for job in jobs if job["status"] in {"completed", "failed", "cancelled"})
+    return {
+        "success": True,
+        "batch_id": batch_id,
+        "status": "completed" if terminal == len(jobs) else "processing",
+        "completed_items": terminal,
+        "total_items": len(jobs),
+        "jobs": jobs,
+        "rejected": batch.get("rejected") or [],
+    }
+
 def _reconcile_export_job(job_id: str, job: Dict[str, Any]):
     if _export_queue is None or job.get("status") in {"completed", "failed", "cancelled"}:
         return job
     try:
+        job_queue = _queue_for_export_job_record(job)
         status = str(job.get("status") or "").lower()
         queue_age = time.time() - float(
             job.get("queue_entered_at") or job.get("started_at") or time.time()
@@ -4856,7 +5095,7 @@ def _reconcile_export_job(job_id: str, job: Dict[str, Any]):
                     failure_code="preparation_timeout",
                 )
             try:
-                stale_rq_job = _export_queue.fetch_job(job_id)
+                stale_rq_job = job_queue.fetch_job(job_id) if job_queue else None
                 if stale_rq_job is not None:
                     stale_rq_job.cancel()
             except Exception as error:
@@ -4866,11 +5105,12 @@ def _reconcile_export_job(job_id: str, job: Dict[str, Any]):
                     job_id=job_id,
                     error=type(error).__name__,
                 )
+            _release_export_pending_work(job_id)
             _release_export_slot(str(job.get("uid") or ""), job_id)
             _idem_delete(str(job.get("idempotency_key") or ""))
             _track_event("export_preparation_timeout", {"job_id": job_id})
             return job
-        rq_job = _export_queue.fetch_job(job_id)
+        rq_job = job_queue.fetch_job(job_id) if job_queue else None
         state = rq_job.get_status(refresh=True) if rq_job else "missing"
         state = str(getattr(state, "value", state)).lower()
         age = time.time() - float(job.get("updated_at") or time.time())
@@ -4881,6 +5121,7 @@ def _reconcile_export_job(job_id: str, job: Dict[str, Any]):
                     "warning", "export_observation", job_id=job_id, status="failed",
                     queue_wait_ms=job.get("queue_wait_ms"), failure_code="worker_interrupted",
                 )
+            _release_export_pending_work(job_id)
             _release_export_slot(str(job.get("uid") or ""), job_id)
         elif state in {"scheduled", "deferred"} and job.get("status") in {"starting", "processing", "finalizing"}:
             job = _set_export_job(job_id, "retrying", error="Export interrupted; retry scheduled.")
@@ -4891,6 +5132,50 @@ def _reconcile_export_job(job_id: str, job: Dict[str, Any]):
     return job
 
 
+def _active_workers_for_queue(queue_name: str) -> int:
+    if RQWorker is None or _rq_redis_client is None:
+        return 1
+    try:
+        active = 0
+        for worker in RQWorker.all(connection=_rq_redis_client):
+            names = (
+                worker.queue_names()
+                if callable(getattr(worker, "queue_names", None))
+                else getattr(worker, "queue_names", [])
+            )
+            normalized = {
+                value.decode("utf-8", "replace") if isinstance(value, bytes) else str(value)
+                for value in names
+            }
+            if queue_name in normalized:
+                active += 1
+        return max(1, active)
+    except Exception:
+        return 1
+
+
+def _export_queue_prediction(job_id: str, job: Dict[str, Any]) -> Dict[str, Any]:
+    if str(job.get("status") or "").lower() != "queued" or Job is None:
+        return {}
+    queue_name = str(job.get("queue_name") or EXPORT_QUEUE_NAME)
+    queue = _export_queues.get(queue_name)
+    if queue is None:
+        return {}
+    try:
+        return job_queue_prediction(
+            queue,
+            Job,
+            job_id,
+            active_workers=_active_workers_for_queue(queue_name),
+        ) or {}
+    except Exception as error:
+        _json_log(
+            "warning", "export_queue_prediction_failed",
+            job_id=job_id, error=type(error).__name__,
+        )
+        return {}
+
+
 @app.get("/api/export-status/{job_id}")
 def export_status(job_id: str, request: Request):
     job = _load_export_job(job_id)
@@ -4898,6 +5183,7 @@ def export_status(job_id: str, request: Request):
         raise HTTPException(status_code=404, detail="Export job not found")
     _require_export_job_access(request, job)
     job = _reconcile_export_job(job_id, job)
+    queue_prediction = _export_queue_prediction(job_id, job)
     # Keep payload concise and avoid leaking internal paths.
     return {
         "job_id": job_id,
@@ -4905,6 +5191,11 @@ def export_status(job_id: str, request: Request):
         "updated_at": job.get("updated_at"),
         "queue_wait_ms": job.get("queue_wait_ms"),
         "estimated_render_seconds": job.get("estimated_render_seconds"),
+        "queue_position": queue_prediction.get("queue_position"),
+        "jobs_ahead": queue_prediction.get("jobs_ahead"),
+        "queue_depth": queue_prediction.get("queue_depth"),
+        "estimated_queue_wait_seconds": queue_prediction.get("estimated_queue_wait_seconds"),
+        "estimated_completion_seconds": queue_prediction.get("estimated_completion_seconds"),
         "preparation_ms": job.get("preparation_ms"),
         "render_ms": job.get("render_ms"),
         "finalization_ms": job.get("finalization_ms"),
@@ -4958,10 +5249,12 @@ def export_cancel(job_id: str, request: Request):
                         cancellation_reason="user_requested", error=None)
     except InvalidJobTransition as error:
         raise HTTPException(status_code=409, detail="This export has already started.") from error
+    _release_export_pending_work(job_id)
     # Cancellation is durable first. If queue removal fails, a dequeued worker
     # observes CANCELLED and exits before rendering or charging.
     try:
-        rq_job = _export_queue.fetch_job(job_id)
+        job_queue = _queue_for_export_job_record(job)
+        rq_job = job_queue.fetch_job(job_id) if job_queue else None
         if rq_job is not None:
             rq_job.cancel()
     except Exception as error:
@@ -5045,92 +5338,6 @@ def export_replay(job_id: str, request: Request):
     _audit_action("export_replay_enqueued", uid, {"source_job_id": job_id, "new_job_id": new_job_id})
     return {"success": True, "export_job_id": new_job_id, "status": "queued"}
 
-
-@app.get("/api/analytics/summary")
-async def analytics_summary(request: Request):
-    # Ops-internal counters and failure rates — admin only. Exposing these
-    # unauthenticated hands anyone a live view of business/operational health.
-    if not _is_admin_token(request=request):
-        raise HTTPException(status_code=403, detail="Admin access required")
-    day_key = (request.query_params.get("date") or _utcnow().date().isoformat()).strip()
-    try:
-        datetime.strptime(day_key, "%Y-%m-%d")
-    except ValueError:
-        raise HTTPException(status_code=400, detail="date must use YYYY-MM-DD")
-
-    counters = _read_daily_analytics_counters(day_key)
-    export_success = counters.get("export_success", 0)
-    export_failed = counters.get("export_failed_http", 0) + counters.get("export_failed_exception", 0)
-    process_success = counters.get("process_success", 0)
-    process_failed = counters.get("process_failed", 0)
-    _maybe_alert_failure_ratio("export", export_success, export_failed)
-    _maybe_alert_failure_ratio("process", process_success, process_failed)
-
-    terminal_success = export_success + process_success
-    terminal_failed = export_failed + process_failed
-    terminal_total = terminal_success + terminal_failed
-    process_latency = _read_daily_latency_samples(day_key, "/api/process")
-    export_latency = _read_daily_latency_samples(day_key, "/api/export")
-    processing_latency = process_latency + export_latency
-    average_processing_ms = (
-        round(sum(processing_latency) / len(processing_latency))
-        if processing_latency else 0
-    )
-    cost_samples = _read_operational_metric_samples(day_key, "job_cost_usd")
-    average_cost_usd = (
-        round(sum(cost_samples) / len(cost_samples), 6)
-        if cost_samples else 0.0
-    )
-    funnel = {
-        "signups": counters.get("account_signup", 0),
-        "uploads": max(counters.get("upload_success", 0), counters.get("funnel.upload.success", 0)),
-        "transcriptions": max(process_success, counters.get("funnel.process.success", 0)),
-        "exports_started": counters.get("funnel.export.started", 0),
-        "exports_completed": max(export_success, counters.get("funnel.export.success", 0)),
-        "payments": counters.get("payment_success", 0),
-    }
-    funnel["upload_to_transcription_pct"] = round(
-        funnel["transcriptions"] / max(funnel["uploads"], 1) * 100, 2,
-    )
-    funnel["transcription_to_export_pct"] = round(
-        funnel["exports_completed"] / max(funnel["transcriptions"], 1) * 100, 2,
-    )
-    funnel["export_to_payment_pct"] = round(
-        funnel["payments"] / max(funnel["exports_completed"], 1) * 100, 2,
-    )
-
-    return {
-        "window": {
-            "kind": "utc_day",
-            "date": day_key,
-            "timezone": "UTC",
-        },
-        "counters": counters,
-        "metrics": {
-            "signups": counters.get("account_signup", 0),
-            "uploads": counters.get("upload_success", 0),
-            "completed_transcriptions": process_success,
-            "completed_exports": export_success,
-            "failure_percentage": round((terminal_failed / max(terminal_total, 1)) * 100, 2),
-            "average_processing_time_ms": average_processing_ms,
-            "processing_p95_ms": _p95(processing_latency),
-            "cost_per_job_usd": average_cost_usd,
-            "cost_is_estimate": True,
-            "successful_payments": counters.get("payment_success", 0),
-            "failed_payments": counters.get("payment_failed", 0),
-            "support_requests": counters.get("support_request_created", 0),
-        },
-        "health": {
-            "export_failure_rate": (export_failed / max(export_success + export_failed, 1)),
-            "process_failure_rate": (process_failed / max(process_success + process_failed, 1)),
-        },
-        "funnel": funnel,
-        "timestamp": _utcnow().isoformat() + "Z",
-    }
-
-@app.get("/api/v1/analytics/summary")
-async def analytics_summary_v1(request: Request):
-    return await analytics_summary(request)
 
 @app.post("/api/analytics/track")
 async def analytics_track(request: Request, response: Response):
@@ -5704,6 +5911,50 @@ def _is_admin_token(id_token: str = "", request: Optional[Request] = None) -> bo
     if not decoded:
         return False
     return _decoded_token_is_admin(decoded)
+
+
+app.include_router(create_cost_reconciliation_router(_is_admin_token, get_db))
+app.include_router(create_notification_router(_authenticate_bearer_request, get_db))
+app.include_router(create_public_api_router(
+    authenticate_request=_authenticate_bearer_request,
+    get_database=get_db,
+    list_account_projects=list_projects,
+    read_account_project=read_draft,
+    load_export_job=_load_export_job,
+))
+app.include_router(create_workspace_router(
+    authenticate_request=_authenticate_bearer_request,
+    get_database=get_db,
+    assert_upload_owner=_assert_upload_owner,
+    validate_file_id=_validate_file_id,
+    find_upload=_safe_find_upload,
+    signed_upload_url=_signed_upload_url,
+))
+
+
+@app.get("/api/admin/provider-health")
+def provider_health(request: Request):
+    if not _is_admin_token(request=request):
+        raise HTTPException(403, "Admin access required")
+    return {
+        "success": True,
+        "providers": transcription_provider_health.snapshot(),
+        "policy": {
+            "failure_threshold": transcription_provider_health.failure_threshold,
+            "cooldown_seconds": transcription_provider_health.cooldown_seconds,
+            "failover_order": ["sarvam", "openai"],
+        },
+    }
+app.include_router(create_analytics_router(
+    is_admin=_is_admin_token,
+    utcnow=_utcnow,
+    get_database=get_db,
+    read_counters=_read_daily_analytics_counters,
+    read_latency_samples=_read_daily_latency_samples,
+    read_metric_samples=_read_operational_metric_samples,
+    alert_failure_ratio=_maybe_alert_failure_ratio,
+    percentile_95=_p95,
+))
 
 def reconcile_payments_once(
     reason: str = "manual",
@@ -7089,8 +7340,14 @@ def _delete_user_document_tree(db, user_ref):
             for revision_doc in project_ref.collection("revisions").limit(10).stream():
                 revision_doc.reference.delete()
         project_ref.delete()
+    for preference_doc in user_ref.collection("preferences").limit(20).stream():
+        preference_doc.reference.delete()
 
-    for collection_name in ("payments", "export_usage", "drafts", "draft_revisions", "transcription_jobs", "operation_locks"):
+    for collection_name in (
+        "payments", "export_usage", "drafts", "draft_revisions",
+        "transcription_jobs", "operation_locks", "workspace_memberships",
+        "api_key_index",
+    ):
         child_ref = user_ref.collection(collection_name)
         while True:
             child_docs = list(child_ref.limit(400).stream())
@@ -7107,6 +7364,65 @@ def _delete_user_document_tree(db, user_ref):
             if len(child_docs) < 400:
                 break
     user_ref.delete()
+
+
+def _account_workspace_memberships(db, uid: str) -> list:
+    try:
+        return list(db.collection("users").document(uid).collection("workspace_memberships").stream())
+    except Exception:
+        return []
+
+
+def _assert_no_owned_workspaces(db, uid: str):
+    owned = [
+        snapshot.id
+        for snapshot in _account_workspace_memberships(db, uid)
+        if callable(getattr(snapshot, "to_dict", None))
+        and (snapshot.to_dict() or {}).get("role") == "owner"
+    ]
+    if owned:
+        raise HTTPException(
+            409,
+            detail={
+                "message": "Transfer or delete owned workspaces before deleting this account.",
+                "workspace_ids": owned,
+            },
+        )
+
+
+def _delete_top_level_rows_for_account(db, collection_name: str, uid: str):
+    collection = db.collection(collection_name)
+    where = getattr(collection, "where", None)
+    if not callable(where):
+        # Lightweight local/test adapters may expose only account subcollections.
+        return
+    query = where("uid", "==", uid).limit(500)
+    for snapshot in query.stream():
+        snapshot.reference.delete()
+
+
+def _cleanup_account_extensions(db, uid: str):
+    # Remove the member from workspaces they do not own. Owned workspaces were
+    # fenced before destructive cleanup so teammates can never be orphaned.
+    for snapshot in _account_workspace_memberships(db, uid):
+        if not callable(getattr(snapshot, "to_dict", None)):
+            continue
+        membership_data = snapshot.to_dict() or {}
+        workspace_id = membership_data.get("workspace_id") or snapshot.id
+        if membership_data.get("role") != "owner":
+            db.collection("workspaces").document(workspace_id).collection("members").document(uid).delete()
+
+    # Delete the lookup hashes as well as the per-user index so an old secret
+    # stops authenticating before the Firebase identity is removed.
+    for snapshot in db.collection("users").document(uid).collection("api_key_index").stream():
+        if not callable(getattr(snapshot, "to_dict", None)):
+            continue
+        value = snapshot.to_dict() or {}
+        if value.get("key_hash"):
+            db.collection("api_keys").document(value["key_hash"]).delete()
+
+    for collection_name in ("user_notifications", "export_batches"):
+        _delete_top_level_rows_for_account(db, collection_name, uid)
 
 
 def _remove_history_item_transactionally(db, user_ref, file_id: str):
@@ -7321,12 +7637,38 @@ def account_export(req: AccountExportRequest):
         deletion_doc = db.collection("account_deletions").document(uid).get()
         if deletion_doc.exists:
             deletion_record = deletion_doc.to_dict() or {}
+    # Older development database adapters expose only the account/payment
+    # collections. Keep exports useful there while including every project and
+    # portable editor preference whenever nested document access is available.
+    has_nested_account_storage = hasattr(user_ref.collection("projects"), "document")
+    project_rows = list_projects(db, uid) if has_nested_account_storage else []
+    projects = [read_draft(db, uid, row["project_id"]) for row in project_rows]
+    editor_preferences = read_editor_preferences(db, uid) if has_nested_account_storage else {
+        "brand_kits": [], "glossary_terms": [], "updated_at": "", "exists": False,
+    }
+    workspace_memberships = [
+        snapshot.to_dict() or {}
+        for snapshot in _account_workspace_memberships(db, uid)
+        if callable(getattr(snapshot, "to_dict", None))
+    ]
+    notifications = []
+    try:
+        notifications = [
+            snapshot.to_dict() or {}
+            for snapshot in db.collection("user_notifications").where("uid", "==", uid).limit(100).stream()
+        ]
+    except Exception:
+        pass
     payload = {
         "uid": uid,
         "user": user_doc.to_dict() if user_doc.exists else {},
         "payments": payment_items,
         "deletion_record": deletion_record,
-        "cloud_draft": read_draft(db, uid) if _IS_PRODUCTION else None,
+        "projects": projects,
+        "cloud_draft": projects[0] if projects else None,
+        "editor_preferences": editor_preferences,
+        "workspace_memberships": workspace_memberships,
+        "notifications": notifications,
         "next_payment_cursor": page_docs[-1].id if page_docs else None,
         "has_more_payments": has_more,
         "exported_at": _utcnow().isoformat() + "Z",
@@ -7345,6 +7687,7 @@ def account_delete(req: AccountDataRequest):
     db = get_db()
     if not db:
         raise HTTPException(status_code=503, detail="Database unavailable")
+    _assert_no_owned_workspaces(db, uid)
     db.collection("account_deletions").document(uid).set({
         "status": "pending", "requested_at": _utcnow().isoformat() + "Z",
     }, merge=True)
@@ -7390,6 +7733,7 @@ def account_delete(req: AccountDataRequest):
         raise HTTPException(status_code=503, detail="Cloud export cleanup failed; deletion can be retried")
     if user_doc.exists:
         try:
+            _cleanup_account_extensions(db, uid)
             _delete_user_document_tree(db, user_ref)
         except Exception as e:
             _json_log("error", "account_delete_firestore_failed", uid=uid, error=str(e))
