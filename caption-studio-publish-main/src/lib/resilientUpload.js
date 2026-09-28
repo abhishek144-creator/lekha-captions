@@ -9,7 +9,7 @@ const DIRECT_UPLOAD_RECEIPT_KEY = 'lekha.pendingDirectUpload.v1'
 
 const proxyFallbackAllowed = () => {
   const hostname = String(globalThis.location?.hostname || '').toLowerCase()
-  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1'
+  return import.meta.env.DEV && (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1')
 }
 
 const fileFingerprint = (file) => ({

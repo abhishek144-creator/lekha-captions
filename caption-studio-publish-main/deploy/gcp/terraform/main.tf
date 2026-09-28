@@ -265,9 +265,10 @@ resource "google_compute_region_instance_group_manager" "api" {
   region                    = var.region
   distribution_policy_zones = var.zones
   base_instance_name        = "lekha-api-staging-mig"
-  # The request-driven API runs on Cloud Run. This zero-sized MIG is retained
-  # only as a rollback definition and must never create idle API VMs.
-  target_size = 0
+  # Keep the currently serving API VMs during the parallel Cloud Run canary.
+  # Set the target to zero only after routing, maintenance jobs, and rollback
+  # have been verified and accepted work has drained.
+  target_size = var.api_legacy_target_size
   version { instance_template = google_compute_instance_template.api.id }
   named_port {
     name = "http"
@@ -556,9 +557,16 @@ resource "google_compute_region_autoscaler" "worker_gpu" {
   }
 }
 
-# Cloud Run is created in parallel with the zero-sized rollback API MIG. Its
+# Cloud Run is created in parallel with the serving API MIG. Its
 # serverless NEG is the explicit hand-off point for a measured load-balancer
 # cutover; Terraform never silently moves production traffic.
+
+resource "google_project_service" "cloud_scheduler" {
+  count              = var.enable_cloud_run_api ? 1 : 0
+  project            = var.project_id
+  service            = "cloudscheduler.googleapis.com"
+  disable_on_destroy = false
+}
 
 resource "google_service_account" "scheduler" {
   count        = var.enable_cloud_run_api ? 1 : 0
@@ -753,5 +761,5 @@ resource "google_cloud_scheduler_job" "maintenance" {
       audience              = "https://lekha-api.internal/maintenance"
     }
   }
-  depends_on = [google_cloud_run_v2_service_iam_member.scheduler_invoker]
+  depends_on = [google_cloud_run_v2_service_iam_member.scheduler_invoker, google_project_service.cloud_scheduler]
 }

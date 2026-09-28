@@ -309,6 +309,14 @@ async def request_logging_middleware(request: Request, call_next):
     app_check_failure = _verify_firebase_app_check_request(request, rid)
     if app_check_failure is not None:
         return _apply_security_headers(app_check_failure)
+    if request.url.path == "/api/upload" and _IS_PRODUCTION:
+        # Reject before FastAPI parses multipart, so a misconfigured production
+        # client cannot stream even a small video through an API instance.
+        return _apply_security_headers(JSONResponse(
+            status_code=409,
+            content={"detail": "Production uploads must use the direct resumable storage flow."},
+            headers={"X-Request-Id": rid, "X-Lekha-Upload-Transport": "direct-resumable"},
+        ))
     if request.url.path == "/api/upload":
         # FastAPI parses multipart before entering the endpoint. Authenticate
         # here so an unauthenticated request never spools customer-sized media.
@@ -4102,7 +4110,7 @@ async def upload_video(file: UploadFile = File(...), request: Request = None, re
         decoded_token = _authenticate_media_request(token)
         uid = (decoded_token.get("uid") or "").strip() or "unknown-user"
 
-        if _IS_PRODUCTION and os.environ.get("GCS_MEDIA_BUCKET", "").strip():
+        if _IS_PRODUCTION:
             raise HTTPException(
                 status_code=409,
                 detail="Production uploads must use the direct resumable storage flow.",
