@@ -93,6 +93,16 @@ variable "render_worker_max_replicas" {
     error_message = "render_worker_max_replicas must stay between 1 and 3; raise this guardrail only with measured load-test and cost evidence."
   }
 }
+variable "api_legacy_target_size" {
+  type        = number
+  description = "Preserve the serving API MIG during parallel Cloud Run canary; set to zero only after traffic cutover and job drain"
+  default     = 2
+
+  validation {
+    condition     = var.api_legacy_target_size >= 0 && var.api_legacy_target_size <= 4 && floor(var.api_legacy_target_size) == var.api_legacy_target_size
+    error_message = "api_legacy_target_size must be an integer from 0 to 4."
+  }
+}
 variable "render_worker_min_replicas" {
   type        = number
   description = "Minimum on-demand render workers; production must scale to zero while queues are empty"

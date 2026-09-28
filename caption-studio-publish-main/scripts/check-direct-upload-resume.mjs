@@ -5,6 +5,7 @@ import vm from 'node:vm'
 const source = (await fs.readFile(new URL('../src/lib/resilientUpload.js', import.meta.url), 'utf8'))
   .replace(/^import .+ from .+$/gm, '')
   .replace(/^export /gm, '')
+  .replaceAll('import.meta.env.DEV', 'true')
 
 const chunkBytes = 8 * 1024 * 1024
 const file = new File([new Uint8Array(chunkBytes * 2)], 'sample.mp4', { type: 'video/mp4' })
