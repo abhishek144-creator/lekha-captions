@@ -265,9 +265,8 @@ resource "google_compute_region_instance_group_manager" "api" {
   region                    = var.region
   distribution_policy_zones = var.zones
   base_instance_name        = "lekha-api-staging-mig"
-  # Keep the currently serving API VMs during the parallel Cloud Run canary.
-  # Set the target to zero only after routing, maintenance jobs, and rollback
-  # have been verified and accepted work has drained.
+  # Cloud Run is the normal request-driven API. Keep this group at zero except
+  # for an explicitly monitored canary rollback window.
   target_size = var.api_legacy_target_size
   version { instance_template = google_compute_instance_template.api.id }
   named_port {
