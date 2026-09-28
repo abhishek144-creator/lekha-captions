@@ -63,6 +63,8 @@ class DirectUploadRouterTests(unittest.TestCase):
         self.released = []
         self.created = []
         self.cancelled = []
+        self.resumed = []
+        self.scans = []
         self.network_checks = []
         app = FastAPI()
         app.include_router(create_direct_upload_router(
@@ -77,13 +79,16 @@ class DirectUploadRouterTests(unittest.TestCase):
                 "session_url": "https://storage.test/session", "expires_at": "later"},
             finalize_session=lambda uid, file_id: {
                 "remote_path": f"uploads/{uid}/{file_id}.mp4", "extension": "mp4", "size_bytes": 100},
-            remember_owner=lambda *args: True,
+            remember_owner=lambda *args, **kwargs: True,
             signed_upload_url=lambda file_id, uid: f"/api/media/upload/{file_id}",
             audit_action=lambda *args: None,
             reserve_slot=lambda *args: self.reserved.append(args),
             release_slot=lambda *args, **kwargs: self.released.append((args, kwargs)),
             cancel_session=lambda *args: self.cancelled.append(args) or True,
+            resume_session=lambda *args: self.resumed.append(args) or {
+                "session_url": "https://storage.test/session", "expires_at": "later"},
             rate_limit_network=lambda request: self.network_checks.append(request.url.path),
+            enqueue_scan=lambda uid, file_id: self.scans.append((uid, file_id)),
         ))
         self.client = TestClient(app)
 
@@ -96,6 +101,8 @@ class DirectUploadRouterTests(unittest.TestCase):
         self.assertEqual(self.reserved, [("user-1", file_id, 100)])
         completed = self.client.post("/api/uploads/complete", json={"file_id": file_id})
         self.assertEqual(completed.status_code, 200)
+        self.assertEqual(completed.json()["upload_state"], "pending_scan")
+        self.assertEqual(self.scans, [("user-1", file_id)])
         self.assertEqual(self.released, [(("user-1", file_id), {})])
 
     def test_rejected_origin_cannot_reserve_session(self):
@@ -114,6 +121,29 @@ class DirectUploadRouterTests(unittest.TestCase):
         self.assertEqual(cancelled.status_code, 200)
         self.assertEqual(self.cancelled, [("user-1", file_id)])
         self.assertEqual(self.released, [(("user-1", file_id), {})])
+
+    def test_resume_requires_allowed_origin_and_passes_exact_fingerprint(self):
+        file_id = "123e4567-e89b-12d3-a456-426614174000"
+        payload = {
+            "file_id": file_id,
+            "filename": "video.mp4",
+            "content_type": "video/mp4",
+            "size_bytes": 100,
+            "last_modified": 1234,
+        }
+        resumed = self.client.post(
+            "/api/uploads/resume", headers={"Origin": "https://app.test"}, json=payload,
+        )
+        self.assertEqual(resumed.status_code, 200)
+        self.assertTrue(resumed.json()["resumed"])
+        self.assertEqual(
+            self.resumed,
+            [("user-1", file_id, "video.mp4", "video/mp4", 100, 1234)],
+        )
+        rejected = self.client.post(
+            "/api/uploads/resume", headers={"Origin": "https://evil.test"}, json=payload,
+        )
+        self.assertEqual(rejected.status_code, 403)
 
 
 if __name__ == "__main__":

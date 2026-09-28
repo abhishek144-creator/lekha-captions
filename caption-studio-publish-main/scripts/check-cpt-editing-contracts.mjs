@@ -160,13 +160,16 @@ assert.equal(
   );
 }
 
-// VideoPlayer.jsx plus its extracted stylesheet module — read both so the
+// VideoPlayer.jsx plus its extracted runtime modules — read all so the
 // contracts below stay satisfied wherever the declaration actually lives.
 const videoPlayerSource = (await readFile(
   new URL('../src/components/dashboard/VideoPlayer.jsx', import.meta.url),
   'utf8',
 )) + '\n' + (await readFile(
   new URL('../src/components/dashboard/videoPlayerTemplateStyles.jsx', import.meta.url),
+  'utf8',
+)) + '\n' + (await readFile(
+  new URL('../src/components/dashboard/videoPlayerWordEditing.js', import.meta.url),
   'utf8',
 ));
 const exportPanelSource = await readFile(

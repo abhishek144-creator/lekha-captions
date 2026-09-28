@@ -8,6 +8,8 @@ const uploadModal = fs.readFileSync(path.join(root, 'src/components/dashboard/Up
 const resilientUpload = fs.readFileSync(path.join(root, 'src/lib/resilientUpload.js'), 'utf8')
 const analytics = fs.readFileSync(path.join(root, 'src/lib/analytics.js'), 'utf8')
 const backend = fs.readFileSync(path.join(root, 'backend/main.py'), 'utf8')
+const directUploadApi = fs.readFileSync(path.join(root, 'backend/direct_upload_api.py'), 'utf8')
+const storageHelpers = fs.readFileSync(path.join(root, 'backend/firebase_admin_setup.py'), 'utf8')
 const railway = fs.readFileSync(path.join(root, 'railway.toml'), 'utf8')
 
 const assertions = [
@@ -46,6 +48,17 @@ const assertions = [
       && /\/api\/uploads\/complete/.test(resilientUpload)
       && /create_direct_upload_router/s.test(backend),
     message: 'Large browser media must use an authenticated resumable direct-to-GCS upload before the API proxy fallback.',
+  },
+  {
+    ok: /DIRECT_UPLOAD_RECEIPT_KEY[\s\S]*fileFingerprint[\s\S]*\/api\/uploads\/resume/s.test(resilientUpload)
+      && /@router\.post\("\/api\/uploads\/resume"\)/.test(directUploadApi)
+      && /def resume_resumable_source_upload[\s\S]*expected != actual/s.test(storageHelpers),
+    message: 'A reload may resume only an authenticated direct upload with the exact same file fingerprint.',
+  },
+  {
+    ok: /Unsynced browser draft available[\s\S]*Continue draft[\s\S]*Discard draft/s.test(dashboard)
+      && /if \(!isLoaded \|\| localRecoveryDraft\) return/.test(dashboard),
+    message: 'Dashboard entry must preserve a same-account browser draft until Continue or Discard is chosen.',
   },
   {
     ok: /if too_large:[\s\S]*Count only fully received uploads[\s\S]*_check_rate\([\s\S]*_upload_rate,[\s\S]*f"network:\{client_ip\}"/s.test(backend),

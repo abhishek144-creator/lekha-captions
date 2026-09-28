@@ -24,13 +24,36 @@ from request_limits import UploadBodyLimitMiddleware
 import worker
 import firebase_admin_setup
 from rq import Queue
-from queue_admission import enqueue_bounded
+from queue_admission import (
+    PENDING_WORK_LEDGER_KEY,
+    enqueue_bounded,
+    enqueue_bounded_across_queues,
+    release_pending_work,
+)
 
 
 class ProductionBoundaryTests(unittest.TestCase):
     def setUp(self):
         self.redis = fakeredis.FakeRedis(decode_responses=True)
         main._export_jobs.clear()
+
+    def test_scale_to_zero_api_runs_no_background_tasks_and_flushes_request_events(self):
+        with (patch.object(main, "RUN_API_BACKGROUND_TASKS", False),
+              patch.object(main.asyncio, "create_task") as create_task):
+            asyncio.run(main.startup_event())
+        create_task.assert_not_called()
+
+        with main._telemetry_lock:
+            main._telemetry_buffer.append(("analytics_events", {"event": "test"}))
+        try:
+            with (patch.object(main, "RUN_API_BACKGROUND_TASKS", False),
+                  patch.object(main, "_flush_telemetry", return_value=1) as flush):
+                response = TestClient(main.app).get("/api/version")
+            self.assertEqual(response.status_code, 200)
+            flush.assert_called_once()
+        finally:
+            with main._telemetry_lock:
+                main._telemetry_buffer.clear()
 
     def test_atomic_backlog_limit_under_concurrent_submissions(self):
         queue = Queue("bounded-test", connection=self.redis)
@@ -59,6 +82,75 @@ class ProductionBoundaryTests(unittest.TestCase):
         self.assertEqual(error.exception.detail, "Export capacity is temporarily full. Retry after 5 mins.")
         self.assertEqual(error.exception.headers["Retry-After"], "300")
 
+    def test_render_classes_share_one_atomic_backlog_limit(self):
+        fast = Queue("fast", connection=self.redis)
+        normal = Queue("normal", connection=self.redis)
+        heavy = Queue("heavy", connection=self.redis)
+        queues = [fast, normal, heavy]
+        enqueue_bounded_across_queues(
+            fast, queues, 2, func="operator.add", args=(1, 2), job_id="fast-job",
+        )
+        enqueue_bounded_across_queues(
+            heavy, queues, 2, func="operator.add", args=(1, 2), job_id="heavy-job",
+        )
+
+        with self.assertRaises(main.HTTPException) as error:
+            enqueue_bounded_across_queues(
+                normal, queues, 2, func="operator.add", args=(1, 2), job_id="normal-job",
+            )
+
+        self.assertEqual(error.exception.status_code, 429)
+        self.assertEqual(sum(queue.count for queue in queues), 2)
+
+    def test_predicted_work_admission_is_atomic_across_render_classes(self):
+        fast = Queue("work-fast", connection=self.redis)
+        heavy = Queue("work-heavy", connection=self.redis)
+        queues = [fast, heavy]
+
+        def submit(index):
+            target = fast if index % 2 == 0 else heavy
+            try:
+                enqueue_bounded_across_queues(
+                    target,
+                    queues,
+                    80,
+                    max_pending_work_seconds=300,
+                    estimated_work_seconds=75,
+                    func="operator.add",
+                    args=(1, 2),
+                    job_id=f"work-job-{index}",
+                )
+                return True
+            except main.HTTPException as error:
+                self.assertEqual(error.status_code, 429)
+                self.assertIn("Predicted export wait", error.detail)
+                return False
+
+        with ThreadPoolExecutor(12) as pool:
+            accepted = sum(pool.map(submit, range(20)))
+
+        self.assertEqual(accepted, 4)
+        self.assertEqual(sum(queue.count for queue in queues), 4)
+        self.assertEqual(
+            sum(int(value) for value in self.redis.hvals(PENDING_WORK_LEDGER_KEY)),
+            300,
+        )
+        release_pending_work(self.redis, "work-job-0")
+        self.assertIsNone(self.redis.hget(PENDING_WORK_LEDGER_KEY, "work-job-0"))
+
+    def test_job_reconciliation_selects_the_recorded_render_queue(self):
+        normal = object()
+        heavy = object()
+        with (
+            patch.object(main, "_export_queue", normal),
+            patch.object(main, "_export_queues", {"caption_export_heavy": heavy}),
+        ):
+            self.assertIs(
+                main._queue_for_export_job_record({"queue_name": "caption_export_heavy"}),
+                heavy,
+            )
+            self.assertIs(main._queue_for_export_job_record({}), normal)
+
     def test_preparation_timeout_cannot_fail_a_job_that_has_started(self):
         transition(self.redis, "race", {}, {"status": "queued"})
         stale = {"status": "queued"}
@@ -73,11 +165,16 @@ class ProductionBoundaryTests(unittest.TestCase):
             self.assertEqual(worker.worker_queue_names(), ["transcription"])
         with patch.dict(os.environ, {}, clear=True):
             with (patch.object(worker, "EXPORT_QUEUE_NAME", "legacy"),
-                  patch.object(worker, "TRANSCRIPTION_QUEUE_NAME", "legacy")):
+                  patch.object(worker, "TRANSCRIPTION_QUEUE_NAME", "legacy"),
+                  patch.object(worker, "MEDIA_SCAN_QUEUE_NAME", "legacy")):
                 self.assertEqual(worker.worker_queue_names(), ["legacy"])
             with (patch.object(worker, "EXPORT_QUEUE_NAME", "exports"),
-                  patch.object(worker, "TRANSCRIPTION_QUEUE_NAME", "transcription")):
-                self.assertEqual(worker.worker_queue_names(), ["exports", "transcription"])
+                  patch.object(worker, "TRANSCRIPTION_QUEUE_NAME", "transcription"),
+                  patch.object(worker, "MEDIA_SCAN_QUEUE_NAME", "media-scans")):
+                self.assertEqual(
+                    worker.worker_queue_names(),
+                    ["exports", "media-scans", "transcription"],
+                )
 
     def test_production_missing_queue_never_renders_in_api(self):
         request = main.ExportRequest(file_id="123e4567-e89b-12d3-a456-426614174000",
@@ -123,6 +220,30 @@ class ProductionBoundaryTests(unittest.TestCase):
             self.assertFalse(firebase_admin_setup.storage_backend_ready())
             firebase.return_value.exists.assert_called_once_with(timeout=5)
 
+    def test_processing_state_rejects_pending_or_rejected_media_for_export(self):
+        with patch.object(main, "_load_upload_metadata", return_value={"upload_state": "pending_scan"}):
+            with self.assertRaises(main.HTTPException) as pending:
+                main._assert_upload_clean("file")
+        self.assertEqual(pending.exception.status_code, 409)
+        self.assertEqual(pending.exception.headers["Retry-After"], "3")
+        with patch.object(main, "_load_upload_metadata", return_value={"upload_state": "rejected"}):
+            with self.assertRaises(main.HTTPException) as rejected:
+                main._assert_upload_clean("file")
+        self.assertEqual(rejected.exception.status_code, 422)
+        with patch.object(main, "_load_upload_metadata", return_value={"upload_state": "clean"}):
+            self.assertEqual(main._assert_upload_clean("file")["upload_state"], "clean")
+
+    def test_export_reuses_upload_identity_without_rehashing_source(self):
+        with (
+            patch.object(main, "_load_upload_metadata", return_value={
+                "storage_generation": "42", "storage_crc32c": "checksum",
+            }),
+            patch.object(main, "_compute_media_hash") as compute_hash,
+        ):
+            identity = main._source_media_identity("file", "source.mp4")
+        self.assertEqual(identity, "storage:42:checksum")
+        compute_hash.assert_not_called()
+
     def test_api_readiness_does_not_require_node_with_durable_workers(self):
         class Redis:
             @staticmethod
@@ -160,6 +281,35 @@ class ProductionBoundaryTests(unittest.TestCase):
 
         self.assertTrue(snapshot["checks"]["node"])
         self.assertTrue(snapshot["ready"])
+        self.assertNotIn("export_worker", snapshot["checks"])
+        self.assertNotIn("transcription_worker", snapshot["checks"])
+        main._dependency_snapshot_cache.update({"checked_at": 0.0, "value": None})
+
+    def test_api_readiness_accepts_healthy_scale_to_zero_worker_state(self):
+        database = SimpleNamespace(
+            collection=lambda _name: SimpleNamespace(
+                limit=lambda _limit: SimpleNamespace(stream=lambda: iter([]))
+            )
+        )
+        redis_client = SimpleNamespace(ping=lambda: True)
+        empty_queue = SimpleNamespace(count=0)
+        main._dependency_snapshot_cache.update({"checked_at": 0.0, "value": None})
+        with (
+            patch.object(main, "DURABLE_QUEUE_ENABLED", True),
+            patch.object(main, "_redis_client", redis_client),
+            patch.object(main, "_export_queue", empty_queue),
+            patch.object(main, "_transcription_queue", empty_queue),
+            patch.object(main, "get_db", return_value=database),
+            patch.object(main, "storage_backend_ready", return_value=True),
+            patch.object(main, "RQWorker", SimpleNamespace(all=lambda connection: [])),
+            patch.object(main.shutil, "disk_usage", return_value=SimpleNamespace(free=3 * 1024 ** 3)),
+        ):
+            snapshot = main._runtime_dependency_snapshot()
+        self.assertTrue(snapshot["ready"])
+        self.assertTrue(all(
+            state == "idle_scaled_to_zero"
+            for state in snapshot["details"]["capacity_state"].values()
+        ))
         main._dependency_snapshot_cache.update({"checked_at": 0.0, "value": None})
 
     def test_queued_export_cannot_start_after_account_deletion_request(self):
@@ -301,9 +451,12 @@ class ProductionBoundaryTests(unittest.TestCase):
         with (patch.object(main, "_redis_client", self.redis), patch.object(main, "get_db", return_value=None),
               patch.object(main, "_export_queue", queue), patch.object(main, "verify_token", return_value={"uid": "a"}),
               patch.object(main, "_process_export_job_core", new_callable=AsyncMock) as core):
-            main._set_export_job("job", "queued", uid="a")
+            main._idem_set("a:auto:same", {"status": "in_progress", "job_id": "job", "ts": time.time()})
+            main._set_export_job("job", "queued", uid="a", idempotency_key="a:auto:same")
             response = TestClient(main.app).post("/api/export-cancel/job", headers={"Authorization": "Bearer a"})
             self.assertEqual(response.status_code, 200)
+            self.assertTrue(response.json()["retry_allowed"])
+            self.assertIsNone(main._idem_get("a:auto:same"))
             self.assertEqual(main.run_export_job_task("job", {}, "a")["status"], "cancelled")
             core.assert_not_called()
 

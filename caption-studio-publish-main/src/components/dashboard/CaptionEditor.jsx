@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -14,6 +14,14 @@ import {
   MoreHorizontal
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import CaptionQualityPanel from './CaptionQualityPanel';
+import { analyzeCaptionQuality } from './captionQualityUtils'
+import { invalidateWordTimingOutsideCaption } from './captionEditingUtils'
+import {
+  duplicateCaptionWithTiming,
+  reconcileCaptionText,
+  splitCaptionAtBoundary,
+} from './captionEditingUtils';
 import {
   Tooltip,
   TooltipContent,
@@ -32,30 +40,150 @@ export default function CaptionEditor({
   onPlayCaption,
   onOpenWordPopup,
   wordPopup,
-  user
+  user,
+  captionTracks = [],
+  activeCaptionTrackId,
+  onSelectTrack,
+  onTranslateTrack,
+  captionStyle,
+  onApplyReadablePreset,
+  glossaryTerms = [],
+  onGlossaryChange,
+  preferenceSyncStatus = 'loading',
 }) {
   const [showAutoTip, setShowAutoTip] = useState(false);
   const [query, setQuery] = useState('');
   const [editingCaptionId, setEditingCaptionId] = useState(null);
+  const [showReplace, setShowReplace] = useState(false);
+  const [findText, setFindText] = useState('');
+  const [replaceText, setReplaceText] = useState('');
+  const [showBilingualPreview, setShowBilingualPreview] = useState(false);
+  const [showAddLanguage, setShowAddLanguage] = useState(false);
+  const [newLanguage, setNewLanguage] = useState('');
+  const [isAddingLanguage, setIsAddingLanguage] = useState(false);
+  const [languageError, setLanguageError] = useState('');
+  const [soundCue, setSoundCue] = useState('[music]');
+  const [captionEditMessage, setCaptionEditMessage] = useState('');
+  const [glossarySource, setGlossarySource] = useState('');
+  const [glossaryReplacement, setGlossaryReplacement] = useState('');
+  const searchInputRef = useRef(null);
+
+  const otherTrack = captionTracks.find((track) => track.id !== activeCaptionTrackId);
 
   useEffect(() => {
     if (!user?.email) return;
     if (window.matchMedia('(max-width: 767px)').matches) return;
     const key = `pro_tip_shown_${user.email}`;
-    if (!localStorage.getItem(key)) {
-      localStorage.setItem(key, 'true');
+    let alreadyShown = true
+    try { alreadyShown = !!localStorage.getItem(key); localStorage.setItem(key, 'true') } catch { /* Optional tip must not block correction when storage is disabled. */ }
+    if (!alreadyShown) {
       setShowAutoTip(true);
       const timer = setTimeout(() => setShowAutoTip(false), 8000);
       return () => clearTimeout(timer);
     }
   }, [user?.email]);
 
+  useEffect(() => {
+    const focusTranscriptSearch = (event) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'k') return;
+      event.preventDefault();
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    };
+    window.addEventListener('keydown', focusTranscriptSearch);
+    return () => window.removeEventListener('keydown', focusTranscriptSearch);
+  }, []);
+
+  const nextIssue = () => {
+    const issues = captions.filter((caption) => analyzeCaptionQuality([caption], captionStyle).details.length > 0)
+    if (!issues.length) { setCaptionEditMessage('No caption-specific issues found.'); return }
+    const index = issues.findIndex((caption) => caption.id === selectedCaptionId)
+    const next = issues[(index + 1) % issues.length]
+    setQuery('')
+    setSelectedCaptionId(next.id)
+    setEditingCaptionId(next.id)
+    onSeek?.(next.start_time)
+    requestAnimationFrame(() => document.querySelector(`textarea[data-caption-id="${CSS.escape(String(next.id))}"]`)?.focus())
+  }
+
+  const nudgeCaption = (caption, delta) => {
+    const shift = Math.max(-Number(caption.start_time), delta)
+    setCaptions((previous) => previous.map((item) => item.id !== caption.id ? item : invalidateWordTimingOutsideCaption({
+      ...item, start_time: Number(item.start_time) + shift, end_time: Number(item.end_time) + shift,
+    })))
+  }
+
   const updateCaption = (id, updates) => {
     // coalesce: per-keystroke text edits collapse into one undo snapshot per
     // typing burst instead of flooding the 50-entry history cap.
-    setCaptions(prev => prev.map(c =>
-      c.id === id ? { ...c, ...updates } : c
-    ), { coalesce: true });
+    setCaptions(prev => prev.map(c => {
+      if (c.id !== id) return c
+      if (Object.prototype.hasOwnProperty.call(updates, 'text') && updates.text !== c.text) {
+        return { ...reconcileCaptionText(c, updates.text), ...updates }
+      }
+      return { ...c, ...updates }
+    }), { coalesce: true });
+  };
+
+  const replaceAll = () => {
+    const search = findText.trim();
+    if (!search) return;
+    const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    setCaptions(captions.map((caption) => (
+      caption.isTextElement || !new RegExp(escaped, 'i').test(caption.text || '')
+        ? caption
+        : reconcileCaptionText(
+            caption,
+            String(caption.text || '').replace(new RegExp(escaped, 'gi'), replaceText),
+          )
+    )));
+  };
+
+  const addGlossaryTerm = () => {
+    const source = glossarySource.trim();
+    const replacement = glossaryReplacement.trim();
+    if (!source || !replacement) return;
+    const identity = source.toLocaleLowerCase();
+    onGlossaryChange?.((current) => [
+      {
+        id: `glossary-${Date.now()}`,
+        source,
+        replacement,
+        case_sensitive: false,
+        updated_at: new Date().toISOString(),
+      },
+      ...current.filter((term) => String(term.source || '').toLocaleLowerCase() !== identity),
+    ].slice(0, 100));
+    setGlossarySource('');
+    setGlossaryReplacement('');
+  };
+
+  const applyGlossary = () => {
+    if (!glossaryTerms.length) return;
+    let changedCount = 0;
+    const nextCaptions = captions.map((caption) => {
+      if (caption.isTextElement) return caption;
+      let nextText = String(caption.text || '');
+      glossaryTerms.forEach((term) => {
+        const source = String(term.source || '').trim();
+        if (!source) return;
+        const escaped = source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        nextText = nextText.replace(new RegExp(escaped, term.case_sensitive ? 'g' : 'gi'), term.replacement);
+      });
+      if (nextText === String(caption.text || '')) return caption;
+      changedCount += 1;
+      return reconcileCaptionText(caption, nextText);
+    });
+    if (changedCount) setCaptions(nextCaptions);
+    setCaptionEditMessage(changedCount
+      ? `Applied glossary corrections to ${changedCount} caption${changedCount === 1 ? '' : 's'}. Review changed word timings.`
+      : 'No glossary terms matched this language track.');
+  };
+
+  const addCaptionAnnotation = (caption, label) => {
+    const text = String(caption.text || '').trim();
+    if (!text || text.toLowerCase().startsWith(label.toLowerCase())) return;
+    updateCaption(caption.id, { text: `${label} ${text}` });
   };
 
   const deleteCaption = (id) => {
@@ -67,33 +195,7 @@ export default function CaptionEditor({
   const duplicateCaption = (caption) => {
     if (!caption) return;
     const newId = `${Date.now()}-duplicate`;
-    const newStart = (caption.end_time || caption.start_time || 0) + 0.1;
-    const timeDelta = newStart - (caption.start_time || 0);
-    const clone = {
-      ...caption,
-      id: newId,
-      start_time: newStart,
-      end_time: newStart + Math.max(0.1, (caption.end_time || 0) - (caption.start_time || 0)),
-      // Word timings must move with the caption — copying them verbatim leaves
-      // them pointing at the ORIGINAL time window, breaking per-word highlight
-      // timing on the duplicate.
-      words: Array.isArray(caption.words)
-        ? caption.words.map(w => ({
-            ...w,
-            ...(Number.isFinite(Number(w?.start)) ? { start: Number(w.start) + timeDelta } : {}),
-            ...(Number.isFinite(Number(w?.end)) ? { end: Number(w.end) + timeDelta } : {}),
-          }))
-        : caption.words,
-      // wordStyles keys embed the caption id (`${id}-${wordIndex}`) — remap them
-      // onto the new id or every per-word style silently stops applying.
-      wordStyles: caption.wordStyles
-        ? Object.fromEntries(Object.entries(caption.wordStyles).map(([key, value]) => (
-            key.startsWith(`${caption.id}-`)
-              ? [`${newId}-${key.slice(String(caption.id).length + 1)}`, value]
-              : [key, value]
-          )))
-        : caption.wordStyles,
-    };
+    const clone = duplicateCaptionWithTiming(caption, newId)
     setCaptions(prev => {
       const index = prev.findIndex(c => c.id === caption.id);
       if (index === -1) return [...prev, clone];
@@ -115,82 +217,16 @@ export default function CaptionEditor({
     const textArea = document.querySelector(`textarea[data-caption-id="${id}"]`);
     const position = textArea ? textArea.selectionStart : Math.floor(text.length / 2);
 
-    const firstHalf = text.substring(0, position).trim();
-    const secondHalf = text.substring(position).trim();
-
-    if (!firstHalf || !secondHalf) return;
-
-    // Split the timed words along with the text — keeping the full words array
-    // on the first half made its highlight timing run past its new end, while
-    // the second half lost per-word timing entirely.
-    const firstWordCount = firstHalf.split(/\s+/).filter(Boolean).length;
-    const timedWords = Array.isArray(caption.words) ? caption.words : [];
-    const firstWords = timedWords.slice(0, firstWordCount);
-    const secondWords = timedWords.slice(firstWordCount);
-
-    // Prefer the real word boundary as the split time so word timings stay
-    // inside their captions; fall back to the midpoint without timings.
-    const boundaryEnd = Number(firstWords[firstWords.length - 1]?.end);
-    const boundaryStart = Number(secondWords[0]?.start);
-    const midTime = Number.isFinite(boundaryEnd)
-      ? boundaryEnd
-      : Number.isFinite(boundaryStart)
-        ? boundaryStart
-        : ((caption.start_time || 0) + (caption.end_time || 0)) / 2;
-
     const newId = `${Date.now()}-split`;
+    const splitResult = splitCaptionAtBoundary(caption, position, newId)
+    if (!splitResult.captions) {
+      setCaptionEditMessage(splitResult.error || 'Caption could not be split at that position.')
+      return
+    }
+    setCaptionEditMessage('')
     const newCaptions = captions.flatMap(c => {
       if (c.id === id) {
-        // wordStyles keys are `${captionId}-${wordIndex}`; indices past the
-        // split belong to the second caption under its new id.
-        const firstStyles = {};
-        const secondStyles = {};
-        Object.entries(c.wordStyles || {}).forEach(([key, value]) => {
-          if (!key.startsWith(`${c.id}-`)) return;
-          const wordIndex = Number(key.slice(String(c.id).length + 1));
-          if (!Number.isFinite(wordIndex)) return;
-          if (wordIndex < firstWordCount) firstStyles[key] = value;
-          else secondStyles[`${newId}-${wordIndex - firstWordCount}`] = value;
-        });
-        // Emphasis indices are word positions — after the split each half must
-        // keep only the indices inside its own text (re-based for the second
-        // half), or the highlight lands on the wrong word / silently vanishes.
-        const impIndices = (Array.isArray(c.imp_word_indices) ? c.imp_word_indices : [])
-          .map(Number)
-          .filter((value) => Number.isFinite(value) && value >= 0);
-        const singleImp = Number(c.imp_word_index);
-        if (Number.isFinite(singleImp) && singleImp >= 0 && !impIndices.includes(singleImp)) {
-          impIndices.push(singleImp);
-        }
-        const firstImpIndices = impIndices.filter((value) => value < firstWordCount);
-        const secondImpIndices = impIndices
-          .filter((value) => value >= firstWordCount)
-          .map((value) => value - firstWordCount);
-        return [
-          {
-            ...c,
-            text: firstHalf,
-            end_time: midTime,
-            words: firstWords,
-            wordStyles: firstStyles,
-            imp_word_index: firstImpIndices[0] ?? -1,
-            imp_word_indices: firstImpIndices,
-          },
-          // Spread the original so the second half keeps the applied template
-          // identity, animation, and style fields — building it from scratch
-          // silently dropped the template on everything after the split point.
-          {
-            ...c,
-            id: newId,
-            text: secondHalf,
-            start_time: midTime,
-            end_time: c.end_time,
-            words: secondWords,
-            wordStyles: secondStyles,
-            imp_word_index: secondImpIndices[0] ?? -1,
-            imp_word_indices: secondImpIndices,
-          }
-        ];
+        return splitResult.captions
       }
       return c;
     });
@@ -260,17 +296,126 @@ export default function CaptionEditor({
         </div>
       </div>
 
+      {captionTracks.length > 1 && (
+        <div className="relative z-10 mb-4 rounded-xl border border-white/10 bg-black/25 p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <label htmlFor="caption-language-track" className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Language track</label>
+            <select
+              id="caption-language-track"
+              value={activeCaptionTrackId || 'source'}
+              onChange={(event) => onSelectTrack?.(event.target.value)}
+              className="min-w-0 flex-1 rounded-lg border border-white/10 bg-[#111] px-2 py-1.5 text-xs text-white"
+            >
+              {captionTracks.map((track) => <option key={track.id} value={track.id}>{track.label || track.language || track.id}</option>)}
+            </select>
+            {otherTrack && (
+              <button
+                type="button"
+                aria-pressed={showBilingualPreview}
+                onClick={() => setShowBilingualPreview((value) => !value)}
+                className={`rounded-lg border px-2.5 py-1.5 text-[10px] font-semibold ${showBilingualPreview ? 'border-sky-300/50 bg-sky-300/10 text-sky-100' : 'border-white/10 text-slate-400 hover:text-white'}`}
+              >
+                {showBilingualPreview ? 'Hide comparison' : 'Compare languages'}
+              </button>
+            )}
+          </div>
+          {showBilingualPreview && otherTrack && (
+            <p className="mt-2 text-[10px] leading-4 text-slate-400">The editor shows the selected language above and the matching {otherTrack.label || otherTrack.language} line below. Video preview and export use the selected track.</p>
+          )}
+        </div>
+      )}
+      {captionTracks.length > 0 && onTranslateTrack && (
+        <div className="relative z-10 mb-4">
+          <button type="button" onClick={() => { setShowAddLanguage((value) => !value); setLanguageError(''); }} className="text-[11px] font-semibold text-sky-200 hover:text-white">
+            {showAddLanguage ? 'Cancel new language' : 'Add a language track'}
+          </button>
+          {showAddLanguage && (
+            <form
+              className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] gap-2 rounded-xl border border-white/10 bg-black/25 p-3"
+              onSubmit={async (event) => {
+                event.preventDefault();
+                setIsAddingLanguage(true);
+                setLanguageError('');
+                try {
+                  await onTranslateTrack(newLanguage);
+                  setNewLanguage('');
+                  setShowAddLanguage(false);
+                } catch (error) {
+                  setLanguageError(error?.message || 'Translation failed. Please try again.');
+                } finally {
+                  setIsAddingLanguage(false);
+                }
+              }}
+            >
+              <input aria-label="New language" value={newLanguage} onChange={(event) => setNewLanguage(event.target.value)} placeholder="Language, such as Spanish" maxLength={50} className="min-w-0 rounded-lg border border-white/10 bg-black/40 px-2.5 py-2 text-xs text-white placeholder:text-slate-500" />
+              <button type="submit" disabled={!newLanguage.trim() || isAddingLanguage} className="rounded-lg bg-sky-200 px-3 py-2 text-xs font-bold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40">
+                {isAddingLanguage ? 'Translating…' : 'Create track'}
+              </button>
+              <p className="col-span-2 text-[10px] leading-4 text-slate-500">A new editable track is translated from the original track. The original and any other languages stay in this project.</p>
+              {languageError && <p role="alert" className="col-span-2 text-[10px] leading-4 text-rose-300">{languageError}</p>}
+            </form>
+          )}
+        </div>
+      )}
+
+      <details className="relative z-10 mb-4 rounded-xl border border-white/10 bg-black/20 p-3">
+        <summary className="cursor-pointer list-none text-xs font-semibold text-slate-200">Caption quality review</summary>
+        <button type="button" onClick={nextIssue} className="mt-2 rounded border border-white/20 px-3 py-2 text-xs">Next issue</button>
+        <button type="button" onClick={onApplyReadablePreset} className="ml-2 mt-2 rounded border border-white/20 px-3 py-2 text-xs">Readable caption preset</button>
+        <div className="mt-3"><CaptionQualityPanel captions={captions} captionStyle={captionStyle} compact /></div>
+      </details>
+
       <div className="relative z-10 mb-4">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
         <input
+          ref={searchInputRef}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
+          aria-label="Search transcript"
           placeholder="Search transcript..."
           className="w-full h-9 rounded-xl border border-white/10 bg-black/35 pl-9 pr-12 text-xs text-white placeholder:text-slate-600 outline-none focus:border-sky-300/40"
         />
         <span className="absolute right-2 top-1/2 -translate-y-1/2 rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[9px] font-mono text-slate-500">
           Ctrl K
         </span>
+      </div>
+      <details className="relative z-10 mb-4 rounded-xl border border-white/10 bg-black/20 p-3">
+        <summary className="cursor-pointer list-none text-[11px] font-semibold text-sky-200">Account glossary</summary>
+        <div className="mt-3 space-y-3">
+          <p className="text-[10px] leading-4 text-slate-500">
+            Keep names, brands, and specialist terms consistent across projects. {preferenceSyncStatus === 'synced' ? 'Glossary is synced to your account.' : 'Changes are saved locally until account sync is available.'}
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <input aria-label="Incorrect or source term" value={glossarySource} onChange={(event) => setGlossarySource(event.target.value)} placeholder="Heard as…" maxLength={120} className="min-w-0 rounded-lg border border-white/10 bg-black/40 px-2.5 py-2 text-xs text-white placeholder:text-slate-500" />
+            <input aria-label="Preferred glossary term" value={glossaryReplacement} onChange={(event) => setGlossaryReplacement(event.target.value)} placeholder="Replace with…" maxLength={120} className="min-w-0 rounded-lg border border-white/10 bg-black/40 px-2.5 py-2 text-xs text-white placeholder:text-slate-500" />
+            <button type="button" onClick={addGlossaryTerm} disabled={!glossarySource.trim() || !glossaryReplacement.trim()} className="rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2 text-[11px] font-semibold text-white disabled:opacity-40">Save term</button>
+            <button type="button" onClick={applyGlossary} disabled={!glossaryTerms.length} className="rounded-lg bg-sky-200 px-3 py-2 text-[11px] font-bold text-slate-950 disabled:opacity-40">Apply to track</button>
+          </div>
+          {glossaryTerms.length > 0 && (
+            <div className="max-h-32 space-y-1.5 overflow-y-auto pr-1">
+              {glossaryTerms.map((term) => (
+                <div key={term.id || term.source} className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/25 px-2.5 py-2 text-[10px]">
+                  <span className="min-w-0 flex-1 truncate text-slate-300">{term.source} → <strong className="text-white">{term.replacement}</strong></span>
+                  <button type="button" aria-label={`Remove glossary term ${term.source}`} onClick={() => onGlossaryChange?.((current) => current.filter((item) => item.id !== term.id))} className="text-slate-500 hover:text-white"><X className="h-3.5 w-3.5" /></button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </details>
+      {captionEditMessage && <p role="status" className="relative z-10 -mt-2 mb-3 text-[11px] text-amber-200">{captionEditMessage}</p>}
+      <div className="relative z-10 mb-4">
+        <button type="button" onClick={() => setShowReplace((value) => !value)} className="text-[11px] font-semibold text-sky-200 hover:text-white">
+          {showReplace ? 'Close find and replace' : 'Find and replace'}
+        </button>
+        {showReplace && (
+          <div className="mt-2 grid grid-cols-2 gap-2 rounded-xl border border-white/10 bg-black/25 p-3">
+            <input aria-label="Find text" value={findText} onChange={(event) => setFindText(event.target.value)} placeholder="Find" className="min-w-0 rounded-lg border border-white/10 bg-black/40 px-2.5 py-2 text-xs text-white placeholder:text-slate-500" />
+            <input aria-label="Replace with" value={replaceText} onChange={(event) => setReplaceText(event.target.value)} placeholder="Replace with" className="min-w-0 rounded-lg border border-white/10 bg-black/40 px-2.5 py-2 text-xs text-white placeholder:text-slate-500" />
+            <button type="button" onClick={replaceAll} disabled={!findText.trim()} className="col-span-2 rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">Replace all in this language</button>
+            <p className="col-span-2 text-[10px] text-slate-500">Replacement clears word-level timings and styling on changed captions so they cannot drift onto the wrong words.</p>
+          </div>
+        )}
       </div>
 
       {/* Caption list */}
@@ -279,6 +424,7 @@ export default function CaptionEditor({
           {filteredCaptions?.map((caption, index) => (
             <motion.div
               key={caption.id}
+              data-caption-card={caption.id}
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 20 }}
@@ -363,8 +509,52 @@ export default function CaptionEditor({
                           onClick={(e) => e.stopPropagation()}
                           placeholder="Enter caption text... (Press Enter for new line)"
                           data-caption-id={caption.id}
+                          aria-label="Caption text"
+                          dir="auto"
+                          onKeyDown={(event) => {
+                            if (event.altKey && ['ArrowLeft', 'ArrowRight'].includes(event.key)) {
+                              event.preventDefault()
+                              nudgeCaption(caption, event.key === 'ArrowLeft' ? -0.1 : 0.1)
+                            }
+                          }}
                         />
 
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button type="button" onClick={() => onPlayCaption?.(caption, true)} className="rounded border border-white/20 px-2 py-1 text-xs">Loop phrase</button>
+                          <button type="button" onClick={() => nudgeCaption(caption, -0.1)} className="rounded border border-white/20 px-2 py-1 text-xs" title="Alt + Left in caption text">Earlier 0.1s</button>
+                          <button type="button" onClick={() => nudgeCaption(caption, 0.1)} className="rounded border border-white/20 px-2 py-1 text-xs" title="Alt + Right in caption text">Later 0.1s</button>
+                          <button
+                            type="button"
+                            onClick={() => addCaptionAnnotation(caption, 'Speaker 1:')}
+                            className="rounded-md border border-white/10 px-2.5 py-1.5 text-[10px] font-semibold text-slate-300 hover:border-white/25 hover:text-white"
+                            title="Add an editable speaker label to this caption"
+                          >
+                            Add speaker label
+                          </button>
+                          <select value={soundCue} onChange={(event) => setSoundCue(event.target.value)} aria-label="Sound cue" className="rounded-md border border-white/10 bg-[#111] px-2 py-1.5 text-[10px] text-slate-300">
+                            {['[music]', '[laughter]', '[applause]', '[sigh]', '[inaudible]'].map((cue) => <option key={cue}>{cue}</option>)}
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => addCaptionAnnotation(caption, soundCue)}
+                            className="rounded-md border border-white/10 px-2.5 py-1.5 text-[10px] font-semibold text-slate-300 hover:border-white/25 hover:text-white"
+                            title="Add an important non-speech sound cue"
+                          >
+                            Add sound cue
+                          </button>
+                        </div>
+                        <p className="-mt-1 text-[10px] leading-4 text-slate-500">Labels are editable text. Existing words keep measured timing; the new label is marked for timing review.</p>
+
+                        {showBilingualPreview && otherTrack && (
+                          <div className="rounded-lg border border-sky-300/15 bg-sky-300/[0.04] p-2.5">
+                            <p className="mb-1 text-[9px] font-semibold uppercase tracking-wider text-sky-200/70">{otherTrack.label || otherTrack.language}</p>
+                            <p className="text-xs leading-5 text-sky-50/85">{otherTrack.captions?.find((item) => item.id === caption.id)?.text || 'No matching caption in this track.'}</p>
+                          </div>
+                        )}
+
+                        {Array.isArray(caption.words) && caption.words.some((word) => Number.isFinite(word.start) && Number.isFinite(word.end)) && <div className="flex flex-wrap gap-1" aria-label="Hear measured words">
+                          {caption.words.map((word, index) => Number.isFinite(word.start) && Number.isFinite(word.end) && <button type="button" key={index} onClick={() => onPlayCaption?.({ start_time: word.start, end_time: word.end })} className="rounded border border-sky-300/20 px-2 py-1 text-xs text-sky-200" aria-label={`Hear ${word.word || word.text}`}>Hear {word.word || word.text}</button>)}
+                        </div>}
                         {/* Interactive Word Selection List */}
                         <div className="mb-3">
                           <label className="text-[10px] text-gray-500 uppercase tracking-wider mb-2 block font-medium">Select word to style</label>
@@ -489,6 +679,12 @@ export default function CaptionEditor({
                             >
                               <MoreHorizontal className="h-4 w-4" />
                             </button>
+                          </div>
+                        )}
+                        {showBilingualPreview && otherTrack && (
+                          <div className="mt-2 rounded-lg border border-sky-300/15 bg-sky-300/[0.04] px-3 py-2">
+                            <p className="mb-1 text-[9px] font-semibold uppercase tracking-wider text-sky-200/70">{otherTrack.label || otherTrack.language}</p>
+                            <p className="text-xs leading-5 text-sky-50/85">{otherTrack.captions?.find((item) => item.id === caption.id)?.text || 'No matching caption in this track.'}</p>
                           </div>
                         )}
                       </>

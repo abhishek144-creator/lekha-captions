@@ -4,11 +4,14 @@ const externalBaseURL = String(process.env.PLAYWRIGHT_BASE_URL || '').replace(/\
 
 export default defineConfig({
   testDir: './e2e',
-  timeout: 30_000,
+  timeout: 60_000,
+  expect: { timeout: 15_000 },
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
-  workers: process.env.CI ? 4 : undefined,
+  // Firefox and WebKit both run Axe inside every public route. Two CI workers
+  // avoid starving those browser processes on GitHub's two-core runners.
+  workers: process.env.CI ? 2 : undefined,
   reporter: process.env.CI ? [['line'], ['html', { open: 'never' }]] : 'line',
   use: {
     baseURL: externalBaseURL || 'http://127.0.0.1:4173',

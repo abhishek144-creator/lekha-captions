@@ -140,7 +140,7 @@ const plans = [
       'Max 3 videos / day',
       'No watermark',
       '100+ caption styles',
-      'All 115+ languages',
+      'Available transcription language choices',
       '1080p HD export',
       '2 hr download link',
     ],
@@ -163,7 +163,7 @@ const plans = [
       'Max 5 videos / day',
       'No watermark',
       '100+ caption styles',
-      'All 115+ languages',
+      'Available transcription and translation language choices',
       '1080p HD + 4K export',
       'Translation feature',
       '24 hr download link',
@@ -187,7 +187,7 @@ const plans = [
       'Unlimited videos / day',
       'No watermark',
       '100+ caption styles',
-      'All 115+ languages',
+      'Available transcription and translation language choices',
       '1080p HD + 4K export',
       'Translation feature',
       '72 hr download link',
@@ -524,7 +524,12 @@ export default function PricingSection() {
             <h3 className="text-lg font-semibold text-white">Compare every plan</h3>
             <p className="mt-1 text-sm text-[#949494]">Everything you need to choose your creative cadence.</p>
           </div>
-          <div className="overflow-x-auto">
+          <div
+            className="overflow-x-auto"
+            role="region"
+            aria-label="Plan comparison"
+            tabIndex={0}
+          >
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-[#161616]">
@@ -545,7 +550,7 @@ export default function PricingSection() {
                   ['Max Video Length', '2 min', '3 min', '3 min'],
                   ['Daily Limit', '3/day', '5/day', 'Unlimited'],
                   ['Export Quality', '1080p', '1080p + 4K', '1080p + 4K'],
-                  ['Languages', '115+', '115+', '115+'],
+                  ['Transcription language choices', 'Included', 'Included', 'Included'],
                   ['Translation', '—', '✓', '✓'],
                   ['Download Link Valid', '2 hours', '24 hours', '72 hours'],
                 ].map(([feature, starter, creator, pro], i) => (

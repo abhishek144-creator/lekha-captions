@@ -13,11 +13,12 @@ export function Toaster() {
 
   return (
     <ToastProvider>
-      {toasts.map(function ({ id, title, description, action, open, ...props }) {
+      {toasts.map(function ({ id, title, description, action, open, onOpenChange: _onOpenChange, ...props }) {
         if (open === false) return null;
         return (
             <Toast
               key={id}
+              role="status"
               {...props}
               className="cursor-pointer"
               onClick={() => dismiss(id)}
@@ -30,6 +31,7 @@ export function Toaster() {
             </div>
             {action}
             <ToastClose
+              aria-label="Dismiss notification"
               onClick={(event) => {
                 event.stopPropagation();
                 dismiss(id);

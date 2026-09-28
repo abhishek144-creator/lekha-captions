@@ -6,7 +6,7 @@ const catalog = [
   { number: '02', icon: Type, title: 'Professional typography', copy: 'Shape hierarchy with premium fonts, sizing and spacing controls.', color: '#70d6a5' },
   { number: '03', icon: Palette, title: 'Custom styling', copy: 'Control colors, highlights, backgrounds and placement.', color: '#ff7b9f' },
   { number: '04', icon: Globe2, title: 'Regional language reach', copy: 'Create for audiences in the Americas, Europe, Africa, the Middle East and Asia.', color: '#6ee7ff' },
-  { number: '05', icon: Languages, title: '115+ languages', copy: 'Keep every writing system inside one creator workflow.', color: '#70d6a5' },
+  { number: '05', icon: Languages, title: 'Global language choices', copy: 'Keep available transcription and translation options inside one creator workflow.', color: '#70d6a5' },
   { number: '06', icon: Download, title: 'Flexible export', copy: 'Publish in the formats your next editing step needs.', color: '#86a8ff' },
   { number: '07', icon: Zap, title: 'Built for speed', copy: 'A focused toolset for fast-moving short-form production.', color: '#ffd166' },
 ]

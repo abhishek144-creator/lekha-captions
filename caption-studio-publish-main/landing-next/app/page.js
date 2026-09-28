@@ -3,13 +3,13 @@ import { HomePricingSection } from '@/components/HomePricingSection'
 import { appUrl, pageMetadata, siteDescription, siteUrl } from '@/lib/site'
 
 export const metadata = pageMetadata({
-  title: 'Professional captions in 115+ languages',
+  title: 'Professional multilingual captions',
   description: siteDescription,
   path: '/',
 })
 
 const stats = [
-  ['115+', 'Languages supported'],
+  ['Global', 'Language options'],
   ['100+', 'Caption styles'],
   ['120-180s', 'Shorts & Reels sweet spot'],
 ]
@@ -36,7 +36,7 @@ const features = [
   {
     key: 'globe',
     title: 'Every Regional Language',
-    description: '115+ languages on every continent, powered by best-in-class speech AI for each language family.',
+    description: 'Browse available transcription and translation options across languages and writing systems.',
     preview: 'languages',
     wide: true,
   },
@@ -225,7 +225,7 @@ export default function HomePage() {
     operatingSystem: 'Web',
     url: siteUrl,
     description: siteDescription,
-    featureList: ['Video caption generation in 115+ languages', 'Worldwide language and script support', 'Animated caption styles', 'Video caption editing', 'HD and 4K export options'],
+    featureList: ['Video caption generation in available languages', 'Worldwide language and script options', 'Animated caption styles', 'Video caption editing', 'HD and 4K export options'],
     offers: { '@type': 'AggregateOffer', lowPrice: '3.99', highPrice: '5.99', priceCurrency: 'USD', offerCount: '3' },
   }
 
@@ -249,13 +249,13 @@ export default function HomePage() {
         <div className="container sync-hero-content">
           <p className="sync-hero-pill">
             <SparklesIcon />
-            115+ Languages. Built for every global audience.
+            Captions for global audiences.
           </p>
           <h1>
             Professional Captions in <span>Your Language</span>
           </h1>
           <p className="sync-hero-lead">
-            115+ languages across the Americas, Europe, Africa, the Middle East and Asia. Professional captions at creator-friendly pricing.
+            Explore the transcription choices available across languages and writing systems. Professional captions at creator-friendly pricing.
           </p>
           <div className="sync-hero-actions">
             <a className="sync-primary-cta" href={appUrl}>

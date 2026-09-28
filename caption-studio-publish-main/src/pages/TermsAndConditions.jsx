@@ -27,7 +27,7 @@ const sections = [
   },
   {
     title: '5. Accuracy Disclaimer',
-    body: 'AI-generated captions are provided as-is. While we strive for high accuracy, Lekha Captions does not guarantee 100% accuracy — results vary with audio quality, accents, background noise, language mixing, and speaker clarity. You are responsible for reviewing and correcting captions before publication.',
+    body: 'AI-generated captions can contain errors, and results vary with audio quality, accents, background noise, language mixing, and speaker clarity. We do not publish a measured accuracy score. Review and correct captions before publication, especially names, specialist terms, and important statements.',
   },
   {
     title: '6. Plans, Pricing and Credits',

@@ -1,16 +1,18 @@
 # Public API / SDK Readiness
 
 ## Current State
-- API version metadata endpoint exists (`/api/version`)
-- Request/response contract tests for key endpoints exist
-- Idempotency controls exist for export and payment writes
+- Stable read-only `v1` namespace for projects and export status.
+- Revocable API keys stored only as SHA-256 digests, with explicit scopes and
+  owner checks on every resource.
+- Per-key hourly rate limits and the bundled dependency-free JavaScript client
+  in `sdk/javascript`.
+- FastAPI publishes the OpenAPI schema at `/openapi.json`.
 
 ## Before Public SDK Launch
-1. Stable `v1` namespace for external clients.
-2. OAuth/service-account auth scopes (read/write/export/payment).
-3. Published OpenAPI schema and changelog.
-4. Tenant-level rate limits and quotas.
-5. Developer docs + examples + error code catalog.
+1. Version write/export scopes after the beta read contract has production use.
+2. Add OAuth/service-account exchange for enterprise tenants.
+3. Publish hosted reference docs and an expanded error-code catalog.
+4. Move per-key rate windows to Redis before horizontal API scale-out.
 
 ## Compatibility Promise
 - No breaking change without version bump + deprecation period.

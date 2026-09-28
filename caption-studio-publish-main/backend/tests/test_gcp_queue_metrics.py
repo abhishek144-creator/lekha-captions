@@ -54,6 +54,62 @@ def test_queued_render_work_uses_job_estimates_and_bounded_fallback():
     assert gcp_queue_metrics.queued_render_work_seconds(Queue(), Job) == 195
 
 
+def test_render_queue_snapshot_aggregates_work_and_predicts_wait(monkeypatch):
+    queues = [type("Queue", (), {"count": 0})(), type("Queue", (), {"count": 0})()]
+    snapshots = iter([(2, 30), (3, 45)])
+    work = iter([120, 360])
+    monkeypatch.setattr(gcp_queue_metrics, "queue_snapshot", lambda *_args: next(snapshots))
+    monkeypatch.setattr(gcp_queue_metrics, "queued_render_work_seconds", lambda *_args, **_kwargs: next(work))
+    assert gcp_queue_metrics.render_queue_snapshot(queues, object, active_workers=4) == (5, 45, 480, 120)
+
+
+def test_job_queue_prediction_reports_position_and_work_eta():
+    class Queue:
+        count = 3
+        connection = object()
+
+        @staticmethod
+        def get_job_ids(offset=0, length=100):
+            assert (offset, length) == (0, 3)
+            return ["first", "target", "last"]
+
+    class Job:
+        @staticmethod
+        def fetch(job_id, connection):
+            assert connection is Queue.connection
+            estimates = {"first": 90, "target": 150, "last": 30}
+            return type("QueuedJob", (), {"meta": {"estimated_render_seconds": estimates[job_id]}})()
+
+    prediction = gcp_queue_metrics.job_queue_prediction(
+        Queue(), Job, "target", active_workers=2,
+    )
+
+    assert prediction == {
+        "queue_position": 2,
+        "jobs_ahead": 1,
+        "queue_depth": 3,
+        "estimated_queue_wait_seconds": 45,
+        "estimated_completion_seconds": 120,
+        "active_workers": 2,
+    }
+    assert gcp_queue_metrics.job_queue_prediction(Queue(), Job, "missing") is None
+
+    # A scaled-to-zero pool has no measured startup time. Preserve position,
+    # but never promise an ETA based on a nonexistent worker.
+    cold_prediction = gcp_queue_metrics.job_queue_prediction(
+        Queue(), Job, "target", active_workers=0,
+    )
+    assert cold_prediction["queue_position"] == 2
+    assert cold_prediction["active_workers"] == 0
+    assert cold_prediction["estimated_queue_wait_seconds"] is None
+    assert cold_prediction["estimated_completion_seconds"] is None
+    unknown_prediction = gcp_queue_metrics.job_queue_prediction(
+        Queue(), Job, "target", active_workers=None,
+    )
+    assert unknown_prediction["active_workers"] is None
+    assert unknown_prediction["estimated_completion_seconds"] is None
+
+
 def test_google_request_rejects_unapproved_endpoint():
     request = urllib.request.Request("file:///tmp/metadata")
     try:
@@ -87,8 +143,10 @@ def test_publish_queue_snapshot_writes_group_metrics(monkeypatch):
     monkeypatch.setattr(gcp_queue_metrics, "_access_token", lambda: "token")
     monkeypatch.setattr(gcp_queue_metrics.urllib.request, "urlopen", _urlopen)
 
-    gcp_queue_metrics.publish_queue_snapshot(12, 240, "exports", "worker-mig",
-                                             pending_work_seconds=420)
+    gcp_queue_metrics.publish_queue_snapshot(
+        12, 240, "exports", "worker-mig",
+        pending_work_seconds=420, predicted_wait_seconds=105,
+    )
 
     assert captured["url"].endswith("/projects/project-id/timeSeries")
     values = {
@@ -98,6 +156,7 @@ def test_publish_queue_snapshot_writes_group_metrics(monkeypatch):
     assert values["custom.googleapis.com/lekha/export_queue_depth"] == "12"
     assert values["custom.googleapis.com/lekha/export_oldest_job_age_seconds"] == "240"
     assert values["custom.googleapis.com/lekha/pending_render_work_seconds"] == "420"
+    assert values["custom.googleapis.com/lekha/predicted_queue_wait_seconds"] == "105"
     for item in captured["body"]["timeSeries"]:
         assert item["metric"]["labels"] == {
             "queue": "exports",

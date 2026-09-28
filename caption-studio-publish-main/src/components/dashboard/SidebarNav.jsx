@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { useAuth } from '@/lib/AuthContext';
+import { clearUserLocalDrafts } from '@/lib/localDraftStorage'
 import {
   Popover,
   PopoverContent,
@@ -41,7 +42,7 @@ export default function SidebarNav({ activeTab, setActiveTab, onOpenPricing }) {
   const handleLogout = async () => {
     try {
       await logout();
-      localStorage.removeItem('captionEditorState');
+      clearUserLocalDrafts(currentUser?.uid)
       window.location.href = '/';
     } catch (error) {
       console.error('Logout failed:', error);

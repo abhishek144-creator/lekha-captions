@@ -9,6 +9,14 @@
         { "fieldPath": "reconcile_required", "order": "ASCENDING" },
         { "fieldPath": "received_at", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "user_notifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "uid", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [
@@ -50,6 +58,24 @@
     },
     {
       "collectionGroup": "payment_idempotency",
+      "fieldPath": "expire_at",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "user_notifications",
+      "fieldPath": "expire_at",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "workspace_invites",
+      "fieldPath": "expire_at",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "export_batches",
       "fieldPath": "expire_at",
       "ttl": true,
       "indexes": []

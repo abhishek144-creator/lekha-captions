@@ -14,6 +14,12 @@ from fastapi.testclient import TestClient
 from google.api_core.exceptions import Aborted
 from transcription_jobs import TranscriptionJobs
 from drafts import delete_project, list_projects, normalize_draft, read_draft, save_draft
+from editor_preferences import (
+    normalize_brand_kits,
+    normalize_glossary_terms,
+    read_editor_preferences,
+    save_editor_preferences,
+)
 import main
 
 
@@ -298,3 +304,62 @@ class DurableWorkflowTests(unittest.TestCase):
         self.assertNotIn("secret", str(draft))
         for invalid in [{**self.draft, "captions": [{}] * 501}, {**self.draft, "duration": float("nan")}, {**self.draft, "settings": "bad"}]:
             with self.assertRaises(HTTPException): normalize_draft(invalid)
+
+    def test_draft_preserves_bounded_language_tracks(self):
+        normalized = normalize_draft({
+            **self.draft,
+            "captionTracks": [
+                {"id": "source", "language": "en", "label": "Original", "captions": [{"text": "Hello"}]},
+                {"id": "translation-hi", "language": "hi", "label": "Hindi", "captions": [{"text": "नमस्ते"}]},
+            ],
+            "activeCaptionTrackId": "translation-hi",
+        })
+        self.assertEqual(normalized["activeCaptionTrackId"], "translation-hi")
+        self.assertEqual(normalized["captionTracks"][1]["captions"][0]["text"], "नमस्ते")
+
+    def test_draft_rejects_missing_active_or_unbounded_language_tracks(self):
+        track = {"id": "source", "captions": [{"text": "Hello"}]}
+        invalid = [
+            {**self.draft, "captionTracks": [track], "activeCaptionTrackId": "missing"},
+            {**self.draft, "captionTracks": [track] * 21, "activeCaptionTrackId": "source"},
+            {**self.draft, "captionTracks": [{"id": "source", "captions": [{}] * 501}], "activeCaptionTrackId": "source"},
+        ]
+        for candidate in invalid:
+            with self.assertRaises(HTTPException):
+                normalize_draft(candidate)
+
+    def test_editor_preferences_are_account_scoped_and_portable(self):
+        saved = save_editor_preferences(self.db, "a", {
+            "brand_kits": [{
+                "id": "kit-1", "name": "Launch", "style": {
+                    "font_family": "Inter", "text_color": "#ffffff", "unsafe": "drop-me",
+                },
+            }],
+            "glossary_terms": [{"id": "term-1", "source": "Lekha", "replacement": "लेखा"}],
+        })
+        self.assertTrue(saved["exists"])
+        self.assertNotIn("unsafe", saved["brand_kits"][0]["style"])
+        self.assertEqual(read_editor_preferences(self.db, "a")["glossary_terms"][0]["replacement"], "लेखा")
+        self.assertFalse(read_editor_preferences(self.db, "b")["exists"])
+
+    def test_preference_revision_conflict_preserves_newer_device(self):
+        saved = save_editor_preferences(self.db, "a", {"brand_kits": []})
+        self.assertEqual(saved["revision"], 1)
+        with self.assertRaises(HTTPException) as conflict:
+            save_editor_preferences(self.db, "a", {"glossary_terms": []}, expected_revision=0)
+        self.assertEqual(conflict.exception.status_code, 409)
+        self.assertEqual(read_editor_preferences(self.db, "a")["revision"], 1)
+        updated = save_editor_preferences(self.db, "a", {"glossary_terms": []}, expected_revision=1)
+        self.assertEqual(updated["revision"], 2)
+
+    def test_editor_preferences_are_bounded_and_require_an_active_account(self):
+        with self.assertRaises(HTTPException):
+            normalize_brand_kits([{"id": str(index), "style": {"text_color": "#ffffff"}} for index in range(9)])
+        with self.assertRaises(HTTPException):
+            normalize_glossary_terms([
+                {"source": "Same", "replacement": "One"},
+                {"source": "same", "replacement": "Two"},
+            ])
+        self.db.data["account_deletions/a"] = {"status": "pending"}
+        with self.assertRaises(HTTPException):
+            save_editor_preferences(self.db, "a", {"brand_kits": []})
