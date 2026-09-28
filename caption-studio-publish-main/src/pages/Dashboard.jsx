@@ -15,6 +15,8 @@ import { buildEmotionalCaptionPlan, EMOTIONAL_TEMPLATE_TIMING } from '@/componen
 import { recordRecentTemplate } from '@/components/dashboard/templateBrowserUtils';
 import { apiRequest } from '@/lib/apiClient';
 import { notifyApiError } from '@/lib/notifyApiError';
+import DeliveryControls from '@/components/dashboard/DeliveryControls'
+import { bilingualLayers, bilingualSubtitles, deliveryGeometry } from '@/components/dashboard/projectDelivery'
 import { getClientContext, trackAnalytics } from '@/lib/analytics';
 import { getEffectiveAuthToken } from '@/lib/devAuth';
 import { resolveApiResourceUrl } from '@/components/dashboard/exportPipelineUtils';
@@ -321,6 +323,7 @@ export default function Dashboard() {
     glossaryTerms,
     setGlossaryTerms,
     syncStatus: editorPreferenceSyncStatus,
+    reloadCloudPreferences, retryPreferenceSync,
   } = useEditorPreferences(currentUser)
 
   // DEV-ONLY seed: load a sample video + Hindi captions instantly for verifying
@@ -434,6 +437,16 @@ export default function Dashboard() {
   const [showCaptionRetryNotice, setShowCaptionRetryNotice] = useState(false)
   const [showLowCreditNotice, setShowLowCreditNotice] = useState(false)
   const [translationNotice, setTranslationNotice] = useState('')
+  const [sourceUnavailable, setSourceUnavailable] = useState(false)
+  const [isRelinking, setIsRelinking] = useState(false)
+  const [playbackRate, setPlaybackRate] = useState(1)
+  const [playbackRange, setPlaybackRange] = useState(null)
+  const secondaryLayers = useMemo(() => bilingualLayers(captionTracks, activeCaptionTrackId, captionStyle).map((layer) => ({ ...layer, customStyle: { ...layer.customStyle, fontFamily: resolveScriptFont(layer.customStyle.fontFamily, layer.text) } })), [captionTracks, activeCaptionTrackId, captionStyle])
+  useEffect(() => {
+    [...new Set(secondaryLayers.map((layer) => layer.customStyle.fontFamily))].forEach((font) => loadGoogleFont(font).catch(() => {}))
+  }, [secondaryLayers])
+  const deliveryCaptions = useMemo(() => [...captions, ...secondaryLayers], [captions, secondaryLayers])
+  const subtitleCaptions = useMemo(() => bilingualSubtitles(captions, secondaryLayers), [captions, secondaryLayers])
 
   useEffect(() => {
     if (!cloudSaveMessage) return undefined
@@ -474,7 +487,7 @@ export default function Dashboard() {
   }), [activeCaptionTrackId, captionStyle, captionTracks, captions, duration, fileId, originalFileName, projectId, settings, videoUrl]);
 
   useEffect(() => {
-    if (!activeCaptionTrackId || !captions.length) return
+    if (!activeCaptionTrackId) return
     setCaptionTracks((tracks) => {
       if (!tracks.some((track) => track.id === activeCaptionTrackId)) return tracks
       return tracks.map((track) => (
@@ -530,6 +543,9 @@ export default function Dashboard() {
       text: translated.get(caption.id) || caption.text,
       words: [],
       wordStyles: {},
+      imp_word_index: -1, imp_word_indices: [],
+      word_alignment_status: 'segment',
+      word_alignment_note: 'Translation uses segment timing; word timing is not measured.',
     }))
     const slug = targetLanguage.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 72) || 'language'
     let trackId = `translation-${slug}`
@@ -554,7 +570,7 @@ export default function Dashboard() {
   }
 
   useEffect(() => {
-    if (!isLoaded || !fileId || !captions.length || !cloudReady) return
+    if (!isLoaded || !fileId || !cloudReady) return
     setCloudSaveMessage('Changes waiting to save')
     const timer = setTimeout(() => {
       saveCloudDraft(snapshotEditorState()).catch((error) => setCloudSaveMessage(error.message || 'Cloud save failed. Your browser copy is still available.'))
@@ -565,13 +581,6 @@ export default function Dashboard() {
   const restoreCloudDraft = async () => {
     if (!cloudDraft || !currentUser) return
     try {
-      const id_token = await getEffectiveAuthToken(currentUser)
-      const media = cloudDraft._workspaceRawUrl
-        ? { raw_url: cloudDraft._workspaceRawUrl }
-        : await apiRequest('/api/media/upload-url', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id_token, file_id: cloudDraft.fileId }),
-          })
       const restoredCaptions = (cloudDraft.captions || []).map(sanitizeRestoredCaption)
       const restoredEditorState = normalizeRestoredCaptionTrackState(
         cloudDraft.captionTracks,
@@ -589,10 +598,22 @@ export default function Dashboard() {
       setProjectId(cloudDraft.projectId || null)
       setOriginalFileName(cloudDraft.originalFileName || '')
       setDuration(cloudDraft.duration || 0)
+      const id_token = await getEffectiveAuthToken(currentUser)
+      const media = cloudDraft._workspaceRawUrl
+        ? { raw_url: cloudDraft._workspaceRawUrl }
+        : await apiRequest('/api/media/upload-url', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id_token, file_id: cloudDraft.fileId }),
+          })
       setVideoUrl(resolveApiResourceUrl(media.raw_url, import.meta.env.VITE_API_BASE_URL))
+      setSourceUnavailable(false)
+      setIsLoaded(true)
       setCloudSaveMessage('Restored your account draft')
     } catch {
-      setCloudSaveMessage('The source video is unavailable or expired. Your caption draft is safe; download it below.')
+      setVideoUrl('')
+      setSourceUnavailable(true)
+      setIsLoaded(true)
+      setCloudSaveMessage('Captions restored. Relink the source video to preview and render; text editing and subtitle downloads are available.')
     }
   }
 
@@ -614,7 +635,8 @@ export default function Dashboard() {
       parsed.activeCaptionTrackId,
       parsed.settings?.language || 'Original',
     )
-    if (parsed.videoUrl) setVideoUrl(parsed.videoUrl)
+    setVideoUrl(parsed.videoUrl || '')
+    setSourceUnavailable(!parsed.videoUrl)
     setCaptions(restoredEditorState.captions)
     setCaptionTracks(restoredEditorState.tracks)
     setActiveCaptionTrackId(restoredEditorState.activeTrackId)
@@ -657,6 +679,27 @@ export default function Dashboard() {
     setLocalRecoveryDraft(null)
   }, [currentUser?.uid, localRecoveryDraft])
 
+  const loadedAccountRef = useRef(null)
+  useEffect(() => {
+    if (isLoadingAuth) return
+    const uid = currentUser?.uid || ''
+    if (loadedAccountRef.current === uid) return
+    loadedAccountRef.current = uid
+    recoveryInitializedRef.current = false
+    setIsLoaded(false)
+    setLocalRecoveryDraft(null)
+    setCaptionTracks([])
+    setCaptions([])
+    setVideoUrl('')
+    setFileId(null)
+    setProjectId(null)
+    setSourceUnavailable(false)
+    setPlaybackRange(null)
+    setWordPopup(null)
+    initialEditorStateRef.current = null
+    setCaptionStyle(defaultCaptionStyle)
+  }, [currentUser?.uid, isLoadingAuth])
+
   // Keep a same-account recovery copy until the customer explicitly continues
   // or discards it. Normal dashboard entry must never erase unsynced work.
   useEffect(() => {
@@ -671,7 +714,9 @@ export default function Dashboard() {
     const isNavigationRestore = location.state?.restoreSession || params.get('restoreSession') === '1';
     const isEditorEntry = params.get('entry') === 'editor';
     const shouldStartClean = Boolean(params.get('action') || params.get('session_reset') || isEditorEntry);
-    const savedDraft = readLocalDraft(currentUser?.uid)
+    let savedDraft = null
+    try { savedDraft = readLocalDraft(currentUser?.uid) }
+    catch { setCloudSaveMessage('Browser recovery storage is unavailable. Save to your account or download the draft before closing.') }
 
     if (savedDraft && isNavigationRestore && !shouldStartClean && applyLocalDraft(savedDraft)) {
       setIsLoaded(true)
@@ -894,6 +939,8 @@ export default function Dashboard() {
       // If the connection changes or transcription is temporarily unavailable,
       // the editor still opens with the user's video instead of discarding it
       // and returning to Start Creating Captions.
+      setSourceUnavailable(false)
+      setPlaybackRange(null)
       setVideoUrl(acceptedPlayableVideoUrl);
       setFileId(uploadData.file_id);
       setOriginalFileName(selectedFileName);
@@ -1136,16 +1183,36 @@ export default function Dashboard() {
     }
   };
 
-  const handleSeek = (time) => {
+  const handleSeek = (time, preserveRange = false) => {
+    if (!preserveRange) setPlaybackRange(null)
     setCurrentTime(time);
     setSeekSignal(time);
   };
 
-  const handlePlayCaption = (caption) => {
+  const handlePlayCaption = (caption, loop = false) => {
+    setPlaybackRange({ start: Number(caption.start_time), end: Number(caption.end_time), loop })
     const startTime = Number(caption?.start_time || 0);
-    handleSeek(startTime);
+    handleSeek(startTime, true);
     setIsPlaying(true);
   };
+
+  const relinkSource = async (file) => {
+    if (!file || isRelinking) return
+    setIsRelinking(true)
+    try {
+      const token = await getEffectiveAuthToken(currentUser)
+      const uploaded = await uploadFileWithRecovery(file, { authorization: token, dedupeKey: 'relink-source' })
+      if (!uploaded.success || !uploaded.raw_url) throw new Error(uploaded.error || 'Source upload failed')
+      setFileId(uploaded.file_id)
+      setVideoUrl(resolveApiResourceUrl(uploaded.raw_url, import.meta.env.VITE_API_BASE_URL))
+      setOriginalFileName(file.name)
+      setWaveformData(null)
+      setSourceUnavailable(false)
+      setCloudSaveMessage('Source relinked. Captions and styles preserved; review synchronization before rendering.')
+    } catch (error) {
+      setCloudSaveMessage(error.message || 'Could not relink video. Your captions are unchanged.')
+    } finally { setIsRelinking(false) }
+  }
 
   const refreshVideoPlaybackUrl = useCallback(async (event) => {
     if (!fileId || mediaRefreshInFlightRef.current) return;
@@ -1180,6 +1247,7 @@ export default function Dashboard() {
       }
     } catch (error) {
       console.warn('Failed to refresh video playback URL:', error);
+      setSourceUnavailable(true)
     } finally {
       mediaRefreshInFlightRef.current = false;
     }
@@ -1214,6 +1282,18 @@ export default function Dashboard() {
 
   const updateCaptions = (newCaptions, options) => pushHistory(newCaptions, undefined, options);
   const updateCaptionStyle = (newStyle) => pushHistory(undefined, newStyle);
+  const applyReadablePreset = () => {
+    const nextCaptions = captions.map((caption) => {
+      if (caption.isTextElement) return caption
+      const next = { ...caption, animation: 'none', wordStyles: {}, position_x: 50, position_y: 70 }
+      Object.keys(next).filter((key) => key.startsWith('template_') || key === 'applied_template_style').forEach((key) => delete next[key])
+      return next
+    })
+    const nextStyle = { ...captionStyle, font_family: 'Inter', font_size: 20, font_weight: '600', text_color: '#ffffff', text_gradient: '', has_background: true, background_color: '#000000', background_opacity: 1, has_shadow: false, has_stroke: false, position_x: 50, position_y: 70, show_inactive: true, text_case: 'none', display_mode: 'sentence', line_spacing: 1.4 }
+    Object.keys(nextStyle).filter((key) => key.startsWith('template_')).forEach((key) => delete nextStyle[key])
+    pushHistory(nextCaptions, nextStyle)
+  }
+
 
   const handleWordStyleChange = (key, value) => {
     if (!wordPopup) return;
@@ -1548,8 +1628,8 @@ export default function Dashboard() {
       const tag = document.activeElement?.tagName;
       // Don't intercept if user is typing in an input/textarea/contenteditable
       if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return;
-      if (e.ctrlKey && !e.shiftKey && e.key === 'z') { e.preventDefault(); handleUndo(); }
-      if (e.ctrlKey && (e.key === 'y' || (e.shiftKey && e.key === 'Z'))) { e.preventDefault(); handleRedo(); }
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') { e.preventDefault(); handleUndo(); }
+      if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) { e.preventDefault(); handleRedo(); }
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
@@ -1665,6 +1745,7 @@ export default function Dashboard() {
           <CaptionEditor
             captions={captions}
             setCaptions={updateCaptions}
+            onApplyReadablePreset={applyReadablePreset}
             captionTracks={captionTracks}
             activeCaptionTrackId={activeCaptionTrackId}
             onSelectTrack={selectCaptionTrack}
@@ -1992,7 +2073,7 @@ export default function Dashboard() {
         onSaveClick={handleSave}
         isSaving={isSaving}
         saveSuccess={saveSuccess}
-        hasVideo={!!videoUrl}
+        hasVideo={!!videoUrl || captions.length > 0}
         onUndo={handleUndo}
         onRedo={handleRedo}
         canUndo={historyIndex >= 0}
@@ -2049,11 +2130,22 @@ export default function Dashboard() {
           )}
         </div>
       )}
+      {(sourceUnavailable || (!videoUrl && captions.length > 0)) && (
+        <div role="status" className="flex flex-wrap items-center gap-3 bg-amber-950 px-4 py-2 text-xs text-amber-100">
+          <span>Source video unavailable. Captions remain editable. Relink the original video; verify timing if you choose another version.</span>
+          <label className="cursor-pointer underline">{isRelinking ? 'Uploading source…' : 'Relink source video'}<input aria-label="Relink source video" type="file" accept="video/*" disabled={isRelinking} className="sr-only" onChange={(event) => { relinkSource(event.target.files?.[0]); event.target.value = '' }} /></label>
+        </div>
+      )}
+      {['conflict', 'local', 'storage-full'].includes(editorPreferenceSyncStatus) && currentUser && <div role="status" className="flex flex-wrap gap-3 bg-sky-950 px-4 py-2 text-xs text-sky-100">
+        <span>{editorPreferenceSyncStatus === 'conflict' ? 'Brand kits or glossary changed on another device. Browser edits are preserved. Export your kits in Layers before reloading.' : editorPreferenceSyncStatus === 'storage-full' ? 'Browser storage is unavailable. Keep this page open until account sync succeeds.' : 'Brand kit and glossary changes are waiting for account sync.'}</span>
+        <button type="button" onClick={retryPreferenceSync} className="underline">Retry sync</button>
+        <button type="button" onClick={reloadCloudPreferences} className="underline">Reload cloud preferences</button>
+      </div>}
       {/* Main content */}
       <div className="flex-1 overflow-hidden lekha-editor-shell">
         {isGenerating ? (
           renderGeneratingState()
-        ) : !videoUrl ? (
+        ) : !videoUrl && !captions.length ? (
           <div className="h-full flex items-center justify-center p-6">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -2206,9 +2298,9 @@ export default function Dashboard() {
                   >
                     Beta
                   </span>
-                  <span className="lekha-micro-label">Preview <span className="text-white">9:16</span></span>
-                  <span className="lekha-micro-label">FPS <span className="text-white">24</span></span>
-                  <span className="lekha-micro-label">Safe <span className="text-sky-200">On</span></span>
+                  <span className="lekha-micro-label">Preview <span className="text-white">{deliveryGeometry(captionStyle).aspect}</span></span>
+                  <span className="lekha-micro-label">Playback <span className="text-white">{playbackRate}×</span></span>
+                  <span className="lekha-micro-label">Guide <span className="text-sky-200">{captionStyle.show_safe_area ? 'On' : 'Off'}</span></span>
                 </div>
                 <div className="hidden sm:flex items-center gap-2">
                   <span className="lekha-glass-chip rounded-md px-3 py-1 text-[10px] font-black text-white">100%</span>
@@ -2222,9 +2314,17 @@ export default function Dashboard() {
                 style={{ paddingBottom: isVideoFullscreen || isTimelineCollapsed ? 0 : `${Math.max(72, timelineHeight - 24)}px` }}
               >
                 <div className="transition-transform duration-200">
+                  <div className="mx-auto mb-2 max-w-xl px-3">
+                    <DeliveryControls style={captionStyle} onChange={updateCaptionStyle} tracks={captionTracks} activeTrackId={activeCaptionTrackId} />
+                    <label className="mt-2 flex items-center gap-2 text-xs text-slate-300">Playback speed<select aria-label="Playback speed" value={playbackRate} onChange={(event) => setPlaybackRate(Number(event.target.value))} className="rounded bg-zinc-900 p-1">{[0.5, 0.75, 1, 1.25, 1.5].map((rate) => <option key={rate} value={rate}>{rate}×</option>)}</select></label>
+                    {playbackRange && <button type="button" onClick={() => setPlaybackRange(null)} className="text-xs text-sky-200">Stop phrase playback / loop</button>}
+                  </div>
                   <Suspense fallback={<VideoLoadingFallback />}>
                     <VideoPlayer
                       videoUrl={videoUrl}
+                      playbackRate={playbackRate}
+                      playbackRange={playbackRange}
+                      secondaryLayers={secondaryLayers}
                       currentTime={currentTime}
                       setCurrentTime={setCurrentTime}
                       seekSignal={seekSignal}
@@ -2450,8 +2550,13 @@ export default function Dashboard() {
             <ExportPanel
               open={isExportPanelOpen}
               onClose={() => setIsExportPanelOpen(false)}
-              captions={captions}
+              captions={deliveryCaptions}
               videoUrl={videoUrl}
+              subtitleCaptions={subtitleCaptions}
+              onCaptionStyleChange={updateCaptionStyle}
+              sourceUnavailable={sourceUnavailable || !videoUrl}
+              captionTracks={captionTracks}
+              activeCaptionTrackId={activeCaptionTrackId}
               captionTrackLabel={captionTracks.find((track) => track.id === activeCaptionTrackId)?.label || 'Original'}
               captionStyle={captionStyle}
               waveformData={waveformData}

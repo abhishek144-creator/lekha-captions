@@ -26,6 +26,8 @@ test.describe('authenticated customer journey', () => {
     await page.getByRole('button', { name: /Generate Captions/i }).click()
     await expect(page.locator('[data-caption-editor="true"]')).toBeVisible({ timeout: 180_000 })
 
+    await page.locator('[data-caption-card]').first().click()
+    await page.getByTitle('Edit caption').first().click()
     const firstCaption = page.locator('textarea[data-caption-id]').first()
     await firstCaption.fill('Authenticated journey correction')
     await page.keyboard.press(process.platform === 'darwin' ? 'Meta+K' : 'Control+K')
@@ -35,8 +37,9 @@ test.describe('authenticated customer journey', () => {
 
     await page.getByRole('button', { name: /^Export$/i }).click()
     await expect(page.getByRole('heading', { name: 'Export your video' })).toBeVisible()
-    await page.getByRole('button', { name: /Square/i }).click()
-    await expect(page.getByRole('button', { name: /Square/i })).toHaveAttribute('aria-pressed', 'true')
+    await page.getByRole('dialog').getByText('Frame, bilingual captions and safe area', { exact: true }).click()
+    await page.getByRole('dialog').getByRole('button', { name: /Square/i }).click()
+    await expect(page.getByRole('dialog').getByRole('button', { name: /Square/i })).toHaveAttribute('aria-pressed', 'true')
     await page.getByText(/I reviewed this language track/i).click()
     const subtitleDownloadPromise = page.waitForEvent('download')
     await page.getByRole('button', { name: /WebVTT subtitles/i }).click()
@@ -50,10 +53,26 @@ test.describe('authenticated customer journey', () => {
 
   test('test-mode checkout creates an authenticated order without charging', async ({ page }) => {
     test.skip(!paymentJourneyEnabled, 'Set PLAYWRIGHT_PAYMENT_JOURNEY=1 only against Razorpay test-mode staging.')
+    // Inspect the server-authoritative key before it ever reaches checkout.
+    // Also block capture/verification: this test only exercises order creation.
+    await page.route('**/api/verify-payment', (route) => route.abort())
+    await page.route('**/api/create-order', async (route) => {
+      const response = await route.fetch({ postData: { ...route.request().postDataJSON(), require_test_mode: true } })
+      if (!response.ok()) { await route.fulfill({ response }); throw new Error('Payment test preflight refused this environment') }
+      const payload = await response.json()
+      if (!String(payload.key_id || '').startsWith('rzp_test_')) {
+        await route.abort()
+        throw new Error('Payment journey refused non-test Razorpay credentials')
+      }
+      await route.fulfill({ response, json: payload })
+    })
     await page.addInitScript(() => {
       window.__lekhaCheckoutOptions = null
       window.Razorpay = class RazorpayStub {
-        constructor(options) { window.__lekhaCheckoutOptions = options }
+        constructor(options) {
+          if (!String(options.key || '').startsWith('rzp_test_')) throw new Error('Live checkout refused')
+          window.__lekhaCheckoutOptions = options
+        }
         on() {}
         open() { window.__lekhaCheckoutOpened = true }
       }

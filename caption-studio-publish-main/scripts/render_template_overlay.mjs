@@ -2770,7 +2770,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       const captionBoxWidth = Number(globalStyle?.box_width || 0);
 
       return \`
-        <div class="plain-caption-shell caption-line-animation-shell" data-caption-start="\${Number(caption.start_time ?? 0)}" data-caption-end="\${Number(caption.end_time ?? caption.start_time ?? 0)}" style="display:inline-block;\${captionBoxWidth > 0 ? \`width:\${scaleExportPx(captionBoxWidth)}px;\` : ''}animation:\${lineAnimation};transform-origin:center center;">
+        <div dir="auto" class="plain-caption-shell caption-line-animation-shell" data-caption-start="\${Number(caption.start_time ?? 0)}" data-caption-end="\${Number(caption.end_time ?? caption.start_time ?? 0)}" style="display:inline-block;\${captionBoxWidth > 0 ? \`width:\${scaleExportPx(captionBoxWidth)}px;\` : ''}animation:\${lineAnimation};transform-origin:center center;">
           <span class="cap-text" style="
             display:inline-block;
             \${captionBoxWidth > 0 ? 'width:100%;' : ''}
@@ -2811,7 +2811,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       const textGradient = \`color:\${custom.text_color || '#ffffff'};\`;
       const effectStyle = inlineStyleObject(getCaptionEffectInlineStyles(custom));
       return \`
-        <div class="text-element-shell" data-caption-render-index="\${renderIndex}" style="
+        <div dir="auto" class="text-element-shell" data-caption-render-index="\${renderIndex}" style="
           position:absolute;
           left:\${custom.position_x ?? 50}%;
           top:\${custom.position_y ?? 50}%;
@@ -2843,7 +2843,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
             opacity:\${custom.text_opacity ?? 1};
             transform:scale(\${custom.scale ?? 1});
             transform-origin:center center;
-            word-break:break-all;
+            word-break:normal;overflow-wrap:anywhere;
             \${custom.has_background ? \`background:\${rgbaFromHex(custom.background_color || '#000000', custom.background_opacity ?? 0.6)};padding:\${scaleExportPx(custom.background_padding ?? custom.padding ?? 8)}px;border-radius:\${scaleExportPx(custom.border_radius ?? 6)}px;\` : ''}
             \${custom.has_stroke ? \`-webkit-text-stroke:\${scaleExportPx(custom.stroke_width ?? 1)}px \${custom.stroke_color || '#000000'};\` : ''}
             \${custom.has_shadow ? \`text-shadow:\${scaleExportPx(custom.shadow_offset_x ?? 0)}px \${scaleExportPx(custom.shadow_offset_y ?? 2)}px \${scaleExportPx(custom.shadow_blur ?? 4)}px \${custom.shadow_color || '#000000'};\` : ''}

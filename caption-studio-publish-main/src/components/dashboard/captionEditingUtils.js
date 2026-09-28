@@ -92,6 +92,7 @@ export function reconcileCaptionText(caption, nextText) {
     : []
   const needsReview = hasUsableWordAlignment
     ? matches.length !== previousTokens.length || matches.length !== nextTokens.length
+      || words.some((word) => word.alignment_status === 'unaligned' || !Number.isFinite(word.start) || !Number.isFinite(word.end))
     : nextTokens.length > 0
 
   return {

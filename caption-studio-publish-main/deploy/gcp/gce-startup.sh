@@ -40,7 +40,7 @@ gcloud auth configure-docker "$registry_host" --quiet
 
 install -d -m 0750 -o 1000 -g 1000 /var/lib/lekha/scratch
 install -d -m 0750 /etc/lekha
-if [[ ! "$runtime_secret_version" =~ ^[0-9]+$ ]]; then
+if [[ ! "$runtime_secret_version" =~ ^[1-9][0-9]*$ ]]; then
   echo "runtime-secret-version must pin a numeric Secret Manager version" >&2
   exit 64
 fi
@@ -59,6 +59,12 @@ docker image inspect "$image_uri" >/dev/null 2>&1 || {
   echo "Pre-baked VM image is missing $image_uri" >&2
   exit 70
 }
+# Validate the new image/configuration pair before stopping any accepted work.
+image_release="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$image_uri")"
+docker run --rm --network none --entrypoint python3 \
+  --env-file /etc/lekha/runtime.env "$image_uri" \
+  /app/backend/runtime_preflight.py \
+  --image-release "$image_release" --secret-version "$runtime_secret_version"
 # RQ handles SIGTERM by finishing its current job. Never SIGKILL an active
 # render during a routine deployment; allow its 30-minute job timeout plus
 # cleanup before Docker's final stop deadline. Drain before restarting ClamAV.

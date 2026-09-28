@@ -21,6 +21,7 @@ export default function LayersTab({
 }) {
   const brandKitFileRef = useRef(null);
   const [brandKitMessage, setBrandKitMessage] = useState('');
+  const [brandKitName, setBrandKitName] = useState('')
   const captionLayers = captions.filter((caption) => !caption.isTextElement);
   const textLayers = captions.filter((caption) => caption.isTextElement);
   const layers = [...textLayers, ...captionLayers].sort((a, b) => (a.start_time || 0) - (b.start_time || 0));
@@ -37,7 +38,7 @@ export default function LayersTab({
     const nextIndex = brandKits.length + 1;
     const nextKit = {
       id: `brand-kit-${Date.now()}`,
-      name: `Brand Kit ${nextIndex}`,
+      name: brandKitName.trim() || `Brand Kit ${nextIndex}`,
       style: extractBrandKitStyle(captionStyle),
       updated_at: new Date().toISOString(),
     };
@@ -123,6 +124,7 @@ export default function LayersTab({
             </button>
           </div>
         </div>
+        <input aria-label="New brand kit name" value={brandKitName} onChange={(event) => setBrandKitName(event.target.value)} maxLength={60} placeholder="Name your brand kit" className="mb-3 w-full rounded border border-white/15 bg-black p-2 text-xs" />
         {brandKitMessage && <p className="mb-3 text-[10px] leading-4 text-sky-200" role="status">{brandKitMessage}</p>}
         {brandKits.length > 0 && (
           <div className="space-y-2">

@@ -15,6 +15,8 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import CaptionQualityPanel from './CaptionQualityPanel';
+import { analyzeCaptionQuality } from './captionQualityUtils'
+import { invalidateWordTimingOutsideCaption } from './captionEditingUtils'
 import {
   duplicateCaptionWithTiming,
   reconcileCaptionText,
@@ -44,6 +46,7 @@ export default function CaptionEditor({
   onSelectTrack,
   onTranslateTrack,
   captionStyle,
+  onApplyReadablePreset,
   glossaryTerms = [],
   onGlossaryChange,
   preferenceSyncStatus = 'loading',
@@ -71,8 +74,9 @@ export default function CaptionEditor({
     if (!user?.email) return;
     if (window.matchMedia('(max-width: 767px)').matches) return;
     const key = `pro_tip_shown_${user.email}`;
-    if (!localStorage.getItem(key)) {
-      localStorage.setItem(key, 'true');
+    let alreadyShown = true
+    try { alreadyShown = !!localStorage.getItem(key); localStorage.setItem(key, 'true') } catch { /* Optional tip must not block correction when storage is disabled. */ }
+    if (!alreadyShown) {
       setShowAutoTip(true);
       const timer = setTimeout(() => setShowAutoTip(false), 8000);
       return () => clearTimeout(timer);
@@ -89,6 +93,25 @@ export default function CaptionEditor({
     window.addEventListener('keydown', focusTranscriptSearch);
     return () => window.removeEventListener('keydown', focusTranscriptSearch);
   }, []);
+
+  const nextIssue = () => {
+    const issues = captions.filter((caption) => analyzeCaptionQuality([caption], captionStyle).details.length > 0)
+    if (!issues.length) { setCaptionEditMessage('No caption-specific issues found.'); return }
+    const index = issues.findIndex((caption) => caption.id === selectedCaptionId)
+    const next = issues[(index + 1) % issues.length]
+    setQuery('')
+    setSelectedCaptionId(next.id)
+    setEditingCaptionId(next.id)
+    onSeek?.(next.start_time)
+    requestAnimationFrame(() => document.querySelector(`textarea[data-caption-id="${CSS.escape(String(next.id))}"]`)?.focus())
+  }
+
+  const nudgeCaption = (caption, delta) => {
+    const shift = Math.max(-Number(caption.start_time), delta)
+    setCaptions((previous) => previous.map((item) => item.id !== caption.id ? item : invalidateWordTimingOutsideCaption({
+      ...item, start_time: Number(item.start_time) + shift, end_time: Number(item.end_time) + shift,
+    })))
+  }
 
   const updateCaption = (id, updates) => {
     // coalesce: per-keystroke text edits collapse into one undo snapshot per
@@ -337,6 +360,8 @@ export default function CaptionEditor({
 
       <details className="relative z-10 mb-4 rounded-xl border border-white/10 bg-black/20 p-3">
         <summary className="cursor-pointer list-none text-xs font-semibold text-slate-200">Caption quality review</summary>
+        <button type="button" onClick={nextIssue} className="mt-2 rounded border border-white/20 px-3 py-2 text-xs">Next issue</button>
+        <button type="button" onClick={onApplyReadablePreset} className="ml-2 mt-2 rounded border border-white/20 px-3 py-2 text-xs">Readable caption preset</button>
         <div className="mt-3"><CaptionQualityPanel captions={captions} captionStyle={captionStyle} compact /></div>
       </details>
 
@@ -346,6 +371,7 @@ export default function CaptionEditor({
           ref={searchInputRef}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
+          aria-label="Search transcript"
           placeholder="Search transcript..."
           className="w-full h-9 rounded-xl border border-white/10 bg-black/35 pl-9 pr-12 text-xs text-white placeholder:text-slate-600 outline-none focus:border-sky-300/40"
         />
@@ -398,6 +424,7 @@ export default function CaptionEditor({
           {filteredCaptions?.map((caption, index) => (
             <motion.div
               key={caption.id}
+              data-caption-card={caption.id}
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 20 }}
@@ -482,9 +509,20 @@ export default function CaptionEditor({
                           onClick={(e) => e.stopPropagation()}
                           placeholder="Enter caption text... (Press Enter for new line)"
                           data-caption-id={caption.id}
+                          aria-label="Caption text"
+                          dir="auto"
+                          onKeyDown={(event) => {
+                            if (event.altKey && ['ArrowLeft', 'ArrowRight'].includes(event.key)) {
+                              event.preventDefault()
+                              nudgeCaption(caption, event.key === 'ArrowLeft' ? -0.1 : 0.1)
+                            }
+                          }}
                         />
 
                         <div className="flex flex-wrap items-center gap-2">
+                          <button type="button" onClick={() => onPlayCaption?.(caption, true)} className="rounded border border-white/20 px-2 py-1 text-xs">Loop phrase</button>
+                          <button type="button" onClick={() => nudgeCaption(caption, -0.1)} className="rounded border border-white/20 px-2 py-1 text-xs" title="Alt + Left in caption text">Earlier 0.1s</button>
+                          <button type="button" onClick={() => nudgeCaption(caption, 0.1)} className="rounded border border-white/20 px-2 py-1 text-xs" title="Alt + Right in caption text">Later 0.1s</button>
                           <button
                             type="button"
                             onClick={() => addCaptionAnnotation(caption, 'Speaker 1:')}
@@ -514,6 +552,9 @@ export default function CaptionEditor({
                           </div>
                         )}
 
+                        {Array.isArray(caption.words) && caption.words.some((word) => Number.isFinite(word.start) && Number.isFinite(word.end)) && <div className="flex flex-wrap gap-1" aria-label="Hear measured words">
+                          {caption.words.map((word, index) => Number.isFinite(word.start) && Number.isFinite(word.end) && <button type="button" key={index} onClick={() => onPlayCaption?.({ start_time: word.start, end_time: word.end })} className="rounded border border-sky-300/20 px-2 py-1 text-xs text-sky-200" aria-label={`Hear ${word.word || word.text}`}>Hear {word.word || word.text}</button>)}
+                        </div>}
                         {/* Interactive Word Selection List */}
                         <div className="mb-3">
                           <label className="text-[10px] text-gray-500 uppercase tracking-wider mb-2 block font-medium">Select word to style</label>

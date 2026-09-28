@@ -1,3 +1,4 @@
+import { deliveryGeometry, videoFrameStyle } from './projectDelivery'
 import React, { useRef, useEffect, useLayoutEffect, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Play, Pause, Volume2, VolumeX, X, Maximize2, Minimize2, ZoomIn, ZoomOut, RotateCcw, Grid2X2, Move, RotateCw, Trash2 } from 'lucide-react';
@@ -3422,13 +3423,15 @@ const MemoizedVideo = React.memo(function MemoizedVideo({
   onLoadedMetadata,
   onMediaError,
   setIsPlaying,
+  frameStyle,
 }) {
   return (
     <video
       ref={videoRef}
       src={videoUrl}
       data-lekha-player="true"
-      className="w-full h-full object-contain"
+      className="w-full h-full"
+      style={frameStyle}
       playsInline
       preload="auto"
       disablePictureInPicture
@@ -3445,13 +3448,13 @@ const MemoizedVideo = React.memo(function MemoizedVideo({
       }}
     />
   );
-}, (prev, next) => {
-  // Only re-render when the video source changes — nothing else should touch the DOM
-  return prev.videoUrl === next.videoUrl;
 });
 
 export default function VideoPlayer({
   videoUrl,
+  playbackRate = 1,
+  playbackRange = null,
+  secondaryLayers = [],
   currentTime,
   setCurrentTime,
   seekSignal,
@@ -3477,6 +3480,26 @@ export default function VideoPlayer({
   setIsVideoFullscreen
 }) {
   const videoRef = useRef(null);
+  const frame = deliveryGeometry(captionStyle)
+  const rangeRef = useRef(playbackRange)
+  rangeRef.current = playbackRange
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.playbackRate = playbackRate
+  }, [playbackRate, videoUrl])
+  useEffect(() => {
+    if (!isPlaying || !playbackRange) return undefined
+    let animationFrame
+    const checkRange = () => {
+      const video = videoRef.current
+      if (video && video.currentTime >= playbackRange.end) {
+        if (playbackRange.loop) video.currentTime = playbackRange.start
+        else { video.pause(); setIsPlaying(false); return }
+      }
+      animationFrame = requestAnimationFrame(checkRange)
+    }
+    animationFrame = requestAnimationFrame(checkRange)
+    return () => cancelAnimationFrame(animationFrame)
+  }, [isPlaying, playbackRange, setIsPlaying])
   const [isMuted, setIsMuted] = useState(false);
   const [volume, setVolume] = useState(1);
   const [isDragging, setIsDragging] = useState(false);
@@ -3927,13 +3950,18 @@ export default function VideoPlayer({
 
   const handleTimeUpdate = useCallback(() => {
     if (videoRef.current && !isScrubbingRef.current) {
+      const range = rangeRef.current
+      if (range && videoRef.current.currentTime >= range.end) {
+        if (range.loop) videoRef.current.currentTime = range.start
+        else { videoRef.current.pause(); setIsPlaying(false) }
+      }
       setCurrentTime(videoRef.current.currentTime);
     }
-  }, [setCurrentTime]);
+  }, [setCurrentTime, setIsPlaying]);
 
   const handleLoadedMetadata = useCallback(() => {
     if (videoRef.current) {
-      setDuration(videoRef.current.duration);
+      if (Number.isFinite(videoRef.current.duration)) setDuration(videoRef.current.duration);
       if (onVideoLoadedRef.current) {
         onVideoLoadedRef.current(videoRef.current);
       }
@@ -6555,7 +6583,7 @@ export default function VideoPlayer({
           </div>
         )}
         <div
-          className={`relative inline-flex overflow-visible ${isVideoFullscreen ? 'scale-[1.02]' : ''}`}
+          className={`relative inline-flex max-w-full overflow-visible ${isVideoFullscreen ? 'scale-[1.02]' : ''}`}
           style={{ transition: 'transform 0.1s ease' }}
           onClick={(e) => {
             const target = e.target;
@@ -6576,8 +6604,11 @@ export default function VideoPlayer({
           )}
         <div
           ref={videoContainerRef}
-          className={`lekha-video-frame relative aspect-[9/16] touch-none select-none bg-black shadow-[0_35px_120px_rgba(0,0,0,0.72)] ${isVideoFullscreen ? 'h-auto max-h-[calc(100dvh-92px)]' : 'h-full max-h-[calc(100dvh-360px)] md:max-h-[calc(100dvh-296px)]'}`}
+          className={`lekha-video-frame relative touch-none select-none bg-black shadow-[0_35px_120px_rgba(0,0,0,0.72)] ${isVideoFullscreen ? 'h-auto max-h-[calc(100dvh-92px)]' : 'h-auto'}`}
             style={{
+              aspectRatio: frame.aspect.replace(':', ' / '),
+              width: `max(160px, min(540px, calc((100dvh - ${isVideoFullscreen ? 100 : 380}px) * ${frame.aspect === '9:16' ? 9 / 16 : frame.aspect === '1:1' ? 1 : 16 / 9})))`,
+              maxWidth: '100%',
               transform: `translate(${canvasOffset.x}px, ${canvasOffset.y}px) scale(${canvasScale})`,
               transformOrigin: 'center center',
               transition: isCanvasPanning ? 'none' : 'transform 0.1s ease',
@@ -6587,6 +6618,7 @@ export default function VideoPlayer({
             onClickCapture={handleCanvasWordClickCapture}
             onClick={handleVideoSurfaceClick}
           >
+          {captionStyle.show_safe_area && <div aria-label="Platform safe-area guide" className="pointer-events-none absolute z-[80] border border-dashed border-sky-200/70" style={{ left: `${frame.safeX}%`, right: `${frame.safeX}%`, top: `${frame.safeY}%`, bottom: `${frame.safeY}%` }} />}
           {showLayoutGuides && (
             <div className="pointer-events-none absolute inset-0 z-[80]">
               {[33.333, 66.666].map((pct) => (
@@ -6703,6 +6735,7 @@ export default function VideoPlayer({
             <>
               <MemoizedVideo
                 videoRef={videoRef}
+                frameStyle={videoFrameStyle(captionStyle)}
                 videoUrl={videoUrl}
                 onTimeUpdate={handleTimeUpdate}
                 onLoadedMetadata={handleLoadedMetadata}
@@ -6715,7 +6748,7 @@ export default function VideoPlayer({
                 </span>
               </div>
               <div className="absolute top-3 right-3 z-40 rounded bg-black/75 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-white">
-                9:16 - 24FPS
+                {frame.aspect}
               </div>
               {!isPlaying && (
                 <button
@@ -6734,7 +6767,7 @@ export default function VideoPlayer({
           ) : (
             <div className="w-full h-full flex items-center justify-center bg-zinc-900/50">
               <p className="text-gray-500 text-sm text-center px-4">
-                Upload a video to get started
+                {captions.length ? 'Relink source video to preview' : 'Upload a video to get started'}
               </p>
             </div>
           )}
@@ -6826,6 +6859,7 @@ export default function VideoPlayer({
               <div
                 key={caption.id}
                 ref={captionRef}
+                dir="auto"
                 data-caption-layer="true"
                 data-caption-id={caption.id}
                 className={isSidebarTemplate
@@ -7528,7 +7562,7 @@ export default function VideoPlayer({
           {detachedCaptionWordOverlays}
 
           {/* Text Elements (render above captions) */}
-          {activeTextElements.map((element) => {
+          {[...activeTextElements, ...secondaryLayers.filter((layer) => currentTime >= layer.start_time && currentTime < layer.end_time)].map((element) => {
             const style = element.customStyle || {};
             const isEditingThis = isEditing === element.id;
             const textElementMetrics = getTextElementDisplayMetrics(style);
@@ -7545,6 +7579,8 @@ export default function VideoPlayer({
             return (
               <div
                 key={element.id}
+                dir="auto"
+                inert={element.readOnly ? "" : undefined}
                 data-text-element-layer="true"
                 className={`absolute group ${draggedElementId === element.id ? 'cursor-grabbing' : 'cursor-grab'}`}
                 style={{
@@ -7655,7 +7691,8 @@ export default function VideoPlayer({
                       transform: `scale(${style.scale || 1})`,
                       padding: `${textElementMetrics.textPadY}px ${textElementMetrics.textPadX}px`,
                       whiteSpace: 'pre-wrap',
-                      wordBreak: 'break-all',
+                      wordBreak: 'normal',
+                      overflowWrap: 'anywhere',
                       minHeight: '40px',
                       ...textElementEffects,
                       ...(style.textGradient ? {
@@ -7690,7 +7727,8 @@ export default function VideoPlayer({
                       transform: `scale(${style.scale || 1})`,
                       padding: `${textElementMetrics.textPadY}px ${textElementMetrics.textPadX}px`,
                       whiteSpace: 'pre-wrap',
-                      wordBreak: 'break-all',
+                      wordBreak: 'normal',
+                      overflowWrap: 'anywhere',
                       animation: element.animation && element.animation !== 'none' ? getAnimationStyle(element.animation, element.animationSpeed) : 'none',
                       ...textElementEffects,
                       ...(style.textGradient ? {

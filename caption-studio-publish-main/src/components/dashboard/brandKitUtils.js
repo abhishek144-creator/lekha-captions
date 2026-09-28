@@ -40,6 +40,7 @@ export function extractBrandKitStyle(style = {}) {
     const value = style?.[field]
     if (value === undefined || value === null) return kitStyle
     if (!['string', 'number', 'boolean'].includes(typeof value)) return kitStyle
+    if (typeof value === 'number' && !Number.isFinite(value)) return kitStyle
     kitStyle[field] = value
     return kitStyle
   }, {})
@@ -89,6 +90,8 @@ export function parseBrandKitDocument(source) {
   if (!Array.isArray(document.brand_kits)) {
     throw new Error('This brand-kit file does not contain a brand_kits list.')
   }
+  if (document.brand_kits.length > MAX_BRAND_KITS) throw new Error('A file can contain at most eight brand kits.')
+  if (document.brand_kits.some((kit) => !kit || typeof kit !== 'object' || !kit.style || typeof kit.style !== 'object' || Array.isArray(kit.style) || Object.entries(kit.style).some(([key, value]) => BRAND_KIT_STYLE_FIELDS.includes(key) && (value === null || !['string', 'number', 'boolean'].includes(typeof value) || (typeof value === 'number' && !Number.isFinite(value)))))) throw new Error('Malformed brand-kit style.')
   const kits = document.brand_kits
     .slice(0, MAX_BRAND_KITS)
     .map(normalizeBrandKit)

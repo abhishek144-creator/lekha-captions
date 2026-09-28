@@ -12,7 +12,7 @@ const proofTags = ['100+ visual styles', 'Precise editing control', 'HD & 4K pla
 const stats = [
   { value: 'Global', label: 'Language options' },
   { value: '100+', label: 'Caption styles' },
-  { value: '120-180s', label: 'Typical turnaround' },
+  { value: 'SRT / VTT', label: 'Subtitle downloads' },
 ]
 
 const heroLanguageTransition = { duration: 0.62, ease: [0.22, 1, 0.36, 1] }

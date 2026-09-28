@@ -41,6 +41,7 @@ jobs:
           cache-dependency-path: caption-studio-publish-main/package-lock.json
       - run: npm ci
       - run: npm run release:check
+      - run: npm run test:editor:local
       - run: npm run security:audit
 
   template-static:

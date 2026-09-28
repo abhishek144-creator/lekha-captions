@@ -31,7 +31,7 @@
     "test:template-export:all-basic-scaled": "node scripts/check-template-export-parity.mjs --scope=all-basic-scaled",
     "test:template-export:all": "npm run test:template-export && npm run test:template-export:all-left && npm run test:template-export:all-right-phases && npm run test:template-export:all-basic && npm run test:template-export:all-basic-scaled",
     "test:templates:all": "npm run test:template-parity && npm run test:template-visual && npm run test:template-export:all",
-    "test:contracts": "node scripts/check-api-error-policy.mjs && node scripts/check-basic-template-catalog.mjs && node scripts/check-export-pipeline-utils.mjs && node scripts/check-lc-playback-completeness.mjs && node scripts/check-brand-kit-portability.mjs && npm run test:dragged-word-export && npm run test:cpt-editing && npm run test:pricing-defaults && npm run test:google-auth && npm run test:cross-network-upload && npm run test:release-metadata",
+    "test:contracts": "node scripts/check-api-error-policy.mjs && node scripts/check-basic-template-catalog.mjs && node scripts/check-export-pipeline-utils.mjs && node scripts/check-lc-playback-completeness.mjs && node scripts/check-brand-kit-portability.mjs && npm run test:dragged-word-export && npm run test:cpt-editing && npm run test:pricing-defaults && npm run test:google-auth && npm run test:cross-network-upload && npm run test:release-metadata && npm run test:project-delivery",
     "release:contracts": "node scripts/check-release-readiness.mjs",
     "release:check": "npm run release:contracts && npm run test:security:xss && npm run ci:frontend",
     "release:tree": "node scripts/check-clean-release-tree.mjs",
@@ -57,7 +57,9 @@
     "test:browser:authenticated": "playwright test e2e/authenticated-customer-journey.spec.js --project=chromium",
     "test:browser:large-upload": "playwright test e2e/large-upload-recovery.spec.js --project=chromium",
     "ci:frontend": "npm run test:contracts && npm run lint && npm run typecheck && npm run build:guarded",
-    "test:release-metadata": "node scripts/check-release-metadata.mjs"
+    "test:release-metadata": "node scripts/check-release-metadata.mjs",
+    "test:project-delivery": "node scripts/check-project-delivery.mjs",
+    "test:editor:local": "node scripts/check-editor-journey.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.6",

@@ -4,12 +4,17 @@ import os
 import shutil
 import subprocess
 import tempfile
-from datetime import datetime, timezone
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
+from runtime_preflight import validate_runtime
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--gcloud", default="gcloud")
 parser.add_argument("--project", required=True)
 parser.add_argument("--release", required=True)
+parser.add_argument("--build-time", required=True, help="Build timestamp from the tested release artifact")
+parser.add_argument("--signing-service-account", default="", help="Existing Terraform-managed signer identity")
 parser.add_argument("--source-version", required=True, type=int)
 parser.add_argument("--region", default="asia-south1")
 parser.add_argument("--redis-instance", default="lekha-redis-ha")
@@ -31,8 +36,8 @@ if not redis_host:
     raise SystemExit("The Standard HA Redis endpoint is unavailable")
 updates = {
     "APP_RELEASE": args.release,
-    "RELEASE_VERSION": f"gcp-staging-{args.release[:7]}",
-    "APP_BUILD_TIME": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    "RELEASE_VERSION": f"gcp-{args.release[:7]}",
+    "APP_BUILD_TIME": args.build_time,
     "RELEASE_ENVIRONMENT": "production",
     "APP_ENV": "production",
     "REDIS_URL": f"redis://{redis_host}:6379/0",
@@ -58,8 +63,12 @@ updates = {
     "TRANSCRIPTION_PROVIDER_COOLDOWN_SECONDS": "60",
     "PUBLIC_API_KEY_HOURLY_LIMIT": "1000",
 }
+if args.signing_service_account:
+    updates["GCS_SIGNING_SERVICE_ACCOUNT"] = args.signing_service_account
 lines = [line for line in raw.splitlines() if line.partition("=")[0] not in updates]
 lines.extend(f"{key}={value}" for key, value in updates.items())
+candidate = dict(line.split("=", 1) for line in lines if "=" in line and not line.lstrip().startswith("#"))
+validate_runtime(candidate, image_release=args.release, secret_version=args.source_version)
 runtime_path = ""
 try:
     with tempfile.NamedTemporaryFile(
@@ -68,7 +77,7 @@ try:
         runtime_file.write("\n".join(lines) + "\n")
         runtime_path = runtime_file.name
     result = subprocess.run(
-        base + ["add", "lekha-runtime-env", f"--data-file={runtime_path}", "--quiet"],
+        base + ["add", "lekha-runtime-env", f"--data-file={runtime_path}", "--format=value(name)", "--quiet"],
         text=True,
         capture_output=True,
     )
@@ -80,4 +89,7 @@ finally:
             os.remove(runtime_path)
         except FileNotFoundError:
             pass
-print("Runtime release settings saved as a new secret version; previous versions retained")
+new_version = result.stdout.strip().rsplit("/", 1)[-1]
+if not new_version.isdigit():
+    raise SystemExit("Secret created but its numeric version could not be read; inspect Secret Manager before rollout")
+print(f"Runtime release saved as numeric secret version {new_version}; previous versions retained")

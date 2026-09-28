@@ -1,3 +1,5 @@
+import DeliveryControls from './DeliveryControls'
+import { deliveryGeometry, videoFrameStyle } from './projectDelivery'
 import React, { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import {
@@ -5,6 +7,7 @@ import {
   SheetContent,
   SheetHeader,
   SheetTitle,
+  SheetDescription,
 } from "@/components/ui/sheet";
 import { Button } from '@/components/ui/button';
 import {
@@ -198,62 +201,15 @@ const exportQueue = {
   }
 };
 
-const ASPECT_OPTIONS = [
-  { value: '9:16', label: '9:16', detail: 'Shorts · Reels · Stories' },
-  { value: '1:1', label: '1:1', detail: 'Square posts' },
-  { value: '16:9', label: '16:9', detail: 'YouTube · landscape' },
-];
-
-function ExportFramePreview({ videoUrl, aspectRatio, showSafeArea }) {
-  const [sourceSize, setSourceSize] = useState(null);
-  useEffect(() => setSourceSize(null), [videoUrl]);
-  const sourceAspect = sourceSize?.width && sourceSize?.height
-    ? sourceSize.width / sourceSize.height
-    : 16 / 9;
-  const targetAspect = aspectRatio === '9:16' ? 9 / 16 : aspectRatio === '1:1' ? 1 : 16 / 9;
-  const cropWidth = sourceAspect > targetAspect ? (targetAspect / sourceAspect) * 100 : 100;
-  const cropHeight = sourceAspect > targetAspect ? 100 : (sourceAspect / targetAspect) * 100;
-  const cropLeft = (100 - cropWidth) / 2;
-  const cropTop = (100 - cropHeight) / 2;
-  const previewWidth = Math.min(440, 220 * sourceAspect);
-
-  return (
-    <div className="flex justify-center rounded-xl border border-white/10 bg-black/45 p-3">
-      <div className="relative overflow-hidden rounded-lg bg-[#161616]" style={{ width: `${previewWidth}px`, maxWidth: '100%', aspectRatio: `${sourceAspect}` }}>
-        {videoUrl ? (
-          <video
-            src={videoUrl}
-            muted
-            playsInline
-            preload="metadata"
-            aria-label="Video crop preview"
-            onLoadedMetadata={(event) => setSourceSize({ width: event.currentTarget.videoWidth, height: event.currentTarget.videoHeight })}
-            className="absolute inset-0 h-full w-full object-cover"
-          />
-        ) : (
-          <div className="absolute inset-0 grid place-items-center text-[10px] text-slate-500">Video preview unavailable</div>
-        )}
-        <div className="absolute inset-0 bg-black/45" />
-        {cropLeft > 0.5 && <>
-          <div className="absolute inset-y-0 left-0 bg-black/65" style={{ width: `${cropLeft}%` }} />
-          <div className="absolute inset-y-0 right-0 bg-black/65" style={{ width: `${cropLeft}%` }} />
-        </>}
-        {cropTop > 0.5 && <>
-          <div className="absolute inset-x-0 top-0 bg-black/65" style={{ height: `${cropTop}%` }} />
-          <div className="absolute inset-x-0 bottom-0 bg-black/65" style={{ height: `${cropTop}%` }} />
-        </>}
-        <div className="absolute border border-amber-300/90" style={{ left: `${cropLeft}%`, top: `${cropTop}%`, width: `${cropWidth}%`, height: `${cropHeight}%` }} />
-        {showSafeArea && (
-          <div className="absolute border border-dashed border-sky-100/70" style={{ left: `${cropLeft + cropWidth * 0.08}%`, top: `${cropTop + cropHeight * 0.1}%`, width: `${cropWidth * 0.84}%`, height: `${cropHeight * 0.8}%` }}>
-            <span className="absolute left-1 top-1 rounded bg-black/65 px-1 py-0.5 text-[8px] font-semibold uppercase tracking-wide text-sky-100">Safe area</span>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+function ExportFramePreview({ videoUrl, captionStyle }) {
+  const frame = deliveryGeometry(captionStyle)
+  return <div className="mx-auto relative w-full max-w-[240px] overflow-hidden rounded-lg bg-black" style={{ aspectRatio: frame.aspect.replace(':', ' / ') }}>
+    <video src={videoUrl || undefined} muted playsInline preload="metadata" aria-label="Video crop preview" className="absolute inset-0 h-full w-full" style={videoFrameStyle(captionStyle)} />
+    {captionStyle.show_safe_area && <div className="pointer-events-none absolute border border-dashed border-sky-200" style={{ left: `${frame.safeX}%`, right: `${frame.safeX}%`, top: `${frame.safeY}%`, bottom: `${frame.safeY}%` }} />}
+  </div>
 }
 
-export default function ExportPanel({ open, onClose, captions, captionStyle, waveformData, duration, fileId, originalFileName, videoUrl, captionTrackLabel, onUpgradeClick }) {
+export default function ExportPanel({ open, onClose, captions, captionStyle, waveformData, duration, fileId, originalFileName, videoUrl, captionTrackLabel, onUpgradeClick, onCaptionStyleChange, captionTracks = [], activeCaptionTrackId, subtitleCaptions = captions, sourceUnavailable = false }) {
   const { currentUser, userData, refreshUserData } = useAuth();
   // Use auth context directly for consistent, up-to-date auth & credit checks
   const isSignedIn = !!currentUser;
@@ -278,12 +234,12 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
   const [waitStartTime, setWaitStartTime] = useState(null);
   const [showServerBusy, setShowServerBusy] = useState(false);
   const [exportExpiry, setExportExpiry] = useState(null);
-  const [exportAspectRatio, setExportAspectRatio] = useState('9:16');
-  const [showSafeArea, setShowSafeArea] = useState(true);
+  const exportAspectRatio = deliveryGeometry(captionStyle).aspect
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
-  const [notifyWhenComplete, setNotifyWhenComplete] = useState(() => (
-    typeof window !== 'undefined' && window.localStorage?.getItem('lekha.exportCompletionNotification') === '1'
-  ));
+  const [notifyWhenComplete, setNotifyWhenComplete] = useState(() => {
+    try { return typeof window !== 'undefined' && window.localStorage?.getItem('lekha.exportCompletionNotification') === '1' }
+    catch { return false }
+  });
   const [recoverableExport, setRecoverableExport] = useState(null);
   const [activeExportJobId, setActiveExportJobId] = useState('');
   const [activeExportStatus, setActiveExportStatus] = useState('');
@@ -449,7 +405,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
   };
 
   const handleDownloadSRT = () => {
-    const srt = buildSrt(captions);
+    const srt = buildSrt(subtitleCaptions);
     if (!srt) {
       toast({ variant: 'destructive', title: 'No captions to export' });
       return;
@@ -458,7 +414,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
   };
 
   const handleDownloadVTT = () => {
-    const vtt = buildVtt(captions);
+    const vtt = buildVtt(subtitleCaptions);
     if (!vtt) {
       toast({ variant: 'destructive', title: 'No captions to export' });
       return;
@@ -467,7 +423,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
   };
 
   const handleDownloadText = () => {
-    const text = buildPlainText(captions);
+    const text = buildPlainText(subtitleCaptions);
     if (!text) {
       toast({ variant: 'destructive', title: 'No captions to export' });
       return;
@@ -698,6 +654,8 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
   };
 
   const handleExportVideo = async (quality) => {
+    if (readActiveExport(currentUser?.uid, fileId)) { await handleResumeExport(); return }
+    if (sourceUnavailable) { toast({ title: 'Relink the source video before rendering', description: 'Subtitle downloads remain available.' }); return }
     if (exportInFlightRef.current) {
       toast({
         title: 'Export already running',
@@ -1026,6 +984,9 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
           karaoke_color_2: _cs?.karaoke_color_2 || '',
           karaoke_color_3: _cs?.karaoke_color_3 || '',
           template_color_customized: templateColorCustomized,
+          frame_fit: deliveryGeometry(captionStyle).fit,
+          frame_x: deliveryGeometry(captionStyle).x,
+          frame_y: deliveryGeometry(captionStyle).y,
           export_aspect_ratio: exportAspectRatio,
           show_inactive: _cs?.show_inactive !== false,
           };
@@ -1203,7 +1164,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
             <SheetTitle className="mt-4 text-2xl font-black text-white tracking-tight">
               Export your video
             </SheetTitle>
-            <p className="text-sm text-gray-400 mt-1">Choose a render quality or download caption files for editing elsewhere.</p>
+            <SheetDescription className="text-sm text-gray-400 mt-1">Choose a render quality or download caption files for editing elsewhere.</SheetDescription>
             {captionTrackLabel && <p className="mt-2 text-xs text-sky-200/80">Using language track: {captionTrackLabel}</p>}
             {isSignedIn && hasResolvedCreditBalance && (
               <p className="mt-3 text-xs font-semibold text-emerald-300">
@@ -1327,29 +1288,8 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
               <Sparkles className="w-4 h-4 text-[#f5a623]" />
             </div>
             <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.025] p-4">
-              <div>
-                <p className="text-xs font-bold text-white">Delivery format</p>
-                <p className="mt-1 text-[11px] leading-5 text-gray-500">Choose the output frame. The preview shades the center-cropped edges.</p>
-              </div>
-              <div className="grid grid-cols-3 gap-2" role="group" aria-label="Output aspect ratio">
-                {ASPECT_OPTIONS.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    aria-pressed={exportAspectRatio === option.value}
-                    onClick={() => setExportAspectRatio(option.value)}
-                    className={`rounded-xl border px-2 py-2 text-left transition-colors ${exportAspectRatio === option.value ? 'border-[#f5a623]/55 bg-[#f5a623]/10 text-white' : 'border-white/10 bg-black/20 text-gray-400 hover:border-white/20 hover:text-white'}`}
-                  >
-                    <span className="block text-xs font-black">{option.label}</span>
-                    <span className="mt-1 block text-[9px] leading-3 text-gray-500">{option.detail}</span>
-                  </button>
-                ))}
-              </div>
-              <ExportFramePreview videoUrl={videoUrl} aspectRatio={exportAspectRatio} showSafeArea={showSafeArea} />
-              <label className="flex cursor-pointer items-center gap-2 text-[11px] text-gray-400">
-                <input type="checkbox" checked={showSafeArea} onChange={(event) => setShowSafeArea(event.target.checked)} className="accent-sky-300" />
-                Show platform safe-area guide
-              </label>
+              <DeliveryControls style={captionStyle} onChange={onCaptionStyleChange} tracks={captionTracks} activeTrackId={activeCaptionTrackId} />
+              <ExportFramePreview videoUrl={videoUrl} captionStyle={captionStyle} />
             </div>
             <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.025] p-4">
               <div>

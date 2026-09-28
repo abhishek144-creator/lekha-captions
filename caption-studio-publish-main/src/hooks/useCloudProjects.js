@@ -5,6 +5,8 @@ import { apiRequest } from '@/lib/apiClient'
 
 export function useCloudProjects({ currentUser, getAuthToken, projectId, setProjectId, onMessage }) {
   const revisionRef = useRef(0)
+  const accountRef = useRef(currentUser?.uid)
+  accountRef.current = currentUser?.uid
   const saveChainRef = useRef(Promise.resolve())
   const [cloudDraft, setCloudDraft] = useState(null)
   const [cloudProjects, setCloudProjects] = useState([])
@@ -16,6 +18,9 @@ export function useCloudProjects({ currentUser, getAuthToken, projectId, setProj
     let disposed = false
     setCloudReady(false)
     setCloudDraft(null)
+    setCloudProjects([])
+    setWorkspaces([])
+    setActiveWorkspaceId('')
     revisionRef.current = 0
     if (currentUser) {
       getAuthToken(currentUser).then(async (idToken) => {
@@ -47,8 +52,9 @@ export function useCloudProjects({ currentUser, getAuthToken, projectId, setProj
 
   const saveCloudDraft = useCallback((draft) => {
     const save = async () => {
-      if (!cloudReady || !currentUser) throw new Error('Cloud saving is unavailable. Your browser copy is still available.')
+      if (!cloudReady || !currentUser || accountRef.current !== currentUser.uid) throw new Error('Cloud saving is unavailable. Your browser copy is still available.')
       const idToken = await getAuthToken(currentUser)
+      if (accountRef.current !== currentUser.uid) throw new Error('Account changed; save cancelled.')
       const data = activeWorkspaceId
         ? await apiRequest(`/api/workspaces/${activeWorkspaceId}/projects`, {
             method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
@@ -65,6 +71,7 @@ export function useCloudProjects({ currentUser, getAuthToken, projectId, setProj
               expected_revision: revisionRef.current,
             }),
           })
+      if (accountRef.current !== currentUser.uid) return data
       revisionRef.current = data.revision
       setCloudDraft(data.draft)
       setProjectId(data.project_id || data.draft?.projectId || projectId)
@@ -197,6 +204,7 @@ export function useCloudProjects({ currentUser, getAuthToken, projectId, setProj
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ id_token: idToken, project_id: targetProjectId, name: name.trim() }),
           })
+      if (accountRef.current !== currentUser.uid) return data
       revisionRef.current = data.revision
       setCloudDraft(data.draft)
       setCloudProjects((projects) => projects.map((item) => (
@@ -235,6 +243,7 @@ export function useCloudProjects({ currentUser, getAuthToken, projectId, setProj
           body: JSON.stringify({ id_token: idToken, project_id: targetProjectId, name: name.trim() }),
         })
       }
+      if (accountRef.current !== currentUser.uid) return data
       revisionRef.current = data.revision
       setCloudDraft(data.draft)
       setProjectId(data.project_id)
