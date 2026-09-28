@@ -12,7 +12,7 @@ This report supersedes the access/deployment status in the 9 September initial a
 
 | Item | Observed value |
 |---|---|
-| Account | redacted-a7f7b06e2e0a@example.invalid |
+| Account | Recorded privately |
 | Project / number | project-0cc7c839-b9c7-4734-ad0 / 602676673096 |
 | Region / VM zone | asia-south1 / asia-south1-a |
 | GCP API | https://34-93-113-193.sslip.io |

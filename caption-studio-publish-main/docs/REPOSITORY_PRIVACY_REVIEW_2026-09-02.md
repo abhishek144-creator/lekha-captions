@@ -52,3 +52,12 @@ privacy audit reports zero current and historical findings.
 That completion condition was met on 3 September 2026. See
 `docs/REPOSITORY_PRIVACY_REWRITE_2026-09-03.md` for the redacted execution and
 verification record.
+
+## 28 September 2026 update
+
+The owner changed the GitHub repository to private. The latest cleanup removes
+a personal address that had reappeared in a staging script and deployment
+report. The current working tree has no privacy-audit findings; older commits
+still contain that address. Those commits remain available to authorized
+collaborators, and copies made while the repository was public cannot be
+retracted by changing visibility.

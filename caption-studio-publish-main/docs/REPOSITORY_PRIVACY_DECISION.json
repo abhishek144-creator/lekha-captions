@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "review_date": "2026-09-02",
+  "review_date": "2026-09-28",
   "decision_status": "approved",
   "recommended_visibility": "private",
-  "approved_visibility": "public_rewritten",
+  "approved_visibility": "private",
   "history_rewrite_authorized": true,
-  "owner_authorization_record": "User explicitly declined private visibility and instructed Codex to perform the listed public-history sanitization on 2026-09-02.",
+  "owner_authorization_record": "The owner changed the GitHub repository visibility to private on 2026-09-28. The earlier public-history rewrite was authorized on 2026-09-02.",
   "review_report": "docs/REPOSITORY_PRIVACY_REVIEW_2026-09-02.md"
 }
