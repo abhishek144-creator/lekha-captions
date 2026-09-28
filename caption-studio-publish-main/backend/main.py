@@ -5145,9 +5145,9 @@ def _reconcile_export_job(job_id: str, job: Dict[str, Any]):
     return job
 
 
-def _active_workers_for_queue(queue_name: str) -> int:
+def _active_workers_for_queue(queue_name: str) -> Optional[int]:
     if RQWorker is None or _rq_redis_client is None:
-        return 1
+        return None
     try:
         active = 0
         for worker in RQWorker.all(connection=_rq_redis_client):
@@ -5162,9 +5162,9 @@ def _active_workers_for_queue(queue_name: str) -> int:
             }
             if queue_name in normalized:
                 active += 1
-        return max(1, active)
+        return active
     except Exception:
-        return 1
+        return None
 
 
 def _export_queue_prediction(job_id: str, job: Dict[str, Any]) -> Dict[str, Any]:
@@ -5175,11 +5175,12 @@ def _export_queue_prediction(job_id: str, job: Dict[str, Any]) -> Dict[str, Any]
     if queue is None:
         return {}
     try:
+        active_workers = _active_workers_for_queue(queue_name)
         return job_queue_prediction(
             queue,
             Job,
             job_id,
-            active_workers=_active_workers_for_queue(queue_name),
+            active_workers=active_workers,
         ) or {}
     except Exception as error:
         _json_log(
@@ -5207,6 +5208,7 @@ def export_status(job_id: str, request: Request):
         "queue_position": queue_prediction.get("queue_position"),
         "jobs_ahead": queue_prediction.get("jobs_ahead"),
         "queue_depth": queue_prediction.get("queue_depth"),
+        "active_workers": queue_prediction.get("active_workers"),
         "estimated_queue_wait_seconds": queue_prediction.get("estimated_queue_wait_seconds"),
         "estimated_completion_seconds": queue_prediction.get("estimated_completion_seconds"),
         "preparation_ms": job.get("preparation_ms"),

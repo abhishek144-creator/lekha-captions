@@ -107,15 +107,17 @@ def job_queue_prediction(queue, job_class, job_id, active_workers=1, fallback_se
         except Exception:
             estimate = fallback_seconds
         estimates.append(min(3600, max(15, estimate)))
-    workers = max(1, int(active_workers or 0))
+    workers = max(0, int(active_workers or 0))
     work_ahead = sum(estimates[:-1])
     return {
         "queue_position": index + 1,
         "jobs_ahead": index,
         "queue_depth": depth,
-        "estimated_queue_wait_seconds": math.ceil(work_ahead / workers),
-        "estimated_completion_seconds": math.ceil((work_ahead + estimates[-1]) / workers),
-        "active_workers": workers,
+        # Worker startup time is unknown while a scale-to-zero pool is empty.
+        # Publishing a numeric ETA here would falsely promise immediate work.
+        "estimated_queue_wait_seconds": math.ceil(work_ahead / workers) if workers else None,
+        "estimated_completion_seconds": math.ceil((work_ahead + estimates[-1]) / workers) if workers else None,
+        "active_workers": workers if active_workers is not None else None,
     }
 
 

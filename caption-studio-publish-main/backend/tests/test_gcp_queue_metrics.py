@@ -94,6 +94,21 @@ def test_job_queue_prediction_reports_position_and_work_eta():
     }
     assert gcp_queue_metrics.job_queue_prediction(Queue(), Job, "missing") is None
 
+    # A scaled-to-zero pool has no measured startup time. Preserve position,
+    # but never promise an ETA based on a nonexistent worker.
+    cold_prediction = gcp_queue_metrics.job_queue_prediction(
+        Queue(), Job, "target", active_workers=0,
+    )
+    assert cold_prediction["queue_position"] == 2
+    assert cold_prediction["active_workers"] == 0
+    assert cold_prediction["estimated_queue_wait_seconds"] is None
+    assert cold_prediction["estimated_completion_seconds"] is None
+    unknown_prediction = gcp_queue_metrics.job_queue_prediction(
+        Queue(), Job, "target", active_workers=None,
+    )
+    assert unknown_prediction["active_workers"] is None
+    assert unknown_prediction["estimated_completion_seconds"] is None
+
 
 def test_google_request_rejects_unapproved_endpoint():
     request = urllib.request.Request("file:///tmp/metadata")
