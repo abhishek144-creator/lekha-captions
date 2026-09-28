@@ -399,6 +399,16 @@ async def request_logging_middleware(request: Request, call_next):
     finally:
         if upload_slot_uid:
             _release_process_slot(upload_slot_uid, f"upload:{rid}")
+        if not RUN_API_BACKGROUND_TASKS:
+            # Cloud Run may suspend CPU as soon as the request finishes. Flush
+            # buffered events while this request still has execution time.
+            with _telemetry_lock:
+                telemetry_pending = bool(_telemetry_buffer)
+            if telemetry_pending:
+                try:
+                    await asyncio.to_thread(_flush_telemetry)
+                except Exception as error:
+                    _json_log("warning", "request_telemetry_flush_failed", error=type(error).__name__)
     elapsed_ms = int((time.time() - start) * 1000)
     response.headers["X-Request-Id"] = rid
     _json_log(
@@ -1099,10 +1109,10 @@ async def _queue_metrics_loop():
 
 async def startup_event():
     global _telemetry_flush_task, _simple_janitor_task, _transcription_dispatch_task, _queue_metrics_task
-    _telemetry_flush_task = asyncio.create_task(_telemetry_flush_loop())
     if not RUN_API_BACKGROUND_TASKS:
         _json_log("info", "api_background_tasks_disabled")
         return
+    _telemetry_flush_task = asyncio.create_task(_telemetry_flush_loop())
     if _IS_PRODUCTION:
         _transcription_dispatch_task = asyncio.create_task(_transcription_dispatch_loop())
     if QUEUE_METRICS_ENABLED:

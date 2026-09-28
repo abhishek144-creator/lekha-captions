@@ -37,6 +37,24 @@ class ProductionBoundaryTests(unittest.TestCase):
         self.redis = fakeredis.FakeRedis(decode_responses=True)
         main._export_jobs.clear()
 
+    def test_scale_to_zero_api_runs_no_background_tasks_and_flushes_request_events(self):
+        with (patch.object(main, "RUN_API_BACKGROUND_TASKS", False),
+              patch.object(main.asyncio, "create_task") as create_task):
+            asyncio.run(main.startup_event())
+        create_task.assert_not_called()
+
+        with main._telemetry_lock:
+            main._telemetry_buffer.append(("analytics_events", {"event": "test"}))
+        try:
+            with (patch.object(main, "RUN_API_BACKGROUND_TASKS", False),
+                  patch.object(main, "_flush_telemetry", return_value=1) as flush):
+                response = TestClient(main.app).get("/api/version")
+            self.assertEqual(response.status_code, 200)
+            flush.assert_called_once()
+        finally:
+            with main._telemetry_lock:
+                main._telemetry_buffer.clear()
+
     def test_atomic_backlog_limit_under_concurrent_submissions(self):
         queue = Queue("bounded-test", connection=self.redis)
         def submit(index):
