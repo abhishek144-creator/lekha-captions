@@ -57,6 +57,7 @@ const SUPPORT_EMAIL = import.meta.env.VITE_SUPPORT_EMAIL || 'support@lekhacaptio
 const ACTIVE_EXPORT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 const formatQueueEta = (seconds) => {
+  if (seconds == null || seconds === '') return '';
   const safeSeconds = Number(seconds);
   if (!Number.isFinite(safeSeconds) || safeSeconds < 0) return '';
   if (safeSeconds < 60) return 'under a minute';
@@ -342,13 +343,14 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
         const queuePosition = Number(statusPayload?.queue_position);
         const queueDepth = Number(statusPayload?.queue_depth);
         const etaLabel = formatQueueEta(statusPayload?.estimated_completion_seconds);
+        const awaitingCapacity = statusPayload?.active_workers === 0;
         if (status === 'queued' && Number.isFinite(queuePosition) && queuePosition > 0) {
           setQueueEstimate({
             position: queuePosition,
             depth: Number.isFinite(queueDepth) && queueDepth > 0 ? queueDepth : queuePosition,
             etaLabel,
           });
-          setStatusMessage(`Queued ${queuePosition} of ${Math.max(queuePosition, queueDepth || 0)}${etaLabel ? ` · ${etaLabel}` : ''}`);
+          setStatusMessage(`Queued ${queuePosition} of ${Math.max(queuePosition, queueDepth || 0)}${awaitingCapacity ? ' · Starting render capacity' : etaLabel ? ` · ${etaLabel}` : ''}`);
         } else {
           setQueueEstimate(null);
           setStatusMessage('Preparing your export...');
