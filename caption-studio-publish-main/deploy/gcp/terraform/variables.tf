@@ -95,12 +95,12 @@ variable "render_worker_max_replicas" {
 }
 variable "api_legacy_target_size" {
   type        = number
-  description = "Preserve the serving API MIG during parallel Cloud Run canary; set to zero only after traffic cutover and job drain"
-  default     = 2
+  description = "Temporary rollback API capacity during an explicitly monitored Cloud Run canary; zero is the normal production value"
+  default     = 0
 
   validation {
-    condition     = var.api_legacy_target_size >= 0 && var.api_legacy_target_size <= 4 && floor(var.api_legacy_target_size) == var.api_legacy_target_size
-    error_message = "api_legacy_target_size must be an integer from 0 to 4."
+    condition     = var.api_legacy_target_size >= 0 && var.api_legacy_target_size <= 2 && floor(var.api_legacy_target_size) == var.api_legacy_target_size
+    error_message = "api_legacy_target_size must be an integer from 0 to 2 and should remain zero outside a monitored rollback window."
   }
 }
 variable "render_worker_min_replicas" {

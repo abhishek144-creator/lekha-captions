@@ -42,9 +42,10 @@ private Redis, a serverless NEG, least-privilege scheduler identity, and five
 OIDC-authenticated Cloud Scheduler jobs. Direct VPC egress avoids the fixed
 minimum instance cost of a Serverless VPC Access connector. The service scales
 from 0 to 4 instances, mounts the pinned runtime Secret Manager version, and
-runs with `RUN_API_BACKGROUND_TASKS=0`. The GCE API MIG defaults to its current
-two serving VMs during the parallel canary; `api_legacy_target_size` becomes
-zero only after cutover, maintenance verification, and accepted-job drain.
+runs with `RUN_API_BACKGROUND_TASKS=0`. The GCE API MIG defaults to target size
+zero so a future apply cannot recreate idle API VMs. During a monitored canary,
+`api_legacy_target_size` may be raised temporarily to at most two and must return
+to zero after routing, maintenance verification, and accepted-job drain.
 Attaching the NEG to the public load balancer remains an explicit canary/cutover
 step after staging acceptance.
 Terraform enables the Cloud Scheduler API before creating maintenance jobs and
