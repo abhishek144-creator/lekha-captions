@@ -1,6 +1,6 @@
 [
   {
-    "origin": ["https://lekhacaptions.com", "https://www.lekhacaptions.com"],
+    "origin": ["https://lekhacaptions.com", "https://www.lekhacaptions.com", "https://app.lekhacaptions.com"],
     "method": ["PUT", "DELETE", "OPTIONS"],
     "responseHeader": ["Content-Type", "Content-Range", "Range", "X-Goog-Upload-Status"],
     "maxAgeSeconds": 3600

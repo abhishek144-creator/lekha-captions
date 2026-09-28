@@ -43,6 +43,12 @@ class ApiContractTests(unittest.TestCase):
         main._detect_language_rate.clear()
         main._translate_rate.clear()
 
+    def test_payment_journey_refuses_live_mode_before_order_creation(self):
+        with patch.object(main, "RAZORPAY_KEY_ID", "rzp_live_local_fixture"), patch.object(main, "rzp_client") as provider:
+            response = self.client.post("/api/create-order", json={"id_token": "local-fixture", "plan_id": "starter", "require_test_mode": True})
+        self.assertEqual(response.status_code, 409)
+        provider.order.create.assert_not_called()
+
     def tearDown(self):
         main._export_jobs.clear()
         main._export_idempotency.clear()
@@ -420,6 +426,25 @@ class ApiContractTests(unittest.TestCase):
                 headers={"Authorization": "Bearer token-123"},
             )
         self.assertEqual(response.status_code, 413)
+
+    def test_production_proxy_upload_requires_direct_resumable_transport(self):
+        for media_bucket in ("private-media", ""):
+            with (
+                self.subTest(media_bucket=media_bucket),
+                patch.object(main, "_IS_PRODUCTION", True),
+                patch.object(main, "FIREBASE_APP_CHECK_ENFORCED", False),
+                patch.dict(main.os.environ, {"GCS_MEDIA_BUCKET": media_bucket}),
+                patch.object(main, "_authenticate_media_request", return_value={"uid": "upload-user"}) as authenticate,
+                patch.object(main, "_assert_service_available"),
+            ):
+                response = self.client.post(
+                    "/api/upload",
+                    files={"file": ("sample.mp4", io.BytesIO(b"small"), "video/mp4")},
+                    headers={"Authorization": "Bearer token-123"},
+                )
+                self.assertEqual(response.status_code, 409)
+                self.assertEqual(response.headers["x-lekha-upload-transport"], "direct-resumable")
+                authenticate.assert_not_called()
 
     @patch("main._scan_upload_for_threat", return_value=True)
     @patch("main._probe_media", return_value={"format": {"duration": 12.3}, "streams": [{"codec_type": "video"}]})

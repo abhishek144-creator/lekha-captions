@@ -27,7 +27,7 @@ const demos = [
 
 const proofPoints = [
   ['Real product', 'No mockups'],
-  ['115+ languages', 'One workflow'],
+  ['Global language choices', 'One workflow'],
   ['100+ styles', 'Ready to move'],
 ]
 

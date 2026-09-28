@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Play, Pause, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { invalidateWordTimingOutsideCaption } from './captionEditingUtils';
 
 // RESTORED COMPACT DIMENSIONS
 const TEXT_ROW_HEIGHT = 28;      // Increased from 22 for better visibility
@@ -455,7 +456,7 @@ export default function CaptionTimeline({
             const bounds = getResizeBounds(cap, prev, 'resize-left');
             newStart = Math.max(bounds.minStart, newStart);
             newStart = Math.max(0, Math.min(cap.end_time - 0.02, newStart));
-            return { ...cap, start_time: newStart };
+            return invalidateWordTimingOutsideCaption({ ...cap, start_time: newStart });
           } else if (dragType === 'resize-right') {
             let rawEnd = dragStartTime + deltaTime;
 
@@ -467,7 +468,7 @@ export default function CaptionTimeline({
             const bounds = getResizeBounds(cap, prev, 'resize-right');
             newEnd = Math.min(bounds.maxEnd, newEnd);
             newEnd = Math.max(cap.start_time + 0.02, Math.min(duration, newEnd));
-            return { ...cap, end_time: newEnd };
+            return invalidateWordTimingOutsideCaption({ ...cap, end_time: newEnd });
           }
 
           return cap;

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
+import math
 import os
 import urllib.parse
 import urllib.request
@@ -83,24 +84,85 @@ def queued_render_work_seconds(queue, job_class, fallback_seconds=120) -> int:
     return total
 
 
+def job_queue_prediction(queue, job_class, job_id, active_workers=1, fallback_seconds=120):
+    """Return a bounded queue position and ETA for one pending RQ job."""
+    depth = max(0, int(queue.count))
+    if depth <= 0:
+        return None
+    job_ids = [
+        value.decode("utf-8", "replace") if isinstance(value, bytes) else str(value)
+        for value in queue.get_job_ids(offset=0, length=min(depth, 100))
+    ]
+    target_id = str(job_id)
+    try:
+        index = job_ids.index(target_id)
+    except ValueError:
+        return None
+
+    estimates = []
+    for queued_id in job_ids[: index + 1]:
+        try:
+            queued_job = job_class.fetch(queued_id, connection=queue.connection)
+            estimate = int((queued_job.meta or {}).get("estimated_render_seconds") or fallback_seconds)
+        except Exception:
+            estimate = fallback_seconds
+        estimates.append(min(3600, max(15, estimate)))
+    workers = max(0, int(active_workers or 0))
+    work_ahead = sum(estimates[:-1])
+    return {
+        "queue_position": index + 1,
+        "jobs_ahead": index,
+        "queue_depth": depth,
+        # Worker startup time is unknown while a scale-to-zero pool is empty.
+        # Publishing a numeric ETA here would falsely promise immediate work.
+        "estimated_queue_wait_seconds": math.ceil(work_ahead / workers) if workers else None,
+        "estimated_completion_seconds": math.ceil((work_ahead + estimates[-1]) / workers) if workers else None,
+        "active_workers": workers if active_workers is not None else None,
+    }
+
+
+def render_queue_snapshot(queues, job_class, active_workers=1, fallback_seconds=120):
+    """Aggregate depth, oldest age, work, and predicted wait across queues."""
+    depth = 0
+    oldest_age = 0
+    pending_work_seconds = 0
+    for queue in queues:
+        queue_depth, queue_age = queue_snapshot(queue, job_class)
+        depth += queue_depth
+        oldest_age = max(oldest_age, queue_age)
+        pending_work_seconds += queued_render_work_seconds(
+            queue, job_class, fallback_seconds=fallback_seconds,
+        )
+    worker_count = max(1, int(active_workers or 0))
+    predicted_wait_seconds = math.ceil(pending_work_seconds / worker_count)
+    return depth, oldest_age, pending_work_seconds, predicted_wait_seconds
+
+
 def publish_queue_snapshot(
     depth: int,
     oldest_age_seconds: int,
     queue_name: str,
     worker_group: str,
     pending_work_seconds: int | None = None,
+    metric_prefix: str = "export",
+    predicted_wait_seconds: int | None = None,
 ) -> None:
     """Write one global time series for each queue signal."""
     project_id = _project_id()
     timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     labels = {"queue": queue_name, "worker_group": worker_group}
     series = []
+    safe_prefix = str(metric_prefix or "").strip().lower()
+    if safe_prefix not in {"export", "transcription"}:
+        raise ValueError("Unsupported queue metric prefix")
     measurements = [
-        ("export_queue_depth", depth),
-        ("export_oldest_job_age_seconds", oldest_age_seconds),
+        (f"{safe_prefix}_queue_depth", depth),
+        (f"{safe_prefix}_oldest_job_age_seconds", oldest_age_seconds),
     ]
     if pending_work_seconds is not None:
         measurements.append(("pending_render_work_seconds", pending_work_seconds))
+    if predicted_wait_seconds is not None:
+        measurements.append(("predicted_queue_wait_seconds", predicted_wait_seconds))
     for metric_name, value in measurements:
         series.append({
             "metric": {

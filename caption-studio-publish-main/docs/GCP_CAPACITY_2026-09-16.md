@@ -1,6 +1,25 @@
-# Google Cloud export capacity — 16 September 2026
+# Historical Google Cloud export capacity snapshot — 16 September 2026
 
-## Live configuration
+> **Superseded:** this document records the deployment that existed on 16
+> September 2026. It is retained as historical measurement evidence, not as the
+> current deployment specification. Current infrastructure is defined by
+> `deploy/gcp/terraform`; release checks enforce the production defaults.
+
+## Current architecture
+
+The current production profile uses a scale-to-zero Cloud Run API (0–4
+instances), an independent on-demand render MIG (0–3), an independent
+transcription MIG (0–2), and bounded Spot render overflow (0–1 by default).
+Queue recovery and maintenance work run through Cloud Scheduler rather than an
+always-on API process. API readiness reports service dependencies and does not
+require warm render or transcription workers.
+
+Run the controlled [ASS versus DOM benchmark](RENDERER_BENCHMARK.md) on the
+worker image for current renderer evidence. Reconcile detailed cloud billing
+against successful exports for cost evidence; the timing samples below do not
+measure current infrastructure cost.
+
+## Historical deployment configuration
 
 | Component | Configuration |
 |---|---|

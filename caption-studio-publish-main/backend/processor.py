@@ -13,8 +13,10 @@ from openai import OpenAI
 from sarvamai import SarvamAI
 try:
     from .media_commands import run_media_command
+    from .provider_health import transcription_provider_health
 except ImportError:
     from media_commands import run_media_command
+    from provider_health import transcription_provider_health
 
 TRANSCRIPTION_PROVIDER_TIMEOUT_SECONDS = max(
     15,
@@ -682,6 +684,7 @@ class VideoProcessor:
             detected_language = (target_language or "unknown").lower()
             language_confidence = 0.6
             audio_p = None
+            transcription_source = ""
 
             try:
                 with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as _tf:
@@ -749,11 +752,15 @@ class VideoProcessor:
 
             is_indian_lang = target_language.lower() in sarvam_langs
             sarvam_api_key = os.environ.get("SARVAM_API_KEY")
+            active_provider = ""
 
             try:
                 if api_error_msg is not None:
                     raise Exception(api_error_msg)
                 if is_indian_lang and sarvam_api_key:
+                    active_provider = "sarvam"
+                    if not transcription_provider_health.allow_request("sarvam"):
+                        raise RuntimeError("Sarvam circuit is open")
                     # Assuming 'file_name' and 'logger' are available or can be mocked for this context
                     # For this specific change, we'll just add the print statements.
                     # If `logger` or `file_name` are not defined, this will cause an error.
@@ -781,12 +788,22 @@ class VideoProcessor:
                         words = _extract_sarvam_words(response)
                         print(f"[Sarvam] Parsed {len(words)} words from response")
                         if words:
+                            transcription_provider_health.record_success("sarvam")
                             detected_language = target_language.lower()
                             language_confidence = 0.85
+                            transcription_source = "sarvam"
+                        else:
+                            transcription_provider_health.record_failure("sarvam")
+                            api_error_msg = "Sarvam returned no timestamped words"
                     except Exception as parse_e:
                         print(f"Failed to parse Sarvam response: {parse_e}")
+                        transcription_provider_health.record_failure("sarvam")
                         words = []
+                        api_error_msg = "Sarvam response could not be parsed"
                 else:
+                    active_provider = "openai"
+                    if not transcription_provider_health.allow_request("openai"):
+                        raise RuntimeError("OpenAI circuit is open")
                     if not self.client:
                         raise Exception("No OpenAI Client")
                     whisper_lang = whisper_lang_codes.get(target_language.lower())
@@ -820,12 +837,28 @@ class VideoProcessor:
                                     "start": float(getattr(w, 'start', 0) or 0),
                                     "end": float(getattr(w, 'end', 0) or 0),
                                 })
+                    if words:
+                        transcription_provider_health.record_success("openai")
+                        transcription_source = "whisper"
+                    else:
+                        transcription_provider_health.record_failure("openai")
+                        api_error_msg = "OpenAI returned no timestamped words"
             except Exception as api_error:
                 api_error_msg = str(api_error)
+                if active_provider:
+                    transcription_provider_health.record_failure(active_provider)
                 print(f"[Warning] Transcription provider error: {api_error}")
 
-            if not words and api_error_msg is None and self.client:
+            failover_enabled = os.environ.get("TRANSCRIPTION_PROVIDER_FAILOVER", "1").strip().lower() in {
+                "1", "true", "yes", "on"
+            }
+            sarvam_failed = bool(is_indian_lang and sarvam_api_key and api_error_msg)
+            audio_ready = bool(audio_p and os.path.exists(audio_p) and os.path.getsize(audio_p) > 0)
+            openai_available = transcription_provider_health.allow_request("openai")
+            if not words and self.client and audio_ready and openai_available and (api_error_msg is None or (sarvam_failed and failover_enabled)):
                 try:
+                    if sarvam_failed:
+                        print("[Transcribe] Sarvam failed; using configured OpenAI failover.")
                     with open(audio_p, "rb") as f:
                         transcript = self.client.audio.transcriptions.create(
                             model="whisper-1",
@@ -849,7 +882,15 @@ class VideoProcessor:
                                 "start": float(getattr(w, 'start', 0) or 0),
                                 "end": float(getattr(w, 'end', 0) or 0),
                             })
+                    if words:
+                        transcription_provider_health.record_success("openai")
+                        api_error_msg = None
+                        transcription_source = "whisper_failover" if sarvam_failed else "whisper"
+                    else:
+                        transcription_provider_health.record_failure("openai")
+                        api_error_msg = "OpenAI returned no timestamped words"
                 except Exception as fallback_error:
+                    transcription_provider_health.record_failure("openai")
                     api_error_msg = str(fallback_error)
 
             # Clean up temp file (file is now closed)
@@ -947,7 +988,9 @@ class VideoProcessor:
                 "captions": grouped_captions,
                 "detected_language": detected_language,
                 "language_confidence": round(max(0.0, min(1.0, language_confidence)), 2),
-                "transcription_source": "sarvam" if is_indian_lang and sarvam_api_key else "whisper",
+                "transcription_source": transcription_source or (
+                    "sarvam" if is_indian_lang and sarvam_api_key else "whisper"
+                ),
             }
 
         except Exception as e:
@@ -969,7 +1012,7 @@ class VideoProcessor:
             export_aspect_ratio = self._get_export_aspect_ratio(style)
             crop_filter = ""
             if export_aspect_ratio:
-                crop_filter, video_w, video_h = self._build_aspect_crop_filter(video_w, video_h, export_aspect_ratio)
+                crop_filter, video_w, video_h = self._build_aspect_crop_filter(video_w, video_h, export_aspect_ratio, style)
                 if crop_filter:
                     print(f"[Reframe] Export aspect {export_aspect_ratio}: {crop_filter} -> {video_w}x{video_h}")
             elif video_w > video_h:
@@ -1297,23 +1340,41 @@ class VideoProcessor:
         value = str(style.get('export_aspect_ratio') or '').strip()
         return value if value in {'9:16', '1:1', '16:9'} else ''
 
-    def _build_aspect_crop_filter(self, video_w, video_h, target_aspect):
+    def _build_aspect_crop_filter(self, video_w, video_h, target_aspect, style=None):
         ratios = {'9:16': 9 / 16, '1:1': 1, '16:9': 16 / 9}
-        target_ratio = ratios.get(target_aspect)
-        if not target_ratio or video_w <= 0 or video_h <= 0:
+        ratio = ratios.get(target_aspect)
+        if not ratio or video_w <= 0 or video_h <= 0:
             return "", video_w, video_h
-        current_ratio = video_w / video_h
-        if abs(current_ratio - target_ratio) < 0.01:
+        style = style or {}
+
+        def fraction(key):
+            try:
+                number = float(style.get(key, 50))
+                return max(0, min(100, number)) / 100 if math.isfinite(number) else 0.5
+            except (TypeError, ValueError):
+                return 0.5
+
+        x, y = fraction("frame_x"), fraction("frame_y")
+        even = lambda value: max(2, int(value) // 2 * 2)
+        even_up = lambda value: max(2, math.ceil(value / 2) * 2)
+        if style.get("frame_fit") == "contain":
+            # Letterbox before captions, so their positions refer to the output
+            # canvas exactly as they do in the browser preview.
+            width = max(video_w, even_up(video_h * ratio))
+            height = max(video_h, even_up(video_w / ratio))
+            if width == video_w and height == video_h:
+                return "", video_w, video_h
+            left, top = int((width - video_w) * x) // 2 * 2, int((height - video_h) * y) // 2 * 2
+            left = min(left, width - video_w)
+            top = min(top, height - video_h)
+            return f"pad={width}:{height}:{left}:{top}:color=black", width, height
+        width = min(video_w, even(video_h * ratio))
+        height = min(video_h, even(video_w / ratio))
+        left = int((video_w - width) * x) // 2 * 2
+        top = int((video_h - height) * y) // 2 * 2
+        if width == video_w and height == video_h:
             return "", video_w, video_h
-        if current_ratio > target_ratio:
-            new_w = int(video_h * target_ratio)
-            if new_w % 2 != 0:
-                new_w -= 1
-            return f"crop={new_w}:{video_h}", new_w, video_h
-        new_h = int(video_w / target_ratio)
-        if new_h % 2 != 0:
-            new_h -= 1
-        return f"crop={video_w}:{new_h}", video_w, new_h
+        return f"crop={width}:{height}:{left}:{top}", width, height
 
     def _render_dom_template_overlay(self, input_p, output_p, captions, style, video_w, video_h, crop_filter=""):
         quality = style.get('quality', '1080p')

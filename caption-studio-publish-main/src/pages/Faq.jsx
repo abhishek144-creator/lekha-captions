@@ -6,7 +6,7 @@ import SupportPageShell from '@/components/support/SupportPageShell';
 const faqs = [
   {
     q: 'What languages does Lekha Captions support?',
-    a: 'Lekha Captions supports 115+ languages worldwide — English variants, European (Spanish, Portuguese, French, German and more), Arabic and Middle Eastern, African (Kiswahili, Yorùbá, Amharic), East and Southeast Asian (Mandarin, Japanese, Korean, Bahasa, Thai, Vietnamese), and all major South Asian languages (Hindi, Marathi, Tamil, Telugu, Bengali, Gujarati, Punjabi, Kannada, Malayalam, Odia).',
+    a: 'Open the language selector during upload to see the languages currently available for transcription. Translation choices can differ from transcription choices, and availability may vary by language and provider.',
   },
   {
     q: 'What video formats are supported?',
@@ -14,7 +14,7 @@ const faqs = [
   },
   {
     q: 'How accurate are the captions?',
-    a: 'Our AI transcription achieves 90–98% accuracy for clear audio in supported languages. Background noise, multiple speakers, or heavy accents may reduce accuracy slightly.',
+    a: 'Caption quality depends on audio clarity, accents, names, specialist terms, overlapping speakers, and language mixing. Review and correct every caption before publishing; we do not publish a measured accuracy score.',
   },
   {
     q: 'Can I edit the captions after they are generated?',
@@ -26,11 +26,11 @@ const faqs = [
   },
   {
     q: 'How do I export the captioned video?',
-    a: 'Use the Export button in the editor. You can export with captions burned into the video or as a separate SRT/VTT subtitle file.',
+    a: 'Use Export to render captions into a video or download a separate SRT, WebVTT, or plain-text caption file.',
   },
   {
     q: 'Is my video data private?',
-    a: 'Yes. Uploaded videos are processed securely and are not shared with third parties. We do not train AI models on your content.',
+    a: 'Uploaded media may be processed by the service providers named in our Privacy Policy to provide storage, transcription, translation, and rendering. Lekha Captions does not train its own AI models on your content.',
   },
   {
     q: 'What is the maximum file size?',

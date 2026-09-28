@@ -5,7 +5,7 @@ import { ArrowRight, AudioLines, Check, Play, Sparkles, Wand2 } from 'lucide-rea
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 
 const stats = [
-  ['115+', 'Languages supported'],
+  ['Global', 'Language options'],
   ['100+', 'Caption styles'],
   ['120–180s', 'Shorts & Reels sweet spot'],
 ]
@@ -163,7 +163,7 @@ export default function HeroSection() {
           <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
             <div className="inline-flex items-center gap-2 rounded-full border border-[#f5a623]/25 bg-[#f5a623]/[0.07] px-3.5 py-2 text-xs font-medium text-white shadow-2xl shadow-black/20 backdrop-blur-xl sm:text-sm">
               <Sparkles className="h-3.5 w-3.5 text-[#f5a623]" />
-              115+ Languages. Built for every global audience.
+              Captions for global audiences.
             </div>
           </motion.div>
 
@@ -172,7 +172,7 @@ export default function HeroSection() {
           </motion.h1>
 
           <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.2 }} className="mt-7 max-w-2xl text-base leading-relaxed text-white/55 sm:text-lg">
-            115+ languages across the Americas, Europe, Africa, the Middle East and Asia. Professional captions at creator-friendly pricing.
+            Explore the transcription choices available across languages and writing systems. Professional captions at creator-friendly pricing.
           </motion.p>
 
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.3 }} className="mt-9 flex flex-col gap-3 sm:flex-row">

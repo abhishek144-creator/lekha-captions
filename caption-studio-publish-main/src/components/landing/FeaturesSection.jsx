@@ -2,12 +2,12 @@ import { motion } from 'framer-motion'
 import { Wand2, Type, Palette, Globe, Languages, Download, Zap } from 'lucide-react'
 
 const features = [
-  { icon: Wand2, number: '01', title: 'AI-Powered Generation', description: 'Auto-transcribe and generate punchy captions that match speech rhythm perfectly.', className: 'md:col-span-2 lg:col-span-2', accent: 'from-[#f5a623]/25 via-[#f5a623]/5 to-transparent' },
+  { icon: Wand2, number: '01', title: 'AI-Powered Generation', description: 'Auto-transcribe speech into editable, timed captions, then review the wording before you publish.', className: 'md:col-span-2 lg:col-span-2', accent: 'from-[#f5a623]/25 via-[#f5a623]/5 to-transparent' },
   { icon: Type, number: '02', title: 'Professional Typography', description: 'Premium fonts, precise sizing, and spacing controls for that polished look.', className: 'lg:row-span-2', accent: 'from-violet-500/20 via-violet-500/5 to-transparent' },
   { icon: Palette, number: '03', title: 'Custom Styling', description: 'Full control over colors, highlights, backgrounds, and positioning.', accent: 'from-rose-500/20 via-rose-500/5 to-transparent' },
-  { icon: Globe, number: '04', title: 'Every Regional Language', description: '115+ languages spanning the Americas, Europe, Africa, the Middle East, South Asia, and East Asia. Best-in-class speech AI is picked automatically for each language family.', className: 'md:col-span-2 lg:col-span-1', accent: 'from-cyan-500/15 via-cyan-500/5 to-transparent' },
-  { icon: Languages, number: '05', title: 'Multi-Language', description: 'Support for 115+ languages including English, Spanish, Arabic, Portuguese, Hindi & more.', accent: 'from-emerald-500/15 via-emerald-500/5 to-transparent' },
-  { icon: Download, number: '06', title: 'Easy Export', description: 'Download as SRT, plain text, or copy directly to your editor.', accent: 'from-blue-500/15 via-blue-500/5 to-transparent' },
+  { icon: Globe, number: '04', title: 'Language options', description: 'Browse available languages for transcription and translation. Choices and results vary by language and provider.', className: 'md:col-span-2 lg:col-span-1', accent: 'from-cyan-500/15 via-cyan-500/5 to-transparent' },
+  { icon: Languages, number: '05', title: 'Multiple language tracks', description: 'Create an additional language version while keeping your original caption track available to edit.', accent: 'from-emerald-500/15 via-emerald-500/5 to-transparent' },
+  { icon: Download, number: '06', title: 'Easy Export', description: 'Download SRT, WebVTT, or plain text, or render captions into a video.', accent: 'from-blue-500/15 via-blue-500/5 to-transparent' },
   { icon: Zap, number: '07', title: 'Built for Speed', description: 'Optimized for short-form. No bloat, no complexity.', className: 'md:col-span-2 lg:col-span-1', accent: 'from-[#f5a623]/20 via-[#f5a623]/5 to-transparent' },
 ]
 

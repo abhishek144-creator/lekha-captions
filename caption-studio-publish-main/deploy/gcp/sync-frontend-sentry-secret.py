@@ -6,13 +6,16 @@ import subprocess
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--project", required=True)
+parser.add_argument("--source-version", required=True, type=int)
 args = parser.parse_args()
+if args.source_version < 1:
+    raise SystemExit("--source-version must be a positive numeric Secret Manager version")
 gcloud = shutil.which("gcloud") or shutil.which("gcloud.cmd")
 if not gcloud:
     raise SystemExit("gcloud was not found")
 
 runtime = subprocess.check_output([
-    gcloud, "secrets", "versions", "access", "latest",
+    gcloud, "secrets", "versions", "access", str(args.source_version),
     "--secret=lekha-runtime-env", f"--project={args.project}",
 ], text=True)
 values = dict(line.split("=", 1) for line in runtime.splitlines() if "=" in line)

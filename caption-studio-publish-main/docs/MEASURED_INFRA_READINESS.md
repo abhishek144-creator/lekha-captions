@@ -31,9 +31,11 @@ establish those outcomes by itself.
 - Processed source duration is persisted and used to attach a bounded render-work
   estimate to each queued job. The queue publisher reports the sum as
   `pending_render_work_seconds`; completed observations include estimate and
-  actual render time so the model can be calibrated. This is a shadow metric:
-  the production autoscaler still uses queue depth and CPU, and count-based
-  admission remains in force until prediction error is measured on real jobs.
+  actual render time so the model can be calibrated. On the open architecture
+  branch, Terraform consumes render work and predicted wait and Redis admission
+  enforces a predicted-work ceiling. The recorded production deployment still
+  uses the older scaler, so these controls need canary measurement before
+  tuning their thresholds.
 
 ## Acceptance evidence for a top rating
 
