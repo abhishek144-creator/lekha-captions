@@ -2,157 +2,110 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiRequest } from '@/lib/apiClient'
 import { getEffectiveAuthToken } from '@/lib/devAuth'
 
-const EMPTY_PREFERENCES = { brandKits: [], glossaryTerms: [] }
-
+const empty = () => ({ brandKits: [], glossaryTerms: [], revision: 0, dirty: false })
 const storageKey = (uid) => `lekha.editorPreferences.${String(uid || 'signed-out')}.v1`
-
-function readLocalPreferences(uid) {
-  if (typeof window === 'undefined') return EMPTY_PREFERENCES
+function read(uid) {
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(storageKey(uid)) || '{}')
-    let brandKits = Array.isArray(parsed.brandKits) ? parsed.brandKits.slice(0, 8) : []
-    if (!brandKits.length && uid) {
-      const legacy = JSON.parse(window.localStorage.getItem('captionStudio.brandKits.v1') || '[]')
-      brandKits = Array.isArray(legacy) ? legacy.slice(0, 8) : []
-    }
-    return {
-      brandKits,
-      glossaryTerms: Array.isArray(parsed.glossaryTerms) ? parsed.glossaryTerms.slice(0, 100) : [],
-    }
-  } catch {
-    return EMPTY_PREFERENCES
+    const cached = { ...empty(), ...JSON.parse(localStorage.getItem(storageKey(uid)) || '{}') }
+    return { ...cached, brandKits: Array.isArray(cached.brandKits) ? cached.brandKits.slice(0, 8) : [], glossaryTerms: Array.isArray(cached.glossaryTerms) ? cached.glossaryTerms.slice(0, 100) : [] }
   }
-}
-
-function writeLocalPreferences(uid, preferences) {
-  if (typeof window === 'undefined') return
-  try {
-    window.localStorage.setItem(storageKey(uid), JSON.stringify(preferences))
-  } catch {
-    // The cloud copy remains authoritative when browser storage is unavailable.
-  }
+  catch { return empty() }
 }
 
 export function useEditorPreferences(currentUser) {
-  const [brandKits, setBrandKitsState] = useState([])
-  const [glossaryTerms, setGlossaryTermsState] = useState([])
+  const [preferences, setPreferences] = useState(empty)
   const [syncStatus, setSyncStatus] = useState('loading')
-  const preferencesRef = useRef(EMPTY_PREFERENCES)
-  const userRef = useRef(currentUser)
-  const loadGenerationRef = useRef(0)
-  const saveQueueRef = useRef(Promise.resolve())
-  const dirtyFieldsRef = useRef(new Set())
-  const saveGenerationRef = useRef(0)
+  const [reload, setReload] = useState(0)
+  const storageAvailable = useRef(true)
+  const state = useRef(empty())
+  const user = useRef(currentUser)
+  user.current = currentUser
+  const generation = useRef(0)
+  const ready = useRef(false)
+  const chain = useRef(Promise.resolve())
 
-  useEffect(() => {
-    userRef.current = currentUser
-  }, [currentUser])
-
-  const applyPreferences = useCallback((preferences, uid) => {
-    const next = {
-      brandKits: Array.isArray(preferences?.brandKits) ? preferences.brandKits.slice(0, 8) : [],
-      glossaryTerms: Array.isArray(preferences?.glossaryTerms) ? preferences.glossaryTerms.slice(0, 100) : [],
-    }
-    preferencesRef.current = next
-    setBrandKitsState(next.brandKits)
-    setGlossaryTermsState(next.glossaryTerms)
-    writeLocalPreferences(uid, next)
-    return next
+  const apply = useCallback((value, uid) => {
+    state.current = value
+    setPreferences(value)
+    try { localStorage.setItem(storageKey(uid), JSON.stringify(value)); storageAvailable.current = true }
+    catch { storageAvailable.current = false; setSyncStatus('storage-full') }
   }, [])
 
-  const persistField = useCallback(async (field, value) => {
-    const user = userRef.current
-    const uid = user?.uid
-    const next = { ...preferencesRef.current, [field]: value }
-    dirtyFieldsRef.current.add(field)
-    applyPreferences(next, uid)
-    if (!user) {
-      setSyncStatus('local')
-      return
-    }
-    setSyncStatus('saving')
-    const generation = ++saveGenerationRef.current
-    saveQueueRef.current = saveQueueRef.current.catch(() => {}).then(async () => {
+  const save = useCallback(() => {
+    const account = user.current
+    const epoch = generation.current
+    if (!account || !ready.current) return Promise.resolve()
+    chain.current = chain.current.catch(() => {}).then(async () => {
+      if (epoch !== generation.current || !ready.current || !state.current.dirty) return
+      const snapshot = state.current
+      setSyncStatus('saving')
       try {
-        const idToken = await getEffectiveAuthToken(user)
-        await apiRequest('/api/editor-preferences/save', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            id_token: idToken,
-            ...(field === 'brandKits' ? { brand_kits: value } : { glossary_terms: value }),
-          }),
+        const idToken = await getEffectiveAuthToken(account)
+        if (epoch !== generation.current) return
+        const result = await apiRequest('/api/editor-preferences/save', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id_token: idToken, expected_revision: snapshot.revision, brand_kits: snapshot.brandKits, glossary_terms: snapshot.glossaryTerms }),
         })
-        if (generation === saveGenerationRef.current) setSyncStatus('synced')
+        if (epoch !== generation.current) return
+        const stillCurrent = state.current === snapshot
+        apply({ ...state.current, revision: result.preferences.revision, dirty: !stillCurrent }, account.uid)
+        setSyncStatus(stillCurrent ? 'synced' : 'saving')
+        // An edit made while this request was in flight has a newer payload.
+        // Queue it after the successful revision update, even if no further UI
+        // action occurs to trigger another save.
+        if (!stillCurrent) queueMicrotask(() => {
+          if (epoch === generation.current && state.current.dirty) void save()
+        })
       } catch (error) {
-        console.warn('Editor preferences remain saved in this browser:', error)
-        if (generation === saveGenerationRef.current) setSyncStatus('local')
+        if (epoch !== generation.current) return
+        if (error.status === 409) ready.current = false
+        setSyncStatus(error.status === 409 ? 'conflict' : 'local')
       }
     })
-    return saveQueueRef.current
-  }, [applyPreferences])
+    return chain.current
+  }, [apply])
 
-  const setBrandKits = useCallback((valueOrUpdater) => {
-    const current = preferencesRef.current.brandKits
-    const next = typeof valueOrUpdater === 'function' ? valueOrUpdater(current) : valueOrUpdater
-    return persistField('brandKits', Array.isArray(next) ? next.slice(0, 8) : [])
-  }, [persistField])
-
-  const setGlossaryTerms = useCallback((valueOrUpdater) => {
-    const current = preferencesRef.current.glossaryTerms
-    const next = typeof valueOrUpdater === 'function' ? valueOrUpdater(current) : valueOrUpdater
-    return persistField('glossaryTerms', Array.isArray(next) ? next.slice(0, 100) : [])
-  }, [persistField])
+  const change = useCallback((field, update) => {
+    const value = typeof update === 'function' ? update(state.current[field]) : update
+    apply({ ...state.current, [field]: (Array.isArray(value) ? value : []).slice(0, field === 'brandKits' ? 8 : 100), dirty: true }, user.current?.uid)
+    if (ready.current) return save()
+  }, [apply, save])
+  const setBrandKits = useCallback((value) => change('brandKits', value), [change])
+  const setGlossaryTerms = useCallback((value) => change('glossaryTerms', value), [change])
 
   useEffect(() => {
-    const generation = ++loadGenerationRef.current
-    saveGenerationRef.current += 1
-    dirtyFieldsRef.current = new Set()
+    const epoch = ++generation.current
     const uid = currentUser?.uid
-    const local = applyPreferences(readLocalPreferences(uid), uid)
-    if (!currentUser) {
-      setSyncStatus('local')
-      return undefined
-    }
-
+    ready.current = false
+    const local = read(uid)
+    apply(local, uid)
+    if (!currentUser) { setSyncStatus('local'); return undefined }
     setSyncStatus('loading')
     Promise.resolve().then(async () => {
       const idToken = await getEffectiveAuthToken(currentUser)
       const result = await apiRequest('/api/editor-preferences/load', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id_token: idToken }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id_token: idToken }),
       })
-      if (generation !== loadGenerationRef.current) return
+      if (epoch !== generation.current) return
       const remote = result.preferences || {}
-      if (remote.exists) {
-        const current = preferencesRef.current
-        applyPreferences({
-          brandKits: dirtyFieldsRef.current.has('brandKits') ? current.brandKits : remote.brand_kits,
-          glossaryTerms: dirtyFieldsRef.current.has('glossaryTerms') ? current.glossaryTerms : remote.glossary_terms,
-        }, uid)
-      } else if (local.brandKits.length || local.glossaryTerms.length) {
-        await apiRequest('/api/editor-preferences/save', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            id_token: idToken,
-            brand_kits: local.brandKits,
-            glossary_terms: local.glossaryTerms,
-          }),
-        })
+      const revision = Number(remote.revision || 0)
+      if (state.current.dirty && state.current.revision !== revision) {
+        setSyncStatus('conflict')
+        return
       }
-      if (generation === loadGenerationRef.current) setSyncStatus('synced')
-    }).catch((error) => {
-      if (generation !== loadGenerationRef.current) return
-      console.warn('Using browser editor preferences until cloud sync recovers:', error)
-      setSyncStatus('local')
-    })
+      if (!state.current.dirty) apply({ brandKits: remote.brand_kits || [], glossaryTerms: remote.glossary_terms || [], revision, dirty: false }, uid)
+      ready.current = true
+      if (state.current.dirty) await save()
+      else setSyncStatus('synced')
+    }).catch(() => { if (epoch === generation.current) setSyncStatus('local') })
+    return () => { generation.current += 1; ready.current = false }
+  }, [currentUser, reload, apply, save])
 
-    return () => {
-      if (generation === loadGenerationRef.current) loadGenerationRef.current += 1
-    }
-  }, [applyPreferences, currentUser])
-
-  return { brandKits, setBrandKits, glossaryTerms, setGlossaryTerms, syncStatus }
+  const reloadCloudPreferences = useCallback(() => {
+    if (!window.confirm('Replace browser kits and glossary with the cloud copy? Export your browser kits first if you want to keep them.')) return
+    apply(empty(), user.current?.uid)
+    setReload((value) => value + 1)
+  }, [apply])
+  const retryPreferenceSync = useCallback(() => setReload((value) => value + 1), [])
+  return { ...preferences, setBrandKits, setGlossaryTerms, syncStatus: !storageAvailable.current && syncStatus !== 'synced' ? 'storage-full' : syncStatus, reloadCloudPreferences, retryPreferenceSync }
 }

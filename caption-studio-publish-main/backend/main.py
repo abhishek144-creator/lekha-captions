@@ -3117,7 +3117,7 @@ CACHE_DIR = os.path.join(MEDIA_SCRATCH_ROOT, "cache")
 TRANSCRIPTION_CACHE_DIR = os.path.join(CACHE_DIR, "transcriptions")
 RENDER_CACHE_DIR = os.path.join(CACHE_DIR, "renders")
 DEAD_LETTER_DIR = os.path.join(CACHE_DIR, "dead_letter")
-EXPORT_RENDERER_VERSION = "2026-09-05-font-layout-settling-v46"
+EXPORT_RENDERER_VERSION = "2026-09-27-project-framing-bilingual-v47"
 
 for d in [UPLOAD_DIR, EXPORT_DIR, FONTS_DIR, CACHE_DIR, TRANSCRIPTION_CACHE_DIR, RENDER_CACHE_DIR, DEAD_LETTER_DIR]:
     os.makedirs(d, exist_ok=True)
@@ -3182,7 +3182,7 @@ class CaptionItem(BaseModel):
 
 class ExportRequest(BaseModel):
     file_id: str = Field(min_length=36, max_length=36)
-    captions: List[CaptionItem] = Field(min_length=1, max_length=500)
+    captions: List[CaptionItem] = Field(min_length=1, max_length=1000)
     style: Dict[str, Any] = Field(default_factory=dict, max_length=250)
     # Backward-compatible input only. Browser-measured layout is intentionally
     # ignored; the worker derives layout from normalized editor state.
@@ -3200,6 +3200,8 @@ class ExportRequest(BaseModel):
         """Return a copy of style with all numeric fields clamped to safe ranges."""
         s = _strip_client_render_hints(self.style)
         _num_clamps = {
+            'frame_x':                 (0,   100),
+            'frame_y':                 (0,   100),
             'font_size':               (8,   200),
             'position_x':              (0,   100),
             'position_y':              (0,   100),
@@ -3224,6 +3226,8 @@ class ExportRequest(BaseModel):
                     s[field] = max(lo, min(hi, float(s[field])))
                 except (TypeError, ValueError):
                     del s[field]
+        if s.get('frame_fit') not in ('cover', 'contain', None):
+            s.pop('frame_fit', None)
         if s.get('quality') not in ('4k', '1080p', '720p', None):
             s.pop('quality', None)
         if s.get('export_aspect_ratio') not in ('9:16', '1:1', '16:9', '', None):
@@ -3237,6 +3241,7 @@ class BatchExportRequest(BaseModel):
     exports: List[ExportRequest] = Field(min_length=1, max_length=10)
 
 class CreateOrderRequest(BaseModel):
+    require_test_mode: bool = False
     plan_id: str = Field(min_length=1, max_length=50)
     id_token: str = Field(min_length=1, max_length=8_192)
     currency: str = Field(default="INR", pattern=r"^(?i:INR|USD)$")
@@ -6496,6 +6501,8 @@ def _apply_refund_webhook_event(
 
 @app.post("/api/create-order")
 def create_order(req: CreateOrderRequest, request: Request, response: Response):
+    if req.require_test_mode and not RAZORPAY_KEY_ID.startswith("rzp_test_"):
+        raise HTTPException(409, "Payment test refused: test-mode credentials required")
     # Verify User
     decoded_token = verify_token(req.id_token)
     if not decoded_token:

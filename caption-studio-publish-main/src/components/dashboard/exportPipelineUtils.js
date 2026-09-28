@@ -57,7 +57,7 @@ export function buildVtt(captions = []) {
     const start = toFiniteSeconds(caption.start_time)
     const requestedEnd = toFiniteSeconds(caption.end_time, start)
     const end = Math.max(start + 0.001, requestedEnd)
-    return `${formatVttTimestamp(start)} --> ${formatVttTimestamp(end)}\n${getCaptionText(caption).trim()}`
+    return `${formatVttTimestamp(start)} --> ${formatVttTimestamp(end)}\n${getCaptionText(caption).trim().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\r?\n\s*\r?\n/g, '\n')}`
   })
   return cues.length ? `WEBVTT\n\n${cues.join('\n\n')}\n` : ''
 }

@@ -1,15 +1,18 @@
-# Google Cloud staging deployment
+# Google Cloud deployment and staging history
 
-This deployment keeps the existing production traffic unchanged while a full
-Google Cloud staging release is tested. The existing Netlify frontend and
-Railway backend remain available until the final DNS cutover is signed off.
+This file contains the original 8 September staging snapshot below. It is not
+a current resource inventory or a cutover instruction. The last recorded public
+release identity is in `../../docs/GCP_PRODUCTION_RELEASE_2026-09-24.md`;
+`terraform/README.md` describes the newer, parallel Cloud Run API candidate.
+Confirm live inventory, the saved Terraform plan, and the public release
+endpoints before changing traffic or capacity.
 
-Current staging endpoints:
+Historical staging endpoints (verified 8 September 2026):
 
 - Frontend/editor: `https://lekha-frontend-staging-602676673096.asia-south1.run.app`
 - API: `https://34-93-113-193.sslip.io`
 
-Deployed snapshot (verified 2026-09-08):
+Historical deployed snapshot (verified 2026-09-08):
 
 - Project: `project-0cc7c839-b9c7-4734-ad0`
 - Frontend revision: `lekha-frontend-staging-00002-ljq` (100% traffic)
@@ -23,15 +26,13 @@ Deployed snapshot (verified 2026-09-08):
   opened after a two-minute outage
 - Public ingress: HTTPS/HTTP only; the temporary TCP 8000 rule is disabled
 
-Automated verification passed for frontend contracts, lint, TypeScript,
+At that date, automated verification passed for frontend contracts, lint, TypeScript,
 production build/performance budgets, public DNS, API liveness/readiness/version,
-service status, browser rendering, CORS, Redis, and RQ worker startup. A real
-authenticated media export and Razorpay transaction remain explicit cutover
-gates because they require a disposable Firebase user/App Check session and
-test-mode payment credentials. Keep production DNS on Netlify/Railway until
-those owner acceptance checks pass.
+service status, browser rendering, CORS, Redis, and RQ worker startup. Later
+release and journey evidence is recorded in `../../docs/`; do not reuse this
+old snapshot as proof of the current deployed SHA, capacity, or payment mode.
 
-## Target shape
+## Candidate target shape (not a statement of live traffic routing)
 
 ```text
 Firebase Hosting -> HTTPS load balancer -> Cloud Run API -> Memorystore Redis
@@ -40,15 +41,13 @@ Firebase Hosting -> HTTPS load balancer -> Cloud Run API -> Memorystore Redis
                                               +-> Firebase Auth / Firestore / Storage
 ```
 
-The API and worker use the same Docker image. Each Compute Engine VM has an
-attached disk for disposable render scratch, plus a local private ClamAV
-container. Firebase Storage remains the durable location for uploads and
-exports; the VM disk must never be treated as durable media storage.
-
-Cloud Run is not used for rendering because the API
-accepts 500 MiB HTTP/1 uploads and the renderer needs substantial FFmpeg and
-Chromium scratch space. The static frontend is deployed to Firebase Hosting;
-Cloud Run serves only the API candidate.
+The API and workers use separate role images in the newer Terraform candidate.
+Compute Engine render VMs retain disposable scratch and an isolated ClamAV
+container. Firebase Storage is the durable location for uploads and exports.
+Production browser uploads use direct resumable storage sessions; the large
+proxy upload is a local-development fallback. Cloud Run is an API candidate,
+not the render worker. Firebase Hosting is configured for the static frontend;
+verify which frontend serves public traffic before changing DNS.
 
 Render admission is bounded atomically across the fast, normal, heavy, and
 optional GPU queues by both job count and predicted work-seconds. Cloud

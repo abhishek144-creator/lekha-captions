@@ -1012,7 +1012,7 @@ class VideoProcessor:
             export_aspect_ratio = self._get_export_aspect_ratio(style)
             crop_filter = ""
             if export_aspect_ratio:
-                crop_filter, video_w, video_h = self._build_aspect_crop_filter(video_w, video_h, export_aspect_ratio)
+                crop_filter, video_w, video_h = self._build_aspect_crop_filter(video_w, video_h, export_aspect_ratio, style)
                 if crop_filter:
                     print(f"[Reframe] Export aspect {export_aspect_ratio}: {crop_filter} -> {video_w}x{video_h}")
             elif video_w > video_h:
@@ -1340,23 +1340,41 @@ class VideoProcessor:
         value = str(style.get('export_aspect_ratio') or '').strip()
         return value if value in {'9:16', '1:1', '16:9'} else ''
 
-    def _build_aspect_crop_filter(self, video_w, video_h, target_aspect):
+    def _build_aspect_crop_filter(self, video_w, video_h, target_aspect, style=None):
         ratios = {'9:16': 9 / 16, '1:1': 1, '16:9': 16 / 9}
-        target_ratio = ratios.get(target_aspect)
-        if not target_ratio or video_w <= 0 or video_h <= 0:
+        ratio = ratios.get(target_aspect)
+        if not ratio or video_w <= 0 or video_h <= 0:
             return "", video_w, video_h
-        current_ratio = video_w / video_h
-        if abs(current_ratio - target_ratio) < 0.01:
+        style = style or {}
+
+        def fraction(key):
+            try:
+                number = float(style.get(key, 50))
+                return max(0, min(100, number)) / 100 if math.isfinite(number) else 0.5
+            except (TypeError, ValueError):
+                return 0.5
+
+        x, y = fraction("frame_x"), fraction("frame_y")
+        even = lambda value: max(2, int(value) // 2 * 2)
+        even_up = lambda value: max(2, math.ceil(value / 2) * 2)
+        if style.get("frame_fit") == "contain":
+            # Letterbox before captions, so their positions refer to the output
+            # canvas exactly as they do in the browser preview.
+            width = max(video_w, even_up(video_h * ratio))
+            height = max(video_h, even_up(video_w / ratio))
+            if width == video_w and height == video_h:
+                return "", video_w, video_h
+            left, top = int((width - video_w) * x) // 2 * 2, int((height - video_h) * y) // 2 * 2
+            left = min(left, width - video_w)
+            top = min(top, height - video_h)
+            return f"pad={width}:{height}:{left}:{top}:color=black", width, height
+        width = min(video_w, even(video_h * ratio))
+        height = min(video_h, even(video_w / ratio))
+        left = int((video_w - width) * x) // 2 * 2
+        top = int((video_h - height) * y) // 2 * 2
+        if width == video_w and height == video_h:
             return "", video_w, video_h
-        if current_ratio > target_ratio:
-            new_w = int(video_h * target_ratio)
-            if new_w % 2 != 0:
-                new_w -= 1
-            return f"crop={new_w}:{video_h}", new_w, video_h
-        new_h = int(video_w / target_ratio)
-        if new_h % 2 != 0:
-            new_h -= 1
-        return f"crop={video_w}:{new_h}", video_w, new_h
+        return f"crop={width}:{height}:{left}:{top}", width, height
 
     def _render_dom_template_overlay(self, input_p, output_p, captions, style, video_w, video_h, crop_filter=""):
         quality = style.get('quality', '1080p')

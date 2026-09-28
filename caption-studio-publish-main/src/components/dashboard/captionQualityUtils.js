@@ -1,3 +1,7 @@
+const characterCount = (text) => typeof Intl.Segmenter === 'function'
+  ? [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text)].length
+  : [...text].length
+
 const captionText = (caption) => String(caption?.text || '').trim()
 
 const parseHexColor = (value) => {
@@ -30,7 +34,7 @@ export function analyzeCaptionQuality(captions = [], captionStyle = {}) {
       || left.index - right.index
     ))
 
-  const counts = { uncertain: 0, timing: 0, reading: 0, safeArea: 0, contrast: 0 }
+  const counts = { uncertain: 0, timing: 0, reading: 0, lineLength: 0, safeArea: 0, contrast: 0 }
   const details = []
 
   timed.forEach(({ caption }, index) => {
@@ -44,7 +48,9 @@ export function analyzeCaptionQuality(captions = [], captionStyle = {}) {
       counts.uncertain += 1
     }
 
-    if (seconds > 0 && text.length / seconds > 22) counts.reading += 1
+    if (seconds > 0 && characterCount(text) / seconds > 22) counts.reading += 1
+    if (text.split(/\r?\n/).some((line) => characterCount(line) > 42)) counts.lineLength += 1
+    if (seconds <= 0 || !Number.isFinite(Number(caption.start_time)) || !Number.isFinite(Number(caption.end_time))) counts.timing += 1
 
     if (index > 0) {
       const previous = timed[index - 1].caption
@@ -90,6 +96,7 @@ export function analyzeCaptionQuality(captions = [], captionStyle = {}) {
     title: 'Dense reading speed',
     detail: `${counts.reading} caption${counts.reading === 1 ? '' : 's'} contain more than about 22 characters per second. Review these against the video.`,
   })
+  if (counts.lineLength) details.push({ key: 'line-length', title: 'Long lines', detail: `${counts.lineLength} captions exceed 42 visible characters on a line. Add a line break and check script-aware wrapping in the preview.` })
   if (counts.safeArea) details.push({
     key: 'safe-area',
     title: 'Check the platform safe area',

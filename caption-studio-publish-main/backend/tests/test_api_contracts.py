@@ -43,6 +43,12 @@ class ApiContractTests(unittest.TestCase):
         main._detect_language_rate.clear()
         main._translate_rate.clear()
 
+    def test_payment_journey_refuses_live_mode_before_order_creation(self):
+        with patch.object(main, "RAZORPAY_KEY_ID", "rzp_live_local_fixture"), patch.object(main, "rzp_client") as provider:
+            response = self.client.post("/api/create-order", json={"id_token": "local-fixture", "plan_id": "starter", "require_test_mode": True})
+        self.assertEqual(response.status_code, 409)
+        provider.order.create.assert_not_called()
+
     def tearDown(self):
         main._export_jobs.clear()
         main._export_idempotency.clear()

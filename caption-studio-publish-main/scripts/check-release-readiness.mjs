@@ -311,12 +311,16 @@ assertIncludes("upload scan-state transitions live in a service", uploadSecurity
 
 const publicClaims = [
   readText("src/pages/Faq.jsx"),
+  readText("src/components/landing2/HeroCinematic.jsx"),
+  readText("src/components/landing2/landingContent.js"),
+  readText("landing-next/app/page.js"),
   readText("src/components/landing/FeaturesSection.jsx"),
   readText("src/components/landing/LanguageReachSection.jsx"),
   readText("src/components/dashboard/UploadModal.jsx"),
   readText("landing-next/lib/faq.js"),
   readText("landing-next/lib/site.js"),
 ].join("\n")
+assertExcludes("public claims omit unmeasured turnaround promises", publicClaims, "Typical turnaround")
 assertExcludes("public claims omit an unmeasured accuracy percentage", publicClaims, "90–98%")
 assertExcludes("public claims omit an unsupported universal language count", publicClaims, "115+")
 assertExcludes("public claims do not promise exact-millisecond caption timing", publicClaims, "exact millisecond")

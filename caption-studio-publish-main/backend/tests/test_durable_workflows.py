@@ -342,6 +342,16 @@ class DurableWorkflowTests(unittest.TestCase):
         self.assertEqual(read_editor_preferences(self.db, "a")["glossary_terms"][0]["replacement"], "लेखा")
         self.assertFalse(read_editor_preferences(self.db, "b")["exists"])
 
+    def test_preference_revision_conflict_preserves_newer_device(self):
+        saved = save_editor_preferences(self.db, "a", {"brand_kits": []})
+        self.assertEqual(saved["revision"], 1)
+        with self.assertRaises(HTTPException) as conflict:
+            save_editor_preferences(self.db, "a", {"glossary_terms": []}, expected_revision=0)
+        self.assertEqual(conflict.exception.status_code, 409)
+        self.assertEqual(read_editor_preferences(self.db, "a")["revision"], 1)
+        updated = save_editor_preferences(self.db, "a", {"glossary_terms": []}, expected_revision=1)
+        self.assertEqual(updated["revision"], 2)
+
     def test_editor_preferences_are_bounded_and_require_an_active_account(self):
         with self.assertRaises(HTTPException):
             normalize_brand_kits([{"id": str(index), "style": {"text_color": "#ffffff"}} for index in range(9)])

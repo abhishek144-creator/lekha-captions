@@ -81,17 +81,18 @@ def normalize_glossary_terms(value: Any) -> List[Dict[str, Any]]:
 def read_editor_preferences(db, uid: str) -> Dict[str, Any]:
     snapshot = db.collection("users").document(uid).collection("preferences").document("editor").get()
     if not snapshot.exists:
-        return {"brand_kits": [], "glossary_terms": [], "updated_at": "", "exists": False}
+        return {"brand_kits": [], "glossary_terms": [], "updated_at": "", "exists": False, "revision": 0}
     data = snapshot.to_dict() or {}
     return {
         "brand_kits": normalize_brand_kits(data.get("brand_kits") or []),
         "glossary_terms": normalize_glossary_terms(data.get("glossary_terms") or []),
         "updated_at": str(data.get("updated_at") or ""),
         "exists": True,
+        "revision": int(data.get("revision") or 0),
     }
 
 
-def save_editor_preferences(db, uid: str, patch: Dict[str, Any]) -> Dict[str, Any]:
+def save_editor_preferences(db, uid: str, patch: Dict[str, Any], expected_revision=0) -> Dict[str, Any]:
     user_ref = db.collection("users").document(uid)
     preference_ref = user_ref.collection("preferences").document("editor")
     deletion_ref = db.collection("account_deletions").document(uid)
@@ -104,6 +105,10 @@ def save_editor_preferences(db, uid: str, patch: Dict[str, Any]) -> Dict[str, An
             raise HTTPException(409, "Account is unavailable")
         snapshot = preference_ref.get(transaction=transaction)
         current = snapshot.to_dict() if snapshot.exists else {}
+        revision = int(current.get("revision") or 0)
+        if revision != expected_revision:
+            raise HTTPException(409, "Preferences changed on another device. Export your local kits before reloading the cloud copy.")
+        current["revision"] = revision + 1
         if "brand_kits" in patch:
             current["brand_kits"] = normalize_brand_kits(patch["brand_kits"])
         if "glossary_terms" in patch:
@@ -118,6 +123,7 @@ def save_editor_preferences(db, uid: str, patch: Dict[str, Any]) -> Dict[str, An
 
 class EditorPreferencesRequest(BaseModel):
     id_token: str = Field(default="", max_length=8192)
+    expected_revision: int = Field(default=0, ge=0)
     brand_kits: Optional[List[Dict[str, Any]]] = None
     glossary_terms: Optional[List[Dict[str, Any]]] = None
 
@@ -147,6 +153,6 @@ def create_editor_preferences_router(authenticate, get_database):
             patch["glossary_terms"] = req.glossary_terms
         if not patch:
             raise HTTPException(422, "No editor preferences supplied")
-        return {"success": True, "preferences": save_editor_preferences(db, uid, patch)}
+        return {"success": True, "preferences": save_editor_preferences(db, uid, patch, req.expected_revision)}
 
     return router
