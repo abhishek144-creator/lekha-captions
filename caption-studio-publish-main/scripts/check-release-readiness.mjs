@@ -311,6 +311,7 @@ assertIncludes("upload scan-state transitions live in a service", uploadSecurity
 
 const publicClaims = [
   readText("src/pages/Faq.jsx"),
+  readText("index.html"),
   readText("src/components/landing2/HeroCinematic.jsx"),
   readText("src/components/landing2/landingContent.js"),
   readText("landing-next/app/page.js"),
