@@ -19,6 +19,7 @@ try:
     from .release_metadata import release_metadata
     from .gcp_scale_in import ScaleInProtector
     from .gcp_queue_metrics import publish_worker_cold_start
+    from .redis_config import connect_redis
     from .worker_launcher import WorkerLease
 except ImportError:  # Direct execution from backend/ remains supported.
     from main import (
@@ -31,6 +32,7 @@ except ImportError:  # Direct execution from backend/ remains supported.
     from release_metadata import release_metadata
     from gcp_scale_in import ScaleInProtector
     from gcp_queue_metrics import publish_worker_cold_start
+    from redis_config import connect_redis
     from worker_launcher import WorkerLease
 
 
@@ -171,7 +173,7 @@ def run_on_demand_worker(conn):
 def run_worker():
     if not REDIS_URL:
         raise RuntimeError("REDIS_URL is required for worker mode.")
-    conn = redis.Redis.from_url(REDIS_URL, socket_connect_timeout=5)
+    conn = connect_redis(REDIS_URL)
     conn.ping()
     if WORKER_IDLE_EXIT_SECONDS > 0:
         try:
@@ -179,7 +181,7 @@ def run_worker():
         finally:
             conn.close()
         return
-    health_conn = redis.Redis.from_url(REDIS_URL, socket_connect_timeout=5, socket_timeout=5)
+    health_conn = connect_redis(REDIS_URL, socket_timeout=5)
     server = _start_readiness_server(health_conn)
     cleanup_stop = threading.Event()
     cleanup_thread = threading.Thread(
