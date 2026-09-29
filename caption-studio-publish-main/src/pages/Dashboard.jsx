@@ -1,6 +1,6 @@
-import React, { Suspense, useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { Suspense, useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Upload, Sparkles, Captions, Clock3, Layers, Layout, SlidersHorizontal, Type, Check, Trash2 } from 'lucide-react';
+import { Upload, Sparkles, Captions, Clock3, Layers, Layout, SlidersHorizontal, Type, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -15,8 +15,6 @@ import { buildEmotionalCaptionPlan, EMOTIONAL_TEMPLATE_TIMING } from '@/componen
 import { recordRecentTemplate } from '@/components/dashboard/templateBrowserUtils';
 import { apiRequest } from '@/lib/apiClient';
 import { notifyApiError } from '@/lib/notifyApiError';
-import DeliveryControls from '@/components/dashboard/DeliveryControls'
-import { bilingualLayers, bilingualSubtitles, deliveryGeometry } from '@/components/dashboard/projectDelivery'
 import { getClientContext, trackAnalytics } from '@/lib/analytics';
 import { getEffectiveAuthToken } from '@/lib/devAuth';
 import { resolveApiResourceUrl } from '@/components/dashboard/exportPipelineUtils';
@@ -276,7 +274,6 @@ export default function Dashboard() {
   const [exportPanelMounted, setExportPanelMounted] = useState(false);
   const [isPlanExpiredModalOpen, setIsPlanExpiredModalOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [mediaUploadProgress, setMediaUploadProgress] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationStartedAt, setGenerationStartedAt] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -320,8 +317,6 @@ export default function Dashboard() {
   const {
     brandKits,
     setBrandKits,
-    glossaryTerms,
-    setGlossaryTerms,
     syncStatus: editorPreferenceSyncStatus,
     reloadCloudPreferences, retryPreferenceSync,
   } = useEditorPreferences(currentUser)
@@ -391,62 +386,18 @@ export default function Dashboard() {
   const mediaRefreshInFlightRef = useRef(false);
   const [cloudSaveMessage, setCloudSaveMessage] = useState('')
   const [localRecoveryDraft, setLocalRecoveryDraft] = useState(null)
-  const {
-    cloudDraft, cloudProjects, cloudReady, saveCloudDraft, selectCloudProject,
-    deleteCloudProject, renameCloudProject, duplicateCloudProject,
-    workspaces, activeWorkspaceId, switchProjectScope,
-  } = useCloudProjects({
+  const { cloudReady, saveCloudDraft } = useCloudProjects({
     currentUser,
     getAuthToken: getEffectiveAuthToken,
     projectId,
     setProjectId,
     onMessage: setCloudSaveMessage,
   })
-  const handleDeleteCloudProject = useCallback(async () => {
-    const selectedId = cloudDraft?.projectId || projectId
-    if (!selectedId) return
-    const selected = cloudProjects.find((item) => item.project_id === selectedId)
-    const name = selected?.name || 'this project'
-    if (!window.confirm(`Delete ${name}? This removes its saved revisions from your account.`)) return
-    await deleteCloudProject(selectedId)
-  }, [cloudDraft?.projectId, cloudProjects, deleteCloudProject, projectId])
-  const [projectSearch, setProjectSearch] = useState('')
-  const [projectSort, setProjectSort] = useState('recent')
-  const [projectNameInput, setProjectNameInput] = useState('')
-  const selectedCloudProjectId = cloudDraft?.projectId || projectId || ''
-  const visibleCloudProjects = useMemo(() => {
-    const query = projectSearch.trim().toLowerCase()
-    const projects = cloudProjects.filter((item) => !query || String(item.name || '').toLowerCase().includes(query))
-    return [...projects].sort((left, right) => {
-      if (projectSort === 'name') return String(left.name || '').localeCompare(String(right.name || ''))
-      return String(right.saved_at || '').localeCompare(String(left.saved_at || ''))
-    })
-  }, [cloudProjects, projectSearch, projectSort])
-  useEffect(() => {
-    const selected = cloudProjects.find((item) => item.project_id === selectedCloudProjectId)
-    setProjectNameInput(selected?.name || '')
-  }, [cloudProjects, selectedCloudProjectId])
-  const handleRenameCloudProject = useCallback(async () => {
-    if (!selectedCloudProjectId || !projectNameInput.trim()) return
-    await renameCloudProject(selectedCloudProjectId, projectNameInput)
-  }, [projectNameInput, renameCloudProject, selectedCloudProjectId])
-  const handleDuplicateCloudProject = useCallback(async () => {
-    if (!selectedCloudProjectId) return
-    await duplicateCloudProject(selectedCloudProjectId)
-  }, [duplicateCloudProject, selectedCloudProjectId])
   const [showCaptionRetryNotice, setShowCaptionRetryNotice] = useState(false)
   const [showLowCreditNotice, setShowLowCreditNotice] = useState(false)
   const [translationNotice, setTranslationNotice] = useState('')
   const [sourceUnavailable, setSourceUnavailable] = useState(false)
   const [isRelinking, setIsRelinking] = useState(false)
-  const [playbackRate, setPlaybackRate] = useState(1)
-  const [playbackRange, setPlaybackRange] = useState(null)
-  const secondaryLayers = useMemo(() => bilingualLayers(captionTracks, activeCaptionTrackId, captionStyle).map((layer) => ({ ...layer, customStyle: { ...layer.customStyle, fontFamily: resolveScriptFont(layer.customStyle.fontFamily, layer.text) } })), [captionTracks, activeCaptionTrackId, captionStyle])
-  useEffect(() => {
-    [...new Set(secondaryLayers.map((layer) => layer.customStyle.fontFamily))].forEach((font) => loadGoogleFont(font).catch(() => {}))
-  }, [secondaryLayers])
-  const deliveryCaptions = useMemo(() => [...captions, ...secondaryLayers], [captions, secondaryLayers])
-  const subtitleCaptions = useMemo(() => bilingualSubtitles(captions, secondaryLayers), [captions, secondaryLayers])
 
   useEffect(() => {
     if (!cloudSaveMessage) return undefined
@@ -508,67 +459,6 @@ export default function Dashboard() {
     setRedoStack([])
   }
 
-  const handleAddTranslationTrack = async (language) => {
-    const targetLanguage = String(language || '').trim()
-    if (!targetLanguage) throw new Error('Enter a language name first.')
-    if (captionTracks.length >= 20) throw new Error('This project already has the maximum of 20 language tracks.')
-    const sourceTrack = captionTracks.find((track) => track.id === 'source') || captionTracks[0]
-    if (!sourceTrack?.captions?.length) throw new Error('The original caption track is not available.')
-    const existing = captionTracks.find((track) => String(track.language || '').toLowerCase() === targetLanguage.toLowerCase())
-    if (existing) {
-      setTranslationNotice('')
-      selectCaptionTrack(existing.id)
-      return existing
-    }
-
-    const idToken = await getEffectiveAuthToken(currentUser)
-    const result = await apiRequest('/api/translate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        captions: sourceTrack.captions.filter((caption) => !caption.isTextElement),
-        target_language: targetLanguage,
-        id_token: idToken || '',
-      }),
-      dedupeKey: `translate-track-${targetLanguage.toLowerCase()}`,
-      cancelPrevious: true,
-    })
-    if (!result.success || !Array.isArray(result.captions)) {
-      throw new Error(result.error || `Could not translate captions to ${targetLanguage}.`)
-    }
-
-    const translated = new Map(result.captions.map((caption) => [caption.id, caption.text]))
-    const translatedCaptions = sourceTrack.captions.map((caption) => ({
-      ...caption,
-      text: translated.get(caption.id) || caption.text,
-      words: [],
-      wordStyles: {},
-      imp_word_index: -1, imp_word_indices: [],
-      word_alignment_status: 'segment',
-      word_alignment_note: 'Translation uses segment timing; word timing is not measured.',
-    }))
-    const slug = targetLanguage.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 72) || 'language'
-    let trackId = `translation-${slug}`
-    if (captionTracks.some((track) => track.id === trackId)) trackId = `${trackId}-${Date.now().toString(36)}`
-    const nextTrack = {
-      id: trackId,
-      language: targetLanguage,
-      label: `${targetLanguage} · translated`,
-      captions: translatedCaptions,
-    }
-    setCaptionTracks((tracks) => [...tracks, nextTrack])
-    setActiveCaptionTrackId(trackId)
-    setCaptions(translatedCaptions)
-    setTranslationNotice('')
-    setSelectedCaptionId(null)
-    setWordPopup(null)
-    setHistory([])
-    setHistoryIndex(-1)
-    setRedoStack([])
-    trackAnalytics('funnel.translate.success', getClientContext({ stage: 'translate', targetLanguage }))
-    return nextTrack
-  }
-
   useEffect(() => {
     if (!isLoaded || !fileId || !cloudReady) return
     setCloudSaveMessage('Changes waiting to save')
@@ -577,45 +467,6 @@ export default function Dashboard() {
     }, 2500)
     return () => clearTimeout(timer)
   }, [isLoaded, fileId, captions, cloudReady, snapshotEditorState, saveCloudDraft])
-
-  const restoreCloudDraft = async () => {
-    if (!cloudDraft || !currentUser) return
-    try {
-      const restoredCaptions = (cloudDraft.captions || []).map(sanitizeRestoredCaption)
-      const restoredEditorState = normalizeRestoredCaptionTrackState(
-        cloudDraft.captionTracks,
-        restoredCaptions,
-        cloudDraft.activeCaptionTrackId,
-        cloudDraft.settings?.language || 'Original',
-      )
-      setCaptions(restoredEditorState.captions)
-      setCaptionTracks(restoredEditorState.tracks)
-      setActiveCaptionTrackId(restoredEditorState.activeTrackId)
-      setTranslationNotice('')
-      setCaptionStyle(normalizeCaptionStyle(cloudDraft.captionStyle || defaultCaptionStyle))
-      setSettings(cloudDraft.settings || {})
-      setFileId(cloudDraft.fileId)
-      setProjectId(cloudDraft.projectId || null)
-      setOriginalFileName(cloudDraft.originalFileName || '')
-      setDuration(cloudDraft.duration || 0)
-      const id_token = await getEffectiveAuthToken(currentUser)
-      const media = cloudDraft._workspaceRawUrl
-        ? { raw_url: cloudDraft._workspaceRawUrl }
-        : await apiRequest('/api/media/upload-url', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id_token, file_id: cloudDraft.fileId }),
-          })
-      setVideoUrl(resolveApiResourceUrl(media.raw_url, import.meta.env.VITE_API_BASE_URL))
-      setSourceUnavailable(false)
-      setIsLoaded(true)
-      setCloudSaveMessage('Restored your account draft')
-    } catch {
-      setVideoUrl('')
-      setSourceUnavailable(true)
-      setIsLoaded(true)
-      setCloudSaveMessage('Captions restored. Relink the source video to preview and render; text editing and subtitle downloads are available.')
-    }
-  }
 
   const downloadDraft = (draft) => {
     const url = URL.createObjectURL(new Blob([JSON.stringify(draft, null, 2)], { type: 'application/json' }))
@@ -694,7 +545,6 @@ export default function Dashboard() {
     setFileId(null)
     setProjectId(null)
     setSourceUnavailable(false)
-    setPlaybackRange(null)
     setWordPopup(null)
     initialEditorStateRef.current = null
     setCaptionStyle(defaultCaptionStyle)
@@ -891,7 +741,6 @@ export default function Dashboard() {
     }
     setWordPopup(null);
     setIsUploading(true);
-    setMediaUploadProgress(null);
     setSettings(uploadSettings);
     setIsUploadModalOpen(false);
     setIsGenerating(true);
@@ -921,7 +770,6 @@ export default function Dashboard() {
         uploadData = await uploadFileWithRecovery(file, {
           authorization: mediaAuthToken,
           dedupeKey: 'upload-video',
-          onProgress: setMediaUploadProgress,
         });
         if (!uploadData.success) throw new Error(uploadData.error || 'Upload failed');
         trackAnalytics('funnel.upload.success', getClientContext({ stage: 'upload', fileId: uploadData.file_id || '' }));
@@ -940,7 +788,6 @@ export default function Dashboard() {
       // the editor still opens with the user's video instead of discarding it
       // and returning to Start Creating Captions.
       setSourceUnavailable(false)
-      setPlaybackRange(null)
       setVideoUrl(acceptedPlayableVideoUrl);
       setFileId(uploadData.file_id);
       setOriginalFileName(selectedFileName);
@@ -1133,10 +980,17 @@ export default function Dashboard() {
         requestReference: error?.requestId || '',
         uploadAccepted: uploadWasAccepted,
       }));
-      notifyApiError(
-        error,
-        uploadWasAccepted ? 'Transcription failed — video kept in editor' : 'Failed to process video',
-      )
+      if (Number(error?.status) === 402) {
+        // Free trial used up: this is an upgrade moment, not a failure.
+        setShowCaptionRetryNotice(false);
+        setPricingMessage("You've used your free transcriptions. Pick a plan to keep captioning — your video stays in the editor.");
+        setIsPricingModalOpen(true);
+      } else {
+        notifyApiError(
+          error,
+          uploadWasAccepted ? 'Transcription failed — video kept in editor' : 'Failed to process video',
+        )
+      }
     } finally {
       const elapsedMs = Date.now() - generationStart;
       const remainingMinDurationMs = Math.max(0, GENERATING_SCREEN_MIN_MS - elapsedMs);
@@ -1144,7 +998,6 @@ export default function Dashboard() {
         await sleep(remainingMinDurationMs);
       }
       setIsUploading(false);
-      setMediaUploadProgress(null);
       setIsGenerating(false);
       setGenerationStartedAt(null);
     }
@@ -1183,16 +1036,14 @@ export default function Dashboard() {
     }
   };
 
-  const handleSeek = (time, preserveRange = false) => {
-    if (!preserveRange) setPlaybackRange(null)
+  const handleSeek = (time) => {
     setCurrentTime(time);
     setSeekSignal(time);
   };
 
-  const handlePlayCaption = (caption, loop = false) => {
-    setPlaybackRange({ start: Number(caption.start_time), end: Number(caption.end_time), loop })
+  const handlePlayCaption = (caption) => {
     const startTime = Number(caption?.start_time || 0);
-    handleSeek(startTime, true);
+    handleSeek(startTime);
     setIsPlaying(true);
   };
 
@@ -1282,19 +1133,6 @@ export default function Dashboard() {
 
   const updateCaptions = (newCaptions, options) => pushHistory(newCaptions, undefined, options);
   const updateCaptionStyle = (newStyle) => pushHistory(undefined, newStyle);
-  const applyReadablePreset = () => {
-    const nextCaptions = captions.map((caption) => {
-      if (caption.isTextElement) return caption
-      const next = { ...caption, animation: 'none', wordStyles: {}, position_x: 50, position_y: 70 }
-      Object.keys(next).filter((key) => key.startsWith('template_') || key === 'applied_template_style').forEach((key) => delete next[key])
-      return next
-    })
-    const nextStyle = { ...captionStyle, font_family: 'Inter', font_size: 20, font_weight: '600', text_color: '#ffffff', text_gradient: '', has_background: true, background_color: '#000000', background_opacity: 1, has_shadow: false, has_stroke: false, position_x: 50, position_y: 70, show_inactive: true, text_case: 'none', display_mode: 'sentence', line_spacing: 1.4 }
-    Object.keys(nextStyle).filter((key) => key.startsWith('template_')).forEach((key) => delete nextStyle[key])
-    pushHistory(nextCaptions, nextStyle)
-  }
-
-
   const handleWordStyleChange = (key, value) => {
     if (!wordPopup) return;
 
@@ -1745,12 +1583,9 @@ export default function Dashboard() {
           <CaptionEditor
             captions={captions}
             setCaptions={updateCaptions}
-            onApplyReadablePreset={applyReadablePreset}
             captionTracks={captionTracks}
             activeCaptionTrackId={activeCaptionTrackId}
             onSelectTrack={selectCaptionTrack}
-            onTranslateTrack={handleAddTranslationTrack}
-            captionStyle={captionStyle}
             selectedCaptionId={selectedCaptionId}
             setSelectedCaptionId={setSelectedCaptionId}
             onSeek={handleSeek}
@@ -1758,9 +1593,6 @@ export default function Dashboard() {
             onOpenWordPopup={(caption, wordIndex, position, word) => openWordPopup({ caption, wordIndex, position, word })}
             wordPopup={wordPopup}
             user={currentUser}
-            glossaryTerms={glossaryTerms}
-            onGlossaryChange={setGlossaryTerms}
-            preferenceSyncStatus={editorPreferenceSyncStatus}
           />
         </Suspense>
       );
@@ -1886,36 +1718,6 @@ export default function Dashboard() {
     ? Math.max(0, Math.floor(((generationTicker || Date.now()) - generationStartedAt) / 1000))
     : 0;
   const renderGeneratingState = () => {
-    if (isUploading) {
-      const uploaded = mediaUploadProgress?.uploadedBytes || 0
-      const total = mediaUploadProgress?.totalBytes || 0
-      const bytesPerSecond = mediaUploadProgress?.bytesPerSecond || 0
-      const remainingSeconds = mediaUploadProgress?.remainingSeconds
-      const transferDetails = []
-      if (bytesPerSecond > 0) {
-        transferDetails.push(`${(bytesPerSecond / (1024 * 1024)).toFixed(1)} MiB/s`)
-      }
-      if (Number.isFinite(remainingSeconds) && remainingSeconds > 0) {
-        transferDetails.push(
-          remainingSeconds < 60
-            ? `about ${remainingSeconds}s remaining`
-            : `about ${Math.ceil(remainingSeconds / 60)} min remaining`,
-        )
-      }
-      return (
-        <div className="flex h-full items-center justify-center bg-[#050505] p-6">
-          <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#111] p-8 text-white" role="status" aria-live="polite">
-            <h2 className="text-2xl font-semibold">Uploading video</h2>
-            <p className="mt-3 text-sm text-zinc-400">
-              {(uploaded / (1024 * 1024)).toFixed(1)} / {(total / (1024 * 1024)).toFixed(1)} MiB
-              {total > 0 ? ` · ${mediaUploadProgress.percent}%` : ' · Authorizing upload'}
-              {transferDetails.length > 0 ? ` · ${transferDetails.join(' · ')}` : ''}
-            </p>
-            <progress className="mt-5 w-full accent-[#F5A623]" max={total || 1} value={uploaded} aria-label="Video upload progress" />
-          </div>
-        </div>
-      )
-    }
     const step2Ready = generationElapsedSeconds >= 3;
     const step3Ready = generationElapsedSeconds >= 6;
     const step4Ready = generationElapsedSeconds >= 9;
@@ -2030,9 +1832,9 @@ export default function Dashboard() {
                     </motion.div>
                   );
                 })}
+                </div>
               </div>
             </div>
-          </div>
           </div>
         </motion.div>
       </div>
@@ -2137,7 +1939,7 @@ export default function Dashboard() {
         </div>
       )}
       {['conflict', 'local', 'storage-full'].includes(editorPreferenceSyncStatus) && currentUser && <div role="status" className="flex flex-wrap gap-3 bg-sky-950 px-4 py-2 text-xs text-sky-100">
-        <span>{editorPreferenceSyncStatus === 'conflict' ? 'Brand kits or glossary changed on another device. Browser edits are preserved. Export your kits in Layers before reloading.' : editorPreferenceSyncStatus === 'storage-full' ? 'Browser storage is unavailable. Keep this page open until account sync succeeds.' : 'Brand kit and glossary changes are waiting for account sync.'}</span>
+        <span>{editorPreferenceSyncStatus === 'conflict' ? 'Brand kits changed on another device. Browser edits are preserved. Export your kits in Layers before reloading.' : editorPreferenceSyncStatus === 'storage-full' ? 'Browser storage is unavailable. Keep this page open until account sync succeeds.' : 'Brand kit changes are waiting for account sync.'}</span>
         <button type="button" onClick={retryPreferenceSync} className="underline">Retry sync</button>
         <button type="button" onClick={reloadCloudPreferences} className="underline">Reload cloud preferences</button>
       </div>}
@@ -2159,22 +1961,8 @@ export default function Dashboard() {
                 Start Creating Captions
               </h2>
               <p className="text-gray-500 mb-6">
-                Upload your short-form video (best for 15-180 seconds) and create editable, timed captions.
+                Upload your short-form video (best for 15-180 seconds) and we'll generate professional captions instantly.
               </p>
-              {localRecoveryDraft && (
-                <div className="mb-5 rounded-xl border border-amber-300/25 bg-amber-300/[0.06] p-4 text-left">
-                  <p className="text-sm font-semibold text-amber-50">Unsynced browser draft available</p>
-                  <p className="mt-1 text-xs leading-5 text-amber-100/65">
-                    {localRecoveryDraft.originalFileName || localRecoveryDraft.projectName || 'Caption project'}
-                    {localRecoveryDraft.savedAt ? ` · saved ${new Date(localRecoveryDraft.savedAt).toLocaleString()}` : ''}
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-3 text-xs font-semibold">
-                    <button type="button" className="rounded-lg bg-amber-200 px-3 py-2 text-slate-950" onClick={() => applyLocalDraft(localRecoveryDraft)}>Continue draft</button>
-                    <button type="button" className="rounded-lg border border-white/15 px-3 py-2 text-white" onClick={discardLocalDraft}>Discard draft</button>
-                    <button type="button" className="px-1 py-2 text-amber-100 underline" onClick={() => downloadDraft(localRecoveryDraft)}>Download copy</button>
-                  </div>
-                </div>
-              )}
               <Button
                 onClick={() => {
                   if (localRecoveryDraft) discardLocalDraft()
@@ -2184,76 +1972,8 @@ export default function Dashboard() {
                 className="bg-white hover:bg-gray-100 text-black font-semibold px-8 rounded-[4px]"
               >
                 <Upload className="w-5 h-5 mr-2" />
-                {localRecoveryDraft ? 'Start New' : 'Upload Video'}
+                Upload Video
               </Button>
-              {workspaces.length > 0 && (
-                <label className="mx-auto mt-4 block max-w-sm text-left text-xs text-gray-400">
-                  Project workspace
-                  <select
-                    value={activeWorkspaceId}
-                    onChange={(event) => switchProjectScope(event.target.value)}
-                    className="mt-1 w-full rounded-lg border border-white/15 bg-zinc-900 px-3 py-2 text-sm text-white"
-                  >
-                    <option value="">Personal projects</option>
-                    {workspaces.map((workspace) => (
-                      <option key={workspace.workspace_id} value={workspace.workspace_id}>{workspace.name}</option>
-                    ))}
-                  </select>
-                </label>
-              )}
-              {cloudDraft && (
-                <div className="mt-4 space-y-3 text-sm">
-                  {cloudProjects.length > 0 && (
-                    <div className="mx-auto grid max-w-sm gap-2 text-left text-xs text-gray-400">
-                      <div className="grid grid-cols-[1fr_auto] gap-2">
-                        <input
-                          value={projectSearch}
-                          onChange={(event) => setProjectSearch(event.target.value)}
-                          placeholder="Search projects"
-                          className="min-w-0 rounded-lg border border-white/15 bg-zinc-900 px-3 py-2 text-sm text-white"
-                        />
-                        <select
-                          value={projectSort}
-                          onChange={(event) => setProjectSort(event.target.value)}
-                          aria-label="Sort projects"
-                          className="rounded-lg border border-white/15 bg-zinc-900 px-2 py-2 text-sm text-white"
-                        >
-                          <option value="recent">Recent</option>
-                          <option value="name">Name</option>
-                        </select>
-                      </div>
-                      <select
-                        value={visibleCloudProjects.some((item) => item.project_id === selectedCloudProjectId) ? selectedCloudProjectId : ''}
-                        onChange={(event) => selectCloudProject(event.target.value)}
-                        className="rounded-lg border border-white/15 bg-zinc-900 px-3 py-2 text-sm text-white"
-                      >
-                        {!visibleCloudProjects.length && <option value="">No matching projects</option>}
-                        {visibleCloudProjects.map((project) => (
-                          <option key={project.project_id} value={project.project_id}>{project.name}</option>
-                        ))}
-                      </select>
-                      <div className="grid grid-cols-[1fr_auto] gap-2">
-                        <input
-                          value={projectNameInput}
-                          onChange={(event) => setProjectNameInput(event.target.value)}
-                          maxLength={120}
-                          aria-label="Selected project name"
-                          className="min-w-0 rounded-lg border border-white/15 bg-zinc-900 px-3 py-2 text-sm text-white"
-                        />
-                        <button className="rounded-lg border border-white/15 px-3 py-2 font-semibold text-white" onClick={handleRenameCloudProject}>Rename</button>
-                      </div>
-                    </div>
-                  )}
-                  <div className="flex flex-wrap justify-center gap-4">
-                    <button className="underline" onClick={restoreCloudDraft}>Restore selected project</button>
-                    <button className="underline" onClick={handleDuplicateCloudProject}>Duplicate project</button>
-                    <button className="underline" onClick={() => downloadDraft(cloudDraft)}>Download saved captions</button>
-                    <button className="inline-flex items-center gap-1 text-red-300 underline" onClick={handleDeleteCloudProject}>
-                      <Trash2 className="h-3.5 w-3.5" /> Delete selected project
-                    </button>
-                  </div>
-                </div>
-              )}
             </motion.div>
           </div>
         ) : (
@@ -2298,9 +2018,9 @@ export default function Dashboard() {
                   >
                     Beta
                   </span>
-                  <span className="lekha-micro-label">Preview <span className="text-white">{deliveryGeometry(captionStyle).aspect}</span></span>
-                  <span className="lekha-micro-label">Playback <span className="text-white">{playbackRate}×</span></span>
-                  <span className="lekha-micro-label">Guide <span className="text-sky-200">{captionStyle.show_safe_area ? 'On' : 'Off'}</span></span>
+                  <span className="lekha-micro-label">Preview <span className="text-white">9:16</span></span>
+                  <span className="lekha-micro-label">FPS <span className="text-white">24</span></span>
+                  <span className="lekha-micro-label">Safe <span className="text-sky-200">On</span></span>
                 </div>
                 <div className="hidden sm:flex items-center gap-2">
                   <span className="lekha-glass-chip rounded-md px-3 py-1 text-[10px] font-black text-white">100%</span>
@@ -2314,17 +2034,9 @@ export default function Dashboard() {
                 style={{ paddingBottom: isVideoFullscreen || isTimelineCollapsed ? 0 : `${Math.max(72, timelineHeight - 24)}px` }}
               >
                 <div className="transition-transform duration-200">
-                  <div className="mx-auto mb-2 max-w-xl px-3">
-                    <DeliveryControls style={captionStyle} onChange={updateCaptionStyle} tracks={captionTracks} activeTrackId={activeCaptionTrackId} />
-                    <label className="mt-2 flex items-center gap-2 text-xs text-slate-300">Playback speed<select aria-label="Playback speed" value={playbackRate} onChange={(event) => setPlaybackRate(Number(event.target.value))} className="rounded bg-zinc-900 p-1">{[0.5, 0.75, 1, 1.25, 1.5].map((rate) => <option key={rate} value={rate}>{rate}×</option>)}</select></label>
-                    {playbackRange && <button type="button" onClick={() => setPlaybackRange(null)} className="text-xs text-sky-200">Stop phrase playback / loop</button>}
-                  </div>
                   <Suspense fallback={<VideoLoadingFallback />}>
                     <VideoPlayer
                       videoUrl={videoUrl}
-                      playbackRate={playbackRate}
-                      playbackRange={playbackRange}
-                      secondaryLayers={secondaryLayers}
                       currentTime={currentTime}
                       setCurrentTime={setCurrentTime}
                       seekSignal={seekSignal}
@@ -2550,18 +2262,12 @@ export default function Dashboard() {
             <ExportPanel
               open={isExportPanelOpen}
               onClose={() => setIsExportPanelOpen(false)}
-              captions={deliveryCaptions}
-              videoUrl={videoUrl}
-              subtitleCaptions={subtitleCaptions}
-              onCaptionStyleChange={updateCaptionStyle}
+              captions={captions}
               sourceUnavailable={sourceUnavailable || !videoUrl}
-              captionTracks={captionTracks}
-              activeCaptionTrackId={activeCaptionTrackId}
               captionTrackLabel={captionTracks.find((track) => track.id === activeCaptionTrackId)?.label || 'Original'}
               captionStyle={captionStyle}
               waveformData={waveformData}
               duration={duration}
-              videoUrl={videoUrl}
               projectId={projectId}
               fileId={fileId}
               originalFileName={originalFileName}
