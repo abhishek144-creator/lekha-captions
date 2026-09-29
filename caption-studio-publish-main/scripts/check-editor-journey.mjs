@@ -69,6 +69,8 @@ try {
   await page.waitForSelector('input[aria-label="Relink source video"]')
   await page.keyboard.down('Control'); await page.keyboard.press('k'); await page.keyboard.up('Control')
   assert.equal(await page.evaluate(() => document.activeElement.getAttribute('aria-label')), 'Search transcript')
+  // VideoPlayer is a lazy chunk; on a cold CI dev server it mounts after the caption editor.
+  await page.waitForSelector('.lekha-video-frame', { timeout: 60000 })
   const frame = await page.$eval('.lekha-video-frame', (el) => ({ width: el.getBoundingClientRect().width, height: el.getBoundingClientRect().height }))
   assert.ok(frame.width > 100 && frame.height > frame.width, JSON.stringify(frame))
   await page.setViewport({ width: 390, height: 844 })
