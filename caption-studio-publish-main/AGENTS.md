@@ -16,6 +16,11 @@ Before changing project files:
 3. Run `git status --short` and inspect relevant existing diffs. Work with those
    changes in place; do not assume they are stale or invisible.
 
+Before any cloud deployment or infrastructure apply, reread the complete current
+`DEVELOPMENT_LOG.md` and `docs/GCP_DEPLOYMENT_PROMPT.md`. Follow their cost gate:
+show the owner a priced live-resource plan and obtain explicit approval before
+creating paid resources. Do not treat a prior code change as a live deployment.
+
 ## Shared handoff rule
 
 When the user asks to update the project log or hand work between Claude and

@@ -19,6 +19,8 @@ try:
     from .release_metadata import release_metadata
     from .gcp_scale_in import ScaleInProtector
     from .gcp_queue_metrics import publish_worker_cold_start
+    from .redis_config import connect_redis
+    from .worker_launcher import WorkerLease
 except ImportError:  # Direct execution from backend/ remains supported.
     from main import (
         EXPORT_QUEUE_NAME,
@@ -30,6 +32,8 @@ except ImportError:  # Direct execution from backend/ remains supported.
     from release_metadata import release_metadata
     from gcp_scale_in import ScaleInProtector
     from gcp_queue_metrics import publish_worker_cold_start
+    from redis_config import connect_redis
+    from worker_launcher import WorkerLease
 
 
 WORKER_STATE = {"heartbeat_at": 0.0, "draining": False}
@@ -51,6 +55,7 @@ def _local_cleanup_loop(stop_event):
 
 class ReleaseWorker(Worker):
     scale_in_protector = ScaleInProtector()
+    launch_lease = None
 
     def heartbeat(self, timeout=None, pipeline=None):
         super().heartbeat(timeout=timeout, pipeline=pipeline)
@@ -62,6 +67,8 @@ class ReleaseWorker(Worker):
             "worker_group": os.environ.get("WORKER_MIG_NAME", "unknown"),
         })
         WORKER_STATE["heartbeat_at"] = time.monotonic()
+        if self.launch_lease is not None:
+            self.launch_lease.refresh()
 
     def request_stop(self, signum, frame):
         WORKER_STATE["draining"] = True
@@ -142,12 +149,39 @@ def worker_queue_names():
     return names
 
 
+# On-demand mode (a Cloud Run Job started by worker_launcher): drain the queues,
+# wait this long for stragglers, then exit so nothing is billed while idle.
+WORKER_IDLE_EXIT_SECONDS = int(os.environ.get("WORKER_IDLE_EXIT_SECONDS", "0") or 0)
+
+
+def run_on_demand_worker(conn):
+    queues = worker_queue_names()
+    lease = WorkerLease(conn, queues)
+    host = os.environ.get("CLOUD_RUN_EXECUTION") or socket.gethostname()
+    while True:
+        lease.refresh()
+        worker = ReleaseWorker(queues, connection=conn, worker_ttl=90,
+                               name=f"caption-worker-{host}-{uuid.uuid4().hex[:8]}")
+        worker.launch_lease = lease
+        worker.work(burst=False, max_idle_time=WORKER_IDLE_EXIT_SECONDS,
+                    with_scheduler=True, dequeue_strategy="round_robin")
+        if not lease.release_and_should_continue():
+            break
+    cleanup_local_media_artifacts()
+
+
 def run_worker():
     if not REDIS_URL:
         raise RuntimeError("REDIS_URL is required for worker mode.")
-    conn = redis.Redis.from_url(REDIS_URL, socket_connect_timeout=5)
+    conn = connect_redis(REDIS_URL)
     conn.ping()
-    health_conn = redis.Redis.from_url(REDIS_URL, socket_connect_timeout=5, socket_timeout=5)
+    if WORKER_IDLE_EXIT_SECONDS > 0:
+        try:
+            run_on_demand_worker(conn)
+        finally:
+            conn.close()
+        return
+    health_conn = connect_redis(REDIS_URL, socket_timeout=5)
     server = _start_readiness_server(health_conn)
     cleanup_stop = threading.Event()
     cleanup_thread = threading.Thread(

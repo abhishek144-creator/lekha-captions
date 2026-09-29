@@ -1143,23 +1143,37 @@ class ApiContractTests(unittest.TestCase):
 
     @patch("main.verify_token", return_value={"uid": "translate-user"})
     def test_translate_contract_with_auth(self, _verify_token):
-        fake_choice = SimpleNamespace(message=SimpleNamespace(content="1. Namaste"))
-        fake_client = SimpleNamespace(
-            chat=SimpleNamespace(
-                completions=SimpleNamespace(create=lambda **kwargs: SimpleNamespace(choices=[fake_choice]))
-            )
-        )
+        replies = ['{"lines": ["नमस्ते", "पहली पंक्ति\\nदूसरी पंक्ति"]}']
+        requests = []
+        def create(**kwargs):
+            requests.append(kwargs)
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=replies.pop(0)))])
+        fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
         with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}), patch("openai.OpenAI", return_value=fake_client):
             res = self.client.post(
                 "/api/translate",
                 json={
-                    "captions": [{"id": "1", "text": "Hello"}],
+                    "captions": [{"id": "1", "text": "Hello"}, {"id": "2", "text": "First line\nSecond line"}],
                     "target_language": "Hindi",
                     "id_token": "token-123",
                 },
             )
         self.assertEqual(res.status_code, 200)
         self.assertTrue(res.json().get("success"))
+        # A caption with a line break stays one caption; one provider call only.
+        self.assertEqual([c["text"] for c in res.json()["captions"]], ["नमस्ते", "पहली पंक्ति\nदूसरी पंक्ति"])
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(requests[0]["response_format"], {"type": "json_object"})
+
+        replies[:] = ['{"lines": ["only one"]}', 'not json']
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}), patch("openai.OpenAI", return_value=fake_client):
+            res = self.client.post(
+                "/api/translate",
+                json={"captions": [{"id": "1", "text": "a"}, {"id": "2", "text": "b"}],
+                      "target_language": "Hindi", "id_token": "token-123"},
+            )
+        self.assertEqual(res.status_code, 502)
+        self.assertEqual(len(requests), 3, "a miscounted reply is retried once, then fails")
 
     @patch("main.firebase_auth.delete_user")
     @patch("main.verify_token", return_value={"uid": "delete-user"})
@@ -1498,6 +1512,54 @@ class ApiContractTests(unittest.TestCase):
                 main._reserve_ai_quota("expired-pro", "process")
 
         self.assertEqual(raised.exception.status_code, 429)
+
+    def _quota_db(self, user_data, writes):
+        class FakeSnapshot:
+            exists = True
+            def to_dict(self):
+                return dict(user_data)
+        fake_ref = SimpleNamespace(get=lambda transaction=None: FakeSnapshot())
+        return SimpleNamespace(
+            collection=lambda _name: SimpleNamespace(document=lambda _uid: fake_ref),
+            transaction=lambda: SimpleNamespace(set=lambda _ref, data, merge=False: writes.append(data)),
+        )
+
+    def test_free_plan_transcriptions_are_lifetime_not_daily(self):
+        writes = []
+        used_up = self._quota_db({"subscription_tier": "free", "ai_lifetime_usage": {"process": main.FREE_LIFETIME_TRANSCRIPTIONS}}, writes)
+        with (
+            patch.object(main, "get_db", return_value=used_up),
+            patch.object(main, "_IS_TEST", False),
+            patch.object(main, "AI_SYSTEM_DAILY_LIMIT", 0),
+            patch.object(main.firestore, "transactional", new=lambda fn: fn),
+        ):
+            with self.assertRaises(main.HTTPException) as raised:
+                main._reserve_ai_quota("free-user", "process")
+            self.assertEqual(raised.exception.status_code, 402)
+
+            fresh = self._quota_db({"subscription_tier": "free"}, writes)
+            with patch.object(main, "get_db", return_value=fresh):
+                main._reserve_ai_quota("free-user", "process")
+            self.assertEqual(writes[-1]["ai_lifetime_usage"], {"process": 1})
+
+            paid = self._quota_db({"subscription_tier": "pro", "subscription_expiry": (datetime.now(timezone.utc) + timedelta(days=5)).isoformat(),
+                                   "ai_lifetime_usage": {"process": 99}}, writes)
+            with patch.object(main, "get_db", return_value=paid):
+                main._reserve_ai_quota("pro-user", "process")
+            self.assertNotIn("ai_lifetime_usage", writes[-1])
+
+    def test_failed_free_transcription_returns_the_trial_use(self):
+        writes = []
+        db = self._quota_db({"subscription_tier": "free", "ai_lifetime_usage": {"process": 2},
+                             "ai_usage_date": date.today().isoformat(), "ai_daily_usage": {"process": 1}}, writes)
+        with (
+            patch.object(main, "get_db", return_value=db),
+            patch.object(main, "_IS_TEST", False),
+            patch.object(main.firestore, "transactional", new=lambda fn: fn),
+        ):
+            main._release_ai_quota("free-user", "process", release_system=False)
+        self.assertEqual(writes[-1]["ai_lifetime_usage"], {"process": 1})
+        self.assertEqual(writes[-1]["ai_daily_usage"], {"process": 0})
 
     def test_payment_webhook_recovers_binding_from_order_notes(self):
         secret = "webhook-test-secret"

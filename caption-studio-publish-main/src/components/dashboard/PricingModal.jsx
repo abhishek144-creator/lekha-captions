@@ -468,7 +468,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-[860px] bg-zinc-950 border-white/10 p-6 text-white">
+      <DialogContent className="top-[calc(50%+0.5rem)] max-h-[calc(100dvh-2rem)] max-w-[860px] overflow-y-auto overscroll-contain bg-zinc-950 border-white/10 p-6 text-white">
         <DialogHeader>
           <DialogTitle className="text-lg text-white">Choose Your Plan</DialogTitle>
           <DialogDescription className="text-gray-400">

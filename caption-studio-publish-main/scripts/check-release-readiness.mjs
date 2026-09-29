@@ -2,6 +2,7 @@ import fs from "fs"
 import path from "path"
 import { createHash } from "crypto"
 import { execFileSync } from "child_process"
+import { readBackendApiSource } from "./backend-api-source.mjs"
 
 const root = process.cwd()
 const checks = []
@@ -158,9 +159,7 @@ if (fs.existsSync(path.join(root, previewRuntimePath))) {
     .digest("base64")}`
   for (const [host, cspPath] of [
     ["Vite", "vite.config.js"],
-    ["Netlify", "netlify.toml"],
-    ["static headers", "public/_headers"],
-    ["Vercel", "vercel.json"],
+    ["Firebase Hosting", "firebase.json"],
   ]) {
     assertIncludes(
       `${host} CSP allows the template preview runtime`,
@@ -202,7 +201,7 @@ const devAuth = readText("src/lib/devAuth.js")
 assertIncludes("auth helper obtains a refreshable signed-in token", devAuth, "currentUser?.getIdToken?.()")
 assertIncludes("auth helper does not fall back to a development token", devAuth, "Never fall back")
 
-const backendMainForAuth = readText("backend/main.py")
+const backendMainForAuth = readBackendApiSource(root)
 assertIncludes("backend accepts explicit local dev auth token outside production", backendMainForAuth, "LOCAL_DEV_AUTH_BYPASS_ENABLED")
 
 const devFull = readText("scripts/dev-full.mjs")
@@ -266,7 +265,7 @@ if (scripts["launch:check"]?.includes("release:tree") && scripts["launch:check"]
   fail("launch check enforces clean source and external evidence", "launch:check must run release:tree and launch:evidence")
 }
 
-const backendMain = readText("backend/main.py")
+const backendMain = readBackendApiSource(root)
 assertIncludes("production rejects DEBUG_MODE", backendMain, "DEBUG_MODE must not be enabled in production")
 assertIncludes("production requires explicit CORS origins", backendMain, "ALLOWED_ORIGINS must be set in production")
 assertIncludes("production rejects wildcard CORS", backendMain, "Wildcard CORS origins are not allowed in production")
@@ -296,7 +295,8 @@ const rendererBenchmark = readText("scripts/benchmark_renderers.py")
 const rendererBenchmarkCore = readText("backend/rendering/renderer_benchmark.py")
 const costAnalyzer = readText("scripts/analyze_export_observations.py")
 const firebaseHostingBuild = readText("deploy/gcp/firebase-hosting/cloudbuild.yaml")
-const videoPlayer = readText("src/components/dashboard/VideoPlayer.jsx")
+const videoPlayerCore = readText("src/components/dashboard/VideoPlayer.jsx")
+const videoPlayer = videoPlayerCore + "\n" + readText("src/components/dashboard/videoPlayerTemplateRendering.jsx")
 const videoPlayerWordEditing = readText("src/components/dashboard/videoPlayerWordEditing.js")
 const adminOps = readText("src/pages/AdminOps.jsx")
 assertIncludes("upload CORS includes the editor origin", terraformVariables, '"https://app.lekhacaptions.com"')
@@ -311,6 +311,7 @@ assertIncludes("upload scan-state transitions live in a service", uploadSecurity
 
 const publicClaims = [
   readText("src/pages/Faq.jsx"),
+  readText("index.html"),
   readText("src/components/landing2/HeroCinematic.jsx"),
   readText("src/components/landing2/landingContent.js"),
   readText("landing-next/app/page.js"),
@@ -403,7 +404,7 @@ assertIncludes("admin metrics expose actual cost per successful video", adminOps
 assertIncludes("admin metrics keep forecast cost separately labelled", adminOps, '"estimated_cost_per_successful_export_usd"')
 assertIncludes("video-player word editing is extracted from the core component", videoPlayer, "./videoPlayerWordEditing.js")
 assertIncludes("extracted word-editing module owns source-template editing", videoPlayerWordEditing, "wireSourceTemplateWordEditing")
-if (videoPlayer.split(/\r?\n/).length < 8500) pass("video-player core stays below the modularization ceiling")
+if (videoPlayerCore.split(/\r?\n/).length < 8500) pass("video-player core stays below the modularization ceiling")
 else fail("video-player core stays below the modularization ceiling", "VideoPlayer.jsx must remain below 8,500 lines")
 assertIncludes("render cache lives in the rendering package", backendMain, ".rendering.cache")
 assertIncludes("malware scanning lives in the services package", backendMain, ".services.malware")
@@ -427,7 +428,7 @@ assertIncludes("Spot overflow is enabled in the production profile", terraformVa
 assertIncludes("baseline render capacity scales to zero", terraformVariables.replace(/\r\n/g, "\n"), 'variable "render_worker_min_replicas" {\n  type        = number\n  description = "Minimum on-demand render workers; production must scale to zero while queues are empty"\n  default     = 0')
 assertIncludes("render fleet is capped at three workers", terraformVariables.replace(/\r\n/g, "\n"), 'variable "render_worker_max_replicas" {\n  type        = number\n  description = "Maximum queue-driven render worker count"\n  default     = 3')
 assertIncludes("legacy API MIG target remains explicit during canary", terraformMain, "target_size = var.api_legacy_target_size")
-assertIncludes("legacy API MIG defaults to current serving capacity", terraformVariables.replace(/\r\n/g, "\n"), 'variable "api_legacy_target_size" {\n  type        = number\n  description = "Preserve the serving API MIG during parallel Cloud Run canary; set to zero only after traffic cutover and job drain"\n  default     = 2')
+assertIncludes("legacy API MIG defaults to zero idle capacity", terraformVariables.replace(/\r\n/g, "\n"), 'variable "api_legacy_target_size" {\n  type        = number\n  description = "Temporary rollback API capacity during an explicitly monitored Cloud Run canary; zero is the normal production value"\n  default     = 0')
 assertExcludes("legacy API MIG has no CPU autoscaler", terraformMain, 'google_compute_region_autoscaler" "api')
 assertIncludes("Cloud Run API defaults to scale-to-zero", terraformVariables.replace(/\r\n/g, "\n"), 'variable "cloud_run_api_min_instances" {\n  type    = number\n  default = 0')
 assertIncludes("Cloud Run API is capped at four instances", terraformVariables.replace(/\r\n/g, "\n"), 'variable "cloud_run_api_max_instances" {\n  type    = number\n  default = 4')
@@ -463,7 +464,7 @@ const errorBoundary = readText("src/components/ErrorBoundary.jsx")
 const frontendMonitoring = readText("src/lib/frontendMonitoring.js")
 const toastComponent = readText("src/components/ui/toast.jsx")
 const sitemap = readText("public/sitemap.xml")
-const vercelConfig = readText("vercel.json")
+const firebaseHosting = readText("firebase.json")
 const htmlDocument = readText("index.html")
 assertIncludes("home links to the support route", homePage, "createPageUrl('HelpAndSupport')")
 assertIncludes("home links to the terms route", homePage, "createPageUrl('TermsAndConditions')")
@@ -535,7 +536,7 @@ for (const [label, control] of [
   )
 }
 assertIncludes("new account bootstrap is rate limited", backendMain, "_signup_rate")
-assertIncludes("Vercel serves the Vite SPA fallback", vercelConfig, '"destination": "/index.html"')
+assertIncludes("Firebase Hosting serves the Vite SPA fallback", firebaseHosting, '"destination": "/index.html"')
 assertIncludes("HTML references the app manifest", htmlDocument, 'href="/manifest.json"')
 assertIncludes("HTML references an existing social preview", htmlDocument, "/landing/template-showcase-1.jpg")
 
@@ -585,10 +586,8 @@ assertIncludes("renderer verifies and injects bundled fonts", renderer, "bundled
 assertIncludes("container scopes the Chromium sandbox workaround to Railway", dockerfile, "PUPPETEER_CONTAINER_NO_SANDBOX=1")
 assertIncludes("container installs the hashed backend dependency lock", dockerfile, "--require-hashes -r backend/requirements.lock")
 assertIncludes("export renderer supports the scoped Chromium sandbox workaround", browserRuntime, "PUPPETEER_CONTAINER_NO_SANDBOX")
-assertFile("web and worker process definition exists", "Procfile")
-const procfile = readText("Procfile")
-assertIncludes("process definition starts the API", procfile, "uvicorn backend.main:app")
-assertIncludes("process definition starts the export worker", procfile, "python -m backend.worker")
+assertIncludes("container defines the API process", dockerfile, "uvicorn backend.main:app")
+assertIncludes("container defines the worker process", dockerfile, "python3\", \"-m\", \"backend.worker")
 
 try {
   const trackedGenerated = execFileSync(

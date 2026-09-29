@@ -16,6 +16,9 @@ const allowedEmailDomains = new Set([
   'lekhacaptions.com',
   'users.noreply.github.com',
 ])
+const isAllowedEmailDomain = (domain) => allowedEmailDomains.has(domain)
+  || domain === 'developer.gserviceaccount.com'
+  || domain.endsWith('.iam.gserviceaccount.com')
 
 const secretPatterns = [
   ['private-key', /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/g],
@@ -41,9 +44,12 @@ function fingerprint(value) {
 }
 
 function inspectText(text, location, revision, findings) {
+  // Embedded fonts and images are base64 data, not source text. Their random
+  // bytes can resemble API-key prefixes and must not create false alerts.
+  text = text.replace(/data:[^\s,;]+(?:;[^\s,]*)?;base64,[A-Za-z0-9+/=]+/g, '')
   for (const match of text.matchAll(emailPattern)) {
     const domain = String(match[1] || '').toLowerCase()
-    if (!allowedEmailDomains.has(domain)) {
+    if (!isAllowedEmailDomain(domain)) {
       findings.push({ category: 'personal-email', location, revision, fingerprint: fingerprint(match[0].toLowerCase()) })
     }
   }
@@ -58,11 +64,10 @@ function inspectText(text, location, revision, findings) {
 function scanMatches(revision, expression, findings) {
   let output = ''
   try {
-    output = git(['grep', '-I', '-n', '-E', expression, revision, '--', '.'])
+    output = git(['grep', '-I', '-n', '-E', '-e', expression, revision, '--', '.'])
   } catch (error) {
-    // git grep exits 1 when no line matches. Preserve stdout in case a platform
-    // returns it with the non-zero status, but do not print potentially private
-    // source lines.
+    // Only exit code 1 means no matches. Other failures invalidate the audit.
+    if (error.status !== 1) throw error
     output = String(error.stdout || '')
   }
   for (const line of output.split(/\r?\n/).filter(Boolean)) {
@@ -114,7 +119,7 @@ for (const row of authorRows) {
   const [revision, email = ''] = row.split('\t')
   const match = email.match(/@(.+)$/)
   const domain = String(match?.[1] || '').toLowerCase()
-  if (domain && !allowedEmailDomains.has(domain)) {
+  if (domain && !isAllowedEmailDomain(domain)) {
     findings.push({
       category: 'author-email-metadata',
       location: 'commit metadata',

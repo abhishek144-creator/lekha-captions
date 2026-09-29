@@ -17,7 +17,7 @@ test.describe('authenticated customer journey', () => {
     expect(download.suggestedFilename()).toMatch(/^lekha-account-export-\d{4}-\d{2}-\d{2}\.json$/)
   })
 
-  test('upload, caption correction, shortcut, and cloud recovery survive reload', async ({ page }) => {
+  test('upload, caption correction, shortcut, and subtitle download work', async ({ page }) => {
     test.skip(!mediaFixture, 'Set PLAYWRIGHT_AUTH_MEDIA to a small unique MP4/MOV/WebM fixture.')
     await page.goto('/Dashboard?entry=editor', { waitUntil: 'domcontentloaded' })
     await page.getByRole('button', { name: /Upload Video/i }).click()
@@ -37,9 +37,6 @@ test.describe('authenticated customer journey', () => {
 
     await page.getByRole('button', { name: /^Export$/i }).click()
     await expect(page.getByRole('heading', { name: 'Export your video' })).toBeVisible()
-    await page.getByRole('dialog').getByText('Frame, bilingual captions and safe area', { exact: true }).click()
-    await page.getByRole('dialog').getByRole('button', { name: /Square/i }).click()
-    await expect(page.getByRole('dialog').getByRole('button', { name: /Square/i })).toHaveAttribute('aria-pressed', 'true')
     await page.getByText(/I reviewed this language track/i).click()
     const subtitleDownloadPromise = page.waitForEvent('download')
     await page.getByRole('button', { name: /WebVTT subtitles/i }).click()
@@ -48,7 +45,7 @@ test.describe('authenticated customer journey', () => {
     await page.keyboard.press('Escape')
 
     await page.reload({ waitUntil: 'domcontentloaded' })
-    await expect(page.getByText(/Continue draft|Authenticated journey correction/i).first()).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByRole('button', { name: /Upload Video/i })).toBeVisible({ timeout: 30_000 })
   })
 
   test('test-mode checkout creates an authenticated order without charging', async ({ page }) => {

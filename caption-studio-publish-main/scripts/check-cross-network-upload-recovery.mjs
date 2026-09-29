@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { readBackendApiSource } from './backend-api-source.mjs'
 
 const root = path.resolve(import.meta.dirname, '..')
 const apiClient = fs.readFileSync(path.join(root, 'src/lib/apiClient.js'), 'utf8')
@@ -7,10 +8,9 @@ const dashboard = fs.readFileSync(path.join(root, 'src/pages/Dashboard.jsx'), 'u
 const uploadModal = fs.readFileSync(path.join(root, 'src/components/dashboard/UploadModal.jsx'), 'utf8')
 const resilientUpload = fs.readFileSync(path.join(root, 'src/lib/resilientUpload.js'), 'utf8')
 const analytics = fs.readFileSync(path.join(root, 'src/lib/analytics.js'), 'utf8')
-const backend = fs.readFileSync(path.join(root, 'backend/main.py'), 'utf8')
+const backend = readBackendApiSource(root)
 const directUploadApi = fs.readFileSync(path.join(root, 'backend/direct_upload_api.py'), 'utf8')
 const storageHelpers = fs.readFileSync(path.join(root, 'backend/firebase_admin_setup.py'), 'utf8')
-const railway = fs.readFileSync(path.join(root, 'railway.toml'), 'utf8')
 
 const assertions = [
   {
@@ -56,9 +56,10 @@ const assertions = [
     message: 'A reload may resume only an authenticated direct upload with the exact same file fingerprint.',
   },
   {
-    ok: /Unsynced browser draft available[\s\S]*Continue draft[\s\S]*Discard draft/s.test(dashboard)
-      && /if \(!isLoaded \|\| localRecoveryDraft\) return/.test(dashboard),
-    message: 'Dashboard entry must preserve a same-account browser draft until Continue or Discard is chosen.',
+    ok: !/Unsynced browser draft available|Continue draft|Discard draft/.test(dashboard)
+      && /if \(!isLoaded \|\| localRecoveryDraft\) return/.test(dashboard)
+      && /if \(localRecoveryDraft\) discardLocalDraft\(\)[\s\S]*handleUploadModalOpen\(\)/s.test(dashboard),
+    message: 'Dashboard entry must stay simple while safely replacing an older same-account browser draft only when a new upload starts.',
   },
   {
     ok: /if too_large:[\s\S]*Count only fully received uploads[\s\S]*_check_rate\([\s\S]*_upload_rate,[\s\S]*f"network:\{client_ip\}"/s.test(backend),
@@ -92,7 +93,7 @@ const assertions = [
   },
   {
     ok: /RAILWAY_REPLICA_REGION[\s\S]*replica_region=RAILWAY_REPLICA_REGION/s.test(backend)
-      && /healthcheckPath\s*=\s*"\/api\/health\/readiness"/.test(railway),
+      && /HEALTHCHECK[\s\S]*\/api\/health\/readiness/.test(fs.readFileSync(path.join(root, 'Dockerfile'), 'utf8')),
     message: 'Production logs must identify the serving region and deployments must pass readiness before promotion.',
   },
 ]

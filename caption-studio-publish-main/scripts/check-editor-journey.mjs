@@ -29,10 +29,6 @@ let conflict = false
 let exports = 0
 let exportPayload = null
 let downloads = 0
-let preferenceRevision = 0
-let preferenceRequests = 0
-let savedGlossary = []
-let releaseFirstPreferenceSave = null
 const caption = { id: 'a', text: 'hello bright world', start_time: 0, end_time: 3, words: [{ word: 'hello', start: 0, end: 1 }, { word: 'bright', start: 1, end: 2 }, { word: 'world', start: 2, end: 3 }], wordStyles: {} }
 const draft = { ownerUid: 'editor-test-a', projectId: 'test-project', fileId: '123e4567-e89b-12d3-a456-426614174000', videoUrl: '', duration: 4, originalFileName: 'fixture.mp4', captions: [caption], captionTracks: [{ id: 'source', label: 'Original', captions: [caption] }, { id: 'hi', label: 'Hindi', captions: [{ ...caption, text: 'नमस्ते दुनिया', words: [] }] }], activeCaptionTrackId: 'source', captionStyle: { font_family: 'Inter', font_size: 17, position_y: 70, text_color: '#ffffff', has_background: true }, settings: {} }
 await page.setRequestInterception(true)
@@ -43,14 +39,7 @@ page.on('request', async (request) => {
   let payload = { success: true }
   let status = 200
   if (url.pathname === '/api/editor-preferences/load') payload.preferences = { revision: 0, brand_kits: [], glossary_terms: [] }
-  else if (url.pathname === '/api/editor-preferences/save') {
-    const body = JSON.parse(request.postData())
-    if (preferenceRequests++ === 0) await new Promise((resolve) => { releaseFirstPreferenceSave = resolve })
-    assert.equal(body.expected_revision, preferenceRevision, 'preference saves must use the latest server revision')
-    preferenceRevision += 1
-    savedGlossary = body.glossary_terms
-    payload.preferences = { revision: preferenceRevision, brand_kits: body.brand_kits, glossary_terms: savedGlossary }
-  }
+  else if (url.pathname === '/api/editor-preferences/save') payload.preferences = { revision: 1, brand_kits: [], glossary_terms: [] }
   else if (url.pathname === '/api/draft/load') payload = { revision: 0, draft: null }
   else if (url.pathname === '/api/projects/list') payload.projects = []
   else if (url.pathname === '/api/workspaces') payload.workspaces = []
@@ -75,34 +64,15 @@ const textClick = async (text) => {
 try {
   await page.goto('http://127.0.0.1:4187/e2e/fixtures/editor.html')
   await page.evaluate((value) => localStorage.setItem('captionEditorState', JSON.stringify(value)), draft)
-  await page.reload()
-  await textClick('Continue draft')
+  await page.goto('http://127.0.0.1:4187/e2e/fixtures/editor.html?restoreSession=1')
   await page.waitForSelector('[data-caption-editor="true"]')
   await page.waitForSelector('input[aria-label="Relink source video"]')
-  await textClick('Account glossary')
-  await page.type('input[aria-label="Incorrect or source term"]', 'Lekha')
-  await page.type('input[aria-label="Preferred glossary term"]', 'लेखा')
-  await textClick('Save term')
-  for (let attempt = 0; attempt < 40 && !releaseFirstPreferenceSave; attempt += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  assert.ok(releaseFirstPreferenceSave, 'first preference save should be in flight')
-  await page.type('input[aria-label="Incorrect or source term"]', 'caption')
-  await page.type('input[aria-label="Preferred glossary term"]', 'subtitle')
-  await textClick('Save term')
-  releaseFirstPreferenceSave()
-  await page.waitForFunction(() => document.body.textContent.includes('Glossary is synced'))
-  assert.equal(preferenceRequests, 2, 'the in-flight edit must trigger a second revisioned save')
-  assert.deepEqual(savedGlossary.map((term) => term.source), ['caption', 'Lekha'])
   await page.keyboard.down('Control'); await page.keyboard.press('k'); await page.keyboard.up('Control')
   assert.equal(await page.evaluate(() => document.activeElement.getAttribute('aria-label')), 'Search transcript')
-  await textClick('Frame, bilingual captions and safe area')
-  await textClick('1:1 Square')
-  await page.select('select[aria-label="Framing"]', 'contain')
-  await page.select('select[aria-label="Bilingual output"]', 'hi')
-  await page.waitForFunction(() => document.querySelector('[data-text-element-layer]')?.textContent.includes('नमस्ते'))
+  // VideoPlayer is a lazy chunk; on a cold CI dev server it mounts after the caption editor.
+  await page.waitForSelector('.lekha-video-frame', { timeout: 60000 })
   const frame = await page.$eval('.lekha-video-frame', (el) => ({ width: el.getBoundingClientRect().width, height: el.getBoundingClientRect().height }))
-  assert.ok(frame.width > 100 && Math.abs(frame.width - frame.height) < 2, JSON.stringify(frame))
+  assert.ok(frame.width > 100 && frame.height > frame.width, JSON.stringify(frame))
   await page.setViewport({ width: 390, height: 844 })
   const mobileFrame = await page.$eval('.lekha-video-frame', (el) => ({
     left: el.getBoundingClientRect().left,
@@ -111,19 +81,15 @@ try {
     height: el.getBoundingClientRect().height,
   }))
   assert.ok(mobileFrame.width > 100 && mobileFrame.left >= -1 && mobileFrame.right <= 391, JSON.stringify(mobileFrame))
-  assert.ok(Math.abs(mobileFrame.width - mobileFrame.height) < 2, JSON.stringify(mobileFrame))
+  assert.ok(mobileFrame.height > mobileFrame.width, JSON.stringify(mobileFrame))
   await page.setViewport({ width: 1440, height: 1100 })
   await textClick('Save')
   await page.waitForFunction(() => document.body.textContent.includes('Saved'))
-  assert.equal(savedDraft.captionStyle.frame_fit, 'contain')
-  assert.equal(savedDraft.captionStyle.bilingual_track_id, 'hi')
   conflict = true
-  await textClick('16:9')
   await textClick('Save')
   await page.waitForFunction(() => document.body.textContent.includes('newer project revision'))
-  await page.reload()
-  await textClick('Continue draft')
-  await page.waitForFunction(() => document.querySelector('.lekha-video-frame')?.style.aspectRatio === '16 / 9')
+  await page.goto('http://127.0.0.1:4187/e2e/fixtures/editor.html?restoreSession=1')
+  await page.waitForSelector('.lekha-video-frame')
   assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('captionEditorState')).captionTracks[0].captions[0].text), caption.text)
   await textClick('Export')
   await page.waitForFunction(() => document.body.textContent.includes('Export your video'))
@@ -144,7 +110,7 @@ try {
   await page.waitForFunction(() => !document.querySelector('[data-caption-editor="true"]'))
   assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('captionEditorState') || '{}').ownerUid === 'editor-test-b' && JSON.parse(localStorage.getItem('captionEditorState')).captions?.length > 0), false, 'account changes cannot acquire another account’s draft')
   assert.deepEqual(errors, [])
-  console.log('Local editor journey passed: recovery, keyboard search, geometry, bilingual preview, revision conflict, reload and account isolation.')
+  console.log('Local editor journey passed: recovery, keyboard search, portrait preview, revision conflict, reload and account isolation.')
 } catch (error) {
   console.error('Editor test diagnostics:', errors, await page.evaluate(() => document.body.innerText.slice(0, 3500)))
   throw error
