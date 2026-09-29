@@ -2,6 +2,7 @@ import fs from "fs"
 import path from "path"
 import { createHash } from "crypto"
 import { execFileSync } from "child_process"
+import { readBackendApiSource } from "./backend-api-source.mjs"
 
 const root = process.cwd()
 const checks = []
@@ -200,7 +201,7 @@ const devAuth = readText("src/lib/devAuth.js")
 assertIncludes("auth helper obtains a refreshable signed-in token", devAuth, "currentUser?.getIdToken?.()")
 assertIncludes("auth helper does not fall back to a development token", devAuth, "Never fall back")
 
-const backendMainForAuth = readText("backend/main.py")
+const backendMainForAuth = readBackendApiSource(root)
 assertIncludes("backend accepts explicit local dev auth token outside production", backendMainForAuth, "LOCAL_DEV_AUTH_BYPASS_ENABLED")
 
 const devFull = readText("scripts/dev-full.mjs")
@@ -264,7 +265,7 @@ if (scripts["launch:check"]?.includes("release:tree") && scripts["launch:check"]
   fail("launch check enforces clean source and external evidence", "launch:check must run release:tree and launch:evidence")
 }
 
-const backendMain = readText("backend/main.py")
+const backendMain = readBackendApiSource(root)
 assertIncludes("production rejects DEBUG_MODE", backendMain, "DEBUG_MODE must not be enabled in production")
 assertIncludes("production requires explicit CORS origins", backendMain, "ALLOWED_ORIGINS must be set in production")
 assertIncludes("production rejects wildcard CORS", backendMain, "Wildcard CORS origins are not allowed in production")

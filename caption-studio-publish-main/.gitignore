@@ -84,3 +84,9 @@ landing-next/public/release.json
 *.tfstate.*
 *.tfplan
 terraform.tfvars
+
+# Local runtime media and generated reports (never commit user media)
+/uploads/
+/exports/
+/test-artifacts/
+build/cost-review/

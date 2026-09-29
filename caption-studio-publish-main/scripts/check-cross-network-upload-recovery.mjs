@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { readBackendApiSource } from './backend-api-source.mjs'
 
 const root = path.resolve(import.meta.dirname, '..')
 const apiClient = fs.readFileSync(path.join(root, 'src/lib/apiClient.js'), 'utf8')
@@ -7,7 +8,7 @@ const dashboard = fs.readFileSync(path.join(root, 'src/pages/Dashboard.jsx'), 'u
 const uploadModal = fs.readFileSync(path.join(root, 'src/components/dashboard/UploadModal.jsx'), 'utf8')
 const resilientUpload = fs.readFileSync(path.join(root, 'src/lib/resilientUpload.js'), 'utf8')
 const analytics = fs.readFileSync(path.join(root, 'src/lib/analytics.js'), 'utf8')
-const backend = fs.readFileSync(path.join(root, 'backend/main.py'), 'utf8')
+const backend = readBackendApiSource(root)
 const directUploadApi = fs.readFileSync(path.join(root, 'backend/direct_upload_api.py'), 'utf8')
 const storageHelpers = fs.readFileSync(path.join(root, 'backend/firebase_admin_setup.py'), 'utf8')
 
