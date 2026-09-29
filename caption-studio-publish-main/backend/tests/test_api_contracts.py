@@ -1143,23 +1143,37 @@ class ApiContractTests(unittest.TestCase):
 
     @patch("main.verify_token", return_value={"uid": "translate-user"})
     def test_translate_contract_with_auth(self, _verify_token):
-        fake_choice = SimpleNamespace(message=SimpleNamespace(content="1. Namaste"))
-        fake_client = SimpleNamespace(
-            chat=SimpleNamespace(
-                completions=SimpleNamespace(create=lambda **kwargs: SimpleNamespace(choices=[fake_choice]))
-            )
-        )
+        replies = ['{"lines": ["नमस्ते", "पहली पंक्ति\\nदूसरी पंक्ति"]}']
+        requests = []
+        def create(**kwargs):
+            requests.append(kwargs)
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=replies.pop(0)))])
+        fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
         with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}), patch("openai.OpenAI", return_value=fake_client):
             res = self.client.post(
                 "/api/translate",
                 json={
-                    "captions": [{"id": "1", "text": "Hello"}],
+                    "captions": [{"id": "1", "text": "Hello"}, {"id": "2", "text": "First line\nSecond line"}],
                     "target_language": "Hindi",
                     "id_token": "token-123",
                 },
             )
         self.assertEqual(res.status_code, 200)
         self.assertTrue(res.json().get("success"))
+        # A caption with a line break stays one caption; one provider call only.
+        self.assertEqual([c["text"] for c in res.json()["captions"]], ["नमस्ते", "पहली पंक्ति\nदूसरी पंक्ति"])
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(requests[0]["response_format"], {"type": "json_object"})
+
+        replies[:] = ['{"lines": ["only one"]}', 'not json']
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}), patch("openai.OpenAI", return_value=fake_client):
+            res = self.client.post(
+                "/api/translate",
+                json={"captions": [{"id": "1", "text": "a"}, {"id": "2", "text": "b"}],
+                      "target_language": "Hindi", "id_token": "token-123"},
+            )
+        self.assertEqual(res.status_code, 502)
+        self.assertEqual(len(requests), 3, "a miscounted reply is retried once, then fails")
 
     @patch("main.firebase_auth.delete_user")
     @patch("main.verify_token", return_value={"uid": "delete-user"})

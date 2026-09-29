@@ -4,6 +4,7 @@ Handlers resolve shared helpers through ``host`` (the main module) at call time,
 so there is one copy of each helper and test patches on ``main`` keep applying.
 """
 
+import json
 from types import ModuleType, SimpleNamespace
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Response
@@ -59,49 +60,12 @@ def create_language_router(host: ModuleType) -> SimpleNamespace:
             )
 
             texts = [cap.get("text", "") for cap in req.captions]
-            numbered_text = "\n".join(f"{i+1}. {t}" for i, t in enumerate(texts))
+            translated_lines = _translate_lines(client, texts, req.target_language, host.TRANSLATION_MODEL)
+            if translated_lines is None:
+                host._json_log("warning", "translation_line_count_mismatch", expected=len(texts))
+                translated_lines = _translate_lines(client, texts, req.target_language, host.TRANSLATION_MODEL, strict=True)
 
-            # Note: use a distinct local name — `response` is the FastAPI Response
-            # param (already used above for rate-limit headers); don't shadow it.
-            completion = client.chat.completions.create(
-                model=host.TRANSLATION_MODEL,
-                messages=[
-                    {"role": "system", "content": f"You are a professional translator. Translate the following numbered caption lines to {req.target_language}. Keep the numbering. Only return the translated lines, nothing else. Preserve the exact number of lines."},
-                    {"role": "user", "content": numbered_text}
-                ],
-                temperature=0.3,
-            )
-
-            import re
-            translated_text = completion.choices[0].message.content.strip()
-            translated_lines = []
-            for line in translated_text.split("\n"):
-                line = line.strip()
-                if not line:
-                    continue
-                cleaned = re.sub(r'^\d+[\.\)]\s*', '', line)
-                translated_lines.append(cleaned)
-
-            if len(translated_lines) != len(texts):
-                print(f"Translation line count mismatch: expected {len(texts)}, got {len(translated_lines)}. Retrying...")
-                retry_response = client.chat.completions.create(
-                    model=host.TRANSLATION_MODEL,
-                    messages=[
-                        {"role": "system", "content": f"Translate exactly {len(texts)} numbered caption lines to {req.target_language}. Output exactly {len(texts)} numbered lines. No extra text."},
-                        {"role": "user", "content": numbered_text}
-                    ],
-                    temperature=0.1,
-                )
-                retry_text = retry_response.choices[0].message.content.strip()
-                translated_lines = []
-                for line in retry_text.split("\n"):
-                    line = line.strip()
-                    if not line:
-                        continue
-                    cleaned = re.sub(r'^\d+[\.\)]\s*', '', line)
-                    translated_lines.append(cleaned)
-
-            if len(translated_lines) != len(texts):
+            if translated_lines is None:
                 raise RuntimeError("Translation provider returned an incomplete caption set")
 
             result_captions = []
@@ -203,3 +167,35 @@ def create_language_router(host: ModuleType) -> SimpleNamespace:
         DetectLanguageRequest=DetectLanguageRequest,
         detect_language=detect_language,
     )
+
+
+def _translate_lines(client, texts, target_language, model, strict=False):
+    """Translate caption lines as a JSON array, one output per input.
+
+    JSON keeps multi-line and empty captions intact; the old numbered-text
+    format split them apart, miscounted, and paid for a retry. Returns None
+    when the model does not return exactly one string per input line.
+    """
+    instruction = (
+        f"Translate each caption in the JSON array \"lines\" to {target_language}. "
+        'Reply with JSON {"lines": [...]} containing exactly one translated string per input, '
+        "in the same order. Keep empty strings empty and keep line breaks inside a caption."
+    )
+    if strict:
+        instruction += f" The array must have exactly {len(texts)} items."
+    completion = client.chat.completions.create(
+        model=model,
+        response_format={"type": "json_object"},
+        messages=[
+            {"role": "system", "content": instruction},
+            {"role": "user", "content": json.dumps({"lines": texts}, ensure_ascii=False)},
+        ],
+        temperature=0.1 if strict else 0.3,
+    )
+    try:
+        lines = json.loads(completion.choices[0].message.content or "{}").get("lines")
+    except (ValueError, AttributeError):
+        return None
+    if not isinstance(lines, list) or len(lines) != len(texts) or not all(isinstance(line, str) for line in lines):
+        return None
+    return [line.strip() for line in lines]
