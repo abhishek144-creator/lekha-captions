@@ -5,7 +5,7 @@ const root = path.resolve(import.meta.dirname, '..')
 const loginSource = fs.readFileSync(path.join(root, 'src/pages/Login.jsx'), 'utf8')
 const authSource = fs.readFileSync(path.join(root, 'src/context/AuthContext.jsx'), 'utf8')
 const firebaseSource = fs.readFileSync(path.join(root, 'src/lib/firebase.js'), 'utf8')
-const netlifyHeaders = fs.readFileSync(path.join(root, 'public/_headers'), 'utf8')
+const hostingConfig = fs.readFileSync(path.join(root, 'firebase.json'), 'utf8')
 
 const assertions = [
   {
@@ -42,8 +42,8 @@ const assertions = [
     message: 'Google OAuth must use the configured Firebase auth domain, not an unregistered custom-domain callback.',
   },
   {
-    ok: /frame-src\s+'self'\s+https:\/\/www\.google\.com/s.test(netlifyHeaders),
-    message: 'The deployed Netlify CSP must allow Firebase\'s same-origin auth iframe.',
+    ok: /frame-src\s+'self'\s+https:\/\/www\.google\.com/s.test(hostingConfig),
+    message: 'The deployed Firebase Hosting CSP must allow Firebase\'s same-origin auth iframe.',
   },
 ]
 

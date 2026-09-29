@@ -158,9 +158,7 @@ if (fs.existsSync(path.join(root, previewRuntimePath))) {
     .digest("base64")}`
   for (const [host, cspPath] of [
     ["Vite", "vite.config.js"],
-    ["Netlify", "netlify.toml"],
-    ["static headers", "public/_headers"],
-    ["Vercel", "vercel.json"],
+    ["Firebase Hosting", "firebase.json"],
   ]) {
     assertIncludes(
       `${host} CSP allows the template preview runtime`,
@@ -463,7 +461,7 @@ const errorBoundary = readText("src/components/ErrorBoundary.jsx")
 const frontendMonitoring = readText("src/lib/frontendMonitoring.js")
 const toastComponent = readText("src/components/ui/toast.jsx")
 const sitemap = readText("public/sitemap.xml")
-const vercelConfig = readText("vercel.json")
+const firebaseHosting = readText("firebase.json")
 const htmlDocument = readText("index.html")
 assertIncludes("home links to the support route", homePage, "createPageUrl('HelpAndSupport')")
 assertIncludes("home links to the terms route", homePage, "createPageUrl('TermsAndConditions')")
@@ -535,7 +533,7 @@ for (const [label, control] of [
   )
 }
 assertIncludes("new account bootstrap is rate limited", backendMain, "_signup_rate")
-assertIncludes("Vercel serves the Vite SPA fallback", vercelConfig, '"destination": "/index.html"')
+assertIncludes("Firebase Hosting serves the Vite SPA fallback", firebaseHosting, '"destination": "/index.html"')
 assertIncludes("HTML references the app manifest", htmlDocument, 'href="/manifest.json"')
 assertIncludes("HTML references an existing social preview", htmlDocument, "/landing/template-showcase-1.jpg")
 
@@ -585,10 +583,8 @@ assertIncludes("renderer verifies and injects bundled fonts", renderer, "bundled
 assertIncludes("container scopes the Chromium sandbox workaround to Railway", dockerfile, "PUPPETEER_CONTAINER_NO_SANDBOX=1")
 assertIncludes("container installs the hashed backend dependency lock", dockerfile, "--require-hashes -r backend/requirements.lock")
 assertIncludes("export renderer supports the scoped Chromium sandbox workaround", browserRuntime, "PUPPETEER_CONTAINER_NO_SANDBOX")
-assertFile("web and worker process definition exists", "Procfile")
-const procfile = readText("Procfile")
-assertIncludes("process definition starts the API", procfile, "uvicorn backend.main:app")
-assertIncludes("process definition starts the export worker", procfile, "python -m backend.worker")
+assertIncludes("container defines the API process", dockerfile, "uvicorn backend.main:app")
+assertIncludes("container defines the worker process", dockerfile, "python3\", \"-m\", \"backend.worker")
 
 try {
   const trackedGenerated = execFileSync(

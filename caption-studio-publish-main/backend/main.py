@@ -108,6 +108,7 @@ from contextlib import asynccontextmanager
 try:
     from .transcription_jobs import TranscriptionJobs
     from .queue_admission import enqueue_bounded_across_queues, release_pending_work
+    from . import worker_launcher
     from .drafts import list_projects, read_draft
     from .project_api import create_project_router
     from .editor_preferences import create_editor_preferences_router, read_editor_preferences
@@ -141,6 +142,7 @@ try:
 except ImportError:
     from transcription_jobs import TranscriptionJobs
     from queue_admission import enqueue_bounded_across_queues, release_pending_work
+    import worker_launcher
     from drafts import list_projects, read_draft
     from project_api import create_project_router
     from editor_preferences import create_editor_preferences_router, read_editor_preferences
@@ -197,9 +199,22 @@ except ImportError:
     print("[Warning] redis package not installed — durable rate limiting/idempotency disabled")
 
 try:
-    from rq import Queue, Worker as RQWorker
+    from rq import Queue as _RQQueue, Worker as RQWorker
     from rq.job import Job
     from rq import Retry as RQRetry
+
+    class Queue(_RQQueue):
+        """RQ queue that starts an on-demand worker once a job is really queued.
+
+        Pipelined enqueues are not visible until the caller executes the
+        pipeline, so those callers kick the worker themselves afterwards."""
+
+        def enqueue_job(self, job, pipeline=None, **kwargs):
+            queued = super().enqueue_job(job, pipeline=pipeline, **kwargs)
+            if pipeline is None:
+                worker_launcher.kick(self.connection, self.name)
+            return queued
+
     RQ_AVAILABLE = True
 except ImportError:
     Queue = None
@@ -653,6 +668,9 @@ if _IS_PRODUCTION and DISABLE_EXPORT_CREDIT_LIMIT:
 # a day, so a launch-day traffic spike (or a pile of new free accounts) cannot
 # run up an unbounded transcription bill overnight. 0 disables the ceiling.
 AI_SYSTEM_DAILY_LIMIT = max(0, int(os.environ.get("AI_SYSTEM_DAILY_LIMIT", "500")))
+# Caption translation is short, line-numbered text; the mini model handles it at a
+# fraction of the full model's price. Override per deployment if quality needs it.
+TRANSLATION_MODEL = os.environ.get("TRANSLATION_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini"
 AI_COST_ESTIMATE_PER_MEDIA_MINUTE_USD = max(
     0.0, float(os.environ.get("AI_COST_ESTIMATE_PER_MEDIA_MINUTE_USD", "0"))
 )
@@ -2892,12 +2910,17 @@ AI_DAILY_LIMITS = {
 }
 
 
+# Free accounts get a fixed number of transcriptions for the life of the
+# account, not a daily refill: a trial, not a free tier that costs money forever.
+FREE_LIFETIME_TRANSCRIPTIONS = int(FREE_PLAN.get("lifetime_transcriptions", 3) or 3)
+
+
 def _reserve_system_ai_quota(db, operation: str) -> None:
     """Reserve one call against the platform-wide daily AI ceiling.
 
-    Separate document from the per-user counter so the two can't contend, and
-    fail-open on read/write errors: a counter outage must not take transcription
-    down, since per-user quotas and rate limits still bound the damage.
+    Separate document from the per-user counter so the two can't contend. In
+    production a counter outage fails closed: this ceiling is the last guard on
+    paid-provider spend, so an unreadable counter must not mean unlimited calls.
     """
     if AI_SYSTEM_DAILY_LIMIT <= 0:
         return
@@ -2933,6 +2956,8 @@ def _reserve_system_ai_quota(db, operation: str) -> None:
         raise
     except Exception as e:
         _json_log("warning", "ai_system_quota_reserve_failed", operation=operation, error=str(e))
+        if _IS_PRODUCTION:
+            raise HTTPException(status_code=503, detail="AI quota service is temporarily unavailable") from e
 
 
 def _reserve_ai_quota(uid: str, operation: str) -> None:
@@ -2964,6 +2989,20 @@ def _reserve_ai_quota(uid: str, operation: str) -> None:
         limit = int(limits[operation])
         usage = dict((data or {}).get("ai_daily_usage") or {}) if (data or {}).get("ai_usage_date") == today else {}
         used = int(usage.get(operation, 0) or 0)
+        update = {}
+        if base_tier == "free" and operation == "process":
+            lifetime = dict((data or {}).get("ai_lifetime_usage") or {})
+            lifetime_used = int(lifetime.get("process", 0) or 0)
+            if lifetime_used >= FREE_LIFETIME_TRANSCRIPTIONS:
+                raise HTTPException(
+                    status_code=402,
+                    detail=(
+                        f"FREE_TRANSCRIPTIONS_USED: You've used your {FREE_LIFETIME_TRANSCRIPTIONS} free "
+                        "transcriptions. Upgrade to keep captioning."
+                    ),
+                )
+            lifetime["process"] = lifetime_used + 1
+            update["ai_lifetime_usage"] = lifetime
         if used >= limit:
             raise HTTPException(
                 status_code=429,
@@ -2974,6 +3013,7 @@ def _reserve_ai_quota(uid: str, operation: str) -> None:
             "uid": uid,
             "ai_usage_date": today,
             "ai_daily_usage": usage,
+            **update,
             "updated_at": _utcnow().isoformat() + "Z",
         }, merge=True)
 
@@ -3081,16 +3121,23 @@ def _release_ai_quota(uid: str, operation: str, release_system: bool = True) -> 
         if not snap.exists:
             return
         data = snap.to_dict() or {}
+        update = {}
+        # A failed free transcription must not use up the account's trial.
+        lifetime = dict(data.get("ai_lifetime_usage") or {})
+        lifetime_used = int(lifetime.get(operation, 0) or 0)
+        if operation == "process" and lifetime_used > 0 and _effective_subscription_tier(data).replace("_yearly", "") == "free":
+            lifetime[operation] = lifetime_used - 1
+            update["ai_lifetime_usage"] = lifetime
         # A date rollover between reserve and release already zeroed the counter.
-        if data.get("ai_usage_date") != today:
-            return
         usage = dict(data.get("ai_daily_usage") or {})
         used = int(usage.get(operation, 0) or 0)
-        if used <= 0:
+        if data.get("ai_usage_date") == today and used > 0:
+            usage[operation] = used - 1
+            update["ai_daily_usage"] = usage
+        if not update:
             return
-        usage[operation] = used - 1
         txn.set(user_ref, {
-            "ai_daily_usage": usage,
+            **update,
             "updated_at": _utcnow().isoformat() + "Z",
         }, merge=True)
 
@@ -4761,7 +4808,7 @@ def _queue_for_export_job_record(job: Dict[str, Any]):
 def _enqueue_export_job(render_queue, **job):
     if _IS_PRODUCTION:
         estimated_work_seconds = (job.get("meta") or {}).get("estimated_render_seconds")
-        return enqueue_bounded_across_queues(
+        delivery = enqueue_bounded_across_queues(
             render_queue,
             list(_export_queues.values()),
             EXPORT_MAX_PENDING_JOBS,
@@ -4769,6 +4816,8 @@ def _enqueue_export_job(render_queue, **job):
             estimated_work_seconds=estimated_work_seconds,
             **job,
         )
+        worker_launcher.kick(render_queue.connection, render_queue.name)
+        return delivery
     return render_queue.enqueue_call(**job)
 
 
@@ -5207,6 +5256,12 @@ def export_status(job_id: str, request: Request):
         raise HTTPException(status_code=404, detail="Export job not found")
     _require_export_job_access(request, job)
     job = _reconcile_export_job(job_id, job)
+    if job.get("status") == "queued":
+        # Safety net for on-demand workers: a queued job whose worker crashed
+        # gets a fresh one on the next poll (no-op when launching is disabled).
+        record_queue = _queue_for_export_job_record(job)
+        if record_queue is not None:
+            worker_launcher.kick(record_queue.connection, record_queue.name)
     queue_prediction = _export_queue_prediction(job_id, job)
     # Keep payload concise and avoid leaking internal paths.
     return {
@@ -7191,7 +7246,7 @@ def translate_captions(req: TranslateRequest, request: Request, response: Respon
         # Note: use a distinct local name — `response` is the FastAPI Response
         # param (already used above for rate-limit headers); don't shadow it.
         completion = client.chat.completions.create(
-            model="gpt-4o",
+            model=TRANSLATION_MODEL,
             messages=[
                 {"role": "system", "content": f"You are a professional translator. Translate the following numbered caption lines to {req.target_language}. Keep the numbering. Only return the translated lines, nothing else. Preserve the exact number of lines."},
                 {"role": "user", "content": numbered_text}
@@ -7212,7 +7267,7 @@ def translate_captions(req: TranslateRequest, request: Request, response: Respon
         if len(translated_lines) != len(texts):
             print(f"Translation line count mismatch: expected {len(texts)}, got {len(translated_lines)}. Retrying...")
             retry_response = client.chat.completions.create(
-                model="gpt-4o",
+                model=TRANSLATION_MODEL,
                 messages=[
                     {"role": "system", "content": f"Translate exactly {len(texts)} numbered caption lines to {req.target_language}. Output exactly {len(texts)} numbered lines. No extra text."},
                     {"role": "user", "content": numbered_text}

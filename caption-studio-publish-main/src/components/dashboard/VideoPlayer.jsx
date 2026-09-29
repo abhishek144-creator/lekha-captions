@@ -1,4 +1,3 @@
-import { deliveryGeometry, videoFrameStyle } from './projectDelivery'
 import React, { useRef, useEffect, useLayoutEffect, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Play, Pause, Volume2, VolumeX, X, Maximize2, Minimize2, ZoomIn, ZoomOut, RotateCcw, Grid2X2, Move, RotateCw, Trash2 } from 'lucide-react';
@@ -3423,15 +3422,13 @@ const MemoizedVideo = React.memo(function MemoizedVideo({
   onLoadedMetadata,
   onMediaError,
   setIsPlaying,
-  frameStyle,
 }) {
   return (
     <video
       ref={videoRef}
       src={videoUrl}
       data-lekha-player="true"
-      className="w-full h-full"
-      style={frameStyle}
+      className="w-full h-full object-contain"
       playsInline
       preload="auto"
       disablePictureInPicture
@@ -3448,13 +3445,13 @@ const MemoizedVideo = React.memo(function MemoizedVideo({
       }}
     />
   );
+}, (prev, next) => {
+  // Only re-render when the video source changes — nothing else should touch the DOM
+  return prev.videoUrl === next.videoUrl;
 });
 
 export default function VideoPlayer({
   videoUrl,
-  playbackRate = 1,
-  playbackRange = null,
-  secondaryLayers = [],
   currentTime,
   setCurrentTime,
   seekSignal,
@@ -3480,26 +3477,6 @@ export default function VideoPlayer({
   setIsVideoFullscreen
 }) {
   const videoRef = useRef(null);
-  const frame = deliveryGeometry(captionStyle)
-  const rangeRef = useRef(playbackRange)
-  rangeRef.current = playbackRange
-  useEffect(() => {
-    if (videoRef.current) videoRef.current.playbackRate = playbackRate
-  }, [playbackRate, videoUrl])
-  useEffect(() => {
-    if (!isPlaying || !playbackRange) return undefined
-    let animationFrame
-    const checkRange = () => {
-      const video = videoRef.current
-      if (video && video.currentTime >= playbackRange.end) {
-        if (playbackRange.loop) video.currentTime = playbackRange.start
-        else { video.pause(); setIsPlaying(false); return }
-      }
-      animationFrame = requestAnimationFrame(checkRange)
-    }
-    animationFrame = requestAnimationFrame(checkRange)
-    return () => cancelAnimationFrame(animationFrame)
-  }, [isPlaying, playbackRange, setIsPlaying])
   const [isMuted, setIsMuted] = useState(false);
   const [volume, setVolume] = useState(1);
   const [isDragging, setIsDragging] = useState(false);
@@ -3950,14 +3927,9 @@ export default function VideoPlayer({
 
   const handleTimeUpdate = useCallback(() => {
     if (videoRef.current && !isScrubbingRef.current) {
-      const range = rangeRef.current
-      if (range && videoRef.current.currentTime >= range.end) {
-        if (range.loop) videoRef.current.currentTime = range.start
-        else { videoRef.current.pause(); setIsPlaying(false) }
-      }
       setCurrentTime(videoRef.current.currentTime);
     }
-  }, [setCurrentTime, setIsPlaying]);
+  }, [setCurrentTime]);
 
   const handleLoadedMetadata = useCallback(() => {
     if (videoRef.current) {
@@ -6604,11 +6576,8 @@ export default function VideoPlayer({
           )}
         <div
           ref={videoContainerRef}
-          className={`lekha-video-frame relative touch-none select-none bg-black shadow-[0_35px_120px_rgba(0,0,0,0.72)] ${isVideoFullscreen ? 'h-auto max-h-[calc(100dvh-92px)]' : 'h-auto'}`}
+          className={`lekha-video-frame relative aspect-[9/16] touch-none select-none bg-black shadow-[0_35px_120px_rgba(0,0,0,0.72)] ${isVideoFullscreen ? 'h-auto max-h-[calc(100dvh-92px)]' : 'h-full max-h-[calc(100dvh-360px)] md:max-h-[calc(100dvh-296px)]'}`}
             style={{
-              aspectRatio: frame.aspect.replace(':', ' / '),
-              width: `max(160px, min(540px, calc((100dvh - ${isVideoFullscreen ? 100 : 380}px) * ${frame.aspect === '9:16' ? 9 / 16 : frame.aspect === '1:1' ? 1 : 16 / 9})))`,
-              maxWidth: '100%',
               transform: `translate(${canvasOffset.x}px, ${canvasOffset.y}px) scale(${canvasScale})`,
               transformOrigin: 'center center',
               transition: isCanvasPanning ? 'none' : 'transform 0.1s ease',
@@ -6618,7 +6587,6 @@ export default function VideoPlayer({
             onClickCapture={handleCanvasWordClickCapture}
             onClick={handleVideoSurfaceClick}
           >
-          {captionStyle.show_safe_area && <div aria-label="Platform safe-area guide" className="pointer-events-none absolute z-[80] border border-dashed border-sky-200/70" style={{ left: `${frame.safeX}%`, right: `${frame.safeX}%`, top: `${frame.safeY}%`, bottom: `${frame.safeY}%` }} />}
           {showLayoutGuides && (
             <div className="pointer-events-none absolute inset-0 z-[80]">
               {[33.333, 66.666].map((pct) => (
@@ -6735,7 +6703,6 @@ export default function VideoPlayer({
             <>
               <MemoizedVideo
                 videoRef={videoRef}
-                frameStyle={videoFrameStyle(captionStyle)}
                 videoUrl={videoUrl}
                 onTimeUpdate={handleTimeUpdate}
                 onLoadedMetadata={handleLoadedMetadata}
@@ -6748,7 +6715,7 @@ export default function VideoPlayer({
                 </span>
               </div>
               <div className="absolute top-3 right-3 z-40 rounded bg-black/75 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-white">
-                {frame.aspect}
+                9:16 - 24FPS
               </div>
               {!isPlaying && (
                 <button
@@ -7562,7 +7529,7 @@ export default function VideoPlayer({
           {detachedCaptionWordOverlays}
 
           {/* Text Elements (render above captions) */}
-          {[...activeTextElements, ...secondaryLayers.filter((layer) => currentTime >= layer.start_time && currentTime < layer.end_time)].map((element) => {
+          {activeTextElements.map((element) => {
             const style = element.customStyle || {};
             const isEditingThis = isEditing === element.id;
             const textElementMetrics = getTextElementDisplayMetrics(style);
