@@ -19,6 +19,11 @@ try:
 except ImportError:  # Local tests do not require Redis.
     redis = None
 
+try:
+    from .redis_config import connect_redis
+except ImportError:
+    from redis_config import connect_redis
+
 
 @dataclass
 class _ProviderState:
@@ -42,7 +47,7 @@ class ProviderCircuitBreaker:
         self._lock = threading.Lock()
         redis_url = (os.environ.get("REDIS_URL") or "").strip()
         self._redis = (
-            redis.Redis.from_url(
+            connect_redis(
                 redis_url,
                 decode_responses=True,
                 socket_connect_timeout=1,

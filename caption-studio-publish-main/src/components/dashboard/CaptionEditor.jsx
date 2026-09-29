@@ -14,8 +14,6 @@ import {
   MoreHorizontal
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import CaptionQualityPanel from './CaptionQualityPanel';
-import { analyzeCaptionQuality } from './captionQualityUtils'
 import { invalidateWordTimingOutsideCaption } from './captionEditingUtils'
 import {
   duplicateCaptionWithTiming,
@@ -44,12 +42,6 @@ export default function CaptionEditor({
   captionTracks = [],
   activeCaptionTrackId,
   onSelectTrack,
-  onTranslateTrack,
-  captionStyle,
-  onApplyReadablePreset,
-  glossaryTerms = [],
-  onGlossaryChange,
-  preferenceSyncStatus = 'loading',
 }) {
   const [showAutoTip, setShowAutoTip] = useState(false);
   const [query, setQuery] = useState('');
@@ -58,14 +50,8 @@ export default function CaptionEditor({
   const [findText, setFindText] = useState('');
   const [replaceText, setReplaceText] = useState('');
   const [showBilingualPreview, setShowBilingualPreview] = useState(false);
-  const [showAddLanguage, setShowAddLanguage] = useState(false);
-  const [newLanguage, setNewLanguage] = useState('');
-  const [isAddingLanguage, setIsAddingLanguage] = useState(false);
-  const [languageError, setLanguageError] = useState('');
   const [soundCue, setSoundCue] = useState('[music]');
   const [captionEditMessage, setCaptionEditMessage] = useState('');
-  const [glossarySource, setGlossarySource] = useState('');
-  const [glossaryReplacement, setGlossaryReplacement] = useState('');
   const searchInputRef = useRef(null);
 
   const otherTrack = captionTracks.find((track) => track.id !== activeCaptionTrackId);
@@ -93,18 +79,6 @@ export default function CaptionEditor({
     window.addEventListener('keydown', focusTranscriptSearch);
     return () => window.removeEventListener('keydown', focusTranscriptSearch);
   }, []);
-
-  const nextIssue = () => {
-    const issues = captions.filter((caption) => analyzeCaptionQuality([caption], captionStyle).details.length > 0)
-    if (!issues.length) { setCaptionEditMessage('No caption-specific issues found.'); return }
-    const index = issues.findIndex((caption) => caption.id === selectedCaptionId)
-    const next = issues[(index + 1) % issues.length]
-    setQuery('')
-    setSelectedCaptionId(next.id)
-    setEditingCaptionId(next.id)
-    onSeek?.(next.start_time)
-    requestAnimationFrame(() => document.querySelector(`textarea[data-caption-id="${CSS.escape(String(next.id))}"]`)?.focus())
-  }
 
   const nudgeCaption = (caption, delta) => {
     const shift = Math.max(-Number(caption.start_time), delta)
@@ -137,47 +111,6 @@ export default function CaptionEditor({
             String(caption.text || '').replace(new RegExp(escaped, 'gi'), replaceText),
           )
     )));
-  };
-
-  const addGlossaryTerm = () => {
-    const source = glossarySource.trim();
-    const replacement = glossaryReplacement.trim();
-    if (!source || !replacement) return;
-    const identity = source.toLocaleLowerCase();
-    onGlossaryChange?.((current) => [
-      {
-        id: `glossary-${Date.now()}`,
-        source,
-        replacement,
-        case_sensitive: false,
-        updated_at: new Date().toISOString(),
-      },
-      ...current.filter((term) => String(term.source || '').toLocaleLowerCase() !== identity),
-    ].slice(0, 100));
-    setGlossarySource('');
-    setGlossaryReplacement('');
-  };
-
-  const applyGlossary = () => {
-    if (!glossaryTerms.length) return;
-    let changedCount = 0;
-    const nextCaptions = captions.map((caption) => {
-      if (caption.isTextElement) return caption;
-      let nextText = String(caption.text || '');
-      glossaryTerms.forEach((term) => {
-        const source = String(term.source || '').trim();
-        if (!source) return;
-        const escaped = source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        nextText = nextText.replace(new RegExp(escaped, term.case_sensitive ? 'g' : 'gi'), term.replacement);
-      });
-      if (nextText === String(caption.text || '')) return caption;
-      changedCount += 1;
-      return reconcileCaptionText(caption, nextText);
-    });
-    if (changedCount) setCaptions(nextCaptions);
-    setCaptionEditMessage(changedCount
-      ? `Applied glossary corrections to ${changedCount} caption${changedCount === 1 ? '' : 's'}. Review changed word timings.`
-      : 'No glossary terms matched this language track.');
   };
 
   const addCaptionAnnotation = (caption, label) => {
@@ -324,47 +257,6 @@ export default function CaptionEditor({
           )}
         </div>
       )}
-      {captionTracks.length > 0 && onTranslateTrack && (
-        <div className="relative z-10 mb-4">
-          <button type="button" onClick={() => { setShowAddLanguage((value) => !value); setLanguageError(''); }} className="text-[11px] font-semibold text-sky-200 hover:text-white">
-            {showAddLanguage ? 'Cancel new language' : 'Add a language track'}
-          </button>
-          {showAddLanguage && (
-            <form
-              className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] gap-2 rounded-xl border border-white/10 bg-black/25 p-3"
-              onSubmit={async (event) => {
-                event.preventDefault();
-                setIsAddingLanguage(true);
-                setLanguageError('');
-                try {
-                  await onTranslateTrack(newLanguage);
-                  setNewLanguage('');
-                  setShowAddLanguage(false);
-                } catch (error) {
-                  setLanguageError(error?.message || 'Translation failed. Please try again.');
-                } finally {
-                  setIsAddingLanguage(false);
-                }
-              }}
-            >
-              <input aria-label="New language" value={newLanguage} onChange={(event) => setNewLanguage(event.target.value)} placeholder="Language, such as Spanish" maxLength={50} className="min-w-0 rounded-lg border border-white/10 bg-black/40 px-2.5 py-2 text-xs text-white placeholder:text-slate-500" />
-              <button type="submit" disabled={!newLanguage.trim() || isAddingLanguage} className="rounded-lg bg-sky-200 px-3 py-2 text-xs font-bold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40">
-                {isAddingLanguage ? 'Translating…' : 'Create track'}
-              </button>
-              <p className="col-span-2 text-[10px] leading-4 text-slate-500">A new editable track is translated from the original track. The original and any other languages stay in this project.</p>
-              {languageError && <p role="alert" className="col-span-2 text-[10px] leading-4 text-rose-300">{languageError}</p>}
-            </form>
-          )}
-        </div>
-      )}
-
-      <details className="relative z-10 mb-4 rounded-xl border border-white/10 bg-black/20 p-3">
-        <summary className="cursor-pointer list-none text-xs font-semibold text-slate-200">Caption quality review</summary>
-        <button type="button" onClick={nextIssue} className="mt-2 rounded border border-white/20 px-3 py-2 text-xs">Next issue</button>
-        <button type="button" onClick={onApplyReadablePreset} className="ml-2 mt-2 rounded border border-white/20 px-3 py-2 text-xs">Readable caption preset</button>
-        <div className="mt-3"><CaptionQualityPanel captions={captions} captionStyle={captionStyle} compact /></div>
-      </details>
-
       <div className="relative z-10 mb-4">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
         <input
@@ -379,30 +271,6 @@ export default function CaptionEditor({
           Ctrl K
         </span>
       </div>
-      <details className="relative z-10 mb-4 rounded-xl border border-white/10 bg-black/20 p-3">
-        <summary className="cursor-pointer list-none text-[11px] font-semibold text-sky-200">Account glossary</summary>
-        <div className="mt-3 space-y-3">
-          <p className="text-[10px] leading-4 text-slate-500">
-            Keep names, brands, and specialist terms consistent across projects. {preferenceSyncStatus === 'synced' ? 'Glossary is synced to your account.' : 'Changes are saved locally until account sync is available.'}
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            <input aria-label="Incorrect or source term" value={glossarySource} onChange={(event) => setGlossarySource(event.target.value)} placeholder="Heard as…" maxLength={120} className="min-w-0 rounded-lg border border-white/10 bg-black/40 px-2.5 py-2 text-xs text-white placeholder:text-slate-500" />
-            <input aria-label="Preferred glossary term" value={glossaryReplacement} onChange={(event) => setGlossaryReplacement(event.target.value)} placeholder="Replace with…" maxLength={120} className="min-w-0 rounded-lg border border-white/10 bg-black/40 px-2.5 py-2 text-xs text-white placeholder:text-slate-500" />
-            <button type="button" onClick={addGlossaryTerm} disabled={!glossarySource.trim() || !glossaryReplacement.trim()} className="rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2 text-[11px] font-semibold text-white disabled:opacity-40">Save term</button>
-            <button type="button" onClick={applyGlossary} disabled={!glossaryTerms.length} className="rounded-lg bg-sky-200 px-3 py-2 text-[11px] font-bold text-slate-950 disabled:opacity-40">Apply to track</button>
-          </div>
-          {glossaryTerms.length > 0 && (
-            <div className="max-h-32 space-y-1.5 overflow-y-auto pr-1">
-              {glossaryTerms.map((term) => (
-                <div key={term.id || term.source} className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/25 px-2.5 py-2 text-[10px]">
-                  <span className="min-w-0 flex-1 truncate text-slate-300">{term.source} → <strong className="text-white">{term.replacement}</strong></span>
-                  <button type="button" aria-label={`Remove glossary term ${term.source}`} onClick={() => onGlossaryChange?.((current) => current.filter((item) => item.id !== term.id))} className="text-slate-500 hover:text-white"><X className="h-3.5 w-3.5" /></button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </details>
       {captionEditMessage && <p role="status" className="relative z-10 -mt-2 mb-3 text-[11px] text-amber-200">{captionEditMessage}</p>}
       <div className="relative z-10 mb-4">
         <button type="button" onClick={() => setShowReplace((value) => !value)} className="text-[11px] font-semibold text-sky-200 hover:text-white">
@@ -520,7 +388,7 @@ export default function CaptionEditor({
                         />
 
                         <div className="flex flex-wrap items-center gap-2">
-                          <button type="button" onClick={() => onPlayCaption?.(caption, true)} className="rounded border border-white/20 px-2 py-1 text-xs">Loop phrase</button>
+                          <button type="button" onClick={() => onPlayCaption?.(caption)} className="rounded border border-white/20 px-2 py-1 text-xs">Play phrase</button>
                           <button type="button" onClick={() => nudgeCaption(caption, -0.1)} className="rounded border border-white/20 px-2 py-1 text-xs" title="Alt + Left in caption text">Earlier 0.1s</button>
                           <button type="button" onClick={() => nudgeCaption(caption, 0.1)} className="rounded border border-white/20 px-2 py-1 text-xs" title="Alt + Right in caption text">Later 0.1s</button>
                           <button

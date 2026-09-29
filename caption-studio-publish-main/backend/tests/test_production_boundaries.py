@@ -698,6 +698,20 @@ class ProductionBoundaryTests(unittest.TestCase):
                 main._create_account_if_active(db, object(), "deleted", {})
         self.assertEqual(error.exception.status_code, 409)
 
+    def test_system_ai_quota_fails_closed_in_production(self):
+        class Ref:
+            def document(self, _): return self
+            def get(self, **_): raise RuntimeError("firestore down")
+        db = SimpleNamespace(collection=lambda _: Ref(), transaction=lambda: object())
+        with (patch.object(main, "_IS_PRODUCTION", True), patch.object(main, "AI_SYSTEM_DAILY_LIMIT", 10),
+              patch.object(main.firestore, "transactional", new=lambda fn: fn)):
+            with self.assertRaises(main.HTTPException) as error:
+                main._reserve_system_ai_quota(db, "process")
+        self.assertEqual(error.exception.status_code, 503)
+        with (patch.object(main, "_IS_PRODUCTION", False), patch.object(main, "AI_SYSTEM_DAILY_LIMIT", 10),
+              patch.object(main.firestore, "transactional", new=lambda fn: fn)):
+            main._reserve_system_ai_quota(db, "process")
+
     def test_job_state_preserves_empty_arrays_in_replay_payload(self):
         snapshot = {"waveform_data": [], "captions": [{"words": [], "word_styles": {}}]}
         transition(self.redis, "job", {}, {"status": "queued", "request_snapshot": snapshot})

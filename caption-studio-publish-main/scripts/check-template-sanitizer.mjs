@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { readBackendApiSource } from './backend-api-source.mjs';
 import puppeteer from 'puppeteer';
 
 const root = path.resolve(import.meta.dirname, '..');
@@ -44,7 +45,7 @@ for (const required of [
   'Template markup contains unsafe elements or attributes',
 ]) {
   const haystack = required.startsWith('Template markup')
-    ? await fs.readFile(path.join(root, 'backend', 'main.py'), 'utf8')
+    ? readBackendApiSource(root)
     : required.includes('PUPPETEER_DISABLE_SANDBOX')
       ? browserRuntimeSource
       : exportRendererSource;

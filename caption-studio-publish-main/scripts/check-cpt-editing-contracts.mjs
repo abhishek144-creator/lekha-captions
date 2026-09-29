@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { readBackendApiSource } from './backend-api-source.mjs';
 import { resolveCptWordSnap } from '../src/components/dashboard/cptSmartGuides.js';
 import {
   advanceCaptionWordRevealIndex,
@@ -171,6 +173,9 @@ const videoPlayerSource = (await readFile(
 )) + '\n' + (await readFile(
   new URL('../src/components/dashboard/videoPlayerWordEditing.js', import.meta.url),
   'utf8',
+)) + '\n' + (await readFile(
+  new URL('../src/components/dashboard/videoPlayerTemplateRendering.jsx', import.meta.url),
+  'utf8',
 ));
 const exportPanelSource = await readFile(
   new URL('../src/components/dashboard/ExportPanel.jsx', import.meta.url),
@@ -180,10 +185,7 @@ const exportRendererSource = await readFile(
   new URL('./render_template_overlay.mjs', import.meta.url),
   'utf8',
 );
-const backendMainSource = await readFile(
-  new URL('../backend/main.py', import.meta.url),
-  'utf8',
-);
+const backendMainSource = readBackendApiSource(fileURLToPath(new URL('..', import.meta.url)));
 assert.match(
   videoPlayerSource,
   /nextWordStyle\.cptCanvasXPercent = absXPct[\s\S]*nextWordStyle\.cptCanvasYPercent = absYPct/,

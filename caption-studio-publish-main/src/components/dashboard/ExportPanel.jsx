@@ -1,5 +1,3 @@
-import DeliveryControls from './DeliveryControls'
-import { deliveryGeometry, videoFrameStyle } from './projectDelivery'
 import React, { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import {
@@ -202,15 +200,7 @@ const exportQueue = {
   }
 };
 
-function ExportFramePreview({ videoUrl, captionStyle }) {
-  const frame = deliveryGeometry(captionStyle)
-  return <div className="mx-auto relative w-full max-w-[240px] overflow-hidden rounded-lg bg-black" style={{ aspectRatio: frame.aspect.replace(':', ' / ') }}>
-    <video src={videoUrl || undefined} muted playsInline preload="metadata" aria-label="Video crop preview" className="absolute inset-0 h-full w-full" style={videoFrameStyle(captionStyle)} />
-    {captionStyle.show_safe_area && <div className="pointer-events-none absolute border border-dashed border-sky-200" style={{ left: `${frame.safeX}%`, right: `${frame.safeX}%`, top: `${frame.safeY}%`, bottom: `${frame.safeY}%` }} />}
-  </div>
-}
-
-export default function ExportPanel({ open, onClose, captions, captionStyle, waveformData, duration, fileId, originalFileName, videoUrl, captionTrackLabel, onUpgradeClick, onCaptionStyleChange, captionTracks = [], activeCaptionTrackId, subtitleCaptions = captions, sourceUnavailable = false }) {
+export default function ExportPanel({ open, onClose, captions, captionStyle, waveformData, duration, fileId, originalFileName, captionTrackLabel, onUpgradeClick, sourceUnavailable = false }) {
   const { currentUser, userData, refreshUserData } = useAuth();
   // Use auth context directly for consistent, up-to-date auth & credit checks
   const isSignedIn = !!currentUser;
@@ -235,7 +225,9 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
   const [waitStartTime, setWaitStartTime] = useState(null);
   const [showServerBusy, setShowServerBusy] = useState(false);
   const [exportExpiry, setExportExpiry] = useState(null);
-  const exportAspectRatio = deliveryGeometry(captionStyle).aspect
+  // Matches the editor's fixed 9:16 frame; frame_fit 'contain' below keeps
+  // wide videos whole (letterboxed) exactly as the preview shows them.
+  const exportAspectRatio = '9:16'
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
   const [notifyWhenComplete, setNotifyWhenComplete] = useState(() => {
     try { return typeof window !== 'undefined' && window.localStorage?.getItem('lekha.exportCompletionNotification') === '1' }
@@ -407,7 +399,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
   };
 
   const handleDownloadSRT = () => {
-    const srt = buildSrt(subtitleCaptions);
+    const srt = buildSrt(captions);
     if (!srt) {
       toast({ variant: 'destructive', title: 'No captions to export' });
       return;
@@ -416,7 +408,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
   };
 
   const handleDownloadVTT = () => {
-    const vtt = buildVtt(subtitleCaptions);
+    const vtt = buildVtt(captions);
     if (!vtt) {
       toast({ variant: 'destructive', title: 'No captions to export' });
       return;
@@ -425,7 +417,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
   };
 
   const handleDownloadText = () => {
-    const text = buildPlainText(subtitleCaptions);
+    const text = buildPlainText(captions);
     if (!text) {
       toast({ variant: 'destructive', title: 'No captions to export' });
       return;
@@ -986,10 +978,10 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
           karaoke_color_2: _cs?.karaoke_color_2 || '',
           karaoke_color_3: _cs?.karaoke_color_3 || '',
           template_color_customized: templateColorCustomized,
-          frame_fit: deliveryGeometry(captionStyle).fit,
-          frame_x: deliveryGeometry(captionStyle).x,
-          frame_y: deliveryGeometry(captionStyle).y,
           export_aspect_ratio: exportAspectRatio,
+          // The editor shows the whole video letterboxed inside its 9:16 frame;
+          // export the same frame instead of cropping wide videos.
+          frame_fit: 'contain',
           show_inactive: _cs?.show_inactive !== false,
           };
         })(),
@@ -1288,10 +1280,6 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
                 <p className="text-xs text-gray-500 mt-1">Burn captions into your video.</p>
               </div>
               <Sparkles className="w-4 h-4 text-[#f5a623]" />
-            </div>
-            <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.025] p-4">
-              <DeliveryControls style={captionStyle} onChange={onCaptionStyleChange} tracks={captionTracks} activeTrackId={activeCaptionTrackId} />
-              <ExportFramePreview videoUrl={videoUrl} captionStyle={captionStyle} />
             </div>
             <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.025] p-4">
               <div>
