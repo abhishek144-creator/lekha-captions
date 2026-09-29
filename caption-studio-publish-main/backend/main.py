@@ -118,6 +118,7 @@ try:
     from .public_api import create_public_api_router
     from .workspace_api import create_workspace_router
     from .payments_api import create_payments_router
+    from .redis_config import connect_redis
     from .system_api import create_system_router
     from .billing import create_billing_service
     from .admin_api import create_admin_router
@@ -160,6 +161,7 @@ except ImportError:
     from public_api import create_public_api_router
     from workspace_api import create_workspace_router
     from payments_api import create_payments_router
+    from redis_config import connect_redis
     from system_api import create_system_router
     from billing import create_billing_service
     from admin_api import create_admin_router
@@ -818,12 +820,12 @@ if (
 
 if REDIS_AVAILABLE and REDIS_URL and not _IS_TEST:
     try:
-        _redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True, socket_connect_timeout=5, socket_timeout=5)
+        _redis_client = connect_redis(REDIS_URL, decode_responses=True, socket_timeout=5)
         _redis_client.ping()
         # RQ stores pickled/binary job payloads. Sharing the application's
         # decode_responses=True client makes failed-job inspection attempt UTF-8
         # decoding and can strand per-user export leases.
-        _rq_redis_client = redis.Redis.from_url(REDIS_URL, socket_connect_timeout=5)
+        _rq_redis_client = connect_redis(REDIS_URL)
         _rq_redis_client.ping()
         _json_log("info", "redis_connected")
     except Exception as e:
