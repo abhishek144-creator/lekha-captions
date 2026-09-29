@@ -1,5 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
+import { isAdvancedTemplateId, extractHtmlStyle } from '../src/components/dashboard/templateTextRules.js';
 import { fileURLToPath } from 'url';
 import puppeteer from 'puppeteer';
 import { browserLaunchOptions, connectWarmBrowser } from './render_browser_runtime.mjs';
@@ -145,9 +146,6 @@ function captionHasCptWordStyles(caption) {
   ));
 }
 
-function isAdvancedTemplateId(templateId) {
-  return /^t\d{2}$/.test(String(templateId || ''));
-}
 
 function scaleTemplateFontSize(fontSize) {
   return Math.max(12, Math.round((fontSize || 18) * TEMPLATE_CANVAS_FONT_SCALE));
@@ -198,10 +196,6 @@ function extractOriginalTemplateRuntimeCss(originalTemplateHtml) {
   return start >= 0 ? style.slice(start) : style;
 }
 
-function extractHtmlStyle(markup = '') {
-  const matches = [...String(markup).matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)];
-  return matches.map(m => m[1]).join('\n');
-}
 
 function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
   return `
@@ -298,133 +292,16 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       return Math.max(0, Number(fallbackIndex) || 0);
     };
 
-    const splitCaptionForTemplate = (text = '') => {
-      const words = String(text).trim().split(/\\s+/).filter(Boolean);
-      if (!words.length) return { top: '', hero: '', bottom: '', full: '' };
-      if (words.length === 1) return { top: '', hero: words[0], bottom: '', full: words[0] };
-      const heroIndex = Math.min(1, words.length - 1);
-      return {
-        top: words.slice(0, heroIndex).join(' '),
-        hero: words[heroIndex] || words[0],
-        bottom: words.slice(heroIndex + 1).join(' '),
-        full: words.join(' '),
-      };
-    };
 
-    const splitTemplateLines = (text = '', maxLines = 2) => {
-      const words = String(text).trim().split(/\\s+/).filter(Boolean);
-      if (!words.length) return [''];
-      const lineCount = Math.max(1, Math.min(maxLines, words.length));
-      const lines = Array.from({ length: lineCount }, () => []);
-      words.forEach((word, index) => {
-        lines[Math.min(lineCount - 1, Math.floor((index * lineCount) / words.length))].push(word);
-      });
-      return lines.map((line) => line.join(' ')).filter(Boolean);
-    };
 
-    const resolveTemplatePreviewLines = (text = '', preferredLines = [], maxLines = 2) => {
-      const normalizedPreferred = Array.isArray(preferredLines)
-        ? preferredLines.map((line) => String(line || '').replace(/\\s+/g, ' ').trim()).filter(Boolean)
-        : [];
-      if (normalizedPreferred.length > 0) {
-        const requestedWords = normalizedPreferred.flatMap((line) => line.split(/\\s+/).filter(Boolean));
-        const actualWords = String(text).trim().split(/\\s+/).filter(Boolean);
-        const sameWords = requestedWords.length === actualWords.length
-          && requestedWords.every((word, index) => word === actualWords[index]);
-        if (sameWords) return normalizedPreferred;
-      }
-      return splitTemplateLines(text, maxLines);
-    };
 
-    const splitBattleCryTokens = (tokens = []) => {
-      if (!tokens.length) return [];
-      if (tokens.length <= 3) return [tokens.map((token, wordIndex) => ({ ...token, wordIndex }))];
-      const firstLineCount = Math.max(2, Math.min(tokens.length - 1, Math.ceil(tokens.length * 0.66)));
-      return [
-        tokens.slice(0, firstLineCount).map((token, wordIndex) => ({ ...token, wordIndex })),
-        tokens.slice(firstLineCount).map((token, localIndex) => ({
-          ...token,
-          wordIndex: firstLineCount + localIndex,
-        })),
-      ].filter((line) => line.length);
-    };
 
-    const splitCompactIndexedLines = (tokens = [], preferredLines = []) => {
-      const normalizedPreferred = Array.isArray(preferredLines)
-        ? preferredLines.map((line) => String(line || '').replace(/\\s+/g, ' ').trim()).filter(Boolean)
-        : [];
-      if (normalizedPreferred.length > 1) {
-        const preferredWords = normalizedPreferred.flatMap((line) => line.split(/\\s+/).filter(Boolean));
-        const tokenWords = tokens.map((token) => token.word);
-        const sameWords = preferredWords.length === tokenWords.length
-          && preferredWords.every((word, index) => word === tokenWords[index]);
-        if (sameWords) {
-          let cursor = 0;
-          return normalizedPreferred.map((lineText) => {
-            const count = lineText.split(/\\s+/).filter(Boolean).length;
-            const line = tokens.slice(cursor, cursor + count).map((token, localIndex) => ({
-              ...token,
-              wordIndex: cursor + localIndex,
-            }));
-            cursor += count;
-            return line;
-          }).filter((line) => line.length);
-        }
-      }
 
-      if (!tokens.length) return [];
-      if (tokens.length <= 3) return [tokens.map((token, wordIndex) => ({ ...token, wordIndex }))];
-      const firstLineCount = Math.max(2, Math.min(tokens.length - 1, Math.ceil(tokens.length * 0.66)));
-      return [
-        tokens.slice(0, firstLineCount).map((token, wordIndex) => ({ ...token, wordIndex })),
-        tokens.slice(firstLineCount).map((token, localIndex) => ({
-          ...token,
-          wordIndex: firstLineCount + localIndex,
-        })),
-      ].filter((line) => line.length);
-    };
 
-    const shouldCompactTemplateLine = (text = '') => {
-      const value = String(text || '').trim();
-      if (!value) return false;
-      return value.length > 22
-        || usesComplexTemplateScript(value);
-    };
 
-    const usesComplexTemplateScript = (text = '') => (
-      /[\\p{Script=Arabic}\\p{Script=Bengali}\\p{Script=Devanagari}\\p{Script=Gujarati}\\p{Script=Gurmukhi}\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Kannada}\\p{Script=Katakana}\\p{Script=Malayalam}\\p{Script=Oriya}\\p{Script=Tamil}\\p{Script=Telugu}\\p{Script=Thai}]/u.test(String(text || ''))
-    );
 
-    const normalizeImpWordIndices = (impWordIndex = -1, impWordIndices = []) => {
-      const values = Array.isArray(impWordIndices) ? impWordIndices : [];
-      const normalized = values
-        .map((value) => Number(value))
-        .filter((value) => Number.isFinite(value) && value >= 0);
-      const single = Number(impWordIndex);
-      if (Number.isFinite(single) && single >= 0) normalized.push(single);
-      return [...new Set(normalized.map((value) => Math.trunc(value)))];
-    };
 
-    const normalizeTemplateWord = (word = '') => String(word || '')
-      .normalize('NFKC')
-      .toLocaleLowerCase()
-      .replace(/^[^\\p{L}\\p{M}\\p{N}]+|[^\\p{L}\\p{M}\\p{N}]+$/gu, '');
 
-    const getTargetPhraseImpWordIndices = (wordsOrTokens = []) => {
-      const normalizedWords = wordsOrTokens.map((item) => normalizeTemplateWord(item?.word ?? item));
-      for (let index = 0; index < normalizedWords.length - 1; index += 1) {
-        if (normalizedWords[index] === '\\u0926\\u0938' && normalizedWords[index + 1] === '\\u0932\\u0915') {
-          return [index, index + 1];
-        }
-      }
-      return [];
-    };
-
-    const resolveImpWordIndicesForWords = (wordsOrTokens = [], impWordIndex = -1, impWordIndices = []) => {
-      const phraseIndices = getTargetPhraseImpWordIndices(wordsOrTokens);
-      if (phraseIndices.length) return phraseIndices;
-      return normalizeImpWordIndices(impWordIndex, impWordIndices);
-    };
 
     const heroMarkup = (text, className = '') => {
       const { top, hero, bottom, full } = splitCaptionForTemplate(text);
@@ -483,7 +360,7 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       if (!full) return '';
       const tokens = full.split(/\\s+/).filter(Boolean).map((word) => ({ word }));
       const heroIndex = Math.max(0, tokens.findIndex((token) => token.word === hero));
-      const lines = splitBattleCryTokens(tokens);
+      const lines = splitBattleCryIndexedLines(tokens);
       const markup = lines.map((line, lineIndex) => {
         const lineMotion = lineIndex % 2 === 0 ? 'wbw-slide' : 'wbw-rise';
         const battleMotion = lineIndex % 2 === 0 ? 'sweep-left' : 'lift-up';
@@ -795,9 +672,6 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       });
     };
 
-    const shouldSuppressStyledSemanticEmphasis = (templateId, blockType, block) => (
-      templateId === 't17' && !!block?.querySelector?.('.snap-txt')
-    );
 
     const normalizeAdvancedSourceStyledBlock = (block, templateId, blockIndex, captionText = '', previewLineTexts = []) => {
       const rebuildSplitText = (container, lines, impClass = '') => {
@@ -911,16 +785,6 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
 
     const originalTemplateBlockTypes = ${JSON.stringify(ORIGINAL_TEMPLATE_BLOCK_TYPES)};
     const recreatedAdvancedTemplateIds = new Set(${JSON.stringify(RECREATED_ADVANCED_TEMPLATE_IDS)});
-    const RECREATED_ADVANCED_WBW_PHASES = {
-      t11: { 2: 'imp-gold' },
-      t18: { 2: 'imp-purple' },
-      t24: { 2: 'imp-orange' },
-      t31: { 2: 'imp-gold' },
-    };
-    const getRecreatedAdvancedWbwImpClass = (templateId, blockIndex) =>
-      RECREATED_ADVANCED_WBW_PHASES[String(templateId || '')]?.[Number(blockIndex)] || '';
-    const shouldRecreateAdvancedWbwPhase = (templateId, blockIndex) =>
-      Boolean(getRecreatedAdvancedWbwImpClass(templateId, blockIndex));
     const rebuildAdvancedWbwRiseBlock = (
       block,
       words,
@@ -3384,6 +3248,11 @@ async function main() {
       { template_id: templateId },
     );
   }
+  // Caption text rules shared with the editor preview (classic script: drop `export`).
+  const templateTextRulesSource = (await fs.readFile(
+    path.join(projectRoot, 'src', 'components', 'dashboard', 'templateTextRules.js'),
+    'utf8',
+  )).replace(/^\s*export\s+/gm, '');
   const basicTemplateInlineSource = hasBasicTemplate
     ? (await fs.readFile(
         path.join(projectRoot, 'src', 'components', 'dashboard', 'basicTemplateInline.js'),
@@ -5344,6 +5213,7 @@ async function main() {
           <script>window.__exportScriptFontMaps = ${JSON.stringify(exportScriptFontMaps)};</script>
           <script>window.__basicTemplateMarkupMap = ${JSON.stringify(basicTemplateMarkupMap)};</script>
           ${basicTemplateInlineSource ? `<script>${basicTemplateInlineSource}</script>` : ''}
+          <script>${templateTextRulesSource}</script>
           <script>${buildRuntimeScript(advancedTemplateBlockMarkup)}</script>
         </body>
       </html>

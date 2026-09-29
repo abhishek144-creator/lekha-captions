@@ -41,6 +41,10 @@ const videoPlayerSource = (await readSource(
 const basicTemplateInlineSource = await readSource(
   new URL('src/components/dashboard/basicTemplateInline.js', projectRoot),
 );
+// Caption text/emphasis rules shared by the canvas and the export page.
+const templateTextRulesSource = await readSource(
+  new URL('src/components/dashboard/templateTextRules.js', projectRoot),
+);
 const gallerySource = await readSource(
   new URL('src/components/dashboard/AdvancedTemplateLibrary.jsx', projectRoot),
 );
@@ -397,8 +401,10 @@ for (const templateId of ['t13', 't14', 't16', 't18']) {
     fail(`${templateId} canvas preview has no template-specific parity override`);
   }
 }
-if (!videoPlayerSource.includes("return templateId === 't17' && !!block?.querySelector?.('.snap-txt');")
-  || !exportRendererSource.includes("templateId === 't17' && !!block?.querySelector?.('.snap-txt')")) {
+if (!templateTextRulesSource.includes("return templateId === 't17' && !!block?.querySelector?.('.snap-txt');")
+  || !videoPlayerSource.includes("from './templateTextRules.js'")
+  || !exportRendererSource.includes("'templateTextRules.js'")
+  || !exportRendererSource.includes('<script>${templateTextRulesSource}</script>')) {
   fail('Horror/Tension snap phase must suppress generic white emphasis injection');
 }
 if (!exportPanelSource.includes('resolvedTemplatePhaseIndex')
@@ -421,8 +427,10 @@ for (const templateId of recreatedAnimatedTemplateIds) {
     }
   });
 }
-if (!videoPlayerSource.includes('RECREATED_ADVANCED_WBW_PHASES')
-  || !exportRendererSource.includes('RECREATED_ADVANCED_WBW_PHASES')) {
+// The phase table lives once in the shared rules; both renderers must consult it.
+if (!templateTextRulesSource.includes('RECREATED_ADVANCED_WBW_PHASES')
+  || !videoPlayerSource.includes('shouldRecreateAdvancedWbwPhase(')
+  || !exportRendererSource.includes('shouldRecreateAdvancedWbwPhase(')) {
   fail('recreated advanced WBW phases must be rebuilt in both preview and export renderers');
 }
 if (!RECREATED_ADVANCED_TEMPLATE_IDS.includes('t34')) {
