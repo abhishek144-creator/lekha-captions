@@ -28,11 +28,13 @@ const advancedSource = await readSource(
 const legacySource = await readSource(
   new URL('src/assets/lekha-captions-20-templates.html', projectRoot),
 );
-// The canvas renderer is VideoPlayer.jsx plus its extracted stylesheet module;
-// the selectors asserted below live in whichever of the two owns them, so read
-// both and treat them as one source.
+// The canvas renderer is VideoPlayer.jsx plus its extracted rendering and
+// stylesheet modules; the selectors asserted below live in whichever file owns
+// them, so read all three (in original source order) as one source.
 const videoPlayerSource = (await readSource(
   new URL('src/components/dashboard/VideoPlayer.jsx', projectRoot),
+)) + '\n' + (await readSource(
+  new URL('src/components/dashboard/videoPlayerTemplateRendering.jsx', projectRoot),
 )) + '\n' + (await readSource(
   new URL('src/components/dashboard/videoPlayerTemplateStyles.jsx', projectRoot),
 ));

@@ -173,6 +173,9 @@ const videoPlayerSource = (await readFile(
 )) + '\n' + (await readFile(
   new URL('../src/components/dashboard/videoPlayerWordEditing.js', import.meta.url),
   'utf8',
+)) + '\n' + (await readFile(
+  new URL('../src/components/dashboard/videoPlayerTemplateRendering.jsx', import.meta.url),
+  'utf8',
 ));
 const exportPanelSource = await readFile(
   new URL('../src/components/dashboard/ExportPanel.jsx', import.meta.url),
