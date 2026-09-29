@@ -536,6 +536,8 @@ export default function Dashboard() {
     const uid = currentUser?.uid || ''
     if (loadedAccountRef.current === uid) return
     loadedAccountRef.current = uid
+    // DEV-ONLY: the ?devseed session has no account; don't wipe it on auth load.
+    if (import.meta.env.DEV && new URLSearchParams(window.location.search).has('devseed')) return
     recoveryInitializedRef.current = false
     setIsLoaded(false)
     setLocalRecoveryDraft(null)
