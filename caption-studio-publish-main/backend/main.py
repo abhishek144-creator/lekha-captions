@@ -1161,12 +1161,10 @@ async def startup_event():
         scheduler.add_job(scheduled_janitor_job, 'interval', minutes=15)
         scheduler.add_job(scheduled_payment_reconciliation_job, 'interval', minutes=max(PAYMENT_RECONCILE_INTERVAL_MINUTES, 5))
         scheduler.start()
-        print(
-            f"[Scheduler] Janitor every 15m + payment reconciliation every "
-            f"{max(PAYMENT_RECONCILE_INTERVAL_MINUTES, 5)}m."
-        )
+        _json_log("info", "scheduler_started", janitor_minutes=15,
+                  payment_reconcile_minutes=max(PAYMENT_RECONCILE_INTERVAL_MINUTES, 5))
     else:
-        print("[Janitor] apscheduler not available — running simple asyncio fallback.")
+        _json_log("warning", "janitor_fallback_loop", reason="apscheduler not installed")
         _simple_janitor_task = asyncio.create_task(_simple_janitor_loop())
 
 
@@ -1196,9 +1194,9 @@ async def _simple_janitor_loop():
             try:
                 await advanced_janitor_job()
             except Exception as e:
-                print(f"[Janitor] Job error: {e}")
+                _json_log("error", "janitor_job_failed", error=str(e))
     except Exception as e:
-        print(f"[Janitor] FATAL: loop crashed — {e}")
+        _json_log("error", "janitor_loop_crashed", error=str(e))
 
 # CORS — set ALLOWED_ORIGINS env var (comma-separated) in production
 # Falls back to localhost only; wildcard is never used
@@ -4058,7 +4056,7 @@ def get_google_fonts():
             _cached_google_fonts = fonts
             return {"fonts": fonts}
     except Exception as e:
-        print(f"Error fetching fonts: {e}")
+        _json_log("warning", "google_fonts_fetch_failed", error=str(e))
         return {"fonts": []}
 
 
@@ -4767,7 +4765,7 @@ async def _process_video_inline(req: ProcessRequest, request: Request, response:
                     with open(cache_path, "w", encoding="utf-8") as f:
                         json.dump(result, f)
                 except Exception as e:
-                    print(f"[Cache] Failed to write transcription cache: {e}")
+                    _json_log("warning", "transcription_cache_write_failed", error=str(e))
             if process_idem_key:
                 _idem_set(process_idem_key, {
                     "status": "completed",
