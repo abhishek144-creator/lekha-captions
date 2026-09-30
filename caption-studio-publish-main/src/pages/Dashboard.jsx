@@ -404,6 +404,22 @@ export default function Dashboard() {
   const [showLowCreditNotice, setShowLowCreditNotice] = useState(false)
   const [translationNotice, setTranslationNotice] = useState('')
   const [sourceUnavailable, setSourceUnavailable] = useState(false)
+  // While the person still has the file they just uploaded, play it from
+  // their device: instant, and no storage download. The storage link stays
+  // in videoUrl for saving, reloads and other devices.
+  const [localPlayback, setLocalPlayback] = useState(null)
+  const localPlaybackRef = useRef(null)
+  const replaceLocalPlayback = useCallback((file, forFileId) => {
+    const previous = localPlaybackRef.current
+    const canCreate = typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function'
+    const next = file && forFileId && canCreate ? { url: URL.createObjectURL(file), fileId: forFileId } : null
+    localPlaybackRef.current = next
+    setLocalPlayback(next)
+    if (previous?.url) URL.revokeObjectURL(previous.url)
+  }, [])
+  useEffect(() => () => {
+    if (localPlaybackRef.current?.url) URL.revokeObjectURL(localPlaybackRef.current.url)
+  }, [])
   const [isRelinking, setIsRelinking] = useState(false)
 
   useEffect(() => {
@@ -769,6 +785,7 @@ export default function Dashboard() {
     const selectedFileName = file?.name || originalFileName || 'video';
     let acceptedUpload = null;
     let acceptedPlayableVideoUrl = '';
+    let captionsReady = false;
 
     try {
       const mediaAuthToken = await getEffectiveAuthToken(currentUser);
@@ -825,6 +842,7 @@ export default function Dashboard() {
       setVideoUrl(acceptedPlayableVideoUrl);
       setFileId(uploadData.file_id);
       setOriginalFileName(selectedFileName);
+      if (file) replaceLocalPlayback(file, uploadData.file_id);
 
       // Parse wordsPerLine range for backend (e.g., "1-2" -> min=1, max=2).
       // "dynamic" (or unset) -> min=5, max=6 so animated templates receive full phrases.
@@ -974,6 +992,7 @@ export default function Dashboard() {
         };
       }
       setCaptionStyle(nextCaptionStyle);
+      captionsReady = true;
 
       const nextProjectId = `local_${Date.now()}`;
       setProjectId(nextProjectId);
@@ -1042,6 +1061,16 @@ export default function Dashboard() {
       setUploadProgress(null);
       setIsGenerating(false);
       setGenerationStartedAt(null);
+      if (captionsReady) {
+        // Measured when the captions actually appear, so it includes the
+        // upload and the waiting screen; the clock starts when the file was picked.
+        const shownAt = Date.now();
+        trackAnalytics('funnel.captions.ready', getClientContext({
+          stage: 'captions',
+          timeToFirstCaptionMs: shownAt - (uploadTask?.pickedAt || generationStart),
+          fromGenerateMs: shownAt - generationStart,
+        }));
+      }
     }
   };
 
@@ -1098,6 +1127,7 @@ export default function Dashboard() {
       if (!uploaded.success || !uploaded.raw_url) throw new Error(uploaded.error || 'Source upload failed')
       setFileId(uploaded.file_id)
       setVideoUrl(resolveApiResourceUrl(uploaded.raw_url, import.meta.env.VITE_API_BASE_URL))
+      replaceLocalPlayback(file, uploaded.file_id)
       setOriginalFileName(file.name)
       setWaveformData(null)
       setSourceUnavailable(false)
@@ -1107,6 +1137,7 @@ export default function Dashboard() {
     } finally { setIsRelinking(false) }
   }
 
+  const playbackUrl = localPlayback && localPlayback.fileId === fileId ? localPlayback.url : videoUrl;
   const refreshVideoPlaybackUrl = useCallback(async (event) => {
     if (!fileId || mediaRefreshInFlightRef.current) return;
 
@@ -1145,6 +1176,15 @@ export default function Dashboard() {
       mediaRefreshInFlightRef.current = false;
     }
   }, [currentTime, currentUser, fileId, isPlaying, videoUrl]);
+
+  const handleVideoError = (event) => {
+    // If the device copy cannot play, fall back to the storage link.
+    if (localPlaybackRef.current && localPlaybackRef.current.fileId === fileId) {
+      replaceLocalPlayback(null);
+      return;
+    }
+    refreshVideoPlaybackUrl(event);
+  };
 
   // Push current state to history, then apply new state.
   // options.coalesce: rapid consecutive pushes (e.g. per-keystroke text edits)
@@ -2081,7 +2121,7 @@ export default function Dashboard() {
                 <div className="transition-transform duration-200">
                   <Suspense fallback={<VideoLoadingFallback />}>
                     <VideoPlayer
-                      videoUrl={videoUrl}
+                      videoUrl={playbackUrl}
                       currentTime={currentTime}
                       setCurrentTime={setCurrentTime}
                       seekSignal={seekSignal}
@@ -2107,7 +2147,7 @@ export default function Dashboard() {
                           if (data) setWaveformData(data);
                         }
                       }}
-                      onVideoError={refreshVideoPlaybackUrl}
+                      onVideoError={handleVideoError}
                       isVideoFullscreen={isVideoFullscreen}
                       setIsVideoFullscreen={setIsVideoFullscreen}
                     />

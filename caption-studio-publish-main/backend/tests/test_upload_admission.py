@@ -67,6 +67,7 @@ class DirectUploadRouterTests(unittest.TestCase):
         self.scans = []
         self.network_checks = []
         self.plan_checks = []
+        self.discarded = []
         app = FastAPI()
         app.include_router(create_direct_upload_router(
             authenticate=lambda token: {"uid": "user-1"},
@@ -91,6 +92,7 @@ class DirectUploadRouterTests(unittest.TestCase):
             rate_limit_network=lambda request: self.network_checks.append(request.url.path),
             enqueue_scan=lambda uid, file_id: self.scans.append((uid, file_id)),
             assert_upload_allowed=self.check_plan,
+            discard_upload=lambda uid, file_id: self.discarded.append((uid, file_id)),
         ))
         self.client = TestClient(app)
 
@@ -107,6 +109,14 @@ class DirectUploadRouterTests(unittest.TestCase):
         self.assertEqual(self.plan_checks, [("user-1", 170)])
         self.assertEqual(self.reserved, [])
         self.assertEqual(self.created, [])
+
+    def test_discard_passes_authenticated_owner(self):
+        file_id = "123e4567-e89b-12d3-a456-426614174000"
+        discarded = self.client.post("/api/uploads/discard", json={"file_id": file_id})
+        self.assertEqual(discarded.status_code, 200)
+        self.assertEqual(self.discarded, [("user-1", file_id)])
+        invalid = self.client.post("/api/uploads/discard", json={"file_id": "x" * 36})
+        self.assertEqual(invalid.status_code, 400)
 
     def test_declared_duration_reaches_plan_check(self):
         initialized = self.client.post("/api/uploads/init", json={

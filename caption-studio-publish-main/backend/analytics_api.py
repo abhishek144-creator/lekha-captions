@@ -10,6 +10,14 @@ except ImportError:
     from cost_reconciliation import read_cost_reconciliation
 
 
+def _percentile(values, fraction):
+    if not values:
+        return None
+    ordered = sorted(float(value) for value in values)
+    index = min(len(ordered) - 1, max(0, int(round(fraction * (len(ordered) - 1)))))
+    return ordered[index]
+
+
 def create_analytics_router(
     *,
     is_admin,
@@ -52,6 +60,13 @@ def create_analytics_router(
         )
         cost_samples = read_metric_samples(day_key, "job_cost_usd")
         estimated_cost = round(sum(cost_samples) / len(cost_samples), 6) if cost_samples else 0.0
+        # Estimated AI spend (including failed attempts) spread over videos that got captions.
+        ai_cost_per_captioned_video = (
+            round(sum(cost_samples) / process_success, 6) if process_success else None
+        )
+        first_caption_samples = read_metric_samples(day_key, "time_to_first_caption_ms")
+        first_caption_p50 = _percentile(first_caption_samples, 0.5)
+        first_caption_p95 = _percentile(first_caption_samples, 0.95)
         reconciliation = read_cost_reconciliation(get_database(), day_key)
         funnel = {
             "signups": counters.get("account_signup", 0),
@@ -61,7 +76,22 @@ def create_analytics_router(
             "exports_started": counters.get("funnel.export.started", 0),
             "exports_completed": max(export_success, counters.get("funnel.export.success", 0)),
             "payments": counters.get("payment_success", 0),
+            "videos_picked": counters.get("funnel.upload.file_picked", 0),
+            "uploads_abandoned": counters.get("funnel.upload.abandoned", 0),
+            "uploads_refused": (
+                counters.get("upload_rejected_duration", 0)
+                + counters.get("upload_rejected_free_transcriptions_used", 0)
+                + counters.get("upload_rejected_daily_quota", 0)
+                + counters.get("funnel.upload.refused_locally", 0)
+            ),
+            "captions_ready": counters.get("funnel.captions.ready", 0),
         }
+        funnel["picked_to_upload_pct"] = round(
+            funnel["uploads"] / max(funnel["videos_picked"], 1) * 100, 2
+        )
+        funnel["picked_abandoned_pct"] = round(
+            funnel["uploads_abandoned"] / max(funnel["videos_picked"], 1) * 100, 2
+        )
         funnel["upload_to_transcription_pct"] = round(
             funnel["transcriptions"] / max(funnel["uploads"], 1) * 100, 2
         )
@@ -114,6 +144,14 @@ def create_analytics_router(
                 ),
                 "cost_source": reconciliation.get("cost_source") if reconciliation else "unreconciled",
                 "estimated_cost_per_successful_export_usd": estimated_cost,
+                "estimated_ai_cost_per_captioned_video_usd": ai_cost_per_captioned_video,
+                "time_to_first_caption_p50_s": (
+                    round(first_caption_p50 / 1000, 1) if first_caption_p50 is not None else None
+                ),
+                "time_to_first_caption_p95_s": (
+                    round(first_caption_p95 / 1000, 1) if first_caption_p95 is not None else None
+                ),
+                "time_to_first_caption_samples": len(first_caption_samples),
                 "successful_payments": counters.get("payment_success", 0),
                 "failed_payments": counters.get("payment_failed", 0),
                 "support_requests": counters.get("support_request_created", 0),

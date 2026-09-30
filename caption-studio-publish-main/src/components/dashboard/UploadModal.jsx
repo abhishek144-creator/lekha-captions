@@ -29,6 +29,7 @@ import {
 import { isSubscriptionExpired } from '@/lib/subscription';
 import planCatalog from '../../../shared/planCatalog.json';
 import { notifyApiError } from '@/lib/notifyApiError';
+import { getClientContext, trackAnalytics } from '@/lib/analytics';
 import { useAuth } from '@/lib/AuthContext';
 import { getEffectiveAuthToken } from '@/lib/devAuth';
 
@@ -244,6 +245,10 @@ export default function UploadModal({
   // The upload starts as soon as a file is picked and runs while the person
   // chooses settings. Generate and Auto-detect both reuse it.
   const uploadTaskRef = useRef(null);
+  // Read through a ref so discarding stays stable across auth refreshes; an
+  // unmount cleanup that changed identity would discard a live upload.
+  const currentUserRef = useRef(currentUser);
+  currentUserRef.current = currentUser;
 
   const ensureAuthenticated = useCallback(() => {
     if (!currentUser) {
@@ -254,10 +259,32 @@ export default function UploadModal({
     return true;
   }, [currentUser, navigate, onClose]);
 
-  const discardUploadTask = useCallback(() => {
+  // Stops an upload the person no longer wants. An unfinished upload is
+  // cancelled; a finished one is deleted instead of waiting for the janitor.
+  const discardUploadTask = useCallback((reason = 'closed') => {
     const task = uploadTaskRef.current;
     uploadTaskRef.current = null;
-    if (task && !task.handedOff) task.controller.abort();
+    if (!task || task.handedOff) return;
+    task.controller.abort();
+    if (reason === 'closed') {
+      trackAnalytics('funnel.upload.abandoned', getClientContext({ stage: 'settings' }));
+    }
+    task.promise.then(async (outcome) => {
+      if (!outcome.ok || !outcome.data?.file_id) return;
+      try {
+        const authorization = await getEffectiveAuthToken(currentUserRef.current);
+        await apiRequest('/api/uploads/discard', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(authorization ? { Authorization: `Bearer ${authorization}` } : {}),
+          },
+          body: JSON.stringify({ file_id: outcome.data.file_id }),
+        });
+      } catch {
+        // The source janitor still removes unused uploads within six hours.
+      }
+    });
   }, []);
 
   const handleUploadRefused = useCallback((error) => {
@@ -275,10 +302,11 @@ export default function UploadModal({
   }, [onPlanLimit]);
 
   const startBackgroundUpload = useCallback((file, durationSeconds = 0) => {
-    discardUploadTask();
+    discardUploadTask('replaced');
     const listeners = new Set();
     const task = {
       signature: fileSignatureOf(file),
+      pickedAt: Date.now(),
       durationSeconds,
       controller: new AbortController(),
       handedOff: false,
@@ -318,7 +346,7 @@ export default function UploadModal({
   // Reset modal to step 1 (upload page) whenever it opens
   useEffect(() => {
     if (open) {
-      discardUploadTask();
+      discardUploadTask('replaced');
       setSelectedFile(null);
       setStep(1);
       setLanguage('auto');
@@ -337,9 +365,11 @@ export default function UploadModal({
       setFileSizeError(validationError);
       return false;
     }
+    trackAnalytics('funnel.upload.file_picked', getClientContext({ stage: 'pick' }));
     const durationSeconds = await readVideoDuration(file);
     const maxSeconds = planMaxVideoSeconds(userData);
     if (durationSeconds && durationSeconds > maxSeconds + 0.5) {
+      trackAnalytics('funnel.upload.refused_locally', getClientContext({ stage: 'pick', reason: 'duration' }));
       setFileSizeError(`Your plan allows videos up to ${maxSeconds}s. This video is ${Math.round(durationSeconds)}s long.`);
       return false;
     }
