@@ -168,3 +168,20 @@ Prioritize local tests of duplicate webhook/task delivery, crash-after-provider-
 
 No paid pilot is approved or initiated. A future proposal must state a maximum cash cost, duration, precise resources/quotas, provider-call and byte caps, owner approval and cleanup verification before provisioning. Utho additionally needs a written exact checkout quote, manual-poweroff billing answer, deprovision billing boundary, storage region/durability, bandwidth policy and complete HA/network price. Until then, proceed only with the Google architecture design and local qualification—not deployment.
 
+## Addendum 2026-09-30: items the built setup adds to the Google columns
+The table above is the estimate to approve for `deploy/gcp/terraform`, with three
+additions it does not model. Price them from current official pages (in the new
+billing account's currency) before approving:
+1. **API ClamAV sidecar.** Each API instance runs a second container (1 vCPU,
+   2 GiB). With request-based billing it is charged only while the instance is
+   serving or starting, but it roughly triples the API's per-second memory and
+   lengthens cold starts. Idle cost stays zero.
+2. **Serverless Redis.** Pay-per-command and storage at the chosen provider; not
+   in the table. Idle should be near zero: API background loops are off and
+   workers exit after 120 s.
+3. **Cloud Scheduler.** Four jobs; the free allowance is per billing account, so
+   check how many other jobs that account runs. The ~700 small maintenance
+   requests a day these make are covered by the API allowance line.
+Nothing here changes the idle column materially; confirm with the first full
+day's SKU-level bill (deploy guide, "Verify before real customers").
+

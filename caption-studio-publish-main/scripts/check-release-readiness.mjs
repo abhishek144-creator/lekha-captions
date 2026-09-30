@@ -412,6 +412,10 @@ assertIncludes("payment reconciliation has a scheduler endpoint", maintenanceApi
 assertIncludes("Firebase Hosting serves the built SPA", readText("firebase.json"), '"public": "dist"')
 assertIncludes("Firebase Hosting has a deployable Cloud Build pipeline", firebaseHostingBuild, "--only=hosting")
 assertExcludes("Firebase Hosting pipeline does not deploy frontend Cloud Run", firebaseHostingBuild, "gcloud run deploy")
+// The API is served from its *.run.app URL (no custom domain in asia-south1);
+// without this step the hosting CSP blocks every browser call to it.
+assertIncludes("Firebase Hosting CSP is pointed at the deployed API origin", firebaseHostingBuild, "scripts/set-hosting-api-origin.mjs")
+assertExcludes("Firebase Hosting build has no hard-coded API URL", firebaseHostingBuild, "_VITE_API_BASE_URL: https://")
 const terraformVariablesLf = terraformVariables.replace(/\r\n/g, "\n")
 assertIncludes("Cloud Run API is infrastructure-managed", terraformMain, 'google_cloud_run_v2_service" "api')
 assertIncludes("Cloud Run API always scales to zero", terraformMain, "min_instance_count = 0")

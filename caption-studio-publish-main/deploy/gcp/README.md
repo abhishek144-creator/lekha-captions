@@ -31,43 +31,73 @@ retired project or billing account.
 
 ## Steps
 
-1. **Project and APIs.** Create the project on the approved billing account and
-   enable Artifact Registry and Cloud Build. Terraform enables the rest.
-2. **Runtime identity.** Create a service account (for example `lekha-runtime`).
+1. **Project, APIs and image registry.** Create the project on the approved
+   billing account, enable Artifact Registry and Cloud Build (Terraform enables
+   the rest), and create the Docker repository the images are pushed to:
+   ```powershell
+   gcloud services enable artifactregistry.googleapis.com cloudbuild.googleapis.com
+   gcloud artifacts repositories create lekha --repository-format=docker --location=asia-south1
+   ```
+   Image URIs then look like `asia-south1-docker.pkg.dev/PROJECT_ID/lekha/api`.
+   If a build can't push, grant the build's service account Artifact Registry
+   Writer on this repository only.
+2. **Firebase (sign-in, user database, credits).** These live in a Firebase
+   project, separate from this Cloud project. Choose one:
+   - **Keep the existing Firebase project** (keeps every account and credit
+     balance): its current owner adds the new Google account as Owner in the
+     Firebase console, then the service-account JSON and web config below come
+     from that project. Check which billing account it is linked to first.
+   - **New Firebase project** (users start over): create it on the new account,
+     enable Authentication (Google + email), Firestore and App Check, deploy
+     `firestore.rules`, `firestore.indexes.json` and `storage.rules`.
+   Either way, put the service-account JSON in `FIREBASE_SERVICE_ACCOUNT_JSON`
+   and use that project's web config for the `_VITE_FIREBASE_*` values.
+3. **Runtime identity.** Create a service account (for example `lekha-runtime`).
    Terraform grants it only what it needs: the media bucket, the runtime secret
    and permission to start the two worker jobs.
-3. **Redis.** Create a pay-per-use serverless Redis over TLS and follow
+4. **Redis.** Create a pay-per-use serverless Redis over TLS and follow
    `../../docs/SERVERLESS_REDIS_SWITCH.md`. Put its `rediss://` URL in `REDIS_URL`.
-4. **Runtime secret.** Copy `runtime.env.example` to an untracked file, fill it
+5. **Runtime secret.** Copy `runtime.env.example` to an untracked file, fill it
    in, then:
    ```powershell
    gcloud secrets create lekha-runtime-env --replication-policy=automatic
    gcloud secrets versions add lekha-runtime-env --data-file=PATH_TO_UNTRACKED_RUNTIME_ENV
    ```
    Note the numeric version; Terraform never uses `latest`.
-5. **Images.** Build the three role images from the repository root and pin
+6. **Images.** Build the three role images from the repository root and pin
    their digests:
    ```powershell
    gcloud builds submit --config=cloudbuild.yaml --substitutions="_RELEASE_SHA=FULL_SHA,_API_IMAGE_URI=...,_TRANSCRIPTION_IMAGE_URI=...,_RENDER_IMAGE_URI=..."
    ```
    The transcription image bakes in ClamAV signatures at build time; rebuild at
    least weekly so they stay current.
-6. **Infrastructure.** In `terraform/`, copy `terraform.tfvars.example` to the
+7. **Infrastructure.** In `terraform/`, copy `terraform.tfvars.example` to the
    ignored `terraform.tfvars`, fill it in, then `terraform init`,
-   `terraform plan -out=plan.tfplan`. Review the saved plan: it must contain no
+   `terraform plan -out=plan.tfplan`. Set `frontend_origins` to every HTTPS
+   origin the app is served from (for example `https://PROJECT.web.app` until a
+   custom domain is connected): browsers upload straight to the bucket, and its
+   CORS rule only admits these origins. Review the saved plan: it must contain no
    Compute Engine instances, Memorystore, NAT, load balancer or reserved IP.
    Apply only after the owner approves. See `terraform/README.md`.
-7. **URL signer.** Put `terraform output -raw gcs_signing_service_account` into
+8. **URL signer.** Put `terraform output -raw gcs_signing_service_account` into
    `GCS_SIGNING_SERVICE_ACCOUNT`, add a new secret version, set
    `runtime_secret_version` to it and apply again.
-8. **Frontend.** Deploy Firebase Hosting with `VITE_API_BASE_URL` set to
+9. **Frontend.** Deploy Firebase Hosting with `VITE_API_BASE_URL` set to
    `terraform output -raw api_uri`:
    ```powershell
    gcloud builds submit . --config=deploy/gcp/firebase-hosting/cloudbuild.yaml --substitutions="_VITE_API_BASE_URL=API_URI,..."
    ```
-   Provide every `_VITE_*` and `_RELEASE` substitution the build declares. Add
-   the hosting domain to Firebase Authentication's authorized domains, the App
-   Check key's allowed domains and `ALLOWED_ORIGINS`.
+   Provide every `_VITE_*` and `_RELEASE` substitution the build declares. The
+   build writes the API origin into the hosting Content-Security-Policy
+   (`scripts/set-hosting-api-origin.mjs`): Cloud Run can't map a custom domain in
+   asia-south1, so the browser calls the `*.run.app` URL directly, and the
+   committed CSP only allows `https://api.lekhacaptions.com`. Add the hosting
+   domain to Firebase Authentication's authorized domains, the App Check key's
+   allowed domains, `ALLOWED_ORIGINS` and Terraform's `frontend_origins`.
+10. **Razorpay.** In the Razorpay dashboard set the webhook URL to
+    `API_URI/api/razorpay-webhook` (server to server, so the CSP doesn't apply)
+    with the secret from `RAZORPAY_WEBHOOK_SECRET`. Use test-mode keys until the
+    checks below pass.
 
 ## Verify before real customers
 

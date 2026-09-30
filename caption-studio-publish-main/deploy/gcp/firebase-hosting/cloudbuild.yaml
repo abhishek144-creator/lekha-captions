@@ -24,6 +24,13 @@ steps:
       - VITE_GRIEVANCE_EMAIL=${_VITE_GRIEVANCE_EMAIL}
       - VITE_APP_RELEASE=${_RELEASE}
 
+  # Cloud Run can't map a custom domain in asia-south1, so the API lives at its
+  # *.run.app URL; let the hosting CSP's connect-src allow exactly that origin.
+  - name: node:20-bookworm
+    id: csp-api-origin
+    entrypoint: node
+    args: [scripts/set-hosting-api-origin.mjs, "${_VITE_API_BASE_URL}", firebase.json]
+
   - name: us-docker.pkg.dev/firebase-cli/us/firebase
     id: deploy-hosting
     args:
@@ -33,7 +40,8 @@ steps:
       - --non-interactive
 
 substitutions:
-  _VITE_API_BASE_URL: https://api.lekhacaptions.com
+  # terraform output -raw api_uri
+  _VITE_API_BASE_URL: SET_AT_SUBMIT_TIME
   _VITE_FIREBASE_API_KEY: SET_AT_SUBMIT_TIME
   _VITE_FIREBASE_AUTH_DOMAIN: SET_AT_SUBMIT_TIME
   _VITE_FIREBASE_PROJECT_ID: SET_AT_SUBMIT_TIME
