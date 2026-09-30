@@ -57,6 +57,49 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+function createAbortError() {
+  const error = new Error('Upload cancelled')
+  error.name = 'AbortError'
+  return error
+}
+
+function throwIfAborted(signal) {
+  if (signal?.aborted) throw createAbortError()
+}
+
+// Reads the video's length locally, before any upload, so plan limits can be
+// checked without moving bytes. Returns null when the browser cannot decode
+// the container (some MKV/AVI files); the server still checks the real length.
+export function readVideoDuration(file, timeoutMs = 8000) {
+  return new Promise((resolve) => {
+    if (!file || typeof document === 'undefined' || typeof URL?.createObjectURL !== 'function') {
+      resolve(null)
+      return
+    }
+    const url = URL.createObjectURL(file)
+    const video = document.createElement('video')
+    let timer = null
+    let settled = false
+    const finish = (value) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      video.removeAttribute('src')
+      URL.revokeObjectURL(url)
+      resolve(value)
+    }
+    timer = setTimeout(() => finish(null), timeoutMs)
+    video.preload = 'metadata'
+    video.muted = true
+    video.onloadedmetadata = () => {
+      const duration = Number(video.duration)
+      finish(Number.isFinite(duration) && duration > 0 ? duration : null)
+    }
+    video.onerror = () => finish(null)
+    video.src = url
+  })
+}
+
 function createUploadReference() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID()
@@ -101,20 +144,39 @@ function acknowledgedOffset(request) {
   return match ? Number(match[1]) + 1 : 0
 }
 
-function putResumableChunk(uploadUrl, blob, start, total, contentType, onProgress) {
+function abortWith(request, signal, reject) {
+  if (!signal) return () => {}
+  const onAbort = () => {
+    request.abort()
+    reject(createAbortError())
+  }
+  signal.addEventListener('abort', onAbort, { once: true })
+  return () => signal.removeEventListener('abort', onAbort)
+}
+
+function putResumableChunk(uploadUrl, blob, start, total, contentType, onProgress, signal) {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(createAbortError())
+      return
+    }
     const request = new XMLHttpRequest()
+    const detach = abortWith(request, signal, reject)
     request.open('PUT', uploadUrl)
     request.setRequestHeader('Content-Type', contentType || 'application/octet-stream')
     request.setRequestHeader('Content-Range', `bytes ${start}-${start + blob.size - 1}/${total}`)
     request.onload = () => {
+      detach()
       if ([200, 201, 308].includes(request.status)) resolve({
         status: request.status,
         offset: request.status === 308 ? acknowledgedOffset(request) : total,
       })
       else reject(Object.assign(new Error('Direct upload chunk failed'), { status: request.status }))
     }
-    request.onerror = () => reject(Object.assign(new Error('Direct upload connection failed'), { status: 0 }))
+    request.onerror = () => {
+      detach()
+      reject(Object.assign(new Error('Direct upload connection failed'), { status: 0 }))
+    }
     request.upload.onprogress = (event) => {
       if (event.lengthComputable) onProgress?.(Math.min(total, start + event.loaded))
     }
@@ -122,19 +184,28 @@ function putResumableChunk(uploadUrl, blob, start, total, contentType, onProgres
   })
 }
 
-function queryResumableOffset(uploadUrl, total) {
+function queryResumableOffset(uploadUrl, total, signal) {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(createAbortError())
+      return
+    }
     const request = new XMLHttpRequest()
+    const detach = abortWith(request, signal, reject)
     request.open('PUT', uploadUrl)
     request.setRequestHeader('Content-Range', `bytes */${total}`)
     request.onload = () => {
+      detach()
       if ([200, 201, 308].includes(request.status)) {
         resolve(request.status === 308 ? acknowledgedOffset(request) : total)
       } else {
         reject(Object.assign(new Error('Could not check upload progress'), { status: request.status }))
       }
     }
-    request.onerror = () => reject(Object.assign(new Error('Upload connection unavailable'), { status: 0 }))
+    request.onerror = () => {
+      detach()
+      reject(Object.assign(new Error('Upload connection unavailable'), { status: 0 }))
+    }
     request.send()
   })
 }
@@ -166,7 +237,10 @@ async function cancelDirectUpload(initialized, authorization) {
   }
 }
 
-async function uploadDirectToStorage(file, authorization, retryDelaysMs, onProgress, onRetry) {
+async function uploadDirectToStorage(file, authorization, retryDelaysMs, onProgress, onRetry, {
+  durationSeconds = 0,
+  signal = null,
+} = {}) {
   if (typeof XMLHttpRequest === 'undefined') return null
   const headers = {
     'Content-Type': 'application/json',
@@ -188,10 +262,14 @@ async function uploadDirectToStorage(file, authorization, retryDelaysMs, onProgr
       clearUploadReceipt(receipt.file_id)
     }
   }
+  throwIfAborted(signal)
+  const declaredDuration = Number(durationSeconds) > 0
+    ? { duration_seconds: Math.round(Number(durationSeconds) * 100) / 100 }
+    : {}
   if (!initialized) initialized = await apiRequest('/api/uploads/init', {
     method: 'POST',
     headers,
-    body: JSON.stringify(fingerprint),
+    body: JSON.stringify({ ...fingerprint, ...declaredDuration }),
     dedupeKey: 'direct-upload-init',
   })
   if (!initialized?.direct_upload_available || !initialized?.upload_url) return null
@@ -199,15 +277,16 @@ async function uploadDirectToStorage(file, authorization, retryDelaysMs, onProgr
   let offset = 0
   let retries = 0
   try {
-    if (initialized.resumed) offset = await queryResumableOffset(initialized.upload_url, file.size)
+    if (initialized.resumed) offset = await queryResumableOffset(initialized.upload_url, file.size, signal)
     onProgress?.(offset)
     while (offset < file.size) {
+      throwIfAborted(signal)
       const end = Math.min(file.size, offset + RESUMABLE_CHUNK_BYTES)
       try {
         const previousOffset = offset
         const result = await putResumableChunk(
           initialized.upload_url, file.slice(offset, end), offset, file.size,
-          file.type, onProgress,
+          file.type, onProgress, signal,
         )
         offset = result.offset
         if (offset <= previousOffset) throw Object.assign(new Error('Storage did not acknowledge upload progress'), { status: 503 })
@@ -219,10 +298,11 @@ async function uploadDirectToStorage(file, authorization, retryDelaysMs, onProgr
         onRetry?.({ attempt: retries + 1, nextAttempt: retries + 2, error })
         await waitForConnection()
         await sleep(retryDelaysMs[retries] + Math.floor(Math.random() * 300))
+        throwIfAborted(signal)
         retries += 1
         while (true) {
           try {
-            offset = await queryResumableOffset(initialized.upload_url, file.size)
+            offset = await queryResumableOffset(initialized.upload_url, file.size, signal)
             break
           } catch (queryError) {
             if (!isRetryableUploadError(queryError) || retries >= retryDelaysMs.length) throw queryError
@@ -242,6 +322,7 @@ async function uploadDirectToStorage(file, authorization, retryDelaysMs, onProgr
     throw error
   }
   for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
+    throwIfAborted(signal)
     try {
       const result = await apiRequest('/api/uploads/complete', {
         method: 'POST',
@@ -268,6 +349,8 @@ export async function uploadFileWithRecovery(file, {
   retryDelaysMs = DEFAULT_RETRY_DELAYS_MS,
   onRetry = null,
   onProgress = null,
+  durationSeconds = 0,
+  signal = null,
 } = {}) {
   if (!file?.size || file.size > MAX_VIDEO_UPLOAD_BYTES) {
     throw Object.assign(new Error('Video must be at most 500 MiB'), { status: 413 })
@@ -311,7 +394,10 @@ export async function uploadFileWithRecovery(file, {
   }
 
   try {
-    const directResult = await uploadDirectToStorage(file, authorization, retryDelaysMs, reportProgress, onRetry)
+    const directResult = await uploadDirectToStorage(file, authorization, retryDelaysMs, reportProgress, onRetry, {
+      durationSeconds,
+      signal,
+    })
     if (directResult?.success) {
       trackAnalytics('funnel.upload.transport_success', getClientContext({
         stage: 'direct-storage-upload',
@@ -337,6 +423,7 @@ export async function uploadFileWithRecovery(file, {
   }
 
   for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
+    throwIfAborted(signal)
     await waitForConnection()
     const formData = new FormData()
     formData.append('file', file)

@@ -35,8 +35,8 @@ const assertions = [
   },
   {
     ok: /uploadFileWithRecovery\(file[\s\S]*dedupeKey: 'upload-video'/s.test(dashboard)
-      && /uploadFileWithRecovery\(selectedFile[\s\S]*dedupeKey: 'detect-upload'/s.test(uploadModal),
-    message: 'Both Generate and Detect Language uploads must share the resilient transport.',
+      && /uploadFileWithRecovery\(file, \{[\s\S]*dedupeKey: 'background-upload'/s.test(uploadModal),
+    message: 'The upload started on file pick (reused by Generate and Detect Language) and the Generate fallback must share the resilient transport.',
   },
   {
     ok: /'Idempotency-Key': uploadReference/.test(resilientUpload),

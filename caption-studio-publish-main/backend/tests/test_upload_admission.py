@@ -66,6 +66,7 @@ class DirectUploadRouterTests(unittest.TestCase):
         self.resumed = []
         self.scans = []
         self.network_checks = []
+        self.plan_checks = []
         app = FastAPI()
         app.include_router(create_direct_upload_router(
             authenticate=lambda token: {"uid": "user-1"},
@@ -89,8 +90,35 @@ class DirectUploadRouterTests(unittest.TestCase):
                 "session_url": "https://storage.test/session", "expires_at": "later"},
             rate_limit_network=lambda request: self.network_checks.append(request.url.path),
             enqueue_scan=lambda uid, file_id: self.scans.append((uid, file_id)),
+            assert_upload_allowed=self.check_plan,
         ))
         self.client = TestClient(app)
+
+    def check_plan(self, uid, duration_seconds):
+        self.plan_checks.append((uid, duration_seconds))
+        if duration_seconds > 120:
+            raise HTTPException(403, "Your plan allows videos up to 120s.")
+
+    def test_plan_refusal_happens_before_any_reservation(self):
+        refused = self.client.post("/api/uploads/init", json={
+            "filename": "video.mp4", "size_bytes": 100, "duration_seconds": 170,
+        })
+        self.assertEqual(refused.status_code, 403)
+        self.assertEqual(self.plan_checks, [("user-1", 170)])
+        self.assertEqual(self.reserved, [])
+        self.assertEqual(self.created, [])
+
+    def test_declared_duration_reaches_plan_check(self):
+        initialized = self.client.post("/api/uploads/init", json={
+            "filename": "video.mp4", "size_bytes": 100, "duration_seconds": 45.5,
+        })
+        self.assertEqual(initialized.status_code, 200)
+        self.assertEqual(self.plan_checks, [("user-1", 45.5)])
+        missing = self.client.post("/api/uploads/init", json={
+            "filename": "video.mp4", "size_bytes": 100,
+        })
+        self.assertEqual(missing.status_code, 200)
+        self.assertEqual(self.plan_checks[-1], ("user-1", 0))
 
     def test_complete_releases_active_reservation(self):
         initialized = self.client.post("/api/uploads/init", json={

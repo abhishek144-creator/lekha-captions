@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Dialog,
@@ -19,8 +19,15 @@ import {
 import { Upload, Film, Sparkles, Globe, Palette, Loader2, Info, Wand2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from '@/components/ui/use-toast';
-import { apiRequest } from '@/lib/apiClient';
-import { MAX_VIDEO_UPLOAD_BYTES, uploadFileWithRecovery } from '@/lib/resilientUpload';
+import { apiRequest, getApiErrorMessage } from '@/lib/apiClient';
+import {
+  MAX_VIDEO_UPLOAD_BYTES,
+  isRetryableUploadError,
+  readVideoDuration,
+  uploadFileWithRecovery,
+} from '@/lib/resilientUpload';
+import { isSubscriptionExpired } from '@/lib/subscription';
+import planCatalog from '../../../shared/planCatalog.json';
 import { notifyApiError } from '@/lib/notifyApiError';
 import { useAuth } from '@/lib/AuthContext';
 import { getEffectiveAuthToken } from '@/lib/devAuth';
@@ -38,6 +45,20 @@ const SUPPORTED_VIDEO_ACCEPT = [
   'video/x-matroska',
   'video/x-msvideo',
 ].join(',');
+
+const fileSignatureOf = (file) => `${file?.name}-${file?.size}-${file?.lastModified}`;
+
+// Mirrors the server's plan-length check so a too-long video is refused before
+// any bytes are uploaded. The server re-checks with the real media length.
+function planMaxVideoSeconds(userData) {
+  const storedTier = String(userData?.subscription_tier || 'free').toLowerCase();
+  const expiry = userData?.subscription_expiry || userData?.billing_cycle_end;
+  const tier = storedTier !== 'free' && isSubscriptionExpired(expiry) ? 'free' : storedTier;
+  return Number(planCatalog[tier]?.max_video_seconds || planCatalog.free?.max_video_seconds || 180);
+}
+
+const planLimitMessage = (error) => getApiErrorMessage(error, 'This upload is not available on your plan.')
+  .replace(/^[A-Z_]+:\s*/, '');
 
 function validateVideoFile(file) {
   if (!file || !SUPPORTED_VIDEO_EXTENSION.test(file.name || '')) {
@@ -204,9 +225,10 @@ export default function UploadModal({
   open,
   onClose,
   onUpload,
+  onPlanLimit,
   isUploading
 }) {
-  const { currentUser } = useAuth();
+  const { currentUser, userData } = useAuth();
   const navigate = useNavigate();
   const [dragActive, setDragActive] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
@@ -218,7 +240,10 @@ export default function UploadModal({
   const [showDynamicInfo, setShowDynamicInfo] = useState(false);
   const [isDetecting, setIsDetecting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [detectedUpload, setDetectedUpload] = useState(null);
+  const [detectedSpokenLanguage, setDetectedSpokenLanguage] = useState('');
+  // The upload starts as soon as a file is picked and runs while the person
+  // chooses settings. Generate and Auto-detect both reuse it.
+  const uploadTaskRef = useRef(null);
 
   const ensureAuthenticated = useCallback(() => {
     if (!currentUser) {
@@ -229,18 +254,102 @@ export default function UploadModal({
     return true;
   }, [currentUser, navigate, onClose]);
 
+  const discardUploadTask = useCallback(() => {
+    const task = uploadTaskRef.current;
+    uploadTaskRef.current = null;
+    if (task && !task.handedOff) task.controller.abort();
+  }, []);
+
+  const handleUploadRefused = useCallback((error) => {
+    const status = Number(error?.status || 0);
+    if (error?.name === 'AbortError' || status === 0 || isRetryableUploadError(error)) {
+      // Temporary failures are retried by Generate, which resumes the upload.
+      return;
+    }
+    const message = planLimitMessage(error);
+    uploadTaskRef.current = null;
+    setSelectedFile(null);
+    setStep(1);
+    setFileSizeError(message);
+    if (status === 402) onPlanLimit?.(message);
+  }, [onPlanLimit]);
+
+  const startBackgroundUpload = useCallback((file, durationSeconds = 0) => {
+    discardUploadTask();
+    const listeners = new Set();
+    const task = {
+      signature: fileSignatureOf(file),
+      durationSeconds,
+      controller: new AbortController(),
+      handedOff: false,
+      progress: null,
+      subscribe(listener) {
+        listeners.add(listener);
+        if (task.progress) listener(task.progress);
+        return () => listeners.delete(listener);
+      },
+    };
+    task.promise = (async () => {
+      try {
+        const authorization = await getEffectiveAuthToken(currentUser);
+        const data = await uploadFileWithRecovery(file, {
+          authorization,
+          dedupeKey: 'background-upload',
+          durationSeconds,
+          signal: task.controller.signal,
+          onProgress: (progress) => {
+            task.progress = progress;
+            listeners.forEach((listener) => listener(progress));
+          },
+        });
+        if (!data?.success) throw new Error(data?.error || 'Upload failed');
+        return { ok: true, data };
+      } catch (error) {
+        return { ok: false, error };
+      }
+    })();
+    task.promise.then((outcome) => {
+      if (!outcome.ok && uploadTaskRef.current === task) handleUploadRefused(outcome.error);
+    });
+    uploadTaskRef.current = task;
+    return task;
+  }, [currentUser, discardUploadTask, handleUploadRefused]);
+
   // Reset modal to step 1 (upload page) whenever it opens
   useEffect(() => {
     if (open) {
+      discardUploadTask();
       setSelectedFile(null);
       setStep(1);
       setLanguage('auto');
       setStyle('single_line');
       setWordsPerLine('dynamic');
       setFileSizeError(null);
-      setDetectedUpload(null);
+      setDetectedSpokenLanguage('');
     }
-  }, [open]);
+  }, [open, discardUploadTask]);
+
+  useEffect(() => discardUploadTask, [discardUploadTask]);
+
+  const acceptFile = useCallback(async (file) => {
+    const validationError = validateVideoFile(file);
+    if (validationError) {
+      setFileSizeError(validationError);
+      return false;
+    }
+    const durationSeconds = await readVideoDuration(file);
+    const maxSeconds = planMaxVideoSeconds(userData);
+    if (durationSeconds && durationSeconds > maxSeconds + 0.5) {
+      setFileSizeError(`Your plan allows videos up to ${maxSeconds}s. This video is ${Math.round(durationSeconds)}s long.`);
+      return false;
+    }
+    setFileSizeError(null);
+    setSelectedFile(file);
+    setDetectedSpokenLanguage('');
+    setStep(2);
+    startBackgroundUpload(file, durationSeconds || 0);
+    return true;
+  }, [userData, startBackgroundUpload]);
 
   const handleDrag = useCallback((e) => {
     e.preventDefault();
@@ -259,55 +368,41 @@ export default function UploadModal({
 
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       if (!ensureAuthenticated()) return;
-      const file = e.dataTransfer.files[0];
       // Windows reports an EMPTY MIME type for some valid videos (.mkv, some
-      // .mov) — fall back to the extension, and never fail a drop silently.
-      const validationError = validateVideoFile(file);
-      if (validationError) {
-        setFileSizeError(validationError);
-        return;
-      }
-
-      setFileSizeError(null);
-      setSelectedFile(file);
-      setDetectedUpload(null);
-      setStep(2);
+      // .mov) — validation falls back to the extension, and never fails a drop silently.
+      acceptFile(e.dataTransfer.files[0]);
     }
-  }, [ensureAuthenticated]);
+  }, [ensureAuthenticated, acceptFile]);
 
-  const handleFileSelect = (e) => {
+  const handleFileSelect = async (e) => {
     if (e.target.files && e.target.files[0]) {
       if (!ensureAuthenticated()) return;
-      const file = e.target.files[0];
-
-      const validationError = validateVideoFile(file);
-      if (validationError) {
-        setFileSizeError(validationError);
-        e.target.value = '';
-        return;
-      }
-
-      setFileSizeError(null);
-      setSelectedFile(file);
-      setDetectedUpload(null);
-      setStep(2);
+      const input = e.target;
+      const accepted = await acceptFile(input.files[0]);
+      if (!accepted) input.value = '';
     }
   };
 
   const handleSubmit = () => {
     if (!ensureAuthenticated()) return;
     if (selectedFile) {
+      const task = uploadTaskRef.current?.signature === fileSignatureOf(selectedFile)
+        ? uploadTaskRef.current
+        : null;
+      if (task) task.handedOff = true;
+      uploadTaskRef.current = null;
       onUpload(selectedFile, {
         language,
         style,
         wordsPerLine,
-        preUploadedFileId: detectedUpload?.fileId,
-        preUploadedRawUrl: detectedUpload?.rawUrl
+        spokenLanguage: detectedSpokenLanguage,
+        uploadTask: task,
       });
     }
   };
 
   const resetModal = () => {
+    discardUploadTask();
     setSelectedFile(null);
     setStep(1);
     setLanguage('auto');
@@ -315,7 +410,7 @@ export default function UploadModal({
     setWordsPerLine('dynamic');
     setFileSizeError(null);
     setSearchQuery('');
-    setDetectedUpload(null);
+    setDetectedSpokenLanguage('');
   };
 
   // Language detection — uploads file first, then calls detect endpoint
@@ -325,36 +420,29 @@ export default function UploadModal({
     setIsDetecting(true)
     try {
       const idToken = await getEffectiveAuthToken(currentUser)
-      const fileSignature = `${selectedFile.name}-${selectedFile.size}-${selectedFile.lastModified}`
-      let uploadData = null
-
-      if (detectedUpload && detectedUpload.signature === fileSignature) {
-        uploadData = {
-          file_id: detectedUpload.fileId,
-          raw_url: detectedUpload.rawUrl,
-          success: true
-        }
-      } else {
-        // Upload file first to get file_id (reused later for Generate to avoid double upload)
-        uploadData = await uploadFileWithRecovery(selectedFile, {
-          authorization: idToken,
-          dedupeKey: 'detect-upload',
-        })
-        if (!uploadData.success) {
+      let task = uploadTaskRef.current?.signature === fileSignatureOf(selectedFile)
+        ? uploadTaskRef.current
+        : startBackgroundUpload(selectedFile)
+      let outcome = await task.promise
+      if (!outcome.ok && outcome.error?.name !== 'AbortError' && uploadTaskRef.current === task) {
+        // A temporary failure: try once more. The resume receipt continues
+        // from the bytes storage already confirmed.
+        task = startBackgroundUpload(selectedFile, task.durationSeconds)
+        outcome = await task.promise
+      }
+      if (!outcome.ok) {
+        // A refused upload already shows its reason on the first step.
+        if (outcome.error?.name !== 'AbortError' && uploadTaskRef.current === task) {
           toast({
             variant: 'destructive',
             title: 'Upload failed for detection',
-            description: uploadData.error || 'Please try again.',
+            description: planLimitMessage(outcome.error),
           })
-          setIsDetecting(false)
-          return
         }
-        setDetectedUpload({
-          signature: fileSignature,
-          fileId: uploadData.file_id,
-          rawUrl: uploadData.raw_url
-        })
+        setIsDetecting(false)
+        return
       }
+      const uploadData = outcome.data
 
       // Call detect-language
       const detectData = await apiRequest('/api/detect-language', {
@@ -367,6 +455,7 @@ export default function UploadModal({
       if (detectData.success && detectData.language) {
         // Try to match Whisper language code to our dropdown values
         const detected = detectData.language.toLowerCase()
+        setDetectedSpokenLanguage(detected)
         const allLangs = [...globalLanguages, ...southAsianLanguages]
         const match = allLangs.find(l =>
           l.value === detected ||
