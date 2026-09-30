@@ -22,6 +22,7 @@ import { lazyWithRefresh } from '@/lib/lazyWithRefresh';
 import { uploadFileWithRecovery } from '@/lib/resilientUpload';
 import { useCloudProjects } from '@/hooks/useCloudProjects'
 import { useEditorPreferences } from '@/hooks/useEditorPreferences'
+import { useEditorHistory } from '@/hooks/useEditorHistory'
 import { processVideoWithRecovery } from '@/lib/resilientProcess';
 import planCatalog from '../../shared/planCatalog.json';
 
@@ -354,14 +355,15 @@ export default function Dashboard() {
   const [settings, setSettings] = useState({ language: 'english', style: 'viral_hook' });
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // Undo/Redo state. `history` holds PRE-change snapshots (history[historyIndex]
-  // is what undo restores). Undone states live on `redoStack` — without it, redo
-  // re-restored the snapshot the editor was already showing and the newest state
-  // was unreachable.
-  const [history, setHistory] = useState([]);
-  const [historyIndex, setHistoryIndex] = useState(-1);
-  const [redoStack, setRedoStack] = useState([]);
-  const lastCoalescedPushRef = useRef(0);
+  // Undo/redo for captions + style (also owns the Ctrl+Z / Ctrl+Y shortcuts).
+  const {
+    pushHistory,
+    undo: handleUndo,
+    redo: handleRedo,
+    resetHistory,
+    canUndo,
+    canRedo,
+  } = useEditorHistory({ captions, captionStyle, setCaptions, setCaptionStyle });
 
   // Active tab for sidebar navigation
   const [activeTab, setActiveTab] = useState('captions');
@@ -454,9 +456,7 @@ export default function Dashboard() {
     setCaptions(JSON.parse(JSON.stringify(track.captions || [])))
     setSelectedCaptionId(null)
     setWordPopup(null)
-    setHistory([])
-    setHistoryIndex(-1)
-    setRedoStack([])
+    resetHistory()
   }
 
   useEffect(() => {
@@ -548,9 +548,10 @@ export default function Dashboard() {
     setProjectId(null)
     setSourceUnavailable(false)
     setWordPopup(null)
+    resetHistory()
     initialEditorStateRef.current = null
     setCaptionStyle(defaultCaptionStyle)
-  }, [currentUser?.uid, isLoadingAuth])
+  }, [currentUser?.uid, isLoadingAuth, resetHistory])
 
   // Keep a same-account recovery copy until the customer explicitly continues
   // or discards it. Normal dashboard entry must never erase unsynced work.
@@ -584,8 +585,7 @@ export default function Dashboard() {
     setProjectId(null);
     setDuration(0);
     setCurrentTime(0);
-    setHistory([]);
-    setHistoryIndex(-1);
+    resetHistory();
     // Navigation only ever lands on the Start Creating Captions screen. The
     // upload modal is opened exclusively by the visible Upload Video button.
     setIsUploadModalOpen(false);
@@ -746,9 +746,7 @@ export default function Dashboard() {
     setSettings(uploadSettings);
     setIsUploadModalOpen(false);
     setIsGenerating(true);
-    setHistory([]);
-    setHistoryIndex(-1);
-    setRedoStack([]);
+    resetHistory();
     setCaptionTracks([]);
     setActiveCaptionTrackId('source');
     setTranslationNotice('');
@@ -1106,33 +1104,6 @@ export default function Dashboard() {
     }
   }, [currentTime, currentUser, fileId, isPlaying, videoUrl]);
 
-  // Push current state to history, then apply new state.
-  // options.coalesce: rapid consecutive pushes (e.g. per-keystroke text edits)
-  // record only ONE snapshot per burst — without this, typing a sentence pushed
-  // ~50 single-character entries and flushed the entire useful undo history.
-  const pushHistory = (newCaptions, newStyle, options = {}) => {
-    const now = Date.now();
-    const coalesce = options.coalesce === true;
-    const withinBurst = coalesce && (now - lastCoalescedPushRef.current < 1200);
-    lastCoalescedPushRef.current = coalesce ? now : 0;
-    if (!withinBurst) {
-      const snapshot = {
-        captions: JSON.parse(JSON.stringify(captions)),
-        captionStyle: JSON.parse(JSON.stringify(captionStyle))
-      };
-      const trimmed = history.slice(0, historyIndex + 1);
-      const newHistory = [...trimmed, snapshot];
-      // Cap history at 50 entries
-      if (newHistory.length > 50) newHistory.shift();
-      setHistory(newHistory);
-      setHistoryIndex(newHistory.length - 1);
-    }
-    // Any new change invalidates the redo branch.
-    setRedoStack([]);
-    if (newCaptions !== undefined) setCaptions(newCaptions);
-    if (newStyle !== undefined) setCaptionStyle(newStyle);
-  };
-
   const updateCaptions = (newCaptions, options) => pushHistory(newCaptions, undefined, options);
   const updateCaptionStyle = (newStyle) => pushHistory(undefined, newStyle);
   const handleWordStyleChange = (key, value) => {
@@ -1432,50 +1403,6 @@ export default function Dashboard() {
     }));
   }, [addToHistory, wordPopup]);
 
-  const handleUndo = () => {
-    if (historyIndex >= 0) {
-      const prevState = history[historyIndex];
-      // Save the state being undone so redo can bring it back — history only
-      // holds pre-change snapshots, never the state after a change.
-      setRedoStack(stack => [...stack, {
-        captions: JSON.parse(JSON.stringify(captions)),
-        captionStyle: JSON.parse(JSON.stringify(captionStyle))
-      }]);
-      setCaptions(prevState.captions);
-      setCaptionStyle(prevState.captionStyle);
-      setHistoryIndex(historyIndex - 1);
-    }
-  };
-
-  const handleRedo = () => {
-    if (redoStack.length > 0) {
-      const nextState = redoStack[redoStack.length - 1];
-      setRedoStack(stack => stack.slice(0, -1));
-      // The state being replaced becomes the pre-change snapshot again.
-      setHistory(h => [...h.slice(0, historyIndex + 1), {
-        captions: JSON.parse(JSON.stringify(captions)),
-        captionStyle: JSON.parse(JSON.stringify(captionStyle))
-      }]);
-      setHistoryIndex(historyIndex + 1);
-      setCaptions(nextState.captions);
-      setCaptionStyle(nextState.captionStyle);
-    }
-  };
-
-  // Global keyboard shortcuts: Ctrl+Z (undo), Ctrl+Y / Ctrl+Shift+Z (redo)
-  useEffect(() => {
-    const onKeyDown = (e) => {
-      const tag = document.activeElement?.tagName;
-      // Don't intercept if user is typing in an input/textarea/contenteditable
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return;
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') { e.preventDefault(); handleUndo(); }
-      if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) { e.preventDefault(); handleRedo(); }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-
-  }, [historyIndex, history, redoStack, captions, captionStyle]);
-
   const handleRefresh = () => {
     const initialState = initialEditorStateRef.current || snapshotEditorState();
 
@@ -1507,9 +1434,7 @@ export default function Dashboard() {
     setDuration(initialState.duration || 0);
     setFileId(initialState.fileId || null);
     setOriginalFileName(initialState.originalFileName || '');
-    setHistory([]);
-    setHistoryIndex(-1);
-    setRedoStack([]);
+    resetHistory();
   };
 
   const handleNewProject = () => {
@@ -1530,9 +1455,7 @@ export default function Dashboard() {
     setDuration(0);
     setCurrentTime(0);
     setSelectedCaptionId(null);
-    setHistory([]);
-    setHistoryIndex(-1);
-    setRedoStack([]);
+    resetHistory();
   };
 
   const handleSelectPlan = async () => {
@@ -1880,8 +1803,8 @@ export default function Dashboard() {
         hasVideo={!!videoUrl || captions.length > 0}
         onUndo={handleUndo}
         onRedo={handleRedo}
-        canUndo={historyIndex >= 0}
-        canRedo={redoStack.length > 0}
+        canUndo={canUndo}
+        canRedo={canRedo}
         onRefresh={handleRefresh}
         user={currentUser}
         userData={userData}
