@@ -10,13 +10,13 @@ It is a simple operating model, not GAAP accounting.
 
 | Plan | Monthly | Credits | Max video |
 |---|---:|---:|---:|
-| Starter | 299 | 15 | 2 min |
+| Starter | 299 | 15 | 3 min |
 | Creator | 499 | 45 | 3 min |
 | Pro | 799 | 120 | 3 min |
 
 | Plan | Yearly | Credits | Max video |
 |---|---:|---:|---:|
-| Starter Yearly | 2500 | 180 | 2 min |
+| Starter Yearly | 2500 | 180 | 3 min |
 | Creator Yearly | 4500 | 540 | 3 min |
 | Pro Yearly | 6500 | 1440 | 3 min |
 
@@ -48,12 +48,12 @@ Worst case assumptions:
 
 - every credit is used at full allowed video length
 
-### Starter — 299 / 15 credits / 2 min max
+### Starter — 299 / 15 credits / 3 min max
 
 | Scenario | API cost | Total cost | Gross profit | Gross margin |
 |---|---:|---:|---:|---:|
 | Average | 7.50 | 22.23 | 276.77 | 92.6% |
-| Worst | 15.00 | 29.73 | 269.27 | 90.1% |
+| Worst | 22.50 | 37.23 | 261.77 | 87.5% |
 
 ### Creator — 499 / 45 credits / 3 min max
 
@@ -82,7 +82,7 @@ Average case assumptions:
 | Scenario | Total cost | Gross profit | Gross margin |
 |---|---:|---:|---:|
 | Average | 239.50 | 2260.50 | 90.4% |
-| Worst | 329.50 | 2170.50 | 86.8% |
+| Worst | 419.50 | 2080.50 | 83.2% |
 
 ### Creator Yearly — 4500 / 540 credits total
 
@@ -102,7 +102,7 @@ Average case assumptions:
 
 | Plan | Monthly average | Monthly worst | Yearly average | Yearly worst |
 |---|---:|---:|---:|---:|
-| Starter | 92.6% | 90.1% | 90.4% | 86.8% |
+| Starter | 92.6% | 87.5% | 90.4% | 83.2% |
 | Creator | 88.4% | 81.6% | 85.4% | 76.4% |
 | Pro | 83.4% | 72.1% | 76.6% | 60.0% |
 
