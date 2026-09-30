@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { useAuth } from '@/lib/AuthContext';
 import { clearUserLocalDrafts } from '@/lib/localDraftStorage'
+import planCatalog from '../../../shared/planCatalog.json'
 import {
   Popover,
   PopoverContent,
@@ -24,13 +25,14 @@ export default function SidebarNav({ activeTab, setActiveTab, onOpenPricing }) {
 
   const getPlanDetails = () => {
     const plan = userData?.subscription_tier || 'free'
+    const credits = planCatalog[plan]?.credits
     if (plan === 'starter' || plan === 'starter_yearly')
-      return { name: 'Starter', icon: <Crown className="w-4 h-4" />, totalCredits: plan === 'starter_yearly' ? 180 : 15 }
+      return { name: 'Starter', icon: <Crown className="w-4 h-4" />, totalCredits: credits }
     if (plan === 'creator' || plan === 'creator_yearly')
-      return { name: 'Creator', icon: <Crown className="w-4 h-4" />, totalCredits: plan === 'creator_yearly' ? 540 : 45 }
+      return { name: 'Creator', icon: <Crown className="w-4 h-4" />, totalCredits: credits }
     if (plan === 'pro' || plan === 'pro_yearly')
-      return { name: 'Pro', icon: <Crown className="w-4 h-4" />, totalCredits: plan === 'pro_yearly' ? 1440 : 120 }
-    return { name: 'Free', icon: <Video className="w-4 h-4" />, totalCredits: 3 }
+      return { name: 'Pro', icon: <Crown className="w-4 h-4" />, totalCredits: credits }
+    return { name: 'Free', icon: <Video className="w-4 h-4" />, totalCredits: planCatalog.free.credits }
   }
 
   const planDetails = getPlanDetails();
