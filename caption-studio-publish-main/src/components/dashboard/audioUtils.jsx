@@ -1,11 +1,19 @@
-// Extract waveform data for visualization
-export const extractWaveformData = async (videoElement, numSamples = 300) => {
+const readMediaBytes = async (source) => {
+  if (!source) return null;
+  // A local File or Blob needs no download.
+  if (typeof Blob !== 'undefined' && source instanceof Blob) return source.arrayBuffer();
+  const url = typeof source === 'string' ? source : source.src;
+  if (!url) return null;
+  const response = await fetch(url);
+  return response.arrayBuffer();
+};
+
+// Extract waveform data for visualization. `source` is a File/Blob, a media
+// URL, or a <video>/<audio> element.
+export const extractWaveformData = async (source, numSamples = 300) => {
   try {
-    if (!videoElement || !videoElement.src) return null;
-    
-    // Fetch the video/audio file
-    const response = await fetch(videoElement.src);
-    const arrayBuffer = await response.arrayBuffer();
+    const arrayBuffer = await readMediaBytes(source);
+    if (!arrayBuffer) return null;
     
     // Create audio context
     const AudioContext = window.AudioContext || window.webkitAudioContext;

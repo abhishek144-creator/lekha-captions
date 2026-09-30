@@ -19,7 +19,7 @@ import { getClientContext, trackAnalytics } from '@/lib/analytics';
 import { getEffectiveAuthToken } from '@/lib/devAuth';
 import { resolveApiResourceUrl } from '@/components/dashboard/exportPipelineUtils';
 import { lazyWithRefresh } from '@/lib/lazyWithRefresh';
-import { uploadFileWithRecovery } from '@/lib/resilientUpload';
+import { isRetryableUploadError, uploadFileWithRecovery } from '@/lib/resilientUpload';
 import { useCloudProjects } from '@/hooks/useCloudProjects'
 import { useEditorPreferences } from '@/hooks/useEditorPreferences'
 import { processVideoWithRecovery } from '@/lib/resilientProcess';
@@ -87,6 +87,12 @@ const defaultCaptionStyle = {
 };
 
 const GENERATING_SCREEN_MIN_MS = 10000;
+// Spoken languages Sarvam transcribes; mirrors sarvam_langs in backend/processor.py.
+// Anything else is sent as "auto" and the server picks the provider.
+const SARVAM_SPOKEN_LANGUAGES = new Set([
+  'hindi', 'bengali', 'kannada', 'malayalam', 'marathi', 'odia',
+  'punjabi', 'tamil', 'telugu', 'gujarati', 'assamese',
+]);
 
 const formatTopUpPrice = (paise) => `Rs ${Math.round(Number(paise || 0) / 100)}`;
 
@@ -274,6 +280,7 @@ export default function Dashboard() {
   const [exportPanelMounted, setExportPanelMounted] = useState(false);
   const [isPlanExpiredModalOpen, setIsPlanExpiredModalOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationStartedAt, setGenerationStartedAt] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -736,13 +743,17 @@ export default function Dashboard() {
     return () => clearTimeout(timeoutId);
   }, [videoUrl, captions, captionTracks, activeCaptionTrackId, captionStyle, projectId, settings, duration, fileId, originalFileName, currentUser?.uid, isLoaded, localRecoveryDraft]);
 
-  const handleUpload = async (file, uploadSettings) => {
+  const handleUpload = async (file, uploadSettingsWithTask) => {
     if (!currentUser) {
       navigate(`/login?mode=signup&returnTo=${encodeURIComponent('/Dashboard?entry=editor')}`);
       return;
     }
+    // The upload window may hand over an upload it already started; it is a
+    // live object, so it never goes into saved settings.
+    const { uploadTask = null, ...uploadSettings } = uploadSettingsWithTask || {};
     setWordPopup(null);
     setIsUploading(true);
+    setUploadProgress(uploadTask?.progress || null);
     setSettings(uploadSettings);
     setIsUploadModalOpen(false);
     setIsGenerating(true);
@@ -769,10 +780,31 @@ export default function Dashboard() {
           raw_url: uploadSettings.preUploadedRawUrl
         };
       } else {
-        uploadData = await uploadFileWithRecovery(file, {
-          authorization: mediaAuthToken,
-          dedupeKey: 'upload-video',
-        });
+        let backgroundOutcome = null;
+        if (uploadTask) {
+          const unsubscribe = uploadTask.subscribe(setUploadProgress);
+          try {
+            backgroundOutcome = await uploadTask.promise;
+          } finally {
+            unsubscribe();
+          }
+        }
+        if (backgroundOutcome?.ok) {
+          uploadData = backgroundOutcome.data;
+        } else {
+          const backgroundError = backgroundOutcome?.error;
+          // A refusal (plan limit, quota, file type) will not change on retry.
+          if (backgroundError && backgroundError.name !== 'AbortError'
+              && Number(backgroundError.status || 0) !== 0 && !isRetryableUploadError(backgroundError)) {
+            throw backgroundError;
+          }
+          // Otherwise upload now; the resume receipt continues any partial upload.
+          uploadData = await uploadFileWithRecovery(file, {
+            authorization: mediaAuthToken,
+            dedupeKey: 'upload-video',
+            onProgress: setUploadProgress,
+          });
+        }
         if (!uploadData.success) throw new Error(uploadData.error || 'Upload failed');
         trackAnalytics('funnel.upload.success', getClientContext({ stage: 'upload', fileId: uploadData.file_id || '' }));
       }
@@ -810,9 +842,12 @@ export default function Dashboard() {
         }
       }
 
+      // A known Indian spoken language goes straight to Sarvam; otherwise the
+      // server detects the language itself before choosing a provider.
+      const spokenLanguage = String(uploadSettings?.spokenLanguage || '').toLowerCase();
       const processData = await processVideoWithRecovery({
         file_id: uploadData.file_id,
-        language: 'auto',
+        language: SARVAM_SPOKEN_LANGUAGES.has(spokenLanguage) ? spokenLanguage : 'auto',
         min_words: minWords,
         max_words: maxWordsVal,
         id_token: mediaAuthToken,
@@ -956,7 +991,9 @@ export default function Dashboard() {
       };
 
       try {
-        const waveform = await extractWaveformData(playableVideoUrl);
+        // Read the audio from the file already in the browser; only a retry
+        // without the file falls back to downloading it from storage.
+        const waveform = await extractWaveformData(file || playableVideoUrl);
         setWaveformData(waveform);
       } catch (e) {
         console.warn('Waveform extraction failed:', e);
@@ -985,7 +1022,9 @@ export default function Dashboard() {
       if (Number(error?.status) === 402) {
         // Free trial used up: this is an upgrade moment, not a failure.
         setShowCaptionRetryNotice(false);
-        setPricingMessage("You've used your free transcriptions. Pick a plan to keep captioning — your video stays in the editor.");
+        setPricingMessage(uploadWasAccepted
+          ? "You've used your free transcriptions. Pick a plan to keep captioning — your video stays in the editor."
+          : "You've used your free transcriptions. Pick a plan to keep captioning.");
         setIsPricingModalOpen(true);
       } else {
         notifyApiError(
@@ -1000,6 +1039,7 @@ export default function Dashboard() {
         await sleep(remainingMinDurationMs);
       }
       setIsUploading(false);
+      setUploadProgress(null);
       setIsGenerating(false);
       setGenerationStartedAt(null);
     }
@@ -1730,6 +1770,9 @@ export default function Dashboard() {
       { label: 'Rendering your preview', status: step4Ready ? 'active' : 'upcoming' },
     ];
     const completedSteps = progressSteps.filter((step) => step.status === 'complete').length;
+    // While the file is still uploading, the percentage is the real share of
+    // bytes storage has received.
+    const uploadPercent = isUploading && uploadProgress ? uploadProgress.percent : null;
     return (
       <div className="relative flex h-full items-center justify-center overflow-hidden bg-[#050505] p-4 sm:p-8">
         <div aria-hidden="true" className="absolute inset-0 bg-[radial-gradient(circle_at_50%_36%,rgba(246,165,75,0.14),transparent_36%),radial-gradient(circle_at_8%_88%,rgba(255,255,255,0.045),transparent_28%)]" />
@@ -1773,8 +1816,8 @@ export default function Dashboard() {
                 <p className="mt-1 text-sm font-medium text-white">Step {Math.min(completedSteps + 1, progressSteps.length)} of {progressSteps.length}</p>
               </div>
               <div className="text-right">
-                <p className="text-2xl font-semibold tracking-tight text-[#ffd7a4]">{Math.round((completedSteps / progressSteps.length) * 100)}%</p>
-                <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Prepared</p>
+                <p className="text-2xl font-semibold tracking-tight text-[#ffd7a4]">{uploadPercent ?? Math.round((completedSteps / progressSteps.length) * 100)}%</p>
+                <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">{uploadPercent === null ? 'Prepared' : 'Uploaded'}</p>
               </div>
             </div>
 
@@ -2253,6 +2296,11 @@ export default function Dashboard() {
             open={isUploadModalOpen}
             onClose={() => setIsUploadModalOpen(false)}
             onUpload={handleUpload}
+            onPlanLimit={(message) => {
+              setIsUploadModalOpen(false);
+              setPricingMessage(message);
+              setIsPricingModalOpen(true);
+            }}
             isUploading={isUploading}
           />
         </Suspense>

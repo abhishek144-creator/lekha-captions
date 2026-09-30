@@ -2931,6 +2931,56 @@ AI_DAILY_LIMITS = {
 FREE_LIFETIME_TRANSCRIPTIONS = int(FREE_PLAN.get("lifetime_transcriptions", 3) or 3)
 
 
+def _assert_upload_allowed(uid: str, duration_seconds: float = 0) -> None:
+    """Refuse an upload that transcription would refuse, before any bytes move.
+
+    Mirrors the plan-length check in `_process_video_inline` and the quota
+    checks in `_reserve_ai_quota` without reserving anything. The browser
+    supplies the duration, so this is an early courtesy: those later checks
+    remain the authority, and unreadable account data fails open.
+    """
+    db = get_db()
+    data: Dict[str, Any] = {}
+    if db:
+        try:
+            snap = db.collection("users").document(uid).get()
+            data = (snap.to_dict() or {}) if snap.exists else {}
+        except Exception:
+            return
+    tier = _effective_subscription_tier(data)
+    controls = _read_service_controls()
+    max_seconds = min(
+        _max_video_seconds_for_tier(tier),
+        int(controls.get(MAX_UPLOAD_DURATION_CONTROL_KEY, GLOBAL_MAX_UPLOAD_DURATION_SECONDS)),
+    )
+    duration = float(duration_seconds or 0)
+    if duration > max_seconds + 0.5:
+        _track_event("upload_rejected_duration", {"tier": tier, "duration": duration, "max_seconds": max_seconds})
+        raise HTTPException(
+            status_code=403,
+            detail=f"Your plan allows videos up to {max_seconds}s. This video is {duration:.0f}s long.",
+        )
+    if _IS_TEST or not db:
+        return
+    base_tier = tier.replace("_yearly", "")
+    if base_tier == "free":
+        lifetime_used = int((dict(data.get("ai_lifetime_usage") or {})).get("process", 0) or 0)
+        if lifetime_used >= FREE_LIFETIME_TRANSCRIPTIONS:
+            _track_event("upload_rejected_free_transcriptions_used")
+            raise HTTPException(
+                status_code=402,
+                detail=(
+                    f"FREE_TRANSCRIPTIONS_USED: You've used your {FREE_LIFETIME_TRANSCRIPTIONS} free "
+                    "transcriptions. Upgrade to keep captioning."
+                ),
+            )
+    limits = AI_DAILY_LIMITS.get(base_tier, AI_DAILY_LIMITS["free"])
+    usage = dict(data.get("ai_daily_usage") or {}) if data.get("ai_usage_date") == date.today().isoformat() else {}
+    if int(usage.get("process", 0) or 0) >= int(limits["process"]):
+        _track_event("upload_rejected_daily_quota")
+        raise HTTPException(status_code=429, detail="Daily process quota reached for this plan")
+
+
 def _reserve_system_ai_quota(db, operation: str) -> None:
     """Reserve one call against the platform-wide daily AI ceiling.
 
@@ -4156,6 +4206,7 @@ app.include_router(create_direct_upload_router(
     assert_account_active=_assert_account_not_deleting,
     rate_limit_network=_limit_direct_upload_network,
     enqueue_scan=_schedule_media_scan,
+    assert_upload_allowed=_assert_upload_allowed,
 ))
 app.include_router(create_editor_preferences_router(
     _authenticate_media_request,
