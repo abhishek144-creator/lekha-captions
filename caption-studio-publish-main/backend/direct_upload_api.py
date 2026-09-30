@@ -32,7 +32,7 @@ def create_direct_upload_router(*, authenticate, extract_token, assert_service_a
                                 reserve_slot=None, release_slot=None, cancel_session=None,
                                 resume_session=None, assert_account_active=None,
                                 rate_limit_network=None, enqueue_scan=None,
-                                assert_upload_allowed=None):
+                                assert_upload_allowed=None, discard_upload=None):
     router = APIRouter()
 
     @router.post("/api/uploads/init")
@@ -165,6 +165,20 @@ def create_direct_upload_router(*, authenticate, extract_token, assert_service_a
             "upload_state": "pending_scan",
             "raw_url": signed_upload_url(req.file_id, uid),
         }
+
+    @router.post("/api/uploads/discard")
+    def discard_direct_upload(req: DirectUploadCompleteRequest, request: Request):
+        """Delete a completed upload that was never used (window closed before Generate)."""
+        uid = authenticate(extract_token(request))["uid"]
+        try:
+            uuid.UUID(req.file_id)
+        except (ValueError, TypeError):
+            raise HTTPException(400, "Invalid file identifier")
+        if not discard_upload:
+            raise HTTPException(404, "Upload discard is not available")
+        discard_upload(uid, req.file_id)
+        audit_action("direct_upload_discarded", uid, {"file_id": req.file_id})
+        return {"success": True, "file_id": req.file_id}
 
     @router.post("/api/uploads/cancel")
     def cancel_direct_upload(req: DirectUploadCompleteRequest, request: Request):

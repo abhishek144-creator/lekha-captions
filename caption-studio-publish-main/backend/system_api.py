@@ -39,6 +39,8 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
         if not isinstance(payload, dict):
             raise HTTPException(status_code=400, detail="Invalid analytics payload")
         host._track_event(event, payload)
+        if event == "funnel.captions.ready":
+            host._record_client_time_to_first_caption(payload.get("timeToFirstCaptionMs"))
         return {"success": True}
 
 

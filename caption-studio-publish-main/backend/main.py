@@ -1270,6 +1270,10 @@ SUPPORT_RATE_LIMIT = 5  # max public support submissions per hour per IP
 # never let a client write these — otherwise an unauthenticated caller could
 # inflate failure counters to trip the readiness gate or fire ops alerts.
 RESERVED_SERVER_ANALYTICS_EVENTS = frozenset({
+    "upload_rejected_duration",
+    "upload_rejected_free_transcriptions_used",
+    "upload_rejected_daily_quota",
+    "upload_discarded",
     "account_signup",
     "account_activation",
     "upload_success",
@@ -1463,6 +1467,20 @@ def _track_operational_metric_sample(name: str, value: float, max_samples: int =
             _redis_client.expire(redis_key, 120 * 24 * 3600)
         except Exception:
             pass
+
+
+# Browser-measured, so bounded and kept apart from server counters and gates.
+CLIENT_TIME_TO_FIRST_CAPTION_MAX_MS = 2 * 3600 * 1000
+
+
+def _record_client_time_to_first_caption(value: Any) -> None:
+    try:
+        duration_ms = float(value)
+    except (TypeError, ValueError):
+        return
+    if not math.isfinite(duration_ms) or duration_ms <= 0 or duration_ms > CLIENT_TIME_TO_FIRST_CAPTION_MAX_MS:
+        return
+    _track_operational_metric_sample("time_to_first_caption_ms", duration_ms)
 
 
 def _read_operational_metric_samples(day_key: str, name: str) -> List[float]:
@@ -2784,6 +2802,76 @@ def _build_process_cache_path(media_hash: str, language: str, min_words: int, ma
     key = f"{media_hash}:{language.lower()}:{min_words}:{max_words}"
     key_hash = hashlib.sha256(key.encode("utf-8")).hexdigest()
     return os.path.join(TRANSCRIPTION_CACHE_DIR, f"{key_hash}.json")
+
+
+# Transcripts are also kept in Firestore under the same content-hash key, so a
+# re-upload of identical media is free on any worker, not only the one whose
+# disposable scratch disk holds the local copy. Retention is deliberately short.
+TRANSCRIPTION_CACHE_COLLECTION = (
+    "transcription_cache" if _RELEASE_ENVIRONMENT == "production"
+    else f"transcription_cache_{_RELEASE_ENVIRONMENT}"
+)
+TRANSCRIPTION_CACHE_RETENTION_HOURS = 24
+TRANSCRIPTION_CACHE_MAX_BYTES = 900_000
+
+
+def _read_transcription_cache(cache_path: str) -> Optional[Dict[str, Any]]:
+    if not cache_path:
+        return None
+    try:
+        with open(cache_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        pass
+    except Exception as error:
+        _json_log("warning", "transcription_cache_local_read_failed", error_type=type(error).__name__)
+    db = get_db()
+    if not db:
+        return None
+    try:
+        key = pathlib.Path(cache_path).stem
+        snap = db.collection(TRANSCRIPTION_CACHE_COLLECTION).document(key).get()
+        if not snap.exists:
+            return None
+        row = snap.to_dict() or {}
+        expire_at = row.get("expire_at")
+        # Firestore TTL deletion can lag, so expiry is enforced on read too.
+        if isinstance(expire_at, datetime) and expire_at.replace(tzinfo=expire_at.tzinfo or timezone.utc) <= datetime.now(timezone.utc):
+            return None
+        result = json.loads(row.get("payload") or "null")
+        if not isinstance(result, dict):
+            return None
+    except Exception as error:
+        _json_log("warning", "transcription_cache_shared_read_failed", error_type=type(error).__name__)
+        return None
+    try:
+        with open(cache_path, "w", encoding="utf-8") as f:
+            json.dump(result, f)
+    except Exception:
+        pass
+    return result
+
+
+def _write_transcription_cache(cache_path: str, result: Dict[str, Any]) -> None:
+    if not cache_path:
+        return
+    payload = json.dumps(result)
+    try:
+        with open(cache_path, "w", encoding="utf-8") as f:
+            f.write(payload)
+    except Exception as e:
+        _json_log("warning", "transcription_cache_write_failed", error=str(e))
+    db = get_db()
+    if not db or len(payload.encode("utf-8")) > TRANSCRIPTION_CACHE_MAX_BYTES:
+        return
+    try:
+        db.collection(TRANSCRIPTION_CACHE_COLLECTION).document(pathlib.Path(cache_path).stem).set({
+            "payload": payload,
+            "created_at": _utcnow().isoformat() + "Z",
+            "expire_at": datetime.now(timezone.utc) + timedelta(hours=TRANSCRIPTION_CACHE_RETENTION_HOURS),
+        })
+    except Exception as error:
+        _json_log("warning", "transcription_cache_shared_write_failed", error_type=type(error).__name__)
 
 def _build_parity_signature(captions: List[Dict[str, Any]], style: Dict[str, Any], word_layouts: Dict[str, Any]) -> str:
     payload = {
@@ -4167,6 +4255,45 @@ def _release_direct_upload_slot(uid: str, file_id: str, *, undo_hourly: bool = F
         _json_log("warning", "direct_upload_slot_release_failed", error=str(exc))
 
 
+def _discard_unused_upload(uid: str, file_id: str) -> bool:
+    """Delete a finished upload the person abandoned before pressing Generate.
+
+    The six-hour source janitor would remove it anyway; this frees storage and
+    skips the virus scan straight away.
+    """
+    _assert_upload_owner(file_id, uid)
+    metadata = _load_upload_metadata(file_id)
+    if str(metadata.get("upload_state") or "").lower() == "discarded":
+        return True
+    remote_path = str(metadata.get("remote_path") or "")
+    if remote_path and not remote_path.startswith(f"uploads/{uid}/"):
+        raise HTTPException(status_code=403, detail="You do not have access to this upload")
+    _update_upload_metadata(file_id, {
+        "upload_state": "discarded",
+        "discarded_at": _utcnow().isoformat() + "Z",
+    })
+    if remote_path and not delete_from_firebase_storage(remote_path):
+        _json_log("warning", "upload_discard_remote_delete_failed", file_id=file_id)
+    real_dir = os.path.realpath(UPLOAD_DIR)
+    for name in os.listdir(UPLOAD_DIR):
+        if not name.startswith(file_id):
+            continue
+        candidate = os.path.realpath(os.path.join(UPLOAD_DIR, name))
+        if candidate.startswith(real_dir + os.sep):
+            try:
+                os.remove(candidate)
+            except OSError:
+                pass
+    db = get_db()
+    if db:
+        try:
+            MediaScanJobs(db).finish(file_id)
+        except Exception as error:
+            _json_log("warning", "upload_discard_scan_cancel_failed", error_type=type(error).__name__)
+    _track_event("upload_discarded")
+    return True
+
+
 def _schedule_media_scan(uid: str, file_id: str):
     """Persist scan intent before best-effort immediate queue delivery."""
     jobs = MediaScanJobs(get_db())
@@ -4207,6 +4334,7 @@ app.include_router(create_direct_upload_router(
     rate_limit_network=_limit_direct_upload_network,
     enqueue_scan=_schedule_media_scan,
     assert_upload_allowed=_assert_upload_allowed,
+    discard_upload=_discard_unused_upload,
 ))
 app.include_router(create_editor_preferences_router(
     _authenticate_media_request,
@@ -4608,7 +4736,7 @@ def run_media_scan_job_task(uid: str, file_id: str):
     _assert_account_not_deleting(uid)
     _assert_upload_owner(file_id, uid)
     metadata = _load_upload_metadata(file_id)
-    if str(metadata.get("upload_state") or "").lower() in {"clean", "rejected"}:
+    if str(metadata.get("upload_state") or "").lower() in {"clean", "rejected", "discarded"}:
         MediaScanJobs(get_db()).finish(file_id)
         return {"status": str(metadata.get("upload_state"))}
     input_path = _safe_find_upload(file_id)
@@ -4715,10 +4843,9 @@ async def _process_video_inline(req: ProcessRequest, request: Request, response:
         media_hash = ""
         cache_path = ""
 
-    if cache_path and os.path.exists(cache_path):
+    cached = await asyncio.to_thread(_read_transcription_cache, cache_path) if cache_path else None
+    if cached is not None:
         try:
-            with open(cache_path, "r", encoding="utf-8") as f:
-                cached = json.load(f)
             if cached.get("success") and not (cached.get("captions") or []):
                 raise HTTPException(
                     status_code=422,
@@ -4812,11 +4939,7 @@ async def _process_video_inline(req: ProcessRequest, request: Request, response:
                     (media_duration / 60.0) * AI_COST_ESTIMATE_PER_MEDIA_MINUTE_USD,
                 )
             if cache_path:
-                try:
-                    with open(cache_path, "w", encoding="utf-8") as f:
-                        json.dump(result, f)
-                except Exception as e:
-                    _json_log("warning", "transcription_cache_write_failed", error=str(e))
+                await asyncio.to_thread(_write_transcription_cache, cache_path, result)
             if process_idem_key:
                 _idem_set(process_idem_key, {
                     "status": "completed",
