@@ -321,7 +321,13 @@ export default function CaptionEditor({
                       </span>
                       <span className="text-xs text-gray-500 flex items-center gap-1">
                         <TooltipProvider>
-                          <Tooltip open={index === 0 && showAutoTip ? true : undefined} delayDuration={300}>
+                          <Tooltip
+                            // Remount when the one-time tip ends so this Tooltip is never switched
+                            // from controlled (forced open) to uncontrolled (hover) in place.
+                            key={index === 0 && showAutoTip ? 'auto-tip' : 'hover-tip'}
+                            open={index === 0 && showAutoTip ? true : undefined}
+                            delayDuration={300}
+                          >
                             <TooltipTrigger asChild>
                               <div className="ml-1 inline-flex items-center">
                                 <Info className={`w-3 h-3 cursor-help ${index === 0 && showAutoTip ? 'text-blue-400' : 'text-gray-500 hover:text-white'}`} />
