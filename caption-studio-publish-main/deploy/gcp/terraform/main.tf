@@ -1,62 +1,80 @@
+# Pay-only-when-used Lekha backend.
+#
+# Nothing here runs or bills while idle except storage:
+#   - API: Cloud Run service, 0..api_max_instances, request-based billing.
+#   - Workers: Cloud Run Jobs the API starts only when a queue has work
+#     (backend/worker_launcher.py); they exit after worker_idle_exit_seconds.
+#   - Redis: pay-per-use TLS provider, REDIS_URL in the runtime secret
+#     (docs/SERVERLESS_REDIS_SWITCH.md). No Memorystore, VPC, NAT or load balancer.
+#   - Budget: email alerts plus an automatic pause of uploads, transcription
+#     and exports when the monthly budget is spent (/api/maintenance/budget-alert).
+# Never add always-on VMs, provisioned Redis, NAT or load balancers here without
+# the owner's written approval of their idle monthly cost.
+
 locals {
-  release_short = substr(var.release, 0, 12)
-  common_metadata = {
-    api-image-uri           = var.api_image_uri
-    render-image-uri        = var.render_image_uri
-    transcription-image-uri = var.transcription_image_uri
-    runtime-secret          = "lekha-runtime-env"
-    runtime-secret-version  = tostring(var.runtime_secret_version)
-    region                  = var.region
-    worker-mig-name         = "lekha-worker-staging-mig"
+  runtime_secret       = "lekha-runtime-env"
+  runtime_env_dir      = "/var/run/lekha-secrets"
+  runtime_env_path     = "${local.runtime_env_dir}/runtime.env"
+  maintenance_audience = "https://lekha-api.internal/maintenance"
+
+  render_job_name        = "lekha-render"
+  gpu_render_job_name    = "lekha-render-gpu"
+  transcription_job_name = "lekha-transcription"
+
+  render_queues        = [var.fast_export_queue_name, var.export_queue_name, var.heavy_export_queue_name]
+  transcription_queues = [var.media_scan_queue_name, var.transcription_queue_name]
+
+  # Which job the API starts for each queue (WORKER_LAUNCH_JOBS).
+  worker_launch_jobs = merge(
+    { for queue in local.render_queues : queue => local.render_job_name },
+    { for queue in local.transcription_queues : queue => local.transcription_job_name },
+    var.enable_gpu_render_job ? { (var.gpu_export_queue_name) = local.gpu_render_job_name } : {},
+  )
+
+  # Env set here wins over the runtime secret file (loaded with override=False).
+  shared_env = {
+    RUNTIME_ENV_FILE         = local.runtime_env_path
+    APP_RELEASE              = var.release
+    RELEASE_VERSION          = var.release
+    GOOGLE_CLOUD_PROJECT     = var.project_id
+    RUN_API_BACKGROUND_TASKS = "0"
+    # Queue metrics only fed the retired VM autoscalers.
+    QUEUE_METRICS_ENABLED = "0"
+    # Blank so a stale runtime secret can't point workers at retired VM groups.
+    WORKER_MIG_NAME = ""
   }
+
+  worker_env = merge(local.shared_env, {
+    WORKER_IDLE_EXIT_SECONDS = tostring(var.worker_idle_exit_seconds)
+  })
+
+  # Render workers never scan media (the API and transcription job do). The
+  # production boot check needs a scanner setting; with nothing listening
+  # here any accidental scan fails closed instead of being skipped.
+  render_env = merge(local.worker_env, {
+    CLAMAV_HOST = "127.0.0.1"
+  })
+
+  required_services = toset([
+    "run.googleapis.com",
+    "cloudscheduler.googleapis.com",
+    "pubsub.googleapis.com",
+    "billingbudgets.googleapis.com",
+    "secretmanager.googleapis.com",
+    "iamcredentials.googleapis.com",
+  ])
 }
 
-resource "google_compute_security_policy" "edge" {
-  name        = "lekha-edge-security"
-  description = "Lekha public edge WAF"
-  type        = "CLOUD_ARMOR"
+data "google_project" "this" {}
 
-  dynamic "rule" {
-    for_each = {
-      1000 = ["sqli-v33-stable", "SQL injection protection"]
-      1100 = ["xss-v33-stable", "Cross-site scripting protection"]
-      1200 = ["lfi-v33-stable", "Local file inclusion protection"]
-      1300 = ["rfi-v33-stable", "Remote file inclusion protection"]
-      1400 = ["rce-v33-stable", "Remote code execution protection"]
-    }
-    content {
-      action      = "deny(403)"
-      priority    = tonumber(rule.key)
-      description = rule.value[1]
-      match {
-        expr { expression = "evaluatePreconfiguredWaf('${rule.value[0]}', {'sensitivity': 1})" }
-      }
-    }
-  }
-  rule {
-    action   = "allow"
-    priority = 2147483647
-    match {
-      versioned_expr = "SRC_IPS_V1"
-      config {
-        src_ip_ranges = ["*"]
-      }
-    }
-  }
+resource "google_project_service" "required" {
+  for_each           = local.required_services
+  project            = var.project_id
+  service            = each.value
+  disable_on_destroy = false
 }
 
-resource "google_redis_instance" "queue" {
-  name                    = "lekha-redis-ha"
-  tier                    = "STANDARD_HA"
-  memory_size_gb          = 1
-  region                  = var.region
-  location_id             = var.zones[2]
-  alternative_location_id = var.zones[1]
-  redis_version           = "REDIS_7_2"
-  authorized_network      = "default"
-  connect_mode            = "DIRECT_PEERING"
-  redis_configs           = { "maxmemory-policy" = "noeviction" }
-}
+# --- Media storage and signed URLs --------------------------------------------
 
 resource "google_storage_bucket" "media" {
   name                        = var.media_bucket_name
@@ -129,486 +147,45 @@ resource "google_service_account_iam_member" "runtime_can_sign_media_urls" {
   member             = "serviceAccount:${var.runtime_service_account}"
 }
 
-resource "google_project_iam_custom_role" "worker_scale_protection" {
-  role_id     = "lekhaWorkerScaleProtection"
-  title       = "Lekha worker scale-in protection"
-  description = "Allows a worker to protect or unprotect itself while processing a job"
-  permissions = [
-    "compute.instanceGroupManagers.get",
-    "compute.instanceGroupManagers.update",
-  ]
-}
-
-resource "google_project_iam_member" "worker_scale_protection" {
-  project = var.project_id
-  role    = google_project_iam_custom_role.worker_scale_protection.name
-  member  = "serviceAccount:${var.runtime_service_account}"
-}
-
-resource "google_compute_router" "egress" {
-  name    = "lekha-egress-router"
-  region  = var.region
-  network = "default"
-}
-
-resource "google_compute_router_nat" "egress" {
-  name                               = "lekha-egress-nat"
-  router                             = google_compute_router.egress.name
-  region                             = var.region
-  nat_ip_allocate_option             = "AUTO_ONLY"
-  source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
-  min_ports_per_vm                   = 128
-  log_config {
-    enable = true
-    filter = "ERRORS_ONLY"
-  }
-}
-
-resource "google_compute_health_check" "api" {
-  name                = "lekha-api-staging-mig-health"
-  check_interval_sec  = 30
-  timeout_sec         = 10
-  healthy_threshold   = 2
-  unhealthy_threshold = 3
-  http_health_check {
-    port         = 8000
-    request_path = "/api/health/readiness"
-  }
-}
-
-resource "google_compute_health_check" "worker" {
-  name                = "lekha-worker-staging-mig-health"
-  check_interval_sec  = 30
-  timeout_sec         = 10
-  healthy_threshold   = 2
-  unhealthy_threshold = 3
-  http_health_check {
-    port         = 8000
-    request_path = "/api/health/readiness"
-  }
-}
-
-resource "google_compute_instance_template" "api" {
-  name_prefix  = "lekha-api-${local.release_short}-"
-  machine_type = "e2-standard-2"
-  tags         = ["lekha-api-mig"]
-  disk {
-    source_image = var.runtime_image
-    disk_size_gb = 50
-    disk_type    = "pd-balanced"
-    auto_delete  = true
-    boot         = true
-  }
-  network_interface { network = "default" }
-  service_account {
-    email  = var.runtime_service_account
-    scopes = ["cloud-platform"]
-  }
-  metadata                = merge(local.common_metadata, { service-role = "api" })
-  metadata_startup_script = file("${path.module}/../gce-startup.sh")
-  lifecycle { create_before_destroy = true }
-}
-
-resource "google_compute_instance_template" "worker" {
-  name_prefix  = "lekha-worker-${local.release_short}-"
-  machine_type = var.render_worker_machine_type
-  tags         = ["lekha-worker-mig"]
-  disk {
-    source_image = var.runtime_image
-    disk_size_gb = var.render_worker_disk_size_gb
-    disk_type    = var.render_worker_disk_type
-    auto_delete  = true
-    boot         = true
-  }
-  network_interface { network = "default" }
-  service_account {
-    email  = var.runtime_service_account
-    scopes = ["cloud-platform"]
-  }
-  metadata = merge(local.common_metadata, {
-    service-role            = "render"
-    worker-queue-name       = "${var.fast_export_queue_name},${var.export_queue_name},${var.heavy_export_queue_name}"
-    worker-container-cpus   = "3"
-    worker-container-memory = "8g"
-  })
-  metadata_startup_script = file("${path.module}/../gce-startup.sh")
-  lifecycle { create_before_destroy = true }
-}
-
-resource "google_compute_instance_template" "transcription" {
-  name_prefix  = "lekha-transcription-${local.release_short}-"
-  machine_type = "e2-standard-2"
-  tags         = ["lekha-worker-mig"]
-  disk {
-    source_image = var.runtime_image
-    disk_size_gb = 30
-    disk_type    = "pd-balanced"
-    auto_delete  = true
-    boot         = true
-  }
-  network_interface { network = "default" }
-  service_account {
-    email  = var.runtime_service_account
-    scopes = ["cloud-platform"]
-  }
-  metadata = merge(local.common_metadata, {
-    service-role      = "transcription"
-    worker-mig-name   = "lekha-transcription-staging-mig"
-    worker-queue-name = "${var.media_scan_queue_name},${var.transcription_queue_name}"
-  })
-  metadata_startup_script = file("${path.module}/../gce-startup.sh")
-  lifecycle { create_before_destroy = true }
-}
-
-resource "google_compute_region_instance_group_manager" "api" {
-  name                      = "lekha-api-staging-mig"
-  region                    = var.region
-  distribution_policy_zones = var.zones
-  base_instance_name        = "lekha-api-staging-mig"
-  # Cloud Run is the normal request-driven API. Keep this group at zero except
-  # for an explicitly monitored canary rollback window.
-  target_size = var.api_legacy_target_size
-  version { instance_template = google_compute_instance_template.api.id }
-  named_port {
-    name = "http"
-    port = 8000
-  }
-  auto_healing_policies {
-    health_check      = google_compute_health_check.api.id
-    initial_delay_sec = 180
-  }
-  update_policy {
-    type                  = "PROACTIVE"
-    minimal_action        = "REPLACE"
-    max_surge_fixed       = 3
-    max_unavailable_fixed = 0
-    replacement_method    = "SUBSTITUTE"
-  }
-}
-
-resource "google_compute_region_instance_group_manager" "worker" {
-  name                      = "lekha-worker-staging-mig"
-  region                    = var.region
-  distribution_policy_zones = var.zones
-  # Rendering is a regional batch workload. ANY avoids a prolonged capacity
-  # outage when one zone cannot allocate the custom worker machine type; the
-  # MIG still spans every configured zone and replaces unhealthy instances.
-  distribution_policy_target_shape = "ANY"
-  base_instance_name               = "lekha-worker-staging-mig"
-  version { instance_template = google_compute_instance_template.worker.id }
-  auto_healing_policies {
-    health_check      = google_compute_health_check.worker.id
-    initial_delay_sec = 180
-  }
-  update_policy {
-    type                         = "PROACTIVE"
-    minimal_action               = "REPLACE"
-    max_surge_fixed              = 3
-    max_unavailable_fixed        = 0
-    replacement_method           = "SUBSTITUTE"
-    instance_redistribution_type = "NONE"
-  }
-}
-
-resource "google_compute_region_instance_group_manager" "transcription" {
-  name                             = "lekha-transcription-staging-mig"
-  region                           = var.region
-  distribution_policy_zones        = var.zones
-  distribution_policy_target_shape = "ANY"
-  base_instance_name               = "lekha-transcription-staging-mig"
-  version { instance_template = google_compute_instance_template.transcription.id }
-  auto_healing_policies {
-    health_check      = google_compute_health_check.worker.id
-    initial_delay_sec = 180
-  }
-  update_policy {
-    type                         = "PROACTIVE"
-    minimal_action               = "REPLACE"
-    max_surge_fixed              = 2
-    max_unavailable_fixed        = 0
-    replacement_method           = "SUBSTITUTE"
-    instance_redistribution_type = "NONE"
-  }
-}
-
-resource "google_compute_region_autoscaler" "worker" {
-  name   = "lekha-worker-staging-autoscaler"
-  region = var.region
-  target = google_compute_region_instance_group_manager.worker.id
-  autoscaling_policy {
-    min_replicas    = var.render_worker_min_replicas
-    max_replicas    = var.render_worker_max_replicas
-    cooldown_period = 180
-    metric {
-      name                       = "custom.googleapis.com/lekha/pending_render_work_seconds"
-      single_instance_assignment = 120
-      filter                     = "resource.type = global AND metric.labels.queue = render_all AND metric.labels.worker_group = lekha-worker-staging-mig"
-    }
-    metric {
-      name   = "custom.googleapis.com/lekha/predicted_queue_wait_seconds"
-      type   = "GAUGE"
-      target = 120
-      filter = "resource.type = global AND metric.labels.queue = render_all AND metric.labels.worker_group = lekha-worker-staging-mig"
-    }
-    scale_in_control {
-      max_scaled_in_replicas {
-        fixed = 1
-      }
-      time_window_sec = 300
-    }
-  }
-}
-
-resource "google_compute_region_autoscaler" "transcription" {
-  name   = "lekha-transcription-staging-autoscaler"
-  region = var.region
-  target = google_compute_region_instance_group_manager.transcription.id
-  autoscaling_policy {
-    min_replicas    = 0
-    max_replicas    = var.transcription_worker_max_replicas
-    cooldown_period = 180
-    metric {
-      name   = "custom.googleapis.com/lekha/transcription_queue_depth"
-      target = 1
-      type   = "GAUGE"
-      filter = "resource.type = global AND metric.labels.queue = ${var.transcription_queue_name} AND metric.labels.worker_group = lekha-transcription-staging-mig"
-    }
-    scale_in_control {
-      max_scaled_in_replicas {
-        fixed = 1
-      }
-      time_window_sec = 300
-    }
-  }
-}
-
-# Spot workers consume the same idempotent render queue as the baseline pool.
-# They have no minimum, so interruption-prone capacity is used only for bursts.
-resource "google_compute_instance_template" "worker_spot" {
-  count        = var.spot_render_worker_max_replicas > 0 ? 1 : 0
-  name_prefix  = "lekha-worker-spot-${local.release_short}-"
-  machine_type = var.render_worker_machine_type
-  tags         = ["lekha-worker-mig"]
-  disk {
-    source_image = var.runtime_image
-    disk_size_gb = var.render_worker_disk_size_gb
-    disk_type    = var.render_worker_disk_type
-    auto_delete  = true
-    boot         = true
-  }
-  network_interface { network = "default" }
-  scheduling {
-    provisioning_model          = "SPOT"
-    automatic_restart           = false
-    on_host_maintenance         = "TERMINATE"
-    instance_termination_action = "DELETE"
-  }
-  service_account {
-    email  = var.runtime_service_account
-    scopes = ["cloud-platform"]
-  }
-  metadata = merge(local.common_metadata, {
-    service-role            = "render"
-    worker-mig-name         = "lekha-worker-spot-staging-mig"
-    worker-queue-name       = var.heavy_export_queue_name
-    worker-container-cpus   = "3"
-    worker-container-memory = "8g"
-  })
-  metadata_startup_script = file("${path.module}/../gce-startup.sh")
-  lifecycle { create_before_destroy = true }
-}
-
-resource "google_compute_region_instance_group_manager" "worker_spot" {
-  count                            = var.spot_render_worker_max_replicas > 0 ? 1 : 0
-  name                             = "lekha-worker-spot-staging-mig"
-  region                           = var.region
-  distribution_policy_zones        = var.zones
-  distribution_policy_target_shape = "ANY"
-  base_instance_name               = "lekha-worker-spot"
-  version { instance_template = google_compute_instance_template.worker_spot[0].id }
-  auto_healing_policies {
-    health_check      = google_compute_health_check.worker.id
-    initial_delay_sec = 180
-  }
-  update_policy {
-    type                         = "PROACTIVE"
-    minimal_action               = "REPLACE"
-    max_surge_fixed              = 2
-    max_unavailable_fixed        = 0
-    replacement_method           = "SUBSTITUTE"
-    instance_redistribution_type = "NONE"
-  }
-}
-
-resource "google_compute_region_autoscaler" "worker_spot" {
-  count  = var.spot_render_worker_max_replicas > 0 ? 1 : 0
-  name   = "lekha-worker-spot-staging-autoscaler"
-  region = var.region
-  target = google_compute_region_instance_group_manager.worker_spot[0].id
-  autoscaling_policy {
-    min_replicas    = 0
-    max_replicas    = var.spot_render_worker_max_replicas
-    cooldown_period = 180
-    metric {
-      name                       = "custom.googleapis.com/lekha/pending_render_work_seconds"
-      single_instance_assignment = 240
-      filter                     = "resource.type = global AND metric.labels.queue = render_heavy AND metric.labels.worker_group = lekha-worker-spot-staging-mig"
-    }
-    metric {
-      name   = "custom.googleapis.com/lekha/predicted_queue_wait_seconds"
-      type   = "GAUGE"
-      target = 180
-      filter = "resource.type = global AND metric.labels.queue = render_heavy AND metric.labels.worker_group = lekha-worker-spot-staging-mig"
-    }
-    scale_in_control {
-      max_scaled_in_replicas { fixed = 2 }
-      time_window_sec = 300
-    }
-  }
-}
-
-# This pool is deliberately disabled by default. Enabling it requires a baked
-# image with NVIDIA drivers and a matched visual-quality/cost benchmark.
-resource "google_compute_instance_template" "worker_gpu" {
-  count        = var.enable_gpu_pool ? 1 : 0
-  name_prefix  = "lekha-worker-gpu-${local.release_short}-"
-  machine_type = "g2-standard-4"
-  tags         = ["lekha-worker-mig"]
-  disk {
-    source_image = var.gpu_runtime_image
-    disk_size_gb = var.render_worker_disk_size_gb
-    disk_type    = var.render_worker_disk_type
-    auto_delete  = true
-    boot         = true
-  }
-  network_interface { network = "default" }
-  scheduling {
-    on_host_maintenance = "TERMINATE"
-  }
-  service_account {
-    email  = var.runtime_service_account
-    scopes = ["cloud-platform"]
-  }
-  metadata = merge(local.common_metadata, {
-    service-role            = "render"
-    worker-mig-name         = "lekha-worker-gpu-staging-mig"
-    worker-queue-name       = var.gpu_export_queue_name
-    worker-container-cpus   = "3"
-    worker-container-memory = "14g"
-    worker-gpu-enabled      = "1"
-  })
-  metadata_startup_script = file("${path.module}/../gce-startup.sh")
-  lifecycle {
-    create_before_destroy = true
-    precondition {
-      condition     = !var.enable_gpu_pool || length(trimspace(var.gpu_runtime_image)) > 0
-      error_message = "gpu_runtime_image is required when enable_gpu_pool is true"
-    }
-  }
-}
-
-resource "google_compute_region_instance_group_manager" "worker_gpu" {
-  count                            = var.enable_gpu_pool ? 1 : 0
-  name                             = "lekha-worker-gpu-staging-mig"
-  region                           = var.region
-  distribution_policy_zones        = var.zones
-  distribution_policy_target_shape = "ANY"
-  base_instance_name               = "lekha-worker-gpu"
-  version { instance_template = google_compute_instance_template.worker_gpu[0].id }
-  auto_healing_policies {
-    health_check      = google_compute_health_check.worker.id
-    initial_delay_sec = 240
-  }
-  update_policy {
-    type                         = "PROACTIVE"
-    minimal_action               = "REPLACE"
-    max_surge_fixed              = 1
-    max_unavailable_fixed        = 0
-    replacement_method           = "SUBSTITUTE"
-    instance_redistribution_type = "NONE"
-  }
-}
-
-resource "google_compute_region_autoscaler" "worker_gpu" {
-  count  = var.enable_gpu_pool ? 1 : 0
-  name   = "lekha-worker-gpu-staging-autoscaler"
-  region = var.region
-  target = google_compute_region_instance_group_manager.worker_gpu[0].id
-  autoscaling_policy {
-    min_replicas    = 0
-    max_replicas    = var.gpu_render_worker_max_replicas
-    cooldown_period = 240
-    metric {
-      name                       = "custom.googleapis.com/lekha/pending_render_work_seconds"
-      single_instance_assignment = 240
-      filter                     = "resource.type = global AND metric.labels.queue = render_gpu AND metric.labels.worker_group = lekha-worker-gpu-staging-mig"
-    }
-    metric {
-      name   = "custom.googleapis.com/lekha/predicted_queue_wait_seconds"
-      type   = "GAUGE"
-      target = 180
-      filter = "resource.type = global AND metric.labels.queue = render_gpu AND metric.labels.worker_group = lekha-worker-gpu-staging-mig"
-    }
-    scale_in_control {
-      max_scaled_in_replicas { fixed = 1 }
-      time_window_sec = 900
-    }
-  }
-}
-
-# Cloud Run is created in parallel with the serving API MIG. Its
-# serverless NEG is the explicit hand-off point for a measured load-balancer
-# cutover; Terraform never silently moves production traffic.
-
-resource "google_project_service" "cloud_scheduler" {
-  count              = var.enable_cloud_run_api ? 1 : 0
-  project            = var.project_id
-  service            = "cloudscheduler.googleapis.com"
-  disable_on_destroy = false
-}
-
-resource "google_service_account" "scheduler" {
-  count        = var.enable_cloud_run_api ? 1 : 0
-  account_id   = "lekha-cloud-scheduler"
-  display_name = "Lekha Cloud Scheduler caller"
-}
+# --- Runtime secret (values are added outside Terraform) ----------------------
 
 resource "google_secret_manager_secret_iam_member" "runtime_env_access" {
-  count     = var.enable_cloud_run_api ? 1 : 0
-  project   = var.project_id
-  secret_id = "lekha-runtime-env"
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${var.runtime_service_account}"
+  project    = var.project_id
+  secret_id  = local.runtime_secret
+  role       = "roles/secretmanager.secretAccessor"
+  member     = "serviceAccount:${var.runtime_service_account}"
+  depends_on = [google_project_service.required]
+}
+
+# --- API: Cloud Run service, scales to zero -----------------------------------
+
+resource "google_service_account" "scheduler" {
+  account_id   = "lekha-cloud-scheduler"
+  display_name = "Lekha scheduler and budget caller"
+  description  = "Calls the API's maintenance routes from Cloud Scheduler and Pub/Sub"
 }
 
 resource "google_cloud_run_v2_service" "api" {
-  count               = var.enable_cloud_run_api ? 1 : 0
-  name                = "lekha-api-staging"
+  name                = "lekha-api"
   location            = var.region
-  ingress             = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
+  ingress             = "INGRESS_TRAFFIC_ALL"
   deletion_protection = true
 
   template {
     service_account                  = var.runtime_service_account
     timeout                          = "300s"
-    max_instance_request_concurrency = var.cloud_run_api_concurrency
+    max_instance_request_concurrency = var.api_concurrency
     execution_environment            = "EXECUTION_ENVIRONMENT_GEN2"
 
     scaling {
-      min_instance_count = var.cloud_run_api_min_instances
-      max_instance_count = var.cloud_run_api_max_instances
-    }
-    vpc_access {
-      egress = "PRIVATE_RANGES_ONLY"
-      network_interfaces {
-        network    = var.cloud_run_vpc_network
-        subnetwork = var.cloud_run_vpc_subnetwork
-      }
+      # Zero is fixed: an idle API costs nothing.
+      min_instance_count = 0
+      max_instance_count = var.api_max_instances
     }
     volumes {
       name = "runtime-env"
       secret {
-        secret = "lekha-runtime-env"
+        secret = local.runtime_secret
         items {
           version = tostring(var.runtime_secret_version)
           path    = "runtime.env"
@@ -621,53 +198,32 @@ resource "google_cloud_run_v2_service" "api" {
       image      = var.api_image_uri
       ports { container_port = 8000 }
       resources {
-        limits            = { cpu = "1", memory = "1Gi" }
+        limits = { cpu = "1", memory = "1Gi" }
+        # Request-based billing: CPU and memory are charged only while a request runs.
         cpu_idle          = true
         startup_cpu_boost = true
       }
       volume_mounts {
         name       = "runtime-env"
-        mount_path = "/var/run/lekha-secrets"
+        mount_path = local.runtime_env_dir
       }
-      env {
-        name  = "RUNTIME_ENV_FILE"
-        value = "/var/run/lekha-secrets/runtime.env"
-      }
-      env {
-        name  = "RUN_API_BACKGROUND_TASKS"
-        value = "0"
-      }
-      env {
-        name  = "WEB_CONCURRENCY"
-        value = "1"
-      }
-      env {
-        name  = "UVICORN_LIMIT_CONCURRENCY"
-        value = tostring(var.cloud_run_api_concurrency)
-      }
-      env {
-        name  = "APP_RELEASE"
-        value = var.release
-      }
-      env {
-        name  = "RELEASE_VERSION"
-        value = var.release
-      }
-      env {
-        name  = "REDIS_URL"
-        value = "redis://${google_redis_instance.queue.host}:${google_redis_instance.queue.port}/0"
-      }
-      env {
-        name  = "CLAMAV_HOST"
-        value = "127.0.0.1"
-      }
-      env {
-        name  = "SCHEDULER_SERVICE_ACCOUNT_EMAIL"
-        value = google_service_account.scheduler[0].email
-      }
-      env {
-        name  = "SCHEDULER_OIDC_AUDIENCE"
-        value = "https://lekha-api.internal/maintenance"
+      dynamic "env" {
+        for_each = merge(local.shared_env, {
+          WEB_CONCURRENCY                 = "1"
+          UVICORN_LIMIT_CONCURRENCY       = tostring(var.api_concurrency)
+          CLAMAV_HOST                     = "127.0.0.1"
+          SCHEDULER_SERVICE_ACCOUNT_EMAIL = google_service_account.scheduler.email
+          SCHEDULER_OIDC_AUDIENCE         = local.maintenance_audience
+          WORKER_LAUNCH_JOBS              = jsonencode(local.worker_launch_jobs)
+          WORKER_LAUNCH_REGION            = var.region
+          WORKER_LAUNCH_MAX_PARALLEL      = tostring(var.worker_max_parallel)
+          GPU_RENDER_ENABLED              = var.enable_gpu_render_job ? "1" : "0"
+          BUDGET_STOP_FRACTION            = tostring(var.budget_stop_fraction)
+        })
+        content {
+          name  = env.key
+          value = env.value
+        }
       }
       startup_probe {
         initial_delay_seconds = 5
@@ -701,47 +257,226 @@ resource "google_cloud_run_v2_service" "api" {
     }
   }
 
-  depends_on = [google_secret_manager_secret_iam_member.runtime_env_access]
+  depends_on = [google_project_service.required, google_secret_manager_secret_iam_member.runtime_env_access]
 }
 
-resource "google_cloud_run_v2_service_iam_member" "public_via_load_balancer" {
-  count    = var.enable_cloud_run_api ? 1 : 0
+# The API authenticates its own users; Cloud Run must let browsers reach it.
+resource "google_cloud_run_v2_service_iam_member" "public" {
   project  = var.project_id
   location = var.region
-  name     = google_cloud_run_v2_service.api[0].name
+  name     = google_cloud_run_v2_service.api.name
   role     = "roles/run.invoker"
   member   = "allUsers"
 }
 
-resource "google_cloud_run_v2_service_iam_member" "scheduler_invoker" {
-  count    = var.enable_cloud_run_api ? 1 : 0
-  project  = var.project_id
-  location = var.region
-  name     = google_cloud_run_v2_service.api[0].name
-  role     = "roles/run.invoker"
-  member   = "serviceAccount:${google_service_account.scheduler[0].email}"
+# --- Workers: Cloud Run Jobs started on demand --------------------------------
+
+resource "google_cloud_run_v2_job" "render" {
+  name                = local.render_job_name
+  location            = var.region
+  deletion_protection = false
+
+  template {
+    task_count  = 1
+    parallelism = 1
+    template {
+      service_account       = var.runtime_service_account
+      timeout               = "${var.worker_task_timeout_seconds}s"
+      max_retries           = 0
+      execution_environment = "EXECUTION_ENVIRONMENT_GEN2"
+      volumes {
+        name = "runtime-env"
+        secret {
+          secret = local.runtime_secret
+          items {
+            version = tostring(var.runtime_secret_version)
+            path    = "runtime.env"
+          }
+        }
+      }
+      containers {
+        name  = "render"
+        image = var.render_image_uri
+        resources {
+          limits = { cpu = "4", memory = "12Gi" }
+        }
+        volume_mounts {
+          name       = "runtime-env"
+          mount_path = local.runtime_env_dir
+        }
+        dynamic "env" {
+          for_each = merge(local.render_env, {
+            WORKER_QUEUES = join(",", local.render_queues)
+          })
+          content {
+            name  = env.key
+            value = env.value
+          }
+        }
+      }
+    }
+  }
+
+  depends_on = [google_project_service.required, google_secret_manager_secret_iam_member.runtime_env_access]
 }
 
-resource "google_compute_region_network_endpoint_group" "api_cloud_run" {
-  count                 = var.enable_cloud_run_api ? 1 : 0
-  name                  = "lekha-api-cloud-run-neg"
-  region                = var.region
-  network_endpoint_type = "SERVERLESS"
-  cloud_run { service = google_cloud_run_v2_service.api[0].name }
+resource "google_cloud_run_v2_job" "transcription" {
+  name                = local.transcription_job_name
+  location            = var.region
+  deletion_protection = false
+
+  template {
+    task_count  = 1
+    parallelism = 1
+    template {
+      service_account       = var.runtime_service_account
+      timeout               = "${var.worker_task_timeout_seconds}s"
+      max_retries           = 0
+      execution_environment = "EXECUTION_ENVIRONMENT_GEN2"
+      volumes {
+        name = "runtime-env"
+        secret {
+          secret = local.runtime_secret
+          items {
+            version = tostring(var.runtime_secret_version)
+            path    = "runtime.env"
+          }
+        }
+      }
+      containers {
+        name  = "transcription"
+        image = var.transcription_image_uri
+        resources {
+          # clamscan loads its signature database (~1.5 GiB) for each scan.
+          limits = { cpu = "2", memory = "4Gi" }
+        }
+        volume_mounts {
+          name       = "runtime-env"
+          mount_path = local.runtime_env_dir
+        }
+        dynamic "env" {
+          for_each = merge(local.worker_env, {
+            WORKER_QUEUES = join(",", local.transcription_queues)
+            # No clamd sidecar in a job (its exit could keep the job billing);
+            # scan with the clamscan baked into the transcription image.
+            CLAMAV_HOST                 = ""
+            CLAMAV_SCAN_CMD             = "clamscan"
+            CLAMAV_SCAN_TIMEOUT_SECONDS = "180"
+          })
+          content {
+            name  = env.key
+            value = env.value
+          }
+        }
+      }
+    }
+  }
+
+  depends_on = [google_project_service.required, google_secret_manager_secret_iam_member.runtime_env_access]
+}
+
+# Optional L4 GPU lane for heavy animated exports (off by default).
+resource "google_cloud_run_v2_job" "render_gpu" {
+  count               = var.enable_gpu_render_job ? 1 : 0
+  name                = local.gpu_render_job_name
+  location            = var.region
+  deletion_protection = false
+  launch_stage        = "BETA"
+
+  template {
+    task_count  = 1
+    parallelism = 1
+    template {
+      service_account               = var.runtime_service_account
+      timeout                       = "${var.worker_task_timeout_seconds}s"
+      max_retries                   = 0
+      execution_environment         = "EXECUTION_ENVIRONMENT_GEN2"
+      gpu_zonal_redundancy_disabled = true
+      node_selector {
+        accelerator = "nvidia-l4"
+      }
+      volumes {
+        name = "runtime-env"
+        secret {
+          secret = local.runtime_secret
+          items {
+            version = tostring(var.runtime_secret_version)
+            path    = "runtime.env"
+          }
+        }
+      }
+      containers {
+        name  = "render"
+        image = var.render_image_uri
+        resources {
+          # L4 minimum is 4 CPU / 16 GiB.
+          limits = { cpu = "4", memory = "16Gi", "nvidia.com/gpu" = "1" }
+        }
+        volume_mounts {
+          name       = "runtime-env"
+          mount_path = local.runtime_env_dir
+        }
+        dynamic "env" {
+          for_each = merge(local.render_env, {
+            WORKER_QUEUES        = var.gpu_export_queue_name
+            EXPORT_VIDEO_ENCODER = "auto"
+          })
+          content {
+            name  = env.key
+            value = env.value
+          }
+        }
+      }
+    }
+  }
+
+  depends_on = [google_project_service.required, google_secret_manager_secret_iam_member.runtime_env_access]
+}
+
+locals {
+  launchable_jobs = merge(
+    {
+      render        = google_cloud_run_v2_job.render.name
+      transcription = google_cloud_run_v2_job.transcription.name
+    },
+    var.enable_gpu_render_job ? { render_gpu = google_cloud_run_v2_job.render_gpu[0].name } : {},
+  )
+}
+
+# The API starts jobs with a per-run WORKER_LAUNCH_SLOT override.
+resource "google_cloud_run_v2_job_iam_member" "api_can_start_workers" {
+  for_each = local.launchable_jobs
+  project  = var.project_id
+  location = var.region
+  name     = each.value
+  role     = "roles/run.jobsExecutorWithOverrides"
+  member   = "serviceAccount:${var.runtime_service_account}"
+}
+
+# --- Recovery and maintenance (Cloud Scheduler) --------------------------------
+# Normal work is dispatched on the request path; these are safety nets, so they
+# run every few minutes instead of every minute. Queue metrics are gone: they
+# only fed the retired VM autoscalers.
+
+resource "google_cloud_run_v2_service_iam_member" "scheduler_invoker" {
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.api.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.scheduler.email}"
 }
 
 locals {
   maintenance_jobs = {
-    transcription-dispatch = "*/1 * * * *"
-    media-scan-dispatch    = "*/1 * * * *"
-    queue-metrics          = "*/1 * * * *"
-    janitor                = "*/15 * * * *"
+    transcription-dispatch = "*/5 * * * *"
+    media-scan-dispatch    = "*/5 * * * *"
     payment-reconciliation = "*/20 * * * *"
+    janitor                = "*/30 * * * *"
   }
 }
 
 resource "google_cloud_scheduler_job" "maintenance" {
-  for_each         = var.enable_cloud_run_api ? local.maintenance_jobs : {}
+  for_each         = local.maintenance_jobs
   name             = "lekha-${each.key}"
   region           = var.region
   schedule         = each.value
@@ -754,11 +489,86 @@ resource "google_cloud_scheduler_job" "maintenance" {
   }
   http_target {
     http_method = "POST"
-    uri         = "${google_cloud_run_v2_service.api[0].uri}/api/maintenance/${each.key}"
+    uri         = "${google_cloud_run_v2_service.api.uri}/api/maintenance/${each.key}"
     oidc_token {
-      service_account_email = google_service_account.scheduler[0].email
-      audience              = "https://lekha-api.internal/maintenance"
+      service_account_email = google_service_account.scheduler.email
+      audience              = local.maintenance_audience
     }
   }
-  depends_on = [google_cloud_run_v2_service_iam_member.scheduler_invoker, google_project_service.cloud_scheduler]
+  depends_on = [google_cloud_run_v2_service_iam_member.scheduler_invoker, google_project_service.required]
+}
+
+# --- Budget: email alerts + automatic stop -----------------------------------
+# Cloud Billing publishes the budget status to this topic several times a day;
+# Pub/Sub pushes it to the API, which pauses uploads, transcription and exports
+# once spend reaches budget_stop_fraction. Billing data can lag by hours, so the
+# hard caps above (instances, parallel jobs, idle exit, task timeout) are what
+# bound the worst case in between.
+
+resource "google_pubsub_topic" "budget" {
+  name       = "lekha-budget-alerts"
+  depends_on = [google_project_service.required]
+}
+
+resource "google_pubsub_subscription" "budget_to_api" {
+  name                       = "lekha-budget-alerts-to-api"
+  topic                      = google_pubsub_topic.budget.id
+  ack_deadline_seconds       = 60
+  message_retention_duration = "86400s"
+
+  expiration_policy {
+    ttl = ""
+  }
+  retry_policy {
+    minimum_backoff = "30s"
+    maximum_backoff = "600s"
+  }
+  push_config {
+    push_endpoint = "${google_cloud_run_v2_service.api.uri}/api/maintenance/budget-alert"
+    oidc_token {
+      service_account_email = google_service_account.scheduler.email
+      audience              = local.maintenance_audience
+    }
+  }
+  depends_on = [google_cloud_run_v2_service_iam_member.scheduler_invoker]
+}
+
+resource "google_billing_budget" "monthly" {
+  billing_account = var.billing_account_id
+  display_name    = "Lekha monthly budget"
+
+  budget_filter {
+    projects        = ["projects/${data.google_project.this.number}"]
+    calendar_period = "MONTH"
+  }
+
+  amount {
+    specified_amount {
+      currency_code = var.budget_currency
+      units         = tostring(floor(var.monthly_budget))
+    }
+  }
+
+  threshold_rules {
+    threshold_percent = 0.5
+  }
+  threshold_rules {
+    threshold_percent = 0.8
+  }
+  threshold_rules {
+    threshold_percent = 1.0
+  }
+  threshold_rules {
+    threshold_percent = 1.0
+    spend_basis       = "FORECASTED_SPEND"
+  }
+
+  all_updates_rule {
+    pubsub_topic   = google_pubsub_topic.budget.id
+    schema_version = "1.0"
+    # Keep the default emails to billing admins as well.
+    disable_default_iam_recipients = false
+  }
+
+  depends_on = [google_project_service.required]
 }

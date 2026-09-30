@@ -92,6 +92,39 @@ Caption IDs are `${Date.now()}-${idx}` (no spaces). They are used as key prefixe
 
 ---
 
+## Scaling Stance (low traffic → scale-to-zero)
+
+Lekha currently has **low traffic**, so the infrastructure is set up to pay nothing while idle:
+the API scales to zero, workers are Cloud Run Jobs started on demand (`backend/worker_launcher.py`)
+that exit after `WORKER_IDLE_EXIT_SECONDS`, and Redis is a pay-per-use TLS provider
+(`docs/SERVERLESS_REDIS_SWITCH.md`). The whole setup lives in `deploy/gcp/terraform`
+(guide: `deploy/gcp/README.md`); the old VM/Memorystore/NAT/load-balancer design was removed
+on 2026-09-29 and must not come back.
+
+- **Hard caps bound the worst case:** API max 2 instances, 1 copy per worker job, 120 s idle
+  exit, 2 h run limit. Raise a cap only with measured cost evidence and the owner's approval.
+- **Automatic budget stop:** a Cloud Billing budget pushes its status via Pub/Sub to
+  `/api/maintenance/budget-alert` (`backend/services/budget_guard.py`); at
+  `BUDGET_STOP_FRACTION` of the monthly budget it pauses uploads, transcription and exports
+  through the service controls. It never resumes by itself. Budget emails alone never stop spend.
+- **Release guard:** `scripts/check-release-readiness.mjs` fails if `main.tf` gains VMs,
+  instance groups, autoscalers, Memorystore, VPC connectors, NAT, load balancers or reserved IPs.
+- **Trade-off accepted:** the first export after a quiet period waits for a worker to start
+  (cold start); export *quality* is unaffected.
+- **Switch back when traffic grows:** once the app is busy most of the day, always-on workers
+  become cheaper and faster. Raise `worker_idle_exit_seconds` / `worker_max_parallel` in
+  Terraform first; consider always-on workers or Redis only with the owner's approval.
+- Do not remove the on-demand path or reintroduce always-on capacity while traffic is low
+  without the owner's approval.
+- **Idle-exit guard (cost trap):** `WORKER_IDLE_EXIT_SECONDS=0` means "never exit". A Cloud Run
+  Job worker with 0 would keep running and billing until the task timeout, even with no work
+  (a GPU job would cost roughly ₹60/hour for the GPU alone). `backend/worker.py`
+  `idle_exit_seconds()` therefore forces 120 s whenever `CLOUD_RUN_JOB` is set and the value is 0
+  or unset. Never remove this guard; still set the value explicitly on every Cloud Run Job. VM
+  and local workers keep 0 = run forever.
+
+---
+
 ## Coding Conventions
 
 - **Never use semicolons** in JSX/JS files (existing code is semicolon-free)

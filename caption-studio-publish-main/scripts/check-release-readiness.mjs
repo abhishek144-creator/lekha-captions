@@ -412,28 +412,39 @@ assertIncludes("payment reconciliation has a scheduler endpoint", maintenanceApi
 assertIncludes("Firebase Hosting serves the built SPA", readText("firebase.json"), '"public": "dist"')
 assertIncludes("Firebase Hosting has a deployable Cloud Build pipeline", firebaseHostingBuild, "--only=hosting")
 assertExcludes("Firebase Hosting pipeline does not deploy frontend Cloud Run", firebaseHostingBuild, "gcloud run deploy")
-assertIncludes("Cloud Run API candidate is infrastructure-managed", terraformMain, 'google_cloud_run_v2_service" "api')
-assertIncludes("Cloud Run reaches private Redis through scale-to-zero Direct VPC egress", terraformMain, "network_interfaces {")
-assertExcludes("Cloud Run has no always-on VPC connector", terraformMain, 'google_vpc_access_connector" "api')
+const terraformVariablesLf = terraformVariables.replace(/\r\n/g, "\n")
+assertIncludes("Cloud Run API is infrastructure-managed", terraformMain, 'google_cloud_run_v2_service" "api')
+assertIncludes("Cloud Run API always scales to zero", terraformMain, "min_instance_count = 0")
+assertIncludes("Cloud Run API uses request-based billing", terraformMain, "cpu_idle          = true")
+assertIncludes("Cloud Run API instance ceiling is validated", terraformVariablesLf, "var.api_max_instances >= 1 && var.api_max_instances <= 4")
 assertIncludes("Cloud Run keeps malware scanning beside the API", terraformMain, 'name  = "clamav"')
+assertIncludes("render worker is an on-demand Cloud Run Job", terraformMain, 'google_cloud_run_v2_job" "render')
+assertIncludes("transcription worker is an on-demand Cloud Run Job", terraformMain, 'google_cloud_run_v2_job" "transcription')
+assertIncludes("API is told which job serves each queue", terraformMain, "WORKER_LAUNCH_JOBS              = jsonencode(local.worker_launch_jobs)")
+assertIncludes("API may start worker jobs", terraformMain, "roles/run.jobsExecutorWithOverrides")
+assertIncludes("worker jobs exit when idle", terraformMain, "WORKER_IDLE_EXIT_SECONDS = tostring(var.worker_idle_exit_seconds)")
+assertIncludes("worker idle exit is bounded", terraformVariablesLf, "var.worker_idle_exit_seconds >= 30 && var.worker_idle_exit_seconds <= 900")
+assertIncludes("worker parallelism is capped", terraformVariablesLf, "var.worker_max_parallel >= 1 && var.worker_max_parallel <= 3")
+assertIncludes("worker jobs have a hard run timeout", terraformMain, 'timeout               = "${var.worker_task_timeout_seconds}s"')
+assertIncludes("optional GPU render job is off by default", terraformVariablesLf, 'variable "enable_gpu_render_job" {\n  type        = bool')
 assertIncludes("maintenance jobs are externalized to Cloud Scheduler", terraformMain, 'google_cloud_scheduler_job" "maintenance')
-assertIncludes("render workers use the benchmark profile variable", terraformMain, "var.render_worker_machine_type")
-assertIncludes("baseline render autoscaling consumes predicted wait", terraformMain, "custom.googleapis.com/lekha/predicted_queue_wait_seconds")
-assertIncludes("Spot overflow workers are bounded", terraformMain, 'google_compute_instance_template" "worker_spot')
-assertIncludes("optional G2/L4 render pool is provisioned", terraformMain, 'google_compute_instance_template" "worker_gpu')
+assertIncludes("budget notifications reach the API", terraformMain, "/api/maintenance/budget-alert")
+assertIncludes("monthly budget is infrastructure-managed", terraformMain, 'google_billing_budget" "monthly')
+assertIncludes("budget stop route exists", maintenanceApi, '"/budget-alert"')
+for (const [name, marker] of [
+  ["no Compute Engine VMs", "google_compute_instance_template"],
+  ["no VM groups", "google_compute_region_instance_group_manager"],
+  ["no VM autoscalers", "google_compute_region_autoscaler"],
+  ["no provisioned Redis", "google_redis_instance"],
+  ["no Cloud NAT", "google_compute_router_nat"],
+  ["no always-on VPC connector", "google_vpc_access_connector"],
+  ["no load balancer forwarding rules", "google_compute_global_forwarding_rule"],
+  ["no reserved IP addresses", "google_compute_address"],
+]) {
+  assertExcludes(`idle-cost guard: ${name}`, terraformMain, marker)
+}
 assertIncludes("render image pre-bakes the complete font bundle", readText("Dockerfile"), "build_render_font_bundle.mjs")
-assertIncludes("Spot overflow capacity can scale to zero", terraformMain, 'resource "google_compute_region_autoscaler" "worker_spot"')
-assertIncludes("Spot overflow starts at zero", terraformMain, "min_replicas    = 0")
-assertIncludes("Spot overflow is enabled in the production profile", terraformVariables.replace(/\r\n/g, "\n"), 'variable "spot_render_worker_max_replicas" {\n  type        = number\n  description = "Bounded interruptible overflow capacity for the retry-safe heavy-render queue"\n  default     = 1')
-assertIncludes("baseline render capacity scales to zero", terraformVariables.replace(/\r\n/g, "\n"), 'variable "render_worker_min_replicas" {\n  type        = number\n  description = "Minimum on-demand render workers; production must scale to zero while queues are empty"\n  default     = 0')
-assertIncludes("render fleet is capped at three workers", terraformVariables.replace(/\r\n/g, "\n"), 'variable "render_worker_max_replicas" {\n  type        = number\n  description = "Maximum queue-driven render worker count"\n  default     = 3')
-assertIncludes("legacy API MIG target remains explicit during canary", terraformMain, "target_size = var.api_legacy_target_size")
-assertIncludes("legacy API MIG defaults to zero idle capacity", terraformVariables.replace(/\r\n/g, "\n"), 'variable "api_legacy_target_size" {\n  type        = number\n  description = "Temporary rollback API capacity during an explicitly monitored Cloud Run canary; zero is the normal production value"\n  default     = 0')
-assertExcludes("legacy API MIG has no CPU autoscaler", terraformMain, 'google_compute_region_autoscaler" "api')
-assertIncludes("Cloud Run API defaults to scale-to-zero", terraformVariables.replace(/\r\n/g, "\n"), 'variable "cloud_run_api_min_instances" {\n  type    = number\n  default = 0')
-assertIncludes("Cloud Run API is capped at four instances", terraformVariables.replace(/\r\n/g, "\n"), 'variable "cloud_run_api_max_instances" {\n  type    = number\n  default = 4')
-assertIncludes("Cloud Run API is enabled by the production infrastructure profile", terraformVariables.replace(/\r\n/g, "\n"), 'variable "enable_cloud_run_api" {\n  type        = bool\n  description = "Create the parallel Cloud Run API candidate and scheduler jobs; traffic cutover remains an explicit load-balancer operation"\n  default     = true')
-assertIncludes("transcription has an independent MIG", terraformMain, 'google_compute_region_instance_group_manager" "transcription')
+assertIncludes("transcription image can scan without a clamd sidecar", readText("Dockerfile"), "freshclam --stdout")
 assertExcludes("transcription image has no staging queue baked in", readText("Dockerfile"), "caption_transcription_jobs_staging")
 assertIncludes("tests do not automatically load developer secrets", backendMain, "_bootstrap_is_test")
 assertIncludes("export daily limit is configurable", backendMain, 'DISABLE_EXPORT_DAILY_LIMIT = os.environ.get(')

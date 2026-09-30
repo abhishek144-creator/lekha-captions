@@ -1,91 +1,57 @@
 # Lekha Google Cloud Terraform
 
-This directory is the source of truth for the scale-to-zero Cloud Run API,
-render and transcription regional MIGs, autoscaling, Cloud NAT, health checks,
-Standard HA Redis, private media bucket, immutable instance templates, and
-Cloud Armor policy. Keep secret values outside Terraform; only the numeric
-Secret Manager version is supplied.
+The complete pay-only-when-used backend. Read `../README.md` for the deployment
+order and the approval rules; this file explains what Terraform creates.
 
-Existing resources must be imported once before the first plan. Never apply a
-plan that proposes replacing Redis or either MIG unexpectedly. Copy
-`terraform.tfvars.example` to an ignored `terraform.tfvars`, set immutable image
-digests and the release SHA, then run `terraform init`, `terraform import`,
-`terraform plan -out=plan.tfplan`, and review the saved plan before apply.
+## What it creates
 
-Terraform adopts the dedicated media URL signing service account, grants it
-read-only access only to `exports/` objects, and gives the runtime service
-account a custom role containing only `iam.serviceAccounts.signBlob` on that
-signer. It does not grant project-wide Service Account Token Creator. After
-applying the reviewed plan, get
-the email with `terraform output -raw gcs_signing_service_account` and set that
-value as `GCS_SIGNING_SERVICE_ACCOUNT` in the protected runtime environment
-file used to create the next Secret Manager version. Keep that populated file
-outside source control and do not put the email or secret contents in
-`terraform.tfvars`. Point a canary instance template at the new numeric secret
-version, verify signed private downloads and the exact application SHA, then
-continue the release only after the canary succeeds.
+| Resource | Idle cost | Notes |
+|---|---|---|
+| Cloud Run service `lekha-api` + ClamAV sidecar | none | Min instances fixed at 0, max `api_max_instances` (default 2, capped at 4). Request-based billing (`cpu_idle = true`). Public; the app authenticates users. |
+| Cloud Run Jobs `lekha-render`, `lekha-transcription` | none | Started by the API only when their queues have work (`WORKER_LAUNCH_JOBS`). Exit after `worker_idle_exit_seconds` (default 120). Hard run limit `worker_task_timeout_seconds` (default 2 h). At most `worker_max_parallel` copies (default 1). |
+| Cloud Run Job `lekha-render-gpu` | none | Only when `enable_gpu_render_job = true`. NVIDIA L4; asia-south1 needs an invitation. Keep off until a capped benchmark shows it pays off. |
+| Cloud Scheduler (4 jobs) | ~free | Recovery safety nets every 5-30 min (dispatch, payment reconciliation, janitor). Normal work is dispatched on the request path. |
+| Billing budget + Pub/Sub topic/subscription | ~free | Emails at 50/80/100% (and forecast 100%). Every budget update is pushed to `/api/maintenance/budget-alert`, which pauses uploads, transcription and exports once spend reaches `budget_stop_fraction`. It never resumes by itself. |
+| Media bucket, URL signer identity, IAM | storage only | Private bucket, 4-day lifecycle, signer can read `exports/` only via a signBlob-only role. |
 
-Render and transcription capacity are intentionally separate. The baseline
-render pool uses the verified `n2-custom-4-12288` profile and scales from 0 to
-3 from both pending render work-seconds and predicted queue wait. Fast, normal,
-and heavy queues share atomic count and predicted-work admission ceilings; the
-default accepts no more than 1,800 estimated work-seconds. Export status returns
-the selected queue's position and estimated wait/completion for the customer UI.
-Transcription and eager media scanning
-scale independently from 0 to 2. The Spot overflow pool scales from 0 to 1 by
-default and is hard-capped at 2. The optional G2/L4 pool stays
-disabled and is hard-capped at 1 until a matched cost and visual-parity
-benchmark passes and a driver-enabled `gpu_runtime_image` is supplied.
+Not created, on purpose: Compute Engine VMs, instance groups, autoscalers,
+Memorystore Redis, VPC connectors, Cloud NAT, load balancers, reserved IPs.
+`scripts/check-release-readiness.mjs` fails if any of them appear in `main.tf`.
 
-`enable_cloud_run_api=true` creates the Cloud Run API, Direct VPC egress to
-private Redis, a serverless NEG, least-privilege scheduler identity, and five
-OIDC-authenticated Cloud Scheduler jobs. Direct VPC egress avoids the fixed
-minimum instance cost of a Serverless VPC Access connector. The service scales
-from 0 to 4 instances, mounts the pinned runtime Secret Manager version, and
-runs with `RUN_API_BACKGROUND_TASKS=0`. The GCE API MIG defaults to target size
-zero so a future apply cannot recreate idle API VMs. During a monitored canary,
-`api_legacy_target_size` may be raised temporarily to at most two and must return
-to zero after routing, maintenance verification, and accepted-job drain.
-Attaching the NEG to the public load balancer remains an explicit canary/cutover
-step after staging acceptance.
-Terraform enables the Cloud Scheduler API before creating maintenance jobs and
-does not disable that API on destroy. Verify the jobs run successfully before
-turning off the old API VMs; without them, outbox recovery, queue metrics,
-janitor cleanup, and payment reconciliation would stop.
+## Worst case per hour
 
-The enforced production ceilings are: Cloud Run API 0..4 revisions (each
-revision requests 2 vCPU and 3 GiB across the API and ClamAV containers),
-render 0..3 VMs (4 vCPU and 12 GiB each), transcription 0..2 VMs (2 vCPU and
-8 GiB each), Spot 0..1 by default, and GPU 0 by default. Terraform validation
-rejects a nonzero idle minimum or a higher ceiling without a reviewed code
-change. Scale-to-zero removes VM and Cloud Run instance charges while idle;
-Redis, load balancing, NAT, IP addresses, logging, and stored disks/objects can
-still have fixed or usage-based charges and must be reviewed separately.
+The caps make the maximum spend while busy predictable before anything runs:
+2 API instances + 1 render job (4 vCPU / 12 GiB) + 1 transcription job
+(2 vCPU / 4 GiB). Raising a cap raises that ceiling; do it only with measured
+cost evidence and the owner's approval.
 
-The Spot pool consumes the idempotent heavy-render queue and has minimum zero.
-It is enabled by default with one burst worker, uses retry-safe jobs, and never
-replaces the baseline pool. Run the documented early/middle/late preemption
-drill before raising its maximum to two.
+## Secrets and settings
 
-Firebase Hosting configuration is in the repository root. Build `dist/`, select
-the intended Firebase project explicitly, preview, then deploy hosting only.
-The SPA points at its configured API origin; the wildcard rewrite serves only
-frontend routes and does not proxy `/api` traffic.
+- The runtime secret `lekha-runtime-env` is created by hand (see `../README.md`)
+  and mounted as a file; Terraform only grants access and pins a numeric version.
+- Settings Terraform puts directly on the containers win over the secret file
+  (`WORKER_LAUNCH_*`, `WORKER_IDLE_EXIT_SECONDS`, `WORKER_QUEUES`, scanner
+  settings, `GPU_RENDER_ENABLED`, `BUDGET_STOP_FRACTION`, scheduler identity).
+- The transcription job has no clamd sidecar (a sidecar's exit behaviour in
+  jobs is undocumented and could keep the job billing); it scans with the
+  `clamscan` baked into its image (`CLAMAV_SCAN_CMD`). The render job never
+  scans; its `CLAMAV_HOST` points at nothing so any scan fails closed.
 
-Bill-backed cost reconciliation is documented in `../COST_ACCOUNTING.md`.
+## Permissions for whoever runs Terraform
 
-The current production resources can be adopted without recreation with these
-one-time imports (run only after filling `terraform.tfvars`):
+Project Owner (or equivalent) on the project, plus Billing Account Costs Manager
+on the billing account for the budget. Pub/Sub push uses the scheduler identity's
+OIDC token; projects created before 2021-04-08 would also need the Pub/Sub
+service agent granted Token Creator on that identity - new projects don't.
+
+## Commands
 
 ```powershell
-terraform import google_compute_security_policy.edge projects/project-0cc7c839-b9c7-4734-ad0/global/securityPolicies/lekha-edge-security
-terraform import google_redis_instance.queue projects/project-0cc7c839-b9c7-4734-ad0/locations/asia-south1/instances/lekha-redis-ha
-terraform import google_storage_bucket.media lekha-media-project-0cc7c839-b9c7-4734-ad0
-terraform import google_service_account.media_url_signer projects/project-0cc7c839-b9c7-4734-ad0/serviceAccounts/lekha-media-url-signer@project-0cc7c839-b9c7-4734-ad0.iam.gserviceaccount.com
+terraform init
+terraform plan -out=plan.tfplan
+# Review: no VMs, Redis, NAT, load balancer or reserved IP. Owner approves.
+terraform apply plan.tfplan
 ```
 
-Import the existing custom signer-delegation role and conditional bucket IAM
-binding as well if the reviewed plan shows they already exist. Never allow an
-apply to replace the signer or broaden its object access. `frontend_origins` is
-the authoritative CORS origin list; keep `../gcs-cors.json` only as an
-operator-facing mirror for manual inspection and emergency comparison.
+Validate offline without any cloud access: `terraform init -backend=false` then
+`terraform validate`.

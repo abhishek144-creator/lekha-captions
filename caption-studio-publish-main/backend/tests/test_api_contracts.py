@@ -10,7 +10,7 @@ import time
 from datetime import date, datetime, timedelta, timezone
 import unittest
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
 
@@ -177,6 +177,35 @@ class ApiContractTests(unittest.TestCase):
                     main._assert_service_available(key)
                 self.assertEqual(ctx.exception.status_code, 503)
                 self.assertEqual(ctx.exception.detail, "Back at 9pm IST.")
+
+    def test_spent_budget_pauses_paid_work_once_and_never_resumes_it(self):
+        writes = []
+        document = MagicMock()
+        document.set.side_effect = lambda data, merge: writes.append(data)
+        db = MagicMock()
+        db.collection.return_value.document.return_value = document
+        spent = {"costAmount": 1000, "budgetAmount": 1000, "currencyCode": "INR"}
+        open_controls = main._default_service_controls()
+
+        with (patch.object(main, "get_db", return_value=db),
+              patch.object(main, "_read_service_controls", return_value=open_controls),
+              patch.object(main, "_send_alert") as alert):
+            self.assertEqual(main._apply_budget_notification({"costAmount": 900, "budgetAmount": 1000}), {"paused": False})
+            self.assertEqual(writes, [])
+            self.assertEqual(main._apply_budget_notification(spent), {"paused": True, "changed": True})
+
+        self.assertEqual(len(writes), 1)
+        for key in ("pause_uploads", "pause_transcription", "pause_exports"):
+            self.assertIs(writes[0][key], True)
+        self.assertNotIn("pause_payments", writes[0])
+        self.assertEqual(writes[0]["updated_by"], "budget-guard")
+        alert.assert_called_once()
+
+        already_paused = {**open_controls, "pause_uploads": True, "pause_transcription": True, "pause_exports": True}
+        with (patch.object(main, "get_db", return_value=db),
+              patch.object(main, "_read_service_controls", return_value=already_paused)):
+            self.assertEqual(main._apply_budget_notification(spent), {"paused": True, "changed": False})
+        self.assertEqual(len(writes), 1)
 
     def test_service_status_is_public_and_admin_write_requires_admin(self):
         paused = main._default_service_controls()

@@ -147,6 +147,7 @@ try:
     from .services.media_scan_jobs import MediaScanJobs
     from .services.scheduler_auth import require_scheduler_authorization
     from .services.malware import scan_upload_for_threat
+    from .services.budget_guard import BUDGET_STOP_CONTROLS, BUDGET_STOP_NOTICE, budget_exhausted
     from .services.upload_security import UploadSecurityService
 except ImportError:
     from transcription_jobs import TranscriptionJobs
@@ -190,6 +191,7 @@ except ImportError:
     from services.media_scan_jobs import MediaScanJobs
     from services.scheduler_auth import require_scheduler_authorization
     from services.malware import scan_upload_for_threat
+    from services.budget_guard import BUDGET_STOP_CONTROLS, BUDGET_STOP_NOTICE, budget_exhausted
     from services.upload_security import UploadSecurityService
 
 try:
@@ -1753,6 +1755,47 @@ def _read_service_controls(force: bool = False) -> Dict[str, Any]:
     _service_control_cache["ts"] = now_ts
     _service_control_cache["value"] = dict(controls)
     return controls
+
+
+# Fraction of the Cloud Billing budget at which new paid work is paused.
+BUDGET_STOP_FRACTION = max(0.1, float(os.environ.get("BUDGET_STOP_FRACTION", "1.0") or 1.0))
+
+
+def _apply_budget_notification(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Pause uploads, transcription and exports once the budget is spent.
+
+    Only ever pauses; resuming is a deliberate owner action in the admin panel.
+    """
+    if not budget_exhausted(payload, BUDGET_STOP_FRACTION):
+        return {"paused": False}
+    controls = _read_service_controls(force=True)
+    if all(controls.get(key) for key in BUDGET_STOP_CONTROLS):
+        return {"paused": True, "changed": False}
+    db = get_db()
+    if not db:
+        # 503 makes Pub/Sub redeliver until the pause can be recorded.
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    budget_state = {
+        "cost": payload.get("costAmount"),
+        "budget": payload.get("budgetAmount"),
+        "currency": str(payload.get("currencyCode") or "")[:8],
+        "interval_start": str(payload.get("costIntervalStart") or "")[:40],
+    }
+    db.collection(SERVICE_CONTROL_COLLECTION).document(SERVICE_CONTROL_DOCUMENT).set({
+        **{key: True for key in BUDGET_STOP_CONTROLS},
+        "notice": BUDGET_STOP_NOTICE,
+        "budget_stop": budget_state,
+        "updated_at": _utcnow().isoformat() + "Z",
+        "updated_by": "budget-guard",
+    }, merge=True)
+    _service_control_cache["ts"] = 0.0
+    _json_log("error", "budget_stop_engaged", **budget_state)
+    _send_alert(
+        f"Budget stop engaged: spent {budget_state['cost']} of {budget_state['budget']} "
+        f"{budget_state['currency']}. Uploads, transcription and exports are paused; "
+        "resume them in the admin panel after reviewing the bill."
+    )
+    return {"paused": True, "changed": True}
 
 
 def _assert_service_available(control: str) -> None:
@@ -4517,6 +4560,7 @@ app.include_router(create_maintenance_router(
     run_janitor=scheduled_janitor_job,
     publish_queue_metrics=_publish_queue_metrics_once,
     reconcile_payments=scheduled_payment_reconciliation_job,
+    apply_budget_notification=_apply_budget_notification,
 ))
 
 
@@ -4635,7 +4679,7 @@ async def _process_video_inline(req: ProcessRequest, request: Request, response:
     await asyncio.to_thread(_ensure_upload_clean, req.file_id, uid, input_path)
 
     # Enforce the per-plan maximum source length. /api/upload only applies a
-    # global 180s ceiling; paid plans advertise tighter caps (starter=120s) that
+    # global 180s ceiling; a plan may advertise a tighter cap than that, which
     # can only be enforced here, where the caller's tier is known. Checked before
     # the cache lookup so a result cached by a higher tier can't be replayed to a
     # lower-tier user with a too-long video.

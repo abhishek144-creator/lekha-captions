@@ -90,7 +90,7 @@ Source: shared/planCatalog.json and backend preset/credit checks.
 | Plan | Price / credits | Max video | Export retention |
 |---|---|---|---|
 | Free | 3 lifetime starter credits | 180 s | 2 h |
-| Starter | ₹299 / 15 | 120 s | 2 h |
+| Starter | ₹299 / 15 | 180 s | 2 h |
 | Creator | ₹499 / 45 | 180 s | 24 h |
 | Pro | ₹799 / 120 | 180 s | 72 h |
 | Annual Starter / Creator / Pro | ₹2,500/180; ₹4,500/540; ₹6,500/1,440 | tier limits | tier retention |

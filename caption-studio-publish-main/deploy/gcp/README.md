@@ -1,181 +1,97 @@
-# Google Cloud deployment and staging history
+# Google Cloud deployment (pay-only-when-used)
 
-This file contains the original 8 September staging snapshot below. It is not
-a current resource inventory or a cutover instruction. The last recorded public
-release identity is in `../../docs/GCP_PRODUCTION_RELEASE_2026-09-24.md`;
-`terraform/README.md` describes the newer, parallel Cloud Run API candidate.
-Confirm live inventory, the saved Terraform plan, and the public release
-endpoints before changing traffic or capacity.
-
-Historical staging endpoints (verified 8 September 2026):
-
-- Frontend/editor: `https://lekha-frontend-staging-602676673096.asia-south1.run.app`
-- API: `https://34-93-113-193.sslip.io`
-
-Historical deployed snapshot (verified 2026-09-08):
-
-- Project: `project-0cc7c839-b9c7-4734-ad0`
-- Frontend revision: `lekha-frontend-staging-00002-ljq` (100% traffic)
-- Frontend image digest: `sha256:b10778a15f95a4335c872443770d5b29c74471d9d8769f1ec3930e0bc3ac88d7`
-- Release: `838b28c8e10ee402fa1c1716418302a991cfee1f`
-- Release version: `gcp-staging-838b28c`
-- API and worker VMs: `RUNNING`; Redis: `READY`
-- Budget: INR 5,000/month with 50%, 90%, and 100% alerts
-- Frontend Cloud Run maximum instances: 20 (minimum remains zero)
-- Cloud Monitoring: 60-second frontend and API uptime checks, with incidents
-  opened after a two-minute outage
-- Public ingress: HTTPS/HTTP only; the temporary TCP 8000 rule is disabled
-
-At that date, automated verification passed for frontend contracts, lint, TypeScript,
-production build/performance budgets, public DNS, API liveness/readiness/version,
-service status, browser rendering, CORS, Redis, and RQ worker startup. Later
-release and journey evidence is recorded in `../../docs/`; do not reuse this
-old snapshot as proof of the current deployed SHA, capacity, or payment mode.
-
-## Candidate target shape (not a statement of live traffic routing)
+This is the only supported Google Cloud setup. The old always-on design (API and
+render VMs, Memorystore Redis, Cloud NAT, load balancer, every-minute scheduler
+calls) caused the September 2026 bill and was removed on 2026-09-29; it survives
+only in git history and the dated notes in `../../docs/`. Never rebuild it.
 
 ```text
-Firebase Hosting -> HTTPS load balancer -> Cloud Run API -> Memorystore Redis
-                                              |          -> baseline render MIG
-                                              |          -> Spot overflow MIG
-                                              +-> Firebase Auth / Firestore / Storage
+Firebase Hosting (static app)
+        |
+        v
+Cloud Run API (0..2 instances, billed per request) --+--> serverless Redis (TLS, pay per command)
+   |  starts jobs only when a queue has work         +--> Firebase Auth / Firestore
+   v                                                 +--> private media bucket
+Cloud Run Jobs: lekha-render, lekha-transcription (exit after 2 idle minutes)
+        ^
+Cloud Billing budget -> Pub/Sub -> API /api/maintenance/budget-alert
+                                   (pauses uploads, transcription, exports)
 ```
 
-The API and workers use separate role images in the newer Terraform candidate.
-Compute Engine render VMs retain disposable scratch and an isolated ClamAV
-container. Firebase Storage is the durable location for uploads and exports.
-Production browser uploads use direct resumable storage sessions; the large
-proxy upload is a local-development fallback. Cloud Run is an API candidate,
-not the render worker. Firebase Hosting is configured for the static frontend;
-verify which frontend serves public traffic before changing DNS.
+Idle cost is storage, secrets, a few scheduler calls and logs. Compute costs
+money only while an API request or a worker job is running.
 
-Render admission is bounded atomically across the fast, normal, heavy, and
-optional GPU queues by both job count and predicted work-seconds. Cloud
-Monitoring publishes pending work and predicted wait; the baseline, Spot, and
-optional GPU autoscalers consume those signals. Export status exposes a
-queue-specific position and ETA instead of making the browser infer progress.
+## Rules before creating anything
 
-## Prerequisites
+Read `../../DEVELOPMENT_LOG.md` (cost gate, 2026-09-28 billing incident) and
+`../../docs/GCP_DEPLOYMENT_PROMPT.md` first. Then show the owner a written
+estimate for idle and peak monthly spend and get explicit approval **before**
+any paid resource exists. Use a new Google account/project; never reopen the
+retired project or billing account.
 
-- A Google Cloud project with active billing.
-- `gcloud auth login` and `gcloud config set project PROJECT_ID` on the deploy
-  machine. Do not put user credentials or service-account JSON in this repo.
-- A Firebase service-account JSON value stored in Secret Manager for the initial
-  migration. A later hardening change can replace it with Application Default
-  Credentials.
-- A staging Firebase/Auth/App Check configuration and Razorpay test credentials.
-- A domain owner available later to add a staging DNS record. Do not alter
-  `api.lekhacaptions.com` or Netlify DNS during this phase.
+## Steps
 
-## First-time staging bootstrap
+1. **Project and APIs.** Create the project on the approved billing account and
+   enable Artifact Registry and Cloud Build. Terraform enables the rest.
+2. **Runtime identity.** Create a service account (for example `lekha-runtime`).
+   Terraform grants it only what it needs: the media bucket, the runtime secret
+   and permission to start the two worker jobs.
+3. **Redis.** Create a pay-per-use serverless Redis over TLS and follow
+   `../../docs/SERVERLESS_REDIS_SWITCH.md`. Put its `rediss://` URL in `REDIS_URL`.
+4. **Runtime secret.** Copy `runtime.env.example` to an untracked file, fill it
+   in, then:
+   ```powershell
+   gcloud secrets create lekha-runtime-env --replication-policy=automatic
+   gcloud secrets versions add lekha-runtime-env --data-file=PATH_TO_UNTRACKED_RUNTIME_ENV
+   ```
+   Note the numeric version; Terraform never uses `latest`.
+5. **Images.** Build the three role images from the repository root and pin
+   their digests:
+   ```powershell
+   gcloud builds submit --config=cloudbuild.yaml --substitutions="_RELEASE_SHA=FULL_SHA,_API_IMAGE_URI=...,_TRANSCRIPTION_IMAGE_URI=...,_RENDER_IMAGE_URI=..."
+   ```
+   The transcription image bakes in ClamAV signatures at build time; rebuild at
+   least weekly so they stay current.
+6. **Infrastructure.** In `terraform/`, copy `terraform.tfvars.example` to the
+   ignored `terraform.tfvars`, fill it in, then `terraform init`,
+   `terraform plan -out=plan.tfplan`. Review the saved plan: it must contain no
+   Compute Engine instances, Memorystore, NAT, load balancer or reserved IP.
+   Apply only after the owner approves. See `terraform/README.md`.
+7. **URL signer.** Put `terraform output -raw gcs_signing_service_account` into
+   `GCS_SIGNING_SERVICE_ACCOUNT`, add a new secret version, set
+   `runtime_secret_version` to it and apply again.
+8. **Frontend.** Deploy Firebase Hosting with `VITE_API_BASE_URL` set to
+   `terraform output -raw api_uri`:
+   ```powershell
+   gcloud builds submit . --config=deploy/gcp/firebase-hosting/cloudbuild.yaml --substitutions="_VITE_API_BASE_URL=API_URI,..."
+   ```
+   Provide every `_VITE_*` and `_RELEASE` substitution the build declares. Add
+   the hosting domain to Firebase Authentication's authorized domains, the App
+   Check key's allowed domains and `ALLOWED_ORIGINS`.
 
-Use an India region unless latency or compliance requirements say otherwise:
+## Verify before real customers
 
-```powershell
-$project = "PROJECT_ID"
-$region = "asia-south1"
-$repository = "caption-studio"
+1. `/api/version` on the API reports the deployed release SHA.
+2. One real upload -> transcription -> export -> download works. Watch the
+   worker job start, finish, and **exit** (Cloud Run -> Jobs -> executions),
+   then confirm nothing is running a few minutes later (0 -> 1 -> 0).
+3. Test the budget stop without spending money: publish a fake "budget spent"
+   message and confirm uploads/exports pause, then resume them in the admin
+   panel.
+   ```powershell
+   $data = '{"costAmount":1000,"budgetAmount":1000,"currencyCode":"INR"}'
+   gcloud pubsub topics publish lekha-budget-alerts --message=$data
+   ```
+4. Razorpay test-mode order, webhook and reconciliation work against the API.
+5. After a full day, check the SKU-level bill matches the estimate. Budget
+   emails are warnings; the automatic stop only pauses new work, and billing
+   data can lag by hours, so the hard caps are what bound the worst case.
 
-gcloud config set project $project
-gcloud services enable artifactregistry.googleapis.com cloudbuild.googleapis.com compute.googleapis.com redis.googleapis.com secretmanager.googleapis.com
-gcloud artifacts repositories create $repository --repository-format=docker --location=$region
-gcloud iam service-accounts create lekha-runtime --display-name="Lekha runtime"
-gcloud projects add-iam-policy-binding $project --member="serviceAccount:lekha-runtime@$project.iam.gserviceaccount.com" --role="roles/artifactregistry.reader"
-gcloud projects add-iam-policy-binding $project --member="serviceAccount:lekha-runtime@$project.iam.gserviceaccount.com" --role="roles/secretmanager.secretAccessor"
-```
+## Files here
 
-Create a staging runtime secret from a local, untracked file based on
-`runtime.env.example`:
-
-```powershell
-gcloud secrets create lekha-staging-runtime --replication-policy=automatic
-gcloud secrets versions add lekha-staging-runtime --data-file=PATH_TO_UNTRACKED_RUNTIME_ENV
-```
-
-Create a Basic-tier Memorystore Redis instance on private networking. Use its
-private endpoint as `REDIS_URL`, for example `redis://10.x.x.x:6379/0`. Do not
-reuse Railway Redis for staging or production migration.
-
-For the currently provisioned staging project, `finalize-staging.sh` completes
-the Redis/secret/VM handoff and verifies the public staging health endpoint. It
-keeps the Netlify and Railway production services untouched. Set
-`RUNTIME_SECRET_VERSION` to the reviewed numeric source version and
-`ADMIN_EMAIL` to a monitored address before running it. The script creates a
-new version and pins both VMs to that returned number.
-Operational Python helpers and `provision-scaled-staging.ps1` likewise require
-an explicit `--source-version` or `-RuntimeSecretVersion`. They never read a
-credential payload through the mutable `latest` alias.
-
-## Build the image
-
-```powershell
-$image = "$region-docker.pkg.dev/$project/$repository/lekha-captions"
-gcloud builds submit --config=cloudbuild.yaml --substitutions="_IMAGE_URI=$image" .
-```
-
-Record the resulting immutable SHA tag. Do not deploy the mutable `staging` tag
-to production.
-
-## Create the two staging VMs
-
-Create one API VM and one worker VM, both initially `e2-standard-4` with a
-100 GiB balanced persistent disk. The worker is CPU/memory-intensive; keep one
-concurrent render per worker until real media tests establish a safe limit.
-
-Pass `deploy/gcp/gce-startup.sh` as startup metadata and set these metadata
-values on each VM:
-
-| VM | `SERVICE_ROLE` | Other metadata |
-| --- | --- | --- |
-| API | `api` | `IMAGE_URI`, `RUNTIME_SECRET=lekha-staging-runtime`, `REGION` |
-| Worker | `worker` | `IMAGE_URI`, `RUNTIME_SECRET=lekha-staging-runtime`, `REGION` |
-
-Attach the `lekha-runtime` service account. Give the API an external address
-only for the temporary staging endpoint; keep the worker private. Restrict the
-API firewall rule to TCP 8000 from the staging load balancer or operator IPs.
-Before production, replace this temporary exposure with a managed HTTPS load
-balancer, health check at `/api/health/readiness`, and a managed certificate.
-
-The current staging VM instead reserves `34.93.113.193` and runs Caddy beside
-the API container. Caddy terminates HTTPS for `34-93-113-193.sslip.io`; only
-ports 80/443 are public and the original port-8000 firewall rule is disabled.
-
-## Deploy the staging frontend to Firebase Hosting
-
-Build the Vite app with the HTTPS staging API as `VITE_API_BASE_URL`, the normal
-Firebase browser configuration, the App Check site key, legal identity fields,
-and the same 40-character release SHA as the backend. The hosting pipeline
-builds `dist/` and deploys only the Firebase Hosting target from `firebase.json`.
-
-```powershell
-gcloud builds submit . --config=deploy/gcp/firebase-hosting/cloudbuild.yaml --substitutions="_VITE_API_BASE_URL=https://STAGING_API,_VITE_FIREBASE_API_KEY=VALUE,_VITE_FIREBASE_AUTH_DOMAIN=VALUE,_VITE_FIREBASE_PROJECT_ID=PROJECT_ID,_VITE_FIREBASE_STORAGE_BUCKET=VALUE,_VITE_FIREBASE_MESSAGING_SENDER_ID=VALUE,_VITE_FIREBASE_APP_ID=VALUE,_VITE_FIREBASE_APP_CHECK_SITE_KEY=VALUE,_VITE_LEGAL_BUSINESS_NAME=VALUE,_VITE_LEGAL_BUSINESS_ADDRESS=VALUE,_VITE_GOVERNING_VENUE=VALUE,_VITE_GRIEVANCE_OFFICER_NAME=VALUE,_VITE_GRIEVANCE_EMAIL=VALUE,_RELEASE=FULL_40_CHARACTER_SHA"
-```
-
-Provide every `_VITE_*` and `_RELEASE` substitution declared by the build
-configuration. Keep the legal identity values consistent with the public policy
-pages; configure these substitutions on the Cloud Build trigger for routine
-releases rather than checking them into source control.
-
-Add the resulting Firebase Hosting hostname to both Firebase Authentication's
-authorized domains and the reCAPTCHA Enterprise/App Check key's allowed
-domains. Append the frontend origins to the backend's `ALLOWED_ORIGINS` secret
-before restarting the API VM.
-
-## Required staging verification
-
-1. Confirm API and worker `/api/version` release metadata match the same image.
-2. Confirm API readiness sees Firebase, storage, Redis, scanner, scratch space,
-   and a matching worker.
-3. Run a real authenticated short-video flow using `scripts/staging_smoke.py`.
-4. Test upload interruption, worker restart during render, Redis restart, full
-   scratch-disk response, and ClamAV unavailability.
-5. Test the Razorpay test-mode order, webhook, replay, and refund/reconciliation
-   paths with the staging API URL.
-6. Set a Google Cloud budget alert before raising traffic beyond this test phase.
-
-## Cutover rule
-
-Do not point `api.lekhacaptions.com` at Google Cloud until the staging checks
-pass. At cutover, pause new work, drain Railway workers, start matching Google
-Cloud workers, validate the new API, then change DNS. Never allow the Railway
-and Google Cloud workers to consume the same Redis queue during the transition.
+- `terraform/` - the whole setup (see its README).
+- `runtime.env.example` - keys for the runtime secret (no values).
+- `firebase-hosting/cloudbuild.yaml` - static frontend build and deploy.
+- `gcs-cors.json`, `gcs-lifecycle.json` - mirrors of the bucket policy Terraform sets.
+- `sync-frontend-sentry-secret.py` - copies the public Sentry DSN into a build secret.
+- `COST_ACCOUNTING.md` - reconciling exports with the actual bill.

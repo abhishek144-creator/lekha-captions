@@ -25,19 +25,17 @@ is a connection change, not a rewrite.
    they are not assumed here.
 2. Staging first: put the URL in the staging runtime secret as `REDIS_URL`,
    deploy, and run the release checks plus one upload → transcribe → export.
-3. Turn on on-demand workers in the same secret: set `WORKER_LAUNCH_JOBS`,
-   `WORKER_LAUNCH_REGION`, and `WORKER_IDLE_EXIT_SECONDS` (e.g. 120) as shown in
-   `deploy/gcp/runtime.env.example`.
+3. On-demand workers need no secret changes: `deploy/gcp/terraform` sets
+   `WORKER_LAUNCH_JOBS`, `WORKER_LAUNCH_REGION` and `WORKER_IDLE_EXIT_SECONDS`
+   (120) directly on the API and worker jobs.
 4. Let staging sit idle for a day and confirm in the provider dashboard that
    the command count stays near zero while nothing is happening.
 5. Production: wait until no export or transcription jobs are in flight
    (in-flight RQ jobs live in the old Redis and are not copied), then switch
    `REDIS_URL` and redeploy the API and worker jobs together.
-6. After a quiet period, remove the old Memorystore instance and anything that
-   existed only to reach it (Cloud Run `vpc_access`, the VPC connector, and
-   Cloud NAT if nothing else uses it). The Terraform in
-   `deploy/gcp/terraform/main.tf` still declares these; don't re-apply it
-   unchanged.
+6. The current `deploy/gcp/terraform` has no Memorystore, VPC access or Cloud
+   NAT (removed 2026-09-29). If an older deployment still has them, delete them
+   after a quiet period.
 
 ## Rollback
 

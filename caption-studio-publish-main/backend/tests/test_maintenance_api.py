@@ -1,3 +1,5 @@
+import base64
+import json
 import unittest
 
 from fastapi import FastAPI, HTTPException
@@ -29,6 +31,7 @@ class MaintenanceApiTests(unittest.TestCase):
             run_janitor=janitor,
             publish_queue_metrics=lambda: calls.append(("metrics", "")),
             reconcile_payments=reconcile,
+            apply_budget_notification=lambda payload: calls.append(("budget", payload)) or {"paused": True},
         ))
         return TestClient(app), calls
 
@@ -60,3 +63,26 @@ class MaintenanceApiTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    def test_budget_alert_decodes_pubsub_push_and_applies_it(self):
+        client, calls = self.build_client()
+        status = {"costAmount": 1200.5, "budgetAmount": 1000, "currencyCode": "INR"}
+        body = {"message": {"data": base64.b64encode(json.dumps(status).encode()).decode()}}
+        response = client.post("/api/maintenance/budget-alert", json=body)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["paused"])
+        self.assertIn(("budget", status), calls)
+
+    def test_budget_alert_acknowledges_messages_that_are_not_budgets(self):
+        client, calls = self.build_client()
+        for body in ({}, {"message": {"data": "not-base64!"}}, {"message": {"data": base64.b64encode(b"[1]").decode()}}):
+            response = client.post("/api/maintenance/budget-alert", json=body)
+            self.assertEqual(response.status_code, 200)
+            self.assertTrue(response.json()["ignored"])
+        self.assertFalse([name for name, _ in calls if name == "budget"])
+
+    def test_budget_alert_requires_scheduler_authorization(self):
+        client, calls = self.build_client(reject=True)
+        response = client.post("/api/maintenance/budget-alert", json={})
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(calls, [("authorize", "/api/maintenance/budget-alert")])

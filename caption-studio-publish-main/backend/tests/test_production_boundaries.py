@@ -159,6 +159,19 @@ class ProductionBoundaryTests(unittest.TestCase):
             transition(self.redis, "race", stale, {"status": "failed"}, expected_status="queued")
         self.assertEqual(json.loads(self.redis.get("export_job:race"))["status"], "starting")
 
+    def test_cloud_run_job_worker_always_exits_when_idle(self):
+        cases = [
+            ({"CLOUD_RUN_JOB": "lekha-render"}, worker.DEFAULT_JOB_IDLE_EXIT_SECONDS),
+            ({"CLOUD_RUN_JOB": "lekha-render", "WORKER_IDLE_EXIT_SECONDS": "0"}, worker.DEFAULT_JOB_IDLE_EXIT_SECONDS),
+            ({"CLOUD_RUN_JOB": "lekha-render", "WORKER_IDLE_EXIT_SECONDS": "300"}, 300),
+            ({"CLOUD_RUN_JOB": "", "WORKER_IDLE_EXIT_SECONDS": "0"}, 0),
+        ]
+        for env, expected in cases:
+            with self.subTest(env=env), patch.dict(os.environ, env, clear=False):
+                if "WORKER_IDLE_EXIT_SECONDS" not in env:
+                    os.environ.pop("WORKER_IDLE_EXIT_SECONDS", None)
+                self.assertEqual(worker.idle_exit_seconds(), expected)
+
     def test_worker_can_isolate_transcription_and_keep_legacy_queue_compatible(self):
         with (patch.dict(os.environ, {"WORKER_QUEUES": "transcription"}),
               patch.object(worker, "EXPORT_QUEUE_NAME", "exports")):

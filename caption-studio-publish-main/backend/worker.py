@@ -151,7 +151,20 @@ def worker_queue_names():
 
 # On-demand mode (a Cloud Run Job started by worker_launcher): drain the queues,
 # wait this long for stragglers, then exit so nothing is billed while idle.
-WORKER_IDLE_EXIT_SECONDS = int(os.environ.get("WORKER_IDLE_EXIT_SECONDS", "0") or 0)
+# A Cloud Run Job (Cloud Run sets CLOUD_RUN_JOB) must always exit when idle:
+# with 0 ("run forever") it would keep billing until the task timeout, so an
+# unset or zero value falls back to DEFAULT_JOB_IDLE_EXIT_SECONDS there.
+DEFAULT_JOB_IDLE_EXIT_SECONDS = 120
+
+
+def idle_exit_seconds():
+    configured = int(os.environ.get("WORKER_IDLE_EXIT_SECONDS", "0") or 0)
+    if configured <= 0 and os.environ.get("CLOUD_RUN_JOB"):
+        return DEFAULT_JOB_IDLE_EXIT_SECONDS
+    return max(0, configured)
+
+
+WORKER_IDLE_EXIT_SECONDS = idle_exit_seconds()
 
 
 def run_on_demand_worker(conn):
