@@ -28,6 +28,21 @@ Keep one row per completed drill.
 Do not mark a drill `PASS` without a durable evidence link (logs, dashboard snapshot,
 ticket, or incident document) and the name of the operator who verified recovery.
 
+## Setup these drills cover
+
+Every row above was recorded between 2026-08-04 and 2026-08-28 on the retired
+always-on setup (Railway/Netlify and the old Google Cloud VMs). The
+pay-only-when-used setup in `deploy/gcp` (2026-09-29) has not been drilled yet.
+Before real customers use it, record at least:
+
+- **On-demand worker cycle:** one real export starts a worker job, the job
+  finishes, and a few minutes later nothing is running (0 -> 1 -> 0).
+- **Budget stop:** a published fake "budget spent" message pauses uploads,
+  transcription and exports, and the admin panel resumes them
+  (`deploy/gcp/README.md`, "Verify before real customers").
+
+Repeat the recovery drills above on the new setup as it takes traffic.
+
 ## Required Monthly Drills
 - Queue/worker outage and recovery.
 - Payment webhook outage and reconciliation recovery.

@@ -34,6 +34,10 @@ const requiredEvidence = [
   ['production alert delivery', /alert delivery|sentry.*slack|slack.*sentry/i],
   ['real-video language/format matrix', /video matrix|hindi.*english.*hinglish/i],
   ['production Firebase rules/App Check', /firebase rules|app check/i],
+  // The rows above were recorded on the retired always-on setup. The
+  // pay-only-when-used setup (deploy/gcp) must prove its own cost controls.
+  ['on-demand worker 0 -> 1 -> 0 cycle', /on-demand worker|scale-to-zero/i],
+  ['automatic budget stop', /budget stop/i],
 ]
 
 const missingEvidence = requiredEvidence
