@@ -901,13 +901,29 @@ class ApiContractTests(unittest.TestCase):
             def to_dict(self):
                 return job
 
+        written = {}
+
+        class FakeRef:
+            def __init__(self, job_id):
+                self.job_id = job_id
+
+            def get(self, transaction=None):
+                if self.job_id == "job-1":
+                    return FakeDoc()
+                if self.job_id in written:
+                    return SimpleNamespace(exists=True, to_dict=lambda: written[self.job_id])
+                return SimpleNamespace(exists=False)
+
         class FakeCollection:
-            def document(self, _job_id):
-                return SimpleNamespace(get=lambda: FakeDoc() if _job_id == "job-1" else SimpleNamespace(exists=False))
+            def document(self, job_id):
+                return FakeRef(job_id)
 
         class FakeDb:
             def collection(self, _name):
                 return FakeCollection()
+
+            def transaction(self):
+                return SimpleNamespace(set=lambda ref, data: written.__setitem__(ref.job_id, data))
 
         class FakeQueue:
             def enqueue_call(self, **kwargs):
@@ -916,7 +932,7 @@ class ApiContractTests(unittest.TestCase):
         with (
             patch.object(main, "_export_queue", FakeQueue()),
             patch.object(main, "get_db", return_value=FakeDb()),
-            patch.object(main, "_persist_export_job", return_value=True),
+            patch.object(main.firestore, "transactional", new=lambda fn: fn),
         ):
             res_unauth = self.client.post("/api/export-replay/job-1")
             self.assertEqual(res_unauth.status_code, 401)

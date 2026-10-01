@@ -133,7 +133,7 @@ try:
     from .request_limits import UploadBodyLimitMiddleware
     from .release_metadata import release_metadata
     from .media_commands import run_media_command
-    from .job_state import transition as transition_export_job, InvalidJobTransition, LOCAL_LOCK as JOB_STATE_LOCK
+    from .job_state import transition as transition_export_job, transition_firestore, from_stored as export_job_from_stored, snapshot_fits as export_snapshot_fits, InvalidJobTransition, LOCAL_LOCK as JOB_STATE_LOCK
     from .gcp_queue_metrics import job_queue_prediction, publish_queue_snapshot, queue_snapshot, render_queue_snapshot
     from .rendering.capacity import (
         FAST_EXPORT_QUEUE_NAME,
@@ -177,7 +177,7 @@ except ImportError:
     from request_limits import UploadBodyLimitMiddleware
     from release_metadata import release_metadata
     from media_commands import run_media_command
-    from job_state import transition as transition_export_job, InvalidJobTransition, LOCAL_LOCK as JOB_STATE_LOCK
+    from job_state import transition as transition_export_job, transition_firestore, from_stored as export_job_from_stored, snapshot_fits as export_snapshot_fits, InvalidJobTransition, LOCAL_LOCK as JOB_STATE_LOCK
     from gcp_queue_metrics import job_queue_prediction, publish_queue_snapshot, queue_snapshot, render_queue_snapshot
     from rendering.capacity import (
         FAST_EXPORT_QUEUE_NAME,
@@ -1867,7 +1867,11 @@ def _is_content_safety_blocked(*values: str) -> bool:
     return any(token in joined for token in CONTENT_SAFETY_BLOCKLIST)
 
 def _persist_export_job(job_id: str, payload: Dict[str, Any], *, write_redis: bool = True) -> bool:
-    """Persist job state to at least one cross-process store."""
+    """Store job state in Redis for a deployment without Firestore.
+
+    With Firestore, `_set_export_job` writes the one authoritative record in a
+    transaction and never calls this.
+    """
     persisted = not write_redis and _redis_client is not None
     if write_redis and _redis_client is not None:
         try:
@@ -1879,40 +1883,29 @@ def _persist_export_job(job_id: str, payload: Dict[str, Any], *, write_redis: bo
             persisted = True
         except Exception as e:
             _json_log("warning", "export_job_redis_persist_failed", job_id=job_id, error=str(e))
-
-    db = get_db()
-    if db:
-        for attempt in range(2):
-            try:
-                ref = db.collection("export_jobs").document(job_id)
-                if _redis_client is not None:
-                    @firestore.transactional
-                    def mirror(transaction):
-                        current = ref.get(transaction=transaction)
-                        revision = int((current.to_dict() or {}).get("revision", 0)) if current.exists else 0
-                        if revision < int(payload.get("revision", 0)):
-                            transaction.set(ref, {**payload, "expire_at": _retention_deadline(7)}, merge=True)
-                    mirror(db.transaction())
-                else:
-                    ref.set({**payload, "expire_at": _retention_deadline(7)}, merge=True)
-                persisted = True
-                break
-            except Exception as e:
-                _json_log(
-                    "warning",
-                    "export_job_firestore_persist_failed",
-                    job_id=job_id,
-                    attempt=attempt + 1,
-                    error=str(e),
-                )
-                if attempt == 0:
-                    time.sleep(0.05)
     return persisted
 
 
 def _load_export_job(job_id: str) -> Optional[Dict[str, Any]]:
-    """Load authoritative shared state, falling back to local state in local mode."""
-    if _redis_client is not None:
+    """Load the one authoritative record: Firestore when available.
+
+    Redis is consulted only when there is no Firestore, so a leftover Redis
+    copy from before the switch can never shadow the real state.
+    """
+    db = get_db()
+    if db:
+        try:
+            snap = db.collection("export_jobs").document(job_id).get()
+            if snap.exists:
+                job = export_job_from_stored(snap.to_dict() or {})
+                _export_jobs[job_id] = job
+                return job
+            return None
+        except Exception as e:
+            _json_log("warning", "export_job_firestore_load_failed", job_id=job_id, error=str(e))
+            if _IS_PRODUCTION or _export_queue is not None:
+                raise HTTPException(status_code=503, detail="Export job status is temporarily unavailable") from e
+    elif _redis_client is not None:
         try:
             raw = _redis_client.get(f"export_job:{job_id}")
             if raw:
@@ -1921,17 +1914,6 @@ def _load_export_job(job_id: str) -> Optional[Dict[str, Any]]:
                 return job
         except Exception as e:
             _json_log("warning", "export_job_redis_load_failed", job_id=job_id, error=str(e))
-
-    db = get_db()
-    if db:
-        try:
-            snap = db.collection("export_jobs").document(job_id).get()
-            if snap.exists:
-                job = snap.to_dict() or {}
-                _export_jobs[job_id] = job
-                return job
-        except Exception as e:
-            _json_log("warning", "export_job_firestore_load_failed", job_id=job_id, error=str(e))
     if (_IS_PRODUCTION or _export_queue is not None) and job_id in _export_jobs:
         raise HTTPException(status_code=503, detail="Export job status is temporarily unavailable")
     return _export_jobs.get(job_id)
@@ -2508,11 +2490,32 @@ def _record_export_usage(
 
 
 def _set_export_job(job_id: str, status: str, *, expected_status=None, **kwargs):
+    update = {"status": status, "updated_at": time.time(), **kwargs}
+    db = get_db()
+    if db:
+        # One place for job records: the check and the write happen in a single
+        # Firestore transaction, so there is no second copy to drift.
+        with JOB_STATE_LOCK:
+            try:
+                payload = transition_firestore(
+                    db.collection("export_jobs").document(job_id),
+                    firestore.transactional,
+                    db.transaction(),
+                    _export_jobs.get(job_id) or {},
+                    update,
+                    expected_status=expected_status,
+                    extra={"expire_at": _retention_deadline(7)},
+                )
+            except InvalidJobTransition:
+                raise
+            except Exception as e:
+                _json_log("error", "export_job_firestore_transition_failed", job_id=job_id, status=status, error=str(e))
+                raise RuntimeError("Export job state could not be persisted to shared storage") from e
+            _export_jobs[job_id] = payload
+            return payload
     with JOB_STATE_LOCK:
         seed = _load_export_job(job_id) or {}
-        payload = transition_export_job(_redis_client, job_id, seed, {
-            "status": status, "updated_at": time.time(), **kwargs,
-        }, expected_status=expected_status)
+        payload = transition_export_job(_redis_client, job_id, seed, update, expected_status=expected_status)
         persisted = _persist_export_job(job_id, payload, write_redis=_redis_client is None)
         if _export_queue is not None and not persisted:
             raise RuntimeError("Export job state could not be persisted to shared storage")

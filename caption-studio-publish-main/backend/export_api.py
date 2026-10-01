@@ -82,6 +82,9 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
             raise HTTPException(status_code=429, detail="Too many failed export attempts. Please retry after a short wait.")
 
         safe_request_snapshot = host._sanitize_export_request_payload(req.model_dump(by_alias=True))
+        # Rejected before any claim, slot or charge: the job record must fit Firestore.
+        if not host.export_snapshot_fits(safe_request_snapshot):
+            raise HTTPException(status_code=413, detail="This project is too large to export in one go. Split it into shorter videos.")
         idempotency_request_hash = host.hashlib.sha256(
             host.json.dumps(safe_request_snapshot, sort_keys=True, default=str).encode("utf-8")
         ).hexdigest()
@@ -260,6 +263,8 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
                 host._assert_upload_owner(item.file_id, uid)
                 host._assert_upload_clean(item.file_id)
                 safe_snapshot = host._sanitize_export_request_payload(item.model_dump(by_alias=True))
+                if not host.export_snapshot_fits(safe_snapshot):
+                    raise HTTPException(status_code=413, detail="This project is too large to export in one go.")
                 duration_hint = await host.asyncio.to_thread(host._source_duration_hint, item.file_id, uid)
                 capacity = host.estimate_render_capacity(duration_hint, safe_snapshot)
                 host._set_export_job(
@@ -599,7 +604,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
         snap = db.collection("export_jobs").document(job_id).get()
         if not snap.exists:
             raise HTTPException(status_code=404, detail="Export job not found")
-        job = snap.to_dict() or {}
+        job = host.export_job_from_stored(snap.to_dict() or {})
         host._require_export_job_access(request, job)
         if (job.get("status") or "").lower() != "failed":
             raise HTTPException(
