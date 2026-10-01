@@ -598,7 +598,7 @@ if (!sidebarGallerySource.includes('const SELECTABLE_TEMPLATE_CARDS = [...LC_TEM
 if (!/const ALL_TEMPLATE_CARDS = \[[\s\S]*?\.\.\.LEGACY_TEMPLATE_CARDS,[\s\S]*?\.\.\.LC_TEMPLATE_CARDS,[\s\S]*?\];/.test(sidebarGallerySource)) {
   fail('left template style map no longer resolves the legacy and LC templates');
 }
-if (!sidebarGallerySource.includes("{ id: 'lc-style-1', title: 'LC Style 1', templates: LC_STYLE_1_TEMPLATE_CARDS }")) {
+if (!sidebarGallerySource.includes("{ id: 'lc-style-1', title: 'Subtle', hint: 'One big moment', templates: LC_STYLE_1_TEMPLATE_CARDS }")) {
   fail('left template gallery does not render the LC template sections');
 }
 if (!sidebarGallerySource.includes("const getTemplateStyleKey = (template) => `${template?.format || 'legacy'}::${template?.id || ''}`")) {

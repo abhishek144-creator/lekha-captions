@@ -2037,16 +2037,16 @@ export default function SidebarTemplateGallery20({ currentStyle, onApplyTemplate
   const { isFavorite, toggleFavorite } = useTemplateFavorites();
   const { isRecent } = useRecentTemplates();
   const templateSections = [
-    { id: 'lc-style-1', title: 'LC Style 1', templates: LC_STYLE_1_TEMPLATE_CARDS },
-    { id: 'lc-style-2', title: 'LC Style 2', templates: LC_STYLE_2_TEMPLATE_CARDS },
-    { id: 'lc-style-3', title: 'LC Style 3', templates: LC_STYLE_3_TEMPLATE_CARDS },
+    { id: 'lc-style-1', title: 'Subtle', hint: 'One big moment', templates: LC_STYLE_1_TEMPLATE_CARDS },
+    { id: 'lc-style-2', title: 'Balanced', hint: 'Two big moments', templates: LC_STYLE_2_TEMPLATE_CARDS },
+    { id: 'lc-style-3', title: 'Dramatic', hint: 'Three big moments', templates: LC_STYLE_3_TEMPLATE_CARDS },
   ];
   const visibleTemplateSections = useMemo(
     () => templateSections.map((section) => ({
       ...section,
       templates: section.templates.filter((template) => (
         isExportableTemplateCandidate(template)
-        && templateMatchesQuery(template, templateSearchQuery)
+        && templateMatchesQuery(template, templateSearchQuery, [section.title])
         && (!favoritesOnly || isFavorite('sidebar-template', template.id))
         && (!recentsOnly || isRecent('sidebar-template', template.id))
       )),
@@ -2116,7 +2116,10 @@ export default function SidebarTemplateGallery20({ currentStyle, onApplyTemplate
         {visibleTemplateSections.map((section) => (
           <div key={section.id} className="space-y-2">
             <div className="advanced-template-section-label !mb-2 !px-0">
-              <span className="text-[10px] tracking-[0.18em]">{section.title}</span>
+              <span className="text-[10px] tracking-[0.18em]">
+                {section.title}
+                <span className="ml-1.5 normal-case tracking-normal text-slate-500">{section.hint}</span>
+              </span>
               <small>{section.templates.length}/{templateSections.find((item) => item.id === section.id)?.templates.length || 0}</small>
             </div>
 

@@ -430,16 +430,27 @@ function extractCompleteDiv(markup, startIndex) {
   return '';
 }
 
+// The source pack labels two templates with names that aren't product names: a
+// real creator's name and a version-numbered draft label.
+const BASIC_TEMPLATE_DISPLAY_NAMES = {
+  't-106': 'Spoken',
+  't-QW1': 'The Quiet',
+};
+
 function extractBasicTemplateCards() {
   const cards = [];
   const cardPattern = /<div class="btcard[^"]*"/gi;
   let match;
 
   while ((match = cardPattern.exec(sanitizedOriginalTemplateHtml))) {
-    const cardMarkup = extractCompleteDiv(sanitizedOriginalTemplateHtml, match.index);
+    const sourceMarkup = extractCompleteDiv(sanitizedOriginalTemplateHtml, match.index);
+    const id = sourceMarkup.match(/class="[^"]*\b(t-[^"\s]+)/i)?.[1];
+    const displayName = BASIC_TEMPLATE_DISPLAY_NAMES[id];
+    const cardMarkup = displayName
+      ? sourceMarkup.replace(/(<div class="btcard-name">)[\s\S]*?(<\/div>)/i, `$1${displayName}$2`)
+      : sourceMarkup;
     const name = stripHtml(cardMarkup.match(/<div class="btcard-name">([\s\S]*?)<\/div>/i)?.[1] || '');
     const desc = stripHtml(cardMarkup.match(/<div class="btcard-desc">([\s\S]*?)<\/div>/i)?.[1] || '');
-    const id = cardMarkup.match(/class="[^"]*\b(t-[^"\s]+)/i)?.[1];
     const bg = cardMarkup.match(/<div class="btcard-preview"[^>]*style="[^"]*background\s*:\s*([^;"]+)/i)?.[1]?.trim() || '#111';
     if (name && id && id !== 't-124') {
       cards.push({
