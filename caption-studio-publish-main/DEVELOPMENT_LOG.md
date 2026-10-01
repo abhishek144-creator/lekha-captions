@@ -35,6 +35,14 @@ This is the **Work Diary** for the Lekha Captions project.
 - [x] **FPS validation** — Verified in code/tests: the API accepts plan-authorized 24/30/60 FPS values and the renderer defaults invalid or missing values to 30 FPS. Representative production media remains part of release acceptance.
 - [ ] **Verify zoom/transition animations** — Test zoom_in, zoom_out, fade_in, slide_up/down/left/right in Animate tab → Basic category work correctly in preview
 
+## 2026-10-01 — Big-file splits (main.py, processor.py, VideoPlayer.jsx)
+
+- **main.py 5044 → 4451:** the export pipeline (`_normalize_export_captions_for_media` … `_process_export_job_core`, `run_export_job_task`) moved to `backend/export_jobs.py` with the billing.py host-lookup pattern (every helper reached as `host.<name>`, main re-exports each name; RQ path `backend.main.run_export_job_task` unchanged). `_extract_bearer_token` stays in main (the direct-upload router uses it at import time). Route list compared identical against the previous commit. `scripts/backend-api-source.mjs` now also reads `export_jobs.py`. Note: main's in-memory job store is `_export_jobs`; the module handle is `_export_job_pipeline`.
+- **processor.py 2662 → 2408:** font tables (`GOOGLE_FONTS_MAP`, `INDIC_FONTS`, `SCRIPT_FONTS_MAP`, `SCRIPT_RANGES`, `BOLD_VARIANTS`) moved to `backend/font_catalog.py`; data compared equal; processor imports the same objects.
+- **VideoPlayer.jsx 4896 → 4649:** eight helpers that read no component state (found with eslint-scope) moved verbatim to `videoPlayerTemplateRendering.jsx`. The 417-line word-drag handler and other stateful pieces stay; moving them would mean threading dozens of state values.
+- **Incident:** yesterday's `git worktree remove` on a temp worktree followed a `node_modules` junction and deleted files in the real `node_modules` (ESLint crashed). Fixed with `npm ci`; never junction dependencies into disposable worktrees.
+- Verification: 287 pytest, lint, typecheck, test:contracts, release readiness (347), motion/visual/CPT/editing checks, editor journey, live `?devseed=1` render.
+
 ## 2026-09-30 — Template names, T167 recheck, Dashboard split, new-setup drills
 
 - **Template names:** the left gallery sections "LC Style 1/2/3" are now **Subtle / Balanced / Dramatic** (one / two / three big CPT moments, with a hint line; section names are searchable). Basic template `t-106` was labelled "Iman" (a real creator's name) and is now **Spoken**; `t-QW1` "The Quiet V3.2" is now **The Quiet** (`BASIC_TEMPLATE_DISPLAY_NAMES` in AdvancedTemplateLibrary.jsx). LC cards already had real one-word names. Verified live via `?devseed=1` (sections, search "dramatic", renamed cards).
