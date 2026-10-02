@@ -878,6 +878,39 @@ owner's written approval.*
 
 ---
 
+## 20. Upload experience (planned improvements, not yet built)
+
+Already in place:
+- Direct, resumable uploads to storage.
+- Size and type checks.
+- Safety scan before use.
+
+[PR #17](https://github.com/abhishek144-creator/lekha-captions/pull/17) (open) adds early refusal of over-limit videos, upload on file pick and a real progress percentage. The items below would make the flow faster, cheaper and more reliable. Priority is shown in brackets.
+
+| # | Feature | What the user gets | How (on the target architecture) |
+|---|---|---|---|
+| 1 | **Audio-first upload** [high] | Captions start within seconds, not after the whole video uploads | The browser extracts the audio track locally (a few MB) and uploads it first. Transcription runs on that audio while the video continues in the background. The transcribe Lambda never downloads the full video. |
+| 2 | **Automatic language detection** [high] | No language picker needed | Run the existing detect-language logic on the first 30 s of the uploaded audio, then pre-fill the language. The user can still override it. |
+| 3 | **Keep working during upload** | Choose a template and style while the upload runs | The upload runs in the background of the editor session. Export is enabled only once the source is `clean`. |
+| 4 | **Duplicate detection** | Re-uploading the same video is instant and costs no second transcription | A fingerprint (size + hash of the first/last few MB) is checked against the user's recent uploads. A match reuses the existing object and transcript. |
+| 5 | **Check before upload** [high] | An instant, clear message instead of a failed upload ("4 min — your plan allows 3 min. Trim or upgrade.") | The browser reads duration, resolution, fps and "has audio" from the local file before `uploads/init`. The server still enforces limits (step 6 of §4). |
+| 6 | **Format suggestion** | Templates and position preset for vertical, square or landscape video | Detect the aspect ratio locally and pre-select matching templates and caption position. |
+| 7 | **Instant thumbnail and waveform** | The editor opens before the upload finishes | Generate the poster frame and audio waveform from the local file in the browser. Preview plays from the local file (step 9 of §4). |
+| 8 | **Never lose an upload** | Survives tab reloads, phone sleep and network drops | Keep the upload session (upload ID, completed parts) in browser storage. Use the Screen Wake Lock API while uploading on mobile. Resume automatically when the network returns, via the `ListParts`-based resume. |
+| 9 | **Clear stages with an ETA** [high] | "Uploading 62% · 1 min left → Checking → Transcribing → Ready" | One progress model across upload speed, scan state and transcription job state. Uses the same job records as the status API. |
+| 10 | **Ready notification** | Users can close the tab on long jobs | Browser notification (with permission) or an optional email when transcription or export finishes. |
+| 11 | **Visible privacy controls** | "Your video is deleted after X hours" plus a delete-now button | Show the plan retention. Delete-now removes the S3 objects and the job records through the API. |
+| 12 | **Friendly, specific errors** | "Network dropped — resuming…", "No speech found — add captions manually?" | Map each failure code (network, rejected, no audio, provider down, over limit) to a message and a next action. |
+
+Suggested order:
+1. Items 1, 2, 5 and 9: the biggest improvement in how the app feels, for modest work.
+2. Items 4 and 8: save provider cost and prevent frustration.
+3. The rest.
+
+Items 1, 4 and 7 also lower the AWS bill, because less video gets downloaded and transcribed.
+
+---
+
 ## Risks and open items
 
 | Risk | Impact | Mitigation |
