@@ -218,6 +218,20 @@ def object_size(remote_path: str) -> int | None:
         raise
 
 
+def object_metadata(remote_path: str) -> Dict[str, str] | None:
+    """User metadata of an object, or None when the object does not exist."""
+    client = _client()
+    if client is None:
+        return None
+    try:
+        return dict(client.head_object(Bucket=S3_BUCKET, Key=remote_path).get("Metadata") or {})
+    except ClientError as error:
+        status = int(error.response.get("ResponseMetadata", {}).get("HTTPStatusCode", 0))
+        if status == 404:
+            return None
+        raise
+
+
 def signed_download_url(remote_path: str, expiration_seconds: int) -> str | None:
     client = _client()
     if client is None:

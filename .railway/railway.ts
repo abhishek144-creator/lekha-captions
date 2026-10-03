@@ -38,7 +38,6 @@ const SHARED = [
   "MEDIA_S3_BUCKET",
   "MEDIA_S3_ACCESS_KEY_ID",
   "MEDIA_S3_SECRET_ACCESS_KEY",
-  "SENTRY_DSN",
 ]
 
 const wakeUrl = (worker: string) =>

@@ -176,6 +176,34 @@ class R2UploadTests(unittest.TestCase):
         self.assertIsNone(storage.sign_resumable_upload_parts("user-1", FILE_ID, [1]))
 
 
+class R2RenderCacheTests(unittest.TestCase):
+    KEY = "a" * 64
+
+    def run_download(self, metadata):
+        deleted, downloaded = [], []
+        with patch.object(storage, "s3_is_configured", return_value=True), \
+                patch.object(storage, "s3_object_metadata", lambda path: metadata), \
+                patch.object(storage, "delete_s3_file", deleted.append), \
+                patch.object(storage, "download_s3_file", lambda path, local: downloaded.append(path) or True):
+            found = storage.download_render_cache("user-1", self.KEY, "/tmp/out.mp4")
+        return found, deleted, downloaded
+
+    def test_expired_render_cache_entry_is_deleted_not_served(self):
+        found, deleted, downloaded = self.run_download({"delete_at_epoch": "1"})
+        self.assertFalse(found)
+        self.assertEqual(deleted, [f"render-cache/user-1/{self.KEY}.mp4"])
+        self.assertEqual(downloaded, [])
+
+    def test_fresh_render_cache_entry_is_served(self):
+        future = str(int(datetime.now(timezone.utc).timestamp()) + 3600)
+        found, deleted, downloaded = self.run_download({"delete_at_epoch": future})
+        self.assertTrue(found)
+        self.assertEqual(deleted, [])
+
+    def test_missing_render_cache_entry_is_a_miss(self):
+        self.assertFalse(self.run_download(None)[0])
+
+
 class R2UploadRouteTests(unittest.TestCase):
     def client(self, **overrides):
         options = dict(

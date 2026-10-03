@@ -135,34 +135,44 @@ backstop:
 |---|---|---|
 | expire-uploads | `uploads/` | Delete objects after **2 days** |
 | expire-exports | `exports/` | Delete objects after **4 days** (Pro keeps exports 72 h) |
+| expire-render-cache | `render-cache/` | Delete objects after **3 days** (cache entries live at most 72 h; expired ones are also deleted when next read) |
 | abort-incomplete | (all) | Abort incomplete multipart uploads after **1 day** |
 
 ### 4.4 Railway project
 
-1. Create a Railway account and a project named `lekha-captions`. Choose the **Hobby** plan, then set the **hard usage limit** first (§3).
-2. Install the Railway GitHub app for `abhishek144-creator/lekha-captions`.
-3. In the project's **production** environment, create these **shared variables**. Values never go in git.
+> ⚠️ **Use a NEW Railway project.** `railway config apply` makes the linked
+> project match `.railway/railway.ts` exactly, and anything not in the file is
+> **deleted**. Linked to the old `lekha-captions-staging` project, the plan
+> deletes its `worker`, `Redis`, `clamav`, `web` and `lekha-media` resources.
+> Never run `plan`/`apply` while linked to that project.
+
+1. Create a **new** project named `lekha-captions`. Choose the **Hobby** plan, then set the **hard usage limit** first (§3).
+2. Install the Railway GitHub app for `abhishek144-creator/lekha-captions`, and merge PR #18 into `main` (Railway builds `main`).
+3. In the new project's **production** environment, create these **shared variables**. Values never go in git.
 
    | Purpose | Variables |
    |---|---|
-   | Access and contacts | `ALLOWED_ORIGINS` (e.g. `https://app.lekhacaptions.com`), `ADMIN_EMAILS`, `SECURITY_CONTACT_EMAIL`, `PRIVACY_CONTACT_EMAIL` |
+   | Access and contacts | `ALLOWED_ORIGINS` (`https://app.lekhacaptions.com`, not localhost), `ADMIN_EMAILS`, `SECURITY_CONTACT_EMAIL`, `PRIVACY_CONTACT_EMAIL` |
    | Firebase and AI providers | `FIREBASE_SERVICE_ACCOUNT_JSON`, `OPENAI_API_KEY`, `SARVAM_API_KEY` |
-   | Payments | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`, `PAYMENT_RECONCILE_SECRET` |
+   | Payments (**live** keys, not test) | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`, `PAYMENT_RECONCILE_SECRET` |
    | Signing secrets | `MEDIA_URL_SIGNING_SECRET`, `WORKER_WAKE_SECRET` (random, ≥ 32 chars) |
    | R2 (from §4.2) | `MEDIA_S3_ENDPOINT`, `MEDIA_S3_BUCKET`, `MEDIA_S3_ACCESS_KEY_ID`, `MEDIA_S3_SECRET_ACCESS_KEY` |
-   | Monitoring | `SENTRY_DSN` |
 
-   Optional, added per service in the dashboard if used: `SLACK_ALERT_WEBHOOK_URL`, `SENTRY_TRACES_SAMPLE_RATE`, `APP_RELEASE`.
-4. Install the Railway CLI (**≥ 5.42.1**), then from the repository root:
+   Not needed:
+   - `APP_RELEASE`, `RELEASE_VERSION` and `APP_BUILD_TIME` are filled in automatically from Railway's commit SHA and the image build time.
+   - `FIREBASE_STORAGE_BUCKET` is not required when the R2 variables are set.
+   - Optional, per service in the dashboard: `SENTRY_DSN`, `SLACK_ALERT_WEBHOOK_URL`.
+4. Install or upgrade the Railway CLI to **≥ 5.42.1** (`npm install -g @railway/cli@latest`), then from the repository root:
    ```bash
    npm install --prefix .railway   # the railway/iac SDK (pinned)
    railway login
-   railway link                    # pick lekha-captions / production
-   railway config plan             # read-only: review every line
+   railway link                    # pick the NEW lekha-captions project / production
+   railway config plan             # read-only: expect 4 services + redis + group, 0 to destroy
    railway config apply            # owner approval required: creates billable services
    ```
-5. In the dashboard, generate a public domain for `lekha-api` only. Workers stay private.
-6. Set the frontend's `VITE_API_BASE_URL` to that domain and redeploy the frontend (Netlify/Firebase Hosting, unchanged).
+   If the plan shows anything to **destroy**, stop: you are linked to the wrong project.
+5. Attach the custom domain `api.lekhacaptions.com` to `lekha-api` (Settings → Networking), and add the DNS record Railway shows. Workers stay private.
+6. In the editor's hosting (Netlify), set `VITE_API_BASE_URL=https://api.lekhacaptions.com` and redeploy the editor.
 
 ## 5. Verification checklist
 

@@ -20,6 +20,8 @@ RUN python3 -m pip install --no-cache-dir --require-hashes -r backend/requiremen
 # Used with CLAMAV_SCAN_CMD="clamscan --stdout --database=/opt/clamav-db".
 COPY --from=clamav-signatures /var/lib/clamav/*.cvd /opt/clamav-db/
 COPY . .
+# Release identity: the app reports this as APP_BUILD_TIME unless it is set.
+RUN date -u +%Y-%m-%dT%H:%M:%SZ > .build-time
 RUN useradd --uid 1000 --create-home --shell /usr/sbin/nologin lekha \
     && chown -R lekha:lekha /app
 USER lekha
@@ -65,7 +67,8 @@ RUN node --input-type=module -e "import puppeteer from 'puppeteer'; const browse
 COPY backend/requirements.lock backend/requirements.lock
 RUN python3 -m pip install --break-system-packages --no-cache-dir --require-hashes -r backend/requirements.lock
 COPY . .
-RUN install -d /usr/local/share/fonts/truetype/lekha \
+RUN date -u +%Y-%m-%dT%H:%M:%SZ > .build-time \
+    && install -d /usr/local/share/fonts/truetype/lekha \
     && cp backend/flat_fonts/*.ttf /usr/local/share/fonts/truetype/lekha/ \
     && fc-cache -f \
     && node scripts/build_render_font_bundle.mjs /app/.render_fonts/fonts.css \
