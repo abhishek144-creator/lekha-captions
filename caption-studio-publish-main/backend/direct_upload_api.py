@@ -2,6 +2,7 @@
 import os
 import pathlib
 import uuid
+from typing import List
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -22,13 +23,40 @@ class DirectUploadCompleteRequest(BaseModel):
     file_id: str = Field(min_length=36, max_length=36)
 
 
+class DirectUploadPartsRequest(BaseModel):
+    file_id: str = Field(min_length=36, max_length=36)
+    part_numbers: List[int] = Field(min_length=1, max_length=32)
+
+
+def _session_payload(file_id, session, **extra):
+    """Describe how the browser uploads: a GCS session URL or S3 multipart parts."""
+    payload = {
+        "success": True,
+        "direct_upload_available": True,
+        "file_id": file_id,
+        "expires_at": session["expires_at"],
+        **extra,
+    }
+    if session.get("upload_protocol") == "s3_multipart":
+        payload.update({
+            "upload_protocol": "s3_multipart",
+            "part_size": int(session["part_size"]),
+            "part_count": int(session["part_count"]),
+        })
+        if "completed_parts" in session:
+            payload["completed_parts"] = list(session["completed_parts"])
+    else:
+        payload["upload_url"] = session["session_url"]
+    return payload
+
+
 def create_direct_upload_router(*, authenticate, extract_token, assert_service_available,
                                 allowed_extensions, allowed_content_prefixes, allowed_origins,
                                 max_upload_bytes, create_session, finalize_session,
                                 remember_owner, signed_upload_url, audit_action,
                                 reserve_slot=None, release_slot=None, cancel_session=None,
                                 resume_session=None, assert_account_active=None,
-                                rate_limit_network=None, enqueue_scan=None):
+                                rate_limit_network=None, enqueue_scan=None, sign_parts=None):
     router = APIRouter()
 
     @router.post("/api/uploads/init")
@@ -67,13 +95,7 @@ def create_direct_upload_router(*, authenticate, extract_token, assert_service_a
             if release_slot:
                 release_slot(uid, file_id, undo_hourly=True)
             return {"success": False, "direct_upload_available": False}
-        return {
-            "success": True,
-            "direct_upload_available": True,
-            "file_id": file_id,
-            "upload_url": session["session_url"],
-            "expires_at": session["expires_at"],
-        }
+        return _session_payload(file_id, session)
 
     @router.post("/api/uploads/resume")
     def resume_direct_upload(req: DirectUploadResumeRequest, request: Request):
@@ -106,14 +128,22 @@ def create_direct_upload_router(*, authenticate, extract_token, assert_service_a
         )
         if not session:
             raise HTTPException(409, "Upload cannot be resumed with this file")
-        return {
-            "success": True,
-            "direct_upload_available": True,
-            "resumed": True,
-            "file_id": req.file_id,
-            "upload_url": session["session_url"],
-            "expires_at": session["expires_at"],
-        }
+        return _session_payload(req.file_id, session, resumed=True)
+
+    @router.post("/api/uploads/parts")
+    def sign_direct_upload_parts(req: DirectUploadPartsRequest, request: Request):
+        assert_service_available("pause_uploads")
+        uid = authenticate(extract_token(request))["uid"]
+        if assert_account_active:
+            assert_account_active(uid)
+        try:
+            uuid.UUID(req.file_id)
+        except (ValueError, TypeError):
+            raise HTTPException(400, "Invalid file identifier")
+        parts = sign_parts(uid, req.file_id, req.part_numbers) if sign_parts else None
+        if not parts:
+            raise HTTPException(409, "Upload parts cannot be signed for this file")
+        return {"success": True, "file_id": req.file_id, "parts": parts}
 
     @router.post("/api/uploads/complete")
     def complete_direct_upload(req: DirectUploadCompleteRequest, request: Request):

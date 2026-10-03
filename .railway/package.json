@@ -1,0 +1,9 @@
+{
+  "name": "lekha-railway-iac",
+  "private": true,
+  "type": "module",
+  "description": "Railway Infrastructure as Code for Lekha Captions. Install before `railway config plan`.",
+  "devDependencies": {
+    "railway": "3.12.0"
+  }
+}
