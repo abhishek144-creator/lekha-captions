@@ -170,9 +170,140 @@ def run_on_demand_worker(conn):
     cleanup_local_media_artifacts()
 
 
+# Wake-on-HTTP mode (Railway): the service sleeps while idle. The API's
+# worker_launcher POSTs /wake after enqueueing; the worker drains its queues,
+# then drops its Redis connections so no traffic keeps the service awake.
+WORKER_WAKE_SECRET = os.environ.get("WORKER_WAKE_SECRET", "")
+# Retries scheduled further out than this are left for the next wake (or the
+# cron safety net) instead of keeping the worker awake for them.
+WAKE_SCHEDULED_WAIT_SECONDS = max(0, int(os.environ.get("WORKER_WAKE_SCHEDULED_WAIT_SECONDS", "330")))
+
+
+def _seconds_until_next_scheduled(conn, queue_names, now=None):
+    """Seconds until the earliest scheduled (retry) job, or None when there is none."""
+    now = time.time() if now is None else now
+    earliest = None
+    for name in queue_names:
+        rows = conn.zrange(f"rq:scheduled:{name}", 0, 0, withscores=True)
+        if rows:
+            earliest = rows[0][1] if earliest is None else min(earliest, rows[0][1])
+    return None if earliest is None else max(0.0, earliest - now)
+
+
+def drain_queues(conn, queue_names, *, worker_factory=None, sleep=time.sleep, log=print):
+    """Run queued and soon-due scheduled jobs to completion, then return."""
+    lease = WorkerLease(conn, queue_names)
+    host = os.environ.get("RAILWAY_REPLICA_ID") or socket.gethostname()
+    make_worker = worker_factory or (lambda: ReleaseWorker(
+        queue_names, connection=conn, worker_ttl=90,
+        name=f"caption-worker-{host}-{uuid.uuid4().hex[:8]}",
+    ))
+    while True:
+        lease.refresh()
+        worker = make_worker()
+        worker.launch_lease = lease
+        worker.work(burst=True, with_scheduler=True, dequeue_strategy="round_robin")
+        wait = _seconds_until_next_scheduled(conn, queue_names)
+        if wait is not None and wait <= WAKE_SCHEDULED_WAIT_SECONDS:
+            log(json.dumps({"event": "worker_waiting_for_retry", "seconds": round(wait)}))
+            sleep(wait + 1)
+            continue
+        if not lease.release_and_should_continue():
+            break
+
+
+class _WakeState:
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.requested = threading.Event()
+        self.running = False
+
+
+def _drain_loop(state, queue_names):
+    while True:
+        state.requested.wait()
+        with state.lock:
+            state.requested.clear()
+            state.running = True
+        conn = None
+        try:
+            conn = connect_redis(REDIS_URL)
+            drain_queues(conn, queue_names)
+            cleanup_local_media_artifacts()
+        except Exception as error:
+            print(json.dumps({"event": "worker_drain_failed", "error": str(error)}), flush=True)
+        finally:
+            if conn is not None:
+                conn.connection_pool.disconnect()
+            with state.lock:
+                state.running = False
+        print(json.dumps({"event": "worker_idle"}), flush=True)
+
+
+def _wake_handler(state):
+    import hmac
+
+    class WakeHandler(BaseHTTPRequestHandler):
+        def _reply(self, status, payload):
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            if self.path in ("/health", "/api/health", "/api/health/readiness", "/ready"):
+                self._reply(200, {"status": "alive", "role": "worker", "draining": state.running})
+            elif self.path in ("/api/version", "/release.json"):
+                self._reply(200, release_metadata("worker"))
+            else:
+                self._reply(404, {"error": "not found"})
+
+        def do_POST(self):
+            if self.path != "/wake":
+                self._reply(404, {"error": "not found"})
+                return
+            supplied = self.headers.get("X-Worker-Wake-Secret", "")
+            if not hmac.compare_digest(supplied.encode("utf-8"), WORKER_WAKE_SECRET.encode("utf-8")):
+                self._reply(403, {"error": "forbidden"})
+                return
+            state.requested.set()
+            self._reply(202, {"accepted": True})
+
+        def log_message(self, _format, *_args):
+            return
+
+    return WakeHandler
+
+
+def run_wake_server():
+    if len(WORKER_WAKE_SECRET) < 16:
+        raise RuntimeError("WORKER_WAKE_SECRET must be at least 16 characters.")
+    if not os.environ.get("WORKER_LAUNCH_JOB_NAME"):
+        raise RuntimeError("WORKER_LAUNCH_JOB_NAME must match this worker's name in the API's WORKER_LAUNCH_JOBS.")
+    queues = worker_queue_names()
+    state = _WakeState()
+    threading.Thread(target=_drain_loop, args=(state, queues), name="worker-drain", daemon=True).start()
+    # A worker starting from sleep was woken for a reason; drain once now.
+    state.requested.set()
+
+    class DualStackServer(ThreadingHTTPServer):
+        # Railway private networking is IPv6; "::" also accepts IPv4 here.
+        address_family = socket.AF_INET6
+
+    port = int(os.environ.get("PORT", "8080"))
+    server = DualStackServer(("::", port), _wake_handler(state))  # nosec B104 - service-internal wake endpoint
+    print(json.dumps({"event": "worker_wake_server_started", "port": port, "queues": queues}), flush=True)
+    server.serve_forever()
+
+
 def run_worker():
     if not REDIS_URL:
         raise RuntimeError("REDIS_URL is required for worker mode.")
+    if WORKER_WAKE_SECRET:
+        run_wake_server()
+        return
     conn = connect_redis(REDIS_URL)
     conn.ping()
     if WORKER_IDLE_EXIT_SECONDS > 0:
