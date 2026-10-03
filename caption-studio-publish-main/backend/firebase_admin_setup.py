@@ -992,6 +992,9 @@ def delete_expired_uploads(batch_size: int = 400):
             intent = intent_doc.to_dict() or {}
             remote_path = str(intent.get("remote_path") or "")
             if remote_path.startswith("uploads/"):
+                if intent.get("upload_protocol") == S3_UPLOAD_PROTOCOL and intent.get("upload_id"):
+                    # Parts of an unfinished multipart upload are billed until aborted.
+                    abort_s3_multipart_upload(remote_path, str(intent["upload_id"]))
                 delete_from_firebase_storage(remote_path)
             intent_doc.reference.delete()
         due_docs = list(

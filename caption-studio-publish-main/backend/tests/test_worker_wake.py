@@ -72,6 +72,35 @@ class DrainTests(unittest.TestCase):
         self.assertEqual(self.ran, [])
 
 
+    def test_real_rq_worker_drains_on_the_main_thread(self):
+        # RQ installs signal handlers in work(); that raises off the main thread.
+        worker.drain_queues(self.redis, ["render"], log=lambda _: None)
+        self.assertFalse(self.redis.exists(lease_key("lekha-render", 0)))
+
+    def test_sigterm_during_a_drain_frees_the_slot_and_stops_serving(self):
+        class StoppedWorker(FakeWorker):
+            def work(self, **kwargs):
+                super().work(**kwargs)
+                self._shutdown_requested_date = object()
+
+        self.redis.rpush("rq:queue:render", "a")
+        self.redis.set(lease_key("lekha-render", 0), "1")
+        stopped = worker.drain_queues(
+            self.redis, ["render"], log=lambda _: None,
+            worker_factory=lambda: StoppedWorker(self.redis, ["render"], self.ran),
+        )
+        self.assertFalse(stopped)
+        self.assertFalse(self.redis.exists(lease_key("lekha-render", 0)))
+
+    def test_drain_loop_returns_once_a_drain_reports_shutdown(self):
+        state = worker._WakeState()
+        state.requested.set()
+        with patch.object(worker, "connect_redis", lambda url: self.redis), \
+                patch.object(worker, "cleanup_local_media_artifacts", lambda: None):
+            worker._drain_loop(state, ["render"], drain=lambda conn, queues: False)
+        self.assertFalse(state.running)
+
+
 class WakeEndpointTests(unittest.TestCase):
     def setUp(self):
         self.secret = "w" * 32

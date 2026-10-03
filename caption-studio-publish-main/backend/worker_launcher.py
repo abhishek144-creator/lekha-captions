@@ -29,6 +29,7 @@ LEASE_SECONDS = max(60, int(os.environ.get("WORKER_LAUNCH_LEASE_SECONDS", "300")
 MAX_PARALLEL = max(1, min(int(os.environ.get("WORKER_LAUNCH_MAX_PARALLEL", "1")), 20))
 METADATA_ROOT = "http://metadata.google.internal/computeMetadata/v1"
 WAKE_TIMEOUT_SECONDS = max(1, int(os.environ.get("WORKER_WAKE_TIMEOUT_SECONDS", "5")))
+COLD_START_STATUSES = {502, 503, 504}
 
 
 def job_map() -> dict[str, str]:
@@ -81,8 +82,9 @@ def _wake_http_worker(job_name: str, slot: int) -> None:
     """Ask a sleeping worker service to drain its queues.
 
     A worker coming out of sleep can take longer than this timeout to answer.
-    The request has already woken it and it drains on start, so a timeout is
-    treated as delivered; the lease expires if the worker never comes up.
+    The request has already woken it and it drains on start, so a timeout or a
+    gateway error is treated as delivered; the lease expires if the worker never
+    comes up, and the cron pass wakes it again.
     """
     url = wake_url_map().get(job_name, "")
     secret = os.environ.get("WORKER_WAKE_SECRET", "")
@@ -97,6 +99,12 @@ def _wake_http_worker(job_name: str, slot: int) -> None:
             response.read()
     except TimeoutError:
         return
+    except urllib.error.HTTPError as error:
+        # Railway can answer the request that wakes a sleeping service with a
+        # 502/503 while the container boots; the worker drains on start.
+        if error.code in COLD_START_STATUSES:
+            return
+        raise
     except urllib.error.URLError as error:
         if isinstance(error.reason, TimeoutError):
             return
@@ -164,6 +172,10 @@ class WorkerLease:
     def refresh(self) -> None:
         if self.key:
             self.connection.set(self.key, str(time.time()), ex=LEASE_SECONDS)
+
+    def release(self) -> None:
+        if self.key:
+            self.connection.delete(self.key)
 
     def release_and_should_continue(self) -> bool:
         """Release the lease, then re-check; keep working if a job slipped in."""

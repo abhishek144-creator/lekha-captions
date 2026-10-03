@@ -122,6 +122,24 @@ class WakeLauncherTests(unittest.TestCase):
             self.assertTrue(kick(self.redis, "render", log=lambda _: None))
         self.assertTrue(self.redis.exists(lease_key("lekha-render", 0)))
 
+    def test_gateway_error_while_waking_counts_as_delivered(self):
+        def booting(request, timeout):
+            raise worker_launcher.urllib.error.HTTPError(request.full_url, 502, "Bad Gateway", {}, None)
+
+        self.redis.rpush("rq:queue:render", "job")
+        with patch.object(worker_launcher.urllib.request, "urlopen", booting):
+            self.assertTrue(kick(self.redis, "render", log=lambda _: None))
+        self.assertTrue(self.redis.exists(lease_key("lekha-render", 0)))
+
+    def test_rejected_wake_secret_frees_the_lease(self):
+        def forbidden(request, timeout):
+            raise worker_launcher.urllib.error.HTTPError(request.full_url, 403, "Forbidden", {}, None)
+
+        self.redis.rpush("rq:queue:render", "job")
+        with patch.object(worker_launcher.urllib.request, "urlopen", forbidden):
+            self.assertFalse(kick(self.redis, "render", log=lambda _: None))
+        self.assertFalse(self.redis.exists(lease_key("lekha-render", 0)))
+
     def test_refused_wake_frees_the_lease_for_a_retry(self):
         def refused(_request, timeout):
             raise worker_launcher.urllib.error.URLError(ConnectionRefusedError("refused"))

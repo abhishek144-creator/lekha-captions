@@ -1,15 +1,24 @@
 ARG APP_RELEASE
+# Railway passes service variables to declared build args, so each service picks
+# its image with LEKHA_SERVICE_TARGET=api|transcription|render (default render).
+ARG LEKHA_SERVICE_TARGET=render
+
+# The official image is rebuilt with current signatures; copying them avoids
+# freshclam at build time, which ClamAV's CDN rate-limits on shared builders.
+FROM clamav/clamav-debian:stable AS clamav-signatures
 
 FROM python:3.11-slim-bookworm AS python-runtime
 ARG APP_RELEASE
 LABEL org.opencontainers.image.revision=${APP_RELEASE}
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates dumb-init ffmpeg \
+    && apt-get install -y --no-install-recommends ca-certificates clamav dumb-init ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY backend/requirements.lock backend/requirements.lock
 RUN python3 -m pip install --no-cache-dir --require-hashes -r backend/requirements.lock
+# Used with CLAMAV_SCAN_CMD="clamscan --stdout --database=/opt/clamav-db".
+COPY --from=clamav-signatures /var/lib/clamav/*.cvd /opt/clamav-db/
 COPY . .
 RUN useradd --uid 1000 --create-home --shell /usr/sbin/nologin lekha \
     && chown -R lekha:lekha /app
@@ -68,6 +77,6 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
 ENTRYPOINT ["dumb-init", "--"]
 CMD ["sh", "-c", "node scripts/render_browser_daemon.mjs & exec python3 -m backend.worker"]
 
-# Preserve the historical default for local builds while deployments select an
-# explicit api, render, or transcription target.
-FROM render AS app
+# Preserve the historical default (render) for local builds while deployments
+# select an explicit api, render, or transcription target.
+FROM ${LEKHA_SERVICE_TARGET} AS app

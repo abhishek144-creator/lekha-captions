@@ -31,3 +31,7 @@ lekha_cpt_throwaway_preview.html
 /Lekha_Captions_Project_Cost_Estimate.pdf
 /output/
 /tmp/
+
+# Railway IaC tooling (install with: npm install --prefix .railway)
+.railway/node_modules/
+.railway/package-lock.json
