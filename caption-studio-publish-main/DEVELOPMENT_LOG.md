@@ -17,7 +17,8 @@ This is the **Work Diary** for the Lekha Captions project.
 > Keep this section always up-to-date. It is the first thing read at session start.
 
 - [ ] **Future deployment cost gate** — Before deploying under another account or provider, reread this whole log and `docs/GCP_DEPLOYMENT_PROMPT.md`. Obtain the owner's explicit approval of a written estimate for idle and peak monthly spend, a fixed-resource inventory, test budget and expiry, and a shutdown plan. Verify the *live* resource counts and bill after deployment; source-code defaults alone are insufficient. See the 2026-09-28 billing incident entry below.
-- [ ] **AWS scale-to-zero migration** — Superseding the Google Cloud redesign below: the owner chose AWS (2026-10-02). Follow `docs/AWS_SERVERLESS_MIGRATION_2026-10-02.md` starting at Gate 0 (verify the Firebase project and App Check work without the closed Google billing account; AWS workload account with SCP deny-list and budgets before any workload). Keep the future deployment cost gate above.
+- [ ] **Railway + Cloudflare R2 deployment** — The owner chose Railway with R2 (2026-10-03); code and `.railway/railway.ts` are ready on branch `claude/serene-sagan-76mdi6`. Follow `docs/RAILWAY_DEPLOYMENT.md`: Gate 0 (Firebase/App Check without Google billing), R2 bucket with CORS and lifecycle rules, Railway hard usage limit, shared variables, then `railway config plan` and owner-approved `railway config apply`. Verify every service actually sleeps when idle. Keep the future deployment cost gate above.
+- [ ] ~~**AWS scale-to-zero migration**~~ (superseded 2026-10-03 by Railway + R2) — The owner chose AWS (2026-10-02). Follow `docs/AWS_SERVERLESS_MIGRATION_2026-10-02.md` starting at Gate 0 (verify the Firebase project and App Check work without the closed Google billing account; AWS workload account with SCP deny-list and budgets before any workload). Keep the future deployment cost gate above.
 - [ ] ~~**Google Cloud on-demand redesign**~~ (superseded 2026-10-02 by the AWS plan) — The owner chose Google Cloud under a different email for a future deployment. Use `docs/GCP_DEPLOYMENT_PROMPT.md` as the implementation brief: static frontend, request-driven Cloud Run API, direct Cloud Storage uploads, Cloud Tasks for post-upload/processing work, and Cloud Run Jobs that exit after each unit. Replace Redis/RQ and its payment, rate-limit, and job-state uses before claiming zero idle worker compute. Keep the future deployment cost gate above.
 - [ ] **Deployment architecture reminder** - Host the SEO landing/marketing site separately on Netlify at `lekhacaptions.com`. Keep the dashboard/editor app separate at `app.lekhacaptions.com`. Do not touch the dashboard/editor now; revisit making the app server-side during the deploy phase, not in the current work.
 - [ ] **Timeline fix** — Speech track background is showing gold stripe. Only the individual caption *blocks* should be gold, not the entire track row background. Fix in `src/components/dashboard/CaptionTimeline.jsx`
@@ -33,6 +34,22 @@ This is the **Work Diary** for the Lekha Captions project.
 - [ ] **Verify Text tab export** — Confirm text boxes added via Text tab (custom color, animation, position) appear correctly in exported video
 - [x] **FPS validation** — Verified in code/tests: the API accepts plan-authorized 24/30/60 FPS values and the renderer defaults invalid or missing values to 30 FPS. Representative production media remains part of release acceptance.
 - [ ] **Verify zoom/transition animations** — Test zoom_in, zoom_out, fade_in, slide_up/down/left/right in Animate tab → Basic category work correctly in preview
+
+## 2026-10-03 — Railway + Cloudflare R2 scale-to-zero implementation
+
+- The owner chose Railway with Cloudflare R2 instead of AWS. Firebase Auth and Firestore stay. The guide, cost estimate and spend limits are in `docs/RAILWAY_DEPLOYMENT.md`; the services are defined in `.railway/railway.ts` (Railway Infrastructure as Code, because `railway.json` is deprecated and stops being read on 2026-12-01). Nothing was deployed or created.
+- Workers wake over HTTP (`/wake` + `WORKER_WAKE_SECRET`), drain their RQ queues and go idle so Railway can sleep them. Fixed a bug where the drain ran RQ off the main thread: RQ's signal handlers made every real drain fail. SIGTERM now finishes the running job and frees the launch lease. A real-Redis smoke test passed.
+- Browser uploads go straight to R2 as resumable multipart uploads: 8 MiB parts with signed lengths, 3 in parallel, resume via `ListParts`. Completion verifies sizes; cancel and the janitor abort unfinished uploads.
+- `backend/railway_cron.py` (every 15 min) does the API's periodic work without waking it:
+  - due retries and outbox recovery;
+  - worker re-wake;
+  - R2 cleanup and payment reconciliation.
+- Images: the Dockerfile final stage is chosen with `LEKHA_SERVICE_TARGET`. API/transcription images ship `clamscan` with signatures copied from the official ClamAV image. A scan takes ~17 s and ~1 GB, so `CLAMAV_SCAN_TIMEOUT_SECONDS=120` on Railway.
+- Also patched the dependency advisories that failed the audit gates (next, brace-expansion, pyjwt, urllib3), with reviewed exceptions for unpatched build-time-only ones.
+- Open checks before go-live:
+  - every service shows Sleeping after ~10 idle minutes;
+  - App Check works without Google billing;
+  - ClamAV signatures need a redeploy at least weekly.
 
 ## 2026-10-02 — AWS scale-to-zero architecture and migration plan (documentation only)
 

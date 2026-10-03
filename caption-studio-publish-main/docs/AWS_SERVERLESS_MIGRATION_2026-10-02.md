@@ -1,5 +1,9 @@
 # Lekha Captions: AWS scale-to-zero architecture and migration plan
 
+> **Superseded 2026-10-03.** The owner chose Railway + Cloudflare R2; see
+> `RAILWAY_DEPLOYMENT.md`. This plan is kept for reference only.
+
+
 Written 2 October 2026. This is a design and planning document. No application
 code, cloud account, or paid resource was changed or created while writing it.
 Prices are planning estimates (see "Price inputs" at the end), not a quote.
