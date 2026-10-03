@@ -96,14 +96,15 @@ NAT gateways, VMs or minimum instances. AI provider spend is separate, and
 
 ## 4. One-time setup (owner)
 
-### 4.1 Gate 0: Firebase without Google billing
+### 4.1 Gate 0: Firebase and App Check ✅ (verified 2026-10-03)
 
-Google Cloud billing was closed after the 2026-09-28 incident. Before anything
-else, confirm in a scratch browser session:
-
-- sign-in;
-- a Firestore read/write;
-- **App Check**: reCAPTCHA Enterprise needs a billing account. If it fails, either re-enable Google billing with a ₹0 budget alert, or move App Check to the reCAPTCHA v3 provider.
+- The Firebase project is on **Blaze**, with a Google billing account still linked (project cost ₹0.01 for the month at the time of the check).
+- The owner confirmed sign-in, the dashboard and the App Check token exchange (HTTP 200).
+- Because a card is still attached:
+  - keep the Google Cloud budget alert low (≈ ₹200);
+  - set ₹10 service spend caps on Cloud Run and Cloud Run Functions, which are no longer used;
+  - confirm no old Compute Engine, Memorystore, load balancer or Cloud NAT resources remain.
+- Optional: moving App Check to reCAPTCHA v3 would allow downgrading the project to Spark, so Google can't charge anything.
 
 `FIREBASE_APP_CHECK_ENFORCED=1` is required in production.
 
