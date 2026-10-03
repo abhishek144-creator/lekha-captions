@@ -46,9 +46,9 @@ This is the **Work Diary** for the Lekha Captions project.
   - R2 cleanup and payment reconciliation.
 - Images: the Dockerfile final stage is chosen with `LEKHA_SERVICE_TARGET`. API/transcription images ship `clamscan` with signatures copied from the official ClamAV image. A scan takes ~17 s and ~1 GB, so `CLAMAV_SCAN_TIMEOUT_SECONDS=120` on Railway.
 - Also patched the dependency advisories that failed the audit gates (next, brace-expansion, pyjwt, urllib3), with reviewed exceptions for unpatched build-time-only ones.
+- Gate 0 passed (owner, 2026-10-03): the Firebase project is still on Blaze with a billing account linked (₹0.01 that month). Sign-in, the dashboard and the App Check token exchange all work. Keep the Google budget alert and service spend caps low.
 - Open checks before go-live:
   - every service shows Sleeping after ~10 idle minutes;
-  - App Check works without Google billing;
   - ClamAV signatures need a redeploy at least weekly.
 
 ## 2026-10-02 — AWS scale-to-zero architecture and migration plan (documentation only)
