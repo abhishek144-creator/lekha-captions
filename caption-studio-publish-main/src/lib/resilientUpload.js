@@ -139,14 +139,135 @@ function queryResumableOffset(uploadUrl, total) {
   })
 }
 
+const MULTIPART_PROTOCOL = 's3_multipart'
+const MULTIPART_CONCURRENCY = 3
+const MULTIPART_URL_BATCH = 16
+
+function putMultipartPart(url, blob, onProgress) {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest()
+    request.open('PUT', url)
+    request.onload = () => {
+      if (request.status >= 200 && request.status < 300) resolve()
+      else reject(Object.assign(new Error('Direct upload part failed'), { status: request.status }))
+    }
+    request.onerror = () => reject(Object.assign(new Error('Direct upload connection failed'), { status: 0 }))
+    request.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress?.(event.loaded)
+    }
+    request.send(blob)
+  })
+}
+
+// S3-compatible storage (Cloudflare R2): the file is split into fixed-size
+// parts, each PUT to its own short-lived presigned URL. Storage remembers
+// received parts, so a resumed upload only sends the missing ones.
+async function uploadMultipartParts(initialized, file, headers, retryDelaysMs, onProgress, onRetry) {
+  const partSize = Number(initialized.part_size)
+  const partCount = Number(initialized.part_count)
+  const partLength = (number) => Math.max(0, Math.min(partSize, file.size - (number - 1) * partSize))
+  const completed = new Set(initialized.completed_parts || [])
+  const pending = []
+  for (let number = 1; number <= partCount; number += 1) {
+    if (!completed.has(number)) pending.push(number)
+  }
+  let finishedBytes = [...completed].reduce((total, number) => total + partLength(number), 0)
+  const inFlight = new Map()
+  const reportProgress = () => {
+    let sending = 0
+    for (const loaded of inFlight.values()) sending += loaded
+    onProgress?.(Math.min(file.size, finishedBytes + sending))
+  }
+  reportProgress()
+
+  const urls = new Map()
+  let signing = null
+  const signParts = async (numbers) => {
+    const signed = await apiRequest('/api/uploads/parts', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ file_id: initialized.file_id, part_numbers: numbers }),
+    })
+    for (const part of signed?.parts || []) urls.set(Number(part.part_number), part.url)
+  }
+  const urlFor = async (number) => {
+    // Parallel parts wait for one shared signing request instead of each
+    // asking the API for an overlapping batch.
+    while (signing && !urls.has(number)) {
+      try {
+        await signing
+      } catch {
+        // The part that started the request reports the failure.
+      }
+    }
+    if (!urls.has(number)) {
+      const start = pending.indexOf(number)
+      const batch = (start >= 0 ? pending.slice(start) : [number])
+        .filter((candidate) => !urls.has(candidate))
+        .slice(0, MULTIPART_URL_BATCH)
+      signing = signParts(batch.length ? batch : [number])
+      try {
+        await signing
+      } finally {
+        signing = null
+      }
+    }
+    const url = urls.get(number)
+    if (!url) throw Object.assign(new Error('Upload part could not be signed'), { status: 409 })
+    return url
+  }
+
+  const sendPart = async (number) => {
+    let retries = 0
+    while (true) {
+      try {
+        const url = await urlFor(number)
+        const start = (number - 1) * partSize
+        inFlight.set(number, 0)
+        await putMultipartPart(url, file.slice(start, start + partLength(number)), (loaded) => {
+          inFlight.set(number, loaded)
+          reportProgress()
+        })
+        inFlight.delete(number)
+        finishedBytes += partLength(number)
+        reportProgress()
+        return
+      } catch (error) {
+        inFlight.delete(number)
+        // An expired presigned URL is refused with 403; sign it again once.
+        const expired = Number(error?.status) === 403
+        if (expired) urls.delete(number)
+        if (!(expired || isRetryableUploadError(error) || Number(error?.status) === 429)
+            || retries >= retryDelaysMs.length) throw error
+        onRetry?.({ attempt: retries + 1, nextAttempt: retries + 2, error })
+        await waitForConnection()
+        await sleep(retryDelaysMs[retries] + Math.floor(Math.random() * 300))
+        retries += 1
+      }
+    }
+  }
+
+  let next = 0
+  const runner = async () => {
+    while (next < pending.length) {
+      const number = pending[next]
+      next += 1
+      await sendPart(number)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(MULTIPART_CONCURRENCY, pending.length) }, runner))
+}
+
 async function cancelDirectUpload(initialized, authorization) {
   const controller = typeof AbortController !== 'undefined' ? new AbortController() : null
   const timeout = controller ? setTimeout(() => controller.abort(), 5000) : null
   try {
-    await fetch(initialized.upload_url, {
-      method: 'DELETE',
-      ...(controller ? { signal: controller.signal } : {}),
-    })
+    if (initialized.upload_url) {
+      await fetch(initialized.upload_url, {
+        method: 'DELETE',
+        ...(controller ? { signal: controller.signal } : {}),
+      })
+    }
   } catch {
     // The API marks the intent cancelled even if storage deletion is unavailable.
   } finally {
@@ -194,12 +315,17 @@ async function uploadDirectToStorage(file, authorization, retryDelaysMs, onProgr
     body: JSON.stringify(fingerprint),
     dedupeKey: 'direct-upload-init',
   })
-  if (!initialized?.direct_upload_available || !initialized?.upload_url) return null
+  const multipart = initialized?.upload_protocol === MULTIPART_PROTOCOL
+  if (!initialized?.direct_upload_available || (!multipart && !initialized?.upload_url)) return null
   saveUploadReceipt(file, initialized)
   let offset = 0
   let retries = 0
   try {
-    if (initialized.resumed) offset = await queryResumableOffset(initialized.upload_url, file.size)
+    if (multipart) {
+      await uploadMultipartParts(initialized, file, headers, retryDelaysMs, onProgress, onRetry)
+      offset = file.size
+    }
+    if (initialized.resumed && !multipart) offset = await queryResumableOffset(initialized.upload_url, file.size)
     onProgress?.(offset)
     while (offset < file.size) {
       const end = Math.min(file.size, offset + RESUMABLE_CHUNK_BYTES)

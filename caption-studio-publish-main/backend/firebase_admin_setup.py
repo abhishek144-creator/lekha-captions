@@ -1,6 +1,7 @@
 import os
 import json
 import hashlib
+import math
 import time
 from datetime import datetime, timedelta, timezone
 import firebase_admin
@@ -19,6 +20,12 @@ try:
         object_exists as s3_object_exists,
         signed_download_url as s3_signed_download_url,
         upload_file as upload_s3_file,
+        abort_multipart_upload as abort_s3_multipart_upload,
+        complete_multipart_upload as complete_s3_multipart_upload,
+        create_multipart_upload as create_s3_multipart_upload,
+        list_uploaded_parts as list_s3_uploaded_parts,
+        object_size as s3_object_size,
+        presign_upload_part as presign_s3_upload_part,
     )
 except ImportError:  # Direct execution from the backend working directory.
     from media_storage import (
@@ -30,6 +37,12 @@ except ImportError:  # Direct execution from the backend working directory.
         object_exists as s3_object_exists,
         signed_download_url as s3_signed_download_url,
         upload_file as upload_s3_file,
+        abort_multipart_upload as abort_s3_multipart_upload,
+        complete_multipart_upload as complete_s3_multipart_upload,
+        create_multipart_upload as create_s3_multipart_upload,
+        list_uploaded_parts as list_s3_uploaded_parts,
+        object_size as s3_object_size,
+        presign_upload_part as presign_s3_upload_part,
     )
 try:
     from firebase_admin import storage as fb_storage
@@ -41,6 +54,12 @@ GCS_MEDIA_BUCKET = os.environ.get('GCS_MEDIA_BUCKET', '').strip()
 GCS_SIGNING_SERVICE_ACCOUNT = os.environ.get('GCS_SIGNING_SERVICE_ACCOUNT', '').strip()
 ALLOW_FIREBASE_SERVICE_ACCOUNT_PATH = os.environ.get('ALLOW_FIREBASE_SERVICE_ACCOUNT_PATH', '0') == '1'
 IS_TEST_ENV = (os.environ.get("APP_ENV") or os.environ.get("ENV") or "").strip().lower() in {"test", "testing"}
+# Browser-direct uploads to S3-compatible storage (Cloudflare R2) use multipart
+# parts of one fixed size; R2 requires every part except the last to match.
+S3_UPLOAD_PROTOCOL = "s3_multipart"
+S3_UPLOAD_PART_BYTES = 8 * 1024 * 1024
+S3_UPLOAD_PART_URL_SECONDS = 3600
+S3_MAX_PARTS_PER_SIGN_REQUEST = 32
 
 def init_firebase():
     # Only initialize if it hasn't been initialized yet
@@ -144,15 +163,22 @@ def _signed_gcs_download_url(blob, expiration):
 def create_resumable_source_upload(uid: str, file_id: str, extension: str,
                                    content_type: str, size_bytes: int, origin: str = "",
                                    filename: str = "", last_modified: int = 0):
-    """Create a short-lived GCS resumable session without proxying media through the API."""
-    if s3_is_configured():
-        return None
+    """Create a short-lived direct-upload session without proxying media through the API.
+
+    Google Cloud Storage gets a resumable session URI; S3-compatible storage
+    (Cloudflare R2) gets a multipart upload whose parts the browser PUTs with
+    presigned URLs from sign_resumable_upload_parts().
+    """
     safe_uid = str(uid or "").strip()
     safe_file_id = str(file_id or "").strip()
     safe_ext = str(extension or "").strip().lower().lstrip(".")
     if (not safe_uid or not safe_file_id or not safe_ext or not safe_ext.isalnum()
             or "/" in safe_uid or "\\" in safe_uid or "/" in safe_file_id or "\\" in safe_file_id):
         return None
+    if s3_is_configured():
+        return _create_s3_source_upload(
+            safe_uid, safe_file_id, safe_ext, content_type, size_bytes, filename, last_modified,
+        )
     bucket = get_storage_bucket()
     db = get_db()
     if not bucket or not db:
@@ -190,6 +216,114 @@ def create_resumable_source_upload(uid: str, file_id: str, extension: str,
     return {"session_url": session_url, "remote_path": remote_path, "expires_at": expires_at.isoformat()}
 
 
+def _s3_part_count(size_bytes: int) -> int:
+    return max(1, math.ceil(int(size_bytes) / S3_UPLOAD_PART_BYTES))
+
+
+def _s3_part_length(size_bytes: int, part_number: int) -> int:
+    start = (int(part_number) - 1) * S3_UPLOAD_PART_BYTES
+    return max(0, min(S3_UPLOAD_PART_BYTES, int(size_bytes) - start))
+
+
+def _create_s3_source_upload(uid, file_id, extension, content_type, size_bytes, filename, last_modified):
+    db = get_db()
+    if not db:
+        return None
+    remote_path = f"uploads/{uid}/{file_id}.{extension}"
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=6)
+    upload_id = create_s3_multipart_upload(
+        remote_path,
+        content_type or "application/octet-stream",
+        {"owner_uid": uid, "file_id": file_id, "upload_state": "pending_scan"},
+    )
+    part_count = _s3_part_count(size_bytes)
+    db.collection("direct_upload_intents").document(file_id).set({
+        "uid": uid,
+        "file_id": file_id,
+        "remote_path": remote_path,
+        "extension": extension,
+        "content_type": content_type or "application/octet-stream",
+        "size_bytes": int(size_bytes),
+        "filename": str(filename or "")[:255],
+        "last_modified": max(0, int(last_modified or 0)),
+        "upload_protocol": S3_UPLOAD_PROTOCOL,
+        # The multipart upload ID is service-only state; the browser only ever
+        # receives presigned part URLs for the parts it asks for.
+        "upload_id": upload_id,
+        "part_size": S3_UPLOAD_PART_BYTES,
+        "part_count": part_count,
+        "expires_at": expires_at,
+        "created_at": datetime.now(timezone.utc),
+    })
+    return {
+        "upload_protocol": S3_UPLOAD_PROTOCOL,
+        "part_size": S3_UPLOAD_PART_BYTES,
+        "part_count": part_count,
+        "remote_path": remote_path,
+        "expires_at": expires_at.isoformat(),
+    }
+
+
+def _active_owned_intent(db, uid, file_id):
+    """Return (intent, expires_at) for an unexpired, unfinished intent owned by uid."""
+    snapshot = db.collection("direct_upload_intents").document(str(file_id)).get()
+    if not snapshot.exists:
+        return None, None
+    intent = snapshot.to_dict() or {}
+    expires_at = intent.get("expires_at")
+    if (str(intent.get("uid") or "") != str(uid or "")
+            or intent.get("status") in {"cancelled", "completed"}
+            or not isinstance(expires_at, datetime)
+            or expires_at.replace(tzinfo=expires_at.tzinfo or timezone.utc) <= datetime.now(timezone.utc)
+            or not str(intent.get("remote_path") or "").startswith(f"uploads/{uid}/")):
+        return None, None
+    return intent, expires_at.replace(tzinfo=expires_at.tzinfo or timezone.utc)
+
+
+def sign_resumable_upload_parts(uid: str, file_id: str, part_numbers):
+    """Presign PUT URLs for parts of the owner's active S3 multipart upload."""
+    db = get_db()
+    if not db or not s3_is_configured():
+        return None
+    intent, expires_at = _active_owned_intent(db, uid, file_id)
+    if not intent or intent.get("upload_protocol") != S3_UPLOAD_PROTOCOL:
+        return None
+    part_count = int(intent.get("part_count") or 0)
+    size_bytes = int(intent.get("size_bytes") or 0)
+    try:
+        numbers = sorted({int(number) for number in part_numbers})
+    except (TypeError, ValueError):
+        return None
+    if (not numbers or len(numbers) > S3_MAX_PARTS_PER_SIGN_REQUEST
+            or numbers[0] < 1 or numbers[-1] > part_count):
+        return None
+    seconds_left = int((expires_at - datetime.now(timezone.utc)).total_seconds())
+    ttl = max(60, min(S3_UPLOAD_PART_URL_SECONDS, seconds_left))
+    remote_path = str(intent["remote_path"])
+    upload_id = str(intent.get("upload_id") or "")
+    return [
+        {
+            "part_number": number,
+            "content_length": _s3_part_length(size_bytes, number),
+            "url": presign_s3_upload_part(
+                remote_path, upload_id, number, _s3_part_length(size_bytes, number), ttl,
+            ),
+        }
+        for number in numbers
+    ]
+
+
+def _s3_completed_parts(intent) -> dict:
+    """Parts storage holds with the exact expected size, keyed by part number."""
+    size_bytes = int(intent.get("size_bytes") or 0)
+    parts = list_s3_uploaded_parts(str(intent["remote_path"]), str(intent.get("upload_id") or ""))
+    return {
+        int(part["PartNumber"]): part
+        for part in parts
+        if int(part.get("Size") or -1) == _s3_part_length(size_bytes, int(part["PartNumber"]))
+    }
+
+
 def resume_resumable_source_upload(uid: str, file_id: str, filename: str,
                                    content_type: str, size_bytes: int,
                                    last_modified: int = 0):
@@ -221,16 +355,84 @@ def resume_resumable_source_upload(uid: str, file_id: str, filename: str,
     )
     if expected != actual:
         return None
+    if intent.get("upload_protocol") == S3_UPLOAD_PROTOCOL:
+        if not s3_is_configured():
+            return None
+        return {
+            "upload_protocol": S3_UPLOAD_PROTOCOL,
+            "part_size": int(intent.get("part_size") or S3_UPLOAD_PART_BYTES),
+            "part_count": int(intent.get("part_count") or 0),
+            "completed_parts": sorted(_s3_completed_parts(intent)),
+            "expires_at": expires_at.isoformat(),
+        }
     session_url = str(intent.get("session_url") or "")
     if not session_url.startswith("https://"):
         return None
     return {"session_url": session_url, "expires_at": expires_at.isoformat()}
 
 
+def _finalize_s3_source_upload(uid: str, file_id: str):
+    db = get_db()
+    if not db:
+        return None
+    intent_ref = db.collection("direct_upload_intents").document(str(file_id))
+    snapshot = intent_ref.get()
+    if not snapshot.exists:
+        return None
+    intent = snapshot.to_dict() or {}
+    if (str(intent.get("uid") or "") != str(uid or "")
+            or intent.get("upload_protocol") != S3_UPLOAD_PROTOCOL
+            or intent.get("status") == "cancelled"):
+        return None
+    remote_path = str(intent.get("remote_path") or "")
+    if not remote_path.startswith(f"uploads/{uid}/"):
+        return None
+    expected_size = int(intent.get("size_bytes") or 0)
+    if expected_size <= 0:
+        return None
+    result = {
+        "remote_path": remote_path,
+        "extension": str(intent.get("extension") or ""),
+        "size_bytes": expected_size,
+        "upload_state": "pending_scan",
+    }
+    if intent.get("status") == "completed":
+        # A retried completion after a lost response: the object must still match.
+        return result if s3_object_size(remote_path) == expected_size else None
+    intent_expiry = intent.get("expires_at")
+    if (isinstance(intent_expiry, datetime)
+            and intent_expiry.replace(tzinfo=intent_expiry.tzinfo or timezone.utc)
+            <= datetime.now(timezone.utc)):
+        return None
+    completed = _s3_completed_parts(intent)
+    part_count = int(intent.get("part_count") or 0)
+    if part_count <= 0 or sorted(completed) != list(range(1, part_count + 1)):
+        return None
+    complete_s3_multipart_upload(remote_path, str(intent.get("upload_id") or ""), completed.values())
+    if s3_object_size(remote_path) != expected_size:
+        delete_s3_file(remote_path)
+        intent_ref.delete()
+        return None
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=6)
+    schedule_id = hashlib.sha256(remote_path.encode("utf-8")).hexdigest()
+    db.collection("upload_expirations").document(schedule_id).set({
+        "remote_path": remote_path,
+        "uid": str(uid),
+        "file_id": str(file_id),
+        "expire_at": expires_at,
+        "created_at": datetime.now(timezone.utc),
+    })
+    if not _transition_direct_upload_intent(
+        db, intent_ref, uid, remote_path, "completed", expires_at=expires_at,
+    ):
+        return None
+    return result
+
+
 def finalize_resumable_source_upload(uid: str, file_id: str):
     """Verify ownership and size before admitting a directly uploaded object."""
     if s3_is_configured():
-        return None
+        return _finalize_s3_source_upload(uid, file_id)
     bucket = get_storage_bucket()
     db = get_db()
     if not bucket or not db:
@@ -387,6 +589,13 @@ def cancel_resumable_source_upload(uid: str, file_id: str) -> bool:
         return False
     if not _transition_direct_upload_intent(db, intent_ref, uid, remote_path, "cancelled"):
         return False
+    if intent.get("upload_protocol") == S3_UPLOAD_PROTOCOL and s3_is_configured():
+        try:
+            abort_s3_multipart_upload(remote_path, str(intent.get("upload_id") or ""))
+        except Exception as error:
+            # The bucket's incomplete-multipart lifecycle rule is the backstop.
+            print(f"[Upload] abort multipart failed: {error}")
+        return True
     # Keep the intent for the six-hour janitor: a client holding an old bearer
     # session might still finish uploading after this point. Avoid deleting an
     # object here because a concurrent completion may have already accepted it.

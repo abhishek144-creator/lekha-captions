@@ -60,6 +60,7 @@ try:
         storage_backend_ready,
         create_resumable_source_upload,
         resume_resumable_source_upload,
+        sign_resumable_upload_parts,
         cancel_resumable_source_upload,
         finalize_resumable_source_upload,
         set_source_upload_state,
@@ -84,6 +85,7 @@ except ImportError:  # Direct execution from backend/ remains supported.
         storage_backend_ready,
         create_resumable_source_upload,
         resume_resumable_source_upload,
+        sign_resumable_upload_parts,
         cancel_resumable_source_upload,
         finalize_resumable_source_upload,
         set_source_upload_state,
@@ -4156,6 +4158,7 @@ app.include_router(create_direct_upload_router(
     assert_account_active=_assert_account_not_deleting,
     rate_limit_network=_limit_direct_upload_network,
     enqueue_scan=_schedule_media_scan,
+    sign_parts=sign_resumable_upload_parts,
 ))
 app.include_router(create_editor_preferences_router(
     _authenticate_media_request,
