@@ -35,6 +35,13 @@ This is the **Work Diary** for the Lekha Captions project.
 - [x] **FPS validation** — Verified in code/tests: the API accepts plan-authorized 24/30/60 FPS values and the renderer defaults invalid or missing values to 30 FPS. Representative production media remains part of release acceptance.
 - [ ] **Verify zoom/transition animations** — Test zoom_in, zoom_out, fade_in, slide_up/down/left/right in Animate tab → Basic category work correctly in preview
 
+## 2026-10-03 — Railway first rollout and ingress correction
+
+- PR #18 merged as `ab85157` after all 26 hosted checks passed, including API/transcription final-image ClamAV checks. All 17 shared variables were populated and read back by names only. Existing live Razorpay keys and webhook secret were recovered from local saved files. At the owner's action-time approval, created an additional R2 Object Read & Write token scoped only to `lekha-media`; existing token remains active. R2 HeadBucket returned HTTP 200.
+- Applied the reviewed six-addition, zero-deletion plan to the new `lekha-captions` project. Live inventory: four app services plus Redis. Workspace hard limit $15, alert $8 verified; no GCP/AWS resource was accessed.
+- First rollout exposed IPv6-only Uvicorn ingress: API startup completed but Railway healthcheck failed. Corrected the API bind to `0.0.0.0` and set explicit PORT=8080 for matching healthcheck/domain routing. Workers retain their dual-stack wake server.
+- Remaining acceptance gates: API readiness, custom-domain attachment, frontend redeploy, authenticated upload/wake/sleep checks. A post-apply plan proposes relocating Redis plus restart-policy drift; no destructive follow-up apply was performed.
+
 ## 2026-10-03 — Railway R2 deployment validation follow-up
 
 - Unified API startup and offline preflight storage requirements: Railway requires all four R2 settings, accepts no Firebase Storage bucket, and reports missing variable names only. Release identity uses platform defaults in preflight too.

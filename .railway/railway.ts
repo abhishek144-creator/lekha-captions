@@ -89,7 +89,7 @@ export default defineRailway((ctx) => {
     replicas,
     deploy: {
       startCommand:
-        "sh -c 'exec python3 -m uvicorn backend.main:app --host :: --port ${PORT:-8000} " +
+        "sh -c 'exec python3 -m uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8000} " +
         "--workers ${WEB_CONCURRENCY:-1} --limit-concurrency ${UVICORN_LIMIT_CONCURRENCY:-64} " +
         "--timeout-keep-alive ${UVICORN_KEEP_ALIVE_SECONDS:-10}'",
       sleepApplication: true,
@@ -101,6 +101,7 @@ export default defineRailway((ctx) => {
     env: {
       ...backendEnv,
       LEKHA_SERVICE_TARGET: "api",
+      PORT: "8080",
       // Periodic work runs in lekha-cron so an idle API can sleep.
       RUN_API_BACKGROUND_TASKS: "0",
       WEB_CONCURRENCY: "1",
