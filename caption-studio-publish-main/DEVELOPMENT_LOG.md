@@ -1096,3 +1096,8 @@ after those public values are supplied and hosted CI passes.
 - Public Netlify/Railway traffic is unchanged. Live-payment configuration,
   spending bounds for scalable infrastructure, and end-to-end/load acceptance
   remain critical launch gates. See `docs/GCP_DEPLOYMENT_2026-09-11.md`.
+
+
+## 2026-10-03 — Netlify editor cutover configuration
+
+Added `netlify.toml` for the editor: guarded Vite build, SPA route fallback, existing hosting security/cache headers, and the R2 upload host in CSP connect-src. The deployed editor previously blocked R2 multipart PUT requests through its CSP. Railway API now passes readiness with IPv4 ingress; owner-approved Redis migration to Singapore succeeded. PR #19 merged after all 26 checks passed. The post-apply IaC plan has no additions/deletions or Redis relocation, but still reports three restart-policy null-to-ON_FAILURE differences even though the live dashboard displays On Failure. API custom-domain attachment is blocked: the new account dashboard says Not available. Advanced DNS has stale api/app hosting A records. All 17 Railway shared variables are populated and the workspace hard cap remains $15. Verified the Netlify TOML, SPA fallback, R2 connect-src and frame protection; production Vite build/performance budgets passed. No existing secrets rotated.
