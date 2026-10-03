@@ -154,7 +154,15 @@ class WakeLauncherTests(unittest.TestCase):
         with patch.object(worker_launcher, "_wake_http_worker", lambda job, slot: calls.append(("wake", job))), \
                 patch.object(worker_launcher, "_run_cloud_run_job", lambda job, slot: calls.append(("run", job))):
             worker_launcher._default_launcher("lekha-render", 0)
-            worker_launcher._default_launcher("lekha-transcription", 0)
+            # A worker missing from WORKER_WAKE_URLS fails clearly instead of
+            # silently trying Cloud Run on a host that is not Google Cloud.
+            with self.assertRaises(RuntimeError):
+                worker_launcher._default_launcher("lekha-transcription", 0)
+            with patch.dict(os.environ, {"WORKER_WAKE_URLS": "not json"}):
+                with self.assertRaises(RuntimeError):
+                    worker_launcher._default_launcher("lekha-render", 0)
+            with patch.dict(os.environ, {"WORKER_WAKE_URLS": ""}):
+                worker_launcher._default_launcher("lekha-transcription", 0)
         self.assertEqual(calls, [("wake", "lekha-render"), ("run", "lekha-transcription")])
 
     def test_missing_secret_is_a_failed_launch(self):

@@ -133,7 +133,8 @@ try:
     from .api.maintenance import create_maintenance_router
     from .upload_admission import reserve_upload, release_upload
     from .request_limits import UploadBodyLimitMiddleware
-    from .release_metadata import release_metadata
+    from .release_metadata import apply_platform_release_defaults, release_metadata
+    from .media_storage import is_configured as s3_storage_configured
     from .media_commands import run_media_command
     from .job_state import transition as transition_export_job, InvalidJobTransition, LOCAL_LOCK as JOB_STATE_LOCK
     from .gcp_queue_metrics import job_queue_prediction, publish_queue_snapshot, queue_snapshot, render_queue_snapshot
@@ -176,7 +177,8 @@ except ImportError:
     from api.maintenance import create_maintenance_router
     from upload_admission import reserve_upload, release_upload
     from request_limits import UploadBodyLimitMiddleware
-    from release_metadata import release_metadata
+    from release_metadata import apply_platform_release_defaults, release_metadata
+    from media_storage import is_configured as s3_storage_configured
     from media_commands import run_media_command
     from job_state import transition as transition_export_job, InvalidJobTransition, LOCAL_LOCK as JOB_STATE_LOCK
     from gcp_queue_metrics import job_queue_prediction, publish_queue_snapshot, queue_snapshot, render_queue_snapshot
@@ -598,9 +600,9 @@ _json_log(
 if _IS_PRODUCTION and not RAZORPAY_WEBHOOK_SECRET:
     raise RuntimeError("RAZORPAY_WEBHOOK_SECRET must be set in production (ENV=production).")
 if _IS_PRODUCTION:
+    apply_platform_release_defaults()
     required_production_settings = {
         "FIREBASE_SERVICE_ACCOUNT_JSON": os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON", "").strip(),
-        "FIREBASE_STORAGE_BUCKET": os.environ.get("FIREBASE_STORAGE_BUCKET", "").strip(),
         "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY", "").strip(),
         "SARVAM_API_KEY": os.environ.get("SARVAM_API_KEY", "").strip(),
         "RAZORPAY_KEY_ID": RAZORPAY_KEY_ID.strip(),
@@ -613,6 +615,12 @@ if _IS_PRODUCTION:
         "SECURITY_CONTACT_EMAIL": os.environ.get("SECURITY_CONTACT_EMAIL", "").strip(),
         "PRIVACY_CONTACT_EMAIL": os.environ.get("PRIVACY_CONTACT_EMAIL", "").strip(),
     }
+    # With S3-compatible storage (Cloudflare R2) every media path uses R2 and
+    # the Firebase Storage bucket is never touched.
+    if not s3_storage_configured():
+        required_production_settings["FIREBASE_STORAGE_BUCKET"] = os.environ.get(
+            "FIREBASE_STORAGE_BUCKET", ""
+        ).strip()
     if os.environ.get("GCS_MEDIA_BUCKET", "").strip():
         required_production_settings["GCS_SIGNING_SERVICE_ACCOUNT"] = os.environ.get(
             "GCS_SIGNING_SERVICE_ACCOUNT", ""

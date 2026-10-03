@@ -24,6 +24,7 @@ try:
         complete_multipart_upload as complete_s3_multipart_upload,
         create_multipart_upload as create_s3_multipart_upload,
         list_uploaded_parts as list_s3_uploaded_parts,
+        object_metadata as s3_object_metadata,
         object_size as s3_object_size,
         presign_upload_part as presign_s3_upload_part,
     )
@@ -41,6 +42,7 @@ except ImportError:  # Direct execution from the backend working directory.
         complete_multipart_upload as complete_s3_multipart_upload,
         create_multipart_upload as create_s3_multipart_upload,
         list_uploaded_parts as list_s3_uploaded_parts,
+        object_metadata as s3_object_metadata,
         object_size as s3_object_size,
         presign_upload_part as presign_s3_upload_part,
     )
@@ -803,6 +805,15 @@ def download_render_cache(uid: str, cache_key: str, local_path: str) -> bool:
         return False
     if s3_is_configured():
         try:
+            metadata = s3_object_metadata(remote_path)
+            if metadata is None:
+                return False
+            # R2 does not act on this metadata; expire the entry here, and the
+            # bucket's render-cache/ lifecycle rule removes anything never read.
+            delete_at = int(metadata.get("delete_at_epoch") or 0)
+            if delete_at and delete_at <= int(time.time()):
+                delete_s3_file(remote_path)
+                return False
             return bool(download_s3_file(remote_path, local_path))
         except Exception:
             return False
