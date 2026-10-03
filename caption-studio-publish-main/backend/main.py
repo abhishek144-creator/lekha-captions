@@ -135,6 +135,7 @@ try:
     from .request_limits import UploadBodyLimitMiddleware
     from .release_metadata import apply_platform_release_defaults, release_metadata
     from .media_storage import is_configured as s3_storage_configured
+    from .runtime_preflight import required_storage_settings
     from .media_commands import run_media_command
     from .job_state import transition as transition_export_job, InvalidJobTransition, LOCAL_LOCK as JOB_STATE_LOCK
     from .gcp_queue_metrics import job_queue_prediction, publish_queue_snapshot, queue_snapshot, render_queue_snapshot
@@ -179,6 +180,7 @@ except ImportError:
     from request_limits import UploadBodyLimitMiddleware
     from release_metadata import apply_platform_release_defaults, release_metadata
     from media_storage import is_configured as s3_storage_configured
+    from runtime_preflight import required_storage_settings
     from media_commands import run_media_command
     from job_state import transition as transition_export_job, InvalidJobTransition, LOCAL_LOCK as JOB_STATE_LOCK
     from gcp_queue_metrics import job_queue_prediction, publish_queue_snapshot, queue_snapshot, render_queue_snapshot
@@ -615,13 +617,8 @@ if _IS_PRODUCTION:
         "SECURITY_CONTACT_EMAIL": os.environ.get("SECURITY_CONTACT_EMAIL", "").strip(),
         "PRIVACY_CONTACT_EMAIL": os.environ.get("PRIVACY_CONTACT_EMAIL", "").strip(),
     }
-    # With S3-compatible storage (Cloudflare R2) every media path uses R2 and
-    # the Firebase Storage bucket is never touched.
-    if not s3_storage_configured():
-        required_production_settings["FIREBASE_STORAGE_BUCKET"] = os.environ.get(
-            "FIREBASE_STORAGE_BUCKET", ""
-        ).strip()
-    if os.environ.get("GCS_MEDIA_BUCKET", "").strip():
+    required_production_settings.update(required_storage_settings(os.environ))
+    if not s3_storage_configured() and os.environ.get("GCS_MEDIA_BUCKET", "").strip():
         required_production_settings["GCS_SIGNING_SERVICE_ACCOUNT"] = os.environ.get(
             "GCS_SIGNING_SERVICE_ACCOUNT", ""
         ).strip()

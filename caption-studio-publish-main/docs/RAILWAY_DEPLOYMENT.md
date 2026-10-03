@@ -161,6 +161,7 @@ backstop:
    Not needed:
    - `APP_RELEASE`, `RELEASE_VERSION` and `APP_BUILD_TIME` are filled in automatically from Railway's commit SHA and the image build time.
    - `FIREBASE_STORAGE_BUCKET` is not required when the R2 variables are set.
+   - Production startup and offline preflight both require all four R2 variables on Railway; partial configuration fails with missing names instead of falling back to Firebase Storage.
    - Optional, per service in the dashboard: `SENTRY_DSN`, `SLACK_ALERT_WEBHOOK_URL`.
 4. Install or upgrade the Railway CLI to **≥ 5.42.1** (`npm install -g @railway/cli@latest`), then from the repository root:
    ```bash

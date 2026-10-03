@@ -105,6 +105,22 @@ jobs:
       - run: pip-audit -r backend/requirements.lock
       - run: bandit -r backend -x backend/tests -ll -ii
 
+  railway-images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [api, transcription]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build selected Railway image
+        run: docker build --build-arg LEKHA_SERVICE_TARGET=${{ matrix.target }} --build-arg APP_RELEASE=${{ github.sha }} --tag lekha-${{ matrix.target }} .
+      - name: Verify ClamAV binary and signatures in the final image
+        run: |
+          docker run --rm --entrypoint clamscan lekha-${{ matrix.target }} --version
+          docker run --rm --entrypoint sh lekha-${{ matrix.target }} -c 'ls /opt/clamav-db && test -s /opt/clamav-db/main.cvd && test -s /opt/clamav-db/daily.cvd'
+
   marketing:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -153,7 +169,7 @@ jobs:
 
   release-gate:
     if: always()
-    needs: [frontend-core, template-static, template-export, backend, marketing, browser-quality]
+    needs: [frontend-core, template-static, template-export, backend, railway-images, marketing, browser-quality]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     defaults:

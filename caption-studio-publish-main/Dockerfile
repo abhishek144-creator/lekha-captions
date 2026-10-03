@@ -19,6 +19,11 @@ COPY backend/requirements.lock backend/requirements.lock
 RUN python3 -m pip install --no-cache-dir --require-hashes -r backend/requirements.lock
 # Used with CLAMAV_SCAN_CMD="clamscan --stdout --database=/opt/clamav-db".
 COPY --from=clamav-signatures /var/lib/clamav/*.cvd /opt/clamav-db/
+# Both API and transcription builds must contain clamscan and its signature DB.
+RUN clamscan --version \
+    && test -s /opt/clamav-db/main.cvd \
+    && test -s /opt/clamav-db/daily.cvd \
+    && ls /opt/clamav-db
 COPY . .
 # Release identity: the app reports this as APP_BUILD_TIME unless it is set.
 RUN date -u +%Y-%m-%dT%H:%M:%SZ > .build-time
