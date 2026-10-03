@@ -161,9 +161,22 @@ class WakeLauncherTests(unittest.TestCase):
             with patch.dict(os.environ, {"WORKER_WAKE_URLS": "not json"}):
                 with self.assertRaises(RuntimeError):
                     worker_launcher._default_launcher("lekha-render", 0)
-            with patch.dict(os.environ, {"WORKER_WAKE_URLS": ""}):
+            with patch.dict(os.environ, {"WORKER_WAKE_URLS": "", "RAILWAY_ENVIRONMENT_ID": ""}):
                 worker_launcher._default_launcher("lekha-transcription", 0)
         self.assertEqual(calls, [("wake", "lekha-render"), ("run", "lekha-transcription")])
+
+    def test_railway_never_launches_cloud_run_when_wake_map_is_empty_or_missing(self):
+        for raw in (None, "", "{}"):
+            with self.subTest(raw=raw), patch.dict(os.environ, {
+                "RAILWAY_ENVIRONMENT_ID": "test-environment",
+            }), patch.object(worker_launcher, "_run_cloud_run_job") as cloud_run:
+                if raw is None:
+                    os.environ.pop("WORKER_WAKE_URLS", None)
+                else:
+                    os.environ["WORKER_WAKE_URLS"] = raw
+                with self.assertRaisesRegex(RuntimeError, "WORKER_WAKE_URLS"):
+                    worker_launcher._default_launcher("lekha-render", 0)
+                cloud_run.assert_not_called()
 
     def test_missing_secret_is_a_failed_launch(self):
         with patch.dict(os.environ, {"WORKER_WAKE_SECRET": ""}):

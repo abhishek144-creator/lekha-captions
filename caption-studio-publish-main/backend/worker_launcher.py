@@ -115,7 +115,8 @@ def _default_launcher(job_name: str, slot: int) -> None:
     urls = wake_url_map()
     if job_name in urls:
         _wake_http_worker(job_name, slot)
-    elif urls or os.environ.get("WORKER_WAKE_URLS", "").strip():
+    elif (urls or os.environ.get("WORKER_WAKE_URLS", "").strip()
+          or os.environ.get("RAILWAY_ENVIRONMENT_ID", "").strip()):
         # Wake-on-HTTP is configured (Railway); never fall back to Cloud Run.
         raise RuntimeError(f"WORKER_WAKE_URLS is missing or invalid for {job_name}")
     else:

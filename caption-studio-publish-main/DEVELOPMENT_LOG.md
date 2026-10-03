@@ -35,6 +35,16 @@ This is the **Work Diary** for the Lekha Captions project.
 - [x] **FPS validation** — Verified in code/tests: the API accepts plan-authorized 24/30/60 FPS values and the renderer defaults invalid or missing values to 30 FPS. Representative production media remains part of release acceptance.
 - [ ] **Verify zoom/transition animations** — Test zoom_in, zoom_out, fade_in, slide_up/down/left/right in Animate tab → Basic category work correctly in preview
 
+## 2026-10-03 — Railway R2 deployment validation follow-up
+
+- Unified API startup and offline preflight storage requirements: Railway requires all four R2 settings, accepts no Firebase Storage bucket, and reports missing variable names only. Release identity uses platform defaults in preflight too.
+- Railway worker launching now fails closed when the wake map is entirely absent or empty, preventing accidental legacy Cloud Run fallback. Wake/drain, multipart upload, and cron behavior are preserved.
+- Added API/transcription image CI builds selected by `LEKHA_SERVICE_TARGET`; both verify `clamscan --version` and nonempty ClamAV databases. Local Docker is unavailable, so remote image verification remains pending.
+- Local verification: 319 backend tests passed; frontend release check passed with 339 readiness assertions plus contracts, lint, typecheck, build and performance budgets; dependency audit passed with the three existing reviewed exceptions. Final focused preflight/launcher tests: 25 passed.
+- Live preparation: corrected the existing R2 abort rule (it incorrectly deleted all completed objects after one day) and added `render-cache/` deletion after three days. Existing upload/export rules and CORS were verified. No token was rotated.
+- Railway CLI 5.63.1 authenticated to the owner's new account. Created a new empty `lekha-captions` project after the owner authorized deployment; hard usage limit $15 and alert $8 verified. IaC plan: six additions (four services, Redis, group), zero changes/deletions. Apply and production deployment remain pending credentials and reviewed CI.
+- Credentials stay in local gitignored files. Existing live Razorpay and R2 access credentials were not found in the main workspace scan; three new application secrets were generated at the owner's request. No credential values are recorded here.
+
 ## 2026-10-03 — Railway + Cloudflare R2 scale-to-zero implementation
 
 - The owner chose Railway with Cloudflare R2 instead of AWS. Firebase Auth and Firestore stay. The guide, cost estimate and spend limits are in `docs/RAILWAY_DEPLOYMENT.md`; the services are defined in `.railway/railway.ts` (Railway Infrastructure as Code, because `railway.json` is deprecated and stops being read on 2026-12-01). Nothing was deployed or created.
