@@ -1,5 +1,6 @@
 import redis
 import os
+import signal
 import socket
 import threading
 import uuid
@@ -203,13 +204,30 @@ def drain_queues(conn, queue_names, *, worker_factory=None, sleep=time.sleep, lo
         worker = make_worker()
         worker.launch_lease = lease
         worker.work(burst=True, with_scheduler=True, dequeue_strategy="round_robin")
+        _install_idle_signal_handlers()
+        if getattr(worker, "_shutdown_requested_date", None):
+            # SIGTERM (redeploy/sleep): RQ finished the running job first. Free
+            # the slot so the next enqueue wakes the replacement immediately.
+            lease.release()
+            return False
         wait = _seconds_until_next_scheduled(conn, queue_names)
         if wait is not None and wait <= WAKE_SCHEDULED_WAIT_SECONDS:
             log(json.dumps({"event": "worker_waiting_for_retry", "seconds": round(wait)}))
             sleep(wait + 1)
             continue
         if not lease.release_and_should_continue():
-            break
+            return True
+
+
+def _exit_on_signal(_signum, _frame):
+    raise SystemExit(0)
+
+
+def _install_idle_signal_handlers():
+    """Exit at once on SIGTERM while no job runs; RQ replaces these during work()."""
+    if threading.current_thread() is threading.main_thread():
+        signal.signal(signal.SIGTERM, _exit_on_signal)
+        signal.signal(signal.SIGINT, _exit_on_signal)
 
 
 class _WakeState:
@@ -219,8 +237,11 @@ class _WakeState:
         self.running = False
 
 
-def _drain_loop(state, queue_names):
-    while True:
+def _drain_loop(state, queue_names, *, drain=None):
+    """Runs on the main thread: RQ installs its SIGTERM handlers in work()."""
+    drain = drain or drain_queues
+    keep_serving = True
+    while keep_serving:
         state.requested.wait()
         with state.lock:
             state.requested.clear()
@@ -228,7 +249,7 @@ def _drain_loop(state, queue_names):
         conn = None
         try:
             conn = connect_redis(REDIS_URL)
-            drain_queues(conn, queue_names)
+            keep_serving = drain(conn, queue_names) is not False
             cleanup_local_media_artifacts()
         except Exception as error:
             print(json.dumps({"event": "worker_drain_failed", "error": str(error)}), flush=True)
@@ -237,7 +258,7 @@ def _drain_loop(state, queue_names):
                 conn.connection_pool.disconnect()
             with state.lock:
                 state.running = False
-        print(json.dumps({"event": "worker_idle"}), flush=True)
+        print(json.dumps({"event": "worker_idle" if keep_serving else "worker_stopped"}), flush=True)
 
 
 def _wake_handler(state):
@@ -284,18 +305,27 @@ def run_wake_server():
         raise RuntimeError("WORKER_LAUNCH_JOB_NAME must match this worker's name in the API's WORKER_LAUNCH_JOBS.")
     queues = worker_queue_names()
     state = _WakeState()
-    threading.Thread(target=_drain_loop, args=(state, queues), name="worker-drain", daemon=True).start()
-    # A worker starting from sleep was woken for a reason; drain once now.
-    state.requested.set()
 
     class DualStackServer(ThreadingHTTPServer):
         # Railway private networking is IPv6; "::" also accepts IPv4 here.
         address_family = socket.AF_INET6
+        daemon_threads = True
+
+    class IPv4Server(ThreadingHTTPServer):
+        daemon_threads = True
 
     port = int(os.environ.get("PORT", "8080"))
-    server = DualStackServer(("::", port), _wake_handler(state))  # nosec B104 - service-internal wake endpoint
+    try:
+        server = DualStackServer(("::", port), _wake_handler(state))  # nosec B104 - service-internal wake endpoint
+    except OSError:
+        # Hosts without IPv6 (local Docker, CI) still get the wake endpoint.
+        server = IPv4Server(("0.0.0.0", port), _wake_handler(state))  # nosec B104 - service-internal wake endpoint
+    threading.Thread(target=server.serve_forever, name="worker-wake-server", daemon=True).start()
     print(json.dumps({"event": "worker_wake_server_started", "port": port, "queues": queues}), flush=True)
-    server.serve_forever()
+    _install_idle_signal_handlers()
+    # A worker starting from sleep was woken for a reason; drain once now.
+    state.requested.set()
+    _drain_loop(state, queues)
 
 
 def run_worker():

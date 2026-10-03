@@ -148,6 +148,27 @@ class R2UploadTests(unittest.TestCase):
         self.assertIsNone(storage.sign_resumable_upload_parts("user-1", FILE_ID, [1]))
         self.assertIsNone(storage.finalize_resumable_source_upload("user-1", FILE_ID))
 
+    def test_janitor_aborts_a_stale_multipart_upload(self):
+        self.create(8 * MIB)
+        key = ("direct_upload_intents", FILE_ID)
+        self.db.store[key]["expires_at"] = datetime.now(timezone.utc) - timedelta(seconds=1)
+
+        def query(name):
+            rows = [
+                SimpleNamespace(to_dict=lambda data=data: dict(data), reference=MemoryDocument(self.db.store, k))
+                for k, data in list(self.db.store.items()) if k[0] == name
+            ]
+            chain = SimpleNamespace(stream=lambda: rows)
+            chain.where = chain.order_by = chain.limit = lambda *args, **kwargs: chain
+            return chain
+
+        self.db.collection = query
+        with patch.object(storage, "delete_from_firebase_storage", lambda path: True), \
+                patch.object(storage, "_delete_orphaned_firebase_objects", lambda *args, **kwargs: 0):
+            storage.delete_expired_uploads()
+        self.assertTrue(self.r2.aborted)
+        self.assertNotIn(key, self.db.store)
+
     def test_cancel_aborts_the_multipart_upload(self):
         self.create(8 * MIB)
         self.assertTrue(storage.cancel_resumable_source_upload("user-1", FILE_ID))
