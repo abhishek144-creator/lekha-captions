@@ -1124,3 +1124,15 @@ Live control-plane inspection confirmed that the API sleeps, while both workers 
 Production Chromium continued GCM and other background traffic despite background networking flags. `scripts/render_browser_runtime.mjs` now blocks external hostname resolution only when mandatory packaged rendering fonts are enabled; loopback DevTools access remains available. Development remote-font rendering is unchanged. The warm-browser integration check verifies external resolution fails, isolated contexts remain reusable and caption frames still render in the production image.
 
 Validation: backend suite 326 passed with 22 subtests after one Windows loopback reset on the first attempt; isolated Chromium checks confirmed inline rendering and external-host rejection. Hosted image/integration checks, release gates, merge and production sleep verification remain pending. No cloud resources, credentials, CORS, upload protocol, or cron changes.
+
+
+## 2026-10-04 — Bounded Railway render scaling preparation
+
+The owner requested faster rendering and selected a maximum of three replicas. Updated the existing production render limit via Railway CLI to 4 vCPU / 4 GiB; no new service, region or volume. Prepared matching IaC plus render-only enqueue-triggered scale-up and cron idle-only scale-down to one replica. Unique replica leases, private DNS wake fan-out and atomic burst/resize exclusion preserve main-thread drains and protect active renders. Transcription remains one replica. No API polling loop was added.
+
+Verification: final backend suite 342 passed and 25 subtests; release checks passed with all 339 readiness assertions; targeted Bandit medium/high scan passed. One full rerun encountered the existing Windows loopback socket reset; the final complete rerun passed. Hosted CI and live scaling acceptance remain pending. A dedicated production-environment project token needs approval before creation and exposure only to API/cron; the owner's CLI credential will not be copied into production. Browser shows the old expired account, while CLI accesses the correct project. Existing $15 hard cap remains.
+
+
+### 2026-10-04 — Production scaling token acceptance
+
+The owner approved a production-scoped project token; created it in the correct Railway account and saved it privately in the gitignored deployment environment and Railway shared variables without deployment. Read-only token access succeeds. Live testing found Railway rejects Python urllib’s default User-Agent with HTTP 403 while an explicit LekhaCaptions/1.0 client identifier succeeds; the controller now supplies that identifier. All 13 hosted PR checks passed before this client-header correction; rerunning affected verification and CI before activation. Live replica scaling and idle reduction remain pending.
