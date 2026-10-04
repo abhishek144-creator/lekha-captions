@@ -152,7 +152,7 @@ backstop:
 
    | Purpose | Variables |
    |---|---|
-   | Access and contacts | `ALLOWED_ORIGINS` (`https://app.lekhacaptions.com`, not localhost), `ADMIN_EMAILS`, `SECURITY_CONTACT_EMAIL`, `PRIVACY_CONTACT_EMAIL` |
+   | Access and contacts | `ALLOWED_ORIGINS` (`https://lekhacaptions.com`, not localhost), `ADMIN_EMAILS`, `SECURITY_CONTACT_EMAIL`, `PRIVACY_CONTACT_EMAIL` |
    | Firebase and AI providers | `FIREBASE_SERVICE_ACCOUNT_JSON`, `OPENAI_API_KEY`, `SARVAM_API_KEY` |
    | Payments (**live** keys, not test) | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`, `PAYMENT_RECONCILE_SECRET` |
    | Signing secrets | `MEDIA_URL_SIGNING_SECRET`, `WORKER_WAKE_SECRET` (random, ≥ 32 chars) |

@@ -2,6 +2,19 @@
   command = "npm run build:guarded"
   publish = "dist"
 
+# Preserve old bookmarks while keeping the editor on the apex domain.
+[[redirects]]
+  from = "https://app.lekhacaptions.com/*"
+  to = "https://lekhacaptions.com/:splat"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "http://app.lekhacaptions.com/*"
+  to = "https://lekhacaptions.com/:splat"
+  status = 301
+  force = true
+
 [[redirects]]
   from = "/*"
   to = "/index.html"
