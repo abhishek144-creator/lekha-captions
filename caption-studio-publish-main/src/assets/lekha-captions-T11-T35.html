@@ -1859,24 +1859,30 @@ body {
   animation: t43-flap 560ms linear both;
   animation-delay: calc(var(--t43-lead) + var(--lekha-word-rest) * 130ms);
 }
+/* The flap is the top half only (clip-path to the seam) turning down about
+   the seam. Orthographic rotateX(θ) equals scaleY(cos θ) about that axis, so
+   the flip is authored in 2D: real 3D (perspective + rotateX) under clip-path
+   makes Chromium's software compositor in the export renderer exhaust memory. */
 @keyframes t43-flap {
-  0% { opacity: 0; clip-path: inset(-0.4em -0.4em 50% -0.4em); transform: perspective(7em) rotateX(88deg); animation-timing-function: cubic-bezier(0.5, 0, 0.9, 0.6); }
+  0% { opacity: 0; clip-path: inset(-0.4em -0.4em 50% -0.4em); transform: scaleY(0.04); animation-timing-function: cubic-bezier(0.55, 0, 0.9, 0.55); }
   5% { opacity: 1; }
-  46% { clip-path: inset(-0.4em -0.4em 50% -0.4em); transform: perspective(7em) rotateX(-7deg); animation-timing-function: ease-out; }
-  56% { clip-path: inset(-0.4em -0.4em 50% -0.4em); transform: perspective(7em) rotateX(0deg); }
-  72% { clip-path: inset(-0.4em -0.4em -0.4em -0.4em); transform: perspective(7em) rotateX(0deg); }
+  46% { clip-path: inset(-0.4em -0.4em 50% -0.4em); transform: none; animation-timing-function: ease-out; }
+  52% { clip-path: inset(-0.4em -0.4em 50% -0.4em); transform: scaleY(0.9); }
+  58% { clip-path: inset(-0.4em -0.4em 50% -0.4em); transform: none; }
+  72% { clip-path: inset(-0.4em -0.4em -0.4em -0.4em); transform: none; }
   99.9% { opacity: 1; clip-path: inset(-0.4em -0.4em -0.4em -0.4em); transform: none; }
   100% { opacity: 1; clip-path: none; transform: none; }
 }
 @keyframes t43-shuffle {
-  0% { opacity: 0; clip-path: inset(-0.4em -0.4em 50% -0.4em); transform: perspective(7em) rotateX(88deg); animation-timing-function: cubic-bezier(0.5, 0, 0.9, 0.6); }
+  0% { opacity: 0; clip-path: inset(-0.4em -0.4em 50% -0.4em); transform: scaleY(0.04); animation-timing-function: cubic-bezier(0.55, 0, 0.9, 0.55); }
   4% { opacity: 1; }
-  24% { clip-path: inset(-0.4em -0.4em 50% -0.4em); transform: perspective(7em) rotateX(0deg); }
-  30% { clip-path: inset(-0.4em -0.4em -0.4em -0.4em); transform: perspective(7em) rotateX(0deg); }
-  34% { clip-path: inset(-0.4em -0.4em 50% -0.4em); transform: perspective(7em) rotateX(88deg); animation-timing-function: cubic-bezier(0.5, 0, 0.9, 0.6); }
-  66% { clip-path: inset(-0.4em -0.4em 50% -0.4em); transform: perspective(7em) rotateX(-6deg); animation-timing-function: ease-out; }
-  74% { clip-path: inset(-0.4em -0.4em 50% -0.4em); transform: perspective(7em) rotateX(0deg); }
-  86% { clip-path: inset(-0.4em -0.4em -0.4em -0.4em); transform: perspective(7em) rotateX(0deg); }
+  24% { clip-path: inset(-0.4em -0.4em 50% -0.4em); transform: none; }
+  30% { clip-path: inset(-0.4em -0.4em -0.4em -0.4em); transform: none; }
+  34% { clip-path: inset(-0.4em -0.4em 50% -0.4em); transform: scaleY(0.04); animation-timing-function: cubic-bezier(0.55, 0, 0.9, 0.55); }
+  66% { clip-path: inset(-0.4em -0.4em 50% -0.4em); transform: none; animation-timing-function: ease-out; }
+  71% { clip-path: inset(-0.4em -0.4em 50% -0.4em); transform: scaleY(0.9); }
+  76% { clip-path: inset(-0.4em -0.4em 50% -0.4em); transform: none; }
+  86% { clip-path: inset(-0.4em -0.4em -0.4em -0.4em); transform: none; }
   99.9% { opacity: 1; clip-path: inset(-0.4em -0.4em -0.4em -0.4em); transform: none; }
   100% { opacity: 1; clip-path: none; transform: none; }
 }
