@@ -35,6 +35,14 @@ const draft = { ownerUid: 'editor-test-a', projectId: 'test-project', fileId: '1
 await page.setRequestInterception(true)
 page.on('request', async (request) => {
   const url = new URL(request.url())
+  if (url.hostname === 'media.example.invalid' && url.pathname === '/exports/test-output.mp4') {
+    assert.equal(request.headers()['origin'], 'http://127.0.0.1:4187', 'direct R2 fetch must preserve the editor origin')
+    assert.equal(request.headers()['authorization'], undefined, 'signed media must not send Firebase credentials to R2')
+    assert.equal(request.headers()['x-firebase-appcheck'], undefined, 'signed media must not forward App Check headers to R2')
+    assert.equal(request.headers()['x-request-id'], undefined, 'signed media must avoid custom-header CORS preflights')
+    downloads += 1
+    return request.respond({ status: 200, headers: { 'Access-Control-Allow-Origin': 'http://127.0.0.1:4187' }, contentType: 'video/mp4', body: Buffer.from('local-test-download') })
+  }
   if (url.hostname !== '127.0.0.1' && !['data:', 'blob:'].includes(url.protocol)) return request.abort()
   if (!url.pathname.startsWith('/api/')) return request.continue()
   let payload = { success: true }
@@ -54,12 +62,7 @@ page.on('request', async (request) => {
   } else if (url.pathname === '/api/media/upload-url') { status = 404; payload = { detail: 'Source expired' } }
   else if (url.pathname === '/api/export') { exports += 1; exportPayload = JSON.parse(request.postData()); payload = { success: true, export_job_id: 'job-1', status: 'queued' } }
   else if (url.pathname === '/api/export-status/job-1') payload = { status: 'completed', progress: 100 }
-  else if (url.pathname === '/api/export-result/job-1') payload = { success: true, video_url: '/api/media/export/test-output.mp4?token=local-media-signature' }
-  else if (url.pathname === '/api/media/export/test-output.mp4') {
-    assert.equal(request.headers()['authorization'], undefined, 'signed media must not send Firebase credentials to R2')
-    assert.equal(request.headers()['x-firebase-appcheck'], undefined, 'signed media must not forward App Check headers to R2')
-    assert.equal(request.headers()['x-request-id'], undefined, 'signed media must avoid custom-header CORS preflights')
-    downloads += 1; return request.respond({ status: 200, contentType: 'video/mp4', body: Buffer.from('local-test-download') }) }
+  else if (url.pathname === '/api/export-result/job-1') payload = { success: true, video_url: '/api/media/export/redirect-must-not-be-followed.mp4?token=local-media-signature', download_url: 'https://media.example.invalid/exports/test-output.mp4?signature=local-test-signature' }
   else if (url.pathname === '/api/fonts') payload = { fonts: [] }
   else if (url.pathname.includes('analytics')) payload = { success: true }
   else { status = 404; payload = { detail: `Unexpected local test API: ${url.pathname}` } }

@@ -2766,6 +2766,14 @@ def _refresh_completed_export_payload(payload: Dict[str, Any], uid: str, job_id:
         recovery_ttl_seconds,
         f"{job_id[:8]}-{int(time.time())}",
     )
+    # Fetching API -> R2 redirects changes the browser Origin to null. Give the
+    # authenticated owner a direct R2 URL, with the same brief retry window.
+    refreshed.pop("download_url", None)
+    if s3_storage_configured():
+        direct_url = signed_export_download_url(f"exports/{uid}/{filename}", recovery_ttl_seconds)
+        if not direct_url:
+            raise HTTPException(status_code=503, detail="Export download is temporarily unavailable. Resume to retry.")
+        refreshed["download_url"] = direct_url
     refreshed["download_url_expires_at"] = (
         _utcnow() + timedelta(seconds=recovery_ttl_seconds)
     ).isoformat() + "Z"
