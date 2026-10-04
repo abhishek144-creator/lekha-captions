@@ -9,6 +9,10 @@ import {
   ORIGINAL_TEMPLATE_BLOCKS,
   ORIGINAL_TEMPLATE_BLOCK_TYPES,
   RECREATED_ADVANCED_TEMPLATE_IDS,
+  ADVANCED_TEMPLATE_EMPHASIS_COLORS,
+  KEYFRAME_ADVANCED_TEMPLATE_IDS,
+  KEYFRAME_TEMPLATE_FONTS,
+  KEYFRAME_TEMPLATE_MOTION,
 } from '../src/components/dashboard/templateMotionConfig.js';
 import {
   buildAdvancedTemplateBlockMarkupMap,
@@ -215,7 +219,7 @@ for (const match of templateRegion.matchAll(
   );
 }
 
-for (let templateNumber = 11; templateNumber <= 40; templateNumber += 1) {
+for (let templateNumber = 11; templateNumber <= 52; templateNumber += 1) {
   const templateId = `t${templateNumber}`;
   const sourceTypes = sourceBlockTypes[templateId];
   const runtimeTypes = ORIGINAL_TEMPLATE_BLOCK_TYPES[templateId];
@@ -819,6 +823,114 @@ for (const [className, animationName] of Object.entries(LEGACY_IMP_ANIMS)) {
   }
 }
 
+// ---- T41–T52 keyframe-driven templates ----------------------------------
+// Every phase is authored as CSS keyframes keyed on .active and seeked by the
+// gallery, canvas and export. Guard their structure, originality and wiring.
+const keyframeSectionStart = advancedSource.lastIndexOf(
+  '/*',
+  advancedSource.indexOf('T41–T52 — KEYFRAME-DRIVEN TEMPLATES'),
+);
+const keyframeSectionEnd = advancedSource.indexOf('/* -- Basic Templates', keyframeSectionStart);
+if (keyframeSectionStart < 0 || keyframeSectionEnd < 0) fail('T41–T52 keyframe stylesheet section is missing');
+const keyframeCss = advancedSource.slice(keyframeSectionStart, keyframeSectionEnd);
+const keyframeIds = new Set(KEYFRAME_ADVANCED_TEMPLATE_IDS);
+if (KEYFRAME_ADVANCED_TEMPLATE_IDS.length !== 12) fail('expected exactly 12 keyframe templates (t41–t52)');
+if (/filter\s*:[^;]*blur|backdrop-filter|url\(/i.test(keyframeCss)) {
+  fail('T41–T52 must not use blur filters, backdrop-filter or external images');
+}
+const definedKeyframes = (source) => Array.from(
+  String(source).replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/@keyframes\s+([\w-]+)/g),
+  (match) => match[1],
+);
+const keyframeNames = definedKeyframes(keyframeCss);
+const lcSources = await Promise.all(['2', '3', '4', '5'].map((suffix) => readSource(
+  new URL(`src/assets/lekha-captions-lc-${suffix}.html`, projectRoot),
+)));
+// Other templates' authored styles: new classes and keyframes must not collide.
+const otherAuthoredTemplateSources = [
+  advancedSource.slice(0, keyframeSectionStart) + advancedSource.slice(keyframeSectionEnd),
+  legacySource,
+  captionTemplatesCss,
+  ADVANCED_TEMPLATE_RUNTIME_CSS,
+  ...lcSources,
+];
+// Renderers may reference the new classes, but must never redefine keyframes.
+const existingKeyframeNames = new Set([
+  ...otherAuthoredTemplateSources,
+  videoPlayerSource,
+  exportRendererSource,
+].flatMap(definedKeyframes));
+const seenKeyframes = new Set();
+for (const name of keyframeNames) {
+  const owner = name.match(/^(t\d{2})-/)?.[1];
+  if (!owner || !keyframeIds.has(owner)) fail(`keyframe ${name} is not prefixed with its T41–T52 template id`);
+  if (seenKeyframes.has(name)) fail(`keyframe ${name} is defined twice`);
+  if (existingKeyframeNames.has(name)) fail(`keyframe ${name} collides with an existing template keyframe`);
+  seenKeyframes.add(name);
+}
+const sharedContractClasses = new Set([
+  'stage', 'sblock', 'w', 'active', 'in',
+  'wbw-seq', 'wbw-rise', 'wbw-slide', 'wbw-seq-fade',
+]);
+const keyframeClassNames = new Set(Array.from(
+  keyframeCss.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\{[^{}]*\}/g, '{}').matchAll(/\.([a-zA-Z][\w-]*)/g),
+  (match) => match[1],
+));
+for (const className of keyframeClassNames) {
+  if (sharedContractClasses.has(className)) continue;
+  const owner = className.match(/^(t\d{2})-/)?.[1];
+  if (!owner || !keyframeIds.has(owner)) fail(`T41–T52 class .${className} is not prefixed with its template id`);
+  if (otherAuthoredTemplateSources.some((source) => new RegExp(`\\.${className}\\b`).test(source))) {
+    fail(`T41–T52 class .${className} collides with an existing template class`);
+  }
+}
+const preexistingFonts = new Set(Array.from(
+  gallerySource.slice(0, gallerySource.indexOf("  t41: { font_family:")).matchAll(/font_family:\s*'([^']+)'/g),
+  (match) => match[1],
+).concat(Array.from(sidebarGallerySource.matchAll(/font_family:\s*'([^']+)'/g), (match) => match[1])));
+const keyframePrimaryFonts = new Set();
+for (const templateId of KEYFRAME_ADVANCED_TEMPLATE_IDS) {
+  const blocks = ORIGINAL_TEMPLATE_BLOCKS[templateId] || [];
+  if (blocks.length < 4 || blocks.length > 6) fail(`${templateId} must have 4–6 phases`);
+  if (!blocks.some((block) => block.type === 'styled')) fail(`${templateId} needs at least one styled phase`);
+  if (!blocks.some((block) => block.type.startsWith('wbw-'))) fail(`${templateId} needs word-by-word phases`);
+  if (!ADVANCED_TEMPLATE_EMPHASIS_COLORS[templateId]) fail(`${templateId} has no canonical emphasis colour`);
+  if (!KEYFRAME_TEMPLATE_MOTION[templateId] || !KEYFRAME_TEMPLATE_FONTS[templateId]) {
+    fail(`${templateId} is missing its motion window or font registration`);
+  }
+  (sourceBlockMarkup[templateId] || []).forEach((block, blockIndex) => {
+    if (!block.includes('data-keyframe-template="true"') || !block.includes(`${templateId}-b${blockIndex}"`)) {
+      fail(`${templateId} phase ${blockIndex} is not marked as a keyframe phase`);
+    }
+    if (!block.includes(`imp-${templateId}`)) fail(`${templateId} phase ${blockIndex} lacks its keyword treatment`);
+  });
+  if (!keyframeCss.includes(`@keyframes ${templateId}-`)) fail(`${templateId} has no keyframes of its own`);
+  const fontMatch = gallerySource.match(new RegExp(`\\n  ${templateId}: \\{ font_family: '([^']+)'`));
+  const primaryFont = fontMatch?.[1];
+  if (!primaryFont) fail(`${templateId} has no ADVANCED_TEMPLATE_STYLE entry`);
+  if (preexistingFonts.has(primaryFont)) fail(`${templateId} reuses existing template font ${primaryFont}`);
+  if (keyframePrimaryFonts.has(primaryFont)) fail(`${templateId} shares its primary font ${primaryFont}`);
+  keyframePrimaryFonts.add(primaryFont);
+  if (!keyframeCss.includes(`font-family: '${primaryFont}', 'Noto`)) {
+    fail(`${templateId} font stack must start with ${primaryFont} and fall back to Noto`);
+  }
+  if (!advancedSource.includes(`family=${primaryFont.replace(/ /g, '+')}`)) {
+    fail(`${templateId} gallery does not import ${primaryFont} from Google Fonts`);
+  }
+}
+if (!videoPlayerSource.includes('seekKeyframeTemplateAnimations(block, { elapsedMs, captionDurationMs, settled: !playing })')
+  || !videoPlayerSource.includes('--lekha-keyframe-font-px')) {
+  fail('canvas keyframe templates must seek CSS keyframes, settle when paused and share the font scale');
+}
+if (!exportRendererSource.includes('window.__seekKeyframeTemplateAnimations(block, {')
+  || !exportRendererSource.includes('getAdvancedTemplateAnimationWindow(blockType, Math.max(end - start, 0), wordCount, templateId)')
+  || !exportRendererSource.includes('!window.__keyframeAdvancedTemplateIds.has(renderedTemplateId)')) {
+  fail('export keyframe templates must seek CSS keyframes per caption and sample their authored window');
+}
+if (!gallerySource.includes('const KEYFRAME_TEMPLATE = ')) {
+  fail('gallery preview must restart keyframe templates instead of driving their words');
+}
+
 console.log(
-  `Template motion parity passed for ${Object.keys(sourceBlockTypes).length} advanced templates, ${basicCards.length} right basic templates, ${legacyCards.length} left templates, and ${LEGACY_WBW_CLASSES.length} legacy motion classes.`,
+  `Template motion parity passed for ${Object.keys(sourceBlockTypes).length} advanced templates, ${basicCards.length} right basic templates, ${legacyCards.length} left templates, and ${LEGACY_WBW_CLASSES.length} legacy motion classes (${KEYFRAME_ADVANCED_TEMPLATE_IDS.length} keyframe-driven).`,
 );

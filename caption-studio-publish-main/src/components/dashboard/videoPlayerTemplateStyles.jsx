@@ -1712,6 +1712,16 @@ export function OriginalAdvancedTemplateStyles() {
           line-height: 1.22 !important;
         }
 
+        /* T41–T52 keyframe templates size every decoration in em, so the block
+           font size is the single scale input. It uses the same
+           scaleTemplateFontSize(font_size) formula as the export renderer. */
+        .lekha-original-template:is(
+          .t41-stage, .t42-stage, .t43-stage, .t44-stage, .t45-stage, .t46-stage,
+          .t47-stage, .t48-stage, .t49-stage, .t50-stage, .t51-stage, .t52-stage
+        ) .lekha-applied-advanced-template {
+          font-size: var(--lekha-keyframe-font-px, 20px) !important;
+        }
+
         .lekha-original-template.t40-stage .still-frames-line,
         .lekha-original-template.t40-stage .still-frames-highlight,
         .lekha-original-template.t40-stage .imp-rose,
