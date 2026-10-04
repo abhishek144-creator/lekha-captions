@@ -3,8 +3,8 @@
   publish = "out"
 
 [build.environment]
-  NODE_VERSION = "20"
-  NEXT_PUBLIC_APP_URL = "https://lekhacaptions.com"
+  NODE_VERSION = "22"
+  NEXT_PUBLIC_APP_URL = "https://app.lekhacaptions.com"
 
 [[headers]]
   for = "/*"
@@ -17,3 +17,16 @@
   for = "/landing/*.mp4"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
+
+# Preserve old editor bookmarks after the marketing domain moved to Netlify.
+[[redirects]]
+  from = "/Dashboard"
+  to = "https://app.lekhacaptions.com/Dashboard"
+  status = 302
+  force = true
+
+[[redirects]]
+  from = "/Login"
+  to = "https://app.lekhacaptions.com/Login"
+  status = 302
+  force = true

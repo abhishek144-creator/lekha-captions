@@ -7,7 +7,7 @@ import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import fakeredis
 
@@ -95,10 +95,15 @@ class DrainTests(unittest.TestCase):
     def test_drain_loop_returns_once_a_drain_reports_shutdown(self):
         state = worker._WakeState()
         state.requested.set()
+        metrics_client, queue_client = Mock(), Mock()
         with patch.object(worker, "connect_redis", lambda url: self.redis), \
-                patch.object(worker, "cleanup_local_media_artifacts", lambda: None):
+                patch.object(worker, "cleanup_local_media_artifacts", lambda: None), \
+                patch.object(worker.api, "_redis_client", metrics_client), \
+                patch.object(worker.api, "_rq_redis_client", queue_client):
             worker._drain_loop(state, ["render"], drain=lambda conn, queues: False)
         self.assertFalse(state.running)
+        for client in (metrics_client, queue_client):
+            client.connection_pool.disconnect.assert_called_once_with(inuse_connections=False)
 
 
 class WakeEndpointTests(unittest.TestCase):

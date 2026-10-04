@@ -21,6 +21,7 @@ import { resolveApiResourceUrl } from '@/components/dashboard/exportPipelineUtil
 import { lazyWithRefresh } from '@/lib/lazyWithRefresh';
 import { uploadFileWithRecovery } from '@/lib/resilientUpload';
 import { useCloudProjects } from '@/hooks/useCloudProjects'
+import { draftAutosaveSignature } from '@/lib/draftAutosave'
 import { useEditorPreferences } from '@/hooks/useEditorPreferences'
 import { processVideoWithRecovery } from '@/lib/resilientProcess';
 import planCatalog from '../../shared/planCatalog.json';
@@ -383,6 +384,7 @@ export default function Dashboard() {
   const [waveformData, setWaveformData] = useState(null);
   const initialEditorStateRef = useRef(null);
   const recoveryInitializedRef = useRef(false);
+  const cloudAutosaveRef = useRef(null)
   const mediaRefreshInFlightRef = useRef(false);
   const [cloudSaveMessage, setCloudSaveMessage] = useState('')
   const [localRecoveryDraft, setLocalRecoveryDraft] = useState(null)
@@ -461,12 +463,18 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!isLoaded || !fileId || !cloudReady) return
+    const draft = snapshotEditorState()
+    const signature = draftAutosaveSignature(draft)
+    const context = `${currentUser?.uid || ''}:${fileId}`
+    if (cloudAutosaveRef.current?.context === context && cloudAutosaveRef.current.signature === signature) return
     setCloudSaveMessage('Changes waiting to save')
     const timer = setTimeout(() => {
-      saveCloudDraft(snapshotEditorState()).catch((error) => setCloudSaveMessage(error.message || 'Cloud save failed. Your browser copy is still available.'))
+      saveCloudDraft(draft).then(() => {
+        cloudAutosaveRef.current = { context, signature }
+      }).catch((error) => setCloudSaveMessage(error.message || 'Cloud save failed. Your browser copy is still available.'))
     }, 2500)
     return () => clearTimeout(timer)
-  }, [isLoaded, fileId, captions, cloudReady, snapshotEditorState, saveCloudDraft])
+  }, [isLoaded, fileId, cloudReady, currentUser?.uid, snapshotEditorState, saveCloudDraft])
 
   const downloadDraft = (draft) => {
     const url = URL.createObjectURL(new Blob([JSON.stringify(draft, null, 2)], { type: 'application/json' }))
@@ -509,6 +517,11 @@ export default function Dashboard() {
       projectId: parsed.projectId || null,
       settings: JSON.parse(JSON.stringify(parsed.settings || { language: 'english', style: 'viral_hook' })),
     }
+    // Restoring is a read: only subsequent content edits should write a revision.
+    cloudAutosaveRef.current = {
+      context: `${currentUser.uid}:${parsed.fileId}`,
+      signature: draftAutosaveSignature(initialEditorStateRef.current),
+    }
     setLocalRecoveryDraft(null)
     return true
   }, [currentUser?.uid])
@@ -549,6 +562,7 @@ export default function Dashboard() {
     setSourceUnavailable(false)
     setWordPopup(null)
     initialEditorStateRef.current = null
+    cloudAutosaveRef.current = null
     setCaptionStyle(defaultCaptionStyle)
   }, [currentUser?.uid, isLoadingAuth])
 
