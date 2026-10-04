@@ -121,6 +121,7 @@ try:
     from .workspace_api import create_workspace_router
     from .payments_api import create_payments_router
     from .redis_config import connect_redis
+    from .idle_connections import RailwayIdleConnectionsMiddleware, disconnect_idle_redis_clients
     from .system_api import create_system_router
     from .billing import create_billing_service
     from .admin_api import create_admin_router
@@ -166,6 +167,7 @@ except ImportError:
     from workspace_api import create_workspace_router
     from payments_api import create_payments_router
     from redis_config import connect_redis
+    from idle_connections import RailwayIdleConnectionsMiddleware, disconnect_idle_redis_clients
     from system_api import create_system_router
     from billing import create_billing_service
     from admin_api import create_admin_router
@@ -264,6 +266,10 @@ async def app_lifespan(_app: FastAPI):
 
 
 app = FastAPI(lifespan=app_lifespan)
+app.add_middleware(
+    RailwayIdleConnectionsMiddleware,
+    clients=lambda: (_redis_client, _rq_redis_client),
+)
 
 MAX_JSON_BODY_BYTES = 8 * 1024 * 1024
 SECURITY_CSP = (
@@ -1154,6 +1160,8 @@ async def startup_event():
     global _telemetry_flush_task, _simple_janitor_task, _transcription_dispatch_task, _queue_metrics_task
     if not RUN_API_BACKGROUND_TASKS:
         _json_log("info", "api_background_tasks_disabled")
+        if os.environ.get("RAILWAY_PROJECT_ID"):
+            disconnect_idle_redis_clients(_redis_client, _rq_redis_client)
         return
     _telemetry_flush_task = asyncio.create_task(_telemetry_flush_loop())
     if _IS_PRODUCTION:

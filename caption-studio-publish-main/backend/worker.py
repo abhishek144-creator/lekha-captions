@@ -10,6 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from rq import Worker
 
 try:
+    from . import main as api
     from .main import (
         EXPORT_QUEUE_NAME,
         TRANSCRIPTION_QUEUE_NAME,
@@ -21,8 +22,10 @@ try:
     from .gcp_scale_in import ScaleInProtector
     from .gcp_queue_metrics import publish_worker_cold_start
     from .redis_config import connect_redis
+    from .idle_connections import disconnect_idle_redis_clients
     from .worker_launcher import WorkerLease
 except ImportError:  # Direct execution from backend/ remains supported.
+    import main as api
     from main import (
         EXPORT_QUEUE_NAME,
         TRANSCRIPTION_QUEUE_NAME,
@@ -34,6 +37,7 @@ except ImportError:  # Direct execution from backend/ remains supported.
     from gcp_scale_in import ScaleInProtector
     from gcp_queue_metrics import publish_worker_cold_start
     from redis_config import connect_redis
+    from idle_connections import disconnect_idle_redis_clients
     from worker_launcher import WorkerLease
 
 
@@ -256,6 +260,9 @@ def _drain_loop(state, queue_names, *, drain=None):
         finally:
             if conn is not None:
                 conn.connection_pool.disconnect()
+            # Importing the API opens two additional Redis pools. Disconnect
+            # those too; Redis's server keepalives otherwise keep idle workers awake.
+            disconnect_idle_redis_clients(api._redis_client, api._rq_redis_client)
             with state.lock:
                 state.running = False
         print(json.dumps({"event": "worker_idle" if keep_serving else "worker_stopped"}), flush=True)

@@ -1,6 +1,6 @@
 # Lekha Captions marketing site
 
-This folder is an optional static Next.js marketing website. The published Vite app uses `lekhacaptions.com` as its primary domain.
+This folder is an optional static Next.js marketing website. The Vite editor is published separately at `app.lekhacaptions.com`.
 
 ## Local development
 
@@ -11,15 +11,15 @@ This folder is an optional static Next.js marketing website. The published Vite 
 
 ## Netlify deployment
 
-Create a **new Netlify site** for the marketing site. Do not reuse the dashboard/editor site.
+Use the existing `lekha-captions` Netlify marketing site. The `lekha-captions-staging` site hosts the editor.
 
 - Base directory: `landing-next`
 - Build command: `npm run build`
 - Publish directory: `out`
-- Environment variable: `NEXT_PUBLIC_APP_URL=https://lekhacaptions.com`
+- Environment variable: `NEXT_PUBLIC_APP_URL=https://app.lekhacaptions.com`
 - Production domain: `lekhacaptions.com`
-- App/editor domain: `lekhacaptions.com`
+- App/editor domain: `app.lekhacaptions.com`
 
-Keep `lekhacaptions.com` as the primary domain. Redirect `www.lekhacaptions.com` and the legacy `app.lekhacaptions.com` hostname to it.
+Keep `lekhacaptions.com` as the marketing primary domain and redirect `www` to it. Editor and login links point to `app.lekhacaptions.com`; API requests use `api.lekhacaptions.com` on Railway.
 
 The site uses the Next.js App Router with `output: 'export'`, so no Netlify server runtime or backend functions are required.

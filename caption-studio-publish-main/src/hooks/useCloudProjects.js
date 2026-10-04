@@ -5,6 +5,7 @@ import { apiRequest } from '@/lib/apiClient'
 
 export function useCloudProjects({ currentUser, getAuthToken, projectId, setProjectId, onMessage }) {
   const revisionRef = useRef(0)
+  const revisionProjectRef = useRef('')
   const accountRef = useRef(currentUser?.uid)
   accountRef.current = currentUser?.uid
   const saveChainRef = useRef(Promise.resolve())
@@ -22,6 +23,7 @@ export function useCloudProjects({ currentUser, getAuthToken, projectId, setProj
     setWorkspaces([])
     setActiveWorkspaceId('')
     revisionRef.current = 0
+    revisionProjectRef.current = ''
     if (currentUser) {
       getAuthToken(currentUser).then(async (idToken) => {
         const [draftData, projectData, workspaceData] = await Promise.all([
@@ -39,6 +41,7 @@ export function useCloudProjects({ currentUser, getAuthToken, projectId, setProj
       }).then(({ draftData, projects, workspaces: availableWorkspaces }) => {
         if (disposed) return
         revisionRef.current = draftData.revision
+        revisionProjectRef.current = draftData.project_id || draftData.draft?.projectId || ''
         setCloudDraft(draftData.draft)
         setCloudProjects(projects)
         setWorkspaces(availableWorkspaces)
@@ -55,24 +58,28 @@ export function useCloudProjects({ currentUser, getAuthToken, projectId, setProj
       if (!cloudReady || !currentUser || accountRef.current !== currentUser.uid) throw new Error('Cloud saving is unavailable. Your browser copy is still available.')
       const idToken = await getAuthToken(currentUser)
       if (accountRef.current !== currentUser.uid) throw new Error('Account changed; save cancelled.')
+      const targetProjectId = draft.projectId || projectId || ''
+      // A newly created project must not inherit the latest project's revision.
+      const expectedRevision = targetProjectId === revisionProjectRef.current ? revisionRef.current : 0
       const data = activeWorkspaceId
         ? await apiRequest(`/api/workspaces/${activeWorkspaceId}/projects`, {
             method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
             body: JSON.stringify({
-              project_id: draft.projectId || projectId || '', draft, expected_revision: revisionRef.current,
+              project_id: targetProjectId, draft, expected_revision: expectedRevision,
             }),
           })
         : await apiRequest('/api/draft/save', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               id_token: idToken,
-              project_id: draft.projectId || projectId || '',
+              project_id: targetProjectId,
               draft,
-              expected_revision: revisionRef.current,
+              expected_revision: expectedRevision,
             }),
           })
       if (accountRef.current !== currentUser.uid) return data
       revisionRef.current = data.revision
+      revisionProjectRef.current = data.project_id || data.draft?.projectId || targetProjectId
       setCloudDraft(data.draft)
       setProjectId(data.project_id || data.draft?.projectId || projectId)
       setCloudProjects((projects) => {
@@ -106,6 +113,7 @@ export function useCloudProjects({ currentUser, getAuthToken, projectId, setProj
             body: JSON.stringify({ id_token: idToken, project_id: nextProjectId }),
           })
       revisionRef.current = data.revision
+      revisionProjectRef.current = nextProjectId
       setCloudDraft(data.raw_url ? { ...data.draft, _workspaceRawUrl: data.raw_url } : data.draft)
       setProjectId(nextProjectId)
       onMessage('Project ready to restore')
@@ -131,6 +139,7 @@ export function useCloudProjects({ currentUser, getAuthToken, projectId, setProj
       const remaining = cloudProjects.filter((item) => item.project_id !== targetProjectId)
       setCloudProjects(remaining)
       revisionRef.current = 0
+      revisionProjectRef.current = ''
       if (remaining.length > 0) {
         await selectCloudProject(remaining[0].project_id)
       } else {
@@ -176,6 +185,7 @@ export function useCloudProjects({ currentUser, getAuthToken, projectId, setProj
         projects = list.projects || []
       }
       revisionRef.current = draftData.revision || 0
+      revisionProjectRef.current = draftData.project_id || draftData.draft?.projectId || ''
       setCloudDraft(draftData.raw_url ? { ...draftData.draft, _workspaceRawUrl: draftData.raw_url } : draftData.draft)
       setCloudProjects(projects)
       setProjectId(draftData.project_id || draftData.draft?.projectId || null)
@@ -206,6 +216,7 @@ export function useCloudProjects({ currentUser, getAuthToken, projectId, setProj
           })
       if (accountRef.current !== currentUser.uid) return data
       revisionRef.current = data.revision
+      revisionProjectRef.current = data.project_id || data.draft?.projectId || targetProjectId
       setCloudDraft(data.draft)
       setCloudProjects((projects) => projects.map((item) => (
         item.project_id === targetProjectId ? { ...item, name: data.draft.projectName, revision: data.revision, saved_at: data.saved_at } : item
@@ -245,6 +256,7 @@ export function useCloudProjects({ currentUser, getAuthToken, projectId, setProj
       }
       if (accountRef.current !== currentUser.uid) return data
       revisionRef.current = data.revision
+      revisionProjectRef.current = data.project_id || data.draft?.projectId || targetProjectId
       setCloudDraft(data.draft)
       setProjectId(data.project_id)
       setCloudProjects((projects) => [{
