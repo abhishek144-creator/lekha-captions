@@ -38,3 +38,18 @@ lekha_cpt_throwaway_preview.html
 
 # Written into images at build time by the Dockerfile.
 caption-studio-publish-main/.build-time
+
+# Private deployment diagnostics and dashboard captures; never stage credentials.
+/.readiness/
+/flat_fonts/
+/cloudflare-r2-readiness.png
+/editor-dns.png
+/editor-live.png
+/mailbox-logged-out.png
+/old-domain-detached.png
+/pr18-merged.png
+/pr19-merged.png
+/r2-token-created.png
+/r2-token-proposed.png
+/railway-api-dns.png
+/spaceship-advanced-dns.png

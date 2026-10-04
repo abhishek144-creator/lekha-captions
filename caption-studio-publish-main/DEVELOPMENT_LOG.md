@@ -20,7 +20,7 @@ This is the **Work Diary** for the Lekha Captions project.
 - [ ] **Railway + Cloudflare R2 deployment** — The owner chose Railway with R2 (2026-10-03); code and `.railway/railway.ts` are ready on branch `claude/serene-sagan-76mdi6`. Follow `docs/RAILWAY_DEPLOYMENT.md`: Gate 0 (Firebase/App Check without Google billing), R2 bucket with CORS and lifecycle rules, Railway hard usage limit, shared variables, then `railway config plan` and owner-approved `railway config apply`. Verify every service actually sleeps when idle. Keep the future deployment cost gate above.
 - [ ] ~~**AWS scale-to-zero migration**~~ (superseded 2026-10-03 by Railway + R2) — The owner chose AWS (2026-10-02). Follow `docs/AWS_SERVERLESS_MIGRATION_2026-10-02.md` starting at Gate 0 (verify the Firebase project and App Check work without the closed Google billing account; AWS workload account with SCP deny-list and budgets before any workload). Keep the future deployment cost gate above.
 - [ ] ~~**Google Cloud on-demand redesign**~~ (superseded 2026-10-02 by the AWS plan) — The owner chose Google Cloud under a different email for a future deployment. Use `docs/GCP_DEPLOYMENT_PROMPT.md` as the implementation brief: static frontend, request-driven Cloud Run API, direct Cloud Storage uploads, Cloud Tasks for post-upload/processing work, and Cloud Run Jobs that exit after each unit. Replace Redis/RQ and its payment, rate-limit, and job-state uses before claiming zero idle worker compute. Keep the future deployment cost gate above.
-- [ ] **Deployment architecture reminder** — Owner changed the public editor address on 2026-10-04 to `lekhacaptions.com/Dashboard`. Keep the existing Netlify builds, serve the editor through apex rewrites, and redirect old app-domain bookmarks to the apex.
+- [x] **Unified apex landing and editor** — Owner clarified on 2026-10-04 that both the homepage and editor must use the latest Vite app. The existing apex Netlify site now serves that app directly; old app-domain bookmarks redirect to the apex. Future frontend deployments must follow `docs/NETLIFY_DEPLOYMENT.md` and must not restore `landing-next/` as the homepage.
 - [ ] **Timeline fix** — Speech track background is showing gold stripe. Only the individual caption *blocks* should be gold, not the entire track row background. Fix in `src/components/dashboard/CaptionTimeline.jsx`
 - [ ] **Gradient gold buttons** — Replace flat `bg-[#F5A623]` buttons with gradient: `bg-gradient-to-r from-[#FFE566] to-[#F5A623] hover:from-[#F5A623] hover:to-[#D4891A]` across all CTA buttons (14 files)
 - [ ] **Text gradient** — Apply `bg-gradient-to-r from-[#F5A623] to-[#FFD700] bg-clip-text text-transparent` to key headings, logo, and accent text
@@ -1161,3 +1161,30 @@ shutdown/sleep acceptance remain pending; do not re-enable the controller yet.
 ## 2026-10-04 — Editor apex-domain cutover
 
 The owner requested removing app. from the public editor address. Prepared Netlify rewrites for all registered editor routes and their assets under lekhacaptions.com, while preserving the static homepage and marketing/legal pages. Old app-domain bookmarks redirect to the corresponding apex path with query strings retained. Login preview handoff and marketing app links now use the apex. R2 preflight already permits the apex; Railway API currently permits only the app origin and needs a scoped origin update. Production build, CI and live verification remain pending. No resources or credentials are created.
+
+
+## 2026-10-04 — Latest landing and editor published together
+
+The owner clarified that the apex homepage must show the latest app landing
+page as well as the editor. Published the already-reviewed current Vite artifact
+to the existing apex Netlify site with the app's SPA/security/cache configuration,
+replacing the old standalone marketing build. Both sites have matching VITE_
+settings, verified privately without printing values. No code, Railway workers,
+DNS, cloud resources or credentials changed for this cutover.
+
+Deploy 6ac283e38b3b0905a54a3476 retains the production lock. Release 51db590 has
+the same source tree as latest merged main 5f1345a; its required PR workflow
+37213343630 passed. The separate main workflow hit two existing template-browser
+navigation timeouts. Live homepage/editor/legal/login routes and assets returned
+200, the release marker matched, and old app links returned 301 retaining query
+strings. Browser verification covered the current landing page, editor link,
+editor reload and login interface; no fresh signed-in upload/export was run.
+
+Updated README and the Railway guide, and added docs/NETLIFY_DEPLOYMENT.md so
+future deployments publish the same Vite app for landing and editor. Production
+Netlify sites remain manually published and locked; dashboard shows no Git
+repository linked. Attempts to update repository build settings did not persist
+and granted no new Git integration. Netlify shows an overdue payment warning;
+the owner must address billing to prevent interruption. Private diagnostic logs,
+screenshots and credentials remain local. Old GCP redesign commits are preserved
+locally and excluded from this push.

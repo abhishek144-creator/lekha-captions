@@ -1,14 +1,15 @@
 # Lekha Captions
 
 Lekha Captions is a video-captioning application with a React/Vite editor, a
-FastAPI media-processing API, an RQ export worker, and a separate Next.js
-marketing site.
+FastAPI media-processing API and RQ workers. The current React/Vite build
+serves both the public landing page and editor on Netlify; Railway runs the API
+and workers, and Cloudflare R2 stores media.
 
 ## Repository layout
 
-- `src/` — authenticated editor and account UI
+- `src/` — current landing page, authenticated editor and account UI
 - `backend/` — API, transcription, payments, storage, and export worker
-- `landing-next/` — public marketing and legal site
+- `landing-next/` — legacy standalone marketing site; not the production homepage
 - `scripts/` — release checks, template parity, local startup, and smoke tests
 - `docs/` — operations, incident response, compliance, and API contracts
 
@@ -27,7 +28,7 @@ The full development command starts the frontend at `http://localhost:3000` and
 the API at `http://127.0.0.1:8000`. On Windows, `start_app.bat` is also available.
 Use `npm run dev:frontend` only when the backend is already running.
 
-The marketing site is independent:
+The legacy marketing site can still be run independently for reference:
 
 ```bash
 cd landing-next
@@ -76,19 +77,19 @@ only when the deployment really reverse-proxies `/api` to the backend.
 - Probe `/api/health/readiness`; readiness requires Firestore, storage, Redis,
   and scratch capacity. Zero workers with empty queues is a healthy scaled-down
   state; alert only when queued work remains without capacity.
-- Source uploads and completed exports belong in Firebase Storage. Local
+- Source uploads and completed exports belong in Cloudflare R2. Local
   `uploads/`, `exports/`, and `cache/` directories are disposable scratch space.
-- Deploy `landing-next/` separately with `NEXT_PUBLIC_APP_URL` and
-  `NEXT_PUBLIC_SUPPORT_EMAIL`.
+- Deploy the same current Vite `dist/` build and app `netlify.toml` to the
+  existing apex Netlify site. The homepage is `https://lekhacaptions.com`; the
+  editor is `https://lekhacaptions.com/Dashboard`. Do not publish `landing-next/`
+  over the current homepage. See [Netlify deployment](docs/NETLIFY_DEPLOYMENT.md).
 
-## Google Cloud migration
+## Current hosting
 
-The staged Google Cloud deployment uses Compute Engine for the API plus
-independently autoscaled render and transcription MIGs, Memorystore Redis,
-Firebase for Auth/Firestore/Storage, and Artifact Registry. It leaves Netlify
-and Railway production untouched until staging verification passes. See
-[`deploy/gcp/README.md`](deploy/gcp/README.md) for the bootstrap, secret,
-staging, and cutover procedure.
+Use [Railway + Cloudflare R2 deployment](docs/RAILWAY_DEPLOYMENT.md) and
+[Netlify deployment](docs/NETLIFY_DEPLOYMENT.md). Firebase Auth, Firestore and
+App Check remain in use. Historical GCP/AWS deployment files are retained as
+reference and must not be applied to the current production project.
 
 ## Staging sign-off
 

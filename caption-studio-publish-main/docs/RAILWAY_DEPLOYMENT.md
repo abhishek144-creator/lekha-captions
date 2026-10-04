@@ -173,7 +173,7 @@ backstop:
    ```
    If the plan shows anything to **destroy**, stop: you are linked to the wrong project.
 5. Attach the custom domain `api.lekhacaptions.com` to `lekha-api` (Settings → Networking), and add the DNS record Railway shows. Workers stay private.
-6. In the editor's hosting (Netlify), set `VITE_API_BASE_URL=https://api.lekhacaptions.com` and redeploy the editor.
+6. Publish the current Vite app on Netlify for both `https://lekhacaptions.com` and `/Dashboard`. Set `VITE_API_BASE_URL=https://api.lekhacaptions.com`, `VITE_EDITOR_URL=https://lekhacaptions.com`, and the matching `ALLOWED_ORIGINS` on Railway. Follow [Netlify deployment](NETLIFY_DEPLOYMENT.md); do not redeploy the legacy `landing-next/` build over the apex homepage.
 
 ## 5. Verification checklist
 
