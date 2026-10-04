@@ -50,6 +50,16 @@ try {
   const second = await connectWarmBrowser(puppeteer)
   assert.ok(second)
   const secondContext = await second.createBrowserContext()
+  if (environment.RENDER_FONT_BUNDLE_REQUIRED === '1'
+    && environment.PREFER_PACKAGED_RENDER_FONTS === '1') {
+    const networkProbe = await secondContext.newPage()
+    await assert.rejects(
+      networkProbe.goto('https://example.com', { timeout: 5000 }),
+      /ERR_NAME_NOT_RESOLVED/,
+      'Packaged rendering must not resolve external hosts',
+    )
+    await networkProbe.close()
+  }
   assert.deepEqual(await secondContext.cookies(), [])
   await secondContext.close()
   second.disconnect()
