@@ -15,6 +15,8 @@ CURRENT_REPLICAS = PREFIX + "replicas"
 MAX_REPLICAS = 3
 LOCK_SECONDS = 60
 DRAIN_SECONDS = 300
+SHUTDOWN_GRACE_SECONDS = 1860
+DRAIN_SLOTS = PREFIX + "drain_slots"
 
 
 def enabled():
@@ -37,33 +39,44 @@ class DrainLease:
     """Atomic exclusion between starting a burst and shrinking its service."""
     def __init__(self, connection, identity):
         self.connection = connection
+        self.identity = identity
         self.key = DRAINS + identity
         self.registered = False
 
     def refresh(self):
         if self.registered:
-            self.connection.expire(self.key, DRAIN_SECONDS)
+            with self.connection.pipeline() as pipe:
+                pipe.expire(self.key, DRAIN_SECONDS)
+                pipe.zadd(DRAIN_SLOTS, {self.identity: time.time() + DRAIN_SECONDS})
+                pipe.execute()
             return
-        deadline = time.monotonic() + LOCK_SECONDS + 5
+        deadline = time.monotonic() + SHUTDOWN_GRACE_SECONDS + LOCK_SECONDS
         while time.monotonic() < deadline:
             try:
                 with self.connection.pipeline() as pipe:
-                    pipe.watch(LOCK)
-                    if pipe.exists(LOCK):
+                    pipe.watch(LOCK, DRAIN_SLOTS)
+                    now = time.time()
+                    occupied = pipe.zcount(DRAIN_SLOTS, "(" + str(now), "+inf")
+                    if pipe.exists(LOCK) or occupied >= MAX_REPLICAS:
                         pipe.unwatch()
                         time.sleep(0.2)
                         continue
                     pipe.multi()
+                    pipe.zremrangebyscore(DRAIN_SLOTS, "-inf", now)
+                    pipe.zadd(DRAIN_SLOTS, {self.identity: now + DRAIN_SECONDS})
                     pipe.set(self.key, "1", ex=DRAIN_SECONDS)
                     pipe.execute()
                     self.registered = True
                     return
             except WatchError:
                 continue
-        raise RuntimeError("Render resize guard did not clear")
+        raise RuntimeError("Render drain capacity did not become available")
 
     def release(self):
-        self.connection.delete(self.key)
+        with self.connection.pipeline() as pipe:
+            pipe.delete(self.key)
+            pipe.zrem(DRAIN_SLOTS, self.identity)
+            pipe.execute()
         self.registered = False
 
 
@@ -97,7 +110,7 @@ class RailwayRenderService:
     def state(self):
         data = _graphql(
             "query($e:String!,$s:String!){environment(id:$e){config(decryptVariables:false)} "
-            "serviceInstance(environmentId:$e,serviceId:$s){serviceName latestDeployment{status}}}",
+            "serviceInstance(environmentId:$e,serviceId:$s){serviceName latestDeployment{status meta}}}",
             {"e": self.environment, "s": self.service},
         )
         instance = data["serviceInstance"]
@@ -110,7 +123,12 @@ class RailwayRenderService:
         count = int(regions[self.region]["numReplicas"])
         if not 1 <= count <= MAX_REPLICAS:
             raise RuntimeError("Render replicas are outside the approved range")
-        return count, (instance.get("latestDeployment") or {}).get("status")
+        deployment = instance.get("latestDeployment") or {}
+        metadata = deployment.get("meta") or {}
+        effective_deploy = (metadata.get("serviceManifest") or {}).get("deploy") or {}
+        if int(effective_deploy.get("drainingSeconds") or 0) < SHUTDOWN_GRACE_SECONDS:
+            raise RuntimeError("Render deployment shutdown grace is not ready")
+        return count, deployment.get("status")
 
     def resize(self, count):
         if not 1 <= count <= MAX_REPLICAS:
@@ -156,6 +174,8 @@ def reconcile(connection, *, allow_down=False, service=None, now=None, log=print
         service = service or RailwayRenderService()
         current, status = service.state()
         connection.set(CURRENT_REPLICAS, str(current))
+        if status not in {"SUCCESS", "SLEEPING"}:
+            return "deploying"
         if desired > current:
             service.resize(desired)
             connection.set(LAST_CHANGE, str(now))

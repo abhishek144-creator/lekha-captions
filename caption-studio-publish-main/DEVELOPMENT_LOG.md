@@ -1136,3 +1136,23 @@ Verification: final backend suite 342 passed and 25 subtests; release checks pas
 ### 2026-10-04 — Production scaling token acceptance
 
 The owner approved a production-scoped project token; created it in the correct Railway account and saved it privately in the gitignored deployment environment and Railway shared variables without deployment. Read-only token access succeeds. Live testing found Railway rejects Python urllib’s default User-Agent with HTTP 403 while an explicit LekhaCaptions/1.0 client identifier succeeds; the controller now supplies that identifier. All 13 hosted PR checks passed before this client-header correction; rerunning affected verification and CI before activation. Live replica scaling and idle reduction remain pending.
+
+
+### 2026-10-04 — Render resize live pilot and shutdown safety follow-up
+
+PR #24 merged and deployed. The finite three-job live pilot exposed a resize
+replacement: two jobs finished, but the old deployment stopped its running
+first job with no configured shutdown grace. The abandoned RQ started entry
+then blocked idle reduction. Autoscaling was disabled in API and cron; existing
+services, media, credentials and the $15 hard cap remain. Configured replicas
+were reset to one while Sleeping, but the existing deployment still reported
+three instances; configuration alone is not runtime evidence.
+
+Prepared render shutdown grace of 1860 seconds, effective-deployment validation
+before resizing, atomic global admission capped at three drains across old/new
+deployment overlap, and normal RQ expired-job recovery in the existing cron
+pass. Main-thread RQ drain, private wake authentication, R2 uploads and cron
+schedule are preserved. Safety regression tests cover replacement admission,
+expired seats, pending deployments, missing effective grace, abandoned-job
+failure and retry, and preservation of live RQ entries. Full checks and live
+shutdown/sleep acceptance remain pending; do not re-enable the controller yet.

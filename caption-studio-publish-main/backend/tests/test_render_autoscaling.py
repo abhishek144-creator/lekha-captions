@@ -147,6 +147,53 @@ class RenderScalingTests(unittest.TestCase):
         self.assertTrue(self.redis.exists(lease.key))
         lease.release()
 
+    def test_replacement_workers_cannot_exceed_three_active_drains(self):
+        old = scaling.DrainLease(self.redis, "old-deployment")
+        a = scaling.DrainLease(self.redis, "new-a")
+        b = scaling.DrainLease(self.redis, "new-b")
+        fourth = scaling.DrainLease(self.redis, "new-c")
+        for lease in (old, a, b):
+            lease.refresh()
+        def finish_old(_):
+            self.assertFalse(self.redis.exists(fourth.key))
+            self.assertEqual(self.redis.zcard(scaling.DRAIN_SLOTS), 3)
+            old.release()
+        with patch.object(scaling.time, "sleep", finish_old):
+            fourth.refresh()
+        self.assertEqual(self.redis.zcard(scaling.DRAIN_SLOTS), 3)
+        self.assertFalse(self.redis.exists(old.key))
+        a.refresh()
+        self.assertTrue(self.redis.exists(a.key))
+
+    def test_expired_slot_does_not_block_replacement(self):
+        self.redis.zadd(scaling.DRAIN_SLOTS, {"dead": 1, "dead2": 1, "dead3": 1})
+        lease = scaling.DrainLease(self.redis, "replacement")
+        lease.refresh()
+        self.assertEqual(self.redis.zcard(scaling.DRAIN_SLOTS), 1)
+        lease.release()
+        self.assertEqual(self.redis.zcard(scaling.DRAIN_SLOTS), 0)
+
+    def test_pending_deployment_is_not_resized_again(self):
+        self.queue(3)
+        service = FakeService(1, "DEPLOYING")
+        self.assertEqual(self.run_scaler(service), "deploying")
+        self.assertEqual(service.changes, [])
+
+    def test_provider_requires_effective_image_shutdown_grace(self):
+        with patch.dict(os.environ, {"RAILWAY_ENVIRONMENT_ID": "env",
+                                   "RENDER_AUTOSCALE_SERVICE_ID": "render"}):
+            service = scaling.RailwayRenderService()
+        deploy = {"sleepApplication": True,
+                  "multiRegionConfig": {service.region: {"numReplicas": 1}}}
+        data = {"environment": {"config": {"services": {"render": {"deploy": deploy}}}},
+                "serviceInstance": {"serviceName": "lekha-render", "latestDeployment": {
+                    "status": "SUCCESS", "meta": {"serviceManifest": {"deploy": {}}}}}}
+        with patch.object(scaling, "_graphql", return_value=data):
+            with self.assertRaisesRegex(RuntimeError, "shutdown grace"):
+                service.state()
+            data["serviceInstance"]["latestDeployment"]["meta"]["serviceManifest"]["deploy"]["drainingSeconds"] = 1860
+            self.assertEqual(service.state(), (1, "SUCCESS"))
+
     def test_replica_wake_fans_out_only_over_private_network(self):
         urls = []
         addresses = [(2, 1, 6, "", ("10.0.0.1", 8080)),
