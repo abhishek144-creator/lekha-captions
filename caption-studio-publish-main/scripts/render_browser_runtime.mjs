@@ -33,6 +33,14 @@ export function browserLaunchOptions(viewport) {
     // disabled. The renderer needs no push messaging or Google account sync.
     '--disable-features=GCM',
   ]
+  if (process.env.RENDER_FONT_BUNDLE_REQUIRED === '1'
+    && process.env.PREFER_PACKAGED_RENDER_FONTS === '1') {
+    // Production renders use packaged fonts and inline assets. Chrome's own
+    // background services ignore page interception and some networking flags.
+    // Fail hostname resolution locally instead of keeping Railway awake.
+    args.push('--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost')
+    args.push('--no-proxy-server')
+  }
   if (disableSandbox || containerSandboxBypass || ciSandboxBypass) {
     args.push('--no-sandbox', '--disable-setuid-sandbox')
   }

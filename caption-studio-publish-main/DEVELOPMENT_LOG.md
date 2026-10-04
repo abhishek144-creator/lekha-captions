@@ -1115,3 +1115,12 @@ Added `netlify.toml` for the editor: guarded Vite build, SPA route fallback, exi
 ## 2026-10-04 — R2 browser download redirect origin
 
 PR #21 merged after all 26 hosted checks passed; all four Railway services and both existing Netlify sites deployed commit c41416e. Opening the restored editor no longer triggers a revision conflict. Live browser tracing found a second download issue: the API-to-R2 redirect makes the storage request Origin null, so R2 correctly omits CORS permission. Authenticated export-result responses now return a direct, 15-minute R2 download_url scoped to the verified job owner. The frontend fetches it without API credentials or custom headers. Signing failures return a retryable 503; existing signed media routes, restricted bucket CORS, wake/drain, multipart and cron behavior stay intact. Verification: 325 backend tests and 20 subtests passed; all 339 release checks, build and performance budgets passed; the isolated editor journey verifies the original editor Origin, no API headers, and download without a new render. Hosted CI and production redeployment remain pending.
+
+
+### 2026-10-04 — Railway worker idle follow-up
+
+Live control-plane inspection confirmed that the API sleeps, while both workers remained active. RQ 2.9 creates a separate scheduler Redis pool in the parent process; stopping the scheduler child does not close this parent pool. `backend/worker.py` now disconnects that lazily-created pool after each burst, including failure, without opening a pool during cleanup. Main-thread drain, authenticated POST /wake, scheduled retries and cron design stay unchanged.
+
+Production Chromium continued GCM and other background traffic despite background networking flags. `scripts/render_browser_runtime.mjs` now blocks external hostname resolution only when mandatory packaged rendering fonts are enabled; loopback DevTools access remains available. Development remote-font rendering is unchanged. The warm-browser integration check verifies external resolution fails, isolated contexts remain reusable and caption frames still render in the production image.
+
+Validation: backend suite 326 passed with 22 subtests after one Windows loopback reset on the first attempt; isolated Chromium checks confirmed inline rendering and external-host rejection. Hosted image/integration checks, release gates, merge and production sleep verification remain pending. No cloud resources, credentials, CORS, upload protocol, or cron changes.

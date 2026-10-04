@@ -207,7 +207,14 @@ def drain_queues(conn, queue_names, *, worker_factory=None, sleep=time.sleep, lo
         lease.refresh()
         worker = make_worker()
         worker.launch_lease = lease
-        worker.work(burst=True, with_scheduler=True, dequeue_strategy="round_robin")
+        try:
+            worker.work(burst=True, with_scheduler=True, dequeue_strategy="round_robin")
+        finally:
+            # RQ's scheduler owns a separate, lazily-created Redis pool. Its
+            # child exits in work() teardown, but the parent's pool stays open.
+            # Read _connection so cleanup never opens a new idle connection.
+            scheduler = getattr(worker, "scheduler", None)
+            disconnect_idle_redis_clients(getattr(scheduler, "_connection", None))
         _install_idle_signal_handlers()
         if getattr(worker, "_shutdown_requested_date", None):
             # SIGTERM (redeploy/sleep): RQ finished the running job first. Free

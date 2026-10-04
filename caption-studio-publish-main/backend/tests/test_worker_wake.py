@@ -72,6 +72,34 @@ class DrainTests(unittest.TestCase):
         self.assertEqual(self.ran, [])
 
 
+    def test_scheduler_pool_is_disconnected_after_work_and_on_failure(self):
+        from types import SimpleNamespace
+        for fail in (False, True):
+            with self.subTest(fail=fail):
+                scheduler_client = fakeredis.FakeRedis()
+                scheduler_client.ping()
+                sockets = list(scheduler_client.connection_pool._available_connections)
+                burst_worker = FakeWorker(self.redis, ["render"], self.ran)
+                burst_worker.scheduler = SimpleNamespace(_connection=scheduler_client)
+                original_work = burst_worker.work
+                def work(**kwargs):
+                    original_work(**kwargs)
+                    if fail:
+                        raise RuntimeError("burst failed")
+                burst_worker.work = work
+                self.redis.rpush("rq:queue:render", "job")
+                run = lambda: worker.drain_queues(
+                    self.redis, ["render"], worker_factory=lambda: burst_worker,
+                    log=lambda _: None,
+                )
+                if fail:
+                    with self.assertRaises(RuntimeError):
+                        run()
+                else:
+                    run()
+                self.assertTrue(all(socket._sock is None for socket in sockets))
+                self.assertTrue(scheduler_client.ping())
+
     def test_real_rq_worker_drains_on_the_main_thread(self):
         # RQ installs signal handlers in work(); that raises off the main thread.
         worker.drain_queues(self.redis, ["render"], log=lambda _: None)
