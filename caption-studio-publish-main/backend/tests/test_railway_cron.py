@@ -6,8 +6,9 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import fakeredis
-from rq import Queue
-from rq.registry import ScheduledJobRegistry
+from rq import Queue, Retry
+from rq.registry import ScheduledJobRegistry, StartedJobRegistry
+from rq.job import JobStatus
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import railway_cron
@@ -91,6 +92,34 @@ class RailwayCronTests(unittest.TestCase):
         self.assertEqual(queue.job_ids, [job.id])
         self.assertEqual(woken, [("lekha-render", 0)])
         self.assertTrue(self.redis.exists(lease_key("lekha-render", 0)))
+
+    def test_recovery_fails_expired_job_and_preserves_live_job(self):
+        queue = Queue("caption_export_jobs", connection=self.redis)
+        expired = queue.enqueue(noop)
+        live = queue.enqueue(noop)
+        self.redis.delete(queue.key)
+        for job in (expired, live):
+            job.set_status(JobStatus.STARTED)
+        registry = StartedJobRegistry(queue=queue)
+        self.redis.zadd(registry.key, {expired.id: 1, live.id: 9999999999})
+        railway_cron.recover_expired_jobs(self.redis, [queue.name])
+        self.assertEqual(expired.get_status(refresh=True), JobStatus.FAILED)
+        self.assertEqual(live.get_status(refresh=True), JobStatus.STARTED)
+        self.assertIsNone(self.redis.zscore(registry.key, expired.id))
+        self.assertIsNotNone(self.redis.zscore(registry.key, live.id))
+
+    def test_recovery_retries_expired_job_with_remaining_attempts(self):
+        queue = Queue("caption_export_jobs", connection=self.redis)
+        job = queue.enqueue(noop, retry=Retry(max=1))
+        self.redis.delete(queue.key)
+        job.set_status(JobStatus.STARTED)
+        registry = StartedJobRegistry(queue=queue)
+        self.redis.zadd(registry.key, {job.id: 1})
+        railway_cron.recover_expired_jobs(self.redis, [queue.name])
+        self.assertEqual(job.get_status(refresh=True), JobStatus.QUEUED)
+        self.assertIn(job.id, queue.job_ids)
+        job.refresh()
+        self.assertEqual(job.retries_left, 0)
 
     def test_nothing_queued_wakes_nothing(self):
         with patch("worker_launcher._default_launcher", lambda *args: self.fail("woke an idle worker")):

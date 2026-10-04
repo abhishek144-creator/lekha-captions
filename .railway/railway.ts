@@ -144,6 +144,9 @@ export default defineRailway((ctx) => {
       sleepApplication: true,
       restartPolicyType: "ON_FAILURE",
       restartPolicyMaxRetries: 3,
+      // RQ export timeout is 30 minutes: finish the current job before SIGKILL.
+      drainingSeconds: 1860,
+      overlapSeconds: 0,
       // Chromium + FFmpeg were OOM-killed under 3 GiB in staging (2026-08-04).
       limitOverride: limits(4, 4),
     },
