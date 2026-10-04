@@ -851,6 +851,30 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(verified["filename"], filename)
         self.assertEqual(verified["uid"], "owner-uid")
 
+    @patch("main.verify_token", return_value={"uid": "owner-uid"})
+    def test_r2_export_result_returns_direct_url_only_to_owner(self, verify):
+        job_id = "job-direct-r2"
+        filename = "export_123e4567-e89b-12d3-a456-426614174099_abcdef123456.mp4"
+        main._export_jobs[job_id] = {
+            "uid": "owner-uid", "status": "completed",
+            "payload": {"success": True, "export_filename": filename, "video_url": "/api/media/export/old.mp4"},
+        }
+        with patch.object(main, "s3_storage_configured", return_value=True), patch.object(
+            main, "signed_export_download_url", return_value="https://media.example.invalid/private"
+        ) as sign:
+            verify.return_value = {"uid": "other-user"}
+            denied = self.client.get(f"/api/export-result/{job_id}", headers={"Authorization": "Bearer other-token"})
+            self.assertEqual(denied.status_code, 403)
+            sign.assert_not_called()
+            verify.return_value = {"uid": "owner-uid"}
+            owned = self.client.get(f"/api/export-result/{job_id}", headers={"Authorization": "Bearer owner-token"})
+            self.assertEqual(owned.status_code, 200)
+            self.assertEqual(owned.json()["download_url"], "https://media.example.invalid/private")
+            sign.assert_called_once_with(f"exports/owner-uid/{filename}", 900)
+            sign.return_value = None
+            unavailable = self.client.get(f"/api/export-result/{job_id}", headers={"Authorization": "Bearer owner-token"})
+            self.assertEqual(unavailable.status_code, 503)
+
     @patch("main.verify_token")
     def test_export_replay_requires_owner_auth(self, mock_verify_token):
         job = {
