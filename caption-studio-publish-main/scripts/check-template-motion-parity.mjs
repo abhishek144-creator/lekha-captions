@@ -838,6 +838,11 @@ if (KEYFRAME_ADVANCED_TEMPLATE_IDS.length !== 12) fail('expected exactly 12 keyf
 if (/filter\s*:[^;]*blur|backdrop-filter|url\(/i.test(keyframeCss)) {
   fail('T41–T52 must not use blur filters, backdrop-filter or external images');
 }
+// 3D transforms under clip-path exhaust memory in the export renderer's
+// software compositor (--disable-gpu); T41–T52 author every flip in 2D.
+if (/perspective\s*\(|rotate[XY]\s*\(|rotate3d|translateZ|preserve-3d/i.test(keyframeCss.replace(/\/\*[\s\S]*?\*\//g, ''))) {
+  fail('T41–T52 must not use 3D transforms (perspective/rotateX/rotateY/translateZ)');
+}
 const definedKeyframes = (source) => Array.from(
   String(source).replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/@keyframes\s+([\w-]+)/g),
   (match) => match[1],
@@ -871,6 +876,8 @@ for (const name of keyframeNames) {
 const sharedContractClasses = new Set([
   'stage', 'sblock', 'w', 'active', 'in',
   'wbw-seq', 'wbw-rise', 'wbw-slide', 'wbw-seq-fade',
+  // Renderer hosts targeted by the canvas/export base-state reset.
+  'lekha-original-template', 'lekha-applied-advanced-template',
 ]);
 const keyframeClassNames = new Set(Array.from(
   keyframeCss.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\{[^{}]*\}/g, '{}').matchAll(/\.([a-zA-Z][\w-]*)/g),
