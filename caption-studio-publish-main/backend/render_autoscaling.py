@@ -74,7 +74,8 @@ def _graphql(query, variables):
     request = urllib.request.Request(
         "https://backboard.railway.com/graphql/v2",
         data=json.dumps({"query": query, "variables": variables}).encode(),
-        headers={"Content-Type": "application/json", "Project-Access-Token": token},
+        headers={"Content-Type": "application/json", "Project-Access-Token": token,
+                 "User-Agent": "LekhaCaptions/1.0"},
         method="POST",
     )
     with urllib.request.urlopen(request, timeout=10) as response:  # nosec B310 - fixed Railway API
