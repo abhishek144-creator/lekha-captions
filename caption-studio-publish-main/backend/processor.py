@@ -1277,7 +1277,8 @@ class VideoProcessor:
 
         if any(template_20_id for _, template_20_id in candidates):
             return True
-        # No-hyphen advanced templates (t11–t40) need DOM/CSS rendering.
+        # No-hyphen advanced templates (t11–t52) need DOM/CSS rendering; t41–t52
+        # are keyframe-driven and seek their authored CSS animations per frame.
         if any(re.fullmatch(r"t\d{2}", template_id) for template_id, _ in candidates):
             return True
         # Source-markup Basic templates render their `.btcard` design in the

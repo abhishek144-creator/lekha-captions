@@ -17,7 +17,10 @@ import {
   RECREATED_ADVANCED_TEMPLATE_IDS,
   getAdvancedPlaybackElapsedMs,
   getOriginalTemplateBlockType,
+  isKeyframeAdvancedTemplateId,
+  KEYFRAME_TEMPLATE_FONTS,
   normalizeTemplatePhaseIndex,
+  seekKeyframeTemplateAnimations,
 } from './templateMotionConfig';
 import {
   extractAdvancedTemplateBlockMarkup,
@@ -104,6 +107,9 @@ export const ADVANCED_TEMPLATE_VARIANTS = {
   t26: 'wbw-rise', t27: 'plain-s', t28: 'wbw-rise', t29: 'wbw-rise', t30: 'wbw-slide',
   t31: 'wbw-rise', t32: 'plain-s', t33: 'wbw-rise', t34: 'wbw-rise', t35: 'wbw-rise',
   t36: 'plain-s', t37: 'wbw-rise', t38: 'wbw-slide', t39: 'wbw-rise', t40: 'plain-s',
+  t41: 'wbw-rise', t42: 'wbw-slide', t43: 'wbw-rise', t44: 'wbw-rise', t45: 'wbw-rise',
+  t46: 'wbw-rise', t47: 'wbw-rise', t48: 'wbw-rise', t49: 'wbw-rise', t50: 'wbw-rise',
+  t51: 'wbw-rise', t52: 'wbw-rise',
 };
 export const TEMPLATE_CANVAS_FONT_SCALE = 0.88;
 export const SIDEBAR_TEMPLATE_APPLIED_WIDTH_CAP = 320;
@@ -282,6 +288,26 @@ export function renderWbwText(text, variant = 'wbw-rise', impClass = 'imp-bold',
           </span>
         </React.Fragment>
       ))}
+    </span>
+  );
+}
+
+// Fallback (no DOMParser) markup for the keyframe-driven T41–T52 phases. It
+// mirrors the authored source structure: one word line inside the phase block,
+// plus the chat thread wrapper and typing dots for T44.
+export function renderKeyframeTemplateLine(templateId, blockIndex, blockType, text, impWordIndices = []) {
+  const containerClass = blockType === 'styled' ? 'wbw-seq' : blockType;
+  // Words stay without the legacy `.in` class: keyframes, not WBW frames, reveal them.
+  const line = renderWbwText(text, `${containerClass} ${templateId}-line`, `imp-${templateId}`, false, { impWordIndices });
+  if (templateId !== 't44') return line;
+  return (
+    <span className={`t44-thread ${blockIndex % 2 ? 't44-me' : 't44-them'}`}>
+      <span className="t44-typing" aria-hidden="true">
+        <span className="t44-dot" />
+        <span className="t44-dot" />
+        <span className="t44-dot" />
+      </span>
+      {line}
     </span>
   );
 }
@@ -2738,6 +2764,19 @@ export function renderOriginalTemplateCaption(templateId, text, active = true, b
     case 't40':
       if (normalizedBlockIndex === 2) return wrap('t40-b2', <span className="lekha-template-fit">{renderStillFramesText(full)}</span>);
       return wrap(`t40-b${normalizedBlockIndex}`, <span className="lekha-template-fit">{renderStillFramesText(full)}</span>);
+    case 't41':
+    case 't42':
+    case 't43':
+    case 't44':
+    case 't45':
+    case 't46':
+    case 't47':
+    case 't48':
+    case 't49':
+    case 't50':
+    case 't51':
+    case 't52':
+      return wrap(`${templateId}-b${normalizedBlockIndex}`, renderKeyframeTemplateLine(templateId, normalizedBlockIndex, blockType, full, emphasisIndices));
     default:
       return null;
   }
@@ -2785,6 +2824,11 @@ export function syncAdvancedTemplateBlockFrame(block, {
   const playbackElapsedMs = getAdvancedPlaybackElapsedMs(blockType, wordCount, captionDurationMs, elapsedMs);
 
   block.dataset.templatePaused = isPlaying ? 'false' : 'true';
+  if (isKeyframeAdvancedTemplateId(templateId)) {
+    // Keyframe templates resolve to their settled frame whenever paused.
+    seekKeyframeTemplateAnimations(block, { elapsedMs, captionDurationMs, settled: !isPlaying });
+    return;
+  }
   if (String(blockType).startsWith('wbw-')) {
     applyAdvancedWbwFrame(block, blockType, playbackElapsedMs, false);
   } else if (blockType === 'karaoke') {
@@ -3082,12 +3126,14 @@ export function AppliedAdvancedTemplateCaption({
   startTime = 0,
   endTime = 0,
   renderScale = 1,
+  keyframeFontPx = 0,
   onSourceWordClick,
   onSourceWordPointerDown,
   isSelected = false,
 }) {
   const hostRef = useRef(null);
   const runnerRef = useRef(null);
+  const isKeyframeTemplate = isKeyframeAdvancedTemplateId(templateId);
   const playbackControlRef = useRef({ currentTime, isPlaying });
   const playStateRef = useRef({ currentTime, isPlaying, startTime, endTime });
   playStateRef.current = { currentTime, isPlaying, startTime, endTime };
@@ -3132,6 +3178,13 @@ export function AppliedAdvancedTemplateCaption({
         ? elapsedMs
         : getAdvancedPlaybackElapsedMs(blockType, wordCount, captionDurationMs, elapsedMs);
       block.dataset.templatePaused = !playing ? 'true' : 'false';
+
+      if (isKeyframeAdvancedTemplateId(templateId)) {
+        // Authored CSS keyframes are paused and seeked; a paused caption
+        // (including a mid-entrance pause) always shows the settled frame.
+        seekKeyframeTemplateAnimations(block, { elapsedMs, captionDurationMs, settled: !playing });
+        return;
+      }
 
       if (String(blockType).startsWith('wbw-')) {
         applyAdvancedWbwFrame(block, blockType, playbackElapsedMs, settled);
@@ -3203,6 +3256,12 @@ export function AppliedAdvancedTemplateCaption({
     playbackControlRef.current = { currentTime, isPlaying };
   }, [currentTime, isPlaying, startTime, endTime]);
 
+  useEffect(() => {
+    (KEYFRAME_TEMPLATE_FONTS[templateId] || []).forEach(([family, weights]) => {
+      loadGoogleFont(family, weights).catch(() => {});
+    });
+  }, [templateId]);
+
   useLayoutEffect(() => {
     applySourceTemplateScriptFont(hostRef.current?.querySelector('.lekha-original-template'), text);
     const cleanup = wireSourceTemplateWordEditing(hostRef.current, {
@@ -3255,6 +3314,9 @@ export function AppliedAdvancedTemplateCaption({
         '--template-karaoke-2': karaokeColor2 || '#22D3EE',
         '--template-karaoke-3': karaokeColor3 || '#FB923C',
         '--template-bg': backgroundColor || 'transparent',
+        ...(isKeyframeTemplate && keyframeFontPx > 0
+          ? { '--lekha-keyframe-font-px': `${keyframeFontPx}px` }
+          : {}),
       }}
     >
       {sourceMarkup ? (

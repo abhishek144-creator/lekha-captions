@@ -17,6 +17,10 @@ import {
   getAdvancedAnimationWindowMs,
   getLcMotionSchedule,
   getOriginalTemplateBlockType,
+  getKeyframeTemplatePlaybackMs,
+  isKeyframeAdvancedTemplateId,
+  KEYFRAME_ADVANCED_TEMPLATE_IDS,
+  seekKeyframeTemplateAnimations,
 } from '../src/components/dashboard/templateMotionConfig.js';
 import {
   buildAdvancedTemplateBlockMarkupMap,
@@ -184,9 +188,9 @@ function getTemplateBlockType(templateId, blockIndex = 0) {
   return getOriginalTemplateBlockType(templateId, blockIndex);
 }
 
-function getAdvancedTemplateAnimationWindow(blockType, captionDuration, wordCount = 1) {
+function getAdvancedTemplateAnimationWindow(blockType, captionDuration, wordCount = 1, templateId = '') {
   const duration = Math.max(Number(captionDuration) || 0, 0);
-  return Math.min(duration, getAdvancedAnimationWindowMs(blockType, wordCount) / 1000);
+  return Math.min(duration, getAdvancedAnimationWindowMs(blockType, wordCount, templateId) / 1000);
 }
 
 function extractOriginalTemplateRuntimeCss(originalTemplateHtml) {
@@ -889,6 +893,10 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
     };
 
     window.__advancedTemplateTiming = ${JSON.stringify(ADVANCED_TEMPLATE_TIMING)};
+    // Same seek used by the editor canvas (templateMotionConfig.js), inlined.
+    const getKeyframeTemplatePlaybackMs = ${getKeyframeTemplatePlaybackMs.toString()};
+    window.__keyframeAdvancedTemplateIds = new Set(${JSON.stringify(KEYFRAME_ADVANCED_TEMPLATE_IDS)});
+    window.__seekKeyframeTemplateAnimations = ${seekKeyframeTemplateAnimations.toString()};
     window.__advancedImpEntrances = ${JSON.stringify(ADVANCED_IMP_ENTRANCES)};
     window.__getAdvancedPlaybackElapsedMs = (blockType, wordCount, captionDurationMs, rawElapsedMs) => {
       const timing = window.__advancedTemplateTiming || {};
@@ -1096,6 +1104,30 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         case 't40':
           if (normalized === 2) return wrap('t40-b2', \`<span class="lekha-template-fit">\${stillFramesMarkup(full)}</span>\`);
           return wrap(\`t40-b\${normalized}\`, \`<span class="lekha-template-fit">\${stillFramesMarkup(full)}</span>\`);
+        case 't41':
+        case 't42':
+        case 't43':
+        case 't44':
+        case 't45':
+        case 't46':
+        case 't47':
+        case 't48':
+        case 't49':
+        case 't50':
+        case 't51':
+        case 't52': {
+          const keyframeLine = wbwMarkup(
+            full,
+            (blockType === 'styled' ? 'wbw-seq' : blockType) + ' ' + templateId + '-line',
+            'imp-' + templateId,
+          ).replace(/ in" data-i=/g, '" data-i=');
+          const keyframeInner = templateId === 't44'
+            ? '<span class="t44-thread ' + (normalized % 2 ? 't44-me' : 't44-them') + '">'
+              + '<span class="t44-typing" aria-hidden="true"><span class="t44-dot"></span><span class="t44-dot"></span><span class="t44-dot"></span></span>'
+              + keyframeLine + '</span>'
+            : keyframeLine;
+          return wrap(templateId + '-b' + normalized, keyframeInner);
+        }
         default:
           return '';
       }
@@ -3047,11 +3079,14 @@ function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           ? caption.preview_template_line_texts
           : style.preview_template_line_texts;
         const renderedTemplateId = String(renderStyle?.template_id || '').trim();
-        const shouldReplayPreviewLineBreaks =
+        // Keyframe templates index words with :nth-of-type inside one line
+        // container, so regrouping words into line spans would break them.
+        const shouldReplayPreviewLineBreaks = !window.__keyframeAdvancedTemplateIds.has(renderedTemplateId) && (
           !recreatedAdvancedTemplateIds.has(renderedTemplateId)
           || renderedTemplateId === 't24'
           || renderedTemplateId === 't25'
-          || renderedTemplateId === 't29';
+          || renderedTemplateId === 't29'
+        );
         if (shouldReplayPreviewLineBreaks) {
           applyPreviewTemplateLineBreaks(anchor, {
             ...style,
@@ -3770,6 +3805,14 @@ async function main() {
     }
     .lekha-original-template .lekha-applied-advanced-template {
       font-size: ${exportAdvancedTemplateFontPx}px;
+    }
+    /* T41–T52 size every decoration in em: one scale input, same formula as
+       the canvas (scaleTemplateFontSize(font_size) x render scale). */
+    .lekha-original-template:is(
+      .t41-stage, .t42-stage, .t43-stage, .t44-stage, .t45-stage, .t46-stage,
+      .t47-stage, .t48-stage, .t49-stage, .t50-stage, .t51-stage, .t52-stage
+    ) .lekha-applied-advanced-template {
+      font-size: ${exportAdvancedTemplateFontPx}px !important;
     }
     .lekha-original-template .lekha-template-fit {
       display: inline-block;
@@ -5292,7 +5335,9 @@ async function main() {
             points.add(start + (segmentDuration * index));
           }
         }
-        const animationWindow = getAdvancedTemplateAnimationWindow(blockType, Math.max(end - start, 0), wordCount);
+        // Keyframe templates (T41–T52) seek authored CSS keyframes; sample their
+        // whole authored schedule (or the whole caption for looping phases).
+        const animationWindow = getAdvancedTemplateAnimationWindow(blockType, Math.max(end - start, 0), wordCount, templateId);
         const animationEnd = Math.min(end, start + animationWindow);
         for (
           let sample = start + (1 / adaptiveTemplateSampleFps);
@@ -5608,6 +5653,18 @@ async function main() {
             const captionStart = Number(shell?.dataset?.captionStart || 0);
             const captionEnd = Number(shell?.dataset?.captionEnd || captionStart);
             const captionElapsedMs = Math.max(0, (currentTime - captionStart) * 1000);
+            const keyframeTemplateId = Array.from(window.__keyframeAdvancedTemplateIds || [])
+              .find((id) => block.classList.contains(id + '-block'));
+            if (keyframeTemplateId && window.__seekKeyframeTemplateAnimations) {
+              // T41–T52: seek the authored CSS keyframes relative to this caption,
+              // exactly like the editor canvas does while playing.
+              window.__seekKeyframeTemplateAnimations(block, {
+                elapsedMs: captionElapsedMs,
+                captionDurationMs: Math.max(0, (captionEnd - captionStart) * 1000),
+                settled: false,
+              });
+              return;
+            }
             const blockType = block.dataset.templateBlockType || 'styled';
             const timing = window.__advancedTemplateTiming || {};
             const clamp = (value) => Math.max(0, Math.min(1, Number(value) || 0));
