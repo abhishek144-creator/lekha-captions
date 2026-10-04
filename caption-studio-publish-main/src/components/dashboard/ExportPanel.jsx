@@ -507,10 +507,10 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
     }
     raiseProgressTarget(99);
     setStatusMessage('Preparing download...');
-    const downloadUrl = resolvedResult.video_url;
+    const downloadUrl = resolvedResult.download_url || resolvedResult.video_url;
     if (!downloadUrl) throw new Error('Export completed but no download link was returned. Please retry.');
-    // The URL carries its own expiring media signature. API security/tracing
-    // headers survive the redirect to R2 and trigger a rejected CORS preflight.
+    // Fetch R2 directly: cross-origin redirects send Origin: null to storage.
+    // Signed URLs need no API security/tracing headers or browser credentials.
     const videoResponse = await fetch(resolveApiResourceUrl(downloadUrl, import.meta.env.VITE_API_BASE_URL), {
       signal,
       credentials: 'omit',
@@ -1405,7 +1405,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
         {exportExpiry && (
           <div className="mt-3 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20">
             <p className="text-xs text-amber-300">
-              Download link valid for <span className="font-semibold">{exportExpiry.hours} hours</span>. Save your exported video before it expires.
+              Video available for <span className="font-semibold">{exportExpiry.hours} hours</span>. Save it before it expires.
             </p>
           </div>
         )}
