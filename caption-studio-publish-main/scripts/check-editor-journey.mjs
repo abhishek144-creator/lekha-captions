@@ -25,7 +25,8 @@ await page.setViewport({ width: 1440, height: 1100 })
 const errors = []
 page.on('pageerror', (error) => errors.push(error.message))
 let savedDraft = null
-let conflict = false
+let conflict = true
+let saveRequests = 0
 let exports = 0
 let exportPayload = null
 let downloads = 0
@@ -40,18 +41,25 @@ page.on('request', async (request) => {
   let status = 200
   if (url.pathname === '/api/editor-preferences/load') payload.preferences = { revision: 0, brand_kits: [], glossary_terms: [] }
   else if (url.pathname === '/api/editor-preferences/save') payload.preferences = { revision: 1, brand_kits: [], glossary_terms: [] }
-  else if (url.pathname === '/api/draft/load') payload = { revision: 0, draft: null }
+  else if (url.pathname === '/api/draft/load') payload = { revision: 17, project_id: 'other-project', draft: null }
   else if (url.pathname === '/api/projects/list') payload.projects = []
   else if (url.pathname === '/api/workspaces') payload.workspaces = []
   else if (url.pathname === '/api/projects/save' || url.pathname === '/api/draft/save') {
-    savedDraft = JSON.parse(request.postData()).draft
+    saveRequests += 1
+    const saveBody = JSON.parse(request.postData())
+    if (saveRequests === 1) assert.equal(saveBody.expected_revision, 0, 'a different project must not inherit another project revision')
+    savedDraft = saveBody.draft
     payload = conflict ? { detail: 'A newer project revision was saved on another tab or device.' } : { success: true, draft: savedDraft, revision: 1, project_id: 'test-project' }
     status = conflict ? 409 : 200
   } else if (url.pathname === '/api/media/upload-url') { status = 404; payload = { detail: 'Source expired' } }
   else if (url.pathname === '/api/export') { exports += 1; exportPayload = JSON.parse(request.postData()); payload = { success: true, export_job_id: 'job-1', status: 'queued' } }
   else if (url.pathname === '/api/export-status/job-1') payload = { status: 'completed', progress: 100 }
-  else if (url.pathname === '/api/export-result/job-1') payload = { success: true, video_url: '/api/test-download' }
-  else if (url.pathname === '/api/test-download') { downloads += 1; return request.respond({ status: 200, contentType: 'video/mp4', body: Buffer.from('local-test-download') }) }
+  else if (url.pathname === '/api/export-result/job-1') payload = { success: true, video_url: '/api/media/export/test-output.mp4?token=local-media-signature' }
+  else if (url.pathname === '/api/media/export/test-output.mp4') {
+    assert.equal(request.headers()['authorization'], undefined, 'signed media must not send Firebase credentials to R2')
+    assert.equal(request.headers()['x-firebase-appcheck'], undefined, 'signed media must not forward App Check headers to R2')
+    assert.equal(request.headers()['x-request-id'], undefined, 'signed media must avoid custom-header CORS preflights')
+    downloads += 1; return request.respond({ status: 200, contentType: 'video/mp4', body: Buffer.from('local-test-download') }) }
   else if (url.pathname === '/api/fonts') payload = { fonts: [] }
   else if (url.pathname.includes('analytics')) payload = { success: true }
   else { status = 404; payload = { detail: `Unexpected local test API: ${url.pathname}` } }
@@ -67,6 +75,10 @@ try {
   await page.goto('http://127.0.0.1:4187/e2e/fixtures/editor.html?restoreSession=1')
   await page.waitForSelector('[data-caption-editor="true"]')
   await page.waitForSelector('input[aria-label="Relink source video"]')
+  await new Promise((resolve) => setTimeout(resolve, 3000))
+  assert.equal(saveRequests, 0, 'restoring a project must not save an unchanged revision')
+  assert.equal(await page.evaluate(() => document.body.textContent.includes('newer project revision')), false)
+  conflict = false
   await page.keyboard.down('Control'); await page.keyboard.press('k'); await page.keyboard.up('Control')
   assert.equal(await page.evaluate(() => document.activeElement.getAttribute('aria-label')), 'Search transcript')
   // VideoPlayer is a lazy chunk; on a cold CI dev server it mounts after the caption editor.
@@ -83,6 +95,9 @@ try {
   assert.ok(mobileFrame.width > 100 && mobileFrame.left >= -1 && mobileFrame.right <= 391, JSON.stringify(mobileFrame))
   assert.ok(mobileFrame.height > mobileFrame.width, JSON.stringify(mobileFrame))
   await page.setViewport({ width: 1440, height: 1100 })
+  await textClick('Add')
+  await page.waitForFunction(() => document.body.textContent.includes('Saved to your account'))
+  assert.ok(saveRequests > 0, 'an actual caption edit must still autosave')
   await textClick('Save')
   await page.waitForFunction(() => document.body.textContent.includes('Saved'))
   conflict = true
@@ -90,7 +105,20 @@ try {
   await page.waitForFunction(() => document.body.textContent.includes('newer project revision'))
   await page.goto('http://127.0.0.1:4187/e2e/fixtures/editor.html?restoreSession=1')
   await page.waitForSelector('.lekha-video-frame')
+  const savesBeforeOpening = saveRequests
+  await new Promise((resolve) => setTimeout(resolve, 3000))
+  assert.equal(saveRequests, savesBeforeOpening, 'reopening a project must not submit a conflicting save')
+  assert.equal(await page.evaluate(() => document.body.textContent.includes('newer project revision')), false)
   assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('captionEditorState')).captionTracks[0].captions[0].text), caption.text)
+  await page.evaluate(() => window.setTestEntitlement({ credits_remaining: 10, subscription_tier: 'pro', subscription_expiry: '2000-01-01' }))
+  await textClick('Export')
+  await page.waitForFunction(() => document.body.textContent.includes('Plan expired — renew to use video export'))
+  await page.evaluate(() => [...document.querySelectorAll('[role=dialog] label')].find((label) => label.textContent.includes('I reviewed this language track')).click())
+  await page.waitForFunction(() => document.body.textContent.includes('Plan expired — renew to render'))
+  assert.equal(exports, 0, 'unused credits must not enable rendering after paid-plan expiry')
+  await textClick('Close')
+  await page.waitForFunction(() => !document.querySelector('[role=dialog]'))
+  await page.evaluate(() => window.setTestEntitlement({ credits_remaining: 10, subscription_tier: 'pro', subscription_expiry: '2099-01-01' }))
   await textClick('Export')
   await page.waitForFunction(() => document.body.textContent.includes('Export your video'))
   assert.equal(exports, 0, 'opening export after recovery cannot submit another render')
