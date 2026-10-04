@@ -28,9 +28,11 @@ except ImportError:  # pragma: no cover - run as a script from backend/
     import render_autoscaling
 
 try:
+    from rq.registry import StartedJobRegistry
     from rq.scheduler import RQScheduler
 except ImportError:  # pragma: no cover - production dependency is pinned
     RQScheduler = None
+    StartedJobRegistry = None
 
 
 def _log(event, **fields):
@@ -52,6 +54,15 @@ def promote_due_retries(connection, queue_names):
     return 1
 
 
+def recover_expired_jobs(connection, queue_names):
+    """Use RQ recovery so abandoned jobs retry or fail; live entries stay intact."""
+    if StartedJobRegistry is None or connection is None:
+        return 0
+    for name in queue_names:
+        StartedJobRegistry(name=name, connection=connection).cleanup()
+    return len(queue_names)
+
+
 def kick_backlogged_workers(connection, queue_names):
     return sum(1 for name in queue_names if worker_launcher.kick(connection, name, log=print))
 
@@ -60,6 +71,7 @@ def run_once(*, host=api, launch_queues=None):
     launch_queues = list(launch_queues if launch_queues is not None else worker_launcher.job_map())
     staging = os.environ.get("RELEASE_ENVIRONMENT") == "staging"
     steps = [
+        ("recover_expired_jobs", lambda: recover_expired_jobs(host._rq_redis_client, launch_queues)),
         ("promote_due_retries", lambda: promote_due_retries(host._rq_redis_client, launch_queues)),
         ("transcription_dispatch",
          lambda: host.TranscriptionJobs(host.get_db()).dispatch(host._transcription_queue)),
