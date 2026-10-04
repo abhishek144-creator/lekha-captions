@@ -204,3 +204,23 @@ backstop:
 - Railway sleeping applies across service replicas. Private DNS wake fan-out and unique replica leases let copies drain the shared queue.
 - Three fully utilized replicas have a compute ceiling of approximately $0.0083/minute ($0.50/hour), excluding the other services and providers. This is a ceiling, not a measured export cost. The $15 hard cap remains; sustained demand can reach it quickly.
 - Acceptance: verify render-only 1-to-2-to-3 patches, distinct identities, parallel disposable jobs, Sleeping and guarded 3-to-1. No mass-user load test is required.
+
+### Render resize shutdown safety
+
+Railway replica changes can replace the render deployment. Set render
+`drainingSeconds: 1860` and `overlapSeconds: 0` before enabling autoscaling:
+the longest RQ export timeout is 1800 seconds. RQ finishes its current job
+after SIGTERM; Railway may terminate it after the configured grace. This is
+a maximum wait, not a mandatory 31-minute billable delay.
+
+The controller refuses to resize until the latest deployment metadata confirms
+the shutdown grace. New and retiring replicas share an atomic three-drain
+admission limit in Redis, so overlapping deployments cannot start a fourth
+export. Heartbeats renew admission; expired admissions are reclaimed. The cron
+uses normal RQ started-registry cleanup to retry abandoned jobs or mark them
+failed, preserving live entries and customer state.
+
+For acceptance, begin one finite disposable job, enqueue more work while it
+is running, and verify every job finishes across the resize. Verify at most
+three active drains, then Sleeping and the guarded return to one replica.
+Keep autoscaling disabled in API and cron until this live check passes.
