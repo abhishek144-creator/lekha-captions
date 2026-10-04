@@ -3,8 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
 
 // Netlify preview URLs are not Firebase-authorized. Send preview sign-in to
-// the published editor domain. Marketing is hosted separately at the apex.
-const PUBLISHED_AUTH_ORIGIN = 'https://app.lekhacaptions.com';
+// the published domain shared by the homepage and editor.
+const PUBLISHED_AUTH_ORIGIN = 'https://lekhacaptions.com';
 
 function getPublishedAuthUrl() {
     if (typeof window === 'undefined') return '';
