@@ -198,6 +198,13 @@ def _seconds_until_next_scheduled(conn, queue_names, now=None):
 def drain_queues(conn, queue_names, *, worker_factory=None, sleep=time.sleep, log=print):
     """Run queued and soon-due scheduled jobs to completion, then return."""
     lease = WorkerLease(conn, queue_names)
+    try:
+        return _drain_with_lease(conn, queue_names, lease, worker_factory=worker_factory, sleep=sleep, log=log)
+    finally:
+        lease.release()
+
+
+def _drain_with_lease(conn, queue_names, lease, *, worker_factory, sleep, log):
     host = os.environ.get("RAILWAY_REPLICA_ID") or socket.gethostname()
     make_worker = worker_factory or (lambda: ReleaseWorker(
         queue_names, connection=conn, worker_ttl=90,

@@ -77,8 +77,11 @@ export default defineRailway((ctx) => {
       [RENDER_WORKER]: wakeUrl(RENDER_WORKER),
       [TRANSCRIPTION_WORKER]: wakeUrl(TRANSCRIPTION_WORKER),
     }),
-    WORKER_LAUNCH_MAX_PARALLEL: "1",
+    WORKER_LAUNCH_MAX_PARALLEL: "3",
     AI_SYSTEM_DAILY_LIMIT: "500",
+    RENDER_AUTOSCALE_ENABLED: "1",
+    RENDER_AUTOSCALE_SERVICE_ID: "${{lekha-render.RAILWAY_SERVICE_ID}}",
+    RENDER_AUTOSCALE_REGION: REGION,
   }
 
   const api = service("lekha-api", {
@@ -105,6 +108,7 @@ export default defineRailway((ctx) => {
       // Periodic work runs in lekha-cron so an idle API can sleep.
       RUN_API_BACKGROUND_TASKS: "0",
       WEB_CONCURRENCY: "1",
+      RAILWAY_RENDER_SCALING_TOKEN: ctx.shared.RAILWAY_RENDER_SCALING_TOKEN,
     },
   })
 
@@ -141,7 +145,7 @@ export default defineRailway((ctx) => {
       restartPolicyType: "ON_FAILURE",
       restartPolicyMaxRetries: 3,
       // Chromium + FFmpeg were OOM-killed under 3 GiB in staging (2026-08-04).
-      limitOverride: limits(2, 4),
+      limitOverride: limits(4, 4),
     },
     env: {
       ...backendEnv,
@@ -167,6 +171,7 @@ export default defineRailway((ctx) => {
       ...backendEnv,
       LEKHA_SERVICE_TARGET: "api",
       RUN_API_BACKGROUND_TASKS: "0",
+      RAILWAY_RENDER_SCALING_TOKEN: ctx.shared.RAILWAY_RENDER_SCALING_TOKEN,
     },
   })
 
