@@ -31,7 +31,7 @@ Firebase Auth + Firestore: unchanged.
 |---|---|---|---|---|
 | `lekha-api` | `api` | yes | 1 / 2 GiB | uvicorn, 1 process |
 | `lekha-transcription` | `transcription` | yes | 2 / 2 GiB | `python3 -m backend.worker` (wake server on 8080) |
-| `lekha-render` | `render` | yes | 2 / 4 GiB | render browser daemon + worker |
+| `lekha-render` | `render` | yes | 4 / 4 GiB per replica | render browser daemon + worker |
 | `lekha-cron` | `api` | n/a (cron) | 1 / 1 GiB | `python3 -m backend.railway_cron`, `*/15 * * * *` |
 | `redis` | Railway Redis | no | n/a | n/a |
 
@@ -197,4 +197,10 @@ backstop:
 - ClamAV signatures are as fresh as the last deploy. The image copies them at build time, so **redeploy at least weekly**, or after a ClamAV advisory.
 - `clamscan` uses ~1 GB RAM for 20–40 s per scan. The API may also scan inline (language detection on a not-yet-scanned upload), which is why its cap is 2 GiB.
 - Redeploying a worker mid-job: SIGTERM lets RQ finish the running job. Very long jobs may be cut at Railway's drain timeout and are then retried or marked for support by the existing job-state logic.
-- One worker of each kind (`WORKER_LAUNCH_MAX_PARALLEL=1`). Raise it, and the service replicas, only after measuring.
+- Render replicas scale from 1 to a hard maximum of 3, each with 4 vCPU / 4 GiB and one export. Transcription stays at one replica.
+- Scale-up runs on enqueue. The existing 15-minute cron is the recovery and scale-down safety net. Scale-down requires Sleeping, no queued, started or scheduled renders, no active burst leases, and a 15-minute cooldown. An atomic Redis resize guard excludes new bursts during removal.
+- `RAILWAY_RENDER_SCALING_TOKEN` is an additional production-environment project token referenced only by API and cron. Workers never receive it. Missing credentials or control-plane failure preserve existing capacity and normal wake/recovery. Never deploy the owner's CLI/account credential.
+- IaC declares the one-replica baseline. A plan during a busy period may propose returning dynamically added replicas to one. Wait for idle scale-down before applying that reduction.
+- Railway sleeping applies across service replicas. Private DNS wake fan-out and unique replica leases let copies drain the shared queue.
+- Three fully utilized replicas have a compute ceiling of approximately $0.0083/minute ($0.50/hour), excluding the other services and providers. This is a ceiling, not a measured export cost. The $15 hard cap remains; sustained demand can reach it quickly.
+- Acceptance: verify render-only 1-to-2-to-3 patches, distinct identities, parallel disposable jobs, Sleeping and guarded 3-to-1. No mass-user load test is required.
