@@ -26,11 +26,11 @@ const WORKER_PORT = "8080"
 // rejects, leaving the service at its current size.
 const RENDER_MAX_REPLICAS = 5
 const TRANSCRIPTION_MAX_REPLICAS = 5
-// Launch period: keep one render and one transcription replica awake so the
-// first customers do not wait for a sleeping worker to start (about 1-2 min).
-// Costs idle RAM (roughly 1.5-2 GB in total) while awake. Set to false after
-// launch so idle workers sleep again.
-const KEEP_ONE_WORKER_AWAKE = true
+// Off: idle render and transcription workers sleep, so there is no idle
+// compute cost. The first job after a quiet period waits for a worker to wake
+// (about 1-2 min). Setting this to true keeps one replica of each awake,
+// costing idle RAM (roughly 1.5-2 GB, about $15-20/month).
+const KEEP_ONE_WORKER_AWAKE = false
 
 // Secrets and per-owner settings, created as shared variables in Railway.
 const SHARED = [
