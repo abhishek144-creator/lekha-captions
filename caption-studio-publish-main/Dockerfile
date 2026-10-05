@@ -42,8 +42,8 @@ FROM python-runtime AS api
 CMD ["sh", "-c", "exec python3 -m uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers ${WEB_CONCURRENCY:-2} --limit-concurrency ${UVICORN_LIMIT_CONCURRENCY:-64} --backlog ${UVICORN_BACKLOG:-512} --timeout-keep-alive ${UVICORN_KEEP_ALIVE_SECONDS:-10}"]
 
 FROM python-runtime AS transcription
-ENV SERVICE_ROLE=worker WORKER_QUEUES=caption_media_scan_jobs,caption_transcription_jobs
-CMD ["python3", "-m", "backend.worker"]
+ENV SERVICE_ROLE=worker WORKER_QUEUES=caption_media_scan_jobs,caption_transcription_jobs CLAMAV_HOST=127.0.0.1
+CMD ["sh", "-c", "clamd --config-file=/app/deploy/clamav/clamd.conf & exec python3 -m backend.worker"]
 
 FROM node:22-bookworm-slim AS render
 ARG APP_RELEASE

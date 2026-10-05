@@ -352,7 +352,7 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
 
     async def payment_reconciliation_job():
         try:
-            host.reconcile_payments_once(reason="scheduled")
+            await host.asyncio.to_thread(host.reconcile_payments_once, reason="scheduled")
         except Exception as e:
             host._json_log("error", "payment_reconcile_job_failed", error=str(e))
 

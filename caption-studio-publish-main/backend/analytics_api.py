@@ -24,7 +24,7 @@ def create_analytics_router(
     router = APIRouter()
 
     @router.get("/api/analytics/summary")
-    async def analytics_summary(request: Request):
+    def analytics_summary(request: Request):
         if not is_admin(request=request):
             raise HTTPException(status_code=403, detail="Admin access required")
         day_key = (request.query_params.get("date") or utcnow().date().isoformat()).strip()
@@ -127,7 +127,7 @@ def create_analytics_router(
         }
 
     @router.get("/api/v1/analytics/summary")
-    async def analytics_summary_v1(request: Request):
-        return await analytics_summary(request)
+    def analytics_summary_v1(request: Request):
+        return analytics_summary(request)
 
     return router
