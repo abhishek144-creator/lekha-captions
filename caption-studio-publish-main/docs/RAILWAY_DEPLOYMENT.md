@@ -29,7 +29,7 @@ Firebase Auth + Firestore: unchanged.
 
 | Service | Image (`LEKHA_SERVICE_TARGET`) | Sleeps | Cap (vCPU / RAM) | Start |
 |---|---|---|---|---|
-| `lekha-api` | `api` | yes | 1 / 2 GiB | uvicorn, 1 process |
+| `lekha-api` | `api` | yes | 2 / 2 GiB | uvicorn, 2 processes |
 | `lekha-transcription` | `transcription` | yes (see `KEEP_ONE_WORKER_AWAKE`) | 2 / 3 GiB per replica, 1–5 replicas | `clamd` + `python3 -m backend.worker` (wake server on 8080) |
 | `lekha-render` | `render` | yes (see `KEEP_ONE_WORKER_AWAKE`) | 8 / 8 GiB per replica, 1–5 replicas | render browser daemon + worker |
 | `lekha-cron` | `api` | n/a (cron) | 1 / 1 GiB | `python3 -m backend.railway_cron`, `*/15 * * * *` |
@@ -230,3 +230,72 @@ is running, and verify every job finishes across the resize. Verify at most
 the configured maximum of active drains, then Sleeping and the guarded return
 to one replica.
 Keep autoscaling disabled in API and cron until this live check passes.
+
+## Staging measurement runbook (2026-10-05)
+
+No Railway staging benchmark or authenticated burst was performed for this
+change. Staging identities and an approved staging test budget are required.
+Existing GCP measurements in `DRILL_LOG.md` do not establish Railway capacity.
+Keep the current work-ratio defaults until measurements justify a change.
+
+1. Use an isolated staging environment at the reviewed Git SHA. Record image
+   digest, region, replica count, encoder, FFmpeg/Chromium versions and CPU/RAM
+   limits. Obtain owner approval for the finite test budget, expiry and cleanup
+   before changing paid capacity. Keep Hobby maxima at five replicas, eight
+   vCPU/eight GiB each. Use one render replica for the CPU comparison.
+2. On the actual render image, compare 4 vCPU/8 GiB and 8 vCPU/8 GiB using
+   identical 60-second, 1080p, 30 FPS fixtures and five measured repetitions:
+
+   ```sh
+   npm run benchmark:renderers -- --duration 60 --quality 1080p --fps 30 --repeats 5 --warmups 1 --keep-outputs --output build/benchmarks/railway-4cpu.json
+   npm run benchmark:renderers -- --duration 60 --quality 1080p --fps 30 --repeats 5 --warmups 1 --keep-outputs --output build/benchmarks/railway-8cpu.json
+   ```
+
+   Run each command only after verifying that replica's actual CPU limit.
+   The harness's DOM fixture is a bounded text box, **not an authored animated
+   template**. Separately export a saved animated-template fixture through
+   `/api/export` with the same media, captions, template snapshot and settings
+   on both machines. Retain its redacted request, fixture hash, worker timings
+   and decoded output. Record plain-caption and authored-template median/P95
+   times and failures in `RENDERER_BENCHMARK.md`, linking raw artifacts.
+3. Prepare 100 disposable staging accounts with valid Firebase ID/App Check
+   tokens in an untracked credentials file; each journey uses a different
+   account. Use rights-cleared speech media and sufficient real plan quotas.
+   Run ten users first; review errors, spend and queue limits before 100:
+
+   ```sh
+   python scripts/media_load_smoke.py --base-url "$STAGING_API_URL" --credentials-json "$STAGING_CREDENTIALS" --video "$STAGING_VIDEO" --jobs 10 --workers 10 --quality 1080p --upload-mode proxy --results-json build/benchmarks/railway-load-10.json
+   python scripts/media_load_smoke.py --base-url "$STAGING_API_URL" --credentials-json "$STAGING_CREDENTIALS" --video "$STAGING_VIDEO" --jobs 100 --workers 100 --quality 1080p --upload-mode proxy --results-json build/benchmarks/railway-load-100.json
+   ```
+
+   This tool's direct mode currently implements GCS resumable uploads, so
+   select proxy explicitly for Railway rather than treating it as an R2
+   multipart test. Verify direct R2 uploads separately in the browser.
+   Record admission retries, failure rate, queue-wait and end-to-end P50/P95
+   from the JSON. `process` includes transcription queue wait and `export`
+   includes render queue wait: record actual transcription/render execution
+   timings separately from correlated worker logs. Never label those inclusive
+   stages as pure worker execution time. Record cold and warm runs separately
+   in `DRILL_LOG.md`, with SHA, fixture settings and durable evidence links.
+4. Compare measured workload seconds against `backend/rendering/capacity.py`.
+   If the baseline ratios (DOM 3, ASS 1) differ materially, set
+   `EXPORT_DOM_WORK_RATIO` / `EXPORT_ASS_WORK_RATIO` in `.railway/railway.ts`
+   from representative measured ratios, rerun the bursts and document the
+   evidence. Do not increase pending-work limits from estimated performance.
+5. During the burst verify distinct replicas, scale 1→5→1, drain safety and
+   no lost/duplicated jobs. Observe the API's two processes and peak memory
+   within 2 GiB, including a fallback scan; keep `RUN_API_BACKGROUND_TASKS=0`.
+   Clean up disposable media/accounts, restore reviewed capacity settings,
+   verify no test resources remain and record the actual test spend.
+
+### Owner launch checklist
+
+- [ ] Set the launch-month hard usage limit around $50 and email alerts at $20/$35.
+- [ ] Resolve GitHub Actions billing/minutes if jobs cannot obtain a runner.
+- [ ] Merge PR #28 and its reviewed follow-ups; run `railway config plan`, review, then `railway config apply`.
+- [ ] Confirm transcription logs show clamd ready after startup; set localhost `CLAMAV_HOST` only on transcription.
+- [ ] Upload, transcribe and export one real video end to end.
+- [ ] Verify both worker services scale 1→5→1 under approved staging load.
+- [ ] Set `REDIS_MEMORY_ALERT_BYTES` to the actual Redis plan memory size.
+- [ ] After launch set `KEEP_ONE_WORKER_AWAKE=false` and verify idle sleeping.
+- [ ] Consider Pro only if measured queues exceed five-replica capacity.

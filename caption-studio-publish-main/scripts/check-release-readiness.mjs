@@ -211,6 +211,9 @@ const startApp = readText("scripts/start_app.ps1")
 assertIncludes("Windows starter verifies frontend API proxy", startApp, "$FrontendUrl/api/version")
 
 const workflow = readText("../.github/workflows/quality-gates.yml")
+assertIncludes("GitHub Actions runs pushes only on main", workflow, 'branches: ["main"]')
+assertIncludes("GitHub Actions validates pull requests", workflow, "  pull_request:")
+assertIncludes("GitHub Actions retains the release gate", workflow, "  release-gate:")
 assertIncludes("GitHub Actions runs in app workspace", workflow, "working-directory: caption-studio-publish-main")
 assertIncludes("GitHub Actions runs template motion parity", workflow, "npm run test:template-parity")
 assertIncludes("GitHub Actions runs template visual parity", workflow, "npm run test:template-visual")
@@ -587,7 +590,7 @@ assertIncludes("container scopes the Chromium sandbox workaround to Railway", do
 assertIncludes("container installs the hashed backend dependency lock", dockerfile, "--require-hashes -r backend/requirements.lock")
 assertIncludes("export renderer supports the scoped Chromium sandbox workaround", browserRuntime, "PUPPETEER_CONTAINER_NO_SANDBOX")
 assertIncludes("container defines the API process", dockerfile, "uvicorn backend.main:app")
-assertIncludes("container defines the worker process", dockerfile, "python3\", \"-m\", \"backend.worker")
+assertIncludes("container starts clamd with the transcription worker", dockerfile, "clamd --config-file=/app/deploy/clamav/clamd.conf & exec python3 -m backend.worker")
 
 try {
   const trackedGenerated = execFileSync(

@@ -30,6 +30,13 @@ class VerifiedTokenCacheTests(unittest.TestCase):
             self.assertIsNone(firebase.verify_token("token-b"))
         self.assertEqual(verify.call_count, 2)
 
+    def test_configuration_cannot_extend_revocation_cache_past_sixty_seconds(self):
+        with (patch.object(firebase, "TOKEN_CACHE_SECONDS", 3600),
+              patch.object(firebase.time, "monotonic", return_value=100)):
+            firebase._remember_token("bounded", {"uid": "owner"})
+        with patch.object(firebase.time, "monotonic", return_value=161):
+            self.assertIsNone(firebase._cached_token("bounded"))
+
     def test_cache_never_outlives_token_expiry(self):
         decoded = {"uid": "owner", "exp": time.time() - 1}
         with patch.object(firebase.auth, "verify_id_token", return_value=decoded) as verify:
