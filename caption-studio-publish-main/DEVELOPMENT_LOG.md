@@ -1181,3 +1181,10 @@ The owner requested removing app. from the public editor address. Prepared Netli
 - Moved the upload handler to `backend/upload_api.py`, process/transcription handler and worker helpers to `backend/processing_api.py`, and provider-health admin route to `backend/provider_admin_api.py`. Existing admin routes already live in `admin_api.py`. Main keeps public aliases and the same RQ import paths; helpers resolve dynamically through host so existing patches/shared state continue to work.
 - `main.py` shrank by about 580 lines. Full OpenAPI schema compared identical before/after, including operation IDs and request/response models. Verification: 383 backend tests plus 29 subtests, npm ci/release:check and Bandit Medium/High gate. Separate from the runtime changes in PR #30.
 - Remaining B7: stateless VideoPlayer/browser-runtime module split and unused committed artifact cleanup, each in separate follow-ups. Staging measurement and owner launch checklist remain pending.
+
+## 2026-10-05 — B7 separate rendering module cleanup
+
+- Extracted `buildRuntimeScript` and its constants into `scripts/render_template_page_runtime.mjs`; overlay entry point shrank by about 2,930 lines. Compared the generated browser JavaScript before/after: byte-identical for empty and authored markup fixtures.
+- Moved eight stateless player styling/text helpers into `videoPlayerTemplateRendering.jsx`; VideoPlayer shrank by about 230 lines. Scope analysis verified they capture no player component state. Existing source contracts now read both renderer modules, preserving every assertion.
+- Verification: npm ci/release:check, 383 backend tests plus 29 subtests, Bandit Medium/High gate, motion checks and visual audit (70 cards/278 phases) passed. Full export parity matrix is running; hosted release-gate must pass before merge.
+- This is a separate behavior-preserving PR stacked on the router split. Unused artifact cleanup and owner staging measurements remain pending.
