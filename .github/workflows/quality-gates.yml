@@ -2,7 +2,9 @@ name: quality-gates
 
 on:
   push:
-    branches: ["**"]
+    # Pull requests validate feature branches. Avoid billing twice for the
+    # same feature commit through both push and pull_request events.
+    branches: ["main"]
   pull_request:
 
 permissions:
