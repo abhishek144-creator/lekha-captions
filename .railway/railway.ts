@@ -20,8 +20,10 @@ const TRANSCRIPTION_WORKER = "lekha-transcription"
 const WORKER_PORT = "8080"
 // Replica ceilings for the autoscaled workers. One render replica handles one
 // export at a time (4 vCPU / 4 GiB); one transcription replica handles one
-// transcription or malware scan at a time (2 vCPU / 2 GiB).
-const RENDER_MAX_REPLICAS = 6
+// transcription or malware scan at a time (2 vCPU / 2 GiB). The Hobby plan
+// allows at most 5 replicas per service: a higher ceiling makes the scaler
+// request a count Railway rejects, leaving the service at its current size.
+const RENDER_MAX_REPLICAS = 5
 const TRANSCRIPTION_MAX_REPLICAS = 3
 
 // Secrets and per-owner settings, created as shared variables in Railway.
