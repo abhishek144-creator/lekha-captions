@@ -3214,6 +3214,10 @@ async function main() {
           );
         }
 
+        const disk = await fs.statfs(outputDir);
+        if (Number(disk.bavail) * Number(disk.bsize) < 256 * 1024 * 1024) {
+          throw new Error('Insufficient temporary disk space for overlay frames');
+        }
         await page.screenshot({
           path: framePath,
           omitBackground: true,

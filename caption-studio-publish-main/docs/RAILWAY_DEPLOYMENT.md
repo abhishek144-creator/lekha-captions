@@ -79,7 +79,7 @@ RAM $10/GB-month; CPU $20/vCPU-month; Railway egress $0.05/GB. R2 is free up to
 | Situation | Railway usage | R2 | Expected bill |
 |---|---|---|---|
 | Idle month, no users | Redis ≈ $0.7, cron ≈ $0.3 | $0 | **$5** (the Hobby minimum covers it) |
-| 1,000 exports/month | + workers awake ≈ 10 min per burst, ≈ $3–6; export upload egress ≈ $2.5 | $0 (under 10 GB with the lifecycle rules) | **≈ $8–14** |
+| Active exports | Depends on measured render seconds, actual CPU/RAM, wake duration and egress | Depends on retained media and operations | **Pending B4 measurements; no monthly capacity claim** |
 | Runaway/abuse | capped by service limits and the hard usage limit | capped by 500 MiB uploads and lifecycle | **≤ the hard limit you set** |
 
 Fixed resources: 4 services, 1 Redis, 1 R2 bucket. There are no load balancers,
@@ -89,8 +89,8 @@ about $36/day for 3-minute uploads; check the Sarvam rate too).
 
 ### Spend limits (set all of them before going live)
 
-1. **Railway → Workspace → Usage → Hard limit**: e.g. **$15**. Railway stops services when it is reached.
-2. Railway custom email alert at e.g. $8.
+1. **Railway → Workspace → Usage → Hard limit**: the owner approved the concrete rollout/test plan on 2026-10-05, then revised the Railway cap to **$25**. Live readback confirms $25. Railway stops every workload when the limit is reached; it is an outage boundary, not a capacity allowance. The source retains five-replica ceilings, sleeping workers and disabled autoscaling until live acceptance. Applying the reviewed production plan and creating staging still require PR #35's release gate to pass.
+2. The live custom email alert is **$10**. [Railway also sends reminders](https://docs.railway.com/pricing/cost-control) at 75% and 90% of the hard cap: **$18.75/$22.50**. This notification threshold is not a separate staging allowance; the owner removed that allowance and authorized the plan's metered AI calls.
 3. Per-service CPU/RAM caps (in `.railway/railway.ts`). Lower them if the plan rejects them.
 4. **Cloudflare → R2 → bucket → Settings → Object lifecycle rules** (§4.3), plus a billing notification.
 5. `AI_SYSTEM_DAILY_LIMIT` and the per-plan quotas (already enforced in code).
@@ -199,15 +199,16 @@ backstop:
 - Transcription replicas run `clamd` (`deploy/clamav/clamd.conf`), which keeps the signature database loaded: measured locally with the production signatures, it is ready about 22 s after start, holds about 970 MiB, and scanned a 40 MB file in 5.3 s where `clamscan` took 26.7 s. Until it is ready, scans fall back to `CLAMAV_SCAN_CMD`, which is why the transcription cap is 3 GiB. `StreamMaxLength 600M` is required: clamd's 25 MB default would refuse larger uploads.
 - `clamscan` uses ~1 GB RAM for 20–40 s per scan. The API may also scan inline (language detection on a not-yet-scanned upload), which is why its cap is 2 GiB.
 - Redeploying a worker mid-job: SIGTERM lets RQ finish the running job. Very long jobs may be cut at Railway's drain timeout and are then retried or marked for support by the existing job-state logic.
-- Render replicas scale from 1 to `RENDER_AUTOSCALE_MAX_REPLICAS` (5), each with 8 vCPU / 8 GiB and one export. Transcription replicas scale from 1 to `TRANSCRIPTION_AUTOSCALE_MAX_REPLICAS` (5), each with 2 vCPU / 3 GiB and one transcription or malware scan. Code clamps both to at most 10.
-- `EXPORT_MAX_PENDING_WORK_SECONDS` is 600 × the render maximum (3000), so admitted exports can start within the 10-minute queue-wait limit when every replica is running. The Hobby plan allows at most 5 replicas per service (8 vCPU / 8 GB each, 48 vCPU / 48 GB per service); never configure a maximum above the plan's replica limit, or the scaler keeps requesting a count Railway rejects and the service stays at its current size. Change both values together.
+- The selected launch source profile has a one-replica baseline and five-replica ceilings: render 8 vCPU / 8 GiB per replica, transcription 2 vCPU / 3 GiB. Both autoscaling controllers remain disabled until their finite live acceptance tests and `KEEP_ONE_WORKER_AWAKE=false`. API capacity remains two processes on 2 vCPU / 2 GiB. These defaults require an approved config apply; they do not describe unverified live settings.
+- `WORKER_AUTOSCALING_ACCEPTED=false` keeps both controllers disabled and `EXPORT_MAX_PENDING_WORK_SECONDS=600` for the one-replica baseline. After both live acceptance tests pass, enabling that gate changes pending capacity to 600 × the render maximum (3000). The job lifetime is 30 minutes so the 15-minute recovery cron can recover a missed wake; this lifetime is not a promised queue latency. Keep Hobby maxima at five replicas, eight vCPU/eight GiB each; never configure a count beyond the live plan limit.
 - If Railway rejects a resize (for example a plan's replica or resource limit), the controller logs `render_scaling_failed` or `transcription_scaling_failed`, keeps the current capacity and retries after 30 seconds.
 - Scale-up runs on enqueue. The existing 15-minute cron is the recovery and scale-down safety net. Scale-down requires Sleeping (or, for a service kept awake, a successful idle deployment), no queued, started or scheduled jobs, no active burst leases, and a 15-minute cooldown. An atomic Redis resize guard excludes new bursts during removal.
 - `RAILWAY_RENDER_SCALING_TOKEN` is an additional production-environment project token referenced only by API and cron. Workers never receive it. Missing credentials or control-plane failure preserve existing capacity and normal wake/recovery. Never deploy the owner's CLI/account credential.
 - IaC declares the one-replica baseline. A plan during a busy period may propose returning dynamically added replicas to one. Wait for idle scale-down before applying that reduction.
 - Railway sleeping applies across service replicas. Private DNS wake fan-out and unique replica leases let copies drain the shared queue.
-- At the rates in §3, five fully utilized render replicas (8 vCPU / 8 GiB) cost at most about $1.64/hour and five transcription replicas (2 vCPU / 3 GiB) about $0.48/hour, excluding the other services and providers. These are ceilings, not measured costs; Railway bills CPU and RAM actually used. **Raise the $15 hard cap before a public launch** (about $50 for launch month, with email alerts at $20 and $35).
-- `KEEP_ONE_WORKER_AWAKE` (in `.railway/railway.ts`) is **off**: idle render and transcription workers sleep, so there is no idle compute cost, and the first job after a quiet period waits about 1–2 minutes for a worker to wake (clamd needs ~22 s more, during which scans use clamscan). Turning it on keeps one replica of each awake, holding roughly 1.5–2 GB of RAM (about $15–20/month at the §3 rate; clamd alone is ~1 GB), which can exceed a $15 hard cap on its own.
+- At the [current Railway rates](https://railway.com/pricing) (checked 2026-10-05), CPU is $0.00000772/vCPU-second and RAM $0.00000386/GB-second. Five fully utilized 8 vCPU / 8 GB render replicas plus five 2 vCPU / 3 GB transcription replicas cost about $2.15/hour before API, cron, Redis, volumes, egress, AI and tax. A $15 balance could last less than seven hours. The approved $25 cap also stops the app once exhausted; it does not guarantee a month of availability.
+- Including API and cron at their source ceilings, five replicas of each worker total about $2.28/hour before Redis/volumes/egress/providers/tax. A full $25 balance would cover about 11 hours at those ceilings, not a month. Sleeping reduces idle use, but Redis and storage remain billable. `AI_SYSTEM_DAILY_LIMIT=2000` is retained from PR #28 and is a count ceiling, not a provider dollar cap.
+- `KEEP_ONE_WORKER_AWAKE=false` allows sleeping when idle. Turning it on holds roughly 1.5–2 GB of worker RAM (about $15–20/month before CPU). The approved $25 profile keeps sleeping enabled; a future warm-worker choice needs measured idle spend.
 - Acceptance: for each worker service, verify 1-to-N patches, distinct identities, parallel disposable jobs, Sleeping and the guarded N-to-1. No mass-user load test is required.
 
 ### Worker resize shutdown safety
@@ -233,15 +234,18 @@ Keep autoscaling disabled in API and cron until this live check passes.
 
 ## Staging measurement runbook (2026-10-05)
 
-No Railway staging benchmark or authenticated burst was performed for this
-change. Staging identities and an approved staging test budget are required.
+No Railway staging benchmark or authenticated burst has been performed yet.
+The owner approved the finite rollout and staging plan, including metered AI
+calls, and revised the Railway workspace cap to $25 with a $10 custom alert.
+Live readback verifies these settings. PR #35 must pass its final release gate
+before its merge, production apply and isolated staging creation.
 Existing GCP measurements in `DRILL_LOG.md` do not establish Railway capacity.
 Keep the current work-ratio defaults until measurements justify a change.
 
 1. Use an isolated staging environment at the reviewed Git SHA. Record image
    digest, region, replica count, encoder, FFmpeg/Chromium versions and CPU/RAM
-   limits. Obtain owner approval for the finite test budget, expiry and cleanup
-   before changing paid capacity. Keep Hobby maxima at five replicas, eight
+   limits. Follow the approved finite time/job limits and mandatory cleanup in
+   `RAILWAY_B4_PLAN_2026-10-05.md`. Keep Hobby maxima at five replicas, eight
    vCPU/eight GiB each. Use one render replica for the CPU comparison.
 2. On the actual render image, compare 4 vCPU/8 GiB and 8 vCPU/8 GiB using
    identical 60-second, 1080p, 30 FPS fixtures and five measured repetitions:
@@ -284,7 +288,7 @@ Keep the current work-ratio defaults until measurements justify a change.
    `EXPORT_DOM_WORK_RATIO` / `EXPORT_ASS_WORK_RATIO` in `.railway/railway.ts`
    from representative measured ratios, rerun the bursts and document the
    evidence. Do not increase pending-work limits from estimated performance.
-5. During the burst verify distinct replicas, scale 1→5→1, drain safety and
+5. During an explicitly approved five-replica staging burst verify distinct replicas, scale 1→5→1, drain safety and
    no lost/duplicated jobs. Observe the API's two processes and peak memory
    within 2 GiB, including a fallback scan; keep `RUN_API_BACKGROUND_TASKS=0`.
    Clean up disposable media/accounts, restore reviewed capacity settings,
@@ -292,12 +296,14 @@ Keep the current work-ratio defaults until measurements justify a change.
 
 ### Owner launch checklist
 
-- [ ] Set the launch-month hard usage limit around $50 and email alerts at $20/$35.
-- [ ] Resolve GitHub Actions billing/minutes if jobs cannot obtain a runner.
-- [ ] Merge PR #28 and its reviewed follow-ups; run `railway config plan`, review, then `railway config apply`.
+- [x] Select and approve the launch profile: owner retained five-replica ceilings, sleeping workers and autoscaling gated on live acceptance, then revised the Railway cap to $25 on 2026-10-05.
+- [x] Approve the priced live rollout/test plan and verify the revised $25/$10 live cap/alert. There is no separate $10 test allowance; the plan's metered AI calls are authorized. Deployment still waits for PR #35's final release gate.
+- [x] Resolve GitHub Actions billing/minutes: owner approved increasing the monthly Actions budget from $7 to $10, retaining its hard stop and alerts. UI readback verified the saved budget and the previous PR #35 revision passed all 13 checks on retry. Final code additions require fresh CI before merging.
+- [x] Merge PR #28 → #30 → #31 → #32 → #33 → #34 in order. Close conflicting #29 in favor of the port in #35.
+- [ ] Pass #35's release gate, merge it, verify the reviewed 0-addition/32-change/0-deletion production plan, then apply it.
 - [ ] Confirm transcription logs show clamd ready after startup; set localhost `CLAMAV_HOST` only on transcription.
 - [ ] Upload, transcribe and export one real video end to end.
-- [ ] Verify both worker services scale 1→5→1 under approved staging load.
+- [ ] Verify both worker services' finite resize/drain/sleep test before enabling autoscaling; 1→5→1 requires the separately approved staging capacity/budget.
 - [ ] Set `REDIS_MEMORY_ALERT_BYTES` to the actual Redis plan memory size.
-- [ ] After launch set `KEEP_ONE_WORKER_AWAKE=false` and verify idle sleeping.
+- [ ] Keep `KEEP_ONE_WORKER_AWAKE=false` and verify idle sleeping.
 - [ ] Consider Pro only if measured queues exceed five-replica capacity.

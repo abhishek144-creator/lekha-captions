@@ -18,7 +18,8 @@ const GIB = 1024 * 1024 * 1024
 const RENDER_WORKER = "lekha-render"
 const TRANSCRIPTION_WORKER = "lekha-transcription"
 const WORKER_PORT = "8080"
-// Replica ceilings for the autoscaled workers. One render replica handles one
+// Approved $25 workspace cap; sleeping workers and live acceptance gates.
+// One render replica handles one
 // export at a time (8 vCPU / 8 GiB); one transcription replica handles one
 // transcription or malware scan at a time (2 vCPU / 3 GiB). The Hobby plan
 // allows at most 5 replicas per service, 8 vCPU / 8 GB each and 48 vCPU / 48 GB
@@ -26,10 +27,10 @@ const WORKER_PORT = "8080"
 // rejects, leaving the service at its current size.
 const RENDER_MAX_REPLICAS = 5
 const TRANSCRIPTION_MAX_REPLICAS = 5
-// Off: idle render and transcription workers sleep, so there is no idle
-// compute cost. The first job after a quiet period waits for a worker to wake
-// (about 1-2 min). Setting this to true keeps one replica of each awake,
-// costing idle RAM (roughly 1.5-2 GB, about $15-20/month).
+// Pending-work admission follows effective capacity while rollout is gated.
+const WORKER_AUTOSCALING_ACCEPTED = false
+// Sleep when idle. A larger/warm launch profile requires a reviewed spending
+// allowance and measured capacity; the workspace hard cap stops the whole app.
 const KEEP_ONE_WORKER_AWAKE = false
 
 // Secrets and per-owner settings, created as shared variables in Railway.
@@ -98,16 +99,17 @@ export default defineRailway((ctx) => {
     AI_SYSTEM_DAILY_LIMIT: "2000",
     // Workers scale on enqueue and back to one replica when idle (lekha-cron).
     // A resize Railway rejects (plan limits) keeps the current capacity.
-    RENDER_AUTOSCALE_ENABLED: "1",
+    // Enable each controller only after its finite live resize/drain test.
+    RENDER_AUTOSCALE_ENABLED: WORKER_AUTOSCALING_ACCEPTED ? "1" : "0",
     RENDER_AUTOSCALE_SERVICE_ID: "${{lekha-render.RAILWAY_SERVICE_ID}}",
     RENDER_AUTOSCALE_REGION: REGION,
     RENDER_AUTOSCALE_MAX_REPLICAS: String(RENDER_MAX_REPLICAS),
-    TRANSCRIPTION_AUTOSCALE_ENABLED: "1",
+    TRANSCRIPTION_AUTOSCALE_ENABLED: WORKER_AUTOSCALING_ACCEPTED ? "1" : "0",
     TRANSCRIPTION_AUTOSCALE_SERVICE_ID: "${{lekha-transcription.RAILWAY_SERVICE_ID}}",
     TRANSCRIPTION_AUTOSCALE_MAX_REPLICAS: String(TRANSCRIPTION_MAX_REPLICAS),
     // Admit at most the work all render replicas finish within the 10-minute
     // queue-wait limit (600 s per replica), so accepted exports do not time out.
-    EXPORT_MAX_PENDING_WORK_SECONDS: String(600 * RENDER_MAX_REPLICAS),
+    EXPORT_MAX_PENDING_WORK_SECONDS: String(600 * (WORKER_AUTOSCALING_ACCEPTED ? RENDER_MAX_REPLICAS : 1)),
   }
 
   const api = service("lekha-api", {
@@ -185,8 +187,7 @@ export default defineRailway((ctx) => {
       drainingSeconds: 1860,
       overlapSeconds: 0,
       // Chromium + FFmpeg were OOM-killed under 3 GiB in staging (2026-08-04).
-      // FFmpeg uses every available core; Railway bills CPU actually used, so
-      // a faster export costs about the same as a slower one.
+      // Preserve memory headroom; measure 4/8 vCPU in approved staging.
       limitOverride: limits(8, 8),
     },
     env: {

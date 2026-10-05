@@ -552,7 +552,7 @@ assertIncludes("export cancellation is limited to queued jobs", exportPanelSourc
 assertIncludes("export cancellation uses the durable backend state machine", exportPanelSource, "/api/export-cancel/")
 assertIncludes("cancelled exports clear their retry receipt", backendMain, '_idem_delete(idempotency_key)')
 assertIncludes("confirmed server export failures are distinguished from connection loss", exportPanelSource, "terminalError.exportStatus = 'failed'")
-assertIncludes("backend caps preparation wait at two minutes", backendMain, "EXPORT_MAX_QUEUE_WAIT_SECONDS = max(")
+assertIncludes("backend bounds queue lifetime while allowing Railway cron recovery", backendMain, "EXPORT_MAX_QUEUE_WAIT_SECONDS = max(")
 for (const marker of [
   'data-lekha-player="true"',
   'data-caption-layer="true"',
