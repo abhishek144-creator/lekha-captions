@@ -153,47 +153,62 @@ class TranscriptionJobs:
             return True
         return finish(self.db.transaction())
 
-    def dispatch(self, queue):
+    def dispatch(self, queue, job_id=None):
+        """Deliver outbox entries to the queue; only ``job_id`` when given.
+
+        The request path passes the job it just admitted. Scanning the whole
+        outbox there cost two Firestore reads per waiting job on every new
+        request, which grows quadratically with the backlog during a launch.
+        The cron/background pass still sweeps every entry.
+        """
         if queue is None:
+            return
+        if job_id is not None:
+            snapshot = self.db.collection(self.outbox_collection).document(job_id).get()
+            if snapshot.exists:
+                self._dispatch_entry(queue, snapshot)
             return
         # The outbox is committed with the intent. API crashes and Redis loss do
         # not lose admission; duplicate queue deliveries must claim in Firestore.
         for snapshot in self.db.collection(self.outbox_collection).limit(100).stream():
-            pointer = snapshot.to_dict()
-            uid, job_id = pointer["uid"], pointer["job_id"]
-            job = self.get(uid, job_id)
-            if not job or job["status"] in TERMINAL:
-                snapshot.reference.delete()
-                continue
-            now = time.time()
-            if job["status"] == "running":
-                if now - job["updated_at"] > MAX_EXECUTION_SECONDS:
-                    self.finish(uid, job_id, "unknown", error="Transcription was interrupted. Contact support with this job reference; it will not be repeated automatically.")
-                continue
-            if now - pointer.get("last_dispatch", 0) < 30:
-                continue
-            # Waiting behind a render is not a delivery failure. Keep the
-            # existing RQ delivery instead of adding duplicates every 30s and
-            # exhausting the dispatch budget before a worker reaches this job.
-            # Probe failures propagate: do not guess that Redis lost the job.
-            if pointer.get("rq_job_id"):
-                delivery = queue.fetch_job(pointer["rq_job_id"])
-                if delivery and delivery.get_status(refresh=True) in {"queued", "started", "deferred", "scheduled"}:
-                    continue
-            if pointer.get("attempts", 0) >= 10:
-                self.finish(uid, job_id, "failed", error="Transcription could not start. Contact support with this job reference.",
-                            expected_status="queued")
-                continue
-            # Marking dispatch is best effort: crash on either side can cause
-            # duplicate delivery, which the durable claim deliberately tolerates.
-            snapshot.reference.update({"last_dispatch": now, "attempts": firestore.Increment(1)})
-            delivery = queue.enqueue("backend.main.run_transcription_job_task", uid, job_id,
-                                     job_timeout=30 * 60, result_ttl=3600, failure_ttl=86400)
-            try:
-                snapshot.reference.update({"rq_job_id": delivery.id})
-            except NotFound:
-                # A fast worker can finish and delete its outbox first.
-                pass
+            self._dispatch_entry(queue, snapshot)
+
+    def _dispatch_entry(self, queue, snapshot):
+        pointer = snapshot.to_dict()
+        uid, job_id = pointer["uid"], pointer["job_id"]
+        job = self.get(uid, job_id)
+        if not job or job["status"] in TERMINAL:
+            snapshot.reference.delete()
+            return
+        now = time.time()
+        if job["status"] == "running":
+            if now - job["updated_at"] > MAX_EXECUTION_SECONDS:
+                self.finish(uid, job_id, "unknown", error="Transcription was interrupted. Contact support with this job reference; it will not be repeated automatically.")
+            return
+        if now - pointer.get("last_dispatch", 0) < 30:
+            return
+        # Waiting behind a render is not a delivery failure. Keep the
+        # existing RQ delivery instead of adding duplicates every 30s and
+        # exhausting the dispatch budget before a worker reaches this job.
+        # Probe failures propagate: do not guess that Redis lost the job.
+        if pointer.get("rq_job_id"):
+            delivery = queue.fetch_job(pointer["rq_job_id"])
+            if delivery and delivery.get_status(refresh=True) in {"queued", "started", "deferred", "scheduled"}:
+                return
+        if pointer.get("attempts", 0) >= 10:
+            self.finish(uid, job_id, "failed", error="Transcription could not start. Contact support with this job reference.",
+                        expected_status="queued")
+            return
+        # Marking dispatch is best effort: crash on either side can cause
+        # duplicate delivery, which the durable claim deliberately tolerates.
+        snapshot.reference.update({"last_dispatch": now, "attempts": firestore.Increment(1)})
+        delivery = queue.enqueue("backend.main.run_transcription_job_task", uid, job_id,
+                                 job_timeout=30 * 60, result_ttl=3600, failure_ttl=86400)
+        try:
+            snapshot.reference.update({"rq_job_id": delivery.id})
+        except NotFound:
+            # A fast worker can finish and delete its outbox first.
+            pass
 
     def prepare_deletion(self, uid):
         user = self.db.collection("users").document(uid)

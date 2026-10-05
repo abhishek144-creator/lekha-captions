@@ -105,11 +105,11 @@ import pathlib
 import re
 import secrets
 import threading
-from collections import deque
+from collections import OrderedDict, deque
 from contextlib import asynccontextmanager
 try:
     from .transcription_jobs import TranscriptionJobs
-    from .queue_admission import enqueue_bounded_across_queues, release_pending_work
+    from .queue_admission import PENDING_WORK_LEDGER_KEY, enqueue_bounded_across_queues, release_pending_work
     from . import worker_launcher
     from .drafts import list_projects, read_draft
     from .project_api import create_project_router
@@ -155,7 +155,7 @@ try:
     from .services.upload_security import UploadSecurityService
 except ImportError:
     from transcription_jobs import TranscriptionJobs
-    from queue_admission import enqueue_bounded_across_queues, release_pending_work
+    from queue_admission import PENDING_WORK_LEDGER_KEY, enqueue_bounded_across_queues, release_pending_work
     import worker_launcher
     from drafts import list_projects, read_draft
     from project_api import create_project_router
@@ -238,7 +238,7 @@ try:
         def enqueue_job(self, job, pipeline=None, **kwargs):
             queued = super().enqueue_job(job, pipeline=pipeline, **kwargs)
             if pipeline is None:
-                worker_launcher.kick(self.connection, self.name)
+                worker_launcher.kick_in_background(self.connection, self.name)
             return queued
 
     RQ_AVAILABLE = True
@@ -709,8 +709,28 @@ RENDER_COST_ESTIMATE_PER_MEDIA_MINUTE_USD = max(
     0.0, float(os.environ.get("RENDER_COST_ESTIMATE_PER_MEDIA_MINUTE_USD", "0"))
 )
 
+class _BoundedJobCache(OrderedDict):
+    """Process-local job cache that evicts the oldest entries.
+
+    Shared state lives in Redis/Firestore; this cache only answers "was this
+    job seen here". Unbounded, it grew by one record per export for the life of
+    every API and worker process."""
+
+    def __init__(self, max_entries: int):
+        super().__init__()
+        self.max_entries = max_entries
+
+    def __setitem__(self, key, value):
+        super().__setitem__(key, value)
+        self.move_to_end(key)
+        while len(self) > self.max_entries:
+            self.popitem(last=False)
+
+
 # In-memory operational state (swap for Redis in multi-instance deployments)
-_export_jobs: Dict[str, Dict[str, Any]] = {}
+_export_jobs: Dict[str, Dict[str, Any]] = _BoundedJobCache(
+    max(100, int(os.environ.get("EXPORT_JOB_LOCAL_CACHE_MAX", "2000")))
+)
 _export_idempotency: Dict[str, Dict[str, Any]] = {}
 _upload_idempotency: Dict[str, Dict[str, Any]] = {}
 _active_exports_by_user: Dict[str, str] = {}
@@ -838,7 +858,9 @@ if REDIS_AVAILABLE and REDIS_URL and not _IS_TEST:
         # RQ stores pickled/binary job payloads. Sharing the application's
         # decode_responses=True client makes failed-job inspection attempt UTF-8
         # decoding and can strand per-user export leases.
-        _rq_redis_client = connect_redis(REDIS_URL)
+        # The API never blocks on a queue pop, so a bounded read timeout is safe
+        # and turns a stalled Redis into a fast error instead of a hung request.
+        _rq_redis_client = connect_redis(REDIS_URL, socket_timeout=15)
         _rq_redis_client.ping()
         _json_log("info", "redis_connected")
     except Exception as e:
@@ -2479,13 +2501,34 @@ def _record_export_usage(
     return _record(db.transaction())
 
 
+# Large fields kept only in the durable Firestore record when Firestore exists.
+# Redis job records are read on every status poll and rewritten on every state
+# transition, and Redis has no eviction headroom: a full editor snapshot per
+# export for seven days grew Redis without bound. Replay reads Firestore.
+_DURABLE_ONLY_EXPORT_JOB_FIELDS = ("request_snapshot",)
+
+
 def _set_export_job(job_id: str, status: str, *, expected_status=None, **kwargs):
     with JOB_STATE_LOCK:
+        durable_only = {}
+        keep_out_of_redis = _redis_client is not None and get_db() is not None
+        if keep_out_of_redis:
+            durable_only = {
+                field: kwargs.pop(field)
+                for field in _DURABLE_ONLY_EXPORT_JOB_FIELDS
+                if field in kwargs
+            }
         seed = _load_export_job(job_id) or {}
+        if keep_out_of_redis:
+            # A Redis-loss recovery seeds from Firestore; do not copy its
+            # snapshot back into Redis.
+            seed = {key: value for key, value in seed.items() if key not in _DURABLE_ONLY_EXPORT_JOB_FIELDS}
         payload = transition_export_job(_redis_client, job_id, seed, {
             "status": status, "updated_at": time.time(), **kwargs,
         }, expected_status=expected_status)
-        persisted = _persist_export_job(job_id, payload, write_redis=_redis_client is None)
+        persisted = _persist_export_job(
+            job_id, {**payload, **durable_only}, write_redis=_redis_client is None,
+        )
         if _export_queue is not None and not persisted:
             raise RuntimeError("Export job state could not be persisted to shared storage")
         _export_jobs[job_id] = payload
@@ -3971,6 +4014,23 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
     return payload
 
 
+EXPORT_SLOT_WAIT_INTERVAL_SECONDS = 15
+EXPORT_SLOT_WAIT_MAX_ATTEMPTS = max(1, EXPORT_SLOT_TTL_SECONDS // EXPORT_SLOT_WAIT_INTERVAL_SECONDS)
+
+
+def _export_slot_wait_retry():
+    """An RQ Retry result for a job waiting on its account slot, or None outside RQ."""
+    if RQRetry is None:
+        return None
+    try:
+        from rq import get_current_job
+        if get_current_job() is None:
+            return None
+    except Exception:
+        return None
+    return RQRetry(max=EXPORT_SLOT_WAIT_MAX_ATTEMPTS, interval=EXPORT_SLOT_WAIT_INTERVAL_SECONDS)
+
+
 def run_export_job_task(
     export_job_id: str,
     req_payload: Dict[str, Any],
@@ -4001,6 +4061,15 @@ def run_export_job_task(
             }
         slot_acquired = _acquire_export_slot(uid, export_job_id)
         if not slot_acquired:
+            wait_retry = _export_slot_wait_retry()
+            if wait_retry is not None:
+                # Batch items for one account share its single export slot. Waiting
+                # for a sibling render is not a failure: reschedule without using
+                # the job's failure retries (a 10-item batch outlived them) and
+                # without dead-lettering every poll.
+                _set_export_job(export_job_id, "retrying", error=None)
+                _json_log("info", "export_waiting_for_account_slot", job_id=export_job_id)
+                return wait_retry
             raise RuntimeError("Another export currently owns this account's export slot")
         req = ExportRequest(**req_payload)
         payload = asyncio.run(_process_export_job_core(req, uid, rid, export_job_id))
@@ -4475,8 +4544,8 @@ async def upload_video(file: UploadFile = File(...), request: Request = None, re
 async def process_video(req: ProcessRequest, request: Request, response: Response):
     if not _IS_PRODUCTION:
         return await _process_video_inline(req, request, response)
-    _assert_service_available("pause_transcription")
-    uid = _authenticate_media_request(req.id_token, req.org_id)["uid"]
+    await asyncio.to_thread(_assert_service_available, "pause_transcription")
+    uid = (await asyncio.to_thread(_authenticate_media_request, req.id_token, req.org_id))["uid"]
     if not _validate_file_id(req.file_id):
         raise HTTPException(400, "Invalid file_id")
     await asyncio.to_thread(_assert_upload_owner, req.file_id, uid)
@@ -4492,7 +4561,7 @@ async def process_video(req: ProcessRequest, request: Request, response: Respons
     # recovery mechanism for a Redis outage or a crash between commit/enqueue;
     # it is no longer the primary delivery path.
     try:
-        await asyncio.to_thread(jobs.dispatch, _transcription_queue)
+        await asyncio.to_thread(jobs.dispatch, _transcription_queue, job["job_id"])
     except Exception as error:
         _json_log(
             "warning",
