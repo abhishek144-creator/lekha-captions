@@ -149,7 +149,9 @@ def create_media_router(host: ModuleType) -> SimpleNamespace:
         host._assert_account_not_deleting(str(payload.get("uid") or ""))
         if payload.get("filename") != filename:
             raise HTTPException(status_code=403, detail="Media token does not match this export")
-        direct_url = host.signed_export_download_url(f"exports/{payload['uid']}/{filename}")
+        download_filename = str(payload.get("download_filename") or filename)
+        direct_url = (host.signed_export_download_url(f"exports/{payload['uid']}/{filename}", 600, download_filename)
+                      if payload.get("download_filename") else host.signed_export_download_url(f"exports/{payload['uid']}/{filename}"))
         if direct_url:
             return RedirectResponse(direct_url, status_code=302, headers={"Cache-Control": "no-store"})
         real_export_dir = host.os.path.realpath(host.EXPORT_DIR)
@@ -178,7 +180,7 @@ def create_media_router(host: ModuleType) -> SimpleNamespace:
         return FileResponse(
             path,
             media_type="video/mp4",
-            filename=filename,
+            filename=download_filename,
             headers={"Cache-Control": "no-store, max-age=0"},
         )
 
