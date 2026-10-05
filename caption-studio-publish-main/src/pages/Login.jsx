@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
 
 // Netlify preview URLs are not Firebase-authorized. Send preview sign-in to
-// the primary public domain, rather than exposing the legacy app subdomain.
+// the published domain shared by the homepage and editor.
 const PUBLISHED_AUTH_ORIGIN = 'https://lekhacaptions.com';
 
 function getPublishedAuthUrl() {

@@ -17,8 +17,10 @@ This is the **Work Diary** for the Lekha Captions project.
 > Keep this section always up-to-date. It is the first thing read at session start.
 
 - [ ] **Future deployment cost gate** — Before deploying under another account or provider, reread this whole log and `docs/GCP_DEPLOYMENT_PROMPT.md`. Obtain the owner's explicit approval of a written estimate for idle and peak monthly spend, a fixed-resource inventory, test budget and expiry, and a shutdown plan. Verify the *live* resource counts and bill after deployment; source-code defaults alone are insufficient. See the 2026-09-28 billing incident entry below.
-- [ ] **Google Cloud on-demand redesign** — The owner chose Google Cloud under a different email for a future deployment. Use `docs/GCP_DEPLOYMENT_PROMPT.md` as the implementation brief: static frontend, request-driven Cloud Run API, direct Cloud Storage uploads, Cloud Tasks for post-upload/processing work, and Cloud Run Jobs that exit after each unit. Replace Redis/RQ and its payment, rate-limit, and job-state uses before claiming zero idle worker compute. Keep the future deployment cost gate above.
-- [ ] **Deployment architecture reminder** - Host the SEO landing/marketing site separately on Netlify at `lekhacaptions.com`. Keep the dashboard/editor app separate at `app.lekhacaptions.com`. Do not touch the dashboard/editor now; revisit making the app server-side during the deploy phase, not in the current work.
+- [ ] **Railway + Cloudflare R2 deployment** — The owner chose Railway with R2 (2026-10-03); code and `.railway/railway.ts` are ready on branch `claude/serene-sagan-76mdi6`. Follow `docs/RAILWAY_DEPLOYMENT.md`: Gate 0 (Firebase/App Check without Google billing), R2 bucket with CORS and lifecycle rules, Railway hard usage limit, shared variables, then `railway config plan` and owner-approved `railway config apply`. Verify every service actually sleeps when idle. Keep the future deployment cost gate above.
+- [ ] ~~**AWS scale-to-zero migration**~~ (superseded 2026-10-03 by Railway + R2) — The owner chose AWS (2026-10-02). Follow `docs/AWS_SERVERLESS_MIGRATION_2026-10-02.md` starting at Gate 0 (verify the Firebase project and App Check work without the closed Google billing account; AWS workload account with SCP deny-list and budgets before any workload). Keep the future deployment cost gate above.
+- [ ] ~~**Google Cloud on-demand redesign**~~ (superseded 2026-10-02 by the AWS plan) — The owner chose Google Cloud under a different email for a future deployment. Use `docs/GCP_DEPLOYMENT_PROMPT.md` as the implementation brief: static frontend, request-driven Cloud Run API, direct Cloud Storage uploads, Cloud Tasks for post-upload/processing work, and Cloud Run Jobs that exit after each unit. Replace Redis/RQ and its payment, rate-limit, and job-state uses before claiming zero idle worker compute. Keep the future deployment cost gate above.
+- [ ] **Deployment architecture reminder** — Owner changed the public editor address on 2026-10-04 to `lekhacaptions.com/Dashboard`. Keep the existing Netlify builds, serve the editor through apex rewrites, and redirect old app-domain bookmarks to the apex.
 - [ ] **Timeline fix** — Speech track background is showing gold stripe. Only the individual caption *blocks* should be gold, not the entire track row background. Fix in `src/components/dashboard/CaptionTimeline.jsx`
 - [ ] **Gradient gold buttons** — Replace flat `bg-[#F5A623]` buttons with gradient: `bg-gradient-to-r from-[#FFE566] to-[#F5A623] hover:from-[#F5A623] hover:to-[#D4891A]` across all CTA buttons (14 files)
 - [ ] **Text gradient** — Apply `bg-gradient-to-r from-[#F5A623] to-[#FFD700] bg-clip-text text-transparent` to key headings, logo, and accent text
@@ -32,6 +34,45 @@ This is the **Work Diary** for the Lekha Captions project.
 - [ ] **Verify Text tab export** — Confirm text boxes added via Text tab (custom color, animation, position) appear correctly in exported video
 - [x] **FPS validation** — Verified in code/tests: the API accepts plan-authorized 24/30/60 FPS values and the renderer defaults invalid or missing values to 30 FPS. Representative production media remains part of release acceptance.
 - [ ] **Verify zoom/transition animations** — Test zoom_in, zoom_out, fade_in, slide_up/down/left/right in Animate tab → Basic category work correctly in preview
+
+## 2026-10-03 — Railway first rollout and ingress correction
+
+- PR #18 merged as `ab85157` after all 26 hosted checks passed, including API/transcription final-image ClamAV checks. All 17 shared variables were populated and read back by names only. Existing live Razorpay keys and webhook secret were recovered from local saved files. At the owner's action-time approval, created an additional R2 Object Read & Write token scoped only to `lekha-media`; existing token remains active. R2 HeadBucket returned HTTP 200.
+- Applied the reviewed six-addition, zero-deletion plan to the new `lekha-captions` project. Live inventory: four app services plus Redis. Workspace hard limit $15, alert $8 verified; no GCP/AWS resource was accessed.
+- First rollout exposed IPv6-only Uvicorn ingress: API startup completed but Railway healthcheck failed. Corrected the API bind to `0.0.0.0` and set explicit PORT=8080 for matching healthcheck/domain routing. Workers retain their dual-stack wake server.
+- Remaining acceptance gates: API readiness, custom-domain attachment, frontend redeploy, authenticated upload/wake/sleep checks. A post-apply plan proposes relocating Redis plus restart-policy drift; no destructive follow-up apply was performed.
+
+## 2026-10-03 — Railway R2 deployment validation follow-up
+
+- Unified API startup and offline preflight storage requirements: Railway requires all four R2 settings, accepts no Firebase Storage bucket, and reports missing variable names only. Release identity uses platform defaults in preflight too.
+- Railway worker launching now fails closed when the wake map is entirely absent or empty, preventing accidental legacy Cloud Run fallback. Wake/drain, multipart upload, and cron behavior are preserved.
+- Added API/transcription image CI builds selected by `LEKHA_SERVICE_TARGET`; both verify `clamscan --version` and nonempty ClamAV databases. Local Docker is unavailable, so remote image verification remains pending.
+- Local verification: 319 backend tests passed; frontend release check passed with 339 readiness assertions plus contracts, lint, typecheck, build and performance budgets; dependency audit passed with the three existing reviewed exceptions. Final focused preflight/launcher tests: 25 passed.
+- Live preparation: corrected the existing R2 abort rule (it incorrectly deleted all completed objects after one day) and added `render-cache/` deletion after three days. Existing upload/export rules and CORS were verified. No token was rotated.
+- Railway CLI 5.63.1 authenticated to the owner's new account. Created a new empty `lekha-captions` project after the owner authorized deployment; hard usage limit $15 and alert $8 verified. IaC plan: six additions (four services, Redis, group), zero changes/deletions. Apply and production deployment remain pending credentials and reviewed CI.
+- Credentials stay in local gitignored files. Existing live Razorpay and R2 access credentials were not found in the main workspace scan; three new application secrets were generated at the owner's request. No credential values are recorded here.
+
+## 2026-10-03 — Railway + Cloudflare R2 scale-to-zero implementation
+
+- The owner chose Railway with Cloudflare R2 instead of AWS. Firebase Auth and Firestore stay. The guide, cost estimate and spend limits are in `docs/RAILWAY_DEPLOYMENT.md`; the services are defined in `.railway/railway.ts` (Railway Infrastructure as Code, because `railway.json` is deprecated and stops being read on 2026-12-01). Nothing was deployed or created.
+- Workers wake over HTTP (`/wake` + `WORKER_WAKE_SECRET`), drain their RQ queues and go idle so Railway can sleep them. Fixed a bug where the drain ran RQ off the main thread: RQ's signal handlers made every real drain fail. SIGTERM now finishes the running job and frees the launch lease. A real-Redis smoke test passed.
+- Browser uploads go straight to R2 as resumable multipart uploads: 8 MiB parts with signed lengths, 3 in parallel, resume via `ListParts`. Completion verifies sizes; cancel and the janitor abort unfinished uploads.
+- `backend/railway_cron.py` (every 15 min) does the API's periodic work without waking it:
+  - due retries and outbox recovery;
+  - worker re-wake;
+  - R2 cleanup and payment reconciliation.
+- Images: the Dockerfile final stage is chosen with `LEKHA_SERVICE_TARGET`. API/transcription images ship `clamscan` with signatures copied from the official ClamAV image. A scan takes ~17 s and ~1 GB, so `CLAMAV_SCAN_TIMEOUT_SECONDS=120` on Railway.
+- Also patched the dependency advisories that failed the audit gates (next, brace-expansion, pyjwt, urllib3), with reviewed exceptions for unpatched build-time-only ones.
+- Gate 0 passed (owner, 2026-10-03): the Firebase project is still on Blaze with a billing account linked (₹0.01 that month). Sign-in, the dashboard and the App Check token exchange all work. Keep the Google budget alert and service spend caps low.
+- Open checks before go-live:
+  - every service shows Sleeping after ~10 idle minutes;
+  - ClamAV signatures need a redeploy at least weekly.
+
+## 2026-10-02 — AWS scale-to-zero architecture and migration plan (documentation only)
+
+- The owner chose AWS instead of a new Google Cloud project. Added `docs/AWS_SERVERLESS_MIGRATION_2026-10-02.md`: architecture review of the current code, the GCP idle-cost causes, the target design (Cloudflare Pages; API Gateway + Lambda running the existing FastAPI app; DynamoDB replacing every Redis/RQ duty; DynamoDB Streams outbox; SQS → Lambda for scan and transcription; AWS Batch on Fargate for renders with a hard `maxvCpus`; private S3 + CloudFront; no NAT, load balancer, EC2, Redis or minimum instances), a responsibility-by-responsibility Redis/RQ replacement map, cost models, layered spend limits and an ordered migration plan.
+- Verified facts that shaped the plan: production boot still requires Redis and RQ (`backend/main.py:836`, `:842`, `:863`); payment idempotency already has a Firestore path; credit debit and payment grants are already Firestore-transactional; transcription and media-scan already use Firestore outboxes; plans cap videos at 120–180 s and uploads at 500 MiB; App Check uses reCAPTCHA Enterprise, which needs Google billing.
+- No application code, cloud account, or paid resource was changed or created. Prices are planning rates to be checked in the AWS Pricing Calculator at the cost gate.
 
 ## 2026-09-28 — Cloud billing incident and future deployment cost gate
 
@@ -1055,3 +1096,68 @@ after those public values are supplied and hosted CI passes.
 - Public Netlify/Railway traffic is unchanged. Live-payment configuration,
   spending bounds for scalable infrastructure, and end-to-end/load acceptance
   remain critical launch gates. See `docs/GCP_DEPLOYMENT_2026-09-11.md`.
+
+
+## 2026-10-03 — Netlify editor cutover configuration
+
+Added `netlify.toml` for the editor: guarded Vite build, SPA route fallback, existing hosting security/cache headers, and the R2 upload host in CSP connect-src. The deployed editor previously blocked R2 multipart PUT requests through its CSP. Railway API now passes readiness with IPv4 ingress; owner-approved Redis migration to Singapore succeeded. PR #19 merged after all 26 checks passed. The post-apply IaC plan has no additions/deletions or Redis relocation, but still reports three restart-policy null-to-ON_FAILURE differences even though the live dashboard displays On Failure. API custom-domain attachment is blocked: the new account dashboard says Not available. Advanced DNS has stale api/app hosting A records. All 17 Railway shared variables are populated and the workspace hard cap remains $15. Verified the Netlify TOML, SPA fallback, R2 connect-src and frame protection; production Vite build/performance budgets passed. No existing secrets rotated.
+
+
+## 2026-10-04 — Netlify/Railway routing, idle traffic and editor recovery
+
+- Repointed the existing apex and www DNS records to Netlify; app remains on Netlify and api on the new Railway project. Removed the four obsolete Google Cloud certificate-validation CNAMEs. Mail DNS remains intact. Corrected the Netlify editor VITE_EDITOR_URL setting; frontend rebuild remains pending.
+- Fixed restored-project autosave so opening a draft performs no cloud write. Actual content edits still autosave, with real revision conflicts retained. Project saves no longer inherit another project's revision. Added real editor regression coverage for opening, editing, conflict protection, account isolation and expired paid-plan controls.
+- A signed-in synthetic video completed upload, scan and transcription on Railway. Initial export was correctly denied for the expired plan. After the owner purchased Starter, the 720p render persisted in R2 and validated as an 8.192-second H.264/AAC 720x1280 MP4. Browser download exposed a separate bug: API App Check/tracing headers followed the signed-media redirect to R2 and caused a rejected CORS preflight. Signed-media fetches now omit API-only headers; authenticated API calls and media signature validation remain enforced. Live download recheck awaits redeployment.
+- Network logs showed Redis keepalives and Chromium's GCM push channel keeping idle services active. API response completion/startup and worker drain completion now release unused Redis sockets; checked-out concurrent commands remain connected. The renderer disables background networking, sync, notifications and GCM while preserving Chromium sandbox policy and warm-browser reuse. Wake/drain, multipart upload and cron designs are unchanged.
+- Verification: 324 backend tests passed (20 subtests); all 339 release readiness checks, frontend contracts/security/lint/typecheck/build/performance budgets passed; isolated editor journey and warm-browser reuse/rendering passed. Local full-suite wake tests briefly timed out during concurrent load; isolated and final full runs passed. No new resources or secret rotations. Production redeploy and platform Sleeping verification remain pending.
+
+
+## 2026-10-04 — R2 browser download redirect origin
+
+PR #21 merged after all 26 hosted checks passed; all four Railway services and both existing Netlify sites deployed commit c41416e. Opening the restored editor no longer triggers a revision conflict. Live browser tracing found a second download issue: the API-to-R2 redirect makes the storage request Origin null, so R2 correctly omits CORS permission. Authenticated export-result responses now return a direct, 15-minute R2 download_url scoped to the verified job owner. The frontend fetches it without API credentials or custom headers. Signing failures return a retryable 503; existing signed media routes, restricted bucket CORS, wake/drain, multipart and cron behavior stay intact. Verification: 325 backend tests and 20 subtests passed; all 339 release checks, build and performance budgets passed; the isolated editor journey verifies the original editor Origin, no API headers, and download without a new render. Hosted CI and production redeployment remain pending.
+
+
+### 2026-10-04 — Railway worker idle follow-up
+
+Live control-plane inspection confirmed that the API sleeps, while both workers remained active. RQ 2.9 creates a separate scheduler Redis pool in the parent process; stopping the scheduler child does not close this parent pool. `backend/worker.py` now disconnects that lazily-created pool after each burst, including failure, without opening a pool during cleanup. Main-thread drain, authenticated POST /wake, scheduled retries and cron design stay unchanged.
+
+Production Chromium continued GCM and other background traffic despite background networking flags. `scripts/render_browser_runtime.mjs` now blocks external hostname resolution only when mandatory packaged rendering fonts are enabled; loopback DevTools access remains available. Development remote-font rendering is unchanged. The warm-browser integration check verifies external resolution fails, isolated contexts remain reusable and caption frames still render in the production image.
+
+Validation: backend suite 326 passed with 22 subtests after one Windows loopback reset on the first attempt; isolated Chromium checks confirmed inline rendering and external-host rejection. Hosted image/integration checks, release gates, merge and production sleep verification remain pending. No cloud resources, credentials, CORS, upload protocol, or cron changes.
+
+
+## 2026-10-04 — Bounded Railway render scaling preparation
+
+The owner requested faster rendering and selected a maximum of three replicas. Updated the existing production render limit via Railway CLI to 4 vCPU / 4 GiB; no new service, region or volume. Prepared matching IaC plus render-only enqueue-triggered scale-up and cron idle-only scale-down to one replica. Unique replica leases, private DNS wake fan-out and atomic burst/resize exclusion preserve main-thread drains and protect active renders. Transcription remains one replica. No API polling loop was added.
+
+Verification: final backend suite 342 passed and 25 subtests; release checks passed with all 339 readiness assertions; targeted Bandit medium/high scan passed. One full rerun encountered the existing Windows loopback socket reset; the final complete rerun passed. Hosted CI and live scaling acceptance remain pending. A dedicated production-environment project token needs approval before creation and exposure only to API/cron; the owner's CLI credential will not be copied into production. Browser shows the old expired account, while CLI accesses the correct project. Existing $15 hard cap remains.
+
+
+### 2026-10-04 — Production scaling token acceptance
+
+The owner approved a production-scoped project token; created it in the correct Railway account and saved it privately in the gitignored deployment environment and Railway shared variables without deployment. Read-only token access succeeds. Live testing found Railway rejects Python urllib’s default User-Agent with HTTP 403 while an explicit LekhaCaptions/1.0 client identifier succeeds; the controller now supplies that identifier. All 13 hosted PR checks passed before this client-header correction; rerunning affected verification and CI before activation. Live replica scaling and idle reduction remain pending.
+
+
+### 2026-10-04 — Render resize live pilot and shutdown safety follow-up
+
+PR #24 merged and deployed. The finite three-job live pilot exposed a resize
+replacement: two jobs finished, but the old deployment stopped its running
+first job with no configured shutdown grace. The abandoned RQ started entry
+then blocked idle reduction. Autoscaling was disabled in API and cron; existing
+services, media, credentials and the $15 hard cap remain. Configured replicas
+were reset to one while Sleeping, but the existing deployment still reported
+three instances; configuration alone is not runtime evidence.
+
+Prepared render shutdown grace of 1860 seconds, effective-deployment validation
+before resizing, atomic global admission capped at three drains across old/new
+deployment overlap, and normal RQ expired-job recovery in the existing cron
+pass. Main-thread RQ drain, private wake authentication, R2 uploads and cron
+schedule are preserved. Safety regression tests cover replacement admission,
+expired seats, pending deployments, missing effective grace, abandoned-job
+failure and retry, and preservation of live RQ entries. Full checks and live
+shutdown/sleep acceptance remain pending; do not re-enable the controller yet.
+
+
+## 2026-10-04 — Editor apex-domain cutover
+
+The owner requested removing app. from the public editor address. Prepared Netlify rewrites for all registered editor routes and their assets under lekhacaptions.com, while preserving the static homepage and marketing/legal pages. Old app-domain bookmarks redirect to the corresponding apex path with query strings retained. Login preview handoff and marketing app links now use the apex. R2 preflight already permits the apex; Railway API currently permits only the app origin and needs a scoped origin update. Production build, CI and live verification remain pending. No resources or credentials are created.
