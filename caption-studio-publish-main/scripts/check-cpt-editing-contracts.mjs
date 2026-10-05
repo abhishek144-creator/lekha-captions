@@ -184,7 +184,10 @@ const exportPanelSource = await readFile(
 const exportRendererSource = await readFile(
   new URL('./render_template_overlay.mjs', import.meta.url),
   'utf8',
-);
+) + '\n' + await readFile(
+  new URL('./render_template_page_runtime.mjs', import.meta.url),
+  'utf8',
+)
 const backendMainSource = readBackendApiSource(fileURLToPath(new URL('..', import.meta.url)));
 assert.match(
   videoPlayerSource,

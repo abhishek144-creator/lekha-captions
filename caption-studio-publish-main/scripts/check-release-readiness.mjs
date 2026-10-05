@@ -566,7 +566,7 @@ for (const marker of [
 assertExcludes("export panel does not submit browser word layouts", exportPanelSource, "word_layouts:")
 assertIncludes("backend strips legacy browser render hints", backendMain, "def _strip_client_render_hints")
 
-const renderer = readText("scripts/render_template_overlay.mjs")
+const renderer = readText("scripts/render_template_overlay.mjs") + "\n" + readText("scripts/render_template_page_runtime.mjs")
 const browserRuntime = readText("scripts/render_browser_runtime.mjs")
 assertIncludes("export renderer uses a DOM tag allowlist", renderer, "const allowedTags = new Set")
 assertIncludes("export renderer blocks arbitrary network requests", renderer, "setRequestInterception(true)")
