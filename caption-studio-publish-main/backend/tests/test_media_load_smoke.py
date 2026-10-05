@@ -3,12 +3,12 @@ import pathlib
 import sys
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import requests
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "scripts"))
-from media_load_smoke import _acknowledged_bytes, upload_direct, video_for_journey, video_sha256
+from media_load_smoke import _acknowledged_bytes, download_export, upload_direct, video_for_journey, video_sha256
 
 
 class FakeResponse:
@@ -63,6 +63,46 @@ class InterruptedSession(FakeSession):
 
 
 class MediaLoadSmokeTests(unittest.TestCase):
+    def test_signed_download_does_not_transmit_api_credentials(self):
+        response = requests.Response()
+        response.status_code = 200
+        session = Mock()
+        session.get.return_value = response
+        result = download_export(session, 'https://api.test/',
+            {'Authorization': 'Bearer identity', 'X-Firebase-AppCheck': 'attestation'},
+            {'download_url': 'https://r2.test/signed', 'video_url': '/api/video/id'}, timeout=30)
+        self.assertIs(result, response)
+        session.get.assert_called_once_with('https://r2.test/signed', headers={}, timeout=30, allow_redirects=False)
+
+    def test_api_download_redirect_strips_both_firebase_headers(self):
+        redirect = requests.Response()
+        redirect.status_code = 302
+        redirect.headers['Location'] = 'https://r2.test/signed'
+        response = requests.Response()
+        response.status_code = 200
+        session = Mock()
+        session.get.side_effect = [redirect, response]
+        headers = {'Authorization': 'Bearer identity', 'X-Firebase-AppCheck': 'attestation'}
+        self.assertIs(download_export(session, 'https://api.test/', headers,
+            {'video_url': '/api/video/id'}, timeout=30), response)
+        calls = session.get.call_args_list
+        self.assertEqual(calls[0].kwargs['headers'], headers)
+        self.assertEqual(calls[1].kwargs['headers'], {})
+        self.assertTrue(all(call.kwargs['allow_redirects'] is False for call in calls))
+
+    def test_download_rejects_insecure_storage_and_bounds_redirects(self):
+        session = Mock()
+        with self.assertRaisesRegex(RuntimeError, 'unsafe URL'):
+            download_export(session, 'https://api.test/', {}, {'download_url':'http://r2.test/file'}, timeout=30)
+        session.get.assert_not_called()
+        response = requests.Response()
+        response.status_code = 302
+        response.headers['Location'] = '/loop'
+        session.get.return_value = response
+        with self.assertRaisesRegex(RuntimeError, 'redirect limit'):
+            download_export(session, 'https://api.test/', {}, {'video_url':'/loop'}, timeout=30)
+        self.assertEqual(session.get.call_count, 4)
+
     def multipart_session(self, statuses):
         class MultipartSession(FakeSession):
             def post(self, url, **kwargs):
