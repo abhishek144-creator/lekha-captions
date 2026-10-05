@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import os
 import socket
+import threading
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 import time
@@ -206,6 +207,63 @@ def kick(connection, queue_name: str, *, launcher=None, log=print) -> bool:
     except Exception as error:
         log(json.dumps({"event": "worker_kick_failed", "queue": queue_name, "error": str(error)}))
     return False
+
+
+# A kick can wait on the Railway API (render scaling) and on wake requests to a
+# sleeping worker for several seconds. Request paths hand kicks to this small
+# pool so one export submission never stalls the API's event loop or threads.
+_BACKGROUND_KICKS = ThreadPoolExecutor(max_workers=2, thread_name_prefix="worker-kick")
+_PENDING_KICKS: set[str] = set()
+_PENDING_KICKS_LOCK = threading.Lock()
+
+
+def kick_in_background(connection, queue_name: str, *, log=print) -> bool:
+    """Schedule kick() off the request path; coalesce kicks not yet started."""
+    if not job_map().get(queue_name) or connection is None:
+        return False
+    with _PENDING_KICKS_LOCK:
+        if queue_name in _PENDING_KICKS:
+            return False
+        _PENDING_KICKS.add(queue_name)
+
+    def run():
+        # Clear before kicking: a job enqueued while this kick runs schedules
+        # another pass instead of being coalesced into a decision already made.
+        with _PENDING_KICKS_LOCK:
+            _PENDING_KICKS.discard(queue_name)
+        try:
+            kick(connection, queue_name, log=log)
+        except Exception as error:
+            log(json.dumps({"event": "worker_kick_failed", "queue": queue_name, "error": str(error)}))
+
+    try:
+        _BACKGROUND_KICKS.submit(run)
+    except RuntimeError:
+        # Interpreter shutdown: the cron safety net launches workers later.
+        with _PENDING_KICKS_LOCK:
+            _PENDING_KICKS.discard(queue_name)
+        return False
+    return True
+
+
+THROTTLE_PREFIX = "lekha:worker_kick_throttle"
+
+
+def kick_throttled(connection, queue_name: str, *, interval_seconds: int = 30, log=print) -> bool:
+    """Background kick at most once per interval per queue across API replicas.
+
+    Status polls use this as a safety net for crashed or never-woken workers;
+    every queued customer polls, so an unthrottled kick multiplies wake and
+    scaling calls by the number of waiting customers."""
+    if not job_map().get(queue_name) or connection is None:
+        return False
+    try:
+        if not connection.set(f"{THROTTLE_PREFIX}:{queue_name}", "1", nx=True, ex=max(1, int(interval_seconds))):
+            return False
+    except Exception as error:
+        log(json.dumps({"event": "worker_kick_throttle_failed", "queue": queue_name, "error": str(error)}))
+        return False
+    return kick_in_background(connection, queue_name, log=log)
 
 
 class WorkerLease:

@@ -126,5 +126,30 @@ class RailwayCronTests(unittest.TestCase):
             self.run_pass()
 
 
+
+
+class RedisMemoryCheckTests(unittest.TestCase):
+    def check(self, used, maxmemory):
+        alerts = []
+        connection = SimpleNamespace(info=lambda section: {"used_memory": used, "maxmemory": maxmemory})
+        result = railway_cron.check_redis_memory(connection, alert=alerts.append)
+        return result, alerts
+
+    def test_alerts_when_memory_nears_the_server_limit(self):
+        result, alerts = self.check(900, 1000)
+        self.assertEqual(result["ratio"], 0.9)
+        self.assertEqual(len(alerts), 1)
+
+    def test_quiet_below_threshold(self):
+        _, alerts = self.check(100, 1000)
+        self.assertEqual(alerts, [])
+
+    def test_uses_configured_plan_size_without_server_limit(self):
+        with patch.dict(os.environ, {"REDIS_MEMORY_ALERT_BYTES": "1000"}):
+            result, alerts = self.check(850, 0)
+        self.assertEqual(result["limit_bytes"], 1000)
+        self.assertEqual(len(alerts), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

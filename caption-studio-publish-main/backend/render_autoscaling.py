@@ -12,6 +12,14 @@ LOCK = PREFIX + "resize"
 DRAINS = PREFIX + "drain:"
 LAST_CHANGE = PREFIX + "last_change"
 CURRENT_REPLICAS = PREFIX + "replicas"
+# The Railway control plane is only consulted when demand exceeds the replica
+# count this cache last saw. Every enqueue and queued-status poll can reach
+# reconcile(); without the cache a sustained backlog queried Railway on every
+# call and could exhaust the account's API rate limit, which then also blocked
+# the scale-ups that were really needed.
+CURRENT_REPLICAS_TTL_SECONDS = 300
+CONTROL_PLANE_BACKOFF = PREFIX + "backoff"
+CONTROL_PLANE_BACKOFF_SECONDS = 30
 MAX_REPLICAS = 3
 LOCK_SECONDS = 60
 DRAIN_SECONDS = 300
@@ -150,6 +158,8 @@ def reconcile(connection, *, allow_down=False, service=None, now=None, log=print
     now = time.time() if now is None else now
     owner = uuid.uuid4().hex
     try:
+        if not allow_down and connection.exists(CONTROL_PLANE_BACKOFF):
+            return "backoff"
         if not connection.set(LOCK, owner, nx=True, ex=LOCK_SECONDS):
             return "locked"
     except Exception as error:
@@ -165,7 +175,9 @@ def reconcile(connection, *, allow_down=False, service=None, now=None, log=print
         desired = max(1, min(MAX_REPLICAS, backlog + active))
         cached = int(connection.get(CURRENT_REPLICAS) or 0)
         # Higher demand bypasses this suppression to scale 1 to 2 to 3 quickly.
-        if not allow_down and now - last < 60 and cached >= desired:
+        # While the cached count already covers demand the API path never asks
+        # Railway; the cached count expires so external changes are re-read.
+        if not allow_down and cached >= desired:
             return "cooldown"
         if not backlog and not allow_down:
             return "idle"
@@ -173,13 +185,14 @@ def reconcile(connection, *, allow_down=False, service=None, now=None, log=print
             return "missing_token"
         service = service or RailwayRenderService()
         current, status = service.state()
-        connection.set(CURRENT_REPLICAS, str(current))
+        connection.set(CURRENT_REPLICAS, str(current), ex=CURRENT_REPLICAS_TTL_SECONDS)
         if status not in {"SUCCESS", "SLEEPING"}:
+            connection.set(CONTROL_PLANE_BACKOFF, "deploying", ex=CONTROL_PLANE_BACKOFF_SECONDS)
             return "deploying"
         if desired > current:
             service.resize(desired)
             connection.set(LAST_CHANGE, str(now))
-            connection.set(CURRENT_REPLICAS, str(desired))
+            connection.set(CURRENT_REPLICAS, str(desired), ex=CURRENT_REPLICAS_TTL_SECONDS)
             log(json.dumps({"event": "render_scaled_up", "replicas": desired}))
             return "scaled_up"
         if desired < current and allow_down:
@@ -191,12 +204,18 @@ def reconcile(connection, *, allow_down=False, service=None, now=None, log=print
                 return "cooldown"
             service.resize(1)
             connection.set(LAST_CHANGE, str(now))
-            connection.set(CURRENT_REPLICAS, "1")
+            connection.set(CURRENT_REPLICAS, "1", ex=CURRENT_REPLICAS_TTL_SECONDS)
             log(json.dumps({"event": "render_scaled_down", "replicas": 1}))
             return "scaled_down"
         return "unchanged"
     except Exception as error:
         log(json.dumps({"event": "render_scaling_failed", "error_type": type(error).__name__}))
+        try:
+            # Existing capacity is preserved; retry the control plane shortly
+            # instead of on every poll while it is failing or rate limited.
+            connection.set(CONTROL_PLANE_BACKOFF, "failed", ex=CONTROL_PLANE_BACKOFF_SECONDS)
+        except Exception:
+            pass
         return "failed"
     finally:
         try:
