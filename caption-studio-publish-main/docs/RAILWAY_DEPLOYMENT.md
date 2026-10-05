@@ -89,8 +89,8 @@ about $36/day for 3-minute uploads; check the Sarvam rate too).
 
 ### Spend limits (set all of them before going live)
 
-1. **Railway → Workspace → Usage → Hard limit**: the existing live **$15** cap remains unchanged. The owner selected preparation of a **$50 launch profile** on 2026-10-05; changing the live cap still requires approval of the concrete deployment/test plan. Railway stops every workload when the limit is reached; it is an outage boundary, not a capacity allowance. The source retains five-replica ceilings, sleeping workers and disabled autoscaling until live acceptance.
-2. Keep the live $8 alert until the approved cap change; the proposed $50 profile uses alerts at $20/$35.
+1. **Railway → Workspace → Usage → Hard limit**: the owner approved the concrete rollout/test plan on 2026-10-05, then revised the Railway cap to **$25**. Live readback confirms $25. Railway stops every workload when the limit is reached; it is an outage boundary, not a capacity allowance. The source retains five-replica ceilings, sleeping workers and disabled autoscaling until live acceptance. Applying the reviewed production plan and creating staging still require PR #35's release gate to pass.
+2. The live custom email alert is **$10**. [Railway also sends reminders](https://docs.railway.com/pricing/cost-control) at 75% and 90% of the hard cap: **$18.75/$22.50**. This notification threshold is not a separate staging allowance; the owner removed that allowance and authorized the plan's metered AI calls.
 3. Per-service CPU/RAM caps (in `.railway/railway.ts`). Lower them if the plan rejects them.
 4. **Cloudflare → R2 → bucket → Settings → Object lifecycle rules** (§4.3), plus a billing notification.
 5. `AI_SYSTEM_DAILY_LIMIT` and the per-plan quotas (already enforced in code).
@@ -206,9 +206,9 @@ backstop:
 - `RAILWAY_RENDER_SCALING_TOKEN` is an additional production-environment project token referenced only by API and cron. Workers never receive it. Missing credentials or control-plane failure preserve existing capacity and normal wake/recovery. Never deploy the owner's CLI/account credential.
 - IaC declares the one-replica baseline. A plan during a busy period may propose returning dynamically added replicas to one. Wait for idle scale-down before applying that reduction.
 - Railway sleeping applies across service replicas. Private DNS wake fan-out and unique replica leases let copies drain the shared queue.
-- At the [current Railway rates](https://railway.com/pricing) (checked 2026-10-05), CPU is $0.00000772/vCPU-second and RAM $0.00000386/GB-second. Five fully utilized 8 vCPU / 8 GB render replicas plus five 2 vCPU / 3 GB transcription replicas cost about $2.15/hour before API, cron, Redis, volumes, egress, AI and tax. A $15 balance could last less than seven hours. A $50 cap also stops the app once exhausted; it does not guarantee a month of availability.
-- Including API and cron at their source ceilings, five replicas of each worker total about $2.28/hour before Redis/volumes/egress/providers/tax. A full $50 balance would cover about 22 hours at those ceilings, not a month. Sleeping reduces idle use, but Redis and storage remain billable. `AI_SYSTEM_DAILY_LIMIT=2000` is retained from PR #28 and is a count ceiling, not a provider dollar cap.
-- `KEEP_ONE_WORKER_AWAKE=false` allows sleeping when idle. Turning it on holds roughly 1.5–2 GB of worker RAM (about $15–20/month before CPU). The selected $50 profile keeps sleeping enabled; a future warm-worker choice needs measured idle spend.
+- At the [current Railway rates](https://railway.com/pricing) (checked 2026-10-05), CPU is $0.00000772/vCPU-second and RAM $0.00000386/GB-second. Five fully utilized 8 vCPU / 8 GB render replicas plus five 2 vCPU / 3 GB transcription replicas cost about $2.15/hour before API, cron, Redis, volumes, egress, AI and tax. A $15 balance could last less than seven hours. The approved $25 cap also stops the app once exhausted; it does not guarantee a month of availability.
+- Including API and cron at their source ceilings, five replicas of each worker total about $2.28/hour before Redis/volumes/egress/providers/tax. A full $25 balance would cover about 11 hours at those ceilings, not a month. Sleeping reduces idle use, but Redis and storage remain billable. `AI_SYSTEM_DAILY_LIMIT=2000` is retained from PR #28 and is a count ceiling, not a provider dollar cap.
+- `KEEP_ONE_WORKER_AWAKE=false` allows sleeping when idle. Turning it on holds roughly 1.5–2 GB of worker RAM (about $15–20/month before CPU). The approved $25 profile keeps sleeping enabled; a future warm-worker choice needs measured idle spend.
 - Acceptance: for each worker service, verify 1-to-N patches, distinct identities, parallel disposable jobs, Sleeping and the guarded N-to-1. No mass-user load test is required.
 
 ### Worker resize shutdown safety
@@ -295,10 +295,11 @@ Keep the current work-ratio defaults until measurements justify a change.
 
 ### Owner launch checklist
 
-- [x] Select the source spending profile: owner selected the $50/five-replica launch profile on 2026-10-05, with sleeping workers and autoscaling gated on live acceptance.
-- [ ] Approve the priced live rollout/test plan before raising the live cap from $15 to $50 or applying the launch profile. Never assume $50 guarantees availability.
+- [x] Select and approve the launch profile: owner retained five-replica ceilings, sleeping workers and autoscaling gated on live acceptance, then revised the Railway cap to $25 on 2026-10-05.
+- [x] Approve the priced live rollout/test plan and verify the revised $25/$10 live cap/alert. There is no separate $10 test allowance; the plan's metered AI calls are authorized. Deployment still waits for PR #35's release gate; GitHub account payments/spending limits currently block the failed-job retry.
 - [ ] Resolve GitHub Actions billing/minutes if jobs cannot obtain a runner.
-- [ ] Merge PR #28 and its reviewed follow-ups; run `railway config plan`, review, then `railway config apply`.
+- [x] Merge PR #28 → #30 → #31 → #32 → #33 → #34 in order. Close conflicting #29 in favor of the port in #35.
+- [ ] Pass #35's release gate, merge it, verify the reviewed 0-addition/32-change/0-deletion production plan, then apply it.
 - [ ] Confirm transcription logs show clamd ready after startup; set localhost `CLAMAV_HOST` only on transcription.
 - [ ] Upload, transcribe and export one real video end to end.
 - [ ] Verify both worker services' finite resize/drain/sleep test before enabling autoscaling; 1→5→1 requires the separately approved staging capacity/budget.

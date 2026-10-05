@@ -18,7 +18,8 @@ const GIB = 1024 * 1024 * 1024
 const RENDER_WORKER = "lekha-render"
 const TRANSCRIPTION_WORKER = "lekha-transcription"
 const WORKER_PORT = "8080"
-// Reviewed $50 launch profile. One render replica handles one
+// Approved $25 workspace cap; sleeping workers and live acceptance gates.
+// One render replica handles one
 // export at a time (8 vCPU / 8 GiB); one transcription replica handles one
 // transcription or malware scan at a time (2 vCPU / 3 GiB). The Hobby plan
 // allows at most 5 replicas per service, 8 vCPU / 8 GB each and 48 vCPU / 48 GB
