@@ -1196,3 +1196,9 @@ The owner requested removing app. from the public editor address. Prepared Netli
   owner approval and successful hosted validation remain required. Firebase,
   Netlify and R2 quota/bill checks, real export/recovery, peak RAM/disk and basic
   alert/backup acceptance remain unmet. No full-public-launch claim is made.
+- Owner decision after reviewing the concrete estimate: **Keep budgets
+  unchanged.** The proposed $7 additional allowance was declined. GitHub
+  Actions stays $3/Stop usage; Railway stays $15 hard/$8 alert. No paid rollout,
+  pilot, merge, credential or resource change followed. PR #29 remains draft,
+  with successful local checks and hosted acceptance blocked by the Actions
+  limit. The written plan is retained as an unexecuted proposal.
