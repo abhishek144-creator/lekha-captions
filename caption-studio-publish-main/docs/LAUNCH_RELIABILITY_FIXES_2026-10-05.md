@@ -27,12 +27,15 @@ Useful fixes retained from PR #29:
   link for the same result without another render or credit debit.
 - Retain the Python 3.11 ExitStack correction for recovery fault injection.
 
-The owner selected preparation of a $50/five-replica launch profile. It retains
+The owner approved the launch profile and then changed the Railway cap to $25.
+The live hard cap is verified at $25, with a $10 custom email alert. There is
+no separate $10 staging allowance; the plan's metered AI calls are authorized.
+The profile retains
 AI_SYSTEM_DAILY_LIMIT=2000 from PR #28, API capacity 2 vCPU/2 GiB and worker
 ceilings of five. Workers sleep when idle. Both controllers remain disabled
 until live resize/drain acceptance; pending-work capacity stays at the
-one-replica baseline until that gate is enabled. Source profile selection does
-not change the existing live $15/$8 cap/alert.
+one-replica baseline until that gate is enabled. The reviewed production plan
+has not been applied; deployment still requires PR #35's release gate.
 
 Verification: 398 backend tests and 31 subtests pass, including the existing
 scaling paths and new debit/recovery/scratch/download regressions. Clean npm ci,
@@ -43,4 +46,9 @@ The 2026-10-05 read-only inventory found only the production environment, with
 sleeping one-replica app services and about $0.22 current Railway usage. No
 staging resources, authenticated load credentials or live benchmark evidence
 were found. The priced, finite staging proposal is in
-RAILWAY_B4_PLAN_2026-10-05.md; no paid test or live billing change occurred.
+RAILWAY_B4_PLAN_2026-10-05.md. No paid staging test has run. The ordered
+#28/#30–#34 stack is merged and #29 is closed in favor of #35. Eleven hosted
+checks passed; one export scope hit a Chromium setup timeout. Its retry was
+blocked before execution by GitHub account payments/spending limits, leaving
+the release gate red. GitHub billing availability must be restored before the
+approved deployment and B4 run can proceed.
