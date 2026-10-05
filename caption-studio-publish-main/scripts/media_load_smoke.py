@@ -77,6 +77,9 @@ def upload_direct(session: requests.Session, base_url: str, headers: dict,
     ), "direct upload initiation")
     if not initiated.get("direct_upload_available"):
         raise RuntimeError("Direct upload is unavailable; cannot measure the customer path")
+    if initiated.get("upload_protocol") == "s3_multipart":
+        upload_s3_parts(session, base_url, headers, video, initiated, timeout=timeout)
+        return complete_direct_upload(session, base_url, headers, initiated["file_id"])
     session_url = initiated["upload_url"]
     offset = 0
     failures = 0
@@ -122,13 +125,58 @@ def upload_direct(session: requests.Session, base_url: str, headers: dict,
                 continue
             offset = acknowledged
             failures = 0
+    return complete_direct_upload(session, base_url, headers, initiated["file_id"])
+
+
+def upload_s3_parts(session, base_url, headers, video, initiated, *, timeout):
+    """Use Railway's signed R2 parts, retrying the same part number safely."""
+    size = video.stat().st_size
+    part_size = int(initiated.get("part_size") or 0)
+    part_count = int(initiated.get("part_count") or 0)
+    if part_size <= 0 or part_count != (size + part_size - 1) // part_size:
+        raise RuntimeError("Invalid multipart upload geometry")
+    with video.open("rb") as media:
+        for part_number in range(1, part_count + 1):
+            expected_length = min(part_size, size - (part_number - 1) * part_size)
+            chunk = media.read(expected_length)
+            if len(chunk) != expected_length:
+                raise RuntimeError("Source media ended before its declared size")
+            for attempt in range(4):
+                # Sign again on retry so a URL expiry is never retried forever.
+                signed = require_ok(session.post(
+                    urljoin(base_url, "api/uploads/parts"),
+                    json={"file_id": initiated["file_id"], "part_numbers": [part_number]},
+                    headers=headers, timeout=30,
+                ), "multipart part signing")
+                parts = signed.get("parts") or []
+                if (len(parts) != 1 or parts[0].get("part_number") != part_number
+                        or parts[0].get("content_length") != expected_length):
+                    raise RuntimeError("Signed part does not match the requested bytes")
+                try:
+                    # Firebase/App Check credentials belong only on API requests.
+                    response = session.put(
+                        parts[0]["url"], data=chunk,
+                        headers={"Content-Length": str(expected_length)}, timeout=timeout,
+                    )
+                    if 200 <= response.status_code < 300:
+                        break
+                    if 400 <= response.status_code < 500 and response.status_code != 429:
+                        raise PermanentUploadError(f"R2 rejected part {part_number} (HTTP {response.status_code})")
+                    raise requests.RequestException(f"R2 part upload returned HTTP {response.status_code}")
+                except requests.RequestException:
+                    if attempt == 3:
+                        raise
+                    time.sleep(2 ** attempt)
+
+
+def complete_direct_upload(session, base_url, headers, file_id):
     # Completion is idempotent in the API: a dropped tunnel response must not
     # turn an already uploaded object into a failed customer journey.
     for attempt in range(4):
         try:
             return require_ok(session.post(
                 urljoin(base_url, "api/uploads/complete"),
-                json={"file_id": initiated["file_id"]}, headers=headers, timeout=30,
+                json={"file_id": file_id}, headers=headers, timeout=30,
             ), "direct upload completion")
         except requests.RequestException:
             if attempt == 3:

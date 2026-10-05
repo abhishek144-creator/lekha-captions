@@ -63,6 +63,66 @@ class InterruptedSession(FakeSession):
 
 
 class MediaLoadSmokeTests(unittest.TestCase):
+    def multipart_session(self, statuses):
+        class MultipartSession(FakeSession):
+            def post(self, url, **kwargs):
+                self.posts.append((url, kwargs))
+                if url.endswith('/init'):
+                    return FakeResponse(200, {'success': True, 'direct_upload_available': True,
+                                              'upload_protocol': 's3_multipart', 'file_id': 'file-1',
+                                              'part_size': 5, 'part_count': 2})
+                if url.endswith('/parts'):
+                    number = kwargs['json']['part_numbers'][0]
+                    return FakeResponse(200, {'parts': [{'part_number': number,
+                        'content_length': 5 if number == 1 else 3, 'url': f'https://r2.test/{number}'}]})
+                return FakeResponse(200, {'success': True, 'file_id': 'file-1'})
+
+            def put(self, url, **kwargs):
+                self.puts.append((url, kwargs))
+                outcome = statuses.pop(0)
+                if isinstance(outcome, Exception):
+                    raise outcome
+                return FakeResponse(outcome)
+        return MultipartSession()
+
+    def test_r2_upload_uses_signed_part_lengths_without_api_credentials(self):
+        session = self.multipart_session([200, 200])
+        result = upload_direct(session, 'https://api.test/', {'Authorization': 'Bearer test'}, FakeVideo())
+        self.assertEqual(result['file_id'], 'file-1')
+        self.assertEqual([call[1]['data'] for call in session.puts], [b'abcde', b'fgh'])
+        self.assertEqual([call[1]['headers'] for call in session.puts],
+                         [{'Content-Length': '5'}, {'Content-Length': '3'}])
+        self.assertTrue(session.posts[-1][0].endswith('/complete'))
+
+    def test_r2_dropped_response_retries_the_same_part_before_completion(self):
+        session = self.multipart_session([requests.ConnectionError('disconnect'), 200, 200])
+        with patch('media_load_smoke.time.sleep'):
+            upload_direct(session, 'https://api.test/', {}, FakeVideo())
+        self.assertEqual([call[0] for call in session.puts],
+                         ['https://r2.test/1', 'https://r2.test/1', 'https://r2.test/2'])
+        self.assertEqual(session.puts[0][1]['data'], session.puts[1][1]['data'])
+
+    def test_r2_rejection_never_completes_an_incomplete_upload(self):
+        session = self.multipart_session([403])
+        with self.assertRaises(RuntimeError):
+            upload_direct(session, 'https://api.test/', {}, FakeVideo())
+        self.assertFalse(any(url.endswith('/complete') for url, _ in session.posts))
+
+    def test_r2_signed_size_mismatch_is_rejected_before_upload(self):
+        session = self.multipart_session([200, 200])
+        real_post = session.post
+
+        def post(url, **kwargs):
+            response = real_post(url, **kwargs)
+            if url.endswith('/parts'):
+                response._payload['parts'][0]['content_length'] = 9
+            return response
+
+        session.post = post
+        with self.assertRaisesRegex(RuntimeError, 'Signed part'):
+            upload_direct(session, 'https://api.test/', {}, FakeVideo())
+        self.assertEqual(session.puts, [])
+
     def test_chunked_direct_upload_and_completion(self):
         session = FakeSession()
         result = upload_direct(session, "https://api.test/", {"Authorization": "Bearer test"},
