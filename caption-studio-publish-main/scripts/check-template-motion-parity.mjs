@@ -53,7 +53,9 @@ const sidebarGallerySource = await readSource(
 );
 const exportRendererSource = await readSource(
   new URL('scripts/render_template_overlay.mjs', projectRoot),
-);
+) + '\n' + await readSource(
+  new URL('scripts/render_template_page_runtime.mjs', projectRoot),
+)
 const exportPanelSource = await readSource(
   new URL('src/components/dashboard/ExportPanel.jsx', projectRoot),
 );
