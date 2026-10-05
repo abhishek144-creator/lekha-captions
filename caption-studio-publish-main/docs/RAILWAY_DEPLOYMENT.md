@@ -264,13 +264,15 @@ Keep the current work-ratio defaults until measurements justify a change.
    Run ten users first; review errors, spend and queue limits before 100:
 
    ```sh
-   python scripts/media_load_smoke.py --base-url "$STAGING_API_URL" --credentials-json "$STAGING_CREDENTIALS" --video "$STAGING_VIDEO" --jobs 10 --workers 10 --quality 1080p --upload-mode proxy --results-json build/benchmarks/railway-load-10.json
-   python scripts/media_load_smoke.py --base-url "$STAGING_API_URL" --credentials-json "$STAGING_CREDENTIALS" --video "$STAGING_VIDEO" --jobs 100 --workers 100 --quality 1080p --upload-mode proxy --results-json build/benchmarks/railway-load-100.json
+   python scripts/media_load_smoke.py --base-url "$STAGING_API_URL" --credentials-json "$STAGING_CREDENTIALS" --video "$STAGING_VIDEO" --jobs 10 --workers 10 --quality 1080p --upload-mode direct --results-json build/benchmarks/railway-load-10.json
+   python scripts/media_load_smoke.py --base-url "$STAGING_API_URL" --credentials-json "$STAGING_CREDENTIALS" --video "$STAGING_VIDEO" --jobs 100 --workers 100 --quality 1080p --upload-mode direct --results-json build/benchmarks/railway-load-100.json
    ```
 
-   This tool's direct mode currently implements GCS resumable uploads, so
-   select proxy explicitly for Railway rather than treating it as an R2
-   multipart test. Verify direct R2 uploads separately in the browser.
+   Direct mode selects GCS resumable or R2 multipart from the API response.
+   It signs exact part lengths, retries dropped PUT responses at the same part
+   number, and never sends Firebase credentials to storage. Parts are serial
+   per account; accounts run concurrently. Verify browser multipart parallelism
+   and resume after reload separately. Production rejects proxy uploads.
    Record admission retries, failure rate, queue-wait and end-to-end P50/P95
    from the JSON. `process` includes transcription queue wait and `export`
    includes render queue wait: record actual transcription/render execution
