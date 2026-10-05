@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { resolve } from 'node:path'
+import fs from 'node:fs/promises'
 import { createServer } from 'vite'
 import react from '@vitejs/plugin-react'
 import puppeteer from 'puppeteer'
@@ -21,6 +22,11 @@ const server = await createServer({
 await server.listen()
 const browser = await puppeteer.launch({ headless: true, args: process.env.CI ? ['--no-sandbox'] : [] })
 const page = await browser.newPage()
+const downloadRoot = resolve('test-artifacts/editor-downloads')
+await fs.mkdir(downloadRoot, { recursive: true })
+const downloadPath = await fs.mkdtemp(resolve(downloadRoot, 'run-'))
+const downloadSession = await browser.target().createCDPSession()
+await downloadSession.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath, eventsEnabled: true })
 await page.setViewport({ width: 1440, height: 1100 })
 const errors = []
 page.on('pageerror', (error) => errors.push(error.message))
@@ -36,12 +42,14 @@ await page.setRequestInterception(true)
 page.on('request', async (request) => {
   const url = new URL(request.url())
   if (url.hostname === 'media.example.invalid' && url.pathname === '/exports/test-output.mp4') {
-    assert.equal(request.headers()['origin'], 'http://127.0.0.1:4187', 'direct R2 fetch must preserve the editor origin')
+    assert.equal(request.headers()['origin'], undefined, 'browser download navigation needs no CORS Origin')
+    assert.equal(request.headers()['referer'], undefined, 'signed download navigation must not disclose the editor URL')
     assert.equal(request.headers()['authorization'], undefined, 'signed media must not send Firebase credentials to R2')
     assert.equal(request.headers()['x-firebase-appcheck'], undefined, 'signed media must not forward App Check headers to R2')
     assert.equal(request.headers()['x-request-id'], undefined, 'signed media must avoid custom-header CORS preflights')
+    assert.equal(request.isNavigationRequest(), true, 'MP4 downloads must use browser navigation, not fetch and Blob')
     downloads += 1
-    return request.respond({ status: 200, headers: { 'Access-Control-Allow-Origin': 'http://127.0.0.1:4187' }, contentType: 'video/mp4', body: Buffer.from('local-test-download') })
+    return request.respond({ status: 200, headers: { 'Content-Disposition': 'attachment; filename="fixture_captioned.mp4"' }, contentType: 'video/mp4', body: Buffer.from('local-test-download') })
   }
   if (url.hostname !== '127.0.0.1' && !['data:', 'blob:'].includes(url.protocol)) return request.abort()
   if (!url.pathname.startsWith('/api/')) return request.continue()
@@ -131,10 +139,23 @@ try {
   // A stored accepted job must reconnect even when its source has expired.
   await page.evaluate((fileId) => localStorage.setItem(`lekha.activeExport.editor-test-a.${fileId}`, JSON.stringify({ jobId: 'job-1', fileId, originalFileName: 'fixture.mp4', quality: '720p', createdAt: Date.now() })), draft.fileId)
   await textClick('Export')
+  assert.equal(await page.evaluate((fileId) => JSON.parse(localStorage.getItem(`lekha.activeExport.editor-test-a.${fileId}`)).completed === true, draft.fileId), false, 'opening Export cannot mark an active job completed')
   await textClick('Resume')
-  await page.waitForFunction(() => document.body.textContent.includes('Export complete'))
-  assert.equal(downloads, 1, 'resume must fetch the full existing output')
+  await page.waitForFunction(() => document.body.textContent.includes('Download started'))
   assert.equal(exports, 0, 'resume must not submit or charge another render')
+  await page.waitForFunction(() => document.body.textContent.includes('Download again'))
+  assert.equal(await page.evaluate((fileId) => JSON.parse(localStorage.getItem(`lekha.activeExport.editor-test-a.${fileId}`)).completed, draft.fileId), true, 'a completed job retains a download recovery receipt')
+  const downloadDeadline = Date.now() + 10000
+  while (true) {
+    try {
+      assert.equal(await fs.readFile(resolve(downloadPath, 'fixture_captioned.mp4'), 'utf8'), 'local-test-download')
+      break
+    } catch (error) {
+      if (Date.now() >= downloadDeadline) throw error
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+  }
+  assert.equal(downloads, 1, 'resume hands the existing signed output to the browser download manager')
   await textClick('Close')
   await page.waitForFunction(() => !document.querySelector('[role=dialog]'))
   await page.evaluate(() => window.switchTestAccount('editor-test-b'))

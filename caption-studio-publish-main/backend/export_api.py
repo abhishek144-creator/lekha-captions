@@ -5,6 +5,7 @@ so there is one copy of each helper and test patches on ``main`` keep applying.
 """
 
 from types import ModuleType, SimpleNamespace
+import anyio
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Response
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
@@ -22,6 +23,16 @@ EXPORT_RQ_FAILURE_TTL_SECONDS = 24 * 3600
 
 def create_export_router(host: ModuleType) -> SimpleNamespace:
     router = APIRouter()
+    admission_limiter = None
+
+    async def _run_admission(callback):
+        nonlocal admission_limiter
+        if admission_limiter is None:
+            admission_limiter = anyio.CapacityLimiter(16)
+        # Bound concurrent admissions while retaining PR #28's per-call I/O
+        # offloading and background worker wake/resize behavior.
+        async with admission_limiter:
+            return await callback()
 
     def _render_queue_for(queue_name):
         queue = host._export_queues.get(queue_name)
@@ -68,6 +79,15 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
 
     @router.post("/api/export")
     async def export_video(req: host.ExportRequest, request: Request, response: Response):
+        # Bound queued admission without creating a second event loop/thread
+        # pool for the already offloaded blocking operations.
+        if host._export_queue is not None or host._IS_PRODUCTION:
+            return await _run_admission(
+                lambda: _export_video_impl(req, request, response)
+            )
+        return await _export_video_impl(req, request, response)
+
+    async def _export_video_impl(req, request, response):
         rid = host._request_id(request)
         # Firestore, Firebase Auth, Redis and worker-launch calls below are
         # blocking I/O. The API runs one event loop per process, so each runs in
@@ -252,6 +272,9 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
 
     @router.post("/api/batch/exports", status_code=202)
     async def create_export_batch(req: host.BatchExportRequest, request: Request):
+        return await _run_admission(lambda: _create_export_batch(req, request))
+
+    async def _create_export_batch(req, request):
         """Queue up to ten independent exports with one idempotent request.
 
     Items use the normal tiered render queues and billing path. The worker's
@@ -389,6 +412,21 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
 
 
     def _reconcile_export_job(job_id: str, job: host.Dict[str, host.Any]):
+        if job.get("status") in {"failed", "retrying", "finalizing"}:
+            try:
+                recorded = host._load_recorded_export_result(
+                    str(job.get("uid") or ""), job_id, str(job.get("file_id") or "")
+                )
+                if recorded:
+                    # The usage transaction is authoritative even if the final
+                    # Redis state write failed or all RQ retries were exhausted.
+                    return {**job, "status": "completed", "payload": recorded, "error": None}
+            except Exception as error:
+                host._json_log("warning", "export_usage_recovery_unavailable", job_id=job_id,
+                               error=type(error).__name__)
+                # Do not present a final failure or permit a fresh debit while
+                # the authoritative outcome of the usage transaction is unknown.
+                return {**job, "status": "retrying", "error": None}
         if host._export_queue is None or job.get("status") in {"completed", "failed", "cancelled"}:
             return job
         try:
@@ -568,6 +606,8 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
         payload = job.get("payload") or {}
         if not payload:
             return {"success": False, "status": "completed", "error": "Result payload missing"}
+        if request.query_params.get("download_filename"):
+            payload = {**payload, "download_filename": request.query_params["download_filename"]}
         return host._refresh_completed_export_payload(payload, str(job.get("uid") or ""), job_id)
 
 
@@ -654,6 +694,9 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
             )
         request_snapshot = job.get("request_snapshot")
         uid = job.get("uid", "")
+        recorded = host._load_recorded_export_result(uid, job_id, str(job.get("file_id") or ""))
+        if recorded:
+            return {"success": True, "export_job_id": job_id, "status": "completed", "idempotent_replay": True}
         if not request_snapshot:
             raise HTTPException(status_code=400, detail="No request snapshot found to replay")
         new_job_id = str(host.uuid.uuid4())
