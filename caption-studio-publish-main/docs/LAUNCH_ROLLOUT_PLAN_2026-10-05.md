@@ -4,6 +4,11 @@ Status: candidate prepared in PR #29; not merged or deployed. Hosted validation
 is blocked by the owner's exhausted GitHub Actions budget. This document is
 the reviewable next action, not evidence of a completed public launch.
 
+Owner decision, 5 October: **Keep budgets unchanged.** The proposed additional
+$7 allowance below was declined. GitHub Actions remains $3 with Stop usage
+enabled, and Railway remains $15 hard/$8 alert. No paid rollout or pilot was
+started, no spending controls were changed, and no launch approval is implied.
+
 ## Exact target and verified live state
 
 - GitHub owner: `abhishek144-creator`; private repository `lekha-captions`.
@@ -127,10 +132,11 @@ Request **up to $7 additional pre-tax usage allowance** for this release:
    Netlify remaining included quotas before writes/builds; otherwise stop for
    a revised estimate. This allowance does not promise a $7 total invoice.
 
-No approval has been received for these new amounts. The owner must explicitly
-approve this priced plan before paid execution, as required by `AGENTS.md` and
-the deployment prompt. Account-wide unrelated spending can consume these
-limits, so inspect remaining headroom immediately before execution.
+The owner declined these new amounts and chose to retain existing budgets.
+The sequence below remains a proposed, unexecuted runbook. Paid execution would
+require explicit approval of a priced plan, as required by `AGENTS.md` and the
+deployment prompt. Account-wide unrelated spending can consume these limits,
+so inspect remaining headroom immediately before any authorized execution.
 
 Sequence after approval and successful CI:
 
