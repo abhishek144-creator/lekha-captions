@@ -22,10 +22,11 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from '@/components/ui/use-toast';
-import { apiFetch, apiRequest, getApiErrorMessage } from '@/lib/apiClient';
+import { apiRequest, getApiErrorMessage } from '@/lib/apiClient';
 import { getClientContext, trackAnalytics } from '@/lib/analytics';
 import { isFeatureEnabled } from '@/lib/featureFlags';
 import { getEffectiveAuthToken } from '@/lib/devAuth';
+import { isSubscriptionExpired } from '@/lib/subscription';
 import { buildEmotionalCaptionPlan } from './emotionalTemplateUtils';
 import { getBasicTemplateExportEffects } from './basicTemplateCatalog.js';
 import {
@@ -36,7 +37,7 @@ import {
   getCaptionedVideoFilename,
   hasExportableVideoContent,
   nextExportProgress,
-  shouldAttachApiAuth,
+  resolveApiResourceUrl,
 } from './exportPipelineUtils';
 import {
   ADVANCED_TEMPLATE_EMPHASIS_COLORS,
@@ -447,6 +448,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
     : storedCreditBalance;
   const hasCreditsRemaining = hasResolvedCreditBalance && creditBalance > 0;
   const entitlementIsSyncing = !userData || userData.bootstrap_pending || !hasResolvedCreditBalance;
+  const planExpired = !isFreeEntitlement && isSubscriptionExpired(userData?.subscription_expiry || userData?.billing_cycle_end);
 
   // The API is the final authority, but the client should accurately reflect a
   // known balance. An unresolved bootstrap remains clickable so it cannot lock
@@ -455,13 +457,13 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
     if (DISABLE_EXPORT_LIMITS_FOR_TESTING) return isSignedIn;
     if (!isSignedIn) return false;
     if (entitlementIsSyncing) return true;
-    return hasCreditsRemaining;
+    return hasCreditsRemaining && !planExpired;
   })();
 
   // 4K is available for Creator and above (matches pricing promises)
   const is4kAllowed = (() => {
     if (DISABLE_EXPORT_LIMITS_FOR_TESTING) return isSignedIn;
-    if (!isSignedIn || !userData) return false;
+    if (!isSignedIn || !userData || planExpired) return false;
     const tier = userData.subscription_tier || 'free';
     const normalizedTier = tier.toLowerCase();
     return [
@@ -480,7 +482,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       toast({
         variant: 'destructive',
         title: 'Plan expired',
-        description: 'Your plan has expired and you have no credits left. Please renew to continue exporting.',
+        description: 'Your plan has expired. Please renew to continue exporting.',
       });
     } else {
       toast({
@@ -494,7 +496,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
     }
   };
 
-  const downloadCompletedExport = async ({ resolvedResult, authHeaders, signal, jobId, quality, filename }) => {
+  const downloadCompletedExport = async ({ resolvedResult, signal, jobId, quality, filename }) => {
     if (resolvedResult?.success === false) {
       const terminalError = new Error(resolvedResult.error || 'Export completed without a usable video. Please retry.');
       terminalError.exportStatus = 'failed';
@@ -505,10 +507,15 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
     }
     raiseProgressTarget(99);
     setStatusMessage('Preparing download...');
-    const downloadUrl = resolvedResult.video_url;
+    const downloadUrl = resolvedResult.download_url || resolvedResult.video_url;
     if (!downloadUrl) throw new Error('Export completed but no download link was returned. Please retry.');
-    const downloadHeaders = shouldAttachApiAuth(downloadUrl, window.location.origin) ? authHeaders : {};
-    const videoResponse = await apiFetch(downloadUrl, { headers: downloadHeaders, signal });
+    // Fetch R2 directly: cross-origin redirects send Origin: null to storage.
+    // Signed URLs need no API security/tracing headers or browser credentials.
+    const videoResponse = await fetch(resolveApiResourceUrl(downloadUrl, import.meta.env.VITE_API_BASE_URL), {
+      signal,
+      credentials: 'omit',
+    });
+    if (!videoResponse.ok) throw new Error('The exported video could not be downloaded. Resume the export to retry.');
     const blob = await videoResponse.blob();
     if (blob.size === 0) throw new Error('The exported video download was empty. Please retry.');
     const url = URL.createObjectURL(blob);
@@ -1162,7 +1169,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
             {captionTrackLabel && <p className="mt-2 text-xs text-sky-200/80">Using language track: {captionTrackLabel}</p>}
             {isSignedIn && hasResolvedCreditBalance && (
               <p className="mt-3 text-xs font-semibold text-emerald-300">
-                {Math.max(0, creditBalance)} export credit{Math.max(0, creditBalance) === 1 ? '' : 's'} remaining
+                {planExpired ? 'Plan expired — renew to use video export' : `${Math.max(0, creditBalance)} export credit${Math.max(0, creditBalance) === 1 ? '' : 's'} remaining`}
               </p>
             )}
           </div>
@@ -1314,7 +1321,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
               const lockReason = !reviewConfirmed
                 ? 'Review captions before rendering'
                 : !isPlanActive
-                  ? 'No export credits remaining'
+                  ? (planExpired ? 'Plan expired — renew to render' : 'No export credits remaining')
                   : (option.requiresPro && !is4kAllowed)
                     ? 'Creator or Pro plan required'
                     : null;
@@ -1398,7 +1405,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
         {exportExpiry && (
           <div className="mt-3 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20">
             <p className="text-xs text-amber-300">
-              Download link valid for <span className="font-semibold">{exportExpiry.hours} hours</span>. Save your exported video before it expires.
+              Video available for <span className="font-semibold">{exportExpiry.hours} hours</span>. Save it before it expires.
             </p>
           </div>
         )}

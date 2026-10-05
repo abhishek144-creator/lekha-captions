@@ -3,8 +3,8 @@
   publish = "out"
 
 [build.environment]
-  NODE_VERSION = "20"
-  NEXT_PUBLIC_APP_URL = "https://lekhacaptions.com"
+  NODE_VERSION = "22"
+  NEXT_PUBLIC_APP_URL = "https://lekhacaptions.com/Dashboard?entry=editor"
 
 [[headers]]
   for = "/*"
@@ -17,3 +17,205 @@
   for = "/landing/*.mp4"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
+
+# Serve editor routes under the same domain without replacing the SEO homepage.
+# Use the Netlify subdomain so the legacy app-domain redirect cannot loop.
+# Request index.html directly to avoid a second upstream SPA rewrite.
+
+[[redirects]]
+  from = "/Dashboard"
+  to = "https://lekha-captions-staging.netlify.app/index.html"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/dashboard"
+  to = "https://lekha-captions-staging.netlify.app/index.html"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/Home"
+  to = "https://lekha-captions-staging.netlify.app/index.html"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/home"
+  to = "https://lekha-captions-staging.netlify.app/index.html"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/HomeV2"
+  to = "https://lekha-captions-staging.netlify.app/index.html"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/homev2"
+  to = "https://lekha-captions-staging.netlify.app/index.html"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/Login"
+  to = "https://lekha-captions-staging.netlify.app/index.html"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/login"
+  to = "https://lekha-captions-staging.netlify.app/index.html"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/UserAccount"
+  to = "https://lekha-captions-staging.netlify.app/index.html"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/useraccount"
+  to = "https://lekha-captions-staging.netlify.app/index.html"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/Faq"
+  to = "https://lekha-captions-staging.netlify.app/index.html"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/TermsAndConditions"
+  to = "https://lekha-captions-staging.netlify.app/index.html"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/termsandconditions"
+  to = "https://lekha-captions-staging.netlify.app/index.html"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/PrivacyPolicy"
+  to = "https://lekha-captions-staging.netlify.app/index.html"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/privacypolicy"
+  to = "https://lekha-captions-staging.netlify.app/index.html"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/RefundPolicy"
+  to = "https://lekha-captions-staging.netlify.app/index.html"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/refundpolicy"
+  to = "https://lekha-captions-staging.netlify.app/index.html"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/AcceptableUsePolicy"
+  to = "https://lekha-captions-staging.netlify.app/index.html"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/acceptableusepolicy"
+  to = "https://lekha-captions-staging.netlify.app/index.html"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/HelpAndSupport"
+  to = "https://lekha-captions-staging.netlify.app/index.html"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/helpandsupport"
+  to = "https://lekha-captions-staging.netlify.app/index.html"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/AdminOps"
+  to = "https://lekha-captions-staging.netlify.app/index.html"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/adminops"
+  to = "https://lekha-captions-staging.netlify.app/index.html"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/KnownLimitations"
+  to = "https://lekha-captions-staging.netlify.app/index.html"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/knownlimitations"
+  to = "https://lekha-captions-staging.netlify.app/index.html"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/Changelog"
+  to = "https://lekha-captions-staging.netlify.app/index.html"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/assets/*"
+  to = "https://lekha-captions-staging.netlify.app/assets/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/runtime-config.js"
+  to = "https://lekha-captions-staging.netlify.app/runtime-config.js"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/manifest.json"
+  to = "https://lekha-captions-staging.netlify.app/manifest.json"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/lekha-icon.svg"
+  to = "https://lekha-captions-staging.netlify.app/lekha-icon.svg"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/lekha-logo.svg"
+  to = "https://lekha-captions-staging.netlify.app/lekha-logo.svg"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/lekha-logo-dark.svg"
+  to = "https://lekha-captions-staging.netlify.app/lekha-logo-dark.svg"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/__/*"
+  to = "https://lekha-captions-staging.netlify.app/__/:splat"
+  status = 200
+  force = true

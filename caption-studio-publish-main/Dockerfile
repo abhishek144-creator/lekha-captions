@@ -1,16 +1,32 @@
 ARG APP_RELEASE
+# Railway passes service variables to declared build args, so each service picks
+# its image with LEKHA_SERVICE_TARGET=api|transcription|render (default render).
+ARG LEKHA_SERVICE_TARGET=render
+
+# The official image is rebuilt with current signatures; copying them avoids
+# freshclam at build time, which ClamAV's CDN rate-limits on shared builders.
+FROM clamav/clamav-debian:stable AS clamav-signatures
 
 FROM python:3.11-slim-bookworm AS python-runtime
 ARG APP_RELEASE
 LABEL org.opencontainers.image.revision=${APP_RELEASE}
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates dumb-init ffmpeg \
+    && apt-get install -y --no-install-recommends ca-certificates clamav dumb-init ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY backend/requirements.lock backend/requirements.lock
 RUN python3 -m pip install --no-cache-dir --require-hashes -r backend/requirements.lock
+# Used with CLAMAV_SCAN_CMD="clamscan --stdout --database=/opt/clamav-db".
+COPY --from=clamav-signatures /var/lib/clamav/*.cvd /opt/clamav-db/
+# Both API and transcription builds must contain clamscan and its signature DB.
+RUN clamscan --version \
+    && test -s /opt/clamav-db/main.cvd \
+    && test -s /opt/clamav-db/daily.cvd \
+    && ls /opt/clamav-db
 COPY . .
+# Release identity: the app reports this as APP_BUILD_TIME unless it is set.
+RUN date -u +%Y-%m-%dT%H:%M:%SZ > .build-time
 RUN useradd --uid 1000 --create-home --shell /usr/sbin/nologin lekha \
     && chown -R lekha:lekha /app
 USER lekha
@@ -56,7 +72,8 @@ RUN node --input-type=module -e "import puppeteer from 'puppeteer'; const browse
 COPY backend/requirements.lock backend/requirements.lock
 RUN python3 -m pip install --break-system-packages --no-cache-dir --require-hashes -r backend/requirements.lock
 COPY . .
-RUN install -d /usr/local/share/fonts/truetype/lekha \
+RUN date -u +%Y-%m-%dT%H:%M:%SZ > .build-time \
+    && install -d /usr/local/share/fonts/truetype/lekha \
     && cp backend/flat_fonts/*.ttf /usr/local/share/fonts/truetype/lekha/ \
     && fc-cache -f \
     && node scripts/build_render_font_bundle.mjs /app/.render_fonts/fonts.css \
@@ -68,6 +85,6 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
 ENTRYPOINT ["dumb-init", "--"]
 CMD ["sh", "-c", "node scripts/render_browser_daemon.mjs & exec python3 -m backend.worker"]
 
-# Preserve the historical default for local builds while deployments select an
-# explicit api, render, or transcription target.
-FROM render AS app
+# Preserve the historical default (render) for local builds while deployments
+# select an explicit api, render, or transcription target.
+FROM ${LEKHA_SERVICE_TARGET} AS app

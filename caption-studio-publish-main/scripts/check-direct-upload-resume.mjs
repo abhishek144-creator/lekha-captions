@@ -288,4 +288,99 @@ await assert.rejects(
   /500 MiB/,
 )
 
+// S3-compatible storage (Cloudflare R2): parts go to presigned URLs, a failed
+// part is retried, and a resumed upload skips parts storage already holds.
+const multipartFile = {
+  name: 'r2.mp4',
+  type: 'video/mp4',
+  size: chunkBytes * 2 + 1024,
+  lastModified: 1,
+  slice(start, end) {
+    return { size: end - start, start }
+  },
+}
+function multipartContext(sentParts, apiCalls, { failFirstPut = false, completedParts = [] } = {}) {
+  let failed = !failFirstPut
+  class PartRequest {
+    upload = {}
+    status = 0
+    open(method, url) {
+      assert.equal(method, 'PUT')
+      this.url = url
+    }
+    setRequestHeader() {
+      throw new Error('Presigned part PUTs must not add headers the signature does not cover')
+    }
+    send(blob) {
+      if (!failed) {
+        failed = true
+        this.onerror()
+        return
+      }
+      const number = Number(new URL(this.url).searchParams.get('partNumber'))
+      assert.equal(blob.start, (number - 1) * chunkBytes)
+      sentParts.push(number)
+      this.status = 200
+      this.upload.onprogress?.({ lengthComputable: true, loaded: blob.size })
+      this.onload()
+    }
+  }
+  const session = {
+    success: true, direct_upload_available: true, file_id: 'r2-fixture',
+    upload_protocol: 's3_multipart', part_size: chunkBytes, part_count: 3,
+  }
+  return vm.createContext({
+    XMLHttpRequest: PartRequest,
+    localStorage: completedParts.length ? {
+      getItem: () => JSON.stringify({
+        file_id: 'r2-fixture',
+        fingerprint: {
+          filename: multipartFile.name, content_type: multipartFile.type,
+          size_bytes: multipartFile.size, last_modified: multipartFile.lastModified,
+        },
+      }),
+      setItem: () => {},
+      removeItem: () => {},
+    } : undefined,
+    apiRequest: async (path, options) => {
+      apiCalls.push(path)
+      if (path === '/api/uploads/init') return session
+      if (path === '/api/uploads/resume') return { ...session, resumed: true, completed_parts: completedParts }
+      if (path === '/api/uploads/parts') {
+        const numbers = JSON.parse(options.body).part_numbers
+        return { success: true, parts: numbers.map((n) => ({ part_number: n, url: `https://r2.test/obj?partNumber=${n}` })) }
+      }
+      if (path === '/api/uploads/complete') return { success: true, file_id: 'r2-fixture' }
+      throw new Error(`Unexpected API request: ${path}`)
+    },
+    getClientContext: (value) => value,
+    trackAnalytics: () => {},
+    crypto: globalThis.crypto,
+    navigator: { onLine: true },
+    setTimeout,
+    URL,
+    Math: { ...Math, random: () => 0, round: Math.round, max: Math.max, min: Math.min, floor: Math.floor, ceil: Math.ceil },
+  })
+}
+
+const freshParts = []
+const freshCalls = []
+const freshProgress = []
+const freshResult = await vm.runInContext(`${source}\nuploadFileWithRecovery`,
+  multipartContext(freshParts, freshCalls, { failFirstPut: true }))(
+  multipartFile, { retryDelaysMs: [0], onProgress: (value) => freshProgress.push(value) },
+)
+assert.equal(freshResult.success, true)
+assert.deepEqual([...freshParts].sort(), [1, 2, 3])
+assert.deepEqual(freshCalls, ['/api/uploads/init', '/api/uploads/parts', '/api/uploads/complete'])
+assert.equal(freshProgress.at(-1).uploadedBytes, multipartFile.size)
+
+const resumedParts = []
+const resumedCalls = []
+const resumedResult = await vm.runInContext(`${source}\nuploadFileWithRecovery`,
+  multipartContext(resumedParts, resumedCalls, { completedParts: [1, 3] }))(multipartFile, { retryDelaysMs: [] })
+assert.equal(resumedResult.success, true)
+assert.deepEqual(resumedParts, [2])
+assert.deepEqual(resumedCalls, ['/api/uploads/resume', '/api/uploads/parts', '/api/uploads/complete'])
+
 console.log('Direct upload resume and large-file proxy prohibition passed.')

@@ -127,6 +127,111 @@ def iter_objects(prefix: str) -> Iterable[dict]:
     return rows
 
 
+def create_multipart_upload(remote_path: str, content_type: str, metadata: Dict[str, str] | None = None) -> str:
+    """Start a browser-direct multipart upload and return its upload ID."""
+    client = _client()
+    if client is None:
+        raise RuntimeError("S3-compatible storage is not configured")
+    response = client.create_multipart_upload(
+        Bucket=S3_BUCKET,
+        Key=remote_path,
+        ContentType=content_type or "application/octet-stream",
+        Metadata={str(key): str(value) for key, value in (metadata or {}).items()},
+    )
+    return str(response["UploadId"])
+
+
+def presign_upload_part(remote_path: str, upload_id: str, part_number: int,
+                        content_length: int, expiration_seconds: int) -> str:
+    """Sign one part PUT. The exact Content-Length is part of the signature."""
+    client = _client()
+    if client is None:
+        raise RuntimeError("S3-compatible storage is not configured")
+    return client.generate_presigned_url(
+        "upload_part",
+        Params={
+            "Bucket": S3_BUCKET,
+            "Key": remote_path,
+            "UploadId": upload_id,
+            "PartNumber": int(part_number),
+            "ContentLength": int(content_length),
+        },
+        ExpiresIn=max(60, min(int(expiration_seconds), 6 * 3600)),
+    )
+
+
+def list_uploaded_parts(remote_path: str, upload_id: str) -> list[dict]:
+    """Return [{"PartNumber", "ETag", "Size"}] for parts storage has received."""
+    client = _client()
+    if client is None:
+        raise RuntimeError("S3-compatible storage is not configured")
+    parts: list[dict] = []
+    marker = 0
+    while True:
+        response = client.list_parts(
+            Bucket=S3_BUCKET, Key=remote_path, UploadId=upload_id, PartNumberMarker=marker,
+        )
+        parts.extend(response.get("Parts", []))
+        if not response.get("IsTruncated"):
+            return parts
+        marker = int(response.get("NextPartNumberMarker") or 0)
+
+
+def complete_multipart_upload(remote_path: str, upload_id: str, parts: Iterable[dict]) -> None:
+    client = _client()
+    if client is None:
+        raise RuntimeError("S3-compatible storage is not configured")
+    client.complete_multipart_upload(
+        Bucket=S3_BUCKET,
+        Key=remote_path,
+        UploadId=upload_id,
+        MultipartUpload={"Parts": [
+            {"PartNumber": int(part["PartNumber"]), "ETag": str(part["ETag"])}
+            for part in sorted(parts, key=lambda item: int(item["PartNumber"]))
+        ]},
+    )
+
+
+def abort_multipart_upload(remote_path: str, upload_id: str) -> None:
+    client = _client()
+    if client is None:
+        return
+    try:
+        client.abort_multipart_upload(Bucket=S3_BUCKET, Key=remote_path, UploadId=upload_id)
+    except ClientError as error:
+        status = int(error.response.get("ResponseMetadata", {}).get("HTTPStatusCode", 0))
+        if status != 404:
+            raise
+
+
+def object_size(remote_path: str) -> int | None:
+    """Object size in bytes, or None when the object does not exist."""
+    client = _client()
+    if client is None:
+        return None
+    try:
+        return int(client.head_object(Bucket=S3_BUCKET, Key=remote_path).get("ContentLength") or 0)
+    except ClientError as error:
+        status = int(error.response.get("ResponseMetadata", {}).get("HTTPStatusCode", 0))
+        if status == 404:
+            return None
+        raise
+
+
+def object_metadata(remote_path: str) -> Dict[str, str] | None:
+    """User metadata of an object, or None when the object does not exist."""
+    client = _client()
+    if client is None:
+        return None
+    try:
+        return dict(client.head_object(Bucket=S3_BUCKET, Key=remote_path).get("Metadata") or {})
+    except ClientError as error:
+        status = int(error.response.get("ResponseMetadata", {}).get("HTTPStatusCode", 0))
+        if status == 404:
+            return None
+        raise
+
+
 def signed_download_url(remote_path: str, expiration_seconds: int) -> str | None:
     client = _client()
     if client is None:

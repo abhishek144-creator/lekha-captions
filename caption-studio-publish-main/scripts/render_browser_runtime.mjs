@@ -23,7 +23,24 @@ export function browserLaunchOptions(viewport) {
   if (disableSandbox && runtimeEnv === 'production') {
     throw new Error('PUPPETEER_DISABLE_SANDBOX is forbidden in production')
   }
-  const args = ['--disable-gpu', '--disable-dev-shm-usage']
+  const args = [
+    '--disable-gpu',
+    '--disable-dev-shm-usage',
+    '--disable-background-networking',
+    '--disable-sync',
+    '--disable-notifications',
+    // Chromium's push channel sends packets even with background networking
+    // disabled. The renderer needs no push messaging or Google account sync.
+    '--disable-features=GCM',
+  ]
+  if (process.env.RENDER_FONT_BUNDLE_REQUIRED === '1'
+    && process.env.PREFER_PACKAGED_RENDER_FONTS === '1') {
+    // Production renders use packaged fonts and inline assets. Chrome's own
+    // background services ignore page interception and some networking flags.
+    // Fail hostname resolution locally instead of keeping Railway awake.
+    args.push('--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost')
+    args.push('--no-proxy-server')
+  }
   if (disableSandbox || containerSandboxBypass || ciSandboxBypass) {
     args.push('--no-sandbox', '--disable-setuid-sandbox')
   }
