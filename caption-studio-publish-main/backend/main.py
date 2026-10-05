@@ -53,6 +53,7 @@ try:
 except ImportError:  # Direct execution from backend/ remains supported.
     from processor import VideoProcessor
 import asyncio
+import anyio
 import time
 import subprocess
 import hmac
@@ -366,7 +367,16 @@ def _apply_security_headers(response: Response) -> Response:
 async def request_logging_middleware(request: Request, call_next):
     rid = _request_id(request)
     request.state.request_id = rid
-    app_check_failure = _verify_firebase_app_check_request(request, rid)
+    if _app_check_required(request) and request.headers.get("x-firebase-appcheck"):
+        # Firebase may synchronously fetch rotated signing keys. Keep its
+        # bounded verification work outside the API event loop; health probes
+        # and missing-token rejections never wait for this worker pool.
+        app_check_failure = await anyio.to_thread.run_sync(
+            _verify_firebase_app_check_request, request, rid,
+            limiter=_app_check_verification_limiter,
+        )
+    else:
+        app_check_failure = _verify_firebase_app_check_request(request, rid)
     if app_check_failure is not None:
         return _apply_security_headers(app_check_failure)
     if request.url.path == "/api/upload" and _IS_PRODUCTION:
@@ -433,7 +443,7 @@ async def request_logging_middleware(request: Request, call_next):
             },
         ))
     upload_slot_uid = str(upload_identity.get("uid") or "") if request.url.path == "/api/upload" else ""
-    if upload_slot_uid and not _acquire_process_slot(upload_slot_uid, f"upload:{rid}"):
+    if upload_slot_uid and not await asyncio.to_thread(_acquire_process_slot, upload_slot_uid, f"upload:{rid}"):
         return _apply_security_headers(JSONResponse(status_code=429, content={"detail": "Another upload or transcription is active for this account."}, headers={"X-Request-Id": rid}))
     start = time.time()
     try:
@@ -458,7 +468,7 @@ async def request_logging_middleware(request: Request, call_next):
         }, headers={"X-Request-Id": rid, "Cache-Control": "no-store"}))
     finally:
         if upload_slot_uid:
-            _release_process_slot(upload_slot_uid, f"upload:{rid}")
+            await asyncio.to_thread(_release_process_slot, upload_slot_uid, f"upload:{rid}")
         if not RUN_API_BACKGROUND_TASKS:
             # Cloud Run may suspend CPU as soon as the request finishes. Flush
             # buffered events while this request still has execution time.
@@ -483,7 +493,7 @@ async def request_logging_middleware(request: Request, call_next):
         replica_id=RAILWAY_REPLICA_ID,
     )
     try:
-        _track_latency_sample(request.url.path, elapsed_ms)
+        await asyncio.to_thread(_track_latency_sample, request.url.path, elapsed_ms)
     except Exception:
         pass
     response.headers["X-API-Version"] = API_CURRENT_VERSION
@@ -540,17 +550,27 @@ _APP_CHECK_EXEMPT_PREFIXES = (
 )
 
 
+_app_check_verification_limiter = anyio.CapacityLimiter(16)
+
+
+def _app_check_required(request: Request) -> bool:
+    if not FIREBASE_APP_CHECK_ENFORCED or request.method.upper() == "OPTIONS":
+        return False
+    path = request.url.path
+    return path not in _APP_CHECK_EXEMPT_PATHS and not any(
+        path.startswith(prefix) for prefix in _APP_CHECK_EXEMPT_PREFIXES
+    )
+
+
 def _verify_firebase_app_check_request(request: Request, request_id: str = "") -> Optional[JSONResponse]:
     """Require Firebase App Check for browser API traffic in production.
 
     Webhooks, signed media URLs, health probes, and operator-only endpoints use
     their own authentication and remain callable by non-browser infrastructure.
     """
-    if not FIREBASE_APP_CHECK_ENFORCED or request.method.upper() == "OPTIONS":
+    if not _app_check_required(request):
         return None
     path = request.url.path
-    if path in _APP_CHECK_EXEMPT_PATHS or any(path.startswith(prefix) for prefix in _APP_CHECK_EXEMPT_PREFIXES):
-        return None
     token = str(request.headers.get("x-firebase-appcheck") or "").strip()
     if not token:
         _json_log("warning", "app_check_missing", path=path, request_id=request_id)
