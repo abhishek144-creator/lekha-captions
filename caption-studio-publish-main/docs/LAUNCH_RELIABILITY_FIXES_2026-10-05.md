@@ -55,6 +55,14 @@ audit has zero advisories. No downgrade or major framework migration was made.
 
 ## Public launch acceptance still required
 
+Fresh read-only verification on 5 October found live autoscaling enabled in
+API/cron, effective render grace 1860 seconds, and a one-replica sleeping render
+deployment. A later existing three-job RQ sleep-probe acceptance supersedes the
+diary's disabled-scaling entry; real captioned-video capacity remains unproven.
+See `LAUNCH_ROLLOUT_PLAN_2026-10-05.md` for the verified inventory, local
+small/typical/large export measurements, CI blocker and priced approval plan.
+Final expanded backend rerun: 360 tests and 27 subtests passed.
+
 No paid resources, production exports, payments, replica counts, hosting limits
 or autoscaling settings were changed. The source backlog limits remain 80 jobs
 and 1,800 estimated work seconds; the configured render ceiling remains three

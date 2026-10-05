@@ -1161,3 +1161,38 @@ shutdown/sleep acceptance remain pending; do not re-enable the controller yet.
 ## 2026-10-04 — Editor apex-domain cutover
 
 The owner requested removing app. from the public editor address. Prepared Netlify rewrites for all registered editor routes and their assets under lekhacaptions.com, while preserving the static homepage and marketing/legal pages. Old app-domain bookmarks redirect to the corresponding apex path with query strings retained. Login preview handoff and marketing app links now use the apex. R2 preflight already permits the apex; Railway API currently permits only the app origin and needs a scoped origin update. Production build, CI and live verification remain pending. No resources or credentials are created.
+
+## 2026-10-05 — Export reliability candidate and launch rollout preparation
+
+- Prepared from production main `5f1345a` in isolated branch
+  `codex/launch-reliability-fixes`; draft PR #29. Bounded export-admission thread
+  pool, transactional paid-result recovery, crash-safe render scratch cleanup,
+  30-minute queued-job lifetime, bounded browser polling/resumable receipts and
+  browser-native signed MP4 attachments. IaC autoscale default is disabled
+  until acceptance. Details: `docs/LAUNCH_RELIABILITY_FIXES_2026-10-05.md`.
+- Final backend run: 360 passed and 27 subtests passed. Frontend release gates,
+  local browser attachment journey and dependency gates passed. A previous
+  rerun hit the existing Windows loopback abort; isolated wake tests and the
+  final full rerun passed. Local synthetic ASS/DOM small (6 s 720p), typical
+  (30 s 1080p) and large (120 s 4K/60 fps) exports all succeeded. Large DOM took
+  293.7384 seconds; this is not Railway throughput/RAM or Hindi evidence.
+- Fresh read-only production evidence corrects the preceding scaling diary:
+  API and cron autoscaling flags are enabled; render is SLEEPING at configured
+  and effective count one, 4 vCPU/4 GiB and effective 1860-second drain grace.
+  Existing later `.readiness/RENDER_AUTOSCALING_ACCEPTANCE.md` records three
+  finite sleep-probe RQ jobs completing through replacement and cron reduction
+  to one. Those probes did not exercise caption rendering or billing.
+- Railway Hobby project/environment identities verified; four app services
+  plus Redis remain. Workspace usage about $0.215, hard cap $15 and alert $8
+  retained. No live export, deployment, resource, credential or budget mutation.
+- Hosted PR checks were refused before any steps: computer use confirmed the
+  owner's $3 Actions budget is fully spent with Stop usage enabled. Restrict
+  feature validation to pull requests while retaining main push validation,
+  avoiding duplicate paid full matrices for the same feature commit.
+- Written account-specific prices, resource inventory, six-job/60-minute
+  supervised pilot, expiry/drain and data-preserving rollback are in
+  `docs/LAUNCH_ROLLOUT_PLAN_2026-10-05.md`. Proposed new allowance is $5 for
+  Actions and $2 for Railway while preserving the Railway $15 cap; explicit
+  owner approval and successful hosted validation remain required. Firebase,
+  Netlify and R2 quota/bill checks, real export/recovery, peak RAM/disk and basic
+  alert/backup acceptance remain unmet. No full-public-launch claim is made.
