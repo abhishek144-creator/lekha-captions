@@ -79,7 +79,9 @@ export default defineRailway((ctx) => {
     }),
     WORKER_LAUNCH_MAX_PARALLEL: "3",
     AI_SYSTEM_DAILY_LIMIT: "500",
-    RENDER_AUTOSCALE_ENABLED: "1",
+    // Enable in API/cron only after the live resize/drain/sleep acceptance
+    // in RAILWAY_DEPLOYMENT.md passes. A config apply must preserve this gate.
+    RENDER_AUTOSCALE_ENABLED: "0",
     RENDER_AUTOSCALE_SERVICE_ID: "${{lekha-render.RAILWAY_SERVICE_ID}}",
     RENDER_AUTOSCALE_REGION: REGION,
   }

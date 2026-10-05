@@ -25,6 +25,12 @@ class FakeService:
         self.replicas = count
 
 
+class DeploymentSafetyDefaultTests(unittest.TestCase):
+    def test_iac_keeps_autoscaling_disabled_until_live_acceptance(self):
+        source = (Path(__file__).resolve().parents[3] / ".railway" / "railway.ts").read_text(encoding="utf-8")
+        self.assertRegex(source, r'RENDER_AUTOSCALE_ENABLED:\s*"0"')
+
+
 class RenderScalingTests(unittest.TestCase):
     def setUp(self):
         self.redis = fakeredis.FakeRedis()
