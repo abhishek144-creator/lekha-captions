@@ -4,6 +4,7 @@ Handlers resolve shared helpers through ``host`` (the main module) at call time 
 entitlement logic stays in one place and test patches on ``main`` keep applying.
 """
 
+import asyncio
 import hashlib
 import hmac
 import json
@@ -288,6 +289,11 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
         body_bytes = await request.body()
         if len(body_bytes) > 256 * 1024:
             raise HTTPException(status_code=413, detail="Webhook payload too large")
+        # Verification and entitlement updates call Razorpay and Firestore
+        # synchronously; keep them off the event loop shared by every request.
+        return await asyncio.to_thread(_handle_razorpay_webhook, body_bytes, signature)
+
+    def _handle_razorpay_webhook(body_bytes: bytes, signature: str):
         expected = hmac.new(
             host.RAZORPAY_WEBHOOK_SECRET.encode("utf-8"),
             body_bytes,

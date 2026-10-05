@@ -8,7 +8,8 @@ schedule never wakes the API or a worker unless there is work for one:
 - re-deliver transcription and malware-scan jobs from the Firestore outboxes;
 - wake a worker for any queue that still has jobs (no-op if one is running);
 - delete expired uploads/exports and abort stale multipart uploads;
-- reconcile payments whose Razorpay webhooks never arrived.
+- reconcile payments whose Razorpay webhooks never arrived;
+- alert before Redis runs out of memory.
 
 Each step is independent: one failing does not skip the rest, and the process
 exits non-zero so Railway marks the run as failed.
@@ -63,6 +64,36 @@ def recover_expired_jobs(connection, queue_names):
     return len(queue_names)
 
 
+# Redis holds queues, rate limits and idempotency keys and must not evict them,
+# so a full Redis fails writes; production rate limiting then fails closed
+# (503 on every request). Alert well before that point.
+REDIS_MEMORY_ALERT_RATIO = 0.8
+
+
+def check_redis_memory(connection, *, alert=None):
+    """Return Redis memory use; alert when it nears its ceiling."""
+    if connection is None:
+        return None
+    try:
+        info = connection.info("memory")
+    except Exception as error:
+        # Monitoring only: a server without INFO must not fail the maintenance pass.
+        return {"unavailable": type(error).__name__}
+    used = int(info.get("used_memory") or 0)
+    limit = int(info.get("maxmemory") or 0)
+    if limit <= 0:
+        # No server limit configured: compare with the plan size the operator set.
+        limit = int(os.environ.get("REDIS_MEMORY_ALERT_BYTES", str(512 * 1024 * 1024)) or 0)
+    ratio = (used / limit) if limit > 0 else 0.0
+    if ratio >= REDIS_MEMORY_ALERT_RATIO and alert is not None:
+        alert(
+            f"Redis memory is at {ratio:.0%} ({used // (1024 * 1024)} MiB of "
+            f"{limit // (1024 * 1024)} MiB). Writes fail when it is full; "
+            "raise the Redis plan or investigate key growth."
+        )
+    return {"used_bytes": used, "limit_bytes": limit, "ratio": round(ratio, 3)}
+
+
 def kick_backlogged_workers(connection, queue_names):
     return sum(1 for name in queue_names if worker_launcher.kick(connection, name, log=print))
 
@@ -77,7 +108,11 @@ def run_once(*, host=api, launch_queues=None):
          lambda: host.TranscriptionJobs(host.get_db()).dispatch(host._transcription_queue)),
         ("media_scan_dispatch", host._dispatch_media_scans_once),
         ("render_scaling", lambda: render_autoscaling.reconcile(host._rq_redis_client, allow_down=True)),
+        ("transcription_scaling", lambda: render_autoscaling.reconcile(
+            host._rq_redis_client, allow_down=True, target=render_autoscaling.TRANSCRIPTION)),
         ("kick_workers", lambda: kick_backlogged_workers(host._rq_redis_client, launch_queues)),
+        ("redis_memory", lambda: check_redis_memory(
+            host._rq_redis_client, alert=getattr(host, "_send_alert", None))),
     ]
     # Staging shares Firestore with production: never clean customer media or
     # reconcile live payments from it (same rule as the API's own scheduler).
