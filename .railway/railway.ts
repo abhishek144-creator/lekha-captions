@@ -18,6 +18,11 @@ const GIB = 1024 * 1024 * 1024
 const RENDER_WORKER = "lekha-render"
 const TRANSCRIPTION_WORKER = "lekha-transcription"
 const WORKER_PORT = "8080"
+// Replica ceilings for the autoscaled workers. One render replica handles one
+// export at a time (4 vCPU / 4 GiB); one transcription replica handles one
+// transcription or malware scan at a time (2 vCPU / 2 GiB).
+const RENDER_MAX_REPLICAS = 6
+const TRANSCRIPTION_MAX_REPLICAS = 3
 
 // Secrets and per-owner settings, created as shared variables in Railway.
 const SHARED = [
@@ -78,10 +83,23 @@ export default defineRailway((ctx) => {
       [TRANSCRIPTION_WORKER]: wakeUrl(TRANSCRIPTION_WORKER),
     }),
     WORKER_LAUNCH_MAX_PARALLEL: "3",
-    AI_SYSTEM_DAILY_LIMIT: "500",
+    // Platform-wide paid AI calls per UTC day (transcribe, translate, detect).
+    // At OpenAI Whisper's $0.006/minute a 3-minute upload costs about $0.018, so
+    // 2000 Whisper calls is at most about $36/day. Check the Sarvam rate as well
+    // and adjust once real daily spend is known.
+    AI_SYSTEM_DAILY_LIMIT: "2000",
+    // Workers scale on enqueue and back to one replica when idle (lekha-cron).
+    // A resize Railway rejects (plan limits) keeps the current capacity.
     RENDER_AUTOSCALE_ENABLED: "1",
     RENDER_AUTOSCALE_SERVICE_ID: "${{lekha-render.RAILWAY_SERVICE_ID}}",
     RENDER_AUTOSCALE_REGION: REGION,
+    RENDER_AUTOSCALE_MAX_REPLICAS: String(RENDER_MAX_REPLICAS),
+    TRANSCRIPTION_AUTOSCALE_ENABLED: "1",
+    TRANSCRIPTION_AUTOSCALE_SERVICE_ID: "${{lekha-transcription.RAILWAY_SERVICE_ID}}",
+    TRANSCRIPTION_AUTOSCALE_MAX_REPLICAS: String(TRANSCRIPTION_MAX_REPLICAS),
+    // Admit at most the work all render replicas finish within the 10-minute
+    // queue-wait limit (600 s per replica), so accepted exports do not time out.
+    EXPORT_MAX_PENDING_WORK_SECONDS: String(600 * RENDER_MAX_REPLICAS),
   }
 
   const api = service("lekha-api", {
@@ -123,6 +141,10 @@ export default defineRailway((ctx) => {
       sleepApplication: true,
       restartPolicyType: "ON_FAILURE",
       restartPolicyMaxRetries: 3,
+      // Transcription jobs time out after 30 minutes: let a replica removed by
+      // autoscaling finish its job before SIGKILL (required before resizing).
+      drainingSeconds: 1860,
+      overlapSeconds: 0,
       limitOverride: limits(2, 2),
     },
     env: {
