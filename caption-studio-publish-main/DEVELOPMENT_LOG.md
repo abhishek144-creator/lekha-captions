@@ -18,7 +18,7 @@ This is the **Work Diary** for the Lekha Captions project.
 
 - [x] **PR #28 remaining runtime fixes (2026-10-05)** — Document scaling/cache/memory variables, run quality gates on PRs and main pushes, align Docker transcription startup with Railway clamd, offload analytics/maintenance I/O and set API capacity to two processes on 2 vCPU/2 GiB.
 - [ ] **Railway measured acceptance** — Run the approved 4/8-vCPU 60-second renderer comparison and 10/100-user bursts in `docs/RAILWAY_DEPLOYMENT.md`; record real evidence before changing work ratios. Complete its owner launch checklist.
-- [ ] **B7 code health follow-ups** — Separate behavior-preserving router/rendering module splits and unused committed artifact cleanup from the runtime fixes.
+- [x] **B7 code health follow-ups (2026-10-05)** — Separate router and rendering module splits plus unused committed artifact cleanup; preserve shared helpers, RQ paths and all test assertions.
 
 - [ ] **Future deployment cost gate** — Before deploying under another account or provider, reread this whole log and `docs/GCP_DEPLOYMENT_PROMPT.md`. Obtain the owner's explicit approval of a written estimate for idle and peak monthly spend, a fixed-resource inventory, test budget and expiry, and a shutdown plan. Verify the *live* resource counts and bill after deployment; source-code defaults alone are insufficient. See the 2026-09-28 billing incident entry below.
 - [ ] **Railway + Cloudflare R2 deployment** — The owner chose Railway with R2 (2026-10-03); code and `.railway/railway.ts` are ready on branch `claude/serene-sagan-76mdi6`. Follow `docs/RAILWAY_DEPLOYMENT.md`: Gate 0 (Firebase/App Check without Google billing), R2 bucket with CORS and lifecycle rules, Railway hard usage limit, shared variables, then `railway config plan` and owner-approved `railway config apply`. Verify every service actually sleeps when idle. Keep the future deployment cost gate above.
@@ -1188,3 +1188,9 @@ The owner requested removing app. from the public editor address. Prepared Netli
 - Moved eight stateless player styling/text helpers into `videoPlayerTemplateRendering.jsx`; VideoPlayer shrank by about 230 lines. Scope analysis verified they capture no player component state. Existing source contracts now read both renderer modules, preserving every assertion.
 - Verification: npm ci/release:check, 383 backend tests plus 29 subtests, Bandit Medium/High gate, motion checks and visual audit (70 cards/278 phases) passed. Full export parity matrix is running; hosted release-gate must pass before merge.
 - This is a separate behavior-preserving PR stacked on the router split. Unused artifact cleanup and owner staging measurements remain pending.
+
+## 2026-10-05 — B7 separate unused-artifact cleanup
+
+- Searched source, scripts, backend, docs and workflows before removal. Removed the two root landing-concept ZIPs, unused `build_mudra_project_report.py`, `old_templates.txt` and 16 committed screenshots under `attached_assets` (20 files). The only attached_assets reference was an ESLint ignore, not a runtime use. Git history retains these artifacts; existing untracked screenshots/local files were untouched.
+- No application behavior changed. Full backend tests, Bandit Medium/High gate and npm ci/release:check in an isolated checkout passed. Rendering export matrix and hosted gates continue separately.
+- Updated TODO: B7 source cleanup complete. Remaining launch work is the owner checklist and measured Railway staging acceptance, not speculative ratio changes or infrastructure deployment.
