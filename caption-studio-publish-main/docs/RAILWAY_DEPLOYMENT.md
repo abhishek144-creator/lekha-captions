@@ -182,7 +182,7 @@ backstop:
 - [ ] Upload a 100 MB video. In R2, parts appear under `uploads/<uid>/`. Interrupt the network mid-upload: it resumes without re-sending the finished parts.
 - [ ] A scan, transcription and export complete, and the download link is an R2 signed URL.
 - [ ] `lekha-cron` logs show `cron_pass_finished` with `failed_steps: []`.
-- [ ] **Sleep:** after ~10 min with no traffic, `lekha-api` shows **Sleeping**, and so do `lekha-transcription` and `lekha-render` unless `KEEP_ONE_WORKER_AWAKE` is on (launch period). If one never sleeps, check its outbound traffic (Sentry, Firestore gRPC keepalives) before going live.
+- [ ] **Sleep:** after ~10 min with no traffic, `lekha-api` shows **Sleeping**, and so do `lekha-transcription` and `lekha-render` (`KEEP_ONE_WORKER_AWAKE` is off by default). If one never sleeps, check its outbound traffic (Sentry, Firestore gRPC keepalives) before going live.
 - [ ] **Wake:**
   - the first request after sleep succeeds within the frontend's retries;
   - a queued export completes after the render worker woke from sleep.
@@ -207,7 +207,7 @@ backstop:
 - IaC declares the one-replica baseline. A plan during a busy period may propose returning dynamically added replicas to one. Wait for idle scale-down before applying that reduction.
 - Railway sleeping applies across service replicas. Private DNS wake fan-out and unique replica leases let copies drain the shared queue.
 - At the rates in §3, five fully utilized render replicas (8 vCPU / 8 GiB) cost at most about $1.64/hour and five transcription replicas (2 vCPU / 3 GiB) about $0.48/hour, excluding the other services and providers. These are ceilings, not measured costs; Railway bills CPU and RAM actually used. **Raise the $15 hard cap before a public launch** (about $50 for launch month, with email alerts at $20 and $35).
-- `KEEP_ONE_WORKER_AWAKE` (in `.railway/railway.ts`) disables sleeping for the render and transcription services during the launch period, so the first customers do not wait for a cold start. The idle replicas then hold roughly 1.5–2 GB of RAM (about $15–20/month at the §3 rate; clamd alone is ~1 GB). Set it to `false` after launch.
+- `KEEP_ONE_WORKER_AWAKE` (in `.railway/railway.ts`) is **off**: idle render and transcription workers sleep, so there is no idle compute cost, and the first job after a quiet period waits about 1–2 minutes for a worker to wake (clamd needs ~22 s more, during which scans use clamscan). Turning it on keeps one replica of each awake, holding roughly 1.5–2 GB of RAM (about $15–20/month at the §3 rate; clamd alone is ~1 GB), which can exceed a $15 hard cap on its own.
 - Acceptance: for each worker service, verify 1-to-N patches, distinct identities, parallel disposable jobs, Sleeping and the guarded N-to-1. No mass-user load test is required.
 
 ### Worker resize shutdown safety
