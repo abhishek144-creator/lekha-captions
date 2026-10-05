@@ -27,6 +27,11 @@ import time
 import urllib.error
 import urllib.request
 
+try:
+    from . import render_autoscaling as autoscaling
+except ImportError:  # Direct execution from backend/ remains supported.
+    import render_autoscaling as autoscaling
+
 LEASE_PREFIX = "lekha:worker_launch"
 # Covers a cold start; a running worker refreshes it on every heartbeat.
 LEASE_SECONDS = max(60, int(os.environ.get("WORKER_LAUNCH_LEASE_SECONDS", "300")))
@@ -97,13 +102,16 @@ def _wake_http_worker(job_name: str, slot: int) -> None:
     # Private DNS exposes service replica addresses. Wake each address so warm,
     # idle replicas are not missed by a request reaching only one busy worker.
     urls = [url]
-    if os.environ.get("RENDER_AUTOSCALE_ENABLED") == "1" and job_name == "lekha-render":
+    target = autoscaling.target_for_job(job_name)
+    if target is not None:
         parsed = urllib.parse.urlsplit(url)
         if parsed.scheme != "http" or not (parsed.hostname or "").endswith(".railway.internal"):
-            raise RuntimeError("Render replica wakes require Railway private HTTP")
+            raise RuntimeError("Replica wakes require Railway private HTTP")
+        # Each replica may publish an IPv4 and an IPv6 address.
+        address_limit = max(6, 2 * target.max_replicas())
         try:
             addresses = list(dict.fromkeys(row[4][0] for row in socket.getaddrinfo(
-                parsed.hostname, parsed.port or 80, type=socket.SOCK_STREAM)))[:6]
+                parsed.hostname, parsed.port or 80, type=socket.SOCK_STREAM)))[:address_limit]
         except socket.gaierror:
             addresses = []  # Preserve the original hostname wake/retry path.
         urls += [urllib.parse.urlunsplit(("http", (
@@ -170,13 +178,9 @@ def kick(connection, queue_name: str, *, launcher=None, log=print) -> bool:
     if not job_name or connection is None:
         return False
     launcher = launcher or _default_launcher
-    autoscale_render = os.environ.get("RENDER_AUTOSCALE_ENABLED") == "1" and job_name == "lekha-render"
-    if autoscale_render:
-        try:
-            from .render_autoscaling import reconcile
-        except ImportError:
-            from render_autoscaling import reconcile
-        reconcile(connection, log=log)
+    target = autoscaling.target_for_job(job_name)
+    if target is not None:
+        autoscaling.reconcile(connection, log=log, target=target)
     queues = [name for name, job in job_map().items() if job == job_name]
     try:
         backlog = _queue_backlog(connection, queues)
@@ -185,12 +189,14 @@ def kick(connection, queue_name: str, *, launcher=None, log=print) -> bool:
         active = [slot for slot in range(MAX_PARALLEL) if connection.exists(lease_key(job_name, slot))]
         # One more worker only when the backlog outgrows the ones already running.
         active_count = (sum(1 for _ in connection.scan_iter(match=lease_key(job_name, "*") ))
-                        if autoscale_render else len(active))
-        if active_count and ((autoscale_render and active_count >= MAX_PARALLEL)
-                             or (not autoscale_render and backlog <= active_count)):
+                        if target is not None else len(active))
+        # An autoscaled service is fully awake once every allowed replica holds
+        # a lease; otherwise one more worker only when the backlog outgrows them.
+        if active_count and ((target is not None and active_count >= max(MAX_PARALLEL, target.max_replicas()))
+                             or (target is None and backlog <= active_count)):
             return False
-        slot_limit = (1 if os.environ.get("RENDER_AUTOSCALE_ENABLED") == "1"
-                      and not autoscale_render else MAX_PARALLEL)
+        # With autoscaling on, a service without it keeps a single launch slot.
+        slot_limit = (1 if autoscaling.enabled_targets() and target is None else MAX_PARALLEL)
         for slot in range(slot_limit):
             if slot in active:
                 continue
@@ -280,22 +286,19 @@ class WorkerLease:
         self.slot = int(os.environ.get("WORKER_LAUNCH_SLOT", "0") or 0)
         self.key = lease_key(self.job_name, self.slot) if self.job_name else ""
         self.drain_lease = None
-        if (os.environ.get("RENDER_AUTOSCALE_ENABLED") == "1"
-                and self.job_name == "lekha-render" and os.environ.get("RAILWAY_REPLICA_ID")):
-            try:
-                from .render_autoscaling import DrainLease
-            except ImportError:
-                from render_autoscaling import DrainLease
+        target = autoscaling.target_for_job(self.job_name)
+        if target is not None and os.environ.get("RAILWAY_REPLICA_ID"):
             identity = os.environ["RAILWAY_REPLICA_ID"]
             self.key = lease_key(self.job_name, "replica:" + identity)
-            self.drain_lease = DrainLease(connection, identity)
+            self.drain_lease = autoscaling.DrainLease(connection, identity, target=target)
 
     def refresh(self) -> None:
         if self.drain_lease is not None:
             starting = not self.drain_lease.registered
             self.drain_lease.refresh()
             if starting:
-                self.connection.delete(*(lease_key(self.job_name, slot) for slot in range(3)))
+                self.connection.delete(*(lease_key(self.job_name, slot)
+                                         for slot in range(max(3, MAX_PARALLEL))))
         if self.key:
             self.connection.set(self.key, str(time.time()), ex=LEASE_SECONDS)
 

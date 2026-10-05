@@ -30,8 +30,8 @@ Firebase Auth + Firestore: unchanged.
 | Service | Image (`LEKHA_SERVICE_TARGET`) | Sleeps | Cap (vCPU / RAM) | Start |
 |---|---|---|---|---|
 | `lekha-api` | `api` | yes | 1 / 2 GiB | uvicorn, 1 process |
-| `lekha-transcription` | `transcription` | yes | 2 / 2 GiB | `python3 -m backend.worker` (wake server on 8080) |
-| `lekha-render` | `render` | yes | 4 / 4 GiB per replica | render browser daemon + worker |
+| `lekha-transcription` | `transcription` | yes | 2 / 2 GiB per replica, 1–3 replicas | `python3 -m backend.worker` (wake server on 8080) |
+| `lekha-render` | `render` | yes | 4 / 4 GiB per replica, 1–6 replicas | render browser daemon + worker |
 | `lekha-cron` | `api` | n/a (cron) | 1 / 1 GiB | `python3 -m backend.railway_cron`, `*/15 * * * *` |
 | `redis` | Railway Redis | no | n/a | n/a |
 
@@ -84,7 +84,8 @@ RAM $10/GB-month; CPU $20/vCPU-month; Railway egress $0.05/GB. R2 is free up to
 
 Fixed resources: 4 services, 1 Redis, 1 R2 bucket. There are no load balancers,
 NAT gateways, VMs or minimum instances. AI provider spend is separate, and
-`AI_SYSTEM_DAILY_LIMIT=500` caps it.
+`AI_SYSTEM_DAILY_LIMIT=2000` caps it (at OpenAI Whisper's $0.006/minute, at most
+about $36/day for 3-minute uploads; check the Sarvam rate too).
 
 ### Spend limits (set all of them before going live)
 
@@ -197,30 +198,33 @@ backstop:
 - ClamAV signatures are as fresh as the last deploy. The image copies them at build time, so **redeploy at least weekly**, or after a ClamAV advisory.
 - `clamscan` uses ~1 GB RAM for 20–40 s per scan. The API may also scan inline (language detection on a not-yet-scanned upload), which is why its cap is 2 GiB.
 - Redeploying a worker mid-job: SIGTERM lets RQ finish the running job. Very long jobs may be cut at Railway's drain timeout and are then retried or marked for support by the existing job-state logic.
-- Render replicas scale from 1 to a hard maximum of 3, each with 4 vCPU / 4 GiB and one export. Transcription stays at one replica.
+- Render replicas scale from 1 to `RENDER_AUTOSCALE_MAX_REPLICAS` (6), each with 4 vCPU / 4 GiB and one export. Transcription replicas scale from 1 to `TRANSCRIPTION_AUTOSCALE_MAX_REPLICAS` (3), each with 2 vCPU / 2 GiB and one transcription or malware scan. Code clamps both to at most 10.
+- `EXPORT_MAX_PENDING_WORK_SECONDS` is 600 × the render maximum (3600), so admitted exports can start within the 10-minute queue-wait limit when every replica is running. If the plan cannot run six render replicas, lower both values together.
+- If Railway rejects a resize (for example a plan's replica or resource limit), the controller logs `render_scaling_failed` or `transcription_scaling_failed`, keeps the current capacity and retries after 30 seconds.
 - Scale-up runs on enqueue. The existing 15-minute cron is the recovery and scale-down safety net. Scale-down requires Sleeping, no queued, started or scheduled renders, no active burst leases, and a 15-minute cooldown. An atomic Redis resize guard excludes new bursts during removal.
 - `RAILWAY_RENDER_SCALING_TOKEN` is an additional production-environment project token referenced only by API and cron. Workers never receive it. Missing credentials or control-plane failure preserve existing capacity and normal wake/recovery. Never deploy the owner's CLI/account credential.
 - IaC declares the one-replica baseline. A plan during a busy period may propose returning dynamically added replicas to one. Wait for idle scale-down before applying that reduction.
 - Railway sleeping applies across service replicas. Private DNS wake fan-out and unique replica leases let copies drain the shared queue.
-- Three fully utilized replicas have a compute ceiling of approximately $0.0083/minute ($0.50/hour), excluding the other services and providers. This is a ceiling, not a measured export cost. The $15 hard cap remains; sustained demand can reach it quickly.
-- Acceptance: verify render-only 1-to-2-to-3 patches, distinct identities, parallel disposable jobs, Sleeping and guarded 3-to-1. No mass-user load test is required.
+- At the rates in §3, six fully utilized render replicas cost at most about $1.00/hour and three transcription replicas about $0.25/hour, excluding the other services and providers. These are ceilings, not measured costs. **The $15 hard cap is reached after roughly 12 hours of fully loaded workers: raise it (and plan for the Pro plan's limits) before a public launch.**
+- Acceptance: for each worker service, verify 1-to-N patches, distinct identities, parallel disposable jobs, Sleeping and the guarded N-to-1. No mass-user load test is required.
 
-### Render resize shutdown safety
+### Worker resize shutdown safety
 
-Railway replica changes can replace the render deployment. Set render
-`drainingSeconds: 1860` and `overlapSeconds: 0` before enabling autoscaling:
-the longest RQ export timeout is 1800 seconds. RQ finishes its current job
+Railway replica changes can replace a worker deployment. Both worker services
+set `drainingSeconds: 1860` and `overlapSeconds: 0` before autoscaling: the
+longest RQ export and transcription timeouts are 1800 seconds. RQ finishes its current job
 after SIGTERM; Railway may terminate it after the configured grace. This is
 a maximum wait, not a mandatory 31-minute billable delay.
 
 The controller refuses to resize until the latest deployment metadata confirms
-the shutdown grace. New and retiring replicas share an atomic three-drain
-admission limit in Redis, so overlapping deployments cannot start a fourth
-export. Heartbeats renew admission; expired admissions are reclaimed. The cron
+the shutdown grace. New and retiring replicas of a service share an atomic
+drain admission limit in Redis equal to its replica maximum, so overlapping
+deployments cannot run more jobs than the maximum allows. Heartbeats renew admission; expired admissions are reclaimed. The cron
 uses normal RQ started-registry cleanup to retry abandoned jobs or mark them
 failed, preserving live entries and customer state.
 
 For acceptance, begin one finite disposable job, enqueue more work while it
 is running, and verify every job finishes across the resize. Verify at most
-three active drains, then Sleeping and the guarded return to one replica.
+the configured maximum of active drains, then Sleeping and the guarded return
+to one replica.
 Keep autoscaling disabled in API and cron until this live check passes.

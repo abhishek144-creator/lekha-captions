@@ -108,6 +108,8 @@ def run_once(*, host=api, launch_queues=None):
          lambda: host.TranscriptionJobs(host.get_db()).dispatch(host._transcription_queue)),
         ("media_scan_dispatch", host._dispatch_media_scans_once),
         ("render_scaling", lambda: render_autoscaling.reconcile(host._rq_redis_client, allow_down=True)),
+        ("transcription_scaling", lambda: render_autoscaling.reconcile(
+            host._rq_redis_client, allow_down=True, target=render_autoscaling.TRANSCRIPTION)),
         ("kick_workers", lambda: kick_backlogged_workers(host._rq_redis_client, launch_queues)),
         ("redis_memory", lambda: check_redis_memory(
             host._rq_redis_client, alert=getattr(host, "_send_alert", None))),
