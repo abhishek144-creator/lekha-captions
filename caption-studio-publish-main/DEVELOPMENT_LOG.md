@@ -1202,3 +1202,10 @@ The owner requested removing app. from the public editor address. Prepared Netli
   pilot, merge, credential or resource change followed. PR #29 remains draft,
   with successful local checks and hosted acceptance blocked by the Actions
   limit. The written plan is retained as an unexecuted proposal.
+- Subsequent owner authorization: **make it 7 dollars** for the GitHub Actions
+  blocker. Computer use changed Actions from $3 to $7 total monthly budget,
+  preserving Stop usage and threshold alerts; the resulting UI shows $3 spent,
+  $7 budget and Stop usage Yes. This allows up to $4 further Actions usage.
+  Railway $15/$8 remains unchanged; the separate $2 pilot is not approved.
+  Resume one current-candidate hosted validation without duplicate branch
+  pushes. No public-launch approval, Railway mutation or paid pilot yet.
