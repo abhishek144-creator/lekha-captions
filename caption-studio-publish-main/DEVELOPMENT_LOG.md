@@ -1209,3 +1209,10 @@ The owner requested removing app. from the public editor address. Prepared Netli
   Railway $15/$8 remains unchanged; the separate $2 pilot is not approved.
   Resume one current-candidate hosted validation without duplicate branch
   pushes. No public-launch approval, Railway mutation or paid pilot yet.
+- Hosted checks now start. Frontend core/marketing, template static and both
+  final API/transcription images passed on the first funded run. Python 3.11
+  found excessive static context nesting in the new billing-recovery test
+  fixture (local Python 3.12 accepted it). Replaced that fixture's nested patch
+  managers with ExitStack, retaining every patch and assertion. Focused tests:
+  11 passed, 2 subtests. No production behavior changed by this compatibility
+  correction; current-head hosted checks must pass before proceeding.
