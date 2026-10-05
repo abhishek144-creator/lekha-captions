@@ -146,10 +146,10 @@ def get_storage_bucket():
         return None
 
 
-def _signed_gcs_download_url(blob, expiration):
+def _signed_gcs_download_url(blob, expiration, **options):
     """Use IAM signBlob on VMs, which have token-only GCE credentials."""
     if not GCS_SIGNING_SERVICE_ACCOUNT:
-        return blob.generate_signed_url(expiration=expiration, version="v4")
+        return blob.generate_signed_url(expiration=expiration, version="v4", **options)
     credentials, _ = google_auth_default(
         scopes=["https://www.googleapis.com/auth/cloud-platform"]
     )
@@ -159,6 +159,7 @@ def _signed_gcs_download_url(blob, expiration):
         version="v4",
         service_account_email=GCS_SIGNING_SERVICE_ACCOUNT,
         access_token=credentials.token,
+        **options,
     )
 
 
@@ -894,7 +895,8 @@ def delete_render_cache(uid: str, cache_key: str) -> bool:
         return False
 
 
-def signed_export_download_url(remote_path: str, ttl_seconds: int = 600):
+def signed_export_download_url(remote_path: str, ttl_seconds: int = 600,
+                               download_filename="captioned_video.mp4"):
     """Return a short-lived private storage URL; callers must authorize ownership first."""
     safe_remote = str(remote_path or "")
     if not safe_remote.startswith("exports/") or ".." in safe_remote.split("/"):
@@ -902,12 +904,17 @@ def signed_export_download_url(remote_path: str, ttl_seconds: int = 600):
     ttl = max(60, min(int(ttl_seconds), 900))
     try:
         if s3_is_configured():
-            url = s3_signed_download_url(safe_remote, ttl)
+            url = s3_signed_download_url(safe_remote, ttl, download_filename)
         else:
             bucket = get_storage_bucket()
             if not bucket:
                 return None
-            url = _signed_gcs_download_url(bucket.blob(safe_remote), timedelta(seconds=ttl))
+            try:
+                from .media_storage import download_disposition
+            except ImportError:
+                from media_storage import download_disposition
+            url = _signed_gcs_download_url(bucket.blob(safe_remote), timedelta(seconds=ttl),
+                                           response_disposition=download_disposition(download_filename))
         return url if isinstance(url, str) and url.startswith("https://") else None
     except Exception:
         # A missing signing permission must preserve the existing download path.

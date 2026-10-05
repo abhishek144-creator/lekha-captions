@@ -23,6 +23,7 @@ import {
 import { motion } from 'framer-motion';
 import { toast } from '@/components/ui/use-toast';
 import { apiRequest, getApiErrorMessage } from '@/lib/apiClient';
+import { boundedExportRequest, EXPORT_MONITOR_WINDOW_MS, monitorExportStatus, startExportDownload } from './exportDelivery.js'
 import { getClientContext, trackAnalytics } from '@/lib/analytics';
 import { isFeatureEnabled } from '@/lib/featureFlags';
 import { getEffectiveAuthToken } from '@/lib/devAuth';
@@ -79,7 +80,7 @@ function readActiveExport(uid, fileId) {
     }
     return receipt;
   } catch {
-    window.localStorage.removeItem(key);
+    try { window.localStorage.removeItem(key) } catch { /* Storage may be disabled. */ }
     return null;
   }
 }
@@ -116,6 +117,10 @@ function extractExportReference(error, jobId) {
 
 function notifyExportFailure(error, jobId) {
   if (error?.name === 'AbortError') return;
+  if (error?.exportStatus === 'monitoring_paused') {
+    toast({ title: 'Export continues in the background', description: error.message, duration: 15000 });
+    return;
+  }
   const reference = extractExportReference(error, jobId);
   const baseMessage = getApiErrorMessage(error);
   // Once a job id exists the request was accepted. A lost status/download
@@ -261,7 +266,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
 
     // Backend stage updates raise the ceiling while the visible percentage
     // moves in small deterministic steps. It never jumps backwards or reaches
-    // 100% before the browser has the complete download.
+    // 100% before the completed result is handed to the download manager.
     const timer = window.setInterval(() => {
       setProgress((current) => {
         const target = progressTargetRef.current;
@@ -287,49 +292,27 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       reject(new DOMException('Export cancelled', 'AbortError'));
       return;
     }
-    const timer = setTimeout(resolve, ms);
-    signal?.addEventListener('abort', () => {
+    const onAbort = () => {
       clearTimeout(timer);
       reject(new DOMException('Export cancelled', 'AbortError'));
-    }, { once: true });
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
   });
 
   // Long renders (4K, long videos) can exceed several minutes — a short client
   // timeout here fails the UI while the server render succeeds, and the retry
   // then hits the per-account concurrent-export guard (429). Keep this generous.
-  const pollExportStatus = async (jobId, authHeaders = {}, timeoutMs = 10 * 60 * 1000, signal = null) => {
-    const startedAt = Date.now();
-    let hadTransientFailure = false;
-    let consecutiveNotFound = 0;
-    while (Date.now() - startedAt < timeoutMs) {
-      throwIfAborted(signal);
-      let statusPayload;
-      try {
-        statusPayload = await apiRequest(`/api/export-status/${jobId}`, {
-          headers: authHeaders,
-          signal
-        });
-        throwIfAborted(signal);
-        consecutiveNotFound = 0;
-        if (hadTransientFailure) {
-          setStatusMessage('Connection restored. Finalizing export status...');
-          hadTransientFailure = false;
-        }
-      } catch (err) {
-        throwIfAborted(signal);
-        // A missing job never recovers — fail fast instead of retrying for the
-        // full timeout window.
-        if (err?.status === 404) {
-          consecutiveNotFound++;
-          if (consecutiveNotFound >= 4) {
-            throw new Error('Export job was not found on the server. Please start the export again.');
-          }
-        }
-        hadTransientFailure = true;
-        setStatusMessage('Reconnecting to export status...');
-        await abortableSleep(1500, signal);
-        continue;
-      }
+  const pollExportStatus = (jobId, authHeaders = {}, timeoutMs = EXPORT_MONITOR_WINDOW_MS, signal = null) => monitorExportStatus({
+    signal,
+    timeoutMs,
+    sleep: abortableSleep,
+    request: requestSignal => apiRequest(`/api/export-status/${jobId}`, { headers: authHeaders, signal: requestSignal }),
+    onReconnect: () => setStatusMessage('Reconnecting to export status...'),
+    onStatus: statusPayload => {
       const status = (statusPayload?.status || '').toLowerCase();
       setActiveExportStatus(status);
       if (status === 'queued' || status === 'starting') {
@@ -364,17 +347,9 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       } else if (status === 'completed') {
         raiseProgressTarget(99);
         return;
-      } else if (status === 'failed') {
-        const terminalError = new Error(statusPayload?.error || 'Export failed');
-        terminalError.exportStatus = 'failed';
-        throw terminalError;
-      } else if (status === 'cancelled') {
-        throw new DOMException('Export cancelled', 'AbortError');
       }
-      await abortableSleep(1200, signal);
     }
-    throw new Error('Export status check timed out. Please retry.');
-  };
+  });
 
   useEffect(() => {
     if (!isExporting || !waitStartTime) return;
@@ -509,25 +484,17 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
     setStatusMessage('Preparing download...');
     const downloadUrl = resolvedResult.download_url || resolvedResult.video_url;
     if (!downloadUrl) throw new Error('Export completed but no download link was returned. Please retry.');
-    // Fetch R2 directly: cross-origin redirects send Origin: null to storage.
-    // Signed URLs need no API security/tracing headers or browser credentials.
-    const videoResponse = await fetch(resolveApiResourceUrl(downloadUrl, import.meta.env.VITE_API_BASE_URL), {
-      signal,
-      credentials: 'omit',
-    });
-    if (!videoResponse.ok) throw new Error('The exported video could not be downloaded. Resume the export to retry.');
-    const blob = await videoResponse.blob();
-    if (blob.size === 0) throw new Error('The exported video download was empty. Please retry.');
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = getCaptionedVideoFilename(filename || originalFileName);
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-    removeActiveExport(currentUser?.uid, fileId);
-    setRecoverableExport(null);
+    // Storage sends Content-Disposition; the browser streams to its download
+    // manager without retaining a second full video in the editor's memory.
+    startExportDownload(resolveApiResourceUrl(downloadUrl, import.meta.env.VITE_API_BASE_URL),
+      getCaptionedVideoFilename(filename || originalFileName), { signal });
+    // A browser hand-off is not proof all bytes arrived. Keep the receipt so a
+    // failed/expired download can be retried without another render or debit.
+    const completedReceipt = readActiveExport(currentUser?.uid, fileId);
+    if (completedReceipt) {
+      storeActiveExport(currentUser?.uid, fileId, { ...completedReceipt, completed: true });
+      setRecoverableExport({ ...completedReceipt, completed: true });
+    }
     trackAnalytics('funnel.export.success', getClientContext({
       stage: 'export',
       quality,
@@ -535,9 +502,9 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
     }));
     setProgress(100);
     progressTargetRef.current = 100;
-    setStatusMessage('Export complete!');
+    setStatusMessage('Download started');
     toast({
-      title: 'Export complete',
+      title: 'Download started',
       description: `${getCaptionedVideoFilename(filename || originalFileName)} is ready and downloading.`,
       duration: 10000,
     });
@@ -572,11 +539,11 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
     try {
       const idToken = await getEffectiveAuthToken(currentUser);
       const authHeaders = idToken ? { Authorization: `Bearer ${idToken}` } : {};
-      await pollExportStatus(receipt.jobId, authHeaders, 10 * 60 * 1000, controller.signal);
-      const resolvedResult = await apiRequest(`/api/export-result/${receipt.jobId}`, {
+      await pollExportStatus(receipt.jobId, authHeaders, EXPORT_MONITOR_WINDOW_MS, controller.signal);
+      const resolvedResult = await boundedExportRequest(requestSignal => apiRequest(`/api/export-result/${receipt.jobId}?download_filename=${encodeURIComponent(getCaptionedVideoFilename(receipt.originalFileName || originalFileName))}`, {
         headers: authHeaders,
-        signal: controller.signal,
-      });
+        signal: requestSignal,
+      }), { signal: controller.signal });
       await downloadCompletedExport({
         resolvedResult,
         authHeaders,
@@ -586,6 +553,10 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
         filename: receipt.originalFileName,
       });
     } catch (error) {
+      if (error?.exportStatus === 'cancelled') {
+        removeActiveExport(currentUser?.uid, fileId);
+        setRecoverableExport(null);
+      }
       if (error?.name !== 'AbortError') {
         if (error?.exportStatus === 'failed' || error?.status === 404) {
           removeActiveExport(currentUser?.uid, fileId);
@@ -655,7 +626,8 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
   };
 
   const handleExportVideo = async (quality) => {
-    if (readActiveExport(currentUser?.uid, fileId)) { await handleResumeExport(); return }
+    const existingReceipt = readActiveExport(currentUser?.uid, fileId);
+    if (existingReceipt && !existingReceipt.completed) { await handleResumeExport(); return }
     if (sourceUnavailable) { toast({ title: 'Relink the source video before rendering', description: 'Subtitle downloads remain available.' }); return }
     if (exportInFlightRef.current) {
       toast({
@@ -1029,14 +1001,14 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
         };
         storeActiveExport(currentUser?.uid, fileId, receipt);
         setRecoverableExport(receipt);
-        await pollExportStatus(result.export_job_id, authHeaders, 10 * 60 * 1000, exportController.signal);
+        await pollExportStatus(result.export_job_id, authHeaders, EXPORT_MONITOR_WINDOW_MS, exportController.signal);
         // Always resolve the completed receipt again. The API returns a fresh,
         // short-lived media token, so an idempotent replay can download the
         // existing render without a duplicate job or another credit.
-        resolvedResult = await apiRequest(`/api/export-result/${result.export_job_id}`, {
+        resolvedResult = await boundedExportRequest(requestSignal => apiRequest(`/api/export-result/${result.export_job_id}?download_filename=${encodeURIComponent(getCaptionedVideoFilename(originalFileName))}`, {
           headers: authHeaders,
-          signal: exportController.signal
-        });
+          signal: requestSignal
+        }), { signal: exportController.signal });
       }
 
       await downloadCompletedExport({
@@ -1050,7 +1022,15 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
 
     } catch (error) {
       // Cancelled exports are not failures — skip failure analytics and toasts.
+      if (error?.exportStatus === 'cancelled') {
+        removeActiveExport(currentUser?.uid, fileId);
+        setRecoverableExport(null);
+      }
       if (error?.name === 'AbortError') return;
+      if (error?.exportStatus === 'monitoring_paused') {
+        notifyExportFailure(error, acceptedExportJobId);
+        return;
+      }
       console.error('Export failed:', error);
       const planKind = getPlanLimitErrorKind(error);
       trackAnalytics('funnel.export.failed', getClientContext({
@@ -1245,7 +1225,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
                     <p className="text-sm font-bold text-sky-100">Existing export found</p>
                     <p className="mt-1 text-xs leading-5 text-sky-100/65">Reconnect to job {recoverableExport.jobId} and download it without starting another render or spending another credit.</p>
                   </div>
-                  <Button type="button" size="sm" onClick={handleResumeExport} className="shrink-0 bg-sky-100 text-slate-950 hover:bg-white">Resume</Button>
+                  <Button type="button" size="sm" onClick={handleResumeExport} className="shrink-0 bg-sky-100 text-slate-950 hover:bg-white">{recoverableExport.completed ? 'Download again' : 'Resume'}</Button>
                 </div>
               </div>
             )}
