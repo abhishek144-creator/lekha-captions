@@ -211,6 +211,7 @@ class RailwayScaledService:
         self.environment = os.environ.get("RAILWAY_ENVIRONMENT_ID", "")
         self.service = os.environ.get(target.service_id_env, "")
         self.region = os.environ.get("RENDER_AUTOSCALE_REGION", DEFAULT_REGION)
+        self.sleeps = True
         if not self.environment or not self.service:
             raise RuntimeError("Scaling target is missing")
 
@@ -225,8 +226,11 @@ class RailwayScaledService:
             raise RuntimeError("Scaling target does not match")
         deploy = data["environment"]["config"]["services"][self.service]["deploy"]
         regions = deploy.get("multiRegionConfig", {})
-        if set(regions) != {self.region} or deploy.get("sleepApplication") is not True:
-            raise RuntimeError("Expected sleeping single-region worker service")
+        if set(regions) != {self.region}:
+            raise RuntimeError("Expected a single-region worker service")
+        # A service kept awake (launch periods) has no Sleeping state; the idle
+        # scale-down then relies on the queue, started-job and drain checks.
+        self.sleeps = deploy.get("sleepApplication") is True
         count = int(regions[self.region]["numReplicas"])
         # A count above today's ceiling (lowered configuration) is still read so
         # the idle scale-down can bring it back within range.
@@ -306,7 +310,8 @@ def reconcile(connection, *, allow_down=False, service=None, now=None, log=print
         if desired < current and allow_down:
             started = any(connection.zcard("rq:wip:" + name) for name in queues)
             scheduled = any(connection.zcard("rq:scheduled:" + name) for name in queues)
-            if active or backlog or started or scheduled or status != "SLEEPING":
+            idle_status = "SLEEPING" if getattr(service, "sleeps", True) else "SUCCESS"
+            if active or backlog or started or scheduled or status != idle_status:
                 return "busy"
             if now - last < 900:
                 return "cooldown"

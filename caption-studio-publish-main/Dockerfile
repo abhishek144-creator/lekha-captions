@@ -12,7 +12,7 @@ ARG APP_RELEASE
 LABEL org.opencontainers.image.revision=${APP_RELEASE}
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates clamav dumb-init ffmpeg \
+    && apt-get install -y --no-install-recommends ca-certificates clamav clamav-daemon dumb-init ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY backend/requirements.lock backend/requirements.lock
@@ -20,7 +20,10 @@ RUN python3 -m pip install --no-cache-dir --require-hashes -r backend/requiremen
 # Used with CLAMAV_SCAN_CMD="clamscan --stdout --database=/opt/clamav-db".
 COPY --from=clamav-signatures /var/lib/clamav/*.cvd /opt/clamav-db/
 # Both API and transcription builds must contain clamscan and its signature DB.
+# Transcription workers also run clamd (deploy/clamav/clamd.conf) so the
+# database stays loaded between scans.
 RUN clamscan --version \
+    && clamd --version \
     && test -s /opt/clamav-db/main.cvd \
     && test -s /opt/clamav-db/daily.cvd \
     && ls /opt/clamav-db
