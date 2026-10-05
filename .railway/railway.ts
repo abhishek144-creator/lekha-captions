@@ -119,13 +119,13 @@ export default defineRailway((ctx) => {
     deploy: {
       startCommand:
         "sh -c 'exec python3 -m uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8000} " +
-        "--workers ${WEB_CONCURRENCY:-1} --limit-concurrency ${UVICORN_LIMIT_CONCURRENCY:-64} " +
+        "--workers ${WEB_CONCURRENCY:-2} --limit-concurrency ${UVICORN_LIMIT_CONCURRENCY:-64} " +
         "--timeout-keep-alive ${UVICORN_KEEP_ALIVE_SECONDS:-10}'",
       sleepApplication: true,
       restartPolicyType: "ON_FAILURE",
       restartPolicyMaxRetries: 3,
-      // Room for an inline clamscan next to the API process.
-      limitOverride: limits(1, 2),
+      // Two API processes (~250 MB each) plus room for an inline clamscan.
+      limitOverride: limits(2, 2),
     },
     env: {
       ...backendEnv,
@@ -133,7 +133,7 @@ export default defineRailway((ctx) => {
       PORT: "8080",
       // Periodic work runs in lekha-cron so an idle API can sleep.
       RUN_API_BACKGROUND_TASKS: "0",
-      WEB_CONCURRENCY: "1",
+      WEB_CONCURRENCY: "2",
       RAILWAY_RENDER_SCALING_TOKEN: ctx.shared.RAILWAY_RENDER_SCALING_TOKEN,
     },
   })
