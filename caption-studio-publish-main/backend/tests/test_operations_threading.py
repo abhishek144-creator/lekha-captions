@@ -3,6 +3,7 @@
 import asyncio
 from datetime import datetime
 import threading
+import time
 import unittest
 from unittest.mock import patch
 
@@ -51,7 +52,7 @@ class OperationsThreadingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.calls.count("database"), 2)
 
     async def test_analytics_track_and_slo_offload_blocking_helpers(self):
-        import main
+        from backend import main
 
         with (patch.object(main, "_check_rate", self.blocking("rate", (True, 0, 5))),
               patch.object(main, "_track_event", self.blocking("track")),
@@ -85,7 +86,7 @@ class OperationsThreadingTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue({"transcription", "scan", "janitor", "metrics", "reconcile"}.issubset(self.calls))
 
     async def test_real_scheduled_helpers_offload_cleanup_reconciliation_and_leases(self):
-        import main
+        from backend import main
 
         with (patch.object(main, "_claim_scheduled_job", self.blocking("claim", "lease")),
               patch.object(main, "_release_scheduled_job", self.blocking("release")),
@@ -94,3 +95,159 @@ class OperationsThreadingTests(unittest.IsolatedAsyncioTestCase):
             await main.scheduled_janitor_job()
             await main.scheduled_payment_reconciliation_job()
         self.assertEqual(self.calls, ["claim", "cleanup", "release", "claim", "payments", "release"])
+
+
+class MiddlewareThreadingTests(unittest.IsolatedAsyncioTestCase):
+    def middleware_app(self):
+        from backend import main
+
+        app = FastAPI()
+        app.middleware("http")(main.request_logging_middleware)
+
+        @app.get("/api/export")
+        @app.get("/api/version")
+        async def probe():
+            return {"success": True}
+
+        return app
+
+    async def test_cold_app_check_does_not_block_unrelated_requests(self):
+        from backend import main
+
+        loop_thread = threading.get_ident()
+        verifier_threads = []
+        entered = threading.Event()
+        release = threading.Event()
+
+        def cold_key_verification(_token):
+            verifier_threads.append(threading.get_ident())
+            entered.set()
+            release.wait(timeout=0.3)
+            return {"app_id": "web-app"}
+
+        with (patch.object(main, "FIREBASE_APP_CHECK_ENFORCED", True),
+              patch.object(main.firebase_app_check, "verify_token", side_effect=cold_key_verification),
+              patch.object(main, "_track_latency_sample"),
+              patch.object(main, "RUN_API_BACKGROUND_TASKS", True)):
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=self.middleware_app()),
+                                         base_url="http://test") as client:
+                submission = asyncio.create_task(client.get("/api/export", headers={"x-firebase-appcheck": "token"}))
+                try:
+                    while not entered.is_set():
+                        await asyncio.sleep(0.005)
+                    response = await client.get("/api/version")
+                    self.assertEqual(response.status_code, 200)
+                    self.assertNotIn(loop_thread, verifier_threads)
+                    self.assertFalse(submission.done())
+                finally:
+                    release.set()
+                    await submission
+
+    async def test_latency_redis_writes_run_off_loop(self):
+        from backend import main
+
+        loop_thread = threading.get_ident()
+        telemetry_threads = []
+
+        def slow_redis_write(_path, _duration):
+            telemetry_threads.append(threading.get_ident())
+            time.sleep(0.03)
+
+        with (patch.object(main, "FIREBASE_APP_CHECK_ENFORCED", False),
+              patch.object(main, "_track_latency_sample", side_effect=slow_redis_write),
+              patch.object(main, "RUN_API_BACKGROUND_TASKS", True)):
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=self.middleware_app()),
+                                         base_url="http://test") as client:
+                response = await client.get("/api/export")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(telemetry_threads), 1)
+        self.assertNotIn(loop_thread, telemetry_threads)
+
+    async def test_app_check_offload_still_rejects_missing_and_invalid_tokens(self):
+        from backend import main
+
+        with (patch.object(main, "FIREBASE_APP_CHECK_ENFORCED", True),
+              patch.object(main.firebase_app_check, "verify_token", side_effect=ValueError("invalid token")),
+              patch.object(main, "RUN_API_BACKGROUND_TASKS", True)):
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=self.middleware_app()),
+                                         base_url="http://test") as client:
+                for headers in ({}, {"x-firebase-appcheck": "invalid"}):
+                    response = await client.get("/api/export", headers=headers)
+                    self.assertEqual(response.status_code, 403)
+                    self.assertEqual(response.headers["x-content-type-options"], "nosniff")
+                response = await client.get("/api/version")
+                self.assertEqual(response.status_code, 200)
+
+
+    async def test_app_check_concurrency_is_bounded_and_exempt_probes_bypass_it(self):
+        from backend import main
+
+        lock = threading.Lock()
+        release = threading.Event()
+        active = 0
+        maximum = 0
+
+        def slow_verify(_token):
+            nonlocal active, maximum
+            with lock:
+                active += 1
+                maximum = max(maximum, active)
+            try:
+                release.wait(timeout=1)
+                return {"app_id": "web-app"}
+            finally:
+                with lock:
+                    active -= 1
+
+        with (patch.object(main, "FIREBASE_APP_CHECK_ENFORCED", True),
+              patch.object(main.firebase_app_check, "verify_token", side_effect=slow_verify),
+              patch.object(main, "_track_latency_sample"),
+              patch.object(main, "RUN_API_BACKGROUND_TASKS", True)):
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=self.middleware_app()),
+                                         base_url="http://test") as client:
+                submissions = [asyncio.create_task(client.get("/api/export", headers={"x-firebase-appcheck": "token"}))
+                               for _ in range(40)]
+                try:
+                    deadline = time.monotonic() + 2
+                    while maximum < 16 and time.monotonic() < deadline:
+                        await asyncio.sleep(0.005)
+                    self.assertEqual(maximum, 16)
+                    self.assertEqual((await client.get("/api/version")).status_code, 200)
+                    self.assertEqual((await client.get("/api/export")).status_code, 403)
+                finally:
+                    release.set()
+                    responses = await asyncio.gather(*submissions)
+        self.assertTrue(all(response.status_code == 200 for response in responses))
+        self.assertLessEqual(maximum, 16)
+
+    async def test_development_upload_slot_acquire_and_release_run_off_loop(self):
+        from backend import main
+
+        loop_thread = threading.get_ident()
+        slot_calls = []
+
+        def acquire(uid, job_id):
+            slot_calls.append(("acquire", uid, job_id, threading.get_ident()))
+            return True
+
+        def release(uid, job_id):
+            slot_calls.append(("release", uid, job_id, threading.get_ident()))
+
+        app = self.middleware_app()
+
+        @app.post("/api/upload")
+        async def upload():
+            return {"success": True}
+
+        with (patch.object(main, "FIREBASE_APP_CHECK_ENFORCED", False),
+              patch.object(main, "_IS_PRODUCTION", False),
+              patch.object(main, "_authenticate_media_request", return_value={"uid": "owner"}),
+              patch.object(main, "_acquire_process_slot", side_effect=acquire),
+              patch.object(main, "_release_process_slot", side_effect=release),
+              patch.object(main, "RUN_API_BACKGROUND_TASKS", True)):
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.post("/api/upload")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([call[0] for call in slot_calls], ["acquire", "release"])
+        self.assertEqual(slot_calls[0][1:3], slot_calls[1][1:3])
+        self.assertTrue(all(call[3] != loop_thread for call in slot_calls))

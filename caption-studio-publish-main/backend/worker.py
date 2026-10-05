@@ -85,6 +85,7 @@ class ReleaseWorker(Worker):
         return super().request_stop(signum, frame)
 
     def perform_job(self, job, queue):
+        cleanup_local_media_artifacts()
         protected = False
         try:
             protected = self.scale_in_protector.set(True)
@@ -93,6 +94,7 @@ class ReleaseWorker(Worker):
         try:
             return super().perform_job(job, queue)
         finally:
+            cleanup_local_media_artifacts()
             if protected:
                 try:
                     self.scale_in_protector.set(False)
@@ -267,6 +269,7 @@ def _drain_loop(state, queue_names, *, drain=None):
         conn = None
         try:
             conn = connect_redis(REDIS_URL)
+            cleanup_local_media_artifacts()
             keep_serving = drain(conn, queue_names) is not False
             cleanup_local_media_artifacts()
         except Exception as error:

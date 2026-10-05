@@ -53,6 +53,7 @@ try:
 except ImportError:  # Direct execution from backend/ remains supported.
     from processor import VideoProcessor
 import asyncio
+import anyio
 import time
 import subprocess
 import hmac
@@ -366,7 +367,16 @@ def _apply_security_headers(response: Response) -> Response:
 async def request_logging_middleware(request: Request, call_next):
     rid = _request_id(request)
     request.state.request_id = rid
-    app_check_failure = _verify_firebase_app_check_request(request, rid)
+    if _app_check_required(request) and request.headers.get("x-firebase-appcheck"):
+        # Firebase may synchronously fetch rotated signing keys. Keep its
+        # bounded verification work outside the API event loop; health probes
+        # and missing-token rejections never wait for this worker pool.
+        app_check_failure = await anyio.to_thread.run_sync(
+            _verify_firebase_app_check_request, request, rid,
+            limiter=_app_check_verification_limiter,
+        )
+    else:
+        app_check_failure = _verify_firebase_app_check_request(request, rid)
     if app_check_failure is not None:
         return _apply_security_headers(app_check_failure)
     if request.url.path == "/api/upload" and _IS_PRODUCTION:
@@ -433,7 +443,7 @@ async def request_logging_middleware(request: Request, call_next):
             },
         ))
     upload_slot_uid = str(upload_identity.get("uid") or "") if request.url.path == "/api/upload" else ""
-    if upload_slot_uid and not _acquire_process_slot(upload_slot_uid, f"upload:{rid}"):
+    if upload_slot_uid and not await asyncio.to_thread(_acquire_process_slot, upload_slot_uid, f"upload:{rid}"):
         return _apply_security_headers(JSONResponse(status_code=429, content={"detail": "Another upload or transcription is active for this account."}, headers={"X-Request-Id": rid}))
     start = time.time()
     try:
@@ -458,7 +468,7 @@ async def request_logging_middleware(request: Request, call_next):
         }, headers={"X-Request-Id": rid, "Cache-Control": "no-store"}))
     finally:
         if upload_slot_uid:
-            _release_process_slot(upload_slot_uid, f"upload:{rid}")
+            await asyncio.to_thread(_release_process_slot, upload_slot_uid, f"upload:{rid}")
         if not RUN_API_BACKGROUND_TASKS:
             # Cloud Run may suspend CPU as soon as the request finishes. Flush
             # buffered events while this request still has execution time.
@@ -483,7 +493,7 @@ async def request_logging_middleware(request: Request, call_next):
         replica_id=RAILWAY_REPLICA_ID,
     )
     try:
-        _track_latency_sample(request.url.path, elapsed_ms)
+        await asyncio.to_thread(_track_latency_sample, request.url.path, elapsed_ms)
     except Exception:
         pass
     response.headers["X-API-Version"] = API_CURRENT_VERSION
@@ -540,17 +550,27 @@ _APP_CHECK_EXEMPT_PREFIXES = (
 )
 
 
+_app_check_verification_limiter = anyio.CapacityLimiter(16)
+
+
+def _app_check_required(request: Request) -> bool:
+    if not FIREBASE_APP_CHECK_ENFORCED or request.method.upper() == "OPTIONS":
+        return False
+    path = request.url.path
+    return path not in _APP_CHECK_EXEMPT_PATHS and not any(
+        path.startswith(prefix) for prefix in _APP_CHECK_EXEMPT_PREFIXES
+    )
+
+
 def _verify_firebase_app_check_request(request: Request, request_id: str = "") -> Optional[JSONResponse]:
     """Require Firebase App Check for browser API traffic in production.
 
     Webhooks, signed media URLs, health probes, and operator-only endpoints use
     their own authentication and remain callable by non-browser infrastructure.
     """
-    if not FIREBASE_APP_CHECK_ENFORCED or request.method.upper() == "OPTIONS":
+    if not _app_check_required(request):
         return None
     path = request.url.path
-    if path in _APP_CHECK_EXEMPT_PATHS or any(path.startswith(prefix) for prefix in _APP_CHECK_EXEMPT_PREFIXES):
-        return None
     token = str(request.headers.get("x-firebase-appcheck") or "").strip()
     if not token:
         _json_log("warning", "app_check_missing", path=path, request_id=request_id)
@@ -771,8 +791,10 @@ EXPORT_MAX_PENDING_WORK_SECONDS = max(
     int(os.environ.get("EXPORT_MAX_PENDING_WORK_SECONDS", "1800")),
 )
 EXPORT_MAX_QUEUE_WAIT_SECONDS = max(
-    30,
-    min(int(os.environ.get("EXPORT_MAX_QUEUE_WAIT_SECONDS", "600")), 600),
+    # Railway's browser-independent recovery runs every 15 minutes. Leave a
+    # second interval for wake/startup, without increasing the pending-work cap.
+    1800 if os.environ.get("RAILWAY_PROJECT_ID") else 30,
+    min(int(os.environ.get("EXPORT_MAX_QUEUE_WAIT_SECONDS", "1800")), 1800),
 )
 QUEUE_METRICS_ENABLED = os.environ.get("QUEUE_METRICS_ENABLED", "0") == "1"
 QUEUE_METRICS_INTERVAL_SECONDS = max(
@@ -966,6 +988,13 @@ def cleanup_local_media_artifacts(now: float = None) -> Dict[str, int]:
 
     # Cleanup stale temporary ASS artifacts generated during render retries.
     backend_dir = os.path.dirname(os.path.abspath(__file__))
+    try:
+        from .render_scratch import sweep_render_scratch
+    except ImportError:
+        from render_scratch import sweep_render_scratch
+    metrics["render_scratch_deleted"] = sweep_render_scratch(
+        os.path.join(os.path.dirname(backend_dir), ".render_tmp"), now
+    )
     for f in os.listdir(backend_dir):
         if not ((f.startswith("_tmp_") and f.endswith(".ass")) or f == "last_export_debug.ass"):
             continue
@@ -1028,6 +1057,7 @@ def _advanced_janitor_once():
     total_deleted = (
         metrics["uploads_deleted"] + metrics["exports_deleted"]
         + metrics["temp_ass_deleted"] + metrics["cache_deleted"]
+        + metrics["render_scratch_deleted"]
         + metrics["cloud_exports_deleted"]
         + metrics["cloud_uploads_deleted"]
     )
@@ -2475,6 +2505,7 @@ def _record_export_usage(
     history_item: Dict[str, Any],
     now_ts: float,
     export_job_id: str,
+    result_payload: Optional[Dict[str, Any]] = None,
 ):
     usage_ref = user_ref.collection("export_usage").document(export_job_id)
 
@@ -2513,6 +2544,9 @@ def _record_export_usage(
         transaction.create(usage_ref, {
             "export_job_id": export_job_id,
             "file_id": history_item.get("id", ""),
+            # The debit and its recoverable output commit together. Job-state
+            # storage can fail afterwards without losing this customer's result.
+            "result_payload": result_payload or {},
             "recorded_at": datetime.now(timezone.utc),
             "expire_at": datetime.now(timezone.utc) + timedelta(days=400),
         })
@@ -2527,6 +2561,21 @@ def _record_export_usage(
 # transition, and Redis has no eviction headroom: a full editor snapshot per
 # export for seven days grew Redis without bound. Replay reads Firestore.
 _DURABLE_ONLY_EXPORT_JOB_FIELDS = ("request_snapshot",)
+
+def _load_recorded_export_result(uid: str, export_job_id: str, file_id: str):
+    database = get_db()
+    if database is None:
+        if _IS_PRODUCTION:
+            raise HTTPException(503, "Export recovery storage is temporarily unavailable")
+        return None
+    snapshot = database.collection("users").document(uid).collection("export_usage").document(export_job_id).get()
+    record = snapshot.to_dict() if snapshot.exists else {}
+    if record.get("file_id") != file_id or record.get("export_job_id") != export_job_id:
+        return None
+    payload = record.get("result_payload") or {}
+    if payload.get("success") and payload.get("export_job_id") == export_job_id:
+        return dict(payload)
+    return None
 
 
 def _set_export_job(job_id: str, status: str, *, expected_status=None, **kwargs):
@@ -2795,11 +2844,13 @@ def _signed_upload_url(file_id: str, uid: str, ttl_seconds: int = 6 * 3600) -> s
     return f"/api/media/upload/{file_id}?token={token}"
 
 
-def _signed_export_url(filename: str, uid: str, ttl_seconds: int, cache_bust: str = "") -> str:
+def _signed_export_url(filename: str, uid: str, ttl_seconds: int, cache_bust: str = "",
+                       download_filename: str = "") -> str:
     token = _create_media_token({
         "kind": "export",
         "uid": uid,
         "filename": filename,
+        **({"download_filename": download_filename[:180]} if download_filename else {}),
         "exp": int(time.time() + max(ttl_seconds, 60)),
     })
     suffix = f"&v={cache_bust}" if cache_bust else ""
@@ -2829,12 +2880,15 @@ def _refresh_completed_export_payload(payload: Dict[str, Any], uid: str, job_id:
         uid,
         recovery_ttl_seconds,
         f"{job_id[:8]}-{int(time.time())}",
+        str(refreshed.get("download_filename") or ""),
     )
     # Fetching API -> R2 redirects changes the browser Origin to null. Give the
     # authenticated owner a direct R2 URL, with the same brief retry window.
     refreshed.pop("download_url", None)
     if s3_storage_configured():
-        direct_url = signed_export_download_url(f"exports/{uid}/{filename}", recovery_ttl_seconds)
+        desired_filename = refreshed.get("download_filename")
+        direct_url = (signed_export_download_url(f"exports/{uid}/{filename}", recovery_ttl_seconds, desired_filename)
+                      if desired_filename else signed_export_download_url(f"exports/{uid}/{filename}", recovery_ttl_seconds))
         if not direct_url:
             raise HTTPException(status_code=503, detail="Export download is temporarily unavailable. Resume to retry.")
         refreshed["download_url"] = direct_url
@@ -3761,6 +3815,15 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
         else:
             user_data = user_doc.to_dict() or {}
 
+        recorded_result = _load_recorded_export_result(uid, export_job_id, req.file_id)
+        if recorded_result:
+            # Recover this exact charged job before checking eligibility for a
+            # NEW export, including a last-credit debit or an expired plan.
+            _set_export_job(export_job_id, "finalizing")
+            _set_export_job(export_job_id, "completed", payload=recorded_result,
+                            completed_at=time.time(), recovered_from_usage=True)
+            return recorded_result
+
         if user_data.get("is_promo_user") and user_data.get("promo_expires"):
             try:
                 promo_exp = date.fromisoformat(user_data["promo_expires"])
@@ -3949,26 +4012,10 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
         output_filename, uid, retention_hours * 3600, export_job_id[:8]
     )
 
-    if db_available and user_ref is not None:
-        history_item = {
-            "id": req.file_id,
-            "export_job_id": export_job_id,
-            "filename": output_filename,
-            "url": video_url,
-            "createdAt": now * 1000,
-            "firebase_path": f"exports/{uid}/{output_filename}" if firebase_url else None
-        }
-        dropped_history = _record_export_usage(
-            db, user_ref, history_item, now, export_job_id
-        )
-        for dropped in dropped_history:
-            dropped_path = dropped.get("firebase_path") if isinstance(dropped, dict) else ""
-            if dropped_path:
-                delete_from_firebase_storage(dropped_path)
-
     payload = {
         "success": True,
         "video_url": video_url,
+        "export_filename": output_filename,
         "expires_at": expires_at,
         "retention_hours": retention_hours,
         "export_job_id": export_job_id,
@@ -3979,6 +4026,24 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
             "downgraded": preset["downgraded"],
         },
     }
+
+    if db_available and user_ref is not None:
+        history_item = {
+            "id": req.file_id,
+            "export_job_id": export_job_id,
+            "filename": output_filename,
+            "url": video_url,
+            "createdAt": now * 1000,
+            "firebase_path": f"exports/{uid}/{output_filename}" if firebase_url else None
+        }
+        dropped_history = _record_export_usage(
+            db, user_ref, history_item, now, export_job_id, result_payload=payload
+        )
+        for dropped in dropped_history:
+            dropped_path = dropped.get("firebase_path") if isinstance(dropped, dict) else ""
+            if dropped_path:
+                delete_from_firebase_storage(dropped_path)
+
     completed_at = time.time()
     total_ms = int((completed_at - queue_entered_at) * 1000)
     preparation_ms = int((render_started_at - processing_started_at) * 1000)
@@ -4068,6 +4133,16 @@ def run_export_job_task(
     if existing_job.get("status") == "completed":
         return existing_job.get("payload") or {}
     try:
+        if existing_job.get("status") == "finalizing":
+            _assert_account_not_deleting(uid)
+            recorded = _load_recorded_export_result(uid, export_job_id, str(req_payload.get("file_id") or ""))
+            if recorded:
+                _set_export_job(export_job_id, "completed", payload=recorded,
+                                completed_at=time.time(), recovered_from_usage=True)
+                if idempotency_key:
+                    _idem_set(idempotency_key, {"status": "completed", "ts": time.time(), "payload": recorded,
+                                               "request_hash": idempotency_request_hash, "job_id": export_job_id})
+                return recorded
         _set_export_job(export_job_id, "starting", worker_release=APP_RELEASE)
     except InvalidJobTransition:
         current = _load_export_job(export_job_id) or {}
@@ -4104,6 +4179,30 @@ def run_export_job_task(
             })
         return payload
     except Exception as e:
+        # Completion storage/telemetry may fail AFTER the atomic debit. In that
+        # case the export succeeded: preserve its idempotency result and do not
+        # turn a paid result into a fresh render on the next submission.
+        usage_recovery_unknown = False
+        try:
+            recorded = _load_recorded_export_result(uid, export_job_id, str(req_payload.get("file_id") or ""))
+        except Exception as recovery_error:
+            recorded = None
+            usage_recovery_unknown = True
+            _json_log("warning", "export_usage_recovery_unavailable", job_id=export_job_id,
+                      error=type(recovery_error).__name__)
+        if recorded:
+            try:
+                current = _load_export_job(export_job_id) or {}
+                if current.get("status") == "finalizing":
+                    _set_export_job(export_job_id, "completed", payload=recorded,
+                                    completed_at=time.time(), recovered_from_usage=True)
+                if idempotency_key:
+                    _idem_set(idempotency_key, {"status": "completed", "ts": time.time(), "payload": recorded,
+                                               "request_hash": idempotency_request_hash, "job_id": export_job_id})
+            except Exception as recovery_error:
+                _json_log("warning", "export_completion_recovery_pending", job_id=export_job_id,
+                          error=type(recovery_error).__name__)
+            return recorded
         try:
             from rq import get_current_job
             rq_job = get_current_job()
@@ -4129,7 +4228,7 @@ def run_export_job_task(
             queue_wait_ms=failed_job.get("queue_wait_ms"),
             elapsed_ms=max(0, int((time.time() - entered_at) * 1000)),
         )
-        if idempotency_key and not locals().get("retry_pending", False):
+        if idempotency_key and not locals().get("retry_pending", False) and not usage_recovery_unknown:
             _idem_delete(idempotency_key)
         _write_dead_letter(
             export_job_id,
