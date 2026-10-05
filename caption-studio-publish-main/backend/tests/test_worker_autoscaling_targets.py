@@ -134,5 +134,34 @@ class ConfigurableReplicaTests(unittest.TestCase):
         self.assertEqual(len(urls), 13)
 
 
+    def test_awake_service_scales_down_when_idle_but_never_while_working(self):
+        awake = FakeService(4, "SUCCESS")
+        awake.sleeps = False
+        self.assertEqual(self.run_scaler(awake, scaling.RENDER, allow_down=True), "scaled_down")
+        self.assertEqual(awake.changes, [1])
+        busy = FakeService(4, "SUCCESS")
+        busy.sleeps = False
+        self.redis.zadd("rq:wip:export", {"running-job": 1990})
+        self.assertEqual(self.run_scaler(busy, scaling.RENDER, allow_down=True), "busy")
+        self.assertEqual(busy.changes, [])
+
+    def test_sleeping_service_still_requires_sleeping_status_to_shrink(self):
+        service = FakeService(4, "SUCCESS")
+        self.assertEqual(self.run_scaler(service, scaling.RENDER, allow_down=True), "busy")
+        self.assertEqual(service.changes, [])
+
+    def test_provider_state_reports_whether_the_service_sleeps(self):
+        with patch.dict(os.environ, {"RAILWAY_ENVIRONMENT_ID": "env",
+                                     "RENDER_AUTOSCALE_SERVICE_ID": "svc"}):
+            service = scaling.RailwayScaledService(scaling.RENDER)
+        deploy = {"sleepApplication": False, "multiRegionConfig": {service.region: {"numReplicas": 2}}}
+        data = {"environment": {"config": {"services": {"svc": {"deploy": deploy}}}},
+                "serviceInstance": {"serviceName": "lekha-render", "latestDeployment": {
+                    "status": "SUCCESS", "meta": {"serviceManifest": {"deploy": {"drainingSeconds": 1860}}}}}}
+        with patch.object(scaling, "_graphql", return_value=data):
+            self.assertEqual(service.state(), (2, "SUCCESS"))
+        self.assertFalse(service.sleeps)
+
+
 if __name__ == "__main__":
     unittest.main()

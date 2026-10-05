@@ -19,12 +19,18 @@ const RENDER_WORKER = "lekha-render"
 const TRANSCRIPTION_WORKER = "lekha-transcription"
 const WORKER_PORT = "8080"
 // Replica ceilings for the autoscaled workers. One render replica handles one
-// export at a time (4 vCPU / 4 GiB); one transcription replica handles one
-// transcription or malware scan at a time (2 vCPU / 2 GiB). The Hobby plan
-// allows at most 5 replicas per service: a higher ceiling makes the scaler
-// request a count Railway rejects, leaving the service at its current size.
+// export at a time (8 vCPU / 8 GiB); one transcription replica handles one
+// transcription or malware scan at a time (2 vCPU / 3 GiB). The Hobby plan
+// allows at most 5 replicas per service, 8 vCPU / 8 GB each and 48 vCPU / 48 GB
+// per service: a higher ceiling makes the scaler request a count Railway
+// rejects, leaving the service at its current size.
 const RENDER_MAX_REPLICAS = 5
-const TRANSCRIPTION_MAX_REPLICAS = 3
+const TRANSCRIPTION_MAX_REPLICAS = 5
+// Launch period: keep one render and one transcription replica awake so the
+// first customers do not wait for a sleeping worker to start (about 1-2 min).
+// Costs idle RAM (roughly 1.5-2 GB in total) while awake. Set to false after
+// launch so idle workers sleep again.
+const KEEP_ONE_WORKER_AWAKE = true
 
 // Secrets and per-owner settings, created as shared variables in Railway.
 const SHARED = [
@@ -139,18 +145,25 @@ export default defineRailway((ctx) => {
     healthcheckTimeout: 120,
     replicas,
     deploy: {
-      startCommand: "python3 -m backend.worker",
-      sleepApplication: true,
+      // clamd keeps the virus database loaded (about 1 GB) so each upload scan
+      // takes seconds instead of reloading it for 20-40 s; while it starts
+      // (about 20 s) scans fall back to CLAMAV_SCAN_CMD.
+      startCommand:
+        "sh -c 'clamd --config-file=/app/deploy/clamav/clamd.conf & exec python3 -m backend.worker'",
+      sleepApplication: !KEEP_ONE_WORKER_AWAKE,
       restartPolicyType: "ON_FAILURE",
       restartPolicyMaxRetries: 3,
       // Transcription jobs time out after 30 minutes: let a replica removed by
       // autoscaling finish its job before SIGKILL (required before resizing).
       drainingSeconds: 1860,
       overlapSeconds: 0,
-      limitOverride: limits(2, 2),
+      // clamd (~1 GB) + a fallback clamscan during its start (~1 GB) + worker.
+      limitOverride: limits(2, 3),
     },
     env: {
       ...backendEnv,
+      CLAMAV_HOST: "127.0.0.1",
+      CLAMAV_PORT: "3310",
       LEKHA_SERVICE_TARGET: "transcription",
       WORKER_LAUNCH_JOB_NAME: TRANSCRIPTION_WORKER,
       PORT: WORKER_PORT,
@@ -165,14 +178,16 @@ export default defineRailway((ctx) => {
     replicas,
     deploy: {
       startCommand: "sh -c 'node scripts/render_browser_daemon.mjs & exec python3 -m backend.worker'",
-      sleepApplication: true,
+      sleepApplication: !KEEP_ONE_WORKER_AWAKE,
       restartPolicyType: "ON_FAILURE",
       restartPolicyMaxRetries: 3,
       // RQ export timeout is 30 minutes: finish the current job before SIGKILL.
       drainingSeconds: 1860,
       overlapSeconds: 0,
       // Chromium + FFmpeg were OOM-killed under 3 GiB in staging (2026-08-04).
-      limitOverride: limits(4, 4),
+      // FFmpeg uses every available core; Railway bills CPU actually used, so
+      // a faster export costs about the same as a slower one.
+      limitOverride: limits(8, 8),
     },
     env: {
       ...backendEnv,

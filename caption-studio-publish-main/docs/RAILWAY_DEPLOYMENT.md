@@ -30,8 +30,8 @@ Firebase Auth + Firestore: unchanged.
 | Service | Image (`LEKHA_SERVICE_TARGET`) | Sleeps | Cap (vCPU / RAM) | Start |
 |---|---|---|---|---|
 | `lekha-api` | `api` | yes | 1 / 2 GiB | uvicorn, 1 process |
-| `lekha-transcription` | `transcription` | yes | 2 / 2 GiB per replica, 1–3 replicas | `python3 -m backend.worker` (wake server on 8080) |
-| `lekha-render` | `render` | yes | 4 / 4 GiB per replica, 1–5 replicas | render browser daemon + worker |
+| `lekha-transcription` | `transcription` | yes (see `KEEP_ONE_WORKER_AWAKE`) | 2 / 3 GiB per replica, 1–5 replicas | `clamd` + `python3 -m backend.worker` (wake server on 8080) |
+| `lekha-render` | `render` | yes (see `KEEP_ONE_WORKER_AWAKE`) | 8 / 8 GiB per replica, 1–5 replicas | render browser daemon + worker |
 | `lekha-cron` | `api` | n/a (cron) | 1 / 1 GiB | `python3 -m backend.railway_cron`, `*/15 * * * *` |
 | `redis` | Railway Redis | no | n/a | n/a |
 
@@ -182,7 +182,7 @@ backstop:
 - [ ] Upload a 100 MB video. In R2, parts appear under `uploads/<uid>/`. Interrupt the network mid-upload: it resumes without re-sending the finished parts.
 - [ ] A scan, transcription and export complete, and the download link is an R2 signed URL.
 - [ ] `lekha-cron` logs show `cron_pass_finished` with `failed_steps: []`.
-- [ ] **Sleep:** after ~10 min with no traffic, `lekha-api`, `lekha-transcription` and `lekha-render` show **Sleeping**. If one never sleeps, check its outbound traffic (Sentry, Firestore gRPC keepalives) before going live.
+- [ ] **Sleep:** after ~10 min with no traffic, `lekha-api` shows **Sleeping**, and so do `lekha-transcription` and `lekha-render` unless `KEEP_ONE_WORKER_AWAKE` is on (launch period). If one never sleeps, check its outbound traffic (Sentry, Firestore gRPC keepalives) before going live.
 - [ ] **Wake:**
   - the first request after sleep succeeds within the frontend's retries;
   - a queued export completes after the render worker woke from sleep.
@@ -196,16 +196,18 @@ backstop:
 ## 7. Known limits
 
 - ClamAV signatures are as fresh as the last deploy. The image copies them at build time, so **redeploy at least weekly**, or after a ClamAV advisory.
+- Transcription replicas run `clamd` (`deploy/clamav/clamd.conf`), which keeps the signature database loaded: measured locally with the production signatures, it is ready about 22 s after start, holds about 970 MiB, and scanned a 40 MB file in 5.3 s where `clamscan` took 26.7 s. Until it is ready, scans fall back to `CLAMAV_SCAN_CMD`, which is why the transcription cap is 3 GiB. `StreamMaxLength 600M` is required: clamd's 25 MB default would refuse larger uploads.
 - `clamscan` uses ~1 GB RAM for 20–40 s per scan. The API may also scan inline (language detection on a not-yet-scanned upload), which is why its cap is 2 GiB.
 - Redeploying a worker mid-job: SIGTERM lets RQ finish the running job. Very long jobs may be cut at Railway's drain timeout and are then retried or marked for support by the existing job-state logic.
-- Render replicas scale from 1 to `RENDER_AUTOSCALE_MAX_REPLICAS` (5), each with 4 vCPU / 4 GiB and one export. Transcription replicas scale from 1 to `TRANSCRIPTION_AUTOSCALE_MAX_REPLICAS` (3), each with 2 vCPU / 2 GiB and one transcription or malware scan. Code clamps both to at most 10.
+- Render replicas scale from 1 to `RENDER_AUTOSCALE_MAX_REPLICAS` (5), each with 8 vCPU / 8 GiB and one export. Transcription replicas scale from 1 to `TRANSCRIPTION_AUTOSCALE_MAX_REPLICAS` (5), each with 2 vCPU / 3 GiB and one transcription or malware scan. Code clamps both to at most 10.
 - `EXPORT_MAX_PENDING_WORK_SECONDS` is 600 × the render maximum (3000), so admitted exports can start within the 10-minute queue-wait limit when every replica is running. The Hobby plan allows at most 5 replicas per service (8 vCPU / 8 GB each, 48 vCPU / 48 GB per service); never configure a maximum above the plan's replica limit, or the scaler keeps requesting a count Railway rejects and the service stays at its current size. Change both values together.
 - If Railway rejects a resize (for example a plan's replica or resource limit), the controller logs `render_scaling_failed` or `transcription_scaling_failed`, keeps the current capacity and retries after 30 seconds.
-- Scale-up runs on enqueue. The existing 15-minute cron is the recovery and scale-down safety net. Scale-down requires Sleeping, no queued, started or scheduled renders, no active burst leases, and a 15-minute cooldown. An atomic Redis resize guard excludes new bursts during removal.
+- Scale-up runs on enqueue. The existing 15-minute cron is the recovery and scale-down safety net. Scale-down requires Sleeping (or, for a service kept awake, a successful idle deployment), no queued, started or scheduled jobs, no active burst leases, and a 15-minute cooldown. An atomic Redis resize guard excludes new bursts during removal.
 - `RAILWAY_RENDER_SCALING_TOKEN` is an additional production-environment project token referenced only by API and cron. Workers never receive it. Missing credentials or control-plane failure preserve existing capacity and normal wake/recovery. Never deploy the owner's CLI/account credential.
 - IaC declares the one-replica baseline. A plan during a busy period may propose returning dynamically added replicas to one. Wait for idle scale-down before applying that reduction.
 - Railway sleeping applies across service replicas. Private DNS wake fan-out and unique replica leases let copies drain the shared queue.
-- At the rates in §3, five fully utilized render replicas cost at most about $0.82/hour and three transcription replicas about $0.25/hour, excluding the other services and providers. These are ceilings, not measured costs. **The $15 hard cap is reached after roughly 12 hours of fully loaded workers: raise it (and plan for the Pro plan's limits) before a public launch.**
+- At the rates in §3, five fully utilized render replicas (8 vCPU / 8 GiB) cost at most about $1.64/hour and five transcription replicas (2 vCPU / 3 GiB) about $0.48/hour, excluding the other services and providers. These are ceilings, not measured costs; Railway bills CPU and RAM actually used. **Raise the $15 hard cap before a public launch** (about $50 for launch month, with email alerts at $20 and $35).
+- `KEEP_ONE_WORKER_AWAKE` (in `.railway/railway.ts`) disables sleeping for the render and transcription services during the launch period, so the first customers do not wait for a cold start. The idle replicas then hold roughly 1.5–2 GB of RAM (about $15–20/month at the §3 rate; clamd alone is ~1 GB). Set it to `false` after launch.
 - Acceptance: for each worker service, verify 1-to-N patches, distinct identities, parallel disposable jobs, Sleeping and the guarded N-to-1. No mass-user load test is required.
 
 ### Worker resize shutdown safety
