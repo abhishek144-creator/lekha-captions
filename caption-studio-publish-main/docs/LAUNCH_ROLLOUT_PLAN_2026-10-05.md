@@ -1,13 +1,16 @@
 # Launch rollout and cost approval — 5 October 2026
 
-Status: candidate prepared in PR #29; not merged or deployed. Hosted validation
-is blocked by the owner's exhausted GitHub Actions budget. This document is
-the reviewable next action, not evidence of a completed public launch.
+Status: candidate prepared in PR #29; not merged or deployed. The owner approved
+raising the GitHub Actions monthly budget to $7 to resume hosted validation.
+This document is the reviewable next action, not evidence of a completed launch.
 
-Owner decision, 5 October: **Keep budgets unchanged.** The proposed additional
-$7 allowance below was declined. GitHub Actions remains $3 with Stop usage
-enabled, and Railway remains $15 hard/$8 alert. No paid rollout or pilot was
-started, no spending controls were changed, and no launch approval is implied.
+Owner initially chose **Keep budgets unchanged**, then explicitly authorized
+**make it 7 dollars** in reply to the GitHub Actions blocker. Actions was changed
+from $3 to **$7 total per month** (up to $4 additional headroom), with Stop usage
+and threshold alerts retained and verified in the UI. Railway remains $15
+hard/$8 alert. The earlier $8 Actions proposal below was not applied. No
+Railway rollout or pilot has been started; its separate $2 allowance remains
+unapproved. This spending setting does not imply public-launch clearance.
 
 ## Exact target and verified live state
 
@@ -132,11 +135,12 @@ Request **up to $7 additional pre-tax usage allowance** for this release:
    Netlify remaining included quotas before writes/builds; otherwise stop for
    a revised estimate. This allowance does not promise a $7 total invoice.
 
-The owner declined these new amounts and chose to retain existing budgets.
-The sequence below remains a proposed, unexecuted runbook. Paid execution would
-require explicit approval of a priced plan, as required by `AGENTS.md` and the
-deployment prompt. Account-wide unrelated spending can consume these limits,
-so inspect remaining headroom immediately before any authorized execution.
+The original combined proposal was declined. The later authorization applies
+a $7 total Actions budget, not the proposed $8 or the separate $2 Railway
+pilot. Hosted validation may now run within the approved $7 Actions limit.
+The Railway sequence below remains proposed and unexecuted. Paid deployment
+and pilot would require explicit approval of that priced plan under `AGENTS.md`
+and the deployment prompt. Inspect remaining headroom before execution.
 
 Sequence after approval and successful CI:
 
@@ -194,8 +198,9 @@ hard cap. Do not start if headroom/quotas or continuous supervision are absent.
 - Roll back the app images and frontend to recorded healthy release
   `5f1345a1776f308bce4949d99ec6f8e9836af05f` only after draining work. Preserve
   new billing-result fields. Reconcile billed exports before enabling new work.
-- Restore the original $3 GitHub Actions stop-usage budget after completing or
-  stopping this release, and verify the UI. Keep Railway $15/$8 unchanged.
+- Retain the owner's subsequently authorized $7 GitHub Actions stop-usage
+  budget; never raise it or disable stop usage automatically. Keep Railway
+  $15/$8 unchanged. The original proposal to temporarily use $8 was superseded.
 - Broad promotion remains gated on current-release customer acceptance,
   recovery evidence, basic alert delivery/backup recovery and sustainable
   measured cost. A failed or partial pilot does not authorize a full launch.
