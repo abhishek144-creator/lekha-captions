@@ -182,7 +182,7 @@ backstop:
 - [ ] Upload a 100 MB video. In R2, parts appear under `uploads/<uid>/`. Interrupt the network mid-upload: it resumes without re-sending the finished parts.
 - [ ] A scan, transcription and export complete, and the download link is an R2 signed URL.
 - [ ] `lekha-cron` logs show `cron_pass_finished` with `failed_steps: []`.
-- [ ] **Sleep:** after ~10 min with no traffic, `lekha-api` shows **Sleeping**, and so do `lekha-transcription` and `lekha-render` unless `KEEP_ONE_WORKER_AWAKE` is on (launch period). If one never sleeps, check its outbound traffic (Sentry, Firestore gRPC keepalives) before going live.
+- [ ] **Sleep:** after ~10 min with no traffic, `lekha-api` shows **Sleeping**, and so do `lekha-transcription` and `lekha-render` (`KEEP_ONE_WORKER_AWAKE` is off by default). If one never sleeps, check its outbound traffic (Sentry, Firestore gRPC keepalives) before going live.
 - [ ] **Wake:**
   - the first request after sleep succeeds within the frontend's retries;
   - a queued export completes after the render worker woke from sleep.
