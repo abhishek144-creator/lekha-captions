@@ -248,6 +248,7 @@ def run_journey(index: int, credential: dict, args: argparse.Namespace) -> dict:
     file_id = ""
     job_id = ""
     stages: dict[str, float] = {}
+    admission_retries = 0
     started = time.monotonic()
 
     try:
@@ -324,7 +325,6 @@ def run_journey(index: int, credential: dict, args: argparse.Namespace) -> dict:
             "fps": args.fps,
         }
         deadline = time.monotonic() + args.export_wait_timeout
-        admission_retries = 0
         while True:
             submitted = session.post(
                 urljoin(base_url, "api/export"), json=export_request,
@@ -384,6 +384,7 @@ def run_journey(index: int, credential: dict, args: argparse.Namespace) -> dict:
             "file_id": file_id,
             "job_id": job_id,
             "error": str(exc),
+            "admission_retries": admission_retries,
             "source_media": source_media,
             "stages_seconds": stages,
             "total_seconds": time.monotonic() - started,

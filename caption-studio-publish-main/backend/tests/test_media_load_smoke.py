@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch
 import requests
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "scripts"))
-from media_load_smoke import _acknowledged_bytes, download_export, upload_direct, video_for_journey, video_sha256
+from media_load_smoke import _acknowledged_bytes, download_export, run_journey, upload_direct, video_for_journey, video_sha256
 
 
 class FakeResponse:
@@ -63,6 +63,25 @@ class InterruptedSession(FakeSession):
 
 
 class MediaLoadSmokeTests(unittest.TestCase):
+    def test_failed_journey_preserves_admission_retry_count(self):
+        args = SimpleNamespace(base_url='https://api.test', videos=[FakeVideo()],
+            upload_mode='direct', upload_timeout=30, process_timeout=30, language='english',
+            export_barrier=None, export_wait_timeout=30, export_submit_timeout=30,
+            quality='1080p', fps=30, cleanup=False, poll_interval=0)
+        session = Mock()
+        session.post.side_effect = [
+            FakeResponse(200, {'captions': [{'text': 'Real speech', 'start_time': 0, 'end_time': 2}]}),
+            FakeResponse(429, headers={'Retry-After': '1'}),
+            FakeResponse(503, headers={'Retry-After': '1'}),
+            requests.ConnectionError('lost export response'),
+        ]
+        with patch('media_load_smoke.requests.Session', return_value=session), \
+             patch('media_load_smoke.upload_direct', return_value={'file_id': 'file-1'}), \
+             patch('media_load_smoke.time.sleep'):
+            result = run_journey(1, {'id_token': 'test', 'bootstrap': False}, args)
+        self.assertFalse(result['ok'])
+        self.assertEqual(result['admission_retries'], 2)
+
     def test_signed_download_does_not_transmit_api_credentials(self):
         response = requests.Response()
         response.status_code = 200
