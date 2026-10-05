@@ -294,6 +294,14 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
     }, { once: true });
   });
 
+  // Every waiting customer polls this endpoint, so the interval sets server
+  // load during a busy launch. Queued jobs change slowly; renders are polled
+  // briskly at first (short exports) and less often once they run long.
+  const exportStatusPollDelay = (status, elapsedMs) => {
+    if (status === 'queued' || status === 'retrying') return 4000;
+    return elapsedMs < 20000 ? 1500 : 3000;
+  };
+
   // Long renders (4K, long videos) can exceed several minutes — a short client
   // timeout here fails the UI while the server render succeeds, and the retry
   // then hits the per-account concurrent-export guard (429). Keep this generous.
@@ -371,7 +379,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       } else if (status === 'cancelled') {
         throw new DOMException('Export cancelled', 'AbortError');
       }
-      await abortableSleep(1200, signal);
+      await abortableSleep(exportStatusPollDelay(status, Date.now() - startedAt), signal);
     }
     throw new Error('Export status check timed out. Please retry.');
   };

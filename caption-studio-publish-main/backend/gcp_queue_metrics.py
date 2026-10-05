@@ -84,8 +84,31 @@ def queued_render_work_seconds(queue, job_class, fallback_seconds=120) -> int:
     return total
 
 
-def job_queue_prediction(queue, job_class, job_id, active_workers=1, fallback_seconds=120):
-    """Return a bounded queue position and ETA for one pending RQ job."""
+def _ledger_estimates(connection, work_ledger_key, job_ids):
+    """Read predicted work for many jobs in one round trip, None where absent."""
+    if not work_ledger_key or not job_ids or not hasattr(connection, "hmget"):
+        return [None] * len(job_ids)
+    try:
+        values = connection.hmget(work_ledger_key, job_ids)
+    except Exception:
+        return [None] * len(job_ids)
+    estimates = []
+    for value in values:
+        try:
+            estimates.append(int(value) if value is not None else None)
+        except (TypeError, ValueError):
+            estimates.append(None)
+    return estimates
+
+
+def job_queue_prediction(queue, job_class, job_id, active_workers=1, fallback_seconds=120,
+                         work_ledger_key=None):
+    """Return a bounded queue position and ETA for one pending RQ job.
+
+    With ``work_ledger_key`` the per-job estimates come from the admission
+    ledger in one HMGET. Fetching each RQ job instead transfers every queued
+    job's pickled editor snapshot, on every status poll of every waiting user.
+    """
     depth = max(0, int(queue.count))
     if depth <= 0:
         return None
@@ -100,12 +123,17 @@ def job_queue_prediction(queue, job_class, job_id, active_workers=1, fallback_se
         return None
 
     estimates = []
-    for queued_id in job_ids[: index + 1]:
-        try:
-            queued_job = job_class.fetch(queued_id, connection=queue.connection)
-            estimate = int((queued_job.meta or {}).get("estimated_render_seconds") or fallback_seconds)
-        except Exception:
-            estimate = fallback_seconds
+    ahead_ids = job_ids[: index + 1]
+    ledger = _ledger_estimates(queue.connection, work_ledger_key, ahead_ids)
+    for queued_id, ledger_estimate in zip(ahead_ids, ledger):
+        if ledger_estimate is not None:
+            estimate = ledger_estimate
+        else:
+            try:
+                queued_job = job_class.fetch(queued_id, connection=queue.connection)
+                estimate = int((queued_job.meta or {}).get("estimated_render_seconds") or fallback_seconds)
+            except Exception:
+                estimate = fallback_seconds
         estimates.append(min(3600, max(15, estimate)))
     workers = max(0, int(active_workers or 0))
     work_ahead = sum(estimates[:-1])

@@ -110,6 +110,37 @@ def test_job_queue_prediction_reports_position_and_work_eta():
     assert unknown_prediction["estimated_completion_seconds"] is None
 
 
+def test_job_queue_prediction_reads_estimates_from_the_work_ledger():
+    fetched = []
+
+    class Connection:
+        @staticmethod
+        def hmget(key, ids):
+            assert key == "ledger"
+            return [{"first": b"90", "target": b"150"}.get(job_id) for job_id in ids]
+
+    class Queue:
+        count = 3
+        connection = Connection()
+
+        @staticmethod
+        def get_job_ids(offset=0, length=100):
+            return ["first", "target", "last"]
+
+    class Job:
+        @staticmethod
+        def fetch(job_id, connection):
+            fetched.append(job_id)
+            raise AssertionError("ledger hits must not fetch RQ jobs")
+
+    prediction = gcp_queue_metrics.job_queue_prediction(
+        Queue(), Job, "target", active_workers=2, work_ledger_key="ledger",
+    )
+    assert prediction["estimated_queue_wait_seconds"] == 45
+    assert prediction["estimated_completion_seconds"] == 120
+    assert fetched == []
+
+
 def test_google_request_rejects_unapproved_endpoint():
     request = urllib.request.Request("file:///tmp/metadata")
     try:
