@@ -7,6 +7,7 @@ import tempfile
 import threading
 import time
 import unittest
+from contextlib import ExitStack
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
@@ -113,23 +114,27 @@ class ExportReliabilityTests(unittest.TestCase):
                     return {"success": True}
 
                 render = AsyncMock(side_effect=burn)
-                with (
-                    patch.object(main, "get_db", return_value=database),
-                    patch.object(main.firestore, "transactional", lambda fn: fn),
-                    patch.object(main, "DISABLE_EXPORT_CREDIT_LIMIT", False),
-                    patch.object(main, "_assert_account_not_deleting"),
-                    patch.object(main, "_mark_export_processing", return_value=(time.time(), time.time())),
-                    patch.object(main, "_set_export_job", side_effect=set_job),
-                    patch.object(main, "_assert_upload_owner"), patch.object(main, "_assert_upload_clean"),
-                    patch.object(main, "_safe_find_upload", return_value="source.mp4"),
-                    patch.object(main, "_probe_media", return_value={"format": {"duration": 12}, "streams": [{"codec_type": "video", "width": 720, "height": 1280}]}),
-                    patch.object(main, "_source_media_identity", return_value="media-identity"),
-                    patch.object(main, "render_cache_eligible", return_value=False),
-                    patch.object(main, "EXPORT_DIR", directory), patch.object(main, "RENDER_CACHE_DIR", directory),
-                    patch.object(main.processor, "burn_only", render),
-                    patch.object(main, "upload_to_firebase_storage", return_value="https://storage/private"),
-                    patch.object(main, "_write_last_export_request_debug"),
-                ):
+                # Python 3.11 limits static block depth. Keep every patch and
+                # assertion, entering the contexts dynamically instead.
+                with ExitStack() as stack:
+                    for patcher in (
+                        patch.object(main, "get_db", return_value=database),
+                        patch.object(main.firestore, "transactional", lambda fn: fn),
+                        patch.object(main, "DISABLE_EXPORT_CREDIT_LIMIT", False),
+                        patch.object(main, "_assert_account_not_deleting"),
+                        patch.object(main, "_mark_export_processing", return_value=(time.time(), time.time())),
+                        patch.object(main, "_set_export_job", side_effect=set_job),
+                        patch.object(main, "_assert_upload_owner"), patch.object(main, "_assert_upload_clean"),
+                        patch.object(main, "_safe_find_upload", return_value="source.mp4"),
+                        patch.object(main, "_probe_media", return_value={"format": {"duration": 12}, "streams": [{"codec_type": "video", "width": 720, "height": 1280}]}),
+                        patch.object(main, "_source_media_identity", return_value="media-identity"),
+                        patch.object(main, "render_cache_eligible", return_value=False),
+                        patch.object(main, "EXPORT_DIR", directory), patch.object(main, "RENDER_CACHE_DIR", directory),
+                        patch.object(main.processor, "burn_only", render),
+                        patch.object(main, "upload_to_firebase_storage", return_value="https://storage/private"),
+                        patch.object(main, "_write_last_export_request_debug"),
+                    ):
+                        stack.enter_context(patcher)
                     with self.assertRaisesRegex(RuntimeError, "after debit"):
                         asyncio.run(main._process_export_job_core(req, "owner", "test", "charged-job"))
                     self.assertEqual(users[("users", "owner")]["credits_remaining"], 0)
