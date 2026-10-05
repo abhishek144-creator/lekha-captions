@@ -987,6 +987,10 @@ def cleanup_local_media_artifacts(now: float = None) -> Dict[str, int]:
 
 
 async def advanced_janitor_job():
+    await asyncio.to_thread(_advanced_janitor_once)
+
+
+def _advanced_janitor_once():
     """Clean local scratch files and durable objects based on retention rules."""
     metrics = cleanup_local_media_artifacts()
     metrics.update({
@@ -1051,23 +1055,25 @@ def _release_scheduled_job(name: str, token: str):
 
 
 async def scheduled_janitor_job():
-    token = _claim_scheduled_job("janitor", 14 * 60)
+    token = await asyncio.to_thread(_claim_scheduled_job, "janitor", 14 * 60)
     if not token:
         return
     try:
         await advanced_janitor_job()
     finally:
-        _release_scheduled_job("janitor", token)
+        await asyncio.to_thread(_release_scheduled_job, "janitor", token)
 
 
 async def scheduled_payment_reconciliation_job():
-    token = _claim_scheduled_job("payment_reconciliation", max(PAYMENT_RECONCILE_INTERVAL_MINUTES, 5) * 60 - 5)
+    token = await asyncio.to_thread(
+        _claim_scheduled_job, "payment_reconciliation", max(PAYMENT_RECONCILE_INTERVAL_MINUTES, 5) * 60 - 5,
+    )
     if not token:
         return
     try:
         await payment_reconciliation_job()
     finally:
-        _release_scheduled_job("payment_reconciliation", token)
+        await asyncio.to_thread(_release_scheduled_job, "payment_reconciliation", token)
 
 
 def _publish_queue_metrics_once():

@@ -128,7 +128,7 @@ def _cached_token(cache_key: str):
 
 
 def _remember_token(cache_key: str, decoded_token: dict):
-    lifetime = TOKEN_CACHE_SECONDS
+    lifetime = min(TOKEN_CACHE_SECONDS, 60)
     expires_at = decoded_token.get("exp")
     if isinstance(expires_at, (int, float)):
         lifetime = min(lifetime, expires_at - time.time())
