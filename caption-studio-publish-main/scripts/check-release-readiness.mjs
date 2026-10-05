@@ -452,7 +452,7 @@ assertIncludes(
   readText("src/components/dashboard/ExportPanel.jsx"),
   "import.meta.env.VITE_DISABLE_EXPORT_LIMITS === '1'",
 )
-assertIncludes("export failure rate limit is enforced", backendMain, "recent_failures = _get_recent_export_failures(uid)")
+assertIncludes("export failure rate limit is enforced", backendMain, "recent_failures = await to_thread(_get_recent_export_failures, uid)")
 assertExcludes("export failure rate limit has no escape hatch", backendMain, "DISABLE_EXPORT_FAILURE_RATE_LIMIT")
 assertIncludes("exports use signed media URLs", backendMain, "def _signed_export_url")
 assertIncludes("uploads use signed media URLs", backendMain, "def _signed_upload_url")
