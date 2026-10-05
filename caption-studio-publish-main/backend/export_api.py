@@ -270,6 +270,25 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
             host._idem_delete(idem_key)
 
 
+    def _persist_batch_receipt(payload, uid, created_at):
+        database = host.get_db()
+        if database is None:
+            if host._IS_PRODUCTION:
+                raise HTTPException(503, "Batch status storage is temporarily unavailable", headers={"Retry-After": "10"})
+            return
+        try:
+            database.collection("export_batches").document(payload["batch_id"]).set({
+                "batch_id": payload["batch_id"],
+                "uid": uid,
+                "job_ids": [item["job_id"] for item in payload["accepted"]],
+                "created_at": created_at,
+                "expire_at": host._retention_deadline(30),
+                "rejected": payload["rejected"],
+            })
+        except Exception as error:
+            raise HTTPException(503, "Batch status storage is temporarily unavailable", headers={"Retry-After": "10"}) from error
+
+
     @router.post("/api/batch/exports", status_code=202)
     async def create_export_batch(req: host.BatchExportRequest, request: Request):
         return await _run_admission(lambda: _create_export_batch(req, request))
@@ -289,19 +308,36 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
             raise HTTPException(503, "Batch export service is temporarily unavailable", headers={"Retry-After": "10"})
 
         idem_key = f"batch:{uid}:{req.idempotency_key}"
+        safe_snapshots = [host._sanitize_export_request_payload(item.model_dump(by_alias=True)) for item in req.exports]
+        request_hash = host.hashlib.sha256(
+            host.json.dumps(safe_snapshots, sort_keys=True, default=str).encode("utf-8")
+        ).hexdigest()
         cached = await to_thread(host._idem_get, idem_key)
-        if cached and cached.get("payload"):
-            return {**cached["payload"], "idempotent_replay": True}
+        if cached:
+            if cached.get("request_hash") and cached["request_hash"] != request_hash:
+                raise HTTPException(409, "This idempotency key was already used for a different export batch.")
+            if cached.get("payload"):
+                if not cached.get("batch_persisted"):
+                    await to_thread(_persist_batch_receipt, cached["payload"], uid, cached.get("ts", host.time.time()))
+                    await to_thread(host._idem_set, idem_key, {**cached, "batch_persisted": True})
+                return {**cached["payload"], "idempotent_replay": True}
+            raise HTTPException(409, "Export batch with this idempotency key is already in progress.", headers={"Retry-After": "2"})
 
         batch_id = str(host.uuid.uuid4())
+        if not await to_thread(host._idem_claim, idem_key, {
+            "status": "in_progress", "ts": host.time.time(),
+            "request_hash": request_hash, "batch_id": batch_id,
+        }):
+            raise HTTPException(409, "Export batch with this idempotency key is already in progress.", headers={"Retry-After": "2"})
         accepted = []
         rejected = []
         for index, item in enumerate(req.exports):
             job_id = str(host.uuid.uuid4())
+            enqueue_attempted = False
             try:
                 await to_thread(host._assert_upload_owner, item.file_id, uid)
                 await to_thread(host._assert_upload_clean, item.file_id)
-                safe_snapshot = host._sanitize_export_request_payload(item.model_dump(by_alias=True))
+                safe_snapshot = safe_snapshots[index]
                 duration_hint = await to_thread(host._source_duration_hint, item.file_id, uid)
                 capacity = host.estimate_render_capacity(duration_hint, safe_snapshot)
                 await to_thread(
@@ -321,6 +357,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
                     queue_name=capacity["queue_name"],
                     request_snapshot=safe_snapshot,
                 )
+                enqueue_attempted = True
                 await to_thread(
                     host._enqueue_export_job,
                     host._render_queue_for(capacity["queue_name"]),
@@ -342,6 +379,13 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
                 )
                 accepted.append({"index": index, "job_id": job_id, "file_id": item.file_id})
             except Exception as error:
+                if enqueue_attempted and not isinstance(error, HTTPException):
+                    # Redis can commit the enqueue and lose its reply. Preserve
+                    # the original job/claim so a retry cannot queue and charge
+                    # a second export; normal job recovery determines its state.
+                    accepted.append({"index": index, "job_id": job_id, "file_id": item.file_id,
+                                     "admission_uncertain": True})
+                    continue
                 try:
                     await to_thread(
                         host._set_export_job, job_id, "failed",
@@ -356,6 +400,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
                 })
 
         if not accepted:
+            await to_thread(host._idem_delete, idem_key)
             raise HTTPException(429, "No batch items could be admitted", headers={"Retry-After": "10"})
         payload = {
             "success": True,
@@ -364,17 +409,12 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
             "rejected": rejected,
             "status_url": f"/api/batch/exports/{batch_id}",
         }
-        await to_thread(host._idem_set, idem_key, {"status": "completed", "ts": host.time.time(), "payload": payload})
-        database = host.get_db()
-        if database is not None:
-            await to_thread(database.collection("export_batches").document(batch_id).set, {
-                "batch_id": batch_id,
-                "uid": uid,
-                "job_ids": [item["job_id"] for item in accepted],
-                "created_at": host.time.time(),
-                "expire_at": host._retention_deadline(30),
-                "rejected": rejected,
-            })
+        receipt = {"status": "completed", "ts": host.time.time(), "payload": payload,
+                   "request_hash": request_hash, "batch_id": batch_id, "batch_persisted": False}
+        # Keep the original jobs replayable even if the Firestore receipt fails.
+        await to_thread(host._idem_set, idem_key, receipt)
+        await to_thread(_persist_batch_receipt, payload, uid, receipt["ts"])
+        await to_thread(host._idem_set, idem_key, {**receipt, "batch_persisted": True})
         host._audit_action("export_batch_enqueued", uid, {"batch_id": batch_id, "count": len(accepted)})
         return payload
 
@@ -394,6 +434,8 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
         jobs = []
         for job_id in batch.get("job_ids") or []:
             job = host._load_export_job(str(job_id)) or {}
+            if job:
+                job = _reconcile_export_job(str(job_id), job)
             jobs.append({
                 "job_id": job_id,
                 "status": job.get("status", "unknown"),

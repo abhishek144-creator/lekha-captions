@@ -270,3 +270,122 @@ class ScratchRecoveryTests(unittest.TestCase):
             self.assertEqual(sweep_render_scratch(directory), 0)
             self.assertTrue(fresh.exists())
             self.assertTrue(unrelated.exists())
+
+
+class BatchIdempotencyTests(unittest.TestCase):
+    def setUp(self):
+        import fakeredis
+
+        self.stack = ExitStack()
+        self.addCleanup(self.stack.close)
+        self.redis = fakeredis.FakeRedis(decode_responses=True)
+        self.database = Mock()
+        self.receipt_write = self.database.collection.return_value.document.return_value.set
+        self.enqueued = self.stack.enter_context(patch.object(main, "_enqueue_export_job"))
+        for name, value in {
+            "_redis_client": self.redis,
+            "_IS_PRODUCTION": True,
+            "_export_queue": SimpleNamespace(),
+        }.items():
+            self.stack.enter_context(patch.object(main, name, value))
+        for name, value in {
+            "_authenticate_media_request": {"uid": "batch-owner"},
+            "_assert_service_available": None,
+            "_assert_upload_owner": None,
+            "_assert_upload_clean": None,
+            "_source_duration_hint": 12,
+            "_set_export_job": None,
+            "_render_queue_for": SimpleNamespace(),
+            "_audit_action": None,
+            "get_db": self.database,
+        }.items():
+            self.stack.enter_context(patch.object(main, name, return_value=value))
+        self.router = create_export_router(main)
+        self.request = Request({"type": "http", "headers": []})
+
+    def batch(self, text="Hello"):
+        return main.BatchExportRequest(idempotency_key="retry-key", exports=[
+            main.ExportRequest(file_id=FILE_ID, captions=[{"id": "1", "text": text, "start_time": 0, "end_time": 1}])
+        ])
+
+    def test_concurrent_same_key_only_enqueues_one_batch(self):
+        barrier = threading.Barrier(2)
+        original_get = main._idem_get
+
+        def simultaneous_get(key):
+            value = original_get(key)
+            barrier.wait(timeout=2)
+            return value
+
+        async def submit():
+            return await asyncio.gather(
+                self.router.create_export_batch(self.batch(), self.request),
+                self.router.create_export_batch(self.batch(), self.request),
+                return_exceptions=True,
+            )
+
+        with patch.object(main, "_idem_get", side_effect=simultaneous_get):
+            results = asyncio.run(submit())
+        self.assertEqual(self.enqueued.call_count, 1)
+        self.assertEqual(sum(isinstance(result, dict) for result in results), 1)
+        errors = [result for result in results if isinstance(result, HTTPException)]
+        self.assertEqual([error.status_code for error in errors], [409])
+
+    def test_same_key_with_different_batch_rejected(self):
+        asyncio.run(self.router.create_export_batch(self.batch(), self.request))
+        with self.assertRaises(HTTPException) as caught:
+            asyncio.run(self.router.create_export_batch(self.batch("Changed"), self.request))
+        self.assertEqual(caught.exception.status_code, 409)
+        self.assertEqual(self.enqueued.call_count, 1)
+
+    def test_retry_repairs_batch_status_receipt_without_enqueuing_again(self):
+        self.receipt_write.side_effect = [RuntimeError("Firestore outage"), None]
+        with self.assertRaises(Exception):
+            asyncio.run(self.router.create_export_batch(self.batch(), self.request))
+        result = asyncio.run(self.router.create_export_batch(self.batch(), self.request))
+        self.assertTrue(result["idempotent_replay"])
+        self.assertEqual(self.enqueued.call_count, 1)
+        self.assertEqual(self.receipt_write.call_count, 2)
+
+    def test_fully_rejected_batch_can_be_retried(self):
+        self.enqueued.side_effect = HTTPException(429, "full")
+        with self.assertRaises(HTTPException):
+            asyncio.run(self.router.create_export_batch(self.batch(), self.request))
+        self.enqueued.side_effect = None
+        result = asyncio.run(self.router.create_export_batch(self.batch(), self.request))
+        self.assertEqual(len(result["accepted"]), 1)
+
+
+    def test_lost_enqueue_reply_preserves_original_job_and_retry_claim(self):
+        self.enqueued.side_effect = RuntimeError("enqueue committed but reply lost")
+        result = asyncio.run(self.router.create_export_batch(self.batch(), self.request))
+        self.assertTrue(result["accepted"][0]["admission_uncertain"])
+        replay = asyncio.run(self.router.create_export_batch(self.batch(), self.request))
+        self.assertEqual(replay["batch_id"], result["batch_id"])
+        self.assertEqual(replay["accepted"], result["accepted"])
+        self.assertEqual(self.enqueued.call_count, 1)
+        self.assertFalse(any(call.args[1] == "failed" for call in main._set_export_job.call_args_list))
+
+    def test_partial_batch_replay_keeps_original_accepted_and_rejected_items(self):
+        req = main.BatchExportRequest(idempotency_key="partial-key", exports=[self.batch().exports[0]] * 2)
+        self.enqueued.side_effect = [None, HTTPException(429, "full")]
+        result = asyncio.run(self.router.create_export_batch(req, self.request))
+        replay = asyncio.run(self.router.create_export_batch(req, self.request))
+        self.assertEqual(len(result["accepted"]), 1)
+        self.assertEqual(len(result["rejected"]), 1)
+        self.assertEqual(replay["accepted"], result["accepted"])
+        self.assertEqual(replay["rejected"], result["rejected"])
+        self.assertEqual(self.enqueued.call_count, 2)
+
+
+    def test_batch_status_recovers_committed_paid_result(self):
+        snapshot = self.database.collection.return_value.document.return_value.get.return_value
+        snapshot.exists = True
+        snapshot.to_dict.return_value = {"uid": "batch-owner", "job_ids": ["paid-job"], "rejected": []}
+        with (patch.object(main, "_authenticate_bearer_request", return_value={"uid": "batch-owner"}),
+              patch.object(main, "_load_export_job", return_value={"status": "failed", "uid": "batch-owner", "file_id": FILE_ID}),
+              patch.object(main, "_load_recorded_export_result", return_value={"success": True})):
+            result = self.router.get_export_batch("batch-id", self.request)
+        self.assertEqual(result["jobs"][0]["status"], "completed")
+        self.assertEqual(result["completed_items"], 1)
+        self.enqueued.assert_not_called()
