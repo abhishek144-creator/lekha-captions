@@ -62,6 +62,11 @@ replicas. Autoscaling must remain disabled until its existing rollout safety
 gate is satisfied. These limits deliberately reject overload and do not promise
 unlimited simultaneous exports.
 
+Follow-up: the IaC default previously set `RENDER_AUTOSCALE_ENABLED=1` despite
+this safety gate. It now defaults to `0`, with a deployment-default regression
+check, so a future config apply cannot silently re-enable the unverified
+controller. This is a source change; no live setting was changed.
+
 Before broad launch, deploy the reviewed candidate through the repository's
 existing cost gate and verify a small approved live pilot:
 
