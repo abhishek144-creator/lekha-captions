@@ -65,6 +65,10 @@ def upload_file(
         "ContentType": content_type,
         "Metadata": {str(key): str(value) for key, value in (metadata or {}).items()},
     }
+    if remote_path.startswith("exports/"):
+        # Preserve attachment behavior even on S3-compatible providers that
+        # ignore a GET response-header override.
+        extra_args["ContentDisposition"] = download_disposition()
     client.upload_file(local_path, S3_BUCKET, remote_path, ExtraArgs=extra_args)
     return True
 
@@ -232,12 +236,26 @@ def object_metadata(remote_path: str) -> Dict[str, str] | None:
         raise
 
 
-def signed_download_url(remote_path: str, expiration_seconds: int) -> str | None:
+def download_disposition(filename="captioned_video.mp4"):
+    from urllib.parse import quote
+    name = str(filename or "captioned_video.mp4").replace("\\", "/").split("/")[-1]
+    name = "".join(char for char in name if ord(char) >= 32 and ord(char) != 127)[:180]
+    return 'attachment; filename="captioned_video.mp4"; filename*=UTF-8\'\'' + quote(name or "captioned_video.mp4", safe="")
+
+
+def signed_download_url(remote_path: str, expiration_seconds: int,
+                        download_filename="captioned_video.mp4") -> str | None:
     client = _client()
     if client is None:
         return None
     return client.generate_presigned_url(
         "get_object",
-        Params={"Bucket": S3_BUCKET, "Key": remote_path},
+        Params={
+            "Bucket": S3_BUCKET, "Key": remote_path,
+            # Cross-origin anchors cannot force a download themselves. Let
+            # storage send an attachment so the browser streams directly to disk.
+            **({"ResponseContentDisposition": download_disposition(download_filename)}
+               if remote_path.startswith("exports/") else {}),
+        },
         ExpiresIn=max(60, min(int(expiration_seconds), 7 * 24 * 3600)),
     )
