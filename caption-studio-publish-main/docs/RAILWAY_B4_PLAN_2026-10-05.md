@@ -4,8 +4,10 @@ The owner approved the rollout and this finite staging plan, authorized its
 metered AI calls without a separate $10 allowance, and then changed the Railway
 cap from $50 to **$25**. The live cap is verified at $25 with a $10 custom email
 alert. Deployment and staging remain conditional on PR #35's release gate.
-GitHub currently blocks the failed-job retry because of account payments or
-spending limits. Approval and estimates are not evidence that B4 ran.
+The owner separately approved increasing GitHub Actions' monthly budget from
+$7 to $10, retaining its hard stop and alerts. The previous PR revision passed
+all 13 hosted checks after retry; the final fixes still require fresh CI.
+Approval and estimates are not evidence that B4 ran.
 
 Read-only inventory: Railway Hobby project `lekha-captions`
 (`073ba0e0-3fb7-4aec-89eb-36d97c2f2074`), Singapore region,
@@ -51,8 +53,9 @@ There is no per-environment billing cap. The workspace hard cap is **$25**,
 with a **$10 custom email alert** and Railway's automatic reminders at
 **$18.75/$22.50** (75%/90%). This does not guarantee monthly availability. Reaching the hard
 cap [takes all workloads offline](https://docs.railway.com/pricing/cost-control).
-AI/storage/database charges are separate. GitHub Actions keeps its existing
-budget; no CI budget increase is proposed.
+AI/storage/database charges are separate. GitHub Actions' independently
+approved $10 monthly budget does not change Railway's $25 cap or create a
+separate staging allowance.
 
 Idle monthly resources remain Redis/volume, storage and any retained provider
 state; sleeping workers avoid warm-worker RAM use but do not make total spend

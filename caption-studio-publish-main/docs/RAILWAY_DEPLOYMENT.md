@@ -234,17 +234,18 @@ Keep autoscaling disabled in API and cron until this live check passes.
 
 ## Staging measurement runbook (2026-10-05)
 
-No Railway staging benchmark or authenticated burst was performed for this
-change. The read-only inventory on 2026-10-05 confirms the existing $15/$8
-production cap/alert and sleeping one-replica services; that is not staging
-acceptance. Staging identities and an approved staging test budget are required.
+No Railway staging benchmark or authenticated burst has been performed yet.
+The owner approved the finite rollout and staging plan, including metered AI
+calls, and revised the Railway workspace cap to $25 with a $10 custom alert.
+Live readback verifies these settings. PR #35 must pass its final release gate
+before its merge, production apply and isolated staging creation.
 Existing GCP measurements in `DRILL_LOG.md` do not establish Railway capacity.
 Keep the current work-ratio defaults until measurements justify a change.
 
 1. Use an isolated staging environment at the reviewed Git SHA. Record image
    digest, region, replica count, encoder, FFmpeg/Chromium versions and CPU/RAM
-   limits. Obtain owner approval for the finite test budget, expiry and cleanup
-   before changing paid capacity. Keep Hobby maxima at five replicas, eight
+   limits. Follow the approved finite time/job limits and mandatory cleanup in
+   `RAILWAY_B4_PLAN_2026-10-05.md`. Keep Hobby maxima at five replicas, eight
    vCPU/eight GiB each. Use one render replica for the CPU comparison.
 2. On the actual render image, compare 4 vCPU/8 GiB and 8 vCPU/8 GiB using
    identical 60-second, 1080p, 30 FPS fixtures and five measured repetitions:
@@ -296,8 +297,8 @@ Keep the current work-ratio defaults until measurements justify a change.
 ### Owner launch checklist
 
 - [x] Select and approve the launch profile: owner retained five-replica ceilings, sleeping workers and autoscaling gated on live acceptance, then revised the Railway cap to $25 on 2026-10-05.
-- [x] Approve the priced live rollout/test plan and verify the revised $25/$10 live cap/alert. There is no separate $10 test allowance; the plan's metered AI calls are authorized. Deployment still waits for PR #35's release gate; GitHub account payments/spending limits currently block the failed-job retry.
-- [ ] Resolve GitHub Actions billing/minutes if jobs cannot obtain a runner.
+- [x] Approve the priced live rollout/test plan and verify the revised $25/$10 live cap/alert. There is no separate $10 test allowance; the plan's metered AI calls are authorized. Deployment still waits for PR #35's final release gate.
+- [x] Resolve GitHub Actions billing/minutes: owner approved increasing the monthly Actions budget from $7 to $10, retaining its hard stop and alerts. UI readback verified the saved budget and the previous PR #35 revision passed all 13 checks on retry. Final code additions require fresh CI before merging.
 - [x] Merge PR #28 → #30 → #31 → #32 → #33 → #34 in order. Close conflicting #29 in favor of the port in #35.
 - [ ] Pass #35's release gate, merge it, verify the reviewed 0-addition/32-change/0-deletion production plan, then apply it.
 - [ ] Confirm transcription logs show clamd ready after startup; set localhost `CLAMAV_HOST` only on transcription.
