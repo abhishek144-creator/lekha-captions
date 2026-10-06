@@ -388,7 +388,7 @@ export default function Dashboard() {
   const mediaRefreshInFlightRef = useRef(false);
   const [cloudSaveMessage, setCloudSaveMessage] = useState('')
   const [localRecoveryDraft, setLocalRecoveryDraft] = useState(null)
-  const { cloudReady, saveCloudDraft } = useCloudProjects({
+  const { cloudReady, cloudDraft, saveCloudDraft } = useCloudProjects({
     currentUser,
     getAuthToken: getEffectiveAuthToken,
     projectId,
@@ -1979,6 +1979,20 @@ export default function Dashboard() {
               <p className="text-gray-500 mb-6">
                 Upload your short-form video (best for 15-180 seconds) and we'll generate professional captions instantly.
               </p>
+              {localRecoveryDraft && (
+                <div className="mb-6 rounded border border-yellow-500/30 p-4 text-left" role="status">
+                  <p className="mb-3 text-sm text-gray-300">Your previous draft is available on this browser.</p>
+                  <div className="flex flex-wrap gap-3">
+                    <Button onClick={() => applyLocalDraft(localRecoveryDraft)}>Continue saved draft</Button>
+                    <Button variant="outline" onClick={() => downloadDraft(localRecoveryDraft)}>Download draft backup</Button>
+                  </div>
+                </div>
+              )}
+              {cloudReady && cloudDraft && currentUser && !localRecoveryDraft && (
+                <Button className="mb-4" onClick={() => applyLocalDraft({ ...cloudDraft, ownerUid: currentUser.uid })}>
+                  Continue account draft
+                </Button>
+              )}
               <Button
                 onClick={() => {
                   if (localRecoveryDraft) discardLocalDraft()
