@@ -121,6 +121,8 @@ jobs:
           docker run --rm --entrypoint clamscan lekha-${{ matrix.target }} --version
           docker run --rm --entrypoint sh lekha-${{ matrix.target }} -c 'ls /opt/clamav-db && (test -s /opt/clamav-db/main.cvd || test -s /opt/clamav-db/main.cld) && python3 scripts/verify_clamav_signatures.py /opt/clamav-db'
           docker run --rm --entrypoint clamscan lekha-${{ matrix.target }} --database=/opt/clamav-db --no-summary /etc/hostname
+      - name: Verify maximum upload scans, threat detection and incomplete scans
+        run: docker run --rm --entrypoint python3 lekha-${{ matrix.target }} -m scripts.verify_clamav_runtime
 
   marketing:
     runs-on: ubuntu-latest
