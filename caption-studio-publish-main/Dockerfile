@@ -3,9 +3,16 @@ ARG APP_RELEASE
 # its image with LEKHA_SERVICE_TARGET=api|transcription|render (default render).
 ARG LEKHA_SERVICE_TARGET=render
 
-# The official image is rebuilt with current signatures; copying them avoids
-# freshclam at build time, which ClamAV's CDN rate-limits on shared builders.
+# Seed from the official image, then perform one bounded incremental update.
+# The upstream image can be older than the accepted seven-day database age.
+# Change this date (or pass the build arg) during the required weekly refresh;
+# it invalidates the update layer without starting a runtime updater daemon.
 FROM clamav/clamav-debian:stable AS clamav-signatures
+ARG CLAMAV_SIGNATURES_REFRESH=2026-10-06
+RUN test -n "$CLAMAV_SIGNATURES_REFRESH" \
+    && timeout 180 freshclam --stdout --datadir=/var/lib/clamav --user=root \
+    && mkdir /prepared-db \
+    && find /var/lib/clamav -maxdepth 1 -type f \( -name '*.cvd' -o -name '*.cld' \) -exec cp '{}' /prepared-db/ \;
 
 FROM python:3.11-slim-bookworm AS python-runtime
 ARG APP_RELEASE
@@ -18,14 +25,16 @@ WORKDIR /app
 COPY backend/requirements.lock backend/requirements.lock
 RUN python3 -m pip install --no-cache-dir --require-hashes -r backend/requirements.lock
 # Used with CLAMAV_SCAN_CMD="clamscan --stdout --database=/opt/clamav-db".
-COPY --from=clamav-signatures /var/lib/clamav/*.cvd /opt/clamav-db/
+COPY --from=clamav-signatures /prepared-db/ /opt/clamav-db/
+COPY scripts/verify_clamav_signatures.py /tmp/verify_clamav_signatures.py
 # Both API and transcription builds must contain clamscan and its signature DB.
 # Transcription workers also run clamd (deploy/clamav/clamd.conf) so the
 # database stays loaded between scans.
 RUN clamscan --version \
     && clamd --version \
-    && test -s /opt/clamav-db/main.cvd \
-    && test -s /opt/clamav-db/daily.cvd \
+    && (test -s /opt/clamav-db/main.cvd || test -s /opt/clamav-db/main.cld) \
+    && python3 /tmp/verify_clamav_signatures.py /opt/clamav-db \
+    && rm /tmp/verify_clamav_signatures.py \
     && ls /opt/clamav-db
 COPY . .
 # Release identity: the app reports this as APP_BUILD_TIME unless it is set.
