@@ -20,22 +20,6 @@ const repoRoot = path.resolve(import.meta.dirname, '..')
 const EXCEPTIONS = [
   {
     workspace: '.',
-    package: '@grpc/grpc-js',
-    id: 'GHSA-m9gg-hp2v-232j',
-    reviewBy: '2026-11-02',
-    reason: 'Pinned ~1.9.0 by @firebase/firestore with no patched 1.9.x. It is the Node-only transport; '
-      + 'only browser code imports Firebase and the Vite bundle uses WebChannel, so grpc-js never ships or runs.',
-  },
-  {
-    workspace: '.',
-    package: '@grpc/grpc-js',
-    id: 'GHSA-f596-whhp-79r4',
-    reviewBy: '2026-11-02',
-    reason: 'Server-side grpc-js behaviour in the same Node-only transport as GHSA-m9gg-hp2v-232j; '
-      + 'not present in the browser bundle.',
-  },
-  {
-    workspace: '.',
     package: 'braces',
     id: 'GHSA-vfj7-8cjw-p6xm',
     reviewBy: '2026-11-02',
