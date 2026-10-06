@@ -11,7 +11,10 @@ const source = (await fs.readFile(
 const exportRendererSource = await fs.readFile(
   path.join(root, 'scripts', 'render_template_overlay.mjs'),
   'utf8',
-);
+) + '\n' + await fs.readFile(
+  path.join(root, 'scripts', 'render_template_page_runtime.mjs'),
+  'utf8',
+)
 const browserRuntimeSource = await fs.readFile(
   path.join(root, 'scripts', 'render_browser_runtime.mjs'),
   'utf8',

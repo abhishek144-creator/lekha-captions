@@ -2,6 +2,13 @@
 
 Keep one row per completed drill.
 
+Railway 10-user and 100-user authenticated bursts remain **pending** as of
+2026-10-05. Follow the [staging measurement runbook](RAILWAY_DEPLOYMENT.md#staging-measurement-runbook-2026-10-05).
+Record queue wait, worker transcription/render execution, end-to-end P50/P95,
+failure/admission rates and cold/warm state, with the SHA and durable evidence.
+The historical rows below describe earlier deployments and do not verify the
+new Railway capacity settings.
+
 | Date (UTC) | Drill Type | Scenario | Result | Evidence Link | Owner |
 |---|---|---|---|---|---|
 | 2026-08-04 | Queue/worker recovery | Restarted the staging worker and verified Redis, RQ queue listening, and scheduler recovery | PASS | [Staging drill evidence](STAGING_DRILL_EVIDENCE_2026-08-04.md#queueworker-recovery--pass) | Launch operator (private roster) |

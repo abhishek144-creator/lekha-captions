@@ -2,6 +2,7 @@ import os
 import json
 import hashlib
 import math
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 import firebase_admin
@@ -104,13 +105,59 @@ def init_firebase():
 # Initialize on import
 init_firebase()
 
+# check_revoked=True costs a Firebase Auth network call per request. Export
+# status is polled every few seconds by every waiting customer, so a verified
+# token is reused briefly. A revoked or disabled account is rejected within
+# this window, and never after the token's own expiry.
+TOKEN_CACHE_SECONDS = max(0, int(os.environ.get("FIREBASE_TOKEN_CACHE_SECONDS", "60") or 0))
+TOKEN_CACHE_MAX_ENTRIES = 10_000
+_token_cache: dict = {}
+_token_cache_lock = threading.Lock()
+
+
+def _cached_token(cache_key: str):
+    now = time.monotonic()
+    with _token_cache_lock:
+        entry = _token_cache.get(cache_key)
+        if entry is None:
+            return None
+        if entry[0] <= now:
+            _token_cache.pop(cache_key, None)
+            return None
+        return dict(entry[1])
+
+
+def _remember_token(cache_key: str, decoded_token: dict):
+    lifetime = min(TOKEN_CACHE_SECONDS, 60)
+    expires_at = decoded_token.get("exp")
+    if isinstance(expires_at, (int, float)):
+        lifetime = min(lifetime, expires_at - time.time())
+    if lifetime <= 0:
+        return
+    now = time.monotonic()
+    with _token_cache_lock:
+        if len(_token_cache) >= TOKEN_CACHE_MAX_ENTRIES:
+            for key in [key for key, entry in _token_cache.items() if entry[0] <= now]:
+                _token_cache.pop(key, None)
+            while len(_token_cache) >= TOKEN_CACHE_MAX_ENTRIES:
+                _token_cache.pop(next(iter(_token_cache)))
+        _token_cache[cache_key] = (now + lifetime, dict(decoded_token))
+
+
 def verify_token(id_token: str):
     if IS_TEST_ENV and not firebase_admin._apps:
         return None
+    cache_key = hashlib.sha256(id_token.encode("utf-8")).hexdigest() if id_token and TOKEN_CACHE_SECONDS else ""
+    if cache_key:
+        cached = _cached_token(cache_key)
+        if cached is not None:
+            return cached
     try:
         # check_revoked=True prevents a stolen token from remaining usable after
         # the account owner signs out all sessions or an administrator revokes it.
         decoded_token = auth.verify_id_token(id_token, check_revoked=True)
+        if cache_key and isinstance(decoded_token, dict):
+            _remember_token(cache_key, decoded_token)
         return decoded_token
     except Exception as e:
         print(f"Token verification failed: {e}")
@@ -146,10 +193,10 @@ def get_storage_bucket():
         return None
 
 
-def _signed_gcs_download_url(blob, expiration):
+def _signed_gcs_download_url(blob, expiration, **options):
     """Use IAM signBlob on VMs, which have token-only GCE credentials."""
     if not GCS_SIGNING_SERVICE_ACCOUNT:
-        return blob.generate_signed_url(expiration=expiration, version="v4")
+        return blob.generate_signed_url(expiration=expiration, version="v4", **options)
     credentials, _ = google_auth_default(
         scopes=["https://www.googleapis.com/auth/cloud-platform"]
     )
@@ -159,6 +206,7 @@ def _signed_gcs_download_url(blob, expiration):
         version="v4",
         service_account_email=GCS_SIGNING_SERVICE_ACCOUNT,
         access_token=credentials.token,
+        **options,
     )
 
 
@@ -894,7 +942,8 @@ def delete_render_cache(uid: str, cache_key: str) -> bool:
         return False
 
 
-def signed_export_download_url(remote_path: str, ttl_seconds: int = 600):
+def signed_export_download_url(remote_path: str, ttl_seconds: int = 600,
+                               download_filename="captioned_video.mp4"):
     """Return a short-lived private storage URL; callers must authorize ownership first."""
     safe_remote = str(remote_path or "")
     if not safe_remote.startswith("exports/") or ".." in safe_remote.split("/"):
@@ -902,12 +951,17 @@ def signed_export_download_url(remote_path: str, ttl_seconds: int = 600):
     ttl = max(60, min(int(ttl_seconds), 900))
     try:
         if s3_is_configured():
-            url = s3_signed_download_url(safe_remote, ttl)
+            url = s3_signed_download_url(safe_remote, ttl, download_filename)
         else:
             bucket = get_storage_bucket()
             if not bucket:
                 return None
-            url = _signed_gcs_download_url(bucket.blob(safe_remote), timedelta(seconds=ttl))
+            try:
+                from .media_storage import download_disposition
+            except ImportError:
+                from media_storage import download_disposition
+            url = _signed_gcs_download_url(bucket.blob(safe_remote), timedelta(seconds=ttl),
+                                           response_disposition=download_disposition(download_filename))
         return url if isinstance(url, str) and url.startswith("https://") else None
     except Exception:
         # A missing signing permission must preserve the existing download path.

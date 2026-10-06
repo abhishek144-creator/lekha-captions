@@ -14,9 +14,11 @@ from sarvamai import SarvamAI
 try:
     from .media_commands import run_media_command
     from .provider_health import transcription_provider_health
+    from .render_scratch import RenderScratch
 except ImportError:
     from media_commands import run_media_command
     from provider_health import transcription_provider_health
+    from render_scratch import RenderScratch
 
 TRANSCRIPTION_PROVIDER_TIMEOUT_SECONDS = max(
     15,
@@ -1428,9 +1430,8 @@ class VideoProcessor:
         fps = self._get_export_fps(style)
         duration = self._get_video_duration(input_p)
         temp_root = os.path.join(self.project_root, ".render_tmp")
-        os.makedirs(temp_root, exist_ok=True)
-        temp_dir = os.path.join(temp_root, f"caption-template-overlay-{uuid.uuid4().hex}")
-        os.makedirs(temp_dir, exist_ok=True)
+        scratch = RenderScratch(temp_root)
+        temp_dir = scratch.path
         try:
             payload_path = os.path.join(temp_dir, "payload.json")
             overlay_dir = os.path.join(temp_dir, "overlay_frames")
@@ -1523,7 +1524,7 @@ class VideoProcessor:
                 print(f"[Template DOM] Output file size: {os.path.getsize(output_p)} bytes")
             return {"success": True}
         finally:
-            shutil.rmtree(temp_dir, ignore_errors=True)
+            scratch.close()
 
     def _get_video_dimensions(self, video_path):
         try:

@@ -52,6 +52,9 @@ import {
 
 import {
   captionHasCreativelyPositionedWords,
+  computeEffectCSS,
+  computeWordEffectCSS,
+  wordHasCreativePosition,
   wireSourceTemplateWordEditing,
 } from './videoPlayerWordEditing.js';
 import {
@@ -3318,3 +3321,250 @@ export const MemoizedVideo = React.memo(function MemoizedVideo({
   // Only re-render when the video source changes — nothing else should touch the DOM
   return prev.videoUrl === next.videoUrl;
 });
+
+// Stateless player styling helpers.
+export const formatTime = (seconds) => {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
+
+export const getAnimationStyle = (animationType, speed = 1) => {
+  // [keyframe-name, duration-ms, timing, fill]
+  const defs = {
+    // General
+    'rise':        ['rise',        400,  'ease-out',              'both'],
+    'pan':         ['pan',         500,  'ease-in-out',           'both'],
+    'fade':        ['fade',        500,  'ease-in',               'both'],
+    'pop':         ['pop',         300,  'ease-out',              'both'],
+    'wipe':        ['wipe',        400,  'ease-out',              'both'],
+    'blur':        ['blur',        500,  'ease-in-out',           'both'],
+    'succession':  ['succession',  400,  'ease-out',              'both'],
+    'breathe':     ['breathe',    1500,  'ease-in-out',           'infinite'],
+    'baseline':    ['baseline',    400,  'ease-out',              'both'],
+    'drift':       ['drift',       600,  'ease-in-out',           'both'],
+    'tectonic':    ['tectonic',    500,  'ease-out',              'both'],
+    'tumble':      ['tumble',      600,  'ease-in-out',           'both'],
+    // Advanced – Basic
+    'zoom_in':     ['zoom_in',     400,  'ease-out',              'both'],
+    'zoom_out':    ['zoom_out',    400,  'ease-out',              'both'],
+    'fade_in':     ['fade_in',     400,  'ease-out',              'both'],
+    'slide_up':    ['slide_up',    400,  'ease-out',              'both'],
+    'slide_down':  ['slide_down',  400,  'ease-out',              'both'],
+    'slide_left':  ['slide_left',  400,  'ease-out',              'both'],
+    'slide_right': ['slide_right', 400,  'ease-out',              'both'],
+    'fadeInUp':    ['fadeInUp',    500,  'ease-out',              'both'],
+    'fadeInDown':  ['fadeInDown',  500,  'ease-out',              'both'],
+    'slideInRight':['slideInRight',500,  'ease-out',              'both'],
+    'flipInX':     ['flipInX',     600,  'ease-out',              'both'],
+    'flipInY':     ['flipInY',     600,  'ease-out',              'both'],
+    'blurIn':      ['blurIn',      500,  'ease-out',              'both'],
+    'zoomInFade':  ['zoomInFade',  500,  'ease-out',              'both'],
+    'bounceInUp':  ['bounceInUp',  600,  'ease-out',              'both'],
+    'skewLeft':    ['skewLeft',    400,  'ease-out',              'both'],
+    // Advanced – Kinetic
+    'missile':     ['missile',     500,  'cubic-bezier(0.22,1,0.36,1)', 'both'],
+    'shockwave':   ['shockwave',   500,  'ease-out',              'both'],
+    'typewriter':  ['typewriter',  600,  'steps(20,end)',          'both'],
+    'slamDown':    ['slamDown',    500,  'cubic-bezier(0.22,1,0.36,1)', 'both'],
+    'fireCharge':  ['fireCharge',  500,  'ease-out',              'both'],
+    'stampede':    ['stampede',    500,  'cubic-bezier(0.22,1,0.36,1)', 'both'],
+    'recoil':      ['recoil',      400,  'ease-out',              'both'],
+    // Advanced – Cinematic
+    'irisOpen':    ['irisOpen',    600,  'ease-out',              'both'],
+    'parallaxRise':['parallaxRise',700,  'ease-out',              'both'],
+    'goldenRatio': ['goldenRatio', 600,  'ease-out',              'both'],
+    'curtainSplit':['curtainSplit',500,  'ease-out',              'both'],
+    'prestige':    ['prestige',   1000,  'ease-out',              'both'],
+    'fadeThroughBlack':['fadeThroughBlack',800,'ease-in-out',     'both'],
+    'depthPull':   ['depthPull',   600,  'ease-out',              'both'],
+    'slowBurn':    ['slowBurn',   1500,  'ease-in',               'both'],
+    'diagonalWipe':['diagonalWipe',500,  'ease-out',              'both'],
+    // Advanced – Playful
+    'confettiPop': ['confettiPop', 500,  'ease-out',              'both'],
+    'stickerSlap': ['stickerSlap', 400,  'cubic-bezier(0.34,1.56,0.64,1)', 'both'],
+    'wobbleEntry': ['wobbleEntry', 600,  'ease-out',              'both'],
+    'balloonFloat':['balloonFloat',600,  'ease-out',              'both'],
+    'colorSplash': ['colorSplash', 500,  'ease-out',              'both'],
+  };
+  const def = defs[animationType];
+  if (!def) return 'none';
+  const [name, ms, timing, fill] = def;
+  const s = Math.max(0.1, speed || 1);
+  const duration = fill === 'infinite' ? `${ms}ms` : `${Math.round(ms / s)}ms`;
+  return `${name} ${duration} ${timing} ${fill}`;
+};
+
+export const getTextElementDisplayMetrics = (style = {}) => ({
+  backgroundPadding: Math.max(1, Math.round(((style.padding ?? 6) || 6) * 0.58)),
+  backgroundWidthMultiplier: Math.max(0.94, style.backgroundHMultiplier || 1.05),
+  textPadY: Math.max(1, Math.round(((style.padding ?? 6) || 6) * 0.55)),
+  textPadX: 6,
+});
+
+export const getTextElementEffectCSS = (style = {}) => {
+  const effectStyles = computeEffectCSS(style);
+  return {
+    textShadow: effectStyles.textShadow || (style.hasShadow && !style.textGradient ? `${style.shadowOffsetX || 0}px ${style.shadowOffsetY || 2}px ${style.shadowBlur || 4}px ${style.shadowColor || 'rgba(0,0,0,0.8)'}` : undefined),
+    WebkitTextStroke: effectStyles.WebkitTextStroke || (style.hasStroke === true && !style.textGradient ? `${style.strokeWidth || 0.5}px ${style.strokeColor || '#000000'}` : '0px transparent'),
+  };
+};
+
+export const getWordAnimationStyle = (animationType, speed = 1) => {
+  const safeSpeed = Math.max(0.25, Number(speed) || 1);
+  const duration = (seconds) => `${+(seconds / safeSpeed).toFixed(2)}s`;
+  const animations = {
+    'rise': `word-rise ${duration(0.4)} ease-out both`,
+    'pan': `word-pan ${duration(0.5)} ease-in-out both`,
+    'fade': `fade ${duration(0.5)} ease-in both`,
+    'pop': `word-pop ${duration(0.3)} ease-out both`,
+    'wipe': `wipe ${duration(0.4)} ease-out both`,
+    'blur': `blur ${duration(0.5)} ease-in-out both`,
+    'succession': `word-succession ${duration(0.4)} ease-out both`,
+    'breathe': `word-breathe ${duration(1.5)} ease-in-out infinite`,
+    'baseline': `word-baseline ${duration(0.4)} ease-out both`,
+    'drift': `word-drift ${duration(0.6)} ease-in-out both`,
+    'tectonic': `word-tectonic ${duration(0.5)} ease-out both`,
+    'tumble': `word-tumble ${duration(0.6)} ease-in-out both`
+  };
+  return animations[animationType] || 'none';
+};
+
+export const getCptWordMotionStyle = (caption, wordStyle = {}) => {
+  if (!captionHasCreativelyPositionedWords(caption) || !wordHasCreativePosition(wordStyle)) return null
+
+  // CPT words need a stable base so their manually authored placement is not
+  // disturbed by template motion. A motion chosen in the floating word editor
+  // is intentional, though, and must be allowed to animate on its inner visual
+  // span instead of being overwritten by this CPT safeguard.
+  const hasSelectedWordAnimation = Boolean(
+    wordStyle?.animation && wordStyle.animation !== 'none',
+  )
+  if (hasSelectedWordAnimation) return null
+
+  return {
+    animation: 'none',
+    animationDelay: '0s',
+    animationPlayState: 'paused',
+    transition: 'none',
+    transform: 'none',
+    clipPath: 'none',
+    filter: 'none',
+  }
+}
+
+export const renderWordTextContent = (word, wordStyle = {}, fallbackColor = 'inherit') => {
+  const decoration = wordStyle.textDecoration || 'none';
+  const textGradient = typeof wordStyle.textGradient === 'string' ? wordStyle.textGradient.trim() : '';
+  const hasGradient = Boolean(textGradient);
+  const showUnderline = decoration === 'underline';
+  const showLineThrough = decoration === 'line-through';
+  const shouldWrapWord = Boolean(wordStyle.boxWidth);
+
+  return (
+    <span
+      style={{
+        position: 'relative',
+        display: shouldWrapWord ? 'block' : 'inline-block',
+        width: shouldWrapWord ? '100%' : undefined,
+        maxWidth: '100%',
+        whiteSpace: 'inherit',
+        overflowWrap: 'inherit',
+        wordBreak: 'inherit',
+        transformOrigin: 'center center',
+        ...(showLineThrough ? { textDecoration: 'line-through' } : { textDecoration: 'none' }),
+        ...computeWordEffectCSS(wordStyle),
+        ...(hasGradient ? {
+          background: textGradient,
+          backgroundImage: textGradient,
+          backgroundSize: '100% 100%',
+          backgroundRepeat: 'no-repeat',
+          backgroundPosition: 'center',
+          WebkitBackgroundClip: 'text',
+          backgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+          color: 'transparent',
+        } : {
+          color: wordStyle.color || fallbackColor,
+        }),
+      }}
+    >
+      {word}
+      {showUnderline && (
+        <span
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: '0.06em',
+            height: '0.08em',
+            borderRadius: 999,
+            background: hasGradient ? textGradient : (wordStyle.color || fallbackColor || 'currentColor'),
+          }}
+        />
+      )}
+    </span>
+  );
+};
+
+export const renderAnimatedDetachedWordContent = (
+  word,
+  wordStyle = {},
+  fallbackColor = 'inherit',
+  animation = 'none',
+  extraClassName = '',
+) => {
+  const animationStyle = typeof animation === 'string'
+    ? { animation }
+    : (animation || { animation: 'none' });
+  const shouldWrapWord = Boolean(wordStyle.boxWidth);
+  const wrapStyle = {
+    whiteSpace: shouldWrapWord ? 'normal' : 'nowrap',
+    overflowWrap: shouldWrapWord ? 'anywhere' : 'normal',
+    wordBreak: shouldWrapWord ? 'break-all' : 'normal',
+    textAlign: 'center',
+  };
+
+  return (
+    <span
+      className={extraClassName}
+      style={{
+        position: 'relative',
+        display: 'inline-block',
+        width: shouldWrapWord ? '100%' : 'auto',
+        maxWidth: shouldWrapWord ? '100%' : 'none',
+        ...wrapStyle,
+      }}
+    >
+      <span
+        style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          transformOrigin: 'center center',
+          display: 'inline-block',
+          width: shouldWrapWord ? '100%' : 'auto',
+          maxWidth: shouldWrapWord ? '100%' : 'none',
+          ...animationStyle,
+          pointerEvents: 'none',
+          ...wrapStyle,
+        }}
+      >
+        {renderWordTextContent(word, wordStyle, fallbackColor)}
+      </span>
+      <span
+        aria-hidden="true"
+        style={{
+          visibility: 'hidden',
+          display: 'inline-block',
+          width: shouldWrapWord ? '100%' : 'auto',
+          ...wrapStyle,
+        }}
+      >
+        {word}
+      </span>
+    </span>
+  );
+};

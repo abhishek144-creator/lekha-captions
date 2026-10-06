@@ -22,7 +22,9 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
         # as an unbounded Firestore write amplifier (cost/DoS), and reject reserved
         # server counter names so it can't poison the release gate / alerting.
         client_ip = host._client_rate_key(request)
-        allowed, retry_after, remaining = host._check_rate(host._analytics_rate, client_ip, host.ANALYTICS_RATE_LIMIT)
+        allowed, retry_after, remaining = await host.asyncio.to_thread(
+            host._check_rate, host._analytics_rate, client_ip, host.ANALYTICS_RATE_LIMIT,
+        )
         host._apply_rate_headers(response, host.ANALYTICS_RATE_LIMIT, remaining, retry_after)
         if not allowed:
             raise HTTPException(status_code=429, detail="Too many analytics events. Please slow down.")
@@ -38,9 +40,9 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
         payload = body.get("payload") or {}
         if not isinstance(payload, dict):
             raise HTTPException(status_code=400, detail="Invalid analytics payload")
-        host._track_event(event, payload)
+        await host.asyncio.to_thread(host._track_event, event, payload)
         if event == "funnel.captions.ready":
-            host._record_client_time_to_first_caption(payload.get("timeToFirstCaptionMs"))
+            await host.asyncio.to_thread(host._record_client_time_to_first_caption, payload.get("timeToFirstCaptionMs"))
         return {"success": True}
 
 
@@ -225,7 +227,7 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
 
 
     @router.get("/api/slo/status")
-    async def slo_status(request: Request):
+    def slo_status(request: Request):
         # Detailed SLO targets/actuals — admin only. Health probes should use
         # /api/health/readiness (boolean) instead.
         if not host._is_admin_token(request=request):
@@ -265,7 +267,7 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
 
 
     @router.get("/api/feature-flags")
-    async def feature_flags(request: Request):
+    def feature_flags(request: Request):
         host._validate_feature_flag_safety("feature_flags")
         token = request.headers.get("authorization", "").replace("Bearer ", "").strip()
         decoded = host.verify_token(token) if token else None

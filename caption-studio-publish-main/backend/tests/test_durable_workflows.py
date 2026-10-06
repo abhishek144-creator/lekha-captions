@@ -135,6 +135,19 @@ class DurableWorkflowTests(unittest.TestCase):
         queue.enqueue.assert_called_once()
         self.assertIsNotNone(self.jobs.claim("a", job["job_id"]))
 
+    def test_targeted_dispatch_delivers_only_the_admitted_job(self):
+        first = self.jobs.create("a", self.settings)
+        second = self.jobs.create("b", self.settings)
+        delivery = SimpleNamespace(id="delivery-1", get_status=lambda **_: "queued")
+        queue = SimpleNamespace(enqueue=Mock(return_value=delivery), fetch_job=Mock(return_value=None))
+        self.jobs.dispatch(queue, second["job_id"])
+        queue.enqueue.assert_called_once()
+        self.assertEqual(queue.enqueue.call_args.args[1:], ("b", second["job_id"]))
+        self.jobs.dispatch(queue, "missing-job")
+        queue.enqueue.assert_called_once()
+        self.jobs.dispatch(queue)
+        self.assertEqual(queue.enqueue.call_args.args[1:], ("a", first["job_id"]))
+
     def test_lost_queue_delivery_can_be_dispatched_again_before_claim(self):
         job = self.jobs.create("a", self.settings)
         delivery = SimpleNamespace(id="delivery-1", get_status=lambda **_: "queued")

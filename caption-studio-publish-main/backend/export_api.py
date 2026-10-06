@@ -5,6 +5,7 @@ so there is one copy of each helper and test patches on ``main`` keep applying.
 """
 
 from types import ModuleType, SimpleNamespace
+import anyio
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Response
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
@@ -13,8 +14,25 @@ from fastapi import Request
 from fastapi import APIRouter
 
 
+# RQ keeps each job's pickled arguments (the full editor snapshot) until these
+# expire. Job status and results live in the export job record and the dead
+# letter store, so long RQ retention only consumed Redis memory.
+EXPORT_RQ_RESULT_TTL_SECONDS = 3600
+EXPORT_RQ_FAILURE_TTL_SECONDS = 24 * 3600
+
+
 def create_export_router(host: ModuleType) -> SimpleNamespace:
     router = APIRouter()
+    admission_limiter = None
+
+    async def _run_admission(callback):
+        nonlocal admission_limiter
+        if admission_limiter is None:
+            admission_limiter = anyio.CapacityLimiter(16)
+        # Bound concurrent admissions while retaining PR #28's per-call I/O
+        # offloading and background worker wake/resize behavior.
+        async with admission_limiter:
+            return await callback()
 
     def _render_queue_for(queue_name):
         queue = host._export_queues.get(queue_name)
@@ -41,7 +59,8 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
                 estimated_work_seconds=estimated_work_seconds,
                 **job,
             )
-            host.worker_launcher.kick(render_queue.connection, render_queue.name)
+            # Waking or scaling workers can take seconds; never on the request path.
+            host.worker_launcher.kick_in_background(render_queue.connection, render_queue.name)
             return delivery
         return render_queue.enqueue_call(**job)
 
@@ -60,13 +79,26 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
 
     @router.post("/api/export")
     async def export_video(req: host.ExportRequest, request: Request, response: Response):
+        # Bound queued admission without creating a second event loop/thread
+        # pool for the already offloaded blocking operations.
+        if host._export_queue is not None or host._IS_PRODUCTION:
+            return await _run_admission(
+                lambda: _export_video_impl(req, request, response)
+            )
+        return await _export_video_impl(req, request, response)
+
+    async def _export_video_impl(req, request, response):
         rid = host._request_id(request)
-        host._assert_service_available("pause_exports")
+        # Firestore, Firebase Auth, Redis and worker-launch calls below are
+        # blocking I/O. The API runs one event loop per process, so each runs in
+        # a worker thread instead of stalling every other request.
+        to_thread = host.asyncio.to_thread
+        await to_thread(host._assert_service_available, "pause_exports")
         host._log(rid, f"Export requested file_id={req.file_id} quality={req.quality}")
         host._track_event("export_requested", {"quality": req.quality, "fps": req.fps})
 
         # 1. Authenticate user
-        decoded_token = host._authenticate_media_request(req.id_token, req.org_id)
+        decoded_token = await to_thread(host._authenticate_media_request, req.id_token, req.org_id)
         uid = (decoded_token.get("uid") or "").strip() or "dev-local-user"
         if host._IS_PRODUCTION and host._export_queue is None:
             raise HTTPException(status_code=503, detail="Export service is temporarily unavailable. Please retry shortly.",
@@ -75,7 +107,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
             host._log(rid, "Using explicit debug auth bypass token")
 
         now_ts = host.time.time()
-        recent_failures = host._get_recent_export_failures(uid)
+        recent_failures = await to_thread(host._get_recent_export_failures, uid)
         if len(recent_failures) >= host.EXPORT_FAILURE_LIMIT:
             retry_after = max(1, int(host.EXPORT_FAILURE_WINDOW - (now_ts - min(recent_failures))))
             response.headers["Retry-After"] = str(retry_after)
@@ -96,7 +128,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
             raw_idem = f"auto:{req.file_id}:{idempotency_request_hash}"
         idem_key = f"{uid}:{raw_idem}" if raw_idem else ""
         if idem_key:
-            cached = host._idem_get(idem_key)
+            cached = await to_thread(host._idem_get, idem_key)
             if cached and (host.time.time() - cached.get("ts", 0) < 6 * 3600):
                 cached_request_hash = cached.get("request_hash", "")
                 if cached_request_hash and cached_request_hash != idempotency_request_hash:
@@ -106,15 +138,16 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
                     )
                 if cached.get("status") == "completed" and cached.get("payload"):
                     host._log(rid, f"Idempotent replay for key={raw_idem[:16]}")
-                    recovery_payload = host._refresh_completed_export_payload(
-                        cached["payload"], uid, str(cached.get("job_id") or "")
+                    recovery_payload = await to_thread(
+                        host._refresh_completed_export_payload,
+                        cached["payload"], uid, str(cached.get("job_id") or ""),
                     )
                     return {**recovery_payload, "idempotent_replay": True}
                 if cached.get("status") == "in_progress":
                     if cached.get("payload"):
                         return {**cached["payload"], "idempotent_replay": True}
                     raise HTTPException(status_code=409, detail="Export with this idempotency key is already in progress.")
-            if not host._idem_claim(idem_key, {
+            if not await to_thread(host._idem_claim, idem_key, {
                 "status": "in_progress", "ts": host.time.time(),
                 "request_hash": idempotency_request_hash,
             }):
@@ -122,16 +155,17 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
 
         # Per-user concurrent export guard.
         export_job_id = str(host.uuid.uuid4())
-        if not host._acquire_export_slot(uid, export_job_id):
+        if not await to_thread(host._acquire_export_slot, uid, export_job_id):
             if idem_key:
-                host._idem_delete(idem_key)
+                await to_thread(host._idem_delete, idem_key)
             raise HTTPException(status_code=429, detail="Another export is already running for this account. Please wait.")
 
         release_export_slot_in_request = True
         try:
             duration_hint = await host.asyncio.to_thread(host._source_duration_hint, req.file_id, uid)
             capacity = host.estimate_render_capacity(duration_hint, safe_request_snapshot)
-            host._set_export_job(
+            await to_thread(
+                host._set_export_job,
                 export_job_id,
                 "queued",
                 uid=uid,
@@ -158,14 +192,15 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
                 # result. Replays return this queued job while it runs, including
                 # automatic keys generated for a double-click-safe browser export.
                 if idem_key:
-                    host._idem_set(idem_key, {
+                    await to_thread(host._idem_set, idem_key, {
                         "status": "in_progress",
                         "ts": host.time.time(),
                         "payload": queued_payload,
                         "request_hash": idempotency_request_hash,
                         "job_id": export_job_id,
                     })
-                host._enqueue_export_job(
+                await to_thread(
+                    host._enqueue_export_job,
                     host._render_queue_for(capacity["queue_name"]),
                     func=host.run_export_job_task,
                     args=(
@@ -184,17 +219,17 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
                     },
                     retry=host.RQRetry(max=3, interval=[10, 30, 60]) if host.RQRetry else None,
                     ttl=host.EXPORT_MAX_QUEUE_WAIT_SECONDS,
-                    result_ttl=24 * 3600,
-                    failure_ttl=7 * 24 * 3600,
+                    result_ttl=EXPORT_RQ_RESULT_TTL_SECONDS,
+                    failure_ttl=EXPORT_RQ_FAILURE_TTL_SECONDS,
                 )
                 host._audit_action("export_enqueued", uid, {"job_id": export_job_id, "file_id": req.file_id})
                 release_export_slot_in_request = False
                 return queued_payload
 
-            host._set_export_job(export_job_id, "starting")
+            await to_thread(host._set_export_job, export_job_id, "starting")
             payload = await host._process_export_job_core(req, uid, rid, export_job_id)
             if idem_key:
-                host._idem_set(idem_key, {
+                await to_thread(host._idem_set, idem_key, {
                     "status": "completed",
                     "ts": host.time.time(),
                     "payload": payload,
@@ -204,65 +239,109 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
             return payload
 
         except HTTPException as http_ex:
-            host._set_export_job(export_job_id, "failed", failed_at=host.time.time(), error=str(http_ex.detail))
-            host._record_export_failure(uid)
-            host._track_event("export_failed_http", {"detail": str(http_ex.detail)})
-            host._write_dead_letter(
-                export_job_id,
-                str(http_ex.detail),
-                {"uid": uid, "file_id": req.file_id, "req_payload": safe_request_snapshot},
+            await to_thread(
+                _record_failed_submission, export_job_id, uid, req.file_id, idem_key,
+                str(http_ex.detail), safe_request_snapshot, "export_failed_http",
+                {"detail": str(http_ex.detail)},
             )
-            if idem_key:
-                host._idem_delete(idem_key)
             raise
         except Exception as e:
-            host._set_export_job(export_job_id, "failed", failed_at=host.time.time(), error=str(e))
-            host._record_export_failure(uid)
-            host._track_event("export_failed_exception", {"error": str(e)})
-            host._write_dead_letter(
-                export_job_id,
-                str(e),
-                {"uid": uid, "file_id": req.file_id, "req_payload": safe_request_snapshot},
+            await to_thread(
+                _record_failed_submission, export_job_id, uid, req.file_id, idem_key,
+                str(e), safe_request_snapshot, "export_failed_exception", {"error": str(e)},
             )
-            if idem_key:
-                host._idem_delete(idem_key)
             raise HTTPException(status_code=500, detail=f"Export failed. Reference: {rid}")
         finally:
             if release_export_slot_in_request:
-                host._release_export_slot(uid, export_job_id)
+                await to_thread(host._release_export_slot, uid, export_job_id)
+
+
+    def _record_failed_submission(export_job_id, uid, file_id, idem_key, error,
+                                  safe_request_snapshot, event, event_payload):
+        host._set_export_job(export_job_id, "failed", failed_at=host.time.time(), error=error)
+        host._record_export_failure(uid)
+        host._track_event(event, event_payload)
+        host._write_dead_letter(
+            export_job_id,
+            error,
+            {"uid": uid, "file_id": file_id, "req_payload": safe_request_snapshot},
+        )
+        if idem_key:
+            host._idem_delete(idem_key)
+
+
+    def _persist_batch_receipt(payload, uid, created_at):
+        database = host.get_db()
+        if database is None:
+            if host._IS_PRODUCTION:
+                raise HTTPException(503, "Batch status storage is temporarily unavailable", headers={"Retry-After": "10"})
+            return
+        try:
+            database.collection("export_batches").document(payload["batch_id"]).set({
+                "batch_id": payload["batch_id"],
+                "uid": uid,
+                "job_ids": [item["job_id"] for item in payload["accepted"]],
+                "created_at": created_at,
+                "expire_at": host._retention_deadline(30),
+                "rejected": payload["rejected"],
+            })
+        except Exception as error:
+            raise HTTPException(503, "Batch status storage is temporarily unavailable", headers={"Retry-After": "10"}) from error
 
 
     @router.post("/api/batch/exports", status_code=202)
     async def create_export_batch(req: host.BatchExportRequest, request: Request):
+        return await _run_admission(lambda: _create_export_batch(req, request))
+
+    async def _create_export_batch(req, request):
         """Queue up to ten independent exports with one idempotent request.
 
     Items use the normal tiered render queues and billing path. The worker's
     account slot serializes items for one customer, preventing a batch from
     bypassing the single-account concurrency and credit controls.
     """
-        host._assert_service_available("pause_exports")
-        decoded = host._authenticate_media_request(req.id_token)
+        to_thread = host.asyncio.to_thread
+        await to_thread(host._assert_service_available, "pause_exports")
+        decoded = await to_thread(host._authenticate_media_request, req.id_token)
         uid = (decoded.get("uid") or "").strip()
         if host._export_queue is None:
             raise HTTPException(503, "Batch export service is temporarily unavailable", headers={"Retry-After": "10"})
 
         idem_key = f"batch:{uid}:{req.idempotency_key}"
-        cached = host._idem_get(idem_key)
-        if cached and cached.get("payload"):
-            return {**cached["payload"], "idempotent_replay": True}
+        safe_snapshots = [host._sanitize_export_request_payload(item.model_dump(by_alias=True)) for item in req.exports]
+        request_hash = host.hashlib.sha256(
+            host.json.dumps(safe_snapshots, sort_keys=True, default=str).encode("utf-8")
+        ).hexdigest()
+        cached = await to_thread(host._idem_get, idem_key)
+        if cached:
+            if cached.get("request_hash") and cached["request_hash"] != request_hash:
+                raise HTTPException(409, "This idempotency key was already used for a different export batch.")
+            if cached.get("payload"):
+                if not cached.get("batch_persisted"):
+                    await to_thread(_persist_batch_receipt, cached["payload"], uid, cached.get("ts", host.time.time()))
+                    await to_thread(host._idem_set, idem_key, {**cached, "batch_persisted": True})
+                return {**cached["payload"], "idempotent_replay": True}
+            raise HTTPException(409, "Export batch with this idempotency key is already in progress.", headers={"Retry-After": "2"})
 
         batch_id = str(host.uuid.uuid4())
+        if not await to_thread(host._idem_claim, idem_key, {
+            "status": "in_progress", "ts": host.time.time(),
+            "request_hash": request_hash, "batch_id": batch_id,
+        }):
+            raise HTTPException(409, "Export batch with this idempotency key is already in progress.", headers={"Retry-After": "2"})
         accepted = []
         rejected = []
         for index, item in enumerate(req.exports):
             job_id = str(host.uuid.uuid4())
+            enqueue_attempted = False
             try:
-                host._assert_upload_owner(item.file_id, uid)
-                host._assert_upload_clean(item.file_id)
-                safe_snapshot = host._sanitize_export_request_payload(item.model_dump(by_alias=True))
-                duration_hint = await host.asyncio.to_thread(host._source_duration_hint, item.file_id, uid)
+                await to_thread(host._assert_upload_owner, item.file_id, uid)
+                await to_thread(host._assert_upload_clean, item.file_id)
+                safe_snapshot = safe_snapshots[index]
+                duration_hint = await to_thread(host._source_duration_hint, item.file_id, uid)
                 capacity = host.estimate_render_capacity(duration_hint, safe_snapshot)
-                host._set_export_job(
+                await to_thread(
+                    host._set_export_job,
                     job_id,
                     "queued",
                     uid=uid,
@@ -278,7 +357,9 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
                     queue_name=capacity["queue_name"],
                     request_snapshot=safe_snapshot,
                 )
-                host._enqueue_export_job(
+                enqueue_attempted = True
+                await to_thread(
+                    host._enqueue_export_job,
                     host._render_queue_for(capacity["queue_name"]),
                     func=host.run_export_job_task,
                     args=(job_id, safe_snapshot, uid, "", ""),
@@ -293,13 +374,23 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
                     },
                     retry=host.RQRetry(max=12, interval=[10, 15, 20, 30]) if host.RQRetry else None,
                     ttl=host.EXPORT_MAX_QUEUE_WAIT_SECONDS,
-                    result_ttl=24 * 3600,
-                    failure_ttl=7 * 24 * 3600,
+                    result_ttl=EXPORT_RQ_RESULT_TTL_SECONDS,
+                    failure_ttl=EXPORT_RQ_FAILURE_TTL_SECONDS,
                 )
                 accepted.append({"index": index, "job_id": job_id, "file_id": item.file_id})
             except Exception as error:
+                if enqueue_attempted and not isinstance(error, HTTPException):
+                    # Redis can commit the enqueue and lose its reply. Preserve
+                    # the original job/claim so a retry cannot queue and charge
+                    # a second export; normal job recovery determines its state.
+                    accepted.append({"index": index, "job_id": job_id, "file_id": item.file_id,
+                                     "admission_uncertain": True})
+                    continue
                 try:
-                    host._set_export_job(job_id, "failed", failed_at=host.time.time(), error="Batch item was not admitted")
+                    await to_thread(
+                        host._set_export_job, job_id, "failed",
+                        failed_at=host.time.time(), error="Batch item was not admitted",
+                    )
                 except Exception:
                     pass
                 rejected.append({
@@ -309,6 +400,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
                 })
 
         if not accepted:
+            await to_thread(host._idem_delete, idem_key)
             raise HTTPException(429, "No batch items could be admitted", headers={"Retry-After": "10"})
         payload = {
             "success": True,
@@ -317,17 +409,12 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
             "rejected": rejected,
             "status_url": f"/api/batch/exports/{batch_id}",
         }
-        host._idem_set(idem_key, {"status": "completed", "ts": host.time.time(), "payload": payload})
-        database = host.get_db()
-        if database is not None:
-            database.collection("export_batches").document(batch_id).set({
-                "batch_id": batch_id,
-                "uid": uid,
-                "job_ids": [item["job_id"] for item in accepted],
-                "created_at": host.time.time(),
-                "expire_at": host._retention_deadline(30),
-                "rejected": rejected,
-            })
+        receipt = {"status": "completed", "ts": host.time.time(), "payload": payload,
+                   "request_hash": request_hash, "batch_id": batch_id, "batch_persisted": False}
+        # Keep the original jobs replayable even if the Firestore receipt fails.
+        await to_thread(host._idem_set, idem_key, receipt)
+        await to_thread(_persist_batch_receipt, payload, uid, receipt["ts"])
+        await to_thread(host._idem_set, idem_key, {**receipt, "batch_persisted": True})
         host._audit_action("export_batch_enqueued", uid, {"batch_id": batch_id, "count": len(accepted)})
         return payload
 
@@ -347,6 +434,8 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
         jobs = []
         for job_id in batch.get("job_ids") or []:
             job = host._load_export_job(str(job_id)) or {}
+            if job:
+                job = _reconcile_export_job(str(job_id), job)
             jobs.append({
                 "job_id": job_id,
                 "status": job.get("status", "unknown"),
@@ -365,6 +454,21 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
 
 
     def _reconcile_export_job(job_id: str, job: host.Dict[str, host.Any]):
+        if job.get("status") in {"failed", "retrying", "finalizing"}:
+            try:
+                recorded = host._load_recorded_export_result(
+                    str(job.get("uid") or ""), job_id, str(job.get("file_id") or "")
+                )
+                if recorded:
+                    # The usage transaction is authoritative even if the final
+                    # Redis state write failed or all RQ retries were exhausted.
+                    return {**job, "status": "completed", "payload": recorded, "error": None}
+            except Exception as error:
+                host._json_log("warning", "export_usage_recovery_unavailable", job_id=job_id,
+                               error=type(error).__name__)
+                # Do not present a final failure or permit a fresh debit while
+                # the authoritative outcome of the usage transaction is unknown.
+                return {**job, "status": "retrying", "error": None}
         if host._export_queue is None or job.get("status") in {"completed", "failed", "cancelled"}:
             return job
         try:
@@ -430,9 +534,28 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
         return job
 
 
+    # RQWorker.all() reads every registered worker. Status polls only need an
+    # approximate count for the ETA, so it is shared for a few seconds.
+    active_worker_cache = {}
+    active_worker_cache_lock = host.threading.Lock()
+    ACTIVE_WORKER_CACHE_SECONDS = 10
+
     def _active_workers_for_queue(queue_name: str) -> host.Optional[int]:
         if host.RQWorker is None or host._rq_redis_client is None:
             return None
+        now = host.time.monotonic()
+        with active_worker_cache_lock:
+            cached = active_worker_cache.get(queue_name)
+            if cached is not None and cached[0] > now:
+                return cached[1]
+        active = _count_active_workers(queue_name)
+        if active is not None:
+            with active_worker_cache_lock:
+                active_worker_cache[queue_name] = (now + ACTIVE_WORKER_CACHE_SECONDS, active)
+        return active
+
+
+    def _count_active_workers(queue_name: str) -> host.Optional[int]:
         try:
             active = 0
             for worker in host.RQWorker.all(connection=host._rq_redis_client):
@@ -466,6 +589,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
                 host.Job,
                 job_id,
                 active_workers=active_workers,
+                work_ledger_key=host.PENDING_WORK_LEDGER_KEY,
             ) or {}
         except Exception as error:
             host._json_log(
@@ -484,10 +608,12 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
         job = host._reconcile_export_job(job_id, job)
         if job.get("status") == "queued":
             # Safety net for on-demand workers: a queued job whose worker crashed
-            # gets a fresh one on the next poll (no-op when launching is disabled).
+            # gets a fresh one on a later poll (no-op when launching is disabled).
+            # Throttled across replicas and run off the request thread, because
+            # every queued customer polls this endpoint.
             record_queue = host._queue_for_export_job_record(job)
             if record_queue is not None:
-                host.worker_launcher.kick(record_queue.connection, record_queue.name)
+                host.worker_launcher.kick_throttled(record_queue.connection, record_queue.name)
         queue_prediction = host._export_queue_prediction(job_id, job)
         # Keep payload concise and avoid leaking internal paths.
         return {
@@ -522,6 +648,8 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
         payload = job.get("payload") or {}
         if not payload:
             return {"success": False, "status": "completed", "error": "Result payload missing"}
+        if request.query_params.get("download_filename"):
+            payload = {**payload, "download_filename": request.query_params["download_filename"]}
         return host._refresh_completed_export_payload(payload, str(job.get("uid") or ""), job_id)
 
 
@@ -608,6 +736,9 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
             )
         request_snapshot = job.get("request_snapshot")
         uid = job.get("uid", "")
+        recorded = host._load_recorded_export_result(uid, job_id, str(job.get("file_id") or ""))
+        if recorded:
+            return {"success": True, "export_job_id": job_id, "status": "completed", "idempotent_replay": True}
         if not request_snapshot:
             raise HTTPException(status_code=400, detail="No request snapshot found to replay")
         new_job_id = str(host.uuid.uuid4())
@@ -625,6 +756,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
                 uid=uid,
                 file_id=request_snapshot.get("file_id"),
                 started_at=host.time.time(),
+                queue_entered_at=host.time.time(),
                 request_snapshot=request_snapshot,
                 replayed_from=job_id,
                 estimated_render_seconds=capacity["estimated_render_seconds"],
@@ -644,8 +776,9 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
                     "renderer": capacity["renderer"],
                 },
                 retry=host.RQRetry(max=3, interval=[10, 30, 60]) if host.RQRetry else None,
-                result_ttl=24 * 3600,
-                failure_ttl=7 * 24 * 3600,
+                ttl=host.EXPORT_MAX_QUEUE_WAIT_SECONDS,
+                result_ttl=EXPORT_RQ_RESULT_TTL_SECONDS,
+                failure_ttl=EXPORT_RQ_FAILURE_TTL_SECONDS,
             )
         except Exception as e:
             try:
