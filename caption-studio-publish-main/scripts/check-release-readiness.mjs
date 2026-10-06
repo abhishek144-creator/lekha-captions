@@ -211,6 +211,9 @@ const startApp = readText("scripts/start_app.ps1")
 assertIncludes("Windows starter verifies frontend API proxy", startApp, "$FrontendUrl/api/version")
 
 const workflow = readText("../.github/workflows/quality-gates.yml")
+assertIncludes("GitHub Actions runs pushes only on main", workflow, 'branches: ["main"]')
+assertIncludes("GitHub Actions validates pull requests", workflow, "  pull_request:")
+assertIncludes("GitHub Actions retains the release gate", workflow, "  release-gate:")
 assertIncludes("GitHub Actions runs in app workspace", workflow, "working-directory: caption-studio-publish-main")
 assertIncludes("GitHub Actions runs template motion parity", workflow, "npm run test:template-parity")
 assertIncludes("GitHub Actions runs template visual parity", workflow, "npm run test:template-visual")
@@ -452,7 +455,7 @@ assertIncludes(
   readText("src/components/dashboard/ExportPanel.jsx"),
   "import.meta.env.VITE_DISABLE_EXPORT_LIMITS === '1'",
 )
-assertIncludes("export failure rate limit is enforced", backendMain, "recent_failures = _get_recent_export_failures(uid)")
+assertIncludes("export failure rate limit is enforced", backendMain, "recent_failures = await to_thread(_get_recent_export_failures, uid)")
 assertExcludes("export failure rate limit has no escape hatch", backendMain, "DISABLE_EXPORT_FAILURE_RATE_LIMIT")
 assertIncludes("exports use signed media URLs", backendMain, "def _signed_export_url")
 assertIncludes("uploads use signed media URLs", backendMain, "def _signed_upload_url")
@@ -549,7 +552,7 @@ assertIncludes("export cancellation is limited to queued jobs", exportPanelSourc
 assertIncludes("export cancellation uses the durable backend state machine", exportPanelSource, "/api/export-cancel/")
 assertIncludes("cancelled exports clear their retry receipt", backendMain, '_idem_delete(idempotency_key)')
 assertIncludes("confirmed server export failures are distinguished from connection loss", exportPanelSource, "terminalError.exportStatus = 'failed'")
-assertIncludes("backend caps preparation wait at two minutes", backendMain, "EXPORT_MAX_QUEUE_WAIT_SECONDS = max(")
+assertIncludes("backend bounds queue lifetime while allowing Railway cron recovery", backendMain, "EXPORT_MAX_QUEUE_WAIT_SECONDS = max(")
 for (const marker of [
   'data-lekha-player="true"',
   'data-caption-layer="true"',
@@ -563,7 +566,7 @@ for (const marker of [
 assertExcludes("export panel does not submit browser word layouts", exportPanelSource, "word_layouts:")
 assertIncludes("backend strips legacy browser render hints", backendMain, "def _strip_client_render_hints")
 
-const renderer = readText("scripts/render_template_overlay.mjs")
+const renderer = readText("scripts/render_template_overlay.mjs") + "\n" + readText("scripts/render_template_page_runtime.mjs")
 const browserRuntime = readText("scripts/render_browser_runtime.mjs")
 assertIncludes("export renderer uses a DOM tag allowlist", renderer, "const allowedTags = new Set")
 assertIncludes("export renderer blocks arbitrary network requests", renderer, "setRequestInterception(true)")
@@ -587,7 +590,7 @@ assertIncludes("container scopes the Chromium sandbox workaround to Railway", do
 assertIncludes("container installs the hashed backend dependency lock", dockerfile, "--require-hashes -r backend/requirements.lock")
 assertIncludes("export renderer supports the scoped Chromium sandbox workaround", browserRuntime, "PUPPETEER_CONTAINER_NO_SANDBOX")
 assertIncludes("container defines the API process", dockerfile, "uvicorn backend.main:app")
-assertIncludes("container defines the worker process", dockerfile, "python3\", \"-m\", \"backend.worker")
+assertIncludes("container starts clamd with the transcription worker", dockerfile, "clamd --config-file=/app/deploy/clamav/clamd.conf & exec python3 -m backend.worker")
 
 try {
   const trackedGenerated = execFileSync(

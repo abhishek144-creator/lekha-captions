@@ -12,7 +12,7 @@ ARG APP_RELEASE
 LABEL org.opencontainers.image.revision=${APP_RELEASE}
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates clamav dumb-init ffmpeg \
+    && apt-get install -y --no-install-recommends ca-certificates clamav clamav-daemon dumb-init ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY backend/requirements.lock backend/requirements.lock
@@ -20,7 +20,10 @@ RUN python3 -m pip install --no-cache-dir --require-hashes -r backend/requiremen
 # Used with CLAMAV_SCAN_CMD="clamscan --stdout --database=/opt/clamav-db".
 COPY --from=clamav-signatures /var/lib/clamav/*.cvd /opt/clamav-db/
 # Both API and transcription builds must contain clamscan and its signature DB.
+# Transcription workers also run clamd (deploy/clamav/clamd.conf) so the
+# database stays loaded between scans.
 RUN clamscan --version \
+    && clamd --version \
     && test -s /opt/clamav-db/main.cvd \
     && test -s /opt/clamav-db/daily.cvd \
     && ls /opt/clamav-db
@@ -39,8 +42,8 @@ FROM python-runtime AS api
 CMD ["sh", "-c", "exec python3 -m uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers ${WEB_CONCURRENCY:-2} --limit-concurrency ${UVICORN_LIMIT_CONCURRENCY:-64} --backlog ${UVICORN_BACKLOG:-512} --timeout-keep-alive ${UVICORN_KEEP_ALIVE_SECONDS:-10}"]
 
 FROM python-runtime AS transcription
-ENV SERVICE_ROLE=worker WORKER_QUEUES=caption_media_scan_jobs,caption_transcription_jobs
-CMD ["python3", "-m", "backend.worker"]
+ENV SERVICE_ROLE=worker WORKER_QUEUES=caption_media_scan_jobs,caption_transcription_jobs CLAMAV_HOST=127.0.0.1
+CMD ["sh", "-c", "clamd --config-file=/app/deploy/clamav/clamd.conf & exec python3 -m backend.worker"]
 
 FROM node:22-bookworm-slim AS render
 ARG APP_RELEASE

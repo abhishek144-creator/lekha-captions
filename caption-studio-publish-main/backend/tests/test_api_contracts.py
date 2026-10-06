@@ -912,6 +912,7 @@ class ApiContractTests(unittest.TestCase):
             patch.object(main, "_export_queue", FakeQueue()),
             patch.object(main, "get_db", return_value=FakeDb()),
             patch.object(main, "_persist_export_job", return_value=True),
+            patch.object(main, "_load_recorded_export_result", return_value=None),
         ):
             res_unauth = self.client.post("/api/export-replay/job-1")
             self.assertEqual(res_unauth.status_code, 401)
@@ -993,7 +994,7 @@ class ApiContractTests(unittest.TestCase):
         job = main._export_jobs[payload["export_job_id"]]
         self.assertNotIn("id_token", job.get("request_snapshot", {}))
         self.assertEqual(captured["args"][1].get("id_token"), None)
-        self.assertEqual(captured["ttl"], 600)
+        self.assertEqual(captured["ttl"], main.EXPORT_MAX_QUEUE_WAIT_SECONDS)
 
         res_second = self.client.post(
             "/api/export",

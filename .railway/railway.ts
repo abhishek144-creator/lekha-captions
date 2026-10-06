@@ -18,6 +18,20 @@ const GIB = 1024 * 1024 * 1024
 const RENDER_WORKER = "lekha-render"
 const TRANSCRIPTION_WORKER = "lekha-transcription"
 const WORKER_PORT = "8080"
+// Approved $25 workspace cap; sleeping workers and live acceptance gates.
+// One render replica handles one
+// export at a time (8 vCPU / 8 GiB); one transcription replica handles one
+// transcription or malware scan at a time (2 vCPU / 3 GiB). The Hobby plan
+// allows at most 5 replicas per service, 8 vCPU / 8 GB each and 48 vCPU / 48 GB
+// per service: a higher ceiling makes the scaler request a count Railway
+// rejects, leaving the service at its current size.
+const RENDER_MAX_REPLICAS = 5
+const TRANSCRIPTION_MAX_REPLICAS = 5
+// Pending-work admission follows effective capacity while rollout is gated.
+const WORKER_AUTOSCALING_ACCEPTED = false
+// Sleep when idle. A larger/warm launch profile requires a reviewed spending
+// allowance and measured capacity; the workspace hard cap stops the whole app.
+const KEEP_ONE_WORKER_AWAKE = false
 
 // Secrets and per-owner settings, created as shared variables in Railway.
 const SHARED = [
@@ -78,10 +92,24 @@ export default defineRailway((ctx) => {
       [TRANSCRIPTION_WORKER]: wakeUrl(TRANSCRIPTION_WORKER),
     }),
     WORKER_LAUNCH_MAX_PARALLEL: "3",
-    AI_SYSTEM_DAILY_LIMIT: "500",
-    RENDER_AUTOSCALE_ENABLED: "1",
+    // Platform-wide paid AI calls per UTC day (transcribe, translate, detect).
+    // At OpenAI Whisper's $0.006/minute a 3-minute upload costs about $0.018, so
+    // 2000 Whisper calls is at most about $36/day. Check the Sarvam rate as well
+    // and adjust once real daily spend is known.
+    AI_SYSTEM_DAILY_LIMIT: "2000",
+    // Workers scale on enqueue and back to one replica when idle (lekha-cron).
+    // A resize Railway rejects (plan limits) keeps the current capacity.
+    // Enable each controller only after its finite live resize/drain test.
+    RENDER_AUTOSCALE_ENABLED: WORKER_AUTOSCALING_ACCEPTED ? "1" : "0",
     RENDER_AUTOSCALE_SERVICE_ID: "${{lekha-render.RAILWAY_SERVICE_ID}}",
     RENDER_AUTOSCALE_REGION: REGION,
+    RENDER_AUTOSCALE_MAX_REPLICAS: String(RENDER_MAX_REPLICAS),
+    TRANSCRIPTION_AUTOSCALE_ENABLED: WORKER_AUTOSCALING_ACCEPTED ? "1" : "0",
+    TRANSCRIPTION_AUTOSCALE_SERVICE_ID: "${{lekha-transcription.RAILWAY_SERVICE_ID}}",
+    TRANSCRIPTION_AUTOSCALE_MAX_REPLICAS: String(TRANSCRIPTION_MAX_REPLICAS),
+    // Admit at most the work all render replicas finish within the 10-minute
+    // queue-wait limit (600 s per replica), so accepted exports do not time out.
+    EXPORT_MAX_PENDING_WORK_SECONDS: String(600 * (WORKER_AUTOSCALING_ACCEPTED ? RENDER_MAX_REPLICAS : 1)),
   }
 
   const api = service("lekha-api", {
@@ -93,13 +121,13 @@ export default defineRailway((ctx) => {
     deploy: {
       startCommand:
         "sh -c 'exec python3 -m uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8000} " +
-        "--workers ${WEB_CONCURRENCY:-1} --limit-concurrency ${UVICORN_LIMIT_CONCURRENCY:-64} " +
+        "--workers ${WEB_CONCURRENCY:-2} --limit-concurrency ${UVICORN_LIMIT_CONCURRENCY:-64} " +
         "--timeout-keep-alive ${UVICORN_KEEP_ALIVE_SECONDS:-10}'",
       sleepApplication: true,
       restartPolicyType: "ON_FAILURE",
       restartPolicyMaxRetries: 3,
-      // Room for an inline clamscan next to the API process.
-      limitOverride: limits(1, 2),
+      // Two API processes (~250 MB each) plus room for an inline clamscan.
+      limitOverride: limits(2, 2),
     },
     env: {
       ...backendEnv,
@@ -107,7 +135,7 @@ export default defineRailway((ctx) => {
       PORT: "8080",
       // Periodic work runs in lekha-cron so an idle API can sleep.
       RUN_API_BACKGROUND_TASKS: "0",
-      WEB_CONCURRENCY: "1",
+      WEB_CONCURRENCY: "2",
       RAILWAY_RENDER_SCALING_TOKEN: ctx.shared.RAILWAY_RENDER_SCALING_TOKEN,
     },
   })
@@ -119,14 +147,25 @@ export default defineRailway((ctx) => {
     healthcheckTimeout: 120,
     replicas,
     deploy: {
-      startCommand: "python3 -m backend.worker",
-      sleepApplication: true,
+      // clamd keeps the virus database loaded (about 1 GB) so each upload scan
+      // takes seconds instead of reloading it for 20-40 s; while it starts
+      // (about 20 s) scans fall back to CLAMAV_SCAN_CMD.
+      startCommand:
+        "sh -c 'clamd --config-file=/app/deploy/clamav/clamd.conf & exec python3 -m backend.worker'",
+      sleepApplication: !KEEP_ONE_WORKER_AWAKE,
       restartPolicyType: "ON_FAILURE",
       restartPolicyMaxRetries: 3,
-      limitOverride: limits(2, 2),
+      // Transcription jobs time out after 30 minutes: let a replica removed by
+      // autoscaling finish its job before SIGKILL (required before resizing).
+      drainingSeconds: 1860,
+      overlapSeconds: 0,
+      // clamd (~1 GB) + a fallback clamscan during its start (~1 GB) + worker.
+      limitOverride: limits(2, 3),
     },
     env: {
       ...backendEnv,
+      CLAMAV_HOST: "127.0.0.1",
+      CLAMAV_PORT: "3310",
       LEKHA_SERVICE_TARGET: "transcription",
       WORKER_LAUNCH_JOB_NAME: TRANSCRIPTION_WORKER,
       PORT: WORKER_PORT,
@@ -141,14 +180,15 @@ export default defineRailway((ctx) => {
     replicas,
     deploy: {
       startCommand: "sh -c 'node scripts/render_browser_daemon.mjs & exec python3 -m backend.worker'",
-      sleepApplication: true,
+      sleepApplication: !KEEP_ONE_WORKER_AWAKE,
       restartPolicyType: "ON_FAILURE",
       restartPolicyMaxRetries: 3,
       // RQ export timeout is 30 minutes: finish the current job before SIGKILL.
       drainingSeconds: 1860,
       overlapSeconds: 0,
       // Chromium + FFmpeg were OOM-killed under 3 GiB in staging (2026-08-04).
-      limitOverride: limits(4, 4),
+      // Preserve memory headroom; measure 4/8 vCPU in approved staging.
+      limitOverride: limits(8, 8),
     },
     env: {
       ...backendEnv,

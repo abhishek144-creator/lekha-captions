@@ -52,3 +52,16 @@ cost decisions; elapsed time alone is not infrastructure cost.
 
 This local harness proves that the comparison is executable and repeatable. It
 does not replace staged burst tests at 10/25/50/100 concurrent exports.
+
+## Railway comparison pending — 2026-10-05
+
+Follow the [staging runbook](RAILWAY_DEPLOYMENT.md#staging-measurement-runbook-2026-10-05).
+No new staging measurements are available. Do not infer animated-template
+performance from the harness's bounded-text-box DOM fixture.
+
+| Replica | 60 s plain 1080p median / P95 | 60 s authored animated template median / P95 | Evidence |
+|---|---|---|---|
+| 4 vCPU / 8 GiB | Not measured | Not measured | Pending staging run |
+| 8 vCPU / 8 GiB | Not measured | Not measured | Pending staging run |
+
+Keep DOM work ratio 3 and ASS work ratio 1 pending this evidence.

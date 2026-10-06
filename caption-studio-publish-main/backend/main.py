@@ -20,6 +20,21 @@ if not _bootstrap_is_test or os.environ.get("LOAD_LOCAL_ENV_IN_TESTS") == "1":
     if os.path.exists(env_base):
         load_dotenv(dotenv_path=env_base)
 
+try:
+    from .upload_api import create_upload_router
+except ImportError:
+    from upload_api import create_upload_router
+
+try:
+    from .processing_api import create_processing_router
+except ImportError:
+    from processing_api import create_processing_router
+
+try:
+    from .provider_admin_api import create_provider_admin_router
+except ImportError:
+    from provider_admin_api import create_provider_admin_router
+
 from fastapi import FastAPI, UploadFile, File, HTTPException, Response
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -38,6 +53,7 @@ try:
 except ImportError:  # Direct execution from backend/ remains supported.
     from processor import VideoProcessor
 import asyncio
+import anyio
 import time
 import subprocess
 import hmac
@@ -105,11 +121,11 @@ import pathlib
 import re
 import secrets
 import threading
-from collections import deque
+from collections import OrderedDict, deque
 from contextlib import asynccontextmanager
 try:
     from .transcription_jobs import TranscriptionJobs
-    from .queue_admission import enqueue_bounded_across_queues, release_pending_work
+    from .queue_admission import PENDING_WORK_LEDGER_KEY, enqueue_bounded_across_queues, release_pending_work
     from . import worker_launcher
     from .drafts import list_projects, read_draft
     from .project_api import create_project_router
@@ -155,7 +171,7 @@ try:
     from .services.upload_security import UploadSecurityService
 except ImportError:
     from transcription_jobs import TranscriptionJobs
-    from queue_admission import enqueue_bounded_across_queues, release_pending_work
+    from queue_admission import PENDING_WORK_LEDGER_KEY, enqueue_bounded_across_queues, release_pending_work
     import worker_launcher
     from drafts import list_projects, read_draft
     from project_api import create_project_router
@@ -238,7 +254,7 @@ try:
         def enqueue_job(self, job, pipeline=None, **kwargs):
             queued = super().enqueue_job(job, pipeline=pipeline, **kwargs)
             if pipeline is None:
-                worker_launcher.kick(self.connection, self.name)
+                worker_launcher.kick_in_background(self.connection, self.name)
             return queued
 
     RQ_AVAILABLE = True
@@ -351,7 +367,16 @@ def _apply_security_headers(response: Response) -> Response:
 async def request_logging_middleware(request: Request, call_next):
     rid = _request_id(request)
     request.state.request_id = rid
-    app_check_failure = _verify_firebase_app_check_request(request, rid)
+    if _app_check_required(request) and request.headers.get("x-firebase-appcheck"):
+        # Firebase may synchronously fetch rotated signing keys. Keep its
+        # bounded verification work outside the API event loop; health probes
+        # and missing-token rejections never wait for this worker pool.
+        app_check_failure = await anyio.to_thread.run_sync(
+            _verify_firebase_app_check_request, request, rid,
+            limiter=_app_check_verification_limiter,
+        )
+    else:
+        app_check_failure = _verify_firebase_app_check_request(request, rid)
     if app_check_failure is not None:
         return _apply_security_headers(app_check_failure)
     if request.url.path == "/api/upload" and _IS_PRODUCTION:
@@ -418,7 +443,7 @@ async def request_logging_middleware(request: Request, call_next):
             },
         ))
     upload_slot_uid = str(upload_identity.get("uid") or "") if request.url.path == "/api/upload" else ""
-    if upload_slot_uid and not _acquire_process_slot(upload_slot_uid, f"upload:{rid}"):
+    if upload_slot_uid and not await asyncio.to_thread(_acquire_process_slot, upload_slot_uid, f"upload:{rid}"):
         return _apply_security_headers(JSONResponse(status_code=429, content={"detail": "Another upload or transcription is active for this account."}, headers={"X-Request-Id": rid}))
     start = time.time()
     try:
@@ -443,7 +468,7 @@ async def request_logging_middleware(request: Request, call_next):
         }, headers={"X-Request-Id": rid, "Cache-Control": "no-store"}))
     finally:
         if upload_slot_uid:
-            _release_process_slot(upload_slot_uid, f"upload:{rid}")
+            await asyncio.to_thread(_release_process_slot, upload_slot_uid, f"upload:{rid}")
         if not RUN_API_BACKGROUND_TASKS:
             # Cloud Run may suspend CPU as soon as the request finishes. Flush
             # buffered events while this request still has execution time.
@@ -468,7 +493,7 @@ async def request_logging_middleware(request: Request, call_next):
         replica_id=RAILWAY_REPLICA_ID,
     )
     try:
-        _track_latency_sample(request.url.path, elapsed_ms)
+        await asyncio.to_thread(_track_latency_sample, request.url.path, elapsed_ms)
     except Exception:
         pass
     response.headers["X-API-Version"] = API_CURRENT_VERSION
@@ -525,17 +550,27 @@ _APP_CHECK_EXEMPT_PREFIXES = (
 )
 
 
+_app_check_verification_limiter = anyio.CapacityLimiter(16)
+
+
+def _app_check_required(request: Request) -> bool:
+    if not FIREBASE_APP_CHECK_ENFORCED or request.method.upper() == "OPTIONS":
+        return False
+    path = request.url.path
+    return path not in _APP_CHECK_EXEMPT_PATHS and not any(
+        path.startswith(prefix) for prefix in _APP_CHECK_EXEMPT_PREFIXES
+    )
+
+
 def _verify_firebase_app_check_request(request: Request, request_id: str = "") -> Optional[JSONResponse]:
     """Require Firebase App Check for browser API traffic in production.
 
     Webhooks, signed media URLs, health probes, and operator-only endpoints use
     their own authentication and remain callable by non-browser infrastructure.
     """
-    if not FIREBASE_APP_CHECK_ENFORCED or request.method.upper() == "OPTIONS":
+    if not _app_check_required(request):
         return None
     path = request.url.path
-    if path in _APP_CHECK_EXEMPT_PATHS or any(path.startswith(prefix) for prefix in _APP_CHECK_EXEMPT_PREFIXES):
-        return None
     token = str(request.headers.get("x-firebase-appcheck") or "").strip()
     if not token:
         _json_log("warning", "app_check_missing", path=path, request_id=request_id)
@@ -709,8 +744,28 @@ RENDER_COST_ESTIMATE_PER_MEDIA_MINUTE_USD = max(
     0.0, float(os.environ.get("RENDER_COST_ESTIMATE_PER_MEDIA_MINUTE_USD", "0"))
 )
 
+class _BoundedJobCache(OrderedDict):
+    """Process-local job cache that evicts the oldest entries.
+
+    Shared state lives in Redis/Firestore; this cache only answers "was this
+    job seen here". Unbounded, it grew by one record per export for the life of
+    every API and worker process."""
+
+    def __init__(self, max_entries: int):
+        super().__init__()
+        self.max_entries = max_entries
+
+    def __setitem__(self, key, value):
+        super().__setitem__(key, value)
+        self.move_to_end(key)
+        while len(self) > self.max_entries:
+            self.popitem(last=False)
+
+
 # In-memory operational state (swap for Redis in multi-instance deployments)
-_export_jobs: Dict[str, Dict[str, Any]] = {}
+_export_jobs: Dict[str, Dict[str, Any]] = _BoundedJobCache(
+    max(100, int(os.environ.get("EXPORT_JOB_LOCAL_CACHE_MAX", "2000")))
+)
 _export_idempotency: Dict[str, Dict[str, Any]] = {}
 _upload_idempotency: Dict[str, Dict[str, Any]] = {}
 _active_exports_by_user: Dict[str, str] = {}
@@ -736,8 +791,10 @@ EXPORT_MAX_PENDING_WORK_SECONDS = max(
     int(os.environ.get("EXPORT_MAX_PENDING_WORK_SECONDS", "1800")),
 )
 EXPORT_MAX_QUEUE_WAIT_SECONDS = max(
-    30,
-    min(int(os.environ.get("EXPORT_MAX_QUEUE_WAIT_SECONDS", "600")), 600),
+    # Railway's browser-independent recovery runs every 15 minutes. Leave a
+    # second interval for wake/startup, without increasing the pending-work cap.
+    1800 if os.environ.get("RAILWAY_PROJECT_ID") else 30,
+    min(int(os.environ.get("EXPORT_MAX_QUEUE_WAIT_SECONDS", "1800")), 1800),
 )
 QUEUE_METRICS_ENABLED = os.environ.get("QUEUE_METRICS_ENABLED", "0") == "1"
 QUEUE_METRICS_INTERVAL_SECONDS = max(
@@ -838,7 +895,9 @@ if REDIS_AVAILABLE and REDIS_URL and not _IS_TEST:
         # RQ stores pickled/binary job payloads. Sharing the application's
         # decode_responses=True client makes failed-job inspection attempt UTF-8
         # decoding and can strand per-user export leases.
-        _rq_redis_client = connect_redis(REDIS_URL)
+        # The API never blocks on a queue pop, so a bounded read timeout is safe
+        # and turns a stalled Redis into a fast error instead of a hung request.
+        _rq_redis_client = connect_redis(REDIS_URL, socket_timeout=15)
         _rq_redis_client.ping()
         _json_log("info", "redis_connected")
     except Exception as e:
@@ -929,6 +988,13 @@ def cleanup_local_media_artifacts(now: float = None) -> Dict[str, int]:
 
     # Cleanup stale temporary ASS artifacts generated during render retries.
     backend_dir = os.path.dirname(os.path.abspath(__file__))
+    try:
+        from .render_scratch import sweep_render_scratch
+    except ImportError:
+        from render_scratch import sweep_render_scratch
+    metrics["render_scratch_deleted"] = sweep_render_scratch(
+        os.path.join(os.path.dirname(backend_dir), ".render_tmp"), now
+    )
     for f in os.listdir(backend_dir):
         if not ((f.startswith("_tmp_") and f.endswith(".ass")) or f == "last_export_debug.ass"):
             continue
@@ -965,6 +1031,10 @@ def cleanup_local_media_artifacts(now: float = None) -> Dict[str, int]:
 
 
 async def advanced_janitor_job():
+    await asyncio.to_thread(_advanced_janitor_once)
+
+
+def _advanced_janitor_once():
     """Clean local scratch files and durable objects based on retention rules."""
     metrics = cleanup_local_media_artifacts()
     metrics.update({
@@ -987,6 +1057,7 @@ async def advanced_janitor_job():
     total_deleted = (
         metrics["uploads_deleted"] + metrics["exports_deleted"]
         + metrics["temp_ass_deleted"] + metrics["cache_deleted"]
+        + metrics["render_scratch_deleted"]
         + metrics["cloud_exports_deleted"]
         + metrics["cloud_uploads_deleted"]
     )
@@ -1029,23 +1100,25 @@ def _release_scheduled_job(name: str, token: str):
 
 
 async def scheduled_janitor_job():
-    token = _claim_scheduled_job("janitor", 14 * 60)
+    token = await asyncio.to_thread(_claim_scheduled_job, "janitor", 14 * 60)
     if not token:
         return
     try:
         await advanced_janitor_job()
     finally:
-        _release_scheduled_job("janitor", token)
+        await asyncio.to_thread(_release_scheduled_job, "janitor", token)
 
 
 async def scheduled_payment_reconciliation_job():
-    token = _claim_scheduled_job("payment_reconciliation", max(PAYMENT_RECONCILE_INTERVAL_MINUTES, 5) * 60 - 5)
+    token = await asyncio.to_thread(
+        _claim_scheduled_job, "payment_reconciliation", max(PAYMENT_RECONCILE_INTERVAL_MINUTES, 5) * 60 - 5,
+    )
     if not token:
         return
     try:
         await payment_reconciliation_job()
     finally:
-        _release_scheduled_job("payment_reconciliation", token)
+        await asyncio.to_thread(_release_scheduled_job, "payment_reconciliation", token)
 
 
 def _publish_queue_metrics_once():
@@ -2450,6 +2523,7 @@ def _record_export_usage(
     history_item: Dict[str, Any],
     now_ts: float,
     export_job_id: str,
+    result_payload: Optional[Dict[str, Any]] = None,
 ):
     usage_ref = user_ref.collection("export_usage").document(export_job_id)
 
@@ -2488,6 +2562,9 @@ def _record_export_usage(
         transaction.create(usage_ref, {
             "export_job_id": export_job_id,
             "file_id": history_item.get("id", ""),
+            # The debit and its recoverable output commit together. Job-state
+            # storage can fail afterwards without losing this customer's result.
+            "result_payload": result_payload or {},
             "recorded_at": datetime.now(timezone.utc),
             "expire_at": datetime.now(timezone.utc) + timedelta(days=400),
         })
@@ -2497,13 +2574,49 @@ def _record_export_usage(
     return _record(db.transaction())
 
 
+# Large fields kept only in the durable Firestore record when Firestore exists.
+# Redis job records are read on every status poll and rewritten on every state
+# transition, and Redis has no eviction headroom: a full editor snapshot per
+# export for seven days grew Redis without bound. Replay reads Firestore.
+_DURABLE_ONLY_EXPORT_JOB_FIELDS = ("request_snapshot",)
+
+def _load_recorded_export_result(uid: str, export_job_id: str, file_id: str):
+    database = get_db()
+    if database is None:
+        if _IS_PRODUCTION:
+            raise HTTPException(503, "Export recovery storage is temporarily unavailable")
+        return None
+    snapshot = database.collection("users").document(uid).collection("export_usage").document(export_job_id).get()
+    record = snapshot.to_dict() if snapshot.exists else {}
+    if record.get("file_id") != file_id or record.get("export_job_id") != export_job_id:
+        return None
+    payload = record.get("result_payload") or {}
+    if payload.get("success") and payload.get("export_job_id") == export_job_id:
+        return dict(payload)
+    return None
+
+
 def _set_export_job(job_id: str, status: str, *, expected_status=None, **kwargs):
     with JOB_STATE_LOCK:
+        durable_only = {}
+        keep_out_of_redis = _redis_client is not None and get_db() is not None
+        if keep_out_of_redis:
+            durable_only = {
+                field: kwargs.pop(field)
+                for field in _DURABLE_ONLY_EXPORT_JOB_FIELDS
+                if field in kwargs
+            }
         seed = _load_export_job(job_id) or {}
+        if keep_out_of_redis:
+            # A Redis-loss recovery seeds from Firestore; do not copy its
+            # snapshot back into Redis.
+            seed = {key: value for key, value in seed.items() if key not in _DURABLE_ONLY_EXPORT_JOB_FIELDS}
         payload = transition_export_job(_redis_client, job_id, seed, {
             "status": status, "updated_at": time.time(), **kwargs,
         }, expected_status=expected_status)
-        persisted = _persist_export_job(job_id, payload, write_redis=_redis_client is None)
+        persisted = _persist_export_job(
+            job_id, {**payload, **durable_only}, write_redis=_redis_client is None,
+        )
         if _export_queue is not None and not persisted:
             raise RuntimeError("Export job state could not be persisted to shared storage")
         _export_jobs[job_id] = payload
@@ -2749,11 +2862,13 @@ def _signed_upload_url(file_id: str, uid: str, ttl_seconds: int = 6 * 3600) -> s
     return f"/api/media/upload/{file_id}?token={token}"
 
 
-def _signed_export_url(filename: str, uid: str, ttl_seconds: int, cache_bust: str = "") -> str:
+def _signed_export_url(filename: str, uid: str, ttl_seconds: int, cache_bust: str = "",
+                       download_filename: str = "") -> str:
     token = _create_media_token({
         "kind": "export",
         "uid": uid,
         "filename": filename,
+        **({"download_filename": download_filename[:180]} if download_filename else {}),
         "exp": int(time.time() + max(ttl_seconds, 60)),
     })
     suffix = f"&v={cache_bust}" if cache_bust else ""
@@ -2783,12 +2898,15 @@ def _refresh_completed_export_payload(payload: Dict[str, Any], uid: str, job_id:
         uid,
         recovery_ttl_seconds,
         f"{job_id[:8]}-{int(time.time())}",
+        str(refreshed.get("download_filename") or ""),
     )
     # Fetching API -> R2 redirects changes the browser Origin to null. Give the
     # authenticated owner a direct R2 URL, with the same brief retry window.
     refreshed.pop("download_url", None)
     if s3_storage_configured():
-        direct_url = signed_export_download_url(f"exports/{uid}/{filename}", recovery_ttl_seconds)
+        desired_filename = refreshed.get("download_filename")
+        direct_url = (signed_export_download_url(f"exports/{uid}/{filename}", recovery_ttl_seconds, desired_filename)
+                      if desired_filename else signed_export_download_url(f"exports/{uid}/{filename}", recovery_ttl_seconds))
         if not direct_url:
             raise HTTPException(status_code=503, detail="Export download is temporarily unavailable. Resume to retry.")
         refreshed["download_url"] = direct_url
@@ -3835,6 +3953,15 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
         else:
             user_data = user_doc.to_dict() or {}
 
+        recorded_result = _load_recorded_export_result(uid, export_job_id, req.file_id)
+        if recorded_result:
+            # Recover this exact charged job before checking eligibility for a
+            # NEW export, including a last-credit debit or an expired plan.
+            _set_export_job(export_job_id, "finalizing")
+            _set_export_job(export_job_id, "completed", payload=recorded_result,
+                            completed_at=time.time(), recovered_from_usage=True)
+            return recorded_result
+
         if user_data.get("is_promo_user") and user_data.get("promo_expires"):
             try:
                 promo_exp = date.fromisoformat(user_data["promo_expires"])
@@ -4023,26 +4150,10 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
         output_filename, uid, retention_hours * 3600, export_job_id[:8]
     )
 
-    if db_available and user_ref is not None:
-        history_item = {
-            "id": req.file_id,
-            "export_job_id": export_job_id,
-            "filename": output_filename,
-            "url": video_url,
-            "createdAt": now * 1000,
-            "firebase_path": f"exports/{uid}/{output_filename}" if firebase_url else None
-        }
-        dropped_history = _record_export_usage(
-            db, user_ref, history_item, now, export_job_id
-        )
-        for dropped in dropped_history:
-            dropped_path = dropped.get("firebase_path") if isinstance(dropped, dict) else ""
-            if dropped_path:
-                delete_from_firebase_storage(dropped_path)
-
     payload = {
         "success": True,
         "video_url": video_url,
+        "export_filename": output_filename,
         "expires_at": expires_at,
         "retention_hours": retention_hours,
         "export_job_id": export_job_id,
@@ -4053,6 +4164,24 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
             "downgraded": preset["downgraded"],
         },
     }
+
+    if db_available and user_ref is not None:
+        history_item = {
+            "id": req.file_id,
+            "export_job_id": export_job_id,
+            "filename": output_filename,
+            "url": video_url,
+            "createdAt": now * 1000,
+            "firebase_path": f"exports/{uid}/{output_filename}" if firebase_url else None
+        }
+        dropped_history = _record_export_usage(
+            db, user_ref, history_item, now, export_job_id, result_payload=payload
+        )
+        for dropped in dropped_history:
+            dropped_path = dropped.get("firebase_path") if isinstance(dropped, dict) else ""
+            if dropped_path:
+                delete_from_firebase_storage(dropped_path)
+
     completed_at = time.time()
     total_ms = int((completed_at - queue_entered_at) * 1000)
     preparation_ms = int((render_started_at - processing_started_at) * 1000)
@@ -4109,6 +4238,23 @@ async def _process_export_job_core(req: ExportRequest, uid: str, rid: str, expor
     return payload
 
 
+EXPORT_SLOT_WAIT_INTERVAL_SECONDS = 15
+EXPORT_SLOT_WAIT_MAX_ATTEMPTS = max(1, EXPORT_SLOT_TTL_SECONDS // EXPORT_SLOT_WAIT_INTERVAL_SECONDS)
+
+
+def _export_slot_wait_retry():
+    """An RQ Retry result for a job waiting on its account slot, or None outside RQ."""
+    if RQRetry is None:
+        return None
+    try:
+        from rq import get_current_job
+        if get_current_job() is None:
+            return None
+    except Exception:
+        return None
+    return RQRetry(max=EXPORT_SLOT_WAIT_MAX_ATTEMPTS, interval=EXPORT_SLOT_WAIT_INTERVAL_SECONDS)
+
+
 def run_export_job_task(
     export_job_id: str,
     req_payload: Dict[str, Any],
@@ -4125,6 +4271,16 @@ def run_export_job_task(
     if existing_job.get("status") == "completed":
         return existing_job.get("payload") or {}
     try:
+        if existing_job.get("status") == "finalizing":
+            _assert_account_not_deleting(uid)
+            recorded = _load_recorded_export_result(uid, export_job_id, str(req_payload.get("file_id") or ""))
+            if recorded:
+                _set_export_job(export_job_id, "completed", payload=recorded,
+                                completed_at=time.time(), recovered_from_usage=True)
+                if idempotency_key:
+                    _idem_set(idempotency_key, {"status": "completed", "ts": time.time(), "payload": recorded,
+                                               "request_hash": idempotency_request_hash, "job_id": export_job_id})
+                return recorded
         _set_export_job(export_job_id, "starting", worker_release=APP_RELEASE)
     except InvalidJobTransition:
         current = _load_export_job(export_job_id) or {}
@@ -4139,6 +4295,15 @@ def run_export_job_task(
             }
         slot_acquired = _acquire_export_slot(uid, export_job_id)
         if not slot_acquired:
+            wait_retry = _export_slot_wait_retry()
+            if wait_retry is not None:
+                # Batch items for one account share its single export slot. Waiting
+                # for a sibling render is not a failure: reschedule without using
+                # the job's failure retries (a 10-item batch outlived them) and
+                # without dead-lettering every poll.
+                _set_export_job(export_job_id, "retrying", error=None)
+                _json_log("info", "export_waiting_for_account_slot", job_id=export_job_id)
+                return wait_retry
             raise RuntimeError("Another export currently owns this account's export slot")
         req = ExportRequest(**req_payload)
         payload = asyncio.run(_process_export_job_core(req, uid, rid, export_job_id))
@@ -4152,6 +4317,30 @@ def run_export_job_task(
             })
         return payload
     except Exception as e:
+        # Completion storage/telemetry may fail AFTER the atomic debit. In that
+        # case the export succeeded: preserve its idempotency result and do not
+        # turn a paid result into a fresh render on the next submission.
+        usage_recovery_unknown = False
+        try:
+            recorded = _load_recorded_export_result(uid, export_job_id, str(req_payload.get("file_id") or ""))
+        except Exception as recovery_error:
+            recorded = None
+            usage_recovery_unknown = True
+            _json_log("warning", "export_usage_recovery_unavailable", job_id=export_job_id,
+                      error=type(recovery_error).__name__)
+        if recorded:
+            try:
+                current = _load_export_job(export_job_id) or {}
+                if current.get("status") == "finalizing":
+                    _set_export_job(export_job_id, "completed", payload=recorded,
+                                    completed_at=time.time(), recovered_from_usage=True)
+                if idempotency_key:
+                    _idem_set(idempotency_key, {"status": "completed", "ts": time.time(), "payload": recorded,
+                                               "request_hash": idempotency_request_hash, "job_id": export_job_id})
+            except Exception as recovery_error:
+                _json_log("warning", "export_completion_recovery_pending", job_id=export_job_id,
+                          error=type(recovery_error).__name__)
+            return recorded
         try:
             from rq import get_current_job
             rq_job = get_current_job()
@@ -4177,7 +4366,7 @@ def run_export_job_task(
             queue_wait_ms=failed_job.get("queue_wait_ms"),
             elapsed_ms=max(0, int((time.time() - entered_at) * 1000)),
         )
-        if idempotency_key and not locals().get("retry_pending", False):
+        if idempotency_key and not locals().get("retry_pending", False) and not usage_recovery_unknown:
             _idem_delete(idempotency_key)
         _write_dead_letter(
             export_job_id,
@@ -4366,322 +4555,16 @@ app.include_router(create_editor_preferences_router(
 ))
 
 
-@app.post("/api/upload")
-async def upload_video(file: UploadFile = File(...), request: Request = None, response: Response = None):
-    rid = _request_id(request)
-    upload_reference = re.sub(
-        r"[^A-Za-z0-9._:-]",
-        "",
-        str(request.headers.get("idempotency-key") or "")[:128] if request else "",
-    )
-    stage = "request"
-    uid = "unknown-user"
-    file_path = ""
-    remote_path = ""
-    bytes_written = 0
-    completed = False
-    try:
-        _assert_service_available("pause_uploads")
-        token = _extract_bearer_token(request) if request else ""
-        decoded_token = _authenticate_media_request(token)
-        uid = (decoded_token.get("uid") or "").strip() or "unknown-user"
+_upload_api = create_upload_router(sys.modules[__name__])
+app.include_router(_upload_api.router)
+upload_video = _upload_api.upload_video
 
-        if _IS_PRODUCTION:
-            raise HTTPException(
-                status_code=409,
-                detail="Production uploads must use the direct resumable storage flow.",
-                headers={"X-Lekha-Upload-Transport": "direct-resumable"},
-            )
-
-        safe_name = os.path.basename(file.filename or "")
-        file_ext = pathlib.Path(safe_name).suffix.lstrip(".").lower()
-        if _is_content_safety_blocked(file.filename or ""):
-            _track_event("upload_rejected_content_safety")
-            raise HTTPException(status_code=422, detail="Upload blocked by content safety policy.")
-        if file_ext not in ALLOWED_EXTENSIONS:
-            _track_event("upload_rejected_extension", {"ext": file_ext})
-            raise HTTPException(status_code=415, detail=f"File type .{file_ext} not supported. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}")
-
-        content_type = (file.content_type or "").lower()
-        guessed_type, _ = mimetypes.guess_type(file.filename or "")
-        # application/octet-stream is a generic browser fallback — treat extension check as authoritative
-        if content_type and content_type != "application/octet-stream" and not any(content_type.startswith(p) for p in ALLOWED_CONTENT_PREFIXES):
-            _track_event("upload_rejected_content_type", {"content_type": content_type})
-            raise HTTPException(status_code=415, detail=f"Unsupported MIME type: {content_type}")
-        if guessed_type and not any(guessed_type.startswith(p) for p in ALLOWED_CONTENT_PREFIXES):
-            _track_event("upload_rejected_guess_type", {"guessed_type": guessed_type})
-            raise HTTPException(status_code=415, detail=f"Unsupported file type: {guessed_type}")
-
-        # A browser can lose the response after the server has finished saving a
-        # video. The recovery client retries with the same key; return that
-        # completed upload before consuming another rate-limit slot or creating
-        # a duplicate object in storage.
-        upload_fingerprint = f"{safe_name}:{content_type}"
-        cached_upload = _upload_idem_get(uid, upload_reference)
-        if cached_upload:
-            if cached_upload.get("fingerprint") != upload_fingerprint:
-                raise HTTPException(
-                    status_code=409,
-                    detail="This upload retry key was already used for a different file.",
-                )
-            cached_file_id = str(cached_upload.get("file_id") or "")
-            if _validate_file_id(cached_file_id):
-                _assert_upload_owner(cached_file_id, uid)
-                _track_event("upload_idempotent_replay")
-                return {
-                    "success": True,
-                    "file_id": cached_file_id,
-                    "raw_url": _signed_upload_url(cached_file_id, uid),
-                    "idempotent_replay": True,
-                }
-
-        content_length = int(request.headers.get('content-length', 0)) if request else 0
-        _json_log(
-            "info",
-            "upload_started",
-            request_id=rid,
-            upload_reference=upload_reference,
-            content_length=content_length,
-            content_type=content_type,
-        )
-        if content_length > MAX_PROXY_UPLOAD_BYTES + 1024 * 1024:
-            _track_event("upload_rejected_too_large", {"content_length": content_length})
-            raise HTTPException(status_code=413, detail="Large files must use direct storage upload.")
-
-        file_id = str(uuid.uuid4())
-        file_path = os.path.join(UPLOAD_DIR, f"{file_id}.{file_ext}")
-        # Stream to disk in chunks rather than buffering the whole file in RAM —
-        # a 500 MiB read per request is a memory-pressure DoS under concurrency.
-        # Enforce the size cap as we write so an oversized (or content-length-spoofed)
-        # body is aborted early instead of fully consumed.
-        stage = "receiving_body"
-        too_large = False
-        UPLOAD_CHUNK_SIZE = 1024 * 1024  # 1 MB
-        with open(file_path, "wb") as buffer:
-            while True:
-                chunk = await file.read(UPLOAD_CHUNK_SIZE)
-                if not chunk:
-                    break
-                bytes_written += len(chunk)
-                if bytes_written > MAX_PROXY_UPLOAD_BYTES:
-                    too_large = True
-                    break
-                buffer.write(chunk)
-        if too_large:
-            try:
-                os.remove(file_path)
-            except Exception:
-                pass
-            _track_event("upload_rejected_too_large", {"content_length": bytes_written})
-            raise HTTPException(status_code=413, detail="Large files must use direct storage upload.")
-
-        stage = "body_received"
-        _json_log(
-            "info",
-            "upload_body_received",
-            request_id=rid,
-            upload_reference=upload_reference,
-            bytes_received=bytes_written,
-        )
-
-        # Count only fully received uploads. Previously the rate reservation was
-        # consumed before reading the request body, so every Wi-Fi interruption
-        # counted against both the IP and user limits even though no usable file
-        # reached the service. This also lets the browser safely retry a dropped
-        # transfer without locking the account out.
-        if request:
-            client_ip = _client_rate_key(request)
-            allowed, retry_after, remaining = _check_rate(
-                _upload_rate,
-                f"network:{client_ip}",
-                UPLOAD_SHARED_NETWORK_RATE_LIMIT,
-                UPLOAD_RATE_WINDOW,
-            )
-            _apply_rate_headers(response, UPLOAD_SHARED_NETWORK_RATE_LIMIT, remaining, retry_after)
-            if not allowed:
-                try:
-                    os.remove(file_path)
-                except OSError:
-                    pass
-                _track_event("upload_rejected_rate_limited")
-                raise HTTPException(status_code=429, detail="Too many uploads. Please wait before trying again.")
-            user_allowed, user_retry_after, user_remaining = _check_rate(
-                _upload_rate, f"user:{uid}", UPLOAD_USER_RATE_LIMIT, UPLOAD_RATE_WINDOW
-            )
-            _apply_rate_headers(response, UPLOAD_USER_RATE_LIMIT, user_remaining, user_retry_after)
-            if not user_allowed:
-                try:
-                    os.remove(file_path)
-                except OSError:
-                    pass
-                _track_event("upload_rejected_rate_limited")
-                raise HTTPException(status_code=429, detail="Too many uploads. Please wait before trying again.")
-        _log(rid, f"Upload accepted file_id={file_id} ext={file_ext} bytes={bytes_written}")
-        stage = "security_scan"
-        if not await asyncio.to_thread(_scan_upload_for_threat, file_path):
-            try:
-                os.remove(file_path)
-            except Exception:
-                pass
-            _track_event("upload_rejected_malware_scan")
-            raise HTTPException(status_code=422, detail="Upload failed security scan.")
-
-        stage = "media_probe"
-        try:
-            metadata = await asyncio.to_thread(_probe_media, file_path)
-            duration = float((metadata.get("format") or {}).get("duration") or 0)
-            content_sha256 = await asyncio.to_thread(_compute_media_hash, file_path)
-        except Exception as probe_error:
-            try:
-                os.remove(file_path)
-            except Exception:
-                pass
-            _track_event("upload_rejected_ffprobe", {"error": str(probe_error)})
-            raise HTTPException(status_code=422, detail=f"Invalid media file: {probe_error}")
-
-        controls = _read_service_controls()
-        max_seconds = int(controls.get(
-            MAX_UPLOAD_DURATION_CONTROL_KEY,
-            GLOBAL_MAX_UPLOAD_DURATION_SECONDS,
-        ))
-        if duration > max_seconds:
-            os.remove(file_path)
-            _track_event("upload_rejected_duration", {"duration": duration})
-            raise HTTPException(status_code=413, detail=f"Video is {duration:.0f}s. Maximum allowed is {max_seconds // 60} minutes.")
-
-        stage = "durable_storage"
-        remote_path = await asyncio.to_thread(
-            upload_source_media, file_path, uid, file_id, file_ext, 6
-        )
-        if _IS_PRODUCTION and not remote_path:
-            try:
-                os.remove(file_path)
-            except OSError:
-                pass
-            raise HTTPException(status_code=503, detail="Durable media storage is unavailable. Please retry.")
-
-        stage = "owner_persistence"
-        scanned_at = _utcnow().isoformat() + "Z"
-        owner_persisted = _remember_upload_owner(
-            file_id,
-            uid,
-            remote_path or "",
-            file_ext,
-            source_metadata={
-                "upload_state": "clean",
-                "security_scanned_at": scanned_at,
-                "content_sha256": content_sha256,
-                "size_bytes": bytes_written,
-            },
-        )
-        if _IS_PRODUCTION and not owner_persisted:
-            raise HTTPException(status_code=503, detail="Upload ownership could not be persisted. Please retry.")
-        if remote_path:
-            await asyncio.to_thread(
-                set_source_upload_state, uid, file_id, remote_path, "clean",
-            )
-        _upload_idem_set(uid, upload_reference, {
-            "file_id": file_id,
-            "fingerprint": upload_fingerprint,
-            "ts": time.time(),
-        })
-        stage = "completed"
-        completed = True
-        _track_event("upload_success", {
-            "ext": file_ext,
-            "request_id": rid,
-            "upload_reference": upload_reference,
-        })
-        _audit_action("upload_success", uid, {"file_id": file_id, "ext": file_ext, "duration": duration})
-        return {"success": True, "file_id": file_id, "raw_url": _signed_upload_url(file_id, uid)}
-    except asyncio.CancelledError:
-        await asyncio.to_thread(_cleanup_incomplete_upload, file_path, remote_path)
-        _track_event("upload_client_disconnected", {
-            "stage": stage,
-            "bytes_received": bytes_written,
-            "request_id": rid,
-            "upload_reference": upload_reference,
-        })
-        _json_log(
-            "warning",
-            "upload_client_disconnected",
-            request_id=rid,
-            upload_reference=upload_reference,
-            stage=stage,
-            bytes_received=bytes_written,
-        )
-        raise
-    except HTTPException as http_error:
-        if not completed:
-            await asyncio.to_thread(_cleanup_incomplete_upload, file_path, remote_path)
-        _json_log(
-            "warning",
-            "upload_rejected",
-            request_id=rid,
-            upload_reference=upload_reference,
-            stage=stage,
-            status_code=http_error.status_code,
-            bytes_received=bytes_written,
-        )
-        raise
-    except Exception as e:
-        if not completed:
-            await asyncio.to_thread(_cleanup_incomplete_upload, file_path, remote_path)
-        disconnected = type(e).__name__ == "ClientDisconnect"
-        event = "upload_client_disconnected" if disconnected else "upload_failed"
-        _track_event(event, {
-            "stage": stage,
-            "bytes_received": bytes_written,
-            "request_id": rid,
-            "upload_reference": upload_reference,
-            "error_type": type(e).__name__,
-        })
-        _json_log(
-            "warning" if disconnected else "error",
-            event,
-            request_id=rid,
-            upload_reference=upload_reference,
-            stage=stage,
-            bytes_received=bytes_written,
-            error_type=type(e).__name__,
-            error=str(e),
-        )
-        if disconnected:
-            raise HTTPException(status_code=499, detail=f"Upload connection was interrupted. Reference: {rid}") from e
-        raise HTTPException(status_code=500, detail=f"Upload failed. Reference: {rid}") from e
-
-@app.post("/api/process")
-async def process_video(req: ProcessRequest, request: Request, response: Response):
-    if not _IS_PRODUCTION:
-        return await _process_video_inline(req, request, response)
-    _assert_service_available("pause_transcription")
-    uid = _authenticate_media_request(req.id_token, req.org_id)["uid"]
-    if not _validate_file_id(req.file_id):
-        raise HTTPException(400, "Invalid file_id")
-    await asyncio.to_thread(_assert_upload_owner, req.file_id, uid)
-    settings = {"file_id": req.file_id, "language": req.language,
-                "min_words": req.min_words, "max_words": req.max_words}
-    jobs = TranscriptionJobs(get_db())
-    job = await asyncio.to_thread(jobs.create, uid, settings)
-    if job["status"] == "completed":
-        return {**job["payload"], "idempotent_replay": True}
-    if job["status"] in {"failed", "unknown", "cancelled"}:
-        raise HTTPException(409, f"{job.get('error') or 'Transcription is no longer active.'} Reference: {job['job_id']}")
-    # Dispatch immediately on the request path. The durable outbox remains the
-    # recovery mechanism for a Redis outage or a crash between commit/enqueue;
-    # it is no longer the primary delivery path.
-    try:
-        await asyncio.to_thread(jobs.dispatch, _transcription_queue)
-    except Exception as error:
-        _json_log(
-            "warning",
-            "transcription_immediate_dispatch_failed",
-            job_id=job["job_id"],
-            error_type=type(error).__name__,
-        )
-    response.status_code = 202
-    response.headers["Retry-After"] = "3"
-    return {"success": True, "pending": True, "job_id": job["job_id"], "status": job["status"]}
+_processing_api = create_processing_router(sys.modules[__name__])
+app.include_router(_processing_api.router)
+process_video = _processing_api.process_video
+run_transcription_job_task = _processing_api.run_transcription_job_task
+_mark_account_activated = _processing_api._mark_account_activated
+_process_video_inline = _processing_api._process_video_inline
 
 
 async def _transcription_dispatch_loop():
@@ -4723,36 +4606,6 @@ app.include_router(create_maintenance_router(
 ))
 
 
-def run_transcription_job_task(uid: str, job_id: str):
-    jobs = TranscriptionJobs(get_db())
-    job = jobs.claim(uid, job_id)
-    if job is None:
-        return {"duplicate_or_cancelled": True}
-    try:
-        _assert_account_not_deleting(uid)
-        req = ProcessRequest(**job["settings"])
-        request = Request({"type": "http", "headers": [], "client": ("worker", 0)})
-        result = asyncio.run(_process_video_inline(req, request, Response(), trusted_uid=uid))
-        # A bounded retry persists the already obtained result; it never calls
-        # the paid provider again if Firestore momentarily loses connectivity.
-        for attempt in range(3):
-            try:
-                jobs.finish(uid, job_id, "completed", payload=result)
-                return {"status": "completed"}
-            except Exception:
-                if attempt == 2:
-                    raise
-                time.sleep(attempt + 1)
-    except Exception as error:
-        # HTTP errors from `_process_video_inline` are confirmed terminal
-        # outcomes (including a provider's explicit failure), so the browser
-        # may safely retry the durable job without uploading again. A raw
-        # exception remains `unknown`: the provider may have completed it just
-        # before the worker failed, and replaying blindly could double-charge.
-        confirmed_failure = isinstance(error, HTTPException)
-        jobs.finish(uid, job_id, "failed" if confirmed_failure else "unknown",
-                    error="Transcription could not complete. Contact support with this job reference; it will not be repeated automatically.")
-        raise
 
 
 def run_media_scan_job_task(uid: str, file_id: str):
@@ -4780,230 +4633,8 @@ def run_media_scan_job_task(uid: str, file_id: str):
         raise
 
 
-def _mark_account_activated(uid: str) -> bool:
-    """Record the first successful transcription once for the business funnel."""
-    database = get_db()
-    if database is None or not uid:
-        return False
-    user_ref = database.collection("users").document(uid)
-
-    @firestore.transactional
-    def activate(transaction):
-        snapshot = user_ref.get(transaction=transaction)
-        current = snapshot.to_dict() if snapshot.exists else {}
-        if current.get("activated_at"):
-            return False
-        transaction.set(
-            user_ref,
-            {"activated_at": _utcnow().isoformat() + "Z", "activation_event": "first_transcription"},
-            merge=True,
-        )
-        return True
-
-    try:
-        return bool(activate(database.transaction()))
-    except Exception as error:
-        _json_log("warning", "account_activation_persist_failed", uid=uid, error=type(error).__name__)
-        return False
 
 
-async def _process_video_inline(req: ProcessRequest, request: Request, response: Response, *, trusted_uid=None):
-    rid = _request_id(request)
-    _assert_service_available("pause_transcription")
-    # Auth — same dev-mode bypass as /api/export
-    decoded_token = {"uid": trusted_uid} if trusted_uid else _authenticate_media_request(req.id_token, req.org_id)
-    uid = (decoded_token.get("uid") or "").strip() or "unknown-user"
-    client_ip = _client_rate_key(request)
-    allowed, retry_after, remaining = _check_rate(
-        _process_rate, f"network:{client_ip}", PROCESS_SHARED_NETWORK_RATE_LIMIT
-    )
-    _apply_rate_headers(response, PROCESS_SHARED_NETWORK_RATE_LIMIT, remaining, retry_after)
-    if not allowed:
-        _track_event("process_rejected_rate_limited")
-        raise HTTPException(status_code=429, detail="Too many transcription requests. Please wait before trying again.")
-    user_allowed, user_retry_after, user_remaining = _check_rate(
-        _process_rate, f"user:{uid}", PROCESS_USER_RATE_LIMIT
-    )
-    _apply_rate_headers(response, PROCESS_USER_RATE_LIMIT, user_remaining, user_retry_after)
-    if not user_allowed:
-        _track_event("process_rejected_rate_limited")
-        raise HTTPException(status_code=429, detail="Too many transcription requests. Please wait before trying again.")
-    if not _validate_file_id(req.file_id):
-        raise HTTPException(status_code=400, detail="Invalid file_id")
-    _assert_upload_owner(req.file_id, uid)
-    input_path = _safe_find_upload(req.file_id)
-    if not input_path:
-        _track_event("process_failed_not_found")
-        raise HTTPException(status_code=404, detail="File not found")
-    await asyncio.to_thread(_ensure_upload_clean, req.file_id, uid, input_path)
-
-    # Enforce the per-plan maximum source length. /api/upload only applies a
-    # global 180s ceiling; paid plans advertise tighter caps (starter=120s) that
-    # can only be enforced here, where the caller's tier is known. Checked before
-    # the cache lookup so a result cached by a higher tier can't be replayed to a
-    # lower-tier user with a too-long video.
-    user_tier = _normalize_tier_name(await asyncio.to_thread(_lookup_subscription_tier, uid))
-    controls = _read_service_controls()
-    operator_max_seconds = int(controls.get(
-        MAX_UPLOAD_DURATION_CONTROL_KEY,
-        GLOBAL_MAX_UPLOAD_DURATION_SECONDS,
-    ))
-    max_seconds = min(_max_video_seconds_for_tier(user_tier), operator_max_seconds)
-    try:
-        _probe_meta = await asyncio.to_thread(_probe_media, input_path)
-        media_duration = float((_probe_meta.get("format") or {}).get("duration") or 0)
-    except Exception as probe_error:
-        _track_event("process_rejected_ffprobe", {"file_id": req.file_id, "error": str(probe_error)})
-        raise HTTPException(status_code=422, detail="Invalid media file") from probe_error
-    if media_duration > max_seconds + 0.5:
-        _track_event("process_rejected_duration", {"tier": user_tier, "duration": media_duration, "max_seconds": max_seconds})
-        raise HTTPException(status_code=403, detail=f"Your plan allows videos up to {max_seconds}s. This video is {media_duration:.0f}s long.")
-    await asyncio.to_thread(_remember_source_duration, req.file_id, media_duration)
-
-    try:
-        media_hash = await asyncio.to_thread(_compute_media_hash, input_path)
-        cache_path = _build_process_cache_path(media_hash, req.language, req.min_words, req.max_words)
-    except Exception:
-        media_hash = ""
-        cache_path = ""
-
-    cached = await asyncio.to_thread(_read_transcription_cache, cache_path) if cache_path else None
-    if cached is not None:
-        try:
-            if cached.get("success") and not (cached.get("captions") or []):
-                raise HTTPException(
-                    status_code=422,
-                    detail="No speech with usable word timestamps was detected.",
-                )
-            cached["cached"] = True
-            _track_event("process_cache_hit", {"language": req.language})
-            return cached
-        except HTTPException:
-            raise
-        except Exception:
-            pass
-
-    # A dropped HTTP response must not make the browser start another paid
-    # transcription.  Keep the receipt in the shared idempotency store, keyed
-    # by both account and the exact transcription settings.
-    raw_process_idem = (req.idempotency_key or request.headers.get("x-idempotency-key") or "").strip()
-    process_idem_key = f"process:{uid}:{raw_process_idem}" if raw_process_idem else ""
-    process_request_hash = hashlib.sha256(json.dumps({
-        "file_id": req.file_id,
-        "language": req.language,
-        "min_words": req.min_words,
-        "max_words": req.max_words,
-    }, sort_keys=True).encode("utf-8")).hexdigest()
-    if process_idem_key:
-        cached_process = _idem_get(process_idem_key)
-        if cached_process:
-            if cached_process.get("request_hash") != process_request_hash:
-                raise HTTPException(
-                    status_code=409,
-                    detail="This transcription idempotency key was already used for a different request.",
-                )
-            if cached_process.get("status") == "completed" and cached_process.get("payload"):
-                return {**cached_process["payload"], "idempotent_replay": True}
-            if cached_process.get("status") == "in_progress":
-                raise HTTPException(
-                    status_code=409,
-                    detail="PROCESS_IN_PROGRESS: Your transcription is still running. Reconnecting automatically.",
-                )
-
-    process_request_id = uuid.uuid4().hex
-    if not _acquire_process_slot(uid, process_request_id):
-        raise HTTPException(
-            status_code=409,
-            detail="A transcription is already running for this account. Wait for it to finish before retrying.",
-        )
-
-    try:
-        if process_idem_key:
-            _idem_set(process_idem_key, {
-                "status": "in_progress",
-                "ts": time.time(),
-                "request_hash": process_request_hash,
-            })
-        _json_log("info", "process_started", request_id=rid, file_id=req.file_id, language=req.language)
-        await asyncio.to_thread(_reserve_ai_quota, uid, "process")
-
-        def _generate_captions_in_worker_thread():
-            return asyncio.run(processor.generate_captions_only(
-                input_path,
-                target_language=req.language,
-                min_words=req.min_words,
-                max_words=req.max_words,
-            ))
-
-        try:
-            result = await asyncio.to_thread(_generate_captions_in_worker_thread)
-        except Exception:
-            # A failed transcription must never consume a customer's import
-            # allowance. `trusted_uid` only bypasses a second auth check in the
-            # worker; it must not change billing or quota treatment.
-            await asyncio.to_thread(_release_ai_quota, uid, "process")
-            raise
-
-        if result.get("success") and not (result.get("captions") or []):
-            result = {
-                "success": False,
-                "error": "No speech with usable word timestamps was detected.",
-                "error_code": "NO_SPEECH_DETECTED",
-            }
-
-        if result.get("success"):
-            _track_event("process_success", {"language": req.language, "request_id": rid})
-            if await asyncio.to_thread(_mark_account_activated, uid):
-                _track_event("account_activation", {"source": "first_transcription"})
-            _json_log("info", "process_completed", request_id=rid, caption_count=len(result.get("captions") or []))
-            if media_duration > 0:
-                _track_operational_metric_sample("transcription_media_seconds", media_duration)
-                _track_operational_metric_sample(
-                    "job_cost_usd",
-                    (media_duration / 60.0) * AI_COST_ESTIMATE_PER_MEDIA_MINUTE_USD,
-                )
-            if cache_path:
-                await asyncio.to_thread(_write_transcription_cache, cache_path, result)
-            if process_idem_key:
-                _idem_set(process_idem_key, {
-                    "status": "completed",
-                    "ts": time.time(),
-                    "request_hash": process_request_hash,
-                    "payload": result,
-                })
-        else:
-            _track_event("process_failed", {
-                "language": req.language,
-                "error": result.get("error", "unknown"),
-                "request_id": rid,
-            })
-            _json_log(
-                "warning",
-                "process_failed",
-                request_id=rid,
-                error=result.get("error", "unknown"),
-            )
-            is_no_speech = result.get("error_code") == "NO_SPEECH_DETECTED"
-            status_code = 422 if is_no_speech else 502
-            # An unsuccessful caption result, including no detected speech,
-            # does not use the customer's import allowance. The provider may
-            # still have billed Lekha, but that cost is not passed to a user who
-            # received no usable captions.
-            await asyncio.to_thread(_release_ai_quota, uid, "process")
-            raise HTTPException(
-                status_code=status_code,
-                detail=result.get("error", "Transcription service failed"),
-            )
-
-        return result
-    except Exception:
-        # Failed provider calls release their quota in the branches above and
-        # must not leave an in-progress receipt that blocks a real retry.
-        if process_idem_key:
-            _idem_delete(process_idem_key)
-        raise
-    finally:
-        _release_process_slot(uid, process_request_id)
 
 _export_api = create_export_router(sys.modules[__name__])
 app.include_router(_export_api.router)
@@ -5112,19 +4743,9 @@ app.include_router(create_workspace_router(
 ))
 
 
-@app.get("/api/admin/provider-health")
-def provider_health(request: Request):
-    if not _is_admin_token(request=request):
-        raise HTTPException(403, "Admin access required")
-    return {
-        "success": True,
-        "providers": transcription_provider_health.snapshot(),
-        "policy": {
-            "failure_threshold": transcription_provider_health.failure_threshold,
-            "cooldown_seconds": transcription_provider_health.cooldown_seconds,
-            "failover_order": ["sarvam", "openai"],
-        },
-    }
+_provider_admin_api = create_provider_admin_router(sys.modules[__name__])
+app.include_router(_provider_admin_api.router)
+provider_health = _provider_admin_api.provider_health
 app.include_router(create_analytics_router(
     is_admin=_is_admin_token,
     utcnow=_utcnow,

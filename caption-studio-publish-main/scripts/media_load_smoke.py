@@ -17,7 +17,7 @@ import statistics
 import threading
 import time
 import uuid
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 import requests
 from media_job_client import await_transcription
@@ -77,6 +77,9 @@ def upload_direct(session: requests.Session, base_url: str, headers: dict,
     ), "direct upload initiation")
     if not initiated.get("direct_upload_available"):
         raise RuntimeError("Direct upload is unavailable; cannot measure the customer path")
+    if initiated.get("upload_protocol") == "s3_multipart":
+        upload_s3_parts(session, base_url, headers, video, initiated, timeout=timeout)
+        return complete_direct_upload(session, base_url, headers, initiated["file_id"])
     session_url = initiated["upload_url"]
     offset = 0
     failures = 0
@@ -122,13 +125,58 @@ def upload_direct(session: requests.Session, base_url: str, headers: dict,
                 continue
             offset = acknowledged
             failures = 0
+    return complete_direct_upload(session, base_url, headers, initiated["file_id"])
+
+
+def upload_s3_parts(session, base_url, headers, video, initiated, *, timeout):
+    """Use Railway's signed R2 parts, retrying the same part number safely."""
+    size = video.stat().st_size
+    part_size = int(initiated.get("part_size") or 0)
+    part_count = int(initiated.get("part_count") or 0)
+    if part_size <= 0 or part_count != (size + part_size - 1) // part_size:
+        raise RuntimeError("Invalid multipart upload geometry")
+    with video.open("rb") as media:
+        for part_number in range(1, part_count + 1):
+            expected_length = min(part_size, size - (part_number - 1) * part_size)
+            chunk = media.read(expected_length)
+            if len(chunk) != expected_length:
+                raise RuntimeError("Source media ended before its declared size")
+            for attempt in range(4):
+                # Sign again on retry so a URL expiry is never retried forever.
+                signed = require_ok(session.post(
+                    urljoin(base_url, "api/uploads/parts"),
+                    json={"file_id": initiated["file_id"], "part_numbers": [part_number]},
+                    headers=headers, timeout=30,
+                ), "multipart part signing")
+                parts = signed.get("parts") or []
+                if (len(parts) != 1 or parts[0].get("part_number") != part_number
+                        or parts[0].get("content_length") != expected_length):
+                    raise RuntimeError("Signed part does not match the requested bytes")
+                try:
+                    # Firebase/App Check credentials belong only on API requests.
+                    response = session.put(
+                        parts[0]["url"], data=chunk,
+                        headers={"Content-Length": str(expected_length)}, timeout=timeout,
+                    )
+                    if 200 <= response.status_code < 300:
+                        break
+                    if 400 <= response.status_code < 500 and response.status_code != 429:
+                        raise PermanentUploadError(f"R2 rejected part {part_number} (HTTP {response.status_code})")
+                    raise requests.RequestException(f"R2 part upload returned HTTP {response.status_code}")
+                except requests.RequestException:
+                    if attempt == 3:
+                        raise
+                    time.sleep(2 ** attempt)
+
+
+def complete_direct_upload(session, base_url, headers, file_id):
     # Completion is idempotent in the API: a dropped tunnel response must not
     # turn an already uploaded object into a failed customer journey.
     for attempt in range(4):
         try:
             return require_ok(session.post(
                 urljoin(base_url, "api/uploads/complete"),
-                json={"file_id": initiated["file_id"]}, headers=headers, timeout=30,
+                json={"file_id": file_id}, headers=headers, timeout=30,
             ), "direct upload completion")
         except requests.RequestException:
             if attempt == 3:
@@ -156,6 +204,30 @@ def video_sha256(video: pathlib.Path) -> str:
     return digest.hexdigest()
 
 
+def download_export(session, base_url, headers, export, *, timeout):
+    """Keep Firebase credentials on the API even when a signed URL redirects."""
+    location = export.get('download_url') or export.get('video_url')
+    if not location:
+        raise RuntimeError('completed export has no download URL')
+    api_origin = urlsplit(base_url)
+    url = urljoin(base_url, location)
+    for _ in range(4):
+        target = urlsplit(url)
+        same_origin = (target.scheme, target.netloc) == (api_origin.scheme, api_origin.netloc)
+        if target.username or target.password or (not same_origin and target.scheme != 'https'):
+            raise RuntimeError('export download returned an unsafe URL')
+        response = session.get(url, headers=headers if same_origin else {},
+                               timeout=timeout, allow_redirects=False)
+        if response.status_code not in {301, 302, 303, 307, 308}:
+            response.raise_for_status()
+            return response
+        redirect = response.headers.get('Location')
+        if not redirect:
+            raise RuntimeError('export download redirect has no Location')
+        url = urljoin(url, redirect)
+    raise RuntimeError('export download exceeded the redirect limit')
+
+
 def run_journey(index: int, credential: dict, args: argparse.Namespace) -> dict:
     origins = [origin.strip().rstrip("/") + "/" for origin in args.base_url.split(",") if origin.strip()]
     base_url = origins[(index - 1) % len(origins)]
@@ -176,6 +248,7 @@ def run_journey(index: int, credential: dict, args: argparse.Namespace) -> dict:
     file_id = ""
     job_id = ""
     stages: dict[str, float] = {}
+    admission_retries = 0
     started = time.monotonic()
 
     try:
@@ -252,7 +325,6 @@ def run_journey(index: int, credential: dict, args: argparse.Namespace) -> dict:
             "fps": args.fps,
         }
         deadline = time.monotonic() + args.export_wait_timeout
-        admission_retries = 0
         while True:
             submitted = session.post(
                 urljoin(base_url, "api/export"), json=export_request,
@@ -288,11 +360,7 @@ def run_journey(index: int, credential: dict, args: argparse.Namespace) -> dict:
         stages["export"] = time.monotonic() - stage_started
 
         stage_started = time.monotonic()
-        video_url = export.get("video_url")
-        if not video_url:
-            raise RuntimeError("completed export has no video_url")
-        download = session.get(urljoin(base_url, video_url), headers=headers, timeout=args.download_timeout)
-        download.raise_for_status()
+        download = download_export(session, base_url, headers, export, timeout=args.download_timeout)
         if len(download.content) < 1024 or b"ftyp" not in download.content[:64]:
             raise RuntimeError("downloaded export is empty or is not an MP4")
         stages["download"] = time.monotonic() - stage_started
@@ -316,6 +384,7 @@ def run_journey(index: int, credential: dict, args: argparse.Namespace) -> dict:
             "file_id": file_id,
             "job_id": job_id,
             "error": str(exc),
+            "admission_retries": admission_retries,
             "source_media": source_media,
             "stages_seconds": stages,
             "total_seconds": time.monotonic() - started,
