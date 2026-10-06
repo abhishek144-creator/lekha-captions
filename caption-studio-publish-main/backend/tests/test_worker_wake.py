@@ -31,6 +31,22 @@ class FakeWorker:
 
 
 class DrainTests(unittest.TestCase):
+    def test_work_horse_failure_reconciles_before_rq_retries(self):
+        conn = fakeredis.FakeRedis()
+        instance = worker.ReleaseWorker(["render"], connection=conn)
+        job = Mock(id="crashed", should_retry=True)
+        order = []
+        with patch.object(worker.api, "recover_interrupted_export_retry", side_effect=lambda _: order.append("reconcile")), patch.object(worker.Worker, "handle_job_failure", side_effect=lambda *args: order.append("rq")):
+            instance.handle_job_failure(job, Mock())
+        self.assertEqual(order, ["reconcile", "rq"])
+
+    def test_stopped_job_is_not_reopened(self):
+        instance = worker.ReleaseWorker(["render"], connection=fakeredis.FakeRedis())
+        instance._stopped_job_id = "stopped"
+        with patch.object(worker.api, "recover_interrupted_export_retry") as reconcile, patch.object(worker.Worker, "handle_job_failure"):
+            instance.handle_job_failure(Mock(id="stopped", should_retry=True), Mock())
+        reconcile.assert_not_called()
+
     def setUp(self):
         self.redis = fakeredis.FakeRedis()
         self.ran = []
