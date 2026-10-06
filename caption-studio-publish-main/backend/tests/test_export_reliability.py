@@ -42,6 +42,18 @@ class MemoryRef:
 
 
 class ExportReliabilityTests(unittest.TestCase):
+    def test_interrupted_processing_is_conditionally_reopened_for_rq_retry(self):
+        with patch.object(main, "_load_export_job", return_value={"status": "processing"}), patch.object(main, "_set_export_job") as write:
+            main.recover_interrupted_export_retry("crashed")
+        write.assert_called_once_with("crashed", "retrying", expected_status="processing",
+                                      error="Worker interrupted; export will retry")
+
+    def test_interrupted_retry_preserves_paid_and_terminal_results(self):
+        for status in ("completed", "cancelled", "failed", "retrying", "queued", "finalizing"):
+            with self.subTest(status=status), patch.object(main, "_load_export_job", return_value={"status": status, "uid": "owner", "file_id": FILE_ID}), patch.object(main, "_load_recorded_export_result", return_value={"success": True}), patch.object(main, "_set_export_job") as write:
+                main.recover_interrupted_export_retry("crashed")
+                write.assert_not_called()
+
     def test_slow_auth_queue_and_wake_do_not_block_loop_or_exceed_admission_limit(self):
         active = 0
         maximum = 0

@@ -62,6 +62,16 @@ class ReleaseWorker(Worker):
     scale_in_protector = ScaleInProtector()
     launch_lease = None
 
+    def handle_job_failure(self, job, queue, started_job_registry=None, exc_string=""):
+        # SIGKILL bypasses the task's exception handler. Repair its application
+        # state before RQ schedules the retry, including failures in work horses.
+        if job.should_retry and self._stopped_job_id != job.id:
+            try:
+                api.recover_interrupted_export_retry(job.id)
+            except Exception as error:
+                self.log.warning("Export retry reconciliation failed for %s: %s", job.id, type(error).__name__)
+        return super().handle_job_failure(job, queue, started_job_registry, exc_string)
+
     def heartbeat(self, timeout=None, pipeline=None):
         super().heartbeat(timeout=timeout, pipeline=pipeline)
         metadata = release_metadata("worker")

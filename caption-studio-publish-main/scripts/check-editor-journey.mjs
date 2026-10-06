@@ -83,7 +83,11 @@ const textClick = async (text) => {
 try {
   await page.goto('http://127.0.0.1:4187/e2e/fixtures/editor.html')
   await page.evaluate((value) => localStorage.setItem('captionEditorState', JSON.stringify(value)), draft)
-  await page.goto('http://127.0.0.1:4187/e2e/fixtures/editor.html?restoreSession=1')
+  await page.reload()
+  await page.waitForFunction(() => document.body.textContent.includes('Continue saved draft'))
+  assert.equal(saveRequests, 0, 'normal reload must preserve the draft without writing it')
+  assert.equal(await page.evaluate(() => document.body.textContent.includes('Download draft backup')), true)
+  await textClick('Continue saved draft')
   await page.waitForSelector('[data-caption-editor="true"]')
   await page.waitForSelector('input[aria-label="Relink source video"]')
   await new Promise((resolve) => setTimeout(resolve, 3000))
