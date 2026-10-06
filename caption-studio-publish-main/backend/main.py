@@ -4117,6 +4117,25 @@ def _export_slot_wait_retry():
     return RQRetry(max=EXPORT_SLOT_WAIT_MAX_ATTEMPTS, interval=EXPORT_SLOT_WAIT_INTERVAL_SECONDS)
 
 
+def recover_interrupted_export_retry(export_job_id: str):
+    """Called only after RQ confirms a failed or abandoned execution will retry."""
+    record = _load_export_job(export_job_id) or {}
+    status = record.get("status")
+    if status not in {"starting", "processing", "finalizing"}:
+        return
+    if status == "finalizing" and _load_recorded_export_result(
+        record.get("uid", ""), export_job_id, record.get("file_id", "")
+    ):
+        # The retry recovers this paid result without rendering or charging again.
+        return
+    try:
+        _set_export_job(export_job_id, "retrying", expected_status=status,
+                        error="Worker interrupted; export will retry")
+    except InvalidJobTransition:
+        # A concurrent completion/cancellation remains authoritative.
+        return
+
+
 def run_export_job_task(
     export_job_id: str,
     req_payload: Dict[str, Any],

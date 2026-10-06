@@ -46,6 +46,9 @@ test.describe('authenticated customer journey', () => {
 
     await page.reload({ waitUntil: 'domcontentloaded' })
     await expect(page.getByRole('button', { name: /Upload Video/i })).toBeVisible({ timeout: 30_000 })
+    await page.getByRole('button', { name: 'Continue saved draft', exact: true }).click()
+    await expect(page.locator('[data-caption-editor="true"]')).toBeVisible()
+    await expect(page.getByText('Authenticated journey correction', { exact: true })).toBeVisible()
   })
 
   test('test-mode checkout creates an authenticated order without charging', async ({ page }) => {

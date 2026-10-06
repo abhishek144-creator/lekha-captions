@@ -31,6 +31,7 @@ except ImportError:  # pragma: no cover - run as a script from backend/
 try:
     from rq.registry import StartedJobRegistry
     from rq.scheduler import RQScheduler
+    from rq.job import Job
 except ImportError:  # pragma: no cover - production dependency is pinned
     RQScheduler = None
     StartedJobRegistry = None
@@ -60,7 +61,17 @@ def recover_expired_jobs(connection, queue_names):
     if StartedJobRegistry is None or connection is None:
         return 0
     for name in queue_names:
-        StartedJobRegistry(name=name, connection=connection).cleanup()
+        registry = StartedJobRegistry(name=name, connection=connection)
+        # Capture abandoned IDs before RQ removes them from the started registry.
+        candidates = registry.get_expired_job_ids()
+        registry.cleanup()
+        for job_id in candidates:
+            try:
+                status = Job.fetch(job_id, connection=connection).get_status()
+                if str(status).lower().split(".")[-1] in {"queued", "scheduled"}:
+                    api.recover_interrupted_export_retry(job_id)
+            except Exception as error:
+                _log("export_retry_reconciliation_failed", job_id=job_id, error=type(error).__name__)
     return len(queue_names)
 
 
