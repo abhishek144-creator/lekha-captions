@@ -102,7 +102,9 @@ class RailwayCronTests(unittest.TestCase):
             job.set_status(JobStatus.STARTED)
         registry = StartedJobRegistry(queue=queue)
         self.redis.zadd(registry.key, {expired.id: 1, live.id: 9999999999})
-        railway_cron.recover_expired_jobs(self.redis, [queue.name])
+        with patch.object(railway_cron.api, "recover_interrupted_export_retry") as reconcile:
+            railway_cron.recover_expired_jobs(self.redis, [queue.name])
+        reconcile.assert_not_called()
         self.assertEqual(expired.get_status(refresh=True), JobStatus.FAILED)
         self.assertEqual(live.get_status(refresh=True), JobStatus.STARTED)
         self.assertIsNone(self.redis.zscore(registry.key, expired.id))
@@ -115,7 +117,9 @@ class RailwayCronTests(unittest.TestCase):
         job.set_status(JobStatus.STARTED)
         registry = StartedJobRegistry(queue=queue)
         self.redis.zadd(registry.key, {job.id: 1})
-        railway_cron.recover_expired_jobs(self.redis, [queue.name])
+        with patch.object(railway_cron.api, "recover_interrupted_export_retry") as reconcile:
+            railway_cron.recover_expired_jobs(self.redis, [queue.name])
+        reconcile.assert_called_once_with(job.id)
         self.assertEqual(job.get_status(refresh=True), JobStatus.QUEUED)
         self.assertIn(job.id, queue.job_ids)
         job.refresh()
