@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lekha Captions — Launch Film v5</title>
+<!--
+  v5 · "Self-captioned". The film narrates itself with a subtitle track in the brand's own subtitle look
+  (cream on an ink box, the active word on an amber box — the wordmark's two boxes), each line carrying
+  its .srt cue. Result first: the finished 9:16 clip, which settles into the editor's preview and rewinds
+  through the real takes to the empty editor. Chapters are entered by a timeline playhead wiping across
+  the frame. No HUD, no headlines over blurred footage, no logo before the end card.
+  The languages section and the end card are byte-for-byte the v3/v4 ones.
+-->
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@96,500;96,700;96,800&family=JetBrains+Mono:wght@500;700;800&family=Fraunces:ital,opsz,wght@1,72,500;1,72,600&display=block" rel="stylesheet">
+<style>
+:root { --ink:#0C0B0F; --cream:#FFFAF3; --amber:#C27A29; --amber-l:#E0A462; --amber-xl:#F3C98B; --brown:#65250c; --stone:#8A8478;
+  --sans:'Bricolage Grotesque', sans-serif; --mono:'JetBrains Mono', monospace; --serif:'Fraunces', Georgia, serif }
+* { box-sizing:border-box; margin:0; padding:0 }
+html, body { width:1920px; height:1080px; overflow:hidden; background:var(--ink) }
+body { font-family:var(--sans); color:var(--cream); -webkit-font-smoothing:antialiased }
+#stage { position:relative; width:1920px; height:1080px; overflow:hidden; background:var(--ink) }
+.full { position:absolute; inset:0 }
+
+/* seekable keyframes (data-a="name start dur [ease]") — used by the languages section and the end card */
+@keyframes drop { from { opacity:0; transform:translateY(-.6em) } to { opacity:1; transform:none } }
+@keyframes punch { 0% { opacity:0; transform:scale(2.7) } 45% { opacity:1 } 100% { opacity:1; transform:scale(1) } }
+@keyframes fade { from { opacity:0 } to { opacity:1 } }
+@keyframes rise { from { opacity:0; transform:translateY(.6em) } to { opacity:1; transform:none } }
+@keyframes in-up { from { opacity:0; transform:translateY(40px) } to { opacity:1; transform:none } }
+@keyframes in-left { from { opacity:0; transform:translateX(-60px) } to { opacity:1; transform:none } }
+@keyframes grow-x { from { transform:scaleX(0) } to { transform:scaleX(1) } }
+@keyframes cream-wipe { from { clip-path:inset(0 0 0 100%) } to { clip-path:inset(0 0 0 0) } }
+
+/* ---------- footage ---------- */
+#ED { overflow:hidden; background:var(--ink) }
+#cv { width:1920px; height:1080px; display:block }
+#fx { position:absolute; inset:0; pointer-events:none; overflow:hidden }
+#cursor { position:absolute; left:0; top:0; width:34px; height:34px; z-index:35; filter:drop-shadow(0 4px 8px rgba(0,0,0,.6)) }
+.click { position:absolute; width:80px; height:80px; border-radius:50%; border:3px solid var(--amber-l); z-index:19; opacity:0; transform:translate(-50%,-50%) }
+
+/* ---------- the playhead: chapter wipes and the rewind ---------- */
+#ph { position:absolute; top:0; left:0; width:0; height:1080px; z-index:30; opacity:0 }
+#ph .line { position:absolute; left:-1px; top:0; width:2px; height:1080px; background:var(--amber-l); box-shadow:0 0 18px rgba(224,164,98,.75), 0 0 2px rgba(255,250,243,.9) }
+#ph .head { position:absolute; left:-11px; top:0; width:22px; height:30px; background:var(--amber-l); clip-path:polygon(0 0, 100% 0, 100% 62%, 50% 100%, 0 62%) }
+#ph .flag { position:absolute; top:6px; left:16px; font:800 15px var(--mono); letter-spacing:.04em; color:var(--ink); background:var(--amber-l); padding:3px 8px 4px; border-radius:4px; white-space:nowrap }
+#ph.rev .flag { left:auto; right:16px }
+
+/* ---------- the subtitle track (the film's narration) ---------- */
+#subs { position:absolute; left:0; right:0; bottom:0; height:200px; z-index:32; pointer-events:none }
+.cue { position:absolute; left:0; bottom:24px; opacity:0; white-space:nowrap }
+.cue .srt { position:absolute; left:2px; bottom:calc(100% + 9px); font:700 14px var(--mono); letter-spacing:.06em; color:rgba(255,250,243,.7); text-shadow:0 1px 8px rgba(0,0,0,.9), 0 0 2px rgba(0,0,0,.8) }
+.cue .srt b { color:var(--amber-xl); margin-right:12px }
+.cue .bg { position:absolute; left:0; top:0; bottom:0; border-radius:12px; background:rgba(12,11,15,.84); box-shadow:0 14px 40px -12px rgba(0,0,0,.7), inset 0 0 0 1px rgba(255,250,243,.07) }
+.cue .line { position:relative; padding:9px 16px 12px; font-weight:700; font-size:36px; letter-spacing:-.015em; line-height:1.18; color:var(--cream) }
+.cue .hl { position:absolute; top:10px; bottom:11px; left:0; width:0; border-radius:7px; background:var(--amber) }
+.cue .sw { position:relative; display:inline-block; opacity:0 }
+.cue .sw + .sw { margin-left:.26em }
+.cue.rw .line { font:800 30px var(--mono); letter-spacing:.04em; padding:11px 18px 12px }
+.cue.rw .line i { font-style:normal; color:var(--amber-l); margin-right:14px }
+
+/* languages: real editor renders side by side (unchanged from v3) */
+#LANG { background:var(--ink); opacity:0 }
+#LANG .head { position:absolute; left:0; right:0; top:58px; display:flex; flex-direction:column; align-items:center; gap:8px }
+#LANG .head .a { font-weight:800; font-size:76px; letter-spacing:-.035em; background:var(--cream); color:var(--ink); padding:0 26px 8px; border-radius:14px; margin-right:160px }
+#LANG .head .b { font:800 38px var(--mono); letter-spacing:.12em; background:var(--amber); color:var(--cream); padding:8px 22px; border-radius:10px; margin-left:260px }
+#LANG .cards { position:absolute; left:0; right:0; top:330px; display:flex; justify-content:center; gap:46px }
+#LANG .card { position:relative; width:370px; height:658px; border-radius:24px; overflow:hidden; background:#000; box-shadow:0 0 0 2px rgba(255,255,255,.12), 0 40px 90px -30px rgba(0,0,0,.9); opacity:0 }
+#LANG .card canvas { width:100%; height:100%; display:block }
+#LANG .card .tag { position:absolute; left:14px; bottom:14px; font:800 15px var(--mono); letter-spacing:.14em; background:var(--cream); color:var(--ink); padding:6px 10px; border-radius:6px }
+#LANG .foot { position:absolute; left:0; right:0; top:1018px; text-align:center; font:700 19px var(--mono); letter-spacing:.3em; color:var(--stone) }
+
+/* end card (unchanged from v3) */
+.logo svg { display:block; overflow:visible }
+.logo .b1, .logo .b2 { transform-box:fill-box; transform-origin:0% 50% }
+.logo .q { transform-box:fill-box; transform-origin:50% 50% }
+#END { background:var(--cream); color:var(--ink); clip-path:inset(0 0 0 100%) }
+#END .logo { position:absolute; left:50%; top:380px; width:1040px; transform:translate(-50%,-50%) }
+#END .line { position:absolute; left:0; right:0; top:700px; text-align:center; font-weight:500; font-size:46px; letter-spacing:-.025em; color:var(--brown) }
+#END .line b { font-weight:800; color:var(--amber) }
+#END .cta { position:absolute; left:0; right:0; top:800px; display:flex; justify-content:center; gap:22px; align-items:center }
+#END .btn { font-weight:800; font-size:34px; letter-spacing:-.02em; background:var(--ink); color:var(--cream); padding:16px 40px 20px; border-radius:14px }
+#END .url { font:800 32px var(--mono); color:var(--ink); padding:16px 30px; border-radius:14px; border:3px solid var(--ink) }
+#END .url b { color:var(--amber) }
+</style>
+</head>
+<body>
+<div id="stage">
+  <section class="full" id="ED">
+    <canvas id="cv" width="1920" height="1080"></canvas>
+    <div id="fx"></div>
+    <div id="ph"><div class="line"></div><div class="head"></div><div class="flag" id="phflag">00:00:00:00</div></div>
+    <div id="subs"></div>
+  </section>
+
+  <section class="full" id="LANG">
+    <div class="head"><span class="a">Same template.</span><span class="b">any language</span></div>
+    <div class="cards" id="langcards"></div>
+    <div class="foot">LANGUAGES &amp; WRITING SYSTEMS FROM AROUND THE WORLD</div>
+  </section>
+
+  <section class="full" id="END">
+    <div class="logo" id="logo2"></div>
+    <div class="line" id="endline">Professional captions in <b>every language.</b></div>
+    <div class="cta" id="endcta"><span class="btn">Try it free</span><span class="url"><b>lekha</b>captions.com</span></div>
+  </section>
+
+  <svg id="cursor" viewBox="0 0 34 34"><path d="M5 3l22 13-9.5 2.2L13 28z" fill="#fff" stroke="#0C0B0F" stroke-width="2.2" stroke-linejoin="round"/></svg>
+</div>
+
+<script src="../launch-video-v2/assets/logo-data.js"></script>
+<script src="takes/logs.js"></script>
+<script src="segments-v5.js"></script>
+<script>
+const FPS = 30
+const W = 1920, H = 1080
+const EASES = { tpl:'cubic-bezier(.22,.68,.26,1)', film:'cubic-bezier(.7,0,.2,1)', lin:'linear', def:'cubic-bezier(.22,1,.36,1)' }
+const ease = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2)
+const easeOut = (x) => 1 - Math.pow(1 - x, 3)
+const clamp01 = (x) => Math.max(0, Math.min(1, x))
+const { CLIP, COLD, REWIND, SEGMENTS, LANG_SEG, CUES, WIPE, END_AT, DURATION } = window.FILM
+const pad2 = (n) => String(n).padStart(2, '0')
+const tcFrames = (s) => { const f = Math.max(0, Math.round(s * FPS)); return `00:00:${pad2(Math.floor(f / FPS))}:${pad2(f % FPS)}` }
+const tcSrt = (s) => { const ms = Math.max(0, Math.round(s * 1000)); return `00:00:${pad2(Math.floor(ms / 1000))},${String(ms % 1000).padStart(3, '0')}` }
+
+/* ---------- end card + languages (unchanged from v3/v4) ---------- */
+function buildLogo(el, t0) {
+  const L = window.LOGO
+  el.innerHTML = `<svg viewBox="${L.view}" width="100%">
+    <g class="b1" fill="#0C0B0F" data-a="grow-x ${t0} .4 film">${L.box1}</g>
+    <path d="${L.word}" fill="#FFFAF3" data-a="rise ${t0 + 0.22} .45 tpl"/>
+    <g class="b2" fill="#C27A29" data-a="grow-x ${t0 + 0.55} .35 film">${L.box2}</g>
+    <path d="${L.caps}" fill="#FFFAF3" data-a="rise ${t0 + 0.75} .4 tpl"/>
+    <path class="q" d="${L.q_open}" fill="#0C0B0F" data-a="punch ${t0 + 1.1} .56 tpl"/>
+    <path class="q" d="${L.q_close}" fill="#0C0B0F" data-a="punch ${t0 + 1.25} .56 tpl"/>
+  </svg>`
+}
+buildLogo(document.getElementById('logo2'), END_AT + 0.45)
+document.getElementById('END').dataset.a = `cream-wipe ${END_AT} .55 film`
+document.getElementById('endline').dataset.a = `rise ${END_AT + 1.75} .5 tpl`
+document.getElementById('endcta').dataset.a = `in-up ${END_AT + 2.15} .45`
+const langEl = document.getElementById('langcards')
+LANG_SEG.cards.forEach((c, i) => {
+  const d = document.createElement('div')
+  d.className = 'card'
+  d.innerHTML = `<canvas width="740" height="1316"></canvas><span class="tag">${c.label}</span>`
+  d.dataset.a = `in-up ${LANG_SEG.start + 0.15 + i * 0.1} .5`
+  langEl.appendChild(d)
+})
+document.querySelector('#LANG .head .a').dataset.a = `in-left ${LANG_SEG.start + 0.1} .45`
+document.querySelector('#LANG .head .b').dataset.a = `in-left ${LANG_SEG.start + 0.3} .45`
+document.querySelector('#LANG .foot').dataset.a = `fade ${LANG_SEG.start + 1.2} .5`
+document.querySelectorAll('[data-a]').forEach((el) => {
+  el.style.animation = el.dataset.a.split(',').map((p) => p.trim()).filter(Boolean).map((p) => {
+    const [name, start, dur, e = 'def'] = p.split(/\s+/)
+    return `${name} ${dur}s ${EASES[e] || e} ${start}s 1 ${name.startsWith('out-') ? 'forwards' : 'both'}`
+  }).join(', ')
+})
+
+/* ---------- subtitle track ---------- */
+const subs = document.getElementById('subs')
+const cueEls = CUES.map((c) => {
+  const el = document.createElement('div')
+  el.className = 'cue'
+  el.innerHTML = `<div class="srt"><b>${pad2(c.n)}</b>${tcSrt(c.t0)} --&gt; ${tcSrt(c.t1)}</div><div class="bg"></div>`
+    + `<div class="line"><span class="hl"></span>${c.words.map((w) => `<span class="sw">${w}</span>`).join('')}</div>`
+  subs.appendChild(el)
+  return { c, el, bg: el.querySelector('.bg'), hl: el.querySelector('.hl'), ws: [...el.querySelectorAll('.sw')] }
+})
+// the rewind's own line: a running source timecode
+const rwEl = document.createElement('div')
+rwEl.className = 'cue rw'
+rwEl.innerHTML = '<div class="bg"></div><div class="line"><i>◀◀</i><span id="rwtc">00:00:00,000</span></div>'
+subs.appendChild(rwEl)
+function layoutCues() {
+  // centre each full line once; the ink box then grows rightwards from its left edge as words arrive
+  for (const q of cueEls) {
+    const w = q.el.querySelector('.line').offsetWidth
+    q.el.style.left = `${Math.round((W - w) / 2)}px`
+    q.full = w
+    q.geo = q.ws.map((s) => [s.offsetLeft, s.offsetWidth])
+  }
+  const lw = rwEl.querySelector('.line').offsetWidth
+  rwEl.style.left = `${Math.round((W - lw) / 2)}px`
+  rwEl.querySelector('.bg').style.width = `${lw}px`
+}
+function drawCues(t) {
+  for (const q of cueEls) {
+    const { c } = q
+    const on = clamp01((t - c.t0) / 0.18) * (1 - clamp01((t - c.t1) / 0.22))
+    q.el.style.opacity = on
+    if (on <= 0) continue
+    q.el.style.transform = `translateY(${(1 - clamp01((t - c.t0) / 0.25)) * 8 + clamp01((t - c.t1) / 0.22) * 8}px)`
+    let last = -1
+    q.ws.forEach((s, i) => {
+      const k = clamp01((t - c.times[i]) / 0.16)
+      if (t >= c.times[i]) last = i
+      s.style.opacity = k
+      s.style.transform = `translateY(${(1 - easeOut(k)) * 10}px)`
+    })
+    // box: grows to the revealed words (padding 16 + 16)
+    const reach = (i) => (i < 0 ? 18 : q.geo[i][0] + q.geo[i][1] + 16)
+    let bw = reach(-1)
+    if (last >= 0) {
+      const g = easeOut(clamp01((t - c.times[last]) / 0.18))
+      bw = reach(last - 1) + (reach(last) - reach(last - 1)) * g
+    }
+    q.bg.style.width = `${bw.toFixed(1)}px`
+    // amber karaoke box slides from word to word
+    if (last < 0) { q.hl.style.opacity = 0; continue }
+    const g = ease(clamp01((t - c.times[last]) / 0.15))
+    const a = q.geo[Math.max(0, last - 1)], b = q.geo[last]
+    const from = last === 0 ? [b[0] + b[1] / 2, 0] : a
+    const x = from[0] + (b[0] - from[0]) * g, w = from[1] + (b[1] - from[1]) * g
+    q.hl.style.opacity = last === 0 ? g : 1
+    q.hl.style.left = `${(x - 7).toFixed(1)}px`
+    q.hl.style.width = `${(w + 14).toFixed(1)}px`
+  }
+}
+
+/* ---------- take frames ---------- */
+const cache = new Map()
+function frameImg(take, idx) {
+  const key = `${take}/${idx}`
+  if (!cache.has(key)) {
+    const img = new Image()
+    img.src = `takes/${take}/f${String(idx + 1).padStart(5, '0')}.jpg`
+    cache.set(key, img.decode().then(() => img).catch(() => null))
+    if (cache.size > 90) cache.delete(cache.keys().next().value)
+  }
+  return cache.get(key)
+}
+const takeFrames = (take) => ((window.TAKE_LOGS[take] || {}).frames30 || 1)
+const idxAt = (take, x) => Math.min(takeFrames(take) - 1, Math.max(0, Math.round(x * FPS)))
+const PXF = 0.25 // dissolve across a jump cut inside a chapter (s)
+const F = [906.5, 510, 1]
+
+function camAt(seg, lt) {
+  const k = seg.cam
+  if (lt <= k[0][0]) return k[0].slice(1)
+  for (let i = 0; i < k.length - 1; i++) {
+    if (lt <= k[i + 1][0]) {
+      const a = k[i], b = k[i + 1], e = ease((lt - a[0]) / (b[0] - a[0]))
+      return [a[1] + (b[1] - a[1]) * e, a[2] + (b[2] - a[2]) * e, a[3] + (b[3] - a[3]) * e]
+    }
+  }
+  return k[k.length - 1].slice(1)
+}
+function viewRect(view, c) {
+  const sc = view.scale, TW = view.width * sc, TH = view.height * sc
+  const w = TW / c[2], h = TH / c[2]
+  const x = Math.max(0, Math.min(TW - w, c[0] * sc - w / 2)), y = Math.max(0, Math.min(TH - h, c[1] * sc - h / 2))
+  return { x, y, w, h, s: W / w, sc }
+}
+function cursorAt(log, lt) {
+  let prev = null
+  for (const e of log) { if (e.kind !== 'cursor' && e.kind !== 'down' && e.kind !== 'up') continue; if (e.t > lt) break; prev = e }
+  return prev
+}
+function takeTime(seg, lt) {
+  let acc = 0
+  for (let i = 0; i < seg.pieces.length; i++) {
+    const [pf, pd] = seg.pieces[i]
+    if (lt < acc + pd || i === seg.pieces.length - 1) {
+      const prev = seg.pieces[i - 1]
+      return { tt: pf + (lt - acc), pieceStart: acc, prevTt: prev ? prev[0] + prev[1] + (lt - acc) : null }
+    }
+    acc += pd
+  }
+}
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d')
+
+// a whole take frame, full frame (cam = F) or leaned in
+async function drawTakeFrame(take, tt, cam = F, alpha = 1) {
+  const meta = window.TAKE_LOGS[take]
+  const v = viewRect(meta.view, cam)
+  const img = await frameImg(take, idxAt(take, tt))
+  if (img) { ctx.globalAlpha = alpha; ctx.drawImage(img, v.x, v.y, v.w, v.h, 0, 0, W, H); ctx.globalAlpha = 1 }
+  return { v, img }
+}
+async function drawSeg(seg, lt, alpha = 1) {
+  const { tt, pieceStart, prevTt } = takeTime(seg, lt)
+  const cam = camAt(seg, lt)
+  const cut = prevTt != null && lt - pieceStart < PXF
+  if (cut) await drawTakeFrame(seg.take, prevTt, cam, alpha)
+  const { v } = await drawTakeFrame(seg.take, tt, cam, cut ? alpha * ease((lt - pieceStart) / PXF) : alpha)
+  return { v, tt }
+}
+
+/* ---------- cold open: the finished clip, then it settles into the editor ---------- */
+const VIEW = window.TAKE_LOGS[CLIP.take].view
+const SC = W / VIEW.width // CSS px → film px at full frame
+const clipInEditor = [CLIP.src[0] * SC, CLIP.src[1] * SC, CLIP.src[2] * SC, CLIP.src[3] * SC]
+const clipCold = (() => { const h = CLIP.dst[2], w = h * CLIP.src[2] / CLIP.src[3]; return [CLIP.dst[0] - w / 2, CLIP.dst[1] - h / 2, w, h] })()
+async function drawClip(tt, rect, radius, shadow) {
+  const img = await frameImg(CLIP.take, idxAt(CLIP.take, tt))
+  if (!img) return
+  const [x, y, w, h] = rect, s = CLIP.src, sc = VIEW.scale
+  if (shadow > 0) {
+    // ambient light: the clip's own colours spill faintly onto the ink around it
+    ctx.save()
+    ctx.globalAlpha = 0.2 * shadow; ctx.filter = 'blur(90px) saturate(1.3)'
+    ctx.drawImage(img, s[0] * sc, s[1] * sc, s[2] * sc, s[3] * sc, x - w * 0.35, y - h * 0.08, w * 1.7, h * 1.16)
+    ctx.restore()
+  }
+  ctx.save()
+  if (shadow > 0) {
+    ctx.shadowColor = `rgba(0,0,0,${0.7 * shadow})`; ctx.shadowBlur = 90 * shadow; ctx.shadowOffsetY = 34 * shadow
+    ctx.beginPath(); ctx.roundRect(x, y, w, h, radius); ctx.fillStyle = '#000'; ctx.fill()
+    ctx.shadowColor = 'transparent'
+  }
+  ctx.beginPath(); ctx.roundRect(x, y, w, h, radius); ctx.clip()
+  ctx.drawImage(img, s[0] * sc, s[1] * sc, s[2] * sc, s[3] * sc, x, y, w, h)
+  ctx.restore()
+  if (shadow > 0) {
+    ctx.save(); ctx.globalAlpha = 0.5 * shadow; ctx.strokeStyle = 'rgba(255,250,243,.35)'; ctx.lineWidth = 1.5
+    ctx.beginPath(); ctx.roundRect(x + 0.75, y + 0.75, w - 1.5, h - 1.5, radius); ctx.stroke(); ctx.restore()
+  }
+}
+
+/* ---------- rewind: real takes in reverse, eased in and out ---------- */
+const RUNS = REWIND.runs.map(([take, a, b]) => ({ take, a, b, len: a - b }))
+const RTOTAL = RUNS.reduce((n, r) => n + r.len, 0)
+function rewindAt(s) {
+  // s = source seconds rewound so far → [take, take time]
+  let acc = 0
+  for (const r of RUNS) {
+    if (s <= acc + r.len) return [r.take, r.a - (s - acc)]
+    acc += r.len
+  }
+  const r = RUNS[RUNS.length - 1]
+  return [r.take, r.b]
+}
+const rwPos = (t) => ease(clamp01((t - REWIND.start) / REWIND.len)) * RTOTAL
+async function drawRewind(t) {
+  const s = rwPos(t), ds = Math.abs(rwPos(t + 1 / FPS) - s)
+  // the frame plus two ghosts trailing behind it: a clean motion smear at speed
+  const ghosts = ds > 0.12 ? [[s - ds * 0.66, 0.22], [s - ds * 0.33, 0.3]] : []
+  const [tk, tt] = rewindAt(s)
+  await drawTakeFrame(tk, tt)
+  for (const [gs, a] of ghosts) { const [gk, gt] = rewindAt(Math.max(0, gs)); await drawTakeFrame(gk, gt, F, a) }
+  return { s, speed: ds * FPS }
+}
+
+/* ---------- overlays ---------- */
+const fx = document.getElementById('fx')
+const cursor = document.getElementById('cursor')
+const clickEls = Array.from({ length: 4 }, () => { const d = document.createElement('div'); d.className = 'click'; fx.appendChild(d); return d })
+const ph = document.getElementById('ph'), phflag = document.getElementById('phflag')
+const ED = document.getElementById('ED'), LANG = document.getElementById('LANG')
+const rwtc = document.getElementById('rwtc')
+function showPlayhead(x, label, rev = false, a = 1) {
+  ph.style.opacity = a
+  ph.style.transform = `translateX(${x.toFixed(1)}px)`
+  ph.classList.toggle('rev', rev)
+  phflag.textContent = label
+}
+function drawPointer(seg, tt, v, a) {
+  const log = (window.TAKE_LOGS[seg.take] || {}).log || []
+  const toWin = (x, y) => [(x * v.sc - v.x) * v.s, (y * v.sc - v.y) * v.s]
+  const c = cursorAt(log, tt)
+  if (c && c.visible && a > 0.01) {
+    const [x, y] = toWin(c.x, c.y)
+    cursor.style.opacity = a
+    cursor.style.transform = `translate(${x - 5}px, ${y - 3}px)`
+  }
+  let ci = 0
+  for (const e of log) {
+    if (e.kind !== 'click' && e.kind !== 'down') continue
+    const k = (tt - e.t) / 0.5
+    if (k < 0 || k > 1 || ci >= clickEls.length || a < 0.3) continue
+    const [x, y] = toWin(e.x, e.y)
+    const el = clickEls[ci++]
+    el.style.left = `${x}px`; el.style.top = `${y}px`
+    el.style.opacity = (0.9 * (1 - k)).toFixed(3)
+    el.style.transform = `translate(-50%,-50%) scale(${0.25 + 1.2 * k})`
+  }
+}
+
+window.renderAt = async (t) => {
+  document.getAnimations().forEach((a) => { a.pause(); a.currentTime = t * 1000 })
+  cursor.style.opacity = 0
+  clickEls.forEach((c) => { c.style.opacity = 0 })
+  ph.style.opacity = 0
+  rwEl.style.opacity = 0
+  ctx.globalAlpha = 1; ctx.filter = 'none'
+  ctx.fillStyle = '#0C0B0F'; ctx.fillRect(0, 0, W, H)
+
+  const rwEnd = REWIND.start + REWIND.len
+  const [s0, sd] = COLD.settle
+  if (t < rwEnd) {
+    // A · result first → settle into the editor → rewind
+    // the clip keeps playing, and once the rewind starts it scrubs back with it (same take, same frame)
+    const clipT = t < REWIND.start ? Math.min(CLIP.from + t, CLIP.end) : rewindAt(rwPos(t))[1]
+    const k = ease(clamp01((t - s0) / sd))
+    if (t >= s0) {
+      if (t < REWIND.start) await drawTakeFrame(CLIP.take, clipT, F, k)
+      else {
+        const { s, speed } = await drawRewind(t)
+        // the playhead runs back across the frame with the scrub; its flag counts the source time down
+        const u = s / RTOTAL
+        const fade = clamp01((t - REWIND.start) / 0.2) * (1 - clamp01((t - rwEnd + 0.25) / 0.25))
+        showPlayhead(W - 40 - (W - 80) * u, tcFrames(RTOTAL - s), true, fade)
+        rwEl.style.opacity = fade
+        rwtc.textContent = tcSrt(RTOTAL - s)
+      }
+    }
+    if (t < s0 + sd) {
+      const r = clipCold.map((n, i) => n + (clipInEditor[i] - n) * k)
+      await drawClip(clipT, r, 18 * (1 - k), 1 - k)
+    }
+    ctx.globalAlpha = 1
+  } else {
+    // B · editor chapters, each entered by a playhead wipe
+    const si = SEGMENTS.findIndex((s) => t >= s.start && t < s.start + s.len)
+    const seg = SEGMENTS[si]
+    if (seg) {
+      const lt = t - seg.start
+      const prev = SEGMENTS[si - 1]
+      const wiping = prev && seg.wipe !== false && lt < WIPE
+      const X = wiping ? ease(lt / WIPE) * (W + 60) - 30 : W
+      if (wiping) await drawSeg(prev, prev.len + lt)
+      ctx.save()
+      if (wiping) { ctx.beginPath(); ctx.rect(0, 0, Math.max(0, X), H); ctx.clip() }
+      const { v, tt } = await drawSeg(seg, lt)
+      ctx.restore()
+      if (wiping) showPlayhead(X, tcFrames(t), false, clamp01(lt / 0.08) * (1 - clamp01((lt - WIPE + 0.08) / 0.08)))
+      drawPointer(seg, tt, v, wiping ? clamp01((lt - WIPE * 0.6) / (WIPE * 0.4)) : 1)
+    }
+  }
+  drawCues(t)
+
+  // into the languages: the editor fades out, the language cards fade in (as v3/v4)
+  const last = SEGMENTS[SEGMENTS.length - 1]
+  ED.style.opacity = 1 - clamp01((t - (last.start + last.len - 0.3)) / 0.3)
+  const L = LANG_SEG
+  const lOn = clamp01((t - L.start) / 0.35) * (1 - clamp01((t - (L.start + L.len - 0.3)) / 0.3))
+  LANG.style.opacity = lOn
+  if (lOn > 0) {
+    const cards = [...document.querySelectorAll('#LANG canvas')]
+    await Promise.all(L.cards.map(async (c, i) => {
+      const tt = c.from + (t - L.start)
+      const idx = Math.min(c.frames - 1, Math.max(0, Math.round(tt * FPS)))
+      const img = await frameImg(c.take, idx)
+      if (img) cards[i].getContext('2d').drawImage(img, c.crop[0], c.crop[1], c.crop[2], c.crop[3], 0, 0, 740, 1316)
+    }))
+  }
+}
+
+window.ready = document.fonts.ready
+  .then(() => Promise.all(['700 36px "Bricolage Grotesque"', '800 50px "Bricolage Grotesque"', '700 14px "JetBrains Mono"', '800 30px "JetBrains Mono"'].map((f) => document.fonts.load(f))))
+  .then(() => {
+    layoutCues()
+    return window.renderAt(Number(new URLSearchParams(location.search).get('t') || 0)).then(() => true)
+  })
+</script>
+</body>
+</html>
