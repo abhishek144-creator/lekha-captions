@@ -3710,11 +3710,13 @@ export default function VideoPlayer({
                     />
                   )}
 
-                {/* Keep removal available without hover, including while editing. */}
+                {/* Keep removal available without hover, including while editing.
+                    Near the top of the frame the button sits below the box so the
+                    preview's scroll area cannot clip it. */}
                 {setCaptions && !element.readOnly && (
                   <button
                     type="button"
-                    className="absolute -top-9 -right-3 z-[60] flex h-7 w-7 cursor-pointer touch-manipulation items-center justify-center rounded-full border border-white/30 bg-zinc-900 text-white shadow-xl transition-colors hover:border-red-400 hover:bg-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                    className={`absolute ${Number(style.top || 50) < 20 ? 'top-full mt-2' : '-top-9'} -right-3 z-[60] flex h-7 w-7 cursor-pointer touch-manipulation items-center justify-center rounded-full border border-white/30 bg-zinc-900 text-white shadow-xl transition-colors hover:border-red-400 hover:bg-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white`}
                     data-text-element-close="true"
                     aria-label="Remove text box"
                     onPointerDown={(e) => {
