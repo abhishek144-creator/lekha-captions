@@ -3933,12 +3933,17 @@ export default function VideoPlayer({
             const textElementEffects = getTextElementEffectCSS(style);
 
             const handleDeleteElement = (e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              if (setCaptions) {
-                setCaptions(prev => prev.filter(c => c.id !== element.id));
+              e.stopPropagation()
+              e.preventDefault()
+              if (!setCaptions || element.readOnly) return
+              setCaptions(prev => prev.filter(c => c.id !== element.id))
+              if (selectedCaptionId === element.id) setSelectedCaptionId?.(null)
+              if (wordPopup?.elementId === element.id) setWordPopup?.(null)
+              if (isEditingThis) {
+                setIsEditing(false)
+                setEditText('')
               }
-            };
+            }
 
             return (
               <div
@@ -3998,12 +4003,20 @@ export default function VideoPlayer({
                     />
                   )}
 
-                {/* Delete button - always visible on hover */}
-                {!isEditingThis && (
+                {/* Keep removal available without hover, including while editing. */}
+                {setCaptions && !element.readOnly && (
                   <button
-                    className="absolute -top-2.5 -right-2.5 w-6 h-6 bg-zinc-900 border border-white/20 hover:border-red-500/50 hover:bg-red-500/10 rounded-full opacity-0 group-hover:opacity-100 transition-all z-50 flex items-center justify-center shadow-xl text-gray-400 hover:text-red-500"
+                    type="button"
+                    className="absolute -top-9 -right-3 z-[60] flex h-7 w-7 cursor-pointer touch-manipulation items-center justify-center rounded-full border border-white/30 bg-zinc-900 text-white shadow-xl transition-colors hover:border-red-400 hover:bg-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                    data-text-element-close="true"
+                    aria-label="Remove text box"
+                    onPointerDown={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                    }}
+                    onDoubleClick={(e) => e.stopPropagation()}
                     onClick={handleDeleteElement}
-                    title="Delete text element"
+                    title="Remove text box"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>

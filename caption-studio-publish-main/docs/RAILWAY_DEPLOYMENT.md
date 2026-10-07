@@ -234,13 +234,16 @@ Keep autoscaling disabled in API and cron until this live check passes.
 
 ## Staging measurement runbook (2026-10-05)
 
-No Railway staging benchmark or authenticated burst has been performed yet.
-The owner approved the finite rollout and staging plan, including metered AI
-calls, and revised the Railway workspace cap to $25 with a $10 custom alert.
-Live readback verifies these settings. PR #35 must pass its final release gate
-before its merge, production apply and isolated staging creation.
-Existing GCP measurements in `DRILL_LOG.md` do not establish Railway capacity.
-Keep the current work-ratio defaults until measurements justify a change.
+The approved finite Railway measurements were completed on 2026-10-06; see
+[the measured acceptance report](LAUNCH_ACCEPTANCE_2026-10-06.md) for exact
+releases, timings, transport failures, recovery, cleanup and limits. PR #35
+and the subsequent recovery PR #36 passed their gates and merged. Scanner PR #37
+merged after the owner approved completed exact local image verification for
+that PR only; its hosted jobs remain billing-blocked at the unchanged $10 cap.
+The current production release is `63cf04f`, with the approved five-replica profile and
+unchanged $25 hard cap/$10 alert. The report supports a controlled public beta;
+it does not establish unrestricted mass capacity. Keep conservative work-ratio
+defaults until representative authored-template measurements justify a change.
 
 1. Use an isolated staging environment at the reviewed Git SHA. Record image
    digest, region, replica count, encoder, FFmpeg/Chromium versions and CPU/RAM
@@ -300,10 +303,11 @@ Keep the current work-ratio defaults until measurements justify a change.
 - [x] Approve the priced live rollout/test plan and verify the revised $25/$10 live cap/alert. There is no separate $10 test allowance; the plan's metered AI calls are authorized. Deployment still waits for PR #35's final release gate.
 - [x] Resolve GitHub Actions billing/minutes: owner approved increasing the monthly Actions budget from $7 to $10, retaining its hard stop and alerts. UI readback verified the saved budget and the previous PR #35 revision passed all 13 checks on retry. Final code additions require fresh CI before merging.
 - [x] Merge PR #28 → #30 → #31 → #32 → #33 → #34 in order. Close conflicting #29 in favor of the port in #35.
-- [ ] Pass #35's release gate, merge it, verify the reviewed 0-addition/32-change/0-deletion production plan, then apply it.
+- [x] Pass #35's release gate, merge it, verify the reviewed 0-addition/32-change/0-deletion production plan, then apply it. Final recovery release #36 also passed all 13 checks and is published.
 - [ ] Confirm transcription logs show clamd ready after startup; set localhost `CLAMAV_HOST` only on transcription.
-- [ ] Upload, transcribe and export one real video end to end.
-- [ ] Verify both worker services' finite resize/drain/sleep test before enabling autoscaling; 1→5→1 requires the separately approved staging capacity/budget.
+- [x] Upload, transcribe, edit/save/reload, export and download one real production video on release `0c5182f`; media and one-credit debit verified. Scanner release `63cf04f` passed fresh upload/scan/transcription/edit/SRT download; its MP4 attempt hit the existing Starter daily quota before render/debit, so a new-release MP4 remains unverified.
+- [x] Deploy scanner PR #37 and verify fresh virus signatures, effective 500 MiB file/600 MiB expanded scan limits, matching public release markers and healthy production readiness. Existing resources, limits and billing settings preserved.
+- [x] Verify both worker services' finite resize/drain/sleep test before enabling autoscaling. The approved staging bursts reached five replicas and returned to one; final-release production sleep and immutable before/after-debit crash recovery were verified. See the acceptance report for the missing final staging idle snapshot and preserved evidence.
 - [ ] Set `REDIS_MEMORY_ALERT_BYTES` to the actual Redis plan memory size.
-- [ ] Keep `KEEP_ONE_WORKER_AWAKE=false` and verify idle sleeping.
+- [x] Keep `KEEP_ONE_WORKER_AWAKE=false` and verify actual final-release idle sleeping; no warm-worker choice was made.
 - [ ] Consider Pro only if measured queues exceed five-replica capacity.
