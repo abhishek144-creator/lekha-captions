@@ -92,12 +92,13 @@ const GENERATING_SCREEN_MIN_MS = 10000;
 const formatTopUpPrice = (paise) => `Rs ${Math.round(Number(paise || 0) / 100)}`;
 
 // A 409 means another tab or device saved a newer revision. Every later save
-// from this tab would be rejected too, so pause cloud saving and keep a
-// persistent notice instead of a dismissable toast.
-const notifyCloudSaveError = (error, setCloudSaveMessage, setCloudSaveConflict) => {
+// from this tab would be rejected too. Keep saving paused independently of
+// the five-second notice so dismissing it cannot overwrite newer work.
+const notifyCloudSaveError = (error, setCloudSaveMessage, setCloudSaveConflict, setShowCloudSaveConflictNotice) => {
   if (error?.status === 409) {
     setCloudSaveMessage('')
     setCloudSaveConflict(true)
+    setShowCloudSaveConflictNotice(true)
     return
   }
   setCloudSaveMessage(error?.message || 'Cloud save failed. Your browser copy is still available.')
@@ -400,6 +401,7 @@ export default function Dashboard() {
   const mediaRefreshInFlightRef = useRef(false);
   const [cloudSaveMessage, setCloudSaveMessage] = useState('')
   const [cloudSaveConflict, setCloudSaveConflict] = useState(false)
+  const [showCloudSaveConflictNotice, setShowCloudSaveConflictNotice] = useState(false)
   const [localRecoveryDraft, setLocalRecoveryDraft] = useState(null)
   const { cloudReady, cloudDraft, saveCloudDraft } = useCloudProjects({
     currentUser,
@@ -416,9 +418,15 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!cloudSaveMessage) return undefined
-    const timer = window.setTimeout(() => setCloudSaveMessage(''), 10000)
+    const timer = window.setTimeout(() => setCloudSaveMessage(''), 5000)
     return () => window.clearTimeout(timer)
   }, [cloudSaveMessage])
+
+  useEffect(() => {
+    if (!showCloudSaveConflictNotice) return undefined
+    const timer = window.setTimeout(() => setShowCloudSaveConflictNotice(false), 5000)
+    return () => window.clearTimeout(timer)
+  }, [showCloudSaveConflictNotice])
 
   useEffect(() => {
     // A source file is stored before its asynchronous transcription finishes.
@@ -483,7 +491,7 @@ export default function Dashboard() {
     const timer = setTimeout(() => {
       saveCloudDraft(draft).then(() => {
         cloudAutosaveRef.current = { context, signature }
-      }).catch((error) => notifyCloudSaveError(error, setCloudSaveMessage, setCloudSaveConflict))
+      }).catch((error) => notifyCloudSaveError(error, setCloudSaveMessage, setCloudSaveConflict, setShowCloudSaveConflictNotice))
     }, 2500)
     return () => clearTimeout(timer)
   }, [isLoaded, fileId, cloudReady, cloudSaveConflict, currentUser?.uid, snapshotEditorState, saveCloudDraft])
@@ -567,6 +575,7 @@ export default function Dashboard() {
     setIsLoaded(false)
     setLocalRecoveryDraft(null)
     setCloudSaveConflict(false)
+    setShowCloudSaveConflictNotice(false)
     setCaptionTracks([])
     setCaptions([])
     setVideoUrl('')
@@ -1059,7 +1068,7 @@ export default function Dashboard() {
       setTimeout(() => setSaveSuccess(false), 2000);
     } catch (error) {
       console.error('Save failed:', error);
-      notifyCloudSaveError(error, setCloudSaveMessage, setCloudSaveConflict)
+      notifyCloudSaveError(error, setCloudSaveMessage, setCloudSaveConflict, setShowCloudSaveConflictNotice)
     } finally {
       setIsSaving(false);
     }
@@ -1552,6 +1561,7 @@ export default function Dashboard() {
     setActiveCaptionTrackId('source');
     setLocalRecoveryDraft(null)
     setCloudSaveConflict(false)
+    setShowCloudSaveConflictNotice(false)
     setTranslationNotice('');
     setCaptionStyle(defaultCaptionStyle);
     setProjectId(null);
@@ -1918,9 +1928,9 @@ export default function Dashboard() {
       />
 
       {/* Notices float above the editor and never consume dashboard height. */}
-      {(cloudSaveConflict || cloudSaveMessage || showLowCreditNotice || showCaptionRetryNotice || translationNotice) && (
+      {(showCloudSaveConflictNotice || cloudSaveMessage || showLowCreditNotice || showCaptionRetryNotice || translationNotice) && (
         <div className="pointer-events-none fixed inset-x-3 top-[4.25rem] z-[70] mx-auto flex max-w-[1320px] flex-col gap-2" aria-live="polite">
-          {cloudSaveConflict && (
+          {showCloudSaveConflictNotice && (
             <div className="pointer-events-auto flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300/25 bg-[#1a1608]/95 px-4 py-2.5 text-xs text-amber-50 shadow-2xl backdrop-blur">
               <p role="status">A newer version of this project was saved on another tab or device, so this tab stopped saving to your account. Your edits are kept in this browser.</p>
               <div className="flex shrink-0 gap-3">
