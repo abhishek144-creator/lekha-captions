@@ -91,6 +91,18 @@ const GENERATING_SCREEN_MIN_MS = 10000;
 
 const formatTopUpPrice = (paise) => `Rs ${Math.round(Number(paise || 0) / 100)}`;
 
+// A 409 means another tab or device saved a newer revision. Every later save
+// from this tab would be rejected too, so pause cloud saving and keep a
+// persistent notice instead of a dismissable toast.
+const notifyCloudSaveError = (error, setCloudSaveMessage, setCloudSaveConflict) => {
+  if (error?.status === 409) {
+    setCloudSaveMessage('')
+    setCloudSaveConflict(true)
+    return
+  }
+  setCloudSaveMessage(error?.message || 'Cloud save failed. Your browser copy is still available.')
+}
+
 const TOP_UP_OFFERS = {
   starter: {
     credits: planCatalog.topup_starter.credits,
@@ -387,6 +399,7 @@ export default function Dashboard() {
   const cloudAutosaveRef = useRef(null)
   const mediaRefreshInFlightRef = useRef(false);
   const [cloudSaveMessage, setCloudSaveMessage] = useState('')
+  const [cloudSaveConflict, setCloudSaveConflict] = useState(false)
   const [localRecoveryDraft, setLocalRecoveryDraft] = useState(null)
   const { cloudReady, cloudDraft, saveCloudDraft } = useCloudProjects({
     currentUser,
@@ -462,19 +475,18 @@ export default function Dashboard() {
   }
 
   useEffect(() => {
-    if (!isLoaded || !fileId || !cloudReady) return
+    if (!isLoaded || !fileId || !cloudReady || cloudSaveConflict) return
     const draft = snapshotEditorState()
     const signature = draftAutosaveSignature(draft)
     const context = `${currentUser?.uid || ''}:${fileId}`
     if (cloudAutosaveRef.current?.context === context && cloudAutosaveRef.current.signature === signature) return
-    setCloudSaveMessage('Changes waiting to save')
     const timer = setTimeout(() => {
       saveCloudDraft(draft).then(() => {
         cloudAutosaveRef.current = { context, signature }
-      }).catch((error) => setCloudSaveMessage(error.message || 'Cloud save failed. Your browser copy is still available.'))
+      }).catch((error) => notifyCloudSaveError(error, setCloudSaveMessage, setCloudSaveConflict))
     }, 2500)
     return () => clearTimeout(timer)
-  }, [isLoaded, fileId, cloudReady, currentUser?.uid, snapshotEditorState, saveCloudDraft])
+  }, [isLoaded, fileId, cloudReady, cloudSaveConflict, currentUser?.uid, snapshotEditorState, saveCloudDraft])
 
   const downloadDraft = (draft) => {
     const url = URL.createObjectURL(new Blob([JSON.stringify(draft, null, 2)], { type: 'application/json' }))
@@ -554,6 +566,7 @@ export default function Dashboard() {
     recoveryInitializedRef.current = false
     setIsLoaded(false)
     setLocalRecoveryDraft(null)
+    setCloudSaveConflict(false)
     setCaptionTracks([])
     setCaptions([])
     setVideoUrl('')
@@ -1046,7 +1059,7 @@ export default function Dashboard() {
       setTimeout(() => setSaveSuccess(false), 2000);
     } catch (error) {
       console.error('Save failed:', error);
-      setCloudSaveMessage(error.message || 'Cloud save failed. Your browser copy is still available.')
+      notifyCloudSaveError(error, setCloudSaveMessage, setCloudSaveConflict)
     } finally {
       setIsSaving(false);
     }
@@ -1538,6 +1551,7 @@ export default function Dashboard() {
     setCaptionTracks([]);
     setActiveCaptionTrackId('source');
     setLocalRecoveryDraft(null)
+    setCloudSaveConflict(false)
     setTranslationNotice('');
     setCaptionStyle(defaultCaptionStyle);
     setProjectId(null);
@@ -1904,8 +1918,17 @@ export default function Dashboard() {
       />
 
       {/* Notices float above the editor and never consume dashboard height. */}
-      {(cloudSaveMessage || showLowCreditNotice || showCaptionRetryNotice || translationNotice) && (
+      {(cloudSaveConflict || cloudSaveMessage || showLowCreditNotice || showCaptionRetryNotice || translationNotice) && (
         <div className="pointer-events-none fixed inset-x-3 top-[4.25rem] z-[70] mx-auto flex max-w-[1320px] flex-col gap-2" aria-live="polite">
+          {cloudSaveConflict && (
+            <div className="pointer-events-auto flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300/25 bg-[#1a1608]/95 px-4 py-2.5 text-xs text-amber-50 shadow-2xl backdrop-blur">
+              <p role="status">A newer version of this project was saved on another tab or device, so this tab stopped saving to your account. Your edits are kept in this browser.</p>
+              <div className="flex shrink-0 gap-3">
+                {captions.length > 0 && <button type="button" className="underline" onClick={() => downloadDraft(snapshotEditorState())}>Download draft</button>}
+                <button type="button" className="underline" onClick={() => window.location.reload()}>Reload</button>
+              </div>
+            </div>
+          )}
           {cloudSaveMessage && (
             <div className="pointer-events-auto flex items-center justify-between gap-3 rounded-xl border border-white/15 bg-[#111]/95 px-4 py-2.5 text-xs text-gray-200 shadow-2xl backdrop-blur">
               <p role="status">{cloudSaveMessage}</p>

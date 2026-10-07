@@ -38,3 +38,9 @@ lekha_cpt_throwaway_preview.html
 
 # Written into images at build time by the Dockerfile.
 caption-studio-publish-main/.build-time
+
+# Local launch evidence, private staging tools and console screenshots.
+# They can hold account details and must never be committed or released.
+/.readiness/
+/.railway/b4-stage.ts
+/*.png

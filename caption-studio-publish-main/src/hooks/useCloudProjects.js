@@ -92,7 +92,6 @@ export function useCloudProjects({ currentUser, getAuthToken, projectId, setProj
         }
         return [next, ...projects.filter((item) => item.project_id !== next.project_id)]
       })
-      onMessage('Saved to your account')
       return data
     }
     const pending = saveChainRef.current.catch(() => {}).then(save)
