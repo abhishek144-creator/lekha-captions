@@ -517,7 +517,7 @@ export default function UploadModal({
                   </button>
                 </div>
                 <Select value={language} onValueChange={setLanguage}>
-                  <SelectTrigger className="bg-zinc-800 border-white/10 text-white">
+                  <SelectTrigger aria-label="Caption output language" className="bg-zinc-800 border-white/10 text-white">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-zinc-800 border-white/10 max-h-80">
@@ -574,7 +574,7 @@ export default function UploadModal({
                   Max Lines
                 </label>
                 <Select value={style} onValueChange={setStyle}>
-                  <SelectTrigger className="bg-zinc-800 border-white/10 text-white">
+                  <SelectTrigger aria-label="Max lines" className="bg-zinc-800 border-white/10 text-white">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-zinc-800 border-white/10">
@@ -601,7 +601,7 @@ export default function UploadModal({
                   )}
                 </div>
                 <Select value={wordsPerLine} onValueChange={(v) => { setWordsPerLine(v); setShowDynamicInfo(false); }}>
-                  <SelectTrigger className="bg-zinc-800 border-white/10 text-white">
+                  <SelectTrigger aria-label="Words per line" className="bg-zinc-800 border-white/10 text-white">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-zinc-800 border-white/10">

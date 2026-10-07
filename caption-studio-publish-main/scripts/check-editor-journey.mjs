@@ -30,6 +30,16 @@ await downloadSession.send('Browser.setDownloadBehavior', { behavior: 'allow', d
 await page.setViewport({ width: 1440, height: 1100 })
 const errors = []
 page.on('pageerror', (error) => errors.push(error.message))
+// Every editor control needs an accessible name for screen-reader users.
+const axeSource = await fs.readFile(resolve('node_modules/axe-core/axe.min.js'), 'utf8')
+const CONTROL_NAME_RULES = ['button-name', 'aria-input-field-name', 'aria-toggle-field-name', 'aria-command-name', 'input-button-name', 'label', 'link-name', 'select-name']
+async function unnamedControls() {
+  await page.evaluate(axeSource)
+  return page.evaluate(async (rules) => {
+    const result = await window.axe.run(document, { runOnly: { type: 'rule', values: rules } })
+    return result.violations.map((violation) => ({ rule: violation.id, nodes: violation.nodes.map((node) => `${node.target.join(' ')} ${node.html.slice(0, 160)}`).slice(0, 8) }))
+  }, CONTROL_NAME_RULES)
+}
 let savedDraft = null
 let conflict = true
 let saveRequests = 0
@@ -92,6 +102,7 @@ try {
   await page.waitForSelector('input[aria-label="Relink source video"]')
   await new Promise((resolve) => setTimeout(resolve, 3000))
   assert.equal(saveRequests, 0, 'restoring a project must not save an unchanged revision')
+  assert.deepEqual(await unnamedControls(), [], 'every editor control must have an accessible name')
   assert.equal(await page.evaluate(() => document.body.textContent.includes('A newer version of this project was saved')), false)
   conflict = false
   await page.keyboard.down('Control'); await page.keyboard.press('k'); await page.keyboard.up('Control')
@@ -138,6 +149,7 @@ try {
   await textClick('Export')
   await page.waitForFunction(() => document.body.textContent.includes('Plan expired — renew to use video export'))
   await page.waitForFunction(() => document.body.textContent.includes('Plan expired — renew to render'))
+  assert.deepEqual(await unnamedControls(), [], 'every export dialog control must have an accessible name')
   assert.equal(exports, 0, 'unused credits must not enable rendering after paid-plan expiry')
   await textClick('Close')
   await page.waitForFunction(() => !document.querySelector('[role=dialog]'))
@@ -189,7 +201,7 @@ try {
   await page.waitForFunction(() => !document.querySelector('[data-caption-editor="true"]'))
   assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('captionEditorState') || '{}').ownerUid === 'editor-test-b' && JSON.parse(localStorage.getItem('captionEditorState')).captions?.length > 0), false, 'account changes cannot acquire another account’s draft')
   assert.deepEqual(errors, [])
-  console.log('Local editor journey passed: recovery, keyboard search, portrait preview, revision conflict, text-box removal/undo, reload and account isolation.')
+  console.log('Local editor journey passed: recovery, keyboard search, portrait preview, revision conflict, text-box removal/undo, reload, account isolation and named controls.')
 } catch (error) {
   console.error('Editor test diagnostics:', errors, await page.evaluate(() => document.body.innerText.slice(0, 3500)))
   throw error

@@ -340,6 +340,7 @@ export default function CaptionEditor({
                                   <div className="flex justify-between items-start gap-2 mb-1">
                                     <span className="font-semibold text-sm text-blue-200">Pro Tip</span>
                                     <button
+                                      aria-label="Dismiss tip"
                                       onClick={(e) => { e.stopPropagation(); setShowAutoTip(false); }}
                                       className="text-gray-400 hover:text-white p-0.5 rounded-full hover:bg-white/10"
                                     >
@@ -489,6 +490,7 @@ export default function CaptionEditor({
                             Edit Words
                           </Button>
                           <Button
+                            aria-label="Delete caption"
                             variant="ghost"
                             size="sm"
                             onClick={(e) => {
