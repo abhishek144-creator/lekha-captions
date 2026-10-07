@@ -186,6 +186,13 @@ try {
   await textClick('Text')
   await textClick('Add a text box')
   await page.waitForSelector('[data-text-element-layer="true"]')
+  // Styling-panel edits apply to the selected text box, not the captions.
+  const storedEditor = () => page.evaluate(() => JSON.parse(localStorage.getItem('captionEditorState')))
+  const captionYBefore = (await storedEditor()).captionStyle.position_y
+  await page.click('[role="slider"][aria-label="Vertical position"]')
+  await page.keyboard.press('Home')
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem('captionEditorState')).captions.some((item) => item.isTextElement && item.customStyle?.top === 5))
+  assert.equal((await storedEditor()).captionStyle.position_y, captionYBefore, 'moving a selected text box must not move the captions')
   await page.mouse.move(10, 10)
   assert.equal(await page.$eval('[data-text-element-close="true"]', (button) => getComputedStyle(button).opacity), '1', 'a new text box needs a visible close button without hover')
   // Enter whole-box editing without selecting a word in the separate inspector.

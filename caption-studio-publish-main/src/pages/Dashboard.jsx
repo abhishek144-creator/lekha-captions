@@ -350,13 +350,18 @@ export default function Dashboard() {
     };
   }, [wordPopup]);
 
+  // Clicking empty space clears the selection. The Styling panel and its
+  // dropdown popups edit the selected caption or text box, so clicks there
+  // must keep it selected (otherwise the edit lands on the captions instead).
   useEffect(() => {
     const handleGlobalSelectionClear = (event) => {
       const target = event.target;
       if (!(target instanceof Element)) return;
 
       if (
-        target.closest('[data-caption-layer="true"]')
+        target.closest('[data-style-panel="true"]')
+        || target.closest('[data-radix-popper-content-wrapper]')
+        || target.closest('[data-caption-layer="true"]')
         || target.closest('[data-caption-editor="true"]')
         || target.closest('[data-caption-editor-nav="true"]')
         || target.closest('[data-text-element-layer="true"]')
@@ -882,6 +887,7 @@ export default function Dashboard() {
   };
 
   const renderStylePanel = () => (
+    <div data-style-panel="true" className="contents">
     <Suspense fallback={<PanelLoadingFallback label="Loading style tools" />}>
       <StyleControls
         captionStyle={captionStyle}
@@ -896,6 +902,7 @@ export default function Dashboard() {
         onApplyTemplate={handleApplyTemplate}
       />
     </Suspense>
+    </div>
   );
 
   const renderTimelinePanel = () => (
