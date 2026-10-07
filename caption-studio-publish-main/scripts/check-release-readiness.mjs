@@ -3,6 +3,7 @@ import path from "path"
 import { createHash } from "crypto"
 import { execFileSync } from "child_process"
 import { readBackendApiSource } from "./backend-api-source.mjs"
+import { readDashboardSource } from "./editor-source.mjs"
 
 const root = process.cwd()
 const checks = []
@@ -462,7 +463,7 @@ assertIncludes("uploads use signed media URLs", backendMain, "def _signed_upload
 
 const homePage = readText("src/pages/Home.jsx")
 const homeV2Page = readText("src/pages/HomeV2.jsx")
-const dashboardPage = readText("src/pages/Dashboard.jsx")
+const dashboardPage = readDashboardSource(root)
 const errorBoundary = readText("src/components/ErrorBoundary.jsx")
 const frontendMonitoring = readText("src/lib/frontendMonitoring.js")
 const toastComponent = readText("src/components/ui/toast.jsx")

@@ -1,10 +1,11 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { readBackendApiSource } from './backend-api-source.mjs'
+import { readDashboardSource } from './editor-source.mjs'
 
 const root = path.resolve(import.meta.dirname, '..')
 const apiClient = fs.readFileSync(path.join(root, 'src/lib/apiClient.js'), 'utf8')
-const dashboard = fs.readFileSync(path.join(root, 'src/pages/Dashboard.jsx'), 'utf8')
+const dashboard = readDashboardSource(root)
 const uploadModal = fs.readFileSync(path.join(root, 'src/components/dashboard/UploadModal.jsx'), 'utf8')
 const resilientUpload = fs.readFileSync(path.join(root, 'src/lib/resilientUpload.js'), 'utf8')
 const analytics = fs.readFileSync(path.join(root, 'src/lib/analytics.js'), 'utf8')
