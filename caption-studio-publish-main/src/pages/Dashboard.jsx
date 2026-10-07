@@ -1,17 +1,19 @@
 import React, { Suspense, useState, useEffect, useRef, useCallback } from 'react';
-import { motion } from 'framer-motion';
-import { Upload, Sparkles, Captions, Clock3, Layers, Layout, SlidersHorizontal, Type, Check } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Sparkles, Captions, Clock3, Layers, Layout, SlidersHorizontal, Type } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 import { useAuth } from '@/lib/AuthContext';
 import DashboardHeader from '@/components/dashboard/DashboardHeader';
 import SidebarNav from '@/components/dashboard/SidebarNav';
 import MobileDashboardDock from '@/components/dashboard/MobileDashboardDock';
+import EditorNotices from '@/components/dashboard/EditorNotices';
+import EditorStatusBanners from '@/components/dashboard/EditorStatusBanners';
+import EditorEmptyState from '@/components/dashboard/EditorEmptyState';
+import GeneratingCaptionsScreen from '@/components/dashboard/GeneratingCaptionsScreen';
+import TimelineResizeHandle from '@/components/dashboard/TimelineResizeHandle';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { extractWaveformData } from '@/components/dashboard/audioUtils';
-import { autoLoadFontForText, loadGoogleFont, resolveScriptFont } from '@/components/dashboard/fontUtils';
-import { buildEmotionalCaptionPlan, EMOTIONAL_TEMPLATE_TIMING } from '@/components/dashboard/emotionalTemplateUtils';
+import { autoLoadFontForText, loadGoogleFont } from '@/components/dashboard/fontUtils';
 import { recordRecentTemplate } from '@/components/dashboard/templateBrowserUtils';
 import { apiRequest } from '@/lib/apiClient';
 import { notifyApiError } from '@/lib/notifyApiError';
@@ -20,10 +22,36 @@ import { getEffectiveAuthToken } from '@/lib/devAuth';
 import { resolveApiResourceUrl } from '@/components/dashboard/exportPipelineUtils';
 import { lazyWithRefresh } from '@/lib/lazyWithRefresh';
 import { uploadFileWithRecovery } from '@/lib/resilientUpload';
-import { useCloudProjects } from '@/hooks/useCloudProjects'
-import { draftAutosaveSignature } from '@/lib/draftAutosave'
-import { useEditorPreferences } from '@/hooks/useEditorPreferences'
 import { processVideoWithRecovery } from '@/lib/resilientProcess';
+import { useEditorPreferences } from '@/hooks/useEditorPreferences'
+import { useEditorDocument } from '@/hooks/useEditorDocument'
+import { useEditorHistory } from '@/hooks/useEditorHistory'
+import { useDraftPersistence } from '@/hooks/useDraftPersistence'
+import {
+  defaultCaptionStyle,
+  getLanguageDisplayName,
+  getLanguageIdentity,
+  restoreEditorDocument,
+} from '@/lib/editorDocument'
+import { downloadDraft } from '@/lib/localDraftStorage'
+import { buildTemplateApplication, getTemplateRecentEntry } from '@/lib/templateApplication'
+import {
+  applyWordStyleChange,
+  getPopupWordStyle,
+  getPopupWordText,
+  resetWordFontSize,
+  resetWordPosition,
+  updatePopupWordStyle,
+  wordPopupStyleKey,
+  wordPopupTargetId,
+} from '@/lib/wordStyleEdits'
+import {
+  applyTranslation,
+  buildCaptionTracks,
+  captionsFromTranscript,
+  mergeCaptionPairs,
+  parseWordsPerLine,
+} from '@/lib/transcriptTracks'
 import planCatalog from '../../shared/planCatalog.json';
 
 // Dashboard panels are independently code-split. Recover an outdated browser
@@ -55,53 +83,11 @@ const VideoLoadingFallback = () => (
   </div>
 );
 
-const defaultCaptionStyle = {
-  font_family: 'Inter',
-  font_size: 17,
-  font_weight: '800',
-  font_style: 'normal',
-  line_spacing: 1.4,
-  word_spacing: 1,
-  is_bold: false,
-  is_caps: false,
-  text_case: 'none',
-  text_align: 'center',
-  text_color: '#ffffff',
-  text_gradient: '',
-  text_opacity: 1,
-  highlight_color: '',
-  highlight_gradient: '',
-  has_background: false,
-  background_opacity: 0.7,
-  background_padding: 6,
-  background_h_multiplier: 1.05,
-  background_color: '#000000',
-  has_stroke: false,
-  has_shadow: true,
-  has_animation: false,
-  position: 'bottom',
-  position_y: 75,
-  max_lines: 2,
-  max_chars: 30,
-  auto_rotation: false,
-  scale: 1
-};
-
 const GENERATING_SCREEN_MIN_MS = 10000;
+const COLLAPSED_TIMELINE_HEIGHT = 42;
+const EXPANDED_TIMELINE_HEIGHT = 204;
 
 const formatTopUpPrice = (paise) => `Rs ${Math.round(Number(paise || 0) / 100)}`;
-
-// A 409 means another tab or device saved a newer revision. Every later save
-// from this tab would be rejected too, so pause cloud saving and keep a
-// persistent notice instead of a dismissable toast.
-const notifyCloudSaveError = (error, setCloudSaveMessage, setCloudSaveConflict) => {
-  if (error?.status === 409) {
-    setCloudSaveMessage('')
-    setCloudSaveConflict(true)
-    return
-  }
-  setCloudSaveMessage(error?.message || 'Cloud save failed. Your browser copy is still available.')
-}
 
 const TOP_UP_OFFERS = {
   starter: {
@@ -120,157 +106,13 @@ const TOP_UP_OFFERS = {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Template sources that still ship in the bundle. Restored sessions can carry
-// styles from removed sets (e.g. 'lekha-49'): the markup lookup then falls back
-// to the FIRST card of another asset and silently renders the wrong template.
-const LIVE_TEMPLATE_SOURCES = new Set(['', 'lekha-20', 'lekha-lc', 'lekha-basic', 'lekha-advanced']);
-
-const REMOVED_TEMPLATE_FIELDS = [
-  'template_id', 'template_20_id', 'template_source', 'template_class',
-  'template_name', 'template_layout', 'template_effect', 'template_markup',
-  'template_snapshot', 'template_applied_at', 'template_phase_index', 'template_phase_override',
-];
-
-const stripRemovedTemplateSource = (style) => {
-  if (!style || typeof style !== 'object') return style;
-  const sourceIsLive = LIVE_TEMPLATE_SOURCES.has(String(style.template_source || ''));
-  const snapshotIsLive = !style.template_snapshot
-    || LIVE_TEMPLATE_SOURCES.has(String(style.template_snapshot.template_source || ''));
-  if (sourceIsLive && snapshotIsLive) return style;
-  const next = { ...style };
-  REMOVED_TEMPLATE_FIELDS.forEach((key) => { delete next[key]; });
-  return next;
-};
-
-const sanitizeRestoredCaption = (caption) => {
-  if (!caption || typeof caption !== 'object' || caption.isTextElement) return caption;
-  const appliedSource = String(caption.applied_template_style?.template_source ?? caption.template_source ?? '');
-  if (LIVE_TEMPLATE_SOURCES.has(appliedSource) && LIVE_TEMPLATE_SOURCES.has(String(caption.template_source || ''))) {
-    return caption;
-  }
-  const next = { ...caption };
-  REMOVED_TEMPLATE_FIELDS.forEach((key) => { delete next[key]; });
-  delete next.applied_template_style;
-  return next;
-};
-
-const getLanguageDisplayName = (value) => {
-  const language = String(value || '').trim();
-  if (!language) return 'Original';
-  const languageCode = language.toLowerCase().split(/[-_]/)[0];
-  if (/^[a-z]{2,3}$/.test(languageCode) && typeof Intl.DisplayNames === 'function') {
-    try {
-      return new Intl.DisplayNames(['en'], { type: 'language' }).of(languageCode) || language;
-    } catch {
-      // Keep the provider label if the browser does not recognize its code.
-    }
-  }
-  return language.replace(/_/g, ' ').replace(/\b\w/g, (character) => character.toUpperCase());
-};
-
-const getLanguageIdentity = (value) => {
-  const languageBase = String(value || '').trim().toLowerCase().split(/[-_]/)[0];
-  return getLanguageDisplayName(languageBase).trim().toLocaleLowerCase('en');
-};
-
-const normalizeRestoredCaptionTrackState = (tracks, captions, activeTrackId, language = 'Original') => {
-  const safeCaptions = Array.isArray(captions) ? captions.map(sanitizeRestoredCaption) : [];
-  const seenIds = new Set();
-  const restored = [];
-  if (Array.isArray(tracks)) {
-    tracks.forEach((track) => {
-      const id = typeof track?.id === 'string' ? track.id.trim() : '';
-      if (!id || !Array.isArray(track.captions) || seenIds.has(id)) return;
-      seenIds.add(id);
-      restored.push({
-        ...track,
-        id,
-        captions: track.captions.map(sanitizeRestoredCaption),
-      });
-    });
-  }
-  if (!restored.length && safeCaptions.length) {
-    const trackLanguage = String(language || 'Original');
-    restored.push({
-      id: 'source',
-      language: trackLanguage,
-      label: `Original · ${trackLanguage}`,
-      captions: safeCaptions,
-    });
-  }
-  const selectedTrack = restored.find((track) => track.id === activeTrackId) || restored[0] || null;
-  return {
-    tracks: restored,
-    activeTrackId: selectedTrack?.id || 'source',
-    captions: selectedTrack?.captions || safeCaptions,
-  };
-};
-
-const normalizeCaptionStyle = (style = {}) => {
-  const merged = { ...defaultCaptionStyle, ...stripRemovedTemplateSource(style) };
-  if (!merged.template_id && Number(merged.font_size) <= 18 && String(merged.font_weight || '500') === '500') {
-    merged.font_size = defaultCaptionStyle.font_size;
-    merged.font_weight = defaultCaptionStyle.font_weight;
-    merged.has_shadow = true;
-  }
-  return merged;
-};
-
-const stripDetachedWordLayout = (wordStyles = {}) => Object.fromEntries(
-  Object.entries(wordStyles).map(([styleKey, styleValue]) => {
-    const nextStyle = { ...(styleValue || {}) };
-    delete nextStyle.x;
-    delete nextStyle.y;
-    delete nextStyle.x_pct;
-    delete nextStyle.y_pct;
-    delete nextStyle.abs_x_pct;
-    delete nextStyle.abs_y_pct;
-    delete nextStyle.boxWidth;
-    delete nextStyle.textScaleX;
-    delete nextStyle.rotation;
-    delete nextStyle.frozenFontSize;
-    // Authored templates own entrance motion. Keeping a previous per-word
-    // animation here forces multiple templates through the same generic effect.
-    delete nextStyle.animation;
-    delete nextStyle.animationSpeed;
-    return [styleKey, nextStyle];
-  }),
-);
-
-const getTemplateSelectionIdentity = (style = {}) => [
-  String(style?.template_source || ''),
-  String(style?.template_20_id || ''),
-  String(style?.template_id || ''),
-].join('::');
-
-const localDraftKey = (uid, projectId = 'latest') => (
-  `lekha.captionDraft.${String(uid || 'signed-out')}.${String(projectId || 'latest')}`
-)
-
-const readLocalDraft = (uid) => {
-  if (!uid) return null
-  const candidates = [
-    localStorage.getItem(localDraftKey(uid)),
-    localStorage.getItem('captionEditorState'),
-  ]
-  for (const serialized of candidates) {
-    if (!serialized) continue
-    try {
-      const parsed = JSON.parse(serialized)
-      if (parsed?.ownerUid === uid && (parsed.fileId || parsed.videoUrl || parsed.captions?.length)) return parsed
-    } catch (error) {
-      console.warn('Ignoring an unreadable local caption draft:', error)
-    }
-  }
-  return null
-}
-
 export default function Dashboard() {
   const { currentUser, userData, isLoadingAuth } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
   const [isPricingModalOpen, setIsPricingModalOpen] = useState(false);
+  const [pricingMessage, setPricingMessage] = useState('');
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
 
   const handleUploadModalOpen = () => {
@@ -285,19 +127,34 @@ export default function Dashboard() {
   // its progress state when the sheet is closed and reopened. Unmounting it
   // mid-export orphaned the running export and let users start a duplicate one.
   const [exportPanelMounted, setExportPanelMounted] = useState(false);
-  const [isPlanExpiredModalOpen, setIsPlanExpiredModalOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationStartedAt, setGenerationStartedAt] = useState(null);
+  const [generationTicker, setGenerationTicker] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  const [videoUrl, setVideoUrl] = useState('');
-  const [fileId, setFileId] = useState(null);
-  const [originalFileName, setOriginalFileName] = useState('');
-  const [duration, setDuration] = useState(0);
+  const editorDocument = useEditorDocument();
+  const {
+    videoUrl, setVideoUrl,
+    fileId, setFileId,
+    originalFileName, setOriginalFileName,
+    duration, setDuration,
+    captions, setCaptions,
+    captionTracks, setCaptionTracks,
+    activeCaptionTrackId, setActiveCaptionTrackId,
+    captionStyle, setCaptionStyle,
+    projectId, setProjectId,
+    settings, setSettings,
+    resetPointRef,
+    snapshotEditorState,
+    applyDocument,
+  } = editorDocument;
+
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  // External video sync signal
+  const [seekSignal, setSeekSignal] = useState(null);
 
   // Lock body scroll while dashboard is mounted (prevents shrink when navigating back from UserAccount)
   React.useEffect(() => {
@@ -307,32 +164,22 @@ export default function Dashboard() {
 
   // Video canvas fullscreen & resizable timeline
   const [isVideoFullscreen, setIsVideoFullscreen] = useState(false);
-  const [timelineHeight, setTimelineHeight] = useState(42);
+  const [timelineHeight, setTimelineHeight] = useState(COLLAPSED_TIMELINE_HEIGHT);
   const [isTimelineCollapsed, setIsTimelineCollapsed] = useState(true);
-  const [dividerSnapping, setDividerSnapping] = useState(false); // visual snap feedback
-  const timelineDividerRef = useRef(null);
-  const isDraggingDivider = useRef(false);
-  const dividerStartY = useRef(0);
-  const dividerStartHeight = useRef(204);
-  const defaultTimelineHeight = useRef(204);
+  const collapseTimeline = () => {
+    setIsTimelineCollapsed(true);
+    setTimelineHeight(COLLAPSED_TIMELINE_HEIGHT);
+  };
 
-  // Resizer snap positions (timeline height values)
-  // SNAP_MAX_CANVAS is dynamic — matches the actual rendered default
-  const SNAP_BALANCED  = 148;
-  const SNAP_MAX_TIMELINE = 300;
-  const SNAP_THRESHOLD = 20;     // px distance to trigger a snap
-
-  const [captions, setCaptions] = useState([]);
-  const [captionTracks, setCaptionTracks] = useState([]);
-  const [activeCaptionTrackId, setActiveCaptionTrackId] = useState('source');
   const [selectedCaptionId, setSelectedCaptionId] = useState(null);
-  const [captionStyle, setCaptionStyle] = useState(defaultCaptionStyle);
   const {
     brandKits,
     setBrandKits,
     syncStatus: editorPreferenceSyncStatus,
     reloadCloudPreferences, retryPreferenceSync,
   } = useEditorPreferences(currentUser)
+
+  const [isLoaded, setIsLoaded] = useState(false);
 
   // DEV-ONLY seed: load a sample video + Hindi captions instantly for verifying
   // template rendering without the upload/transcribe flow. Activate with ?devseed=1.
@@ -361,20 +208,14 @@ export default function Dashboard() {
         words: mkWords([['और', 9.6, 10.0], ['याद', 10.0, 10.5], ['रह', 10.5, 10.9], ['जाता', 10.9, 11.5], ['है', 11.5, 12]]) },
     ]);
     setIsLoaded(true);
-  }, []);
+  }, [setCaptions, setDuration, setFileId, setVideoUrl]);
 
-  const [projectId, setProjectId] = useState(null);
-  const [settings, setSettings] = useState({ language: 'english', style: 'viral_hook' });
-  const [isLoaded, setIsLoaded] = useState(false);
-
-  // Undo/Redo state. `history` holds PRE-change snapshots (history[historyIndex]
-  // is what undo restores). Undone states live on `redoStack` — without it, redo
-  // re-restored the snapshot the editor was already showing and the newest state
-  // was unreachable.
-  const [history, setHistory] = useState([]);
-  const [historyIndex, setHistoryIndex] = useState(-1);
-  const [redoStack, setRedoStack] = useState([]);
-  const lastCoalescedPushRef = useRef(0);
+  const { pushHistory, undo: handleUndo, redo: handleRedo, resetHistory, canUndo, canRedo } = useEditorHistory({
+    captions,
+    captionStyle,
+    setCaptions,
+    setCaptionStyle,
+  });
 
   // Active tab for sidebar navigation
   const [activeTab, setActiveTab] = useState('captions');
@@ -387,38 +228,51 @@ export default function Dashboard() {
   // open, including after it has been dragged to a custom canvas position.
   const selectedWordForAnimation = wordPopup ? {
     type: wordPopup.type,
-    captionId: wordPopup.type === 'element' ? wordPopup.elementId : wordPopup.caption?.id,
+    captionId: wordPopupTargetId(wordPopup),
     wordIndex: wordPopup.wordIndex,
     word: wordPopup.word,
   } : null;
 
   // Waveform data for timeline
   const [waveformData, setWaveformData] = useState(null);
-  const initialEditorStateRef = useRef(null);
-  const recoveryInitializedRef = useRef(false);
-  const cloudAutosaveRef = useRef(null)
   const mediaRefreshInFlightRef = useRef(false);
-  const [cloudSaveMessage, setCloudSaveMessage] = useState('')
-  const [cloudSaveConflict, setCloudSaveConflict] = useState(false)
-  const [localRecoveryDraft, setLocalRecoveryDraft] = useState(null)
-  const { cloudReady, cloudDraft, saveCloudDraft } = useCloudProjects({
-    currentUser,
-    getAuthToken: getEffectiveAuthToken,
-    projectId,
-    setProjectId,
-    onMessage: setCloudSaveMessage,
-  })
   const [showCaptionRetryNotice, setShowCaptionRetryNotice] = useState(false)
   const [showLowCreditNotice, setShowLowCreditNotice] = useState(false)
   const [translationNotice, setTranslationNotice] = useState('')
   const [sourceUnavailable, setSourceUnavailable] = useState(false)
   const [isRelinking, setIsRelinking] = useState(false)
 
-  useEffect(() => {
-    if (!cloudSaveMessage) return undefined
-    const timer = window.setTimeout(() => setCloudSaveMessage(''), 10000)
-    return () => window.clearTimeout(timer)
-  }, [cloudSaveMessage])
+  // Editor UI owned here is cleared whenever the document is emptied for a new
+  // session or account, so no selection, playback or undo history leaks across.
+  const resetEditorUi = useCallback(() => {
+    setWordPopup(null)
+    setSelectedCaptionId(null)
+    setCurrentTime(0)
+    setIsUploadModalOpen(false)
+    resetHistory()
+  }, [resetHistory])
+
+  const {
+    cloudReady,
+    cloudDraft,
+    cloudSaveMessage,
+    setCloudSaveMessage,
+    cloudSaveConflict,
+    setCloudSaveConflict,
+    localRecoveryDraft,
+    applyLocalDraft,
+    discardLocalDraft,
+    saveNow,
+  } = useDraftPersistence({
+    currentUser,
+    isLoadingAuth,
+    restoreRequested: location.state?.restoreSession,
+    doc: editorDocument,
+    isLoaded,
+    setIsLoaded,
+    setSourceUnavailable,
+    onEditorReset: resetEditorUi,
+  })
 
   useEffect(() => {
     // A source file is stored before its asynchronous transcription finishes.
@@ -435,33 +289,6 @@ export default function Dashboard() {
     return () => window.clearTimeout(timer)
   }, [showCaptionRetryNotice])
 
-  // External Video Sync Signal
-  const [seekSignal, setSeekSignal] = useState(null);
-  const [generationTicker, setGenerationTicker] = useState(0);
-
-  const snapshotEditorState = useCallback((overrides = {}) => ({
-    videoUrl,
-    captions: JSON.parse(JSON.stringify(overrides.captions ?? captions)),
-    captionTracks: JSON.parse(JSON.stringify(overrides.captionTracks ?? captionTracks)),
-    activeCaptionTrackId: overrides.activeCaptionTrackId ?? activeCaptionTrackId,
-    captionStyle: JSON.parse(JSON.stringify(overrides.captionStyle ?? captionStyle)),
-    duration: overrides.duration ?? duration,
-    fileId: overrides.fileId ?? fileId,
-    originalFileName: overrides.originalFileName ?? originalFileName,
-    projectId: overrides.projectId ?? projectId,
-    settings: JSON.parse(JSON.stringify(overrides.settings ?? settings)),
-  }), [activeCaptionTrackId, captionStyle, captionTracks, captions, duration, fileId, originalFileName, projectId, settings, videoUrl]);
-
-  useEffect(() => {
-    if (!activeCaptionTrackId) return
-    setCaptionTracks((tracks) => {
-      if (!tracks.some((track) => track.id === activeCaptionTrackId)) return tracks
-      return tracks.map((track) => (
-        track.id === activeCaptionTrackId ? { ...track, captions } : track
-      ))
-    })
-  }, [activeCaptionTrackId, captions])
-
   const selectCaptionTrack = (trackId) => {
     const track = captionTracks.find((item) => item.id === trackId)
     if (!track) return
@@ -469,161 +296,8 @@ export default function Dashboard() {
     setCaptions(JSON.parse(JSON.stringify(track.captions || [])))
     setSelectedCaptionId(null)
     setWordPopup(null)
-    setHistory([])
-    setHistoryIndex(-1)
-    setRedoStack([])
+    resetHistory()
   }
-
-  useEffect(() => {
-    if (!isLoaded || !fileId || !cloudReady || cloudSaveConflict) return
-    const draft = snapshotEditorState()
-    const signature = draftAutosaveSignature(draft)
-    const context = `${currentUser?.uid || ''}:${fileId}`
-    if (cloudAutosaveRef.current?.context === context && cloudAutosaveRef.current.signature === signature) return
-    const timer = setTimeout(() => {
-      saveCloudDraft(draft).then(() => {
-        cloudAutosaveRef.current = { context, signature }
-      }).catch((error) => notifyCloudSaveError(error, setCloudSaveMessage, setCloudSaveConflict))
-    }, 2500)
-    return () => clearTimeout(timer)
-  }, [isLoaded, fileId, cloudReady, cloudSaveConflict, currentUser?.uid, snapshotEditorState, saveCloudDraft])
-
-  const downloadDraft = (draft) => {
-    const url = URL.createObjectURL(new Blob([JSON.stringify(draft, null, 2)], { type: 'application/json' }))
-    const link = document.createElement('a')
-    link.href = url
-    link.download = 'lekha-caption-draft.json'
-    link.click()
-    setTimeout(() => URL.revokeObjectURL(url), 1000)
-  }
-
-  const applyLocalDraft = useCallback((parsed) => {
-    if (!parsed || parsed.ownerUid !== currentUser?.uid) return false
-    const restoredCaptions = (parsed.captions || []).map(sanitizeRestoredCaption)
-    const restoredEditorState = normalizeRestoredCaptionTrackState(
-      parsed.captionTracks,
-      restoredCaptions,
-      parsed.activeCaptionTrackId,
-      parsed.settings?.language || 'Original',
-    )
-    setVideoUrl(parsed.videoUrl || '')
-    setSourceUnavailable(!parsed.videoUrl)
-    setCaptions(restoredEditorState.captions)
-    setCaptionTracks(restoredEditorState.tracks)
-    setActiveCaptionTrackId(restoredEditorState.activeTrackId)
-    setCaptionStyle(normalizeCaptionStyle(parsed.captionStyle || defaultCaptionStyle))
-    setProjectId(parsed.projectId || null)
-    setDuration(parsed.duration || 0)
-    setFileId(parsed.fileId || null)
-    setOriginalFileName(parsed.originalFileName || '')
-    setSettings(parsed.settings || { language: 'english', style: 'viral_hook' })
-    initialEditorStateRef.current = {
-      videoUrl: parsed.videoUrl || '',
-      captions: JSON.parse(JSON.stringify(restoredEditorState.captions)),
-      captionTracks: JSON.parse(JSON.stringify(restoredEditorState.tracks)),
-      activeCaptionTrackId: restoredEditorState.activeTrackId,
-      captionStyle: JSON.parse(JSON.stringify(normalizeCaptionStyle(parsed.captionStyle || defaultCaptionStyle))),
-      duration: parsed.duration || 0,
-      fileId: parsed.fileId || null,
-      originalFileName: parsed.originalFileName || '',
-      projectId: parsed.projectId || null,
-      settings: JSON.parse(JSON.stringify(parsed.settings || { language: 'english', style: 'viral_hook' })),
-    }
-    // Restoring is a read: only subsequent content edits should write a revision.
-    cloudAutosaveRef.current = {
-      context: `${currentUser.uid}:${parsed.fileId}`,
-      signature: draftAutosaveSignature(initialEditorStateRef.current),
-    }
-    setLocalRecoveryDraft(null)
-    return true
-  }, [currentUser?.uid])
-
-  const discardLocalDraft = useCallback(() => {
-    if (!currentUser?.uid || !localRecoveryDraft) return
-    localStorage.removeItem(localDraftKey(currentUser.uid))
-    if (localRecoveryDraft.projectId) {
-      localStorage.removeItem(localDraftKey(currentUser.uid, localRecoveryDraft.projectId))
-    }
-    const legacy = localStorage.getItem('captionEditorState')
-    if (legacy) {
-      try {
-        if (JSON.parse(legacy)?.ownerUid === currentUser.uid) localStorage.removeItem('captionEditorState')
-      } catch {
-        localStorage.removeItem('captionEditorState')
-      }
-    }
-    setLocalRecoveryDraft(null)
-  }, [currentUser?.uid, localRecoveryDraft])
-
-  const loadedAccountRef = useRef(null)
-  useEffect(() => {
-    if (isLoadingAuth) return
-    const uid = currentUser?.uid || ''
-    if (loadedAccountRef.current === uid) return
-    loadedAccountRef.current = uid
-    // DEV-ONLY: the ?devseed session has no account; don't wipe it on auth load.
-    if (import.meta.env.DEV && new URLSearchParams(window.location.search).has('devseed')) return
-    recoveryInitializedRef.current = false
-    setIsLoaded(false)
-    setLocalRecoveryDraft(null)
-    setCloudSaveConflict(false)
-    setCaptionTracks([])
-    setCaptions([])
-    setVideoUrl('')
-    setFileId(null)
-    setProjectId(null)
-    setSourceUnavailable(false)
-    setWordPopup(null)
-    initialEditorStateRef.current = null
-    cloudAutosaveRef.current = null
-    setCaptionStyle(defaultCaptionStyle)
-  }, [currentUser?.uid, isLoadingAuth])
-
-  // Keep a same-account recovery copy until the customer explicitly continues
-  // or discards it. Normal dashboard entry must never erase unsynced work.
-  useEffect(() => {
-    if (isLoadingAuth || recoveryInitializedRef.current) return
-    recoveryInitializedRef.current = true
-    const params = new URLSearchParams(window.location.search);
-    // DEV-ONLY: let the ?devseed effect own the session; don't wipe it here.
-    if (import.meta.env.DEV && params.has('devseed')) {
-      setIsLoaded(true);
-      return;
-    }
-    const isNavigationRestore = location.state?.restoreSession || params.get('restoreSession') === '1';
-    const isEditorEntry = params.get('entry') === 'editor';
-    const shouldStartClean = Boolean(params.get('action') || params.get('session_reset') || isEditorEntry);
-    let savedDraft = null
-    try { savedDraft = readLocalDraft(currentUser?.uid) }
-    catch { setCloudSaveMessage('Browser recovery storage is unavailable. Save to your account or download the draft before closing.') }
-
-    if (savedDraft && isNavigationRestore && !shouldStartClean && applyLocalDraft(savedDraft)) {
-      setIsLoaded(true)
-      return
-    }
-    if (savedDraft) setLocalRecoveryDraft(savedDraft)
-
-    setVideoUrl('');
-    setCaptions([]);
-    setCaptionTracks([]);
-    setActiveCaptionTrackId('source');
-    setCaptionStyle(defaultCaptionStyle);
-    setProjectId(null);
-    setDuration(0);
-    setCurrentTime(0);
-    setHistory([]);
-    setHistoryIndex(-1);
-    // Navigation only ever lands on the Start Creating Captions screen. The
-    // upload modal is opened exclusively by the visible Upload Video button.
-    setIsUploadModalOpen(false);
-
-    // Clean up URL parameters if they exist
-    if (params.get('action') || params.get('session_reset') || isEditorEntry) {
-      window.history.replaceState({}, '', window.location.pathname);
-    }
-
-    setIsLoaded(true);
-  }, [applyLocalDraft, currentUser?.uid, isLoadingAuth, location.state?.restoreSession]);
 
   useEffect(() => {
     if (!videoUrl) setWordPopup(null);
@@ -642,23 +316,11 @@ export default function Dashboard() {
     return () => window.clearInterval(timer);
   }, [isGenerating]);
 
+  // Close the word popup when its caption or text element is deleted.
   useEffect(() => {
     if (!wordPopup) return;
-
-    const targetId = wordPopup.type === 'element'
-      ? wordPopup.elementId
-      : wordPopup.caption?.id;
-    if (!targetId) {
-      setWordPopup(null);
-      return;
-    }
-
-    const activeTarget = captions.find(c => c.id === targetId);
-    if (!activeTarget) {
-      setWordPopup(null);
-      return;
-    }
-
+    const targetId = wordPopupTargetId(wordPopup);
+    if (!targetId || !captions.some(c => c.id === targetId)) setWordPopup(null);
   }, [captions, wordPopup]);
 
   useEffect(() => {
@@ -719,50 +381,6 @@ export default function Dashboard() {
     };
   }, []);
 
-  // Auto-save to localStorage whenever state changes (debounced)
-  useEffect(() => {
-    if (!isLoaded || localRecoveryDraft) return;
-
-    const timeoutId = setTimeout(() => {
-      const stateToSave = {
-        videoUrl,
-        captions,
-        captionTracks,
-        activeCaptionTrackId,
-        captionStyle,
-        projectId,
-        settings,
-        duration,
-        fileId,
-        originalFileName,
-        ownerUid: currentUser?.uid || '',
-        // Note: modal states (isUploadModalOpen etc.) are intentionally NOT saved
-        // so modals don't re-open unexpectedly on page reload
-        savedAt: Date.now()
-      };
-
-      try {
-        const serialized = JSON.stringify(stateToSave);
-        // Only save if under 5MB to prevent quota errors
-        if (serialized.length >= 5 * 1024 * 1024) {
-          setCloudSaveMessage('This draft is too large for browser recovery. Download it now and confirm cloud save before closing the tab.')
-          return
-        }
-        const ownerUid = currentUser?.uid || ''
-        if (!ownerUid) return
-        localStorage.setItem(localDraftKey(ownerUid), serialized)
-        if (projectId) localStorage.setItem(localDraftKey(ownerUid, projectId), serialized)
-        // Retain one legacy copy during migration; reads remain owner-checked.
-        localStorage.setItem('captionEditorState', serialized)
-      } catch (e) {
-        console.warn('Failed to save state:', e);
-        setCloudSaveMessage('Browser recovery storage is full or unavailable. Download this draft and confirm cloud save before closing the tab.')
-      }
-    }, 500); // Debounce 500ms
-
-    return () => clearTimeout(timeoutId);
-  }, [videoUrl, captions, captionTracks, activeCaptionTrackId, captionStyle, projectId, settings, duration, fileId, originalFileName, currentUser?.uid, isLoaded, localRecoveryDraft]);
-
   const handleUpload = async (file, uploadSettings) => {
     if (!currentUser) {
       navigate(`/login?mode=signup&returnTo=${encodeURIComponent('/Dashboard?entry=editor')}`);
@@ -773,13 +391,12 @@ export default function Dashboard() {
     setSettings(uploadSettings);
     setIsUploadModalOpen(false);
     setIsGenerating(true);
-    setHistory([]);
-    setHistoryIndex(-1);
-    setRedoStack([]);
+    resetHistory();
     setCaptionTracks([]);
     setActiveCaptionTrackId('source');
     setTranslationNotice('');
-    initialEditorStateRef.current = null;
+    setCloudSaveConflict(false);
+    resetPointRef.current = null;
     const generationStart = Date.now();
     setGenerationStartedAt(generationStart);
     const selectedFileName = file?.name || originalFileName || 'video';
@@ -821,51 +438,28 @@ export default function Dashboard() {
       setFileId(uploadData.file_id);
       setOriginalFileName(selectedFileName);
 
-      // Parse wordsPerLine range for backend (e.g., "1-2" -> min=1, max=2).
-      // "dynamic" (or unset) -> min=5, max=6 so animated templates receive full phrases.
-      let minWords = 5, maxWordsVal = 6;
-      const wpl = uploadSettings?.wordsPerLine;
-      if (wpl && wpl !== 'dynamic') {
-        const rangeParts = wpl.split('-').map(Number);
-        if (rangeParts.length === 2) {
-          minWords = rangeParts[0];
-          maxWordsVal = rangeParts[1];
-        } else if (rangeParts.length === 1 && !isNaN(rangeParts[0]) && rangeParts[0] > 0) {
-          // Single value like "1" → exactly N words per caption
-          minWords = rangeParts[0];
-          maxWordsVal = rangeParts[0];
-        }
-      }
-
+      const { minWords, maxWords } = parseWordsPerLine(uploadSettings?.wordsPerLine);
       const processData = await processVideoWithRecovery({
         file_id: uploadData.file_id,
         language: 'auto',
         min_words: minWords,
-        max_words: maxWordsVal,
+        max_words: maxWords,
         id_token: mediaAuthToken,
       });
       if (!processData.success) throw new Error(processData.error || 'Processing failed');
       trackAnalytics('funnel.process.success', getClientContext({ stage: 'process', language: uploadSettings?.language || 'auto' }));
 
-      let sourceCaptions = (processData.captions || []).map((cap, idx) => ({
-        text: cap?.text || '',
-        start_time: cap?.start_time || 0,
-        end_time: cap?.end_time || 3,
-        id: `${Date.now()}-${idx}`,
-        words: cap?.words || []
-      }));
+      let sourceCaptions = captionsFromTranscript(processData.captions);
       if (sourceCaptions.length === 0) {
         throw new Error('No speech with usable word timestamps was detected. Try another video or add captions manually.');
       }
 
-      // Keep translated text in its own track so creating another language
-      // never destroys the original transcript or its timing.
       const targetLang = uploadSettings?.language;
       const detectedLanguage = processData.detected_language || processData.language || 'Original';
       const sourceLanguage = getLanguageDisplayName(detectedLanguage);
       const sameLanguage = getLanguageIdentity(detectedLanguage) === getLanguageIdentity(targetLang);
       let translatedCaptions = null;
-      if (targetLang && targetLang !== 'auto' && !sameLanguage && sourceCaptions.length > 0) {
+      if (targetLang && targetLang !== 'auto' && !sameLanguage) {
         try {
           const translateToken = await getEffectiveAuthToken(currentUser);
           const translateData = await apiRequest('/api/translate', {
@@ -879,21 +473,11 @@ export default function Dashboard() {
             dedupeKey: 'translate-captions',
             cancelPrevious: true,
           });
-          if (translateData.success && translateData.captions) {
-            trackAnalytics('funnel.translate.success', getClientContext({ stage: 'translate', targetLanguage: targetLang }));
-            const translatedMap = new Map();
-            translateData.captions.forEach(tc => { if (tc.id) translatedMap.set(tc.id, tc.text); });
-            translatedCaptions = sourceCaptions.map((caption) => ({
-              ...caption,
-              text: translatedMap.get(caption.id) || caption.text,
-              // Word timestamps belong to the source language and cannot be
-              // safely aligned with translated words.
-              words: [],
-              wordStyles: {},
-            }));
-          } else {
+          if (!translateData.success || !translateData.captions) {
             throw new Error(translateData.error || `Translation to ${targetLang} failed`);
           }
+          trackAnalytics('funnel.translate.success', getClientContext({ stage: 'translate', targetLanguage: targetLang }));
+          translatedCaptions = applyTranslation(sourceCaptions, translateData.captions);
         } catch (translateErr) {
           trackAnalytics('funnel.translate.failed', getClientContext({ stage: 'translate', targetLanguage: targetLang }));
           console.warn(`Translation to ${targetLang} failed; keeping the original language track.`, translateErr);
@@ -901,89 +485,53 @@ export default function Dashboard() {
         }
       }
 
-      const playableVideoUrl = acceptedPlayableVideoUrl;
-
-      // If style is 'double_line', merge matching pairs with the same IDs in
-      // each language so the editor can compare and switch tracks reliably.
-      const captionLines = uploadSettings?.style;
-      if (captionLines === 'double_line' && sourceCaptions.length > 1) {
+      if (uploadSettings?.style === 'double_line' && sourceCaptions.length > 1) {
         const sharedIdPrefix = `${Date.now()}-merged`;
-        const mergePairs = (items) => {
-          const merged = [];
-          for (let i = 0; i < items.length; i += 2) {
-            if (i + 1 < items.length) {
-              merged.push({
-                text: `${items[i].text}\n${items[i + 1].text}`,
-                start_time: items[i].start_time,
-                end_time: items[i + 1].end_time,
-                id: `${sharedIdPrefix}-${merged.length}`,
-                words: [...(items[i].words || []), ...(items[i + 1].words || [])],
-              });
-            } else {
-              merged.push({ ...items[i], id: `${sharedIdPrefix}-${merged.length}` });
-            }
-          }
-          return merged;
-        };
-        sourceCaptions = mergePairs(sourceCaptions);
-        if (translatedCaptions) translatedCaptions = mergePairs(translatedCaptions);
+        sourceCaptions = mergeCaptionPairs(sourceCaptions, sharedIdPrefix);
+        if (translatedCaptions) translatedCaptions = mergeCaptionPairs(translatedCaptions, sharedIdPrefix);
       }
 
-      const nextCaptionTracks = [{
-        id: 'source',
-        language: sourceLanguage,
-        label: `Original · ${sourceLanguage}`,
-        captions: sourceCaptions,
-      }];
-      const translatedTrackId = translatedCaptions ? `translation-${String(targetLang).toLowerCase()}` : null;
-      if (translatedCaptions) {
-        nextCaptionTracks.push({
-          id: translatedTrackId,
-          language: targetLang,
-          label: `${targetLang} · translated`,
-          captions: translatedCaptions,
-        });
-      }
-      const nextActiveTrackId = translatedTrackId || 'source';
-      const generatedCaptions = translatedCaptions || sourceCaptions;
-
-      setCaptions(generatedCaptions);
-      setCaptionTracks(nextCaptionTracks);
-      setActiveCaptionTrackId(nextActiveTrackId);
+      const trackState = buildCaptionTracks({
+        sourceCaptions,
+        sourceLanguage,
+        translatedCaptions,
+        targetLanguage: targetLang,
+      });
+      setCaptions(trackState.captions);
+      setCaptionTracks(trackState.tracks);
+      setActiveCaptionTrackId(trackState.activeTrackId);
 
       let nextCaptionStyle = {
         ...defaultCaptionStyle,
         wordsPerLine: uploadSettings?.wordsPerLine || 'dynamic'
       };
-      if (generatedCaptions.length > 0) {
-        const sampleText = generatedCaptions.map(c => c.text).join(' ');
-        const { fontFamily, script, fontOptions } = await autoLoadFontForText(sampleText);
-        nextCaptionStyle = {
-          ...nextCaptionStyle,
-          font_family: fontFamily,
-          detected_script: script,
-          available_fonts: fontOptions?.map(f => f.name) || [],
-        };
-      }
+      const sampleText = trackState.captions.map(c => c.text).join(' ');
+      const { fontFamily, script, fontOptions } = await autoLoadFontForText(sampleText);
+      nextCaptionStyle = {
+        ...nextCaptionStyle,
+        font_family: fontFamily,
+        detected_script: script,
+        available_fonts: fontOptions?.map(f => f.name) || [],
+      };
       setCaptionStyle(nextCaptionStyle);
 
       const nextProjectId = `local_${Date.now()}`;
       setProjectId(nextProjectId);
-      initialEditorStateRef.current = {
-        videoUrl: playableVideoUrl,
-        captions: JSON.parse(JSON.stringify(generatedCaptions)),
-        captionTracks: JSON.parse(JSON.stringify(nextCaptionTracks)),
-        activeCaptionTrackId: nextActiveTrackId,
-        captionStyle: JSON.parse(JSON.stringify(nextCaptionStyle)),
+      resetPointRef.current = restoreEditorDocument({
+        videoUrl: acceptedPlayableVideoUrl,
+        captions: trackState.captions,
+        captionTracks: trackState.tracks,
+        activeCaptionTrackId: trackState.activeTrackId,
+        captionStyle: nextCaptionStyle,
         duration: 0,
         fileId: uploadData.file_id,
         originalFileName: selectedFileName,
         projectId: nextProjectId,
-        settings: JSON.parse(JSON.stringify(uploadSettings)),
-      };
+        settings: uploadSettings,
+      });
 
       try {
-        const waveform = await extractWaveformData(playableVideoUrl);
+        const waveform = await extractWaveformData(acceptedPlayableVideoUrl);
         setWaveformData(waveform);
       } catch (e) {
         console.warn('Waveform extraction failed:', e);
@@ -1046,23 +594,11 @@ export default function Dashboard() {
 
   const handleSave = async () => {
     setIsSaving(true);
-    try {
-      const serialized = JSON.stringify({
-        videoUrl, captions, captionTracks, activeCaptionTrackId, captionStyle, projectId, settings, duration,
-        fileId, originalFileName, ownerUid: currentUser?.uid || ''
-      })
-      localStorage.setItem(localDraftKey(currentUser?.uid), serialized)
-      if (projectId) localStorage.setItem(localDraftKey(currentUser?.uid, projectId), serialized)
-      localStorage.setItem('captionEditorState', serialized)
-      await saveCloudDraft(snapshotEditorState())
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 2000);
-    } catch (error) {
-      console.error('Save failed:', error);
-      notifyCloudSaveError(error, setCloudSaveMessage, setCloudSaveConflict)
-    } finally {
-      setIsSaving(false);
-    }
+    const saved = await saveNow();
+    setIsSaving(false);
+    if (!saved) return;
+    setSaveSuccess(true);
+    setTimeout(() => setSaveSuccess(false), 2000);
   };
 
   const handleSeek = (time) => {
@@ -1131,436 +667,84 @@ export default function Dashboard() {
     } finally {
       mediaRefreshInFlightRef.current = false;
     }
-  }, [currentTime, currentUser, fileId, isPlaying, videoUrl]);
-
-  // Push current state to history, then apply new state.
-  // options.coalesce: rapid consecutive pushes (e.g. per-keystroke text edits)
-  // record only ONE snapshot per burst — without this, typing a sentence pushed
-  // ~50 single-character entries and flushed the entire useful undo history.
-  const pushHistory = (newCaptions, newStyle, options = {}) => {
-    const now = Date.now();
-    const coalesce = options.coalesce === true;
-    const withinBurst = coalesce && (now - lastCoalescedPushRef.current < 1200);
-    lastCoalescedPushRef.current = coalesce ? now : 0;
-    if (!withinBurst) {
-      const snapshot = {
-        captions: JSON.parse(JSON.stringify(captions)),
-        captionStyle: JSON.parse(JSON.stringify(captionStyle))
-      };
-      const trimmed = history.slice(0, historyIndex + 1);
-      const newHistory = [...trimmed, snapshot];
-      // Cap history at 50 entries
-      if (newHistory.length > 50) newHistory.shift();
-      setHistory(newHistory);
-      setHistoryIndex(newHistory.length - 1);
-    }
-    // Any new change invalidates the redo branch.
-    setRedoStack([]);
-    if (newCaptions !== undefined) setCaptions(newCaptions);
-    if (newStyle !== undefined) setCaptionStyle(newStyle);
-  };
+  }, [currentTime, currentUser, fileId, isPlaying, setVideoUrl, videoUrl]);
 
   const updateCaptions = (newCaptions, options) => pushHistory(newCaptions, undefined, options);
   const updateCaptionStyle = (newStyle) => pushHistory(undefined, newStyle);
+  const addToHistory = () => pushHistory(undefined, undefined);
+
+  // Word popup edits use raw setCaptions: history is recorded separately via
+  // onHistoryRecord (pointer-down on sliders). Recording here captured stale
+  // closure snapshots and corrupted other words.
   const handleWordStyleChange = (key, value) => {
     if (!wordPopup) return;
-
-    // Always use raw setCaptions — never updateCaptions here.
-    // History is recorded separately via onHistoryRecord (onPointerDown on sliders).
-    // Using updateCaptions causes stale closure snapshots and corrupts other words.
-    setCaptions(prev => prev.map(c => {
-      if (wordPopup.type === 'element') {
-        if (c.id !== wordPopup.elementId) return c;
-      } else {
-        if (c.id !== wordPopup.caption?.id) return c;
-      }
-      const wordStyles = c.wordStyles || {};
-      const styleKey = wordPopup.type === 'element'
-        ? `${wordPopup.elementId}-${wordPopup.wordIndex}`
-        : `${wordPopup.caption?.id}-${wordPopup.wordIndex}`;
-      const existingStyle = wordStyles[styleKey] || {};
-      const updatedStyle = { ...existingStyle, [key]: value };
-      if (key === 'textGradient') {
-        updatedStyle.textGradient = typeof value === 'string' ? value.trim() : '';
-      }
-      // Slider size changes should grow the word normally, not keep a narrow side-resize box.
-      if (key === 'fontSize') {
-        delete updatedStyle.frozenFontSize;
-        delete updatedStyle.boxWidth;
-        delete updatedStyle.textScaleX;
-      }
-      if (key === 'x') delete updatedStyle.x_pct;
-      if (key === 'y') delete updatedStyle.y_pct;
-
-      return {
-        ...c,
-        wordStyles: {
-          ...wordStyles,
-          [styleKey]: updatedStyle
-        }
-      };
-    }));
-
+    setCaptions(prev => updatePopupWordStyle(prev, wordPopup, (style) => applyWordStyleChange(style, key, value)));
     setWordPopup(prev => {
       if (!prev?.caption || prev.type === 'element') return prev;
-      const styleKey = `${prev.caption.id}-${prev.wordIndex}`;
-      const existingStyle = prev.caption.wordStyles?.[styleKey] || {};
-      const updatedStyle = { ...existingStyle, [key]: value };
-      if (key === 'textGradient') {
-        updatedStyle.textGradient = typeof value === 'string' ? value.trim() : '';
-      }
-      if (key === 'fontSize') {
-        delete updatedStyle.frozenFontSize;
-        delete updatedStyle.boxWidth;
-        delete updatedStyle.textScaleX;
-      }
-      if (key === 'x') delete updatedStyle.x_pct;
-      if (key === 'y') delete updatedStyle.y_pct;
+      const styleKey = wordPopupStyleKey(prev);
       return {
         ...prev,
         caption: {
           ...prev.caption,
           wordStyles: {
             ...(prev.caption.wordStyles || {}),
-            [styleKey]: updatedStyle,
+            [styleKey]: applyWordStyleChange(prev.caption.wordStyles?.[styleKey] || {}, key, value),
           },
         },
       };
     });
   };
 
+  const handleResetWordFontSize = () => {
+    if (!wordPopup) return;
+    addToHistory();
+    setCaptions(prev => updatePopupWordStyle(prev, wordPopup, resetWordFontSize));
+  };
+
+  const handleResetWordPosition = () => {
+    if (!wordPopup) return;
+    addToHistory();
+    setCaptions(prev => updatePopupWordStyle(prev, wordPopup, resetWordPosition));
+  };
+
   const handleApplyTemplate = async (templateStyle) => {
-    // Hard Reset: properties that templates fully control are cleared before applying
-    // so Template B never inherits BG, color, font, spacing, phase, or animation
-    // from Template A. Non-template properties (effects, position_x) are preserved.
-    const TEMPLATE_OWNED_RESET = {
-      template_id: '',
-      template_20_id: '',
-      template_source: '',
-      template_class: '',
-      template_name: '',
-      template_layout: '',
-      template_effect: '',
-      template_markup: '',
-      template_color_customized: false,
-      template_phase_override: undefined,
-      // Both galleries set these (the left set extracts letter/line spacing
-      // from its authored CSS; the advanced pack sets line/word spacing and a
-      // default phase index), so they are template-owned and must reset too —
-      // otherwise Template B inherits Template A's spacing or phase selection.
-      template_phase_index: 0,
-      letter_spacing: 0,
-      line_spacing: defaultCaptionStyle.line_spacing,
-      word_spacing: defaultCaptionStyle.word_spacing,
-      font_family: 'Inter',
-      font_size: 17,
-      font_weight: '800',
-      font_style: 'normal',
-      text_color: '#ffffff',
-      text_gradient: '',
-      text_opacity: 1,
-      text_case: 'none',
-      secondary_color: '',
-      highlight_color: '',
-      highlight_gradient: '',
-      emphasis_color: '',
-      karaoke_color_1: '',
-      karaoke_color_2: '',
-      karaoke_color_3: '',
-      has_background: true,
-      background_color: '#000000',
-      background_opacity: 0.7,
-      background_padding: 6,
-      has_stroke: false,
-      stroke_color: '#000000',
-      stroke_width: 1,
-      has_shadow: true,
-      shadow_color: '#000000',
-      shadow_blur: 4,
-      shadow_offset_x: 0,
-      shadow_offset_y: 2,
-      show_inactive: undefined,
-      display_mode: 'sentence',
-      position_y: 75,
-    };
-    const {
-      template_snapshot: _previousTemplateSnapshot,
-      template_applied_at: _previousTemplateAppliedAt,
-      ...templateStyleForSnapshot
-    } = templateStyle || {};
-    const hasTemplateSelection = !!(
-      templateStyleForSnapshot?.template_id
-      || templateStyleForSnapshot?.template_20_id
-    );
-    const isNewTemplateSelection = hasTemplateSelection && (
-      getTemplateSelectionIdentity(templateStyleForSnapshot)
-      !== getTemplateSelectionIdentity(captionStyle)
-    );
-    const templateSnapshot = hasTemplateSelection
-      ? JSON.parse(JSON.stringify({
-        ...templateStyleForSnapshot,
-        emotional_intelligence: true,
-        emotional_timing: EMOTIONAL_TEMPLATE_TIMING,
-      }))
-      : null;
-    const merged = {
-      ...captionStyle,
-      ...TEMPLATE_OWNED_RESET,
-      ...templateStyleForSnapshot,
-      template_snapshot: templateSnapshot,
-      template_applied_at: templateSnapshot ? Date.now() : null,
-    };
-    // Indic-script safety net: a template's Latin display font (Bodoni, Bebas Neue,
-    // Oxanium, …) has no Devanagari glyphs, so on Hindi/Marathi captions it silently
-    // falls back to a default face and the template looks like it "didn't apply".
-    // Swap in a Devanagari font of matching character so the template visibly lands.
-    //
-    // IMPORTANT: do NOT decide this from the *dominant* script of all captions joined.
-    // A project can be Latin-dominant overall (English hooks, numbers, @handles, 8+
-    // mixed elements) yet still contain Hindi caption lines. Aggregate detection then
-    // returns 'latin', the Latin template font is kept, and every Hindi line renders in
-    // a glyphless fallback = "template not applied / plain white". Instead remap as soon
-    // as ANY non-text caption needs a different (script-appropriate) face. resolveScriptFont
-    // is a no-op on captions that don't need swapping, so the first one that DOES need it
-    // (e.g. the Hindi line) wins. Render-time per-caption resolution in VideoPlayer still
-    // handles genuinely mixed projects line-by-line; this just makes the stored font (and
-    // the font we eagerly load) correct for the script actually present.
-    let _mappedFont = merged.font_family
-    if (merged.font_family) {
-      for (const c of captions) {
-        if (!c || c.isTextElement) continue
-        const m = resolveScriptFont(merged.font_family, String(c.text || ''))
-        if (m && m !== merged.font_family) { _mappedFont = m; break }
-      }
-      if (_mappedFont !== merged.font_family) merged.font_family = _mappedFont
-      if (templateSnapshot) templateSnapshot.font_family = merged.font_family
-    }
-    const emotionalPlan = templateSnapshot
-      ? buildEmotionalCaptionPlan(captions, waveformData, duration, templateSnapshot.template_markup)
-      : [];
-    const emotionalByCaptionId = new Map(emotionalPlan.map((entry) => [entry.captionId, entry]));
-    const nextCaptions = captions.map(cap => {
-      if (!cap || cap.isTextElement) return cap;
-      if (!templateSnapshot) {
-        const {
-          applied_template_style: _appliedTemplateStyle,
-          template_id: _captionTemplateId,
-          template_20_id: _captionTemplate20Id,
-          template_source: _captionTemplateSource,
-          template_class: _captionTemplateClass,
-          template_name: _captionTemplateName,
-          template_layout: _captionTemplateLayout,
-          template_effect: _captionTemplateEffect,
-          template_markup: _captionTemplateMarkup,
-          emotional_mode: _emotionalMode,
-          template_phase_index: _templatePhaseIndex,
-          template_phase_override: _templatePhaseOverride,
-          imp_word_index: _impWordIndex,
-          imp_word_indices: _impWordIndices,
-          emphasis_color: _emphasisColor,
-          audio_emotion_metrics: _audioEmotionMetrics,
-          ...rest
-        } = cap;
-        return {
-          ...rest,
-          wordStyles: stripDetachedWordLayout(rest.wordStyles || {}),
-        };
-      }
-      const emotional = emotionalByCaptionId.get(cap.id);
-      const requestedPhaseOffset = Number(templateSnapshot.template_phase_override);
-      const templatePhaseIndex = templateSnapshot.template_id === 't17'
-        ? 1
-        : Number.isFinite(requestedPhaseOffset)
-          ? requestedPhaseOffset + (emotional?.phaseIndex ?? 0)
-          : emotional?.phaseIndex ?? 0;
-      const templateEmphasisColor = templateSnapshot.highlight_color
-        || templateSnapshot.emphasis_color
-        || templateSnapshot.secondary_color
-        || emotional?.emphasisColor
-        || '';
-      return {
-        ...cap,
-        // A genuinely new template starts from its authored word layout.
-        // Clear every prior per-word override so detached coordinates, source
-        // offsets, resized boxes, and frozen template typography cannot leak
-        // from the previously selected template.
-        wordStyles: isNewTemplateSelection ? {} : stripDetachedWordLayout(cap.wordStyles || {}),
-        animation: 'none',
-        animationSpeed: 1,
-        template_id: templateSnapshot.template_id || '',
-        template_20_id: templateSnapshot.template_20_id || '',
-        template_source: templateSnapshot.template_source || '',
-        template_class: templateSnapshot.template_class || '',
-        template_name: templateSnapshot.template_name || '',
-        template_layout: templateSnapshot.template_layout || '',
-        template_effect: templateSnapshot.template_effect || '',
-        template_markup: templateSnapshot.template_markup || '',
-        applied_template_style: templateSnapshot,
-        emotional_mode: emotional?.mode || 'normal',
-        template_phase_index: templatePhaseIndex,
-        imp_word_index: emotional?.impWordIndex ?? -1,
-        imp_word_indices: emotional?.impWordIndices || [],
-        emphasis_color: templateEmphasisColor,
-        audio_emotion_metrics: emotional?.audio || null,
-      };
+    const application = buildTemplateApplication({
+      templateStyle,
+      captionStyle,
+      captions,
+      waveformData,
+      duration,
     });
-    // Load the font that will actually render (merged.font_family — already remapped
-    // to a Devanagari family above when the captions are Indic) so it's ready on apply.
-    if (merged.font_family) {
-      loadGoogleFont(merged.font_family, [300, 400, 500, 600, 700, 800, 900]).catch(() => {});
+    // Load the font that will actually render (already remapped to a
+    // script-appropriate family when the captions are Indic).
+    if (application.style.font_family) {
+      loadGoogleFont(application.style.font_family, [300, 400, 500, 600, 700, 800, 900]).catch(() => {});
     }
-    if (templateSnapshot) {
-      // Kinds mirror the favorite keys each gallery uses, so "Recent" and
-      // favorites always refer to the same card.
-      const sidebarId = templateSnapshot.template_20_id || '';
-      const inspectorId = templateSnapshot.template_id || '';
-      const kind = sidebarId
-        ? 'sidebar-template'
-        : (/^t\d{2}$/.test(inspectorId) ? 'advanced-template' : 'basic-template');
-      const recentId = sidebarId || inspectorId;
-      recordRecentTemplate(kind, recentId);
+    if (application.templateSnapshot) {
+      const recent = getTemplateRecentEntry(application.templateSnapshot);
+      recordRecentTemplate(recent.kind, recent.id);
       trackAnalytics('template.applied', getClientContext({
-        kind,
-        templateId: recentId,
-        templateName: templateSnapshot.template_name || '',
-        templateSource: templateSnapshot.template_source || '',
+        kind: recent.kind,
+        templateId: recent.id,
+        templateName: application.templateSnapshot.template_name || '',
+        templateSource: application.templateSnapshot.template_source || '',
       }));
     }
     setWordPopup(null);
-    pushHistory(nextCaptions, merged);
-  };
-  const addToHistory = () => pushHistory(undefined, undefined);
-
-  const handleResetWordFontSize = useCallback(() => {
-    if (!wordPopup) return;
-    addToHistory();
-
-    setCaptions(prev => prev.map(c => {
-      const targetId = wordPopup.type === 'element' ? wordPopup.elementId : wordPopup.caption?.id;
-      if (c.id !== targetId) return c;
-
-      const wordStyles = c.wordStyles || {};
-      const styleKey = wordPopup.type === 'element'
-        ? `${wordPopup.elementId}-${wordPopup.wordIndex}`
-        : `${wordPopup.caption?.id}-${wordPopup.wordIndex}`;
-      const existingStyle = wordStyles[styleKey] || {};
-      const updatedStyle = { ...existingStyle };
-
-      delete updatedStyle.fontSize;
-      delete updatedStyle.frozenFontSize;
-
-      return {
-        ...c,
-        wordStyles: {
-          ...wordStyles,
-          [styleKey]: updatedStyle,
-        },
-      };
-    }));
-  }, [addToHistory, wordPopup]);
-
-  const handleUndo = () => {
-    if (historyIndex >= 0) {
-      const prevState = history[historyIndex];
-      // Save the state being undone so redo can bring it back — history only
-      // holds pre-change snapshots, never the state after a change.
-      setRedoStack(stack => [...stack, {
-        captions: JSON.parse(JSON.stringify(captions)),
-        captionStyle: JSON.parse(JSON.stringify(captionStyle))
-      }]);
-      setCaptions(prevState.captions);
-      setCaptionStyle(prevState.captionStyle);
-      setHistoryIndex(historyIndex - 1);
-    }
+    pushHistory(application.captions, application.style);
   };
 
-  const handleRedo = () => {
-    if (redoStack.length > 0) {
-      const nextState = redoStack[redoStack.length - 1];
-      setRedoStack(stack => stack.slice(0, -1));
-      // The state being replaced becomes the pre-change snapshot again.
-      setHistory(h => [...h.slice(0, historyIndex + 1), {
-        captions: JSON.parse(JSON.stringify(captions)),
-        captionStyle: JSON.parse(JSON.stringify(captionStyle))
-      }]);
-      setHistoryIndex(historyIndex + 1);
-      setCaptions(nextState.captions);
-      setCaptionStyle(nextState.captionStyle);
-    }
-  };
-
-  // Global keyboard shortcuts: Ctrl+Z (undo), Ctrl+Y / Ctrl+Shift+Z (redo)
-  useEffect(() => {
-    const onKeyDown = (e) => {
-      const tag = document.activeElement?.tagName;
-      // Don't intercept if user is typing in an input/textarea/contenteditable
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return;
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') { e.preventDefault(); handleUndo(); }
-      if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) { e.preventDefault(); handleRedo(); }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-
-  }, [historyIndex, history, redoStack, captions, captionStyle]);
-
+  // Reset returns to the project as it was opened or generated.
   const handleRefresh = () => {
-    const initialState = initialEditorStateRef.current || snapshotEditorState();
-
-    if (!initialState) {
-      handleNewProject();
-      return;
-    }
-
+    const resetPoint = resetPointRef.current || snapshotEditorState();
     setWordPopup(null);
     setIsPlaying(false);
     setCurrentTime(0);
     setSelectedCaptionId(null);
     setIsVideoFullscreen(false);
-    setIsTimelineCollapsed(true);
-    setTimelineHeight(42);
-    setSettings(JSON.parse(JSON.stringify(initialState.settings)));
-    setVideoUrl(initialState.videoUrl || '');
-    const restoredEditorState = normalizeRestoredCaptionTrackState(
-      initialState.captionTracks,
-      initialState.captions,
-      initialState.activeCaptionTrackId,
-      initialState.settings?.language || 'Original',
-    );
-    setCaptions(JSON.parse(JSON.stringify(restoredEditorState.captions)));
-    setCaptionTracks(JSON.parse(JSON.stringify(restoredEditorState.tracks)));
-    setActiveCaptionTrackId(restoredEditorState.activeTrackId);
-    setCaptionStyle(JSON.parse(JSON.stringify(initialState.captionStyle || defaultCaptionStyle)));
-    setProjectId(initialState.projectId || null);
-    setDuration(initialState.duration || 0);
-    setFileId(initialState.fileId || null);
-    setOriginalFileName(initialState.originalFileName || '');
-    setHistory([]);
-    setHistoryIndex(-1);
-    setRedoStack([]);
-  };
-
-  const handleNewProject = () => {
-    if (currentUser?.uid) {
-      localStorage.removeItem(localDraftKey(currentUser.uid))
-      if (projectId) localStorage.removeItem(localDraftKey(currentUser.uid, projectId))
-    }
-    localStorage.removeItem('captionEditorState');
-    initialEditorStateRef.current = null;
-    setVideoUrl('');
-    setCaptions([]);
-    setCaptionTracks([]);
-    setActiveCaptionTrackId('source');
-    setLocalRecoveryDraft(null)
-    setCloudSaveConflict(false)
-    setTranslationNotice('');
-    setCaptionStyle(defaultCaptionStyle);
-    setProjectId(null);
-    setDuration(0);
-    setCurrentTime(0);
-    setSelectedCaptionId(null);
-    setHistory([]);
-    setHistoryIndex(-1);
-    setRedoStack([]);
+    collapseTimeline();
+    applyDocument(restoreEditorDocument(resetPoint));
+    resetHistory();
   };
 
   const handleSelectPlan = async () => {
@@ -1584,10 +768,9 @@ export default function Dashboard() {
   // Capture the immutable reset point once the initial project has loaded.
   useEffect(() => {
     if (!videoUrl || !captions.length) return;
-    if (initialEditorStateRef.current) return;
-
-    initialEditorStateRef.current = snapshotEditorState();
-  }, [captionStyle, captions.length, snapshotEditorState, videoUrl]);
+    if (resetPointRef.current) return;
+    resetPointRef.current = snapshotEditorState();
+  }, [captionStyle, captions.length, resetPointRef, snapshotEditorState, videoUrl]);
 
   // Auto-Center: when the font changes (or 'None' is selected), load the new font and
   // trigger a style refresh so the preview re-measures word bounding boxes with the
@@ -1597,8 +780,6 @@ export default function Dashboard() {
     if (!fontFamily) return;
     loadGoogleFont(fontFamily, [300, 400, 500, 600, 700, 800]).catch(() => {});
   }, [captionStyle?.font_family]);
-
-  const [pricingMessage, setPricingMessage] = useState('');
 
   const handleExportClick = () => {
     // Always open the Export Panel — auth/credit checks are handled inside
@@ -1736,7 +917,7 @@ export default function Dashboard() {
         onToggleCollapsed={() => {
           setIsTimelineCollapsed(prev => {
             const next = !prev;
-            setTimelineHeight(next ? 42 : 204);
+            setTimelineHeight(next ? COLLAPSED_TIMELINE_HEIGHT : EXPANDED_TIMELINE_HEIGHT);
             return next;
           });
         }}
@@ -1747,130 +928,6 @@ export default function Dashboard() {
   const generationElapsedSeconds = generationStartedAt
     ? Math.max(0, Math.floor(((generationTicker || Date.now()) - generationStartedAt) / 1000))
     : 0;
-  const renderGeneratingState = () => {
-    const step2Ready = generationElapsedSeconds >= 3;
-    const step3Ready = generationElapsedSeconds >= 6;
-    const step4Ready = generationElapsedSeconds >= 9;
-    const progressSteps = [
-      { label: 'Transcribing your audio', status: step2Ready ? 'complete' : 'active' },
-      { label: 'Syncing word-level timing', status: step3Ready ? 'complete' : step2Ready ? 'active' : 'upcoming' },
-      { label: 'Highlighting key moments', status: step4Ready ? 'complete' : step3Ready ? 'active' : 'upcoming' },
-      { label: 'Rendering your preview', status: step4Ready ? 'active' : 'upcoming' },
-    ];
-    const completedSteps = progressSteps.filter((step) => step.status === 'complete').length;
-    return (
-      <div className="relative flex h-full items-center justify-center overflow-hidden bg-[#050505] p-4 sm:p-8">
-        <div aria-hidden="true" className="absolute inset-0 bg-[radial-gradient(circle_at_50%_36%,rgba(246,165,75,0.14),transparent_36%),radial-gradient(circle_at_8%_88%,rgba(255,255,255,0.045),transparent_28%)]" />
-        <div aria-hidden="true" className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.026)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.026)_1px,transparent_1px)] bg-[size:42px_42px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_78%)]" />
-        <motion.div
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="relative w-full max-w-[680px] overflow-hidden rounded-[28px] border border-white/[0.12] bg-[#0b0b0b]/90 shadow-[0_30px_100px_rgba(0,0,0,0.48)] backdrop-blur-xl"
-        >
-          <div className="flex items-center justify-between border-b border-white/[0.08] px-5 py-4 sm:px-7">
-            <div className="inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#ffd7a4]">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#f6a54b] shadow-[0_0_14px_rgba(246,165,75,0.9)]" />
-              Lekha studio
-            </div>
-            <span className="rounded-full border border-white/[0.1] bg-white/[0.04] px-3 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-zinc-400">AI processing</span>
-          </div>
-
-          <div className="px-5 py-7 sm:px-7 sm:py-9">
-            <div className="flex items-start gap-4">
-              <div className="relative mt-1 flex h-[52px] w-[52px] shrink-0 items-center justify-center">
-                <motion.span
-                  animate={{ scale: [1, 1.35, 1], opacity: [0.5, 0, 0.5] }}
-                  transition={{ duration: 2, repeat: Infinity, ease: 'easeOut' }}
-                  className="absolute inset-0 rounded-full border border-[#f6a54b]/25"
-                />
-                <Sparkles className="relative h-6 w-6 text-[#f6a54b]" />
-              </div>
-              <div className="min-w-0">
-                <h2 className="text-[30px] font-semibold leading-[1.12] text-white sm:text-[36px]">
-                  Crafting your captions
-                </h2>
-                <p className="mt-3 max-w-[410px] text-sm leading-6 text-zinc-400">
-                  Lekha is transcribing your audio, syncing each word to the timeline, and styling your first preview.
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-8 grid grid-cols-[1fr_auto] items-end gap-4 rounded-2xl border border-white/[0.08] bg-white/[0.035] p-4">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-500">Caption workflow</p>
-                <p className="mt-1 text-sm font-medium text-white">Step {Math.min(completedSteps + 1, progressSteps.length)} of {progressSteps.length}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-2xl font-semibold tracking-tight text-[#ffd7a4]">{Math.round((completedSteps / progressSteps.length) * 100)}%</p>
-                <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Prepared</p>
-              </div>
-            </div>
-
-            <div className="mt-6">
-              <div className="rounded-2xl border border-white/[0.08] bg-black/20 p-4 sm:p-5">
-                <div className="space-y-3">
-                {progressSteps.map((step, index) => {
-                  const isComplete = step.status === 'complete';
-                  const isActive = step.status === 'active';
-
-                  return (
-                    <motion.div
-                      key={step.label}
-                      initial={{ opacity: 0, x: -8 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: index * 0.05 }}
-                      className="grid grid-cols-[30px_1fr] gap-3"
-                    >
-                      <div className="relative flex justify-center">
-                        {index < progressSteps.length - 1 && (
-                          <span className={`absolute top-8 h-[calc(100%+12px)] w-px ${
-                            isComplete ? 'bg-[#f6a54b]/55' : 'bg-white/[0.12]'
-                          }`} />
-                        )}
-                        <span className={`relative flex h-7 w-7 items-center justify-center rounded-full border ${
-                          isComplete
-                            ? 'border-[#f6a54b]/70 text-[#ffd7a4]'
-                            : isActive
-                              ? 'border-[#f6a54b]/70 text-[#ffd7a4]'
-                              : 'border-white/[0.16] text-zinc-500'
-                        }`}>
-                          {isComplete ? (
-                            <Check className="h-3.5 w-3.5" strokeWidth={3} />
-                          ) : isActive ? (
-                            <span className="h-3.5 w-3.5 rounded-full border-2 border-current border-t-transparent animate-spin" />
-                          ) : (
-                            <span className="h-1.5 w-1.5 rounded-full bg-current" />
-                          )}
-                        </span>
-                      </div>
-                      <div className="pb-2">
-                        <p className={`text-sm font-medium ${
-                          isActive || isComplete ? 'text-white' : 'text-zinc-500'
-                        }`}>
-                          {step.label}
-                        </p>
-                        <p className={`mt-1 text-[11px] uppercase ${
-                          isComplete
-                            ? 'text-[#ffd7a4]'
-                            : isActive
-                              ? 'text-[#ffd7a4]'
-                              : 'text-zinc-600'
-                        }`}>
-                          {isComplete ? 'Complete' : isActive ? 'Now processing' : 'Next'}
-                        </p>
-                      </div>
-                    </motion.div>
-                  );
-                })}
-                </div>
-              </div>
-            </div>
-          </div>
-        </motion.div>
-      </div>
-    );
-  };
-
   const mobileTabs = [
     { id: 'captions', label: 'Captions', icon: Captions },
     { id: 'style', label: 'Style', icon: SlidersHorizontal },
@@ -1908,8 +965,8 @@ export default function Dashboard() {
         hasVideo={!!videoUrl || captions.length > 0}
         onUndo={handleUndo}
         onRedo={handleRedo}
-        canUndo={historyIndex >= 0}
-        canRedo={redoStack.length > 0}
+        canUndo={canUndo}
+        canRedo={canRedo}
         onRefresh={handleRefresh}
         user={currentUser}
         userData={userData}
@@ -1917,118 +974,39 @@ export default function Dashboard() {
         onUpgradeClick={() => setIsPricingModalOpen(true)}
       />
 
-      {/* Notices float above the editor and never consume dashboard height. */}
-      {(cloudSaveConflict || cloudSaveMessage || showLowCreditNotice || showCaptionRetryNotice || translationNotice) && (
-        <div className="pointer-events-none fixed inset-x-3 top-[4.25rem] z-[70] mx-auto flex max-w-[1320px] flex-col gap-2" aria-live="polite">
-          {cloudSaveConflict && (
-            <div className="pointer-events-auto flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300/25 bg-[#1a1608]/95 px-4 py-2.5 text-xs text-amber-50 shadow-2xl backdrop-blur">
-              <p role="status">A newer version of this project was saved on another tab or device, so this tab stopped saving to your account. Your edits are kept in this browser.</p>
-              <div className="flex shrink-0 gap-3">
-                {captions.length > 0 && <button type="button" className="underline" onClick={() => downloadDraft(snapshotEditorState())}>Download draft</button>}
-                <button type="button" className="underline" onClick={() => window.location.reload()}>Reload</button>
-              </div>
-            </div>
-          )}
-          {cloudSaveMessage && (
-            <div className="pointer-events-auto flex items-center justify-between gap-3 rounded-xl border border-white/15 bg-[#111]/95 px-4 py-2.5 text-xs text-gray-200 shadow-2xl backdrop-blur">
-              <p role="status">{cloudSaveMessage}</p>
-              {captions.length > 0 && <button className="shrink-0 underline" onClick={() => downloadDraft(snapshotEditorState())}>Download draft</button>}
-            </div>
-          )}
-          {translationNotice && (
-            <div className="pointer-events-auto flex items-center justify-between gap-3 rounded-xl border border-amber-300/25 bg-[#1a1608]/95 px-4 py-2.5 text-xs text-amber-50 shadow-2xl backdrop-blur">
-              <p role="status">{translationNotice}</p>
-              <button type="button" onClick={() => setTranslationNotice('')} className="shrink-0 underline">Dismiss</button>
-            </div>
-          )}
-          {showLowCreditNotice && lowCreditTopUpOffer && (
-            <div className="pointer-events-auto flex items-center justify-between gap-3 rounded-xl border border-white/15 bg-[#111]/95 px-4 py-2.5 shadow-2xl backdrop-blur">
-              <p className="text-sm font-medium text-white">
-                Low credits? Add {lowCreditTopUpOffer.credits} credits for {lowCreditTopUpOffer.price} - no plan change needed.
-              </p>
-              <button
-                onClick={() => setIsPricingModalOpen(true)}
-                className="shrink-0 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-black transition-colors hover:bg-gray-100"
-              >
-                Top Up
-              </button>
-            </div>
-          )}
-          {showCaptionRetryNotice && fileId && captions.length === 0 && (
-            <div className="pointer-events-auto flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-400/25 bg-[#1a1608]/95 px-4 py-2.5 shadow-2xl backdrop-blur">
-              <p className="text-sm text-amber-50">
-                Captions were not generated. Your video is saved — retry without uploading it again.
-              </p>
-              <button
-                type="button"
-                onClick={handleRetryTranscription}
-                disabled={isGenerating}
-                className="shrink-0 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-black transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Retry captions
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-      {(sourceUnavailable || (!videoUrl && captions.length > 0)) && (
-        <div role="status" className="flex flex-wrap items-center gap-3 bg-amber-950 px-4 py-2 text-xs text-amber-100">
-          <span>Source video unavailable. Captions remain editable. Relink the original video; verify timing if you choose another version.</span>
-          <label className="cursor-pointer underline">{isRelinking ? 'Uploading source…' : 'Relink source video'}<input aria-label="Relink source video" type="file" accept="video/*" disabled={isRelinking} className="sr-only" onChange={(event) => { relinkSource(event.target.files?.[0]); event.target.value = '' }} /></label>
-        </div>
-      )}
-      {['conflict', 'local', 'storage-full'].includes(editorPreferenceSyncStatus) && currentUser && <div role="status" className="flex flex-wrap gap-3 bg-sky-950 px-4 py-2 text-xs text-sky-100">
-        <span>{editorPreferenceSyncStatus === 'conflict' ? 'Brand kits changed on another device. Browser edits are preserved. Export your kits in Layers before reloading.' : editorPreferenceSyncStatus === 'storage-full' ? 'Browser storage is unavailable. Keep this page open until account sync succeeds.' : 'Brand kit changes are waiting for account sync.'}</span>
-        <button type="button" onClick={retryPreferenceSync} className="underline">Retry sync</button>
-        <button type="button" onClick={reloadCloudPreferences} className="underline">Reload cloud preferences</button>
-      </div>}
+      <EditorNotices
+        saveConflict={cloudSaveConflict}
+        saveMessage={cloudSaveMessage}
+        translationNotice={translationNotice}
+        onDismissTranslation={() => setTranslationNotice('')}
+        lowCreditOffer={showLowCreditNotice ? lowCreditTopUpOffer : null}
+        onTopUp={() => setIsPricingModalOpen(true)}
+        showCaptionRetry={Boolean(showCaptionRetryNotice && fileId && captions.length === 0)}
+        onRetryCaptions={handleRetryTranscription}
+        retryDisabled={isGenerating}
+        onDownloadDraft={captions.length > 0 ? () => downloadDraft(snapshotEditorState()) : null}
+      />
+      <EditorStatusBanners
+        sourceUnavailable={sourceUnavailable || (!videoUrl && captions.length > 0)}
+        isRelinking={isRelinking}
+        onRelinkSource={relinkSource}
+        brandKitSyncStatus={currentUser ? editorPreferenceSyncStatus : ''}
+        onRetryBrandKitSync={retryPreferenceSync}
+        onReloadBrandKits={reloadCloudPreferences}
+      />
       {/* Main content */}
       <div className="flex-1 overflow-hidden lekha-editor-shell">
         {isGenerating ? (
-          renderGeneratingState()
+          <GeneratingCaptionsScreen elapsedSeconds={generationElapsedSeconds} />
         ) : !videoUrl && !captions.length ? (
-          <div className="h-full flex items-center justify-center p-6">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="text-center max-w-md"
-            >
-              <div className="w-20 h-20 rounded-full bg-yellow-500/10 flex items-center justify-center mx-auto mb-6">
-                <Upload className="w-8 h-8 text-yellow-400" />
-              </div>
-              <h2 className="text-2xl font-bold text-white mb-3">
-                Start Creating Captions
-              </h2>
-              <p className="text-gray-500 mb-6">
-                Upload your short-form video (best for 15-180 seconds) and we'll generate professional captions instantly.
-              </p>
-              {localRecoveryDraft && (
-                <div className="mb-6 rounded border border-yellow-500/30 p-4 text-left" role="status">
-                  <p className="mb-3 text-sm text-gray-300">Your previous draft is available on this browser.</p>
-                  <div className="flex flex-wrap gap-3">
-                    <Button onClick={() => applyLocalDraft(localRecoveryDraft)}>Continue saved draft</Button>
-                    <Button variant="outline" onClick={() => downloadDraft(localRecoveryDraft)}>Download draft backup</Button>
-                  </div>
-                </div>
-              )}
-              {cloudReady && cloudDraft && currentUser && !localRecoveryDraft && (
-                <Button className="mb-4" onClick={() => applyLocalDraft({ ...cloudDraft, ownerUid: currentUser.uid })}>
-                  Continue account draft
-                </Button>
-              )}
-              <Button
-                onClick={() => {
-                  if (localRecoveryDraft) discardLocalDraft()
-                  handleUploadModalOpen()
-                }}
-                size="lg"
-                className="bg-white hover:bg-gray-100 text-black font-semibold px-8 rounded-[4px]"
-              >
-                <Upload className="w-5 h-5 mr-2" />
-                Upload Video
-              </Button>
-            </motion.div>
-          </div>
+          <EditorEmptyState
+            localRecoveryDraft={localRecoveryDraft}
+            applyLocalDraft={applyLocalDraft}
+            discardLocalDraft={discardLocalDraft}
+            accountDraft={cloudReady && currentUser ? cloudDraft : null}
+            onContinueAccountDraft={() => applyLocalDraft({ ...cloudDraft, ownerUid: currentUser.uid })}
+            handleUploadModalOpen={handleUploadModalOpen}
+          />
         ) : (
           // Editor layout
           <div className="h-full flex flex-col overflow-hidden">
@@ -2123,57 +1101,13 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* Resizable Divider Bar (Premiere Pro style) */}
               {!isVideoFullscreen && !isTimelineCollapsed && (
-                <div
-                  ref={timelineDividerRef}
-                  className="absolute left-0 right-0 z-[80] hidden h-1.5 cursor-ns-resize items-center justify-center group lg:flex"
-                  style={{ bottom: `${timelineHeight + 28}px` }}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    isDraggingDivider.current = true;
-                    dividerStartY.current = e.clientY;
-                    dividerStartHeight.current = timelineHeight;
-                    const SNAPS = [defaultTimelineHeight.current, SNAP_BALANCED, SNAP_MAX_TIMELINE];
-                    const onMove = (ev) => {
-                      if (!isDraggingDivider.current) return;
-                      // delta > 0 = dragging up = growing timeline
-                      const delta = dividerStartY.current - ev.clientY;
-                      const floor = defaultTimelineHeight.current;
-                      let raw = Math.max(floor, Math.min(400, dividerStartHeight.current + delta));
-                      // Check snap proximity
-                      let snapped = false;
-                      for (const s of SNAPS) {
-                        if (Math.abs(raw - s) <= SNAP_THRESHOLD) {
-                          raw = s;
-                          snapped = true;
-                          break;
-                        }
-                      }
-                      setDividerSnapping(snapped);
-                      setTimelineHeight(raw);
-                    };
-                    const onUp = () => {
-                      isDraggingDivider.current = false;
-                      setDividerSnapping(false);
-                      document.removeEventListener('mousemove', onMove);
-                      document.removeEventListener('mouseup', onUp);
-                    };
-                    document.addEventListener('mousemove', onMove);
-                    document.addEventListener('mouseup', onUp);
-                  }}
-                  onDoubleClick={() => {
-                    setIsTimelineCollapsed(true);
-                    setTimelineHeight(42);
-                  }}
-                >
-                  {/* Divider line */}
-                  <div className={`w-full h-px transition-colors ${dividerSnapping ? 'bg-yellow-400/60' : 'bg-white/5 group-hover:bg-white/15'}`} />
-                  {/* Drag handle indicator */}
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className={`w-8 h-1 rounded-full transition-colors ${dividerSnapping ? 'bg-yellow-400/80' : 'bg-white/10 group-hover:bg-white/25'}`} />
-                  </div>
-                </div>
+                <TimelineResizeHandle
+                  timelineHeight={timelineHeight}
+                  setTimelineHeight={setTimelineHeight}
+                  minHeight={EXPANDED_TIMELINE_HEIGHT}
+                  onCollapse={collapseTimeline}
+                />
               )}
               {!isVideoFullscreen && (
                 <div
@@ -2236,60 +1170,17 @@ export default function Dashboard() {
           <Suspense fallback={null}>
             <WordClickPopup
               key={wordPopup._openKey ?? wordPopupOpenCount}
-              word={(() => {
-                if (wordPopup.type === 'element') {
-                  const element = captions.find(cap => cap.id === wordPopup.elementId);
-                  return String(element?.text || '').split(/\s+/).filter(Boolean)[wordPopup.wordIndex] || wordPopup.word;
-                }
-                const liveCaption = captions.find(cap => cap.id === wordPopup.caption?.id);
-                return String(liveCaption?.text || '').split(/\s+/).filter(Boolean)[wordPopup.wordIndex] || wordPopup.word;
-              })()}
+              word={getPopupWordText(captions, wordPopup)}
               position={wordPopup.position}
               onStyleChange={handleWordStyleChange}
-              currentStyle={(() => {
-                const c = captions.find(cap =>
-                  wordPopup.type === 'element'
-                    ? cap.id === wordPopup.elementId
-                    : cap.id === wordPopup.caption?.id
-                );
-                const key = wordPopup.type === 'element'
-                  ? `${wordPopup.elementId}-${wordPopup.wordIndex}`
-                  : `${wordPopup.caption?.id}-${wordPopup.wordIndex}`;
-                return c?.wordStyles?.[key] || {};
-              })()}
+              currentStyle={getPopupWordStyle(captions, wordPopup)}
               onEdit={() => {
-                const targetId = wordPopup.type === 'element'
-                  ? wordPopup.elementId
-                  : wordPopup.caption?.id;
+                const targetId = wordPopupTargetId(wordPopup);
                 setActiveTab('captions');
                 if (targetId) setSelectedCaptionId(targetId);
               }}
               onClose={() => setWordPopup(null)}
-              onResetPosition={() => {
-                if (addToHistory) addToHistory();
-                const key = wordPopup.type === 'element'
-                  ? `${wordPopup.elementId}-${wordPopup.wordIndex}`
-                  : `${wordPopup.caption?.id}-${wordPopup.wordIndex}`;
-                setCaptions(prev => prev.map(c => {
-                  const id = wordPopup.type === 'element' ? wordPopup.elementId : wordPopup.caption?.id;
-                  if (c.id !== id) return c;
-                  const ws = c.wordStyles || {};
-                  // Delete the position keys instead of writing zeros — a stored
-                  // abs 0,0 reads as "dragged to the top-left corner" in export.
-                  const {
-                    x: _x, y: _y, x_pct: _xp, y_pct: _yp,
-                    abs_x_pct: _ax, abs_y_pct: _ay,
-                    ...restStyle
-                  } = ws[key] || {};
-                  return {
-                    ...c,
-                    wordStyles: {
-                      ...ws,
-                      [key]: restStyle
-                    }
-                  };
-                }));
-              }}
+              onResetPosition={handleResetWordPosition}
               onResetFontSize={handleResetWordFontSize}
               onHistoryRecord={addToHistory}
             />
@@ -2341,44 +1232,6 @@ export default function Dashboard() {
             userData={userData}
           />
         </Suspense>
-      )}
-
-      {/* Plan Expired Modal */}
-      {isPlanExpiredModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-zinc-900 border border-white/10 rounded-2xl p-8 max-w-md mx-4 text-center"
-          >
-            <div className="w-16 h-16 rounded-full bg-yellow-500/20 flex items-center justify-center mx-auto mb-4">
-              <Sparkles className="w-8 h-8 text-yellow-400" />
-            </div>
-            <h2 className="text-2xl font-bold text-white mb-2">Your Plan Has Expired</h2>
-            <p className="text-gray-400 mb-6">
-              You've used all your credits this month. Upgrade your plan to continue creating amazing captions!
-            </p>
-            <div className="flex gap-3">
-              <Button
-                variant="outline"
-                onClick={() => setIsPlanExpiredModalOpen(false)}
-                className="flex-1 bg-white/5 border-white/10 text-white hover:bg-white/10"
-              >
-                Maybe Later
-              </Button>
-              <Button
-                onClick={() => {
-                  setIsPlanExpiredModalOpen(false);
-                  setIsPricingModalOpen(true);
-                }}
-                className="flex-1 bg-gradient-to-r from-[#F5A623] to-blue-600 hover:from-[#F5A623] hover:to-blue-700 text-white"
-              >
-                <Sparkles className="w-4 h-4 mr-2" />
-                Upgrade Now
-              </Button>
-            </div>
-          </motion.div>
-        </div>
       )}
 
       {/* Custom scrollbar styles */}
