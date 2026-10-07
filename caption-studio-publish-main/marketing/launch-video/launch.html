@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lekha Captions — Launch Film</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,600;1,700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@500;700&family=Noto+Sans+Devanagari:wght@600;700&family=Noto+Sans+Arabic:wght@600;700&family=Noto+Sans+JP:wght@600;700&display=block" rel="stylesheet">
+<style>
+:root {
+  --ink: #070706;
+  --amber: #f5a623;
+  --gold: #ffd166;
+  --lime: #b7f27a;
+  --pink: #ff8fa3;
+  --cyan: #6ee7ff;
+  --white: #ffffff;
+  --ease: cubic-bezier(.22, 1, .36, 1);
+  --sans: 'Poppins', 'Noto Sans Devanagari', 'Noto Sans Arabic', 'Noto Sans JP', sans-serif;
+  --serif: 'Instrument Serif', Georgia, serif;
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--ink); }
+body { font-family: var(--sans); color: var(--white); -webkit-font-smoothing: antialiased; }
+
+#stage { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: var(--ink); }
+
+/* ---------- atmosphere ---------- */
+.glow { position: absolute; border-radius: 50%; pointer-events: none; filter: blur(10px); }
+#glowA { width: 1300px; height: 1300px; left: 310px; top: -520px;
+  background: radial-gradient(circle, rgba(245,166,35,.16), transparent 62%);
+  animation: drift 30s linear 0s both; }
+#glowB { width: 1000px; height: 1000px; left: 1150px; top: 520px;
+  background: radial-gradient(circle, rgba(183,242,122,.07), transparent 60%);
+  animation: drift2 30s linear 0s both; }
+@keyframes drift { from { transform: translate(-120px, 0) } to { transform: translate(160px, 120px) } }
+@keyframes drift2 { from { transform: translate(0, 0) } to { transform: translate(-500px, -260px) } }
+
+#grain { position: absolute; inset: -200px; opacity: .085; mix-blend-mode: overlay; pointer-events: none; z-index: 40;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='300'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 1 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"); }
+#vignette { position: absolute; inset: 0; pointer-events: none; z-index: 39;
+  background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.62) 100%); }
+
+/* ---------- HUD ---------- */
+#hud { position: absolute; inset: 0; z-index: 30; pointer-events: none; font-family: var(--mono); }
+.corner { position: absolute; width: 46px; height: 46px; border-color: rgba(255,255,255,.28); border-style: solid; }
+.c-tl { left: 56px; top: 56px; border-width: 2px 0 0 2px; }
+.c-tr { right: 56px; top: 56px; border-width: 2px 2px 0 0; }
+.c-bl { left: 56px; bottom: 56px; border-width: 0 0 2px 2px; }
+.c-br { right: 56px; bottom: 56px; border-width: 0 2px 2px 0; }
+.hud-tl { position: absolute; left: 124px; top: 66px; display: flex; gap: 22px; align-items: center;
+  font-size: 17px; letter-spacing: .22em; color: rgba(255,255,255,.62); font-weight: 700; }
+.rec { display: inline-flex; gap: 10px; align-items: center; color: #fff; }
+.rec i { width: 11px; height: 11px; border-radius: 50%; background: #ff4d4d; display: inline-block;
+  animation: blink 1s steps(1) 0s 30 both; box-shadow: 0 0 12px #ff4d4d; }
+@keyframes blink { 0% { opacity: 1 } 50% { opacity: .15 } }
+.hud-tr { position: absolute; right: 124px; top: 66px; font-size: 17px; letter-spacing: .22em; color: rgba(255,255,255,.5); font-weight: 700; }
+.hud-tr b { color: var(--gold); font-weight: 700; }
+.hud-bl { position: absolute; left: 124px; bottom: 64px; font-size: 15px; letter-spacing: .24em; color: rgba(255,255,255,.4); font-weight: 700; }
+.hud-br { position: absolute; right: 124px; bottom: 64px; font-size: 15px; letter-spacing: .24em; color: rgba(255,255,255,.4); font-weight: 700; }
+#scrub { position: absolute; left: 124px; right: 124px; bottom: 100px; height: 2px; background: rgba(255,255,255,.08); }
+#scrubFill { position: absolute; inset: 0; background: linear-gradient(90deg, var(--amber), var(--gold)); transform-origin: left; transform: scaleX(0); }
+#scrubHead { position: absolute; top: -5px; width: 12px; height: 12px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 14px var(--amber); margin-left: -6px; left: 0; }
+
+/* ---------- scenes ---------- */
+.scene { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.abs { position: absolute; }
+.w { display: inline-block; will-change: transform, opacity, filter; }
+
+/* generic keyframes */
+@keyframes in-up { from { opacity: 0; transform: translateY(34px); filter: blur(10px) } to { opacity: 1; transform: none; filter: blur(0) } }
+@keyframes in-fade { from { opacity: 0 } to { opacity: 1 } }
+@keyframes in-pop { 0% { opacity: 0; transform: translateY(26px) scale(.86); filter: blur(8px) } 60% { opacity: 1; transform: translateY(-4px) scale(1.04); filter: blur(0) } 100% { opacity: 1; transform: none; filter: blur(0) } }
+@keyframes in-slam { 0% { opacity: 0; transform: scale(1.9); filter: blur(24px) } 55% { opacity: 1; transform: scale(.96); filter: blur(0) } 75% { transform: scale(1.015) } 100% { opacity: 1; transform: scale(1); filter: blur(0) } }
+@keyframes in-left { from { opacity: 0; transform: translateX(-60px); filter: blur(8px) } to { opacity: 1; transform: none; filter: blur(0) } }
+@keyframes in-right { from { opacity: 0; transform: translateX(80px) } to { opacity: 1; transform: none } }
+@keyframes in-scale { from { opacity: 0; transform: scale(.82) } to { opacity: 1; transform: none } }
+@keyframes out-up { from { opacity: 1; transform: none; filter: blur(0) } to { opacity: 0; transform: translateY(-40px); filter: blur(12px) } }
+@keyframes out-fade { from { opacity: 1 } to { opacity: 0 } }
+@keyframes out-zoom { from { opacity: 1; transform: none; filter: blur(0) } to { opacity: 0; transform: scale(1.12); filter: blur(16px) } }
+@keyframes out-down { from { opacity: 1; transform: none; filter: blur(0) } to { opacity: 0; transform: translateY(40px); filter: blur(10px) } }
+@keyframes amber-to-white { 0% { color: var(--gold) } 100% { color: #fff } }
+@keyframes wipe { from { clip-path: inset(0 100% 0 0) } to { clip-path: inset(0 0 0 0) } }
+@keyframes shake { 0%,100% { transform: none } 15% { transform: translate(-14px, 8px) } 30% { transform: translate(11px, -9px) } 45% { transform: translate(-7px, 5px) } 60% { transform: translate(5px, -3px) } 80% { transform: translate(-2px, 1px) } }
+@keyframes ring { from { opacity: .9; transform: translate(-50%,-50%) scale(.2) } to { opacity: 0; transform: translate(-50%,-50%) scale(2.6) } }
+@keyframes flash { 0% { opacity: 0 } 12% { opacity: .9 } 100% { opacity: 0 } }
+
+/* ===== Scene A — hook ===== */
+#A .lines { text-align: center; font-weight: 700; font-size: 124px; line-height: 1.08; letter-spacing: -.045em; }
+#A .w { margin: 0 .12em; }
+#A .mute { position: absolute; left: 50%; top: 210px; margin-left: -48px; width: 96px; height: 96px; }
+#A .hl { position: relative; color: var(--ink); padding: 0 .22em; margin-left: .1em; }
+#A .hl::before { content: ''; position: absolute; inset: .1em -.02em .02em; background: var(--lime); border-radius: 12px; z-index: -1;
+  animation: wipe .38s var(--ease) 2.35s both; }
+#A .lines .row2 { position: relative; z-index: 0; }
+#A .sub { position: absolute; bottom: 236px; width: 100%; text-align: center; font-family: var(--mono); font-size: 20px; letter-spacing: .32em; color: rgba(255,255,255,.45); font-weight: 700; }
+
+/* ===== Scene B — land ===== */
+#B .stack { text-align: center; position: relative; }
+#B .lead { font-size: 84px; font-weight: 600; letter-spacing: -.04em; color: rgba(255,255,255,.86); }
+#B .lead .w { margin: 0 .1em; }
+#B .land { font-size: 330px; font-weight: 900; letter-spacing: -.06em; line-height: .9; margin-top: 10px;
+  background: linear-gradient(180deg, #ffe39a 0%, var(--gold) 35%, var(--amber) 100%); -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 18px 60px rgba(245,166,35,.35)); }
+#B .ring { opacity: 0; position: absolute; left: 50%; top: 62%; width: 900px; height: 900px; border-radius: 50%; border: 3px solid rgba(255,209,102,.55); }
+
+/* ===== Scene C — languages ===== */
+#C .kicker, #D .kicker, #E .kicker { font-family: var(--mono); font-weight: 700; font-size: 20px; letter-spacing: .34em; color: var(--gold); }
+#C .center { text-align: center; position: relative; z-index: 2; margin-top: -60px; }
+#C h2 { font-size: 112px; font-weight: 600; letter-spacing: -.055em; line-height: 1; margin-top: 30px; }
+#C .box { position: relative; margin: 44px auto 0; width: 820px; height: 176px; border: 3px solid var(--lime); border-radius: 10px;
+  color: var(--lime); text-shadow: 0 0 34px rgba(183,242,122,.25); box-shadow: 0 0 0 1px rgba(183,242,122,.2), inset 0 0 60px rgba(183,242,122,.06); overflow: hidden; }
+#C .lang { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 118px; font-weight: 700; letter-spacing: -.035em; white-space: nowrap; }
+#C .lang.native { letter-spacing: 0; }
+@keyframes lang-in { from { opacity: 0; transform: translateY(105%); filter: blur(6px) } to { opacity: 1; transform: none; filter: blur(0) } }
+@keyframes lang-out { from { opacity: 1; transform: none; filter: blur(0) } to { opacity: 0; transform: translateY(-105%); filter: blur(6px) } }
+#C .ghost { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 0; }
+#C .ghost span { position: absolute; font-size: 470px; font-weight: 800; letter-spacing: -.05em; white-space: nowrap; color: transparent;
+  -webkit-text-stroke: 2px rgba(255,255,255,.075); }
+@keyframes ghost-in { from { opacity: 0; transform: translateX(9%) scale(.94) } to { opacity: 1; transform: none } }
+@keyframes ghost-out { from { opacity: 1 } to { opacity: 0 } }
+#C .band { position: absolute; left: 0; white-space: nowrap; font-size: 30px; font-weight: 600; color: rgba(255,255,255,.2); letter-spacing: -.01em; }
+#C .band span { margin: 0 26px; }
+#C .band span:nth-child(5n+2) { color: rgba(183,242,122,.42); }
+#C .band1 { top: 862px; animation: band-l 6s linear 7.5s both; }
+#C .band2 { top: 912px; animation: band-r 6s linear 7.5s both; }
+@keyframes band-l { from { transform: translateX(0) } to { transform: translateX(-900px) } }
+@keyframes band-r { from { transform: translateX(-1400px) } to { transform: translateX(-500px) } }
+#C .note { margin-top: 40px; font-size: 30px; color: rgba(255,255,255,.62); letter-spacing: -.01em; }
+#C .note em { font-family: var(--serif); font-size: 38px; color: #fff; }
+
+/* ===== Scene D — styles ===== */
+#D { justify-content: flex-start; }
+#D .left { position: absolute; left: 196px; top: 270px; width: 860px; }
+#D h2 { font-size: 132px; font-weight: 600; letter-spacing: -.06em; line-height: .96; margin-top: 30px; }
+#D h2 em { font-family: var(--serif); font-weight: 400; letter-spacing: -.02em; color: var(--gold); font-size: 1.12em; }
+#D .desc { margin-top: 34px; font-size: 32px; line-height: 1.45; color: rgba(255,255,255,.66); width: 700px; }
+#D .ticker { margin-top: 56px; height: 64px; position: relative; font-family: var(--mono); font-weight: 700; font-size: 24px; letter-spacing: .2em; }
+#D .tick { position: absolute; left: 0; top: 0; display: flex; gap: 20px; align-items: center; }
+#D .tick b { display: inline-block; padding: 10px 16px; border: 2px solid rgba(255,255,255,.18); border-radius: 6px; color: #fff; }
+#D .tick span { color: rgba(255,255,255,.55); }
+@keyframes tick-in { from { opacity: 0; transform: translateY(24px) } to { opacity: 1; transform: none } }
+@keyframes tick-out { from { opacity: 1; transform: none } to { opacity: 0; transform: translateY(-24px) } }
+#D .phoneWrap { position: absolute; left: 1196px; top: 120px; width: 470px; height: 836px; }
+#D .phone { position: absolute; inset: 0; border-radius: 58px; background: #111; padding: 14px;
+  box-shadow: 0 0 0 2px rgba(255,255,255,.12), 0 60px 140px -30px rgba(0,0,0,.9), 0 0 120px -20px rgba(245,166,35,.25);
+  animation: float 6.5s ease-in-out 13s both; }
+@keyframes float { 0% { transform: translateY(0) rotate(-1deg) } 50% { transform: translateY(-14px) rotate(.5deg) } 100% { transform: translateY(0) rotate(-1deg) } }
+#D .screen { position: relative; width: 100%; height: 100%; border-radius: 46px; overflow: hidden;
+  background: linear-gradient(180deg, #1a1430 0%, #3b2347 30%, #9a4a3c 62%, #e39a52 84%, #f6c66b 100%); }
+#D .sun { position: absolute; left: 50%; top: 58%; width: 240px; height: 240px; margin-left: -120px; border-radius: 50%;
+  background: radial-gradient(circle, #ffe7a8 0%, #ffbf5c 45%, rgba(255,160,70,0) 70%); animation: sunrise 6.5s linear 13s both; }
+@keyframes sunrise { from { transform: translateY(30px) } to { transform: translateY(-40px) } }
+#D .hills { position: absolute; left: 0; bottom: 0; width: 100%; }
+#D .bokeh { position: absolute; border-radius: 50%; background: radial-gradient(circle, rgba(255,230,170,.55), rgba(255,230,170,0) 70%); }
+@keyframes bok { from { transform: translate(0,0) } to { transform: translate(-60px,-90px) } }
+#D .shade { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,.35) 0%, rgba(0,0,0,0) 30%, rgba(0,0,0,.05) 50%, rgba(0,0,0,.55) 100%); }
+#D .notch { position: absolute; left: 50%; top: 14px; width: 120px; height: 34px; margin-left: -60px; background: #000; border-radius: 20px; z-index: 5; }
+#D .ui-top { position: absolute; left: 30px; right: 30px; top: 66px; display: flex; justify-content: space-between; font-family: var(--mono); font-size: 14px; font-weight: 700; letter-spacing: .18em; color: rgba(255,255,255,.75); z-index: 4; }
+#D .ui-top i { display: inline-block; width: 8px; height: 8px; background: #ff4d4d; border-radius: 50%; margin-right: 8px; }
+#D .cap { position: absolute; left: 24px; right: 24px; top: 470px; text-align: center; z-index: 3; text-shadow: 0 4px 24px rgba(0,0,0,.45); }
+#D .cap span.w { margin: 0 .1em; }
+#D .cap .sm { font-size: 30px; font-weight: 600; letter-spacing: -.01em; color: #fff; }
+#D .dots { position: absolute; bottom: 44px; left: 0; right: 0; display: flex; justify-content: center; gap: 10px; z-index: 4; }
+#D .dots i { width: 9px; height: 9px; border-radius: 50%; background: rgba(255,255,255,.3); position: relative; overflow: hidden; }
+#D .dots i b { position: absolute; inset: 0; background: #fff; border-radius: 50%; }
+@keyframes dot-on { 0% { opacity: 0 } 8% { opacity: 1 } 92% { opacity: 1 } 100% { opacity: 0 } }
+#D .bar { position: absolute; left: 30px; right: 30px; bottom: 84px; height: 4px; border-radius: 2px; background: rgba(255,255,255,.25); z-index: 4; overflow: hidden; }
+#D .bar b { position: absolute; inset: 0; background: #fff; transform-origin: left; animation: barfill 6s linear 13.4s both; }
+@keyframes barfill { from { transform: scaleX(0) } to { transform: scaleX(1) } }
+#D .ghostcard { position: absolute; width: 300px; height: 534px; border-radius: 38px; background: linear-gradient(180deg, #151515, #0b0b0b);
+  box-shadow: 0 0 0 2px rgba(255,255,255,.07); display: flex; align-items: center; justify-content: center; text-align: center; }
+#D .gc1 { left: 1060px; top: 260px; transform: rotate(-9deg); }
+#D .gc2 { left: 1530px; top: 300px; transform: rotate(8deg); }
+#D .ghostcard div { font-weight: 800; letter-spacing: -.03em; opacity: .4; filter: blur(1.5px); }
+
+/* ===== Scene E — workflow ===== */
+#E .top { position: absolute; top: 210px; width: 100%; text-align: center; }
+#E h2 { font-size: 104px; font-weight: 600; letter-spacing: -.055em; margin-top: 24px; }
+#E h2 .w { margin: 0 .14em; }
+#E h2 .w:nth-child(2) { color: var(--gold); }
+#E .rail { position: absolute; left: 210px; right: 210px; top: 540px; height: 2px; background: rgba(255,255,255,.12); }
+#E .railFill { position: absolute; inset: 0; background: linear-gradient(90deg, var(--amber), var(--gold)); transform-origin: left; animation: barfill 4.2s cubic-bezier(.45,0,.3,1) 20s both; }
+#E .head { position: absolute; top: -9px; width: 20px; height: 20px; margin-left: -10px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 22px var(--amber), 0 0 0 6px rgba(245,166,35,.18);
+  animation: headmove 4.2s cubic-bezier(.45,0,.3,1) 20s both; }
+@keyframes headmove { from { left: 0% } to { left: 100% } }
+#E .cards { position: absolute; top: 590px; left: 210px; right: 210px; display: flex; justify-content: space-between; }
+#E .card { width: 470px; height: 340px; border-radius: 14px; border: 2px solid rgba(255,255,255,.12); background: rgba(16,16,14,.86); padding: 34px 36px; position: relative; overflow: hidden; }
+#E .card .lit { position: absolute; inset: -2px; border-radius: 14px; border: 2px solid var(--amber); box-shadow: inset 0 0 70px rgba(245,166,35,.1), 0 0 50px -10px rgba(245,166,35,.45); }
+#E .num { font-family: var(--mono); font-size: 18px; font-weight: 700; letter-spacing: .3em; color: rgba(255,255,255,.45); }
+#E .ttl { font-size: 46px; font-weight: 600; letter-spacing: -.04em; margin-top: 8px; }
+#E .meta { font-family: var(--mono); font-size: 16px; font-weight: 700; letter-spacing: .14em; color: rgba(255,255,255,.5); position: absolute; left: 36px; bottom: 30px; }
+#E .viz { position: absolute; left: 36px; right: 36px; top: 150px; height: 70px; }
+#E .prog { position: absolute; left: 0; right: 0; top: 30px; height: 10px; border-radius: 5px; background: rgba(255,255,255,.1); overflow: hidden; }
+#E .prog b { position: absolute; inset: 0; background: linear-gradient(90deg, var(--amber), var(--gold)); transform-origin: left; animation: barfill 1s var(--ease) 20.3s both; }
+#E .file { position: absolute; left: 0; top: -14px; font-family: var(--mono); font-size: 17px; font-weight: 700; color: rgba(255,255,255,.75); letter-spacing: .06em; }
+#E .pct { position: absolute; right: 0; top: -14px; font-family: var(--mono); font-size: 17px; font-weight: 700; color: var(--gold); }
+#E .wave { position: absolute; left: 0; right: 0; top: 0; height: 40px; display: flex; align-items: center; gap: 6px; }
+#E .wave i { flex: 1; height: 100%; border-radius: 3px; background: rgba(255,255,255,.35); transform-origin: center; }
+@keyframes wv { 0%,100% { transform: scaleY(.2) } 50% { transform: scaleY(1) } }
+#E .words { position: absolute; left: 0; right: 0; top: 52px; display: flex; gap: 10px; font-size: 22px; font-weight: 600; }
+#E .words span { padding: 3px 10px; border-radius: 5px; background: rgba(255,255,255,.08); }
+#E .words span.on { background: var(--gold); color: var(--ink); }
+#E .btn { position: absolute; left: 0; top: 0; padding: 14px 28px; border-radius: 7px; background: #fff; color: #000; font-weight: 700; font-size: 20px; letter-spacing: .2em; font-family: var(--mono); }
+#E .chips { position: absolute; left: 0; top: 70px; display: flex; gap: 12px; }
+#E .chips span { font-family: var(--mono); font-weight: 700; font-size: 17px; letter-spacing: .12em; padding: 8px 14px; border: 2px solid rgba(183,242,122,.55); color: var(--lime); border-radius: 6px; }
+@keyframes press { 0%,100% { transform: none } 50% { transform: scale(.92) } }
+
+/* ===== Scene F — logo ===== */
+#F .flash { position: absolute; inset: 0; background: radial-gradient(circle at 50% 42%, rgba(255,214,120,.85), rgba(245,166,35,.18) 40%, transparent 70%); }
+#F .mark { position: absolute; left: 50%; top: 150px; width: 340px; height: 340px; margin-left: -170px; }
+#F .mark line { stroke-dasharray: 40; }
+@keyframes ray { from { stroke-dashoffset: 40; opacity: 0 } to { stroke-dashoffset: 0; opacity: 1 } }
+@keyframes play-in { 0% { opacity: 0; transform: scale(.2) rotate(-25deg) } 60% { opacity: 1; transform: scale(1.12) rotate(4deg) } 100% { opacity: 1; transform: scale(1) rotate(0) } }
+@keyframes spin-slow { from { transform: rotate(0) } to { transform: rotate(18deg) } }
+#F .halo { position: absolute; left: 50%; top: 320px; width: 760px; height: 760px; border-radius: 50%; transform: translate(-50%,-50%);
+  background: radial-gradient(circle, rgba(245,166,35,.22), transparent 60%); }
+#F .word { position: absolute; top: 500px; width: 100%; text-align: center; font-size: 150px; font-weight: 600; letter-spacing: -.045em; line-height: 1; }
+#F .word .w { letter-spacing: -.045em; }
+#F .capt { position: absolute; top: 668px; width: 100%; text-align: center; font-size: 30px; font-weight: 500; letter-spacing: .62em; color: #8e8a83; padding-left: .62em; }
+#F .tag { position: absolute; top: 760px; width: 100%; text-align: center; font-size: 48px; font-weight: 500; letter-spacing: -.03em; color: rgba(255,255,255,.88); }
+#F .tag em { font-family: var(--serif); font-size: 1.22em; color: var(--gold); letter-spacing: -.01em; }
+#F .cta { position: absolute; top: 870px; width: 100%; display: flex; justify-content: center; gap: 26px; align-items: center; }
+#F .ticket { position: relative; padding: 20px 46px; border-radius: 8px; background: #fff; color: #000; font-weight: 700; font-size: 30px; letter-spacing: -.01em; box-shadow: 0 18px 50px -20px rgba(255,255,255,.8); }
+#F .ticket::before, #F .ticket::after { content: ''; position: absolute; top: 50%; width: 20px; height: 20px; margin-top: -10px; border-radius: 50%; background: var(--ink); border: 2px solid #fff; }
+#F .ticket::before { left: -10px; } #F .ticket::after { right: -10px; }
+#F .ticket span { position: absolute; inset: 6px; border-radius: 5px; border: 2px dashed rgba(0,0,0,.22); }
+#F .url { font-family: var(--mono); font-size: 30px; font-weight: 700; letter-spacing: .06em; color: #fff; padding: 18px 30px; border: 2px solid rgba(255,255,255,.2); border-radius: 8px; }
+#F .url b { color: var(--gold); }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="glow" id="glowA"></div>
+  <div class="glow" id="glowB"></div>
+
+  <!-- ================= A: Hook (0 – 4) ================= -->
+  <section class="scene" id="A" data-a="out-zoom 3.72 .3">
+    <svg class="mute" viewBox="0 0 96 96" data-a="in-scale .15 .5">
+      <path d="M14 36h16l20-16v56L30 60H14z" fill="none" stroke="#fff" stroke-width="5" stroke-linejoin="round"/>
+      <path d="M64 36l20 24M84 36L64 60" stroke="#ff6b6b" stroke-width="6" stroke-linecap="round"/>
+    </svg>
+    <div class="lines">
+      <div>
+        <span class="w" data-a="in-pop .45 .42, amber-to-white .45 .5">Your</span>
+        <span class="w" data-a="in-pop .72 .42, amber-to-white .72 .5">audience</span>
+        <span class="w" data-a="in-pop 1.12 .42, amber-to-white 1.12 .5">is</span>
+        <span class="w" data-a="in-pop 1.4 .42, amber-to-white 1.4 .5">scrolling</span>
+      </div>
+      <div class="row2">
+        <span class="w" data-a="in-pop 1.85 .42, amber-to-white 1.85 .5">on</span>
+        <span class="w hl" data-a="in-pop 2.15 .42">mute.</span>
+      </div>
+    </div>
+    <div class="sub" data-a="in-fade 2.7 .5">SOUND OFF · CAPTIONS ON</div>
+  </section>
+
+  <!-- ================= B: Land (4 – 7.5) ================= -->
+  <section class="scene" id="B">
+    <div class="stack" data-a="shake .42 5.02, out-up 7.18 .32">
+      <div class="lead">
+        <span class="w" data-a="in-up 4.05 .4">So</span>
+        <span class="w" data-a="in-up 4.25 .4">make</span>
+        <span class="w" data-a="in-up 4.45 .4">every</span>
+        <span class="w" data-a="in-up 4.65 .4">word</span>
+      </div>
+      <div class="land w" data-a="in-slam 4.98 .55">LAND.</div>
+      <div class="ring" data-a="ring 5.02 .9"></div>
+    </div>
+  </section>
+
+  <!-- ================= C: Languages (7.5 – 13) ================= -->
+  <section class="scene" id="C">
+    <div class="ghost">
+      <span data-a="ghost-in 7.6 .6, ghost-out 8.85 .3">English</span>
+      <span data-a="ghost-in 9.0 .6, ghost-out 9.85 .3">Español</span>
+      <span data-a="ghost-in 10.0 .6, ghost-out 10.85 .3" style="font-family:'Noto Sans Devanagari'">हिन्दी</span>
+      <span data-a="ghost-in 11.0 .6, ghost-out 11.85 .3" style="font-family:'Noto Sans Arabic'">العربية</span>
+      <span data-a="ghost-in 12.0 .6, ghost-out 12.7 .3" style="font-family:'Noto Sans JP'">日本語</span>
+    </div>
+    <div class="band band1" data-a="in-fade 7.6 .6, out-fade 12.7 .3"></div>
+    <div class="band band2" data-a="in-fade 7.7 .6, out-fade 12.7 .3"></div>
+    <div class="center">
+      <div class="kicker" data-a="in-up 7.55 .45, out-up 12.72 .3">AUTO-TRANSCRIPTION · WORLDWIDE</div>
+      <h2 data-a="in-up 7.65 .5, out-up 12.74 .3">Professional captions in</h2>
+      <div class="box" data-a="in-scale 7.8 .45, out-up 12.76 .3">
+        <div class="lang" data-a="lang-in 7.9 .5, lang-out 8.9 .4">English</div>
+        <div class="lang" data-a="lang-in 9.0 .5, lang-out 9.9 .4">Español</div>
+        <div class="lang native" data-a="lang-in 10.0 .5, lang-out 10.9 .4" style="font-family:'Noto Sans Devanagari'">हिन्दी</div>
+        <div class="lang native" data-a="lang-in 11.0 .5, lang-out 11.9 .4" style="font-family:'Noto Sans Arabic'">العربية</div>
+        <div class="lang native" data-a="lang-in 12.0 .5" style="font-family:'Noto Sans JP'">日本語</div>
+      </div>
+      <div class="note" data-a="in-up 8.3 .5, out-up 12.78 .3">Languages and writing systems from <em>around the world.</em></div>
+    </div>
+  </section>
+
+  <!-- ================= D: Styles (13 – 19.5) ================= -->
+  <section class="scene" id="D">
+    <div class="left">
+      <div class="kicker" data-a="in-left 13.05 .5, out-up 19.2 .3">CAPTION TEMPLATES</div>
+      <h2 data-a="in-left 13.15 .55, out-up 19.22 .3">100+ caption <em>styles.</em></h2>
+      <div class="desc" data-a="in-left 13.3 .55, out-up 19.24 .3">Word-level animation, tuned for Shorts &amp; Reels. One click to apply, every word still editable.</div>
+      <div class="ticker" data-a="out-up 19.26 .3">
+        <div class="tick" data-a="tick-in 13.45 .35, tick-out 14.35 .25"><b>01</b><span>VERDICT</span></div>
+        <div class="tick" data-a="tick-in 14.45 .35, tick-out 15.35 .25"><b>02</b><span>BRACKET</span></div>
+        <div class="tick" data-a="tick-in 15.45 .35, tick-out 16.35 .25"><b>03</b><span>SPOTLIGHT</span></div>
+        <div class="tick" data-a="tick-in 16.45 .35, tick-out 17.35 .25"><b>04</b><span>COMPRESS</span></div>
+        <div class="tick" data-a="tick-in 17.45 .35, tick-out 18.35 .25"><b>05</b><span>PULSE</span></div>
+        <div class="tick" data-a="tick-in 18.45 .35"><b>06</b><span>SIGNAL</span></div>
+      </div>
+    </div>
+
+    <div class="ghostcard gc1" data-a="in-fade 13.3 .7, out-fade 19.2 .3"><div style="font-size:52px;color:var(--cyan)">FREEDOM.</div></div>
+    <div class="ghostcard gc2" data-a="in-fade 13.4 .7, out-fade 19.2 .3"><div style="font-size:46px;color:var(--lime)">THAN YOU<br>EARN.</div></div>
+
+    <div class="phoneWrap" data-a="in-right 13.0 .7, out-down 19.2 .32">
+      <div class="phone">
+        <div class="screen">
+          <div class="sun"></div>
+          <div class="bokeh" style="left:40px;top:180px;width:90px;height:90px;animation:bok 6.5s linear 13s both"></div>
+          <div class="bokeh" style="left:300px;top:110px;width:60px;height:60px;animation:bok 6.5s linear 13s both"></div>
+          <div class="bokeh" style="left:330px;top:330px;width:120px;height:120px;opacity:.6;animation:bok 6.5s linear 13s both"></div>
+          <div class="bokeh" style="left:120px;top:400px;width:46px;height:46px;animation:bok 6.5s linear 13s both"></div>
+          <svg class="hills" viewBox="0 0 442 300" preserveAspectRatio="none" height="300">
+            <path d="M0 160 C60 120 110 130 170 150 S290 110 340 120 S420 150 442 140 V300 H0Z" fill="#3a1f2c" opacity=".85"/>
+            <path d="M0 210 C70 180 140 200 200 196 S320 170 380 186 S430 200 442 196 V300 H0Z" fill="#1d1018"/>
+          </svg>
+          <div class="shade"></div>
+          <div class="notch"></div>
+          <div class="ui-top"><span><i></i>REC</span><span>9:16 · 30FPS</span></div>
+
+          <!-- 01 verdict -->
+          <div class="cap" data-a="out-up 14.32 .22">
+            <div class="sm w" data-a="in-pop 13.45 .4">it always starts</div><br>
+            <div class="w" data-a="in-slam 13.7 .45" style="font-size:96px;font-weight:900;letter-spacing:-.04em;color:var(--pink);line-height:1">MESSY.</div>
+          </div>
+          <!-- 02 bracket -->
+          <div class="cap" data-a="out-up 15.32 .22">
+            <div class="sm w" data-a="in-pop 14.45 .4">discipline buys</div><br>
+            <div class="w" data-a="in-pop 14.65 .45" style="font-size:84px;font-weight:900;letter-spacing:-.04em;color:var(--cyan);line-height:1.05">FREEDOM.</div><br>
+            <div class="w" data-a="in-pop 14.9 .4" style="font-family:var(--serif);font-style:italic;font-size:40px">every day.</div>
+          </div>
+          <!-- 03 spotlight -->
+          <div class="cap" data-a="out-up 16.32 .22" style="font-size:40px;font-weight:700;letter-spacing:-.02em;line-height:1.45">
+            <span class="w" data-a="in-pop 15.45 .35">humility</span>
+            <span class="w" data-a="in-pop 15.58 .35">is</span>
+            <span class="w" data-a="in-pop 15.7 .35">a</span>
+            <span class="w" data-a="in-pop 15.84 .4" style="background:var(--lime);color:#0b0b0b;padding:0 12px;border-radius:6px;font-style:italic">strategy</span><br>
+            <span class="w" data-a="in-pop 16.0 .35">not</span>
+            <span class="w" data-a="in-pop 16.1 .35">weakness.</span>
+          </div>
+          <!-- 04 compress -->
+          <div class="cap" data-a="out-up 17.32 .22">
+            <div class="w" data-a="in-pop 16.45 .4" style="font-family:var(--mono);font-size:24px;font-weight:700;letter-spacing:.42em">SPEND LESS</div><br>
+            <div class="w" data-a="in-slam 16.65 .45" style="font-size:66px;font-weight:900;letter-spacing:-.045em;color:#e6ff7a;line-height:.98">THAN YOU<br>EARN.</div>
+          </div>
+          <!-- 05 pulse -->
+          <div class="cap" data-a="out-up 18.32 .22" style="font-size:52px;font-weight:800;letter-spacing:-.035em;line-height:1.2">
+            <span class="w" data-a="in-slam 17.45 .4" style="color:var(--gold);font-size:76px">FOCUS</span><br>
+            <span class="w" data-a="in-pop 17.65 .35">beats</span>
+            <span class="w" data-a="in-pop 17.8 .35">raw</span>
+            <span class="w" data-a="in-pop 17.95 .35">hustle.</span>
+          </div>
+          <!-- 06 signal -->
+          <div class="cap" style="line-height:1">
+            <div class="w" data-a="in-pop 18.45 .35" style="font-size:26px;font-weight:600;margin-left:220px">stop</div><br>
+            <div class="w" data-a="in-pop 18.58 .45" style="font-size:104px;font-weight:800;letter-spacing:-.05em;color:var(--cyan)">proving</div><br>
+            <div class="w" data-a="in-pop 18.78 .35" style="font-size:26px;font-weight:600;margin-right:200px">it to them.</div>
+          </div>
+
+          <div class="bar"><b></b></div>
+          <div class="dots">
+            <i><b data-a="dot-on 13.4 1"></b></i><i><b data-a="dot-on 14.4 1"></b></i><i><b data-a="dot-on 15.4 1"></b></i>
+            <i><b data-a="dot-on 16.4 1"></b></i><i><b data-a="dot-on 17.4 1"></b></i><i><b data-a="in-fade 18.4 .1"></b></i>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= E: Workflow (19.5 – 25) ================= -->
+  <section class="scene" id="E" data-a="out-zoom 24.72 .3">
+    <div class="top">
+      <div class="kicker" data-a="in-up 19.5 .45">FROM UPLOAD TO EXPORT</div>
+      <h2>
+        <span class="w" data-a="in-up 19.6 .45">Upload.</span><span class="w" data-a="in-up 19.85 .45">Transcribe.</span><span class="w" data-a="in-up 20.1 .45">Export.</span>
+      </h2>
+    </div>
+    <div class="rail" data-a="in-fade 19.8 .4"><div class="railFill"></div><div class="head"></div></div>
+    <div class="cards">
+      <div class="card" data-a="in-up 19.75 .5">
+        <div class="lit" data-a="in-fade 20.05 .25, out-fade 21.6 .4"></div>
+        <div class="num">01</div><div class="ttl">Upload</div>
+        <div class="viz">
+          <div class="file">my-reel.mp4</div><div class="pct" id="pct">0%</div>
+          <div class="prog"><b></b></div>
+        </div>
+        <div class="meta">MP4 · MOV · WEBM</div>
+      </div>
+      <div class="card" data-a="in-up 19.85 .5">
+        <div class="lit" data-a="in-fade 21.95 .25, out-fade 23.4 .4"></div>
+        <div class="num">02</div><div class="ttl">Transcribe</div>
+        <div class="viz">
+          <div class="wave" data-a="in-fade 21.4 .3">
+            <i style="animation:wv .7s ease-in-out 21.4s 6 both"></i><i style="animation:wv .6s ease-in-out 21.5s 7 both"></i><i style="animation:wv .8s ease-in-out 21.45s 5 both"></i>
+            <i style="animation:wv .55s ease-in-out 21.6s 7 both"></i><i style="animation:wv .75s ease-in-out 21.42s 6 both"></i><i style="animation:wv .62s ease-in-out 21.55s 7 both"></i>
+            <i style="animation:wv .7s ease-in-out 21.7s 6 both"></i><i style="animation:wv .5s ease-in-out 21.48s 8 both"></i><i style="animation:wv .66s ease-in-out 21.52s 6 both"></i>
+            <i style="animation:wv .72s ease-in-out 21.62s 6 both"></i><i style="animation:wv .58s ease-in-out 21.44s 7 both"></i><i style="animation:wv .8s ease-in-out 21.58s 5 both"></i>
+            <i style="animation:wv .64s ease-in-out 21.5s 6 both"></i><i style="animation:wv .7s ease-in-out 21.66s 6 both"></i><i style="animation:wv .54s ease-in-out 21.46s 7 both"></i>
+            <i style="animation:wv .76s ease-in-out 21.56s 6 both"></i>
+          </div>
+          <div class="words">
+            <span class="w" data-a="in-pop 22.1 .3">your</span><span class="w on" data-a="in-pop 22.3 .3">story</span><span class="w" data-a="in-pop 22.5 .3">in</span><span class="w" data-a="in-pop 22.7 .3">every</span>
+          </div>
+        </div>
+        <div class="meta">WORD-LEVEL TIMING</div>
+      </div>
+      <div class="card" data-a="in-up 19.95 .5">
+        <div class="lit" data-a="in-fade 23.85 .25"></div>
+        <div class="num">03</div><div class="ttl">Style &amp; export</div>
+        <div class="viz">
+          <div class="btn" data-a="in-fade 23.3 .3, press .3 23.95">EXPORT ↓</div>
+          <div class="chips">
+            <span class="w" data-a="in-pop 24.1 .3">HD · 4K</span><span class="w" data-a="in-pop 24.22 .3">SRT</span><span class="w" data-a="in-pop 24.34 .3">VTT</span>
+          </div>
+        </div>
+        <div class="meta">BURNED-IN OR SUBTITLE FILES</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= F: Logo (25 – 30) ================= -->
+  <section class="scene" id="F">
+    <div class="flash" data-a="flash 25.0 .9"></div>
+    <div class="halo" data-a="in-scale 25.05 1.2"></div>
+    <svg class="mark" viewBox="0 0 256 256" data-a="spin-slow 25.2 4.8">
+      <defs>
+        <linearGradient id="lk-play" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#B9770A"/><stop offset="1" stop-color="#FFD166"/></linearGradient>
+        <radialGradient id="lk-rays" cx="128" cy="128" r="100" gradientUnits="userSpaceOnUse"><stop offset="0.55" stop-color="#C98410"/><stop offset="1" stop-color="#FFD166"/></radialGradient>
+        <filter id="glowf" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+      </defs>
+      <g stroke="url(#lk-rays)" stroke-linecap="round" fill="none">
+        <line stroke-width="12" x1="196" y1="128" x2="224" y2="128" data-a="ray 25.10 .35"/>
+        <line stroke-width="7" x1="185.2" y1="161" x2="200.7" y2="170" data-a="ray 25.16 .35"/>
+        <line stroke-width="12" x1="162" y1="186.9" x2="173" y2="205.9" data-a="ray 25.22 .35"/>
+        <line stroke-width="7" x1="128" y1="194" x2="128" y2="212" data-a="ray 25.28 .35"/>
+        <line stroke-width="12" x1="94" y1="186.9" x2="80" y2="211.1" data-a="ray 25.34 .35"/>
+        <line stroke-width="7" x1="70.8" y1="161" x2="55.3" y2="170" data-a="ray 25.40 .35"/>
+        <line stroke-width="12" x1="60" y1="128" x2="38" y2="128" data-a="ray 25.46 .35"/>
+        <line stroke-width="7" x1="70.8" y1="95" x2="55.3" y2="86" data-a="ray 25.52 .35"/>
+        <line stroke-width="12" x1="94" y1="69.1" x2="80" y2="44.9" data-a="ray 25.58 .35"/>
+        <line stroke-width="7" x1="128" y1="62" x2="128" y2="44" data-a="ray 25.64 .35"/>
+        <line stroke-width="12" x1="162" y1="69.1" x2="173" y2="50.1" data-a="ray 25.70 .35"/>
+        <line stroke-width="7" x1="185.2" y1="95" x2="200.7" y2="86" data-a="ray 25.76 .35"/>
+      </g>
+      <path d="M110 98 L110 158 L162 128 Z" fill="url(#lk-play)" stroke="url(#lk-play)" stroke-width="22" stroke-linejoin="round" filter="url(#glowf)"
+        style="transform-origin:128px 128px; transform-box: view-box" data-a="play-in 25.05 .6"/>
+    </svg>
+    <div class="word">
+      <span class="w" data-a="in-up 25.85 .5">lekha</span>
+    </div>
+    <div class="capt" data-a="in-fade 26.15 .7">CAPTIONS</div>
+    <div class="tag" data-a="in-up 26.7 .6">Your story, in <em>every language.</em></div>
+    <div class="cta">
+      <div class="ticket" data-a="in-up 27.3 .55"><span></span>Try it free</div>
+      <div class="url" data-a="in-up 27.45 .55"><b>lekhacaptions</b>.com</div>
+    </div>
+  </section>
+
+  <!-- ================= HUD ================= -->
+  <div id="hud" data-a="out-fade 24.75 .35">
+    <div class="corner c-tl"></div><div class="corner c-tr"></div><div class="corner c-bl"></div><div class="corner c-br"></div>
+    <div class="hud-tl"><span class="rec"><i></i>REC</span><span id="tc">00:00:00:00</span></div>
+    <div class="hud-tr">LEKHA <b>CAPTIONS</b></div>
+    <div class="hud-bl">16:9 · 1080P · 30FPS</div>
+    <div class="hud-br" id="scenelabel">SC 01</div>
+    <div id="scrub"><div id="scrubFill"></div><div id="scrubHead"></div></div>
+  </div>
+
+  <div id="vignette"></div>
+  <div id="grain"></div>
+</div>
+
+<script>
+const FPS = 30
+const DURATION = 30
+const EASE = 'cubic-bezier(.22,1,.36,1)'
+
+// language marquee bands (taken from the landing page's language list)
+const bandA = ['English','Español','Português','Français','Deutsch','Italiano','हिन्दी','বাংলা','தமிழ்','తెలుగు','اردو','Türkçe','Nederlands','Svenska','Polski','Ελληνικά','Русский','Українська','עברית','العربية','فارسی','Kiswahili','Yorùbá']
+const bandB = ['中文','日本語','한국어','Tiếng Việt','ไทย','Bahasa Indonesia','Tagalog','Монгол','Қазақша','O‘zbek','አማርኛ','isiZulu','Afrikaans','Hausa','Igbo','Soomaali','Malagasy','Māori','Kreyòl Ayisyen','Română','Magyar','Čeština','Suomi']
+const fill = (el, list) => { el.innerHTML = [...list, ...list, ...list].map((l) => `<span>${l}</span>`).join('') }
+fill(document.querySelector('#C .band1'), bandA)
+fill(document.querySelector('#C .band2'), bandB)
+
+// data-a="name start dur [ease], ..."  →  CSS animation shorthand.
+// out-* animations only fill forwards so they never affect the element before they start.
+document.querySelectorAll('[data-a]').forEach((el) => {
+  const parts = el.dataset.a.split(',').map((s) => s.trim()).filter(Boolean)
+  const list = parts.map((p) => {
+    const [name, start, dur, ease] = p.split(/\s+/)
+    const fillMode = /(^out-|-out$)/.test(name) || name === 'shake' || name === 'ring' || name === 'press' || name === 'spin-slow' ? 'forwards' : 'both'
+    return `${name} ${dur}s ${ease || EASE} ${start}s 1 ${fillMode}`
+  })
+  const prev = el.style.animation
+  el.style.animation = prev ? `${prev}, ${list.join(', ')}` : list.join(', ')
+})
+
+const scenes = [[0, 'SC 01 · HOOK'], [4, 'SC 02 · IMPACT'], [7.5, 'SC 03 · LANGUAGES'], [13, 'SC 04 · STYLES'], [19.5, 'SC 05 · WORKFLOW'], [25, 'SC 06 · LAUNCH']]
+const tc = document.getElementById('tc')
+const label = document.getElementById('scenelabel')
+const scrubFill = document.getElementById('scrubFill')
+const scrubHead = document.getElementById('scrubHead')
+const pct = document.getElementById('pct')
+const grain = document.getElementById('grain')
+const pad = (n) => String(n).padStart(2, '0')
+
+// Seek every animation to time t (seconds). Deterministic: no rAF, no timers.
+window.renderAt = (t) => {
+  const ms = t * 1000
+  document.getAnimations().forEach((a) => { a.pause(); a.currentTime = ms })
+  const frame = Math.round(t * FPS)
+  const s = Math.floor(t)
+  tc.textContent = `00:00:${pad(s)}:${pad(frame % FPS)}`
+  label.textContent = scenes.filter(([st]) => t >= st).pop()[1]
+  const p = Math.min(1, t / 24.75)
+  scrubFill.style.transform = `scaleX(${p})`
+  scrubHead.style.left = `${p * 100}%`
+  const up = Math.max(0, Math.min(1, (t - 20.3) / 1.0))
+  const eased = 1 - Math.pow(1 - up, 4)
+  pct.textContent = `${Math.round(eased * 100)}%`
+  // shifting grain gives film texture without randomness between renders
+  const gx = (frame * 73) % 200
+  const gy = (frame * 131) % 200
+  grain.style.transform = `translate(${gx - 100}px, ${gy - 100}px)`
+}
+
+window.ready = document.fonts.ready.then(() => {
+  // force every font face used in the film to load before the first frame
+  const faces = ['700 100px Poppins', '900 100px Poppins', '600 100px Poppins', '400 40px "Instrument Serif"', 'italic 400 40px "Instrument Serif"',
+    '700 20px "JetBrains Mono"', '700 100px "Noto Sans Devanagari"', '700 100px "Noto Sans Arabic"', '700 100px "Noto Sans JP"']
+  return Promise.all(faces.map((f) => document.fonts.load(f, f.includes('Devanagari') ? 'हिन्दी' : f.includes('Arabic') ? 'العربية' : f.includes('JP') ? '日本語' : 'Aa')))
+}).then(() => { window.renderAt(Number(new URLSearchParams(location.search).get('t') || 0)); return true })
+</script>
+</body>
+</html>

@@ -1,0 +1,44 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@96,800&family=JetBrains+Mono:wght@700&family=Fraunces:ital,opsz,wght@1,144,600&display=block" rel="stylesheet">
+<style>
+body{margin:0;display:grid;grid-template-columns:960px 960px;background:#000}
+.cell{height:420px;display:flex;align-items:center;justify-content:center;position:relative}
+.p{background:#F3EEE4}.d{background:#0C0B0F}
+.lab{position:absolute;left:20px;top:14px;font:700 14px 'JetBrains Mono';letter-spacing:.16em;color:#8A8478}
+svg{overflow:visible}
+</style></head><body>
+<script>
+const G = `<defs><linearGradient id="sg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#FF4D2E"/><stop offset="1" stop-color="#FFB547"/></linearGradient>
+<linearGradient id="sgv" x1="0" y1="1" x2="0.4" y2="0"><stop offset="0" stop-color="#FF4D2E"/><stop offset="1" stop-color="#FFB547"/></linearGradient></defs>`
+const W = (body, w = 2400, h = 1100) => `<svg viewBox="-60 -40 ${w} ${h}" width="${w * 0.3}" height="${h * 0.3}">${G}${body}</svg>`
+const T = (txt, x, ink, extra = '') => `<text x="${x}" y="760" font-family="Bricolage Grotesque" font-weight="800" font-size="1000" letter-spacing="-28" fill="${ink}" ${extra}>${txt}</text>`
+
+// A — caption bar: the l drops and becomes the caption bar under the word; CAPTIONS printed inside it
+const A = (ink, knock) => W(`
+  <path d="M36 60H198V800Q198 830 228 830H2268A65 65 0 0 1 2268 960H136Q36 960 36 860Z" fill="url(#sg)"/>
+  ${T('ekha', 226, ink)}
+  <text x="2250" y="924" text-anchor="end" font-family="JetBrains Mono" font-weight="700" font-size="92" letter-spacing="44" fill="${knock}">CAPTIONS</text>`)
+
+// B — live caret
+const B = (ink) => W(`${T('lekha', 0, ink)}<rect x="2400" y="90" width="110" height="690" rx="14" fill="url(#sgv)"/>
+  <text x="8" y="1000" font-family="JetBrains Mono" font-weight="700" font-size="92" letter-spacing="58" fill="#8A8478">CAPTIONS</text>`, 2620)
+
+// C — karaoke: spoken part filled, unspoken part outlined, playhead between
+const C = (ink) => W(`${T('lek', 0, ink)}${T('ha', 1270, 'none', `stroke="${ink}" stroke-width="22"`)}
+  <rect x="1240" y="20" width="26" height="900" rx="13" fill="url(#sgv)"/>
+  <text x="8" y="1000" font-family="JetBrains Mono" font-weight="700" font-size="92" letter-spacing="58" fill="#8A8478">CAPTIONS</text>`)
+
+// D — subtitle: editorial serif wordmark, CAPTIONS burned into a subtitle bar
+const D = (ink, bar, barInk) => W(`<text x="0" y="700" font-family="Fraunces" font-style="italic" font-weight="600" font-size="1000" letter-spacing="-30" fill="${ink}">lekha</text>
+  <rect x="980" y="770" width="1240" height="190" rx="22" fill="${bar}"/>
+  <text x="1600" y="904" text-anchor="middle" font-family="JetBrains Mono" font-weight="700" font-size="100" letter-spacing="54" fill="${barInk}">CAPTIONS</text>`)
+
+const cells = [
+  ['A · caption bar', A('#0C0B0F', '#0C0B0F'), A('#F3EEE4', '#0C0B0F')],
+  ['B · live caret', B('#0C0B0F'), B('#F3EEE4')],
+  ['C · karaoke', C('#0C0B0F'), C('#F3EEE4')],
+  ['D · subtitle', D('#0C0B0F', 'url(#sg)', '#0C0B0F'), D('#F3EEE4', 'url(#sg)', '#0C0B0F')],
+]
+document.body.innerHTML = cells.map(([n, p, d]) => `<div class="cell p"><div class="lab">${n}</div>${p}</div><div class="cell d"><div class="lab">${n}</div>${d}</div>`).join('')
+</script></body></html>
