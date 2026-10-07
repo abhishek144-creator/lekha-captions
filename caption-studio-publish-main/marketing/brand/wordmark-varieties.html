@@ -1,0 +1,98 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Lekha — Wordmark Varieties</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@96,500;96,800&family=JetBrains+Mono:wght@500;700;800&family=Fraunces:ital,opsz,wght@1,144,500;1,144,700&family=Caveat+Brush&family=Anton&family=Montserrat:wght@900&family=Unbounded:wght@800&family=Syne:wght@800&family=Instrument+Serif:ital@0;1&display=block" rel="stylesheet">
+<style>
+:root { --ink:#0C0B0F; --paper:#F3EEE4; --sig:#FF4D2E; --saf:#FFB547; --lime:#B7F27A; --stone:#8A8478 }
+* { margin:0; box-sizing:border-box }
+body { width:1920px; display:grid; grid-template-columns:repeat(3,640px); background:var(--paper) }
+.c { height:400px; position:relative; display:flex; align-items:center; justify-content:center; overflow:hidden; border-right:1px solid #e3ddd0; border-bottom:1px solid #e3ddd0 }
+.c.d { background:var(--ink); border-color:#1c1b20 }
+.n { position:absolute; left:22px; top:18px; font:800 30px 'JetBrains Mono'; color:var(--sig) }
+.t { position:absolute; left:70px; top:26px; font:700 13px 'JetBrains Mono'; letter-spacing:.16em; color:var(--stone); text-transform:uppercase }
+.d .t { color:#6d6860 }
+.cap { font:700 15px 'JetBrains Mono'; letter-spacing:.5em; color:var(--stone); margin-left:.5em }
+.col { display:flex; flex-direction:column; align-items:center; gap:14px }
+.bri { font-family:'Bricolage Grotesque'; font-weight:800; letter-spacing:-.035em; line-height:.9 }
+.grad { background:linear-gradient(90deg,var(--sig),var(--saf)); -webkit-background-clip:text; background-clip:text; color:transparent }
+</style></head><body>
+
+<!-- 1 caption bar (current pick) -->
+<div class="c"><div class="n">01</div><div class="t">Caption bar</div><img src="svg/lekha-wordmark-light.svg" width="440"></div>
+
+<!-- 2 highlight box: classic social-caption sticker, slightly tilted -->
+<div class="c d"><div class="n">02</div><div class="t">Caption sticker</div>
+  <div class="col"><div class="bri" style="font-size:118px;color:var(--ink);background:var(--saf);padding:6px 26px 18px;border-radius:18px;transform:rotate(-4deg);box-shadow:10px 10px 0 var(--sig)">lekha</div><div class="cap" style="margin-top:22px">CAPTIONS</div></div></div>
+
+<!-- 3 subtitle stack: two burned-in subtitle lines with boxes -->
+<div class="c"><div class="n">03</div><div class="t">Subtitle lines</div>
+  <div class="col" style="gap:8px;align-items:flex-start">
+    <span class="bri" style="font-size:96px;background:var(--ink);color:var(--paper);padding:2px 22px 12px;border-radius:10px">lekha</span>
+    <span style="font:800 34px 'JetBrains Mono';background:var(--sig);color:var(--ink);padding:8px 18px;border-radius:8px;margin-left:120px;letter-spacing:.2em">captions</span></div></div>
+
+<!-- 4 kinetic pop: letters frozen mid-animation -->
+<div class="c d"><div class="n">04</div><div class="t">Kinetic pop</div>
+  <div class="col"><div class="bri" style="font-size:132px;color:var(--paper);display:flex;align-items:baseline">
+    <span>l</span><span style="transform:translateY(-14px) rotate(-6deg);display:inline-block">e</span><span class="grad" style="font-size:176px;display:inline-block;transform:rotate(4deg)">k</span><span style="transform:translateY(8px);display:inline-block">h</span><span style="transform:rotate(-5deg) translateY(-6px);display:inline-block">a</span></div>
+    <div class="cap">CAPTIONS</div></div></div>
+
+<!-- 5 motion echo: outline trails behind solid word -->
+<div class="c"><div class="n">05</div><div class="t">Motion echo</div>
+  <div class="bri" style="position:relative;font-size:130px">
+    <span style="position:absolute;left:-44px;top:0;color:transparent;-webkit-text-stroke:2.5px rgba(255,77,46,.35)">lekha</span>
+    <span style="position:absolute;left:-22px;top:0;color:transparent;-webkit-text-stroke:2.5px rgba(255,77,46,.75)">lekha</span>
+    <span style="position:relative;color:var(--ink)">lekha</span>
+    <div class="cap" style="position:absolute;right:0;bottom:-34px">CAPTIONS</div></div></div>
+
+<!-- 6 voice + type: serif italic (voice) meets grotesk (text) -->
+<div class="c d"><div class="n">06</div><div class="t">Voice meets type</div>
+  <div class="col"><div style="display:flex;align-items:baseline;color:var(--paper)">
+    <span style="font:italic 500 150px 'Fraunces';letter-spacing:-.03em" class="grad">le</span><span class="bri" style="font-size:136px">kha</span></div>
+    <div class="cap">CAPTIONS</div></div></div>
+
+<!-- 7 live cursor (mono) -->
+<div class="c"><div class="n">07</div><div class="t">Live typing</div>
+  <div style="font:800 60px 'JetBrains Mono';letter-spacing:-.04em;color:var(--ink);display:flex;align-items:center">lekha<span style="color:var(--stone);font-weight:500">.captions</span><span style="display:inline-block;width:30px;height:64px;background:var(--sig);margin-left:10px;border-radius:4px"></span></div></div>
+
+<!-- 8 quoted: speech marks make it "said" -->
+<div class="c d"><div class="n">08</div><div class="t">Said out loud</div>
+  <div class="col"><div style="display:flex;align-items:flex-start;color:var(--paper)">
+    <span class="grad" style="font:italic 700 150px/0.8 'Fraunces';margin-right:4px">“</span><span class="bri" style="font-size:112px">lekha</span><span class="grad" style="font:italic 700 150px/0.8 'Fraunces';margin-left:10px;padding-right:12px">”</span></div>
+    <div class="cap">CAPTIONS</div></div></div>
+
+<!-- 9 file extension wink -->
+<div class="c"><div class="n">09</div><div class="t">Subtitle file</div>
+  <div style="display:flex;align-items:flex-end"><span class="bri" style="font-size:150px;color:var(--ink)">lekha</span><span style="font:800 46px 'JetBrains Mono';color:var(--sig);margin:0 0 18px 6px">.srt</span></div></div>
+
+<!-- 10 type waveform: letters scaled like a voice level -->
+<div class="c d"><div class="n">10</div><div class="t">Type as waveform</div>
+  <div class="col"><div class="bri" style="font-size:120px;color:var(--paper);display:flex;align-items:center;height:190px">
+    <span style="display:inline-block;transform:scaleY(1.35)">l</span><span style="display:inline-block;transform:scaleY(.72)">e</span><span class="grad" style="display:inline-block;transform:scaleY(1.5)">k</span><span style="display:inline-block;transform:scaleY(.95)">h</span><span style="display:inline-block;transform:scaleY(.6)">a</span></div>
+    <div class="cap">CAPTIONS</div></div></div>
+
+<!-- 11 handwritten: lekha = writing -->
+<div class="c"><div class="n">11</div><div class="t">Handwritten</div>
+  <div class="col" style="gap:0"><div style="font:400 170px/1 'Caveat Brush';color:var(--ink);transform:rotate(-5deg)">lekha<span style="color:var(--sig)">.</span></div>
+    <div class="cap" style="margin-top:6px">CAPTIONS</div></div></div>
+
+<!-- 12 burned-in caption: the classic outlined subtitle look -->
+<div class="c" style="background:linear-gradient(160deg,#6f8fa8,#c9a27a 70%,#7a5a40)"><div class="n">12</div><div class="t" style="color:rgba(255,255,255,.75)">Burned-in classic</div>
+  <div class="col"><div style="font:900 120px 'Montserrat';letter-spacing:-.03em;color:#fff;-webkit-text-stroke:9px var(--ink);paint-order:stroke fill;text-transform:uppercase">lekha</div>
+    <div style="font:900 30px 'Montserrat';letter-spacing:.32em;color:var(--saf);-webkit-text-stroke:5px var(--ink);paint-order:stroke fill">CAPTIONS</div></div></div>
+
+<!-- 13 condensed caps with K boxed -->
+<div class="c d"><div class="n">13</div><div class="t">Spotlight letter</div>
+  <div style="font:400 150px/1 'Anton';color:var(--paper);letter-spacing:.06em;display:flex;align-items:center">LE<span style="background:var(--lime);color:var(--ink);padding:0 14px;margin:0 8px;border-radius:8px;transform:rotate(-3deg);display:inline-block">K</span>HA</div></div>
+
+<!-- 14 editorial: lowercase serif with mono caption baseline -->
+<div class="c"><div class="n">14</div><div class="t">Editorial</div>
+  <div class="col" style="gap:4px"><div style="font:italic 400 180px/1 'Instrument Serif';color:var(--ink);letter-spacing:-.02em">lekha</div>
+    <div style="width:330px;height:3px;background:var(--sig)"></div><div class="cap" style="margin-top:10px">CAPTIONS · EVERY LANGUAGE</div></div></div>
+
+<!-- 15 split by caption line: word cut by a playhead line -->
+<div class="c d"><div class="n">15</div><div class="t">Playhead cut</div>
+  <div class="bri" style="position:relative;font-size:150px;color:var(--paper)">
+    <span style="clip-path:inset(0 0 52% 0);display:block">lekha</span>
+    <span class="grad" style="clip-path:inset(48% 0 0 0);display:block;position:absolute;inset:0;transform:translateX(16px)">lekha</span>
+    <div class="cap" style="position:absolute;left:0;bottom:-30px">CAPTIONS</div></div></div>
+
+</body></html>

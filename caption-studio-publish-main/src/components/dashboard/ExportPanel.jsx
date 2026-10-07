@@ -46,7 +46,6 @@ import {
 } from './templateMotionConfig';
 
 import { Progress } from "@/components/ui/progress";
-import CaptionQualityPanel from './CaptionQualityPanel';
 
 // TESTING ONLY: unlock the export UI for an explicitly configured local test.
 // Limits are on by default in every build; a production build cannot bypass
@@ -234,11 +233,6 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
   // Matches the editor's fixed 9:16 frame; frame_fit 'contain' below keeps
   // wide videos whole (letterboxed) exactly as the preview shows them.
   const exportAspectRatio = '9:16'
-  const [reviewConfirmed, setReviewConfirmed] = useState(false);
-  const [notifyWhenComplete, setNotifyWhenComplete] = useState(() => {
-    try { return typeof window !== 'undefined' && window.localStorage?.getItem('lekha.exportCompletionNotification') === '1' }
-    catch { return false }
-  });
   const [recoverableExport, setRecoverableExport] = useState(null);
   const [activeExportJobId, setActiveExportJobId] = useState('');
   const [activeExportStatus, setActiveExportStatus] = useState('');
@@ -247,10 +241,6 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
   const exportAbortRef = useRef(null);
   const backgroundNoticeShownRef = useRef(false);
   const progressTargetRef = useRef(0);
-
-  useEffect(() => {
-    if (open) setReviewConfirmed(false);
-  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -517,16 +507,6 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       description: `${getCaptionedVideoFilename(filename || originalFileName)} is ready and downloading.`,
       duration: 10000,
     });
-    if (notifyWhenComplete && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-      try {
-        new Notification('Lekha export complete', {
-          body: `${getCaptionedVideoFilename(filename || originalFileName)} is ready.`,
-          tag: jobId || 'lekha-export-complete',
-        });
-      } catch {
-        // Some mobile browsers expose Notification but reject construction.
-      }
-    }
     Promise.resolve().then(() => refreshUserData?.()).catch(() => {});
     await new Promise(resolve => setTimeout(resolve, 1000));
   };
@@ -659,15 +639,6 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
         title: 'No captions to export',
       });
       return;
-    }
-
-    if (notifyWhenComplete && typeof Notification !== 'undefined' && Notification.permission === 'default') {
-      try {
-        await Notification.requestPermission();
-      } catch {
-        // The in-app completion message remains available when the browser
-        // blocks notification permission or the operating system denies it.
-      }
     }
 
     setIsExporting(true);
@@ -1277,39 +1248,10 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
               </div>
               <Sparkles className="w-4 h-4 text-[#f5a623]" />
             </div>
-            <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.025] p-4">
-              <div>
-                <p className="text-xs font-bold text-white">Review before rendering</p>
-                <p className="mt-1 text-[11px] leading-5 text-gray-500">Check transcript wording, timing, reading density, and placement. The automated checks cannot judge names or meaning.</p>
-              </div>
-              <CaptionQualityPanel captions={captions} captionStyle={captionStyle} compact />
-              <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-white/10 bg-black/20 p-3 text-xs leading-5 text-gray-300">
-                <input type="checkbox" checked={reviewConfirmed} onChange={(event) => setReviewConfirmed(event.target.checked)} className="mt-1 accent-[#f5a623]" />
-                <span>I reviewed this language track and corrected the captions that needed changes.</span>
-              </label>
-            </div>
-            <label className="flex cursor-pointer items-start gap-2.5 rounded-2xl border border-white/10 bg-white/[0.025] p-4 text-xs leading-5 text-gray-300">
-              <input
-                type="checkbox"
-                checked={notifyWhenComplete}
-                onChange={(event) => {
-                  const enabled = event.target.checked
-                  setNotifyWhenComplete(enabled)
-                  window.localStorage?.setItem('lekha.exportCompletionNotification', enabled ? '1' : '0')
-                }}
-                className="mt-1 accent-[#f5a623]"
-              />
-              <span>
-                Notify me when a background export finishes.
-                <span className="mt-0.5 block text-[11px] text-gray-500">Your browser may ask for notification permission when you start the export.</span>
-              </span>
-            </label>
             {exportOptions.filter(o => o.requiresPlan).map((option, idx) => {
               const isPlanLocked = !isPlanActive || (option.requiresPro && !is4kAllowed);
-              const isLocked = !reviewConfirmed || isPlanLocked;
-              const lockReason = !reviewConfirmed
-                ? 'Review captions before rendering'
-                : !isPlanActive
+              const isLocked = isPlanLocked;
+              const lockReason = !isPlanActive
                   ? (planExpired ? 'Plan expired — renew to render' : 'No export credits remaining')
                   : (option.requiresPro && !is4kAllowed)
                     ? 'Creator or Pro plan required'
@@ -1321,11 +1263,9 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: idx * 0.07 }}
                   onClick={() => {
-                    if (!reviewConfirmed) return;
                     if (isPlanLocked) onUpgradeClick?.();
                     else option.action();
                   }}
-                  disabled={!reviewConfirmed}
                   className={`w-full p-4 rounded-2xl border transition-all flex items-center gap-4 group text-left ${isLocked
                     ? 'bg-white/[0.025] border-white/8 opacity-70'
                     : 'bg-white/[0.045] border-white/10 hover:bg-white/[0.075] hover:border-[#f5a623]/35 cursor-pointer'
@@ -1360,9 +1300,8 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: (idx + 3) * 0.07 }}
-                onClick={reviewConfirmed ? option.action : undefined}
-                disabled={!reviewConfirmed}
-                className={`w-full p-4 rounded-2xl border border-white/10 transition-all flex items-center gap-4 group ${reviewConfirmed ? 'bg-white/[0.04] hover:bg-white/[0.07] hover:border-white/20 cursor-pointer' : 'bg-white/[0.02] opacity-50 cursor-not-allowed'}`}
+                onClick={option.action}
+                className="w-full p-4 rounded-2xl border border-white/10 transition-all flex items-center gap-4 group bg-white/[0.04] hover:bg-white/[0.07] hover:border-white/20 cursor-pointer"
               >
                 <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${option.gradient} p-0.5`}>
                   <div className="w-full h-full rounded-2xl bg-[#101010] flex items-center justify-center group-hover:bg-[#181818] transition-colors">

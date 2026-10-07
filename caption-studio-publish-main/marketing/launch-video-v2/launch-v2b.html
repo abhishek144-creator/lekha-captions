@@ -1,0 +1,504 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lekha Captions — Launch Film v2b</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@96,500;96,700;96,800&family=JetBrains+Mono:wght@500;700;800&family=Archivo:ital,wght@0,600;0,800;1,800&family=Inter:wght@800&family=Noto+Sans+Devanagari:wght@600;800&family=Noto+Sans+Arabic:wght@600;800&family=Noto+Sans+JP:wght@600;800&family=Noto+Sans:wght@800&family=Noto+Sans+KR:wght@800&family=Noto+Sans+Bengali:wght@800&family=Noto+Sans+Tamil:wght@800&family=Noto+Sans+Thai:wght@800&family=Noto+Sans+Hebrew:wght@800&display=block" rel="stylesheet">
+<style>
+:root {
+  --ink: #0C0B0F; --cream: #FFFAF3; --amber: #C27A29; --brown: #65250c; --stone: #8A8478;
+  --tpl-hero: #6EED24;                 /* T167 keyword green, sampled from the editor */
+  --sans: 'Bricolage Grotesque', 'Noto Sans Devanagari', sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+  --tpl: 'Archivo', 'Noto Sans Devanagari', 'Noto Sans Arabic', 'Noto Sans JP', sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0 }
+html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--ink) }
+body { font-family: var(--sans); color: var(--cream); -webkit-font-smoothing: antialiased }
+#stage { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: var(--ink) }
+.abs { position: absolute }
+.full { position: absolute; inset: 0 }
+
+/* ---------- motion vocabulary (T167 engine keyframes + film transitions) ---------- */
+@keyframes drop { from { opacity: 0; transform: translateY(-.6em) } to { opacity: 1; transform: none } }
+@keyframes punch { 0% { opacity: 0; transform: scale(2.7) } 45% { opacity: 1 } 100% { opacity: 1; transform: scale(1) } }
+@keyframes fade { from { opacity: 0 } to { opacity: 1 } }
+@keyframes rise { from { opacity: 0; transform: translateY(.6em) } to { opacity: 1; transform: none } }
+@keyframes in-up { from { opacity: 0; transform: translateY(40px) } to { opacity: 1; transform: none } }
+@keyframes in-left { from { opacity: 0; transform: translateX(-50px) } to { opacity: 1; transform: none } }
+@keyframes in-scale { from { opacity: 0; transform: scale(.9) } to { opacity: 1; transform: none } }
+@keyframes in-pop { 0% { opacity: 0; transform: scale(.4) } 70% { opacity: 1; transform: scale(1.1) } 100% { opacity: 1; transform: none } }
+@keyframes grow-x { from { transform: scaleX(0) } to { transform: scaleX(1) } }
+@keyframes out-fade { from { opacity: 1 } to { opacity: 0 } }
+@keyframes out-up { from { opacity: 1; transform: none } to { opacity: 0; transform: translateY(-30px) } }
+@keyframes out-zoom { from { opacity: 1; transform: none } to { opacity: 0; transform: scale(.94) } }
+@keyframes ink-wipe { from { clip-path: inset(var(--t) var(--r) var(--b) var(--l) round 22px) } to { clip-path: inset(0 0 0 0 round 0) } }
+@keyframes cream-wipe { from { clip-path: inset(0 0 0 100%) } to { clip-path: inset(0 0 0 0) } }
+@keyframes ripple { from { opacity: .9; transform: translate(-50%,-50%) scale(.2) } to { opacity: 0; transform: translate(-50%,-50%) scale(1.6) } }
+@keyframes ring-pulse { 0%,100% { box-shadow: 0 0 0 3px var(--amber), 0 0 30px rgba(194,122,41,.5) } 50% { box-shadow: 0 0 0 5px var(--amber), 0 0 50px rgba(194,122,41,.8) } }
+
+/* ---------- logo (built from the outlined wordmark geometry) ---------- */
+.logo svg { display: block; overflow: visible }
+.logo .b1, .logo .b2 { transform-box: fill-box; transform-origin: 0% 50% }
+.logo .q { transform-box: fill-box; transform-origin: 50% 50% }
+
+
+/* ---------- S2 statement ---------- */
+#S2 .lines { position: absolute; left: 0; right: 0; top: 330px; text-align: center; font-weight: 800; font-size: 132px; letter-spacing: -.04em; line-height: 1.18 }
+#S2 .w { display: inline-block }
+#S2 .hero { background: var(--amber); color: var(--cream); padding: 0 .2em .06em; border-radius: .14em; margin: 0 .04em }
+#S2 .sub { position: absolute; left: 0; right: 0; top: 760px; text-align: center; font: 700 24px var(--mono); letter-spacing: .4em; color: var(--stone) }
+
+/* ---------- editor world ---------- */
+#world { perspective: 1800px }
+#glow { position: absolute; left: 260px; top: -300px; width: 1400px; height: 1100px; border-radius: 50%; background: radial-gradient(circle, rgba(194,122,41,.22), transparent 62%) }
+#cam { position: absolute; left: 0; top: 0; width: 1360px; height: 661px; transform-origin: 0 0; border-radius: 14px;
+  background: url(assets/editor-screenshot.png) 0 -107px / 1360px 768px no-repeat;
+  box-shadow: 0 0 0 1px rgba(255,255,255,.1), 0 50px 120px -20px rgba(0,0,0,.9) }
+#cam .patch { position: absolute; background: #0a0a0a }
+.preview { position: absolute; left: 585px; top: 97px; width: 236px; height: 419px; overflow: hidden; background: #000 }
+.preview canvas { width: 100%; height: 100%; display: block }
+.placeholder { background: #0d0d0d; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; border: 1.5px dashed #3a3a3a }
+.placeholder .ic { width: 34px; height: 34px; border-radius: 50%; border: 1.5px solid #555; display: flex; align-items: center; justify-content: center; color: #bbb; font: 700 16px var(--mono) }
+.placeholder p { font: 700 9px var(--mono); letter-spacing: .14em; color: #8d8d8d }
+.placeholder .bar { width: 150px; height: 4px; border-radius: 2px; background: #262626; overflow: hidden; position: relative }
+.placeholder .bar b { position: absolute; inset: 0; background: var(--amber); transform-origin: left }
+.placeholder .fn { font: 700 8px var(--mono); color: #cfcfcf; letter-spacing: .06em }
+/* caption layers sit at the editor's position_y = 75% */
+.capbox { position: absolute; left: 6%; right: 6%; top: 75%; transform: translateY(-50%); text-align: center }
+.plain { font: 800 16.5px 'Inter', sans-serif; color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,.7); line-height: 1.25 }
+.plain .w { display: inline-block }
+/* T167 "1 Style · V2" — type-3 normal sentence, keywordStyle box, bodyAnim drop, heroAnim punch */
+.nline { font-family: var(--tpl); font-weight: 600; line-height: 1.3; color: #eef0f3; text-shadow: 0 2px 10px rgba(0,0,0,.55) }
+.nline .w { display: inline-block; white-space: pre-wrap }
+.ns3box { font-weight: 800; font-style: italic; font-size: 1.12em; border: 1.5px solid currentColor; border-radius: .22em; padding: .02em .24em; margin: 0 .04em; color: var(--tpl-hero) }
+#focus { position: absolute; left: 585px; top: 97px; width: 236px; height: 419px; border-radius: 2px; box-shadow: 0 0 0 3000px rgba(6,6,8,0); pointer-events: none }
+#cardring { position: absolute; left: 64px; top: 177px; width: 196px; height: 243px; border-radius: 9px; box-shadow: 0 0 0 3px var(--amber), 0 0 30px rgba(194,122,41,.5) }
+#chipT167 { position: absolute; left: 197px; top: 68px; width: 64px; height: 19px; border-radius: 5px; background: #1a130a; border: 1px solid var(--amber); color: #E0A462; font: 800 8.5px var(--mono); display: flex; align-items: center; justify-content: center; letter-spacing: .06em }
+#tl { position: absolute; left: 288px; top: 586px; width: 829px; height: 28px; border-radius: 14px; background: #0c0c0c; border: 1px solid #2a2a2a; display: flex; align-items: center; gap: 6px; padding: 0 10px; overflow: hidden }
+#tl .lab { font: 800 8px var(--mono); letter-spacing: .14em; color: #8d8d8d; margin-right: 6px; white-space: nowrap }
+#tl .chip { font: 700 10px 'Inter', sans-serif; color: #eee; background: #1d1d1d; border: 1px solid #333; border-radius: 5px; padding: 2px 7px; white-space: nowrap }
+#tl .chip.k { border-color: var(--amber); color: #E0A462 }
+#tl .ph { position: absolute; top: 2px; bottom: 2px; width: 2px; background: var(--amber); border-radius: 1px; left: 90px; box-shadow: 0 0 6px var(--amber) }
+
+/* step chips — set like the logo: two stacked subtitle boxes */
+.step { position: absolute; left: 96px; top: 46px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px }
+.step .n { font: 800 20px var(--mono); letter-spacing: .2em; background: var(--amber); color: var(--cream); padding: 6px 14px; border-radius: 7px }
+.step .t { font-weight: 800; font-size: 44px; letter-spacing: -.03em; background: var(--cream); color: var(--ink); padding: 0 18px 6px; border-radius: 10px; margin-left: 46px }
+
+/* cursor + clicks */
+#cursor { position: absolute; left: 0; top: 0; width: 34px; height: 34px; z-index: 50; filter: drop-shadow(0 4px 8px rgba(0,0,0,.6)) }
+.click { position: absolute; width: 90px; height: 90px; border-radius: 50%; border: 3px solid var(--amber); z-index: 49; opacity: 0 }
+
+/* template gallery: the cards play their own preview, as in the app (frames recorded from the real gallery) */
+.gcard { position: absolute; border-radius: 8px; overflow: hidden; background: #0b0c0e }
+.gcard canvas { position: absolute; left: 0; top: 0; width: 194px; height: 210px; display: block }
+/* floating word editor: selection box on the word + the app's own word panel (cropped from a recording) */
+#sel { position: absolute; border: 1px solid rgba(255,255,255,.95); border-radius: 2px; opacity: 0; pointer-events: none; box-shadow: 0 0 0 1px rgba(124,92,255,.55) }
+#sel b { position: absolute; width: 5px; height: 5px; border-radius: 50%; background: #fff; border: 1px solid #7c5cff }
+#popup { position: absolute; left: 832px; top: 110px; width: 180px; height: 323px; transform-origin: 0 50%; filter: drop-shadow(0 14px 30px rgba(0,0,0,.7)) }
+#popup img { position: absolute; left: 0; top: 0; width: 180px; display: block }
+.hov { position: absolute; border-radius: 9px; box-shadow: 0 0 0 1.5px rgba(255,250,243,.55); opacity: 0; pointer-events: none }
+
+/* ---------- languages ---------- */
+#LANG { background: radial-gradient(ellipse 70% 60% at 50% 58%, #2a1a0b 0%, #160f09 45%, var(--ink) 80%) }
+#LANG .glow { position: absolute; left: 50%; top: 62%; width: 1500px; height: 760px; transform: translate(-50%, -50%); border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(194,122,41,.30), rgba(194,122,41,.08) 45%, transparent 70%); filter: blur(10px) }
+/* rows of the word "captions" in many languages drifting behind the cards */
+#LANG .field { position: absolute; inset: 0; overflow: hidden; -webkit-mask-image: radial-gradient(ellipse 85% 80% at 50% 55%, #000 40%, transparent 85%) }
+#LANG .field .row { position: absolute; left: 0; white-space: nowrap; font: 800 58px/1 'Bricolage Grotesque', 'Noto Sans', 'Noto Sans Devanagari', 'Noto Sans Arabic', 'Noto Sans JP', 'Noto Sans KR', 'Noto Sans Bengali', 'Noto Sans Tamil', 'Noto Sans Thai', 'Noto Sans Hebrew', sans-serif;
+  letter-spacing: -.02em; color: rgba(255,250,243,.06) }
+#LANG .field .row span { display: inline-block; margin-right: 64px }
+#LANG .field .row span.a { color: rgba(224,164,98,.12) }
+#LANG .head { position: absolute; left: 0; right: 0; top: 60px; display: flex; flex-direction: column; align-items: center; gap: 8px }
+#LANG .head .a { font-weight: 800; font-size: 76px; letter-spacing: -.035em; background: var(--cream); color: var(--ink); padding: 0 26px 8px; border-radius: 14px; margin-right: 160px }
+#LANG .head .b { font: 800 40px var(--mono); letter-spacing: .12em; background: var(--amber); color: var(--cream); padding: 8px 22px; border-radius: 10px; margin-left: 260px }
+#LANG .cards { position: absolute; left: 234px; top: 340px; display: flex; gap: 44px }
+#LANG .card { position: relative; width: 330px; height: 587px; border-radius: 26px; overflow: hidden; background: #000; box-shadow: 0 0 0 2px rgba(255,255,255,.12), 0 40px 90px -30px rgba(0,0,0,.9) }
+#LANG .card canvas { width: 100%; height: 100%; display: block }
+#LANG .card .tag { position: absolute; left: 16px; top: 16px; font: 800 22px 'JetBrains Mono', 'Noto Sans Devanagari', 'Noto Sans Arabic', 'Noto Sans JP', monospace; letter-spacing: .1em; background: rgba(12,11,15,.8); color: var(--cream); padding: 8px 14px 9px; border-radius: 9px; border: 1.5px solid rgba(224,164,98,.55); box-shadow: 0 8px 22px -8px rgba(0,0,0,.7) }
+#LANG .card .nline { font-size: 19px; left: 4%; right: 4% }
+#LANG .foot { position: absolute; left: 0; right: 0; top: 968px; text-align: center; font: 700 20px var(--mono); letter-spacing: .3em; color: var(--stone) }
+
+/* ---------- export modal ---------- */
+#EXP .dim { background: rgba(4,4,6,.62) }
+#EXP .modal { position: absolute; left: 610px; top: 330px; width: 700px; height: 380px; border-radius: 22px; background: #121114; box-shadow: 0 0 0 2px rgba(194,122,41,.7), 0 50px 120px rgba(0,0,0,.8); padding: 44px 50px }
+#EXP .k { font: 800 15px var(--mono); letter-spacing: .26em; color: var(--stone) }
+#EXP h3 { position: absolute; left: 50px; top: 80px; font-weight: 800; font-size: 56px; letter-spacing: -.035em }
+#EXP h3 em { font-style: normal; color: #E0A462 }
+#EXP .file { position: absolute; left: 50px; top: 186px; font: 700 19px var(--mono); color: #cfcfcf }
+#EXP .pct { position: absolute; right: 50px; top: 186px; font: 800 19px var(--mono); color: #E0A462 }
+#EXP .bar { position: absolute; left: 50px; right: 50px; top: 226px; height: 12px; border-radius: 6px; background: #26242a; overflow: hidden }
+#EXP .bar b { position: absolute; inset: 0; background: linear-gradient(90deg, #9a5e1d, var(--amber), #E0A462); transform-origin: left }
+#EXP .chips { position: absolute; left: 50px; top: 278px; display: flex; gap: 14px }
+#EXP .chips span { font: 800 20px var(--mono); letter-spacing: .1em; padding: 10px 18px; border-radius: 9px; background: var(--cream); color: var(--ink); display: inline-block }
+#EXP .chips span.a { background: var(--amber); color: var(--cream) }
+
+/* ---------- end card ---------- */
+#END { background: var(--cream); color: var(--ink) }
+#END .logo { position: absolute; left: 50%; top: 380px; width: 1040px; transform: translate(-50%, -50%) }
+#END .line { position: absolute; left: 0; right: 0; top: 700px; text-align: center; font-weight: 500; font-size: 46px; letter-spacing: -.025em; color: var(--brown) }
+#END .line b { font-weight: 800; color: var(--amber) }
+#END .cta { position: absolute; left: 0; right: 0; top: 800px; display: flex; justify-content: center; gap: 22px; align-items: center }
+#END .btn { font-weight: 800; font-size: 34px; letter-spacing: -.02em; background: var(--ink); color: var(--cream); padding: 16px 40px 20px; border-radius: 14px }
+#END .url { font: 800 32px var(--mono); color: var(--ink); padding: 16px 30px; border-radius: 14px; border: 3px solid var(--ink) }
+#END .url b { color: var(--amber) }
+</style>
+</head>
+<body>
+<div id="stage">
+
+  <!-- ===== S2 · statement (0 – 3.45) — the film opens here; no logo intro ===== -->
+  <section class="full" id="S2" data-a="out-fade 3.3 .25">
+    <div class="lines">
+      <div><span class="w" data-a="drop 0.15 .43 tpl">You</span> <span class="w" data-a="drop 0.43 .43 tpl">say</span> <span class="w" data-a="drop 0.71 .43 tpl">it.</span></div>
+      <div><span class="w" data-a="drop 1.15 .43 tpl">Lekha</span> <span class="w hero" data-a="punch 1.43 .56 tpl">writes</span> <span class="w" data-a="drop 1.71 .43 tpl">it.</span></div>
+    </div>
+    <div class="sub" data-a="fade 2.25 .5">IN EVERY LANGUAGE</div>
+  </section>
+
+  <!-- ===== editor world (3.4 – 28) ===== -->
+  <section class="full" id="world" data-a="fade 3.4 .45, out-zoom 27.6 .4">
+    <div id="glow"></div>
+    <div id="cam">
+      <!-- new logo over the old one in the editor's top bar -->
+      <div class="patch" style="left:6px;top:3px;width:150px;height:36px"></div>
+      <img src="../brand/svg/lekha-wordmark-dark.svg" class="abs" style="left:14px;top:8px;height:27px">
+
+      <div class="preview" id="pv">
+        <canvas id="cv0" width="720" height="1280"></canvas>
+        <div class="capbox plain" id="plain">
+          <span class="w" data-a="fade 6.1 .25 lin, out-fade 15.55 .1">humility</span>
+          <span class="w" data-a="fade 6.1 .25 lin, out-fade 15.55 .1">is</span>
+          <span class="w" data-a="fade 6.1 .25 lin, out-fade 15.55 .1">a</span>
+          <span class="w" id="wStrat" data-a="fade 6.1 .25 lin, out-fade 15.55 .1">strategy,</span>
+          <span class="w" data-a="fade 6.1 .25 lin, out-fade 15.55 .1">not</span>
+          <span class="w" data-a="fade 6.1 .25 lin, out-fade 15.55 .1">weakness.</span>
+        </div>
+        <div id="sel"><b style="left:-3px;top:-3px"></b><b style="right:-3px;top:-3px"></b><b style="left:-3px;bottom:-3px"></b><b style="right:-3px;bottom:-3px"></b></div>
+        <div class="capbox nline" id="tplEN" style="font-size:13.6px;left:3%;right:3%" data-a="out-fade 19.1 .42"></div>
+        <div class="capbox nline" id="tplENfinal" style="font-size:13.6px;left:3%;right:3%" data-a="fade 23.65 .01"></div>
+        <div class="full placeholder" data-a="out-fade 6.1 .35">
+          <div class="ic">↑</div>
+          <p>DROP A VIDEO</p>
+          <div class="bar"><b data-a="grow-x 5.15 .9 film"></b></div>
+          <div class="fn" data-a="fade 5.15 .2">IMG_5419.mov · 9:16</div>
+        </div>
+      </div>
+
+      <div id="popup" data-a="in-scale 10.4 .3, out-fade 11.6 .25"><img src="assets/popup-a.png"><img src="assets/popup-b.png" data-a="fade 11.1 .12"></div>
+      <div class="gcard" style="left:65px;top:178px;width:194px;height:210px"><canvas class="gc" data-set="t167" width="388" height="420"></canvas></div>
+      <div class="gcard" style="left:65px;top:431px;width:194px;height:154px;border-radius:8px 8px 0 0"><canvas class="gc" data-set="t166" width="388" height="420"></canvas></div>
+      <div class="hov" id="hov1" style="left:64px;top:177px;width:196px;height:243px"></div>
+      <div class="hov" id="hov2" style="left:64px;top:430px;width:196px;height:153px"></div>
+
+      <div id="focus"></div>
+      <div id="cardring" data-a="fade 14.8 .2, ring-pulse 15 .6 lin, out-fade 15.8 .3"></div>
+      <div id="chipT167" data-a="in-pop 15.25 .3">T167 ✓</div>
+      <div id="tl" data-a="fade 6.3 .3, out-fade 15.65 .3">
+        <span class="lab">CAPTIONS · EN</span>
+        <span class="chip" data-a="in-pop 6.5 .25">humility</span>
+        <span class="chip" data-a="in-pop 6.76 .25">is</span>
+        <span class="chip" data-a="in-pop 7.02 .25">a</span>
+        <span class="chip k" id="chipK" data-a="in-pop 7.28 .25">strategy,</span>
+        <span class="chip" data-a="in-pop 7.54 .25">not</span>
+        <span class="chip" data-a="in-pop 7.8 .25">weakness.</span>
+        <span class="lab" style="margin-left:auto" data-a="fade 8.1 .3">6 WORDS · AUTO-TIMED</span>
+        <i class="ph" id="ph"></i>
+      </div>
+    </div>
+
+    <div class="step" data-a="in-left 4.05 .5, out-up 6 .3"><span class="n">01</span><span class="t">Upload any video</span></div>
+    <div class="step" data-a="in-left 6.3 .5, out-up 8.65 .3"><span class="n">02</span><span class="t">Transcribed, word by word</span></div>
+    <div class="step" data-a="in-left 8.95 .5, out-up 12.25 .3"><span class="n">03</span><span class="t">Style any single word</span></div>
+    <div class="step" data-a="in-left 12.55 .5, out-up 19.05 .3"><span class="n">04</span><span class="t">One click. Animated template.</span></div>
+    <div class="step" data-a="in-left 23.95 .5, out-up 27.4 .3"><span class="n">06</span><span class="t">Export in HD &amp; 4K</span></div>
+  </section>
+
+  <!-- ===== languages (19.2 – 23.8) ===== -->
+  <section class="full" id="LANG" data-a="fade 19.2 .4, out-fade 23.55 .25">
+    <div class="glow"></div>
+    <div class="field" id="field"></div>
+    <div class="head">
+      <span class="a" data-a="in-left 19.35 .45">Same template.</span>
+      <span class="b" data-a="in-left 19.55 .45">05 · any language</span>
+    </div>
+    <div class="cards" id="cards"></div>
+    <div class="foot" data-a="fade 20.95 .5">LANGUAGES &amp; WRITING SYSTEMS FROM AROUND THE WORLD</div>
+  </section>
+
+  <!-- ===== export (24.9 – 27.6) ===== -->
+  <section class="full" id="EXP" data-a="fade 24.9 .25, out-fade 27.3 .3">
+    <div class="full dim"></div>
+    <div class="modal" data-a="in-scale 24.9 .35">
+      <div class="k">EXPORT · T167 · 9:16</div>
+      <h3 data-a="out-fade 26.3 .15">Rendering your video…</h3>
+      <h3 data-a="fade 26.4 .2">Ready to <em>share.</em></h3>
+      <div class="file">lekha_reel_4K.mp4</div><div class="pct" id="pct">0%</div>
+      <div class="bar"><b id="expbar"></b></div>
+      <div class="chips">
+        <span class="a" data-a="in-pop 26.5 .3">MP4 · 4K</span><span data-a="in-pop 26.62 .3">SRT</span><span data-a="in-pop 26.74 .3">VTT</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== end card (27.65 – 31.35) ===== -->
+  <section class="full" id="END" data-a="cream-wipe 27.65 .55 film">
+    <div class="logo" id="logo2"></div>
+    <div class="line" data-a="rise 29.4 .5 tpl">Professional captions in <b>every language.</b></div>
+    <div class="cta">
+      <span class="btn" data-a="in-up 29.8 .45">Try it free</span>
+      <span class="url" data-a="in-up 29.95 .45"><b>lekha</b>captions.com</span>
+    </div>
+  </section>
+
+  <svg id="cursor" viewBox="0 0 34 34"><path d="M5 3l22 13-9.5 2.2L13 28z" fill="#fff" stroke="#0C0B0F" stroke-width="2.2" stroke-linejoin="round"/></svg>
+</div>
+
+<script src="assets/logo-data.js"></script>
+<script>
+const FPS = 30
+window.FILM_DURATION = 31.35
+const EASES = { tpl: 'cubic-bezier(.22,.68,.26,1)', film: 'cubic-bezier(.7,0,.2,1)', lin: 'linear', def: 'cubic-bezier(.22,1,.36,1)' }
+
+/* ---------- logo builder: two subtitle lines + framing quotes, animated like captions appearing ---------- */
+function buildLogo(el, t0) {
+  const L = window.LOGO
+  el.innerHTML = `<svg viewBox="${L.view}" width="100%">
+    <g class="b1" fill="#0C0B0F" data-a="grow-x ${t0} .4 film">${L.box1}</g>
+    <path d="${L.word}" fill="#FFFAF3" data-a="rise ${t0 + 0.22} .45 tpl"/>
+    <g class="b2" fill="#C27A29" data-a="grow-x ${t0 + 0.55} .35 film">${L.box2}</g>
+    <path d="${L.caps}" fill="#FFFAF3" data-a="rise ${t0 + 0.75} .4 tpl"/>
+    <path class="q" d="${L.q_open}" fill="#0C0B0F" data-a="punch ${t0 + 1.1} .56 tpl"/>
+    <path class="q" d="${L.q_close}" fill="#0C0B0F" data-a="punch ${t0 + 1.25} .56 tpl"/>
+  </svg>`
+}
+buildLogo(document.getElementById('logo2'), 28.1)
+
+/* ---------- T167 sentence builder (mirrors buildNormal in lekha-captions-lc-2.html) ---------- */
+const STAG = 0.28, BODY = 0.43, HERO = 0.56
+function buildT167(el, { pre, hero, post, joiner = ' ', dir }, t0, animate = true) {
+  if (dir) el.dir = dir
+  const words = [...pre.map((w) => [w, false]), [hero, true], ...post.map((w) => [w, false])]
+  el.innerHTML = words.map(([w, isHero], n) => {
+    const anim = animate ? `data-a="${isHero ? 'punch' : 'drop'} ${(t0 + n * STAG).toFixed(2)} ${isHero ? HERO : BODY} tpl"` : ''
+    return `<span class="w${isHero ? ' ns3box' : ''}" ${anim}>${w}</span>`
+  }).join(joiner)
+}
+const EN = { pre: ['humility', 'is', 'a'], hero: 'strategy', post: [',', 'not', 'weakness.'] }
+buildT167(document.getElementById('tplEN'), EN, 16.25)
+buildT167(document.getElementById('tplENfinal'), EN, 0, false)
+
+const LANGS = [
+  ['SPANISH', { pre: ['la', 'humildad', 'es', 'una'], hero: 'estrategia', post: [',', 'no', 'debilidad.'] }],
+  ['HINDI', { pre: ['विनम्रता', 'एक'], hero: 'रणनीति', post: ['है,', 'कमज़ोरी', 'नहीं।'] }],
+  ['ARABIC', { pre: ['التواضع'], hero: 'استراتيجية', post: ['،', 'وليس', 'ضعفًا.'], dir: 'rtl' }],
+  ['JAPANESE', { pre: ['謙虚さは'], hero: '戦略', post: ['であり、', '弱さではない。'], joiner: '' }],
+]
+const cardsEl = document.getElementById('cards')
+LANGS.forEach(([tag, s], i) => {
+  const card = document.createElement('div')
+  card.className = 'card'
+  card.dataset.a = `in-up ${(19.35 + i * 0.08).toFixed(2)} .5`
+  card.innerHTML = `<canvas width="720" height="1280"></canvas><span class="tag">${tag}</span><div class="capbox nline"></div>`
+  cardsEl.appendChild(card)
+  buildT167(card.querySelector('.nline'), s, 19.9)
+})
+
+/* languages background: the word for "captions / subtitles" in many languages, rows drifting in alternate directions */
+const WORDS = ['captions', 'subtítulos', 'उपशीर्षक', 'ترجمة', '字幕', '자막', 'субтитры', 'légendes', 'Untertitel', 'সাবটাইটেল',
+  'வசனங்கள்', 'คำบรรยาย', 'כתוביות', 'altyazı', 'sottotitoli', 'legendas', 'υπότιτλοι', 'napisy']
+const field = document.getElementById('field')
+const rows = Array.from({ length: 10 }, (_, r) => {
+  const el = document.createElement('div')
+  el.className = 'row'
+  el.style.top = `${-20 + r * 112}px`
+  const seq = WORDS.map((_, i) => WORDS[(i + r * 5) % WORDS.length])
+  el.innerHTML = [...seq, ...seq, ...seq].map((w, i) => `<span${(i + r) % 7 === 0 ? ' class="a"' : ''}>${w}</span>`).join('')
+  field.appendChild(el)
+  return { el, dir: r % 2 ? 1 : -1, speed: 26 + (r % 3) * 9, w: 0 }
+})
+
+/* ---------- data-a → CSS animations (seekable) ---------- */
+document.querySelectorAll('[data-a]').forEach((el) => {
+  const list = el.dataset.a.split(',').map((s) => s.trim()).filter(Boolean).map((p) => {
+    const [name, start, dur, ease = 'def'] = p.split(/\s+/)
+    const fill = name.startsWith('out-') ? 'forwards' : (name === 'ring-pulse' ? 'none' : 'both')
+    const iter = name === 'ring-pulse' ? 1 : 1
+    return `${name} ${dur}s ${EASES[ease] || ease} ${start}s ${iter} ${fill}`
+  })
+  el.style.animation = list.join(', ')
+})
+
+/* ---------- camera (editor space → screen) ---------- */
+const SX = 960, SY = 590
+const CAM = [ // t, focusX, focusY, scale, rotateX
+  [3.4, 680, 330, 0.92, 26], [4.4, 680, 330, 1.3, 0], [8.3, 680, 330, 1.33, 0],
+  [9.1, 794, 306, 2.2, 0], [11.95, 794, 306, 2.2, 0],               // floating word editor: preview + panel
+  [12.75, 480, 300, 1.75, 0], [15.3, 480, 300, 1.75, 0],             // the template gallery, held ~2.5 s
+  [16.2, 703, 306, 2.0, 0], [23.6, 703, 306, 2.0, 0], [23.65, 680, 330, 1.3, 0], [27.65, 680, 330, 1.31, 0],
+]
+const ease = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2)
+function sample(keys, t) {
+  if (t <= keys[0][0]) return keys[0].slice(1)
+  for (let i = 0; i < keys.length - 1; i++) {
+    const [a, b] = [keys[i], keys[i + 1]]
+    if (t <= b[0]) {
+      const k = ease((t - a[0]) / (b[0] - a[0]))
+      return a.slice(1).map((v, j) => v + (b[j + 1] - v) * k)
+    }
+  }
+  return keys[keys.length - 1].slice(1)
+}
+const toScreen = (x, y, c) => [SX + (x - c[0]) * c[2], SY + (y - c[1]) * c[2]]
+
+/* cursor path in editor space: t, x, y, visible — W (the word in the line), W2 (the word after the drag) and
+   S (orange swatch); W/W2 are measured from the laid-out caption in ready() */
+const P = { S: [832 + 0.676 * 180, 110 + 0.348 * 323] }
+const CUR_SRC = [
+  [4.45, 930, 470, 0], [4.65, 930, 470, 1], [5.0, 1126, 22, 1], [5.95, 980, 400, 1], [8.6, 980, 400, 1],
+  [9.35, 'W', 1], [9.5, 'W', 1], [10.1, 'W2', 1], [10.4, 'W2', 1], [10.95, 'S', 1], [11.25, 'S', 1],
+  [13.0, 165, 300, 1], [13.8, 170, 505, 1], [14.3, 176, 515, 1], [14.9, 165, 300, 1], [15.5, 170, 305, 1], [15.75, 170, 305, 0],
+  [23.95, 900, 330, 0], [24.15, 900, 330, 1], [24.7, 1301, 22, 1], [24.95, 1301, 22, 1], [25.15, 1301, 22, 0],
+]
+const CLICKS_SRC = [[5.05, 1126, 22], [9.45, 'W'], [10.35, 'W2'], [11.1, 'S'], [15.2, 165, 300], [24.75, 1301, 22]]
+let CUR = [], CLICKS = []
+const resolve = (row, n) => (typeof row[1] === 'string' ? [row[0], ...P[row[1]], ...row.slice(2)] : row.slice(0, n))
+
+/* ---------- clip frames (ping-pong so the 2.8 s clip loops seamlessly) ---------- */
+const N_FRAMES = 83
+const frames = []
+const loadFrames = Promise.all(Array.from({ length: N_FRAMES }, (_, i) => new Promise((res) => {
+  const img = new Image()
+  img.onload = () => img.decode().then(() => res())
+  img.src = `assets/clip/f${String(i + 1).padStart(3, '0')}.jpg`
+  frames[i] = img
+})))
+const canvases = () => [...document.querySelectorAll('canvas:not(.gc)')].map((c) => c.getContext('2d'))
+// gallery card previews: take 2.567–10.567 s of the real gallery, which loops cleanly (the cards clear a line instantly)
+const G_FRAMES = 241, G_T0 = 7.067 // film time at which the loop starts; puts the T167 "strategy" line in the gallery hold
+const gal = { t167: [], t166: [] }
+const loadGallery = Promise.all(Object.keys(gal).flatMap((k) => Array.from({ length: G_FRAMES }, (_, i) => new Promise((res) => {
+  const img = new Image()
+  img.onload = () => img.decode().then(() => res())
+  img.src = `assets/gallery/${k}_${String(i + 1).padStart(3, '0')}.jpg`
+  gal[k][i] = img
+}))))
+const gcs = [...document.querySelectorAll('canvas.gc')].map((c) => ({ set: c.dataset.set, ctx: c.getContext('2d') }))
+let ctxs = []
+
+const cam = document.getElementById('cam')
+const cursor = document.getElementById('cursor')
+const focus = document.getElementById('focus')
+const ph = document.getElementById('ph')
+const pct = document.getElementById('pct')
+const expbar = document.getElementById('expbar')
+const clickEls = CLICKS_SRC.map(() => { const d = document.createElement('div'); d.className = 'click'; document.getElementById('stage').appendChild(d); return d })
+const clamp01 = (x) => Math.max(0, Math.min(1, x))
+const plain = document.getElementById('plain'), wStrat = document.getElementById('wStrat')
+const sel = document.getElementById('sel')
+const chipK = document.getElementById('chipK'), hov = [document.getElementById('hov1'), document.getElementById('hov2')]
+const ORANGE = '#F5A524'
+const DRAG = [12, -54] // where the word is dragged to, editor px (it leaves its slot in the line empty, as in the app)
+const dragK = (t) => ease(clamp01((t - 9.5) / 0.6))
+// the word's box in editor space (the caption box is centred on top:75% with translateY(-50%)), plus the drag
+function wordRect(k = 0) {
+  const x = 585 + plain.offsetLeft + wStrat.offsetLeft + DRAG[0] * k
+  const y = 97 + plain.offsetTop - plain.offsetHeight / 2 + wStrat.offsetTop + DRAG[1] * k
+  return { x, y, w: wStrat.offsetWidth, h: wStrat.offsetHeight }
+}
+
+window.renderAt = (t) => {
+  document.getAnimations().forEach((a) => { a.pause(); a.currentTime = t * 1000 })
+
+  const c = sample(CAM, t)
+  cam.style.transform = `translate(${SX}px, ${SY}px) rotateX(${c[3]}deg) scale(${c[2]}) translate(${-c[0]}px, ${-c[1]}px)`
+
+  const p = sample(CUR, t)
+  // floating word editor: the word is dragged out of the line, then clicked (panel opens) and coloured orange
+  const dk = dragK(t)
+  wStrat.style.transform = dk > 0 ? `translate(${(DRAG[0] * dk).toFixed(2)}px, ${(DRAG[1] * dk).toFixed(2)}px)` : ''
+  const orange = clamp01((t - 11.1) / 0.15)
+  wStrat.style.color = orange > 0 ? `color-mix(in srgb, ${ORANGE} ${(orange * 100).toFixed(1)}%, #fff)` : ''
+  chipK.style.color = orange > 0.5 ? ORANGE : ''
+  chipK.style.borderColor = orange > 0.5 ? ORANGE : ''
+  const selOn = clamp01((t - 9.45) / 0.12) * (1 - clamp01((t - 11.6) / 0.25))
+  sel.style.opacity = selOn
+  if (selOn > 0) {
+    const r = wordRect(dk)
+    sel.style.left = `${r.x - 585 - 2}px`; sel.style.top = `${r.y - 97 - 1}px`
+    sel.style.width = `${r.w + 4}px`; sel.style.height = `${r.h + 2}px`
+  }
+
+  // template gallery: cards light up under the cursor
+  hov.forEach((el) => { el.style.opacity = 0 })
+  if (t > 12.5 && t < 15.35) {
+    ;[[64, 177, 196, 243], [64, 430, 196, 153]].forEach(([x, y, w, h], i) => {
+      const d = Math.max(x - p[0], p[0] - x - w, y - p[1], p[1] - y - h, 0)
+      hov[i].style.opacity = (clamp01(1 - d / 25) * p[2]).toFixed(3)
+    })
+  }
+
+  // focus dim around the preview while zoomed in
+  const dimIn = clamp01((t - 15.45) / 0.7), dimOut = t >= 23.65 ? 0 : 1
+  focus.style.boxShadow = `0 0 0 3000px rgba(6,6,8,${(0.8 * ease(dimIn) * dimOut).toFixed(3)})`
+
+  // cursor
+  const [cx, cy] = toScreen(p[0], p[1], c)
+  cursor.style.transform = `translate(${cx - 6}px, ${cy - 4}px)`
+  cursor.style.opacity = p[2].toFixed(3)
+  CLICKS.forEach(([tc, x, y], i) => {
+    const k = (t - tc) / 0.5
+    const el = clickEls[i]
+    if (k < 0 || k > 1) { el.style.opacity = 0; return }
+    const [sx, sy] = toScreen(x, y, sample(CAM, tc))
+    el.style.left = `${sx}px`; el.style.top = `${sy}px`
+    el.style.opacity = (0.9 * (1 - k)).toFixed(3)
+    el.style.transform = `translate(-50%,-50%) scale(${0.2 + 1.3 * k})`
+  })
+
+  // timeline playhead sweeps while words land
+  ph.style.left = `${90 + 700 * clamp01((t - 6.5) / 1.55)}px`
+
+  // export progress
+  const e = ease(clamp01((t - 25.1) / 1.2))
+  expbar.style.transform = `scaleX(${e})`
+  pct.textContent = `${Math.round(e * 100)}%`
+
+  // clip frame (ping-pong)
+  const f = Math.max(0, Math.round((t - 3.4) * FPS))
+  const period = 2 * (N_FRAMES - 1)
+  const m = f % period
+  const img = frames[m < N_FRAMES ? m : period - m]
+  ctxs.forEach((ctx) => ctx.drawImage(img, 0, 0, 720, 1280))
+
+  // languages background drift
+  if (t > 19.0 && t < 23.9) rows.forEach((r) => {
+    const x = ((r.speed * (t - 19.2)) % r.w + r.w) % r.w
+    r.el.style.transform = `translateX(${(r.dir > 0 ? x - r.w : -x).toFixed(1)}px)`
+  })
+
+  // gallery cards: the recorded previews, looping
+  const gi = ((Math.round((t - G_T0) * FPS) % G_FRAMES) + G_FRAMES) % G_FRAMES
+  gcs.forEach(({ set, ctx }) => ctx.drawImage(gal[set][gi], 0, 0, 388, 420))
+}
+
+window.ready = Promise.all([document.fonts.ready, loadFrames, loadGallery]).then(() => {
+  const faces = ['800 100px "Bricolage Grotesque"', '500 40px "Bricolage Grotesque"', '800 20px "JetBrains Mono"', '600 20px Archivo', 'italic 800 20px Archivo',
+    '800 20px Inter', '800 20px "Noto Sans"', '800 20px "Noto Sans KR"', '800 20px "Noto Sans Bengali"', '800 20px "Noto Sans Tamil"', '800 20px "Noto Sans Thai"', '800 20px "Noto Sans Hebrew"', '600 20px "Noto Sans Devanagari"', '800 20px "Noto Sans Devanagari"', '600 20px "Noto Sans Arabic"', '800 20px "Noto Sans Arabic"', '600 20px "Noto Sans JP"', '800 20px "Noto Sans JP"']
+  return Promise.all(faces.map((f) => document.fonts.load(f, f.includes('Devanagari') ? 'रणनीति' : f.includes('Arabic') ? 'استراتيجية' : f.includes('JP') ? '謙虚戦略字幕' : f.includes('KR') ? '자막' : f.includes('Bengali') ? 'সাবটাইটেল' : f.includes('Tamil') ? 'வசனங்கள்' : f.includes('Thai') ? 'คำบรรยาย' : f.includes('Hebrew') ? 'כתוביות' : f.includes('"Noto Sans"') ? 'субтитры υπότιτλοι' : 'Aa')))
+}).then(() => {
+  ctxs = canvases()
+  rows.forEach((r) => { r.w = r.el.scrollWidth / 3 })
+  // measure the word for the cursor: its centre in the line and after the drag
+  const r0 = wordRect(0), r1 = wordRect(1)
+  P.W = [r0.x + r0.w / 2, r0.y + r0.h / 2]
+  P.W2 = [r1.x + r1.w / 2, r1.y + r1.h / 2]
+  CUR = CUR_SRC.map((r) => resolve(r, 4))
+  CLICKS = CLICKS_SRC.map((r) => resolve(r, 3))
+  window.renderAt(Number(new URLSearchParams(location.search).get('t') || 0))
+  return true
+})
+</script>
+</body>
+</html>

@@ -53,15 +53,32 @@ cost decisions; elapsed time alone is not infrastructure cost.
 This local harness proves that the comparison is executable and repeatable. It
 does not replace staged burst tests at 10/25/50/100 concurrent exports.
 
-## Railway comparison pending — 2026-10-05
+## Railway comparison measured — 2026-10-06
 
-Follow the [staging runbook](RAILWAY_DEPLOYMENT.md#staging-measurement-runbook-2026-10-05).
-No new staging measurements are available. Do not infer animated-template
-performance from the harness's bounded-text-box DOM fixture.
+The completed 60-second 1080p/30 FPS comparison used one warmup and five
+measurements per renderer on each CPU limit. Actual cgroups verified four/eight
+vCPUs and an 8,000,000,000-byte memory limit (about 7.45 GiB); the requested
+Railway configuration was 8 GiB. Both runs used the same fixture SHA-256,
+Node 22.23.3, FFmpeg 5.1.9 and identical renderer/fixture-generator source.
+The completed four-CPU run used `0c5182f`; eight CPUs used `6d5dccd`.
 
-| Replica | 60 s plain 1080p median / P95 | 60 s authored animated template median / P95 | Evidence |
-|---|---|---|---|
-| 4 vCPU / 8 GiB | Not measured | Not measured | Pending staging run |
-| 8 vCPU / 8 GiB | Not measured | Not measured | Pending staging run |
+| Replica | ASS median / P95 | DOM bounded text box median / P95 | Measured successes per path |
+|---|---:|---:|---:|
+| 4 vCPU | 20.866 / 22.754 s | 33.188 / 34.554 s | 5/5 |
+| 8 vCPU | 8.985 / 9.227 s | 15.646 / 16.127 s | 5/5 |
 
-Keep DOM work ratio 3 and ASS work ratio 1 pending this evidence.
+Median speedups were 2.32× for ASS and 2.12× for DOM. An earlier four-CPU
+attempt was interrupted by platform sleep; it is not counted as a completed
+comparison. The owner approved twelve additional bounded renders.
+
+The DOM workload is a bounded text box. A paired representative authored
+animated-template benchmark remains unmeasured. Keep DOM work ratio 3 and ASS
+work ratio 1; these baseline numbers do not justify cheaper admission for every
+template.
+
+See the [acceptance report](LAUNCH_ACCEPTANCE_2026-10-06.md#cpu-comparison) and
+[redacted measurements](evidence/railway-b4-20261006.json), including all warmup
+and measured attempts, runtime quotas, fixture hash and source-artifact hashes.
+The [staging runbook](RAILWAY_DEPLOYMENT.md#staging-measurement-runbook-2026-10-05)
+describes reproduction; its expired staging approval is not permission to
+recreate paid resources.
