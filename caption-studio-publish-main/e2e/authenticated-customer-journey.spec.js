@@ -37,7 +37,6 @@ test.describe('authenticated customer journey', () => {
 
     await page.getByRole('button', { name: /^Export$/i }).click()
     await expect(page.getByRole('heading', { name: 'Export your video' })).toBeVisible()
-    await page.getByText(/I reviewed this language track/i).click()
     const subtitleDownloadPromise = page.waitForEvent('download')
     await page.getByRole('button', { name: /WebVTT subtitles/i }).click()
     const subtitleDownload = await subtitleDownloadPromise
