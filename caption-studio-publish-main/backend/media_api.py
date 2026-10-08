@@ -28,6 +28,10 @@ try:
     from . import observability
 except ImportError:  # Direct execution from backend/ remains supported.
     import observability
+try:
+    from . import request_security
+except ImportError:  # Direct execution from backend/ remains supported.
+    import request_security
 
 
 def create_media_router(host: ModuleType) -> SimpleNamespace:
@@ -39,7 +43,7 @@ def create_media_router(host: ModuleType) -> SimpleNamespace:
         if not decoded_token:
             raise HTTPException(status_code=401, detail="Auth required")
         uid = decoded_token.get('uid')
-        host._assert_tenant_access(uid, decoded_token, req.org_id)
+        request_security._assert_tenant_access(uid, decoded_token, req.org_id)
         observability._audit_action("delete_file_attempt", uid, {"file_id": req.file_id})
 
         if not host._validate_file_id(req.file_id):
@@ -135,7 +139,7 @@ def create_media_router(host: ModuleType) -> SimpleNamespace:
     @router.get("/api/media/upload/{file_id}")
     def serve_uploaded_media(file_id: str, token: str = ""):
         payload = host._verify_media_token(token, "upload")
-        host._assert_account_not_deleting(str(payload.get("uid") or ""))
+        request_security._assert_account_not_deleting(str(payload.get("uid") or ""))
         if payload.get("file_id") != file_id:
             raise HTTPException(status_code=403, detail="Media token does not match this upload")
         path = host._safe_find_upload(file_id)
@@ -147,7 +151,7 @@ def create_media_router(host: ModuleType) -> SimpleNamespace:
 
     @router.post("/api/media/upload-url")
     def refresh_uploaded_media_url(req: host.MediaUrlRequest):
-        decoded_token = host._authenticate_media_request(req.id_token, req.org_id)
+        decoded_token = request_security._authenticate_media_request(req.id_token, req.org_id)
         uid = (decoded_token.get("uid") or "").strip() or "unknown-user"
         if not host._validate_file_id(req.file_id):
             raise HTTPException(status_code=400, detail="Invalid file_id")
@@ -163,7 +167,7 @@ def create_media_router(host: ModuleType) -> SimpleNamespace:
         if not host.re.match(r"^export_[a-f0-9-]{36}_[a-f0-9]{12}\.mp4$", filename or ""):
             raise HTTPException(status_code=400, detail="Invalid export filename")
         payload = host._verify_media_token(token, "export")
-        host._assert_account_not_deleting(str(payload.get("uid") or ""))
+        request_security._assert_account_not_deleting(str(payload.get("uid") or ""))
         if payload.get("filename") != filename:
             raise HTTPException(status_code=403, detail="Media token does not match this export")
         download_filename = str(payload.get("download_filename") or filename)

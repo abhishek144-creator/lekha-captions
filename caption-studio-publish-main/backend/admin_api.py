@@ -24,6 +24,10 @@ try:
     from . import observability
 except ImportError:  # Direct execution from backend/ remains supported.
     import observability
+try:
+    from . import request_security
+except ImportError:  # Direct execution from backend/ remains supported.
+    import request_security
 
 
 def create_admin_router(host: ModuleType) -> SimpleNamespace:
@@ -31,7 +35,7 @@ def create_admin_router(host: ModuleType) -> SimpleNamespace:
 
     @router.post("/api/admin/recovery-summary")
     def admin_recovery_summary(req: host.AdminRecoveryRequest):
-        if not host._is_admin_token(req.id_token):
+        if not request_security._is_admin_token(req.id_token):
             raise HTTPException(status_code=403, detail="Admin access required")
         db = firebase_admin_setup.get_db()
         if not db:
@@ -76,7 +80,7 @@ def create_admin_router(host: ModuleType) -> SimpleNamespace:
     @router.post("/api/admin/test-alerts")
     def admin_test_alerts(req: host.AdminAlertTestRequest):
         """Dispatch a controlled Sentry event for launch evidence."""
-        if not host._is_admin_token(req.id_token):
+        if not request_security._is_admin_token(req.id_token):
             raise HTTPException(status_code=403, detail="Admin access required")
         test_id = f"alert-test-{observability._utcnow().strftime('%Y%m%d-%H%M%S')}-{host.secrets.token_hex(3)}"
         sentry_event_id = ""
@@ -113,7 +117,7 @@ def create_admin_router(host: ModuleType) -> SimpleNamespace:
 
     @router.post("/api/admin/tenant-backfill")
     def admin_tenant_backfill(req: host.TenantBackfillRequest):
-        if not host._is_admin_token(req.id_token):
+        if not request_security._is_admin_token(req.id_token):
             raise HTTPException(status_code=403, detail="Admin access required")
         db = firebase_admin_setup.get_db()
         if not db:

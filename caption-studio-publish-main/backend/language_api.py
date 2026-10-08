@@ -29,6 +29,10 @@ try:
     from . import observability
 except ImportError:  # Direct execution from backend/ remains supported.
     import observability
+try:
+    from . import request_security
+except ImportError:  # Direct execution from backend/ remains supported.
+    import request_security
 
 
 def create_language_router(host: ModuleType) -> SimpleNamespace:
@@ -40,7 +44,7 @@ def create_language_router(host: ModuleType) -> SimpleNamespace:
         if not decoded_token:
             raise HTTPException(status_code=401, detail="Authentication required")
         uid = (decoded_token.get("uid") or "").strip() or "unknown-user"
-        host._assert_tenant_access(uid, decoded_token, req.org_id)
+        request_security._assert_tenant_access(uid, decoded_token, req.org_id)
         client_ip = host._client_rate_key(request)
         allowed, retry_after, remaining = host._check_rate(
             app_state._translate_rate, f"network:{client_ip}", settings.TRANSLATE_SHARED_NETWORK_RATE_LIMIT
@@ -111,7 +115,7 @@ def create_language_router(host: ModuleType) -> SimpleNamespace:
     @router.post("/api/detect-language")
     def detect_language(req: DetectLanguageRequest, request: Request, response: Response):
         # Auth — same dev-mode bypass as /api/export
-        decoded_token = host._authenticate_media_request(req.id_token, req.org_id)
+        decoded_token = request_security._authenticate_media_request(req.id_token, req.org_id)
         uid = (decoded_token.get("uid") or "").strip() or "unknown-user"
         client_ip = host._client_rate_key(request)
         allowed, retry_after, remaining = host._check_rate(

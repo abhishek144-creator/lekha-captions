@@ -28,6 +28,10 @@ try:
     from . import observability
 except ImportError:  # Direct execution from backend/ remains supported.
     import observability
+try:
+    from . import request_security
+except ImportError:  # Direct execution from backend/ remains supported.
+    import request_security
 
 
 def create_billing_service(host: ModuleType) -> SimpleNamespace:
@@ -237,7 +241,7 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
         if not decoded:
             return False
 
-        return host._decoded_token_is_admin(decoded)
+        return request_security._decoded_token_is_admin(decoded)
 
 
     def reconcile_payments_once(

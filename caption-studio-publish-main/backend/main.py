@@ -89,7 +89,7 @@ try:
     from .system_api import create_system_router
     from .billing import create_billing_service
     from . import observability
-    from .request_security import create_request_security
+    from . import request_security
     from .operator_controls import create_operator_controls
     from .request_guards import create_request_guards
     from .media_records import create_media_records
@@ -145,7 +145,7 @@ except ImportError:
     from system_api import create_system_router
     from billing import create_billing_service
     import observability
-    from request_security import create_request_security
+    import request_security
     from operator_controls import create_operator_controls
     from request_guards import create_request_guards
     from media_records import create_media_records
@@ -263,22 +263,22 @@ logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
 async def request_logging_middleware(request: Request, call_next):
     rid = observability._request_id(request)
     request.state.request_id = rid
-    if _app_check_required(request) and request.headers.get("x-firebase-appcheck"):
+    if request_security._app_check_required(request) and request.headers.get("x-firebase-appcheck"):
         # Firebase may synchronously fetch rotated signing keys. Keep its
         # bounded verification work outside the API event loop; health probes
         # and missing-token rejections never wait for this worker pool.
         app_check_failure = await anyio.to_thread.run_sync(
-            _verify_firebase_app_check_request, request, rid,
+            request_security._verify_firebase_app_check_request, request, rid,
             limiter=app_state._app_check_verification_limiter,
         )
     else:
-        app_check_failure = _verify_firebase_app_check_request(request, rid)
+        app_check_failure = request_security._verify_firebase_app_check_request(request, rid)
     if app_check_failure is not None:
-        return _apply_security_headers(app_check_failure)
+        return request_security._apply_security_headers(app_check_failure)
     if request.url.path == "/api/upload" and settings._IS_PRODUCTION:
         # Reject before FastAPI parses multipart, so a misconfigured production
         # client cannot stream even a small video through an API instance.
-        return _apply_security_headers(JSONResponse(
+        return request_security._apply_security_headers(JSONResponse(
             status_code=409,
             content={"detail": "Production uploads must use the direct resumable storage flow."},
             headers={"X-Request-Id": rid, "X-Lekha-Upload-Transport": "direct-resumable"},
@@ -287,22 +287,22 @@ async def request_logging_middleware(request: Request, call_next):
         # FastAPI parses multipart before entering the endpoint. Authenticate
         # here so an unauthenticated request never spools customer-sized media.
         try:
-            upload_identity = await asyncio.to_thread(_authenticate_media_request, _extract_bearer_token(request))
+            upload_identity = await asyncio.to_thread(request_security._authenticate_media_request, _extract_bearer_token(request))
         except HTTPException as error:
-            return _apply_security_headers(JSONResponse(status_code=error.status_code,
+            return request_security._apply_security_headers(JSONResponse(status_code=error.status_code,
                 content={"detail": error.detail}, headers={"X-Request-Id": rid}))
     content_type = (request.headers.get("content-type") or "").lower()
     declared_length = request.headers.get("content-length")
     if "application/json" in content_type and declared_length:
         try:
             if int(declared_length) > settings.MAX_JSON_BODY_BYTES:
-                return _apply_security_headers(JSONResponse(
+                return request_security._apply_security_headers(JSONResponse(
                     status_code=413,
                     content={"success": False, "error": "Request body is too large"},
                     headers={"X-Request-Id": rid},
                 ))
         except ValueError:
-            return _apply_security_headers(JSONResponse(
+            return request_security._apply_security_headers(JSONResponse(
                 status_code=400,
                 content={"success": False, "error": "Invalid Content-Length header"},
                 headers={"X-Request-Id": rid},
@@ -312,7 +312,7 @@ async def request_logging_middleware(request: Request, call_next):
         async for chunk in request.stream():
             body.extend(chunk)
             if len(body) > settings.MAX_JSON_BODY_BYTES:
-                return _apply_security_headers(JSONResponse(
+                return request_security._apply_security_headers(JSONResponse(
                     status_code=413,
                     content={"success": False, "error": "Request body is too large"},
                     headers={"X-Request-Id": rid},
@@ -322,7 +322,7 @@ async def request_logging_middleware(request: Request, call_next):
         request._body = bytes(body)
     requested_version = (request.headers.get("x-api-version") or "").strip()
     if requested_version and requested_version < settings.API_MIN_SUPPORTED_VERSION:
-        return _apply_security_headers(JSONResponse(
+        return request_security._apply_security_headers(JSONResponse(
             status_code=426,
             content={
                 "success": False,
@@ -340,7 +340,7 @@ async def request_logging_middleware(request: Request, call_next):
         ))
     upload_slot_uid = str(upload_identity.get("uid") or "") if request.url.path == "/api/upload" else ""
     if upload_slot_uid and not await asyncio.to_thread(_acquire_process_slot, upload_slot_uid, f"upload:{rid}"):
-        return _apply_security_headers(JSONResponse(status_code=429, content={"detail": "Another upload or transcription is active for this account."}, headers={"X-Request-Id": rid}))
+        return request_security._apply_security_headers(JSONResponse(status_code=429, content={"detail": "Another upload or transcription is active for this account."}, headers={"X-Request-Id": rid}))
     start = time.time()
     try:
         response = await call_next(request)
@@ -358,7 +358,7 @@ async def request_logging_middleware(request: Request, call_next):
             replica_id=settings.RAILWAY_REPLICA_ID,
             error=str(e),
         )
-        return _apply_security_headers(JSONResponse(status_code=500, content={
+        return request_security._apply_security_headers(JSONResponse(status_code=500, content={
             "success": False, "error": {"code": "INTERNAL_ERROR",
             "message": "Something went wrong. Please contact support with this request ID.", "request_id": rid},
         }, headers={"X-Request-Id": rid, "Cache-Control": "no-store"}))
@@ -395,7 +395,7 @@ async def request_logging_middleware(request: Request, call_next):
     response.headers["X-API-Version"] = settings.API_CURRENT_VERSION
     response.headers["X-API-Min-Version"] = settings.API_MIN_SUPPORTED_VERSION
     response.headers["Sunset"] = settings.DEPRECATION_SUNSET_DATE
-    return _apply_security_headers(response)
+    return request_security._apply_security_headers(response)
 
 
 if settings.SENTRY_DSN and SENTRY_AVAILABLE and not settings._IS_TEST:
@@ -561,19 +561,6 @@ app_state._provider_breakers: Dict[str, observability.CircuitBreaker] = {
 }
 
 
-_request_security = create_request_security(sys.modules[__name__])
-_apply_security_headers = _request_security._apply_security_headers
-_app_check_required = _request_security._app_check_required
-_verify_firebase_app_check_request = _request_security._verify_firebase_app_check_request
-_tenant_id_from_token = _request_security._tenant_id_from_token
-_is_explicit_dev_auth_token = _request_security._is_explicit_dev_auth_token
-_assert_account_not_deleting = _request_security._assert_account_not_deleting
-_create_account_if_active = _request_security._create_account_if_active
-_authenticate_media_request = _request_security._authenticate_media_request
-_authenticate_bearer_request = _request_security._authenticate_bearer_request
-_assert_tenant_access = _request_security._assert_tenant_access
-
-
 _operator_controls = create_operator_controls(sys.modules[__name__])
 _validate_feature_flag_safety = _operator_controls._validate_feature_flag_safety
 _default_service_controls = _operator_controls._default_service_controls
@@ -658,7 +645,7 @@ app_state.processor = VideoProcessor(settings.FONTS_DIR)
 
 
 app.include_router(create_project_router(
-    _authenticate_media_request,
+    request_security._authenticate_media_request,
     firebase_admin_setup.get_db,
     _validate_file_id,
     _assert_upload_owner,
@@ -738,7 +725,7 @@ def run_export_job_task(
         return existing_job.get("payload") or {}
     try:
         if existing_job.get("status") == "finalizing":
-            _assert_account_not_deleting(uid)
+            request_security._assert_account_not_deleting(uid)
             recorded = _load_recorded_export_result(uid, export_job_id, str(req_payload.get("file_id") or ""))
             if recorded:
                 _set_export_job(export_job_id, "completed", payload=recorded,
@@ -884,7 +871,7 @@ _dispatch_media_scans_once = _upload_dispatch._dispatch_media_scans_once
 _require_scheduler_secret = _upload_dispatch._require_scheduler_secret
 
 app.include_router(create_direct_upload_router(
-    authenticate=_authenticate_media_request,
+    authenticate=request_security._authenticate_media_request,
     extract_token=_extract_bearer_token,
     assert_service_available=_assert_service_available,
     allowed_extensions=settings.ALLOWED_EXTENSIONS,
@@ -900,13 +887,13 @@ app.include_router(create_direct_upload_router(
     release_slot=_release_direct_upload_slot,
     cancel_session=firebase_admin_setup.cancel_resumable_source_upload,
     resume_session=firebase_admin_setup.resume_resumable_source_upload,
-    assert_account_active=_assert_account_not_deleting,
+    assert_account_active=request_security._assert_account_not_deleting,
     rate_limit_network=_limit_direct_upload_network,
     enqueue_scan=_schedule_media_scan,
     sign_parts=firebase_admin_setup.sign_resumable_upload_parts,
 ))
 app.include_router(create_editor_preferences_router(
-    _authenticate_media_request,
+    request_security._authenticate_media_request,
     firebase_admin_setup.get_db,
 ))
 
@@ -935,7 +922,7 @@ app.include_router(create_maintenance_router(
 
 def run_media_scan_job_task(uid: str, file_id: str):
     """Materialize and scan one upload; duplicate deliveries are harmless."""
-    _assert_account_not_deleting(uid)
+    request_security._assert_account_not_deleting(uid)
     _assert_upload_owner(file_id, uid)
     metadata = _load_upload_metadata(file_id)
     if str(metadata.get("upload_state") or "").lower() in {"clean", "rejected"}:
@@ -1010,45 +997,17 @@ _apply_successful_payment = _billing._apply_successful_payment
 _apply_refund_webhook_event = _billing._apply_refund_webhook_event
 
 
-def _decoded_token_is_admin(decoded: Optional[Dict[str, Any]]) -> bool:
-    if not decoded:
-        return False
-    if decoded.get("admin") is True:
-        return True
-    allowed_admins = {
-        e.strip().lower()
-        for e in os.environ.get("ADMIN_EMAILS", "").split(",")
-        if e.strip()
-    }
-    return bool(
-        decoded.get("email_verified") is True
-        and allowed_admins
-        and decoded.get("email", "").lower() in allowed_admins
-    )
-
-def _is_admin_token(id_token: str = "", request: Optional[Request] = None) -> bool:
-    token = (id_token or "").strip()
-    if not token and request is not None:
-        token = request.headers.get("authorization", "").replace("Bearer ", "").strip()
-    if not token:
-        return False
-    decoded = firebase_admin_setup.verify_token(token)
-    if not decoded:
-        return False
-    return _decoded_token_is_admin(decoded)
-
-
-app.include_router(create_cost_reconciliation_router(_is_admin_token, firebase_admin_setup.get_db))
-app.include_router(create_notification_router(_authenticate_bearer_request, firebase_admin_setup.get_db))
+app.include_router(create_cost_reconciliation_router(request_security._is_admin_token, firebase_admin_setup.get_db))
+app.include_router(create_notification_router(request_security._authenticate_bearer_request, firebase_admin_setup.get_db))
 app.include_router(create_public_api_router(
-    authenticate_request=_authenticate_bearer_request,
+    authenticate_request=request_security._authenticate_bearer_request,
     get_database=firebase_admin_setup.get_db,
     list_account_projects=list_projects,
     read_account_project=read_draft,
     load_export_job=_load_export_job,
 ))
 app.include_router(create_workspace_router(
-    authenticate_request=_authenticate_bearer_request,
+    authenticate_request=request_security._authenticate_bearer_request,
     get_database=firebase_admin_setup.get_db,
     assert_upload_owner=_assert_upload_owner,
     validate_file_id=_validate_file_id,
@@ -1061,7 +1020,7 @@ _provider_admin_api = create_provider_admin_router(sys.modules[__name__])
 app.include_router(_provider_admin_api.router)
 provider_health = _provider_admin_api.provider_health
 app.include_router(create_analytics_router(
-    is_admin=_is_admin_token,
+    is_admin=request_security._is_admin_token,
     utcnow=observability._utcnow,
     get_database=firebase_admin_setup.get_db,
     read_counters=observability._read_daily_analytics_counters,

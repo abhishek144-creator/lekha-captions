@@ -23,6 +23,10 @@ try:
     from . import observability
 except ImportError:  # Direct execution from backend/ remains supported.
     import observability
+try:
+    from . import request_security
+except ImportError:  # Direct execution from backend/ remains supported.
+    import request_security
 
 
 def create_export_jobs(host: ModuleType) -> SimpleNamespace:
@@ -458,7 +462,7 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
             raise host.HTTPException(status_code=404, detail="Export job owner not found")
 
         token = host._extract_bearer_token(request)
-        if host._is_explicit_dev_auth_token(token) and owner_uid == "dev-local-user":
+        if request_security._is_explicit_dev_auth_token(token) and owner_uid == "dev-local-user":
             return owner_uid
 
         decoded = firebase_admin_setup.verify_token(token) if token else None
@@ -469,7 +473,7 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
             return request_uid
 
         db = firebase_admin_setup.get_db()
-        if db is None and host._is_explicit_dev_auth_token(token) and owner_uid == "dev-local-user":
+        if db is None and request_security._is_explicit_dev_auth_token(token) and owner_uid == "dev-local-user":
             return owner_uid
         raise host.HTTPException(status_code=401, detail="Authentication required")
 
@@ -489,7 +493,7 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
 
 
     async def _process_export_job_core(req: host.ExportRequest, uid: str, rid: str, export_job_id: str):
-        host._assert_account_not_deleting(uid)
+        request_security._assert_account_not_deleting(uid)
         queue_entered_at, processing_started_at = host._mark_export_processing(export_job_id)
         db = firebase_admin_setup.get_db()
         db_available = db is not None

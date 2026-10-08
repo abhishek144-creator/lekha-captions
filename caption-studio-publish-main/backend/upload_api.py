@@ -20,6 +20,10 @@ try:
     from . import observability
 except ImportError:  # Direct execution from backend/ remains supported.
     import observability
+try:
+    from . import request_security
+except ImportError:  # Direct execution from backend/ remains supported.
+    import request_security
 
 
 def create_upload_router(host: ModuleType) -> SimpleNamespace:
@@ -42,7 +46,7 @@ def create_upload_router(host: ModuleType) -> SimpleNamespace:
         try:
             host._assert_service_available("pause_uploads")
             token = host._extract_bearer_token(request) if request else ""
-            decoded_token = host._authenticate_media_request(token)
+            decoded_token = request_security._authenticate_media_request(token)
             uid = (decoded_token.get("uid") or "").strip() or "unknown-user"
 
             if settings._IS_PRODUCTION:

@@ -28,6 +28,10 @@ try:
     from . import observability
 except ImportError:  # Direct execution from backend/ remains supported.
     import observability
+try:
+    from . import request_security
+except ImportError:  # Direct execution from backend/ remains supported.
+    import request_security
 
 
 def create_system_router(host: ModuleType) -> SimpleNamespace:
@@ -245,7 +249,7 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
     def slo_status(request: Request):
         # Detailed SLO targets/actuals — admin only. Health probes should use
         # /api/health/readiness (boolean) instead.
-        if not host._is_admin_token(request=request):
+        if not request_security._is_admin_token(request=request):
             raise HTTPException(status_code=403, detail="Admin access required")
         return observability._build_slo_snapshot()
 
@@ -268,7 +272,7 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
             "success": True,
             "ready": ready,
         }
-        if host._is_admin_token(request=request):
+        if request_security._is_admin_token(request=request):
             body["slo"] = observability._build_slo_snapshot()
             body["queue"] = {
                 "durable_enabled": settings.DURABLE_QUEUE_ENABLED,
@@ -288,7 +292,7 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
         decoded = firebase_admin_setup.verify_token(token) if token else None
         if not decoded:
             raise HTTPException(status_code=401, detail="Auth required")
-        if not host._decoded_token_is_admin(decoded):
+        if not request_security._decoded_token_is_admin(decoded):
             raise HTTPException(status_code=403, detail="Admin role required")
         return {
             "success": True,
@@ -324,7 +328,7 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
         if not decoded and request is not None:
             header_token = request.headers.get("authorization", "").replace("Bearer ", "").strip()
             decoded = firebase_admin_setup.verify_token(header_token) if header_token else None
-        if not host._decoded_token_is_admin(decoded):
+        if not request_security._decoded_token_is_admin(decoded):
             raise HTTPException(status_code=403, detail="Admin access required")
 
         updates: host.Dict[str, host.Any] = {}

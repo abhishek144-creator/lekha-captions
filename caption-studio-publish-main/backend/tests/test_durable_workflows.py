@@ -193,7 +193,7 @@ class DurableWorkflowTests(unittest.TestCase):
 
     def test_completed_result_survives_new_store_and_duplicate_worker(self):
         job = self.jobs.create("a", self.settings)
-        with (patch.object(main.firebase_admin_setup, "get_db", return_value=self.db), patch.object(main, "_assert_account_not_deleting"),
+        with (patch.object(main.firebase_admin_setup, "get_db", return_value=self.db), patch.object(main.request_security, "_assert_account_not_deleting"),
               patch.object(main, "_process_video_inline", new_callable=AsyncMock, return_value={"success": True, "captions": [{"text": "result"}]}) as provider):
             main.run_transcription_job_task("a", job["job_id"])
             main.run_transcription_job_task("a", job["job_id"])
@@ -209,7 +209,7 @@ class DurableWorkflowTests(unittest.TestCase):
             calls.append(1)
             if len(calls) == 1: raise ConnectionError()
             return finish(instance, *args, **kwargs)
-        with (patch.object(main.firebase_admin_setup, "get_db", return_value=self.db), patch.object(main, "_assert_account_not_deleting"),
+        with (patch.object(main.firebase_admin_setup, "get_db", return_value=self.db), patch.object(main.request_security, "_assert_account_not_deleting"),
               patch.object(main.time, "sleep"), patch.object(TranscriptionJobs, "finish", new=flaky),
               patch.object(main, "_process_video_inline", new_callable=AsyncMock, return_value={"success": True}) as provider):
             main.run_transcription_job_task("a", job["job_id"])
@@ -218,7 +218,7 @@ class DurableWorkflowTests(unittest.TestCase):
 
     def test_confirmed_worker_failure_is_retryable_without_reupload(self):
         job = self.jobs.create("a", self.settings)
-        with (patch.object(main.firebase_admin_setup, "get_db", return_value=self.db), patch.object(main, "_assert_account_not_deleting"),
+        with (patch.object(main.firebase_admin_setup, "get_db", return_value=self.db), patch.object(main.request_security, "_assert_account_not_deleting"),
               patch.object(main, "_process_video_inline", new_callable=AsyncMock,
                            side_effect=HTTPException(502, "provider unavailable"))):
             with self.assertRaises(HTTPException):
@@ -249,7 +249,7 @@ class DurableWorkflowTests(unittest.TestCase):
     def test_production_http_returns_pending_then_replays_durable_result(self):
         with (patch.object(main.settings, "_IS_PRODUCTION", True), patch.object(main.firebase_admin_setup, "get_db", return_value=self.db),
               patch.object(main, "_assert_service_available"), patch.object(main, "_assert_upload_owner"),
-              patch.object(main, "_authenticate_media_request", return_value={"uid": "a"})):
+              patch.object(main.request_security, "_authenticate_media_request", return_value={"uid": "a"})):
             client = TestClient(main.app)
             first = client.post("/api/process", json=self.settings)
             self.assertEqual(first.status_code, 202)
@@ -267,7 +267,7 @@ class DurableWorkflowTests(unittest.TestCase):
         self.jobs.finish("a", job["job_id"], "unknown")
         with (patch.object(main.settings, "_IS_PRODUCTION", True), patch.object(main.firebase_admin_setup, "get_db", return_value=self.db),
               patch.object(main, "_assert_service_available"), patch.object(main, "_assert_upload_owner"),
-              patch.object(main, "_authenticate_media_request", return_value={"uid": "a"})):
+              patch.object(main.request_security, "_authenticate_media_request", return_value={"uid": "a"})):
             response = TestClient(main.app).post("/api/process", json=self.settings)
             self.assertEqual(response.status_code, 409)
             self.assertNotIn("PROCESS_IN_PROGRESS", response.text)
