@@ -7,6 +7,10 @@ try:
     from . import settings
 except ImportError:  # Direct execution from backend/ remains supported.
     import settings
+try:
+    from . import app_state
+except ImportError:  # Direct execution from backend/ remains supported.
+    import app_state
 
 from dotenv import load_dotenv
 
@@ -294,7 +298,7 @@ async def app_lifespan(_app: FastAPI):
 app = FastAPI(lifespan=app_lifespan)
 app.add_middleware(
     RailwayIdleConnectionsMiddleware,
-    clients=lambda: (_redis_client, _rq_redis_client),
+    clients=lambda: (app_state._redis_client, app_state._rq_redis_client),
 )
 
 _observability = create_observability(sys.modules[__name__])
@@ -322,7 +326,6 @@ _audit_action = _observability._audit_action
 
 
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
-_logger = logging.getLogger("caption_studio_backend")
 
 
 @app.middleware("http")
@@ -335,7 +338,7 @@ async def request_logging_middleware(request: Request, call_next):
         # and missing-token rejections never wait for this worker pool.
         app_check_failure = await anyio.to_thread.run_sync(
             _verify_firebase_app_check_request, request, rid,
-            limiter=_app_check_verification_limiter,
+            limiter=app_state._app_check_verification_limiter,
         )
     else:
         app_check_failure = _verify_firebase_app_check_request(request, rid)
@@ -434,8 +437,8 @@ async def request_logging_middleware(request: Request, call_next):
         if not settings.RUN_API_BACKGROUND_TASKS:
             # Cloud Run may suspend CPU as soon as the request finishes. Flush
             # buffered events while this request still has execution time.
-            with _telemetry_lock:
-                telemetry_pending = bool(_telemetry_buffer)
+            with app_state._telemetry_lock:
+                telemetry_pending = bool(app_state._telemetry_buffer)
             if telemetry_pending:
                 try:
                     await asyncio.to_thread(_flush_telemetry)
@@ -464,9 +467,6 @@ async def request_logging_middleware(request: Request, call_next):
     return _apply_security_headers(response)
 
 
-_app_check_verification_limiter = anyio.CapacityLimiter(16)
-
-
 if settings.SENTRY_DSN and SENTRY_AVAILABLE and not settings._IS_TEST:
     try:
         sentry_sdk.init(
@@ -491,147 +491,108 @@ _json_log(
     is_production=settings._IS_PRODUCTION,
 )
 
-rzp_client = None
 if RAZORPAY_AVAILABLE and settings.RAZORPAY_KEY_ID and settings.RAZORPAY_KEY_SECRET:
-    rzp_client = _razorpay_module.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+    app_state.rzp_client = _razorpay_module.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
 elif RAZORPAY_AVAILABLE:
     _json_log("warning", "razorpay_credentials_missing")
 
 
-render_semaphore = asyncio.Semaphore(settings.MAX_CONCURRENT_RENDERS)
-
-
-class _BoundedJobCache(OrderedDict):
-    """Process-local job cache that evicts the oldest entries.
-
-    Shared state lives in Redis/Firestore; this cache only answers "was this
-    job seen here". Unbounded, it grew by one record per export for the life of
-    every API and worker process."""
-
-    def __init__(self, max_entries: int):
-        super().__init__()
-        self.max_entries = max_entries
-
-    def __setitem__(self, key, value):
-        super().__setitem__(key, value)
-        self.move_to_end(key)
-        while len(self) > self.max_entries:
-            self.popitem(last=False)
-
-
-# In-memory operational state (swap for Redis in multi-instance deployments)
-_export_jobs: Dict[str, Dict[str, Any]] = _BoundedJobCache(
-    max(100, int(os.environ.get("EXPORT_JOB_LOCAL_CACHE_MAX", "2000")))
-)
-_export_idempotency: Dict[str, Dict[str, Any]] = {}
-_upload_idempotency: Dict[str, Dict[str, Any]] = {}
-_active_exports_by_user: Dict[str, str] = {}
-_active_processes_by_user: Dict[str, str] = {}
-_export_failures: Dict[str, list] = {}
-_upload_owners: Dict[str, str] = {}
-
 # Global APScheduler reference (None if apscheduler not installed)
-scheduler = AsyncIOScheduler() if SCHEDULER_AVAILABLE else None
+app_state.scheduler = AsyncIOScheduler() if SCHEDULER_AVAILABLE else None
 
-_redis_client = None
-_rq_redis_client = None
 
 if REDIS_AVAILABLE and settings.REDIS_URL and not settings._IS_TEST:
     try:
-        _redis_client = connect_redis(settings.REDIS_URL, decode_responses=True, socket_timeout=5)
-        _redis_client.ping()
+        app_state._redis_client = connect_redis(settings.REDIS_URL, decode_responses=True, socket_timeout=5)
+        app_state._redis_client.ping()
         # RQ stores pickled/binary job payloads. Sharing the application's
         # decode_responses=True client makes failed-job inspection attempt UTF-8
         # decoding and can strand per-user export leases.
         # The API never blocks on a queue pop, so a bounded read timeout is safe
         # and turns a stalled Redis into a fast error instead of a hung request.
-        _rq_redis_client = connect_redis(settings.REDIS_URL, socket_timeout=15)
-        _rq_redis_client.ping()
+        app_state._rq_redis_client = connect_redis(settings.REDIS_URL, socket_timeout=15)
+        app_state._rq_redis_client.ping()
         _json_log("info", "redis_connected")
     except Exception as e:
-        _redis_client = None
-        _rq_redis_client = None
+        app_state._redis_client = None
+        app_state._rq_redis_client = None
         _json_log("warning", "redis_connection_failed", error=str(e))
 
-if settings._IS_PRODUCTION and _redis_client is None:
+if settings._IS_PRODUCTION and app_state._redis_client is None:
     raise RuntimeError(
         "Redis is required in production (ENV=production) for cross-instance rate "
         "limiting and payment idempotency. Set REDIS_URL to a reachable Redis instance."
     )
 
 
-_export_queue = None
-_export_queues = {}
-if settings.DURABLE_QUEUE_ENABLED and _rq_redis_client is not None and RQ_AVAILABLE:
+if settings.DURABLE_QUEUE_ENABLED and app_state._rq_redis_client is not None and RQ_AVAILABLE:
     try:
         configured_render_queues = list(RENDER_QUEUE_NAMES)
         if settings.GPU_RENDER_ENABLED:
             configured_render_queues.append(GPU_EXPORT_QUEUE_NAME)
-        _export_queues = {
-            queue_name: Queue(queue_name, connection=_rq_redis_client, default_timeout=30 * 60)
+        app_state._export_queues = {
+            queue_name: Queue(queue_name, connection=app_state._rq_redis_client, default_timeout=30 * 60)
             for queue_name in configured_render_queues
         }
-        _export_queue = _export_queues[settings.EXPORT_QUEUE_NAME]
-        _json_log("info", "durable_queue_enabled", queues=list(_export_queues))
+        app_state._export_queue = app_state._export_queues[settings.EXPORT_QUEUE_NAME]
+        _json_log("info", "durable_queue_enabled", queues=list(app_state._export_queues))
     except Exception as e:
-        _export_queue = None
-        _export_queues = {}
+        app_state._export_queue = None
+        app_state._export_queues = {}
         _json_log("warning", "durable_queue_init_failed", error=str(e))
 
-if settings._IS_PRODUCTION and _export_queue is None:
+if settings._IS_PRODUCTION and app_state._export_queue is None:
     raise RuntimeError("The durable export queue is required in production; refusing API-local rendering.")
 
-_transcription_queue = _export_queue
-if _export_queue is not None and settings.TRANSCRIPTION_QUEUE_NAME != settings.EXPORT_QUEUE_NAME:
-    _transcription_queue = Queue(settings.TRANSCRIPTION_QUEUE_NAME, connection=_rq_redis_client, default_timeout=30 * 60)
-_media_scan_queue = _transcription_queue
-if _export_queue is not None and settings.MEDIA_SCAN_QUEUE_NAME not in {settings.EXPORT_QUEUE_NAME, settings.TRANSCRIPTION_QUEUE_NAME}:
-    _media_scan_queue = Queue(settings.MEDIA_SCAN_QUEUE_NAME, connection=_rq_redis_client, default_timeout=20 * 60)
+app_state._transcription_queue = app_state._export_queue
+if app_state._export_queue is not None and settings.TRANSCRIPTION_QUEUE_NAME != settings.EXPORT_QUEUE_NAME:
+    app_state._transcription_queue = Queue(settings.TRANSCRIPTION_QUEUE_NAME, connection=app_state._rq_redis_client, default_timeout=30 * 60)
+app_state._media_scan_queue = app_state._transcription_queue
+if app_state._export_queue is not None and settings.MEDIA_SCAN_QUEUE_NAME not in {settings.EXPORT_QUEUE_NAME, settings.TRANSCRIPTION_QUEUE_NAME}:
+    app_state._media_scan_queue = Queue(settings.MEDIA_SCAN_QUEUE_NAME, connection=app_state._rq_redis_client, default_timeout=20 * 60)
 
 
 async def startup_event():
-    global _telemetry_flush_task, _simple_janitor_task, _transcription_dispatch_task, _queue_metrics_task
     if not settings.RUN_API_BACKGROUND_TASKS:
         _json_log("info", "api_background_tasks_disabled")
         if os.environ.get("RAILWAY_PROJECT_ID"):
-            disconnect_idle_redis_clients(_redis_client, _rq_redis_client)
+            disconnect_idle_redis_clients(app_state._redis_client, app_state._rq_redis_client)
         return
-    _telemetry_flush_task = asyncio.create_task(_telemetry_flush_loop())
+    app_state._telemetry_flush_task = asyncio.create_task(_telemetry_flush_loop())
     if settings._IS_PRODUCTION:
-        _transcription_dispatch_task = asyncio.create_task(_transcription_dispatch_loop())
+        app_state._transcription_dispatch_task = asyncio.create_task(_transcription_dispatch_loop())
     if settings.QUEUE_METRICS_ENABLED:
-        _queue_metrics_task = asyncio.create_task(_queue_metrics_loop())
+        app_state._queue_metrics_task = asyncio.create_task(_queue_metrics_loop())
     if os.environ.get("RELEASE_ENVIRONMENT") == "staging":
         # Current staging shares Firestore: it must not reconcile live payments
         # or run global customer-media cleanup with staging credentials.
         return
-    if scheduler is not None:
-        scheduler.add_job(scheduled_janitor_job, 'interval', minutes=15)
-        scheduler.add_job(scheduled_payment_reconciliation_job, 'interval', minutes=max(settings.PAYMENT_RECONCILE_INTERVAL_MINUTES, 5))
-        scheduler.start()
+    if app_state.scheduler is not None:
+        app_state.scheduler.add_job(scheduled_janitor_job, 'interval', minutes=15)
+        app_state.scheduler.add_job(scheduled_payment_reconciliation_job, 'interval', minutes=max(settings.PAYMENT_RECONCILE_INTERVAL_MINUTES, 5))
+        app_state.scheduler.start()
         _json_log("info", "scheduler_started", janitor_minutes=15,
                   payment_reconcile_minutes=max(settings.PAYMENT_RECONCILE_INTERVAL_MINUTES, 5))
     else:
         _json_log("warning", "janitor_fallback_loop", reason="apscheduler not installed")
-        _simple_janitor_task = asyncio.create_task(_simple_janitor_loop())
+        app_state._simple_janitor_task = asyncio.create_task(_simple_janitor_loop())
 
 
 async def shutdown_event():
-    global _telemetry_flush_task, _simple_janitor_task, _transcription_dispatch_task, _queue_metrics_task
-    if _queue_metrics_task is not None:
-        _queue_metrics_task.cancel()
-        _queue_metrics_task = None
-    if _transcription_dispatch_task is not None:
-        _transcription_dispatch_task.cancel()
-        _transcription_dispatch_task = None
-    if _telemetry_flush_task is not None:
-        _telemetry_flush_task.cancel()
-        _telemetry_flush_task = None
-    if _simple_janitor_task is not None:
-        _simple_janitor_task.cancel()
-        _simple_janitor_task = None
-    if scheduler is not None and scheduler.running:
-        scheduler.shutdown(wait=False)
+    if app_state._queue_metrics_task is not None:
+        app_state._queue_metrics_task.cancel()
+        app_state._queue_metrics_task = None
+    if app_state._transcription_dispatch_task is not None:
+        app_state._transcription_dispatch_task.cancel()
+        app_state._transcription_dispatch_task = None
+    if app_state._telemetry_flush_task is not None:
+        app_state._telemetry_flush_task.cancel()
+        app_state._telemetry_flush_task = None
+    if app_state._simple_janitor_task is not None:
+        app_state._simple_janitor_task.cancel()
+        app_state._simple_janitor_task = None
+    if app_state.scheduler is not None and app_state.scheduler.running:
+        app_state.scheduler.shutdown(wait=False)
     await asyncio.to_thread(_flush_telemetry)
 
 _maintenance_jobs = create_maintenance_jobs(sys.modules[__name__])
@@ -660,44 +621,10 @@ app.add_middleware(
     ],
 )
 
-# Simple in-memory rate limiters (ip -> list of timestamps)
-_upload_rate: Dict[str, list] = {}
 app.add_middleware(UploadBodyLimitMiddleware)
 
 
-_signup_rate: Dict[str, list] = {}
-
-_payment_rate: Dict[str, list] = {}
-
-_promo_rate: Dict[str, list] = {}
-
-_translate_rate: Dict[str, list] = {}
-
-_process_rate: Dict[str, list] = {}
-
-_detect_language_rate: Dict[str, list] = {}
-
-_analytics_rate: Dict[str, list] = {}
-
-_support_rate: Dict[str, list] = {}
-
-
-_analytics_counters: Dict[str, int] = {}
-_analytics_daily_counters: Dict[str, Dict[str, int]] = {}
-_analytics_last_alert_ts: Dict[str, float] = {}
-_route_latency_samples: Dict[str, list] = {}
-_operational_metric_samples: Dict[str, list] = {}
-_payment_idempotency: Dict[str, Dict[str, Any]] = {}
-_tenant_memberships: Dict[str, set] = {}
-_telemetry_buffer = deque()
-_telemetry_lock = threading.Lock()
-_telemetry_flush_task = None
-_simple_janitor_task = None
-_transcription_dispatch_task = None
-_queue_metrics_task = None
-
-
-_provider_breakers: Dict[str, CircuitBreaker] = {
+app_state._provider_breakers: Dict[str, CircuitBreaker] = {
     "openai_translate": CircuitBreaker(failure_threshold=4, cooldown_seconds=120),
     "openai_detect_language": CircuitBreaker(failure_threshold=4, cooldown_seconds=120),
 }
@@ -716,9 +643,6 @@ _authenticate_bearer_request = _request_security._authenticate_bearer_request
 _assert_tenant_access = _request_security._assert_tenant_access
 
 
-_service_control_cache: Dict[str, Any] = {"ts": 0.0, "value": {}}
-
-
 _operator_controls = create_operator_controls(sys.modules[__name__])
 _validate_feature_flag_safety = _operator_controls._validate_feature_flag_safety
 _default_service_controls = _operator_controls._default_service_controls
@@ -726,19 +650,6 @@ _read_service_controls = _operator_controls._read_service_controls
 _assert_service_available = _operator_controls._assert_service_available
 _scan_upload_for_threat = _operator_controls._scan_upload_for_threat
 _is_content_safety_blocked = _operator_controls._is_content_safety_blocked
-
-
-_RATE_LIMIT_NAMESPACES = (
-    (_upload_rate, "upload"),
-    (_signup_rate, "signup"),
-    (_payment_rate, "payment"),
-    (_promo_rate, "promo"),
-    (_translate_rate, "translate"),
-    (_process_rate, "process"),
-    (_detect_language_rate, "detect-language"),
-    (_analytics_rate, "analytics"),
-    (_support_rate, "support"),
-)
 
 
 _request_guards = create_request_guards(sys.modules[__name__])
@@ -812,7 +723,7 @@ for d in [settings.UPLOAD_DIR, settings.EXPORT_DIR, settings.FONTS_DIR, settings
     os.makedirs(d, exist_ok=True)
 
 # This initializes the processor which will download the font automatically
-processor = VideoProcessor(settings.FONTS_DIR)
+app_state.processor = VideoProcessor(settings.FONTS_DIR)
 
 
 app.include_router(create_project_router(
@@ -1002,14 +913,11 @@ def run_export_job_task(
         if slot_acquired:
             _release_export_slot(uid, export_job_id)
 
-# Google Fonts Cache Map
-_cached_google_fonts = None
 
 @app.get("/api/fonts")
 def get_google_fonts():
-    global _cached_google_fonts
-    if _cached_google_fonts is not None:
-        return {"fonts": _cached_google_fonts}
+    if app_state._cached_google_fonts is not None:
+        return {"fonts": app_state._cached_google_fonts}
 
     try:
         req = urllib.request.Request(
@@ -1027,7 +935,7 @@ def get_google_fonts():
             for family in data.get('familyMetadataList', []):
                 fonts.append({"family": family.get("family")})
 
-            _cached_google_fonts = fonts
+            app_state._cached_google_fonts = fonts
             return {"fonts": fonts}
     except Exception as e:
         _json_log("warning", "google_fonts_fetch_failed", error=str(e))
@@ -1086,7 +994,7 @@ _process_video_inline = _processing_api._process_video_inline
 
 app.include_router(create_maintenance_router(
     authorize=_require_scheduler_secret,
-    dispatch_transcription=lambda: TranscriptionJobs(get_db()).dispatch(_transcription_queue),
+    dispatch_transcription=lambda: TranscriptionJobs(get_db()).dispatch(app_state._transcription_queue),
     dispatch_media_scans=_dispatch_media_scans_once,
     run_janitor=scheduled_janitor_job,
     publish_queue_metrics=_publish_queue_metrics_once,
@@ -1150,10 +1058,6 @@ readiness = _system_api.readiness
 feature_flags = _system_api.feature_flags
 service_status = _system_api.service_status
 admin_service_controls = _system_api.admin_service_controls
-
-
-_dependency_snapshot_cache: Dict[str, Any] = {"checked_at": 0.0, "value": None}
-_dependency_snapshot_lock = threading.Lock()
 
 
 _billing = create_billing_service(sys.modules[__name__])

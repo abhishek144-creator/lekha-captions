@@ -8,6 +8,10 @@ try:
     from . import settings
 except ImportError:  # Direct execution from backend/ remains supported.
     import settings
+try:
+    from . import app_state
+except ImportError:  # Direct execution from backend/ remains supported.
+    import app_state
 
 
 def create_upload_router(host: ModuleType) -> SimpleNamespace:
@@ -139,7 +143,7 @@ def create_upload_router(host: ModuleType) -> SimpleNamespace:
             if request:
                 client_ip = host._client_rate_key(request)
                 allowed, retry_after, remaining = host._check_rate(
-                    host._upload_rate,
+                    app_state._upload_rate,
                     f"network:{client_ip}",
                     settings.UPLOAD_SHARED_NETWORK_RATE_LIMIT,
                     settings.UPLOAD_RATE_WINDOW,
@@ -153,7 +157,7 @@ def create_upload_router(host: ModuleType) -> SimpleNamespace:
                     host._track_event("upload_rejected_rate_limited")
                     raise host.HTTPException(status_code=429, detail="Too many uploads. Please wait before trying again.")
                 user_allowed, user_retry_after, user_remaining = host._check_rate(
-                    host._upload_rate, f"user:{uid}", settings.UPLOAD_USER_RATE_LIMIT, settings.UPLOAD_RATE_WINDOW
+                    app_state._upload_rate, f"user:{uid}", settings.UPLOAD_USER_RATE_LIMIT, settings.UPLOAD_RATE_WINDOW
                 )
                 host._apply_rate_headers(response, settings.UPLOAD_USER_RATE_LIMIT, user_remaining, user_retry_after)
                 if not user_allowed:

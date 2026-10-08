@@ -11,15 +11,19 @@ try:
     from . import settings
 except ImportError:  # Direct execution from backend/ remains supported.
     import settings
+try:
+    from . import app_state
+except ImportError:  # Direct execution from backend/ remains supported.
+    import app_state
 
 
 def create_export_jobs(host: ModuleType) -> SimpleNamespace:
     def _persist_export_job(job_id: str, payload: host.Dict[str, host.Any], *, write_redis: bool = True) -> bool:
         """Persist job state to at least one cross-process store."""
-        persisted = not write_redis and host._redis_client is not None
-        if write_redis and host._redis_client is not None:
+        persisted = not write_redis and app_state._redis_client is not None
+        if write_redis and app_state._redis_client is not None:
             try:
-                host._redis_client.setex(
+                app_state._redis_client.setex(
                     f"export_job:{job_id}",
                     7 * 24 * 3600,
                     host.json.dumps(payload, default=str),
@@ -33,7 +37,7 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
             for attempt in range(2):
                 try:
                     ref = db.collection("export_jobs").document(job_id)
-                    if host._redis_client is not None:
+                    if app_state._redis_client is not None:
                         @host.firestore.transactional
                         def mirror(transaction):
                             current = ref.get(transaction=transaction)
@@ -60,12 +64,12 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
 
     def _load_export_job(job_id: str) -> host.Optional[host.Dict[str, host.Any]]:
         """Load authoritative shared state, falling back to local state in local mode."""
-        if host._redis_client is not None:
+        if app_state._redis_client is not None:
             try:
-                raw = host._redis_client.get(f"export_job:{job_id}")
+                raw = app_state._redis_client.get(f"export_job:{job_id}")
                 if raw:
                     job = host.json.loads(raw)
-                    host._export_jobs[job_id] = job
+                    app_state._export_jobs[job_id] = job
                     return job
             except Exception as e:
                 host._json_log("warning", "export_job_redis_load_failed", job_id=job_id, error=str(e))
@@ -76,13 +80,13 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
                 snap = db.collection("export_jobs").document(job_id).get()
                 if snap.exists:
                     job = snap.to_dict() or {}
-                    host._export_jobs[job_id] = job
+                    app_state._export_jobs[job_id] = job
                     return job
             except Exception as e:
                 host._json_log("warning", "export_job_firestore_load_failed", job_id=job_id, error=str(e))
-        if (settings._IS_PRODUCTION or host._export_queue is not None) and job_id in host._export_jobs:
+        if (settings._IS_PRODUCTION or app_state._export_queue is not None) and job_id in app_state._export_jobs:
             raise host.HTTPException(status_code=503, detail="Export job status is temporarily unavailable")
-        return host._export_jobs.get(job_id)
+        return app_state._export_jobs.get(job_id)
 
 
     def _evaluate_export_policy(user_data: host.Dict[str, host.Any], now_ts: float):
@@ -196,7 +200,7 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
     def _set_export_job(job_id: str, status: str, *, expected_status=None, **kwargs):
         with host.JOB_STATE_LOCK:
             durable_only = {}
-            keep_out_of_redis = host._redis_client is not None and host.get_db() is not None
+            keep_out_of_redis = app_state._redis_client is not None and host.get_db() is not None
             if keep_out_of_redis:
                 durable_only = {
                     field: kwargs.pop(field)
@@ -208,15 +212,15 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
                 # A Redis-loss recovery seeds from Firestore; do not copy its
                 # snapshot back into Redis.
                 seed = {key: value for key, value in seed.items() if key not in settings._DURABLE_ONLY_EXPORT_JOB_FIELDS}
-            payload = host.transition_export_job(host._redis_client, job_id, seed, {
+            payload = host.transition_export_job(app_state._redis_client, job_id, seed, {
                 "status": status, "updated_at": host.time.time(), **kwargs,
             }, expected_status=expected_status)
             persisted = host._persist_export_job(
-                job_id, {**payload, **durable_only}, write_redis=host._redis_client is None,
+                job_id, {**payload, **durable_only}, write_redis=app_state._redis_client is None,
             )
-            if host._export_queue is not None and not persisted:
+            if app_state._export_queue is not None and not persisted:
                 raise RuntimeError("Export job state could not be persisted to shared storage")
-            host._export_jobs[job_id] = payload
+            app_state._export_jobs[job_id] = payload
             return payload
 
 
@@ -350,7 +354,7 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
             first_caption = next((c for c in captions if c and not c.get("is_text_element")), {})
             should_use_dom = False
             try:
-                should_use_dom = bool(host.processor._should_use_dom_template_renderer(style, captions))
+                should_use_dom = bool(app_state.processor._should_use_dom_template_renderer(style, captions))
             except Exception:
                 should_use_dom = False
             debug_payload = {
@@ -631,8 +635,8 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
         else:
             cache_hit = False
             host._log(rid, f"Starting render now job={export_job_id}")
-            async with host.render_semaphore:
-                result = await host.processor.burn_only(
+            async with app_state.render_semaphore:
+                result = await app_state.processor.burn_only(
                     input_path, output_path, captions, style_with_quality, server_word_layouts
                 )
             if not result.get('success'):

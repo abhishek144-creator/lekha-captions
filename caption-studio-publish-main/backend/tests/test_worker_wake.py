@@ -142,8 +142,8 @@ class DrainTests(unittest.TestCase):
         metrics_client, queue_client = Mock(), Mock()
         with patch.object(worker, "connect_redis", lambda url: self.redis), \
                 patch.object(worker, "cleanup_local_media_artifacts", lambda: None), \
-                patch.object(worker.api, "_redis_client", metrics_client), \
-                patch.object(worker.api, "_rq_redis_client", queue_client):
+                patch.object(worker.api.app_state, "_redis_client", metrics_client), \
+                patch.object(worker.api.app_state, "_rq_redis_client", queue_client):
             worker._drain_loop(state, ["render"], drain=lambda conn, queues: False)
         self.assertFalse(state.running)
         for client in (metrics_client, queue_client):

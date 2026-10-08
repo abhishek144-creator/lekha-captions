@@ -11,6 +11,10 @@ try:
     from . import settings
 except ImportError:  # Direct execution from backend/ remains supported.
     import settings
+try:
+    from . import app_state
+except ImportError:  # Direct execution from backend/ remains supported.
+    import app_state
 
 
 def create_operator_controls(host: ModuleType) -> SimpleNamespace:
@@ -30,11 +34,11 @@ def create_operator_controls(host: ModuleType) -> SimpleNamespace:
 
     def _read_service_controls(force: bool = False) -> host.Dict[str, host.Any]:
         now_ts = host.time.time()
-        cached = host._service_control_cache.get("value") or {}
+        cached = app_state._service_control_cache.get("value") or {}
         if (
             not force
             and cached
-            and (now_ts - float(host._service_control_cache.get("ts") or 0.0)) < settings.SERVICE_CONTROL_CACHE_SECONDS
+            and (now_ts - float(app_state._service_control_cache.get("ts") or 0.0)) < settings.SERVICE_CONTROL_CACHE_SECONDS
         ):
             return dict(cached)
 
@@ -71,8 +75,8 @@ def create_operator_controls(host: ModuleType) -> SimpleNamespace:
                     return dict(cached)
                 return controls
 
-        host._service_control_cache["ts"] = now_ts
-        host._service_control_cache["value"] = dict(controls)
+        app_state._service_control_cache["ts"] = now_ts
+        app_state._service_control_cache["value"] = dict(controls)
         return controls
 
 
