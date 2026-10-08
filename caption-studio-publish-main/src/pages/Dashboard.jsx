@@ -243,6 +243,8 @@ export default function Dashboard() {
   // Waveform data for timeline
   const [waveformData, setWaveformData] = useState(null);
   const mediaRefreshInFlightRef = useRef(false);
+  // The preview <video>, for the mobile dock's live scrubbing.
+  const previewVideoElRef = useRef(null);
   const [showCaptionRetryNotice, setShowCaptionRetryNotice] = useState(false)
   const [showLowCreditNotice, setShowLowCreditNotice] = useState(false)
   const [translationNotice, setTranslationNotice] = useState('')
@@ -1111,6 +1113,7 @@ export default function Dashboard() {
                       wordPopup={wordPopup}
                       setWordPopup={openWordPopup}
                       onVideoLoaded={async (videoEl) => {
+                        previewVideoElRef.current = videoEl || null;
                         if (videoEl && !waveformData) {
                           const data = await extractWaveformData(videoEl, 400);
                           if (data) setWaveformData(data);
@@ -1187,6 +1190,7 @@ export default function Dashboard() {
                 selectedCaptionId={selectedCaptionId}
                 onSelectCaption={setSelectedCaptionId}
                 onToggleFullscreen={() => setIsVideoFullscreen(true)}
+                getVideoElement={() => previewVideoElRef.current}
               />
             )}
           </div>

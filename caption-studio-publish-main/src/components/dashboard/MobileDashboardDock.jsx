@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Check, ChevronDown, Clock3, Maximize2, Pause, PencilLine, Play, SlidersHorizontal, Sparkles } from 'lucide-react'
 import { motion, useDragControls } from 'framer-motion'
 import { Slider } from '@/components/ui/slider'
+import { createLiveScrubber } from './liveScrub'
 
 const formatClock = (seconds) => {
   const safe = Math.max(0, Number(seconds) || 0)
@@ -41,9 +42,20 @@ export default function MobileDashboardDock({
   selectedCaptionId,
   onSelectCaption,
   onToggleFullscreen,
+  getVideoElement,
 }) {
   const [scrubTime, setScrubTime] = useState(null)
   const sheetDragControls = useDragControls()
+  // Seek bar drags show the frame under the finger (one seek in flight at a
+  // time) and pause playback, resuming on release if it was playing.
+  const getVideoElementRef = useRef(getVideoElement)
+  getVideoElementRef.current = getVideoElement
+  const liveScrubRef = useRef(null)
+  if (!liveScrubRef.current) {
+    liveScrubRef.current = createLiveScrubber(() => getVideoElementRef.current?.() || null)
+  }
+  const resumeAfterScrubRef = useRef(false)
+  useEffect(() => () => liveScrubRef.current?.end(), [])
   const stripRef = useRef(null)
   const chipRefs = useRef({})
 
@@ -123,10 +135,20 @@ export default function MobileDashboardDock({
           step={0.01}
           disabled={!duration}
           aria-label="Seek"
-          onValueChange={([value]) => setScrubTime(value)}
+          onValueChange={([value]) => {
+            if (scrubTime === null) {
+              resumeAfterScrubRef.current = isPlaying
+              if (isPlaying) setIsPlaying(false)
+            }
+            setScrubTime(value)
+            liveScrubRef.current.scrubTo(value)
+          }}
           onValueCommit={([value]) => {
+            liveScrubRef.current.end()
             onSeek(value)
             setScrubTime(null)
+            if (resumeAfterScrubRef.current) setIsPlaying(true)
+            resumeAfterScrubRef.current = false
           }}
           className="flex-1 py-3"
           trackClassName="h-1 bg-white/15"

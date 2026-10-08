@@ -1468,3 +1468,29 @@
     font-size: 16px !important;
   }
 }
+
+/* Phone/tablet tool sheet: touch-sized controls. The panels are shared with
+   the desktop inspector, so sizing is scoped to the sheet. */
+.lekha-mobile-sheet .lekha-slider-root {
+  min-height: 36px;
+}
+
+.lekha-mobile-sheet .lekha-slider-track,
+.lekha-mobile-sheet .lekha-slider-range {
+  height: 6px;
+}
+
+.lekha-mobile-sheet .lekha-slider-thumb {
+  width: 24px;
+  height: 24px;
+}
+
+.lekha-mobile-sheet .text-\[9px\] {
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.lekha-mobile-sheet .text-\[10px\] {
+  font-size: 11.5px;
+  line-height: 1.35;
+}

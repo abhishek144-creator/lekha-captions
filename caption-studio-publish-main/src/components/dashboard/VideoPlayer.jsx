@@ -7,7 +7,8 @@ import { createPortal } from 'react-dom';
 import { Play, X, Move, RotateCw, Trash2 } from 'lucide-react';
 import CanvasToolRail from './CanvasToolRail';
 import PlaybackControls from './PlaybackControls';
-import PreviewScrubber from './PreviewScrubber';
+import PreviewScrubber from './PreviewScrubber';
+import { createLiveScrubber } from './liveScrub';
 import { DESKTOP_EDITOR_QUERY, useMediaQuery } from '@/hooks/useMediaQuery';
 import VideoPlayerKeyframes from './VideoPlayerKeyframes';
 import { resolveScriptFont, loadGoogleFont } from './fontUtils';
@@ -130,8 +131,13 @@ export default function VideoPlayer({
   const lastDragDropTime = useRef(0);
   const wordResizeActiveRef = useRef(false);
   const inputRef = useRef(null);
-  // Blocks handleTimeUpdate from propagating to Dashboard while user is dragging
-  const isScrubbingRef = useRef(false);
+  // Scrubber drags seek live (one seek in flight at a time) so the frame and
+  // captions follow the thumb; playback pauses during the drag.
+  const liveScrubRef = useRef(null);
+  if (!liveScrubRef.current) {
+    liveScrubRef.current = createLiveScrubber(() => videoRef.current);
+  }
+  const resumeAfterScrubRef = useRef(false);
 
   // ── Alignment snap guides ───────────────────────────────────────────────
   // { hLines: [pct], vLines: [pct] } — percent values to draw guide lines
@@ -565,7 +571,7 @@ export default function VideoPlayer({
   onVideoLoadedRef.current = onVideoLoaded;
 
   const handleTimeUpdate = useCallback(() => {
-    if (videoRef.current && !isScrubbingRef.current) {
+    if (videoRef.current) {
       setCurrentTime(videoRef.current.currentTime);
     }
   }, [setCurrentTime]);
@@ -2712,14 +2718,20 @@ export default function VideoPlayer({
             value={localScrubTime ?? currentTime}
             duration={duration}
             onScrub={(val) => {
-              isScrubbingRef.current = true;
+              if (localScrubTime === null) {
+                resumeAfterScrubRef.current = isPlaying;
+                if (isPlaying) setIsPlaying(false);
+              }
               setLocalScrubTime(val);
+              liveScrubRef.current.scrubTo(val);
             }}
             onCommit={(val) => {
-              isScrubbingRef.current = false;
+              liveScrubRef.current.end();
               setLocalScrubTime(null);
               if (videoRef.current) videoRef.current.currentTime = val;
               setCurrentTime(val);
+              if (resumeAfterScrubRef.current) setIsPlaying(true);
+              resumeAfterScrubRef.current = false;
             }}
           />
 
