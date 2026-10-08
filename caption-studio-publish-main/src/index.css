@@ -1458,3 +1458,13 @@
     color: #566276;
   }
 }
+
+/* iOS Safari zooms the page into any focused field under 16px, which throws
+   the phone editor off-screen mid-edit. Touch screens get 16px text fields. */
+@media (pointer: coarse) and (max-width: 1023px) {
+  input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="file"]),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}

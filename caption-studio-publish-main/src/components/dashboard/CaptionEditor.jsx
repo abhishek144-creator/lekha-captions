@@ -267,7 +267,7 @@ export default function CaptionEditor({
           placeholder="Search transcript..."
           className="w-full h-9 rounded-xl border border-white/10 bg-black/35 pl-9 pr-12 text-xs text-white placeholder:text-slate-600 outline-none focus:border-sky-300/40"
         />
-        <span className="absolute right-2 top-1/2 -translate-y-1/2 rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[9px] font-mono text-slate-500">
+        <span className="absolute right-2 top-1/2 -translate-y-1/2 hidden [@media(pointer:fine)]:inline rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[9px] font-mono text-slate-500">
           Ctrl K
         </span>
       </div>

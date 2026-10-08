@@ -15,7 +15,7 @@ export default function CanvasToolRail({ isVideoFullscreen, guidesActive, onTool
       role="toolbar"
       aria-label="Preview tools"
       aria-orientation="vertical"
-      className={`absolute top-1/2 -translate-y-1/2 z-50 rounded-xl border border-white/10 bg-[#0d0d0d]/90 p-1.5 shadow-[0_18px_42px_-24px_rgba(0,0,0,0.9)] backdrop-blur-md ${isVideoFullscreen ? 'left-[24%]' : 'left-2 sm:left-4'}`}
+      className={`absolute top-1/2 -translate-y-1/2 z-50 rounded-xl border border-white/10 bg-[#0d0d0d]/90 p-1.5 shadow-[0_18px_42px_-24px_rgba(0,0,0,0.9)] backdrop-blur-md ${isVideoFullscreen ? 'left-2 lg:left-[24%]' : 'max-lg:hidden left-2 sm:left-4'}`}
     >
       {tools.map(({ icon: Icon, title, key, active }) => (
         <button
