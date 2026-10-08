@@ -16,6 +16,10 @@ try:
     from . import settings
 except ImportError:  # Direct execution from backend/ remains supported.
     import settings
+try:
+    from . import app_state
+except ImportError:  # Direct execution from backend/ remains supported.
+    import app_state
 
 
 def create_system_router(host: ModuleType) -> SimpleNamespace:
@@ -28,7 +32,7 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
         # server counter names so it can't poison the release gate / alerting.
         client_ip = host._client_rate_key(request)
         allowed, retry_after, remaining = await host.asyncio.to_thread(
-            host._check_rate, host._analytics_rate, client_ip, settings.ANALYTICS_RATE_LIMIT,
+            host._check_rate, app_state._analytics_rate, client_ip, settings.ANALYTICS_RATE_LIMIT,
         )
         host._apply_rate_headers(response, settings.ANALYTICS_RATE_LIMIT, remaining, retry_after)
         if not allowed:
@@ -53,7 +57,7 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
     def create_support_request(req: host.SupportRequest, request: Request, response: Response):
         client_ip = host._client_rate_key(request)
         allowed, retry_after, remaining = host._check_rate(
-            host._support_rate,
+            app_state._support_rate,
             f"support:{client_ip}",
             settings.SUPPORT_RATE_LIMIT,
         )
@@ -125,9 +129,9 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
 
     def _runtime_dependency_snapshot() -> host.Dict[str, host.Any]:
         now_ts = host.time.time()
-        with host._dependency_snapshot_lock:
-            cached = host._dependency_snapshot_cache.get("value")
-            if cached and now_ts - float(host._dependency_snapshot_cache.get("checked_at", 0)) < 15:
+        with app_state._dependency_snapshot_lock:
+            cached = app_state._dependency_snapshot_cache.get("value")
+            if cached and now_ts - float(app_state._dependency_snapshot_cache.get("checked_at", 0)) < 15:
                 return cached
 
         checks: host.Dict[str, bool] = {
@@ -139,15 +143,15 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
             # production images are split by role. Inline rendering still requires
             # Node when the durable queue is disabled.
             "node": settings.DURABLE_QUEUE_ENABLED or host.shutil.which("node") is not None,
-            "redis": host._redis_client is not None,
+            "redis": app_state._redis_client is not None,
             "firestore": False,
             "storage": False,
             "scratch_disk": False,
         }
         details: host.Dict[str, host.Any] = {}
-        if host._redis_client is not None:
+        if app_state._redis_client is not None:
             try:
-                checks["redis"] = bool(host._redis_client.ping())
+                checks["redis"] = bool(app_state._redis_client.ping())
             except Exception:
                 checks["redis"] = False
         try:
@@ -163,8 +167,8 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
             details["storage_error"] = str(e)[:200]
         if settings.DURABLE_QUEUE_ENABLED and checks["redis"] and host.RQWorker is not None:
             try:
-                workers = host.RQWorker.all(connection=host._redis_client)
-                render_queue_names = list(host._export_queues) or [settings.EXPORT_QUEUE_NAME]
+                workers = host.RQWorker.all(connection=app_state._redis_client)
+                render_queue_names = list(app_state._export_queues) or [settings.EXPORT_QUEUE_NAME]
                 worker_counts = {
                     queue_name: 0
                     for queue_name in (*render_queue_names, settings.TRANSCRIPTION_QUEUE_NAME, settings.MEDIA_SCAN_QUEUE_NAME)
@@ -173,8 +177,8 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
                     queue_names = getattr(worker, "queue_names", [])
                     if callable(queue_names):
                         queue_names = queue_names()
-                    worker_release = host._redis_client.hget(worker.key, "app_release")
-                    draining = host._redis_client.hget(worker.key, "draining")
+                    worker_release = app_state._redis_client.hget(worker.key, "app_release")
+                    draining = app_state._redis_client.hget(worker.key, "draining")
                     if isinstance(worker_release, bytes):
                         worker_release = worker_release.decode("ascii")
                     if worker_release == settings.APP_RELEASE and draining not in ("1", b"1"):
@@ -188,19 +192,19 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
                 details["workers_by_queue"] = worker_counts
                 render_queue_depths = {}
                 for queue_name in render_queue_names:
-                    queue = host._export_queues.get(queue_name)
+                    queue = app_state._export_queues.get(queue_name)
                     if queue is None and queue_name == settings.EXPORT_QUEUE_NAME:
-                        queue = host._export_queue
+                        queue = app_state._export_queue
                     render_queue_depths[queue_name] = int(queue.count) if queue is not None else 0
                 queue_depths = {
                     **render_queue_depths,
                     settings.TRANSCRIPTION_QUEUE_NAME: (
-                        int(host._transcription_queue.count)
-                        if host._transcription_queue is not None else 0
+                        int(app_state._transcription_queue.count)
+                        if app_state._transcription_queue is not None else 0
                     ),
                     settings.MEDIA_SCAN_QUEUE_NAME: (
-                        int(host._media_scan_queue.count)
-                        if host._media_scan_queue is not None else 0
+                        int(app_state._media_scan_queue.count)
+                        if app_state._media_scan_queue is not None else 0
                     ),
                 }
                 details["queue_depths"] = queue_depths
@@ -224,8 +228,8 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
             details["scratch_disk_error"] = str(e)[:200]
 
         value = {"ready": all(checks.values()), "checks": checks, "details": details}
-        with host._dependency_snapshot_lock:
-            host._dependency_snapshot_cache.update({"checked_at": now_ts, "value": value})
+        with app_state._dependency_snapshot_lock:
+            app_state._dependency_snapshot_cache.update({"checked_at": now_ts, "value": value})
         return value
 
 
@@ -260,8 +264,8 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
             body["slo"] = host._build_slo_snapshot()
             body["queue"] = {
                 "durable_enabled": settings.DURABLE_QUEUE_ENABLED,
-                "queue_names": list(host._export_queues) or [settings.EXPORT_QUEUE_NAME],
-                "connected": host._export_queue is not None,
+                "queue_names": list(app_state._export_queues) or [settings.EXPORT_QUEUE_NAME],
+                "connected": app_state._export_queue is not None,
             }
             body["dependencies"] = dependencies
         if not ready:

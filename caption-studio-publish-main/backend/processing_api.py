@@ -8,6 +8,10 @@ try:
     from . import settings
 except ImportError:  # Direct execution from backend/ remains supported.
     import settings
+try:
+    from . import app_state
+except ImportError:  # Direct execution from backend/ remains supported.
+    import app_state
 
 
 def create_processing_router(host: ModuleType) -> SimpleNamespace:
@@ -34,7 +38,7 @@ def create_processing_router(host: ModuleType) -> SimpleNamespace:
         # recovery mechanism for a Redis outage or a crash between commit/enqueue;
         # it is no longer the primary delivery path.
         try:
-            await host.asyncio.to_thread(jobs.dispatch, host._transcription_queue, job["job_id"])
+            await host.asyncio.to_thread(jobs.dispatch, app_state._transcription_queue, job["job_id"])
         except Exception as error:
             host._json_log(
                 "warning",
@@ -114,14 +118,14 @@ def create_processing_router(host: ModuleType) -> SimpleNamespace:
         uid = (decoded_token.get("uid") or "").strip() or "unknown-user"
         client_ip = host._client_rate_key(request)
         allowed, retry_after, remaining = host._check_rate(
-            host._process_rate, f"network:{client_ip}", settings.PROCESS_SHARED_NETWORK_RATE_LIMIT
+            app_state._process_rate, f"network:{client_ip}", settings.PROCESS_SHARED_NETWORK_RATE_LIMIT
         )
         host._apply_rate_headers(response, settings.PROCESS_SHARED_NETWORK_RATE_LIMIT, remaining, retry_after)
         if not allowed:
             host._track_event("process_rejected_rate_limited")
             raise host.HTTPException(status_code=429, detail="Too many transcription requests. Please wait before trying again.")
         user_allowed, user_retry_after, user_remaining = host._check_rate(
-            host._process_rate, f"user:{uid}", settings.PROCESS_USER_RATE_LIMIT
+            app_state._process_rate, f"user:{uid}", settings.PROCESS_USER_RATE_LIMIT
         )
         host._apply_rate_headers(response, settings.PROCESS_USER_RATE_LIMIT, user_remaining, user_retry_after)
         if not user_allowed:
@@ -228,7 +232,7 @@ def create_processing_router(host: ModuleType) -> SimpleNamespace:
             await host.asyncio.to_thread(host._reserve_ai_quota, uid, "process")
 
             def _generate_captions_in_worker_thread():
-                return host.asyncio.run(host.processor.generate_captions_only(
+                return host.asyncio.run(app_state.processor.generate_captions_only(
                     input_path,
                     target_language=req.language,
                     min_words=req.min_words,

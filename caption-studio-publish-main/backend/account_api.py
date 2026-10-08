@@ -16,6 +16,10 @@ try:
     from . import settings
 except ImportError:  # Direct execution from backend/ remains supported.
     import settings
+try:
+    from . import app_state
+except ImportError:  # Direct execution from backend/ remains supported.
+    import app_state
 
 
 def create_account_router(host: ModuleType) -> SimpleNamespace:
@@ -29,7 +33,7 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
     @router.post("/api/redeem-promo")
     def redeem_promo(req: RedeemPromoRequest, request: Request, response: Response):
         client_ip = host._client_rate_key(request)
-        allowed, retry_after, remaining = host._check_rate(host._promo_rate, client_ip, settings.PROMO_RATE_LIMIT)
+        allowed, retry_after, remaining = host._check_rate(app_state._promo_rate, client_ip, settings.PROMO_RATE_LIMIT)
         host._apply_rate_headers(response, settings.PROMO_RATE_LIMIT, remaining, retry_after)
         if not allowed:
             raise HTTPException(status_code=429, detail="Too many promo code attempts. Please wait before trying again.")
@@ -305,7 +309,7 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
                 (f"signup:user:{uid}", settings.SIGNUP_USER_RATE_LIMIT),
             ):
                 allowed, _retry_after, _remaining = host._check_rate(
-                    host._signup_rate, rate_key, rate_limit
+                    app_state._signup_rate, rate_key, rate_limit
                 )
                 if not allowed:
                     raise HTTPException(
@@ -506,9 +510,9 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
         }, merge=True)
         if settings._IS_PRODUCTION:
             host.TranscriptionJobs(db).prepare_deletion(uid)
-        if host._redis_client is not None:
+        if app_state._redis_client is not None:
             try:
-                active = host._redis_client.get(f"procactive:{uid}") or host._redis_client.get(f"expactive:{uid}")
+                active = app_state._redis_client.get(f"procactive:{uid}") or app_state._redis_client.get(f"expactive:{uid}")
             except Exception as error:
                 raise HTTPException(status_code=503, detail="Cannot verify active jobs; retry account deletion.") from error
             if active:
