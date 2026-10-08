@@ -44,18 +44,23 @@ class AssSubtitleMixin:
         ass_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f"_tmp_{_uuid.uuid4().hex[:8]}.ass")
 
         # ── Scale factor: preview coords → video coords ────────────────────
+        # Same reference as the DOM template renderer (render_template_overlay.mjs
+        # exportCssScale): style lengths are CSS px on a 360px-wide preview, the
+        # phone editor's 360x640 frame for 9:16. The server strips browser
+        # preview sizes, so preview_width is normally absent. A different
+        # reference here made a caption change size once it was animated.
         base_size = int(style.get('font_size', 18))
-        preview_h = float(style.get('preview_height', 400))
-        if preview_h < 50:
-            preview_h = 400
-        scale_factor = video_h / preview_h
+        try:
+            preview_w = float(style.get('preview_width') or 0)
+        except (TypeError, ValueError):
+            preview_w = 0.0
+        scale_factor = max(1.0, min(8.0, video_w / (preview_w if preview_w > 0 else 360.0)))
         preview_font_px = 0.0
         try:
             preview_font_px = float(style.get('preview_template_font_px') or 0)
         except (TypeError, ValueError):
             preview_font_px = 0.0
         font_size_source = preview_font_px if preview_font_px > 0 else base_size
-        scaled_size = max(int(font_size_source * scale_factor), 20)
 
         # ── Effect/stroke/shadow override tag builder ──────────────────────
         def _get_effect_tags(eff_type, base_color_hex, stroke_data, shadow_data, eff_props):
@@ -113,7 +118,7 @@ class AssSubtitleMixin:
 
         # ── Font ───────────────────────────────────────────────────────────
         font_name = font_info['ass_name']
-        print(f"[ASS] font={font_name!r} size={scaled_size} scale_factor={scale_factor:.2f}")
+        ass_font_info = font_info
 
         # ── Script detection + Indic font override ────────────────────────
         all_text = " ".join(c.get('text', '') for c in captions)
@@ -141,6 +146,17 @@ class AssSubtitleMixin:
             if indic_font_info and font_name.lower() not in _indic_safe:
                 print(f"[ASS] Font '{font_name}' is Latin-only; overriding to {indic_font_info['ass_name']} for {detected_script}")
                 font_name = indic_font_info['ass_name']
+                ass_font_info = indic_font_info
+
+        # ASS Fontsize is the face's cell height (winAscent + winDescent), CSS
+        # font-size is its em square: convert so glyphs match the DOM renderer.
+        cell_height_ratio = self._ass_cell_height_ratio(ass_font_info)
+
+        def _ass_fs(css_px):
+            return max(int(round(float(css_px) * scale_factor * cell_height_ratio)), 20)
+
+        scaled_size = _ass_fs(font_size_source)
+        print(f"[ASS] font={font_name!r} size={scaled_size} scale_factor={scale_factor:.2f} cell_ratio={cell_height_ratio:.3f}")
         INDIC_Y_CORR = {
             'devanagari': -0.025, 'bengali': -0.020, 'gujarati': -0.020,
             'punjabi': -0.015, 'tamil': -0.015, 'telugu': -0.015,
@@ -379,7 +395,7 @@ class AssSubtitleMixin:
                     cs = c.get('custom_style') or {}
                     te_fi = self._ensure_font(cs.get('font_family', 'Inter') or 'Inter')
                     te_fn = te_fi['ass_name']
-                    te_fs = max(int(int(cs.get('font_size', 18) or 18) * scale_factor), 20)
+                    te_fs = _ass_fs(cs.get('font_size', 18) or 18)
                     te_c = self._hex_to_ass(cs.get('text_color', '#ffffff') or '#ffffff',
                                             float(cs.get('text_opacity', 1.0) or 1.0))
                     te_bold = 1 if str(cs.get('font_weight', '500') or '500') in ('bold', '700', '800', '900') else 0
@@ -439,7 +455,7 @@ class AssSubtitleMixin:
                                 wfi2 = self._ensure_font(wsv2['fontFamily'])
                                 ov2.append(f"\\fn{wfi2['ass_name']}"); rv2.append(f"\\fn{te_fn}")
                             if wsv2.get('fontSize'):
-                                ov2.append(f"\\fs{max(int(float(wsv2['fontSize'])*scale_factor),20)}"); rv2.append(f"\\fs{te_fs}")
+                                ov2.append(f"\\fs{_ass_fs(wsv2['fontSize'])}"); rv2.append(f"\\fs{te_fs}")
                             te_parts.append("{" + "".join(ov2) + "}" + tok2 + "{" + "".join(rv2) + "}" if ov2 else tok2)
                     te_main = " ".join(te_parts)
                     te_base = [f"\\fn{te_fn}", f"\\fs{te_fs}", f"\\1c{te_c}", f"\\an{te_align}", te_style_str]
@@ -458,7 +474,7 @@ class AssSubtitleMixin:
                         wy3 = int((float(wsv3.get('abs_y_pct', 50)) / 100) * video_h)
                         wc3 = self._hex_to_ass(wsv3.get('color', cs.get('text_color', '#ffffff') or '#ffffff'))
                         wfn3 = self._ensure_font(wsv3['fontFamily'])['ass_name'] if wsv3.get('fontFamily') else te_fn
-                        wfs3 = max(int(float(wsv3['fontSize'])*scale_factor), 20) if wsv3.get('fontSize') else te_fs
+                        wfs3 = _ass_fs(wsv3['fontSize']) if wsv3.get('fontSize') else te_fs
                         pt3 = [f"\\fn{wfn3}", f"\\fs{wfs3}", f"\\1c{wc3}", f"\\an{te_align}", te_style_str, f"\\pos({wx3},{wy3})"]
                         if te_bold: pt3.append("\\b1")
                         if te_italic: pt3.append("\\i1")
@@ -610,7 +626,7 @@ class AssSubtitleMixin:
                         _wy_p = int((float(_ws_p.get('abs_y_pct', 75)) / 100) * video_h)
                         _wc_p = _gn(_ws_p.get('color', primary_hex) or primary_hex, float(style.get('text_opacity', 1.0) or 1.0))
                         _wfn_p = self._ensure_font(_ws_p['fontFamily'])['ass_name'] if _ws_p.get('fontFamily') else font_name
-                        _wfs_p = max(int(float(_ws_p['fontSize']) * scale_factor), 20) if _ws_p.get('fontSize') else scaled_size
+                        _wfs_p = _ass_fs(_ws_p['fontSize']) if _ws_p.get('fontSize') else scaled_size
                         _weff_t = _ws_p.get('effectType', 'none') or 'none'
                         if _weff_t != 'none':
                             _weff_p = {'offset': float(_ws_p.get('effectOffset', 50) or 50), 'direction': float(_ws_p.get('effectDirection', -45) or -45), 'blur': float(_ws_p.get('effectBlur', 50) or 50), 'transparency': float(_ws_p.get('effectTransparency', 40) or 40), 'thickness': float(_ws_p.get('effectThickness', 50) or 50), 'intensity': float(_ws_p.get('effectIntensity', 50) or 50), 'color': _ws_p.get('effectColor', '#000000') or '#000000'}
@@ -651,7 +667,7 @@ class AssSubtitleMixin:
                             wfi = self._ensure_font(ws['fontFamily'])
                             ov.append(f"\\fn{wfi['ass_name']}"); rv.append(f"\\fn{font_name}")
                         if ws.get('fontSize'):
-                            ov.append(f"\\fs{max(int(float(ws['fontSize'])*scale_factor),20)}"); rv.append(f"\\fs{scaled_size}")
+                            ov.append(f"\\fs{_ass_fs(ws['fontSize'])}"); rv.append(f"\\fs{scaled_size}")
                         if str(ws.get('fontWeight', '')) in ('bold', '700', '800', '900'):
                             ov.append("\\b1"); rv.append(f"\\b{bold_flag}")
                         if ws.get('fontStyle') == 'italic':
@@ -808,7 +824,7 @@ class AssSubtitleMixin:
                                 w_tags.insert(0, f"\\fn{wfi3['ass_name']}")
                             if ws2.get('fontSize'):
                                 w_tags = [t for t in w_tags if not t.startswith('\\fs')]
-                                w_tags.insert(1, f"\\fs{max(int(float(ws2['fontSize'])*scale_factor),20)}")
+                                w_tags.insert(1, f"\\fs{_ass_fs(ws2['fontSize'])}")
                             f.write(f"Dialogue: 0,{self._fmt(w_st)},{self._fmt(w_et)},Default,,0,0,0,,{{{''.join(w_tags)}}}{ww}\n")
                     elif main_text:
                         f.write(f"Dialogue: 0,{s},{e},Default,,0,0,0,,{{{''.join(tags)}}}{main_text}\n")
@@ -820,7 +836,7 @@ class AssSubtitleMixin:
                     wc4 = self._hex_to_ass(ws4.get('color', primary_hex) or primary_hex,
                                            float(style.get('text_opacity', 1.0) or 1.0))
                     wfn4 = self._ensure_font(ws4['fontFamily'])['ass_name'] if ws4.get('fontFamily') else font_name
-                    wfs4 = max(int(float(ws4['fontSize'])*scale_factor), 20) if ws4.get('fontSize') else scaled_size
+                    wfs4 = _ass_fs(ws4['fontSize']) if ws4.get('fontSize') else scaled_size
                     # Per-word effects from floating popup (effectType, effectBlur, etc.)
                     w_eff_type = ws4.get('effectType', 'none') or 'none'
                     if w_eff_type != 'none':

@@ -6,6 +6,7 @@ Mixed into processor.VideoProcessor; methods use its instance state.
 import os
 import re
 import shutil
+import struct
 import subprocess
 
 import requests
@@ -271,7 +272,69 @@ BOLD_VARIANTS = {
 }
 
 
+# libass sizes a face so its GDI cell (OS/2 usWinAscent + usWinDescent, or
+# hhea ascender - descender when those are zero) equals the ASS Fontsize; CSS
+# sizes the em square. Cell / em is 1.2-2.0 across the bundled fonts. Used when
+# the font file cannot be read: 1.6 is the old fixed 4.8x/3.0x ratio, so an
+# unreadable font keeps its previous ASS size.
+DEFAULT_ASS_CELL_HEIGHT_RATIO = 1.6
+_cell_height_ratio_cache = {}
+
+
+def read_font_cell_height_ratio(font_path):
+    """Return (cell height / units per em) for a TrueType/OpenType file, or None."""
+    if font_path in _cell_height_ratio_cache:
+        return _cell_height_ratio_cache[font_path]
+    ratio = None
+    try:
+        with open(font_path, 'rb') as handle:
+            data = handle.read()
+        num_tables = struct.unpack('>H', data[4:6])[0]
+        tables = {}
+        for index in range(num_tables):
+            tag, _checksum, offset, _length = struct.unpack('>4sIII', data[12 + 16 * index:28 + 16 * index])
+            tables[tag] = offset
+        head, os2, hhea = tables.get(b'head'), tables.get(b'OS/2'), tables.get(b'hhea')
+        units_per_em = struct.unpack('>H', data[head + 18:head + 20])[0] if head is not None else 0
+        cell = 0
+        if os2 is not None:
+            # libass reads these as signed shorts (ass_font.c set_font_metrics).
+            win_ascent, win_descent = struct.unpack('>hh', data[os2 + 74:os2 + 78])
+            cell = win_ascent + win_descent
+        if cell <= 0 and hhea is not None:
+            ascender, descender = struct.unpack('>hh', data[hhea + 4:hhea + 8])
+            cell = ascender - descender
+        if units_per_em > 0 and cell > 0:
+            ratio = cell / units_per_em
+    except (OSError, struct.error, TypeError):
+        ratio = None
+    _cell_height_ratio_cache[font_path] = ratio
+    return ratio
+
+
 class FontAssetsMixin:
+    def _ass_cell_height_ratio(self, font_info):
+        """Cell/em ratio of the file libass will load for font_info, so a CSS
+        px size can be converted to the ASS Fontsize that draws the same glyphs."""
+        candidates = []
+        if font_info and font_info.get('file'):
+            candidates.append(os.path.join(self.fonts_dir, font_info['file']))
+        if font_info and font_info.get('ass_name') and self._packaged_font_available(font_info['ass_name']):
+            try:
+                result = subprocess.run(
+                    ["fc-match", "-f", "%{file}", font_info['ass_name']],
+                    capture_output=True, text=True, timeout=3, check=True,
+                )
+                candidates.append(result.stdout.strip())
+            except (OSError, subprocess.SubprocessError):
+                pass
+        for path in candidates:
+            if path and os.path.isfile(path):
+                ratio = read_font_cell_height_ratio(path)
+                if ratio:
+                    return ratio
+        return DEFAULT_ASS_CELL_HEIGHT_RATIO
+
     def _ensure_fallback_font(self):
         fallback_path = os.path.join(self.fonts_dir, "Inter.ttf")
         if self._packaged_font_available("Inter"):
