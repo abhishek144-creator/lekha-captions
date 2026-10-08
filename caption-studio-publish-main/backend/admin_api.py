@@ -32,13 +32,17 @@ try:
     from . import entitlements
 except ImportError:  # Direct execution from backend/ remains supported.
     import entitlements
+try:
+    from . import api_models
+except ImportError:  # Direct execution from backend/ remains supported.
+    import api_models
 
 
 def create_admin_router(host: ModuleType) -> SimpleNamespace:
     router = APIRouter()
 
     @router.post("/api/admin/recovery-summary")
-    def admin_recovery_summary(req: host.AdminRecoveryRequest):
+    def admin_recovery_summary(req: api_models.AdminRecoveryRequest):
         if not request_security._is_admin_token(req.id_token):
             raise HTTPException(status_code=403, detail="Admin access required")
         db = firebase_admin_setup.get_db()
@@ -82,7 +86,7 @@ def create_admin_router(host: ModuleType) -> SimpleNamespace:
 
 
     @router.post("/api/admin/test-alerts")
-    def admin_test_alerts(req: host.AdminAlertTestRequest):
+    def admin_test_alerts(req: api_models.AdminAlertTestRequest):
         """Dispatch a controlled Sentry event for launch evidence."""
         if not request_security._is_admin_token(req.id_token):
             raise HTTPException(status_code=403, detail="Admin access required")
@@ -120,7 +124,7 @@ def create_admin_router(host: ModuleType) -> SimpleNamespace:
 
 
     @router.post("/api/admin/tenant-backfill")
-    def admin_tenant_backfill(req: host.TenantBackfillRequest):
+    def admin_tenant_backfill(req: api_models.TenantBackfillRequest):
         if not request_security._is_admin_token(req.id_token):
             raise HTTPException(status_code=403, detail="Admin access required")
         db = firebase_admin_setup.get_db()

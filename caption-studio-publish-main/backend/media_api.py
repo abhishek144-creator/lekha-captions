@@ -36,6 +36,10 @@ try:
     from . import media_records
 except ImportError:  # Direct execution from backend/ remains supported.
     import media_records
+try:
+    from . import api_models
+except ImportError:  # Direct execution from backend/ remains supported.
+    import api_models
 
 
 def create_media_router(host: ModuleType) -> SimpleNamespace:
@@ -154,7 +158,7 @@ def create_media_router(host: ModuleType) -> SimpleNamespace:
 
 
     @router.post("/api/media/upload-url")
-    def refresh_uploaded_media_url(req: host.MediaUrlRequest):
+    def refresh_uploaded_media_url(req: api_models.MediaUrlRequest):
         decoded_token = request_security._authenticate_media_request(req.id_token, req.org_id)
         uid = (decoded_token.get("uid") or "").strip() or "unknown-user"
         if not media_records._validate_file_id(req.file_id):

@@ -177,13 +177,13 @@ class ProductionBoundaryTests(unittest.TestCase):
                 )
 
     def test_production_missing_queue_never_renders_in_api(self):
-        request = main.ExportRequest(file_id="123e4567-e89b-12d3-a456-426614174000",
+        request = main.api_models.ExportRequest(file_id="123e4567-e89b-12d3-a456-426614174000",
                                      captions=[{"id": "1", "text": "hello", "start_time": 0, "end_time": 1}])
         from starlette.requests import Request
         with (patch.object(main.settings, "_IS_PRODUCTION", True), patch.object(main.app_state, "_export_queue", None),
               patch.object(main.operator_controls, "_assert_service_available"), patch.object(main.observability, "_track_event"),
               patch.object(main.request_security, "_authenticate_media_request", return_value={"uid": "owner"}),
-              patch.object(main, "_process_export_job_core", new_callable=AsyncMock) as render,
+              patch.object(main.export_jobs, "_process_export_job_core", new_callable=AsyncMock) as render,
               patch.object(main, "_acquire_export_slot") as claim):
             with self.assertRaises(main.HTTPException) as error:
                 asyncio.run(main.export_video(request, Request({"type": "http", "headers": []}), main.Response()))
@@ -195,17 +195,17 @@ class ProductionBoundaryTests(unittest.TestCase):
     def test_export_timing_includes_backlog_and_preserves_admission_on_retry(self):
         with (patch.object(main.app_state, "_redis_client", self.redis), patch.object(main.firebase_admin_setup, "get_db", return_value=None),
               patch.object(main.app_state, "_export_queue", None)):
-            main._set_export_job("timing", "queued", started_at=1000)
-            main._set_export_job("timing", "starting")
-            with patch.object(main, "time", SimpleNamespace(time=lambda: 1180)):
-                self.assertEqual(main._mark_export_processing("timing"), (1000, 1180))
-            self.assertEqual(main._load_export_job("timing")["queue_wait_ms"], 180000)
-            main._set_export_job("timing", "retrying")
-            main._set_export_job("timing", "starting")
-            with patch.object(main, "time", SimpleNamespace(time=lambda: 1240)):
-                self.assertEqual(main._mark_export_processing("timing"), (1000, 1240))
-            self.assertEqual(main._load_export_job("timing")["queue_entered_at"], 1000)
-            self.assertEqual(main._load_export_job("timing")["queue_wait_ms"], 180000)
+            main.export_jobs._set_export_job("timing", "queued", started_at=1000)
+            main.export_jobs._set_export_job("timing", "starting")
+            with patch.object(main.export_jobs, "time", SimpleNamespace(time=lambda: 1180)):
+                self.assertEqual(main.export_jobs._mark_export_processing("timing"), (1000, 1180))
+            self.assertEqual(main.export_jobs._load_export_job("timing")["queue_wait_ms"], 180000)
+            main.export_jobs._set_export_job("timing", "retrying")
+            main.export_jobs._set_export_job("timing", "starting")
+            with patch.object(main.export_jobs, "time", SimpleNamespace(time=lambda: 1240)):
+                self.assertEqual(main.export_jobs._mark_export_processing("timing"), (1000, 1240))
+            self.assertEqual(main.export_jobs._load_export_job("timing")["queue_entered_at"], 1000)
+            self.assertEqual(main.export_jobs._load_export_job("timing")["queue_wait_ms"], 180000)
 
     def test_storage_readiness_probes_the_selected_backend(self):
         with (patch.object(firebase_admin_setup, "s3_is_configured", return_value=True),
@@ -316,7 +316,7 @@ class ProductionBoundaryTests(unittest.TestCase):
         with (patch.object(main.request_security, "_assert_account_not_deleting", side_effect=main.HTTPException(409, "Deletion requested")),
               patch.object(main.firebase_admin_setup, "get_db") as database):
             with self.assertRaises(main.HTTPException):
-                asyncio.run(main._process_export_job_core(None, "deleted", "request", "job"))
+                asyncio.run(main.export_jobs._process_export_job_core(None, "deleted", "request", "job"))
             database.assert_not_called()
 
     def test_account_export_reads_only_authenticated_users_deletion_record(self):
@@ -385,12 +385,12 @@ class ProductionBoundaryTests(unittest.TestCase):
         async def render(*_args):
             entered.set()
             await asyncio.to_thread(finish.wait, 5)
-            main._set_export_job("job", "finalizing")
-            main._set_export_job("job", "completed", payload={"success": True})
+            main.export_jobs._set_export_job("job", "finalizing")
+            main.export_jobs._set_export_job("job", "completed", payload={"success": True})
             return {"success": True}
         with (patch.object(main.app_state, "_redis_client", self.redis), patch.object(main.firebase_admin_setup, "get_db", return_value=None),
-              patch.object(main.app_state, "_export_queue", None), patch.object(main, "_process_export_job_core", side_effect=render) as core):
-            main._set_export_job("job", "queued", uid="a")
+              patch.object(main.app_state, "_export_queue", None), patch.object(main.export_jobs, "_process_export_job_core", side_effect=render) as core):
+            main.export_jobs._set_export_job("job", "queued", uid="a")
             with ThreadPoolExecutor(2) as pool:
                 first = pool.submit(main.run_export_job_task, "job", {"file_id": "123e4567-e89b-12d3-a456-426614174000", "captions": [{"id": "1", "text": "hello", "start_time": 0, "end_time": 1}]}, "a")
                 self.assertTrue(entered.wait(5))
@@ -419,8 +419,8 @@ class ProductionBoundaryTests(unittest.TestCase):
         queue = SimpleNamespace(fetch_job=lambda _: SimpleNamespace(get_status=lambda **_: "failed"))
         with (patch.object(main.app_state, "_redis_client", self.redis), patch.object(main.firebase_admin_setup, "get_db", return_value=None),
               patch.object(main.app_state, "_export_queue", queue)):
-            main._set_export_job("job", "queued", uid="a")
-            job = main._set_export_job("job", "starting")
+            main.export_jobs._set_export_job("job", "queued", uid="a")
+            job = main.export_jobs._set_export_job("job", "starting")
             self.assertEqual(main._reconcile_export_job("job", job)["status"], "failed")
 
     def test_export_wait_expires_after_configured_window_without_charging(self):
@@ -431,7 +431,7 @@ class ProductionBoundaryTests(unittest.TestCase):
               patch.object(main.app_state, "_export_queue", queue), patch.object(main.observability, "_track_event")):
             self.assertTrue(main._acquire_export_slot("owner", "slow-job"))
             main._idem_set("owner:slow", {"status": "in_progress"})
-            job = main._set_export_job(
+            job = main.export_jobs._set_export_job(
                 "slow-job",
                 "queued",
                 uid="owner",
@@ -450,9 +450,9 @@ class ProductionBoundaryTests(unittest.TestCase):
         queue = SimpleNamespace(fetch_job=lambda _: (_ for _ in ()).throw(ConnectionError()))
         with (patch.object(main.app_state, "_redis_client", self.redis), patch.object(main.firebase_admin_setup, "get_db", return_value=None),
               patch.object(main.app_state, "_export_queue", queue), patch.object(main.firebase_admin_setup, "verify_token", return_value={"uid": "a"}),
-              patch.object(main, "_process_export_job_core", new_callable=AsyncMock) as core):
+              patch.object(main.export_jobs, "_process_export_job_core", new_callable=AsyncMock) as core):
             main._idem_set("a:auto:same", {"status": "in_progress", "job_id": "job", "ts": time.time()})
-            main._set_export_job("job", "queued", uid="a", idempotency_key="a:auto:same")
+            main.export_jobs._set_export_job("job", "queued", uid="a", idempotency_key="a:auto:same")
             response = TestClient(main.app).post("/api/export-cancel/job", headers={"Authorization": "Bearer a"})
             self.assertEqual(response.status_code, 200)
             self.assertTrue(response.json()["retry_allowed"])
@@ -463,7 +463,7 @@ class ProductionBoundaryTests(unittest.TestCase):
     def test_cross_user_job_endpoints_deny_access(self):
         with (patch.object(main.app_state, "_redis_client", self.redis), patch.object(main.firebase_admin_setup, "get_db", return_value=None),
               patch.object(main.firebase_admin_setup, "verify_token", return_value={"uid": "b"})):
-            main._set_export_job("job", "queued", uid="a")
+            main.export_jobs._set_export_job("job", "queued", uid="a")
             client = TestClient(main.app)
             for route in ("export-status", "export-result", "export-cancel"):
                 response = client.request("POST" if route == "export-cancel" else "GET", f"/api/{route}/job", headers={"Authorization": "Bearer b"})
@@ -604,7 +604,7 @@ class ProductionBoundaryTests(unittest.TestCase):
         self.assertEqual(error.exception.status_code, 503)
 
     def test_pending_account_deletion_blocks_export_usage(self):
-        self.assertFalse(main._evaluate_export_policy({"deletion_pending": True, "credits_remaining": 100}, time.time())[0])
+        self.assertFalse(main.export_jobs._evaluate_export_policy({"deletion_pending": True, "credits_remaining": 100}, time.time())[0])
 
     def test_duplicate_payment_transaction_is_idempotent(self):
         lock = threading.Lock()
@@ -650,7 +650,7 @@ class ProductionBoundaryTests(unittest.TestCase):
             return run
         def consume(index):
             try:
-                main._record_export_usage(SimpleNamespace(transaction=Tx), Ref("user"), {"id": str(index)}, time.time(), f"job-{index}")
+                main.export_jobs._record_export_usage(SimpleNamespace(transaction=Tx), Ref("user"), {"id": str(index)}, time.time(), f"job-{index}")
                 return True
             except main.HTTPException:
                 return False

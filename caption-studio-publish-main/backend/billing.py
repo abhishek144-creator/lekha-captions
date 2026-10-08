@@ -36,6 +36,10 @@ try:
     from . import entitlements
 except ImportError:  # Direct execution from backend/ remains supported.
     import entitlements
+try:
+    from . import api_models
+except ImportError:  # Direct execution from backend/ remains supported.
+    import api_models
 
 
 def create_billing_service(host: ModuleType) -> SimpleNamespace:
@@ -234,7 +238,7 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
         }
 
 
-    def _can_trigger_reconcile(request: Request, req_body: host.ReconcilePaymentsRequest) -> bool:
+    def _can_trigger_reconcile(request: Request, req_body: api_models.ReconcilePaymentsRequest) -> bool:
         secret_header = (request.headers.get("x-reconcile-secret") or "").strip()
         if settings.PAYMENT_RECONCILE_SECRET and secret_header and host.hmac.compare_digest(secret_header, settings.PAYMENT_RECONCILE_SECRET):
             return True

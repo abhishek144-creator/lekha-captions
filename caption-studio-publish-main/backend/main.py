@@ -94,9 +94,9 @@ try:
     from .request_guards import create_request_guards
     from . import media_records
     from . import entitlements
-    from .export_jobs import create_export_jobs
+    from . import export_jobs
     from .maintenance_jobs import create_maintenance_jobs
-    from .api_models import create_api_models
+    from . import api_models
     from .upload_dispatch import create_upload_dispatch
     from .admin_api import create_admin_router
     from .language_api import create_language_router
@@ -150,9 +150,9 @@ except ImportError:
     from request_guards import create_request_guards
     import media_records
     import entitlements
-    from export_jobs import create_export_jobs
+    import export_jobs
     from maintenance_jobs import create_maintenance_jobs
-    from api_models import create_api_models
+    import api_models
     from upload_dispatch import create_upload_dispatch
     from admin_api import create_admin_router
     from language_api import create_language_router
@@ -287,7 +287,7 @@ async def request_logging_middleware(request: Request, call_next):
         # FastAPI parses multipart before entering the endpoint. Authenticate
         # here so an unauthenticated request never spools customer-sized media.
         try:
-            upload_identity = await asyncio.to_thread(request_security._authenticate_media_request, _extract_bearer_token(request))
+            upload_identity = await asyncio.to_thread(request_security._authenticate_media_request, export_jobs._extract_bearer_token(request))
         except HTTPException as error:
             return request_security._apply_security_headers(JSONResponse(status_code=error.status_code,
                 content={"detail": error.detail}, headers={"X-Request-Id": rid}))
@@ -602,56 +602,19 @@ app.include_router(create_project_router(
 ))
 
 
-_api_models = create_api_models(sys.modules[__name__])
-CaptionItem = _api_models.CaptionItem
-ExportRequest = _api_models.ExportRequest
-BatchExportRequest = _api_models.BatchExportRequest
-CreateOrderRequest = _api_models.CreateOrderRequest
-VerifyPaymentRequest = _api_models.VerifyPaymentRequest
-ReconcilePaymentsRequest = _api_models.ReconcilePaymentsRequest
-AdminRecoveryRequest = _api_models.AdminRecoveryRequest
-AdminAlertTestRequest = _api_models.AdminAlertTestRequest
-ServiceControlsRequest = _api_models.ServiceControlsRequest
-TenantBackfillRequest = _api_models.TenantBackfillRequest
-SupportRequest = _api_models.SupportRequest
-ProcessRequest = _api_models.ProcessRequest
-MediaUrlRequest = _api_models.MediaUrlRequest
-TranslateRequest = _api_models.TranslateRequest
-
-
-_export_job_core = create_export_jobs(sys.modules[__name__])
-_persist_export_job = _export_job_core._persist_export_job
-_load_export_job = _export_job_core._load_export_job
-_evaluate_export_policy = _export_job_core._evaluate_export_policy
-_record_export_usage = _export_job_core._record_export_usage
-_load_recorded_export_result = _export_job_core._load_recorded_export_result
-_set_export_job = _export_job_core._set_export_job
-_refresh_completed_export_payload = _export_job_core._refresh_completed_export_payload
-_normalize_export_captions_for_media = _export_job_core._normalize_export_captions_for_media
-_write_dead_letter = _export_job_core._write_dead_letter
-_strip_client_render_hints = _export_job_core._strip_client_render_hints
-_sanitize_export_request_payload = _export_job_core._sanitize_export_request_payload
-_write_last_export_request_debug = _export_job_core._write_last_export_request_debug
-_extract_bearer_token = _export_job_core._extract_bearer_token
-_require_export_job_access = _export_job_core._require_export_job_access
-_mark_export_processing = _export_job_core._mark_export_processing
-_process_export_job_core = _export_job_core._process_export_job_core
-_export_slot_wait_retry = _export_job_core._export_slot_wait_retry
-
-
 def recover_interrupted_export_retry(export_job_id: str):
     """Called only after RQ confirms a failed or abandoned execution will retry."""
-    record = _load_export_job(export_job_id) or {}
+    record = export_jobs._load_export_job(export_job_id) or {}
     status = record.get("status")
     if status not in {"starting", "processing", "finalizing"}:
         return
-    if status == "finalizing" and _load_recorded_export_result(
+    if status == "finalizing" and export_jobs._load_recorded_export_result(
         record.get("uid", ""), export_job_id, record.get("file_id", "")
     ):
         # The retry recovers this paid result without rendering or charging again.
         return
     try:
-        _set_export_job(export_job_id, "retrying", expected_status=status,
+        export_jobs._set_export_job(export_job_id, "retrying", expected_status=status,
                         error="Worker interrupted; export will retry")
     except InvalidJobTransition:
         # A concurrent completion/cancellation remains authoritative.
@@ -670,23 +633,23 @@ def run_export_job_task(
     # RQ has removed the job ID from the pending list before invoking us. Keep
     # the atomic admission ledger aligned with pending work, not active work.
     _release_export_pending_work(export_job_id)
-    existing_job = _load_export_job(export_job_id) or {}
+    existing_job = export_jobs._load_export_job(export_job_id) or {}
     if existing_job.get("status") == "completed":
         return existing_job.get("payload") or {}
     try:
         if existing_job.get("status") == "finalizing":
             request_security._assert_account_not_deleting(uid)
-            recorded = _load_recorded_export_result(uid, export_job_id, str(req_payload.get("file_id") or ""))
+            recorded = export_jobs._load_recorded_export_result(uid, export_job_id, str(req_payload.get("file_id") or ""))
             if recorded:
-                _set_export_job(export_job_id, "completed", payload=recorded,
+                export_jobs._set_export_job(export_job_id, "completed", payload=recorded,
                                 completed_at=time.time(), recovered_from_usage=True)
                 if idempotency_key:
                     _idem_set(idempotency_key, {"status": "completed", "ts": time.time(), "payload": recorded,
                                                "request_hash": idempotency_request_hash, "job_id": export_job_id})
                 return recorded
-        _set_export_job(export_job_id, "starting", worker_release=settings.APP_RELEASE)
+        export_jobs._set_export_job(export_job_id, "starting", worker_release=settings.APP_RELEASE)
     except InvalidJobTransition:
-        current = _load_export_job(export_job_id) or {}
+        current = export_jobs._load_export_job(export_job_id) or {}
         return {"success": False, "status": current.get("status"), "export_job_id": export_job_id}
     try:
         if (existing_job.get("status") or "").lower() == "cancelled":
@@ -698,18 +661,18 @@ def run_export_job_task(
             }
         slot_acquired = _acquire_export_slot(uid, export_job_id)
         if not slot_acquired:
-            wait_retry = _export_slot_wait_retry()
+            wait_retry = export_jobs._export_slot_wait_retry()
             if wait_retry is not None:
                 # Batch items for one account share its single export slot. Waiting
                 # for a sibling render is not a failure: reschedule without using
                 # the job's failure retries (a 10-item batch outlived them) and
                 # without dead-lettering every poll.
-                _set_export_job(export_job_id, "retrying", error=None)
+                export_jobs._set_export_job(export_job_id, "retrying", error=None)
                 observability._json_log("info", "export_waiting_for_account_slot", job_id=export_job_id)
                 return wait_retry
             raise RuntimeError("Another export currently owns this account's export slot")
-        req = ExportRequest(**req_payload)
-        payload = asyncio.run(_process_export_job_core(req, uid, rid, export_job_id))
+        req = api_models.ExportRequest(**req_payload)
+        payload = asyncio.run(export_jobs._process_export_job_core(req, uid, rid, export_job_id))
         if idempotency_key:
             _idem_set(idempotency_key, {
                 "status": "completed",
@@ -725,7 +688,7 @@ def run_export_job_task(
         # turn a paid result into a fresh render on the next submission.
         usage_recovery_unknown = False
         try:
-            recorded = _load_recorded_export_result(uid, export_job_id, str(req_payload.get("file_id") or ""))
+            recorded = export_jobs._load_recorded_export_result(uid, export_job_id, str(req_payload.get("file_id") or ""))
         except Exception as recovery_error:
             recorded = None
             usage_recovery_unknown = True
@@ -733,9 +696,9 @@ def run_export_job_task(
                       error=type(recovery_error).__name__)
         if recorded:
             try:
-                current = _load_export_job(export_job_id) or {}
+                current = export_jobs._load_export_job(export_job_id) or {}
                 if current.get("status") == "finalizing":
-                    _set_export_job(export_job_id, "completed", payload=recorded,
+                    export_jobs._set_export_job(export_job_id, "completed", payload=recorded,
                                     completed_at=time.time(), recovered_from_usage=True)
                 if idempotency_key:
                     _idem_set(idempotency_key, {"status": "completed", "ts": time.time(), "payload": recorded,
@@ -752,7 +715,7 @@ def run_export_job_task(
             if rq_job and not retryable:
                 rq_job.retries_left = 0
                 rq_job.save()
-            _set_export_job(export_job_id, "retrying" if retry_pending else "failed",
+            export_jobs._set_export_job(export_job_id, "retrying" if retry_pending else "failed",
                             failed_at=time.time(), error="Export failed. Please retry or contact support.")
         except Exception as state_error:
             observability._json_log(
@@ -761,7 +724,7 @@ def run_export_job_task(
                 job_id=export_job_id,
                 error=str(state_error),
             )
-        failed_job = _load_export_job(export_job_id) or {}
+        failed_job = export_jobs._load_export_job(export_job_id) or {}
         entered_at = float(failed_job.get("queue_entered_at") or time.time())
         observability._json_log(
             "warning", "export_observation", job_id=export_job_id,
@@ -771,10 +734,10 @@ def run_export_job_task(
         )
         if idempotency_key and not locals().get("retry_pending", False) and not usage_recovery_unknown:
             _idem_delete(idempotency_key)
-        _write_dead_letter(
+        export_jobs._write_dead_letter(
             export_job_id,
             str(e),
-            {"req_payload": _sanitize_export_request_payload(req_payload), "uid": uid},
+            {"req_payload": export_jobs._sanitize_export_request_payload(req_payload), "uid": uid},
         )
         raise
     finally:
@@ -822,7 +785,7 @@ _require_scheduler_secret = _upload_dispatch._require_scheduler_secret
 
 app.include_router(create_direct_upload_router(
     authenticate=request_security._authenticate_media_request,
-    extract_token=_extract_bearer_token,
+    extract_token=export_jobs._extract_bearer_token,
     assert_service_available=operator_controls._assert_service_available,
     allowed_extensions=settings.ALLOWED_EXTENSIONS,
     allowed_content_prefixes=settings.ALLOWED_CONTENT_PREFIXES,
@@ -954,7 +917,7 @@ app.include_router(create_public_api_router(
     get_database=firebase_admin_setup.get_db,
     list_account_projects=list_projects,
     read_account_project=read_draft,
-    load_export_job=_load_export_job,
+    load_export_job=export_jobs._load_export_job,
 ))
 app.include_router(create_workspace_router(
     authenticate_request=request_security._authenticate_bearer_request,

@@ -49,13 +49,17 @@ try:
     from . import media_records
 except ImportError:  # Direct execution from backend/ remains supported.
     import media_records
+try:
+    from . import api_models
+except ImportError:  # Direct execution from backend/ remains supported.
+    import api_models
 
 
 def create_language_router(host: ModuleType) -> SimpleNamespace:
     router = APIRouter()
 
     @router.post("/api/translate")
-    def translate_captions(req: host.TranslateRequest, request: Request, response: Response):
+    def translate_captions(req: api_models.TranslateRequest, request: Request, response: Response):
         decoded_token = firebase_admin_setup.verify_token(req.id_token)
         if not decoded_token:
             raise HTTPException(status_code=401, detail="Authentication required")
