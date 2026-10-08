@@ -7,190 +7,120 @@ try:
     from . import settings
 except ImportError:  # Direct execution from backend/ remains supported.
     import settings
-try:
-    from . import app_state
-except ImportError:  # Direct execution from backend/ remains supported.
-    import app_state
 
-from dotenv import load_dotenv
-
-try:
-    from .upload_api import create_upload_router
-except ImportError:
-    from upload_api import create_upload_router
-
-try:
-    from .processing_api import create_processing_router
-except ImportError:
-    from processing_api import create_processing_router
-
-try:
-    from .provider_admin_api import create_provider_admin_router
-except ImportError:
-    from provider_admin_api import create_provider_admin_router
-
-from fastapi import FastAPI, UploadFile, File, HTTPException, Response
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, model_validator
-import shutil
-import uuid
-import urllib.request
-import urllib.parse
-import json
-import base64
-from datetime import datetime, timedelta, date, timezone
-from dateutil.relativedelta import relativedelta
-from typing import List, Dict, Any, Optional
-try:
-    from .processor import VideoProcessor
-except ImportError:  # Direct execution from backend/ remains supported.
-    from processor import VideoProcessor
 import asyncio
-import anyio
+import json
+import logging
 import time
-import subprocess
-import hmac
-import hashlib
-from fastapi import Request
-try:
-    from . import firebase_admin_setup
-except ImportError:  # Direct execution from backend/ remains supported.
-    import firebase_admin_setup
+import urllib.parse
+import urllib.request
+from contextlib import asynccontextmanager
+from typing import Any, Dict
+
+import anyio
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
+# Not used here: tests reach these through main (main.firestore.transactional,
+# main.firebase_auth.delete_user, main.Response(), ...).
+import shutil
+from fastapi import Response
 from firebase_admin import app_check as firebase_app_check
 from firebase_admin import auth as firebase_auth
-import math
-from google.cloud import firestore
 from google.api_core.exceptions import AlreadyExists
-import mimetypes
-import logging
-import ipaddress
-import pathlib
-import re
-import secrets
-import threading
-from collections import OrderedDict, deque
-from contextlib import asynccontextmanager
+from google.cloud import firestore
+
 try:
+    from . import app_state
+    from . import optional_deps
+    from . import upload_api
+    from . import processing_api
+    from . import provider_admin_api
+    from .processor import VideoProcessor
+    from . import firebase_admin_setup
     from .transcription_jobs import TranscriptionJobs
-    from .queue_admission import PENDING_WORK_LEDGER_KEY, enqueue_bounded_across_queues, release_pending_work
     from . import worker_launcher
     from .drafts import list_projects, read_draft
     from .project_api import create_project_router
-    from .editor_preferences import create_editor_preferences_router, read_editor_preferences
+    from .editor_preferences import create_editor_preferences_router
     from .cost_reconciliation import create_cost_reconciliation_router
     from .analytics_api import create_analytics_router
-    from .notifications import create_notification, create_notification_router
+    from .notifications import create_notification_router
     from .public_api import create_public_api_router
     from .workspace_api import create_workspace_router
-    from .payments_api import create_payments_router
+    from . import payments_api
     from .redis_config import connect_redis
     from .idle_connections import RailwayIdleConnectionsMiddleware, disconnect_idle_redis_clients
-    from .system_api import create_system_router
-    from .billing import create_billing_service
+    from . import system_api
+    from . import billing
     from . import observability
-    from .request_security import create_request_security
-    from .operator_controls import create_operator_controls
-    from .request_guards import create_request_guards
-    from .media_records import create_media_records
-    from .entitlements import create_entitlements
-    from .export_jobs import create_export_jobs
-    from .maintenance_jobs import create_maintenance_jobs
-    from .api_models import create_api_models
-    from .upload_dispatch import create_upload_dispatch
-    from .admin_api import create_admin_router
-    from .language_api import create_language_router
-    from .account_api import create_account_router
-    from .media_api import create_media_router
-    from .export_api import create_export_router
-    from .provider_health import transcription_provider_health
+    from . import request_security
+    from . import operator_controls
+    from . import request_guards
+    from . import media_records
+    from . import entitlements
+    from . import export_jobs
+    from . import maintenance_jobs
+    from . import api_models
+    from . import upload_dispatch
+    from . import admin_api
+    from . import language_api
+    from . import account_api
+    from . import media_api
+    from . import export_api
     from .direct_upload_api import create_direct_upload_router
     from .api.maintenance import create_maintenance_router
-    from .upload_admission import reserve_upload, release_upload
     from .request_limits import UploadBodyLimitMiddleware
-    from .release_metadata import apply_platform_release_defaults, release_metadata
-    from .media_storage import is_configured as s3_storage_configured
-    from .runtime_preflight import required_storage_settings
-    from .media_commands import run_media_command
-    from .job_state import transition as transition_export_job, InvalidJobTransition, LOCAL_LOCK as JOB_STATE_LOCK
-    from .gcp_queue_metrics import job_queue_prediction, publish_queue_snapshot, queue_snapshot, render_queue_snapshot
-    from .rendering.capacity import (
-        FAST_EXPORT_QUEUE_NAME,
-        GPU_EXPORT_QUEUE_NAME,
-        HEAVY_EXPORT_QUEUE_NAME,
-        NORMAL_EXPORT_QUEUE_NAME,
-        RENDER_QUEUE_NAMES,
-        estimate_render_capacity,
-    )
-    from .rendering.cache import render_cache_eligible, render_cache_identity
+    from . import media_commands
+    from .job_state import InvalidJobTransition
+    from .rendering.capacity import GPU_EXPORT_QUEUE_NAME, RENDER_QUEUE_NAMES
     from .services.media_scan_jobs import MediaScanJobs
-    from .services.scheduler_auth import require_scheduler_authorization
-    from .services.malware import scan_upload_for_threat
-    from .services.upload_security import UploadSecurityService
-except ImportError:
+except ImportError:  # Direct execution from backend/ remains supported.
+    import app_state
+    import optional_deps
+    import upload_api
+    import processing_api
+    import provider_admin_api
+    from processor import VideoProcessor
+    import firebase_admin_setup
     from transcription_jobs import TranscriptionJobs
-    from queue_admission import PENDING_WORK_LEDGER_KEY, enqueue_bounded_across_queues, release_pending_work
     import worker_launcher
     from drafts import list_projects, read_draft
     from project_api import create_project_router
-    from editor_preferences import create_editor_preferences_router, read_editor_preferences
+    from editor_preferences import create_editor_preferences_router
     from cost_reconciliation import create_cost_reconciliation_router
     from analytics_api import create_analytics_router
-    from notifications import create_notification, create_notification_router
+    from notifications import create_notification_router
     from public_api import create_public_api_router
     from workspace_api import create_workspace_router
-    from payments_api import create_payments_router
+    import payments_api
     from redis_config import connect_redis
     from idle_connections import RailwayIdleConnectionsMiddleware, disconnect_idle_redis_clients
-    from system_api import create_system_router
-    from billing import create_billing_service
+    import system_api
+    import billing
     import observability
-    from request_security import create_request_security
-    from operator_controls import create_operator_controls
-    from request_guards import create_request_guards
-    from media_records import create_media_records
-    from entitlements import create_entitlements
-    from export_jobs import create_export_jobs
-    from maintenance_jobs import create_maintenance_jobs
-    from api_models import create_api_models
-    from upload_dispatch import create_upload_dispatch
-    from admin_api import create_admin_router
-    from language_api import create_language_router
-    from account_api import create_account_router
-    from media_api import create_media_router
-    from export_api import create_export_router
-    from provider_health import transcription_provider_health
+    import request_security
+    import operator_controls
+    import request_guards
+    import media_records
+    import entitlements
+    import export_jobs
+    import maintenance_jobs
+    import api_models
+    import upload_dispatch
+    import admin_api
+    import language_api
+    import account_api
+    import media_api
+    import export_api
     from direct_upload_api import create_direct_upload_router
     from api.maintenance import create_maintenance_router
-    from upload_admission import reserve_upload, release_upload
     from request_limits import UploadBodyLimitMiddleware
-    from release_metadata import apply_platform_release_defaults, release_metadata
-    from media_storage import is_configured as s3_storage_configured
-    from runtime_preflight import required_storage_settings
-    from media_commands import run_media_command
-    from job_state import transition as transition_export_job, InvalidJobTransition, LOCAL_LOCK as JOB_STATE_LOCK
-    from gcp_queue_metrics import job_queue_prediction, publish_queue_snapshot, queue_snapshot, render_queue_snapshot
-    from rendering.capacity import (
-        FAST_EXPORT_QUEUE_NAME,
-        GPU_EXPORT_QUEUE_NAME,
-        HEAVY_EXPORT_QUEUE_NAME,
-        NORMAL_EXPORT_QUEUE_NAME,
-        RENDER_QUEUE_NAMES,
-        estimate_render_capacity,
-    )
-    from rendering.cache import render_cache_eligible, render_cache_identity
+    import media_commands
+    from job_state import InvalidJobTransition
+    from rendering.capacity import GPU_EXPORT_QUEUE_NAME, RENDER_QUEUE_NAMES
     from services.media_scan_jobs import MediaScanJobs
-    from services.scheduler_auth import require_scheduler_authorization
-    from services.malware import scan_upload_for_threat
-    from services.upload_security import UploadSecurityService
-
-try:
-    import razorpay as _razorpay_module
-    RAZORPAY_AVAILABLE = True
-except ImportError:
-    _razorpay_module = None
-    RAZORPAY_AVAILABLE = False
-    print("[Warning] razorpay package not installed — payment endpoints will be unavailable")
 
 try:
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -209,9 +139,7 @@ except ImportError:
     print("[Warning] redis package not installed — durable rate limiting/idempotency disabled")
 
 try:
-    from rq import Queue as _RQQueue, Worker as RQWorker
-    from rq.job import Job
-    from rq import Retry as RQRetry
+    from rq import Queue as _RQQueue
 
     class Queue(_RQQueue):
         """RQ queue that starts an on-demand worker once a job is really queued.
@@ -228,17 +156,8 @@ try:
     RQ_AVAILABLE = True
 except ImportError:
     Queue = None
-    RQWorker = None
-    Job = None
-    RQRetry = None
     RQ_AVAILABLE = False
 
-try:
-    import sentry_sdk
-    SENTRY_AVAILABLE = True
-except ImportError:
-    sentry_sdk = None
-    SENTRY_AVAILABLE = False
 
 @asynccontextmanager
 async def app_lifespan(_app: FastAPI):
@@ -263,22 +182,22 @@ logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
 async def request_logging_middleware(request: Request, call_next):
     rid = observability._request_id(request)
     request.state.request_id = rid
-    if _app_check_required(request) and request.headers.get("x-firebase-appcheck"):
+    if request_security._app_check_required(request) and request.headers.get("x-firebase-appcheck"):
         # Firebase may synchronously fetch rotated signing keys. Keep its
         # bounded verification work outside the API event loop; health probes
         # and missing-token rejections never wait for this worker pool.
         app_check_failure = await anyio.to_thread.run_sync(
-            _verify_firebase_app_check_request, request, rid,
+            request_security._verify_firebase_app_check_request, request, rid,
             limiter=app_state._app_check_verification_limiter,
         )
     else:
-        app_check_failure = _verify_firebase_app_check_request(request, rid)
+        app_check_failure = request_security._verify_firebase_app_check_request(request, rid)
     if app_check_failure is not None:
-        return _apply_security_headers(app_check_failure)
+        return request_security._apply_security_headers(app_check_failure)
     if request.url.path == "/api/upload" and settings._IS_PRODUCTION:
         # Reject before FastAPI parses multipart, so a misconfigured production
         # client cannot stream even a small video through an API instance.
-        return _apply_security_headers(JSONResponse(
+        return request_security._apply_security_headers(JSONResponse(
             status_code=409,
             content={"detail": "Production uploads must use the direct resumable storage flow."},
             headers={"X-Request-Id": rid, "X-Lekha-Upload-Transport": "direct-resumable"},
@@ -287,22 +206,22 @@ async def request_logging_middleware(request: Request, call_next):
         # FastAPI parses multipart before entering the endpoint. Authenticate
         # here so an unauthenticated request never spools customer-sized media.
         try:
-            upload_identity = await asyncio.to_thread(_authenticate_media_request, _extract_bearer_token(request))
+            upload_identity = await asyncio.to_thread(request_security._authenticate_media_request, export_jobs._extract_bearer_token(request))
         except HTTPException as error:
-            return _apply_security_headers(JSONResponse(status_code=error.status_code,
+            return request_security._apply_security_headers(JSONResponse(status_code=error.status_code,
                 content={"detail": error.detail}, headers={"X-Request-Id": rid}))
     content_type = (request.headers.get("content-type") or "").lower()
     declared_length = request.headers.get("content-length")
     if "application/json" in content_type and declared_length:
         try:
             if int(declared_length) > settings.MAX_JSON_BODY_BYTES:
-                return _apply_security_headers(JSONResponse(
+                return request_security._apply_security_headers(JSONResponse(
                     status_code=413,
                     content={"success": False, "error": "Request body is too large"},
                     headers={"X-Request-Id": rid},
                 ))
         except ValueError:
-            return _apply_security_headers(JSONResponse(
+            return request_security._apply_security_headers(JSONResponse(
                 status_code=400,
                 content={"success": False, "error": "Invalid Content-Length header"},
                 headers={"X-Request-Id": rid},
@@ -312,7 +231,7 @@ async def request_logging_middleware(request: Request, call_next):
         async for chunk in request.stream():
             body.extend(chunk)
             if len(body) > settings.MAX_JSON_BODY_BYTES:
-                return _apply_security_headers(JSONResponse(
+                return request_security._apply_security_headers(JSONResponse(
                     status_code=413,
                     content={"success": False, "error": "Request body is too large"},
                     headers={"X-Request-Id": rid},
@@ -322,7 +241,7 @@ async def request_logging_middleware(request: Request, call_next):
         request._body = bytes(body)
     requested_version = (request.headers.get("x-api-version") or "").strip()
     if requested_version and requested_version < settings.API_MIN_SUPPORTED_VERSION:
-        return _apply_security_headers(JSONResponse(
+        return request_security._apply_security_headers(JSONResponse(
             status_code=426,
             content={
                 "success": False,
@@ -339,8 +258,8 @@ async def request_logging_middleware(request: Request, call_next):
             },
         ))
     upload_slot_uid = str(upload_identity.get("uid") or "") if request.url.path == "/api/upload" else ""
-    if upload_slot_uid and not await asyncio.to_thread(_acquire_process_slot, upload_slot_uid, f"upload:{rid}"):
-        return _apply_security_headers(JSONResponse(status_code=429, content={"detail": "Another upload or transcription is active for this account."}, headers={"X-Request-Id": rid}))
+    if upload_slot_uid and not await asyncio.to_thread(request_guards._acquire_process_slot, upload_slot_uid, f"upload:{rid}"):
+        return request_security._apply_security_headers(JSONResponse(status_code=429, content={"detail": "Another upload or transcription is active for this account."}, headers={"X-Request-Id": rid}))
     start = time.time()
     try:
         response = await call_next(request)
@@ -358,13 +277,13 @@ async def request_logging_middleware(request: Request, call_next):
             replica_id=settings.RAILWAY_REPLICA_ID,
             error=str(e),
         )
-        return _apply_security_headers(JSONResponse(status_code=500, content={
+        return request_security._apply_security_headers(JSONResponse(status_code=500, content={
             "success": False, "error": {"code": "INTERNAL_ERROR",
             "message": "Something went wrong. Please contact support with this request ID.", "request_id": rid},
         }, headers={"X-Request-Id": rid, "Cache-Control": "no-store"}))
     finally:
         if upload_slot_uid:
-            await asyncio.to_thread(_release_process_slot, upload_slot_uid, f"upload:{rid}")
+            await asyncio.to_thread(request_guards._release_process_slot, upload_slot_uid, f"upload:{rid}")
         if not settings.RUN_API_BACKGROUND_TASKS:
             # Cloud Run may suspend CPU as soon as the request finishes. Flush
             # buffered events while this request still has execution time.
@@ -395,12 +314,12 @@ async def request_logging_middleware(request: Request, call_next):
     response.headers["X-API-Version"] = settings.API_CURRENT_VERSION
     response.headers["X-API-Min-Version"] = settings.API_MIN_SUPPORTED_VERSION
     response.headers["Sunset"] = settings.DEPRECATION_SUNSET_DATE
-    return _apply_security_headers(response)
+    return request_security._apply_security_headers(response)
 
 
-if settings.SENTRY_DSN and SENTRY_AVAILABLE and not settings._IS_TEST:
+if settings.SENTRY_DSN and optional_deps.SENTRY_AVAILABLE and not settings._IS_TEST:
     try:
-        sentry_sdk.init(
+        optional_deps.sentry_sdk.init(
             dsn=settings.SENTRY_DSN,
             environment=settings.APP_ENV,
             release=os.environ.get("APP_RELEASE") or None,
@@ -410,7 +329,7 @@ if settings.SENTRY_DSN and SENTRY_AVAILABLE and not settings._IS_TEST:
         observability._json_log("info", "sentry_initialized", environment=settings.APP_ENV)
     except Exception as e:
         observability._json_log("warning", "sentry_init_failed", error=str(e))
-elif settings.SENTRY_DSN and not SENTRY_AVAILABLE:
+elif settings.SENTRY_DSN and not optional_deps.SENTRY_AVAILABLE:
     if settings._IS_PRODUCTION:
         raise RuntimeError("SENTRY_DSN is configured but the Sentry SDK is unavailable in production.")
     observability._json_log("warning", "sentry_dsn_set_but_sdk_missing")
@@ -422,9 +341,9 @@ observability._json_log(
     is_production=settings._IS_PRODUCTION,
 )
 
-if RAZORPAY_AVAILABLE and settings.RAZORPAY_KEY_ID and settings.RAZORPAY_KEY_SECRET:
-    app_state.rzp_client = _razorpay_module.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
-elif RAZORPAY_AVAILABLE:
+if optional_deps.RAZORPAY_AVAILABLE and settings.RAZORPAY_KEY_ID and settings.RAZORPAY_KEY_SECRET:
+    app_state.rzp_client = optional_deps._razorpay_module.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+elif optional_deps.RAZORPAY_AVAILABLE:
     observability._json_log("warning", "razorpay_credentials_missing")
 
 
@@ -491,22 +410,22 @@ async def startup_event():
         return
     app_state._telemetry_flush_task = asyncio.create_task(observability._telemetry_flush_loop())
     if settings._IS_PRODUCTION:
-        app_state._transcription_dispatch_task = asyncio.create_task(_transcription_dispatch_loop())
+        app_state._transcription_dispatch_task = asyncio.create_task(upload_dispatch._transcription_dispatch_loop())
     if settings.QUEUE_METRICS_ENABLED:
-        app_state._queue_metrics_task = asyncio.create_task(_queue_metrics_loop())
+        app_state._queue_metrics_task = asyncio.create_task(maintenance_jobs._queue_metrics_loop())
     if os.environ.get("RELEASE_ENVIRONMENT") == "staging":
         # Current staging shares Firestore: it must not reconcile live payments
         # or run global customer-media cleanup with staging credentials.
         return
     if app_state.scheduler is not None:
-        app_state.scheduler.add_job(scheduled_janitor_job, 'interval', minutes=15)
-        app_state.scheduler.add_job(scheduled_payment_reconciliation_job, 'interval', minutes=max(settings.PAYMENT_RECONCILE_INTERVAL_MINUTES, 5))
+        app_state.scheduler.add_job(maintenance_jobs.scheduled_janitor_job, 'interval', minutes=15)
+        app_state.scheduler.add_job(maintenance_jobs.scheduled_payment_reconciliation_job, 'interval', minutes=max(settings.PAYMENT_RECONCILE_INTERVAL_MINUTES, 5))
         app_state.scheduler.start()
         observability._json_log("info", "scheduler_started", janitor_minutes=15,
                   payment_reconcile_minutes=max(settings.PAYMENT_RECONCILE_INTERVAL_MINUTES, 5))
     else:
         observability._json_log("warning", "janitor_fallback_loop", reason="apscheduler not installed")
-        app_state._simple_janitor_task = asyncio.create_task(_simple_janitor_loop())
+        app_state._simple_janitor_task = asyncio.create_task(maintenance_jobs._simple_janitor_loop())
 
 
 async def shutdown_event():
@@ -526,17 +445,6 @@ async def shutdown_event():
         app_state.scheduler.shutdown(wait=False)
     await asyncio.to_thread(observability._flush_telemetry)
 
-_maintenance_jobs = create_maintenance_jobs(sys.modules[__name__])
-cleanup_local_media_artifacts = _maintenance_jobs.cleanup_local_media_artifacts
-advanced_janitor_job = _maintenance_jobs.advanced_janitor_job
-_advanced_janitor_once = _maintenance_jobs._advanced_janitor_once
-_claim_scheduled_job = _maintenance_jobs._claim_scheduled_job
-_release_scheduled_job = _maintenance_jobs._release_scheduled_job
-scheduled_janitor_job = _maintenance_jobs.scheduled_janitor_job
-scheduled_payment_reconciliation_job = _maintenance_jobs.scheduled_payment_reconciliation_job
-_publish_queue_metrics_once = _maintenance_jobs._publish_queue_metrics_once
-_queue_metrics_loop = _maintenance_jobs._queue_metrics_loop
-_simple_janitor_loop = _maintenance_jobs._simple_janitor_loop
 
 app.add_middleware(
     CORSMiddleware,
@@ -561,95 +469,6 @@ app_state._provider_breakers: Dict[str, observability.CircuitBreaker] = {
 }
 
 
-_request_security = create_request_security(sys.modules[__name__])
-_apply_security_headers = _request_security._apply_security_headers
-_app_check_required = _request_security._app_check_required
-_verify_firebase_app_check_request = _request_security._verify_firebase_app_check_request
-_tenant_id_from_token = _request_security._tenant_id_from_token
-_is_explicit_dev_auth_token = _request_security._is_explicit_dev_auth_token
-_assert_account_not_deleting = _request_security._assert_account_not_deleting
-_create_account_if_active = _request_security._create_account_if_active
-_authenticate_media_request = _request_security._authenticate_media_request
-_authenticate_bearer_request = _request_security._authenticate_bearer_request
-_assert_tenant_access = _request_security._assert_tenant_access
-
-
-_operator_controls = create_operator_controls(sys.modules[__name__])
-_validate_feature_flag_safety = _operator_controls._validate_feature_flag_safety
-_default_service_controls = _operator_controls._default_service_controls
-_read_service_controls = _operator_controls._read_service_controls
-_assert_service_available = _operator_controls._assert_service_available
-_scan_upload_for_threat = _operator_controls._scan_upload_for_threat
-_is_content_safety_blocked = _operator_controls._is_content_safety_blocked
-
-
-_request_guards = create_request_guards(sys.modules[__name__])
-_idem_get = _request_guards._idem_get
-_idem_claim = _request_guards._idem_claim
-_idem_set = _request_guards._idem_set
-_idem_delete = _request_guards._idem_delete
-_upload_idem_key = _request_guards._upload_idem_key
-_upload_idem_get = _request_guards._upload_idem_get
-_upload_idem_set = _request_guards._upload_idem_set
-_payment_idem_get = _request_guards._payment_idem_get
-_payment_idem_set = _request_guards._payment_idem_set
-_payment_idem_claim = _request_guards._payment_idem_claim
-_payment_idem_delete = _request_guards._payment_idem_delete
-_require_payment_idempotency = _request_guards._require_payment_idempotency
-_rate_limit_namespace = _request_guards._rate_limit_namespace
-_rate_limit_redis_key = _request_guards._rate_limit_redis_key
-_client_rate_key = _request_guards._client_rate_key
-_check_rate = _request_guards._check_rate
-_record_export_failure = _request_guards._record_export_failure
-_get_recent_export_failures = _request_guards._get_recent_export_failures
-_acquire_export_slot = _request_guards._acquire_export_slot
-_release_export_slot = _request_guards._release_export_slot
-_acquire_process_slot = _request_guards._acquire_process_slot
-_release_process_slot = _request_guards._release_process_slot
-_apply_rate_headers = _request_guards._apply_rate_headers
-
-
-_media_records = create_media_records(sys.modules[__name__])
-_validate_file_id = _media_records._validate_file_id
-_safe_find_upload = _media_records._safe_find_upload
-_load_upload_metadata = _media_records._load_upload_metadata
-_remember_source_duration = _media_records._remember_source_duration
-_source_duration_hint = _media_records._source_duration_hint
-_remember_upload_owner = _media_records._remember_upload_owner
-_update_upload_metadata = _media_records._update_upload_metadata
-_mark_upload_security_state = _media_records._mark_upload_security_state
-_assert_upload_clean = _media_records._assert_upload_clean
-_ensure_upload_clean = _media_records._ensure_upload_clean
-_source_media_identity = _media_records._source_media_identity
-_assert_upload_owner = _media_records._assert_upload_owner
-_media_token_signature = _media_records._media_token_signature
-_create_media_token = _media_records._create_media_token
-_verify_media_token = _media_records._verify_media_token
-_signed_upload_url = _media_records._signed_upload_url
-_signed_export_url = _media_records._signed_export_url
-_compute_media_hash = _media_records._compute_media_hash
-_upload_security_service = _media_records._upload_security_service
-_build_process_cache_path = _media_records._build_process_cache_path
-_build_parity_signature = _media_records._build_parity_signature
-_validate_media_signature = _media_records._validate_media_signature
-_probe_media = _media_records._probe_media
-
-
-_entitlements = create_entitlements(sys.modules[__name__])
-_normalize_tier_name = _entitlements._normalize_tier_name
-_normalize_free_credit_balance = _entitlements._normalize_free_credit_balance
-_subscription_is_expired = _entitlements._subscription_is_expired
-_effective_subscription_tier = _entitlements._effective_subscription_tier
-_lookup_subscription_tier = _entitlements._lookup_subscription_tier
-_max_video_seconds_for_tier = _entitlements._max_video_seconds_for_tier
-_reserve_system_ai_quota = _entitlements._reserve_system_ai_quota
-_reserve_ai_quota = _entitlements._reserve_ai_quota
-_read_system_ai_usage = _entitlements._read_system_ai_usage
-_release_system_ai_quota = _entitlements._release_system_ai_quota
-_release_ai_quota = _entitlements._release_ai_quota
-_resolve_export_preset = _entitlements._resolve_export_preset
-
-
 for d in [settings.UPLOAD_DIR, settings.EXPORT_DIR, settings.FONTS_DIR, settings.CACHE_DIR, settings.TRANSCRIPTION_CACHE_DIR, settings.RENDER_CACHE_DIR, settings.DEAD_LETTER_DIR]:
     os.makedirs(d, exist_ok=True)
 
@@ -658,63 +477,26 @@ app_state.processor = VideoProcessor(settings.FONTS_DIR)
 
 
 app.include_router(create_project_router(
-    _authenticate_media_request,
+    request_security._authenticate_media_request,
     firebase_admin_setup.get_db,
-    _validate_file_id,
-    _assert_upload_owner,
+    media_records._validate_file_id,
+    media_records._assert_upload_owner,
 ))
-
-
-_api_models = create_api_models(sys.modules[__name__])
-CaptionItem = _api_models.CaptionItem
-ExportRequest = _api_models.ExportRequest
-BatchExportRequest = _api_models.BatchExportRequest
-CreateOrderRequest = _api_models.CreateOrderRequest
-VerifyPaymentRequest = _api_models.VerifyPaymentRequest
-ReconcilePaymentsRequest = _api_models.ReconcilePaymentsRequest
-AdminRecoveryRequest = _api_models.AdminRecoveryRequest
-AdminAlertTestRequest = _api_models.AdminAlertTestRequest
-ServiceControlsRequest = _api_models.ServiceControlsRequest
-TenantBackfillRequest = _api_models.TenantBackfillRequest
-SupportRequest = _api_models.SupportRequest
-ProcessRequest = _api_models.ProcessRequest
-MediaUrlRequest = _api_models.MediaUrlRequest
-TranslateRequest = _api_models.TranslateRequest
-
-
-_export_job_core = create_export_jobs(sys.modules[__name__])
-_persist_export_job = _export_job_core._persist_export_job
-_load_export_job = _export_job_core._load_export_job
-_evaluate_export_policy = _export_job_core._evaluate_export_policy
-_record_export_usage = _export_job_core._record_export_usage
-_load_recorded_export_result = _export_job_core._load_recorded_export_result
-_set_export_job = _export_job_core._set_export_job
-_refresh_completed_export_payload = _export_job_core._refresh_completed_export_payload
-_normalize_export_captions_for_media = _export_job_core._normalize_export_captions_for_media
-_write_dead_letter = _export_job_core._write_dead_letter
-_strip_client_render_hints = _export_job_core._strip_client_render_hints
-_sanitize_export_request_payload = _export_job_core._sanitize_export_request_payload
-_write_last_export_request_debug = _export_job_core._write_last_export_request_debug
-_extract_bearer_token = _export_job_core._extract_bearer_token
-_require_export_job_access = _export_job_core._require_export_job_access
-_mark_export_processing = _export_job_core._mark_export_processing
-_process_export_job_core = _export_job_core._process_export_job_core
-_export_slot_wait_retry = _export_job_core._export_slot_wait_retry
 
 
 def recover_interrupted_export_retry(export_job_id: str):
     """Called only after RQ confirms a failed or abandoned execution will retry."""
-    record = _load_export_job(export_job_id) or {}
+    record = export_jobs._load_export_job(export_job_id) or {}
     status = record.get("status")
     if status not in {"starting", "processing", "finalizing"}:
         return
-    if status == "finalizing" and _load_recorded_export_result(
+    if status == "finalizing" and export_jobs._load_recorded_export_result(
         record.get("uid", ""), export_job_id, record.get("file_id", "")
     ):
         # The retry recovers this paid result without rendering or charging again.
         return
     try:
-        _set_export_job(export_job_id, "retrying", expected_status=status,
+        export_jobs._set_export_job(export_job_id, "retrying", expected_status=status,
                         error="Worker interrupted; export will retry")
     except InvalidJobTransition:
         # A concurrent completion/cancellation remains authoritative.
@@ -732,24 +514,24 @@ def run_export_job_task(
     slot_acquired = False
     # RQ has removed the job ID from the pending list before invoking us. Keep
     # the atomic admission ledger aligned with pending work, not active work.
-    _release_export_pending_work(export_job_id)
-    existing_job = _load_export_job(export_job_id) or {}
+    export_api._release_export_pending_work(export_job_id)
+    existing_job = export_jobs._load_export_job(export_job_id) or {}
     if existing_job.get("status") == "completed":
         return existing_job.get("payload") or {}
     try:
         if existing_job.get("status") == "finalizing":
-            _assert_account_not_deleting(uid)
-            recorded = _load_recorded_export_result(uid, export_job_id, str(req_payload.get("file_id") or ""))
+            request_security._assert_account_not_deleting(uid)
+            recorded = export_jobs._load_recorded_export_result(uid, export_job_id, str(req_payload.get("file_id") or ""))
             if recorded:
-                _set_export_job(export_job_id, "completed", payload=recorded,
+                export_jobs._set_export_job(export_job_id, "completed", payload=recorded,
                                 completed_at=time.time(), recovered_from_usage=True)
                 if idempotency_key:
-                    _idem_set(idempotency_key, {"status": "completed", "ts": time.time(), "payload": recorded,
+                    request_guards._idem_set(idempotency_key, {"status": "completed", "ts": time.time(), "payload": recorded,
                                                "request_hash": idempotency_request_hash, "job_id": export_job_id})
                 return recorded
-        _set_export_job(export_job_id, "starting", worker_release=settings.APP_RELEASE)
+        export_jobs._set_export_job(export_job_id, "starting", worker_release=settings.APP_RELEASE)
     except InvalidJobTransition:
-        current = _load_export_job(export_job_id) or {}
+        current = export_jobs._load_export_job(export_job_id) or {}
         return {"success": False, "status": current.get("status"), "export_job_id": export_job_id}
     try:
         if (existing_job.get("status") or "").lower() == "cancelled":
@@ -759,22 +541,22 @@ def run_export_job_task(
                 "status": "cancelled",
                 "export_job_id": export_job_id,
             }
-        slot_acquired = _acquire_export_slot(uid, export_job_id)
+        slot_acquired = request_guards._acquire_export_slot(uid, export_job_id)
         if not slot_acquired:
-            wait_retry = _export_slot_wait_retry()
+            wait_retry = export_jobs._export_slot_wait_retry()
             if wait_retry is not None:
                 # Batch items for one account share its single export slot. Waiting
                 # for a sibling render is not a failure: reschedule without using
                 # the job's failure retries (a 10-item batch outlived them) and
                 # without dead-lettering every poll.
-                _set_export_job(export_job_id, "retrying", error=None)
+                export_jobs._set_export_job(export_job_id, "retrying", error=None)
                 observability._json_log("info", "export_waiting_for_account_slot", job_id=export_job_id)
                 return wait_retry
             raise RuntimeError("Another export currently owns this account's export slot")
-        req = ExportRequest(**req_payload)
-        payload = asyncio.run(_process_export_job_core(req, uid, rid, export_job_id))
+        req = api_models.ExportRequest(**req_payload)
+        payload = asyncio.run(export_jobs._process_export_job_core(req, uid, rid, export_job_id))
         if idempotency_key:
-            _idem_set(idempotency_key, {
+            request_guards._idem_set(idempotency_key, {
                 "status": "completed",
                 "ts": time.time(),
                 "payload": payload,
@@ -788,7 +570,7 @@ def run_export_job_task(
         # turn a paid result into a fresh render on the next submission.
         usage_recovery_unknown = False
         try:
-            recorded = _load_recorded_export_result(uid, export_job_id, str(req_payload.get("file_id") or ""))
+            recorded = export_jobs._load_recorded_export_result(uid, export_job_id, str(req_payload.get("file_id") or ""))
         except Exception as recovery_error:
             recorded = None
             usage_recovery_unknown = True
@@ -796,12 +578,12 @@ def run_export_job_task(
                       error=type(recovery_error).__name__)
         if recorded:
             try:
-                current = _load_export_job(export_job_id) or {}
+                current = export_jobs._load_export_job(export_job_id) or {}
                 if current.get("status") == "finalizing":
-                    _set_export_job(export_job_id, "completed", payload=recorded,
+                    export_jobs._set_export_job(export_job_id, "completed", payload=recorded,
                                     completed_at=time.time(), recovered_from_usage=True)
                 if idempotency_key:
-                    _idem_set(idempotency_key, {"status": "completed", "ts": time.time(), "payload": recorded,
+                    request_guards._idem_set(idempotency_key, {"status": "completed", "ts": time.time(), "payload": recorded,
                                                "request_hash": idempotency_request_hash, "job_id": export_job_id})
             except Exception as recovery_error:
                 observability._json_log("warning", "export_completion_recovery_pending", job_id=export_job_id,
@@ -815,7 +597,7 @@ def run_export_job_task(
             if rq_job and not retryable:
                 rq_job.retries_left = 0
                 rq_job.save()
-            _set_export_job(export_job_id, "retrying" if retry_pending else "failed",
+            export_jobs._set_export_job(export_job_id, "retrying" if retry_pending else "failed",
                             failed_at=time.time(), error="Export failed. Please retry or contact support.")
         except Exception as state_error:
             observability._json_log(
@@ -824,7 +606,7 @@ def run_export_job_task(
                 job_id=export_job_id,
                 error=str(state_error),
             )
-        failed_job = _load_export_job(export_job_id) or {}
+        failed_job = export_jobs._load_export_job(export_job_id) or {}
         entered_at = float(failed_job.get("queue_entered_at") or time.time())
         observability._json_log(
             "warning", "export_observation", job_id=export_job_id,
@@ -833,16 +615,16 @@ def run_export_job_task(
             elapsed_ms=max(0, int((time.time() - entered_at) * 1000)),
         )
         if idempotency_key and not locals().get("retry_pending", False) and not usage_recovery_unknown:
-            _idem_delete(idempotency_key)
-        _write_dead_letter(
+            request_guards._idem_delete(idempotency_key)
+        export_jobs._write_dead_letter(
             export_job_id,
             str(e),
-            {"req_payload": _sanitize_export_request_payload(req_payload), "uid": uid},
+            {"req_payload": export_jobs._sanitize_export_request_payload(req_payload), "uid": uid},
         )
         raise
     finally:
         if slot_acquired:
-            _release_export_slot(uid, export_job_id)
+            request_guards._release_export_slot(uid, export_job_id)
 
 
 @app.get("/api/fonts")
@@ -873,195 +655,105 @@ def get_google_fonts():
         return {"fonts": []}
 
 
-_upload_dispatch = create_upload_dispatch(sys.modules[__name__])
-_cleanup_incomplete_upload = _upload_dispatch._cleanup_incomplete_upload
-_reserve_direct_upload_slot = _upload_dispatch._reserve_direct_upload_slot
-_limit_direct_upload_network = _upload_dispatch._limit_direct_upload_network
-_release_direct_upload_slot = _upload_dispatch._release_direct_upload_slot
-_schedule_media_scan = _upload_dispatch._schedule_media_scan
-_transcription_dispatch_loop = _upload_dispatch._transcription_dispatch_loop
-_dispatch_media_scans_once = _upload_dispatch._dispatch_media_scans_once
-_require_scheduler_secret = _upload_dispatch._require_scheduler_secret
-
 app.include_router(create_direct_upload_router(
-    authenticate=_authenticate_media_request,
-    extract_token=_extract_bearer_token,
-    assert_service_available=_assert_service_available,
+    authenticate=request_security._authenticate_media_request,
+    extract_token=export_jobs._extract_bearer_token,
+    assert_service_available=operator_controls._assert_service_available,
     allowed_extensions=settings.ALLOWED_EXTENSIONS,
     allowed_content_prefixes=settings.ALLOWED_CONTENT_PREFIXES,
     allowed_origins=settings.ALLOWED_ORIGINS,
     max_upload_bytes=settings.MAX_UPLOAD_BYTES,
     create_session=firebase_admin_setup.create_resumable_source_upload,
     finalize_session=firebase_admin_setup.finalize_resumable_source_upload,
-    remember_owner=_remember_upload_owner,
-    signed_upload_url=_signed_upload_url,
+    remember_owner=media_records._remember_upload_owner,
+    signed_upload_url=media_records._signed_upload_url,
     audit_action=observability._audit_action,
-    reserve_slot=_reserve_direct_upload_slot,
-    release_slot=_release_direct_upload_slot,
+    reserve_slot=upload_dispatch._reserve_direct_upload_slot,
+    release_slot=upload_dispatch._release_direct_upload_slot,
     cancel_session=firebase_admin_setup.cancel_resumable_source_upload,
     resume_session=firebase_admin_setup.resume_resumable_source_upload,
-    assert_account_active=_assert_account_not_deleting,
-    rate_limit_network=_limit_direct_upload_network,
-    enqueue_scan=_schedule_media_scan,
+    assert_account_active=request_security._assert_account_not_deleting,
+    rate_limit_network=upload_dispatch._limit_direct_upload_network,
+    enqueue_scan=upload_dispatch._schedule_media_scan,
     sign_parts=firebase_admin_setup.sign_resumable_upload_parts,
 ))
 app.include_router(create_editor_preferences_router(
-    _authenticate_media_request,
+    request_security._authenticate_media_request,
     firebase_admin_setup.get_db,
 ))
 
 
-_upload_api = create_upload_router(sys.modules[__name__])
-app.include_router(_upload_api.router)
-upload_video = _upload_api.upload_video
+app.include_router(upload_api.router)
 
-_processing_api = create_processing_router(sys.modules[__name__])
-app.include_router(_processing_api.router)
-process_video = _processing_api.process_video
-run_transcription_job_task = _processing_api.run_transcription_job_task
-_mark_account_activated = _processing_api._mark_account_activated
-_process_video_inline = _processing_api._process_video_inline
+app.include_router(processing_api.router)
 
 
 app.include_router(create_maintenance_router(
-    authorize=_require_scheduler_secret,
+    authorize=upload_dispatch._require_scheduler_secret,
     dispatch_transcription=lambda: TranscriptionJobs(firebase_admin_setup.get_db()).dispatch(app_state._transcription_queue),
-    dispatch_media_scans=_dispatch_media_scans_once,
-    run_janitor=scheduled_janitor_job,
-    publish_queue_metrics=_publish_queue_metrics_once,
-    reconcile_payments=scheduled_payment_reconciliation_job,
+    dispatch_media_scans=upload_dispatch._dispatch_media_scans_once,
+    run_janitor=maintenance_jobs.scheduled_janitor_job,
+    publish_queue_metrics=maintenance_jobs._publish_queue_metrics_once,
+    reconcile_payments=maintenance_jobs.scheduled_payment_reconciliation_job,
 ))
 
 
 def run_media_scan_job_task(uid: str, file_id: str):
     """Materialize and scan one upload; duplicate deliveries are harmless."""
-    _assert_account_not_deleting(uid)
-    _assert_upload_owner(file_id, uid)
-    metadata = _load_upload_metadata(file_id)
+    request_security._assert_account_not_deleting(uid)
+    media_records._assert_upload_owner(file_id, uid)
+    metadata = media_records._load_upload_metadata(file_id)
     if str(metadata.get("upload_state") or "").lower() in {"clean", "rejected"}:
         MediaScanJobs(firebase_admin_setup.get_db()).finish(file_id)
         return {"status": str(metadata.get("upload_state"))}
-    input_path = _safe_find_upload(file_id)
+    input_path = media_records._safe_find_upload(file_id)
     if not input_path:
         raise RuntimeError("Uploaded media could not be materialized for scanning")
     try:
-        result = _ensure_upload_clean(file_id, uid, input_path)
+        result = media_records._ensure_upload_clean(file_id, uid, input_path)
         MediaScanJobs(firebase_admin_setup.get_db()).finish(file_id)
         return {"status": str(result.get("upload_state") or "clean")}
     except HTTPException:
         # A malware rejection is terminal and already persisted by
         # _ensure_upload_clean. Scanner/runtime failures stay in the outbox.
-        current = _load_upload_metadata(file_id)
+        current = media_records._load_upload_metadata(file_id)
         if str(current.get("upload_state") or "").lower() == "rejected":
             MediaScanJobs(firebase_admin_setup.get_db()).finish(file_id)
             return {"status": "rejected"}
         raise
 
 
-_export_api = create_export_router(sys.modules[__name__])
-app.include_router(_export_api.router)
-_render_queue_for = _export_api._render_queue_for
-_queue_for_export_job_record = _export_api._queue_for_export_job_record
-_enqueue_export_job = _export_api._enqueue_export_job
-_release_export_pending_work = _export_api._release_export_pending_work
-export_video = _export_api.export_video
-create_export_batch = _export_api.create_export_batch
-get_export_batch = _export_api.get_export_batch
-_reconcile_export_job = _export_api._reconcile_export_job
-_active_workers_for_queue = _export_api._active_workers_for_queue
-_export_queue_prediction = _export_api._export_queue_prediction
-export_status = _export_api.export_status
-export_result = _export_api.export_result
-export_cancel = _export_api.export_cancel
-export_replay = _export_api.export_replay
+app.include_router(export_api.router)
 
 
-_system_api = create_system_router(sys.modules[__name__])
-app.include_router(_system_api.router)
-analytics_track = _system_api.analytics_track
-create_support_request = _system_api.create_support_request
-api_version = _system_api.api_version
-api_health = _system_api.api_health
-api_version_v1 = _system_api.api_version_v1
-_runtime_dependency_snapshot = _system_api._runtime_dependency_snapshot
-slo_status = _system_api.slo_status
-readiness = _system_api.readiness
-feature_flags = _system_api.feature_flags
-service_status = _system_api.service_status
-admin_service_controls = _system_api.admin_service_controls
+app.include_router(system_api.router)
 
 
-_billing = create_billing_service(sys.modules[__name__])
-app.include_router(_billing.router)
-_resolve_plan_from_amount_currency = _billing._resolve_plan_from_amount_currency
-_topup_timestamp_epoch = _billing._topup_timestamp_epoch
-_recent_topup_timestamps = _billing._recent_topup_timestamps
-_active_topup_reservations = _billing._active_topup_reservations
-_topup_purchase_limit = _billing._topup_purchase_limit
-_assert_topup_purchase_available = _billing._assert_topup_purchase_available
-_reserve_topup_order_slot = _billing._reserve_topup_order_slot
-_release_topup_order_slot = _billing._release_topup_order_slot
-_fetch_bound_order_context = _billing._fetch_bound_order_context
-_can_trigger_reconcile = _billing._can_trigger_reconcile
-reconcile_payments_once = _billing.reconcile_payments_once
-payment_reconciliation_job = _billing.payment_reconciliation_job
-_grant_payment_transactionally = _billing._grant_payment_transactionally
-_apply_successful_payment = _billing._apply_successful_payment
-_apply_refund_webhook_event = _billing._apply_refund_webhook_event
+app.include_router(billing.router)
 
 
-def _decoded_token_is_admin(decoded: Optional[Dict[str, Any]]) -> bool:
-    if not decoded:
-        return False
-    if decoded.get("admin") is True:
-        return True
-    allowed_admins = {
-        e.strip().lower()
-        for e in os.environ.get("ADMIN_EMAILS", "").split(",")
-        if e.strip()
-    }
-    return bool(
-        decoded.get("email_verified") is True
-        and allowed_admins
-        and decoded.get("email", "").lower() in allowed_admins
-    )
-
-def _is_admin_token(id_token: str = "", request: Optional[Request] = None) -> bool:
-    token = (id_token or "").strip()
-    if not token and request is not None:
-        token = request.headers.get("authorization", "").replace("Bearer ", "").strip()
-    if not token:
-        return False
-    decoded = firebase_admin_setup.verify_token(token)
-    if not decoded:
-        return False
-    return _decoded_token_is_admin(decoded)
-
-
-app.include_router(create_cost_reconciliation_router(_is_admin_token, firebase_admin_setup.get_db))
-app.include_router(create_notification_router(_authenticate_bearer_request, firebase_admin_setup.get_db))
+app.include_router(create_cost_reconciliation_router(request_security._is_admin_token, firebase_admin_setup.get_db))
+app.include_router(create_notification_router(request_security._authenticate_bearer_request, firebase_admin_setup.get_db))
 app.include_router(create_public_api_router(
-    authenticate_request=_authenticate_bearer_request,
+    authenticate_request=request_security._authenticate_bearer_request,
     get_database=firebase_admin_setup.get_db,
     list_account_projects=list_projects,
     read_account_project=read_draft,
-    load_export_job=_load_export_job,
+    load_export_job=export_jobs._load_export_job,
 ))
 app.include_router(create_workspace_router(
-    authenticate_request=_authenticate_bearer_request,
+    authenticate_request=request_security._authenticate_bearer_request,
     get_database=firebase_admin_setup.get_db,
-    assert_upload_owner=_assert_upload_owner,
-    validate_file_id=_validate_file_id,
-    find_upload=_safe_find_upload,
-    signed_upload_url=_signed_upload_url,
+    assert_upload_owner=media_records._assert_upload_owner,
+    validate_file_id=media_records._validate_file_id,
+    find_upload=media_records._safe_find_upload,
+    signed_upload_url=media_records._signed_upload_url,
 ))
 
 
-_provider_admin_api = create_provider_admin_router(sys.modules[__name__])
-app.include_router(_provider_admin_api.router)
-provider_health = _provider_admin_api.provider_health
+app.include_router(provider_admin_api.router)
 app.include_router(create_analytics_router(
-    is_admin=_is_admin_token,
+    is_admin=request_security._is_admin_token,
     utcnow=observability._utcnow,
     get_database=firebase_admin_setup.get_db,
     read_counters=observability._read_daily_analytics_counters,
@@ -1074,55 +766,19 @@ app.include_router(create_analytics_router(
 
 # --- RAZORPAY SUBSCRIPTION ENDPOINTS ---
 
-_payments = create_payments_router(sys.modules[__name__])
-app.include_router(_payments.router)
-create_order = _payments.create_order
-verify_payment = _payments.verify_payment
-razorpay_webhook = _payments.razorpay_webhook
-reconcile_payments = _payments.reconcile_payments
+app.include_router(payments_api.router)
 
 
-_admin_api = create_admin_router(sys.modules[__name__])
-app.include_router(_admin_api.router)
-admin_recovery_summary = _admin_api.admin_recovery_summary
-admin_test_alerts = _admin_api.admin_test_alerts
-admin_tenant_backfill = _admin_api.admin_tenant_backfill
+app.include_router(admin_api.router)
 
 
-_account_api = create_account_router(sys.modules[__name__])
-app.include_router(_account_api.router)
-RedeemPromoRequest = _account_api.RedeemPromoRequest
-redeem_promo = _account_api.redeem_promo
-DeleteFileRequest = _account_api.DeleteFileRequest
-AccountDataRequest = _account_api.AccountDataRequest
-SyntheticJourneyRequest = _account_api.SyntheticJourneyRequest
-authenticated_customer_journey = _account_api.authenticated_customer_journey
-AccountExportRequest = _account_api.AccountExportRequest
-_delete_user_document_tree = _account_api._delete_user_document_tree
-_account_workspace_memberships = _account_api._account_workspace_memberships
-_assert_no_owned_workspaces = _account_api._assert_no_owned_workspaces
-_delete_top_level_rows_for_account = _account_api._delete_top_level_rows_for_account
-_cleanup_account_extensions = _account_api._cleanup_account_extensions
-_remove_history_item_transactionally = _account_api._remove_history_item_transactionally
-_mark_history_item_deleting_transactionally = _account_api._mark_history_item_deleting_transactionally
-account_bootstrap = _account_api.account_bootstrap
-account_export = _account_api.account_export
-account_delete = _account_api.account_delete
+app.include_router(account_api.router)
 
 
-_language_api = create_language_router(sys.modules[__name__])
-app.include_router(_language_api.router)
-translate_captions = _language_api.translate_captions
-DetectLanguageRequest = _language_api.DetectLanguageRequest
-detect_language = _language_api.detect_language
+app.include_router(language_api.router)
 
 
-_media_api = create_media_router(sys.modules[__name__])
-app.include_router(_media_api.router)
-delete_user_file = _media_api.delete_user_file
-serve_uploaded_media = _media_api.serve_uploaded_media
-refresh_uploaded_media_url = _media_api.refresh_uploaded_media_url
-serve_exported_media = _media_api.serve_exported_media
+app.include_router(media_api.router)
 
 
 if __name__ == "__main__":

@@ -11,7 +11,7 @@ from rq import Worker
 
 try:
     from . import main as api
-    from .main import cleanup_local_media_artifacts
+    from .maintenance_jobs import cleanup_local_media_artifacts
     from .settings import (
         EXPORT_QUEUE_NAME,
         TRANSCRIPTION_QUEUE_NAME,
@@ -26,7 +26,7 @@ try:
     from .worker_launcher import WorkerLease
 except ImportError:  # Direct execution from backend/ remains supported.
     import main as api
-    from main import cleanup_local_media_artifacts
+    from maintenance_jobs import cleanup_local_media_artifacts
     from settings import (
         EXPORT_QUEUE_NAME,
         TRANSCRIPTION_QUEUE_NAME,

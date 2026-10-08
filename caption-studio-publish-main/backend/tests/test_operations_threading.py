@@ -54,9 +54,9 @@ class OperationsThreadingTests(unittest.IsolatedAsyncioTestCase):
     async def test_analytics_track_and_slo_offload_blocking_helpers(self):
         from backend import main
 
-        with (patch.object(main, "_check_rate", self.blocking("rate", (True, 0, 5))),
+        with (patch.object(main.request_guards, "_check_rate", self.blocking("rate", (True, 0, 5))),
               patch.object(main.observability, "_track_event", self.blocking("track")),
-              patch.object(main, "_is_admin_token", self.blocking("auth", True)),
+              patch.object(main.request_security, "_is_admin_token", self.blocking("auth", True)),
               patch.object(main.observability, "_build_slo_snapshot", self.blocking("slo", {"success": True}))):
             await self.request(main.app, "POST", "/api/analytics/track", json={"event": "page_view"})
             await self.request(main.app, "GET", "/api/slo/status")
@@ -88,12 +88,12 @@ class OperationsThreadingTests(unittest.IsolatedAsyncioTestCase):
     async def test_real_scheduled_helpers_offload_cleanup_reconciliation_and_leases(self):
         from backend import main
 
-        with (patch.object(main, "_claim_scheduled_job", self.blocking("claim", "lease")),
-              patch.object(main, "_release_scheduled_job", self.blocking("release")),
-              patch.object(main, "_advanced_janitor_once", self.blocking("cleanup")),
-              patch.object(main, "reconcile_payments_once", self.blocking("payments", {}))):
-            await main.scheduled_janitor_job()
-            await main.scheduled_payment_reconciliation_job()
+        with (patch.object(main.maintenance_jobs, "_claim_scheduled_job", self.blocking("claim", "lease")),
+              patch.object(main.maintenance_jobs, "_release_scheduled_job", self.blocking("release")),
+              patch.object(main.maintenance_jobs, "_advanced_janitor_once", self.blocking("cleanup")),
+              patch.object(main.billing, "reconcile_payments_once", self.blocking("payments", {}))):
+            await main.maintenance_jobs.scheduled_janitor_job()
+            await main.maintenance_jobs.scheduled_payment_reconciliation_job()
         self.assertEqual(self.calls, ["claim", "cleanup", "release", "claim", "payments", "release"])
 
 
@@ -241,9 +241,9 @@ class MiddlewareThreadingTests(unittest.IsolatedAsyncioTestCase):
 
         with (patch.object(main.settings, "FIREBASE_APP_CHECK_ENFORCED", False),
               patch.object(main.settings, "_IS_PRODUCTION", False),
-              patch.object(main, "_authenticate_media_request", return_value={"uid": "owner"}),
-              patch.object(main, "_acquire_process_slot", side_effect=acquire),
-              patch.object(main, "_release_process_slot", side_effect=release),
+              patch.object(main.request_security, "_authenticate_media_request", return_value={"uid": "owner"}),
+              patch.object(main.request_guards, "_acquire_process_slot", side_effect=acquire),
+              patch.object(main.request_guards, "_release_process_slot", side_effect=release),
               patch.object(main.settings, "RUN_API_BACKGROUND_TASKS", True)):
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.post("/api/upload")

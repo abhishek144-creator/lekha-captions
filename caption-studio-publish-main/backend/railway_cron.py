@@ -117,12 +117,12 @@ def _api_host():
         _transcription_queue=api.app_state._transcription_queue,
         TranscriptionJobs=api.TranscriptionJobs,
         get_db=api.firebase_admin_setup.get_db,
-        _dispatch_media_scans_once=api._dispatch_media_scans_once,
+        _dispatch_media_scans_once=api.upload_dispatch._dispatch_media_scans_once,
         _flush_telemetry=api.observability._flush_telemetry,
         _send_alert=api.observability._send_alert,
         asyncio=api.asyncio,
-        scheduled_janitor_job=api.scheduled_janitor_job,
-        scheduled_payment_reconciliation_job=api.scheduled_payment_reconciliation_job,
+        scheduled_janitor_job=api.maintenance_jobs.scheduled_janitor_job,
+        scheduled_payment_reconciliation_job=api.maintenance_jobs.scheduled_payment_reconciliation_job,
     )
 
 
@@ -170,7 +170,7 @@ def main():
     _log("cron_pass_finished", failed_steps=failures)
     sys.stdout.flush()
     sys.stderr.flush()
-    sentry = getattr(api, "sentry_sdk", None)
+    sentry = getattr(api.optional_deps, "sentry_sdk", None)
     if sentry is not None:
         try:
             sentry.flush(timeout=5)
