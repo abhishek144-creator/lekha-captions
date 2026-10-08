@@ -20,6 +20,14 @@ try:
     from . import app_state
 except ImportError:  # Direct execution from backend/ remains supported.
     import app_state
+try:
+    from . import firebase_admin_setup
+except ImportError:  # Direct execution from backend/ remains supported.
+    import firebase_admin_setup
+try:
+    from . import observability
+except ImportError:  # Direct execution from backend/ remains supported.
+    import observability
 
 
 def create_media_router(host: ModuleType) -> SimpleNamespace:
@@ -27,17 +35,17 @@ def create_media_router(host: ModuleType) -> SimpleNamespace:
 
     @router.post("/api/delete-file")
     def delete_user_file(req: host.DeleteFileRequest):
-        decoded_token = host.verify_token(req.id_token)
+        decoded_token = firebase_admin_setup.verify_token(req.id_token)
         if not decoded_token:
             raise HTTPException(status_code=401, detail="Auth required")
         uid = decoded_token.get('uid')
         host._assert_tenant_access(uid, decoded_token, req.org_id)
-        host._audit_action("delete_file_attempt", uid, {"file_id": req.file_id})
+        observability._audit_action("delete_file_attempt", uid, {"file_id": req.file_id})
 
         if not host._validate_file_id(req.file_id):
             raise HTTPException(status_code=400, detail="Invalid file_id")
 
-        db = host.get_db()
+        db = firebase_admin_setup.get_db()
         if not db:
             raise HTTPException(status_code=503, detail="Database unavailable; file deletion can be retried")
         user_ref = db.collection('users').document(uid)
@@ -58,10 +66,10 @@ def create_media_router(host: ModuleType) -> SimpleNamespace:
         failed_cloud_paths = []
         for item in matching_items:
             remote_path = item.get('firebase_path')
-            if remote_path and not host.delete_from_firebase_storage(remote_path):
+            if remote_path and not firebase_admin_setup.delete_from_firebase_storage(remote_path):
                 failed_cloud_paths.append(remote_path)
         if failed_cloud_paths:
-            host._json_log("error", "delete_file_storage_cleanup_failed", uid=uid, file_id=req.file_id, count=len(failed_cloud_paths))
+            observability._json_log("error", "delete_file_storage_cleanup_failed", uid=uid, file_id=req.file_id, count=len(failed_cloud_paths))
             raise HTTPException(
                 status_code=503,
                 detail={"message": "Cloud file cleanup was incomplete", "retryable": True},
@@ -85,7 +93,7 @@ def create_media_router(host: ModuleType) -> SimpleNamespace:
                     local_deleted += 1
                 except OSError as e:
                     local_delete_errors.append(name)
-                    host._json_log("error", "delete_file_local_cleanup_failed", uid=uid, file=name, error=str(e))
+                    observability._json_log("error", "delete_file_local_cleanup_failed", uid=uid, file=name, error=str(e))
         if local_delete_errors:
             raise HTTPException(
                 status_code=503,
@@ -95,7 +103,7 @@ def create_media_router(host: ModuleType) -> SimpleNamespace:
         upload_metadata = host._load_upload_metadata(req.file_id)
         if upload_metadata and str(upload_metadata.get("uid") or "") == uid:
             source_remote_path = str(upload_metadata.get("remote_path") or "")
-            if source_remote_path and not host.delete_from_firebase_storage(source_remote_path):
+            if source_remote_path and not firebase_admin_setup.delete_from_firebase_storage(source_remote_path):
                 raise HTTPException(
                     status_code=503,
                     detail={"message": "Source media cleanup was incomplete", "retryable": True},
@@ -120,7 +128,7 @@ def create_media_router(host: ModuleType) -> SimpleNamespace:
             app_state._upload_owners.pop(req.file_id, None)
 
         host._remove_history_item_transactionally(db, user_ref, req.file_id)
-        host._audit_action("delete_file_success", uid, {"file_id": req.file_id, "local_files_deleted": local_deleted})
+        observability._audit_action("delete_file_success", uid, {"file_id": req.file_id, "local_files_deleted": local_deleted})
         return {"success": True, "local_files_deleted": local_deleted}
 
 
@@ -159,8 +167,8 @@ def create_media_router(host: ModuleType) -> SimpleNamespace:
         if payload.get("filename") != filename:
             raise HTTPException(status_code=403, detail="Media token does not match this export")
         download_filename = str(payload.get("download_filename") or filename)
-        direct_url = (host.signed_export_download_url(f"exports/{payload['uid']}/{filename}", 600, download_filename)
-                      if payload.get("download_filename") else host.signed_export_download_url(f"exports/{payload['uid']}/{filename}"))
+        direct_url = (firebase_admin_setup.signed_export_download_url(f"exports/{payload['uid']}/{filename}", 600, download_filename)
+                      if payload.get("download_filename") else firebase_admin_setup.signed_export_download_url(f"exports/{payload['uid']}/{filename}"))
         if direct_url:
             return RedirectResponse(direct_url, status_code=302, headers={"Cache-Control": "no-store"})
         real_export_dir = host.os.path.realpath(settings.EXPORT_DIR)
@@ -173,7 +181,7 @@ def create_media_router(host: ModuleType) -> SimpleNamespace:
                 raise HTTPException(status_code=403, detail="Invalid export owner")
             partial = f"{path}.part-{host.uuid.uuid4().hex}"
             try:
-                downloaded = host.download_export_from_firebase_storage(
+                downloaded = firebase_admin_setup.download_export_from_firebase_storage(
                     f"exports/{uid}/{filename}", partial
                 )
                 if downloaded:

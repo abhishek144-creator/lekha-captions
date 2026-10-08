@@ -24,7 +24,7 @@ class ExportSlotWaitTests(unittest.TestCase):
 
     def test_batch_item_waits_for_account_slot_without_spending_failure_retries(self):
         core = AsyncMock()
-        with (patch.object(main.app_state, "_redis_client", self.redis), patch.object(main, "get_db", return_value=None),
+        with (patch.object(main.app_state, "_redis_client", self.redis), patch.object(main.firebase_admin_setup, "get_db", return_value=None),
               patch.object(main.app_state, "_export_queue", None), patch.object(main, "_process_export_job_core", core),
               patch.object(main, "_write_dead_letter") as dead_letter,
               patch("rq.get_current_job", return_value=SimpleNamespace(id="item-2"))):
@@ -43,7 +43,7 @@ class ExportSlotWaitTests(unittest.TestCase):
         dead_letter.assert_not_called()
 
     def test_slot_conflict_outside_rq_still_fails_loudly(self):
-        with (patch.object(main.app_state, "_redis_client", self.redis), patch.object(main, "get_db", return_value=None),
+        with (patch.object(main.app_state, "_redis_client", self.redis), patch.object(main.firebase_admin_setup, "get_db", return_value=None),
               patch.object(main.app_state, "_export_queue", None), patch.object(main, "_write_dead_letter"),
               patch("rq.get_current_job", return_value=None)):
             self.redis.set("expactive:a", "other")
@@ -56,7 +56,7 @@ class DurableSnapshotTests(unittest.TestCase):
     def test_request_snapshot_stays_out_of_redis_when_firestore_holds_it(self):
         redis_client = fakeredis.FakeRedis(decode_responses=True)
         persisted = []
-        with (patch.object(main.app_state, "_redis_client", redis_client), patch.object(main, "get_db", return_value=object()),
+        with (patch.object(main.app_state, "_redis_client", redis_client), patch.object(main.firebase_admin_setup, "get_db", return_value=object()),
               patch.object(main, "_persist_export_job", side_effect=lambda job_id, payload, **_: persisted.append(payload) or True)):
             main._set_export_job("big", "queued", uid="a", request_snapshot={"captions": ["x" * 1000]})
             main._set_export_job("big", "starting")
@@ -96,7 +96,7 @@ class NonBlockingSubmissionTests(unittest.TestCase):
         from starlette.requests import Request
         with (patch.object(main.asyncio, "to_thread", tracking_to_thread),
               patch.object(main.settings, "_IS_PRODUCTION", True), patch.object(main.app_state, "_export_queue", None),
-              patch.object(main, "_assert_service_available"), patch.object(main, "_track_event"),
+              patch.object(main, "_assert_service_available"), patch.object(main.observability, "_track_event"),
               patch.object(main, "_authenticate_media_request", Mock(return_value={"uid": "owner"}, __name__="auth"))):
             with self.assertRaises(main.HTTPException):
                 asyncio.run(main.export_video(request, Request({"type": "http", "headers": []}), main.Response()))

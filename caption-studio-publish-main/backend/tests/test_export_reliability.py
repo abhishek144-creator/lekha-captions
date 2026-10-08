@@ -96,7 +96,7 @@ class ExportReliabilityTests(unittest.TestCase):
             patch.object(main, "_source_duration_hint", return_value=12),
             patch.object(main, "_render_queue_for", return_value=SimpleNamespace()),
             patch.object(main, "_enqueue_export_job", side_effect=lambda *a, **kw: time.sleep(0.08)),
-            patch.object(main, "_audit_action"),
+            patch.object(main.observability, "_audit_action"),
         ):
             results = asyncio.run(probe())
         self.assertTrue(all(result["queued"] for result in results))
@@ -130,7 +130,7 @@ class ExportReliabilityTests(unittest.TestCase):
                 # assertion, entering the contexts dynamically instead.
                 with ExitStack() as stack:
                     for patcher in (
-                        patch.object(main, "get_db", return_value=database),
+                        patch.object(main.firebase_admin_setup, "get_db", return_value=database),
                         patch.object(main.firestore, "transactional", lambda fn: fn),
                         patch.object(main.settings, "DISABLE_EXPORT_CREDIT_LIMIT", False),
                         patch.object(main, "_assert_account_not_deleting"),
@@ -143,7 +143,7 @@ class ExportReliabilityTests(unittest.TestCase):
                         patch.object(main, "render_cache_eligible", return_value=False),
                         patch.object(main.settings, "EXPORT_DIR", directory), patch.object(main.settings, "RENDER_CACHE_DIR", directory),
                         patch.object(main.app_state.processor, "burn_only", render),
-                        patch.object(main, "upload_to_firebase_storage", return_value="https://storage/private"),
+                        patch.object(main.firebase_admin_setup, "upload_to_firebase_storage", return_value="https://storage/private"),
                         patch.object(main, "_write_last_export_request_debug"),
                     ):
                         stack.enter_context(patcher)
@@ -308,10 +308,10 @@ class BatchIdempotencyTests(unittest.TestCase):
             "_source_duration_hint": 12,
             "_set_export_job": None,
             "_render_queue_for": SimpleNamespace(),
-            "_audit_action": None,
-            "get_db": self.database,
         }.items():
             self.stack.enter_context(patch.object(main, name, return_value=value))
+        self.stack.enter_context(patch.object(main.observability, "_audit_action", return_value=None))
+        self.stack.enter_context(patch.object(main.firebase_admin_setup, "get_db", return_value=self.database))
         self.router = create_export_router(main)
         self.request = Request({"type": "http", "headers": []})
 
