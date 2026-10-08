@@ -23,6 +23,10 @@ try:
     from . import observability
 except ImportError:  # Direct execution from backend/ remains supported.
     import observability
+try:
+    from . import billing
+except ImportError:  # Direct execution from backend/ remains supported.
+    import billing
 
 
 def create_maintenance_jobs(host: ModuleType) -> SimpleNamespace:
@@ -200,7 +204,7 @@ def create_maintenance_jobs(host: ModuleType) -> SimpleNamespace:
         if not token:
             return
         try:
-            await host.payment_reconciliation_job()
+            await billing.payment_reconciliation_job()
         finally:
             await host.asyncio.to_thread(host._release_scheduled_job, "payment_reconciliation", token)
 

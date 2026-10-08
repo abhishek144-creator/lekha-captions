@@ -87,11 +87,11 @@ try:
     from .notifications import create_notification, create_notification_router
     from .public_api import create_public_api_router
     from .workspace_api import create_workspace_router
-    from .payments_api import create_payments_router
+    from . import payments_api
     from .redis_config import connect_redis
     from .idle_connections import RailwayIdleConnectionsMiddleware, disconnect_idle_redis_clients
     from .system_api import create_system_router
-    from .billing import create_billing_service
+    from . import billing
     from . import observability
     from . import request_security
     from . import operator_controls
@@ -143,11 +143,11 @@ except ImportError:
     from notifications import create_notification, create_notification_router
     from public_api import create_public_api_router
     from workspace_api import create_workspace_router
-    from payments_api import create_payments_router
+    import payments_api
     from redis_config import connect_redis
     from idle_connections import RailwayIdleConnectionsMiddleware, disconnect_idle_redis_clients
     from system_api import create_system_router
-    from billing import create_billing_service
+    import billing
     import observability
     import request_security
     import operator_controls
@@ -841,23 +841,7 @@ service_status = _system_api.service_status
 admin_service_controls = _system_api.admin_service_controls
 
 
-_billing = create_billing_service(sys.modules[__name__])
-app.include_router(_billing.router)
-_resolve_plan_from_amount_currency = _billing._resolve_plan_from_amount_currency
-_topup_timestamp_epoch = _billing._topup_timestamp_epoch
-_recent_topup_timestamps = _billing._recent_topup_timestamps
-_active_topup_reservations = _billing._active_topup_reservations
-_topup_purchase_limit = _billing._topup_purchase_limit
-_assert_topup_purchase_available = _billing._assert_topup_purchase_available
-_reserve_topup_order_slot = _billing._reserve_topup_order_slot
-_release_topup_order_slot = _billing._release_topup_order_slot
-_fetch_bound_order_context = _billing._fetch_bound_order_context
-_can_trigger_reconcile = _billing._can_trigger_reconcile
-reconcile_payments_once = _billing.reconcile_payments_once
-payment_reconciliation_job = _billing.payment_reconciliation_job
-_grant_payment_transactionally = _billing._grant_payment_transactionally
-_apply_successful_payment = _billing._apply_successful_payment
-_apply_refund_webhook_event = _billing._apply_refund_webhook_event
+app.include_router(billing.router)
 
 
 app.include_router(create_cost_reconciliation_router(request_security._is_admin_token, firebase_admin_setup.get_db))
@@ -896,12 +880,7 @@ app.include_router(create_analytics_router(
 
 # --- RAZORPAY SUBSCRIPTION ENDPOINTS ---
 
-_payments = create_payments_router(sys.modules[__name__])
-app.include_router(_payments.router)
-create_order = _payments.create_order
-verify_payment = _payments.verify_payment
-razorpay_webhook = _payments.razorpay_webhook
-reconcile_payments = _payments.reconcile_payments
+app.include_router(payments_api.router)
 
 
 _admin_api = create_admin_router(sys.modules[__name__])

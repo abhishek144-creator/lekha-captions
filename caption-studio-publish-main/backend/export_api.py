@@ -1,7 +1,7 @@
 """Export job routes: submit, batch, status, result, cancel and replay.
 
-Handlers resolve shared helpers through ``host`` (the main module) at call time,
-so there is one copy of each helper and test patches on ``main`` keep applying.
+Callers use it as a module (`export_api.NAME`), so a test patches one
+place and every caller sees it.
 """
 
 import asyncio
