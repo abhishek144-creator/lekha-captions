@@ -14,7 +14,8 @@ import {
   Redo,
   RotateCw,
   Crown,
-  MoreHorizontal
+  MoreHorizontal,
+  Check
 } from 'lucide-react';
 
 export default function DashboardHeader({
@@ -72,12 +73,19 @@ export default function DashboardHeader({
           lives in the overflow menu. */}
       {hasVideo && (
         <div className="flex lg:hidden items-center gap-1.5">
+          {/* Save lives in the overflow menu here, so confirm it inline. */}
+          {(isSaving || saveSuccess) && (
+            <span role="status" className="flex items-center gap-1 text-[11px] font-semibold text-emerald-300">
+              {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+              <span className="max-[359px]:hidden">{isSaving ? 'Saving…' : 'Saved'}</span>
+            </span>
+          )}
           <Button
             variant="ghost"
             size="icon"
             onClick={onUndo}
             disabled={!canUndo}
-            className="h-9 w-9 rounded-full text-gray-300 hover:text-white hover:bg-white/10 disabled:opacity-25"
+            className="h-10 w-10 rounded-full text-gray-300 hover:text-white hover:bg-white/10 disabled:opacity-25"
             aria-label="Undo"
           >
             <Undo className="w-[18px] h-[18px]" />
@@ -87,7 +95,7 @@ export default function DashboardHeader({
             size="icon"
             onClick={onRedo}
             disabled={!canRedo}
-            className="h-9 w-9 rounded-full text-gray-300 hover:text-white hover:bg-white/10 disabled:opacity-25"
+            className="h-10 w-10 rounded-full text-gray-300 hover:text-white hover:bg-white/10 disabled:opacity-25"
             aria-label="Redo"
           >
             <Redo className="w-[18px] h-[18px]" />
@@ -97,7 +105,7 @@ export default function DashboardHeader({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-9 w-9 rounded-full text-gray-300 hover:text-white hover:bg-white/10"
+                className="h-10 w-10 rounded-full text-gray-300 hover:text-white hover:bg-white/10"
                 aria-label="More actions"
               >
                 <MoreHorizontal className="w-[18px] h-[18px]" />
@@ -124,7 +132,7 @@ export default function DashboardHeader({
           <Button
             onClick={onExportClick}
             size="sm"
-            className="ml-1 h-9 bg-white hover:bg-gray-100 text-black font-bold rounded-full px-4"
+            className="ml-1 h-10 bg-white hover:bg-gray-100 text-black font-bold rounded-full px-4"
           >
             <Download className="w-4 h-4 mr-1.5" />
             Export

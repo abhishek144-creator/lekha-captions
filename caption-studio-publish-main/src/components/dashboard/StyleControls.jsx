@@ -400,9 +400,10 @@ export default function StyleControls({
 
   return (
     <div className="h-full flex flex-col overflow-hidden rounded-[18px] lekha-panel lekha-inspector">
-      <div className="shrink-0 border-b border-white/10 px-4 pt-4">
-        <p className="lekha-micro-label text-slate-300">Styling</p>
-        <div className="mt-5 flex items-end justify-between gap-3">
+      <div className="shrink-0 border-b border-white/10 px-4 pt-2 lg:pt-4">
+        {/* The mobile sheet already titles this panel. */}
+        <p className="lekha-micro-label text-slate-300 max-lg:hidden">Styling</p>
+        <div className="mt-1 lg:mt-5 flex items-end justify-between gap-3">
           {panelTabs.map((tab) => (
             <button
               key={tab.id}
