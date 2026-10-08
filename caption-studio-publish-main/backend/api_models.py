@@ -7,6 +7,11 @@ keep applying.
 
 from types import ModuleType, SimpleNamespace
 
+try:
+    from . import settings
+except ImportError:  # Direct execution from backend/ remains supported.
+    import settings
+
 
 def create_api_models(host: ModuleType) -> SimpleNamespace:
     class CaptionItem(host.BaseModel):
@@ -147,8 +152,8 @@ def create_api_models(host: ModuleType) -> SimpleNamespace:
 
     class ReconcilePaymentsRequest(host.BaseModel):
         id_token: str = host.Field(default="", max_length=8_192)
-        lookback_hours: int = host.Field(default=host.PAYMENT_RECONCILE_LOOKBACK_HOURS, ge=1, le=24 * 90)
-        limit: int = host.Field(default=host.PAYMENT_RECONCILE_BATCH_SIZE, ge=1, le=1_000)
+        lookback_hours: int = host.Field(default=settings.PAYMENT_RECONCILE_LOOKBACK_HOURS, ge=1, le=24 * 90)
+        limit: int = host.Field(default=settings.PAYMENT_RECONCILE_BATCH_SIZE, ge=1, le=1_000)
 
 
     class AdminRecoveryRequest(host.BaseModel):
@@ -169,8 +174,8 @@ def create_api_models(host: ModuleType) -> SimpleNamespace:
         pause_uploads: host.Optional[bool] = None
         pause_transcription: host.Optional[bool] = None
         pause_exports: host.Optional[bool] = None
-        max_upload_duration_seconds: host.Optional[int] = host.Field(default=None, ge=15, le=host.GLOBAL_MAX_UPLOAD_DURATION_SECONDS)
-        notice: host.Optional[str] = host.Field(default=None, max_length=host.SERVICE_CONTROL_NOTICE_MAX)
+        max_upload_duration_seconds: host.Optional[int] = host.Field(default=None, ge=15, le=settings.GLOBAL_MAX_UPLOAD_DURATION_SECONDS)
+        notice: host.Optional[str] = host.Field(default=None, max_length=settings.SERVICE_CONTROL_NOTICE_MAX)
 
 
     class TenantBackfillRequest(host.BaseModel):

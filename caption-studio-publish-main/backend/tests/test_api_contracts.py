@@ -44,7 +44,7 @@ class ApiContractTests(unittest.TestCase):
         main._translate_rate.clear()
 
     def test_payment_journey_refuses_live_mode_before_order_creation(self):
-        with patch.object(main, "RAZORPAY_KEY_ID", "rzp_live_local_fixture"), patch.object(main, "rzp_client") as provider:
+        with patch.object(main.settings, "RAZORPAY_KEY_ID", "rzp_live_local_fixture"), patch.object(main, "rzp_client") as provider:
             response = self.client.post("/api/create-order", json={"id_token": "local-fixture", "plan_id": "starter", "require_test_mode": True})
         self.assertEqual(response.status_code, 409)
         provider.order.create.assert_not_called()
@@ -66,7 +66,7 @@ class ApiContractTests(unittest.TestCase):
 
     def test_export_daily_limit_is_enabled_by_default(self):
         # Local runs must exercise the same quota safeguard as production.
-        self.assertFalse(main.DISABLE_EXPORT_DAILY_LIMIT)
+        self.assertFalse(main.settings.DISABLE_EXPORT_DAILY_LIMIT)
 
     def test_redis_rate_limits_are_isolated_by_endpoint(self):
         shared_proxy_ip = "100.64.0.4"
@@ -107,7 +107,7 @@ class ApiContractTests(unittest.TestCase):
             "export_timestamps": [1_700_000_000.0 - 60] * 5,
         }
 
-        with patch.object(main, "DISABLE_EXPORT_DAILY_LIMIT", False):
+        with patch.object(main.settings, "DISABLE_EXPORT_DAILY_LIMIT", False):
             allowed, detail, _recent = main._evaluate_export_policy(user_data, 1_700_000_000.0)
 
         self.assertFalse(allowed)
@@ -151,7 +151,7 @@ class ApiContractTests(unittest.TestCase):
         with patch.object(main, "get_db", return_value=None):
             controls = main._read_service_controls(force=True)
 
-        for key in main.SERVICE_CONTROL_KEYS:
+        for key in main.settings.SERVICE_CONTROL_KEYS:
             self.assertFalse(controls[key], key)
         main._assert_service_available("pause_exports")
 
@@ -252,13 +252,13 @@ class ApiContractTests(unittest.TestCase):
             url=SimpleNamespace(path="/api/process"),
             headers={},
         )
-        with patch.object(main, "FIREBASE_APP_CHECK_ENFORCED", True):
+        with patch.object(main.settings, "FIREBASE_APP_CHECK_ENFORCED", True):
             missing = main._verify_firebase_app_check_request(request, "req-app-check")
         self.assertEqual(missing.status_code, 403)
 
         request.headers = {"x-firebase-appcheck": "valid-app-check-token"}
         with (
-            patch.object(main, "FIREBASE_APP_CHECK_ENFORCED", True),
+            patch.object(main.settings, "FIREBASE_APP_CHECK_ENFORCED", True),
             patch.object(main.firebase_app_check, "verify_token", return_value={"app_id": "web-app"}) as verify,
         ):
             accepted = main._verify_firebase_app_check_request(request, "req-app-check")
@@ -272,7 +272,7 @@ class ApiContractTests(unittest.TestCase):
         )
         with (
             patch.object(main, "_is_admin_token", return_value=True),
-            patch.object(main, "SENTRY_DSN", "https://public@example.invalid/1"),
+            patch.object(main.settings, "SENTRY_DSN", "https://public@example.invalid/1"),
             patch.object(main, "SENTRY_AVAILABLE", True),
             patch.object(main, "sentry_sdk", fake_sentry),
             patch.object(main, "_audit_action"),
@@ -331,7 +331,7 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(main._effective_subscription_tier(user_data), "free")
 
     @patch("main._authenticate_media_request", return_value={"uid": "rate-limited-user"})
-    @patch("main._get_recent_export_failures", return_value=[0.0] * main.EXPORT_FAILURE_LIMIT)
+    @patch("main._get_recent_export_failures", return_value=[0.0] * main.settings.EXPORT_FAILURE_LIMIT)
     def test_export_failure_rate_limit_is_always_enforced(self, _recent_failures, _authenticate):
         res = self.client.post(
             "/api/export",
@@ -386,7 +386,7 @@ class ApiContractTests(unittest.TestCase):
 
         with (
             tempfile.TemporaryDirectory() as scratch,
-            patch.object(main, "UPLOAD_DIR", scratch),
+            patch.object(main.settings, "UPLOAD_DIR", scratch),
             patch.object(main, "_load_upload_metadata", return_value={
                 "uid": "media-user",
                 "remote_path": f"uploads/media-user/{file_id}.mp4",
@@ -417,7 +417,7 @@ class ApiContractTests(unittest.TestCase):
 
     def test_proxy_upload_rejects_media_above_its_configured_limit(self):
         with (
-            patch.object(main, "MAX_PROXY_UPLOAD_BYTES", 10),
+            patch.object(main.settings, "MAX_PROXY_UPLOAD_BYTES", 10),
             patch.object(main, "verify_token", return_value={"uid": "upload-user"}),
         ):
             response = self.client.post(
@@ -431,8 +431,8 @@ class ApiContractTests(unittest.TestCase):
         for media_bucket in ("private-media", ""):
             with (
                 self.subTest(media_bucket=media_bucket),
-                patch.object(main, "_IS_PRODUCTION", True),
-                patch.object(main, "FIREBASE_APP_CHECK_ENFORCED", False),
+                patch.object(main.settings, "_IS_PRODUCTION", True),
+                patch.object(main.settings, "FIREBASE_APP_CHECK_ENFORCED", False),
                 patch.dict(main.os.environ, {"GCS_MEDIA_BUCKET": media_bucket}),
                 patch.object(main, "_authenticate_media_request", return_value={"uid": "upload-user"}) as authenticate,
                 patch.object(main, "_assert_service_available"),
@@ -727,7 +727,7 @@ class ApiContractTests(unittest.TestCase):
         )
         self.assertEqual(res.status_code, 401)
 
-    @patch("main.LOCAL_DEV_AUTH_BYPASS_ENABLED", True)
+    @patch("main.settings.LOCAL_DEV_AUTH_BYPASS_ENABLED", True)
     @patch("main.processor.generate_captions_only", new_callable=AsyncMock)
     @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
     def test_process_accepts_explicitly_enabled_local_dev_bypass_token(self, _safe_find, mock_process):
@@ -812,7 +812,7 @@ class ApiContractTests(unittest.TestCase):
             "payload": {"success": True, "video_url": "/api/media/export/dev.mp4"},
         }
 
-        with patch.object(main, "LOCAL_DEV_AUTH_BYPASS_ENABLED", True):
+        with patch.object(main.settings, "LOCAL_DEV_AUTH_BYPASS_ENABLED", True):
             res = self.client.get(
                 f"/api/export-status/{job_id}",
                 headers={"Authorization": "Bearer mock-token"},
@@ -994,7 +994,7 @@ class ApiContractTests(unittest.TestCase):
         job = main._export_jobs[payload["export_job_id"]]
         self.assertNotIn("id_token", job.get("request_snapshot", {}))
         self.assertEqual(captured["args"][1].get("id_token"), None)
-        self.assertEqual(captured["ttl"], main.EXPORT_MAX_QUEUE_WAIT_SECONDS)
+        self.assertEqual(captured["ttl"], main.settings.EXPORT_MAX_QUEUE_WAIT_SECONDS)
 
         res_second = self.client.post(
             "/api/export",
@@ -1390,10 +1390,10 @@ class ApiContractTests(unittest.TestCase):
                 payment_ref,
                 "payment-user",
                 "starter",
-                main.PLAN_PRICING["starter"],
+                main.settings.PLAN_PRICING["starter"],
                 "pay_123",
                 "order_123",
-                main.PLAN_PRICING["starter"]["inr_paise"],
+                main.settings.PLAN_PRICING["starter"]["inr_paise"],
                 "INR",
                 "test",
                 "",
@@ -1403,7 +1403,7 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual([write[0] for write in transaction.writes], ["create", "update"])
         self.assertEqual(
             transaction.writes[1][2]["credits_remaining"],
-            main.PLAN_PRICING["starter"]["credits"],
+            main.settings.PLAN_PRICING["starter"]["credits"],
         )
         self.assertIs(payment_ref.transaction, transaction)
         self.assertIs(user_ref.transaction, transaction)
@@ -1416,14 +1416,14 @@ class ApiContractTests(unittest.TestCase):
         }
         for plan_id, (credits, limit) in expected.items():
             with self.subTest(plan_id=plan_id):
-                plan = main.PLAN_PRICING[plan_id]
+                plan = main.settings.PLAN_PRICING[plan_id]
                 self.assertEqual(plan["inr_paise"], 19900)
                 self.assertEqual(plan["credits"], credits)
                 self.assertEqual(plan["purchase_limit_30d"], limit)
 
     def test_topup_rolling_limit_rejects_used_and_reserved_slots(self):
         now_ts = 2_000_000_000.0
-        creator_plan = main.PLAN_PRICING["topup_creator"]
+        creator_plan = main.settings.PLAN_PRICING["topup_creator"]
         user_data = {
             "topup_timestamps": [now_ts - 60],
             "topup_order_reservations": [
@@ -1490,10 +1490,10 @@ class ApiContractTests(unittest.TestCase):
                 payment_ref,
                 "topup-user",
                 "topup_creator",
-                main.PLAN_PRICING["topup_creator"],
+                main.settings.PLAN_PRICING["topup_creator"],
                 "pay_topup",
                 "order_topup",
-                main.PLAN_PRICING["topup_creator"]["inr_paise"],
+                main.settings.PLAN_PRICING["topup_creator"]["inr_paise"],
                 "INR",
                 "test",
                 "",
@@ -1515,7 +1515,7 @@ class ApiContractTests(unittest.TestCase):
                     "subscription_tier": "pro",
                     "subscription_expiry": (datetime.now(timezone.utc) - timedelta(days=1)).isoformat(),
                     "ai_usage_date": date.today().isoformat(),
-                    "ai_daily_usage": {"process": main.AI_DAILY_LIMITS["free"]["process"]},
+                    "ai_daily_usage": {"process": main.settings.AI_DAILY_LIMITS["free"]["process"]},
                 }
 
         class FakeRef:
@@ -1530,7 +1530,7 @@ class ApiContractTests(unittest.TestCase):
 
         with (
             patch.object(main, "get_db", return_value=fake_db),
-            patch.object(main, "_IS_TEST", False),
+            patch.object(main.settings, "_IS_TEST", False),
             patch.object(main.firestore, "transactional", new=lambda fn: fn),
         ):
             with self.assertRaises(main.HTTPException) as raised:
@@ -1551,11 +1551,11 @@ class ApiContractTests(unittest.TestCase):
 
     def test_free_plan_transcriptions_are_lifetime_not_daily(self):
         writes = []
-        used_up = self._quota_db({"subscription_tier": "free", "ai_lifetime_usage": {"process": main.FREE_LIFETIME_TRANSCRIPTIONS}}, writes)
+        used_up = self._quota_db({"subscription_tier": "free", "ai_lifetime_usage": {"process": main.settings.FREE_LIFETIME_TRANSCRIPTIONS}}, writes)
         with (
             patch.object(main, "get_db", return_value=used_up),
-            patch.object(main, "_IS_TEST", False),
-            patch.object(main, "AI_SYSTEM_DAILY_LIMIT", 0),
+            patch.object(main.settings, "_IS_TEST", False),
+            patch.object(main.settings, "AI_SYSTEM_DAILY_LIMIT", 0),
             patch.object(main.firestore, "transactional", new=lambda fn: fn),
         ):
             with self.assertRaises(main.HTTPException) as raised:
@@ -1579,7 +1579,7 @@ class ApiContractTests(unittest.TestCase):
                              "ai_usage_date": date.today().isoformat(), "ai_daily_usage": {"process": 1}}, writes)
         with (
             patch.object(main, "get_db", return_value=db),
-            patch.object(main, "_IS_TEST", False),
+            patch.object(main.settings, "_IS_TEST", False),
             patch.object(main.firestore, "transactional", new=lambda fn: fn),
         ):
             main._release_ai_quota("free-user", "process", release_system=False)
@@ -1595,7 +1595,7 @@ class ApiContractTests(unittest.TestCase):
                     "entity": {
                         "id": "pay_webhook",
                         "order_id": "order_webhook",
-                        "amount": main.PLAN_PRICING["starter"]["inr_paise"],
+                        "amount": main.settings.PLAN_PRICING["starter"]["inr_paise"],
                         "currency": "INR",
                         "status": "captured",
                         "notes": {},
@@ -1620,14 +1620,14 @@ class ApiContractTests(unittest.TestCase):
         fake_client = SimpleNamespace(
             order=SimpleNamespace(fetch=lambda _order_id: {
                 "id": "order_webhook",
-                "amount": main.PLAN_PRICING["starter"]["inr_paise"],
+                "amount": main.settings.PLAN_PRICING["starter"]["inr_paise"],
                 "currency": "INR",
                 "notes": {"uid": "webhook-user", "plan_id": "starter", "org_id": ""},
             })
         )
 
         with (
-            patch.object(main, "RAZORPAY_WEBHOOK_SECRET", secret),
+            patch.object(main.settings, "RAZORPAY_WEBHOOK_SECRET", secret),
             patch.object(main, "RAZORPAY_AVAILABLE", True),
             patch.object(main, "rzp_client", fake_client),
             patch.object(main, "get_db", return_value=None),
@@ -1685,8 +1685,8 @@ class ApiContractTests(unittest.TestCase):
         }))
         payment_ref = FakeRef(FakeSnapshot(True, {
             "payment_id": "pay_refund",
-            "amount": main.PLAN_PRICING["starter"]["inr_paise"],
-            "credits_added": main.PLAN_PRICING["starter"]["credits"],
+            "amount": main.settings.PLAN_PRICING["starter"]["inr_paise"],
+            "credits_added": main.settings.PLAN_PRICING["starter"]["credits"],
             "type": "subscription",
             "plan": "starter",
             "timestamp": cycle_start,
@@ -1712,7 +1712,7 @@ class ApiContractTests(unittest.TestCase):
                 {
                     "id": "rfnd_1",
                     "payment_id": "pay_refund",
-                    "amount": main.PLAN_PRICING["starter"]["inr_paise"],
+                    "amount": main.settings.PLAN_PRICING["starter"]["inr_paise"],
                     "currency": "INR",
                     "status": "processed",
                 },
@@ -1781,14 +1781,14 @@ class ApiContractTests(unittest.TestCase):
 
         with (
             patch.object(main.firestore, "transactional", new=lambda fn: fn),
-            patch.object(main, "DISABLE_EXPORT_CREDIT_LIMIT", False),
+            patch.object(main.settings, "DISABLE_EXPORT_CREDIT_LIMIT", False),
         ):
             main._record_export_usage(db, user_ref, history_item, 100.0, "job-1")
             main._record_export_usage(db, user_ref, history_item, 101.0, "job-1")
 
         self.assertEqual([write[0] for write in transactions[0].writes], ["create", "update"])
         first_user_update = transactions[0].writes[1][2]
-        self.assertEqual(first_user_update["credits_remaining"], main.FREE_PLAN_CREDITS - 1)
+        self.assertEqual(first_user_update["credits_remaining"], main.settings.FREE_PLAN_CREDITS - 1)
         self.assertEqual(transactions[1].writes, [])
 
     def test_payment_idempotency_fails_closed_when_redis_is_unavailable(self):
@@ -1912,21 +1912,21 @@ class ApiContractTests(unittest.TestCase):
             "pro_yearly": 1440,
         }
         for plan_id, credits in expected_credits.items():
-            plan = main.PLAN_PRICING[plan_id]
+            plan = main.settings.PLAN_PRICING[plan_id]
             self.assertEqual(plan["credits"], credits)
             self.assertIn("daily_limit", plan)
             self.assertIn("max_video_seconds", plan)
-        self.assertTrue(main.PLAN_PRICING["free"]["is_free"])
-        self.assertEqual(main.FREE_PLAN_CREDITS, 3)
+        self.assertTrue(main.settings.PLAN_PRICING["free"]["is_free"])
+        self.assertEqual(main.settings.FREE_PLAN_CREDITS, 3)
 
     def test_free_credits_are_exportable_and_zero_balance_is_blocked(self):
         with (
-            patch.object(main, "DISABLE_EXPORT_CREDIT_LIMIT", False),
-            patch.object(main, "DISABLE_EXPORT_DAILY_LIMIT", False),
+            patch.object(main.settings, "DISABLE_EXPORT_CREDIT_LIMIT", False),
+            patch.object(main.settings, "DISABLE_EXPORT_DAILY_LIMIT", False),
         ):
             allowed, reason, _history = main._evaluate_export_policy({
                 "subscription_tier": "free",
-                "credits_remaining": main.FREE_PLAN_CREDITS,
+                "credits_remaining": main.settings.FREE_PLAN_CREDITS,
                 "export_timestamps": [],
             }, time.time())
             self.assertTrue(allowed)
@@ -1983,7 +1983,7 @@ class ApiContractTests(unittest.TestCase):
             response = self.client.post("/api/account-bootstrap", json={"id_token": "token-123"})
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(stored["credits_remaining"], main.FREE_PLAN_CREDITS)
+        self.assertEqual(stored["credits_remaining"], main.settings.FREE_PLAN_CREDITS)
 
     @patch("main.verify_token", return_value={"uid": "invalid-free-user", "email": "invalid@example.com"})
     def test_account_bootstrap_clamps_out_of_range_free_credits(self, _verify_token):
@@ -2031,7 +2031,7 @@ class ApiContractTests(unittest.TestCase):
             response = self.client.post("/api/account-bootstrap", json={"id_token": "token-123"})
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(stored["credits_remaining"], main.FREE_PLAN_CREDITS)
+        self.assertEqual(stored["credits_remaining"], main.settings.FREE_PLAN_CREDITS)
 
     @patch("main.verify_token", return_value={"uid": "payment-user"})
     def test_free_plan_cannot_be_purchased(self, _verify_token):
@@ -2152,7 +2152,7 @@ class ApiContractTests(unittest.TestCase):
     def test_chunked_json_body_limit(self):
         res = self.client.post(
             "/api/translate",
-            content=b'{' + b'"padding":"' + (b'x' * (main.MAX_JSON_BODY_BYTES + 1)) + b'"}',
+            content=b'{' + b'"padding":"' + (b'x' * (main.settings.MAX_JSON_BODY_BYTES + 1)) + b'"}',
             headers={"Content-Type": "application/json"},
         )
         self.assertEqual(res.status_code, 413)

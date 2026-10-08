@@ -7,6 +7,11 @@ keep applying.
 
 from types import ModuleType, SimpleNamespace
 
+try:
+    from . import settings
+except ImportError:  # Direct execution from backend/ remains supported.
+    import settings
+
 
 def create_request_guards(host: ModuleType) -> SimpleNamespace:
     def _idem_get(key: str):
@@ -100,7 +105,7 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
                 host._json_log("error", "payment_idempotency_read_failed", error=str(e))
                 raise host.HTTPException(status_code=503, detail="Payment safety service is temporarily unavailable") from e
 
-        if host._IS_TEST:
+        if settings._IS_TEST:
             return host._payment_idempotency.get(key)
         db = host.get_db()
         if db:
@@ -111,7 +116,7 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
             except Exception as e:
                 host._json_log("error", "payment_idempotency_firestore_read_failed", error=str(e))
                 raise host.HTTPException(status_code=503, detail="Payment safety service is temporarily unavailable") from e
-        if host._IS_PRODUCTION:
+        if settings._IS_PRODUCTION:
             raise host.HTTPException(status_code=503, detail="Payment safety service is unavailable")
         return host._payment_idempotency.get(key)
 
@@ -127,7 +132,7 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
                 host._json_log("error", "payment_idempotency_write_failed", error=str(e))
                 raise host.HTTPException(status_code=503, detail="Payment safety service is temporarily unavailable") from e
 
-        if host._IS_TEST:
+        if settings._IS_TEST:
             host._payment_idempotency[key] = value
             return
         db = host.get_db()
@@ -143,7 +148,7 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
             except Exception as e:
                 host._json_log("error", "payment_idempotency_firestore_write_failed", error=str(e))
                 raise host.HTTPException(status_code=503, detail="Payment safety service is temporarily unavailable") from e
-        if host._IS_PRODUCTION:
+        if settings._IS_PRODUCTION:
             raise host.HTTPException(status_code=503, detail="Payment safety service is unavailable")
         host._payment_idempotency[key] = value
 
@@ -162,7 +167,7 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
                 host._json_log("error", "payment_idempotency_claim_failed", error=str(e))
                 raise host.HTTPException(status_code=503, detail="Payment safety service is temporarily unavailable") from e
 
-        if host._IS_TEST:
+        if settings._IS_TEST:
             if key in host._payment_idempotency:
                 return False
             host._payment_idempotency[key] = value
@@ -182,7 +187,7 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
             except Exception as e:
                 host._json_log("error", "payment_idempotency_firestore_claim_failed", error=str(e))
                 raise host.HTTPException(status_code=503, detail="Payment safety service is temporarily unavailable") from e
-        if host._IS_PRODUCTION:
+        if settings._IS_PRODUCTION:
             raise host.HTTPException(status_code=503, detail="Payment safety service is unavailable")
         if key in host._payment_idempotency:
             return False
@@ -201,7 +206,7 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
                 host._json_log("error", "payment_idempotency_delete_failed", error=str(e))
                 raise host.HTTPException(status_code=503, detail="Payment safety service is temporarily unavailable") from e
 
-        if host._IS_TEST:
+        if settings._IS_TEST:
             host._payment_idempotency.pop(key, None)
             return
         db = host.get_db()
@@ -213,13 +218,13 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
             except Exception as e:
                 host._json_log("error", "payment_idempotency_firestore_delete_failed", error=str(e))
                 raise host.HTTPException(status_code=503, detail="Payment safety service is temporarily unavailable") from e
-        if host._IS_PRODUCTION:
+        if settings._IS_PRODUCTION:
             raise host.HTTPException(status_code=503, detail="Payment safety service is unavailable")
         host._payment_idempotency.pop(key, None)
 
 
     def _require_payment_idempotency(uid: str, key: str, op: str) -> str:
-        if not host.REQUIRE_PAYMENT_IDEMPOTENCY:
+        if not settings.REQUIRE_PAYMENT_IDEMPOTENCY:
             return ""
         safe = (key or "").strip()
         if not safe:
@@ -272,12 +277,12 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
             try:
                 now_ts = host.time.time()
                 admitted, retry_after, remaining = host._redis_client.eval(
-                    host.RATE_ADMISSION_SCRIPT, 1, host._rate_limit_redis_key(store, key),
+                    settings.RATE_ADMISSION_SCRIPT, 1, host._rate_limit_redis_key(store, key),
                     now_ts, window, limit, host.uuid.uuid4().hex,
                 )
                 return bool(admitted), int(retry_after), int(remaining)
             except Exception as e:
-                if host._IS_PRODUCTION:
+                if settings._IS_PRODUCTION:
                     host._json_log("error", "rate_limit_redis_failed", key=key, error=str(e))
                     raise host.HTTPException(status_code=503, detail="Rate-limit service is temporarily unavailable") from e
                 # Local and test environments may use the per-process fallback.
@@ -301,15 +306,15 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
         if host._redis_client is not None:
             try:
                 pipe = host._redis_client.pipeline()
-                pipe.zremrangebyscore(key, 0, now_ts - host.EXPORT_FAILURE_WINDOW)
+                pipe.zremrangebyscore(key, 0, now_ts - settings.EXPORT_FAILURE_WINDOW)
                 pipe.zadd(key, {f"{now_ts}:{host.uuid.uuid4().hex[:8]}": now_ts})
-                pipe.expire(key, host.EXPORT_FAILURE_WINDOW + 10)
+                pipe.expire(key, settings.EXPORT_FAILURE_WINDOW + 10)
                 pipe.execute()
                 return
             except Exception:
                 pass
         fail_key = f"fail:{uid}"
-        arr = [t for t in host._export_failures.get(fail_key, []) if t > now_ts - host.EXPORT_FAILURE_WINDOW]
+        arr = [t for t in host._export_failures.get(fail_key, []) if t > now_ts - settings.EXPORT_FAILURE_WINDOW]
         arr.append(now_ts)
         host._export_failures[fail_key] = arr
 
@@ -319,13 +324,13 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
         now_ts = host.time.time()
         if host._redis_client is not None:
             try:
-                host._redis_client.zremrangebyscore(key, 0, now_ts - host.EXPORT_FAILURE_WINDOW)
+                host._redis_client.zremrangebyscore(key, 0, now_ts - settings.EXPORT_FAILURE_WINDOW)
                 vals = host._redis_client.zrange(key, 0, -1, withscores=True)
                 return [float(v[1]) for v in vals]
             except Exception:
                 pass
         fail_key = f"fail:{uid}"
-        arr = [t for t in host._export_failures.get(fail_key, []) if t > now_ts - host.EXPORT_FAILURE_WINDOW]
+        arr = [t for t in host._export_failures.get(fail_key, []) if t > now_ts - settings.EXPORT_FAILURE_WINDOW]
         host._export_failures[fail_key] = arr
         return arr
 
@@ -336,14 +341,14 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
         if host._redis_client is not None:
             try:
                 k = f"expactive:{uid}"
-                acquired = host._redis_client.set(k, job_id, nx=True, ex=host.EXPORT_SLOT_TTL_SECONDS)
+                acquired = host._redis_client.set(k, job_id, nx=True, ex=settings.EXPORT_SLOT_TTL_SECONDS)
                 if acquired:
                     return True
                 current = host._redis_client.get(k)
                 if isinstance(current, bytes):
                     current = current.decode("utf-8", errors="ignore")
                 if current == job_id:
-                    host._redis_client.expire(k, host.EXPORT_SLOT_TTL_SECONDS)
+                    host._redis_client.expire(k, settings.EXPORT_SLOT_TTL_SECONDS)
                     return True
                 # A worker can fail before entering run_export_job_task (for
                 # example, when an old worker cannot deserialize a newer argument
@@ -384,7 +389,7 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
                         previous_job_id,
                     )
                     if removed:
-                        acquired = host._redis_client.set(k, job_id, nx=True, ex=host.EXPORT_SLOT_TTL_SECONDS)
+                        acquired = host._redis_client.set(k, job_id, nx=True, ex=settings.EXPORT_SLOT_TTL_SECONDS)
                         if acquired:
                             host._json_log(
                                 "warning",
@@ -397,7 +402,7 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
                 return False
             except Exception as e:
                 host._json_log("error", "export_slot_acquire_failed", uid=uid, job_id=job_id, error=str(e))
-                if host._IS_PRODUCTION or host._export_queue is not None:
+                if settings._IS_PRODUCTION or host._export_queue is not None:
                     return False
         current = host._active_exports_by_user.get(uid)
         if current and current != job_id:
@@ -437,12 +442,12 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
                         f"procactive:{uid}",
                         request_id,
                         nx=True,
-                        ex=host.PROCESS_SLOT_TTL_SECONDS,
+                        ex=settings.PROCESS_SLOT_TTL_SECONDS,
                     )
                 )
             except Exception as e:
                 host._json_log("error", "process_slot_acquire_failed", uid=uid, request_id=request_id, error=str(e))
-                if host._IS_PRODUCTION:
+                if settings._IS_PRODUCTION:
                     return False
         if host._active_processes_by_user.get(uid):
             return False
