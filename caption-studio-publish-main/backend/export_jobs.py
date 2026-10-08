@@ -15,6 +15,14 @@ try:
     from . import app_state
 except ImportError:  # Direct execution from backend/ remains supported.
     import app_state
+try:
+    from . import firebase_admin_setup
+except ImportError:  # Direct execution from backend/ remains supported.
+    import firebase_admin_setup
+try:
+    from . import observability
+except ImportError:  # Direct execution from backend/ remains supported.
+    import observability
 
 
 def create_export_jobs(host: ModuleType) -> SimpleNamespace:
@@ -30,9 +38,9 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
                 )
                 persisted = True
             except Exception as e:
-                host._json_log("warning", "export_job_redis_persist_failed", job_id=job_id, error=str(e))
+                observability._json_log("warning", "export_job_redis_persist_failed", job_id=job_id, error=str(e))
 
-        db = host.get_db()
+        db = firebase_admin_setup.get_db()
         if db:
             for attempt in range(2):
                 try:
@@ -43,14 +51,14 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
                             current = ref.get(transaction=transaction)
                             revision = int((current.to_dict() or {}).get("revision", 0)) if current.exists else 0
                             if revision < int(payload.get("revision", 0)):
-                                transaction.set(ref, {**payload, "expire_at": host._retention_deadline(7)}, merge=True)
+                                transaction.set(ref, {**payload, "expire_at": observability._retention_deadline(7)}, merge=True)
                         mirror(db.transaction())
                     else:
-                        ref.set({**payload, "expire_at": host._retention_deadline(7)}, merge=True)
+                        ref.set({**payload, "expire_at": observability._retention_deadline(7)}, merge=True)
                     persisted = True
                     break
                 except Exception as e:
-                    host._json_log(
+                    observability._json_log(
                         "warning",
                         "export_job_firestore_persist_failed",
                         job_id=job_id,
@@ -72,9 +80,9 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
                     app_state._export_jobs[job_id] = job
                     return job
             except Exception as e:
-                host._json_log("warning", "export_job_redis_load_failed", job_id=job_id, error=str(e))
+                observability._json_log("warning", "export_job_redis_load_failed", job_id=job_id, error=str(e))
 
-        db = host.get_db()
+        db = firebase_admin_setup.get_db()
         if db:
             try:
                 snap = db.collection("export_jobs").document(job_id).get()
@@ -83,7 +91,7 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
                     app_state._export_jobs[job_id] = job
                     return job
             except Exception as e:
-                host._json_log("warning", "export_job_firestore_load_failed", job_id=job_id, error=str(e))
+                observability._json_log("warning", "export_job_firestore_load_failed", job_id=job_id, error=str(e))
         if (settings._IS_PRODUCTION or app_state._export_queue is not None) and job_id in app_state._export_jobs:
             raise host.HTTPException(status_code=503, detail="Export job status is temporarily unavailable")
         return app_state._export_jobs.get(job_id)
@@ -182,7 +190,7 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
 
 
     def _load_recorded_export_result(uid: str, export_job_id: str, file_id: str):
-        database = host.get_db()
+        database = firebase_admin_setup.get_db()
         if database is None:
             if settings._IS_PRODUCTION:
                 raise host.HTTPException(503, "Export recovery storage is temporarily unavailable")
@@ -200,7 +208,7 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
     def _set_export_job(job_id: str, status: str, *, expected_status=None, **kwargs):
         with host.JOB_STATE_LOCK:
             durable_only = {}
-            keep_out_of_redis = app_state._redis_client is not None and host.get_db() is not None
+            keep_out_of_redis = app_state._redis_client is not None and firebase_admin_setup.get_db() is not None
             if keep_out_of_redis:
                 durable_only = {
                     field: kwargs.pop(field)
@@ -254,13 +262,13 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
         refreshed.pop("download_url", None)
         if host.s3_storage_configured():
             desired_filename = refreshed.get("download_filename")
-            direct_url = (host.signed_export_download_url(f"exports/{uid}/{filename}", recovery_ttl_seconds, desired_filename)
-                          if desired_filename else host.signed_export_download_url(f"exports/{uid}/{filename}", recovery_ttl_seconds))
+            direct_url = (firebase_admin_setup.signed_export_download_url(f"exports/{uid}/{filename}", recovery_ttl_seconds, desired_filename)
+                          if desired_filename else firebase_admin_setup.signed_export_download_url(f"exports/{uid}/{filename}", recovery_ttl_seconds))
             if not direct_url:
                 raise host.HTTPException(status_code=503, detail="Export download is temporarily unavailable. Resume to retry.")
             refreshed["download_url"] = direct_url
         refreshed["download_url_expires_at"] = (
-            host._utcnow() + host.timedelta(seconds=recovery_ttl_seconds)
+            observability._utcnow() + host.timedelta(seconds=recovery_ttl_seconds)
         ).isoformat() + "Z"
         return refreshed
 
@@ -296,22 +304,22 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
             "job_id": job_id,
             "reason": reason,
             "payload": payload or {},
-            "timestamp": host._utcnow().isoformat() + "Z",
+            "timestamp": observability._utcnow().isoformat() + "Z",
         }
         try:
             with open(host.os.path.join(settings.DEAD_LETTER_DIR, f"{job_id}.json"), "w", encoding="utf-8") as f:
                 host.json.dump(data, f)
         except Exception as e:
-            host._json_log("warning", "dead_letter_file_write_failed", job_id=job_id, error=str(e))
+            observability._json_log("warning", "dead_letter_file_write_failed", job_id=job_id, error=str(e))
 
-        db = host.get_db()
+        db = firebase_admin_setup.get_db()
         if db:
             try:
                 db.collection("export_dead_letter").document(job_id).set(
-                    {**data, "expire_at": host._retention_deadline(30)}, merge=True
+                    {**data, "expire_at": observability._retention_deadline(30)}, merge=True
                 )
             except Exception as e:
-                host._json_log("warning", "dead_letter_db_write_failed", job_id=job_id, error=str(e))
+                observability._json_log("warning", "dead_letter_db_write_failed", job_id=job_id, error=str(e))
 
 
     def _strip_client_render_hints(value: host.Any) -> host.Any:
@@ -429,12 +437,12 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
                 "captions_count": len(captions),
                 "word_layout_count": len(word_layouts or {}),
                 "should_use_dom_template_renderer": should_use_dom,
-                "written_at": host._utcnow().isoformat() + "Z",
+                "written_at": observability._utcnow().isoformat() + "Z",
             }
             with open(host.os.path.join(settings.CACHE_DIR, "last_export_request_debug.json"), "w", encoding="utf-8") as f:
                 host.json.dump(debug_payload, f, indent=2, ensure_ascii=False)
         except Exception as e:
-            host._json_log("warning", "last_export_request_debug_write_failed", error=str(e))
+            observability._json_log("warning", "last_export_request_debug_write_failed", error=str(e))
 
 
     def _extract_bearer_token(request: host.Request) -> str:
@@ -453,14 +461,14 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
         if host._is_explicit_dev_auth_token(token) and owner_uid == "dev-local-user":
             return owner_uid
 
-        decoded = host.verify_token(token) if token else None
+        decoded = firebase_admin_setup.verify_token(token) if token else None
         if decoded:
             request_uid = (decoded.get("uid") or "").strip()
             if request_uid != owner_uid:
                 raise host.HTTPException(status_code=403, detail="You do not have access to this export job")
             return request_uid
 
-        db = host.get_db()
+        db = firebase_admin_setup.get_db()
         if db is None and host._is_explicit_dev_auth_token(token) and owner_uid == "dev-local-user":
             return owner_uid
         raise host.HTTPException(status_code=401, detail="Authentication required")
@@ -483,7 +491,7 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
     async def _process_export_job_core(req: host.ExportRequest, uid: str, rid: str, export_job_id: str):
         host._assert_account_not_deleting(uid)
         queue_entered_at, processing_started_at = host._mark_export_processing(export_job_id)
-        db = host.get_db()
+        db = firebase_admin_setup.get_db()
         db_available = db is not None
         now = host.time.time()
         recent_exports = []
@@ -498,7 +506,7 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
             if not user_doc.exists:
                 if settings._IS_PRODUCTION:
                     raise host.HTTPException(status_code=409, detail="Account no longer exists.")
-                host._log(rid, f"User {uid} missing in Firestore; auto-creating defaults")
+                observability._log(rid, f"User {uid} missing in Firestore; auto-creating defaults")
                 default_user = {
                     'credits_remaining': settings.FREE_PLAN_CREDITS,
                     'subscription_tier': 'free',
@@ -532,7 +540,7 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
                         user_data["subscription_tier"] = "free"
                         user_data["credits_remaining"] = 0
                 except Exception as e:
-                    host._log(rid, f"Promo expiry check failed: {e}")
+                    observability._log(rid, f"Promo expiry check failed: {e}")
 
             allowed, policy_error, recent_exports = host._evaluate_export_policy(user_data, now)
             if not allowed:
@@ -546,12 +554,12 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
                 # Rendering is a metered operation. Continuing without the source of
                 # truth for credits turns a database outage into a billing bypass.
                 raise host.HTTPException(status_code=503, detail="Account and credit service is temporarily unavailable")
-            host._log(rid, "Firestore unavailable; explicit local export bypass enabled")
+            observability._log(rid, "Firestore unavailable; explicit local export bypass enabled")
 
         user_tier = host._normalize_tier_name(user_data.get("subscription_tier", "free") if user_data else "free")
         preset = host._resolve_export_preset(user_tier, req.quality, req.fps)
         if preset["downgraded"]:
-            host._log(rid, f"Export preset adjusted by tier={user_tier}: requested {req.quality}@{req.fps} -> {preset['quality']}@{preset['fps']}")
+            observability._log(rid, f"Export preset adjusted by tier={user_tier}: requested {req.quality}@{req.fps} -> {preset['quality']}@{preset['fps']}")
 
         if not host._validate_file_id(req.file_id):
             raise host.HTTPException(status_code=400, detail="Invalid file_id")
@@ -624,23 +632,23 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
 
         if cache_eligible and not host.os.path.exists(cached_render_path):
             await host.asyncio.to_thread(
-                host.download_render_cache, uid, request_hash, cached_render_path,
+                firebase_admin_setup.download_render_cache, uid, request_hash, cached_render_path,
             )
         if host.os.path.exists(cached_render_path) and cache_eligible:
             host.shutil.copy2(cached_render_path, output_path)
             render_finished_at = host.time.time()
             render_ms = int((render_finished_at - render_started_at) * 1000)
             cache_hit = True
-            host._track_event("render_cache_hit", {"job_id": export_job_id})
+            observability._track_event("render_cache_hit", {"job_id": export_job_id})
         else:
             cache_hit = False
-            host._log(rid, f"Starting render now job={export_job_id}")
+            observability._log(rid, f"Starting render now job={export_job_id}")
             async with app_state.render_semaphore:
                 result = await app_state.processor.burn_only(
                     input_path, output_path, captions, style_with_quality, server_word_layouts
                 )
             if not result.get('success'):
-                host._json_log("error", "video_render_failed", uid=uid, error=str(result.get('error') or "unknown"))
+                observability._json_log("error", "video_render_failed", uid=uid, error=str(result.get('error') or "unknown"))
                 raise host.HTTPException(status_code=500, detail="Video render failed")
             render_finished_at = host.time.time()
             render_ms = int((render_finished_at - render_started_at) * 1000)
@@ -666,18 +674,18 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
                     except OSError:
                         pass
             if cache_hit:
-                await host.asyncio.to_thread(host.delete_render_cache, uid, request_hash)
-            host._json_log("error", "render_output_validation_failed", uid=uid, job_id=export_job_id, error=str(e))
+                await host.asyncio.to_thread(firebase_admin_setup.delete_render_cache, uid, request_hash)
+            observability._json_log("error", "render_output_validation_failed", uid=uid, job_id=export_job_id, error=str(e))
             raise host.HTTPException(status_code=500, detail="Rendered video failed validation") from e
 
         if not cache_hit and cache_eligible:
             try:
                 host.shutil.copy2(output_path, cached_render_path)
                 await host.asyncio.to_thread(
-                    host.upload_render_cache, uid, request_hash, cached_render_path, 24,
+                    firebase_admin_setup.upload_render_cache, uid, request_hash, cached_render_path, 24,
                 )
             except Exception as error:
-                host._json_log(
+                observability._json_log(
                     "warning", "render_cache_persist_failed", job_id=export_job_id,
                     error_type=type(error).__name__,
                 )
@@ -695,15 +703,15 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
                 retention_hours = settings.PLAN_PRICING[current_tier].get('export_retention_hours', 2)
         try:
             remote_path = f"exports/{uid}/{output_filename}"
-            firebase_url = host.upload_to_firebase_storage(
+            firebase_url = firebase_admin_setup.upload_to_firebase_storage(
                 output_path, remote_path, "video/mp4", retention_hours
             )
         except Exception as e:
-            host._log(rid, f"Firebase upload failed, using local export: {e}")
+            observability._log(rid, f"Firebase upload failed, using local export: {e}")
 
         if settings._IS_PRODUCTION and not firebase_url:
             raise host.HTTPException(status_code=503, detail="Rendered media could not be persisted. Please retry.")
-        expires_at = (host._utcnow() + host.timedelta(hours=retention_hours)).isoformat() + "Z"
+        expires_at = (observability._utcnow() + host.timedelta(hours=retention_hours)).isoformat() + "Z"
         video_url = host._signed_export_url(
             output_filename, uid, retention_hours * 3600, export_job_id[:8]
         )
@@ -738,7 +746,7 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
             for dropped in dropped_history:
                 dropped_path = dropped.get("firebase_path") if isinstance(dropped, dict) else ""
                 if dropped_path:
-                    host.delete_from_firebase_storage(dropped_path)
+                    firebase_admin_setup.delete_from_firebase_storage(dropped_path)
 
         completed_at = host.time.time()
         total_ms = int((completed_at - queue_entered_at) * 1000)
@@ -766,11 +774,11 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
                 resource_id=export_job_id,
             )
         except Exception as error:
-            host._json_log(
+            observability._json_log(
                 "warning", "export_notification_persist_failed",
                 job_id=export_job_id, error=type(error).__name__,
             )
-        host._json_log(
+        observability._json_log(
             "info", "export_observation", job_id=export_job_id,
             status="completed",
             queue_wait_ms=int(recorded_job.get("queue_wait_ms") or 0),
@@ -786,10 +794,10 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
             source_width=source_width, source_height=source_height,
             output_width=rendered_width, output_height=rendered_height,
         )
-        host._track_event("export_success", {"quality": preset["quality"], "fps": preset["fps"], "tier": preset["tier"]})
-        host._track_operational_metric_sample("export_total_ms", total_ms)
-        host._track_operational_metric_sample("export_render_ms", render_ms)
-        host._track_operational_metric_sample(
+        observability._track_event("export_success", {"quality": preset["quality"], "fps": preset["fps"], "tier": preset["tier"]})
+        observability._track_operational_metric_sample("export_total_ms", total_ms)
+        observability._track_operational_metric_sample("export_render_ms", render_ms)
+        observability._track_operational_metric_sample(
             "job_cost_usd",
             (rendered_duration / 60.0) * settings.RENDER_COST_ESTIMATE_PER_MEDIA_MINUTE_USD,
         )

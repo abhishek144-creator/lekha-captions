@@ -15,6 +15,14 @@ try:
     from . import app_state
 except ImportError:  # Direct execution from backend/ remains supported.
     import app_state
+try:
+    from . import firebase_admin_setup
+except ImportError:  # Direct execution from backend/ remains supported.
+    import firebase_admin_setup
+try:
+    from . import observability
+except ImportError:  # Direct execution from backend/ remains supported.
+    import observability
 
 
 def create_request_guards(host: ModuleType) -> SimpleNamespace:
@@ -81,7 +89,7 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
                 raw = app_state._redis_client.get(f"upload_idem:{key}")
                 return host.json.loads(raw) if raw else None
             except Exception as e:
-                host._json_log("warning", "upload_idempotency_read_failed", error=str(e))
+                observability._json_log("warning", "upload_idempotency_read_failed", error=str(e))
         return app_state._upload_idempotency.get(key)
 
 
@@ -94,7 +102,7 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
                 app_state._redis_client.setex(f"upload_idem:{key}", ttl_seconds, host.json.dumps(value))
                 return
             except Exception as e:
-                host._json_log("warning", "upload_idempotency_write_failed", error=str(e))
+                observability._json_log("warning", "upload_idempotency_write_failed", error=str(e))
         app_state._upload_idempotency[key] = value
 
 
@@ -106,19 +114,19 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
                 raw = app_state._redis_client.get(f"pay_idem:{key}")
                 return host.json.loads(raw) if raw else None
             except Exception as e:
-                host._json_log("error", "payment_idempotency_read_failed", error=str(e))
+                observability._json_log("error", "payment_idempotency_read_failed", error=str(e))
                 raise host.HTTPException(status_code=503, detail="Payment safety service is temporarily unavailable") from e
 
         if settings._IS_TEST:
             return app_state._payment_idempotency.get(key)
-        db = host.get_db()
+        db = firebase_admin_setup.get_db()
         if db:
             try:
                 doc_id = host.hashlib.sha256(key.encode("utf-8")).hexdigest()
                 snap = db.collection("payment_idempotency").document(doc_id).get()
                 return snap.to_dict() if snap.exists else None
             except Exception as e:
-                host._json_log("error", "payment_idempotency_firestore_read_failed", error=str(e))
+                observability._json_log("error", "payment_idempotency_firestore_read_failed", error=str(e))
                 raise host.HTTPException(status_code=503, detail="Payment safety service is temporarily unavailable") from e
         if settings._IS_PRODUCTION:
             raise host.HTTPException(status_code=503, detail="Payment safety service is unavailable")
@@ -133,13 +141,13 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
                 app_state._redis_client.setex(f"pay_idem:{key}", ttl_seconds, host.json.dumps(value))
                 return
             except Exception as e:
-                host._json_log("error", "payment_idempotency_write_failed", error=str(e))
+                observability._json_log("error", "payment_idempotency_write_failed", error=str(e))
                 raise host.HTTPException(status_code=503, detail="Payment safety service is temporarily unavailable") from e
 
         if settings._IS_TEST:
             app_state._payment_idempotency[key] = value
             return
-        db = host.get_db()
+        db = firebase_admin_setup.get_db()
         if db:
             try:
                 doc_id = host.hashlib.sha256(key.encode("utf-8")).hexdigest()
@@ -150,7 +158,7 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
                 })
                 return
             except Exception as e:
-                host._json_log("error", "payment_idempotency_firestore_write_failed", error=str(e))
+                observability._json_log("error", "payment_idempotency_firestore_write_failed", error=str(e))
                 raise host.HTTPException(status_code=503, detail="Payment safety service is temporarily unavailable") from e
         if settings._IS_PRODUCTION:
             raise host.HTTPException(status_code=503, detail="Payment safety service is unavailable")
@@ -168,7 +176,7 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
                     f"pay_idem:{key}", host.json.dumps(value), ex=ttl_seconds, nx=True
                 ))
             except Exception as e:
-                host._json_log("error", "payment_idempotency_claim_failed", error=str(e))
+                observability._json_log("error", "payment_idempotency_claim_failed", error=str(e))
                 raise host.HTTPException(status_code=503, detail="Payment safety service is temporarily unavailable") from e
 
         if settings._IS_TEST:
@@ -176,7 +184,7 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
                 return False
             app_state._payment_idempotency[key] = value
             return True
-        db = host.get_db()
+        db = firebase_admin_setup.get_db()
         if db:
             try:
                 doc_id = host.hashlib.sha256(key.encode("utf-8")).hexdigest()
@@ -189,7 +197,7 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
             except host.AlreadyExists:
                 return False
             except Exception as e:
-                host._json_log("error", "payment_idempotency_firestore_claim_failed", error=str(e))
+                observability._json_log("error", "payment_idempotency_firestore_claim_failed", error=str(e))
                 raise host.HTTPException(status_code=503, detail="Payment safety service is temporarily unavailable") from e
         if settings._IS_PRODUCTION:
             raise host.HTTPException(status_code=503, detail="Payment safety service is unavailable")
@@ -207,20 +215,20 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
                 app_state._redis_client.delete(f"pay_idem:{key}")
                 return
             except Exception as e:
-                host._json_log("error", "payment_idempotency_delete_failed", error=str(e))
+                observability._json_log("error", "payment_idempotency_delete_failed", error=str(e))
                 raise host.HTTPException(status_code=503, detail="Payment safety service is temporarily unavailable") from e
 
         if settings._IS_TEST:
             app_state._payment_idempotency.pop(key, None)
             return
-        db = host.get_db()
+        db = firebase_admin_setup.get_db()
         if db:
             try:
                 doc_id = host.hashlib.sha256(key.encode("utf-8")).hexdigest()
                 db.collection("payment_idempotency").document(doc_id).delete()
                 return
             except Exception as e:
-                host._json_log("error", "payment_idempotency_firestore_delete_failed", error=str(e))
+                observability._json_log("error", "payment_idempotency_firestore_delete_failed", error=str(e))
                 raise host.HTTPException(status_code=503, detail="Payment safety service is temporarily unavailable") from e
         if settings._IS_PRODUCTION:
             raise host.HTTPException(status_code=503, detail="Payment safety service is unavailable")
@@ -287,7 +295,7 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
                 return bool(admitted), int(retry_after), int(remaining)
             except Exception as e:
                 if settings._IS_PRODUCTION:
-                    host._json_log("error", "rate_limit_redis_failed", key=key, error=str(e))
+                    observability._json_log("error", "rate_limit_redis_failed", key=key, error=str(e))
                     raise host.HTTPException(status_code=503, detail="Rate-limit service is temporarily unavailable") from e
                 # Local and test environments may use the per-process fallback.
                 pass
@@ -377,7 +385,7 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
                                 "finished", "failed", "stopped", "cancelled", "canceled",
                             }
                 except Exception as state_error:
-                    host._json_log(
+                    observability._json_log(
                         "warning",
                         "export_slot_recovery_check_failed",
                         uid=uid,
@@ -395,7 +403,7 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
                     if removed:
                         acquired = app_state._redis_client.set(k, job_id, nx=True, ex=settings.EXPORT_SLOT_TTL_SECONDS)
                         if acquired:
-                            host._json_log(
+                            observability._json_log(
                                 "warning",
                                 "stale_export_slot_recovered",
                                 uid=uid,
@@ -405,7 +413,7 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
                             return True
                 return False
             except Exception as e:
-                host._json_log("error", "export_slot_acquire_failed", uid=uid, job_id=job_id, error=str(e))
+                observability._json_log("error", "export_slot_acquire_failed", uid=uid, job_id=job_id, error=str(e))
                 if settings._IS_PRODUCTION or app_state._export_queue is not None:
                     return False
         current = app_state._active_exports_by_user.get(uid)
@@ -450,7 +458,7 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
                     )
                 )
             except Exception as e:
-                host._json_log("error", "process_slot_acquire_failed", uid=uid, request_id=request_id, error=str(e))
+                observability._json_log("error", "process_slot_acquire_failed", uid=uid, request_id=request_id, error=str(e))
                 if settings._IS_PRODUCTION:
                     return False
         if app_state._active_processes_by_user.get(uid):

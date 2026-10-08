@@ -16,6 +16,14 @@ try:
     from . import settings
 except ImportError:  # Direct execution from backend/ remains supported.
     import settings
+try:
+    from . import firebase_admin_setup
+except ImportError:  # Direct execution from backend/ remains supported.
+    import firebase_admin_setup
+try:
+    from . import observability
+except ImportError:  # Direct execution from backend/ remains supported.
+    import observability
 
 
 def create_admin_router(host: ModuleType) -> SimpleNamespace:
@@ -25,7 +33,7 @@ def create_admin_router(host: ModuleType) -> SimpleNamespace:
     def admin_recovery_summary(req: host.AdminRecoveryRequest):
         if not host._is_admin_token(req.id_token):
             raise HTTPException(status_code=403, detail="Admin access required")
-        db = host.get_db()
+        db = firebase_admin_setup.get_db()
         if not db:
             raise HTTPException(status_code=503, detail="Database unavailable")
         lim = max(1, min(int(req.limit or 50), 200))
@@ -37,13 +45,13 @@ def create_admin_router(host: ModuleType) -> SimpleNamespace:
                 dead_letter_rows.append(doc.to_dict())
         except Exception as e:
             failed_queries.append("export_dead_letter")
-            host._json_log("error", "recovery_summary_query_failed", collection="export_dead_letter", error=str(e))
+            observability._json_log("error", "recovery_summary_query_failed", collection="export_dead_letter", error=str(e))
         try:
             for doc in db.collection("payment_reconcile_runs").order_by("run_at", direction=host.firestore.Query.DESCENDING).limit(lim).stream():
                 reconcile_runs.append(doc.to_dict())
         except Exception as e:
             failed_queries.append("payment_reconcile_runs")
-            host._json_log("error", "recovery_summary_query_failed", collection="payment_reconcile_runs", error=str(e))
+            observability._json_log("error", "recovery_summary_query_failed", collection="payment_reconcile_runs", error=str(e))
         if failed_queries:
             raise HTTPException(
                 status_code=503,
@@ -60,7 +68,7 @@ def create_admin_router(host: ModuleType) -> SimpleNamespace:
             "success": True,
             "dead_letter_recent": dead_letter_rows,
             "payment_reconcile_recent": reconcile_runs,
-            "slo": host._build_slo_snapshot(),
+            "slo": observability._build_slo_snapshot(),
             "ai_system_usage_today": host._read_system_ai_usage(db),
         }
 
@@ -70,7 +78,7 @@ def create_admin_router(host: ModuleType) -> SimpleNamespace:
         """Dispatch a controlled Sentry event for launch evidence."""
         if not host._is_admin_token(req.id_token):
             raise HTTPException(status_code=403, detail="Admin access required")
-        test_id = f"alert-test-{host._utcnow().strftime('%Y%m%d-%H%M%S')}-{host.secrets.token_hex(3)}"
+        test_id = f"alert-test-{observability._utcnow().strftime('%Y%m%d-%H%M%S')}-{host.secrets.token_hex(3)}"
         sentry_event_id = ""
         if settings.SENTRY_DSN and host.SENTRY_AVAILABLE:
             try:
@@ -80,8 +88,8 @@ def create_admin_router(host: ModuleType) -> SimpleNamespace:
                 ) or "")
                 host.sentry_sdk.flush(timeout=2.0)
             except Exception as e:
-                host._json_log("warning", "sentry_test_alert_failed", test_id=test_id, error=str(e))
-        host._audit_action("production_alert_test_dispatched", "admin", {
+                observability._json_log("warning", "sentry_test_alert_failed", test_id=test_id, error=str(e))
+        observability._audit_action("production_alert_test_dispatched", "admin", {
             "test_id": test_id,
             "sentry_dispatched": bool(sentry_event_id),
         })
@@ -107,7 +115,7 @@ def create_admin_router(host: ModuleType) -> SimpleNamespace:
     def admin_tenant_backfill(req: host.TenantBackfillRequest):
         if not host._is_admin_token(req.id_token):
             raise HTTPException(status_code=403, detail="Admin access required")
-        db = host.get_db()
+        db = firebase_admin_setup.get_db()
         if not db:
             raise HTTPException(status_code=503, detail="Database unavailable")
         lim = max(1, min(int(req.limit or 500), 500))
@@ -142,7 +150,7 @@ def create_admin_router(host: ModuleType) -> SimpleNamespace:
             data = doc.to_dict() or {}
             uid = data.get("uid") or doc.id
             org_id = (data.get("org_id") or "").strip()
-            now_iso = host._utcnow().isoformat() + "Z"
+            now_iso = observability._utcnow().isoformat() + "Z"
             if not org_id:
                 org_id = f"org_{uid}"
                 queue_set(doc.reference, {"org_id": org_id, "updated_at": now_iso})

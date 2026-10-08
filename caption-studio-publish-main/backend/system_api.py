@@ -20,6 +20,14 @@ try:
     from . import app_state
 except ImportError:  # Direct execution from backend/ remains supported.
     import app_state
+try:
+    from . import firebase_admin_setup
+except ImportError:  # Direct execution from backend/ remains supported.
+    import firebase_admin_setup
+try:
+    from . import observability
+except ImportError:  # Direct execution from backend/ remains supported.
+    import observability
 
 
 def create_system_router(host: ModuleType) -> SimpleNamespace:
@@ -49,7 +57,7 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
         payload = body.get("payload") or {}
         if not isinstance(payload, dict):
             raise HTTPException(status_code=400, detail="Invalid analytics payload")
-        await host.asyncio.to_thread(host._track_event, event, payload)
+        await host.asyncio.to_thread(observability._track_event, event, payload)
         return {"success": True}
 
 
@@ -68,12 +76,12 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
         email = req.account_email.strip().lower()
         if not host.re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
             raise HTTPException(status_code=422, detail="Enter a valid account email address.")
-        db = host.get_db()
+        db = firebase_admin_setup.get_db()
         if not db:
             raise HTTPException(status_code=503, detail="Support intake is temporarily unavailable.")
 
-        ticket_id = f"SUP-{host._utcnow().strftime('%Y%m%d')}-{host.uuid.uuid4().hex[:8].upper()}"
-        received_at = host._utcnow().isoformat() + "Z"
+        ticket_id = f"SUP-{observability._utcnow().strftime('%Y%m%d')}-{host.uuid.uuid4().hex[:8].upper()}"
+        received_at = observability._utcnow().isoformat() + "Z"
         db.collection("support_requests").document(ticket_id).set({
             "ticket_id": ticket_id,
             "account_email": email,
@@ -87,13 +95,13 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
             "received_at": received_at,
             "updated_at": received_at,
             "user_agent": (request.headers.get("user-agent") or "")[:500],
-            "expire_at": host._retention_deadline(365),
+            "expire_at": observability._retention_deadline(365),
         })
-        host._track_event("support_request_created", {
+        observability._track_event("support_request_created", {
             "ticket_id": ticket_id,
             "issue_type": req.issue_type.strip(),
         })
-        host._send_alert(f"[Lekha Support] New {req.issue_type.strip()} ticket: {ticket_id}")
+        observability._send_alert(f"[Lekha Support] New {req.issue_type.strip()} ticket: {ticket_id}")
         return {"success": True, "ticket_id": ticket_id, "received_at": received_at}
 
 
@@ -155,14 +163,14 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
             except Exception:
                 checks["redis"] = False
         try:
-            db = host.get_db()
+            db = firebase_admin_setup.get_db()
             if db:
                 next(iter(db.collection("_readiness_probe").limit(1).stream()), None)
                 checks["firestore"] = True
         except Exception as e:
             details["firestore_error"] = str(e)[:200]
         try:
-            checks["storage"] = host.storage_backend_ready()
+            checks["storage"] = firebase_admin_setup.storage_backend_ready()
         except Exception as e:
             details["storage_error"] = str(e)[:200]
         if settings.DURABLE_QUEUE_ENABLED and checks["redis"] and host.RQWorker is not None:
@@ -239,7 +247,7 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
         # /api/health/readiness (boolean) instead.
         if not host._is_admin_token(request=request):
             raise HTTPException(status_code=403, detail="Admin access required")
-        return host._build_slo_snapshot()
+        return observability._build_slo_snapshot()
 
 
     @router.get("/ready")
@@ -261,7 +269,7 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
             "ready": ready,
         }
         if host._is_admin_token(request=request):
-            body["slo"] = host._build_slo_snapshot()
+            body["slo"] = observability._build_slo_snapshot()
             body["queue"] = {
                 "durable_enabled": settings.DURABLE_QUEUE_ENABLED,
                 "queue_names": list(app_state._export_queues) or [settings.EXPORT_QUEUE_NAME],
@@ -277,7 +285,7 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
     def feature_flags(request: Request):
         host._validate_feature_flag_safety("feature_flags")
         token = request.headers.get("authorization", "").replace("Bearer ", "").strip()
-        decoded = host.verify_token(token) if token else None
+        decoded = firebase_admin_setup.verify_token(token) if token else None
         if not decoded:
             raise HTTPException(status_code=401, detail="Auth required")
         if not host._decoded_token_is_admin(decoded):
@@ -312,10 +320,10 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
 
     @router.post("/api/admin/service-controls")
     def admin_service_controls(req: host.ServiceControlsRequest, request: Request):
-        decoded = host.verify_token(req.id_token) if req.id_token else None
+        decoded = firebase_admin_setup.verify_token(req.id_token) if req.id_token else None
         if not decoded and request is not None:
             header_token = request.headers.get("authorization", "").replace("Bearer ", "").strip()
-            decoded = host.verify_token(header_token) if header_token else None
+            decoded = firebase_admin_setup.verify_token(header_token) if header_token else None
         if not host._decoded_token_is_admin(decoded):
             raise HTTPException(status_code=403, detail="Admin access required")
 
@@ -336,21 +344,21 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
             controls = host._read_service_controls(force=True)
             return {"success": True, "changed": False, "controls": controls}
 
-        db = host.get_db()
+        db = firebase_admin_setup.get_db()
         if not db:
             raise HTTPException(status_code=503, detail="Database unavailable")
-        updates["updated_at"] = host._utcnow().isoformat() + "Z"
+        updates["updated_at"] = observability._utcnow().isoformat() + "Z"
         updates["updated_by"] = str((decoded or {}).get("uid") or "")[:128]
         try:
             db.collection(settings.SERVICE_CONTROL_COLLECTION).document(settings.SERVICE_CONTROL_DOCUMENT).set(
                 updates, merge=True
             )
         except Exception as e:
-            host._json_log("error", "service_controls_write_failed", error=str(e))
+            observability._json_log("error", "service_controls_write_failed", error=str(e))
             raise HTTPException(status_code=503, detail="Service controls could not be saved") from e
 
         controls = host._read_service_controls(force=True)
-        host._audit_action(
+        observability._audit_action(
             "service_controls_updated",
             str((decoded or {}).get("uid") or ""),
             {
@@ -359,7 +367,7 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
                 if key in settings.SERVICE_CONTROL_KEYS or key == settings.MAX_UPLOAD_DURATION_CONTROL_KEY
             },
         )
-        host._json_log("warning", "service_controls_updated", **{
+        observability._json_log("warning", "service_controls_updated", **{
             **{key: bool(controls.get(key)) for key in settings.SERVICE_CONTROL_KEYS},
             settings.MAX_UPLOAD_DURATION_CONTROL_KEY: int(controls.get(
                 settings.MAX_UPLOAD_DURATION_CONTROL_KEY,

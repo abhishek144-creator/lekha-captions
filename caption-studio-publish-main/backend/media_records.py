@@ -15,6 +15,14 @@ try:
     from . import app_state
 except ImportError:  # Direct execution from backend/ remains supported.
     import app_state
+try:
+    from . import firebase_admin_setup
+except ImportError:  # Direct execution from backend/ remains supported.
+    import firebase_admin_setup
+try:
+    from . import observability
+except ImportError:  # Direct execution from backend/ remains supported.
+    import observability
 
 
 def create_media_records(host: ModuleType) -> SimpleNamespace:
@@ -48,7 +56,7 @@ def create_media_records(host: ModuleType) -> SimpleNamespace:
             return None
         partial = f"{target}.part-{host.uuid.uuid4().hex}"
         try:
-            if not host.download_from_firebase_storage(remote_path, partial):
+            if not firebase_admin_setup.download_from_firebase_storage(remote_path, partial):
                 return None
             host.os.replace(partial, target)
             return target
@@ -74,7 +82,7 @@ def create_media_records(host: ModuleType) -> SimpleNamespace:
                 metadata = {}
         if metadata:
             return metadata
-        db = host.get_db()
+        db = firebase_admin_setup.get_db()
         if db:
             try:
                 snap = db.collection("uploads").document(file_id).get()
@@ -92,15 +100,15 @@ def create_media_records(host: ModuleType) -> SimpleNamespace:
             try:
                 app_state._redis_client.setex(f"upload_duration:{file_id}", 24 * 3600, duration_seconds)
             except Exception as error:
-                host._json_log("warning", "upload_duration_cache_failed", error=type(error).__name__)
-        db = host.get_db()
+                observability._json_log("warning", "upload_duration_cache_failed", error=type(error).__name__)
+        db = firebase_admin_setup.get_db()
         if db:
             try:
                 db.collection("uploads").document(file_id).set(
                     {"duration_seconds": duration_seconds}, merge=True,
                 )
             except Exception as error:
-                host._json_log("warning", "upload_duration_persist_failed", error=type(error).__name__)
+                observability._json_log("warning", "upload_duration_persist_failed", error=type(error).__name__)
 
 
     def _source_duration_hint(file_id: str, uid: str) -> float:
@@ -132,7 +140,7 @@ def create_media_records(host: ModuleType) -> SimpleNamespace:
             "uid": uid,
             "remote_path": remote_path,
             "extension": extension,
-            "created_at": host._utcnow().isoformat() + "Z",
+            "created_at": observability._utcnow().isoformat() + "Z",
             **(source_metadata or {}),
         }
         if app_state._redis_client is not None:
@@ -142,13 +150,13 @@ def create_media_records(host: ModuleType) -> SimpleNamespace:
                 persisted = True
             except Exception:
                 pass
-        db = host.get_db()
+        db = firebase_admin_setup.get_db()
         if db:
             try:
                 db.collection("uploads").document(file_id).set(metadata, merge=True)
                 persisted = True
             except Exception as e:
-                host._json_log("warning", "upload_owner_persist_failed", file_id=file_id, uid=uid, error=str(e))
+                observability._json_log("warning", "upload_owner_persist_failed", file_id=file_id, uid=uid, error=str(e))
         return persisted
 
 
@@ -158,9 +166,9 @@ def create_media_records(host: ModuleType) -> SimpleNamespace:
             try:
                 app_state._redis_client.setex(f"upload_meta:{file_id}", 24 * 3600, host.json.dumps(metadata))
             except Exception as error:
-                host._json_log("warning", "upload_metadata_cache_failed", file_id=file_id,
+                observability._json_log("warning", "upload_metadata_cache_failed", file_id=file_id,
                           error_type=type(error).__name__)
-        db = host.get_db()
+        db = firebase_admin_setup.get_db()
         if db:
             db.collection("uploads").document(file_id).set(values, merge=True)
         return metadata
@@ -174,7 +182,7 @@ def create_media_records(host: ModuleType) -> SimpleNamespace:
         metadata = host._update_upload_metadata(file_id, values)
         remote_path = str(metadata.get("remote_path") or "")
         if remote_path:
-            host.set_source_upload_state(uid, file_id, remote_path, state)
+            firebase_admin_setup.set_source_upload_state(uid, file_id, remote_path, state)
         return metadata
 
 
@@ -280,8 +288,8 @@ def create_media_records(host: ModuleType) -> SimpleNamespace:
             load_metadata=host._load_upload_metadata,
             mark_state=host._mark_upload_security_state,
             scan=host._scan_upload_for_threat,
-            delete_remote=host.delete_from_firebase_storage,
-            utc_timestamp=lambda: host._utcnow().isoformat() + "Z",
+            delete_remote=firebase_admin_setup.delete_from_firebase_storage,
+            utc_timestamp=lambda: observability._utcnow().isoformat() + "Z",
             compute_hash=host._compute_media_hash,
             update_metadata=host._update_upload_metadata,
         )

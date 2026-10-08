@@ -55,9 +55,9 @@ class OperationsThreadingTests(unittest.IsolatedAsyncioTestCase):
         from backend import main
 
         with (patch.object(main, "_check_rate", self.blocking("rate", (True, 0, 5))),
-              patch.object(main, "_track_event", self.blocking("track")),
+              patch.object(main.observability, "_track_event", self.blocking("track")),
               patch.object(main, "_is_admin_token", self.blocking("auth", True)),
-              patch.object(main, "_build_slo_snapshot", self.blocking("slo", {"success": True}))):
+              patch.object(main.observability, "_build_slo_snapshot", self.blocking("slo", {"success": True}))):
             await self.request(main.app, "POST", "/api/analytics/track", json={"event": "page_view"})
             await self.request(main.app, "GET", "/api/slo/status")
         self.assertTrue({"rate", "track", "auth", "slo"}.issubset(self.calls))
@@ -127,7 +127,7 @@ class MiddlewareThreadingTests(unittest.IsolatedAsyncioTestCase):
 
         with (patch.object(main.settings, "FIREBASE_APP_CHECK_ENFORCED", True),
               patch.object(main.firebase_app_check, "verify_token", side_effect=cold_key_verification),
-              patch.object(main, "_track_latency_sample"),
+              patch.object(main.observability, "_track_latency_sample"),
               patch.object(main.settings, "RUN_API_BACKGROUND_TASKS", True)):
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app=self.middleware_app()),
                                          base_url="http://test") as client:
@@ -154,7 +154,7 @@ class MiddlewareThreadingTests(unittest.IsolatedAsyncioTestCase):
             time.sleep(0.03)
 
         with (patch.object(main.settings, "FIREBASE_APP_CHECK_ENFORCED", False),
-              patch.object(main, "_track_latency_sample", side_effect=slow_redis_write),
+              patch.object(main.observability, "_track_latency_sample", side_effect=slow_redis_write),
               patch.object(main.settings, "RUN_API_BACKGROUND_TASKS", True)):
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app=self.middleware_app()),
                                          base_url="http://test") as client:
@@ -201,7 +201,7 @@ class MiddlewareThreadingTests(unittest.IsolatedAsyncioTestCase):
 
         with (patch.object(main.settings, "FIREBASE_APP_CHECK_ENFORCED", True),
               patch.object(main.firebase_app_check, "verify_token", side_effect=slow_verify),
-              patch.object(main, "_track_latency_sample"),
+              patch.object(main.observability, "_track_latency_sample"),
               patch.object(main.settings, "RUN_API_BACKGROUND_TASKS", True)):
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app=self.middleware_app()),
                                          base_url="http://test") as client:
