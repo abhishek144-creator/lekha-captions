@@ -460,6 +460,16 @@ async function main() {
     sourceTemplateFontFamilies.forEach((fontFamily) => {
       families[fontFamily] = resolveScriptFontFamily(fontFamily, sampleText);
     });
+    // applySourceTemplateScriptFonts() runs on every render and reads the
+    // family it already applied (e.g. Inter -> Poppins on Hindi). Without an
+    // entry for that resolved family, the second pass fell through to the
+    // generic fallback, so captions exported in Noto Sans Devanagari while the
+    // editor showed Poppins.
+    Object.values(families).forEach((resolvedFamily) => {
+      if (!(resolvedFamily in families)) {
+        families[resolvedFamily] = resolveScriptFontFamily(resolvedFamily, sampleText);
+      }
+    });
     exportScriptFontMaps[script] = {
       fallback: resolveScriptFontFamily('', sampleText),
       families,

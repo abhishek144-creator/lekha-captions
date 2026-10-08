@@ -83,7 +83,7 @@ Caption IDs are `${Date.now()}-${idx}` (no spaces). They are used as key prefixe
 ### ASS Subtitle Paths
 - **word_layouts path** (compatibility only): trusted internal callers may supply explicit positions
 - **default server path** (position-based): derives layout from `position_y` + text/font metrics
-- Indic scripts need y-correction: `INDIC_Y_CORRECTIONS` dict in fallback path
+- No per-script y-correction: the editor and DOM renderer centre every script at `position_y`, so ASS does too (`INDIC_Y_CORR` removed 2026-10-08). ASS picks non-Latin fonts with `resolve_script_font_family` (Python port of `scriptFontResolver.js`; keep the two in sync)
 
 ### Firestore / Firebase
 - `get_db()` returns `None` when no `service-account.json` is present
@@ -112,8 +112,7 @@ Caption IDs are `${Date.now()}-${idx}` (no spaces). They are used as key prefixe
 |-----|----------|-----|
 | Caption ID spaces | Dashboard.jsx:252 | `${Date.now()}-${idx}` — no spaces |
 | Template hard reset | Dashboard.jsx handleApplyTemplate | `TEMPLATE_OWNED_RESET` clears owned props before merge |
-| Indic y-correction (fallback) | processor.py fallback ASS | `INDIC_Y_CORRECTIONS` dict |
-| Indic y-correction (word_layouts) | processor.py word_layouts text elements | `_TE_INDIC_Y_CORR` applied at text element position calc |
+| Static vs animated Hindi export mismatch | processor_ass.py / processor_fonts.py | ASS uses the DOM's font resolver and no Indic y-shift; do not re-add `INDIC_Y_CORR` (it lifted static Hindi ~2.5% of the frame above the editor) |
 | Font selection gate | StyleControls.jsx onSelect | Call `updateStyle` immediately, not on font load success |
 | Background thickness H | StyleControls.jsx | Display as `(multiplier-1)*100 px` |
 | has_background in export | ExportPanel.jsx | Use `!!` not `!== false` |

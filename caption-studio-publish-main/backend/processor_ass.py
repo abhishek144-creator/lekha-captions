@@ -7,6 +7,11 @@ import math
 import os
 import re
 
+try:
+    from .processor_fonts import detect_text_script, resolve_script_font_family
+except ImportError:  # Direct execution from backend/ remains supported.
+    from processor_fonts import detect_text_script, resolve_script_font_family
+
 
 class AssSubtitleMixin:
     @staticmethod
@@ -120,33 +125,27 @@ class AssSubtitleMixin:
         font_name = font_info['ass_name']
         ass_font_info = font_info
 
-        # ── Script detection + Indic font override ────────────────────────
+        # ── Script detection + script font override ───────────────────────
+        # Pick the face the editor and DOM renderer use for this text
+        # (scriptFontResolver.js, ported as resolve_script_font_family), so a
+        # static caption keeps its font once it is animated.
         all_text = " ".join(c.get('text', '') for c in captions)
         detected_script = self._detect_script(all_text)
-        if detected_script:
-            indic_font_info = self._ensure_indic_font(detected_script)
-            # Fonts known to include Indic Unicode ranges — keep as-is
-            _indic_safe = {
-                'noto sans', 'noto sans devanagari', 'mukta', 'baloo 2',
-                'hind', 'hind siliguri', 'hind guntur', 'hind madurai',
-                'hind vadodara', 'hind mysuru',
-                'noto sans bengali', 'noto sans telugu', 'noto sans tamil',
-                'noto sans gujarati', 'noto sans kannada', 'noto sans malayalam',
-                'noto sans oriya', 'noto sans arabic',
-                'mukta malar', 'mukta mahee', 'mukta vaani',
-                'rajdhani', 'kalam', 'tiro devanagari hindi',
-                'catamaran', 'arima', 'atma', 'galada',
-                'noto sans sinhala', 'noto sans meetei mayek', 'noto sans ol chiki',
-                'noto sans hebrew', 'noto sans jp', 'noto sans sc', 'noto sans tc',
-                'noto sans kr', 'noto sans thai', 'noto sans myanmar',
-                'noto sans khmer', 'noto sans lao', 'noto serif tibetan',
-                'noto sans georgian', 'noto sans armenian', 'noto sans ethiopic',
-                'sarabun', 'prompt', 'kanit', 'mitr', 'pridi', 'itim', 'charm',
-            }
-            if indic_font_info and font_name.lower() not in _indic_safe:
-                print(f"[ASS] Font '{font_name}' is Latin-only; overriding to {indic_font_info['ass_name']} for {detected_script}")
-                font_name = indic_font_info['ass_name']
-                ass_font_info = indic_font_info
+        requested_family = str(style.get('font_family') or font_name).strip()
+        script_family = resolve_script_font_family(requested_family, all_text)
+        if script_family.lower() not in {requested_family.lower(), font_name.lower()}:
+            script_font_info = self._ensure_font(script_family)
+            if (
+                script_font_info.get('ass_name', '').lower() != script_family.lower()
+                or self._font_lacks_text_glyphs(script_font_info, all_text)
+            ):
+                # Could not get a usable file for the resolver's face (offline,
+                # unknown, or a Latin-only subset): use the bundled per-script
+                # face rather than let libass substitute an arbitrary one.
+                script_font_info = (self._ensure_indic_font(detected_script) if detected_script else None) or script_font_info
+            print(f"[ASS] Font '{font_name}' -> {script_font_info['ass_name']} for {detect_text_script(all_text)} text")
+            font_name = script_font_info['ass_name']
+            ass_font_info = script_font_info
 
         # ASS Fontsize is the face's cell height (winAscent + winDescent), CSS
         # font-size is its em square: convert so glyphs match the DOM renderer.
@@ -157,11 +156,6 @@ class AssSubtitleMixin:
 
         scaled_size = _ass_fs(font_size_source)
         print(f"[ASS] font={font_name!r} size={scaled_size} scale_factor={scale_factor:.2f} cell_ratio={cell_height_ratio:.3f}")
-        INDIC_Y_CORR = {
-            'devanagari': -0.025, 'bengali': -0.020, 'gujarati': -0.020,
-            'punjabi': -0.015, 'tamil': -0.015, 'telugu': -0.015,
-            'kannada': -0.015, 'malayalam': -0.015, 'odia': -0.015, 'arabic': -0.010,
-        }
         bord_factor = 0.65 if detected_script else 0.85
 
         # ── Per-template word-state alpha config ──────────────────────────
@@ -293,9 +287,10 @@ class AssSubtitleMixin:
 
         # ── Global caption position (video-% from ExportPanel containerToVideo) ──
         pos_x = int((float(style.get('position_x', 50) or 50) / 100) * video_w)
+        # No per-script shift: the editor and the DOM renderer both centre the
+        # caption at position_y for every script (the old INDIC_Y_CORR lifted
+        # static Hindi captions ~2.5% of the frame above the animated ones).
         pos_y = int((float(style.get('position_y', 75) or 75) / 100) * video_h)
-        if detected_script in INDIC_Y_CORR:
-            pos_y = max(10, pos_y + int(INDIC_Y_CORR[detected_script] * video_h))
 
         # ── ASS Style header ───────────────────────────────────────────────
         # BorderStyle=3 = opaque background box, BorderStyle=1 = outline/shadow
@@ -409,8 +404,6 @@ class AssSubtitleMixin:
                     te_align = {'left': 4, 'center': 5, 'right': 6}.get(cs.get('text_align', 'center'), 5)
                     te_px = int((float(cs.get('position_x', 50) or 50) / 100) * video_w)
                     te_py = int((float(cs.get('position_y', 50) or 50) / 100) * video_h)
-                    if detected_script in INDIC_Y_CORR:
-                        te_py = max(10, te_py + int(INDIC_Y_CORR[detected_script] * video_h))
                     te_tc = cs.get('text_transform', 'none') or 'none'
                     def _TT(t):
                         if te_tc == 'uppercase': return t.upper()
@@ -543,8 +536,6 @@ class AssSubtitleMixin:
                     def _wxy(lyt):
                         _wx = int((float(lyt['x']) / 100) * video_w)
                         _wy = int((float(lyt['y']) / 100) * video_h)
-                        if detected_script in INDIC_Y_CORR:
-                            _wy = max(10, _wy + int(INDIC_Y_CORR[detected_script] * video_h))
                         return _wx, _wy
 
                     _aw = [_T((wt2.get('word') or '').strip()) for wt2 in words_timing]

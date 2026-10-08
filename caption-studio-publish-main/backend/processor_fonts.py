@@ -117,6 +117,27 @@ SCRIPT_FONTS_MAP = {
     'TiroDevanagariHindi': {'url': 'https://github.com/google/fonts/raw/main/ofl/tirodevanagarihindiregular/TiroDevanagariHindi-Regular.ttf', 'file': 'TiroDevanagariHindi-Regular.ttf', 'ass_name': 'Tiro Devanagari Hindi', 'script': 'devanagari'},
     'Kalam': {'url': 'https://github.com/google/fonts/raw/main/ofl/kalam/Kalam-Regular.ttf', 'file': 'Kalam-Regular.ttf', 'ass_name': 'Kalam', 'script': 'devanagari'},
     'Rajdhani': {'url': 'https://github.com/google/fonts/raw/main/ofl/rajdhani/Rajdhani-Regular.ttf', 'file': 'Rajdhani-Regular.ttf', 'ass_name': 'Rajdhani', 'script': 'devanagari'},
+    # Devanagari faces scriptFontResolver.js maps Latin families onto. Full
+    # files: the dynamic Google CSS fallback returns Latin-only subsets.
+    'Amita': {'url': 'https://github.com/google/fonts/raw/main/ofl/amita/Amita-Regular.ttf', 'file': 'Amita-Regular.ttf', 'ass_name': 'Amita', 'script': 'devanagari'},
+    'Arya': {'url': 'https://github.com/google/fonts/raw/main/ofl/arya/Arya-Regular.ttf', 'file': 'Arya-Regular.ttf', 'ass_name': 'Arya', 'script': 'devanagari'},
+    'Asar': {'url': 'https://github.com/google/fonts/raw/main/ofl/asar/Asar-Regular.ttf', 'file': 'Asar-Regular.ttf', 'ass_name': 'Asar', 'script': 'devanagari'},
+    'Eczar': {'url': 'https://github.com/google/fonts/raw/main/ofl/eczar/Eczar%5Bwght%5D.ttf', 'file': 'Eczar.ttf', 'ass_name': 'Eczar', 'script': 'devanagari'},
+    'Halant': {'url': 'https://github.com/google/fonts/raw/main/ofl/halant/Halant-Regular.ttf', 'file': 'Halant-Regular.ttf', 'ass_name': 'Halant', 'script': 'devanagari'},
+    'InknutAntiqua': {'url': 'https://github.com/google/fonts/raw/main/ofl/inknutantiqua/InknutAntiqua-Regular.ttf', 'file': 'InknutAntiqua-Regular.ttf', 'ass_name': 'Inknut Antiqua', 'script': 'devanagari'},
+    'Karma': {'url': 'https://github.com/google/fonts/raw/main/ofl/karma/Karma-Regular.ttf', 'file': 'Karma-Regular.ttf', 'ass_name': 'Karma', 'script': 'devanagari'},
+    'Khand': {'url': 'https://github.com/google/fonts/raw/main/ofl/khand/Khand-Regular.ttf', 'file': 'Khand-Regular.ttf', 'ass_name': 'Khand', 'script': 'devanagari'},
+    'Kurale': {'url': 'https://github.com/google/fonts/raw/main/ofl/kurale/Kurale-Regular.ttf', 'file': 'Kurale-Regular.ttf', 'ass_name': 'Kurale', 'script': 'devanagari'},
+    'Martel': {'url': 'https://github.com/google/fonts/raw/main/ofl/martel/Martel-Regular.ttf', 'file': 'Martel-Regular.ttf', 'ass_name': 'Martel', 'script': 'devanagari'},
+    'RhodiumLibre': {'url': 'https://github.com/google/fonts/raw/main/ofl/rhodiumlibre/RhodiumLibre-Regular.ttf', 'file': 'RhodiumLibre-Regular.ttf', 'ass_name': 'Rhodium Libre', 'script': 'devanagari'},
+    'RozhaOne': {'url': 'https://github.com/google/fonts/raw/main/ofl/rozhaone/RozhaOne-Regular.ttf', 'file': 'RozhaOne-Regular.ttf', 'ass_name': 'Rozha One', 'script': 'devanagari'},
+    'Sahitya': {'url': 'https://github.com/google/fonts/raw/main/ofl/sahitya/Sahitya-Regular.ttf', 'file': 'Sahitya-Regular.ttf', 'ass_name': 'Sahitya', 'script': 'devanagari'},
+    'Shrikhand': {'url': 'https://github.com/google/fonts/raw/main/ofl/shrikhand/Shrikhand-Regular.ttf', 'file': 'Shrikhand-Regular.ttf', 'ass_name': 'Shrikhand', 'script': 'devanagari'},
+    'Sumana': {'url': 'https://github.com/google/fonts/raw/main/ofl/sumana/Sumana-Regular.ttf', 'file': 'Sumana-Regular.ttf', 'ass_name': 'Sumana', 'script': 'devanagari'},
+    'Sura': {'url': 'https://github.com/google/fonts/raw/main/ofl/sura/Sura-Regular.ttf', 'file': 'Sura-Regular.ttf', 'ass_name': 'Sura', 'script': 'devanagari'},
+    'Teko': {'url': 'https://github.com/google/fonts/raw/main/ofl/teko/Teko%5Bwght%5D.ttf', 'file': 'Teko.ttf', 'ass_name': 'Teko', 'script': 'devanagari'},
+    'VesperLibre': {'url': 'https://github.com/google/fonts/raw/main/ofl/vesperlibre/VesperLibre-Regular.ttf', 'file': 'VesperLibre-Regular.ttf', 'ass_name': 'Vesper Libre', 'script': 'devanagari'},
+    'Yantramanav': {'url': 'https://github.com/google/fonts/raw/main/ofl/yantramanav/Yantramanav-Regular.ttf', 'file': 'Yantramanav-Regular.ttf', 'ass_name': 'Yantramanav', 'script': 'devanagari'},
 
     'MuktaMalar': {'url': 'https://github.com/google/fonts/raw/main/ofl/muktamalar/MuktaMalar-Regular.ttf', 'file': 'MuktaMalar-Regular.ttf', 'ass_name': 'Mukta Malar', 'script': 'tamil'},
     'NotoSansTamil': {'url': 'https://github.com/google/fonts/raw/main/ofl/notosanstamil/NotoSansTamil%5Bwdth%2Cwght%5D.ttf', 'file': 'NotoSansTamil.ttf', 'ass_name': 'Noto Sans Tamil', 'script': 'tamil'},
@@ -272,6 +293,174 @@ BOLD_VARIANTS = {
 }
 
 
+# ── Script font resolution: Python port of scriptFontResolver.js ────────────
+# The editor and the DOM export renderer pick a script-capable face with
+# src/components/dashboard/scriptFontResolver.js (Inter on Hindi -> Poppins).
+# The ASS path must pick the same face or a static caption changes font (and
+# vertical metrics) once it is animated. Keep in sync with that file;
+# backend/tests/test_script_font_resolution.py compares the two.
+RESOLVER_SCRIPT_RANGES = {
+    'devanagari': [(0x0900, 0x097F)],
+    'bengali': [(0x0980, 0x09FF)],
+    'punjabi': [(0x0A00, 0x0A7F)],
+    'gujarati': [(0x0A80, 0x0AFF)],
+    'odia': [(0x0B00, 0x0B7F)],
+    'tamil': [(0x0B80, 0x0BFF)],
+    'telugu': [(0x0C00, 0x0C7F)],
+    'kannada': [(0x0C80, 0x0CFF)],
+    'malayalam': [(0x0D00, 0x0D7F)],
+    'sinhala': [(0x0D80, 0x0DFF)],
+    'manipuri': [(0xABC0, 0xABFF), (0xAAE0, 0xAAFF)],
+    'santali': [(0x1C50, 0x1C7F)],
+    'arabic': [(0x0600, 0x06FF)],
+    'hebrew': [(0x0590, 0x05FF)],
+    'japanese': [(0x3040, 0x309F), (0x30A0, 0x30FF)],
+    'chinese': [(0x4E00, 0x9FFF)],
+    'korean': [(0xAC00, 0xD7AF)],
+    'thai': [(0x0E00, 0x0E7F)],
+    'burmese': [(0x1000, 0x109F)],
+    'khmer': [(0x1780, 0x17FF)],
+    'lao': [(0x0E80, 0x0EFF)],
+    'tibetan': [(0x0F00, 0x0FFF)],
+    'georgian': [(0x10A0, 0x10FF), (0x1C90, 0x1CBF)],
+    'armenian': [(0x0530, 0x058F)],
+    'ethiopic': [(0x1200, 0x137F)],
+}
+
+SCRIPT_PRIMARY_FONTS = {
+    'devanagari': 'Noto Sans Devanagari',
+    'bengali': 'Noto Sans Bengali',
+    'punjabi': 'Noto Sans Gurmukhi',
+    'gujarati': 'Noto Sans Gujarati',
+    'odia': 'Noto Sans Oriya',
+    'tamil': 'Noto Sans Tamil',
+    'telugu': 'Noto Sans Telugu',
+    'kannada': 'Noto Sans Kannada',
+    'malayalam': 'Noto Sans Malayalam',
+    'sinhala': 'Noto Sans Sinhala',
+    'manipuri': 'Noto Sans Meetei Mayek',
+    'santali': 'Noto Sans Ol Chiki',
+    'arabic': 'Noto Sans Arabic',
+    'hebrew': 'Noto Sans Hebrew',
+    'japanese': 'Noto Sans JP',
+    'chinese': 'Noto Sans SC',
+    'korean': 'Noto Sans KR',
+    'thai': 'Noto Sans Thai',
+    'burmese': 'Noto Sans Myanmar',
+    'khmer': 'Noto Sans Khmer',
+    'lao': 'Noto Sans Lao',
+    'tibetan': 'Noto Serif Tibetan',
+    'georgian': 'Noto Sans Georgian',
+    'armenian': 'Noto Sans Armenian',
+    'ethiopic': 'Noto Sans Ethiopic',
+}
+
+DEVANAGARI_FONT_NAMES = {
+    'Noto Sans Devanagari', 'Mukta', 'Hind', 'Poppins', 'Yantramanav',
+    'Khand', 'Rajdhani', 'Teko', 'Kalam', 'Karma', 'Rozha One',
+    'Vesper Libre', 'Amita', 'Shrikhand', 'Halant', 'Kurale', 'Arya',
+    'Inknut Antiqua', 'Eczar', 'Sahitya', 'Rhodium Libre', 'Sumana',
+    'Martel', 'Sura', 'Asar',
+}
+
+LATIN_TO_DEVANAGARI_FONT = {
+    'IBM Plex Mono': 'Karma',
+    'Space Mono': 'Karma',
+    'Special Elite': 'Karma',
+    'Courier Prime': 'Karma',
+    'Oxanium': 'Rajdhani',
+    'Orbitron': 'Rajdhani',
+    'Exo 2': 'Rajdhani',
+    'Syne': 'Yantramanav',
+    'Raleway': 'Mukta',
+    'Josefin Sans': 'Mukta',
+    'Montserrat': 'Poppins',
+    'Poppins': 'Poppins',
+    'Inter': 'Poppins',
+    'DM Sans': 'Hind',
+    'Anton': 'Teko',
+    'Antonio': 'Teko',
+    'Bebas Neue': 'Khand',
+    'Barlow Condensed': 'Khand',
+    'Oswald': 'Rajdhani',
+    'Archivo Black': 'Yantramanav',
+    'Bodoni Moda': 'Rozha One',
+    'Playfair Display': 'Inknut Antiqua',
+    'Gloock': 'Rhodium Libre',
+    'DM Serif Display': 'Vesper Libre',
+    'Cinzel': 'Arya',
+    'Abril Fatface': 'Shrikhand',
+    'Cormorant Garamond': 'Eczar',
+    'EB Garamond': 'Kurale',
+    'Libre Baskerville': 'Sumana',
+    'Spectral': 'Sura',
+    'Lora': 'Martel',
+    'Merriweather': 'Martel',
+    'Noto Serif': 'Martel',
+    'Bitter': 'Sahitya',
+    'Caveat': 'Kalam',
+    'Pacifico': 'Kalam',
+    'Dancing Script': 'Kalam',
+}
+
+_DEVANAGARI_FALLBACK_RULES = [
+    (r'mono|courier|typewriter|plex mono|special elite', 'Karma'),
+    (r'oxanium|orbitron|syne|techno|exo', 'Rajdhani'),
+    (r'antonio|anton', 'Teko'),
+    (r'archivo black|black|heavy|ultra', 'Yantramanav'),
+    (r'condensed|narrow|oswald|bebas|barlow|impact|khand|teko', 'Khand'),
+    (r'cinzel|trajan|titling', 'Arya'),
+    (r'playfair|abril|fatface', 'Inknut Antiqua'),
+    (r'bodoni|didot|gloock', 'Rozha One'),
+    (r'dm serif|rozha|fat', 'Vesper Libre'),
+    (r'serif|garamond|baskerville|georgia|times|lora|bitter|merriweather|cormorant|spectral|noto serif', 'Eczar'),
+    (r'script|hand|caveat|pacifico|dancing|brush', 'Kalam'),
+]
+
+
+def detect_text_script(text):
+    """Dominant script of text, exactly like scriptFontResolver.detectScript."""
+    counts = {script: 0 for script in RESOLVER_SCRIPT_RANGES}
+    latin_count = 0
+    for character in str(text or ''):
+        code_point = ord(character)
+        matched = False
+        for script, ranges in RESOLVER_SCRIPT_RANGES.items():
+            if any(start <= code_point <= end for start, end in ranges):
+                counts[script] += 1
+                matched = True
+                break
+        if not matched and (0x41 <= code_point <= 0x5A or 0x61 <= code_point <= 0x7A):
+            latin_count += 1
+    dominant_script, dominant_count = 'latin', latin_count
+    for script, count in counts.items():
+        if count > dominant_count:
+            dominant_script, dominant_count = script, count
+    return dominant_script
+
+
+def resolve_script_font_family(font_family, text):
+    """Family the DOM renderer draws text in (scriptFontResolver.resolveScriptFontFamily
+    without a font catalog, which is how render_template_overlay.mjs calls it)."""
+    script = detect_text_script(text)
+    family = str(font_family or '').strip()
+    if script == 'latin':
+        return family or 'Noto Sans'
+    primary_family = SCRIPT_PRIMARY_FONTS.get(script) or family or 'Noto Sans'
+    if not family:
+        return primary_family
+    if script == 'devanagari':
+        if family in DEVANAGARI_FONT_NAMES:
+            return family
+        if family in LATIN_TO_DEVANAGARI_FONT:
+            return LATIN_TO_DEVANAGARI_FONT[family]
+        for pattern, fallback in _DEVANAGARI_FALLBACK_RULES:
+            if re.search(pattern, family, re.IGNORECASE):
+                return fallback
+        return SCRIPT_PRIMARY_FONTS['devanagari']
+    return primary_family
+
+
 # libass sizes a face so its GDI cell (OS/2 usWinAscent + usWinDescent, or
 # hhea ascender - descender when those are zero) equals the ASS Fontsize; CSS
 # sizes the em square. Cell / em is 1.2-2.0 across the bundled fonts. Used when
@@ -312,10 +501,67 @@ def read_font_cell_height_ratio(font_path):
     return ratio
 
 
+def font_covers_codepoint(font_path, code_point):
+    """True/False from the font's Unicode cmap, or None when it cannot be read."""
+    try:
+        with open(font_path, 'rb') as handle:
+            data = handle.read()
+        num_tables = struct.unpack('>H', data[4:6])[0]
+        cmap = None
+        for index in range(num_tables):
+            tag, _checksum, offset, _length = struct.unpack('>4sIII', data[12 + 16 * index:28 + 16 * index])
+            if tag == b'cmap':
+                cmap = offset
+        if cmap is None:
+            return None
+        subtables = {}
+        for index in range(struct.unpack('>H', data[cmap + 2:cmap + 4])[0]):
+            platform, encoding, offset = struct.unpack('>HHI', data[cmap + 4 + 8 * index:cmap + 12 + 8 * index])
+            subtables[(platform, encoding)] = cmap + offset
+        for key in ((3, 10), (0, 4), (3, 1), (0, 3)):
+            table = subtables.get(key)
+            if table is None:
+                continue
+            table_format = struct.unpack('>H', data[table:table + 2])[0]
+            if table_format == 12:
+                for group in range(struct.unpack('>I', data[table + 12:table + 16])[0]):
+                    start, end, _glyph = struct.unpack('>III', data[table + 16 + 12 * group:table + 28 + 12 * group])
+                    if start <= code_point <= end:
+                        return True
+                return False
+            if table_format == 4:
+                if code_point > 0xFFFF:
+                    return False
+                seg_count = struct.unpack('>H', data[table + 6:table + 8])[0] // 2
+                ends = table + 14
+                starts = ends + 2 * seg_count + 2
+                deltas = starts + 2 * seg_count
+                range_offsets = deltas + 2 * seg_count
+                for seg in range(seg_count):
+                    end = struct.unpack('>H', data[ends + 2 * seg:ends + 2 * seg + 2])[0]
+                    if code_point > end:
+                        continue
+                    start = struct.unpack('>H', data[starts + 2 * seg:starts + 2 * seg + 2])[0]
+                    if code_point < start:
+                        return False
+                    delta = struct.unpack('>h', data[deltas + 2 * seg:deltas + 2 * seg + 2])[0]
+                    range_offset_at = range_offsets + 2 * seg
+                    range_offset = struct.unpack('>H', data[range_offset_at:range_offset_at + 2])[0]
+                    if range_offset == 0:
+                        return (code_point + delta) & 0xFFFF != 0
+                    glyph_at = range_offset_at + range_offset + 2 * (code_point - start)
+                    glyph = struct.unpack('>H', data[glyph_at:glyph_at + 2])[0]
+                    return glyph != 0
+                return False
+        return None
+    except (OSError, struct.error, TypeError, IndexError):
+        return None
+
+
 class FontAssetsMixin:
-    def _ass_cell_height_ratio(self, font_info):
-        """Cell/em ratio of the file libass will load for font_info, so a CSS
-        px size can be converted to the ASS Fontsize that draws the same glyphs."""
+    def _font_file_candidates(self, font_info):
+        """Files libass may load for font_info: the fonts_dir copy, then the
+        packaged font fontconfig resolves (production images)."""
         candidates = []
         if font_info and font_info.get('file'):
             candidates.append(os.path.join(self.fonts_dir, font_info['file']))
@@ -328,11 +574,31 @@ class FontAssetsMixin:
                 candidates.append(result.stdout.strip())
             except (OSError, subprocess.SubprocessError):
                 pass
-        for path in candidates:
-            if path and os.path.isfile(path):
-                ratio = read_font_cell_height_ratio(path)
-                if ratio:
-                    return ratio
+        return [path for path in candidates if path and os.path.isfile(path)]
+
+    def _font_lacks_text_glyphs(self, font_info, text):
+        """True only when the font file is readable and has no glyph for the
+        first character of text's dominant script (e.g. a Latin-only subset)."""
+        script = detect_text_script(text)
+        ranges = RESOLVER_SCRIPT_RANGES.get(script)
+        if not ranges:
+            return False
+        sample = next((ord(ch) for ch in str(text or '') if any(start <= ord(ch) <= end for start, end in ranges)), None)
+        if sample is None:
+            return False
+        for path in self._font_file_candidates(font_info):
+            covered = font_covers_codepoint(path, sample)
+            if covered is not None:
+                return not covered
+        return False
+
+    def _ass_cell_height_ratio(self, font_info):
+        """Cell/em ratio of the file libass will load for font_info, so a CSS
+        px size can be converted to the ASS Fontsize that draws the same glyphs."""
+        for path in self._font_file_candidates(font_info):
+            ratio = read_font_cell_height_ratio(path)
+            if ratio:
+                return ratio
         return DEFAULT_ASS_CELL_HEIGHT_RATIO
 
     def _ensure_fallback_font(self):
