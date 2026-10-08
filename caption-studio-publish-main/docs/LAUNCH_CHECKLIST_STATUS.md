@@ -1,5 +1,8 @@
 # Lekha Captions launch checklist — current status
 
+> Current status: [8 October consolidated blockers](CURRENT_LAUNCH_BLOCKERS_2026-10-08.md).
+> This older document retains its dated historical guidance and confirmations.
+
 Updated: 22 August 2026
 
 For step-by-step instructions beside every remaining ❌ item, use
