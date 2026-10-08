@@ -117,7 +117,7 @@ def _api_host():
         _transcription_queue=api.app_state._transcription_queue,
         TranscriptionJobs=api.TranscriptionJobs,
         get_db=api.firebase_admin_setup.get_db,
-        _dispatch_media_scans_once=api._dispatch_media_scans_once,
+        _dispatch_media_scans_once=api.upload_dispatch._dispatch_media_scans_once,
         _flush_telemetry=api.observability._flush_telemetry,
         _send_alert=api.observability._send_alert,
         asyncio=api.asyncio,

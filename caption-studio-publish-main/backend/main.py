@@ -101,7 +101,7 @@ try:
     from . import export_jobs
     from . import maintenance_jobs
     from . import api_models
-    from .upload_dispatch import create_upload_dispatch
+    from . import upload_dispatch
     from .admin_api import create_admin_router
     from .language_api import create_language_router
     from .account_api import create_account_router
@@ -157,7 +157,7 @@ except ImportError:
     import export_jobs
     import maintenance_jobs
     import api_models
-    from upload_dispatch import create_upload_dispatch
+    import upload_dispatch
     from admin_api import create_admin_router
     from language_api import create_language_router
     from account_api import create_account_router
@@ -482,7 +482,7 @@ async def startup_event():
         return
     app_state._telemetry_flush_task = asyncio.create_task(observability._telemetry_flush_loop())
     if settings._IS_PRODUCTION:
-        app_state._transcription_dispatch_task = asyncio.create_task(_transcription_dispatch_loop())
+        app_state._transcription_dispatch_task = asyncio.create_task(upload_dispatch._transcription_dispatch_loop())
     if settings.QUEUE_METRICS_ENABLED:
         app_state._queue_metrics_task = asyncio.create_task(maintenance_jobs._queue_metrics_loop())
     if os.environ.get("RELEASE_ENVIRONMENT") == "staging":
@@ -727,16 +727,6 @@ def get_google_fonts():
         return {"fonts": []}
 
 
-_upload_dispatch = create_upload_dispatch(sys.modules[__name__])
-_cleanup_incomplete_upload = _upload_dispatch._cleanup_incomplete_upload
-_reserve_direct_upload_slot = _upload_dispatch._reserve_direct_upload_slot
-_limit_direct_upload_network = _upload_dispatch._limit_direct_upload_network
-_release_direct_upload_slot = _upload_dispatch._release_direct_upload_slot
-_schedule_media_scan = _upload_dispatch._schedule_media_scan
-_transcription_dispatch_loop = _upload_dispatch._transcription_dispatch_loop
-_dispatch_media_scans_once = _upload_dispatch._dispatch_media_scans_once
-_require_scheduler_secret = _upload_dispatch._require_scheduler_secret
-
 app.include_router(create_direct_upload_router(
     authenticate=request_security._authenticate_media_request,
     extract_token=export_jobs._extract_bearer_token,
@@ -750,13 +740,13 @@ app.include_router(create_direct_upload_router(
     remember_owner=media_records._remember_upload_owner,
     signed_upload_url=media_records._signed_upload_url,
     audit_action=observability._audit_action,
-    reserve_slot=_reserve_direct_upload_slot,
-    release_slot=_release_direct_upload_slot,
+    reserve_slot=upload_dispatch._reserve_direct_upload_slot,
+    release_slot=upload_dispatch._release_direct_upload_slot,
     cancel_session=firebase_admin_setup.cancel_resumable_source_upload,
     resume_session=firebase_admin_setup.resume_resumable_source_upload,
     assert_account_active=request_security._assert_account_not_deleting,
-    rate_limit_network=_limit_direct_upload_network,
-    enqueue_scan=_schedule_media_scan,
+    rate_limit_network=upload_dispatch._limit_direct_upload_network,
+    enqueue_scan=upload_dispatch._schedule_media_scan,
     sign_parts=firebase_admin_setup.sign_resumable_upload_parts,
 ))
 app.include_router(create_editor_preferences_router(
@@ -778,9 +768,9 @@ _process_video_inline = _processing_api._process_video_inline
 
 
 app.include_router(create_maintenance_router(
-    authorize=_require_scheduler_secret,
+    authorize=upload_dispatch._require_scheduler_secret,
     dispatch_transcription=lambda: TranscriptionJobs(firebase_admin_setup.get_db()).dispatch(app_state._transcription_queue),
-    dispatch_media_scans=_dispatch_media_scans_once,
+    dispatch_media_scans=upload_dispatch._dispatch_media_scans_once,
     run_janitor=maintenance_jobs.scheduled_janitor_job,
     publish_queue_metrics=maintenance_jobs._publish_queue_metrics_once,
     reconcile_payments=maintenance_jobs.scheduled_payment_reconciliation_job,

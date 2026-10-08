@@ -40,6 +40,10 @@ try:
     from . import request_guards
 except ImportError:  # Direct execution from backend/ remains supported.
     import request_guards
+try:
+    from . import upload_dispatch
+except ImportError:  # Direct execution from backend/ remains supported.
+    import upload_dispatch
 
 
 def create_upload_router(host: ModuleType) -> SimpleNamespace:
@@ -274,7 +278,7 @@ def create_upload_router(host: ModuleType) -> SimpleNamespace:
             observability._audit_action("upload_success", uid, {"file_id": file_id, "ext": file_ext, "duration": duration})
             return {"success": True, "file_id": file_id, "raw_url": media_records._signed_upload_url(file_id, uid)}
         except host.asyncio.CancelledError:
-            await host.asyncio.to_thread(host._cleanup_incomplete_upload, file_path, remote_path)
+            await host.asyncio.to_thread(upload_dispatch._cleanup_incomplete_upload, file_path, remote_path)
             observability._track_event("upload_client_disconnected", {
                 "stage": stage,
                 "bytes_received": bytes_written,
@@ -292,7 +296,7 @@ def create_upload_router(host: ModuleType) -> SimpleNamespace:
             raise
         except host.HTTPException as http_error:
             if not completed:
-                await host.asyncio.to_thread(host._cleanup_incomplete_upload, file_path, remote_path)
+                await host.asyncio.to_thread(upload_dispatch._cleanup_incomplete_upload, file_path, remote_path)
             observability._json_log(
                 "warning",
                 "upload_rejected",
@@ -305,7 +309,7 @@ def create_upload_router(host: ModuleType) -> SimpleNamespace:
             raise
         except Exception as e:
             if not completed:
-                await host.asyncio.to_thread(host._cleanup_incomplete_upload, file_path, remote_path)
+                await host.asyncio.to_thread(upload_dispatch._cleanup_incomplete_upload, file_path, remote_path)
             disconnected = type(e).__name__ == "ClientDisconnect"
             event = "upload_client_disconnected" if disconnected else "upload_failed"
             observability._track_event(event, {
