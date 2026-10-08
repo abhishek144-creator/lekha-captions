@@ -7,84 +7,46 @@ try:
     from . import settings
 except ImportError:  # Direct execution from backend/ remains supported.
     import settings
-try:
-    from . import app_state
-except ImportError:  # Direct execution from backend/ remains supported.
-    import app_state
-try:
-    from . import optional_deps
-except ImportError:  # Direct execution from backend/ remains supported.
-    import optional_deps
 
-from dotenv import load_dotenv
-
-try:
-    from . import upload_api
-except ImportError:
-    import upload_api
-
-try:
-    from . import processing_api
-except ImportError:
-    import processing_api
-
-try:
-    from . import provider_admin_api
-except ImportError:
-    import provider_admin_api
-
-from fastapi import FastAPI, UploadFile, File, HTTPException, Response
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, model_validator
-import shutil
-import uuid
-import urllib.request
-import urllib.parse
-import json
-import base64
-from datetime import datetime, timedelta, date, timezone
-from dateutil.relativedelta import relativedelta
-from typing import List, Dict, Any, Optional
-try:
-    from .processor import VideoProcessor
-except ImportError:  # Direct execution from backend/ remains supported.
-    from processor import VideoProcessor
 import asyncio
-import anyio
+import json
+import logging
 import time
-import subprocess
-import hmac
-import hashlib
-from fastapi import Request
-try:
-    from . import firebase_admin_setup
-except ImportError:  # Direct execution from backend/ remains supported.
-    import firebase_admin_setup
+import urllib.parse
+import urllib.request
+from contextlib import asynccontextmanager
+from typing import Any, Dict
+
+import anyio
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
+# Not used here: tests reach these through main (main.firestore.transactional,
+# main.firebase_auth.delete_user, main.Response(), ...).
+import shutil
+from fastapi import Response
 from firebase_admin import app_check as firebase_app_check
 from firebase_admin import auth as firebase_auth
-import math
-from google.cloud import firestore
 from google.api_core.exceptions import AlreadyExists
-import mimetypes
-import logging
-import ipaddress
-import pathlib
-import re
-import secrets
-import threading
-from collections import OrderedDict, deque
-from contextlib import asynccontextmanager
+from google.cloud import firestore
+
 try:
+    from . import app_state
+    from . import optional_deps
+    from . import upload_api
+    from . import processing_api
+    from . import provider_admin_api
+    from .processor import VideoProcessor
+    from . import firebase_admin_setup
     from .transcription_jobs import TranscriptionJobs
-    from .queue_admission import PENDING_WORK_LEDGER_KEY, enqueue_bounded_across_queues, release_pending_work
     from . import worker_launcher
     from .drafts import list_projects, read_draft
     from .project_api import create_project_router
-    from .editor_preferences import create_editor_preferences_router, read_editor_preferences
+    from .editor_preferences import create_editor_preferences_router
     from .cost_reconciliation import create_cost_reconciliation_router
     from .analytics_api import create_analytics_router
-    from .notifications import create_notification, create_notification_router
+    from .notifications import create_notification_router
     from .public_api import create_public_api_router
     from .workspace_api import create_workspace_router
     from . import payments_api
@@ -107,40 +69,29 @@ try:
     from . import account_api
     from . import media_api
     from . import export_api
-    from .provider_health import transcription_provider_health
     from .direct_upload_api import create_direct_upload_router
     from .api.maintenance import create_maintenance_router
-    from .upload_admission import reserve_upload, release_upload
     from .request_limits import UploadBodyLimitMiddleware
-    from .release_metadata import apply_platform_release_defaults, release_metadata
-    from .media_storage import is_configured as s3_storage_configured
-    from .runtime_preflight import required_storage_settings
     from . import media_commands
-    from .job_state import transition as transition_export_job, InvalidJobTransition, LOCAL_LOCK as JOB_STATE_LOCK
-    from .gcp_queue_metrics import job_queue_prediction, publish_queue_snapshot, queue_snapshot, render_queue_snapshot
-    from .rendering.capacity import (
-        FAST_EXPORT_QUEUE_NAME,
-        GPU_EXPORT_QUEUE_NAME,
-        HEAVY_EXPORT_QUEUE_NAME,
-        NORMAL_EXPORT_QUEUE_NAME,
-        RENDER_QUEUE_NAMES,
-        estimate_render_capacity,
-    )
-    from .rendering.cache import render_cache_eligible, render_cache_identity
+    from .job_state import InvalidJobTransition
+    from .rendering.capacity import GPU_EXPORT_QUEUE_NAME, RENDER_QUEUE_NAMES
     from .services.media_scan_jobs import MediaScanJobs
-    from .services.scheduler_auth import require_scheduler_authorization
-    from .services.malware import scan_upload_for_threat
-    from .services.upload_security import UploadSecurityService
-except ImportError:
+except ImportError:  # Direct execution from backend/ remains supported.
+    import app_state
+    import optional_deps
+    import upload_api
+    import processing_api
+    import provider_admin_api
+    from processor import VideoProcessor
+    import firebase_admin_setup
     from transcription_jobs import TranscriptionJobs
-    from queue_admission import PENDING_WORK_LEDGER_KEY, enqueue_bounded_across_queues, release_pending_work
     import worker_launcher
     from drafts import list_projects, read_draft
     from project_api import create_project_router
-    from editor_preferences import create_editor_preferences_router, read_editor_preferences
+    from editor_preferences import create_editor_preferences_router
     from cost_reconciliation import create_cost_reconciliation_router
     from analytics_api import create_analytics_router
-    from notifications import create_notification, create_notification_router
+    from notifications import create_notification_router
     from public_api import create_public_api_router
     from workspace_api import create_workspace_router
     import payments_api
@@ -163,31 +114,13 @@ except ImportError:
     import account_api
     import media_api
     import export_api
-    from provider_health import transcription_provider_health
     from direct_upload_api import create_direct_upload_router
     from api.maintenance import create_maintenance_router
-    from upload_admission import reserve_upload, release_upload
     from request_limits import UploadBodyLimitMiddleware
-    from release_metadata import apply_platform_release_defaults, release_metadata
-    from media_storage import is_configured as s3_storage_configured
-    from runtime_preflight import required_storage_settings
     import media_commands
-    from job_state import transition as transition_export_job, InvalidJobTransition, LOCAL_LOCK as JOB_STATE_LOCK
-    from gcp_queue_metrics import job_queue_prediction, publish_queue_snapshot, queue_snapshot, render_queue_snapshot
-    from rendering.capacity import (
-        FAST_EXPORT_QUEUE_NAME,
-        GPU_EXPORT_QUEUE_NAME,
-        HEAVY_EXPORT_QUEUE_NAME,
-        NORMAL_EXPORT_QUEUE_NAME,
-        RENDER_QUEUE_NAMES,
-        estimate_render_capacity,
-    )
-    from rendering.cache import render_cache_eligible, render_cache_identity
+    from job_state import InvalidJobTransition
+    from rendering.capacity import GPU_EXPORT_QUEUE_NAME, RENDER_QUEUE_NAMES
     from services.media_scan_jobs import MediaScanJobs
-    from services.scheduler_auth import require_scheduler_authorization
-    from services.malware import scan_upload_for_threat
-    from services.upload_security import UploadSecurityService
-
 
 try:
     from apscheduler.schedulers.asyncio import AsyncIOScheduler

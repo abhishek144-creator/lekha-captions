@@ -21,63 +21,31 @@ from typing import Any, Dict, List, Optional
 
 try:
     from . import settings
-except ImportError:  # Direct execution from backend/ remains supported.
-    import settings
-try:
     from . import app_state
-except ImportError:  # Direct execution from backend/ remains supported.
-    import app_state
-try:
     from . import firebase_admin_setup
-except ImportError:  # Direct execution from backend/ remains supported.
-    import firebase_admin_setup
-try:
     from . import observability
-except ImportError:  # Direct execution from backend/ remains supported.
-    import observability
-try:
     from . import request_security
-except ImportError:  # Direct execution from backend/ remains supported.
-    import request_security
-try:
     from . import entitlements
-except ImportError:  # Direct execution from backend/ remains supported.
-    import entitlements
-try:
     from . import media_records
-except ImportError:  # Direct execution from backend/ remains supported.
-    import media_records
-try:
-    from .job_state import LOCAL_LOCK as JOB_STATE_LOCK
-except ImportError:  # Direct execution from backend/ remains supported.
-    from job_state import LOCAL_LOCK as JOB_STATE_LOCK
-try:
+    from .job_state import LOCAL_LOCK as JOB_STATE_LOCK, transition as transition_export_job
     from .notifications import create_notification
-except ImportError:  # Direct execution from backend/ remains supported.
-    from notifications import create_notification
-try:
-    from .rendering.cache import render_cache_eligible
-except ImportError:  # Direct execution from backend/ remains supported.
-    from rendering.cache import render_cache_eligible
-try:
-    from .rendering.cache import render_cache_identity
-except ImportError:  # Direct execution from backend/ remains supported.
-    from rendering.cache import render_cache_identity
-try:
+    from .rendering.cache import render_cache_eligible, render_cache_identity
     from .media_storage import is_configured as s3_storage_configured
-except ImportError:  # Direct execution from backend/ remains supported.
-    from media_storage import is_configured as s3_storage_configured
-try:
-    from .job_state import transition as transition_export_job
-except ImportError:  # Direct execution from backend/ remains supported.
-    from job_state import transition as transition_export_job
-try:
     from . import optional_deps
-except ImportError:  # Direct execution from backend/ remains supported.
-    import optional_deps
-try:
     from . import api_models
 except ImportError:  # Direct execution from backend/ remains supported.
+    import settings
+    import app_state
+    import firebase_admin_setup
+    import observability
+    import request_security
+    import entitlements
+    import media_records
+    from job_state import LOCAL_LOCK as JOB_STATE_LOCK, transition as transition_export_job
+    from notifications import create_notification
+    from rendering.cache import render_cache_eligible, render_cache_identity
+    from media_storage import is_configured as s3_storage_configured
+    import optional_deps
     import api_models
 
 

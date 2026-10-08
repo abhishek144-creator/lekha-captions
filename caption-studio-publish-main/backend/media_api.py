@@ -10,43 +10,26 @@ import re
 import uuid
 
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Response
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi import Request
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse, RedirectResponse
 
 try:
     from . import settings
-except ImportError:  # Direct execution from backend/ remains supported.
-    import settings
-try:
     from . import app_state
-except ImportError:  # Direct execution from backend/ remains supported.
-    import app_state
-try:
     from . import firebase_admin_setup
-except ImportError:  # Direct execution from backend/ remains supported.
-    import firebase_admin_setup
-try:
     from . import observability
-except ImportError:  # Direct execution from backend/ remains supported.
-    import observability
-try:
     from . import request_security
-except ImportError:  # Direct execution from backend/ remains supported.
-    import request_security
-try:
     from . import media_records
-except ImportError:  # Direct execution from backend/ remains supported.
-    import media_records
-try:
     from . import api_models
-except ImportError:  # Direct execution from backend/ remains supported.
-    import api_models
-try:
     from . import account_api
 except ImportError:  # Direct execution from backend/ remains supported.
+    import settings
+    import app_state
+    import firebase_admin_setup
+    import observability
+    import request_security
+    import media_records
+    import api_models
     import account_api
 
 

@@ -1,16 +1,13 @@
-"""Admin routes; shared state and helpers resolve through main's host module."""
+"""Operator route: transcription provider health."""
 
-from fastapi import HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request
 
 
-from fastapi import APIRouter
 try:
     from . import request_security
-except ImportError:  # Direct execution from backend/ remains supported.
-    import request_security
-try:
     from .provider_health import transcription_provider_health
 except ImportError:  # Direct execution from backend/ remains supported.
+    import request_security
     from provider_health import transcription_provider_health
 
 

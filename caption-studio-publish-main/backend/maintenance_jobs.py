@@ -13,47 +13,21 @@ from typing import Dict
 
 try:
     from . import settings
-except ImportError:  # Direct execution from backend/ remains supported.
-    import settings
-try:
     from . import app_state
-except ImportError:  # Direct execution from backend/ remains supported.
-    import app_state
-try:
     from . import firebase_admin_setup
-except ImportError:  # Direct execution from backend/ remains supported.
-    import firebase_admin_setup
-try:
     from . import observability
-except ImportError:  # Direct execution from backend/ remains supported.
-    import observability
-try:
     from . import billing
-except ImportError:  # Direct execution from backend/ remains supported.
-    import billing
-try:
-    from .rendering.capacity import GPU_EXPORT_QUEUE_NAME
-except ImportError:  # Direct execution from backend/ remains supported.
-    from rendering.capacity import GPU_EXPORT_QUEUE_NAME
-try:
-    from .rendering.capacity import HEAVY_EXPORT_QUEUE_NAME
-except ImportError:  # Direct execution from backend/ remains supported.
-    from rendering.capacity import HEAVY_EXPORT_QUEUE_NAME
-try:
-    from .gcp_queue_metrics import publish_queue_snapshot
-except ImportError:  # Direct execution from backend/ remains supported.
-    from gcp_queue_metrics import publish_queue_snapshot
-try:
-    from .gcp_queue_metrics import queue_snapshot
-except ImportError:  # Direct execution from backend/ remains supported.
-    from gcp_queue_metrics import queue_snapshot
-try:
-    from .gcp_queue_metrics import render_queue_snapshot
-except ImportError:  # Direct execution from backend/ remains supported.
-    from gcp_queue_metrics import render_queue_snapshot
-try:
+    from .rendering.capacity import GPU_EXPORT_QUEUE_NAME, HEAVY_EXPORT_QUEUE_NAME
+    from .gcp_queue_metrics import publish_queue_snapshot, queue_snapshot, render_queue_snapshot
     from . import optional_deps
 except ImportError:  # Direct execution from backend/ remains supported.
+    import settings
+    import app_state
+    import firebase_admin_setup
+    import observability
+    import billing
+    from rendering.capacity import GPU_EXPORT_QUEUE_NAME, HEAVY_EXPORT_QUEUE_NAME
+    from gcp_queue_metrics import publish_queue_snapshot, queue_snapshot, render_queue_snapshot
     import optional_deps
 
 

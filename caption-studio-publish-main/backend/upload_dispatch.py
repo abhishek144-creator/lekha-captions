@@ -11,47 +11,25 @@ from fastapi import HTTPException, Request
 
 try:
     from . import settings
-except ImportError:  # Direct execution from backend/ remains supported.
-    import settings
-try:
     from . import app_state
-except ImportError:  # Direct execution from backend/ remains supported.
-    import app_state
-try:
     from . import firebase_admin_setup
-except ImportError:  # Direct execution from backend/ remains supported.
-    import firebase_admin_setup
-try:
     from . import observability
-except ImportError:  # Direct execution from backend/ remains supported.
-    import observability
-try:
     from . import request_guards
-except ImportError:  # Direct execution from backend/ remains supported.
-    import request_guards
-try:
     from .services.media_scan_jobs import MediaScanJobs
-except ImportError:  # Direct execution from backend/ remains supported.
-    from services.media_scan_jobs import MediaScanJobs
-try:
     from .transcription_jobs import TranscriptionJobs
-except ImportError:  # Direct execution from backend/ remains supported.
-    from transcription_jobs import TranscriptionJobs
-try:
-    from .upload_admission import release_upload
-except ImportError:  # Direct execution from backend/ remains supported.
-    from upload_admission import release_upload
-try:
+    from .upload_admission import release_upload, reserve_upload
     from .services.scheduler_auth import require_scheduler_authorization
-except ImportError:  # Direct execution from backend/ remains supported.
-    from services.scheduler_auth import require_scheduler_authorization
-try:
-    from .upload_admission import reserve_upload
-except ImportError:  # Direct execution from backend/ remains supported.
-    from upload_admission import reserve_upload
-try:
     from . import optional_deps
 except ImportError:  # Direct execution from backend/ remains supported.
+    import settings
+    import app_state
+    import firebase_admin_setup
+    import observability
+    import request_guards
+    from services.media_scan_jobs import MediaScanJobs
+    from transcription_jobs import TranscriptionJobs
+    from upload_admission import release_upload, reserve_upload
+    from services.scheduler_auth import require_scheduler_authorization
     import optional_deps
 
 
