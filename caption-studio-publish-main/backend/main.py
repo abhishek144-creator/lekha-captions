@@ -99,7 +99,7 @@ try:
     from . import media_records
     from . import entitlements
     from . import export_jobs
-    from .maintenance_jobs import create_maintenance_jobs
+    from . import maintenance_jobs
     from . import api_models
     from .upload_dispatch import create_upload_dispatch
     from .admin_api import create_admin_router
@@ -155,7 +155,7 @@ except ImportError:
     import media_records
     import entitlements
     import export_jobs
-    from maintenance_jobs import create_maintenance_jobs
+    import maintenance_jobs
     import api_models
     from upload_dispatch import create_upload_dispatch
     from admin_api import create_admin_router
@@ -484,20 +484,20 @@ async def startup_event():
     if settings._IS_PRODUCTION:
         app_state._transcription_dispatch_task = asyncio.create_task(_transcription_dispatch_loop())
     if settings.QUEUE_METRICS_ENABLED:
-        app_state._queue_metrics_task = asyncio.create_task(_queue_metrics_loop())
+        app_state._queue_metrics_task = asyncio.create_task(maintenance_jobs._queue_metrics_loop())
     if os.environ.get("RELEASE_ENVIRONMENT") == "staging":
         # Current staging shares Firestore: it must not reconcile live payments
         # or run global customer-media cleanup with staging credentials.
         return
     if app_state.scheduler is not None:
-        app_state.scheduler.add_job(scheduled_janitor_job, 'interval', minutes=15)
-        app_state.scheduler.add_job(scheduled_payment_reconciliation_job, 'interval', minutes=max(settings.PAYMENT_RECONCILE_INTERVAL_MINUTES, 5))
+        app_state.scheduler.add_job(maintenance_jobs.scheduled_janitor_job, 'interval', minutes=15)
+        app_state.scheduler.add_job(maintenance_jobs.scheduled_payment_reconciliation_job, 'interval', minutes=max(settings.PAYMENT_RECONCILE_INTERVAL_MINUTES, 5))
         app_state.scheduler.start()
         observability._json_log("info", "scheduler_started", janitor_minutes=15,
                   payment_reconcile_minutes=max(settings.PAYMENT_RECONCILE_INTERVAL_MINUTES, 5))
     else:
         observability._json_log("warning", "janitor_fallback_loop", reason="apscheduler not installed")
-        app_state._simple_janitor_task = asyncio.create_task(_simple_janitor_loop())
+        app_state._simple_janitor_task = asyncio.create_task(maintenance_jobs._simple_janitor_loop())
 
 
 async def shutdown_event():
@@ -517,17 +517,6 @@ async def shutdown_event():
         app_state.scheduler.shutdown(wait=False)
     await asyncio.to_thread(observability._flush_telemetry)
 
-_maintenance_jobs = create_maintenance_jobs(sys.modules[__name__])
-cleanup_local_media_artifacts = _maintenance_jobs.cleanup_local_media_artifacts
-advanced_janitor_job = _maintenance_jobs.advanced_janitor_job
-_advanced_janitor_once = _maintenance_jobs._advanced_janitor_once
-_claim_scheduled_job = _maintenance_jobs._claim_scheduled_job
-_release_scheduled_job = _maintenance_jobs._release_scheduled_job
-scheduled_janitor_job = _maintenance_jobs.scheduled_janitor_job
-scheduled_payment_reconciliation_job = _maintenance_jobs.scheduled_payment_reconciliation_job
-_publish_queue_metrics_once = _maintenance_jobs._publish_queue_metrics_once
-_queue_metrics_loop = _maintenance_jobs._queue_metrics_loop
-_simple_janitor_loop = _maintenance_jobs._simple_janitor_loop
 
 app.add_middleware(
     CORSMiddleware,
@@ -792,9 +781,9 @@ app.include_router(create_maintenance_router(
     authorize=_require_scheduler_secret,
     dispatch_transcription=lambda: TranscriptionJobs(firebase_admin_setup.get_db()).dispatch(app_state._transcription_queue),
     dispatch_media_scans=_dispatch_media_scans_once,
-    run_janitor=scheduled_janitor_job,
-    publish_queue_metrics=_publish_queue_metrics_once,
-    reconcile_payments=scheduled_payment_reconciliation_job,
+    run_janitor=maintenance_jobs.scheduled_janitor_job,
+    publish_queue_metrics=maintenance_jobs._publish_queue_metrics_once,
+    reconcile_payments=maintenance_jobs.scheduled_payment_reconciliation_job,
 ))
 
 
