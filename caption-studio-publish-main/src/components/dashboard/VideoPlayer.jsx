@@ -2642,7 +2642,7 @@ export default function VideoPlayer({
         scoped/iframe-isolated CSS. */}
     <div className={`flex flex-col h-full ${isVideoFullscreen ? 'bg-black px-2 py-2' : ''}`}>
       {/* Video container with 9:16 aspect ratio for mobile preview */}
-      <div className={`relative flex-1 rounded-xl overflow-visible flex items-center justify-center min-h-0 ${isVideoFullscreen ? 'pt-0 pb-2' : 'pt-4 pb-3'}`}>
+      <div className={`relative flex-1 rounded-xl overflow-visible flex items-center justify-center min-h-0 ${isVideoFullscreen ? 'pt-0 pb-2' : 'pt-3 pb-1 lg:pt-4 lg:pb-3'}`}>
         {/* Floating canvas tool rail beside the preview */}
         {setIsVideoFullscreen && (
           <CanvasToolRail
@@ -2659,7 +2659,7 @@ export default function VideoPlayer({
           </div>
         )}
         <div
-          className={`relative inline-flex max-w-full overflow-visible ${isVideoFullscreen ? 'scale-[1.02]' : ''}`}
+          className={`relative inline-flex max-w-full overflow-visible ${isVideoFullscreen ? 'scale-[1.02]' : 'max-lg:h-full'}`}
           style={{ transition: 'transform 0.1s ease' }}
           onClick={(e) => {
             const target = e.target;
@@ -2680,7 +2680,7 @@ export default function VideoPlayer({
           )}
         <div
           ref={videoContainerRef}
-          className={`lekha-video-frame relative aspect-[9/16] touch-none select-none bg-black shadow-[0_35px_120px_rgba(0,0,0,0.72)] ${isVideoFullscreen ? 'h-auto max-h-[calc(100dvh-92px)]' : 'h-full max-h-[calc(100dvh-360px)] md:max-h-[calc(100dvh-296px)]'}`}
+          className={`lekha-video-frame relative aspect-[9/16] touch-none select-none bg-black shadow-[0_35px_120px_rgba(0,0,0,0.72)] ${isVideoFullscreen ? 'h-auto max-h-[calc(100dvh-92px)]' : 'h-full max-lg:max-h-full lg:max-h-[calc(100dvh-296px)]'}`}
             style={{
               transform: `translate(${canvasOffset.x}px, ${canvasOffset.y}px) scale(${canvasScale})`,
               transformOrigin: 'center center',
@@ -2813,12 +2813,12 @@ export default function VideoPlayer({
                 onMediaError={onVideoError}
                 setIsPlaying={setIsPlaying}
               />
-              <div className="absolute top-3 left-3 z-40 flex items-center gap-2">
+              <div className="absolute top-3 left-3 z-40 hidden lg:flex items-center gap-2">
                 <span className="rounded bg-black/75 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-white">
                   <span className="inline-block w-1.5 h-1.5 rounded-full bg-white mr-1" /> Rec
                 </span>
               </div>
-              <div className="absolute top-3 right-3 z-40 rounded bg-black/75 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-white">
+              <div className="absolute top-3 right-3 z-40 hidden lg:block rounded bg-black/75 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-white">
                 9:16 - 24FPS
               </div>
               {!isPlaying && (
@@ -4017,6 +4017,9 @@ export default function VideoPlayer({
         </div>
       </div>
 
+      {/* Phones use the mobile dock's transport bar instead, except in
+          fullscreen where the dock is hidden. */}
+      <div className={isVideoFullscreen ? '' : 'hidden lg:block'}>
       <PlaybackControls
         isPlaying={isPlaying}
         onTogglePlay={handleVideoSurfaceToggle}
@@ -4030,6 +4033,7 @@ export default function VideoPlayer({
         currentTime={currentTime}
         duration={duration}
       />
+      </div>
 
       {/* Word Click Popup — moved to Dashboard.jsx root level */}
 
