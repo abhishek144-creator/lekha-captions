@@ -5,9 +5,9 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 try:
-    from .processor_fonts import detect_text_script, resolve_script_font_family
+    from .processor_fonts import css_font_weight, detect_text_script, resolve_script_font_family
 except ImportError:
-    from processor_fonts import detect_text_script, resolve_script_font_family
+    from processor_fonts import css_font_weight, detect_text_script, resolve_script_font_family
 
 @dataclass(frozen=True)
 class AssRenderContext:
@@ -165,6 +165,11 @@ def build_ass_context(processor, captions, style, font_info, video_w, video_h):
     # ASS Fontsize is the face's cell height (winAscent + winDescent), CSS
     # font-size is its em square: convert so glyphs match the DOM renderer.
     cell_height_ratio = processor._ass_cell_height_ratio(ass_font_info)
+    font_weight = css_font_weight(style.get('font_weight'), style.get('is_bold', False))
+    weighted_family = processor._weighted_font_family(ass_font_info, font_weight)
+    if weighted_family:
+        print(f"[ASS] weight {font_weight}: {font_name!r} -> {weighted_family!r}")
+        font_name = weighted_family
 
     def ass_font_size(css_px):
         return max(int(round(float(css_px) * scale_factor * cell_height_ratio)), 20)
