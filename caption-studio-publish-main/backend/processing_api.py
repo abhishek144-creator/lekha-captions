@@ -20,6 +20,10 @@ try:
     from . import observability
 except ImportError:  # Direct execution from backend/ remains supported.
     import observability
+try:
+    from . import request_security
+except ImportError:  # Direct execution from backend/ remains supported.
+    import request_security
 
 
 def create_processing_router(host: ModuleType) -> SimpleNamespace:
@@ -30,7 +34,7 @@ def create_processing_router(host: ModuleType) -> SimpleNamespace:
         if not settings._IS_PRODUCTION:
             return await host._process_video_inline(req, request, response)
         await host.asyncio.to_thread(host._assert_service_available, "pause_transcription")
-        uid = (await host.asyncio.to_thread(host._authenticate_media_request, req.id_token, req.org_id))["uid"]
+        uid = (await host.asyncio.to_thread(request_security._authenticate_media_request, req.id_token, req.org_id))["uid"]
         if not host._validate_file_id(req.file_id):
             raise host.HTTPException(400, "Invalid file_id")
         await host.asyncio.to_thread(host._assert_upload_owner, req.file_id, uid)
@@ -65,7 +69,7 @@ def create_processing_router(host: ModuleType) -> SimpleNamespace:
         if job is None:
             return {"duplicate_or_cancelled": True}
         try:
-            host._assert_account_not_deleting(uid)
+            request_security._assert_account_not_deleting(uid)
             req = host.ProcessRequest(**job["settings"])
             request = host.Request({"type": "http", "headers": [], "client": ("worker", 0)})
             result = host.asyncio.run(host._process_video_inline(req, request, host.Response(), trusted_uid=uid))
@@ -122,7 +126,7 @@ def create_processing_router(host: ModuleType) -> SimpleNamespace:
         rid = observability._request_id(request)
         host._assert_service_available("pause_transcription")
         # Auth — same dev-mode bypass as /api/export
-        decoded_token = {"uid": trusted_uid} if trusted_uid else host._authenticate_media_request(req.id_token, req.org_id)
+        decoded_token = {"uid": trusted_uid} if trusted_uid else request_security._authenticate_media_request(req.id_token, req.org_id)
         uid = (decoded_token.get("uid") or "").strip() or "unknown-user"
         client_ip = host._client_rate_key(request)
         allowed, retry_after, remaining = host._check_rate(

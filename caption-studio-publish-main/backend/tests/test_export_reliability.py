@@ -9,7 +9,7 @@ import time
 import unittest
 from contextlib import ExitStack
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 from fastapi import Request, Response, HTTPException
@@ -19,6 +19,16 @@ from backend.render_scratch import RenderScratch, STALE_SECONDS, sweep_render_sc
 
 FILE_ID = "123e4567-e89b-12d3-a456-426614174000"
 
+
+
+def _owner(name):
+    """The backend module the API reads `name` from (main until it moves out)."""
+    backend_dir = os.path.dirname(main.__file__)
+    for value in vars(main).values():
+        if (isinstance(value, ModuleType) and name in vars(value)
+                and os.path.dirname(getattr(value, "__file__", "") or "") == backend_dir):
+            return value
+    return main
 
 class MemoryRef:
     def __init__(self, data, path=()):
@@ -85,7 +95,7 @@ class ExportReliabilityTests(unittest.TestCase):
         with (
             patch.object(main.settings, "_IS_PRODUCTION", True),
             patch.object(main.app_state, "_export_queue", SimpleNamespace()),
-            patch.object(main, "_authenticate_media_request", side_effect=authenticate),
+            patch.object(main.request_security, "_authenticate_media_request", side_effect=authenticate),
             patch.object(main, "_assert_service_available"),
             patch.object(main, "_get_recent_export_failures", return_value=[]),
             patch.object(main, "_idem_get", return_value=None),
@@ -133,7 +143,7 @@ class ExportReliabilityTests(unittest.TestCase):
                         patch.object(main.firebase_admin_setup, "get_db", return_value=database),
                         patch.object(main.firestore, "transactional", lambda fn: fn),
                         patch.object(main.settings, "DISABLE_EXPORT_CREDIT_LIMIT", False),
-                        patch.object(main, "_assert_account_not_deleting"),
+                        patch.object(main.request_security, "_assert_account_not_deleting"),
                         patch.object(main, "_mark_export_processing", return_value=(time.time(), time.time())),
                         patch.object(main, "_set_export_job", side_effect=set_job),
                         patch.object(main, "_assert_upload_owner"), patch.object(main, "_assert_upload_clean"),
@@ -309,7 +319,7 @@ class BatchIdempotencyTests(unittest.TestCase):
             "_set_export_job": None,
             "_render_queue_for": SimpleNamespace(),
         }.items():
-            self.stack.enter_context(patch.object(main, name, return_value=value))
+            self.stack.enter_context(patch.object(_owner(name), name, return_value=value))
         self.stack.enter_context(patch.object(main.observability, "_audit_action", return_value=None))
         self.stack.enter_context(patch.object(main.firebase_admin_setup, "get_db", return_value=self.database))
         self.router = create_export_router(main)
@@ -394,7 +404,7 @@ class BatchIdempotencyTests(unittest.TestCase):
         snapshot = self.database.collection.return_value.document.return_value.get.return_value
         snapshot.exists = True
         snapshot.to_dict.return_value = {"uid": "batch-owner", "job_ids": ["paid-job"], "rejected": []}
-        with (patch.object(main, "_authenticate_bearer_request", return_value={"uid": "batch-owner"}),
+        with (patch.object(main.request_security, "_authenticate_bearer_request", return_value={"uid": "batch-owner"}),
               patch.object(main, "_load_export_job", return_value={"status": "failed", "uid": "batch-owner", "file_id": FILE_ID}),
               patch.object(main, "_load_recorded_export_result", return_value={"success": True})):
             result = self.router.get_export_batch("batch-id", self.request)

@@ -182,7 +182,7 @@ class ProductionBoundaryTests(unittest.TestCase):
         from starlette.requests import Request
         with (patch.object(main.settings, "_IS_PRODUCTION", True), patch.object(main.app_state, "_export_queue", None),
               patch.object(main, "_assert_service_available"), patch.object(main.observability, "_track_event"),
-              patch.object(main, "_authenticate_media_request", return_value={"uid": "owner"}),
+              patch.object(main.request_security, "_authenticate_media_request", return_value={"uid": "owner"}),
               patch.object(main, "_process_export_job_core", new_callable=AsyncMock) as render,
               patch.object(main, "_acquire_export_slot") as claim):
             with self.assertRaises(main.HTTPException) as error:
@@ -313,7 +313,7 @@ class ProductionBoundaryTests(unittest.TestCase):
         main.app_state._dependency_snapshot_cache.update({"checked_at": 0.0, "value": None})
 
     def test_queued_export_cannot_start_after_account_deletion_request(self):
-        with (patch.object(main, "_assert_account_not_deleting", side_effect=main.HTTPException(409, "Deletion requested")),
+        with (patch.object(main.request_security, "_assert_account_not_deleting", side_effect=main.HTTPException(409, "Deletion requested")),
               patch.object(main.firebase_admin_setup, "get_db") as database):
             with self.assertRaises(main.HTTPException):
                 asyncio.run(main._process_export_job_core(None, "deleted", "request", "job"))
@@ -336,7 +336,7 @@ class ProductionBoundaryTests(unittest.TestCase):
         with (patch.object(main.settings, "_IS_PRODUCTION", True), patch.object(main.firebase_admin_setup, "get_db", return_value=db),
               patch.object(main.firebase_admin_setup, "verify_token", return_value={"uid": "owner"}),
               patch.object(main, "read_draft", return_value={"revision": 0, "draft": None}),
-              patch.object(main, "_assert_tenant_access"), patch.object(main.observability, "_audit_action")):
+              patch.object(main.request_security, "_assert_tenant_access"), patch.object(main.observability, "_audit_action")):
             response = TestClient(main.app).post("/api/account-export", json={"id_token": "owner-token"})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["data"]["deletion_record"], {"status": "pending"})
@@ -695,7 +695,7 @@ class ProductionBoundaryTests(unittest.TestCase):
         db = SimpleNamespace(collection=lambda _: Ref(), transaction=lambda: object())
         with patch.object(main.settings, "_IS_PRODUCTION", True), patch.object(main.firestore, "transactional", new=lambda fn: fn):
             with self.assertRaises(main.HTTPException) as error:
-                main._create_account_if_active(db, object(), "deleted", {})
+                main.request_security._create_account_if_active(db, object(), "deleted", {})
         self.assertEqual(error.exception.status_code, 409)
 
     def test_system_ai_quota_fails_closed_in_production(self):

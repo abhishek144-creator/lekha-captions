@@ -3,6 +3,10 @@
 from types import ModuleType, SimpleNamespace
 
 from fastapi import APIRouter
+try:
+    from . import request_security
+except ImportError:  # Direct execution from backend/ remains supported.
+    import request_security
 
 
 def create_provider_admin_router(host: ModuleType) -> SimpleNamespace:
@@ -10,7 +14,7 @@ def create_provider_admin_router(host: ModuleType) -> SimpleNamespace:
 
     @router.get("/api/admin/provider-health")
     def provider_health(request: host.Request):
-        if not host._is_admin_token(request=request):
+        if not request_security._is_admin_token(request=request):
             raise host.HTTPException(403, "Admin access required")
         return {
             "success": True,

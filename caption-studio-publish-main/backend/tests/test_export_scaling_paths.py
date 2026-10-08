@@ -97,7 +97,7 @@ class NonBlockingSubmissionTests(unittest.TestCase):
         with (patch.object(main.asyncio, "to_thread", tracking_to_thread),
               patch.object(main.settings, "_IS_PRODUCTION", True), patch.object(main.app_state, "_export_queue", None),
               patch.object(main, "_assert_service_available"), patch.object(main.observability, "_track_event"),
-              patch.object(main, "_authenticate_media_request", Mock(return_value={"uid": "owner"}, __name__="auth"))):
+              patch.object(main.request_security, "_authenticate_media_request", Mock(return_value={"uid": "owner"}, __name__="auth"))):
             with self.assertRaises(main.HTTPException):
                 asyncio.run(main.export_video(request, Request({"type": "http", "headers": []}), main.Response()))
         self.assertIn("auth", threads)

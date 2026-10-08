@@ -23,6 +23,10 @@ try:
     from . import observability
 except ImportError:  # Direct execution from backend/ remains supported.
     import observability
+try:
+    from . import request_security
+except ImportError:  # Direct execution from backend/ remains supported.
+    import request_security
 
 
 def create_media_records(host: ModuleType) -> SimpleNamespace:
@@ -132,7 +136,7 @@ def create_media_records(host: ModuleType) -> SimpleNamespace:
                                source_metadata: host.Optional[host.Dict[str, host.Any]] = None):
         if not file_id or not uid:
             return False
-        host._assert_account_not_deleting(uid)
+        request_security._assert_account_not_deleting(uid)
         app_state._upload_owners[file_id] = uid
         persisted = False
         metadata = {

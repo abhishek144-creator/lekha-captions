@@ -31,6 +31,10 @@ try:
     from . import observability
 except ImportError:  # Direct execution from backend/ remains supported.
     import observability
+try:
+    from . import request_security
+except ImportError:  # Direct execution from backend/ remains supported.
+    import request_security
 
 
 def create_payments_router(host: ModuleType) -> SimpleNamespace:
@@ -48,7 +52,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
         if not decoded_token:
             raise HTTPException(status_code=401, detail="Invalid Authentication Token")
         uid = decoded_token.get("uid", "")
-        host._assert_tenant_access(uid, decoded_token, req.org_id)
+        request_security._assert_tenant_access(uid, decoded_token, req.org_id)
         # Check the durable operator switch before contacting Razorpay. This makes
         # emergency payment shutdown immediate and guarantees no order is created.
         host._assert_service_available("pause_payments")
@@ -134,7 +138,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
                 "notes": {
                     "uid": uid,
                     "plan_id": req.plan_id,
-                    "org_id": req.org_id or host._tenant_id_from_token(decoded_token),
+                    "org_id": req.org_id or request_security._tenant_id_from_token(decoded_token),
                     "source": "create_order",
                     **({"topup_reservation_id": topup_reservation_id} if topup_reservation_id else {}),
                 }
@@ -170,7 +174,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
         if not decoded_token:
             raise HTTPException(status_code=401, detail="Invalid Authentication Token")
         uid = decoded_token.get('uid')
-        host._assert_tenant_access(uid, decoded_token, req.org_id)
+        request_security._assert_tenant_access(uid, decoded_token, req.org_id)
         client_ip = host._client_rate_key(request)
         for rate_key in (f"payment:user:{uid}", f"payment:ip:{client_ip}"):
             allowed, retry_after, remaining = host._check_rate(app_state._payment_rate, rate_key, settings.PAYMENT_RATE_LIMIT)
@@ -286,7 +290,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
             amount_minor=int(amount_paid_minor or 0),
             currency=currency_paid,
             source="client_verify",
-            org_id=req.org_id or host._tenant_id_from_token(decoded_token),
+            org_id=req.org_id or request_security._tenant_id_from_token(decoded_token),
             topup_reservation_id=str(order_notes.get("topup_reservation_id") or "").strip(),
             order_amount_validated=True,
             order_created_at=int(order_live.get("created_at") or 0),

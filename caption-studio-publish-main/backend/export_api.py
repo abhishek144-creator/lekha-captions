@@ -29,6 +29,10 @@ try:
     from . import observability
 except ImportError:  # Direct execution from backend/ remains supported.
     import observability
+try:
+    from . import request_security
+except ImportError:  # Direct execution from backend/ remains supported.
+    import request_security
 
 
 # RQ keeps each job's pickled arguments (the full editor snapshot) until these
@@ -115,7 +119,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
         observability._track_event("export_requested", {"quality": req.quality, "fps": req.fps})
 
         # 1. Authenticate user
-        decoded_token = await to_thread(host._authenticate_media_request, req.id_token, req.org_id)
+        decoded_token = await to_thread(request_security._authenticate_media_request, req.id_token, req.org_id)
         uid = (decoded_token.get("uid") or "").strip() or "dev-local-user"
         if settings._IS_PRODUCTION and app_state._export_queue is None:
             raise HTTPException(status_code=503, detail="Export service is temporarily unavailable. Please retry shortly.",
@@ -319,7 +323,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
     """
         to_thread = host.asyncio.to_thread
         await to_thread(host._assert_service_available, "pause_exports")
-        decoded = await to_thread(host._authenticate_media_request, req.id_token)
+        decoded = await to_thread(request_security._authenticate_media_request, req.id_token)
         uid = (decoded.get("uid") or "").strip()
         if app_state._export_queue is None:
             raise HTTPException(503, "Batch export service is temporarily unavailable", headers={"Retry-After": "10"})
@@ -438,7 +442,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
 
     @router.get("/api/batch/exports/{batch_id}")
     def get_export_batch(batch_id: str, request: Request):
-        uid = host._authenticate_bearer_request(request)["uid"]
+        uid = request_security._authenticate_bearer_request(request)["uid"]
         database = firebase_admin_setup.get_db()
         if database is None:
             raise HTTPException(503, "Batch status storage is unavailable")

@@ -28,6 +28,10 @@ try:
     from . import observability
 except ImportError:  # Direct execution from backend/ remains supported.
     import observability
+try:
+    from . import request_security
+except ImportError:  # Direct execution from backend/ remains supported.
+    import request_security
 
 
 def create_account_router(host: ModuleType) -> SimpleNamespace:
@@ -300,12 +304,12 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
         uid = (decoded_token.get("uid") or "").strip()
         if not uid:
             raise HTTPException(status_code=401, detail="Auth required")
-        host._assert_tenant_access(uid, decoded_token, req.org_id)
+        request_security._assert_tenant_access(uid, decoded_token, req.org_id)
         db = firebase_admin_setup.get_db()
         if not db:
             raise HTTPException(status_code=503, detail="Database unavailable")
 
-        host._assert_account_not_deleting(uid)
+        request_security._assert_account_not_deleting(uid)
         user_ref = db.collection("users").document(uid)
         # Existing accounts keep working while sign-ups are paused; only the first
         # bootstrap of a brand-new account is blocked.
@@ -326,13 +330,13 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
                     )
         safe_profile = {
             "uid": uid,
-            "org_id": host._tenant_id_from_token(decoded_token),
+            "org_id": request_security._tenant_id_from_token(decoded_token),
             "email": str(decoded_token.get("email") or "")[:320],
             "displayName": str(decoded_token.get("name") or "")[:200],
             "photoURL": str(decoded_token.get("picture") or "")[:2_048],
         }
         try:
-            host._create_account_if_active(db, user_ref, uid, {
+            request_security._create_account_if_active(db, user_ref, uid, {
                 **safe_profile,
                 "credits_remaining": settings.FREE_PLAN_CREDITS,
                 "subscription_tier": "free",
@@ -440,7 +444,7 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
         if not decoded_token:
             raise HTTPException(status_code=401, detail="Auth required")
         uid = decoded_token.get("uid")
-        host._assert_tenant_access(uid, decoded_token, req.org_id)
+        request_security._assert_tenant_access(uid, decoded_token, req.org_id)
         db = firebase_admin_setup.get_db()
         if not db:
             raise HTTPException(status_code=503, detail="Database unavailable")
@@ -508,7 +512,7 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
         if not decoded_token:
             raise HTTPException(status_code=401, detail="Auth required")
         uid = decoded_token.get("uid")
-        host._assert_tenant_access(uid, decoded_token, req.org_id)
+        request_security._assert_tenant_access(uid, decoded_token, req.org_id)
         db = firebase_admin_setup.get_db()
         if not db:
             raise HTTPException(status_code=503, detail="Database unavailable")

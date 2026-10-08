@@ -253,7 +253,7 @@ class ApiContractTests(unittest.TestCase):
             headers={},
         )
         with patch.object(main.settings, "FIREBASE_APP_CHECK_ENFORCED", True):
-            missing = main._verify_firebase_app_check_request(request, "req-app-check")
+            missing = main.request_security._verify_firebase_app_check_request(request, "req-app-check")
         self.assertEqual(missing.status_code, 403)
 
         request.headers = {"x-firebase-appcheck": "valid-app-check-token"}
@@ -261,7 +261,7 @@ class ApiContractTests(unittest.TestCase):
             patch.object(main.settings, "FIREBASE_APP_CHECK_ENFORCED", True),
             patch.object(main.firebase_app_check, "verify_token", return_value={"app_id": "web-app"}) as verify,
         ):
-            accepted = main._verify_firebase_app_check_request(request, "req-app-check")
+            accepted = main.request_security._verify_firebase_app_check_request(request, "req-app-check")
         self.assertIsNone(accepted)
         verify.assert_called_once_with("valid-app-check-token")
 
@@ -271,7 +271,7 @@ class ApiContractTests(unittest.TestCase):
             flush=lambda **_kwargs: None,
         )
         with (
-            patch.object(main, "_is_admin_token", return_value=True),
+            patch.object(main.request_security, "_is_admin_token", return_value=True),
             patch.object(main.settings, "SENTRY_DSN", "https://public@example.invalid/1"),
             patch.object(main, "SENTRY_AVAILABLE", True),
             patch.object(main, "sentry_sdk", fake_sentry),
@@ -330,7 +330,7 @@ class ApiContractTests(unittest.TestCase):
         self.assertIn("PLAN_EXPIRED", detail)
         self.assertEqual(main._effective_subscription_tier(user_data), "free")
 
-    @patch("main._authenticate_media_request", return_value={"uid": "rate-limited-user"})
+    @patch("main.request_security._authenticate_media_request", return_value={"uid": "rate-limited-user"})
     @patch("main._get_recent_export_failures", return_value=[0.0] * main.settings.EXPORT_FAILURE_LIMIT)
     def test_export_failure_rate_limit_is_always_enforced(self, _recent_failures, _authenticate):
         res = self.client.post(
@@ -434,7 +434,7 @@ class ApiContractTests(unittest.TestCase):
                 patch.object(main.settings, "_IS_PRODUCTION", True),
                 patch.object(main.settings, "FIREBASE_APP_CHECK_ENFORCED", False),
                 patch.dict(main.os.environ, {"GCS_MEDIA_BUCKET": media_bucket}),
-                patch.object(main, "_authenticate_media_request", return_value={"uid": "upload-user"}) as authenticate,
+                patch.object(main.request_security, "_authenticate_media_request", return_value={"uid": "upload-user"}) as authenticate,
                 patch.object(main, "_assert_service_available"),
             ):
                 response = self.client.post(
@@ -676,7 +676,7 @@ class ApiContractTests(unittest.TestCase):
             "exp": int(main.time.time()) + 60,
         })
         with (
-            patch.object(main, "_assert_account_not_deleting"),
+            patch.object(main.request_security, "_assert_account_not_deleting"),
             patch.object(main.firebase_admin_setup, "signed_export_download_url", return_value="https://storage.test/private") as sign,
         ):
             response = main.serve_exported_media(filename, token)
