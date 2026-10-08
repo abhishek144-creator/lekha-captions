@@ -479,3 +479,49 @@
 .lekha-applied-advanced-template .t30-loadbar {
   display: inline-block;
 }
+
+/* Phone/tablet tool sheet: two-column template grid. Previews keep their
+   desktop layout width and are scaled down, so they look the same, smaller.
+   The applied template spans both columns to make room for its colours. */
+.lekha-mobile-sheet .sidebar-template-gallery .lekha-template-section {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-flow: row dense;
+  gap: 8px;
+}
+
+.lekha-mobile-sheet .sidebar-template-gallery .lekha-template-section > * {
+  margin-top: 0;
+}
+
+.lekha-mobile-sheet .sidebar-template-gallery .lekha-template-section > .advanced-template-section-label,
+.lekha-mobile-sheet .sidebar-template-gallery .lekha-template-section > .is-applied-template {
+  grid-column: 1 / -1;
+}
+
+.lekha-mobile-sheet .sidebar-template-gallery .advanced-template-card-shell:not(.is-applied-template) .sidebar-template-preview-frame {
+  height: 168px;
+}
+
+.lekha-mobile-sheet .sidebar-template-gallery .advanced-template-card-shell:not(.is-applied-template) .sidebar-template-preview-frame iframe {
+  width: 166.667%;
+  height: 280px;
+  transform: scale(0.6);
+  transform-origin: top left;
+}
+
+.lekha-mobile-sheet .sidebar-template-gallery .is-applied-template .sidebar-template-preview-frame,
+.lekha-mobile-sheet .sidebar-template-gallery .is-applied-template .sidebar-template-preview-frame iframe {
+  height: 220px;
+}
+
+/* The toolbar already switches tools, so the gallery's own back button is
+   redundant in the sheet. */
+.lekha-mobile-sheet .sidebar-template-gallery > button[data-caption-editor-nav] {
+  display: none;
+}
+
+/* The sheet header already says "Templates"; keep the count and None. */
+.lekha-mobile-sheet .sidebar-template-gallery > div:first-child p {
+  display: none;
+}
