@@ -1,0 +1,33 @@
+{
+ "links": [
+  "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
+ ],
+ "htmlClass": "",
+ "bodyClass": "",
+ "bodyFont": "\"Plus Jakarta Sans\", Inter, sans-serif",
+ "sheetFont": "\"Plus Jakarta Sans\", Inter, sans-serif",
+ "sheetRect": [
+  840,
+  0,
+  520,
+  765
+ ],
+ "scrollH": 1669,
+ "fonts": [
+  "Inter 600 normal",
+  "Inter 800 normal",
+  "Plus Jakarta Sans 400 normal",
+  "Plus Jakarta Sans 500 normal",
+  "Plus Jakarta Sans 600 normal",
+  "Plus Jakarta Sans 700 normal"
+ ],
+ "headLinks": [
+  "<link id=\"font-Inter-1791216718887\" rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&amp;display=swap\">"
+ ],
+ "exportBtn": [
+  1223.859375,
+  11.5,
+  116.140625,
+  32
+ ]
+}

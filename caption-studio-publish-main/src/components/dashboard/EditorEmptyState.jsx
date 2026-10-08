@@ -36,7 +36,7 @@ export default function EditorEmptyState({
             <p className="mb-3 text-sm text-gray-300">Your previous draft is available on this browser.</p>
             <div className="flex flex-wrap gap-3">
               <Button onClick={() => applyLocalDraft(localRecoveryDraft)}>Continue saved draft</Button>
-              <Button variant="outline" onClick={() => downloadDraft(localRecoveryDraft)}>Download draft backup</Button>
+              <Button variant="outline" className="border-white/20 bg-white text-black hover:bg-gray-100 hover:text-black" onClick={() => downloadDraft(localRecoveryDraft)}>Download draft backup</Button>
             </div>
           </div>
         )}

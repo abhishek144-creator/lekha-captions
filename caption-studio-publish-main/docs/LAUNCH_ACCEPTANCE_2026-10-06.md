@@ -32,7 +32,7 @@ Evidence: `production-final-journey-20261006.json`, `public-release-acceptance-2
 
 ### CPU comparison
 
-One warmup and five measured renders per path per completed configuration. Identical SHA-256 fixture, 60 seconds, 1080p, 30 FPS, 8 GiB configured RAM, Node 22.23.3, FFmpeg 5.1.9 and the same renderer/benchmark source. The 8-CPU run used release `6d5dccd`; the completed 4-CPU run used `0c5182f`. Git comparison confirmed identical renderer and fixture-generator source between them.
+One warmup and five measured renders per path per completed configuration. Identical SHA-256 fixture, 60 seconds, 1080p, 30 FPS, 8 GiB requested RAM (actual cgroup limit 8,000,000,000 bytes, about 7.45 GiB), Node 22.23.3, FFmpeg 5.1.9 and the same renderer/benchmark source. The 8-CPU run used release `6d5dccd`; the completed 4-CPU run used `0c5182f`. Git comparison confirmed identical renderer and fixture-generator source between them.
 
 | Path | 4 vCPU median / P95 | 8 vCPU median / P95 | Median speedup |
 |---|---:|---:|---:|
@@ -137,3 +137,19 @@ Evidence: `production-launch-activation-20261006.json`, `production-scaling-pref
 - Artifact hashes for 84 frontend files and the source archive were retained. The separate temporary frontend build at `D:\lekha-pr37-frontend-20261006` remains: automatic approval review could not authorize its deletion after reaching its usage limit. The cleanup command did not execute. Its node_modules junction targets the preserved shared dependencies; remove only the junction before deleting the owned directory when approval review is available. This is local cleanup, not an outstanding cloud resource. The earlier temporary Docker daemon/runtime/disks and staging credentials were already cleaned.
 
 Evidence in the outer `.readiness/` directory: `pr37-rollout-approval-20261006.json`, `pr37-merge-evidence-20261006.json`, `production-pr37-scanner-evidence-20261006.json`, `production-pr37-public-acceptance-20261006.json`, `frontend-pr37-drafts-20261006.json`, `frontend-pr37-artifact-manifest-20261006.json`, `production-pr37-browser-acceptance-20261006.json` and `production-pr37-editor-20261006.png`.
+
+## Documentation correction and current readback — 7 October 2026
+
+The earlier renderer/drill tables still said pending despite the completed
+October 6 tests. They now link the [redacted numeric evidence](evidence/railway-b4-20261006.json).
+It includes runtime quotas, measured attempts, journey timings, recovery counts,
+cleanup and SHA-256 hashes of the retained source artifacts; credentials, signed
+URLs, disposable identity IDs and storage account endpoints are omitted.
+
+At 13:34 IST on October 7, live readback found only production, all four app
+services on `63cf04f`, both scaling controllers enabled with ceilings five, and
+API/render/transcription deployments Sleeping. Cron had exited successfully;
+Redis remained running. Railway retained its $25 hard cap/$10 alert and reported
+combined usage of about $0.604, subject to reporting delay. PR #35 was freshly
+verified merged with its final thirteen successful hosted checks. No new paid
+test, infrastructure apply or GitHub budget increase was needed for this correction.

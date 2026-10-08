@@ -5,7 +5,7 @@ import { draftAutosaveSignature } from '@/lib/draftAutosave'
 import { restoreEditorDocument } from '@/lib/editorDocument'
 import { readLocalDraft, removeLocalDraft, writeLocalDraft } from '@/lib/localDraftStorage'
 
-const NOTICE_DISMISS_MS = 10000
+const NOTICE_DISMISS_MS = 5000
 const CLOUD_AUTOSAVE_DELAY_MS = 2500
 const LOCAL_AUTOSAVE_DELAY_MS = 500
 
@@ -34,6 +34,7 @@ export function useDraftPersistence({
 }) {
   const [cloudSaveMessage, setCloudSaveMessage] = useState('')
   const [cloudSaveConflict, setCloudSaveConflict] = useState(false)
+  const [showCloudSaveConflictNotice, setShowCloudSaveConflictNotice] = useState(false)
   const [localRecoveryDraft, setLocalRecoveryDraft] = useState(null)
   const cloudAutosaveRef = useRef(null)
   const recoveryInitializedRef = useRef(false)
@@ -50,12 +51,13 @@ export function useDraftPersistence({
   })
 
   // A 409 means another tab or device saved a newer revision. Every later save
-  // from this tab would be rejected too, so pause cloud saving and keep a
-  // persistent notice instead of a dismissable toast.
+  // from this tab would be rejected too. Keep saving paused independently of
+  // the five-second notice so dismissing it cannot overwrite newer work.
   const notifyCloudSaveError = useCallback((error) => {
     if (error?.status === 409) {
       setCloudSaveMessage('')
       setCloudSaveConflict(true)
+      setShowCloudSaveConflictNotice(true)
       return
     }
     setCloudSaveMessage(error?.message || 'Cloud save failed. Your browser copy is still available.')
@@ -66,6 +68,17 @@ export function useDraftPersistence({
     const timer = window.setTimeout(() => setCloudSaveMessage(''), NOTICE_DISMISS_MS)
     return () => window.clearTimeout(timer)
   }, [cloudSaveMessage])
+
+  useEffect(() => {
+    if (!showCloudSaveConflictNotice) return undefined
+    const timer = window.setTimeout(() => setShowCloudSaveConflictNotice(false), NOTICE_DISMISS_MS)
+    return () => window.clearTimeout(timer)
+  }, [showCloudSaveConflictNotice])
+
+  // Clearing the conflict (new upload, account change) also hides its notice.
+  useEffect(() => {
+    if (!cloudSaveConflict) setShowCloudSaveConflictNotice(false)
+  }, [cloudSaveConflict])
 
   const { fileId, snapshotEditorState } = doc
   useEffect(() => {
@@ -202,6 +215,7 @@ export function useDraftPersistence({
     setCloudSaveMessage,
     cloudSaveConflict,
     setCloudSaveConflict,
+    showCloudSaveConflictNotice,
     localRecoveryDraft,
     applyLocalDraft,
     discardLocalDraft,

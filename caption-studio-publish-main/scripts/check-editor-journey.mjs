@@ -131,13 +131,23 @@ try {
   const conflictResponse = page.waitForResponse((response) => response.url().endsWith('/api/draft/save') && response.status() === 409)
   await textClick('Save')
   await conflictResponse
-  // A rejected stale save must stay visible: later saves from this tab would be rejected too.
+  // The notice lasts five seconds; the stale-save protection outlives it.
   await page.waitForFunction(() => document.body.textContent.includes('A newer version of this project was saved'))
   const savesAfterConflict = saveRequests
   await textClick('Add')
   await new Promise((resolve) => setTimeout(resolve, 3500))
   assert.equal(saveRequests, savesAfterConflict, 'autosave must pause after a revision conflict instead of retrying a stale revision')
-  assert.equal(await page.evaluate(() => document.body.textContent.includes('A newer version of this project was saved')), true, 'the conflict notice must not auto-dismiss')
+  assert.equal(await page.evaluate(() => document.body.textContent.includes('A newer version of this project was saved')), true, 'the conflict notice must remain visible before five seconds')
+  await page.waitForFunction(() => !document.body.textContent.includes('A newer version of this project was saved'), { timeout: 3000 })
+  await textClick('Add')
+  await new Promise((resolve) => setTimeout(resolve, 3000))
+  assert.equal(saveRequests, savesAfterConflict, 'dismissing the notice must not resume stale autosaves')
+  assert.ok(JSON.parse(await page.evaluate(() => localStorage.getItem('captionEditorState'))).captions.length > draft.captions.length, 'edits after notice dismissal must stay in browser recovery')
+  const repeatConflictResponse = page.waitForResponse((response) => response.url().endsWith('/api/draft/save') && response.status() === 409)
+  await textClick('Save')
+  await repeatConflictResponse
+  await page.waitForFunction(() => document.body.textContent.includes('A newer version of this project was saved'))
+  await page.waitForFunction(() => !document.body.textContent.includes('A newer version of this project was saved'), { timeout: 6000 })
   await page.goto('http://127.0.0.1:4187/e2e/fixtures/editor.html?restoreSession=1')
   await page.waitForSelector('.lekha-video-frame')
   const savesBeforeOpening = saveRequests

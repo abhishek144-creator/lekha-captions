@@ -1,0 +1,55 @@
+{
+  "tag": "launch-2026-10-07",
+  "current": "lekha-launch-v6-1080p.mp4",
+  "public_video_url": "https://lekhacaptions.com/launch-video.mp4",
+  "videos": [
+    {
+      "name": "lekha-launch-1080p.mp4",
+      "size": 6424589,
+      "duration": "30.000000",
+      "sha256": "93e3170bf1fbb6cfe495fa58c2731d21769e44ccb598af5b296900790391adf0"
+    },
+    {
+      "name": "lekha-launch-v2-1080p.mp4",
+      "size": 26647563,
+      "duration": "32.000000",
+      "sha256": "42439ca60128324eed772b7e8e4add2ebbcc36e376ab94ac598086a1763a81b0"
+    },
+    {
+      "name": "lekha-launch-v2b-1080p.mp4",
+      "size": 33038665,
+      "duration": "31.366667",
+      "sha256": "a876f16778acf25017959149aef837dc65c77e856ea58d144acf5acdd7d9e325"
+    },
+    {
+      "name": "lekha-launch-v2c-cpt-1080p.mp4",
+      "size": 36325828,
+      "duration": "32.833333",
+      "sha256": "d1fb88a37e80b24beac3a41ba1f7dd5f3f31a92bb0f2ea70168d4a7562510576"
+    },
+    {
+      "name": "lekha-launch-v3-1080p.mp4",
+      "size": 43004959,
+      "duration": "53.466667",
+      "sha256": "a4caf333ef9bb2bb1785846b159aac289c12fca02ae68596cb14be293b4d208c"
+    },
+    {
+      "name": "lekha-launch-v4-1080p.mp4",
+      "size": 37433289,
+      "duration": "59.366016",
+      "sha256": "9d164f7717749af2d8828aad92577f38c4a04f2646c093e552a3609f588c72eb"
+    },
+    {
+      "name": "lekha-launch-v5-1080p.mp4",
+      "size": 34290315,
+      "duration": "44.400000",
+      "sha256": "9a25870600efac94c9e0915117c89bfaaf29797d6fbe36fa1fec59470626655b"
+    },
+    {
+      "name": "lekha-launch-v6-1080p.mp4",
+      "size": 27644214,
+      "duration": "44.650000",
+      "sha256": "8248dbd146193153877616d37aa6dcf78aa9c7877d8c0aaf5614ecbf27265cb7"
+    }
+  ]
+}

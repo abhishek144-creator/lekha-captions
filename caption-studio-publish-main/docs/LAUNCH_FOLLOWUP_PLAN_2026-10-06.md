@@ -11,11 +11,13 @@ proposal and its pending approval question. Remaining paid staging is unapproved
 
 ## Prerequisites
 
-- Restore Actions availability within $10, then pass every PR #37 release lane
-  on the exact final head; verify actual 500 MiB scans, EICAR detection and fresh
-  daily signatures. Do not waive failed image checks.
-- Merge/deploy that verified release to existing production services and publish
-  matching frontend metadata. Verify readiness and effective operating profile.
+- PR #37 is already merged/deployed as `63cf04f`, after the owner accepted
+  completed exact local final-image verification for that PR only. Fresh daily
+  signatures, real 500 MiB scans and public readiness were verified. Hosted
+  Actions remain at the unchanged $10 hard stop; this exception does not waive
+  the release gates for future code changes.
+- Verify the immutable release and effective operating profile again before
+  any separately approved future staging phase.
 - Approve this finite phase, inspect its exact staging-only resource diff, and
   establish disposable identity/media manifests and automatic cleanup before
   resource creation. No production SSH key or load traffic is needed.

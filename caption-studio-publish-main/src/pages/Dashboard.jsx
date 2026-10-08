@@ -257,8 +257,8 @@ export default function Dashboard() {
     cloudDraft,
     cloudSaveMessage,
     setCloudSaveMessage,
-    cloudSaveConflict,
     setCloudSaveConflict,
+    showCloudSaveConflictNotice,
     localRecoveryDraft,
     applyLocalDraft,
     discardLocalDraft,
@@ -982,7 +982,7 @@ export default function Dashboard() {
       />
 
       <EditorNotices
-        saveConflict={cloudSaveConflict}
+        saveConflict={showCloudSaveConflictNotice}
         saveMessage={cloudSaveMessage}
         translationNotice={translationNotice}
         onDismissTranslation={() => setTranslationNotice('')}
