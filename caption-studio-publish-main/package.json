@@ -59,7 +59,7 @@
     "ci:frontend": "npm run test:unit && npm run test:contracts && npm run lint && npm run typecheck && npm run build:guarded",
     "test:release-metadata": "node scripts/check-release-metadata.mjs && node scripts/check-deployed-release-contracts.mjs",
     "test:project-delivery": "node scripts/check-project-delivery.mjs",
-    "test:editor:local": "node scripts/check-editor-journey.mjs",
+    "test:editor:local": "node scripts/check-editor-journey.mjs && node scripts/check-upload-journey.mjs",
     "test:unit": "vitest run"
   },
   "dependencies": {

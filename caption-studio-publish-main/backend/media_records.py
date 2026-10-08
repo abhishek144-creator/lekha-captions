@@ -13,6 +13,7 @@ import os
 import pathlib
 import time
 import uuid
+from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException
 from typing import Any, Dict, List, Optional
 
@@ -310,6 +311,65 @@ def _build_process_cache_path(media_hash: str, language: str, min_words: int, ma
     key = f"{media_hash}:{language.lower()}:{min_words}:{max_words}"
     key_hash = hashlib.sha256(key.encode("utf-8")).hexdigest()
     return os.path.join(settings.TRANSCRIPTION_CACHE_DIR, f"{key_hash}.json")
+
+
+def _read_transcription_cache(cache_path: str) -> Optional[Dict[str, Any]]:
+    if not cache_path:
+        return None
+    try:
+        with open(cache_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        pass
+    except Exception as error:
+        observability._json_log("warning", "transcription_cache_local_read_failed", error_type=type(error).__name__)
+    db = firebase_admin_setup.get_db()
+    if not db:
+        return None
+    try:
+        key = pathlib.Path(cache_path).stem
+        snap = db.collection(settings.TRANSCRIPTION_CACHE_COLLECTION).document(key).get()
+        if not snap.exists:
+            return None
+        row = snap.to_dict() or {}
+        expire_at = row.get("expire_at")
+        # Firestore TTL deletion can lag, so expiry is enforced on read too.
+        if isinstance(expire_at, datetime) and expire_at.replace(tzinfo=expire_at.tzinfo or timezone.utc) <= datetime.now(timezone.utc):
+            return None
+        result = json.loads(row.get("payload") or "null")
+        if not isinstance(result, dict):
+            return None
+    except Exception as error:
+        observability._json_log("warning", "transcription_cache_shared_read_failed", error_type=type(error).__name__)
+        return None
+    try:
+        with open(cache_path, "w", encoding="utf-8") as f:
+            json.dump(result, f)
+    except Exception:
+        pass
+    return result
+
+
+def _write_transcription_cache(cache_path: str, result: Dict[str, Any]) -> None:
+    if not cache_path:
+        return
+    payload = json.dumps(result)
+    try:
+        with open(cache_path, "w", encoding="utf-8") as f:
+            f.write(payload)
+    except Exception as e:
+        observability._json_log("warning", "transcription_cache_write_failed", error=str(e))
+    db = firebase_admin_setup.get_db()
+    if not db or len(payload.encode("utf-8")) > settings.TRANSCRIPTION_CACHE_MAX_BYTES:
+        return
+    try:
+        db.collection(settings.TRANSCRIPTION_CACHE_COLLECTION).document(pathlib.Path(cache_path).stem).set({
+            "payload": payload,
+            "created_at": observability._utcnow().isoformat() + "Z",
+            "expire_at": datetime.now(timezone.utc) + timedelta(hours=settings.TRANSCRIPTION_CACHE_RETENTION_HOURS),
+        })
+    except Exception as error:
+        observability._json_log("warning", "transcription_cache_shared_write_failed", error_type=type(error).__name__)
 
 
 def _build_parity_signature(captions: List[Dict[str, Any]], style: Dict[str, Any], word_layouts: Dict[str, Any]) -> str:

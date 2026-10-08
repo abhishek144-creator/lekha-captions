@@ -21,7 +21,7 @@ import { getClientContext, trackAnalytics } from '@/lib/analytics';
 import { getEffectiveAuthToken } from '@/lib/devAuth';
 import { resolveApiResourceUrl } from '@/components/dashboard/exportPipelineUtils';
 import { lazyWithRefresh } from '@/lib/lazyWithRefresh';
-import { uploadFileWithRecovery } from '@/lib/resilientUpload';
+import { isRetryableUploadError, uploadFileWithRecovery } from '@/lib/resilientUpload';
 import { processVideoWithRecovery } from '@/lib/resilientProcess';
 import { useEditorPreferences } from '@/hooks/useEditorPreferences'
 import { useEditorDocument } from '@/hooks/useEditorDocument'
@@ -85,6 +85,12 @@ const VideoLoadingFallback = () => (
 );
 
 const GENERATING_SCREEN_MIN_MS = 10000;
+// Spoken languages Sarvam transcribes; mirrors sarvam_langs in backend/processor.py.
+// Anything else is sent as "auto" and the server picks the provider.
+const SARVAM_SPOKEN_LANGUAGES = new Set([
+  'hindi', 'bengali', 'kannada', 'malayalam', 'marathi', 'odia',
+  'punjabi', 'tamil', 'telugu', 'gujarati', 'assamese',
+]);
 const COLLAPSED_TIMELINE_HEIGHT = 42;
 const EXPANDED_TIMELINE_HEIGHT = 204;
 
@@ -129,6 +135,7 @@ export default function Dashboard() {
   // mid-export orphaned the running export and let users start a duplicate one.
   const [exportPanelMounted, setExportPanelMounted] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationStartedAt, setGenerationStartedAt] = useState(null);
   const [generationTicker, setGenerationTicker] = useState(0);
@@ -249,6 +256,22 @@ export default function Dashboard() {
   const [showLowCreditNotice, setShowLowCreditNotice] = useState(false)
   const [translationNotice, setTranslationNotice] = useState('')
   const [sourceUnavailable, setSourceUnavailable] = useState(false)
+  // While the person still has the file they just uploaded, play it from
+  // their device: instant, and no storage download. The storage link stays
+  // in videoUrl for saving, reloads and other devices.
+  const [localPlayback, setLocalPlayback] = useState(null)
+  const localPlaybackRef = useRef(null)
+  const replaceLocalPlayback = useCallback((file, forFileId) => {
+    const previous = localPlaybackRef.current
+    const canCreate = typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function'
+    const next = file && forFileId && canCreate ? { url: URL.createObjectURL(file), fileId: forFileId } : null
+    localPlaybackRef.current = next
+    setLocalPlayback(next)
+    if (previous?.url) URL.revokeObjectURL(previous.url)
+  }, [])
+  useEffect(() => () => {
+    if (localPlaybackRef.current?.url) URL.revokeObjectURL(localPlaybackRef.current.url)
+  }, [])
   const [isRelinking, setIsRelinking] = useState(false)
 
   // Editor UI owned here is cleared whenever the document is emptied for a new
@@ -397,13 +420,17 @@ export default function Dashboard() {
     };
   }, []);
 
-  const handleUpload = async (file, uploadSettings) => {
+  const handleUpload = async (file, uploadSettingsWithTask) => {
     if (!currentUser) {
       navigate(`/login?mode=signup&returnTo=${encodeURIComponent('/Dashboard?entry=editor')}`);
       return;
     }
+    // The upload window may hand over an upload it already started; it is a
+    // live object, so it never goes into saved settings.
+    const { uploadTask = null, ...uploadSettings } = uploadSettingsWithTask || {};
     setWordPopup(null);
     setIsUploading(true);
+    setUploadProgress(uploadTask?.progress || null);
     setSettings(uploadSettings);
     setIsUploadModalOpen(false);
     setIsGenerating(true);
@@ -418,6 +445,7 @@ export default function Dashboard() {
     const selectedFileName = file?.name || originalFileName || 'video';
     let acceptedUpload = null;
     let acceptedPlayableVideoUrl = '';
+    let captionsReady = false;
 
     try {
       const mediaAuthToken = await getEffectiveAuthToken(currentUser);
@@ -429,10 +457,31 @@ export default function Dashboard() {
           raw_url: uploadSettings.preUploadedRawUrl
         };
       } else {
-        uploadData = await uploadFileWithRecovery(file, {
-          authorization: mediaAuthToken,
-          dedupeKey: 'upload-video',
-        });
+        let backgroundOutcome = null;
+        if (uploadTask) {
+          const unsubscribe = uploadTask.subscribe(setUploadProgress);
+          try {
+            backgroundOutcome = await uploadTask.promise;
+          } finally {
+            unsubscribe();
+          }
+        }
+        if (backgroundOutcome?.ok) {
+          uploadData = backgroundOutcome.data;
+        } else {
+          const backgroundError = backgroundOutcome?.error;
+          // A refusal (plan limit, quota, file type) will not change on retry.
+          if (backgroundError && backgroundError.name !== 'AbortError'
+              && Number(backgroundError.status || 0) !== 0 && !isRetryableUploadError(backgroundError)) {
+            throw backgroundError;
+          }
+          // Otherwise upload now; the resume receipt continues any partial upload.
+          uploadData = await uploadFileWithRecovery(file, {
+            authorization: mediaAuthToken,
+            dedupeKey: 'upload-video',
+            onProgress: setUploadProgress,
+          });
+        }
         if (!uploadData.success) throw new Error(uploadData.error || 'Upload failed');
         trackAnalytics('funnel.upload.success', getClientContext({ stage: 'upload', fileId: uploadData.file_id || '' }));
       }
@@ -453,11 +502,15 @@ export default function Dashboard() {
       setVideoUrl(acceptedPlayableVideoUrl);
       setFileId(uploadData.file_id);
       setOriginalFileName(selectedFileName);
+      if (file) replaceLocalPlayback(file, uploadData.file_id);
 
       const { minWords, maxWords } = parseWordsPerLine(uploadSettings?.wordsPerLine);
+      // A known Indian spoken language goes straight to Sarvam; otherwise the
+      // server detects the language itself before choosing a provider.
+      const spokenLanguage = String(uploadSettings?.spokenLanguage || '').toLowerCase();
       const processData = await processVideoWithRecovery({
         file_id: uploadData.file_id,
-        language: 'auto',
+        language: SARVAM_SPOKEN_LANGUAGES.has(spokenLanguage) ? spokenLanguage : 'auto',
         min_words: minWords,
         max_words: maxWords,
         id_token: mediaAuthToken,
@@ -530,6 +583,7 @@ export default function Dashboard() {
         available_fonts: fontOptions?.map(f => f.name) || [],
       };
       setCaptionStyle(nextCaptionStyle);
+      captionsReady = true;
 
       const nextProjectId = `local_${Date.now()}`;
       setProjectId(nextProjectId);
@@ -547,7 +601,9 @@ export default function Dashboard() {
       });
 
       try {
-        const waveform = await extractWaveformData(acceptedPlayableVideoUrl);
+        // Read the audio from the file already in the browser; only a retry
+        // without the file falls back to downloading it from storage.
+        const waveform = await extractWaveformData(file || acceptedPlayableVideoUrl);
         setWaveformData(waveform);
       } catch (e) {
         console.warn('Waveform extraction failed:', e);
@@ -576,7 +632,9 @@ export default function Dashboard() {
       if (Number(error?.status) === 402) {
         // Free trial used up: this is an upgrade moment, not a failure.
         setShowCaptionRetryNotice(false);
-        setPricingMessage("You've used your free transcriptions. Pick a plan to keep captioning — your video stays in the editor.");
+        setPricingMessage(uploadWasAccepted
+          ? "You've used your free transcriptions. Pick a plan to keep captioning — your video stays in the editor."
+          : "You've used your free transcriptions. Pick a plan to keep captioning.");
         setIsPricingModalOpen(true);
       } else {
         notifyApiError(
@@ -591,8 +649,19 @@ export default function Dashboard() {
         await sleep(remainingMinDurationMs);
       }
       setIsUploading(false);
+      setUploadProgress(null);
       setIsGenerating(false);
       setGenerationStartedAt(null);
+      if (captionsReady) {
+        // Measured when the captions actually appear, so it includes the
+        // upload and the waiting screen; the clock starts when the file was picked.
+        const shownAt = Date.now();
+        trackAnalytics('funnel.captions.ready', getClientContext({
+          stage: 'captions',
+          timeToFirstCaptionMs: shownAt - (uploadTask?.pickedAt || generationStart),
+          fromGenerateMs: shownAt - generationStart,
+        }));
+      }
     }
   };
 
@@ -637,6 +706,7 @@ export default function Dashboard() {
       if (!uploaded.success || !uploaded.raw_url) throw new Error(uploaded.error || 'Source upload failed')
       setFileId(uploaded.file_id)
       setVideoUrl(resolveApiResourceUrl(uploaded.raw_url, import.meta.env.VITE_API_BASE_URL))
+      replaceLocalPlayback(file, uploaded.file_id)
       setOriginalFileName(file.name)
       setWaveformData(null)
       setSourceUnavailable(false)
@@ -646,6 +716,7 @@ export default function Dashboard() {
     } finally { setIsRelinking(false) }
   }
 
+  const playbackUrl = localPlayback && localPlayback.fileId === fileId ? localPlayback.url : videoUrl;
   const refreshVideoPlaybackUrl = useCallback(async (event) => {
     if (!fileId || mediaRefreshInFlightRef.current) return;
 
@@ -684,6 +755,15 @@ export default function Dashboard() {
       mediaRefreshInFlightRef.current = false;
     }
   }, [currentTime, currentUser, fileId, isPlaying, setVideoUrl, videoUrl]);
+
+  const handleVideoError = (event) => {
+    // If the device copy cannot play, fall back to the storage link.
+    if (localPlaybackRef.current && localPlaybackRef.current.fileId === fileId) {
+      replaceLocalPlayback(null);
+      return;
+    }
+    refreshVideoPlaybackUrl(event);
+  };
 
   const updateCaptions = (newCaptions, options) => pushHistory(newCaptions, undefined, options);
   const updateCaptionStyle = (newStyle) => pushHistory(undefined, newStyle);
@@ -1019,7 +1099,10 @@ export default function Dashboard() {
       {/* Main content */}
       <div className="flex-1 overflow-hidden lekha-editor-shell">
         {isGenerating ? (
-          <GeneratingCaptionsScreen elapsedSeconds={generationElapsedSeconds} />
+          <GeneratingCaptionsScreen
+            elapsedSeconds={generationElapsedSeconds}
+            uploadPercent={isUploading && uploadProgress ? uploadProgress.percent : null}
+          />
         ) : !videoUrl && !captions.length ? (
           <EditorEmptyState
             localRecoveryDraft={localRecoveryDraft}
@@ -1092,7 +1175,7 @@ export default function Dashboard() {
                 <div className="transition-transform duration-200 max-lg:h-full">
                   <Suspense fallback={<VideoLoadingFallback />}>
                     <VideoPlayer
-                      videoUrl={videoUrl}
+                      videoUrl={playbackUrl}
                       currentTime={currentTime}
                       setCurrentTime={setCurrentTime}
                       seekSignal={seekSignal}
@@ -1119,7 +1202,7 @@ export default function Dashboard() {
                           if (data) setWaveformData(data);
                         }
                       }}
-                      onVideoError={refreshVideoPlaybackUrl}
+                      onVideoError={handleVideoError}
                       isVideoFullscreen={isVideoFullscreen}
                       setIsVideoFullscreen={setIsVideoFullscreen}
                     />
@@ -1234,6 +1317,11 @@ export default function Dashboard() {
             open={isUploadModalOpen}
             onClose={() => setIsUploadModalOpen(false)}
             onUpload={handleUpload}
+            onPlanLimit={(message) => {
+              setIsUploadModalOpen(false);
+              setPricingMessage(message);
+              setIsPricingModalOpen(true);
+            }}
             isUploading={isUploading}
           />
         </Suspense>
