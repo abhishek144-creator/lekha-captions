@@ -492,7 +492,7 @@ CACHE_DIR = os.path.join(MEDIA_SCRATCH_ROOT, "cache")
 TRANSCRIPTION_CACHE_DIR = os.path.join(CACHE_DIR, "transcriptions")
 RENDER_CACHE_DIR = os.path.join(CACHE_DIR, "renders")
 DEAD_LETTER_DIR = os.path.join(CACHE_DIR, "dead_letter")
-EXPORT_RENDERER_VERSION = "2026-09-27-project-framing-bilingual-v47"
+EXPORT_RENDERER_VERSION = "2026-10-08-ass-variable-font-weight-v48"
 
 _CLIENT_RENDER_HINT_FIELDS = {
     "word_layouts",
