@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process'
-import { releaseIdentityErrors } from './release-metadata.mjs'
+import { deploymentComponentTargets, releaseIdentityErrors } from './release-metadata.mjs'
 
 const args = new Map(
   process.argv.slice(2)
@@ -55,18 +55,13 @@ const backendRelease = String(version?.release || '')
 const failures = []
 const marketingOrigin = String(args.get('marketing') || process.env.DEPLOY_VERIFY_MARKETING_URL || 'https://lekhacaptions.com').replace(/\/+$/, '')
 const workerOrigins = String(process.env.DEPLOY_VERIFY_WORKER_URLS || '').split(',').map((url) => url.trim().replace(/\/+$/, '')).filter(Boolean)
-const components = [{ name: 'api', metadata: version }]
-for (const [name, origin, pathname] of [
-  ['editor', frontendOrigin, '/release.json'],
-  ['marketing', marketingOrigin, '/release.json'],
-  ...workerOrigins.map((origin, index) => [`worker-${index + 1}`, origin, '/api/version']),
-]) {
-  try { components.push({ name, metadata: await get(`${origin}${pathname}`) }) }
+const components = [{ name: 'api', component: 'api', metadata: version }]
+for (const { name, component, origin, pathname } of deploymentComponentTargets(frontendOrigin, marketingOrigin, workerOrigins)) {
+  try { components.push({ name, component, metadata: await get(`${origin}${pathname}`) }) }
   catch { failures.push(`${name} release metadata unavailable`) }
 }
 if (!workerOrigins.length) failures.push('Worker verification requires DEPLOY_VERIFY_WORKER_URLS from the private operator network')
-for (const { name, metadata } of components) {
-  const component = name.startsWith('worker-') ? 'worker' : name
+for (const { name, component, metadata } of components) {
   failures.push(...releaseIdentityErrors(metadata, component, process.env.DEPLOY_VERIFY_ENVIRONMENT || 'production').map((error) => `${name} ${error}`))
   if (metadata?.release !== expected) failures.push(`${name} release SHA mismatch`)
   if (!metadata?.built_at || !Number.isFinite(Date.parse(metadata.built_at))) failures.push(`${name} build timestamp missing or invalid`)
