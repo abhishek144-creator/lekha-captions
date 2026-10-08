@@ -1503,7 +1503,7 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           if (wordStyle.fontStyle) inline.push(\`font-style:\${wordStyle.fontStyle}\`);
           if (index < words.length - 1) inline.push(\`margin-right:\${wordSpacing}\`);
 
-          return \`<span data-word-key="\${word.key}" class="\${className}" style="\${inline.join(';')}">\${escapeHtml(transformText(word.text, globalStyle))}</span>\`;
+          return \`<span data-word-key="\${word.key}" class="\${className}" style="\${escapeHtml(inline.join(';'))}">\${escapeHtml(transformText(word.text, globalStyle))}</span>\`;
         })
         .filter(Boolean)
         .join('');
@@ -2436,7 +2436,10 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       const words = buildWordMeta(caption);
       const currentIndex = getCurrentWordIndex(caption, time);
       const showInactive = globalStyle?.show_inactive !== false;
-      const wordSpacing = \`\${scaleExportPx((globalStyle?.word_spacing ?? 1) * 2)}px\`;
+      // Words are inline-block spans joined without whitespace, so this margin
+      // is the whole inter-word gap. Mirrors the editor preview in
+      // VideoPlayer.jsx: 0.18 x base font size + word_spacing x 2.
+      const wordSpacing = \`\${scaleExportPx((globalStyle?.font_size || 18) * 0.18 + (globalStyle?.word_spacing ?? 1) * 2)}px\`;
 
       const isCptCaption = captionHasCptWords(caption);
       const renderPlainWord = (word, index, isLastInLine = false) => {
@@ -2455,11 +2458,13 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           wordStyle.textTransform ? \`text-transform:\${wordStyle.textTransform}\` : '',
           !isLastInLine ? \`margin-right:\${wordSpacing}\` : '',
         ].filter(Boolean);
-        if (globalStyle?.has_stroke) inline.push(\`-webkit-text-stroke:\${globalStyle.stroke_width ?? 1}px \${globalStyle.stroke_color || '#000000'}\`);
-        if (globalStyle?.has_shadow) inline.push(\`text-shadow:\${globalStyle.shadow_offset_x ?? 0}px \${globalStyle.shadow_offset_y ?? 2}px \${globalStyle.shadow_blur ?? 4}px \${globalStyle.shadow_color || '#000000'}\`);
+        // Not scaleExportPx: that clamps to >= 1px, and zero shadow offsets/blur are authored values.
+        const scaleEffectPx = (value) => Math.round((Number(value) || 0) * (window.__exportCanvasScale || 1));
+        if (globalStyle?.has_stroke) inline.push(\`-webkit-text-stroke:\${scaleExportPx(globalStyle.stroke_width ?? 1)}px \${globalStyle.stroke_color || '#000000'}\`);
+        if (globalStyle?.has_shadow) inline.push(\`text-shadow:\${scaleEffectPx(globalStyle.shadow_offset_x ?? 0)}px \${scaleEffectPx(globalStyle.shadow_offset_y ?? 2)}px \${scaleEffectPx(globalStyle.shadow_blur ?? 4)}px \${globalStyle.shadow_color || '#000000'}\`);
         if (wordStyle.isEmphasis && !globalStyle?.has_shadow) {
           const accent = globalStyle?.highlight_color || globalStyle?.secondary_color || '#DDAA03';
-          inline.push(\`text-shadow:0 0 18px \${accent}99,0 0 6px \${accent}66\`);
+          inline.push(\`text-shadow:0 0 \${scaleEffectPx(18)}px \${accent}99,0 0 \${scaleEffectPx(6)}px \${accent}66\`);
         }
         const wordGradient = wordStyle.textGradient || globalStyle?.text_gradient || '';
         if (wordGradient) {
@@ -2472,7 +2477,9 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           inline.push('border-radius:4px');
         }
         Object.entries(getWordEffectInlineStyles(wordStyle)).forEach(([property, value]) => inline.push(\`\${property}:\${value}\`));
-        return \`<span data-word-key="\${word.key}" style="\${inline.join(';')}">\${escapeHtml(transformText(word.text, globalStyle))}</span>\`;
+        // Escape the attribute: font-family is double-quoted, and a raw quote
+        // here ends style="..." early, dropping every later declaration.
+        return \`<span data-word-key="\${word.key}" style="\${escapeHtml(inline.join(';'))}">\${escapeHtml(transformText(word.text, globalStyle))}</span>\`;
       };
 
       let wordCursor = 0;
