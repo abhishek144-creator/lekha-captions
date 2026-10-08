@@ -250,8 +250,8 @@ assert.doesNotMatch(
 );
 assert.match(
   videoPlayerSource,
-  /releaseClientDeltaX = Number\.isFinite\(upEvent\?\.clientX\)[\s\S]*releaseClientDeltaY = Number\.isFinite\(upEvent\?\.clientY\)[\s\S]*x: dragState\.initialX \+ releaseClientDeltaX/,
-  'drag commit must use the actual pointer-up coordinates rather than a stale final move event',
+  /releaseClientDeltaX = Number\.isFinite\(upEvent\?\.clientX\)[\s\S]*releaseClientDeltaY = Number\.isFinite\(upEvent\?\.clientY\)[\s\S]*released = resolveDelta\(releaseClientDeltaX, releaseClientDeltaY[\s\S]*x: dragState\.initialX \+ released\.deltaX/,
+  'drag commit must snap the actual pointer-up coordinates using the preview resolver',
 );
 assert.match(
   videoPlayerSource,
