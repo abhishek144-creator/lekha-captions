@@ -1,24 +1,71 @@
 """Billing ledger: top-up reservations, order binding, payment grants, refunds and reconciliation (no routes).
 
-Handlers resolve shared helpers through ``host`` (the main module) at call time,
-so there is one copy of each helper and test patches on ``main`` keep applying.
+The factory accepts explicit configuration, adapters and shared state through
+ServiceContext. It has no dependency on the HTTP entry point.
 """
 
-from types import ModuleType, SimpleNamespace
+from types import SimpleNamespace
+from typing import Protocol
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Response
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import HTTPException
 from fastapi import Request
 from fastapi import APIRouter
 
 
-def create_billing_service(host: ModuleType) -> SimpleNamespace:
+from typing import Any
+from typing import Dict
+from typing import List
+from typing import Optional
+import asyncio
+from datetime import datetime
+import hmac
+import math
+import secrets
+import time
+from datetime import timedelta
+from datetime import timezone
+
+class ServiceContext(Protocol):
+    PAYMENT_RECONCILE_BATCH_SIZE: Any
+    PAYMENT_RECONCILE_LOOKBACK_HOURS: Any
+    PAYMENT_RECONCILE_SECRET: Any
+    PLAN_PRICING: Any
+    RAZORPAY_AVAILABLE: Any
+    RECONCILE_ERROR_ALERT_THRESHOLD: Any
+    RECONCILE_SKIPPED_ALERT_THRESHOLD: Any
+    ReconcilePaymentsRequest: Any
+    TOPUP_ORDER_RESERVATION_SECONDS: Any
+    TOPUP_PURCHASE_WINDOW_SECONDS: Any
+    _IS_PRODUCTION: Any
+    _active_topup_reservations: Any
+    _apply_successful_payment: Any
+    _assert_topup_purchase_available: Any
+    _audit_action: Any
+    _decoded_token_is_admin: Any
+    _effective_subscription_tier: Any
+    _fetch_bound_order_context: Any
+    _grant_payment_transactionally: Any
+    _json_log: Any
+    _recent_topup_timestamps: Any
+    _retention_deadline: Any
+    _send_alert: Any
+    _topup_purchase_limit: Any
+    _topup_timestamp_epoch: Any
+    _track_event: Any
+    _utcnow: Any
+    firestore: Any
+    get_db: Any
+    reconcile_payments_once: Any
+    rzp_client: Any
+    verify_token: Any
+
+
+def create_billing_service(context: ServiceContext) -> SimpleNamespace:
     router = APIRouter()
 
-    def _resolve_plan_from_amount_currency(amount_minor: int, currency: str) -> host.Optional[str]:
+    def _resolve_plan_from_amount_currency(amount_minor: int, currency: str) -> Optional[str]:
         c = (currency or "INR").upper()
-        for plan_key, p in host.PLAN_PRICING.items():
+        for plan_key, p in context.PLAN_PRICING.items():
             if p.get("is_free"):
                 continue
             if c == "USD" and amount_minor == p.get("usd_cents"):
@@ -28,14 +75,14 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
         return None
 
 
-    def _topup_timestamp_epoch(value: host.Any) -> host.Optional[float]:
+    def _topup_timestamp_epoch(value: Any) -> Optional[float]:
         """Normalize Firestore/Python/ISO timestamps used by rolling top-up limits."""
         if value is None or isinstance(value, bool):
             return None
         if isinstance(value, (int, float)):
             return float(value)
-        if isinstance(value, host.datetime):
-            dt = value if value.tzinfo else value.replace(tzinfo=host.timezone.utc)
+        if isinstance(value, datetime):
+            dt = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
             return dt.timestamp()
         if isinstance(value, str):
             raw = value.strip()
@@ -45,40 +92,40 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
                 return float(raw)
             except ValueError:
                 try:
-                    dt = host.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                    dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
                     if not dt.tzinfo:
-                        dt = dt.replace(tzinfo=host.timezone.utc)
+                        dt = dt.replace(tzinfo=timezone.utc)
                     return dt.timestamp()
                 except ValueError:
                     return None
         return None
 
 
-    def _recent_topup_timestamps(user_data: host.Dict[str, host.Any], now_ts: host.Optional[float] = None) -> host.List[float]:
-        now_epoch = float(now_ts if now_ts is not None else host.time.time())
-        cutoff = now_epoch - host.TOPUP_PURCHASE_WINDOW_SECONDS
-        recent: host.List[float] = []
+    def _recent_topup_timestamps(user_data: Dict[str, Any], now_ts: Optional[float] = None) -> List[float]:
+        now_epoch = float(now_ts if now_ts is not None else time.time())
+        cutoff = now_epoch - context.TOPUP_PURCHASE_WINDOW_SECONDS
+        recent: List[float] = []
         values = user_data.get("topup_timestamps") or []
         if not isinstance(values, list):
             values = []
         for value in values:
-            parsed = host._topup_timestamp_epoch(value)
+            parsed = context._topup_timestamp_epoch(value)
             if parsed is not None and cutoff < parsed <= now_epoch + 300:
                 recent.append(parsed)
         return sorted(recent)
 
 
-    def _active_topup_reservations(user_data: host.Dict[str, host.Any], now_ts: host.Optional[float] = None) -> host.List[host.Dict[str, host.Any]]:
-        now_epoch = float(now_ts if now_ts is not None else host.time.time())
-        cutoff = now_epoch - host.TOPUP_ORDER_RESERVATION_SECONDS
-        active: host.List[host.Dict[str, host.Any]] = []
+    def _active_topup_reservations(user_data: Dict[str, Any], now_ts: Optional[float] = None) -> List[Dict[str, Any]]:
+        now_epoch = float(now_ts if now_ts is not None else time.time())
+        cutoff = now_epoch - context.TOPUP_ORDER_RESERVATION_SECONDS
+        active: List[Dict[str, Any]] = []
         values = user_data.get("topup_order_reservations") or []
         if not isinstance(values, list):
             values = []
         for value in values:
             if not isinstance(value, dict):
                 continue
-            created_at = host._topup_timestamp_epoch(value.get("created_at"))
+            created_at = context._topup_timestamp_epoch(value.get("created_at"))
             reservation_id = str(value.get("id") or "").strip()
             if reservation_id and created_at is not None and cutoff < created_at <= now_epoch + 300:
                 active.append({
@@ -89,7 +136,7 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
         return sorted(active, key=lambda item: item["created_at"])
 
 
-    def _topup_purchase_limit(plan_config: host.Dict[str, host.Any]) -> int:
+    def _topup_purchase_limit(plan_config: Dict[str, Any]) -> int:
         try:
             return max(0, int(plan_config.get("purchase_limit_30d", 0) or 0))
         except (TypeError, ValueError):
@@ -97,15 +144,15 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
 
 
     def _assert_topup_purchase_available(
-        user_data: host.Dict[str, host.Any],
-        plan_config: host.Dict[str, host.Any],
-        now_ts: host.Optional[float] = None,
+        user_data: Dict[str, Any],
+        plan_config: Dict[str, Any],
+        now_ts: Optional[float] = None,
     ) -> None:
-        limit = host._topup_purchase_limit(plan_config)
+        limit = context._topup_purchase_limit(plan_config)
         if limit <= 0:
             raise HTTPException(status_code=403, detail="Top-ups are not enabled for this plan.")
-        used = len(host._recent_topup_timestamps(user_data, now_ts))
-        reserved = len(host._active_topup_reservations(user_data, now_ts))
+        used = len(context._recent_topup_timestamps(user_data, now_ts))
+        reserved = len(context._active_topup_reservations(user_data, now_ts))
         if used + reserved >= limit:
             noun = "purchase" if limit == 1 else "purchases"
             raise HTTPException(
@@ -114,24 +161,24 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
             )
 
 
-    def _reserve_topup_order_slot(db, user_ref, plan_id: str, plan_config: host.Dict[str, host.Any]) -> str:
+    def _reserve_topup_order_slot(db, user_ref, plan_id: str, plan_config: Dict[str, Any]) -> str:
         """Atomically reserve a short-lived slot before creating a chargeable order."""
-        reservation_id = host.secrets.token_urlsafe(18)
-        now_ts = host.time.time()
+        reservation_id = secrets.token_urlsafe(18)
+        now_ts = time.time()
 
-        @host.firestore.transactional
+        @context.firestore.transactional
         def _reserve(transaction):
             user_doc = user_ref.get(transaction=transaction)
             if not user_doc.exists:
                 raise HTTPException(status_code=404, detail="User not found. Purchase a plan first.")
             user_data = user_doc.to_dict() or {}
-            base_tier = host._effective_subscription_tier(user_data).replace("_yearly", "")
+            base_tier = context._effective_subscription_tier(user_data).replace("_yearly", "")
             if base_tier not in {"starter", "creator", "pro"}:
                 raise HTTPException(status_code=403, detail="UPGRADE_REQUIRED: Top-ups available for paid plans only.")
             if plan_id != f"topup_{base_tier}":
                 raise HTTPException(status_code=403, detail="This top-up is not available for your current plan.")
-            host._assert_topup_purchase_available(user_data, plan_config, now_ts)
-            reservations = host._active_topup_reservations(user_data, now_ts)
+            context._assert_topup_purchase_available(user_data, plan_config, now_ts)
+            reservations = context._active_topup_reservations(user_data, now_ts)
             reservations.append({"id": reservation_id, "plan_id": plan_id, "created_at": now_ts})
             transaction.update(user_ref, {"topup_order_reservations": reservations})
             return reservation_id
@@ -143,14 +190,14 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
         if not reservation_id:
             return
 
-        @host.firestore.transactional
+        @context.firestore.transactional
         def _release(transaction):
             user_doc = user_ref.get(transaction=transaction)
             if not user_doc.exists:
                 return
             user_data = user_doc.to_dict() or {}
             reservations = [
-                item for item in host._active_topup_reservations(user_data)
+                item for item in context._active_topup_reservations(user_data)
                 if item.get("id") != reservation_id
             ]
             transaction.update(user_ref, {"topup_order_reservations": reservations})
@@ -158,7 +205,7 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
         _release(db.transaction())
 
 
-    def _fetch_bound_order_context(order_id: str, amount_minor: int, currency: str) -> host.Dict[str, host.Any]:
+    def _fetch_bound_order_context(order_id: str, amount_minor: int, currency: str) -> Dict[str, Any]:
         """Resolve the server-authored payment owner and plan from a Razorpay order.
 
     The app writes uid/plan_id to *order* notes when it creates the order. Razorpay
@@ -169,11 +216,11 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
         order_id = str(order_id or "").strip()
         if not order_id:
             raise HTTPException(status_code=400, detail="Payment is missing its order binding.")
-        if not host.RAZORPAY_AVAILABLE or host.rzp_client is None:
+        if not context.RAZORPAY_AVAILABLE or context.rzp_client is None:
             raise HTTPException(status_code=503, detail="Payment order verification is unavailable")
 
         try:
-            order = host.rzp_client.order.fetch(order_id)
+            order = context.rzp_client.order.fetch(order_id)
         except Exception as e:
             raise HTTPException(status_code=502, detail="Unable to verify payment order with Razorpay") from e
 
@@ -191,7 +238,7 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
         topup_reservation_id = str(notes.get("topup_reservation_id") or "").strip()
         if not uid:
             raise HTTPException(status_code=400, detail="Payment order is missing its user binding.")
-        if not plan_id or plan_id not in host.PLAN_PRICING:
+        if not plan_id or plan_id not in context.PLAN_PRICING:
             raise HTTPException(status_code=400, detail="Payment order is missing a valid plan binding.")
 
         # The order amount is authoritative for a server-created order. Do not
@@ -209,32 +256,32 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
         }
 
 
-    def _can_trigger_reconcile(request: Request, req_body: host.ReconcilePaymentsRequest) -> bool:
+    def _can_trigger_reconcile(request: Request, req_body: context.ReconcilePaymentsRequest) -> bool:
         secret_header = (request.headers.get("x-reconcile-secret") or "").strip()
-        if host.PAYMENT_RECONCILE_SECRET and secret_header and host.hmac.compare_digest(secret_header, host.PAYMENT_RECONCILE_SECRET):
+        if context.PAYMENT_RECONCILE_SECRET and secret_header and hmac.compare_digest(secret_header, context.PAYMENT_RECONCILE_SECRET):
             return True
 
         if not req_body.id_token:
             return False
-        decoded = host.verify_token(req_body.id_token)
+        decoded = context.verify_token(req_body.id_token)
         if not decoded:
             return False
 
-        return host._decoded_token_is_admin(decoded)
+        return context._decoded_token_is_admin(decoded)
 
 
     def reconcile_payments_once(
         reason: str = "manual",
-        lookback_hours: int = host.PAYMENT_RECONCILE_LOOKBACK_HOURS,
-        limit: int = host.PAYMENT_RECONCILE_BATCH_SIZE,
-    ) -> host.Dict[str, host.Any]:
-        db = host.get_db()
+        lookback_hours: int = context.PAYMENT_RECONCILE_LOOKBACK_HOURS,
+        limit: int = context.PAYMENT_RECONCILE_BATCH_SIZE,
+    ) -> Dict[str, Any]:
+        db = context.get_db()
         if not db:
             return {"success": False, "error": "Database unavailable"}
 
         lookback = max(int(lookback_hours or 1), 1)
-        query_limit = max(1, min(int(limit or host.PAYMENT_RECONCILE_BATCH_SIZE), 1000))
-        cutoff = host._utcnow() - host.timedelta(hours=lookback)
+        query_limit = max(1, min(int(limit or context.PAYMENT_RECONCILE_BATCH_SIZE), 1000))
+        cutoff = context._utcnow() - timedelta(hours=lookback)
         cutoff_iso = cutoff.isoformat() + "Z"
         summary = {
             "success": True,
@@ -252,16 +299,16 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
         try:
             docs = (
                 db.collection("payment_webhooks")
-                .where(filter=host.firestore.FieldFilter("event", "==", "payment.captured"))
-                .where(filter=host.firestore.FieldFilter("status", "==", "captured"))
-                .where(filter=host.firestore.FieldFilter("reconcile_required", "==", True))
-                .where(filter=host.firestore.FieldFilter("received_at", ">=", cutoff_iso))
-                .order_by("received_at", direction=host.firestore.Query.ASCENDING)
+                .where(filter=context.firestore.FieldFilter("event", "==", "payment.captured"))
+                .where(filter=context.firestore.FieldFilter("status", "==", "captured"))
+                .where(filter=context.firestore.FieldFilter("reconcile_required", "==", True))
+                .where(filter=context.firestore.FieldFilter("received_at", ">=", cutoff_iso))
+                .order_by("received_at", direction=context.firestore.Query.ASCENDING)
                 .limit(query_limit)
                 .stream()
             )
         except Exception as e:
-            host._json_log("error", "payment_reconcile_query_failed", error=str(e))
+            context._json_log("error", "payment_reconcile_query_failed", error=str(e))
             return {"success": False, "error": "Failed to query payment webhooks"}
 
         for doc in docs:
@@ -273,10 +320,10 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
             currency = (row.get("currency") or "INR").upper()
 
             try:
-                order_context = host._fetch_bound_order_context(order_id, amount_minor, currency)
+                order_context = context._fetch_bound_order_context(order_id, amount_minor, currency)
             except HTTPException as e:
                 summary["errors"] += 1
-                host._json_log(
+                context._json_log(
                     "warning",
                     "payment_reconcile_order_resolution_failed",
                     webhook_doc=doc.id,
@@ -293,12 +340,12 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
             try:
                 doc.reference.update({"notes": order_context})
             except Exception as e:
-                host._json_log("warning", "payment_reconcile_context_persist_failed", webhook_doc=doc.id, error=str(e))
+                context._json_log("warning", "payment_reconcile_context_persist_failed", webhook_doc=doc.id, error=str(e))
             if not payment_id:
                 payment_id = f"reconcile_{doc.id}"
 
             try:
-                result = host._apply_successful_payment(
+                result = context._apply_successful_payment(
                     uid=uid,
                     plan_id=plan_id,
                     payment_id=payment_id,
@@ -317,11 +364,11 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
                     summary["applied"] += 1
                 doc.reference.update({
                     "reconcile_required": False,
-                    "reconciled_at": host._utcnow().isoformat() + "Z",
+                    "reconciled_at": context._utcnow().isoformat() + "Z",
                 })
             except HTTPException as e:
                 summary["errors"] += 1
-                host._json_log(
+                context._json_log(
                     "warning",
                     "payment_reconcile_apply_failed",
                     payment_id=payment_id,
@@ -331,19 +378,19 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
                 )
             except Exception as e:
                 summary["errors"] += 1
-                host._json_log("error", "payment_reconcile_apply_exception", payment_id=payment_id, uid=uid, error=str(e))
+                context._json_log("error", "payment_reconcile_apply_exception", payment_id=payment_id, uid=uid, error=str(e))
 
-        summary["run_at"] = host._utcnow().isoformat() + "Z"
-        host._json_log("info", "payment_reconcile_summary", **summary)
+        summary["run_at"] = context._utcnow().isoformat() + "Z"
+        context._json_log("info", "payment_reconcile_summary", **summary)
         try:
             db.collection("payment_reconcile_runs").add({
                 **summary,
-                "expire_at": host._retention_deadline(90),
+                "expire_at": context._retention_deadline(90),
             })
         except Exception as e:
-            host._json_log("warning", "payment_reconcile_persist_failed", error=str(e))
-        if summary["errors"] >= host.RECONCILE_ERROR_ALERT_THRESHOLD or summary["skipped"] >= host.RECONCILE_SKIPPED_ALERT_THRESHOLD:
-            host._send_alert(
+            context._json_log("warning", "payment_reconcile_persist_failed", error=str(e))
+        if summary["errors"] >= context.RECONCILE_ERROR_ALERT_THRESHOLD or summary["skipped"] >= context.RECONCILE_SKIPPED_ALERT_THRESHOLD:
+            context._send_alert(
                 f"[Caption Studio Alert] reconcile summary: errors={summary['errors']} skipped={summary['skipped']} "
                 f"applied={summary['applied']} reason={reason}"
             )
@@ -352,9 +399,9 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
 
     async def payment_reconciliation_job():
         try:
-            await host.asyncio.to_thread(host.reconcile_payments_once, reason="scheduled")
+            await asyncio.to_thread(context.reconcile_payments_once, reason="scheduled")
         except Exception as e:
-            host._json_log("error", "payment_reconcile_job_failed", error=str(e))
+            context._json_log("error", "payment_reconcile_job_failed", error=str(e))
 
 
     def _grant_payment_transactionally(
@@ -363,7 +410,7 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
         payment_ref,
         uid: str,
         plan_id: str,
-        plan_config: host.Dict[str, host.Any],
+        plan_config: Dict[str, Any],
         payment_id: str,
         order_id: str,
         amount_minor: int,
@@ -373,17 +420,17 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
         topup_reservation_id: str = "",
         order_created_at: int = 0,
     ):
-        now_utc = host._utcnow()
+        now_utc = context._utcnow()
         cycle_start = now_utc.isoformat() + "Z"
         is_topup = bool(plan_config.get("is_topup", False))
         credits_to_add = int(plan_config["credits"])
         cycle_end = None if is_topup else (
-            now_utc + host.timedelta(days=int(plan_config["days"]))
+            now_utc + timedelta(days=int(plan_config["days"]))
         ).isoformat() + "Z"
 
-        @host.firestore.transactional
+        @context.firestore.transactional
         def _grant(transaction):
-            if host._IS_PRODUCTION:
+            if context._IS_PRODUCTION:
                 deletion_ref = db.collection("account_deletions").document(uid)
                 if deletion_ref.get(transaction=transaction).exists:
                     raise HTTPException(status_code=409, detail="Deleted account payment requires support reconciliation.")
@@ -406,15 +453,15 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
             if is_topup:
                 if not user_doc.exists:
                     raise HTTPException(status_code=404, detail="User not found. Purchase a plan first.")
-                base_tier = host._effective_subscription_tier(user_data).replace("_yearly", "")
+                base_tier = context._effective_subscription_tier(user_data).replace("_yearly", "")
                 if base_tier not in {"starter", "creator", "pro"}:
                     raise HTTPException(status_code=403, detail="UPGRADE_REQUIRED: Top-ups available for paid plans only.")
                 if plan_id != f"topup_{base_tier}":
                     raise HTTPException(status_code=403, detail="This top-up is not available for your current plan.")
-                recent_topups = host._recent_topup_timestamps(user_data, now_utc.replace(tzinfo=host.timezone.utc).timestamp())
-                active_reservations = host._active_topup_reservations(
+                recent_topups = context._recent_topup_timestamps(user_data, now_utc.replace(tzinfo=timezone.utc).timestamp())
+                active_reservations = context._active_topup_reservations(
                     user_data,
-                    now_utc.replace(tzinfo=host.timezone.utc).timestamp(),
+                    now_utc.replace(tzinfo=timezone.utc).timestamp(),
                 )
                 matching_reservation = next(
                     (
@@ -423,7 +470,7 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
                     ),
                     None,
                 )
-                limit = host._topup_purchase_limit(plan_config)
+                limit = context._topup_purchase_limit(plan_config)
                 if limit <= 0 or len(recent_topups) >= limit:
                     noun = "purchase" if limit == 1 else "purchases"
                     raise HTTPException(
@@ -455,13 +502,13 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
             })
 
             if is_topup:
-                topup_timestamp = now_utc.replace(tzinfo=host.timezone.utc).timestamp()
+                topup_timestamp = now_utc.replace(tzinfo=timezone.utc).timestamp()
                 remaining_reservations = [
                     item for item in active_reservations
                     if item.get("id") != topup_reservation_id
                 ]
                 transaction.update(user_ref, {
-                    "credits_remaining": host.firestore.Increment(credits_to_add),
+                    "credits_remaining": context.firestore.Increment(credits_to_add),
                     "topup_timestamps": [*recent_topups, topup_timestamp],
                     "topup_order_reservations": remaining_reservations,
                     "topups_this_cycle": len(recent_topups) + 1,
@@ -485,7 +532,7 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
             if user_doc.exists:
                 transaction.update(user_ref, user_update)
             else:
-                transaction.set(user_ref, {"uid": uid, "created_at": host.time.time(), **user_update})
+                transaction.set(user_ref, {"uid": uid, "created_at": time.time(), **user_update})
             return {
                 "success": True,
                 "credits_added": credits_to_add,
@@ -509,7 +556,7 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
         order_amount_validated: bool = False,
         order_created_at: int = 0,
     ):
-        plan_config = host.PLAN_PRICING.get(plan_id)
+        plan_config = context.PLAN_PRICING.get(plan_id)
         if not plan_config:
             raise HTTPException(status_code=400, detail=f"Unknown plan: {plan_id}")
         if plan_config.get("is_free"):
@@ -526,7 +573,7 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
         # during delayed verification/reconciliation without weakening the binding
         # between the payment, server-created order, owner, and plan.
         if not order_amount_validated and (expected_minor is None or int(amount_minor or 0) != int(expected_minor)):
-            host._json_log(
+            context._json_log(
                 "warning",
                 "payment_amount_plan_mismatch",
                 uid=uid,
@@ -538,18 +585,18 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
             )
             raise HTTPException(status_code=400, detail="Payment amount does not match the selected plan.")
 
-        db = host.get_db()
+        db = context.get_db()
         if not db:
             raise HTTPException(status_code=500, detail="Database not initialized")
 
         user_ref = db.collection('users').document(uid)
         payment_ref = user_ref.collection('payments').document(payment_id)
-        result = host._grant_payment_transactionally(
+        result = context._grant_payment_transactionally(
             db, user_ref, payment_ref, uid, plan_id, plan_config, payment_id,
             order_id, amount_minor, currency, source, org_id, topup_reservation_id, order_created_at,
         )
         if not result.get("duplicate"):
-            host._track_event("payment_success", {
+            context._track_event("payment_success", {
                 "plan_id": plan_id,
                 "currency": (currency or "INR").upper(),
                 "amount_minor": int(amount_minor or 0),
@@ -561,9 +608,9 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
     def _apply_refund_webhook_event(
         db,
         event: str,
-        refund_entity: host.Dict[str, host.Any],
-        payment_entity: host.Dict[str, host.Any],
-    ) -> host.Dict[str, host.Any]:
+        refund_entity: Dict[str, Any],
+        payment_entity: Dict[str, Any],
+    ) -> Dict[str, Any]:
         refund_id = str(refund_entity.get("id") or "").strip()
         payment_id = str(refund_entity.get("payment_id") or payment_entity.get("id") or "").strip()
         if not refund_id or not payment_id:
@@ -591,7 +638,7 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
         payment_ref = user_ref.collection("payments").document(payment_id)
         refund_ref = payment_ref.collection("refunds").document(refund_id)
 
-        @host.firestore.transactional
+        @context.firestore.transactional
         def _record(transaction):
             payment_doc = payment_ref.get(transaction=transaction)
             if not payment_doc.exists:
@@ -621,7 +668,7 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
             else:
                 aggregate_status = "refund_pending"
 
-            updated_at = host._utcnow().isoformat() + "Z"
+            updated_at = context._utcnow().isoformat() + "Z"
             credits_added = max(0, int(payment_data.get("credits_added", 0) or 0))
             previous_reversal_target = max(
                 0, int(payment_data.get("entitlement_reversal_target", 0) or 0)
@@ -637,7 +684,7 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
             if effective_status == "processed" and paid_amount > 0 and credits_added > 0:
                 reversal_target = min(
                     credits_added,
-                    int(host.math.ceil(credits_added * min(refunded_amount, paid_amount) / paid_amount)),
+                    int(math.ceil(credits_added * min(refunded_amount, paid_amount) / paid_amount)),
                 )
                 additional_target = max(0, reversal_target - previous_reversal_target)
                 if additional_target > 0:
@@ -722,19 +769,19 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
 
         result = _record(db.transaction())
         if result.get("applied"):
-            host._track_event("payment_refund_updated", {
+            context._track_event("payment_refund_updated", {
                 "event": event,
                 "refund_status": result.get("refund_status"),
                 "payment_id": payment_id,
             })
-            host._audit_action("payment_refund_updated", uid, {
+            context._audit_action("payment_refund_updated", uid, {
                 "event": event,
                 "refund_id": refund_id,
                 "payment_id": payment_id,
                 "refund_status": result.get("refund_status"),
             })
             if result.get("entitlement_adjustment_required"):
-                host._json_log(
+                context._json_log(
                     "error",
                     "refund_entitlement_adjustment_required",
                     uid=uid,
@@ -742,7 +789,7 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
                     refund_id=refund_id,
                     refund_status=result.get("refund_status"),
                 )
-                host._send_alert(
+                context._send_alert(
                     "[Caption Studio Alert] Manual refund entitlement adjustment required: "
                     f"uid={uid} payment_id={payment_id} refund_id={refund_id}"
                 )

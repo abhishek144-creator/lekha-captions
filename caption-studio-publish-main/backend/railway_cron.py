@@ -20,11 +20,11 @@ import sys
 import time
 
 try:
-    from . import main as api
+    from .application import runtime as api
     from . import worker_launcher
     from . import render_autoscaling
 except ImportError:  # pragma: no cover - run as a script from backend/
-    import main as api
+    from application import runtime as api
     import worker_launcher
     import render_autoscaling
 

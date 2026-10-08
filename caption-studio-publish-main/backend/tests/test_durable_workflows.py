@@ -8,19 +8,20 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch, AsyncMock, Mock
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from google.api_core.exceptions import Aborted
-from transcription_jobs import TranscriptionJobs
-from drafts import delete_project, list_projects, normalize_draft, read_draft, save_draft
-from editor_preferences import (
+from backend.transcription_jobs import TranscriptionJobs
+from backend.drafts import delete_project, list_projects, normalize_draft, read_draft, save_draft
+from backend.editor_preferences import (
     normalize_brand_kits,
     normalize_glossary_terms,
     read_editor_preferences,
     save_editor_preferences,
 )
-import main
+from backend.application import runtime as backend_context
 
 
 class MemoryDatabase:
@@ -52,7 +53,7 @@ class Ref:
     def set(self, data): self.db.data[self.path] = copy.deepcopy(data)
     def update(self, data):
         for key, value in data.items():
-            if isinstance(value, main.firestore.Increment): value = self.db.data[self.path].get(key, 0) + value.value
+            if isinstance(value, backend_context.firestore.Increment): value = self.db.data[self.path].get(key, 0) + value.value
             self.db.data[self.path][key] = value
     def delete(self): self.db.data.pop(self.path, None)
     def limit(self, _): return self
@@ -74,7 +75,7 @@ class Tx:
 class DurableWorkflowTests(unittest.TestCase):
     def setUp(self):
         self.db = MemoryDatabase()
-        self.patch = patch.object(main.firestore, "transactional", self.db.transactional)
+        self.patch = patch.object(backend_context.firestore, "transactional", self.db.transactional)
         self.patch.start()
         self.addCleanup(self.patch.stop)
         self.jobs = TranscriptionJobs(self.db)
@@ -89,14 +90,14 @@ class DurableWorkflowTests(unittest.TestCase):
 
     def test_transient_firestore_abort_retries_durable_admission(self):
         with (patch.object(self.db, "transaction", side_effect=[Aborted("contention"), Tx(self.db)]) as transaction,
-              patch("transcription_jobs.time.sleep")):
+              patch("backend.transcription_jobs.time.sleep")):
             job = self.jobs.create("a", self.settings)
         self.assertEqual(job["status"], "queued")
         self.assertEqual(transaction.call_count, 2)
 
     def test_persistent_firestore_abort_returns_retryable_response(self):
         with (patch.object(self.db, "transaction", side_effect=Aborted("contention")) as transaction,
-              patch("transcription_jobs.time.sleep")):
+              patch("backend.transcription_jobs.time.sleep")):
             with self.assertRaises(HTTPException) as raised:
                 self.jobs.create("a", self.settings)
         self.assertEqual(raised.exception.status_code, 503)
@@ -118,7 +119,7 @@ class DurableWorkflowTests(unittest.TestCase):
         failing_queue = SimpleNamespace(enqueue=lambda *_args, **_kwargs: (_ for _ in ()).throw(ConnectionError()))
         with self.assertRaises(ConnectionError): self.jobs.dispatch(failing_queue)
         self.assertEqual(self.jobs.get("a", job["job_id"])["status"], "queued")
-        with patch("transcription_jobs.time.time", return_value=time.time() + 31):
+        with patch("backend.transcription_jobs.time.time", return_value=time.time() + 31):
             with patch.object(failing_queue, "enqueue", return_value=SimpleNamespace(id="delivery-1")) as enqueue:
                 self.jobs.dispatch(failing_queue)
                 enqueue.assert_called_once()
@@ -129,7 +130,7 @@ class DurableWorkflowTests(unittest.TestCase):
         queue = SimpleNamespace(enqueue=Mock(return_value=delivery), fetch_job=Mock(return_value=delivery))
         started = time.time()
         for cycle in range(21):
-            with patch("transcription_jobs.time.time", return_value=started + cycle * 31):
+            with patch("backend.transcription_jobs.time.time", return_value=started + cycle * 31):
                 self.jobs.dispatch(queue)
         self.assertEqual(self.jobs.get("a", job["job_id"])["status"], "queued")
         queue.enqueue.assert_called_once()
@@ -153,7 +154,7 @@ class DurableWorkflowTests(unittest.TestCase):
         delivery = SimpleNamespace(id="delivery-1", get_status=lambda **_: "queued")
         queue = SimpleNamespace(enqueue=Mock(return_value=delivery), fetch_job=Mock(return_value=None))
         self.jobs.dispatch(queue)
-        with patch("transcription_jobs.time.time", return_value=time.time() + 31):
+        with patch("backend.transcription_jobs.time.time", return_value=time.time() + 31):
             self.jobs.dispatch(queue)
         self.assertEqual(queue.enqueue.call_count, 2)
         self.assertEqual(self.jobs.get("a", job["job_id"])["status"], "queued")
@@ -163,7 +164,7 @@ class DurableWorkflowTests(unittest.TestCase):
         delivery = SimpleNamespace(id="delivery-1")
         queue = SimpleNamespace(enqueue=Mock(return_value=delivery), fetch_job=Mock(side_effect=ConnectionError()))
         self.jobs.dispatch(queue)
-        with patch("transcription_jobs.time.time", return_value=time.time() + 31):
+        with patch("backend.transcription_jobs.time.time", return_value=time.time() + 31):
             with self.assertRaises(ConnectionError):
                 self.jobs.dispatch(queue)
         queue.enqueue.assert_called_once()
@@ -184,7 +185,7 @@ class DurableWorkflowTests(unittest.TestCase):
     def test_crash_after_claim_becomes_unknown_without_replaying_provider(self):
         job = self.jobs.create("a", self.settings)
         self.jobs.claim("a", job["job_id"])
-        with patch("transcription_jobs.time.time", return_value=time.time() + 2200):
+        with patch("backend.transcription_jobs.time.time", return_value=time.time() + 2200):
             queue = SimpleNamespace(enqueue=lambda *_a, **_k: self.fail("uncertain call replayed"))
             self.jobs.dispatch(queue)
         self.assertEqual(self.jobs.get("a", job["job_id"])["status"], "unknown")
@@ -193,10 +194,10 @@ class DurableWorkflowTests(unittest.TestCase):
 
     def test_completed_result_survives_new_store_and_duplicate_worker(self):
         job = self.jobs.create("a", self.settings)
-        with (patch.object(main, "get_db", return_value=self.db), patch.object(main, "_assert_account_not_deleting"),
-              patch.object(main, "_process_video_inline", new_callable=AsyncMock, return_value={"success": True, "captions": [{"text": "result"}]}) as provider):
-            main.run_transcription_job_task("a", job["job_id"])
-            main.run_transcription_job_task("a", job["job_id"])
+        with (patch.object(backend_context, "get_db", return_value=self.db), patch.object(backend_context, "_assert_account_not_deleting"),
+              patch.object(backend_context, "_process_video_inline", new_callable=AsyncMock, return_value={"success": True, "captions": [{"text": "result"}]}) as provider):
+            backend_context.run_transcription_job_task("a", job["job_id"])
+            backend_context.run_transcription_job_task("a", job["job_id"])
             self.assertEqual(provider.call_count, 1)
         recovered = TranscriptionJobs(self.db).create("a", self.settings)
         self.assertEqual(recovered["payload"]["captions"][0]["text"], "result")
@@ -209,20 +210,20 @@ class DurableWorkflowTests(unittest.TestCase):
             calls.append(1)
             if len(calls) == 1: raise ConnectionError()
             return finish(instance, *args, **kwargs)
-        with (patch.object(main, "get_db", return_value=self.db), patch.object(main, "_assert_account_not_deleting"),
-              patch.object(main.time, "sleep"), patch.object(TranscriptionJobs, "finish", new=flaky),
-              patch.object(main, "_process_video_inline", new_callable=AsyncMock, return_value={"success": True}) as provider):
-            main.run_transcription_job_task("a", job["job_id"])
+        with (patch.object(backend_context, "get_db", return_value=self.db), patch.object(backend_context, "_assert_account_not_deleting"),
+              patch.object(backend_context.time, "sleep"), patch.object(TranscriptionJobs, "finish", new=flaky),
+              patch.object(backend_context, "_process_video_inline", new_callable=AsyncMock, return_value={"success": True}) as provider):
+            backend_context.run_transcription_job_task("a", job["job_id"])
             self.assertEqual(provider.call_count, 1)
         self.assertEqual(len(calls), 2)
 
     def test_confirmed_worker_failure_is_retryable_without_reupload(self):
         job = self.jobs.create("a", self.settings)
-        with (patch.object(main, "get_db", return_value=self.db), patch.object(main, "_assert_account_not_deleting"),
-              patch.object(main, "_process_video_inline", new_callable=AsyncMock,
+        with (patch.object(backend_context, "get_db", return_value=self.db), patch.object(backend_context, "_assert_account_not_deleting"),
+              patch.object(backend_context, "_process_video_inline", new_callable=AsyncMock,
                            side_effect=HTTPException(502, "provider unavailable"))):
             with self.assertRaises(HTTPException):
-                main.run_transcription_job_task("a", job["job_id"])
+                backend_context.run_transcription_job_task("a", job["job_id"])
 
         self.assertEqual(self.jobs.get("a", job["job_id"])["status"], "failed")
         retry = self.jobs.create("a", self.settings)
@@ -247,10 +248,10 @@ class DurableWorkflowTests(unittest.TestCase):
         self.assertIsNone(self.jobs.get("b", job["job_id"]))
 
     def test_production_http_returns_pending_then_replays_durable_result(self):
-        with (patch.object(main, "_IS_PRODUCTION", True), patch.object(main, "get_db", return_value=self.db),
-              patch.object(main, "_assert_service_available"), patch.object(main, "_assert_upload_owner"),
-              patch.object(main, "_authenticate_media_request", return_value={"uid": "a"})):
-            client = TestClient(main.app)
+        with (patch.object(backend_context, "_IS_PRODUCTION", True), patch.object(backend_context, "get_db", return_value=self.db),
+              patch.object(backend_context, "_assert_service_available"), patch.object(backend_context, "_assert_upload_owner"),
+              patch.object(backend_context, "_authenticate_media_request", return_value={"uid": "a"})):
+            client = TestClient(backend_context.app)
             first = client.post("/api/process", json=self.settings)
             self.assertEqual(first.status_code, 202)
             self.assertTrue(first.json()["pending"])
@@ -265,10 +266,10 @@ class DurableWorkflowTests(unittest.TestCase):
         job = self.jobs.create("a", self.settings)
         self.jobs.claim("a", job["job_id"])
         self.jobs.finish("a", job["job_id"], "unknown")
-        with (patch.object(main, "_IS_PRODUCTION", True), patch.object(main, "get_db", return_value=self.db),
-              patch.object(main, "_assert_service_available"), patch.object(main, "_assert_upload_owner"),
-              patch.object(main, "_authenticate_media_request", return_value={"uid": "a"})):
-            response = TestClient(main.app).post("/api/process", json=self.settings)
+        with (patch.object(backend_context, "_IS_PRODUCTION", True), patch.object(backend_context, "get_db", return_value=self.db),
+              patch.object(backend_context, "_assert_service_available"), patch.object(backend_context, "_assert_upload_owner"),
+              patch.object(backend_context, "_authenticate_media_request", return_value={"uid": "a"})):
+            response = TestClient(backend_context.app).post("/api/process", json=self.settings)
             self.assertEqual(response.status_code, 409)
             self.assertNotIn("PROCESS_IN_PROGRESS", response.text)
 

@@ -1,8 +1,14 @@
 import os
 import sys
 import unittest
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from main import ExportRequest, processor, _build_parity_signature, _evaluate_export_policy, _resolve_export_preset
+from backend.application import runtime
+ExportRequest = runtime.ExportRequest
+processor = runtime.processor
+_build_parity_signature = runtime._build_parity_signature
+_evaluate_export_policy = runtime._evaluate_export_policy
+_resolve_export_preset = runtime._resolve_export_preset
 
 
 class PreviewExportParityTests(unittest.TestCase):

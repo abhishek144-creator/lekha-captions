@@ -1,26 +1,43 @@
 """Operator routes: recovery summary, alert test, tenant backfill.
 
-Handlers resolve shared helpers through ``host`` (the main module) at call time,
-so there is one copy of each helper and test patches on ``main`` keep applying.
+The factory accepts explicit configuration, adapters and shared state through
+ServiceContext. It has no dependency on the HTTP entry point.
 """
 
-from types import ModuleType, SimpleNamespace
+from types import SimpleNamespace
+from typing import Protocol, Any
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Response
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi import Request
+from fastapi import HTTPException
 from fastapi import APIRouter
 
 
-def create_admin_router(host: ModuleType) -> SimpleNamespace:
+import secrets
+
+class ServiceContext(Protocol):
+    AdminAlertTestRequest: Any
+    AdminRecoveryRequest: Any
+    SENTRY_AVAILABLE: Any
+    SENTRY_DSN: Any
+    TenantBackfillRequest: Any
+    _audit_action: Any
+    _build_slo_snapshot: Any
+    _is_admin_token: Any
+    _json_log: Any
+    _read_system_ai_usage: Any
+    _utcnow: Any
+    firestore: Any
+    get_db: Any
+    sentry_sdk: Any
+
+
+def create_admin_router(context: ServiceContext) -> SimpleNamespace:
     router = APIRouter()
 
     @router.post("/api/admin/recovery-summary")
-    def admin_recovery_summary(req: host.AdminRecoveryRequest):
-        if not host._is_admin_token(req.id_token):
+    def admin_recovery_summary(req: context.AdminRecoveryRequest):
+        if not context._is_admin_token(req.id_token):
             raise HTTPException(status_code=403, detail="Admin access required")
-        db = host.get_db()
+        db = context.get_db()
         if not db:
             raise HTTPException(status_code=503, detail="Database unavailable")
         lim = max(1, min(int(req.limit or 50), 200))
@@ -28,17 +45,17 @@ def create_admin_router(host: ModuleType) -> SimpleNamespace:
         reconcile_runs = []
         failed_queries = []
         try:
-            for doc in db.collection("export_dead_letter").order_by("timestamp", direction=host.firestore.Query.DESCENDING).limit(lim).stream():
+            for doc in db.collection("export_dead_letter").order_by("timestamp", direction=context.firestore.Query.DESCENDING).limit(lim).stream():
                 dead_letter_rows.append(doc.to_dict())
         except Exception as e:
             failed_queries.append("export_dead_letter")
-            host._json_log("error", "recovery_summary_query_failed", collection="export_dead_letter", error=str(e))
+            context._json_log("error", "recovery_summary_query_failed", collection="export_dead_letter", error=str(e))
         try:
-            for doc in db.collection("payment_reconcile_runs").order_by("run_at", direction=host.firestore.Query.DESCENDING).limit(lim).stream():
+            for doc in db.collection("payment_reconcile_runs").order_by("run_at", direction=context.firestore.Query.DESCENDING).limit(lim).stream():
                 reconcile_runs.append(doc.to_dict())
         except Exception as e:
             failed_queries.append("payment_reconcile_runs")
-            host._json_log("error", "recovery_summary_query_failed", collection="payment_reconcile_runs", error=str(e))
+            context._json_log("error", "recovery_summary_query_failed", collection="payment_reconcile_runs", error=str(e))
         if failed_queries:
             raise HTTPException(
                 status_code=503,
@@ -55,28 +72,28 @@ def create_admin_router(host: ModuleType) -> SimpleNamespace:
             "success": True,
             "dead_letter_recent": dead_letter_rows,
             "payment_reconcile_recent": reconcile_runs,
-            "slo": host._build_slo_snapshot(),
-            "ai_system_usage_today": host._read_system_ai_usage(db),
+            "slo": context._build_slo_snapshot(),
+            "ai_system_usage_today": context._read_system_ai_usage(db),
         }
 
 
     @router.post("/api/admin/test-alerts")
-    def admin_test_alerts(req: host.AdminAlertTestRequest):
+    def admin_test_alerts(req: context.AdminAlertTestRequest):
         """Dispatch a controlled Sentry event for launch evidence."""
-        if not host._is_admin_token(req.id_token):
+        if not context._is_admin_token(req.id_token):
             raise HTTPException(status_code=403, detail="Admin access required")
-        test_id = f"alert-test-{host._utcnow().strftime('%Y%m%d-%H%M%S')}-{host.secrets.token_hex(3)}"
+        test_id = f"alert-test-{context._utcnow().strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(3)}"
         sentry_event_id = ""
-        if host.SENTRY_DSN and host.SENTRY_AVAILABLE:
+        if context.SENTRY_DSN and context.SENTRY_AVAILABLE:
             try:
-                sentry_event_id = str(host.sentry_sdk.capture_message(
+                sentry_event_id = str(context.sentry_sdk.capture_message(
                     f"Caption Studio production alert delivery test {test_id}",
                     level="warning",
                 ) or "")
-                host.sentry_sdk.flush(timeout=2.0)
+                context.sentry_sdk.flush(timeout=2.0)
             except Exception as e:
-                host._json_log("warning", "sentry_test_alert_failed", test_id=test_id, error=str(e))
-        host._audit_action("production_alert_test_dispatched", "admin", {
+                context._json_log("warning", "sentry_test_alert_failed", test_id=test_id, error=str(e))
+        context._audit_action("production_alert_test_dispatched", "admin", {
             "test_id": test_id,
             "sentry_dispatched": bool(sentry_event_id),
         })
@@ -99,10 +116,10 @@ def create_admin_router(host: ModuleType) -> SimpleNamespace:
 
 
     @router.post("/api/admin/tenant-backfill")
-    def admin_tenant_backfill(req: host.TenantBackfillRequest):
-        if not host._is_admin_token(req.id_token):
+    def admin_tenant_backfill(req: context.TenantBackfillRequest):
+        if not context._is_admin_token(req.id_token):
             raise HTTPException(status_code=403, detail="Admin access required")
-        db = host.get_db()
+        db = context.get_db()
         if not db:
             raise HTTPException(status_code=503, detail="Database unavailable")
         lim = max(1, min(int(req.limit or 500), 500))
@@ -137,7 +154,7 @@ def create_admin_router(host: ModuleType) -> SimpleNamespace:
             data = doc.to_dict() or {}
             uid = data.get("uid") or doc.id
             org_id = (data.get("org_id") or "").strip()
-            now_iso = host._utcnow().isoformat() + "Z"
+            now_iso = context._utcnow().isoformat() + "Z"
             if not org_id:
                 org_id = f"org_{uid}"
                 queue_set(doc.reference, {"org_id": org_id, "updated_at": now_iso})

@@ -1,71 +1,111 @@
 """Upload ownership/metadata, signed media URLs, media probing and direct-upload slots.
 
-Helpers resolve shared state through ``host`` (the main module) at call
-time, so there is one copy of each helper and test patches on ``main``
-keep applying.
+The factory accepts explicit configuration, adapters and shared state through
+ServiceContext. It has no dependency on the HTTP entry point.
 """
 
-from types import ModuleType, SimpleNamespace
+from types import SimpleNamespace
+from typing import Protocol, Any
+from typing import Dict
+from fastapi import HTTPException
+from typing import List
+from typing import Optional
+import base64
+import hashlib
+import hmac
+import json
+import math
+import os
+import pathlib
+import time
+import uuid
+
+class ServiceContext(Protocol):
+    ALLOWED_EXTENSIONS: Any
+    MEDIA_URL_SIGNING_SECRET: Any
+    TRANSCRIPTION_CACHE_DIR: Any
+    UPLOAD_DIR: Any
+    UploadSecurityService: Any
+    _assert_account_not_deleting: Any
+    _compute_media_hash: Any
+    _create_media_token: Any
+    _json_log: Any
+    _load_upload_metadata: Any
+    _mark_upload_security_state: Any
+    _media_token_signature: Any
+    _redis_client: Any
+    _scan_upload_for_threat: Any
+    _update_upload_metadata: Any
+    _upload_owners: Any
+    _upload_security_service: Any
+    _utcnow: Any
+    _validate_file_id: Any
+    _validate_media_signature: Any
+    delete_from_firebase_storage: Any
+    download_from_firebase_storage: Any
+    get_db: Any
+    run_media_command: Any
+    set_source_upload_state: Any
 
 
-def create_media_records(host: ModuleType) -> SimpleNamespace:
+def create_media_records(context: ServiceContext) -> SimpleNamespace:
     def _validate_file_id(file_id: str) -> bool:
         """Validate file_id is a UUID4 — prevents path traversal via user-supplied IDs."""
         try:
-            host.uuid.UUID(str(file_id))
+            uuid.UUID(str(file_id))
             return True
         except (ValueError, AttributeError):
             return False
 
 
-    def _safe_find_upload(file_id: str) -> host.Optional[str]:
+    def _safe_find_upload(file_id: str) -> Optional[str]:
         """Return the full path of the uploaded file for *file_id*, or None.
     Validates UUID format and guards against directory traversal."""
-        if not host._validate_file_id(file_id):
+        if not context._validate_file_id(file_id):
             return None
-        real_dir = host.os.path.realpath(host.UPLOAD_DIR)
-        for f in host.os.listdir(host.UPLOAD_DIR):
+        real_dir = os.path.realpath(context.UPLOAD_DIR)
+        for f in os.listdir(context.UPLOAD_DIR):
             if f.startswith(file_id):
-                candidate = host.os.path.realpath(host.os.path.join(host.UPLOAD_DIR, f))
-                if candidate.startswith(real_dir + host.os.sep):
-                    return host.os.path.join(host.UPLOAD_DIR, f)
-        metadata = host._load_upload_metadata(file_id)
+                candidate = os.path.realpath(os.path.join(context.UPLOAD_DIR, f))
+                if candidate.startswith(real_dir + os.sep):
+                    return os.path.join(context.UPLOAD_DIR, f)
+        metadata = context._load_upload_metadata(file_id)
         remote_path = str(metadata.get("remote_path") or "")
-        extension = str(metadata.get("extension") or host.pathlib.Path(remote_path).suffix.lstrip(".")).lower()
-        if not remote_path.startswith("uploads/") or extension not in host.ALLOWED_EXTENSIONS:
+        extension = str(metadata.get("extension") or pathlib.Path(remote_path).suffix.lstrip(".")).lower()
+        if not remote_path.startswith("uploads/") or extension not in context.ALLOWED_EXTENSIONS:
             return None
-        target = host.os.path.realpath(host.os.path.join(host.UPLOAD_DIR, f"{file_id}.{extension}"))
-        if not target.startswith(real_dir + host.os.sep):
+        target = os.path.realpath(os.path.join(context.UPLOAD_DIR, f"{file_id}.{extension}"))
+        if not target.startswith(real_dir + os.sep):
             return None
-        partial = f"{target}.part-{host.uuid.uuid4().hex}"
+        partial = f"{target}.part-{uuid.uuid4().hex}"
         try:
-            if not host.download_from_firebase_storage(remote_path, partial):
+            if not context.download_from_firebase_storage(remote_path, partial):
                 return None
-            host.os.replace(partial, target)
+            os.replace(partial, target)
             return target
         finally:
-            if host.os.path.exists(partial):
+            if os.path.exists(partial):
                 try:
-                    host.os.remove(partial)
+                    os.remove(partial)
                 except OSError:
                     pass
         return None
 
 
-    def _load_upload_metadata(file_id: str) -> host.Dict[str, host.Any]:
+    def _load_upload_metadata(file_id: str) -> Dict[str, Any]:
         if not file_id:
             return {}
-        metadata: host.Dict[str, host.Any] = {}
-        if host._redis_client is not None:
+        metadata: Dict[str, Any] = {}
+        if context._redis_client is not None:
             try:
-                raw = host._redis_client.get(f"upload_meta:{file_id}")
+                raw = context._redis_client.get(f"upload_meta:{file_id}")
                 if raw:
-                    metadata = host.json.loads(raw)
+                    metadata = json.loads(raw)
             except Exception:
                 metadata = {}
         if metadata:
             return metadata
-        db = host.get_db()
+        db = context.get_db()
         if db:
             try:
                 snap = db.collection("uploads").document(file_id).get()
@@ -77,30 +117,30 @@ def create_media_records(host: ModuleType) -> SimpleNamespace:
 
 
     def _remember_source_duration(file_id: str, duration_seconds: float):
-        if not host.math.isfinite(duration_seconds) or duration_seconds <= 0:
+        if not math.isfinite(duration_seconds) or duration_seconds <= 0:
             return
-        if host._redis_client is not None:
+        if context._redis_client is not None:
             try:
-                host._redis_client.setex(f"upload_duration:{file_id}", 24 * 3600, duration_seconds)
+                context._redis_client.setex(f"upload_duration:{file_id}", 24 * 3600, duration_seconds)
             except Exception as error:
-                host._json_log("warning", "upload_duration_cache_failed", error=type(error).__name__)
-        db = host.get_db()
+                context._json_log("warning", "upload_duration_cache_failed", error=type(error).__name__)
+        db = context.get_db()
         if db:
             try:
                 db.collection("uploads").document(file_id).set(
                     {"duration_seconds": duration_seconds}, merge=True,
                 )
             except Exception as error:
-                host._json_log("warning", "upload_duration_persist_failed", error=type(error).__name__)
+                context._json_log("warning", "upload_duration_persist_failed", error=type(error).__name__)
 
 
     def _source_duration_hint(file_id: str, uid: str) -> float:
-        metadata = host._load_upload_metadata(file_id)
+        metadata = context._load_upload_metadata(file_id)
         if str(metadata.get("uid") or "") != str(uid):
             return 0
-        if host._redis_client is not None:
+        if context._redis_client is not None:
             try:
-                cached = host._redis_client.get(f"upload_duration:{file_id}")
+                cached = context._redis_client.get(f"upload_duration:{file_id}")
                 if cached is not None:
                     return float(cached)
             except Exception:
@@ -112,151 +152,151 @@ def create_media_records(host: ModuleType) -> SimpleNamespace:
 
 
     def _remember_upload_owner(file_id: str, uid: str, remote_path: str = "", extension: str = "",
-                               source_metadata: host.Optional[host.Dict[str, host.Any]] = None):
+                               source_metadata: Optional[Dict[str, Any]] = None):
         if not file_id or not uid:
             return False
-        host._assert_account_not_deleting(uid)
-        host._upload_owners[file_id] = uid
+        context._assert_account_not_deleting(uid)
+        context._upload_owners[file_id] = uid
         persisted = False
         metadata = {
             "file_id": file_id,
             "uid": uid,
             "remote_path": remote_path,
             "extension": extension,
-            "created_at": host._utcnow().isoformat() + "Z",
+            "created_at": context._utcnow().isoformat() + "Z",
             **(source_metadata or {}),
         }
-        if host._redis_client is not None:
+        if context._redis_client is not None:
             try:
-                host._redis_client.setex(f"upload_owner:{file_id}", 24 * 3600, uid)
-                host._redis_client.setex(f"upload_meta:{file_id}", 24 * 3600, host.json.dumps(metadata))
+                context._redis_client.setex(f"upload_owner:{file_id}", 24 * 3600, uid)
+                context._redis_client.setex(f"upload_meta:{file_id}", 24 * 3600, json.dumps(metadata))
                 persisted = True
             except Exception:
                 pass
-        db = host.get_db()
+        db = context.get_db()
         if db:
             try:
                 db.collection("uploads").document(file_id).set(metadata, merge=True)
                 persisted = True
             except Exception as e:
-                host._json_log("warning", "upload_owner_persist_failed", file_id=file_id, uid=uid, error=str(e))
+                context._json_log("warning", "upload_owner_persist_failed", file_id=file_id, uid=uid, error=str(e))
         return persisted
 
 
-    def _update_upload_metadata(file_id: str, values: host.Dict[str, host.Any]) -> host.Dict[str, host.Any]:
-        metadata = {**host._load_upload_metadata(file_id), **values}
-        if host._redis_client is not None:
+    def _update_upload_metadata(file_id: str, values: Dict[str, Any]) -> Dict[str, Any]:
+        metadata = {**context._load_upload_metadata(file_id), **values}
+        if context._redis_client is not None:
             try:
-                host._redis_client.setex(f"upload_meta:{file_id}", 24 * 3600, host.json.dumps(metadata))
+                context._redis_client.setex(f"upload_meta:{file_id}", 24 * 3600, json.dumps(metadata))
             except Exception as error:
-                host._json_log("warning", "upload_metadata_cache_failed", file_id=file_id,
+                context._json_log("warning", "upload_metadata_cache_failed", file_id=file_id,
                           error_type=type(error).__name__)
-        db = host.get_db()
+        db = context.get_db()
         if db:
             db.collection("uploads").document(file_id).set(values, merge=True)
         return metadata
 
 
     def _mark_upload_security_state(file_id: str, uid: str, state: str,
-                                    *, scanned_at: str = "") -> host.Dict[str, host.Any]:
-        values: host.Dict[str, host.Any] = {"upload_state": state}
+                                    *, scanned_at: str = "") -> Dict[str, Any]:
+        values: Dict[str, Any] = {"upload_state": state}
         if scanned_at:
             values["security_scanned_at"] = scanned_at
-        metadata = host._update_upload_metadata(file_id, values)
+        metadata = context._update_upload_metadata(file_id, values)
         remote_path = str(metadata.get("remote_path") or "")
         if remote_path:
-            host.set_source_upload_state(uid, file_id, remote_path, state)
+            context.set_source_upload_state(uid, file_id, remote_path, state)
         return metadata
 
 
-    def _assert_upload_clean(file_id: str) -> host.Dict[str, host.Any]:
-        return host._upload_security_service().assert_clean(file_id)
+    def _assert_upload_clean(file_id: str) -> Dict[str, Any]:
+        return context._upload_security_service().assert_clean(file_id)
 
 
-    def _ensure_upload_clean(file_id: str, uid: str, input_path: str) -> host.Dict[str, host.Any]:
-        return host._upload_security_service().ensure_clean(file_id, uid, input_path)
+    def _ensure_upload_clean(file_id: str, uid: str, input_path: str) -> Dict[str, Any]:
+        return context._upload_security_service().ensure_clean(file_id, uid, input_path)
 
 
     def _source_media_identity(file_id: str, input_path: str) -> str:
-        return host._upload_security_service().source_identity(file_id, input_path)
+        return context._upload_security_service().source_identity(file_id, input_path)
 
 
     def _assert_upload_owner(file_id: str, uid: str):
         if not file_id or not uid:
-            raise host.HTTPException(status_code=401, detail="Authentication required")
-        owner = host._upload_owners.get(file_id)
-        if not owner and host._redis_client is not None:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        owner = context._upload_owners.get(file_id)
+        if not owner and context._redis_client is not None:
             try:
-                owner = host._redis_client.get(f"upload_owner:{file_id}") or ""
+                owner = context._redis_client.get(f"upload_owner:{file_id}") or ""
             except Exception:
                 owner = ""
         if not owner:
-            owner = str(host._load_upload_metadata(file_id).get("uid") or "")
+            owner = str(context._load_upload_metadata(file_id).get("uid") or "")
         if not owner:
             # Ownership must be provable. Failing open here lets any authenticated
             # caller reuse a known upload UUID after a restart or metadata outage.
-            raise host.HTTPException(status_code=403, detail="Upload ownership could not be verified")
+            raise HTTPException(status_code=403, detail="Upload ownership could not be verified")
         if owner != uid:
-            raise host.HTTPException(status_code=403, detail="You do not have access to this upload")
+            raise HTTPException(status_code=403, detail="You do not have access to this upload")
 
 
     def _media_token_signature(payload_b64: str) -> str:
-        secret = host.MEDIA_URL_SIGNING_SECRET.encode("utf-8")
-        return host.hmac.new(secret, payload_b64.encode("utf-8"), host.hashlib.sha256).hexdigest()
+        secret = context.MEDIA_URL_SIGNING_SECRET.encode("utf-8")
+        return hmac.new(secret, payload_b64.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
-    def _create_media_token(payload: host.Dict[str, host.Any]) -> str:
-        payload_b64 = host.base64.urlsafe_b64encode(
-            host.json.dumps(payload, separators=(",", ":"), default=str).encode("utf-8")
+    def _create_media_token(payload: Dict[str, Any]) -> str:
+        payload_b64 = base64.urlsafe_b64encode(
+            json.dumps(payload, separators=(",", ":"), default=str).encode("utf-8")
         ).decode("ascii").rstrip("=")
-        return f"{payload_b64}.{host._media_token_signature(payload_b64)}"
+        return f"{payload_b64}.{context._media_token_signature(payload_b64)}"
 
 
-    def _verify_media_token(token: str, expected_kind: str) -> host.Dict[str, host.Any]:
+    def _verify_media_token(token: str, expected_kind: str) -> Dict[str, Any]:
         try:
             payload_b64, supplied_sig = (token or "").split(".", 1)
         except ValueError:
-            raise host.HTTPException(status_code=401, detail="Invalid media token")
-        expected_sig = host._media_token_signature(payload_b64)
-        if not supplied_sig or not host.hmac.compare_digest(expected_sig, supplied_sig):
-            raise host.HTTPException(status_code=401, detail="Invalid media token")
+            raise HTTPException(status_code=401, detail="Invalid media token")
+        expected_sig = context._media_token_signature(payload_b64)
+        if not supplied_sig or not hmac.compare_digest(expected_sig, supplied_sig):
+            raise HTTPException(status_code=401, detail="Invalid media token")
         try:
             padded = payload_b64 + ("=" * (-len(payload_b64) % 4))
-            payload = host.json.loads(host.base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8"))
+            payload = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8"))
         except Exception:
-            raise host.HTTPException(status_code=401, detail="Invalid media token")
+            raise HTTPException(status_code=401, detail="Invalid media token")
         if payload.get("kind") != expected_kind:
-            raise host.HTTPException(status_code=403, detail="Media token is not valid for this resource")
-        if int(payload.get("exp", 0) or 0) < int(host.time.time()):
-            raise host.HTTPException(status_code=401, detail="Media token expired")
+            raise HTTPException(status_code=403, detail="Media token is not valid for this resource")
+        if int(payload.get("exp", 0) or 0) < int(time.time()):
+            raise HTTPException(status_code=401, detail="Media token expired")
         return payload
 
 
     def _signed_upload_url(file_id: str, uid: str, ttl_seconds: int = 6 * 3600) -> str:
-        token = host._create_media_token({
+        token = context._create_media_token({
             "kind": "upload",
             "uid": uid,
             "file_id": file_id,
-            "exp": int(host.time.time() + ttl_seconds),
+            "exp": int(time.time() + ttl_seconds),
         })
         return f"/api/media/upload/{file_id}?token={token}"
 
 
     def _signed_export_url(filename: str, uid: str, ttl_seconds: int, cache_bust: str = "",
                            download_filename: str = "") -> str:
-        token = host._create_media_token({
+        token = context._create_media_token({
             "kind": "export",
             "uid": uid,
             "filename": filename,
             **({"download_filename": download_filename[:180]} if download_filename else {}),
-            "exp": int(host.time.time() + max(ttl_seconds, 60)),
+            "exp": int(time.time() + max(ttl_seconds, 60)),
         })
         suffix = f"&v={cache_bust}" if cache_bust else ""
         return f"/api/media/export/{filename}?token={token}{suffix}"
 
 
     def _compute_media_hash(file_path: str) -> str:
-        digest = host.hashlib.sha256()
+        digest = hashlib.sha256()
         with open(file_path, "rb") as f:
             while True:
                 chunk = f.read(1024 * 1024)
@@ -266,32 +306,32 @@ def create_media_records(host: ModuleType) -> SimpleNamespace:
         return digest.hexdigest()
 
 
-    def _upload_security_service() -> host.UploadSecurityService:
-        return host.UploadSecurityService(
-            load_metadata=host._load_upload_metadata,
-            mark_state=host._mark_upload_security_state,
-            scan=host._scan_upload_for_threat,
-            delete_remote=host.delete_from_firebase_storage,
-            utc_timestamp=lambda: host._utcnow().isoformat() + "Z",
-            compute_hash=host._compute_media_hash,
-            update_metadata=host._update_upload_metadata,
+    def _upload_security_service() -> context.UploadSecurityService:
+        return context.UploadSecurityService(
+            load_metadata=context._load_upload_metadata,
+            mark_state=context._mark_upload_security_state,
+            scan=context._scan_upload_for_threat,
+            delete_remote=context.delete_from_firebase_storage,
+            utc_timestamp=lambda: context._utcnow().isoformat() + "Z",
+            compute_hash=context._compute_media_hash,
+            update_metadata=context._update_upload_metadata,
         )
 
 
     def _build_process_cache_path(media_hash: str, language: str, min_words: int, max_words: int) -> str:
         key = f"{media_hash}:{language.lower()}:{min_words}:{max_words}"
-        key_hash = host.hashlib.sha256(key.encode("utf-8")).hexdigest()
-        return host.os.path.join(host.TRANSCRIPTION_CACHE_DIR, f"{key_hash}.json")
+        key_hash = hashlib.sha256(key.encode("utf-8")).hexdigest()
+        return os.path.join(context.TRANSCRIPTION_CACHE_DIR, f"{key_hash}.json")
 
 
-    def _build_parity_signature(captions: host.List[host.Dict[str, host.Any]], style: host.Dict[str, host.Any], word_layouts: host.Dict[str, host.Any]) -> str:
+    def _build_parity_signature(captions: List[Dict[str, Any]], style: Dict[str, Any], word_layouts: Dict[str, Any]) -> str:
         payload = {
             "captions": captions,
             "style": style,
             "word_layouts": word_layouts,
         }
-        canonical = host.json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True, default=str)
-        return host.hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True, default=str)
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
     def _validate_media_signature(file_path: str):
@@ -308,19 +348,19 @@ def create_media_records(host: ModuleType) -> SimpleNamespace:
             raise ValueError("Unsupported or malformed media signature.")
 
 
-    def _probe_media(file_path: str) -> host.Dict[str, host.Any]:
-        host._validate_media_signature(file_path)
+    def _probe_media(file_path: str) -> Dict[str, Any]:
+        context._validate_media_signature(file_path)
         cmd = [
             "ffprobe", "-v", "error",
             "-show_entries", "format=duration,format_name",
             "-show_entries", "stream=codec_type,codec_name,width,height,duration",
             "-of", "json", file_path
         ]
-        result = host.run_media_command(cmd, capture_output=True, text=True)
+        result = context.run_media_command(cmd, capture_output=True, text=True)
         if result.returncode != 0:
             raise ValueError("Unable to inspect media file with ffprobe.")
         try:
-            meta = host.json.loads(result.stdout or "{}")
+            meta = json.loads(result.stdout or "{}")
         except Exception:
             raise ValueError("Invalid ffprobe output.")
         streams = meta.get("streams", []) or []
@@ -332,7 +372,7 @@ def create_media_records(host: ModuleType) -> SimpleNamespace:
             duration = float((meta.get("format") or {}).get("duration") or 0)
         except Exception:
             duration = 0.0
-        if not host.math.isfinite(duration) or duration <= 0:
+        if not math.isfinite(duration) or duration <= 0:
             raise ValueError("Media duration is invalid.")
         for stream in streams:
             if stream.get("codec_type") == "video":

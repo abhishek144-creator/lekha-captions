@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 from backend import firebase_admin_setup as storage_helpers
-from backend import main
+from backend.application import runtime as backend_context
 
 
 class MediaCleanupTests(unittest.TestCase):
@@ -34,13 +34,13 @@ class MediaCleanupTests(unittest.TestCase):
             os.utime(old_cache, (now - 8 * 86400, now - 8 * 86400))
 
             with (
-                patch.object(main, "UPLOAD_DIR", paths["uploads"]),
-                patch.object(main, "EXPORT_DIR", paths["exports"]),
-                patch.object(main, "TRANSCRIPTION_CACHE_DIR", paths["transcriptions"]),
-                patch.object(main, "RENDER_CACHE_DIR", paths["renders"]),
-                patch.object(main, "DEAD_LETTER_DIR", paths["dead_letter"]),
+                patch.object(backend_context, "UPLOAD_DIR", paths["uploads"]),
+                patch.object(backend_context, "EXPORT_DIR", paths["exports"]),
+                patch.object(backend_context, "TRANSCRIPTION_CACHE_DIR", paths["transcriptions"]),
+                patch.object(backend_context, "RENDER_CACHE_DIR", paths["renders"]),
+                patch.object(backend_context, "DEAD_LETTER_DIR", paths["dead_letter"]),
             ):
-                metrics = main.cleanup_local_media_artifacts(now)
+                metrics = backend_context.cleanup_local_media_artifacts(now)
 
             self.assertFalse(os.path.exists(old_upload))
             self.assertFalse(os.path.exists(old_export))

@@ -1,7 +1,7 @@
 """Razorpay payment routes: order creation, client verification, webhooks, reconciliation.
 
-Handlers resolve shared helpers through ``host`` (the main module) at call time so
-entitlement logic stays in one place and test patches on ``main`` keep applying.
+The factory accepts explicit configuration, adapters and shared state through
+ServiceContext. It has no dependency on the HTTP entry point.
 """
 
 import asyncio
@@ -11,43 +11,89 @@ import json
 import secrets
 import time
 import uuid
-from types import ModuleType, SimpleNamespace
+from types import SimpleNamespace
+from typing import Protocol, Any
 
 from fastapi import APIRouter, HTTPException, Request, Response
 
 
-def create_payments_router(host: ModuleType) -> SimpleNamespace:
+
+
+class ServiceContext(Protocol):
+    CreateOrderRequest: Any
+    PAYMENT_RATE_LIMIT: Any
+    PLAN_PRICING: Any
+    RAZORPAY_AVAILABLE: Any
+    RAZORPAY_KEY_ID: Any
+    RAZORPAY_KEY_SECRET: Any
+    RAZORPAY_WEBHOOK_SECRET: Any
+    ReconcilePaymentsRequest: Any
+    VerifyPaymentRequest: Any
+    _IS_DEVELOPMENT: Any
+    _apply_rate_headers: Any
+    _apply_refund_webhook_event: Any
+    _apply_successful_payment: Any
+    _assert_service_available: Any
+    _assert_tenant_access: Any
+    _assert_topup_purchase_available: Any
+    _audit_action: Any
+    _can_trigger_reconcile: Any
+    _check_rate: Any
+    _client_rate_key: Any
+    _effective_subscription_tier: Any
+    _fetch_bound_order_context: Any
+    _json_log: Any
+    _payment_idem_claim: Any
+    _payment_idem_delete: Any
+    _payment_idem_get: Any
+    _payment_idem_set: Any
+    _payment_rate: Any
+    _release_topup_order_slot: Any
+    _require_payment_idempotency: Any
+    _reserve_topup_order_slot: Any
+    _resolve_plan_from_amount_currency: Any
+    _retention_deadline: Any
+    _tenant_id_from_token: Any
+    _track_event: Any
+    _utcnow: Any
+    get_db: Any
+    reconcile_payments_once: Any
+    rzp_client: Any
+    verify_token: Any
+
+
+def create_payments_router(context: ServiceContext) -> SimpleNamespace:
     router = APIRouter()
-    CreateOrderRequest = host.CreateOrderRequest
-    VerifyPaymentRequest = host.VerifyPaymentRequest
-    ReconcilePaymentsRequest = host.ReconcilePaymentsRequest
+    CreateOrderRequest = context.CreateOrderRequest
+    VerifyPaymentRequest = context.VerifyPaymentRequest
+    ReconcilePaymentsRequest = context.ReconcilePaymentsRequest
 
     @router.post("/api/create-order")
     def create_order(req: CreateOrderRequest, request: Request, response: Response):
-        if req.require_test_mode and not host.RAZORPAY_KEY_ID.startswith("rzp_test_"):
+        if req.require_test_mode and not context.RAZORPAY_KEY_ID.startswith("rzp_test_"):
             raise HTTPException(409, "Payment test refused: test-mode credentials required")
         # Verify User
-        decoded_token = host.verify_token(req.id_token)
+        decoded_token = context.verify_token(req.id_token)
         if not decoded_token:
             raise HTTPException(status_code=401, detail="Invalid Authentication Token")
         uid = decoded_token.get("uid", "")
-        host._assert_tenant_access(uid, decoded_token, req.org_id)
+        context._assert_tenant_access(uid, decoded_token, req.org_id)
         # Check the durable operator switch before contacting Razorpay. This makes
         # emergency payment shutdown immediate and guarantees no order is created.
-        host._assert_service_available("pause_payments")
-        client_ip = host._client_rate_key(request)
+        context._assert_service_available("pause_payments")
+        client_ip = context._client_rate_key(request)
         for rate_key in (f"payment:user:{uid}", f"payment:ip:{client_ip}"):
-            allowed, retry_after, remaining = host._check_rate(host._payment_rate, rate_key, host.PAYMENT_RATE_LIMIT)
-            host._apply_rate_headers(response, host.PAYMENT_RATE_LIMIT, remaining, retry_after)
+            allowed, retry_after, remaining = context._check_rate(context._payment_rate, rate_key, context.PAYMENT_RATE_LIMIT)
+            context._apply_rate_headers(response, context.PAYMENT_RATE_LIMIT, remaining, retry_after)
             if not allowed:
                 raise HTTPException(status_code=429, detail="Too many payment requests. Please wait before trying again.")
-        pay_idem_key = host._require_payment_idempotency(uid, req.idempotency_key or request.headers.get("x-idempotency-key", ""), "create_order")
-        cached_payment = host._payment_idem_get(pay_idem_key)
+        pay_idem_key = context._require_payment_idempotency(uid, req.idempotency_key or request.headers.get("x-idempotency-key", ""), "create_order")
+        cached_payment = context._payment_idem_get(pay_idem_key)
         if cached_payment and cached_payment.get("status") == "completed":
             return {**cached_payment["payload"], "idempotent_replay": True}
-        host._audit_action("create_order_attempt", uid, {"plan_id": req.plan_id, "currency": req.currency})
+        context._audit_action("create_order_attempt", uid, {"plan_id": req.plan_id, "currency": req.currency})
 
-        plan = host.PLAN_PRICING.get(req.plan_id)
+        plan = context.PLAN_PRICING.get(req.plan_id)
         if not plan:
             raise HTTPException(status_code=400, detail=f"Unknown plan: {req.plan_id}")
         if plan.get("is_free"):
@@ -58,14 +104,14 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
         topup_reservation_id = ""
         # Top-up: validate caller's current tier before creating order
         if plan.get('is_topup'):
-            topup_db = host.get_db()
+            topup_db = context.get_db()
             if not topup_db:
                 raise HTTPException(status_code=503, detail="Account service unavailable; top-up order was not created")
             uid_tmp = decoded_token.get('uid')
             topup_user_ref = topup_db.collection('users').document(uid_tmp)
             ud = topup_user_ref.get()
             user_data_tmp = ud.to_dict() or {} if ud.exists else {}
-            user_tier_tmp = host._effective_subscription_tier(user_data_tmp) if ud.exists else 'free'
+            user_tier_tmp = context._effective_subscription_tier(user_data_tmp) if ud.exists else 'free'
             # Strip _yearly suffix for comparison
             base_tier = user_tier_tmp.replace('_yearly', '')
             if base_tier not in ['starter', 'creator', 'pro']:
@@ -73,23 +119,23 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
             expected = f"topup_{base_tier}"
             if req.plan_id != expected:
                 raise HTTPException(status_code=403, detail="This top-up is not available for your current plan.")
-            host._assert_topup_purchase_available(user_data_tmp, plan)
-        if not host._payment_idem_claim(pay_idem_key):
-            concurrent = host._payment_idem_get(pay_idem_key)
+            context._assert_topup_purchase_available(user_data_tmp, plan)
+        if not context._payment_idem_claim(pay_idem_key):
+            concurrent = context._payment_idem_get(pay_idem_key)
             if concurrent and concurrent.get("status") == "completed":
                 return {**concurrent["payload"], "idempotent_replay": True}
             raise HTTPException(status_code=409, detail="A payment order with this idempotency key is already in progress.")
 
         if plan.get('is_topup'):
             try:
-                topup_reservation_id = host._reserve_topup_order_slot(
+                topup_reservation_id = context._reserve_topup_order_slot(
                     topup_db,
                     topup_user_ref,
                     req.plan_id,
                     plan,
                 )
             except Exception:
-                host._payment_idem_delete(pay_idem_key)
+                context._payment_idem_delete(pay_idem_key)
                 raise
 
         currency = req.currency.upper() if req.currency else "INR"
@@ -100,12 +146,12 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
         else:
             amount = plan.get('usd_cents', plan['inr_paise'])
 
-        if not host.RAZORPAY_AVAILABLE or host.rzp_client is None:
+        if not context.RAZORPAY_AVAILABLE or context.rzp_client is None:
             if topup_db is not None and topup_user_ref is not None:
-                host._release_topup_order_slot(topup_db, topup_user_ref, topup_reservation_id)
-            host._payment_idem_delete(pay_idem_key)
+                context._release_topup_order_slot(topup_db, topup_user_ref, topup_reservation_id)
+            context._payment_idem_delete(pay_idem_key)
             detail = "Payment service unavailable"
-            if host._IS_DEVELOPMENT and (not host.RAZORPAY_KEY_ID or not host.RAZORPAY_KEY_SECRET):
+            if context._IS_DEVELOPMENT and (not context.RAZORPAY_KEY_ID or not context.RAZORPAY_KEY_SECRET):
                 detail = "Payment service is not configured. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET, then restart the backend."
             raise HTTPException(status_code=503, detail=detail)
 
@@ -117,54 +163,54 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
                 "notes": {
                     "uid": uid,
                     "plan_id": req.plan_id,
-                    "org_id": req.org_id or host._tenant_id_from_token(decoded_token),
+                    "org_id": req.org_id or context._tenant_id_from_token(decoded_token),
                     "source": "create_order",
                     **({"topup_reservation_id": topup_reservation_id} if topup_reservation_id else {}),
                 }
             }
-            order = host.rzp_client.order.create(data=order_data)
+            order = context.rzp_client.order.create(data=order_data)
         except Exception as e:
             if topup_db is not None and topup_user_ref is not None:
                 try:
-                    host._release_topup_order_slot(topup_db, topup_user_ref, topup_reservation_id)
+                    context._release_topup_order_slot(topup_db, topup_user_ref, topup_reservation_id)
                 except Exception as release_error:
-                    host._json_log(
+                    context._json_log(
                         "warning",
                         "topup_reservation_release_failed",
                         uid=uid,
                         reservation_id=topup_reservation_id,
                         error=str(release_error),
                     )
-            host._payment_idem_delete(pay_idem_key)
-            host._json_log("error", "razorpay_order_create_failed", uid=uid, plan_id=req.plan_id, error=str(e))
+            context._payment_idem_delete(pay_idem_key)
+            context._json_log("error", "razorpay_order_create_failed", uid=uid, plan_id=req.plan_id, error=str(e))
             raise HTTPException(status_code=502, detail="Payment order could not be created. Please try again.") from e
 
-        payload = {"success": True, "order": order, "plan_id": req.plan_id, "key_id": host.RAZORPAY_KEY_ID}
-        host._payment_idem_set(pay_idem_key, {"status": "completed", "ts": time.time(), "payload": payload})
+        payload = {"success": True, "order": order, "plan_id": req.plan_id, "key_id": context.RAZORPAY_KEY_ID}
+        context._payment_idem_set(pay_idem_key, {"status": "completed", "ts": time.time(), "payload": payload})
         return payload
 
     @router.post("/api/verify-payment")
     def verify_payment(req: VerifyPaymentRequest, request: Request, response: Response):
-        if not host.RAZORPAY_AVAILABLE or host.rzp_client is None:
+        if not context.RAZORPAY_AVAILABLE or context.rzp_client is None:
             raise HTTPException(status_code=503, detail="Payment service unavailable")
 
         # Verify User
-        decoded_token = host.verify_token(req.id_token)
+        decoded_token = context.verify_token(req.id_token)
         if not decoded_token:
             raise HTTPException(status_code=401, detail="Invalid Authentication Token")
         uid = decoded_token.get('uid')
-        host._assert_tenant_access(uid, decoded_token, req.org_id)
-        client_ip = host._client_rate_key(request)
+        context._assert_tenant_access(uid, decoded_token, req.org_id)
+        client_ip = context._client_rate_key(request)
         for rate_key in (f"payment:user:{uid}", f"payment:ip:{client_ip}"):
-            allowed, retry_after, remaining = host._check_rate(host._payment_rate, rate_key, host.PAYMENT_RATE_LIMIT)
-            host._apply_rate_headers(response, host.PAYMENT_RATE_LIMIT, remaining, retry_after)
+            allowed, retry_after, remaining = context._check_rate(context._payment_rate, rate_key, context.PAYMENT_RATE_LIMIT)
+            context._apply_rate_headers(response, context.PAYMENT_RATE_LIMIT, remaining, retry_after)
             if not allowed:
                 raise HTTPException(status_code=429, detail="Too many payment requests. Please wait before trying again.")
-        pay_idem_key = host._require_payment_idempotency(uid, req.idempotency_key or request.headers.get("x-idempotency-key", ""), "verify_payment")
-        cached_payment = host._payment_idem_get(pay_idem_key)
+        pay_idem_key = context._require_payment_idempotency(uid, req.idempotency_key or request.headers.get("x-idempotency-key", ""), "verify_payment")
+        cached_payment = context._payment_idem_get(pay_idem_key)
         if cached_payment and cached_payment.get("status") == "completed":
             return {**cached_payment["payload"], "idempotent_replay": True}
-        host._audit_action("verify_payment_attempt", uid, {"plan_id": req.plan_id, "order_id": req.razorpay_order_id})
+        context._audit_action("verify_payment_attempt", uid, {"plan_id": req.plan_id, "order_id": req.razorpay_order_id})
 
         # Verify Signature
         try:
@@ -173,17 +219,17 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
                 'razorpay_payment_id': req.razorpay_payment_id,
                 'razorpay_signature': req.razorpay_signature
             }
-            host.rzp_client.utility.verify_payment_signature(params_dict)
+            context.rzp_client.utility.verify_payment_signature(params_dict)
         except Exception as e:
             raise HTTPException(status_code=400, detail="Payment verification failed")
         # Resolve plan from echoed plan_id, then prove the live Razorpay payment/order
         # actually match that plan before granting credits.
-        plan_config = host.PLAN_PRICING.get(req.plan_id) if req.plan_id else None
+        plan_config = context.PLAN_PRICING.get(req.plan_id) if req.plan_id else None
         currency_paid = "INR"
         amount_paid_minor = plan_config.get("inr_paise", 0) if plan_config else 0
 
         try:
-            payment_live = host.rzp_client.payment.fetch(req.razorpay_payment_id)
+            payment_live = context.rzp_client.payment.fetch(req.razorpay_payment_id)
             currency_paid = payment_live.get('currency', currency_paid)
             amount_paid_minor = payment_live.get('amount', amount_paid_minor)
         except Exception as e:
@@ -191,7 +237,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
 
         payment_order_id = (payment_live.get("order_id") or "").strip()
         if payment_order_id != req.razorpay_order_id:
-            host._json_log(
+            context._json_log(
                 "warning",
                 "payment_order_mismatch",
                 uid=uid,
@@ -203,7 +249,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
 
         payment_status = (payment_live.get("status") or "").lower()
         if payment_status != "captured":
-            host._json_log(
+            context._json_log(
                 "warning",
                 "payment_not_captured",
                 uid=uid,
@@ -214,14 +260,14 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
             raise HTTPException(status_code=400, detail="Payment is not captured yet.")
 
         try:
-            order_live = host.rzp_client.order.fetch(req.razorpay_order_id)
+            order_live = context.rzp_client.order.fetch(req.razorpay_order_id)
         except Exception as e:
             raise HTTPException(status_code=502, detail="Unable to verify payment order with Razorpay") from e
 
         order_amount = int(order_live.get("amount", 0) or 0)
         order_currency = (order_live.get("currency") or "").upper()
         if order_amount != int(amount_paid_minor or 0) or order_currency != (currency_paid or "").upper():
-            host._json_log(
+            context._json_log(
                 "warning",
                 "payment_order_amount_mismatch",
                 uid=uid,
@@ -248,20 +294,20 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
 
         if not req.plan_id and order_plan_id:
             req.plan_id = order_plan_id
-            plan_config = host.PLAN_PRICING.get(req.plan_id)
+            plan_config = context.PLAN_PRICING.get(req.plan_id)
         if not plan_config:
-            req.plan_id = host._resolve_plan_from_amount_currency(int(amount_paid_minor or 0), currency_paid) or ""
-            plan_config = host.PLAN_PRICING.get(req.plan_id)
+            req.plan_id = context._resolve_plan_from_amount_currency(int(amount_paid_minor or 0), currency_paid) or ""
+            plan_config = context.PLAN_PRICING.get(req.plan_id)
         if not plan_config:
             raise HTTPException(status_code=400, detail="Unable to resolve purchased plan")
 
-        if not host._payment_idem_claim(pay_idem_key):
-            concurrent = host._payment_idem_get(pay_idem_key)
+        if not context._payment_idem_claim(pay_idem_key):
+            concurrent = context._payment_idem_get(pay_idem_key)
             if concurrent and concurrent.get("status") == "completed":
                 return {**concurrent["payload"], "idempotent_replay": True}
             raise HTTPException(status_code=409, detail="Payment verification with this idempotency key is already in progress.")
 
-        payload = host._apply_successful_payment(
+        payload = context._apply_successful_payment(
             uid=uid,
             plan_id=req.plan_id,
             payment_id=req.razorpay_payment_id,
@@ -269,17 +315,17 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
             amount_minor=int(amount_paid_minor or 0),
             currency=currency_paid,
             source="client_verify",
-            org_id=req.org_id or host._tenant_id_from_token(decoded_token),
+            org_id=req.org_id or context._tenant_id_from_token(decoded_token),
             topup_reservation_id=str(order_notes.get("topup_reservation_id") or "").strip(),
             order_amount_validated=True,
             order_created_at=int(order_live.get("created_at") or 0),
         )
-        host._payment_idem_set(pay_idem_key, {"status": "completed", "ts": time.time(), "payload": payload})
+        context._payment_idem_set(pay_idem_key, {"status": "completed", "ts": time.time(), "payload": payload})
         return payload
 
     @router.post("/api/razorpay-webhook")
     async def razorpay_webhook(request: Request):
-        if not host.RAZORPAY_WEBHOOK_SECRET:
+        if not context.RAZORPAY_WEBHOOK_SECRET:
             raise HTTPException(status_code=503, detail="Webhook secret not configured")
 
         declared_length = int(request.headers.get("content-length", "0") or 0)
@@ -295,7 +341,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
 
     def _handle_razorpay_webhook(body_bytes: bytes, signature: str):
         expected = hmac.new(
-            host.RAZORPAY_WEBHOOK_SECRET.encode("utf-8"),
+            context.RAZORPAY_WEBHOOK_SECRET.encode("utf-8"),
             body_bytes,
             hashlib.sha256
         ).hexdigest()
@@ -318,7 +364,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
         status = payment_entity.get("status", "")
         notes = payment_entity.get("notes") or {}
 
-        db = host.get_db()
+        db = context.get_db()
         webhook_ref = None
         if db:
             try:
@@ -334,9 +380,9 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
                     "status": status,
                     "refund_status": refund_entity.get("status", ""),
                     "notes": notes,
-                    "received_at": host._utcnow().isoformat() + "Z",
+                    "received_at": context._utcnow().isoformat() + "Z",
                     "reconcile_required": event == "payment.captured" and status == "captured",
-                    "expire_at": host._retention_deadline(90),
+                    "expire_at": context._retention_deadline(90),
                 }, merge=True)
             except Exception as e:
                 print(f"[Webhook] Failed to persist webhook event: {e}")
@@ -345,10 +391,10 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
             if not db:
                 raise HTTPException(status_code=503, detail="Database unavailable")
             refund_payment_id = str(refund_entity.get("payment_id") or payment_id or "").strip()
-            if not refund_payment_id or not host.RAZORPAY_AVAILABLE or host.rzp_client is None:
+            if not refund_payment_id or not context.RAZORPAY_AVAILABLE or context.rzp_client is None:
                 raise HTTPException(status_code=503, detail="Refund payment verification is unavailable")
             try:
-                refund_payment_live = host.rzp_client.payment.fetch(refund_payment_id)
+                refund_payment_live = context.rzp_client.payment.fetch(refund_payment_id)
             except Exception as e:
                 # A non-2xx response asks Razorpay to retry instead of acknowledging a
                 # refund whose entitlement owner could not be established safely.
@@ -356,7 +402,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
             refund_order_id = str(refund_payment_live.get("order_id") or "").strip()
             refund_amount_paid = int(refund_payment_live.get("amount", 0) or 0)
             refund_currency = str(refund_payment_live.get("currency") or "INR").upper()
-            refund_context = host._fetch_bound_order_context(
+            refund_context = context._fetch_bound_order_context(
                 refund_order_id,
                 refund_amount_paid,
                 refund_currency,
@@ -370,11 +416,11 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
                         "notes": refund_context,
                     })
                 except Exception as e:
-                    host._json_log("warning", "refund_webhook_context_persist_failed", payment_id=refund_payment_id, error=str(e))
-            return host._apply_refund_webhook_event(db, event, refund_entity, refund_payment_bound)
+                    context._json_log("warning", "refund_webhook_context_persist_failed", payment_id=refund_payment_id, error=str(e))
+            return context._apply_refund_webhook_event(db, event, refund_entity, refund_payment_bound)
 
         if event == "payment.failed":
-            host._track_event("payment_failed", {
+            context._track_event("payment_failed", {
                 "payment_id": payment_id,
                 "order_id": order_id,
                 "currency": currency,
@@ -387,7 +433,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
 
         # Resolve the entitlement from the server-created order. Payment notes are
         # not authoritative and are commonly empty in payment.captured payloads.
-        order_context = host._fetch_bound_order_context(order_id, amount_minor, currency)
+        order_context = context._fetch_bound_order_context(order_id, amount_minor, currency)
         uid = order_context["uid"]
         plan_id = order_context["plan_id"]
         org_id = order_context["org_id"]
@@ -396,9 +442,9 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
             try:
                 webhook_ref.update({"notes": order_context})
             except Exception as e:
-                host._json_log("warning", "payment_webhook_context_persist_failed", payment_id=payment_id, error=str(e))
+                context._json_log("warning", "payment_webhook_context_persist_failed", payment_id=payment_id, error=str(e))
 
-        result = host._apply_successful_payment(
+        result = context._apply_successful_payment(
             uid=uid,
             plan_id=plan_id,
             payment_id=payment_id or f"webhook_{uuid.uuid4().hex[:12]}",
@@ -415,17 +461,17 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
             try:
                 webhook_ref.update({
                     "reconcile_required": False,
-                    "reconciled_at": host._utcnow().isoformat() + "Z",
+                    "reconciled_at": context._utcnow().isoformat() + "Z",
                 })
             except Exception as e:
-                host._json_log("warning", "payment_webhook_reconcile_mark_failed", payment_id=payment_id, error=str(e))
+                context._json_log("warning", "payment_webhook_reconcile_mark_failed", payment_id=payment_id, error=str(e))
         return {"success": True, "applied": True, "result": result}
 
     @router.post("/api/reconcile-payments")
     def reconcile_payments(req: ReconcilePaymentsRequest, request: Request):
-        if not host._can_trigger_reconcile(request, req):
+        if not context._can_trigger_reconcile(request, req):
             raise HTTPException(status_code=403, detail="Not authorized to run reconciliation")
-        summary = host.reconcile_payments_once(
+        summary = context.reconcile_payments_once(
             reason="manual",
             lookback_hours=req.lookback_hours,
             limit=req.limit,

@@ -10,14 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from rq import Worker
 
 try:
-    from . import main as api
-    from .main import (
-        EXPORT_QUEUE_NAME,
-        TRANSCRIPTION_QUEUE_NAME,
-        MEDIA_SCAN_QUEUE_NAME,
-        REDIS_URL,
-        cleanup_local_media_artifacts,
-    )
+    from .application import runtime as api
     from .release_metadata import release_metadata
     from .gcp_scale_in import ScaleInProtector
     from .gcp_queue_metrics import publish_worker_cold_start
@@ -25,14 +18,7 @@ try:
     from .idle_connections import disconnect_idle_redis_clients
     from .worker_launcher import WorkerLease
 except ImportError:  # Direct execution from backend/ remains supported.
-    import main as api
-    from main import (
-        EXPORT_QUEUE_NAME,
-        TRANSCRIPTION_QUEUE_NAME,
-        MEDIA_SCAN_QUEUE_NAME,
-        REDIS_URL,
-        cleanup_local_media_artifacts,
-    )
+    from application import runtime as api
     from release_metadata import release_metadata
     from gcp_scale_in import ScaleInProtector
     from gcp_queue_metrics import publish_worker_cold_start
@@ -40,6 +26,12 @@ except ImportError:  # Direct execution from backend/ remains supported.
     from idle_connections import disconnect_idle_redis_clients
     from worker_launcher import WorkerLease
 
+
+EXPORT_QUEUE_NAME = api.EXPORT_QUEUE_NAME
+TRANSCRIPTION_QUEUE_NAME = api.TRANSCRIPTION_QUEUE_NAME
+MEDIA_SCAN_QUEUE_NAME = api.MEDIA_SCAN_QUEUE_NAME
+REDIS_URL = api.REDIS_URL
+cleanup_local_media_artifacts = api.cleanup_local_media_artifacts
 
 WORKER_STATE = {"heartbeat_at": 0.0, "draining": False}
 LOCAL_CLEANUP_INTERVAL_SECONDS = 15 * 60

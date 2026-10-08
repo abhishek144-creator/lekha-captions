@@ -1,10 +1,8 @@
 import fs from "fs"
 import path from "path"
 
-// Routes are split out of backend/main.py into backend/*_api.py modules (plus
-// billing.py), and its helpers into the host-pattern modules listed below.
-// Those modules reach shared helpers as `host.<name>` and register on `router`;
-// both are normalised back so contract strings match either home.
+// Source contracts cover composition, settings and every registered service.
+// Context access and router declarations are normalized to their API spelling.
 const HOST_HELPER_MODULES = new Set([
   "api_models.py",
   "billing.py",
@@ -24,9 +22,9 @@ export function readBackendApiSource(root) {
   const modules = fs.readdirSync(backendDir)
     .filter((name) => name.endsWith("_api.py") || HOST_HELPER_MODULES.has(name))
     .sort()
-  return ["main.py", ...modules]
+  return ["main.py", "application.py", "runtime_settings.py", "application_dependencies.py", "environment.py", "application_lifecycle.py", "worker_tasks.py", ...modules]
     .map((name) => fs.readFileSync(path.join(backendDir, name), "utf8"))
     .join("\n")
-    .replace(/\bhost\./g, "")
+    .replace(/\b(host|context)\./g, "")
     .replace(/@router\./g, "@app.")
 }

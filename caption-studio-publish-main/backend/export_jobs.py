@@ -1,47 +1,136 @@
 """Export job records, credit/usage accounting, request sanitising and the render job core.
 
-Helpers resolve shared state through ``host`` (the main module) at call
-time, so there is one copy of each helper and test patches on ``main``
-keep applying.
+The factory accepts explicit configuration, adapters and shared state through
+ServiceContext. It has no dependency on the HTTP entry point.
 """
 
-from types import ModuleType, SimpleNamespace
+from types import SimpleNamespace
+from typing import Protocol, Any
+from typing import Dict
+from fastapi import HTTPException
+from typing import List
+from typing import Optional
+from fastapi import Request
+import asyncio
+from datetime import date
+from datetime import datetime
+import json
+import math
+import os
+import re
+import shutil
+import time
+from datetime import timedelta
+from datetime import timezone
+import urllib.request
+import urllib.parse
+
+class ServiceContext(Protocol):
+    ALLOW_EXPORT_WITHOUT_DB: Any
+    CACHE_DIR: Any
+    DEAD_LETTER_DIR: Any
+    DISABLE_EXPORT_CREDIT_LIMIT: Any
+    DISABLE_EXPORT_DAILY_LIMIT: Any
+    EXPORT_DIR: Any
+    EXPORT_RENDERER_VERSION: Any
+    EXPORT_SLOT_WAIT_INTERVAL_SECONDS: Any
+    EXPORT_SLOT_WAIT_MAX_ATTEMPTS: Any
+    ExportRequest: Any
+    FREE_PLAN_CREDITS: Any
+    FREE_PLAN_ID: Any
+    JOB_STATE_LOCK: Any
+    PLAN_PRICING: Any
+    RENDER_CACHE_DIR: Any
+    RENDER_COST_ESTIMATE_PER_MEDIA_MINUTE_USD: Any
+    RQRetry: Any
+    _CLIENT_RENDER_HINT_FIELDS: Any
+    _DURABLE_ONLY_EXPORT_JOB_FIELDS: Any
+    _IS_PRODUCTION: Any
+    _assert_account_not_deleting: Any
+    _assert_upload_clean: Any
+    _assert_upload_owner: Any
+    _evaluate_export_policy: Any
+    _export_jobs: Any
+    _export_queue: Any
+    _extract_bearer_token: Any
+    _is_explicit_dev_auth_token: Any
+    _json_log: Any
+    _load_export_job: Any
+    _load_recorded_export_result: Any
+    _log: Any
+    _mark_export_processing: Any
+    _normalize_export_captions_for_media: Any
+    _normalize_free_credit_balance: Any
+    _normalize_tier_name: Any
+    _persist_export_job: Any
+    _probe_media: Any
+    _record_export_usage: Any
+    _redis_client: Any
+    _resolve_export_preset: Any
+    _retention_deadline: Any
+    _safe_find_upload: Any
+    _set_export_job: Any
+    _signed_export_url: Any
+    _source_media_identity: Any
+    _strip_client_render_hints: Any
+    _subscription_is_expired: Any
+    _track_event: Any
+    _track_operational_metric_sample: Any
+    _utcnow: Any
+    _validate_file_id: Any
+    _write_last_export_request_debug: Any
+    create_notification: Any
+    delete_from_firebase_storage: Any
+    delete_render_cache: Any
+    download_render_cache: Any
+    firestore: Any
+    get_db: Any
+    processor: Any
+    render_cache_eligible: Any
+    render_cache_identity: Any
+    render_semaphore: Any
+    s3_storage_configured: Any
+    signed_export_download_url: Any
+    transition_export_job: Any
+    upload_render_cache: Any
+    upload_to_firebase_storage: Any
+    verify_token: Any
 
 
-def create_export_jobs(host: ModuleType) -> SimpleNamespace:
-    def _persist_export_job(job_id: str, payload: host.Dict[str, host.Any], *, write_redis: bool = True) -> bool:
+def create_export_jobs(context: ServiceContext) -> SimpleNamespace:
+    def _persist_export_job(job_id: str, payload: Dict[str, Any], *, write_redis: bool = True) -> bool:
         """Persist job state to at least one cross-process store."""
-        persisted = not write_redis and host._redis_client is not None
-        if write_redis and host._redis_client is not None:
+        persisted = not write_redis and context._redis_client is not None
+        if write_redis and context._redis_client is not None:
             try:
-                host._redis_client.setex(
+                context._redis_client.setex(
                     f"export_job:{job_id}",
                     7 * 24 * 3600,
-                    host.json.dumps(payload, default=str),
+                    json.dumps(payload, default=str),
                 )
                 persisted = True
             except Exception as e:
-                host._json_log("warning", "export_job_redis_persist_failed", job_id=job_id, error=str(e))
+                context._json_log("warning", "export_job_redis_persist_failed", job_id=job_id, error=str(e))
 
-        db = host.get_db()
+        db = context.get_db()
         if db:
             for attempt in range(2):
                 try:
                     ref = db.collection("export_jobs").document(job_id)
-                    if host._redis_client is not None:
-                        @host.firestore.transactional
+                    if context._redis_client is not None:
+                        @context.firestore.transactional
                         def mirror(transaction):
                             current = ref.get(transaction=transaction)
                             revision = int((current.to_dict() or {}).get("revision", 0)) if current.exists else 0
                             if revision < int(payload.get("revision", 0)):
-                                transaction.set(ref, {**payload, "expire_at": host._retention_deadline(7)}, merge=True)
+                                transaction.set(ref, {**payload, "expire_at": context._retention_deadline(7)}, merge=True)
                         mirror(db.transaction())
                     else:
-                        ref.set({**payload, "expire_at": host._retention_deadline(7)}, merge=True)
+                        ref.set({**payload, "expire_at": context._retention_deadline(7)}, merge=True)
                     persisted = True
                     break
                 except Exception as e:
-                    host._json_log(
+                    context._json_log(
                         "warning",
                         "export_job_firestore_persist_failed",
                         job_id=job_id,
@@ -49,41 +138,41 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
                         error=str(e),
                     )
                     if attempt == 0:
-                        host.time.sleep(0.05)
+                        time.sleep(0.05)
         return persisted
 
 
-    def _load_export_job(job_id: str) -> host.Optional[host.Dict[str, host.Any]]:
+    def _load_export_job(job_id: str) -> Optional[Dict[str, Any]]:
         """Load authoritative shared state, falling back to local state in local mode."""
-        if host._redis_client is not None:
+        if context._redis_client is not None:
             try:
-                raw = host._redis_client.get(f"export_job:{job_id}")
+                raw = context._redis_client.get(f"export_job:{job_id}")
                 if raw:
-                    job = host.json.loads(raw)
-                    host._export_jobs[job_id] = job
+                    job = json.loads(raw)
+                    context._export_jobs[job_id] = job
                     return job
             except Exception as e:
-                host._json_log("warning", "export_job_redis_load_failed", job_id=job_id, error=str(e))
+                context._json_log("warning", "export_job_redis_load_failed", job_id=job_id, error=str(e))
 
-        db = host.get_db()
+        db = context.get_db()
         if db:
             try:
                 snap = db.collection("export_jobs").document(job_id).get()
                 if snap.exists:
                     job = snap.to_dict() or {}
-                    host._export_jobs[job_id] = job
+                    context._export_jobs[job_id] = job
                     return job
             except Exception as e:
-                host._json_log("warning", "export_job_firestore_load_failed", job_id=job_id, error=str(e))
-        if (host._IS_PRODUCTION or host._export_queue is not None) and job_id in host._export_jobs:
-            raise host.HTTPException(status_code=503, detail="Export job status is temporarily unavailable")
-        return host._export_jobs.get(job_id)
+                context._json_log("warning", "export_job_firestore_load_failed", job_id=job_id, error=str(e))
+        if (context._IS_PRODUCTION or context._export_queue is not None) and job_id in context._export_jobs:
+            raise HTTPException(status_code=503, detail="Export job status is temporarily unavailable")
+        return context._export_jobs.get(job_id)
 
 
-    def _evaluate_export_policy(user_data: host.Dict[str, host.Any], now_ts: float):
+    def _evaluate_export_policy(user_data: Dict[str, Any], now_ts: float):
         if user_data.get("deletion_pending"):
             return False, "Account deletion is in progress.", []
-        tier = host._normalize_tier_name(user_data.get('subscription_tier', 'free'))
+        tier = context._normalize_tier_name(user_data.get('subscription_tier', 'free'))
         try:
             credits = int(user_data.get('credits_remaining', 0) or 0)
         except (TypeError, ValueError):
@@ -91,24 +180,24 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
             # bypass. Account bootstrap repairs only missing free balances.
             credits = 0
         credits = max(0, credits)
-        if tier == host.FREE_PLAN_ID:
+        if tier == context.FREE_PLAN_ID:
             # Never let a stale/manual legacy value turn the Free plan into an
             # unbounded entitlement. Account bootstrap also persists this repair.
-            credits = host._normalize_free_credit_balance(credits)
+            credits = context._normalize_free_credit_balance(credits)
         export_history = user_data.get('export_timestamps', []) or []
         recent_exports = [ts for ts in export_history if ts > (now_ts - 86400)]
 
-        plan_time_expired = host._subscription_is_expired(user_data)
+        plan_time_expired = context._subscription_is_expired(user_data)
         if tier != 'free' and plan_time_expired:
             return False, "PLAN_EXPIRED: Your plan has expired. Please renew to continue exporting.", recent_exports
 
-        if credits <= 0 and not host.DISABLE_EXPORT_CREDIT_LIMIT:
+        if credits <= 0 and not context.DISABLE_EXPORT_CREDIT_LIMIT:
             return False, "UPGRADE_REQUIRED: You have no credits remaining. Please upgrade your plan to continue exporting.", recent_exports
 
         # Temporary escape hatch during export debugging: keep credit checks, but do not
         # block local verification on daily export quota until parity issues are closed.
-        if not host.DISABLE_EXPORT_DAILY_LIMIT:
-            daily_limit = host.PLAN_PRICING.get(tier, {}).get('daily_limit', 5)
+        if not context.DISABLE_EXPORT_DAILY_LIMIT:
+            daily_limit = context.PLAN_PRICING.get(tier, {}).get('daily_limit', 5)
             if daily_limit is not None and len(recent_exports) >= int(daily_limit):
                 return False, f"Limit reached: You can only export {daily_limit} videos per 24 hours.", recent_exports
 
@@ -118,14 +207,14 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
     def _record_export_usage(
         db,
         user_ref,
-        history_item: host.Dict[str, host.Any],
+        history_item: Dict[str, Any],
         now_ts: float,
         export_job_id: str,
-        result_payload: host.Optional[host.Dict[str, host.Any]] = None,
+        result_payload: Optional[Dict[str, Any]] = None,
     ):
         usage_ref = user_ref.collection("export_usage").document(export_job_id)
 
-        @host.firestore.transactional
+        @context.firestore.transactional
         def _record(transaction):
             usage_doc = usage_ref.get(transaction=transaction)
             if usage_doc.exists:
@@ -133,29 +222,29 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
 
             user_doc = user_ref.get(transaction=transaction)
             if not user_doc.exists:
-                raise host.HTTPException(status_code=409, detail="Account changed while the export was processing")
+                raise HTTPException(status_code=409, detail="Account changed while the export was processing")
             current_user = user_doc.to_dict() or {}
-            allowed, policy_error, recent_exports = host._evaluate_export_policy(current_user, now_ts)
+            allowed, policy_error, recent_exports = context._evaluate_export_policy(current_user, now_ts)
             if not allowed:
                 status = 403 if "UPGRADE_REQUIRED" in policy_error or "PLAN_EXPIRED" in policy_error else 429
-                raise host.HTTPException(status_code=status, detail=policy_error)
+                raise HTTPException(status_code=status, detail=policy_error)
 
             history = [history_item, *(current_user.get("history", []) or [])]
             dropped_history = history[5:]
             user_update = {"history": history[:5]}
-            if not host.DISABLE_EXPORT_CREDIT_LIMIT:
-                current_tier = host._normalize_tier_name(current_user.get("subscription_tier", "free"))
-                if current_tier == host.FREE_PLAN_ID:
+            if not context.DISABLE_EXPORT_CREDIT_LIMIT:
+                current_tier = context._normalize_tier_name(current_user.get("subscription_tier", "free"))
+                if current_tier == context.FREE_PLAN_ID:
                     # Set an exact bounded value so a corrupt Free balance such as
                     # 73 is repaired on the first metered export instead of merely
                     # becoming 72 and remaining exploitable.
-                    bounded_balance = host._normalize_free_credit_balance(
+                    bounded_balance = context._normalize_free_credit_balance(
                         current_user.get("credits_remaining", 0),
                     )
                     user_update["credits_remaining"] = max(0, bounded_balance - 1)
                 else:
-                    user_update["credits_remaining"] = host.firestore.Increment(-1)
-            if not host.DISABLE_EXPORT_DAILY_LIMIT:
+                    user_update["credits_remaining"] = context.firestore.Increment(-1)
+            if not context.DISABLE_EXPORT_DAILY_LIMIT:
                 user_update["export_timestamps"] = [*recent_exports, now_ts]
             transaction.create(usage_ref, {
                 "export_job_id": export_job_id,
@@ -163,8 +252,8 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
                 # The debit and its recoverable output commit together. Job-state
                 # storage can fail afterwards without losing this customer's result.
                 "result_payload": result_payload or {},
-                "recorded_at": host.datetime.now(host.timezone.utc),
-                "expire_at": host.datetime.now(host.timezone.utc) + host.timedelta(days=400),
+                "recorded_at": datetime.now(timezone.utc),
+                "expire_at": datetime.now(timezone.utc) + timedelta(days=400),
             })
             transaction.update(user_ref, user_update)
             return dropped_history
@@ -173,10 +262,10 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
 
 
     def _load_recorded_export_result(uid: str, export_job_id: str, file_id: str):
-        database = host.get_db()
+        database = context.get_db()
         if database is None:
-            if host._IS_PRODUCTION:
-                raise host.HTTPException(503, "Export recovery storage is temporarily unavailable")
+            if context._IS_PRODUCTION:
+                raise HTTPException(503, "Export recovery storage is temporarily unavailable")
             return None
         snapshot = database.collection("users").document(uid).collection("export_usage").document(export_job_id).get()
         record = snapshot.to_dict() if snapshot.exists else {}
@@ -189,33 +278,33 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
 
 
     def _set_export_job(job_id: str, status: str, *, expected_status=None, **kwargs):
-        with host.JOB_STATE_LOCK:
+        with context.JOB_STATE_LOCK:
             durable_only = {}
-            keep_out_of_redis = host._redis_client is not None and host.get_db() is not None
+            keep_out_of_redis = context._redis_client is not None and context.get_db() is not None
             if keep_out_of_redis:
                 durable_only = {
                     field: kwargs.pop(field)
-                    for field in host._DURABLE_ONLY_EXPORT_JOB_FIELDS
+                    for field in context._DURABLE_ONLY_EXPORT_JOB_FIELDS
                     if field in kwargs
                 }
-            seed = host._load_export_job(job_id) or {}
+            seed = context._load_export_job(job_id) or {}
             if keep_out_of_redis:
                 # A Redis-loss recovery seeds from Firestore; do not copy its
                 # snapshot back into Redis.
-                seed = {key: value for key, value in seed.items() if key not in host._DURABLE_ONLY_EXPORT_JOB_FIELDS}
-            payload = host.transition_export_job(host._redis_client, job_id, seed, {
-                "status": status, "updated_at": host.time.time(), **kwargs,
+                seed = {key: value for key, value in seed.items() if key not in context._DURABLE_ONLY_EXPORT_JOB_FIELDS}
+            payload = context.transition_export_job(context._redis_client, job_id, seed, {
+                "status": status, "updated_at": time.time(), **kwargs,
             }, expected_status=expected_status)
-            persisted = host._persist_export_job(
-                job_id, {**payload, **durable_only}, write_redis=host._redis_client is None,
+            persisted = context._persist_export_job(
+                job_id, {**payload, **durable_only}, write_redis=context._redis_client is None,
             )
-            if host._export_queue is not None and not persisted:
+            if context._export_queue is not None and not persisted:
                 raise RuntimeError("Export job state could not be persisted to shared storage")
-            host._export_jobs[job_id] = payload
+            context._export_jobs[job_id] = payload
             return payload
 
 
-    def _refresh_completed_export_payload(payload: host.Dict[str, host.Any], uid: str, job_id: str) -> host.Dict[str, host.Any]:
+    def _refresh_completed_export_payload(payload: Dict[str, Any], uid: str, job_id: str) -> Dict[str, Any]:
         """Return an authorized recovery payload with a fresh, short-lived download token."""
         refreshed = dict(payload or {})
         if not refreshed.get("success"):
@@ -224,8 +313,8 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
         filename = str(refreshed.get("export_filename") or "").strip()
         if not filename:
             raw_url = str(refreshed.get("video_url") or "")
-            filename = host.os.path.basename(host.urllib.parse.urlsplit(raw_url).path)
-        if not host.re.fullmatch(r"export_[a-f0-9-]{36}_[a-f0-9]{12}\.mp4", filename):
+            filename = os.path.basename(urllib.parse.urlsplit(raw_url).path)
+        if not re.fullmatch(r"export_[a-f0-9-]{36}_[a-f0-9]{12}\.mp4", filename):
             return refreshed
 
         # Completed-job receipts live longer than the original media token so a
@@ -233,34 +322,34 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
         # credit. Storage retention remains authoritative: this token only grants a
         # brief retry window and the media endpoint still returns 404 after cleanup.
         recovery_ttl_seconds = 15 * 60
-        refreshed["video_url"] = host._signed_export_url(
+        refreshed["video_url"] = context._signed_export_url(
             filename,
             uid,
             recovery_ttl_seconds,
-            f"{job_id[:8]}-{int(host.time.time())}",
+            f"{job_id[:8]}-{int(time.time())}",
             str(refreshed.get("download_filename") or ""),
         )
         # Fetching API -> R2 redirects changes the browser Origin to null. Give the
         # authenticated owner a direct R2 URL, with the same brief retry window.
         refreshed.pop("download_url", None)
-        if host.s3_storage_configured():
+        if context.s3_storage_configured():
             desired_filename = refreshed.get("download_filename")
-            direct_url = (host.signed_export_download_url(f"exports/{uid}/{filename}", recovery_ttl_seconds, desired_filename)
-                          if desired_filename else host.signed_export_download_url(f"exports/{uid}/{filename}", recovery_ttl_seconds))
+            direct_url = (context.signed_export_download_url(f"exports/{uid}/{filename}", recovery_ttl_seconds, desired_filename)
+                          if desired_filename else context.signed_export_download_url(f"exports/{uid}/{filename}", recovery_ttl_seconds))
             if not direct_url:
-                raise host.HTTPException(status_code=503, detail="Export download is temporarily unavailable. Resume to retry.")
+                raise HTTPException(status_code=503, detail="Export download is temporarily unavailable. Resume to retry.")
             refreshed["download_url"] = direct_url
         refreshed["download_url_expires_at"] = (
-            host._utcnow() + host.timedelta(seconds=recovery_ttl_seconds)
+            context._utcnow() + timedelta(seconds=recovery_ttl_seconds)
         ).isoformat() + "Z"
         return refreshed
 
 
     def _normalize_export_captions_for_media(
-        captions: host.List[host.Dict[str, host.Any]], media_duration: float
-    ) -> host.List[host.Dict[str, host.Any]]:
-        if not host.math.isfinite(media_duration) or media_duration <= 0:
-            raise host.HTTPException(status_code=422, detail="Source media duration is invalid")
+        captions: List[Dict[str, Any]], media_duration: float
+    ) -> List[Dict[str, Any]]:
+        if not math.isfinite(media_duration) or media_duration <= 0:
+            raise HTTPException(status_code=422, detail="Source media duration is invalid")
 
         normalized = []
         for caption in captions:
@@ -268,13 +357,13 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
             start = float(item.get("start_time", 0))
             end = float(item.get("end_time", 0))
             if start >= media_duration:
-                raise host.HTTPException(
+                raise HTTPException(
                     status_code=422,
                     detail="A caption starts at or after the end of the source media",
                 )
             item["end_time"] = min(end, media_duration)
             if item["end_time"] <= start:
-                raise host.HTTPException(
+                raise HTTPException(
                     status_code=422,
                     detail="A caption has no renderable duration within the source media",
                 )
@@ -282,46 +371,46 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
         return normalized
 
 
-    def _write_dead_letter(job_id: str, reason: str, payload: host.Optional[host.Dict[str, host.Any]] = None):
+    def _write_dead_letter(job_id: str, reason: str, payload: Optional[Dict[str, Any]] = None):
         data = {
             "job_id": job_id,
             "reason": reason,
             "payload": payload or {},
-            "timestamp": host._utcnow().isoformat() + "Z",
+            "timestamp": context._utcnow().isoformat() + "Z",
         }
         try:
-            with open(host.os.path.join(host.DEAD_LETTER_DIR, f"{job_id}.json"), "w", encoding="utf-8") as f:
-                host.json.dump(data, f)
+            with open(os.path.join(context.DEAD_LETTER_DIR, f"{job_id}.json"), "w", encoding="utf-8") as f:
+                json.dump(data, f)
         except Exception as e:
-            host._json_log("warning", "dead_letter_file_write_failed", job_id=job_id, error=str(e))
+            context._json_log("warning", "dead_letter_file_write_failed", job_id=job_id, error=str(e))
 
-        db = host.get_db()
+        db = context.get_db()
         if db:
             try:
                 db.collection("export_dead_letter").document(job_id).set(
-                    {**data, "expire_at": host._retention_deadline(30)}, merge=True
+                    {**data, "expire_at": context._retention_deadline(30)}, merge=True
                 )
             except Exception as e:
-                host._json_log("warning", "dead_letter_db_write_failed", job_id=job_id, error=str(e))
+                context._json_log("warning", "dead_letter_db_write_failed", job_id=job_id, error=str(e))
 
 
-    def _strip_client_render_hints(value: host.Any) -> host.Any:
+    def _strip_client_render_hints(value: Any) -> Any:
         """Return editor state without browser-derived rendering measurements."""
         if isinstance(value, dict):
             return {
-                key: host._strip_client_render_hints(item)
+                key: context._strip_client_render_hints(item)
                 for key, item in value.items()
-                if key not in host._CLIENT_RENDER_HINT_FIELDS
+                if key not in context._CLIENT_RENDER_HINT_FIELDS
             }
         if isinstance(value, list):
-            return [host._strip_client_render_hints(item) for item in value]
+            return [context._strip_client_render_hints(item) for item in value]
         return value
 
 
-    def _sanitize_export_request_payload(payload: host.Optional[host.Dict[str, host.Any]]) -> host.Dict[str, host.Any]:
+    def _sanitize_export_request_payload(payload: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         if not isinstance(payload, dict):
             return {}
-        sanitized = host._strip_client_render_hints(payload)
+        sanitized = context._strip_client_render_hints(payload)
         sanitized.pop("id_token", None)
         sanitized.pop("idempotency_key", None)
         # Retain the compatibility field for worker model validation, but make its
@@ -336,20 +425,20 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
         file_id: str,
         quality: str,
         fps: int,
-        style: host.Dict[str, host.Any],
-        captions: host.List[host.Dict[str, host.Any]],
-        word_layouts: host.Dict[str, host.Any],
+        style: Dict[str, Any],
+        captions: List[Dict[str, Any]],
+        word_layouts: Dict[str, Any],
     ) -> None:
         """Write the last export request style so template handoff bugs are inspectable."""
         try:
             first_caption = next((c for c in captions if c and not c.get("is_text_element")), {})
             should_use_dom = False
             try:
-                should_use_dom = bool(host.processor._should_use_dom_template_renderer(style, captions))
+                should_use_dom = bool(context.processor._should_use_dom_template_renderer(style, captions))
             except Exception:
                 should_use_dom = False
             debug_payload = {
-                "renderer_version": host.EXPORT_RENDERER_VERSION,
+                "renderer_version": context.EXPORT_RENDERER_VERSION,
                 "export_job_id": export_job_id,
                 "file_id": file_id,
                 "quality": quality,
@@ -420,63 +509,63 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
                 "captions_count": len(captions),
                 "word_layout_count": len(word_layouts or {}),
                 "should_use_dom_template_renderer": should_use_dom,
-                "written_at": host._utcnow().isoformat() + "Z",
+                "written_at": context._utcnow().isoformat() + "Z",
             }
-            with open(host.os.path.join(host.CACHE_DIR, "last_export_request_debug.json"), "w", encoding="utf-8") as f:
-                host.json.dump(debug_payload, f, indent=2, ensure_ascii=False)
+            with open(os.path.join(context.CACHE_DIR, "last_export_request_debug.json"), "w", encoding="utf-8") as f:
+                json.dump(debug_payload, f, indent=2, ensure_ascii=False)
         except Exception as e:
-            host._json_log("warning", "last_export_request_debug_write_failed", error=str(e))
+            context._json_log("warning", "last_export_request_debug_write_failed", error=str(e))
 
 
-    def _extract_bearer_token(request: host.Request) -> str:
+    def _extract_bearer_token(request: Request) -> str:
         auth_header = (request.headers.get("authorization") or "").strip()
         if auth_header.lower().startswith("bearer "):
             return auth_header[7:].strip()
         return (request.headers.get("x-id-token") or "").strip()
 
 
-    def _require_export_job_access(request: host.Request, job: host.Dict[str, host.Any]) -> str:
+    def _require_export_job_access(request: Request, job: Dict[str, Any]) -> str:
         owner_uid = (job.get("uid") or "").strip()
         if not owner_uid:
-            raise host.HTTPException(status_code=404, detail="Export job owner not found")
+            raise HTTPException(status_code=404, detail="Export job owner not found")
 
-        token = host._extract_bearer_token(request)
-        if host._is_explicit_dev_auth_token(token) and owner_uid == "dev-local-user":
+        token = context._extract_bearer_token(request)
+        if context._is_explicit_dev_auth_token(token) and owner_uid == "dev-local-user":
             return owner_uid
 
-        decoded = host.verify_token(token) if token else None
+        decoded = context.verify_token(token) if token else None
         if decoded:
             request_uid = (decoded.get("uid") or "").strip()
             if request_uid != owner_uid:
-                raise host.HTTPException(status_code=403, detail="You do not have access to this export job")
+                raise HTTPException(status_code=403, detail="You do not have access to this export job")
             return request_uid
 
-        db = host.get_db()
-        if db is None and host._is_explicit_dev_auth_token(token) and owner_uid == "dev-local-user":
+        db = context.get_db()
+        if db is None and context._is_explicit_dev_auth_token(token) and owner_uid == "dev-local-user":
             return owner_uid
-        raise host.HTTPException(status_code=401, detail="Authentication required")
+        raise HTTPException(status_code=401, detail="Authentication required")
 
 
     def _mark_export_processing(export_job_id: str):
-        processing_started_at = host.time.time()
-        job = host._load_export_job(export_job_id) or {}
+        processing_started_at = time.time()
+        job = context._load_export_job(export_job_id) or {}
         # Preserve admission time across queue waits and retries. Starting the clock
         # in the renderer hid the backlog from the end-to-end export SLO.
         queue_entered_at = float(job.get("queue_entered_at") or job.get("started_at") or processing_started_at)
         queue_wait_ms = job.get("queue_wait_ms")
         if queue_wait_ms is None:
             queue_wait_ms = max(0, int((processing_started_at - queue_entered_at) * 1000))
-        host._set_export_job(export_job_id, "processing", queue_entered_at=queue_entered_at,
+        context._set_export_job(export_job_id, "processing", queue_entered_at=queue_entered_at,
                         processing_started_at=processing_started_at, queue_wait_ms=queue_wait_ms)
         return queue_entered_at, processing_started_at
 
 
-    async def _process_export_job_core(req: host.ExportRequest, uid: str, rid: str, export_job_id: str):
-        host._assert_account_not_deleting(uid)
-        queue_entered_at, processing_started_at = host._mark_export_processing(export_job_id)
-        db = host.get_db()
+    async def _process_export_job_core(req: context.ExportRequest, uid: str, rid: str, export_job_id: str):
+        context._assert_account_not_deleting(uid)
+        queue_entered_at, processing_started_at = context._mark_export_processing(export_job_id)
+        db = context.get_db()
         db_available = db is not None
-        now = host.time.time()
+        now = time.time()
         recent_exports = []
         credits = 999
         user_data = {}
@@ -487,14 +576,14 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
             user_doc = user_ref.get()
 
             if not user_doc.exists:
-                if host._IS_PRODUCTION:
-                    raise host.HTTPException(status_code=409, detail="Account no longer exists.")
-                host._log(rid, f"User {uid} missing in Firestore; auto-creating defaults")
+                if context._IS_PRODUCTION:
+                    raise HTTPException(status_code=409, detail="Account no longer exists.")
+                context._log(rid, f"User {uid} missing in Firestore; auto-creating defaults")
                 default_user = {
-                    'credits_remaining': host.FREE_PLAN_CREDITS,
+                    'credits_remaining': context.FREE_PLAN_CREDITS,
                     'subscription_tier': 'free',
                     'export_timestamps': [],
-                    'created_at': host.time.time(),
+                    'created_at': time.time(),
                     'uid': uid,
                 }
                 user_ref.set(default_user)
@@ -502,19 +591,19 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
             else:
                 user_data = user_doc.to_dict() or {}
 
-            recorded_result = host._load_recorded_export_result(uid, export_job_id, req.file_id)
+            recorded_result = context._load_recorded_export_result(uid, export_job_id, req.file_id)
             if recorded_result:
                 # Recover this exact charged job before checking eligibility for a
                 # NEW export, including a last-credit debit or an expired plan.
-                host._set_export_job(export_job_id, "finalizing")
-                host._set_export_job(export_job_id, "completed", payload=recorded_result,
-                                completed_at=host.time.time(), recovered_from_usage=True)
+                context._set_export_job(export_job_id, "finalizing")
+                context._set_export_job(export_job_id, "completed", payload=recorded_result,
+                                completed_at=time.time(), recovered_from_usage=True)
                 return recorded_result
 
             if user_data.get("is_promo_user") and user_data.get("promo_expires"):
                 try:
-                    promo_exp = host.date.fromisoformat(user_data["promo_expires"])
-                    if host.date.today() > promo_exp:
+                    promo_exp = date.fromisoformat(user_data["promo_expires"])
+                    if date.today() > promo_exp:
                         user_ref.update({
                             "subscription_tier": "free",
                             "credits_remaining": 0,
@@ -523,36 +612,36 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
                         user_data["subscription_tier"] = "free"
                         user_data["credits_remaining"] = 0
                 except Exception as e:
-                    host._log(rid, f"Promo expiry check failed: {e}")
+                    context._log(rid, f"Promo expiry check failed: {e}")
 
-            allowed, policy_error, recent_exports = host._evaluate_export_policy(user_data, now)
+            allowed, policy_error, recent_exports = context._evaluate_export_policy(user_data, now)
             if not allowed:
-                raise host.HTTPException(status_code=403 if "UPGRADE_REQUIRED" in policy_error or "PLAN_EXPIRED" in policy_error else 429, detail=policy_error)
+                raise HTTPException(status_code=403 if "UPGRADE_REQUIRED" in policy_error or "PLAN_EXPIRED" in policy_error else 429, detail=policy_error)
             try:
                 credits = max(0, int(user_data.get('credits_remaining', 0) or 0))
             except (TypeError, ValueError):
                 credits = 0
         else:
-            if not host.ALLOW_EXPORT_WITHOUT_DB:
+            if not context.ALLOW_EXPORT_WITHOUT_DB:
                 # Rendering is a metered operation. Continuing without the source of
                 # truth for credits turns a database outage into a billing bypass.
-                raise host.HTTPException(status_code=503, detail="Account and credit service is temporarily unavailable")
-            host._log(rid, "Firestore unavailable; explicit local export bypass enabled")
+                raise HTTPException(status_code=503, detail="Account and credit service is temporarily unavailable")
+            context._log(rid, "Firestore unavailable; explicit local export bypass enabled")
 
-        user_tier = host._normalize_tier_name(user_data.get("subscription_tier", "free") if user_data else "free")
-        preset = host._resolve_export_preset(user_tier, req.quality, req.fps)
+        user_tier = context._normalize_tier_name(user_data.get("subscription_tier", "free") if user_data else "free")
+        preset = context._resolve_export_preset(user_tier, req.quality, req.fps)
         if preset["downgraded"]:
-            host._log(rid, f"Export preset adjusted by tier={user_tier}: requested {req.quality}@{req.fps} -> {preset['quality']}@{preset['fps']}")
+            context._log(rid, f"Export preset adjusted by tier={user_tier}: requested {req.quality}@{req.fps} -> {preset['quality']}@{preset['fps']}")
 
-        if not host._validate_file_id(req.file_id):
-            raise host.HTTPException(status_code=400, detail="Invalid file_id")
-        host._assert_upload_owner(req.file_id, uid)
-        host._assert_upload_clean(req.file_id)
-        input_path = host._safe_find_upload(req.file_id)
+        if not context._validate_file_id(req.file_id):
+            raise HTTPException(status_code=400, detail="Invalid file_id")
+        context._assert_upload_owner(req.file_id, uid)
+        context._assert_upload_clean(req.file_id)
+        input_path = context._safe_find_upload(req.file_id)
         if not input_path:
-            raise host.HTTPException(status_code=404, detail="Video not found")
+            raise HTTPException(status_code=404, detail="Video not found")
 
-        source_meta = host._probe_media(input_path)
+        source_meta = context._probe_media(input_path)
         source_duration = float((source_meta.get("format") or {}).get("duration") or 0)
         source_video_stream = next(
             (stream for stream in (source_meta.get("streams") or [])
@@ -561,17 +650,17 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
         )
         source_width = int(source_video_stream.get("width") or 0)
         source_height = int(source_video_stream.get("height") or 0)
-        captions = host._strip_client_render_hints(host._normalize_export_captions_for_media(
+        captions = context._strip_client_render_hints(context._normalize_export_captions_for_media(
             [c.model_dump(by_alias=True) for c in req.captions],
             source_duration,
         ))
         server_style = req.validated_style()
-        server_word_layouts: host.Dict[str, host.Any] = {}
+        server_word_layouts: Dict[str, Any] = {}
         # Reuse rendered artifact for identical request payload.
-        media_hash = host._source_media_identity(req.file_id, input_path)
-        request_hash = host.render_cache_identity(
+        media_hash = context._source_media_identity(req.file_id, input_path)
+        request_hash = context.render_cache_identity(
             uid=uid,
-            renderer_version=host.EXPORT_RENDERER_VERSION,
+            renderer_version=context.EXPORT_RENDERER_VERSION,
             media_hash=media_hash,
             captions=captions,
             style=server_style,
@@ -579,7 +668,7 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
             fps=preset["fps"],
             export_aspect_ratio=req.export_aspect_ratio,
         )
-        cached_render_path = host.os.path.join(host.RENDER_CACHE_DIR, f"{request_hash}.mp4")
+        cached_render_path = os.path.join(context.RENDER_CACHE_DIR, f"{request_hash}.mp4")
         template_export_active = bool(
             server_style.get("template_id")
             or server_style.get("template_20_id")
@@ -589,21 +678,21 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
                 if caption and not caption.get("is_text_element")
             )
         )
-        cache_eligible = host.render_cache_eligible(
+        cache_eligible = context.render_cache_eligible(
             template_export_active=template_export_active,
-            template_cache_enabled=host.os.environ.get("ENABLE_TEMPLATE_RENDER_CACHE", "1") == "1",
+            template_cache_enabled=os.environ.get("ENABLE_TEMPLATE_RENDER_CACHE", "1") == "1",
         )
 
         output_filename = f"export_{req.file_id}_{request_hash[:12]}.mp4"
-        output_path = host.os.path.join(host.EXPORT_DIR, output_filename)
-        render_started_at = host.time.time()
+        output_path = os.path.join(context.EXPORT_DIR, output_filename)
+        render_started_at = time.time()
         style_with_quality = {
             **server_style,
             'quality': preset["quality"],
             'fps': preset["fps"],
             'export_aspect_ratio': req.export_aspect_ratio if req.export_aspect_ratio in ('9:16', '1:1', '16:9') else '',
         }
-        host._write_last_export_request_debug(
+        context._write_last_export_request_debug(
             export_job_id=export_job_id,
             file_id=req.file_id,
             quality=preset["quality"],
@@ -613,31 +702,31 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
             word_layouts=server_word_layouts,
         )
 
-        if cache_eligible and not host.os.path.exists(cached_render_path):
-            await host.asyncio.to_thread(
-                host.download_render_cache, uid, request_hash, cached_render_path,
+        if cache_eligible and not os.path.exists(cached_render_path):
+            await asyncio.to_thread(
+                context.download_render_cache, uid, request_hash, cached_render_path,
             )
-        if host.os.path.exists(cached_render_path) and cache_eligible:
-            host.shutil.copy2(cached_render_path, output_path)
-            render_finished_at = host.time.time()
+        if os.path.exists(cached_render_path) and cache_eligible:
+            shutil.copy2(cached_render_path, output_path)
+            render_finished_at = time.time()
             render_ms = int((render_finished_at - render_started_at) * 1000)
             cache_hit = True
-            host._track_event("render_cache_hit", {"job_id": export_job_id})
+            context._track_event("render_cache_hit", {"job_id": export_job_id})
         else:
             cache_hit = False
-            host._log(rid, f"Starting render now job={export_job_id}")
-            async with host.render_semaphore:
-                result = await host.processor.burn_only(
+            context._log(rid, f"Starting render now job={export_job_id}")
+            async with context.render_semaphore:
+                result = await context.processor.burn_only(
                     input_path, output_path, captions, style_with_quality, server_word_layouts
                 )
             if not result.get('success'):
-                host._json_log("error", "video_render_failed", uid=uid, error=str(result.get('error') or "unknown"))
-                raise host.HTTPException(status_code=500, detail="Video render failed")
-            render_finished_at = host.time.time()
+                context._json_log("error", "video_render_failed", uid=uid, error=str(result.get('error') or "unknown"))
+                raise HTTPException(status_code=500, detail="Video render failed")
+            render_finished_at = time.time()
             render_ms = int((render_finished_at - render_started_at) * 1000)
 
         try:
-            rendered_meta = host._probe_media(output_path)
+            rendered_meta = context._probe_media(output_path)
             rendered_duration = float((rendered_meta.get("format") or {}).get("duration") or 0)
             rendered_video_stream = next(
                 (stream for stream in (rendered_meta.get("streams") or [])
@@ -647,33 +736,33 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
             rendered_has_video = bool(rendered_video_stream)
             rendered_width = int(rendered_video_stream.get("width") or 0)
             rendered_height = int(rendered_video_stream.get("height") or 0)
-            if not host.os.path.isfile(output_path) or host.os.path.getsize(output_path) <= 0 or not rendered_has_video or rendered_duration <= 0:
+            if not os.path.isfile(output_path) or os.path.getsize(output_path) <= 0 or not rendered_has_video or rendered_duration <= 0:
                 raise ValueError("rendered output is empty or has no valid video stream")
         except Exception as e:
             for invalid_path in {output_path, cached_render_path}:
-                if host.os.path.isfile(invalid_path):
+                if os.path.isfile(invalid_path):
                     try:
-                        host.os.remove(invalid_path)
+                        os.remove(invalid_path)
                     except OSError:
                         pass
             if cache_hit:
-                await host.asyncio.to_thread(host.delete_render_cache, uid, request_hash)
-            host._json_log("error", "render_output_validation_failed", uid=uid, job_id=export_job_id, error=str(e))
-            raise host.HTTPException(status_code=500, detail="Rendered video failed validation") from e
+                await asyncio.to_thread(context.delete_render_cache, uid, request_hash)
+            context._json_log("error", "render_output_validation_failed", uid=uid, job_id=export_job_id, error=str(e))
+            raise HTTPException(status_code=500, detail="Rendered video failed validation") from e
 
         if not cache_hit and cache_eligible:
             try:
-                host.shutil.copy2(output_path, cached_render_path)
-                await host.asyncio.to_thread(
-                    host.upload_render_cache, uid, request_hash, cached_render_path, 24,
+                shutil.copy2(output_path, cached_render_path)
+                await asyncio.to_thread(
+                    context.upload_render_cache, uid, request_hash, cached_render_path, 24,
                 )
             except Exception as error:
-                host._json_log(
+                context._json_log(
                     "warning", "render_cache_persist_failed", job_id=export_job_id,
                     error_type=type(error).__name__,
                 )
 
-        host._set_export_job(export_job_id, "finalizing")
+        context._set_export_job(export_job_id, "finalizing")
         # Serve local exports through signed same-origin media URLs so the browser can
         # fetch them without exposing the exports directory publicly. Firebase remains
         # the durable history/sharing destination when upload succeeds.
@@ -682,20 +771,20 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
         retention_hours = 2
         if db_available and user_data:
             current_tier = user_data.get('subscription_tier', 'free')
-            if current_tier in host.PLAN_PRICING:
-                retention_hours = host.PLAN_PRICING[current_tier].get('export_retention_hours', 2)
+            if current_tier in context.PLAN_PRICING:
+                retention_hours = context.PLAN_PRICING[current_tier].get('export_retention_hours', 2)
         try:
             remote_path = f"exports/{uid}/{output_filename}"
-            firebase_url = host.upload_to_firebase_storage(
+            firebase_url = context.upload_to_firebase_storage(
                 output_path, remote_path, "video/mp4", retention_hours
             )
         except Exception as e:
-            host._log(rid, f"Firebase upload failed, using local export: {e}")
+            context._log(rid, f"Firebase upload failed, using local export: {e}")
 
-        if host._IS_PRODUCTION and not firebase_url:
-            raise host.HTTPException(status_code=503, detail="Rendered media could not be persisted. Please retry.")
-        expires_at = (host._utcnow() + host.timedelta(hours=retention_hours)).isoformat() + "Z"
-        video_url = host._signed_export_url(
+        if context._IS_PRODUCTION and not firebase_url:
+            raise HTTPException(status_code=503, detail="Rendered media could not be persisted. Please retry.")
+        expires_at = (context._utcnow() + timedelta(hours=retention_hours)).isoformat() + "Z"
+        video_url = context._signed_export_url(
             output_filename, uid, retention_hours * 3600, export_job_id[:8]
         )
 
@@ -723,20 +812,20 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
                 "createdAt": now * 1000,
                 "firebase_path": f"exports/{uid}/{output_filename}" if firebase_url else None
             }
-            dropped_history = host._record_export_usage(
+            dropped_history = context._record_export_usage(
                 db, user_ref, history_item, now, export_job_id, result_payload=payload
             )
             for dropped in dropped_history:
                 dropped_path = dropped.get("firebase_path") if isinstance(dropped, dict) else ""
                 if dropped_path:
-                    host.delete_from_firebase_storage(dropped_path)
+                    context.delete_from_firebase_storage(dropped_path)
 
-        completed_at = host.time.time()
+        completed_at = time.time()
         total_ms = int((completed_at - queue_entered_at) * 1000)
         preparation_ms = int((render_started_at - processing_started_at) * 1000)
         finalization_ms = int((completed_at - render_finished_at) * 1000)
-        output_size_bytes = host.os.path.getsize(output_path)
-        recorded_job = host._set_export_job(
+        output_size_bytes = os.path.getsize(output_path)
+        recorded_job = context._set_export_job(
             export_job_id,
             "completed",
             completed_at=completed_at,
@@ -747,7 +836,7 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
             payload=payload
         )
         try:
-            host.create_notification(
+            context.create_notification(
                 db,
                 uid,
                 kind="export_completed",
@@ -757,11 +846,11 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
                 resource_id=export_job_id,
             )
         except Exception as error:
-            host._json_log(
+            context._json_log(
                 "warning", "export_notification_persist_failed",
                 job_id=export_job_id, error=type(error).__name__,
             )
-        host._json_log(
+        context._json_log(
             "info", "export_observation", job_id=export_job_id,
             status="completed",
             queue_wait_ms=int(recorded_job.get("queue_wait_ms") or 0),
@@ -777,19 +866,19 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
             source_width=source_width, source_height=source_height,
             output_width=rendered_width, output_height=rendered_height,
         )
-        host._track_event("export_success", {"quality": preset["quality"], "fps": preset["fps"], "tier": preset["tier"]})
-        host._track_operational_metric_sample("export_total_ms", total_ms)
-        host._track_operational_metric_sample("export_render_ms", render_ms)
-        host._track_operational_metric_sample(
+        context._track_event("export_success", {"quality": preset["quality"], "fps": preset["fps"], "tier": preset["tier"]})
+        context._track_operational_metric_sample("export_total_ms", total_ms)
+        context._track_operational_metric_sample("export_render_ms", render_ms)
+        context._track_operational_metric_sample(
             "job_cost_usd",
-            (rendered_duration / 60.0) * host.RENDER_COST_ESTIMATE_PER_MEDIA_MINUTE_USD,
+            (rendered_duration / 60.0) * context.RENDER_COST_ESTIMATE_PER_MEDIA_MINUTE_USD,
         )
         return payload
 
 
     def _export_slot_wait_retry():
         """An RQ Retry result for a job waiting on its account slot, or None outside RQ."""
-        if host.RQRetry is None:
+        if context.RQRetry is None:
             return None
         try:
             from rq import get_current_job
@@ -797,7 +886,7 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
                 return None
         except Exception:
             return None
-        return host.RQRetry(max=host.EXPORT_SLOT_WAIT_MAX_ATTEMPTS, interval=host.EXPORT_SLOT_WAIT_INTERVAL_SECONDS)
+        return context.RQRetry(max=context.EXPORT_SLOT_WAIT_MAX_ATTEMPTS, interval=context.EXPORT_SLOT_WAIT_INTERVAL_SECONDS)
 
     return SimpleNamespace(
         _persist_export_job=_persist_export_job,

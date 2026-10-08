@@ -14,9 +14,10 @@ from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-import main
-from main import app
+from backend.application import runtime as backend_context
+app = backend_context.app
 
 
 class ApiContractTests(unittest.TestCase):
@@ -24,56 +25,56 @@ class ApiContractTests(unittest.TestCase):
         self.client = TestClient(app)
         # Contract fixtures use synthetic bytes, so default to valid probed
         # metadata. Tests for malformed media override this patch explicitly.
-        media_probe = patch.object(main, "_probe_media", return_value={
+        media_probe = patch.object(backend_context, "_probe_media", return_value={
             "format": {"duration": 12.3}, "streams": [{"codec_type": "video"}],
         })
         media_probe.start()
         self.addCleanup(media_probe.stop)
-        main._export_jobs.clear()
-        main._export_idempotency.clear()
-        main._upload_idempotency.clear()
-        main._active_exports_by_user.clear()
-        main._active_processes_by_user.clear()
-        main._payment_idempotency.clear()
-        main._upload_owners.clear()
-        main._payment_rate.clear()
-        main._signup_rate.clear()
-        main._upload_rate.clear()
-        main._process_rate.clear()
-        main._detect_language_rate.clear()
-        main._translate_rate.clear()
+        backend_context._export_jobs.clear()
+        backend_context._export_idempotency.clear()
+        backend_context._upload_idempotency.clear()
+        backend_context._active_exports_by_user.clear()
+        backend_context._active_processes_by_user.clear()
+        backend_context._payment_idempotency.clear()
+        backend_context._upload_owners.clear()
+        backend_context._payment_rate.clear()
+        backend_context._signup_rate.clear()
+        backend_context._upload_rate.clear()
+        backend_context._process_rate.clear()
+        backend_context._detect_language_rate.clear()
+        backend_context._translate_rate.clear()
 
     def test_payment_journey_refuses_live_mode_before_order_creation(self):
-        with patch.object(main, "RAZORPAY_KEY_ID", "rzp_live_local_fixture"), patch.object(main, "rzp_client") as provider:
+        with patch.object(backend_context, "RAZORPAY_KEY_ID", "rzp_live_local_fixture"), patch.object(backend_context, "rzp_client") as provider:
             response = self.client.post("/api/create-order", json={"id_token": "local-fixture", "plan_id": "starter", "require_test_mode": True})
         self.assertEqual(response.status_code, 409)
         provider.order.create.assert_not_called()
 
     def tearDown(self):
-        main._export_jobs.clear()
-        main._export_idempotency.clear()
-        main._upload_idempotency.clear()
-        main._active_exports_by_user.clear()
-        main._active_processes_by_user.clear()
-        main._payment_idempotency.clear()
-        main._upload_owners.clear()
-        main._payment_rate.clear()
-        main._signup_rate.clear()
-        main._upload_rate.clear()
-        main._process_rate.clear()
-        main._detect_language_rate.clear()
-        main._translate_rate.clear()
+        backend_context._export_jobs.clear()
+        backend_context._export_idempotency.clear()
+        backend_context._upload_idempotency.clear()
+        backend_context._active_exports_by_user.clear()
+        backend_context._active_processes_by_user.clear()
+        backend_context._payment_idempotency.clear()
+        backend_context._upload_owners.clear()
+        backend_context._payment_rate.clear()
+        backend_context._signup_rate.clear()
+        backend_context._upload_rate.clear()
+        backend_context._process_rate.clear()
+        backend_context._detect_language_rate.clear()
+        backend_context._translate_rate.clear()
 
     def test_export_daily_limit_is_enabled_by_default(self):
         # Local runs must exercise the same quota safeguard as production.
-        self.assertFalse(main.DISABLE_EXPORT_DAILY_LIMIT)
+        self.assertFalse(backend_context.DISABLE_EXPORT_DAILY_LIMIT)
 
     def test_redis_rate_limits_are_isolated_by_endpoint(self):
         shared_proxy_ip = "100.64.0.4"
 
-        analytics_key = main._rate_limit_redis_key(main._analytics_rate, shared_proxy_ip)
-        process_key = main._rate_limit_redis_key(main._process_rate, shared_proxy_ip)
-        upload_key = main._rate_limit_redis_key(main._upload_rate, shared_proxy_ip)
+        analytics_key = backend_context._rate_limit_redis_key(backend_context._analytics_rate, shared_proxy_ip)
+        process_key = backend_context._rate_limit_redis_key(backend_context._process_rate, shared_proxy_ip)
+        upload_key = backend_context._rate_limit_redis_key(backend_context._upload_rate, shared_proxy_ip)
 
         self.assertEqual(analytics_key, "rl:analytics:100.64.0.4")
         self.assertEqual(process_key, "rl:process:100.64.0.4")
@@ -89,7 +90,7 @@ class ApiContractTests(unittest.TestCase):
             },
         )
 
-        self.assertEqual(main._client_rate_key(request), "203.0.113.27")
+        self.assertEqual(backend_context._client_rate_key(request), "203.0.113.27")
 
     def test_client_rate_key_ignores_forwarding_header_for_public_direct_peer(self):
         request = SimpleNamespace(
@@ -97,7 +98,7 @@ class ApiContractTests(unittest.TestCase):
             headers={"x-forwarded-for": "203.0.113.99"},
         )
 
-        self.assertEqual(main._client_rate_key(request), "8.8.8.8")
+        self.assertEqual(backend_context._client_rate_key(request), "8.8.8.8")
 
     def test_export_daily_limit_is_enforced_when_not_disabled(self):
         user_data = {
@@ -107,8 +108,8 @@ class ApiContractTests(unittest.TestCase):
             "export_timestamps": [1_700_000_000.0 - 60] * 5,
         }
 
-        with patch.object(main, "DISABLE_EXPORT_DAILY_LIMIT", False):
-            allowed, detail, _recent = main._evaluate_export_policy(user_data, 1_700_000_000.0)
+        with patch.object(backend_context, "DISABLE_EXPORT_DAILY_LIMIT", False):
+            allowed, detail, _recent = backend_context._evaluate_export_policy(user_data, 1_700_000_000.0)
 
         self.assertFalse(allowed)
         self.assertIn("Limit reached", detail)
@@ -132,7 +133,7 @@ class ApiContractTests(unittest.TestCase):
             }],
         }
 
-        sanitized = main._sanitize_export_request_payload(payload)
+        sanitized = backend_context._sanitize_export_request_payload(payload)
 
         self.assertEqual(sanitized["word_layouts"], {})
         self.assertNotIn("id_token", sanitized)
@@ -147,48 +148,48 @@ class ApiContractTests(unittest.TestCase):
         )
 
     def test_service_controls_default_to_open(self):
-        main._service_control_cache.update({"ts": 0.0, "value": {}})
-        with patch.object(main, "get_db", return_value=None):
-            controls = main._read_service_controls(force=True)
+        backend_context._service_control_cache.update({"ts": 0.0, "value": {}})
+        with patch.object(backend_context, "get_db", return_value=None):
+            controls = backend_context._read_service_controls(force=True)
 
-        for key in main.SERVICE_CONTROL_KEYS:
+        for key in backend_context.SERVICE_CONTROL_KEYS:
             self.assertFalse(controls[key], key)
-        main._assert_service_available("pause_exports")
+        backend_context._assert_service_available("pause_exports")
 
     def test_paused_control_blocks_with_503(self):
-        paused = main._default_service_controls()
+        paused = backend_context._default_service_controls()
         paused["pause_exports"] = True
 
-        with patch.object(main, "_read_service_controls", return_value=paused):
-            with self.assertRaises(main.HTTPException) as ctx:
-                main._assert_service_available("pause_exports")
+        with patch.object(backend_context, "_read_service_controls", return_value=paused):
+            with self.assertRaises(backend_context.HTTPException) as ctx:
+                backend_context._assert_service_available("pause_exports")
             self.assertEqual(ctx.exception.status_code, 503)
             # An unrelated switch stays open.
-            main._assert_service_available("pause_uploads")
+            backend_context._assert_service_available("pause_uploads")
 
     def test_maintenance_mode_blocks_every_control(self):
-        paused = main._default_service_controls()
+        paused = backend_context._default_service_controls()
         paused["maintenance_mode"] = True
         paused["notice"] = "Back at 9pm IST."
 
-        with patch.object(main, "_read_service_controls", return_value=paused):
+        with patch.object(backend_context, "_read_service_controls", return_value=paused):
             for key in ("pause_payments", "pause_uploads", "pause_transcription", "pause_exports", "pause_signups"):
-                with self.assertRaises(main.HTTPException) as ctx:
-                    main._assert_service_available(key)
+                with self.assertRaises(backend_context.HTTPException) as ctx:
+                    backend_context._assert_service_available(key)
                 self.assertEqual(ctx.exception.status_code, 503)
                 self.assertEqual(ctx.exception.detail, "Back at 9pm IST.")
 
     def test_service_status_is_public_and_admin_write_requires_admin(self):
-        paused = main._default_service_controls()
+        paused = backend_context._default_service_controls()
         paused["pause_signups"] = True
 
-        with patch.object(main, "_read_service_controls", return_value=paused):
+        with patch.object(backend_context, "_read_service_controls", return_value=paused):
             res = self.client.get("/api/service-status")
         self.assertEqual(res.status_code, 200)
         self.assertTrue(res.json()["controls"]["pause_signups"])
         self.assertFalse(res.json()["controls"]["pause_exports"])
 
-        with patch.object(main, "verify_token", return_value=None):
+        with patch.object(backend_context, "verify_token", return_value=None):
             denied = self.client.post(
                 "/api/admin/service-controls",
                 json={"id_token": "not-an-admin", "pause_exports": True},
@@ -214,8 +215,8 @@ class ApiContractTests(unittest.TestCase):
                 return FakeCollection()
 
         with (
-            patch.object(main, "verify_token", return_value={"uid": "synthetic-user"}),
-            patch.object(main, "get_db", return_value=FakeDb()),
+            patch.object(backend_context, "verify_token", return_value={"uid": "synthetic-user"}),
+            patch.object(backend_context, "get_db", return_value=FakeDb()),
         ):
             response = self.client.post(
                 "/api/health/customer-journey",
@@ -228,7 +229,7 @@ class ApiContractTests(unittest.TestCase):
             {"success": True, "authenticated": True, "account_store": True},
         )
 
-        with patch.object(main, "verify_token", return_value=None):
+        with patch.object(backend_context, "verify_token", return_value=None):
             denied = self.client.post(
                 "/api/health/customer-journey",
                 json={"id_token": "invalid-token"},
@@ -240,9 +241,9 @@ class ApiContractTests(unittest.TestCase):
             def collection(self, *_args, **_kwargs):
                 raise RuntimeError("firestore unavailable")
 
-        main._service_control_cache.update({"ts": 0.0, "value": {}})
-        with patch.object(main, "get_db", return_value=ExplodingDb()):
-            controls = main._read_service_controls(force=True)
+        backend_context._service_control_cache.update({"ts": 0.0, "value": {}})
+        with patch.object(backend_context, "get_db", return_value=ExplodingDb()):
+            controls = backend_context._read_service_controls(force=True)
 
         self.assertFalse(controls["maintenance_mode"])
 
@@ -252,16 +253,16 @@ class ApiContractTests(unittest.TestCase):
             url=SimpleNamespace(path="/api/process"),
             headers={},
         )
-        with patch.object(main, "FIREBASE_APP_CHECK_ENFORCED", True):
-            missing = main._verify_firebase_app_check_request(request, "req-app-check")
+        with patch.object(backend_context, "FIREBASE_APP_CHECK_ENFORCED", True):
+            missing = backend_context._verify_firebase_app_check_request(request, "req-app-check")
         self.assertEqual(missing.status_code, 403)
 
         request.headers = {"x-firebase-appcheck": "valid-app-check-token"}
         with (
-            patch.object(main, "FIREBASE_APP_CHECK_ENFORCED", True),
-            patch.object(main.firebase_app_check, "verify_token", return_value={"app_id": "web-app"}) as verify,
+            patch.object(backend_context, "FIREBASE_APP_CHECK_ENFORCED", True),
+            patch.object(backend_context.firebase_app_check, "verify_token", return_value={"app_id": "web-app"}) as verify,
         ):
-            accepted = main._verify_firebase_app_check_request(request, "req-app-check")
+            accepted = backend_context._verify_firebase_app_check_request(request, "req-app-check")
         self.assertIsNone(accepted)
         verify.assert_called_once_with("valid-app-check-token")
 
@@ -271,11 +272,11 @@ class ApiContractTests(unittest.TestCase):
             flush=lambda **_kwargs: None,
         )
         with (
-            patch.object(main, "_is_admin_token", return_value=True),
-            patch.object(main, "SENTRY_DSN", "https://public@example.invalid/1"),
-            patch.object(main, "SENTRY_AVAILABLE", True),
-            patch.object(main, "sentry_sdk", fake_sentry),
-            patch.object(main, "_audit_action"),
+            patch.object(backend_context, "_is_admin_token", return_value=True),
+            patch.object(backend_context, "SENTRY_DSN", "https://public@example.invalid/1"),
+            patch.object(backend_context, "SENTRY_AVAILABLE", True),
+            patch.object(backend_context, "sentry_sdk", fake_sentry),
+            patch.object(backend_context, "_audit_action"),
         ):
             response = self.client.post(
                 "/api/admin/test-alerts",
@@ -296,11 +297,11 @@ class ApiContractTests(unittest.TestCase):
             "export_timestamps": [],
         }
 
-        allowed, detail, _recent = main._evaluate_export_policy(user_data, 1_700_000_000.0)
+        allowed, detail, _recent = backend_context._evaluate_export_policy(user_data, 1_700_000_000.0)
 
         self.assertFalse(allowed)
         self.assertIn("PLAN_EXPIRED", detail)
-        self.assertEqual(main._effective_subscription_tier(user_data), "free")
+        self.assertEqual(backend_context._effective_subscription_tier(user_data), "free")
 
     def test_active_paid_plan_keeps_entitlements(self):
         active_until = (datetime.now(timezone.utc) + timedelta(days=5)).isoformat()
@@ -311,11 +312,11 @@ class ApiContractTests(unittest.TestCase):
             "export_timestamps": [],
         }
 
-        allowed, detail, _recent = main._evaluate_export_policy(user_data, 1_700_000_000.0)
+        allowed, detail, _recent = backend_context._evaluate_export_policy(user_data, 1_700_000_000.0)
 
         self.assertTrue(allowed)
         self.assertEqual(detail, "")
-        self.assertEqual(main._effective_subscription_tier(user_data), "creator")
+        self.assertEqual(backend_context._effective_subscription_tier(user_data), "creator")
 
     def test_paid_plan_without_expiry_fails_closed(self):
         user_data = {
@@ -324,14 +325,14 @@ class ApiContractTests(unittest.TestCase):
             "export_timestamps": [],
         }
 
-        allowed, detail, _recent = main._evaluate_export_policy(user_data, 1_700_000_000.0)
+        allowed, detail, _recent = backend_context._evaluate_export_policy(user_data, 1_700_000_000.0)
 
         self.assertFalse(allowed)
         self.assertIn("PLAN_EXPIRED", detail)
-        self.assertEqual(main._effective_subscription_tier(user_data), "free")
+        self.assertEqual(backend_context._effective_subscription_tier(user_data), "free")
 
-    @patch("main._authenticate_media_request", return_value={"uid": "rate-limited-user"})
-    @patch("main._get_recent_export_failures", return_value=[0.0] * main.EXPORT_FAILURE_LIMIT)
+    @patch("backend.application.runtime._authenticate_media_request", return_value={"uid": "rate-limited-user"})
+    @patch("backend.application.runtime._get_recent_export_failures", return_value=[0.0] * backend_context.EXPORT_FAILURE_LIMIT)
     def test_export_failure_rate_limit_is_always_enforced(self, _recent_failures, _authenticate):
         res = self.client.post(
             "/api/export",
@@ -350,30 +351,30 @@ class ApiContractTests(unittest.TestCase):
         self.assertIn("Too many failed export attempts", res.json()["detail"])
 
     def test_media_tokens_reject_tampering_expiry_and_wrong_kind(self):
-        token = main._create_media_token({
+        token = backend_context._create_media_token({
             "kind": "upload",
             "uid": "media-user",
             "file_id": "file-1",
             "exp": 4102444800,
         })
 
-        self.assertEqual(main._verify_media_token(token, "upload")["uid"], "media-user")
+        self.assertEqual(backend_context._verify_media_token(token, "upload")["uid"], "media-user")
 
         tampered = f"{token[:-1]}{'0' if token[-1] != '0' else '1'}"
         with self.assertRaises(Exception):
-            main._verify_media_token(tampered, "upload")
+            backend_context._verify_media_token(tampered, "upload")
 
         with self.assertRaises(Exception):
-            main._verify_media_token(token, "export")
+            backend_context._verify_media_token(token, "export")
 
-        expired = main._create_media_token({
+        expired = backend_context._create_media_token({
             "kind": "upload",
             "uid": "media-user",
             "file_id": "file-1",
             "exp": 1,
         })
         with self.assertRaises(Exception):
-            main._verify_media_token(expired, "upload")
+            backend_context._verify_media_token(expired, "upload")
 
     def test_upload_materializes_from_shared_storage_on_another_instance(self):
         file_id = "123e4567-e89b-12d3-a456-426614174055"
@@ -386,22 +387,22 @@ class ApiContractTests(unittest.TestCase):
 
         with (
             tempfile.TemporaryDirectory() as scratch,
-            patch.object(main, "UPLOAD_DIR", scratch),
-            patch.object(main, "_load_upload_metadata", return_value={
+            patch.object(backend_context, "UPLOAD_DIR", scratch),
+            patch.object(backend_context, "_load_upload_metadata", return_value={
                 "uid": "media-user",
                 "remote_path": f"uploads/media-user/{file_id}.mp4",
                 "extension": "mp4",
             }),
-            patch.object(main, "download_from_firebase_storage", side_effect=fake_download),
+            patch.object(backend_context, "download_from_firebase_storage", side_effect=fake_download),
         ):
-            path = main._safe_find_upload(file_id)
+            path = backend_context._safe_find_upload(file_id)
             self.assertTrue(path and os.path.isfile(path))
             with open(path, "rb") as handle:
                 self.assertEqual(handle.read(), b"shared-media")
 
-    @patch("main._scan_upload_for_threat", return_value=True)
-    @patch("main._probe_media", return_value={"format": {"duration": 12.3}, "streams": [{"codec_type": "video"}]})
-    @patch("main.verify_token", return_value={"uid": "upload-user"})
+    @patch("backend.application.runtime._scan_upload_for_threat", return_value=True)
+    @patch("backend.application.runtime._probe_media", return_value={"format": {"duration": 12.3}, "streams": [{"codec_type": "video"}]})
+    @patch("backend.application.runtime.verify_token", return_value={"uid": "upload-user"})
     def test_upload_contract(self, _verify_token, _probe, _scan):
         files = {"file": ("sample.mp4", io.BytesIO(b"fake-bytes"), "video/mp4")}
         res = self.client.post("/api/upload", files=files, headers={"Authorization": "Bearer token-123"})
@@ -417,8 +418,8 @@ class ApiContractTests(unittest.TestCase):
 
     def test_proxy_upload_rejects_media_above_its_configured_limit(self):
         with (
-            patch.object(main, "MAX_PROXY_UPLOAD_BYTES", 10),
-            patch.object(main, "verify_token", return_value={"uid": "upload-user"}),
+            patch.object(backend_context, "MAX_PROXY_UPLOAD_BYTES", 10),
+            patch.object(backend_context, "verify_token", return_value={"uid": "upload-user"}),
         ):
             response = self.client.post(
                 "/api/upload",
@@ -431,11 +432,11 @@ class ApiContractTests(unittest.TestCase):
         for media_bucket in ("private-media", ""):
             with (
                 self.subTest(media_bucket=media_bucket),
-                patch.object(main, "_IS_PRODUCTION", True),
-                patch.object(main, "FIREBASE_APP_CHECK_ENFORCED", False),
-                patch.dict(main.os.environ, {"GCS_MEDIA_BUCKET": media_bucket}),
-                patch.object(main, "_authenticate_media_request", return_value={"uid": "upload-user"}) as authenticate,
-                patch.object(main, "_assert_service_available"),
+                patch.object(backend_context, "_IS_PRODUCTION", True),
+                patch.object(backend_context, "FIREBASE_APP_CHECK_ENFORCED", False),
+                patch.dict(backend_context.os.environ, {"GCS_MEDIA_BUCKET": media_bucket}),
+                patch.object(backend_context, "_authenticate_media_request", return_value={"uid": "upload-user"}) as authenticate,
+                patch.object(backend_context, "_assert_service_available"),
             ):
                 response = self.client.post(
                     "/api/upload",
@@ -446,9 +447,9 @@ class ApiContractTests(unittest.TestCase):
                 self.assertEqual(response.headers["x-lekha-upload-transport"], "direct-resumable")
                 authenticate.assert_not_called()
 
-    @patch("main._scan_upload_for_threat", return_value=True)
-    @patch("main._probe_media", return_value={"format": {"duration": 12.3}, "streams": [{"codec_type": "video"}]})
-    @patch("main.verify_token", return_value={"uid": "upload-user"})
+    @patch("backend.application.runtime._scan_upload_for_threat", return_value=True)
+    @patch("backend.application.runtime._probe_media", return_value={"format": {"duration": 12.3}, "streams": [{"codec_type": "video"}]})
+    @patch("backend.application.runtime.verify_token", return_value={"uid": "upload-user"})
     def test_upload_retry_replays_completed_file_without_consuming_rate_slot(self, _verify_token, _probe, _scan):
         headers = {
             "Authorization": "Bearer token-123",
@@ -468,19 +469,19 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(second.status_code, 200)
         self.assertEqual(second.json()["file_id"], first.json()["file_id"])
         self.assertTrue(second.json()["idempotent_replay"])
-        self.assertEqual(len(main._upload_rate["user:upload-user"]), 1)
+        self.assertEqual(len(backend_context._upload_rate["user:upload-user"]), 1)
 
     def test_upload_requires_auth(self):
         files = {"file": ("sample.mp4", io.BytesIO(b"fake-bytes"), "video/mp4")}
         res = self.client.post("/api/upload", files=files)
         self.assertEqual(res.status_code, 401)
 
-    @patch("main.verify_token", return_value={"uid": "process-user"})
-    @patch("main.processor.generate_captions_only", new_callable=AsyncMock)
-    @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
+    @patch("backend.application.runtime.verify_token", return_value={"uid": "process-user"})
+    @patch("backend.application.runtime.processor.generate_captions_only", new_callable=AsyncMock)
+    @patch("backend.application.runtime._safe_find_upload", return_value="C:/tmp/sample.mp4")
     def test_process_contract(self, _safe_find, mock_process, _verify_token):
         mock_process.return_value = {"success": True, "captions": [{"id": 1, "text": "hello", "start_time": 0, "end_time": 1}]}
-        main._upload_owners["123e4567-e89b-12d3-a456-426614174000"] = "process-user"
+        backend_context._upload_owners["123e4567-e89b-12d3-a456-426614174000"] = "process-user"
         res = self.client.post(
             "/api/process",
             json={
@@ -494,10 +495,10 @@ class ApiContractTests(unittest.TestCase):
         self.assertIn("success", data)
         self.assertIn("captions", data)
 
-    @patch("main.verify_token", return_value={"uid": "process-idempotent-user"})
-    @patch("main.processor.generate_captions_only", new_callable=AsyncMock)
-    @patch("main._compute_media_hash", side_effect=RuntimeError("skip local cache"))
-    @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
+    @patch("backend.application.runtime.verify_token", return_value={"uid": "process-idempotent-user"})
+    @patch("backend.application.runtime.processor.generate_captions_only", new_callable=AsyncMock)
+    @patch("backend.application.runtime._compute_media_hash", side_effect=RuntimeError("skip local cache"))
+    @patch("backend.application.runtime._safe_find_upload", return_value="C:/tmp/sample.mp4")
     def test_process_idempotency_replays_after_response_loss(
         self, _safe_find, _hash, mock_process, _verify_token
     ):
@@ -506,7 +507,7 @@ class ApiContractTests(unittest.TestCase):
             "captions": [{"id": 1, "text": "hello", "start_time": 0, "end_time": 1}],
         }
         file_id = "123e4567-e89b-12d3-a456-426614174010"
-        main._upload_owners[file_id] = "process-idempotent-user"
+        backend_context._upload_owners[file_id] = "process-idempotent-user"
         request = {
             "file_id": file_id,
             "language": "english",
@@ -523,19 +524,19 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(mock_process.await_count, 1)
 
     def test_process_slot_allows_only_one_active_request_per_user(self):
-        self.assertTrue(main._acquire_process_slot("process-user", "request-1"))
-        self.assertFalse(main._acquire_process_slot("process-user", "request-2"))
-        main._release_process_slot("process-user", "request-2")
-        self.assertFalse(main._acquire_process_slot("process-user", "request-3"))
-        main._release_process_slot("process-user", "request-1")
-        self.assertTrue(main._acquire_process_slot("process-user", "request-3"))
+        self.assertTrue(backend_context._acquire_process_slot("process-user", "request-1"))
+        self.assertFalse(backend_context._acquire_process_slot("process-user", "request-2"))
+        backend_context._release_process_slot("process-user", "request-2")
+        self.assertFalse(backend_context._acquire_process_slot("process-user", "request-3"))
+        backend_context._release_process_slot("process-user", "request-1")
+        self.assertTrue(backend_context._acquire_process_slot("process-user", "request-3"))
 
-    @patch("main.verify_token", return_value={"uid": "process-user"})
-    @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
+    @patch("backend.application.runtime.verify_token", return_value={"uid": "process-user"})
+    @patch("backend.application.runtime._safe_find_upload", return_value="C:/tmp/sample.mp4")
     def test_process_rejects_duplicate_in_flight_request(self, _safe_find, _verify_token):
         file_id = "123e4567-e89b-12d3-a456-426614174000"
-        main._upload_owners[file_id] = "process-user"
-        main._active_processes_by_user["process-user"] = "existing-request"
+        backend_context._upload_owners[file_id] = "process-user"
+        backend_context._active_processes_by_user["process-user"] = "existing-request"
 
         res = self.client.post(
             "/api/process",
@@ -545,30 +546,30 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(res.status_code, 409)
         self.assertIn("already running", res.json()["detail"])
 
-    @patch("main.verify_token", return_value={"uid": "process-user"})
-    @patch("main.processor.generate_captions_only", new_callable=AsyncMock)
-    @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
+    @patch("backend.application.runtime.verify_token", return_value={"uid": "process-user"})
+    @patch("backend.application.runtime.processor.generate_captions_only", new_callable=AsyncMock)
+    @patch("backend.application.runtime._safe_find_upload", return_value="C:/tmp/sample.mp4")
     def test_process_rejects_successful_empty_transcription(self, _safe_find, mock_process, _verify_token):
         mock_process.return_value = {"success": True, "captions": []}
         file_id = "123e4567-e89b-12d3-a456-426614174000"
-        main._upload_owners[file_id] = "process-user"
+        backend_context._upload_owners[file_id] = "process-user"
         res = self.client.post(
             "/api/process",
             json={"file_id": file_id, "language": "english", "id_token": "token-123"},
         )
         self.assertEqual(res.status_code, 422)
 
-    @patch("main.verify_token", return_value={"uid": "process-user"})
-    @patch("main._release_ai_quota")
-    @patch("main.processor.generate_captions_only", new_callable=AsyncMock)
-    @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
+    @patch("backend.application.runtime.verify_token", return_value={"uid": "process-user"})
+    @patch("backend.application.runtime._release_ai_quota")
+    @patch("backend.application.runtime.processor.generate_captions_only", new_callable=AsyncMock)
+    @patch("backend.application.runtime._safe_find_upload", return_value="C:/tmp/sample.mp4")
     def test_process_returns_ai_quota_when_provider_fails(
         self, _safe_find, mock_process, mock_release, _verify_token
     ):
         """A provider-side transcription failure must not burn the daily quota."""
         mock_process.return_value = {"success": False, "error": "Sarvam request failed"}
         file_id = "123e4567-e89b-12d3-a456-426614174000"
-        main._upload_owners[file_id] = "process-user"
+        backend_context._upload_owners[file_id] = "process-user"
 
         res = self.client.post(
             "/api/process",
@@ -578,17 +579,17 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(res.status_code, 502)
         mock_release.assert_called_once_with("process-user", "process")
 
-    @patch("main.verify_token", return_value={"uid": "process-user"})
-    @patch("main._release_ai_quota")
-    @patch("main.processor.generate_captions_only", new_callable=AsyncMock)
-    @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
+    @patch("backend.application.runtime.verify_token", return_value={"uid": "process-user"})
+    @patch("backend.application.runtime._release_ai_quota")
+    @patch("backend.application.runtime.processor.generate_captions_only", new_callable=AsyncMock)
+    @patch("backend.application.runtime._safe_find_upload", return_value="C:/tmp/sample.mp4")
     def test_process_raising_provider_returns_ai_quota(
         self, _safe_find, mock_process, mock_release, _verify_token
     ):
         """An exception from the provider is still our fault — release the hold."""
         mock_process.side_effect = RuntimeError("provider exploded")
         file_id = "123e4567-e89b-12d3-a456-426614174000"
-        main._upload_owners[file_id] = "process-user"
+        backend_context._upload_owners[file_id] = "process-user"
 
         response = self.client.post(
             "/api/process",
@@ -600,17 +601,17 @@ class ApiContractTests(unittest.TestCase):
 
         mock_release.assert_called_once_with("process-user", "process")
 
-    @patch("main.verify_token", return_value={"uid": "process-user"})
-    @patch("main._release_ai_quota")
-    @patch("main.processor.generate_captions_only", new_callable=AsyncMock)
-    @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
+    @patch("backend.application.runtime.verify_token", return_value={"uid": "process-user"})
+    @patch("backend.application.runtime._release_ai_quota")
+    @patch("backend.application.runtime.processor.generate_captions_only", new_callable=AsyncMock)
+    @patch("backend.application.runtime._safe_find_upload", return_value="C:/tmp/sample.mp4")
     def test_process_returns_ai_quota_when_audio_has_no_speech(
         self, _safe_find, mock_process, mock_release, _verify_token
     ):
         """No usable captions means the customer's import allowance is restored."""
         mock_process.return_value = {"success": True, "captions": []}
         file_id = "123e4567-e89b-12d3-a456-426614174000"
-        main._upload_owners[file_id] = "process-user"
+        backend_context._upload_owners[file_id] = "process-user"
 
         res = self.client.post(
             "/api/process",
@@ -622,64 +623,64 @@ class ApiContractTests(unittest.TestCase):
 
     def test_worker_transcription_failure_returns_ai_quota(self):
         """The queued worker uses trusted_uid but must receive the same refund."""
-        request = main.Request({"type": "http", "headers": [], "client": ("worker", 0)})
-        req = main.ProcessRequest(
+        request = backend_context.Request({"type": "http", "headers": [], "client": ("worker", 0)})
+        req = backend_context.ProcessRequest(
             file_id="123e4567-e89b-12d3-a456-426614174000",
             language="english",
         )
         with (
-            patch.object(main, "_assert_service_available"),
-            patch.object(main, "_assert_upload_owner"),
-            patch.object(main, "_safe_find_upload", return_value="C:/tmp/sample.mp4"),
-            patch.object(main, "_lookup_subscription_tier", return_value="free"),
-            patch.object(main, "_read_service_controls", return_value={}),
-            patch.object(main, "_probe_media", return_value={"format": {"duration": 1}}),
-            patch.object(main, "_compute_media_hash", side_effect=RuntimeError("skip cache")),
-            patch.object(main, "_acquire_process_slot", return_value=True),
-            patch.object(main, "_release_process_slot"),
-            patch.object(main, "_reserve_ai_quota"),
-            patch.object(main, "_release_ai_quota") as release_quota,
-            patch.object(main.processor, "generate_captions_only", new_callable=AsyncMock,
+            patch.object(backend_context, "_assert_service_available"),
+            patch.object(backend_context, "_assert_upload_owner"),
+            patch.object(backend_context, "_safe_find_upload", return_value="C:/tmp/sample.mp4"),
+            patch.object(backend_context, "_lookup_subscription_tier", return_value="free"),
+            patch.object(backend_context, "_read_service_controls", return_value={}),
+            patch.object(backend_context, "_probe_media", return_value={"format": {"duration": 1}}),
+            patch.object(backend_context, "_compute_media_hash", side_effect=RuntimeError("skip cache")),
+            patch.object(backend_context, "_acquire_process_slot", return_value=True),
+            patch.object(backend_context, "_release_process_slot"),
+            patch.object(backend_context, "_reserve_ai_quota"),
+            patch.object(backend_context, "_release_ai_quota") as release_quota,
+            patch.object(backend_context.processor, "generate_captions_only", new_callable=AsyncMock,
                          return_value={"success": False, "error": "provider unavailable"}),
         ):
-            with self.assertRaises(main.HTTPException) as raised:
-                asyncio.run(main._process_video_inline(req, request, main.Response(), trusted_uid="process-user"))
+            with self.assertRaises(backend_context.HTTPException) as raised:
+                asyncio.run(backend_context._process_video_inline(req, request, backend_context.Response(), trusted_uid="process-user"))
 
         self.assertEqual(raised.exception.status_code, 502)
         release_quota.assert_called_once_with("process-user", "process")
 
     def test_corrupt_direct_upload_is_rejected_before_paid_transcription(self):
-        request = main.Request({"type": "http", "headers": [], "client": ("worker", 0)})
-        req = main.ProcessRequest(
+        request = backend_context.Request({"type": "http", "headers": [], "client": ("worker", 0)})
+        req = backend_context.ProcessRequest(
             file_id="123e4567-e89b-12d3-a456-426614174000",
             language="english",
         )
         with (
-            patch.object(main, "_assert_service_available"),
-            patch.object(main, "_assert_upload_owner"),
-            patch.object(main, "_safe_find_upload", return_value="C:/tmp/corrupt.mp4"),
-            patch.object(main, "_load_upload_metadata", return_value={"security_scanned_at": "done"}),
-            patch.object(main, "_lookup_subscription_tier", return_value="free"),
-            patch.object(main, "_read_service_controls", return_value={}),
-            patch.object(main, "_probe_media", side_effect=ValueError("corrupt media")),
-            patch.object(main.processor, "generate_captions_only", new_callable=AsyncMock) as provider,
+            patch.object(backend_context, "_assert_service_available"),
+            patch.object(backend_context, "_assert_upload_owner"),
+            patch.object(backend_context, "_safe_find_upload", return_value="C:/tmp/corrupt.mp4"),
+            patch.object(backend_context, "_load_upload_metadata", return_value={"security_scanned_at": "done"}),
+            patch.object(backend_context, "_lookup_subscription_tier", return_value="free"),
+            patch.object(backend_context, "_read_service_controls", return_value={}),
+            patch.object(backend_context, "_probe_media", side_effect=ValueError("corrupt media")),
+            patch.object(backend_context.processor, "generate_captions_only", new_callable=AsyncMock) as provider,
         ):
-            with self.assertRaises(main.HTTPException) as raised:
-                asyncio.run(main._process_video_inline(req, request, main.Response(), trusted_uid="process-user"))
+            with self.assertRaises(backend_context.HTTPException) as raised:
+                asyncio.run(backend_context._process_video_inline(req, request, backend_context.Response(), trusted_uid="process-user"))
         self.assertEqual(raised.exception.status_code, 422)
         provider.assert_not_called()
 
     def test_owned_export_download_redirects_to_short_lived_storage_url(self):
         filename = "export_123e4567-e89b-12d3-a456-426614174000_abcdef123456.mp4"
-        token = main._create_media_token({
+        token = backend_context._create_media_token({
             "kind": "export", "uid": "owner-1", "filename": filename,
-            "exp": int(main.time.time()) + 60,
+            "exp": int(backend_context.time.time()) + 60,
         })
         with (
-            patch.object(main, "_assert_account_not_deleting"),
-            patch.object(main, "signed_export_download_url", return_value="https://storage.test/private") as sign,
+            patch.object(backend_context, "_assert_account_not_deleting"),
+            patch.object(backend_context, "signed_export_download_url", return_value="https://storage.test/private") as sign,
         ):
-            response = main.serve_exported_media(filename, token)
+            response = backend_context.serve_exported_media(filename, token)
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.headers["location"], "https://storage.test/private")
         sign.assert_called_once_with(f"exports/owner-1/{filename}")
@@ -727,12 +728,12 @@ class ApiContractTests(unittest.TestCase):
         )
         self.assertEqual(res.status_code, 401)
 
-    @patch("main.LOCAL_DEV_AUTH_BYPASS_ENABLED", True)
-    @patch("main.processor.generate_captions_only", new_callable=AsyncMock)
-    @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
+    @patch("backend.application.runtime.LOCAL_DEV_AUTH_BYPASS_ENABLED", True)
+    @patch("backend.application.runtime.processor.generate_captions_only", new_callable=AsyncMock)
+    @patch("backend.application.runtime._safe_find_upload", return_value="C:/tmp/sample.mp4")
     def test_process_accepts_explicitly_enabled_local_dev_bypass_token(self, _safe_find, mock_process):
         mock_process.return_value = {"success": True, "captions": [{"id": 1, "text": "hello", "start_time": 0, "end_time": 1}]}
-        main._upload_owners["123e4567-e89b-12d3-a456-426614174000"] = "dev-local-user"
+        backend_context._upload_owners["123e4567-e89b-12d3-a456-426614174000"] = "dev-local-user"
         res = self.client.post(
             "/api/process",
             json={
@@ -744,8 +745,8 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertTrue(res.json().get("success"))
 
-    @patch("main.verify_token", return_value={"uid": "process-user"})
-    @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
+    @patch("backend.application.runtime.verify_token", return_value={"uid": "process-user"})
+    @patch("backend.application.runtime._safe_find_upload", return_value="C:/tmp/sample.mp4")
     def test_process_fails_closed_when_upload_owner_is_unknown(self, _safe_find, _verify_token):
         res = self.client.post(
             "/api/process",
@@ -777,10 +778,10 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(res.status_code, 404)
         self.assertIn("detail", res.json())
 
-    @patch("main.verify_token")
+    @patch("backend.application.runtime.verify_token")
     def test_export_status_requires_owner_auth(self, mock_verify_token):
         job_id = "job-auth-check"
-        main._export_jobs[job_id] = {
+        backend_context._export_jobs[job_id] = {
             "uid": "owner-uid",
             "status": "completed",
             "payload": {"success": True, "video_url": "/exports/owner.mp4"},
@@ -806,13 +807,13 @@ class ApiContractTests(unittest.TestCase):
 
     def test_export_status_allows_local_dev_mock_token_for_dev_job(self):
         job_id = "job-dev-auth-check"
-        main._export_jobs[job_id] = {
+        backend_context._export_jobs[job_id] = {
             "uid": "dev-local-user",
             "status": "completed",
             "payload": {"success": True, "video_url": "/api/media/export/dev.mp4"},
         }
 
-        with patch.object(main, "LOCAL_DEV_AUTH_BYPASS_ENABLED", True):
+        with patch.object(backend_context, "LOCAL_DEV_AUTH_BYPASS_ENABLED", True):
             res = self.client.get(
                 f"/api/export-status/{job_id}",
                 headers={"Authorization": "Bearer mock-token"},
@@ -821,12 +822,12 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.json().get("status"), "completed")
 
-    @patch("main.verify_token", return_value={"uid": "owner-uid"})
+    @patch("backend.application.runtime.verify_token", return_value={"uid": "owner-uid"})
     def test_export_result_refreshes_expired_media_token_without_new_job(self, _verify_token):
         job_id = "123e4567-e89b-12d3-a456-426614174099"
         filename = "export_123e4567-e89b-12d3-a456-426614174099_abcdef123456.mp4"
-        expired_url = main._signed_export_url(filename, "owner-uid", 60, "old")
-        main._export_jobs[job_id] = {
+        expired_url = backend_context._signed_export_url(filename, "owner-uid", 60, "old")
+        backend_context._export_jobs[job_id] = {
             "uid": "owner-uid",
             "status": "completed",
             "payload": {
@@ -836,7 +837,7 @@ class ApiContractTests(unittest.TestCase):
             },
         }
 
-        with patch.object(main.time, "time", return_value=time.time() + 120):
+        with patch.object(backend_context.time, "time", return_value=time.time() + 120):
             response = self.client.get(
                 f"/api/export-result/{job_id}",
                 headers={"Authorization": "Bearer owner-token"},
@@ -847,20 +848,20 @@ class ApiContractTests(unittest.TestCase):
         self.assertNotEqual(refreshed["video_url"], expired_url)
         self.assertIn("download_url_expires_at", refreshed)
         token = refreshed["video_url"].split("token=", 1)[1].split("&", 1)[0]
-        verified = main._verify_media_token(token, "export")
+        verified = backend_context._verify_media_token(token, "export")
         self.assertEqual(verified["filename"], filename)
         self.assertEqual(verified["uid"], "owner-uid")
 
-    @patch("main.verify_token", return_value={"uid": "owner-uid"})
+    @patch("backend.application.runtime.verify_token", return_value={"uid": "owner-uid"})
     def test_r2_export_result_returns_direct_url_only_to_owner(self, verify):
         job_id = "job-direct-r2"
         filename = "export_123e4567-e89b-12d3-a456-426614174099_abcdef123456.mp4"
-        main._export_jobs[job_id] = {
+        backend_context._export_jobs[job_id] = {
             "uid": "owner-uid", "status": "completed",
             "payload": {"success": True, "export_filename": filename, "video_url": "/api/media/export/old.mp4"},
         }
-        with patch.object(main, "s3_storage_configured", return_value=True), patch.object(
-            main, "signed_export_download_url", return_value="https://media.example.invalid/private"
+        with patch.object(backend_context, "s3_storage_configured", return_value=True), patch.object(
+            backend_context, "signed_export_download_url", return_value="https://media.example.invalid/private"
         ) as sign:
             verify.return_value = {"uid": "other-user"}
             denied = self.client.get(f"/api/export-result/{job_id}", headers={"Authorization": "Bearer other-token"})
@@ -875,7 +876,7 @@ class ApiContractTests(unittest.TestCase):
             unavailable = self.client.get(f"/api/export-result/{job_id}", headers={"Authorization": "Bearer owner-token"})
             self.assertEqual(unavailable.status_code, 503)
 
-    @patch("main.verify_token")
+    @patch("backend.application.runtime.verify_token")
     def test_export_replay_requires_owner_auth(self, mock_verify_token):
         job = {
             "uid": "owner-uid",
@@ -909,10 +910,10 @@ class ApiContractTests(unittest.TestCase):
                 return kwargs
 
         with (
-            patch.object(main, "_export_queue", FakeQueue()),
-            patch.object(main, "get_db", return_value=FakeDb()),
-            patch.object(main, "_persist_export_job", return_value=True),
-            patch.object(main, "_load_recorded_export_result", return_value=None),
+            patch.object(backend_context, "_export_queue", FakeQueue()),
+            patch.object(backend_context, "get_db", return_value=FakeDb()),
+            patch.object(backend_context, "_persist_export_job", return_value=True),
+            patch.object(backend_context, "_load_recorded_export_result", return_value=None),
         ):
             res_unauth = self.client.post("/api/export-replay/job-1")
             self.assertEqual(res_unauth.status_code, 401)
@@ -939,7 +940,7 @@ class ApiContractTests(unittest.TestCase):
             )
             self.assertEqual(res_completed.status_code, 409)
 
-    @patch("main.verify_token", return_value={"uid": "queue-user"})
+    @patch("backend.application.runtime.verify_token", return_value={"uid": "queue-user"})
     def test_queued_export_retains_user_slot_and_sanitizes_snapshot(self, _verify_token):
         captured = {}
 
@@ -949,8 +950,8 @@ class ApiContractTests(unittest.TestCase):
                 return {"queued": True}
 
         with (
-            patch.object(main, "_export_queue", FakeQueue()),
-            patch.object(main, "_persist_export_job", return_value=True),
+            patch.object(backend_context, "_export_queue", FakeQueue()),
+            patch.object(backend_context, "_persist_export_job", return_value=True),
         ):
             res = self.client.post(
                 "/api/export",
@@ -987,14 +988,14 @@ class ApiContractTests(unittest.TestCase):
         self.assertTrue(replay.json().get("idempotent_replay"))
         self.assertEqual(replay.json()["export_job_id"], payload["export_job_id"])
         self.assertEqual(
-            main._active_exports_by_user.get("queue-user"),
+            backend_context._active_exports_by_user.get("queue-user"),
             payload["export_job_id"],
         )
 
-        job = main._export_jobs[payload["export_job_id"]]
+        job = backend_context._export_jobs[payload["export_job_id"]]
         self.assertNotIn("id_token", job.get("request_snapshot", {}))
         self.assertEqual(captured["args"][1].get("id_token"), None)
-        self.assertEqual(captured["ttl"], main.EXPORT_MAX_QUEUE_WAIT_SECONDS)
+        self.assertEqual(captured["ttl"], backend_context.EXPORT_MAX_QUEUE_WAIT_SECONDS)
 
         res_second = self.client.post(
             "/api/export",
@@ -1011,17 +1012,17 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(res_second.status_code, 429)
 
     def test_export_slot_can_only_be_released_by_its_owner(self):
-        self.assertTrue(main._acquire_export_slot("lease-user", "job-a"))
-        self.assertTrue(main._acquire_export_slot("lease-user", "job-a"))
-        self.assertFalse(main._acquire_export_slot("lease-user", "job-b"))
+        self.assertTrue(backend_context._acquire_export_slot("lease-user", "job-a"))
+        self.assertTrue(backend_context._acquire_export_slot("lease-user", "job-a"))
+        self.assertFalse(backend_context._acquire_export_slot("lease-user", "job-b"))
 
-        main._release_export_slot("lease-user", "job-b")
-        self.assertEqual(main._active_exports_by_user.get("lease-user"), "job-a")
+        backend_context._release_export_slot("lease-user", "job-b")
+        self.assertEqual(backend_context._active_exports_by_user.get("lease-user"), "job-a")
 
-        main._release_export_slot("lease-user", "job-a")
-        self.assertNotIn("lease-user", main._active_exports_by_user)
+        backend_context._release_export_slot("lease-user", "job-a")
+        self.assertNotIn("lease-user", backend_context._active_exports_by_user)
 
-    @patch("main.verify_token", return_value={"uid": "idem-user"})
+    @patch("backend.application.runtime.verify_token", return_value={"uid": "idem-user"})
     def test_queued_export_idempotency_tracks_job_and_request_fingerprint(self, _verify_token):
         class FakeQueue:
             def enqueue_call(self, **kwargs):
@@ -1038,8 +1039,8 @@ class ApiContractTests(unittest.TestCase):
             "fps": 30,
         }
         with (
-            patch.object(main, "_export_queue", FakeQueue()),
-            patch.object(main, "_persist_export_job", return_value=True),
+            patch.object(backend_context, "_export_queue", FakeQueue()),
+            patch.object(backend_context, "_persist_export_job", return_value=True),
         ):
             first = self.client.post("/api/export", json=request_body)
             replay = self.client.post("/api/export", json=request_body)
@@ -1055,18 +1056,18 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(replay.status_code, 200)
         self.assertTrue(replay.json().get("idempotent_replay"))
         self.assertEqual(changed.status_code, 409)
-        marker = main._export_idempotency["idem-user:stable-export-key"]
+        marker = backend_context._export_idempotency["idem-user:stable-export-key"]
         self.assertEqual(marker["status"], "in_progress")
         self.assertEqual(marker["job_id"], first.json()["export_job_id"])
 
-    @patch("main.verify_token", return_value={"uid": "payment-user"})
+    @patch("backend.application.runtime.verify_token", return_value={"uid": "payment-user"})
     def test_verify_payment_fails_closed_when_live_fetch_fails(self, _verify_token):
         fake_client = SimpleNamespace(
             utility=SimpleNamespace(verify_payment_signature=lambda params: True),
             payment=SimpleNamespace(fetch=lambda payment_id: (_ for _ in ()).throw(RuntimeError("network down"))),
         )
 
-        with patch.object(main, "rzp_client", fake_client), patch.object(main, "RAZORPAY_AVAILABLE", True):
+        with patch.object(backend_context, "rzp_client", fake_client), patch.object(backend_context, "RAZORPAY_AVAILABLE", True):
             res = self.client.post(
                 "/api/verify-payment",
                 json={
@@ -1081,7 +1082,7 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(res.status_code, 502)
         self.assertIn("detail", res.json())
 
-    @patch("main.verify_token", return_value={"uid": "payment-user"})
+    @patch("backend.application.runtime.verify_token", return_value={"uid": "payment-user"})
     def test_verify_payment_rejects_uncaptured_payment(self, _verify_token):
         fake_client = SimpleNamespace(
             utility=SimpleNamespace(verify_payment_signature=lambda params: True),
@@ -1100,7 +1101,7 @@ class ApiContractTests(unittest.TestCase):
             }),
         )
 
-        with patch.object(main, "rzp_client", fake_client), patch.object(main, "RAZORPAY_AVAILABLE", True):
+        with patch.object(backend_context, "rzp_client", fake_client), patch.object(backend_context, "RAZORPAY_AVAILABLE", True):
             res = self.client.post(
                 "/api/verify-payment",
                 json={
@@ -1116,7 +1117,7 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(res.status_code, 400)
         self.assertIn("not captured", res.json()["detail"])
 
-    @patch("main.verify_token", return_value={"uid": "payment-user"})
+    @patch("backend.application.runtime.verify_token", return_value={"uid": "payment-user"})
     def test_verify_payment_rejects_plan_mismatch_with_order_notes(self, _verify_token):
         fake_client = SimpleNamespace(
             utility=SimpleNamespace(verify_payment_signature=lambda params: True),
@@ -1135,7 +1136,7 @@ class ApiContractTests(unittest.TestCase):
             }),
         )
 
-        with patch.object(main, "rzp_client", fake_client), patch.object(main, "RAZORPAY_AVAILABLE", True):
+        with patch.object(backend_context, "rzp_client", fake_client), patch.object(backend_context, "RAZORPAY_AVAILABLE", True):
             res = self.client.post(
                 "/api/verify-payment",
                 json={
@@ -1151,7 +1152,7 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(res.status_code, 400)
         self.assertIn("selected plan", res.json()["detail"])
 
-    @patch("main.verify_token", return_value=None)
+    @patch("backend.application.runtime.verify_token", return_value=None)
     def test_translate_requires_auth(self, _verify_token):
         res = self.client.post(
             "/api/translate",
@@ -1166,7 +1167,7 @@ class ApiContractTests(unittest.TestCase):
         )
         self.assertEqual(res.status_code, 401)
 
-    @patch("main.verify_token", return_value={"uid": "translate-user"})
+    @patch("backend.application.runtime.verify_token", return_value={"uid": "translate-user"})
     def test_translate_contract_with_auth(self, _verify_token):
         replies = ['{"lines": ["नमस्ते", "पहली पंक्ति\\nदूसरी पंक्ति"]}']
         requests = []
@@ -1200,8 +1201,8 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(res.status_code, 502)
         self.assertEqual(len(requests), 3, "a miscounted reply is retried once, then fails")
 
-    @patch("main.firebase_auth.delete_user")
-    @patch("main.verify_token", return_value={"uid": "delete-user"})
+    @patch("backend.application.runtime.firebase_auth.delete_user")
+    @patch("backend.application.runtime.verify_token", return_value={"uid": "delete-user"})
     def test_account_delete_clears_payments_and_auth_user(self, _verify_token, mock_delete_user):
         deleted = []
 
@@ -1247,10 +1248,10 @@ class ApiContractTests(unittest.TestCase):
                 return FakeUsersCollection()
 
         with (
-            patch.object(main, "get_db", return_value=FakeDb()),
-            patch.object(main, "delete_from_firebase_storage", return_value=True),
-            patch.object(main, "delete_user_exports", return_value=1),
-            patch.object(main, "delete_user_uploads", return_value=1),
+            patch.object(backend_context, "get_db", return_value=FakeDb()),
+            patch.object(backend_context, "delete_from_firebase_storage", return_value=True),
+            patch.object(backend_context, "delete_user_exports", return_value=1),
+            patch.object(backend_context, "delete_user_uploads", return_value=1),
         ):
             res = self.client.post("/api/account-delete", json={"id_token": "token-123"})
 
@@ -1260,8 +1261,8 @@ class ApiContractTests(unittest.TestCase):
         self.assertIn("user_doc", deleted)
         mock_delete_user.assert_called_once_with("delete-user")
 
-    @patch("main.firebase_auth.delete_user")
-    @patch("main.verify_token", return_value={"uid": "delete-user"})
+    @patch("backend.application.runtime.firebase_auth.delete_user")
+    @patch("backend.application.runtime.verify_token", return_value={"uid": "delete-user"})
     def test_account_delete_keeps_auth_when_firestore_cleanup_fails(self, _verify_token, mock_delete_user):
         class FakeUserDoc:
             exists = True
@@ -1281,16 +1282,16 @@ class ApiContractTests(unittest.TestCase):
             collection=lambda _name: SimpleNamespace(document=lambda _uid: fake_ref),
         )
         with (
-            patch.object(main, "get_db", return_value=fake_db),
-            patch.object(main, "delete_user_exports", return_value=0),
-            patch.object(main, "_delete_user_document_tree", side_effect=RuntimeError("firestore unavailable")),
+            patch.object(backend_context, "get_db", return_value=fake_db),
+            patch.object(backend_context, "delete_user_exports", return_value=0),
+            patch.object(backend_context, "_delete_user_document_tree", side_effect=RuntimeError("firestore unavailable")),
         ):
             response = self.client.post("/api/account-delete", json={"id_token": "token-123"})
 
         self.assertEqual(response.status_code, 500)
         mock_delete_user.assert_not_called()
 
-    @patch("main.verify_token", return_value={"uid": "export-user"})
+    @patch("backend.application.runtime.verify_token", return_value={"uid": "export-user"})
     def test_account_export_paginates_payments(self, _verify_token):
         class FakeDoc:
             exists = True
@@ -1333,7 +1334,7 @@ class ApiContractTests(unittest.TestCase):
         fake_db = SimpleNamespace(
             collection=lambda _name: SimpleNamespace(document=lambda _uid: user_ref),
         )
-        with patch.object(main, "get_db", return_value=fake_db), patch.object(main, "_audit_action"):
+        with patch.object(backend_context, "get_db", return_value=fake_db), patch.object(backend_context, "_audit_action"):
             res = self.client.post(
                 "/api/account-export",
                 json={"id_token": "token-123", "payment_limit": 2},
@@ -1383,17 +1384,17 @@ class ApiContractTests(unittest.TestCase):
         }))
         payment_ref = FakeRef(FakeSnapshot(False))
 
-        with patch.object(main.firestore, "transactional", new=lambda fn: fn):
-            result = main._grant_payment_transactionally(
+        with patch.object(backend_context.firestore, "transactional", new=lambda fn: fn):
+            result = backend_context._grant_payment_transactionally(
                 db,
                 user_ref,
                 payment_ref,
                 "payment-user",
                 "starter",
-                main.PLAN_PRICING["starter"],
+                backend_context.PLAN_PRICING["starter"],
                 "pay_123",
                 "order_123",
-                main.PLAN_PRICING["starter"]["inr_paise"],
+                backend_context.PLAN_PRICING["starter"]["inr_paise"],
                 "INR",
                 "test",
                 "",
@@ -1403,7 +1404,7 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual([write[0] for write in transaction.writes], ["create", "update"])
         self.assertEqual(
             transaction.writes[1][2]["credits_remaining"],
-            main.PLAN_PRICING["starter"]["credits"],
+            backend_context.PLAN_PRICING["starter"]["credits"],
         )
         self.assertIs(payment_ref.transaction, transaction)
         self.assertIs(user_ref.transaction, transaction)
@@ -1416,14 +1417,14 @@ class ApiContractTests(unittest.TestCase):
         }
         for plan_id, (credits, limit) in expected.items():
             with self.subTest(plan_id=plan_id):
-                plan = main.PLAN_PRICING[plan_id]
+                plan = backend_context.PLAN_PRICING[plan_id]
                 self.assertEqual(plan["inr_paise"], 19900)
                 self.assertEqual(plan["credits"], credits)
                 self.assertEqual(plan["purchase_limit_30d"], limit)
 
     def test_topup_rolling_limit_rejects_used_and_reserved_slots(self):
         now_ts = 2_000_000_000.0
-        creator_plan = main.PLAN_PRICING["topup_creator"]
+        creator_plan = backend_context.PLAN_PRICING["topup_creator"]
         user_data = {
             "topup_timestamps": [now_ts - 60],
             "topup_order_reservations": [
@@ -1435,8 +1436,8 @@ class ApiContractTests(unittest.TestCase):
             ],
         }
 
-        with self.assertRaises(main.HTTPException) as raised:
-            main._assert_topup_purchase_available(user_data, creator_plan, now_ts)
+        with self.assertRaises(backend_context.HTTPException) as raised:
+            backend_context._assert_topup_purchase_available(user_data, creator_plan, now_ts)
 
         self.assertEqual(raised.exception.status_code, 429)
         self.assertIn("2 top-up purchases", raised.exception.detail)
@@ -1483,17 +1484,17 @@ class ApiContractTests(unittest.TestCase):
         }))
         payment_ref = FakeRef(FakeSnapshot(False))
 
-        with patch.object(main.firestore, "transactional", new=lambda fn: fn):
-            result = main._grant_payment_transactionally(
+        with patch.object(backend_context.firestore, "transactional", new=lambda fn: fn):
+            result = backend_context._grant_payment_transactionally(
                 db,
                 user_ref,
                 payment_ref,
                 "topup-user",
                 "topup_creator",
-                main.PLAN_PRICING["topup_creator"],
+                backend_context.PLAN_PRICING["topup_creator"],
                 "pay_topup",
                 "order_topup",
-                main.PLAN_PRICING["topup_creator"]["inr_paise"],
+                backend_context.PLAN_PRICING["topup_creator"]["inr_paise"],
                 "INR",
                 "test",
                 "",
@@ -1515,7 +1516,7 @@ class ApiContractTests(unittest.TestCase):
                     "subscription_tier": "pro",
                     "subscription_expiry": (datetime.now(timezone.utc) - timedelta(days=1)).isoformat(),
                     "ai_usage_date": date.today().isoformat(),
-                    "ai_daily_usage": {"process": main.AI_DAILY_LIMITS["free"]["process"]},
+                    "ai_daily_usage": {"process": backend_context.AI_DAILY_LIMITS["free"]["process"]},
                 }
 
         class FakeRef:
@@ -1529,12 +1530,12 @@ class ApiContractTests(unittest.TestCase):
         )
 
         with (
-            patch.object(main, "get_db", return_value=fake_db),
-            patch.object(main, "_IS_TEST", False),
-            patch.object(main.firestore, "transactional", new=lambda fn: fn),
+            patch.object(backend_context, "get_db", return_value=fake_db),
+            patch.object(backend_context, "_IS_TEST", False),
+            patch.object(backend_context.firestore, "transactional", new=lambda fn: fn),
         ):
-            with self.assertRaises(main.HTTPException) as raised:
-                main._reserve_ai_quota("expired-pro", "process")
+            with self.assertRaises(backend_context.HTTPException) as raised:
+                backend_context._reserve_ai_quota("expired-pro", "process")
 
         self.assertEqual(raised.exception.status_code, 429)
 
@@ -1551,26 +1552,26 @@ class ApiContractTests(unittest.TestCase):
 
     def test_free_plan_transcriptions_are_lifetime_not_daily(self):
         writes = []
-        used_up = self._quota_db({"subscription_tier": "free", "ai_lifetime_usage": {"process": main.FREE_LIFETIME_TRANSCRIPTIONS}}, writes)
+        used_up = self._quota_db({"subscription_tier": "free", "ai_lifetime_usage": {"process": backend_context.FREE_LIFETIME_TRANSCRIPTIONS}}, writes)
         with (
-            patch.object(main, "get_db", return_value=used_up),
-            patch.object(main, "_IS_TEST", False),
-            patch.object(main, "AI_SYSTEM_DAILY_LIMIT", 0),
-            patch.object(main.firestore, "transactional", new=lambda fn: fn),
+            patch.object(backend_context, "get_db", return_value=used_up),
+            patch.object(backend_context, "_IS_TEST", False),
+            patch.object(backend_context, "AI_SYSTEM_DAILY_LIMIT", 0),
+            patch.object(backend_context.firestore, "transactional", new=lambda fn: fn),
         ):
-            with self.assertRaises(main.HTTPException) as raised:
-                main._reserve_ai_quota("free-user", "process")
+            with self.assertRaises(backend_context.HTTPException) as raised:
+                backend_context._reserve_ai_quota("free-user", "process")
             self.assertEqual(raised.exception.status_code, 402)
 
             fresh = self._quota_db({"subscription_tier": "free"}, writes)
-            with patch.object(main, "get_db", return_value=fresh):
-                main._reserve_ai_quota("free-user", "process")
+            with patch.object(backend_context, "get_db", return_value=fresh):
+                backend_context._reserve_ai_quota("free-user", "process")
             self.assertEqual(writes[-1]["ai_lifetime_usage"], {"process": 1})
 
             paid = self._quota_db({"subscription_tier": "pro", "subscription_expiry": (datetime.now(timezone.utc) + timedelta(days=5)).isoformat(),
                                    "ai_lifetime_usage": {"process": 99}}, writes)
-            with patch.object(main, "get_db", return_value=paid):
-                main._reserve_ai_quota("pro-user", "process")
+            with patch.object(backend_context, "get_db", return_value=paid):
+                backend_context._reserve_ai_quota("pro-user", "process")
             self.assertNotIn("ai_lifetime_usage", writes[-1])
 
     def test_failed_free_transcription_returns_the_trial_use(self):
@@ -1578,11 +1579,11 @@ class ApiContractTests(unittest.TestCase):
         db = self._quota_db({"subscription_tier": "free", "ai_lifetime_usage": {"process": 2},
                              "ai_usage_date": date.today().isoformat(), "ai_daily_usage": {"process": 1}}, writes)
         with (
-            patch.object(main, "get_db", return_value=db),
-            patch.object(main, "_IS_TEST", False),
-            patch.object(main.firestore, "transactional", new=lambda fn: fn),
+            patch.object(backend_context, "get_db", return_value=db),
+            patch.object(backend_context, "_IS_TEST", False),
+            patch.object(backend_context.firestore, "transactional", new=lambda fn: fn),
         ):
-            main._release_ai_quota("free-user", "process", release_system=False)
+            backend_context._release_ai_quota("free-user", "process", release_system=False)
         self.assertEqual(writes[-1]["ai_lifetime_usage"], {"process": 1})
         self.assertEqual(writes[-1]["ai_daily_usage"], {"process": 0})
 
@@ -1595,7 +1596,7 @@ class ApiContractTests(unittest.TestCase):
                     "entity": {
                         "id": "pay_webhook",
                         "order_id": "order_webhook",
-                        "amount": main.PLAN_PRICING["starter"]["inr_paise"],
+                        "amount": backend_context.PLAN_PRICING["starter"]["inr_paise"],
                         "currency": "INR",
                         "status": "captured",
                         "notes": {},
@@ -1620,20 +1621,20 @@ class ApiContractTests(unittest.TestCase):
         fake_client = SimpleNamespace(
             order=SimpleNamespace(fetch=lambda _order_id: {
                 "id": "order_webhook",
-                "amount": main.PLAN_PRICING["starter"]["inr_paise"],
+                "amount": backend_context.PLAN_PRICING["starter"]["inr_paise"],
                 "currency": "INR",
                 "notes": {"uid": "webhook-user", "plan_id": "starter", "org_id": ""},
             })
         )
 
         with (
-            patch.object(main, "RAZORPAY_WEBHOOK_SECRET", secret),
-            patch.object(main, "RAZORPAY_AVAILABLE", True),
-            patch.object(main, "rzp_client", fake_client),
-            patch.object(main, "get_db", return_value=None),
-            patch.object(main, "_apply_successful_payment", return_value={"success": True}) as apply_payment,
+            patch.object(backend_context, "RAZORPAY_WEBHOOK_SECRET", secret),
+            patch.object(backend_context, "RAZORPAY_AVAILABLE", True),
+            patch.object(backend_context, "rzp_client", fake_client),
+            patch.object(backend_context, "get_db", return_value=None),
+            patch.object(backend_context, "_apply_successful_payment", return_value={"success": True}) as apply_payment,
         ):
-            result = asyncio.run(main.razorpay_webhook(FakeRequest(body, signature)))
+            result = asyncio.run(backend_context.razorpay_webhook(FakeRequest(body, signature)))
 
         self.assertTrue(result["applied"])
         self.assertEqual(apply_payment.call_args.kwargs["uid"], "webhook-user")
@@ -1685,8 +1686,8 @@ class ApiContractTests(unittest.TestCase):
         }))
         payment_ref = FakeRef(FakeSnapshot(True, {
             "payment_id": "pay_refund",
-            "amount": main.PLAN_PRICING["starter"]["inr_paise"],
-            "credits_added": main.PLAN_PRICING["starter"]["credits"],
+            "amount": backend_context.PLAN_PRICING["starter"]["inr_paise"],
+            "credits_added": backend_context.PLAN_PRICING["starter"]["credits"],
             "type": "subscription",
             "plan": "starter",
             "timestamp": cycle_start,
@@ -1702,17 +1703,17 @@ class ApiContractTests(unittest.TestCase):
         )
 
         with (
-            patch.object(main.firestore, "transactional", new=lambda fn: fn),
-            patch.object(main, "_track_event"),
-            patch.object(main, "_audit_action"),
+            patch.object(backend_context.firestore, "transactional", new=lambda fn: fn),
+            patch.object(backend_context, "_track_event"),
+            patch.object(backend_context, "_audit_action"),
         ):
-            result = main._apply_refund_webhook_event(
+            result = backend_context._apply_refund_webhook_event(
                 fake_db,
                 "refund.processed",
                 {
                     "id": "rfnd_1",
                     "payment_id": "pay_refund",
-                    "amount": main.PLAN_PRICING["starter"]["inr_paise"],
+                    "amount": backend_context.PLAN_PRICING["starter"]["inr_paise"],
                     "currency": "INR",
                     "status": "processed",
                 },
@@ -1780,15 +1781,15 @@ class ApiContractTests(unittest.TestCase):
         history_item = {"id": "file-1", "export_job_id": "job-1"}
 
         with (
-            patch.object(main.firestore, "transactional", new=lambda fn: fn),
-            patch.object(main, "DISABLE_EXPORT_CREDIT_LIMIT", False),
+            patch.object(backend_context.firestore, "transactional", new=lambda fn: fn),
+            patch.object(backend_context, "DISABLE_EXPORT_CREDIT_LIMIT", False),
         ):
-            main._record_export_usage(db, user_ref, history_item, 100.0, "job-1")
-            main._record_export_usage(db, user_ref, history_item, 101.0, "job-1")
+            backend_context._record_export_usage(db, user_ref, history_item, 100.0, "job-1")
+            backend_context._record_export_usage(db, user_ref, history_item, 101.0, "job-1")
 
         self.assertEqual([write[0] for write in transactions[0].writes], ["create", "update"])
         first_user_update = transactions[0].writes[1][2]
-        self.assertEqual(first_user_update["credits_remaining"], main.FREE_PLAN_CREDITS - 1)
+        self.assertEqual(first_user_update["credits_remaining"], backend_context.FREE_PLAN_CREDITS - 1)
         self.assertEqual(transactions[1].writes, [])
 
     def test_payment_idempotency_fails_closed_when_redis_is_unavailable(self):
@@ -1796,22 +1797,22 @@ class ApiContractTests(unittest.TestCase):
             def get(self, _key):
                 raise ConnectionError("redis unavailable")
 
-        with patch.object(main, "_redis_client", BrokenRedis()):
-            with self.assertRaises(main.HTTPException) as raised:
-                main._payment_idem_get("payment-key")
+        with patch.object(backend_context, "_redis_client", BrokenRedis()):
+            with self.assertRaises(backend_context.HTTPException) as raised:
+                backend_context._payment_idem_get("payment-key")
 
         self.assertEqual(raised.exception.status_code, 503)
 
     def test_durable_queue_rejects_unpersisted_job_state(self):
         with (
-            patch.object(main, "_export_queue", object()),
-            patch.object(main, "_persist_export_job", return_value=False),
+            patch.object(backend_context, "_export_queue", object()),
+            patch.object(backend_context, "_persist_export_job", return_value=False),
         ):
             with self.assertRaises(RuntimeError):
-                main._set_export_job("durable-job", "queued", uid="owner")
+                backend_context._set_export_job("durable-job", "queued", uid="owner")
 
-    @patch("main.firebase_auth.delete_user")
-    @patch("main.verify_token", return_value={"uid": "delete-user"})
+    @patch("backend.application.runtime.firebase_auth.delete_user")
+    @patch("backend.application.runtime.verify_token", return_value={"uid": "delete-user"})
     def test_account_delete_stops_when_cloud_cleanup_fails(self, _verify_token, mock_delete_user):
         class FakeUserDoc:
             exists = True
@@ -1831,15 +1832,15 @@ class ApiContractTests(unittest.TestCase):
             collection=lambda _name: SimpleNamespace(document=lambda _uid: fake_ref),
         )
         with (
-            patch.object(main, "get_db", return_value=fake_db),
-            patch.object(main, "delete_user_exports", return_value=None),
+            patch.object(backend_context, "get_db", return_value=fake_db),
+            patch.object(backend_context, "delete_user_exports", return_value=None),
         ):
             response = self.client.post("/api/account-delete", json={"id_token": "token-123"})
 
         self.assertEqual(response.status_code, 503)
         mock_delete_user.assert_not_called()
 
-    @patch("main.verify_token", return_value={"uid": "delete-user"})
+    @patch("backend.application.runtime.verify_token", return_value={"uid": "delete-user"})
     def test_delete_file_proves_history_ownership_before_local_cleanup(self, _verify_token):
         class FakeUserDoc:
             exists = True
@@ -1852,9 +1853,9 @@ class ApiContractTests(unittest.TestCase):
             collection=lambda _name: SimpleNamespace(document=lambda _uid: fake_ref),
         )
         with (
-            patch.object(main, "get_db", return_value=fake_db),
-            patch.object(main, "_audit_action"),
-            patch.object(main.os, "remove") as remove_file,
+            patch.object(backend_context, "get_db", return_value=fake_db),
+            patch.object(backend_context, "_audit_action"),
+            patch.object(backend_context.os, "remove") as remove_file,
         ):
             response = self.client.post(
                 "/api/delete-file",
@@ -1867,7 +1868,7 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
         remove_file.assert_not_called()
 
-    @patch("main.verify_token", return_value={
+    @patch("backend.application.runtime.verify_token", return_value={
         "uid": "new-user",
         "email": "new@example.com",
         "name": "New User",
@@ -1893,7 +1894,7 @@ class ApiContractTests(unittest.TestCase):
         fake_db = SimpleNamespace(
             collection=lambda _name: SimpleNamespace(document=lambda _uid: fake_ref),
         )
-        with patch.object(main, "get_db", return_value=fake_db), patch.object(main, "_audit_action"):
+        with patch.object(backend_context, "get_db", return_value=fake_db), patch.object(backend_context, "_audit_action"):
             res = self.client.post("/api/account-bootstrap", json={"id_token": "token-123"})
 
         self.assertEqual(res.status_code, 200)
@@ -1912,27 +1913,27 @@ class ApiContractTests(unittest.TestCase):
             "pro_yearly": 1440,
         }
         for plan_id, credits in expected_credits.items():
-            plan = main.PLAN_PRICING[plan_id]
+            plan = backend_context.PLAN_PRICING[plan_id]
             self.assertEqual(plan["credits"], credits)
             self.assertIn("daily_limit", plan)
             self.assertIn("max_video_seconds", plan)
-        self.assertTrue(main.PLAN_PRICING["free"]["is_free"])
-        self.assertEqual(main.FREE_PLAN_CREDITS, 3)
+        self.assertTrue(backend_context.PLAN_PRICING["free"]["is_free"])
+        self.assertEqual(backend_context.FREE_PLAN_CREDITS, 3)
 
     def test_free_credits_are_exportable_and_zero_balance_is_blocked(self):
         with (
-            patch.object(main, "DISABLE_EXPORT_CREDIT_LIMIT", False),
-            patch.object(main, "DISABLE_EXPORT_DAILY_LIMIT", False),
+            patch.object(backend_context, "DISABLE_EXPORT_CREDIT_LIMIT", False),
+            patch.object(backend_context, "DISABLE_EXPORT_DAILY_LIMIT", False),
         ):
-            allowed, reason, _history = main._evaluate_export_policy({
+            allowed, reason, _history = backend_context._evaluate_export_policy({
                 "subscription_tier": "free",
-                "credits_remaining": main.FREE_PLAN_CREDITS,
+                "credits_remaining": backend_context.FREE_PLAN_CREDITS,
                 "export_timestamps": [],
             }, time.time())
             self.assertTrue(allowed)
             self.assertEqual(reason, "")
 
-            allowed, reason, _history = main._evaluate_export_policy({
+            allowed, reason, _history = backend_context._evaluate_export_policy({
                 "subscription_tier": "starter",
                 "credits_remaining": 0,
                 "export_timestamps": [],
@@ -1941,7 +1942,7 @@ class ApiContractTests(unittest.TestCase):
             self.assertFalse(allowed)
             self.assertIn("UPGRADE_REQUIRED", reason)
 
-    @patch("main.verify_token", return_value={"uid": "legacy-free-user", "email": "legacy@example.com"})
+    @patch("backend.application.runtime.verify_token", return_value={"uid": "legacy-free-user", "email": "legacy@example.com"})
     def test_account_bootstrap_repairs_missing_legacy_free_credits(self, _verify_token):
         stored = {"uid": "legacy-free-user", "subscription_tier": "free"}
 
@@ -1962,7 +1963,7 @@ class ApiContractTests(unittest.TestCase):
                 return FakeSnapshot()
 
             def create(self, _data):
-                raise main.AlreadyExists("already exists")
+                raise backend_context.AlreadyExists("already exists")
 
             def set(self, data, merge=False):
                 if not merge:
@@ -1976,16 +1977,16 @@ class ApiContractTests(unittest.TestCase):
             transaction=lambda: transaction,
         )
         with (
-            patch.object(main, "get_db", return_value=fake_db),
-            patch.object(main.firestore, "transactional", new=lambda fn: fn),
-            patch.object(main, "_audit_action"),
+            patch.object(backend_context, "get_db", return_value=fake_db),
+            patch.object(backend_context.firestore, "transactional", new=lambda fn: fn),
+            patch.object(backend_context, "_audit_action"),
         ):
             response = self.client.post("/api/account-bootstrap", json={"id_token": "token-123"})
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(stored["credits_remaining"], main.FREE_PLAN_CREDITS)
+        self.assertEqual(stored["credits_remaining"], backend_context.FREE_PLAN_CREDITS)
 
-    @patch("main.verify_token", return_value={"uid": "invalid-free-user", "email": "invalid@example.com"})
+    @patch("backend.application.runtime.verify_token", return_value={"uid": "invalid-free-user", "email": "invalid@example.com"})
     def test_account_bootstrap_clamps_out_of_range_free_credits(self, _verify_token):
         stored = {
             "uid": "invalid-free-user",
@@ -2010,7 +2011,7 @@ class ApiContractTests(unittest.TestCase):
                 return FakeSnapshot()
 
             def create(self, _data):
-                raise main.AlreadyExists("already exists")
+                raise backend_context.AlreadyExists("already exists")
 
             def set(self, data, merge=False):
                 if not merge:
@@ -2024,16 +2025,16 @@ class ApiContractTests(unittest.TestCase):
             transaction=lambda: transaction,
         )
         with (
-            patch.object(main, "get_db", return_value=fake_db),
-            patch.object(main.firestore, "transactional", new=lambda fn: fn),
-            patch.object(main, "_audit_action"),
+            patch.object(backend_context, "get_db", return_value=fake_db),
+            patch.object(backend_context.firestore, "transactional", new=lambda fn: fn),
+            patch.object(backend_context, "_audit_action"),
         ):
             response = self.client.post("/api/account-bootstrap", json={"id_token": "token-123"})
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(stored["credits_remaining"], main.FREE_PLAN_CREDITS)
+        self.assertEqual(stored["credits_remaining"], backend_context.FREE_PLAN_CREDITS)
 
-    @patch("main.verify_token", return_value={"uid": "payment-user"})
+    @patch("backend.application.runtime.verify_token", return_value={"uid": "payment-user"})
     def test_free_plan_cannot_be_purchased(self, _verify_token):
         response = self.client.post("/api/create-order", json={
             "plan_id": "free",
@@ -2049,15 +2050,15 @@ class ApiContractTests(unittest.TestCase):
         res = self.client.post("/api/create-order", json={"plan_id": "starter", "id_token": "invalid-token", "currency": "INR"})
         self.assertEqual(res.status_code, 401)
 
-    @patch("main.verify_token", return_value={"uid": "payment-user"})
+    @patch("backend.application.runtime.verify_token", return_value={"uid": "payment-user"})
     def test_paused_payments_never_contact_razorpay(self, _verify_token):
-        paused = main._default_service_controls()
+        paused = backend_context._default_service_controls()
         paused["pause_payments"] = True
         fake_client = SimpleNamespace()
 
         with (
-            patch.object(main, "_read_service_controls", return_value=paused),
-            patch.object(main, "rzp_client", fake_client),
+            patch.object(backend_context, "_read_service_controls", return_value=paused),
+            patch.object(backend_context, "rzp_client", fake_client),
         ):
             response = self.client.post(
                 "/api/create-order",
@@ -2072,7 +2073,7 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertIn("Payments are paused", response.json()["detail"])
 
-    @patch("main.verify_token", return_value={
+    @patch("backend.application.runtime.verify_token", return_value={
         "uid": "new-rate-limited-user",
         "email": "new@example.com",
     })
@@ -2091,8 +2092,8 @@ class ApiContractTests(unittest.TestCase):
             collection=lambda _name: SimpleNamespace(document=lambda _uid: FakeUserRef()),
         )
         with (
-            patch.object(main, "get_db", return_value=fake_db),
-            patch.object(main, "_check_rate", return_value=(False, 60, 0)),
+            patch.object(backend_context, "get_db", return_value=fake_db),
+            patch.object(backend_context, "_check_rate", return_value=(False, 60, 0)),
         ):
             response = self.client.post(
                 "/api/account-bootstrap",
@@ -2101,18 +2102,18 @@ class ApiContractTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 429)
 
-    @patch("main.verify_token", return_value={"uid": "ordinary-user", "email": "user@example.com", "email_verified": True})
+    @patch("backend.application.runtime.verify_token", return_value={"uid": "ordinary-user", "email": "user@example.com", "email_verified": True})
     def test_admin_endpoints_reject_non_admin_tokens(self, _verify_token):
         res = self.client.post("/api/admin/recovery-summary", json={"id_token": "token-123", "limit": 10})
         self.assertEqual(res.status_code, 403)
 
-    @patch("main.verify_token", return_value={"uid": "attacker", "email": "ops@example.com", "email_verified": False})
+    @patch("backend.application.runtime.verify_token", return_value={"uid": "attacker", "email": "ops@example.com", "email_verified": False})
     def test_admin_email_allowlist_requires_verified_email(self, _verify_token):
         with patch.dict(os.environ, {"ADMIN_EMAILS": "ops@example.com"}):
             res = self.client.post("/api/admin/tenant-backfill", json={"id_token": "token-123", "limit": 10})
         self.assertEqual(res.status_code, 403)
 
-    @patch("main.verify_token", return_value={"uid": "payment-user"})
+    @patch("backend.application.runtime.verify_token", return_value={"uid": "payment-user"})
     def test_create_order_idempotency_replays_without_duplicate_order(self, _verify_token):
         calls = []
 
@@ -2123,7 +2124,7 @@ class ApiContractTests(unittest.TestCase):
 
         fake_client = SimpleNamespace(order=FakeOrderApi())
 
-        with patch.object(main, "rzp_client", fake_client), patch.object(main, "RAZORPAY_AVAILABLE", True):
+        with patch.object(backend_context, "rzp_client", fake_client), patch.object(backend_context, "RAZORPAY_AVAILABLE", True):
             payload = {
                 "plan_id": "starter",
                 "id_token": "token-123",
@@ -2152,7 +2153,7 @@ class ApiContractTests(unittest.TestCase):
     def test_chunked_json_body_limit(self):
         res = self.client.post(
             "/api/translate",
-            content=b'{' + b'"padding":"' + (b'x' * (main.MAX_JSON_BODY_BYTES + 1)) + b'"}',
+            content=b'{' + b'"padding":"' + (b'x' * (backend_context.MAX_JSON_BODY_BYTES + 1)) + b'"}',
             headers={"Content-Type": "application/json"},
         )
         self.assertEqual(res.status_code, 413)
@@ -2161,7 +2162,7 @@ class ApiContractTests(unittest.TestCase):
         slo_res = self.client.get("/api/slo/status")
         self.assertEqual(slo_res.status_code, 403)
 
-        with patch.object(main, "verify_token", return_value={"uid": "admin", "admin": True}):
+        with patch.object(backend_context, "verify_token", return_value={"uid": "admin", "admin": True}):
             admin_slo_res = self.client.get(
                 "/api/slo/status",
                 headers={"Authorization": "Bearer admin-token"},

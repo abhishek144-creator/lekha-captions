@@ -1,39 +1,91 @@
 """Account routes: bootstrap, data export, deletion, promo redemption and the synthetic customer-journey probe.
 
-Handlers resolve shared helpers through ``host`` (the main module) at call time,
-so there is one copy of each helper and test patches on ``main`` keep applying.
+The factory accepts explicit configuration, adapters and shared state through
+ServiceContext. It has no dependency on the HTTP entry point.
 """
 
-from types import ModuleType, SimpleNamespace
+from types import SimpleNamespace
+from typing import Protocol, Any
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Response
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import HTTPException, Response
 from fastapi import Request
 from fastapi import APIRouter
 
 
-def create_account_router(host: ModuleType) -> SimpleNamespace:
+from pydantic import BaseModel
+from pydantic import Field
+from datetime import datetime
+import hashlib
+import os
+from dateutil.relativedelta import relativedelta
+import time
+from datetime import timezone
+
+class ServiceContext(Protocol):
+    AlreadyExists: Any
+    EXPORT_DIR: Any
+    FREE_PLAN_CREDITS: Any
+    FREE_PLAN_ID: Any
+    PLAN_PRICING: Any
+    PROMO_RATE_LIMIT: Any
+    SIGNUP_SHARED_NETWORK_RATE_LIMIT: Any
+    SIGNUP_USER_RATE_LIMIT: Any
+    TranscriptionJobs: Any
+    _IS_PRODUCTION: Any
+    _account_workspace_memberships: Any
+    _apply_rate_headers: Any
+    _assert_account_not_deleting: Any
+    _assert_no_owned_workspaces: Any
+    _assert_service_available: Any
+    _assert_tenant_access: Any
+    _audit_action: Any
+    _check_rate: Any
+    _cleanup_account_extensions: Any
+    _client_rate_key: Any
+    _create_account_if_active: Any
+    _delete_top_level_rows_for_account: Any
+    _delete_user_document_tree: Any
+    _json_log: Any
+    _normalize_free_credit_balance: Any
+    _normalize_tier_name: Any
+    _promo_rate: Any
+    _redis_client: Any
+    _signup_rate: Any
+    _tenant_id_from_token: Any
+    _track_event: Any
+    _utcnow: Any
+    delete_user_exports: Any
+    delete_user_uploads: Any
+    firebase_auth: Any
+    firestore: Any
+    get_db: Any
+    list_projects: Any
+    read_draft: Any
+    read_editor_preferences: Any
+    verify_token: Any
+
+
+def create_account_router(context: ServiceContext) -> SimpleNamespace:
     router = APIRouter()
 
-    class RedeemPromoRequest(host.BaseModel):
-        id_token: str = host.Field(min_length=1, max_length=8_192)
-        code: str = host.Field(min_length=1, max_length=64)
+    class RedeemPromoRequest(BaseModel):
+        id_token: str = Field(min_length=1, max_length=8_192)
+        code: str = Field(min_length=1, max_length=64)
 
 
     @router.post("/api/redeem-promo")
     def redeem_promo(req: RedeemPromoRequest, request: Request, response: Response):
-        client_ip = host._client_rate_key(request)
-        allowed, retry_after, remaining = host._check_rate(host._promo_rate, client_ip, host.PROMO_RATE_LIMIT)
-        host._apply_rate_headers(response, host.PROMO_RATE_LIMIT, remaining, retry_after)
+        client_ip = context._client_rate_key(request)
+        allowed, retry_after, remaining = context._check_rate(context._promo_rate, client_ip, context.PROMO_RATE_LIMIT)
+        context._apply_rate_headers(response, context.PROMO_RATE_LIMIT, remaining, retry_after)
         if not allowed:
             raise HTTPException(status_code=429, detail="Too many promo code attempts. Please wait before trying again.")
-        decoded = host.verify_token(req.id_token)
+        decoded = context.verify_token(req.id_token)
         if not decoded:
             raise HTTPException(status_code=401, detail="Unauthorized")
         uid = decoded.get('uid')
 
-        db = host.get_db()
+        db = context.get_db()
         if not db:
             raise HTTPException(status_code=503, detail="Database unavailable")
 
@@ -42,9 +94,9 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
         user_ref = db.collection("users").document(uid)
         transaction = db.transaction()
 
-        @host.firestore.transactional
+        @context.firestore.transactional
         def redeem_in_transaction(txn):
-            if host._IS_PRODUCTION and db.collection("account_deletions").document(uid).get(transaction=txn).exists:
+            if context._IS_PRODUCTION and db.collection("account_deletions").document(uid).get(transaction=txn).exists:
                 raise HTTPException(status_code=409, detail="Account deletion is pending.")
             code_doc = code_ref.get(transaction=txn)
             if not code_doc.exists:
@@ -53,13 +105,13 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
             promo = code_doc.to_dict() or {}
             if promo.get("is_used"):
                 raise HTTPException(status_code=400, detail="Invalid or already used code")
-            if promo.get("plan_id") not in host.PLAN_PRICING:
+            if promo.get("plan_id") not in context.PLAN_PRICING:
                 raise HTTPException(status_code=400, detail="Promo code references an invalid plan")
 
             user_doc = user_ref.get(transaction=txn)
             user_email = user_doc.to_dict().get("email", "") if user_doc.exists else ""
-            now = host._utcnow()
-            expiry_date = (now + host.relativedelta(months=int(promo["duration_months"]))).date().isoformat()
+            now = context._utcnow()
+            expiry_date = (now + relativedelta(months=int(promo["duration_months"]))).date().isoformat()
 
             txn.update(code_ref, {
                 "is_used": True,
@@ -90,22 +142,22 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
         }
 
 
-    class DeleteFileRequest(host.BaseModel):
-        file_id: str = host.Field(min_length=36, max_length=36)
-        id_token: str = host.Field(min_length=1, max_length=8_192)
-        org_id: str = host.Field(default="", max_length=128)
+    class DeleteFileRequest(BaseModel):
+        file_id: str = Field(min_length=36, max_length=36)
+        id_token: str = Field(min_length=1, max_length=8_192)
+        org_id: str = Field(default="", max_length=128)
 
 
-    class AccountDataRequest(host.BaseModel):
-        id_token: str = host.Field(min_length=1, max_length=8_192)
-        org_id: str = host.Field(default="", max_length=128)
+    class AccountDataRequest(BaseModel):
+        id_token: str = Field(min_length=1, max_length=8_192)
+        org_id: str = Field(default="", max_length=128)
         consent_granted: bool = False
-        terms_version: str = host.Field(default="", max_length=40, pattern=r"^[0-9A-Za-z._-]*$")
-        privacy_version: str = host.Field(default="", max_length=40, pattern=r"^[0-9A-Za-z._-]*$")
+        terms_version: str = Field(default="", max_length=40, pattern=r"^[0-9A-Za-z._-]*$")
+        privacy_version: str = Field(default="", max_length=40, pattern=r"^[0-9A-Za-z._-]*$")
 
 
-    class SyntheticJourneyRequest(host.BaseModel):
-        id_token: str = host.Field(min_length=1, max_length=8_192)
+    class SyntheticJourneyRequest(BaseModel):
+        id_token: str = Field(min_length=1, max_length=8_192)
 
 
     @router.post("/api/health/customer-journey")
@@ -116,13 +168,13 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
     it without a browser-generated App Check token. A valid Firebase user token
     is still mandatory, and the check is read-only and tenant-local.
     """
-        decoded_token = host.verify_token(req.id_token)
+        decoded_token = context.verify_token(req.id_token)
         if not decoded_token:
             raise HTTPException(status_code=401, detail="Auth required")
         uid = str(decoded_token.get("uid") or "").strip()
         if not uid:
             raise HTTPException(status_code=401, detail="Auth required")
-        db = host.get_db()
+        db = context.get_db()
         if not db:
             raise HTTPException(status_code=503, detail="Database unavailable")
         user_doc = db.collection("users").document(uid).get()
@@ -132,8 +184,8 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
 
 
     class AccountExportRequest(AccountDataRequest):
-        payment_limit: int = host.Field(default=100, ge=1, le=500)
-        payment_cursor: str = host.Field(default="", max_length=1_500)
+        payment_limit: int = Field(default=100, ge=1, le=500)
+        payment_cursor: str = Field(default="", max_length=1_500)
 
 
     def _delete_user_document_tree(db, user_ref):
@@ -184,7 +236,7 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
     def _assert_no_owned_workspaces(db, uid: str):
         owned = [
             snapshot.id
-            for snapshot in host._account_workspace_memberships(db, uid)
+            for snapshot in context._account_workspace_memberships(db, uid)
             if callable(getattr(snapshot, "to_dict", None))
             and (snapshot.to_dict() or {}).get("role") == "owner"
         ]
@@ -212,7 +264,7 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
     def _cleanup_account_extensions(db, uid: str):
         # Remove the member from workspaces they do not own. Owned workspaces were
         # fenced before destructive cleanup so teammates can never be orphaned.
-        for snapshot in host._account_workspace_memberships(db, uid):
+        for snapshot in context._account_workspace_memberships(db, uid):
             if not callable(getattr(snapshot, "to_dict", None)):
                 continue
             membership_data = snapshot.to_dict() or {}
@@ -230,11 +282,11 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
                 db.collection("api_keys").document(value["key_hash"]).delete()
 
         for collection_name in ("user_notifications", "export_batches"):
-            host._delete_top_level_rows_for_account(db, collection_name, uid)
+            context._delete_top_level_rows_for_account(db, collection_name, uid)
 
 
     def _remove_history_item_transactionally(db, user_ref, file_id: str):
-        @host.firestore.transactional
+        @context.firestore.transactional
         def _remove(transaction):
             user_doc = user_ref.get(transaction=transaction)
             if not user_doc.exists:
@@ -249,7 +301,7 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
 
 
     def _mark_history_item_deleting_transactionally(db, user_ref, file_id: str):
-        @host.firestore.transactional
+        @context.firestore.transactional
         def _mark(transaction):
             user_doc = user_ref.get(transaction=transaction)
             if not user_doc.exists:
@@ -263,7 +315,7 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
                     updated_history.append({
                         **item,
                         "deletion_pending": True,
-                        "deletion_requested_at": host.datetime.now(host.timezone.utc).isoformat(),
+                        "deletion_requested_at": datetime.now(timezone.utc).isoformat(),
                     })
                 else:
                     updated_history.append(item)
@@ -277,30 +329,30 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
     @router.post("/api/account-bootstrap")
     def account_bootstrap(req: AccountDataRequest, request: Request):
         """Create safe account defaults server-side and return the user's record."""
-        decoded_token = host.verify_token(req.id_token)
+        decoded_token = context.verify_token(req.id_token)
         if not decoded_token:
             raise HTTPException(status_code=401, detail="Auth required")
         uid = (decoded_token.get("uid") or "").strip()
         if not uid:
             raise HTTPException(status_code=401, detail="Auth required")
-        host._assert_tenant_access(uid, decoded_token, req.org_id)
-        db = host.get_db()
+        context._assert_tenant_access(uid, decoded_token, req.org_id)
+        db = context.get_db()
         if not db:
             raise HTTPException(status_code=503, detail="Database unavailable")
 
-        host._assert_account_not_deleting(uid)
+        context._assert_account_not_deleting(uid)
         user_ref = db.collection("users").document(uid)
         # Existing accounts keep working while sign-ups are paused; only the first
         # bootstrap of a brand-new account is blocked.
         if not user_ref.get().exists:
-            host._assert_service_available("pause_signups")
-            client_ip = host._client_rate_key(request)
+            context._assert_service_available("pause_signups")
+            client_ip = context._client_rate_key(request)
             for rate_key, rate_limit in (
-                (f"signup:network:{client_ip}", host.SIGNUP_SHARED_NETWORK_RATE_LIMIT),
-                (f"signup:user:{uid}", host.SIGNUP_USER_RATE_LIMIT),
+                (f"signup:network:{client_ip}", context.SIGNUP_SHARED_NETWORK_RATE_LIMIT),
+                (f"signup:user:{uid}", context.SIGNUP_USER_RATE_LIMIT),
             ):
-                allowed, _retry_after, _remaining = host._check_rate(
-                    host._signup_rate, rate_key, rate_limit
+                allowed, _retry_after, _remaining = context._check_rate(
+                    context._signup_rate, rate_key, rate_limit
                 )
                 if not allowed:
                     raise HTTPException(
@@ -309,23 +361,23 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
                     )
         safe_profile = {
             "uid": uid,
-            "org_id": host._tenant_id_from_token(decoded_token),
+            "org_id": context._tenant_id_from_token(decoded_token),
             "email": str(decoded_token.get("email") or "")[:320],
             "displayName": str(decoded_token.get("name") or "")[:200],
             "photoURL": str(decoded_token.get("picture") or "")[:2_048],
         }
         try:
-            host._create_account_if_active(db, user_ref, uid, {
+            context._create_account_if_active(db, user_ref, uid, {
                 **safe_profile,
-                "credits_remaining": host.FREE_PLAN_CREDITS,
+                "credits_remaining": context.FREE_PLAN_CREDITS,
                 "subscription_tier": "free",
                 "subscription_expiry": None,
                 "export_timestamps": [],
-                "created_at": host.time.time(),
+                "created_at": time.time(),
             })
-            host._audit_action("account_bootstrap_created", uid)
-            host._track_event("account_signup", {"uid": uid})
-        except host.AlreadyExists:
+            context._audit_action("account_bootstrap_created", uid)
+            context._track_event("account_signup", {"uid": uid})
+        except context.AlreadyExists:
             # Only identity-provider profile fields may be refreshed here. Billing
             # and entitlement fields remain server-controlled elsewhere.
             user_ref.set(safe_profile, merge=True)
@@ -336,12 +388,12 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
         existing_user = user_ref.get()
         existing_data = existing_user.to_dict() or {} if existing_user.exists else {}
         existing_is_free = (
-            host._normalize_tier_name(existing_data.get("subscription_tier", "free")) == host.FREE_PLAN_ID
+            context._normalize_tier_name(existing_data.get("subscription_tier", "free")) == context.FREE_PLAN_ID
         )
         existing_has_credits = "credits_remaining" in existing_data
-        normalized_existing_credits = host._normalize_free_credit_balance(
+        normalized_existing_credits = context._normalize_free_credit_balance(
             existing_data.get("credits_remaining"),
-            default=host.FREE_PLAN_CREDITS if not existing_has_credits else 0,
+            default=context.FREE_PLAN_CREDITS if not existing_has_credits else 0,
         )
         if (
             existing_user.exists
@@ -351,18 +403,18 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
                 or existing_data.get("credits_remaining") != normalized_existing_credits
             )
         ):
-            @host.firestore.transactional
+            @context.firestore.transactional
             def _repair_legacy_free_entitlement(transaction):
                 snapshot = user_ref.get(transaction=transaction)
                 if not snapshot.exists:
                     return False
                 data = snapshot.to_dict() or {}
-                if host._normalize_tier_name(data.get("subscription_tier", "free")) != host.FREE_PLAN_ID:
+                if context._normalize_tier_name(data.get("subscription_tier", "free")) != context.FREE_PLAN_ID:
                     return False
                 has_credits = "credits_remaining" in data
-                repaired_credits = host._normalize_free_credit_balance(
+                repaired_credits = context._normalize_free_credit_balance(
                     data.get("credits_remaining"),
-                    default=host.FREE_PLAN_CREDITS if not has_credits else 0,
+                    default=context.FREE_PLAN_CREDITS if not has_credits else 0,
                 )
                 if has_credits and data.get("credits_remaining") == repaired_credits:
                     return False
@@ -371,7 +423,7 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
                     "export_timestamps": data.get("export_timestamps", []) or [],
                 }
                 if not data.get("subscription_tier"):
-                    update["subscription_tier"] = host.FREE_PLAN_ID
+                    update["subscription_tier"] = context.FREE_PLAN_ID
                 transaction.set(user_ref, update, merge=True)
                 return {
                     "previous_credits": data.get("credits_remaining") if has_credits else None,
@@ -380,33 +432,33 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
 
             repair_result = _repair_legacy_free_entitlement(db.transaction())
             if repair_result:
-                host._audit_action("account_bootstrap_repaired_free_entitlement", uid, repair_result)
+                context._audit_action("account_bootstrap_repaired_free_entitlement", uid, repair_result)
 
         if req.consent_granted:
             if not req.terms_version or not req.privacy_version:
                 raise HTTPException(status_code=400, detail="Consent document versions are required")
-            consent_key = host.hashlib.sha256(
+            consent_key = hashlib.sha256(
                 f"{uid}:{req.terms_version}:{req.privacy_version}:grant".encode("utf-8")
             ).hexdigest()
             consent_payload = {
                 "action": "grant",
                 "terms_version": req.terms_version,
                 "privacy_version": req.privacy_version,
-                "captured_at": host.datetime.now(host.timezone.utc),
-                "ip_address": request.client.host if request.client else "unknown",
+                "captured_at": datetime.now(timezone.utc),
+                "ip_address": request.client.context if request.client else "unknown",
                 "user_agent": (request.headers.get("user-agent") or "")[:500],
                 "capture_method": "login_checkbox",
             }
             try:
                 user_ref.collection("consents").document(consent_key).create(consent_payload)
-            except host.AlreadyExists:
+            except context.AlreadyExists:
                 pass
             user_ref.set({
                 "accepted_terms_version": req.terms_version,
                 "accepted_privacy_version": req.privacy_version,
-                "consent_updated_at": host.datetime.now(host.timezone.utc),
+                "consent_updated_at": datetime.now(timezone.utc),
             }, merge=True)
-            host._audit_action("consent_granted", uid, {
+            context._audit_action("consent_granted", uid, {
                 "terms_version": req.terms_version,
                 "privacy_version": req.privacy_version,
             })
@@ -419,18 +471,18 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
 
     @router.post("/api/account-export")
     def account_export(req: AccountExportRequest):
-        decoded_token = host.verify_token(req.id_token)
+        decoded_token = context.verify_token(req.id_token)
         if not decoded_token:
             raise HTTPException(status_code=401, detail="Auth required")
         uid = decoded_token.get("uid")
-        host._assert_tenant_access(uid, decoded_token, req.org_id)
-        db = host.get_db()
+        context._assert_tenant_access(uid, decoded_token, req.org_id)
+        db = context.get_db()
         if not db:
             raise HTTPException(status_code=503, detail="Database unavailable")
         user_ref = db.collection("users").document(uid)
         user_doc = user_ref.get()
         payments_ref = user_ref.collection("payments")
-        payment_query = payments_ref.order_by("timestamp", direction=host.firestore.Query.DESCENDING)
+        payment_query = payments_ref.order_by("timestamp", direction=context.firestore.Query.DESCENDING)
         if req.payment_cursor:
             cursor_doc = payments_ref.document(req.payment_cursor).get()
             if not cursor_doc.exists:
@@ -441,7 +493,7 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
         page_docs = page_docs[:req.payment_limit]
         payment_items = [{"id": p.id, **(p.to_dict() or {})} for p in page_docs]
         deletion_record = {}
-        if host._IS_PRODUCTION:
+        if context._IS_PRODUCTION:
             deletion_doc = db.collection("account_deletions").document(uid).get()
             if deletion_doc.exists:
                 deletion_record = deletion_doc.to_dict() or {}
@@ -449,14 +501,14 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
         # collections. Keep exports useful there while including every project and
         # portable editor preference whenever nested document access is available.
         has_nested_account_storage = hasattr(user_ref.collection("projects"), "document")
-        project_rows = host.list_projects(db, uid) if has_nested_account_storage else []
-        projects = [host.read_draft(db, uid, row["project_id"]) for row in project_rows]
-        editor_preferences = host.read_editor_preferences(db, uid) if has_nested_account_storage else {
+        project_rows = context.list_projects(db, uid) if has_nested_account_storage else []
+        projects = [context.read_draft(db, uid, row["project_id"]) for row in project_rows]
+        editor_preferences = context.read_editor_preferences(db, uid) if has_nested_account_storage else {
             "brand_kits": [], "glossary_terms": [], "updated_at": "", "exists": False,
         }
         workspace_memberships = [
             snapshot.to_dict() or {}
-            for snapshot in host._account_workspace_memberships(db, uid)
+            for snapshot in context._account_workspace_memberships(db, uid)
             if callable(getattr(snapshot, "to_dict", None))
         ]
         notifications = []
@@ -479,31 +531,31 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
             "notifications": notifications,
             "next_payment_cursor": page_docs[-1].id if page_docs else None,
             "has_more_payments": has_more,
-            "exported_at": host._utcnow().isoformat() + "Z",
+            "exported_at": context._utcnow().isoformat() + "Z",
         }
-        host._audit_action("account_export", uid, {"payment_count": len(payment_items)})
+        context._audit_action("account_export", uid, {"payment_count": len(payment_items)})
         return {"success": True, "data": payload}
 
 
     @router.post("/api/account-delete")
     def account_delete(req: AccountDataRequest):
-        decoded_token = host.verify_token(req.id_token)
+        decoded_token = context.verify_token(req.id_token)
         if not decoded_token:
             raise HTTPException(status_code=401, detail="Auth required")
         uid = decoded_token.get("uid")
-        host._assert_tenant_access(uid, decoded_token, req.org_id)
-        db = host.get_db()
+        context._assert_tenant_access(uid, decoded_token, req.org_id)
+        db = context.get_db()
         if not db:
             raise HTTPException(status_code=503, detail="Database unavailable")
-        host._assert_no_owned_workspaces(db, uid)
+        context._assert_no_owned_workspaces(db, uid)
         db.collection("account_deletions").document(uid).set({
-            "status": "pending", "requested_at": host._utcnow().isoformat() + "Z",
+            "status": "pending", "requested_at": context._utcnow().isoformat() + "Z",
         }, merge=True)
-        if host._IS_PRODUCTION:
-            host.TranscriptionJobs(db).prepare_deletion(uid)
-        if host._redis_client is not None:
+        if context._IS_PRODUCTION:
+            context.TranscriptionJobs(db).prepare_deletion(uid)
+        if context._redis_client is not None:
             try:
-                active = host._redis_client.get(f"procactive:{uid}") or host._redis_client.get(f"expactive:{uid}")
+                active = context._redis_client.get(f"procactive:{uid}") or context._redis_client.get(f"expactive:{uid}")
             except Exception as error:
                 raise HTTPException(status_code=503, detail="Cannot verify active jobs; retry account deletion.") from error
             if active:
@@ -515,45 +567,45 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
             if hasattr(user_ref, "set"):
                 user_ref.set({
                     "deletion_pending": True,
-                    "deletion_requested_at": host._utcnow().isoformat() + "Z",
+                    "deletion_requested_at": context._utcnow().isoformat() + "Z",
                 }, merge=True)
             history = user_doc.to_dict().get("history", []) or []
             for item in history:
-                filename = host.os.path.basename(str(item.get("filename") or ""))
+                filename = os.path.basename(str(item.get("filename") or ""))
                 if not filename:
                     continue
-                candidate = host.os.path.realpath(host.os.path.join(host.EXPORT_DIR, filename))
-                if candidate.startswith(host.os.path.realpath(host.EXPORT_DIR) + host.os.sep) and host.os.path.isfile(candidate):
+                candidate = os.path.realpath(os.path.join(context.EXPORT_DIR, filename))
+                if candidate.startswith(os.path.realpath(context.EXPORT_DIR) + os.sep) and os.path.isfile(candidate):
                     try:
-                        host.os.remove(candidate)
+                        os.remove(candidate)
                     except OSError as e:
-                        host._json_log("error", "account_delete_local_cleanup_failed", uid=uid, file=filename, error=str(e))
+                        context._json_log("error", "account_delete_local_cleanup_failed", uid=uid, file=filename, error=str(e))
                         raise HTTPException(status_code=503, detail="Local export cleanup failed; deletion can be retried") from e
 
-        cloud_cleanup = host.delete_user_exports(uid)
-        source_cleanup = host.delete_user_uploads(uid)
+        cloud_cleanup = context.delete_user_exports(uid)
+        source_cleanup = context.delete_user_uploads(uid)
         known_cloud_exports = any(item.get("firebase_path") for item in history if isinstance(item, dict))
         if (
-            (cloud_cleanup is None and (host._IS_PRODUCTION or known_cloud_exports))
-            or (source_cleanup is None and host._IS_PRODUCTION)
+            (cloud_cleanup is None and (context._IS_PRODUCTION or known_cloud_exports))
+            or (source_cleanup is None and context._IS_PRODUCTION)
         ):
-            host._json_log("error", "account_delete_storage_cleanup_failed", uid=uid)
+            context._json_log("error", "account_delete_storage_cleanup_failed", uid=uid)
             raise HTTPException(status_code=503, detail="Cloud export cleanup failed; deletion can be retried")
         if user_doc.exists:
             try:
-                host._cleanup_account_extensions(db, uid)
-                host._delete_user_document_tree(db, user_ref)
+                context._cleanup_account_extensions(db, uid)
+                context._delete_user_document_tree(db, user_ref)
             except Exception as e:
-                host._json_log("error", "account_delete_firestore_failed", uid=uid, error=str(e))
+                context._json_log("error", "account_delete_firestore_failed", uid=uid, error=str(e))
                 raise HTTPException(status_code=500, detail="Account data cleanup failed; deletion can be retried") from e
         try:
             # Delete the login identity last. Until this succeeds the user can still
             # authenticate and retry an otherwise idempotent cleanup request.
-            host.firebase_auth.delete_user(uid)
+            context.firebase_auth.delete_user(uid)
         except Exception as e:
-            host._json_log("warning", "account_delete_auth_delete_failed", uid=uid, error=str(e))
+            context._json_log("warning", "account_delete_auth_delete_failed", uid=uid, error=str(e))
             raise HTTPException(status_code=500, detail="Account data was removed, but authentication deletion must be retried") from e
-        host._audit_action("account_delete", uid)
+        context._audit_action("account_delete", uid)
         return {"success": True}
 
 
