@@ -15,48 +15,42 @@ from typing import Any, Dict, Optional
 
 import anyio
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Response
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi import Request
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Request, Response
 
 try:
     from . import settings
+    from . import app_state
+    from . import firebase_admin_setup
+    from . import observability
+    from . import request_security
+    from . import operator_controls
+    from . import media_records
+    from . import export_jobs
+    from . import api_models
+    from .job_state import InvalidJobTransition
+    from .queue_admission import PENDING_WORK_LEDGER_KEY, enqueue_bounded_across_queues, release_pending_work
+    from .rendering.capacity import estimate_render_capacity
+    from .gcp_queue_metrics import job_queue_prediction
+    from . import worker_launcher
+    from . import optional_deps
+    from . import request_guards
 except ImportError:  # Direct execution from backend/ remains supported.
     import settings
-try:
-    from . import app_state
-except ImportError:  # Direct execution from backend/ remains supported.
     import app_state
-try:
-    from . import firebase_admin_setup
-except ImportError:  # Direct execution from backend/ remains supported.
     import firebase_admin_setup
-try:
-    from . import observability
-except ImportError:  # Direct execution from backend/ remains supported.
     import observability
-try:
-    from . import request_security
-except ImportError:  # Direct execution from backend/ remains supported.
     import request_security
-try:
-    from . import operator_controls
-except ImportError:  # Direct execution from backend/ remains supported.
     import operator_controls
-try:
-    from . import media_records
-except ImportError:  # Direct execution from backend/ remains supported.
     import media_records
-try:
-    from . import export_jobs
-except ImportError:  # Direct execution from backend/ remains supported.
     import export_jobs
-try:
-    from . import api_models
-except ImportError:  # Direct execution from backend/ remains supported.
     import api_models
+    from job_state import InvalidJobTransition
+    from queue_admission import PENDING_WORK_LEDGER_KEY, enqueue_bounded_across_queues, release_pending_work
+    from rendering.capacity import estimate_render_capacity
+    from gcp_queue_metrics import job_queue_prediction
+    import worker_launcher
+    import optional_deps
+    import request_guards
 
 
 # RQ keeps each job's pickled arguments (the full editor snapshot) until these
@@ -64,42 +58,6 @@ except ImportError:  # Direct execution from backend/ remains supported.
 # letter store, so long RQ retention only consumed Redis memory.
 EXPORT_RQ_RESULT_TTL_SECONDS = 3600
 EXPORT_RQ_FAILURE_TTL_SECONDS = 24 * 3600
-try:
-    from .job_state import InvalidJobTransition
-except ImportError:  # Direct execution from backend/ remains supported.
-    from job_state import InvalidJobTransition
-try:
-    from .queue_admission import PENDING_WORK_LEDGER_KEY
-except ImportError:  # Direct execution from backend/ remains supported.
-    from queue_admission import PENDING_WORK_LEDGER_KEY
-try:
-    from .queue_admission import enqueue_bounded_across_queues
-except ImportError:  # Direct execution from backend/ remains supported.
-    from queue_admission import enqueue_bounded_across_queues
-try:
-    from .rendering.capacity import estimate_render_capacity
-except ImportError:  # Direct execution from backend/ remains supported.
-    from rendering.capacity import estimate_render_capacity
-try:
-    from .gcp_queue_metrics import job_queue_prediction
-except ImportError:  # Direct execution from backend/ remains supported.
-    from gcp_queue_metrics import job_queue_prediction
-try:
-    from .queue_admission import release_pending_work
-except ImportError:  # Direct execution from backend/ remains supported.
-    from queue_admission import release_pending_work
-try:
-    from . import worker_launcher
-except ImportError:  # Direct execution from backend/ remains supported.
-    import worker_launcher
-try:
-    from . import optional_deps
-except ImportError:  # Direct execution from backend/ remains supported.
-    import optional_deps
-try:
-    from . import request_guards
-except ImportError:  # Direct execution from backend/ remains supported.
-    import request_guards
 
 
 router = APIRouter()

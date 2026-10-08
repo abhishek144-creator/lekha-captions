@@ -7,50 +7,30 @@ import pathlib
 import re
 import time
 import uuid
-from fastapi import File, HTTPException, Request, Response, UploadFile
+from fastapi import APIRouter, File, HTTPException, Request, Response, UploadFile
 
-
-from fastapi import APIRouter
 
 try:
     from . import settings
-except ImportError:  # Direct execution from backend/ remains supported.
-    import settings
-try:
     from . import app_state
-except ImportError:  # Direct execution from backend/ remains supported.
-    import app_state
-try:
     from . import firebase_admin_setup
-except ImportError:  # Direct execution from backend/ remains supported.
-    import firebase_admin_setup
-try:
     from . import observability
-except ImportError:  # Direct execution from backend/ remains supported.
-    import observability
-try:
     from . import request_security
-except ImportError:  # Direct execution from backend/ remains supported.
-    import request_security
-try:
     from . import operator_controls
-except ImportError:  # Direct execution from backend/ remains supported.
-    import operator_controls
-try:
     from . import media_records
-except ImportError:  # Direct execution from backend/ remains supported.
-    import media_records
-try:
     from . import export_jobs
-except ImportError:  # Direct execution from backend/ remains supported.
-    import export_jobs
-try:
     from . import request_guards
-except ImportError:  # Direct execution from backend/ remains supported.
-    import request_guards
-try:
     from . import upload_dispatch
 except ImportError:  # Direct execution from backend/ remains supported.
+    import settings
+    import app_state
+    import firebase_admin_setup
+    import observability
+    import request_security
+    import operator_controls
+    import media_records
+    import export_jobs
+    import request_guards
     import upload_dispatch
 
 

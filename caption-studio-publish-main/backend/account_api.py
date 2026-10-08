@@ -15,59 +15,31 @@ from google.cloud import firestore
 from pydantic import BaseModel, Field
 
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Response
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi import Request
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Request, Response
 
 try:
     from . import settings
-except ImportError:  # Direct execution from backend/ remains supported.
-    import settings
-try:
     from . import app_state
-except ImportError:  # Direct execution from backend/ remains supported.
-    import app_state
-try:
     from . import firebase_admin_setup
-except ImportError:  # Direct execution from backend/ remains supported.
-    import firebase_admin_setup
-try:
     from . import observability
-except ImportError:  # Direct execution from backend/ remains supported.
-    import observability
-try:
     from . import request_security
-except ImportError:  # Direct execution from backend/ remains supported.
-    import request_security
-try:
     from . import entitlements
-except ImportError:  # Direct execution from backend/ remains supported.
-    import entitlements
-try:
     from . import operator_controls
-except ImportError:  # Direct execution from backend/ remains supported.
-    import operator_controls
-try:
     from . import request_guards
-except ImportError:  # Direct execution from backend/ remains supported.
-    import request_guards
-try:
     from .transcription_jobs import TranscriptionJobs
-except ImportError:  # Direct execution from backend/ remains supported.
-    from transcription_jobs import TranscriptionJobs
-try:
-    from .drafts import list_projects
-except ImportError:  # Direct execution from backend/ remains supported.
-    from drafts import list_projects
-try:
-    from .drafts import read_draft
-except ImportError:  # Direct execution from backend/ remains supported.
-    from drafts import read_draft
-try:
+    from .drafts import list_projects, read_draft
     from .editor_preferences import read_editor_preferences
 except ImportError:  # Direct execution from backend/ remains supported.
+    import settings
+    import app_state
+    import firebase_admin_setup
+    import observability
+    import request_security
+    import entitlements
+    import operator_controls
+    import request_guards
+    from transcription_jobs import TranscriptionJobs
+    from drafts import list_projects, read_draft
     from editor_preferences import read_editor_preferences
 
 

@@ -12,11 +12,9 @@ from typing import Any, Dict, List, Optional
 
 try:
     from . import settings
-except ImportError:  # Direct execution from backend/ remains supported.
-    import settings
-try:
     from . import export_jobs
 except ImportError:  # Direct execution from backend/ remains supported.
+    import settings
     import export_jobs
 
 
