@@ -289,7 +289,7 @@ def _drain_loop(state, queue_names, *, drain=None):
                 conn.connection_pool.disconnect()
             # Importing the API opens two additional Redis pools. Disconnect
             # those too; Redis's server keepalives otherwise keep idle workers awake.
-            disconnect_idle_redis_clients(api._redis_client, api._rq_redis_client)
+            disconnect_idle_redis_clients(api.app_state._redis_client, api.app_state._rq_redis_client)
             with state.lock:
                 state.running = False
         print(json.dumps({"event": "worker_idle" if keep_serving else "worker_stopped"}), flush=True)

@@ -84,7 +84,7 @@ class ExportReliabilityTests(unittest.TestCase):
 
         with (
             patch.object(main.settings, "_IS_PRODUCTION", True),
-            patch.object(main, "_export_queue", SimpleNamespace()),
+            patch.object(main.app_state, "_export_queue", SimpleNamespace()),
             patch.object(main, "_authenticate_media_request", side_effect=authenticate),
             patch.object(main, "_assert_service_available"),
             patch.object(main, "_get_recent_export_failures", return_value=[]),
@@ -142,7 +142,7 @@ class ExportReliabilityTests(unittest.TestCase):
                         patch.object(main, "_source_media_identity", return_value="media-identity"),
                         patch.object(main, "render_cache_eligible", return_value=False),
                         patch.object(main.settings, "EXPORT_DIR", directory), patch.object(main.settings, "RENDER_CACHE_DIR", directory),
-                        patch.object(main.processor, "burn_only", render),
+                        patch.object(main.app_state.processor, "burn_only", render),
                         patch.object(main, "upload_to_firebase_storage", return_value="https://storage/private"),
                         patch.object(main, "_write_last_export_request_debug"),
                     ):
@@ -185,7 +185,7 @@ class ExportReliabilityTests(unittest.TestCase):
         job = {"status": "queued", "queue_entered_at": time.time() - 16 * 60}
         woken = []
         with (
-            patch.object(main, "_export_queue", queue),
+            patch.object(main.app_state, "_export_queue", queue),
             patch.object(main, "_queue_for_export_job_record", return_value=queue),
             patch.dict(os.environ, {"WORKER_LAUNCH_JOBS": '{"caption_export_jobs":"lekha-render"}'}),
             patch.object(worker_launcher, "_default_launcher", side_effect=lambda name, slot: woken.append(name)),
@@ -298,7 +298,7 @@ class BatchIdempotencyTests(unittest.TestCase):
             "_redis_client": self.redis,
             "_export_queue": SimpleNamespace(),
         }.items():
-            self.stack.enter_context(patch.object(main, name, value))
+            self.stack.enter_context(patch.object(main.app_state, name, value))
         self.stack.enter_context(patch.object(main.settings, "_IS_PRODUCTION", True))
         for name, value in {
             "_authenticate_media_request": {"uid": "batch-owner"},

@@ -11,6 +11,10 @@ try:
     from . import settings
 except ImportError:  # Direct execution from backend/ remains supported.
     import settings
+try:
+    from . import app_state
+except ImportError:  # Direct execution from backend/ remains supported.
+    import app_state
 
 
 def create_observability(host: ModuleType) -> SimpleNamespace:
@@ -31,9 +35,9 @@ def create_observability(host: ModuleType) -> SimpleNamespace:
         }
         line = host.json.dumps(record, ensure_ascii=True, default=str)
         if level.lower() in ("error", "warning"):
-            host._logger.warning(line) if level.lower() == "warning" else host._logger.error(line)
+            app_state._logger.warning(line) if level.lower() == "warning" else app_state._logger.error(line)
         else:
-            host._logger.info(line)
+            app_state._logger.info(line)
 
 
     def _send_alert(text: str):
@@ -70,11 +74,11 @@ def create_observability(host: ModuleType) -> SimpleNamespace:
     def _enqueue_telemetry(collection_name: str, payload: host.Dict[str, host.Any], retention_days: int):
         row = {**payload, "expire_at": host._retention_deadline(retention_days)}
         dropped = False
-        with host._telemetry_lock:
-            if len(host._telemetry_buffer) >= settings.TELEMETRY_QUEUE_LIMIT:
-                host._telemetry_buffer.popleft()
+        with app_state._telemetry_lock:
+            if len(app_state._telemetry_buffer) >= settings.TELEMETRY_QUEUE_LIMIT:
+                app_state._telemetry_buffer.popleft()
                 dropped = True
-            host._telemetry_buffer.append((collection_name, row))
+            app_state._telemetry_buffer.append((collection_name, row))
         if dropped:
             host._json_log("warning", "telemetry_buffer_overflow", collection=collection_name)
 
@@ -84,9 +88,9 @@ def create_observability(host: ModuleType) -> SimpleNamespace:
         if not db:
             return 0
         rows = []
-        with host._telemetry_lock:
-            while host._telemetry_buffer and len(rows) < settings.TELEMETRY_BATCH_SIZE:
-                rows.append(host._telemetry_buffer.popleft())
+        with app_state._telemetry_lock:
+            while app_state._telemetry_buffer and len(rows) < settings.TELEMETRY_BATCH_SIZE:
+                rows.append(app_state._telemetry_buffer.popleft())
         if not rows:
             return 0
         try:
@@ -96,9 +100,9 @@ def create_observability(host: ModuleType) -> SimpleNamespace:
             batch.commit()
             return len(rows)
         except Exception as e:
-            with host._telemetry_lock:
+            with app_state._telemetry_lock:
                 for row in reversed(rows):
-                    host._telemetry_buffer.appendleft(row)
+                    app_state._telemetry_buffer.appendleft(row)
             host._json_log("warning", "telemetry_batch_persist_failed", count=len(rows), error=str(e))
             return 0
 
@@ -154,16 +158,16 @@ def create_observability(host: ModuleType) -> SimpleNamespace:
 
 
     def _track_event(event: str, payload: host.Optional[host.Dict[str, host.Any]] = None):
-        host._analytics_counters[event] = host._analytics_counters.get(event, 0) + 1
+        app_state._analytics_counters[event] = app_state._analytics_counters.get(event, 0) + 1
         day_key = host._utcnow().date().isoformat()
-        daily = host._analytics_daily_counters.setdefault(day_key, {})
+        daily = app_state._analytics_daily_counters.setdefault(day_key, {})
         daily[event] = daily.get(event, 0) + 1
-        if host._redis_client is not None:
+        if app_state._redis_client is not None:
             try:
-                host._redis_client.hincrby("analytics:counters", event, 1)
+                app_state._redis_client.hincrby("analytics:counters", event, 1)
                 redis_daily_key = f"analytics:daily:{day_key}"
-                host._redis_client.hincrby(redis_daily_key, event, 1)
-                host._redis_client.expire(redis_daily_key, 120 * 24 * 3600)
+                app_state._redis_client.hincrby(redis_daily_key, event, 1)
+                app_state._redis_client.expire(redis_daily_key, 120 * 24 * 3600)
             except Exception:
                 pass
         host._json_log("info", "analytics_event", name=event, payload=payload or {})
@@ -177,21 +181,21 @@ def create_observability(host: ModuleType) -> SimpleNamespace:
     def _track_latency_sample(path: str, duration_ms: int, max_samples: int = 300):
         if path not in ("/api/process", "/api/export"):
             return
-        arr = host._route_latency_samples.setdefault(path, [])
+        arr = app_state._route_latency_samples.setdefault(path, [])
         arr.append(int(duration_ms))
         if len(arr) > max_samples:
             del arr[:-max_samples]
-        if host._redis_client is not None:
+        if app_state._redis_client is not None:
             try:
                 k = f"latency:{path}"
-                host._redis_client.rpush(k, int(duration_ms))
-                host._redis_client.ltrim(k, -max_samples, -1)
-                host._redis_client.expire(k, 24 * 3600)
+                app_state._redis_client.rpush(k, int(duration_ms))
+                app_state._redis_client.ltrim(k, -max_samples, -1)
+                app_state._redis_client.expire(k, 24 * 3600)
                 day_key = host._utcnow().date().isoformat()
                 daily_key = f"latency:{day_key}:{path}"
-                host._redis_client.rpush(daily_key, int(duration_ms))
-                host._redis_client.ltrim(daily_key, -max_samples, -1)
-                host._redis_client.expire(daily_key, 120 * 24 * 3600)
+                app_state._redis_client.rpush(daily_key, int(duration_ms))
+                app_state._redis_client.ltrim(daily_key, -max_samples, -1)
+                app_state._redis_client.expire(daily_key, 120 * 24 * 3600)
             except Exception:
                 pass
 
@@ -201,28 +205,28 @@ def create_observability(host: ModuleType) -> SimpleNamespace:
             return
         day_key = host._utcnow().date().isoformat()
         sample_key = f"{day_key}:{name}"
-        samples = host._operational_metric_samples.setdefault(sample_key, [])
+        samples = app_state._operational_metric_samples.setdefault(sample_key, [])
         samples.append(float(value))
         if len(samples) > max_samples:
             del samples[:-max_samples]
-        if host._redis_client is not None:
+        if app_state._redis_client is not None:
             try:
                 redis_key = f"opsmetric:{sample_key}"
-                host._redis_client.rpush(redis_key, float(value))
-                host._redis_client.ltrim(redis_key, -max_samples, -1)
-                host._redis_client.expire(redis_key, 120 * 24 * 3600)
+                app_state._redis_client.rpush(redis_key, float(value))
+                app_state._redis_client.ltrim(redis_key, -max_samples, -1)
+                app_state._redis_client.expire(redis_key, 120 * 24 * 3600)
             except Exception:
                 pass
 
 
     def _read_operational_metric_samples(day_key: str, name: str) -> host.List[float]:
         sample_key = f"{day_key}:{name}"
-        values = list(host._operational_metric_samples.get(sample_key, []))
-        if host._redis_client is not None:
+        values = list(app_state._operational_metric_samples.get(sample_key, []))
+        if app_state._redis_client is not None:
             try:
                 redis_values = [
                     float(value)
-                    for value in (host._redis_client.lrange(f"opsmetric:{sample_key}", 0, -1) or [])
+                    for value in (app_state._redis_client.lrange(f"opsmetric:{sample_key}", 0, -1) or [])
                 ]
                 if redis_values:
                     values = redis_values
@@ -232,10 +236,10 @@ def create_observability(host: ModuleType) -> SimpleNamespace:
 
 
     def _read_daily_analytics_counters(day_key: str) -> host.Dict[str, int]:
-        counters = dict(host._analytics_daily_counters.get(day_key, {}))
-        if host._redis_client is not None:
+        counters = dict(app_state._analytics_daily_counters.get(day_key, {}))
+        if app_state._redis_client is not None:
             try:
-                redis_counters = host._redis_client.hgetall(f"analytics:daily:{day_key}") or {}
+                redis_counters = app_state._redis_client.hgetall(f"analytics:daily:{day_key}") or {}
                 if redis_counters:
                     counters = {key: int(value) for key, value in redis_counters.items()}
             except Exception:
@@ -245,14 +249,14 @@ def create_observability(host: ModuleType) -> SimpleNamespace:
 
     def _read_daily_latency_samples(day_key: str, path: str) -> host.List[int]:
         if day_key == host._utcnow().date().isoformat():
-            values = list(host._route_latency_samples.get(path, []))
+            values = list(app_state._route_latency_samples.get(path, []))
         else:
             values = []
-        if host._redis_client is not None:
+        if app_state._redis_client is not None:
             try:
                 redis_values = [
                     int(value)
-                    for value in (host._redis_client.lrange(f"latency:{day_key}:{path}", 0, -1) or [])
+                    for value in (app_state._redis_client.lrange(f"latency:{day_key}:{path}", 0, -1) or [])
                 ]
                 if redis_values:
                     values = redis_values
@@ -270,13 +274,13 @@ def create_observability(host: ModuleType) -> SimpleNamespace:
 
 
     def _build_slo_snapshot() -> host.Dict[str, host.Any]:
-        export_success = host._analytics_counters.get("export_success", 0)
-        export_failed = host._analytics_counters.get("export_failed_http", 0) + host._analytics_counters.get("export_failed_exception", 0)
-        process_success = host._analytics_counters.get("process_success", 0)
-        process_failed = host._analytics_counters.get("process_failed", 0)
-        if host._redis_client is not None:
+        export_success = app_state._analytics_counters.get("export_success", 0)
+        export_failed = app_state._analytics_counters.get("export_failed_http", 0) + app_state._analytics_counters.get("export_failed_exception", 0)
+        process_success = app_state._analytics_counters.get("process_success", 0)
+        process_failed = app_state._analytics_counters.get("process_failed", 0)
+        if app_state._redis_client is not None:
             try:
-                counters = host._redis_client.hgetall("analytics:counters") or {}
+                counters = app_state._redis_client.hgetall("analytics:counters") or {}
                 export_success = int(counters.get("export_success", export_success))
                 export_failed = int(counters.get("export_failed_http", 0)) + int(counters.get("export_failed_exception", 0))
                 process_success = int(counters.get("process_success", process_success))
@@ -288,10 +292,10 @@ def create_observability(host: ModuleType) -> SimpleNamespace:
         export_rate = export_success / max(export_total, 1)
         process_rate = process_success / max(process_total, 1)
         export_samples = host._read_operational_metric_samples(host._utcnow().date().isoformat(), "export_total_ms")
-        process_samples = host._route_latency_samples.get("/api/process", [])
-        if host._redis_client is not None:
+        process_samples = app_state._route_latency_samples.get("/api/process", [])
+        if app_state._redis_client is not None:
             try:
-                r_process = [int(x) for x in host._redis_client.lrange("latency:/api/process", 0, -1) or []]
+                r_process = [int(x) for x in app_state._redis_client.lrange("latency:/api/process", 0, -1) or []]
                 if r_process:
                     process_samples = r_process
             except Exception:
@@ -336,9 +340,9 @@ def create_observability(host: ModuleType) -> SimpleNamespace:
         if ratio < 0.2:
             return
         now_ts = host.time.time()
-        if now_ts - host._analytics_last_alert_ts.get(window_key, 0.0) < 600:
+        if now_ts - app_state._analytics_last_alert_ts.get(window_key, 0.0) < 600:
             return
-        host._analytics_last_alert_ts[window_key] = now_ts
+        app_state._analytics_last_alert_ts[window_key] = now_ts
         host._json_log(
             "warning",
             "failure_ratio_alert",

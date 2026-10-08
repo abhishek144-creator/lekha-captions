@@ -29,40 +29,40 @@ class ApiContractTests(unittest.TestCase):
         })
         media_probe.start()
         self.addCleanup(media_probe.stop)
-        main._export_jobs.clear()
-        main._export_idempotency.clear()
-        main._upload_idempotency.clear()
-        main._active_exports_by_user.clear()
-        main._active_processes_by_user.clear()
-        main._payment_idempotency.clear()
-        main._upload_owners.clear()
-        main._payment_rate.clear()
-        main._signup_rate.clear()
-        main._upload_rate.clear()
-        main._process_rate.clear()
-        main._detect_language_rate.clear()
-        main._translate_rate.clear()
+        main.app_state._export_jobs.clear()
+        main.app_state._export_idempotency.clear()
+        main.app_state._upload_idempotency.clear()
+        main.app_state._active_exports_by_user.clear()
+        main.app_state._active_processes_by_user.clear()
+        main.app_state._payment_idempotency.clear()
+        main.app_state._upload_owners.clear()
+        main.app_state._payment_rate.clear()
+        main.app_state._signup_rate.clear()
+        main.app_state._upload_rate.clear()
+        main.app_state._process_rate.clear()
+        main.app_state._detect_language_rate.clear()
+        main.app_state._translate_rate.clear()
 
     def test_payment_journey_refuses_live_mode_before_order_creation(self):
-        with patch.object(main.settings, "RAZORPAY_KEY_ID", "rzp_live_local_fixture"), patch.object(main, "rzp_client") as provider:
+        with patch.object(main.settings, "RAZORPAY_KEY_ID", "rzp_live_local_fixture"), patch.object(main.app_state, "rzp_client") as provider:
             response = self.client.post("/api/create-order", json={"id_token": "local-fixture", "plan_id": "starter", "require_test_mode": True})
         self.assertEqual(response.status_code, 409)
         provider.order.create.assert_not_called()
 
     def tearDown(self):
-        main._export_jobs.clear()
-        main._export_idempotency.clear()
-        main._upload_idempotency.clear()
-        main._active_exports_by_user.clear()
-        main._active_processes_by_user.clear()
-        main._payment_idempotency.clear()
-        main._upload_owners.clear()
-        main._payment_rate.clear()
-        main._signup_rate.clear()
-        main._upload_rate.clear()
-        main._process_rate.clear()
-        main._detect_language_rate.clear()
-        main._translate_rate.clear()
+        main.app_state._export_jobs.clear()
+        main.app_state._export_idempotency.clear()
+        main.app_state._upload_idempotency.clear()
+        main.app_state._active_exports_by_user.clear()
+        main.app_state._active_processes_by_user.clear()
+        main.app_state._payment_idempotency.clear()
+        main.app_state._upload_owners.clear()
+        main.app_state._payment_rate.clear()
+        main.app_state._signup_rate.clear()
+        main.app_state._upload_rate.clear()
+        main.app_state._process_rate.clear()
+        main.app_state._detect_language_rate.clear()
+        main.app_state._translate_rate.clear()
 
     def test_export_daily_limit_is_enabled_by_default(self):
         # Local runs must exercise the same quota safeguard as production.
@@ -71,9 +71,9 @@ class ApiContractTests(unittest.TestCase):
     def test_redis_rate_limits_are_isolated_by_endpoint(self):
         shared_proxy_ip = "100.64.0.4"
 
-        analytics_key = main._rate_limit_redis_key(main._analytics_rate, shared_proxy_ip)
-        process_key = main._rate_limit_redis_key(main._process_rate, shared_proxy_ip)
-        upload_key = main._rate_limit_redis_key(main._upload_rate, shared_proxy_ip)
+        analytics_key = main._rate_limit_redis_key(main.app_state._analytics_rate, shared_proxy_ip)
+        process_key = main._rate_limit_redis_key(main.app_state._process_rate, shared_proxy_ip)
+        upload_key = main._rate_limit_redis_key(main.app_state._upload_rate, shared_proxy_ip)
 
         self.assertEqual(analytics_key, "rl:analytics:100.64.0.4")
         self.assertEqual(process_key, "rl:process:100.64.0.4")
@@ -147,7 +147,7 @@ class ApiContractTests(unittest.TestCase):
         )
 
     def test_service_controls_default_to_open(self):
-        main._service_control_cache.update({"ts": 0.0, "value": {}})
+        main.app_state._service_control_cache.update({"ts": 0.0, "value": {}})
         with patch.object(main, "get_db", return_value=None):
             controls = main._read_service_controls(force=True)
 
@@ -240,7 +240,7 @@ class ApiContractTests(unittest.TestCase):
             def collection(self, *_args, **_kwargs):
                 raise RuntimeError("firestore unavailable")
 
-        main._service_control_cache.update({"ts": 0.0, "value": {}})
+        main.app_state._service_control_cache.update({"ts": 0.0, "value": {}})
         with patch.object(main, "get_db", return_value=ExplodingDb()):
             controls = main._read_service_controls(force=True)
 
@@ -468,7 +468,7 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(second.status_code, 200)
         self.assertEqual(second.json()["file_id"], first.json()["file_id"])
         self.assertTrue(second.json()["idempotent_replay"])
-        self.assertEqual(len(main._upload_rate["user:upload-user"]), 1)
+        self.assertEqual(len(main.app_state._upload_rate["user:upload-user"]), 1)
 
     def test_upload_requires_auth(self):
         files = {"file": ("sample.mp4", io.BytesIO(b"fake-bytes"), "video/mp4")}
@@ -476,11 +476,11 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(res.status_code, 401)
 
     @patch("main.verify_token", return_value={"uid": "process-user"})
-    @patch("main.processor.generate_captions_only", new_callable=AsyncMock)
+    @patch("main.app_state.processor.generate_captions_only", new_callable=AsyncMock)
     @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
     def test_process_contract(self, _safe_find, mock_process, _verify_token):
         mock_process.return_value = {"success": True, "captions": [{"id": 1, "text": "hello", "start_time": 0, "end_time": 1}]}
-        main._upload_owners["123e4567-e89b-12d3-a456-426614174000"] = "process-user"
+        main.app_state._upload_owners["123e4567-e89b-12d3-a456-426614174000"] = "process-user"
         res = self.client.post(
             "/api/process",
             json={
@@ -495,7 +495,7 @@ class ApiContractTests(unittest.TestCase):
         self.assertIn("captions", data)
 
     @patch("main.verify_token", return_value={"uid": "process-idempotent-user"})
-    @patch("main.processor.generate_captions_only", new_callable=AsyncMock)
+    @patch("main.app_state.processor.generate_captions_only", new_callable=AsyncMock)
     @patch("main._compute_media_hash", side_effect=RuntimeError("skip local cache"))
     @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
     def test_process_idempotency_replays_after_response_loss(
@@ -506,7 +506,7 @@ class ApiContractTests(unittest.TestCase):
             "captions": [{"id": 1, "text": "hello", "start_time": 0, "end_time": 1}],
         }
         file_id = "123e4567-e89b-12d3-a456-426614174010"
-        main._upload_owners[file_id] = "process-idempotent-user"
+        main.app_state._upload_owners[file_id] = "process-idempotent-user"
         request = {
             "file_id": file_id,
             "language": "english",
@@ -534,8 +534,8 @@ class ApiContractTests(unittest.TestCase):
     @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
     def test_process_rejects_duplicate_in_flight_request(self, _safe_find, _verify_token):
         file_id = "123e4567-e89b-12d3-a456-426614174000"
-        main._upload_owners[file_id] = "process-user"
-        main._active_processes_by_user["process-user"] = "existing-request"
+        main.app_state._upload_owners[file_id] = "process-user"
+        main.app_state._active_processes_by_user["process-user"] = "existing-request"
 
         res = self.client.post(
             "/api/process",
@@ -546,12 +546,12 @@ class ApiContractTests(unittest.TestCase):
         self.assertIn("already running", res.json()["detail"])
 
     @patch("main.verify_token", return_value={"uid": "process-user"})
-    @patch("main.processor.generate_captions_only", new_callable=AsyncMock)
+    @patch("main.app_state.processor.generate_captions_only", new_callable=AsyncMock)
     @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
     def test_process_rejects_successful_empty_transcription(self, _safe_find, mock_process, _verify_token):
         mock_process.return_value = {"success": True, "captions": []}
         file_id = "123e4567-e89b-12d3-a456-426614174000"
-        main._upload_owners[file_id] = "process-user"
+        main.app_state._upload_owners[file_id] = "process-user"
         res = self.client.post(
             "/api/process",
             json={"file_id": file_id, "language": "english", "id_token": "token-123"},
@@ -560,7 +560,7 @@ class ApiContractTests(unittest.TestCase):
 
     @patch("main.verify_token", return_value={"uid": "process-user"})
     @patch("main._release_ai_quota")
-    @patch("main.processor.generate_captions_only", new_callable=AsyncMock)
+    @patch("main.app_state.processor.generate_captions_only", new_callable=AsyncMock)
     @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
     def test_process_returns_ai_quota_when_provider_fails(
         self, _safe_find, mock_process, mock_release, _verify_token
@@ -568,7 +568,7 @@ class ApiContractTests(unittest.TestCase):
         """A provider-side transcription failure must not burn the daily quota."""
         mock_process.return_value = {"success": False, "error": "Sarvam request failed"}
         file_id = "123e4567-e89b-12d3-a456-426614174000"
-        main._upload_owners[file_id] = "process-user"
+        main.app_state._upload_owners[file_id] = "process-user"
 
         res = self.client.post(
             "/api/process",
@@ -580,7 +580,7 @@ class ApiContractTests(unittest.TestCase):
 
     @patch("main.verify_token", return_value={"uid": "process-user"})
     @patch("main._release_ai_quota")
-    @patch("main.processor.generate_captions_only", new_callable=AsyncMock)
+    @patch("main.app_state.processor.generate_captions_only", new_callable=AsyncMock)
     @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
     def test_process_raising_provider_returns_ai_quota(
         self, _safe_find, mock_process, mock_release, _verify_token
@@ -588,7 +588,7 @@ class ApiContractTests(unittest.TestCase):
         """An exception from the provider is still our fault — release the hold."""
         mock_process.side_effect = RuntimeError("provider exploded")
         file_id = "123e4567-e89b-12d3-a456-426614174000"
-        main._upload_owners[file_id] = "process-user"
+        main.app_state._upload_owners[file_id] = "process-user"
 
         response = self.client.post(
             "/api/process",
@@ -602,7 +602,7 @@ class ApiContractTests(unittest.TestCase):
 
     @patch("main.verify_token", return_value={"uid": "process-user"})
     @patch("main._release_ai_quota")
-    @patch("main.processor.generate_captions_only", new_callable=AsyncMock)
+    @patch("main.app_state.processor.generate_captions_only", new_callable=AsyncMock)
     @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
     def test_process_returns_ai_quota_when_audio_has_no_speech(
         self, _safe_find, mock_process, mock_release, _verify_token
@@ -610,7 +610,7 @@ class ApiContractTests(unittest.TestCase):
         """No usable captions means the customer's import allowance is restored."""
         mock_process.return_value = {"success": True, "captions": []}
         file_id = "123e4567-e89b-12d3-a456-426614174000"
-        main._upload_owners[file_id] = "process-user"
+        main.app_state._upload_owners[file_id] = "process-user"
 
         res = self.client.post(
             "/api/process",
@@ -639,7 +639,7 @@ class ApiContractTests(unittest.TestCase):
             patch.object(main, "_release_process_slot"),
             patch.object(main, "_reserve_ai_quota"),
             patch.object(main, "_release_ai_quota") as release_quota,
-            patch.object(main.processor, "generate_captions_only", new_callable=AsyncMock,
+            patch.object(main.app_state.processor, "generate_captions_only", new_callable=AsyncMock,
                          return_value={"success": False, "error": "provider unavailable"}),
         ):
             with self.assertRaises(main.HTTPException) as raised:
@@ -662,7 +662,7 @@ class ApiContractTests(unittest.TestCase):
             patch.object(main, "_lookup_subscription_tier", return_value="free"),
             patch.object(main, "_read_service_controls", return_value={}),
             patch.object(main, "_probe_media", side_effect=ValueError("corrupt media")),
-            patch.object(main.processor, "generate_captions_only", new_callable=AsyncMock) as provider,
+            patch.object(main.app_state.processor, "generate_captions_only", new_callable=AsyncMock) as provider,
         ):
             with self.assertRaises(main.HTTPException) as raised:
                 asyncio.run(main._process_video_inline(req, request, main.Response(), trusted_uid="process-user"))
@@ -728,11 +728,11 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(res.status_code, 401)
 
     @patch("main.settings.LOCAL_DEV_AUTH_BYPASS_ENABLED", True)
-    @patch("main.processor.generate_captions_only", new_callable=AsyncMock)
+    @patch("main.app_state.processor.generate_captions_only", new_callable=AsyncMock)
     @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
     def test_process_accepts_explicitly_enabled_local_dev_bypass_token(self, _safe_find, mock_process):
         mock_process.return_value = {"success": True, "captions": [{"id": 1, "text": "hello", "start_time": 0, "end_time": 1}]}
-        main._upload_owners["123e4567-e89b-12d3-a456-426614174000"] = "dev-local-user"
+        main.app_state._upload_owners["123e4567-e89b-12d3-a456-426614174000"] = "dev-local-user"
         res = self.client.post(
             "/api/process",
             json={
@@ -780,7 +780,7 @@ class ApiContractTests(unittest.TestCase):
     @patch("main.verify_token")
     def test_export_status_requires_owner_auth(self, mock_verify_token):
         job_id = "job-auth-check"
-        main._export_jobs[job_id] = {
+        main.app_state._export_jobs[job_id] = {
             "uid": "owner-uid",
             "status": "completed",
             "payload": {"success": True, "video_url": "/exports/owner.mp4"},
@@ -806,7 +806,7 @@ class ApiContractTests(unittest.TestCase):
 
     def test_export_status_allows_local_dev_mock_token_for_dev_job(self):
         job_id = "job-dev-auth-check"
-        main._export_jobs[job_id] = {
+        main.app_state._export_jobs[job_id] = {
             "uid": "dev-local-user",
             "status": "completed",
             "payload": {"success": True, "video_url": "/api/media/export/dev.mp4"},
@@ -826,7 +826,7 @@ class ApiContractTests(unittest.TestCase):
         job_id = "123e4567-e89b-12d3-a456-426614174099"
         filename = "export_123e4567-e89b-12d3-a456-426614174099_abcdef123456.mp4"
         expired_url = main._signed_export_url(filename, "owner-uid", 60, "old")
-        main._export_jobs[job_id] = {
+        main.app_state._export_jobs[job_id] = {
             "uid": "owner-uid",
             "status": "completed",
             "payload": {
@@ -855,7 +855,7 @@ class ApiContractTests(unittest.TestCase):
     def test_r2_export_result_returns_direct_url_only_to_owner(self, verify):
         job_id = "job-direct-r2"
         filename = "export_123e4567-e89b-12d3-a456-426614174099_abcdef123456.mp4"
-        main._export_jobs[job_id] = {
+        main.app_state._export_jobs[job_id] = {
             "uid": "owner-uid", "status": "completed",
             "payload": {"success": True, "export_filename": filename, "video_url": "/api/media/export/old.mp4"},
         }
@@ -909,7 +909,7 @@ class ApiContractTests(unittest.TestCase):
                 return kwargs
 
         with (
-            patch.object(main, "_export_queue", FakeQueue()),
+            patch.object(main.app_state, "_export_queue", FakeQueue()),
             patch.object(main, "get_db", return_value=FakeDb()),
             patch.object(main, "_persist_export_job", return_value=True),
             patch.object(main, "_load_recorded_export_result", return_value=None),
@@ -949,7 +949,7 @@ class ApiContractTests(unittest.TestCase):
                 return {"queued": True}
 
         with (
-            patch.object(main, "_export_queue", FakeQueue()),
+            patch.object(main.app_state, "_export_queue", FakeQueue()),
             patch.object(main, "_persist_export_job", return_value=True),
         ):
             res = self.client.post(
@@ -987,11 +987,11 @@ class ApiContractTests(unittest.TestCase):
         self.assertTrue(replay.json().get("idempotent_replay"))
         self.assertEqual(replay.json()["export_job_id"], payload["export_job_id"])
         self.assertEqual(
-            main._active_exports_by_user.get("queue-user"),
+            main.app_state._active_exports_by_user.get("queue-user"),
             payload["export_job_id"],
         )
 
-        job = main._export_jobs[payload["export_job_id"]]
+        job = main.app_state._export_jobs[payload["export_job_id"]]
         self.assertNotIn("id_token", job.get("request_snapshot", {}))
         self.assertEqual(captured["args"][1].get("id_token"), None)
         self.assertEqual(captured["ttl"], main.settings.EXPORT_MAX_QUEUE_WAIT_SECONDS)
@@ -1016,10 +1016,10 @@ class ApiContractTests(unittest.TestCase):
         self.assertFalse(main._acquire_export_slot("lease-user", "job-b"))
 
         main._release_export_slot("lease-user", "job-b")
-        self.assertEqual(main._active_exports_by_user.get("lease-user"), "job-a")
+        self.assertEqual(main.app_state._active_exports_by_user.get("lease-user"), "job-a")
 
         main._release_export_slot("lease-user", "job-a")
-        self.assertNotIn("lease-user", main._active_exports_by_user)
+        self.assertNotIn("lease-user", main.app_state._active_exports_by_user)
 
     @patch("main.verify_token", return_value={"uid": "idem-user"})
     def test_queued_export_idempotency_tracks_job_and_request_fingerprint(self, _verify_token):
@@ -1038,7 +1038,7 @@ class ApiContractTests(unittest.TestCase):
             "fps": 30,
         }
         with (
-            patch.object(main, "_export_queue", FakeQueue()),
+            patch.object(main.app_state, "_export_queue", FakeQueue()),
             patch.object(main, "_persist_export_job", return_value=True),
         ):
             first = self.client.post("/api/export", json=request_body)
@@ -1055,7 +1055,7 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(replay.status_code, 200)
         self.assertTrue(replay.json().get("idempotent_replay"))
         self.assertEqual(changed.status_code, 409)
-        marker = main._export_idempotency["idem-user:stable-export-key"]
+        marker = main.app_state._export_idempotency["idem-user:stable-export-key"]
         self.assertEqual(marker["status"], "in_progress")
         self.assertEqual(marker["job_id"], first.json()["export_job_id"])
 
@@ -1066,7 +1066,7 @@ class ApiContractTests(unittest.TestCase):
             payment=SimpleNamespace(fetch=lambda payment_id: (_ for _ in ()).throw(RuntimeError("network down"))),
         )
 
-        with patch.object(main, "rzp_client", fake_client), patch.object(main, "RAZORPAY_AVAILABLE", True):
+        with patch.object(main.app_state, "rzp_client", fake_client), patch.object(main, "RAZORPAY_AVAILABLE", True):
             res = self.client.post(
                 "/api/verify-payment",
                 json={
@@ -1100,7 +1100,7 @@ class ApiContractTests(unittest.TestCase):
             }),
         )
 
-        with patch.object(main, "rzp_client", fake_client), patch.object(main, "RAZORPAY_AVAILABLE", True):
+        with patch.object(main.app_state, "rzp_client", fake_client), patch.object(main, "RAZORPAY_AVAILABLE", True):
             res = self.client.post(
                 "/api/verify-payment",
                 json={
@@ -1135,7 +1135,7 @@ class ApiContractTests(unittest.TestCase):
             }),
         )
 
-        with patch.object(main, "rzp_client", fake_client), patch.object(main, "RAZORPAY_AVAILABLE", True):
+        with patch.object(main.app_state, "rzp_client", fake_client), patch.object(main, "RAZORPAY_AVAILABLE", True):
             res = self.client.post(
                 "/api/verify-payment",
                 json={
@@ -1629,7 +1629,7 @@ class ApiContractTests(unittest.TestCase):
         with (
             patch.object(main.settings, "RAZORPAY_WEBHOOK_SECRET", secret),
             patch.object(main, "RAZORPAY_AVAILABLE", True),
-            patch.object(main, "rzp_client", fake_client),
+            patch.object(main.app_state, "rzp_client", fake_client),
             patch.object(main, "get_db", return_value=None),
             patch.object(main, "_apply_successful_payment", return_value={"success": True}) as apply_payment,
         ):
@@ -1796,7 +1796,7 @@ class ApiContractTests(unittest.TestCase):
             def get(self, _key):
                 raise ConnectionError("redis unavailable")
 
-        with patch.object(main, "_redis_client", BrokenRedis()):
+        with patch.object(main.app_state, "_redis_client", BrokenRedis()):
             with self.assertRaises(main.HTTPException) as raised:
                 main._payment_idem_get("payment-key")
 
@@ -1804,7 +1804,7 @@ class ApiContractTests(unittest.TestCase):
 
     def test_durable_queue_rejects_unpersisted_job_state(self):
         with (
-            patch.object(main, "_export_queue", object()),
+            patch.object(main.app_state, "_export_queue", object()),
             patch.object(main, "_persist_export_job", return_value=False),
         ):
             with self.assertRaises(RuntimeError):
@@ -2057,7 +2057,7 @@ class ApiContractTests(unittest.TestCase):
 
         with (
             patch.object(main, "_read_service_controls", return_value=paused),
-            patch.object(main, "rzp_client", fake_client),
+            patch.object(main.app_state, "rzp_client", fake_client),
         ):
             response = self.client.post(
                 "/api/create-order",
@@ -2123,7 +2123,7 @@ class ApiContractTests(unittest.TestCase):
 
         fake_client = SimpleNamespace(order=FakeOrderApi())
 
-        with patch.object(main, "rzp_client", fake_client), patch.object(main, "RAZORPAY_AVAILABLE", True):
+        with patch.object(main.app_state, "rzp_client", fake_client), patch.object(main, "RAZORPAY_AVAILABLE", True):
             payload = {
                 "plan_id": "starter",
                 "id_token": "token-123",

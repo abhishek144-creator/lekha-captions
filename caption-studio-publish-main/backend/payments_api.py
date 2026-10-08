@@ -19,6 +19,10 @@ try:
     from . import settings
 except ImportError:  # Direct execution from backend/ remains supported.
     import settings
+try:
+    from . import app_state
+except ImportError:  # Direct execution from backend/ remains supported.
+    import app_state
 
 
 def create_payments_router(host: ModuleType) -> SimpleNamespace:
@@ -42,7 +46,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
         host._assert_service_available("pause_payments")
         client_ip = host._client_rate_key(request)
         for rate_key in (f"payment:user:{uid}", f"payment:ip:{client_ip}"):
-            allowed, retry_after, remaining = host._check_rate(host._payment_rate, rate_key, settings.PAYMENT_RATE_LIMIT)
+            allowed, retry_after, remaining = host._check_rate(app_state._payment_rate, rate_key, settings.PAYMENT_RATE_LIMIT)
             host._apply_rate_headers(response, settings.PAYMENT_RATE_LIMIT, remaining, retry_after)
             if not allowed:
                 raise HTTPException(status_code=429, detail="Too many payment requests. Please wait before trying again.")
@@ -105,7 +109,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
         else:
             amount = plan.get('usd_cents', plan['inr_paise'])
 
-        if not host.RAZORPAY_AVAILABLE or host.rzp_client is None:
+        if not host.RAZORPAY_AVAILABLE or app_state.rzp_client is None:
             if topup_db is not None and topup_user_ref is not None:
                 host._release_topup_order_slot(topup_db, topup_user_ref, topup_reservation_id)
             host._payment_idem_delete(pay_idem_key)
@@ -127,7 +131,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
                     **({"topup_reservation_id": topup_reservation_id} if topup_reservation_id else {}),
                 }
             }
-            order = host.rzp_client.order.create(data=order_data)
+            order = app_state.rzp_client.order.create(data=order_data)
         except Exception as e:
             if topup_db is not None and topup_user_ref is not None:
                 try:
@@ -150,7 +154,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
 
     @router.post("/api/verify-payment")
     def verify_payment(req: VerifyPaymentRequest, request: Request, response: Response):
-        if not host.RAZORPAY_AVAILABLE or host.rzp_client is None:
+        if not host.RAZORPAY_AVAILABLE or app_state.rzp_client is None:
             raise HTTPException(status_code=503, detail="Payment service unavailable")
 
         # Verify User
@@ -161,7 +165,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
         host._assert_tenant_access(uid, decoded_token, req.org_id)
         client_ip = host._client_rate_key(request)
         for rate_key in (f"payment:user:{uid}", f"payment:ip:{client_ip}"):
-            allowed, retry_after, remaining = host._check_rate(host._payment_rate, rate_key, settings.PAYMENT_RATE_LIMIT)
+            allowed, retry_after, remaining = host._check_rate(app_state._payment_rate, rate_key, settings.PAYMENT_RATE_LIMIT)
             host._apply_rate_headers(response, settings.PAYMENT_RATE_LIMIT, remaining, retry_after)
             if not allowed:
                 raise HTTPException(status_code=429, detail="Too many payment requests. Please wait before trying again.")
@@ -178,7 +182,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
                 'razorpay_payment_id': req.razorpay_payment_id,
                 'razorpay_signature': req.razorpay_signature
             }
-            host.rzp_client.utility.verify_payment_signature(params_dict)
+            app_state.rzp_client.utility.verify_payment_signature(params_dict)
         except Exception as e:
             raise HTTPException(status_code=400, detail="Payment verification failed")
         # Resolve plan from echoed plan_id, then prove the live Razorpay payment/order
@@ -188,7 +192,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
         amount_paid_minor = plan_config.get("inr_paise", 0) if plan_config else 0
 
         try:
-            payment_live = host.rzp_client.payment.fetch(req.razorpay_payment_id)
+            payment_live = app_state.rzp_client.payment.fetch(req.razorpay_payment_id)
             currency_paid = payment_live.get('currency', currency_paid)
             amount_paid_minor = payment_live.get('amount', amount_paid_minor)
         except Exception as e:
@@ -219,7 +223,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
             raise HTTPException(status_code=400, detail="Payment is not captured yet.")
 
         try:
-            order_live = host.rzp_client.order.fetch(req.razorpay_order_id)
+            order_live = app_state.rzp_client.order.fetch(req.razorpay_order_id)
         except Exception as e:
             raise HTTPException(status_code=502, detail="Unable to verify payment order with Razorpay") from e
 
@@ -350,10 +354,10 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
             if not db:
                 raise HTTPException(status_code=503, detail="Database unavailable")
             refund_payment_id = str(refund_entity.get("payment_id") or payment_id or "").strip()
-            if not refund_payment_id or not host.RAZORPAY_AVAILABLE or host.rzp_client is None:
+            if not refund_payment_id or not host.RAZORPAY_AVAILABLE or app_state.rzp_client is None:
                 raise HTTPException(status_code=503, detail="Refund payment verification is unavailable")
             try:
-                refund_payment_live = host.rzp_client.payment.fetch(refund_payment_id)
+                refund_payment_live = app_state.rzp_client.payment.fetch(refund_payment_id)
             except Exception as e:
                 # A non-2xx response asks Razorpay to retry instead of acknowledging a
                 # refund whose entitlement owner could not be established safely.

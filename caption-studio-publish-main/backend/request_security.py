@@ -11,6 +11,10 @@ try:
     from . import settings
 except ImportError:  # Direct execution from backend/ remains supported.
     import settings
+try:
+    from . import app_state
+except ImportError:  # Direct execution from backend/ remains supported.
+    import app_state
 
 
 def create_request_security(host: ModuleType) -> SimpleNamespace:
@@ -138,7 +142,7 @@ def create_request_security(host: ModuleType) -> SimpleNamespace:
             raise host.HTTPException(status_code=403, detail="Tenant identity is unavailable")
         if requested_org and requested_org != token_org:
             raise host.HTTPException(status_code=403, detail="Cross-tenant write is not allowed")
-        known_members = host._tenant_memberships.setdefault(token_org, set())
+        known_members = app_state._tenant_memberships.setdefault(token_org, set())
         if uid in known_members:
             return
         db = host.get_db()

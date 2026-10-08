@@ -17,6 +17,10 @@ try:
     from . import settings
 except ImportError:  # Direct execution from backend/ remains supported.
     import settings
+try:
+    from . import app_state
+except ImportError:  # Direct execution from backend/ remains supported.
+    import app_state
 
 
 def create_language_router(host: ModuleType) -> SimpleNamespace:
@@ -31,13 +35,13 @@ def create_language_router(host: ModuleType) -> SimpleNamespace:
         host._assert_tenant_access(uid, decoded_token, req.org_id)
         client_ip = host._client_rate_key(request)
         allowed, retry_after, remaining = host._check_rate(
-            host._translate_rate, f"network:{client_ip}", settings.TRANSLATE_SHARED_NETWORK_RATE_LIMIT
+            app_state._translate_rate, f"network:{client_ip}", settings.TRANSLATE_SHARED_NETWORK_RATE_LIMIT
         )
         host._apply_rate_headers(response, settings.TRANSLATE_SHARED_NETWORK_RATE_LIMIT, remaining, retry_after)
         if not allowed:
             raise HTTPException(status_code=429, detail="Too many translation requests. Please wait before trying again.")
         user_allowed, user_retry_after, user_remaining = host._check_rate(
-            host._translate_rate, f"user:{uid}", settings.TRANSLATE_USER_RATE_LIMIT
+            app_state._translate_rate, f"user:{uid}", settings.TRANSLATE_USER_RATE_LIMIT
         )
         host._apply_rate_headers(response, settings.TRANSLATE_USER_RATE_LIMIT, user_remaining, user_retry_after)
         if not user_allowed:
@@ -51,7 +55,7 @@ def create_language_router(host: ModuleType) -> SimpleNamespace:
         if host._is_content_safety_blocked(req.target_language, " ".join((c.get("text") or "") for c in req.captions[:30])):
             host._track_event("translate_rejected_content_safety")
             raise HTTPException(status_code=422, detail="Request blocked by content safety policy.")
-        breaker = host._provider_breakers["openai_translate"]
+        breaker = app_state._provider_breakers["openai_translate"]
         if not breaker.allow():
             host._track_event("translate_circuit_open")
             raise HTTPException(status_code=503, detail="Translation service is temporarily unavailable. Please retry shortly.")
@@ -103,7 +107,7 @@ def create_language_router(host: ModuleType) -> SimpleNamespace:
         uid = (decoded_token.get("uid") or "").strip() or "unknown-user"
         client_ip = host._client_rate_key(request)
         allowed, retry_after, remaining = host._check_rate(
-            host._detect_language_rate,
+            app_state._detect_language_rate,
             f"network:{client_ip}",
             settings.DETECT_LANGUAGE_SHARED_NETWORK_RATE_LIMIT,
         )
@@ -111,7 +115,7 @@ def create_language_router(host: ModuleType) -> SimpleNamespace:
         if not allowed:
             raise HTTPException(status_code=429, detail="Too many language detection requests. Please wait before trying again.")
         user_allowed, user_retry_after, user_remaining = host._check_rate(
-            host._detect_language_rate, f"user:{uid}", settings.DETECT_LANGUAGE_USER_RATE_LIMIT
+            app_state._detect_language_rate, f"user:{uid}", settings.DETECT_LANGUAGE_USER_RATE_LIMIT
         )
         host._apply_rate_headers(response, settings.DETECT_LANGUAGE_USER_RATE_LIMIT, user_remaining, user_retry_after)
         if not user_allowed:
@@ -124,7 +128,7 @@ def create_language_router(host: ModuleType) -> SimpleNamespace:
             host._track_event("detect_language_failed_not_found")
             raise HTTPException(status_code=404, detail="File not found")
         host._ensure_upload_clean(req.file_id, uid, input_path)
-        breaker = host._provider_breakers["openai_detect_language"]
+        breaker = app_state._provider_breakers["openai_detect_language"]
         if not breaker.allow():
             host._track_event("detect_language_circuit_open")
             raise HTTPException(status_code=503, detail="Language detection is temporarily unavailable. Please retry shortly.")

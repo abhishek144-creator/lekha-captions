@@ -11,6 +11,10 @@ try:
     from . import settings
 except ImportError:  # Direct execution from backend/ remains supported.
     import settings
+try:
+    from . import app_state
+except ImportError:  # Direct execution from backend/ remains supported.
+    import app_state
 
 
 def create_upload_dispatch(host: ModuleType) -> SimpleNamespace:
@@ -30,10 +34,10 @@ def create_upload_dispatch(host: ModuleType) -> SimpleNamespace:
 
 
     def _reserve_direct_upload_slot(uid: str, file_id: str, size_bytes: int):
-        if host._redis_client is None and not settings._IS_PRODUCTION:
+        if app_state._redis_client is None and not settings._IS_PRODUCTION:
             return
         host.reserve_upload(
-            host._redis_client, uid, file_id, size_bytes,
+            app_state._redis_client, uid, file_id, size_bytes,
             max_active=settings.DIRECT_UPLOAD_MAX_ACTIVE,
             max_outstanding_bytes=settings.DIRECT_UPLOAD_MAX_OUTSTANDING_BYTES,
             max_hourly=settings.DIRECT_UPLOAD_MAX_HOURLY,
@@ -43,7 +47,7 @@ def create_upload_dispatch(host: ModuleType) -> SimpleNamespace:
     def _limit_direct_upload_network(request: host.Request):
         network = host._client_rate_key(request)
         allowed, retry_after, _remaining = host._check_rate(
-            host._upload_rate, f"direct_network:{network}", settings.DIRECT_UPLOAD_SHARED_NETWORK_HOURLY,
+            app_state._upload_rate, f"direct_network:{network}", settings.DIRECT_UPLOAD_SHARED_NETWORK_HOURLY,
             settings.UPLOAD_RATE_WINDOW,
         )
         if not allowed:
@@ -53,7 +57,7 @@ def create_upload_dispatch(host: ModuleType) -> SimpleNamespace:
 
     def _release_direct_upload_slot(uid: str, file_id: str, *, undo_hourly: bool = False):
         try:
-            host.release_upload(host._redis_client, uid, file_id, undo_hourly=undo_hourly)
+            host.release_upload(app_state._redis_client, uid, file_id, undo_hourly=undo_hourly)
         except Exception as exc:
             # The active lease has a bounded TTL; a transient Redis failure should
             # not turn a completed upload into a failed customer response.
@@ -67,7 +71,7 @@ def create_upload_dispatch(host: ModuleType) -> SimpleNamespace:
             return
         try:
             jobs.dispatch(
-                host._media_scan_queue,
+                app_state._media_scan_queue,
                 retry=host.RQRetry(max=3, interval=[30, 120, 300]) if host.RQRetry else None,
             )
         except Exception as error:
@@ -82,7 +86,7 @@ def create_upload_dispatch(host: ModuleType) -> SimpleNamespace:
     async def _transcription_dispatch_loop():
         while True:
             try:
-                await host.asyncio.to_thread(host.TranscriptionJobs(host.get_db()).dispatch, host._transcription_queue)
+                await host.asyncio.to_thread(host.TranscriptionJobs(host.get_db()).dispatch, app_state._transcription_queue)
                 await host.asyncio.to_thread(host._dispatch_media_scans_once)
             except Exception as error:
                 host._json_log("warning", "transcription_dispatch_failed", error_type=type(error).__name__)
@@ -91,7 +95,7 @@ def create_upload_dispatch(host: ModuleType) -> SimpleNamespace:
 
     def _dispatch_media_scans_once():
         return host.MediaScanJobs(host.get_db()).dispatch(
-            host._media_scan_queue,
+            app_state._media_scan_queue,
             retry=host.RQRetry(max=3, interval=[30, 120, 300]) if host.RQRetry else None,
         )
 
