@@ -14,7 +14,6 @@ from unittest.mock import AsyncMock, Mock, patch
 
 from fastapi import Request, Response, HTTPException
 from backend import main, media_storage
-from backend.export_api import create_export_router
 from backend.render_scratch import RenderScratch, STALE_SECONDS, sweep_render_scratch
 
 FILE_ID = "123e4567-e89b-12d3-a456-426614174000"
@@ -80,7 +79,7 @@ class ExportReliabilityTests(unittest.TestCase):
             return {"uid": f"user-{threading.get_ident()}"}
 
         req = main.api_models.ExportRequest(file_id=FILE_ID, captions=[{"id": "1", "text": "Hello", "start_time": 0, "end_time": 1}])
-        router = create_export_router(main)
+        router = main.export_api
         request = Request({"type": "http", "headers": []})
         ticks = []
 
@@ -97,15 +96,15 @@ class ExportReliabilityTests(unittest.TestCase):
             patch.object(main.app_state, "_export_queue", SimpleNamespace()),
             patch.object(main.request_security, "_authenticate_media_request", side_effect=authenticate),
             patch.object(main.operator_controls, "_assert_service_available"),
-            patch.object(main, "_get_recent_export_failures", return_value=[]),
-            patch.object(main, "_idem_get", return_value=None),
-            patch.object(main, "_idem_claim", return_value=True),
-            patch.object(main, "_idem_set"),
-            patch.object(main, "_acquire_export_slot", return_value=True),
+            patch.object(main.request_guards, "_get_recent_export_failures", return_value=[]),
+            patch.object(main.request_guards, "_idem_get", return_value=None),
+            patch.object(main.request_guards, "_idem_claim", return_value=True),
+            patch.object(main.request_guards, "_idem_set"),
+            patch.object(main.request_guards, "_acquire_export_slot", return_value=True),
             patch.object(main.export_jobs, "_set_export_job"),
             patch.object(main.media_records, "_source_duration_hint", return_value=12),
-            patch.object(main, "_render_queue_for", return_value=SimpleNamespace()),
-            patch.object(main, "_enqueue_export_job", side_effect=lambda *a, **kw: time.sleep(0.08)),
+            patch.object(main.export_api, "_render_queue_for", return_value=SimpleNamespace()),
+            patch.object(main.export_api, "_enqueue_export_job", side_effect=lambda *a, **kw: time.sleep(0.08)),
             patch.object(main.observability, "_audit_action"),
         ):
             results = asyncio.run(probe())
@@ -176,13 +175,13 @@ class ExportReliabilityTests(unittest.TestCase):
     def test_failed_state_with_committed_usage_returns_completed_result(self):
         payload = {"success": True, "export_job_id": "job"}
         with patch.object(main.export_jobs, "_load_recorded_export_result", return_value=payload):
-            result = create_export_router(main)._reconcile_export_job("job", {"status": "failed", "uid": "owner", "file_id": FILE_ID})
+            result = main.export_api._reconcile_export_job("job", {"status": "failed", "uid": "owner", "file_id": FILE_ID})
         self.assertEqual(result["status"], "completed")
         self.assertEqual(result["payload"], payload)
 
     def test_unknown_billing_outcome_stays_recoverable_during_database_outage(self):
         with patch.object(main.export_jobs, "_load_recorded_export_result", side_effect=RuntimeError("Firestore offline")):
-            result = create_export_router(main)._reconcile_export_job("job", {"status": "failed", "uid": "owner", "file_id": FILE_ID})
+            result = main.export_api._reconcile_export_job("job", {"status": "failed", "uid": "owner", "file_id": FILE_ID})
         self.assertEqual(result["status"], "retrying")
         self.assertIsNone(result["error"])
 
@@ -196,12 +195,12 @@ class ExportReliabilityTests(unittest.TestCase):
         woken = []
         with (
             patch.object(main.app_state, "_export_queue", queue),
-            patch.object(main, "_queue_for_export_job_record", return_value=queue),
+            patch.object(main.export_api, "_queue_for_export_job_record", return_value=queue),
             patch.dict(os.environ, {"WORKER_LAUNCH_JOBS": '{"caption_export_jobs":"lekha-render"}'}),
             patch.object(worker_launcher, "_default_launcher", side_effect=lambda name, slot: woken.append(name)),
         ):
             self.assertGreaterEqual(main.settings.EXPORT_MAX_QUEUE_WAIT_SECONDS, 1800)
-            self.assertEqual(create_export_router(main)._reconcile_export_job("accepted-job", job)["status"], "queued")
+            self.assertEqual(main.export_api._reconcile_export_job("accepted-job", job)["status"], "queued")
             railway_cron.kick_backlogged_workers(connection, ["caption_export_jobs"])
         self.assertEqual(woken, ["lekha-render"])
 
@@ -235,9 +234,9 @@ class ExportReliabilityTests(unittest.TestCase):
             patch.object(main.export_jobs, "_set_export_job", side_effect=transition),
             patch.object(main.export_jobs, "_load_recorded_export_result", return_value=payload),
             patch.object(main.export_jobs, "_process_export_job_core", side_effect=crash),
-            patch.object(main, "_acquire_export_slot", return_value=True),
-            patch.object(main, "_release_export_slot"), patch.object(main, "_release_export_pending_work"),
-            patch.object(main, "_idem_set") as store, patch.object(main, "_idem_delete") as delete,
+            patch.object(main.request_guards, "_acquire_export_slot", return_value=True),
+            patch.object(main.request_guards, "_release_export_slot"), patch.object(main.export_api, "_release_export_pending_work"),
+            patch.object(main.request_guards, "_idem_set") as store, patch.object(main.request_guards, "_idem_delete") as delete,
         ):
             result = main.run_export_job_task("job", {"file_id": FILE_ID, "captions": [{"id": "1", "text": "Hello", "start_time": 0, "end_time": 1}]}, "owner", "stable-key", "hash")
         self.assertEqual(result, payload)
@@ -303,7 +302,7 @@ class BatchIdempotencyTests(unittest.TestCase):
         self.redis = fakeredis.FakeRedis(decode_responses=True)
         self.database = Mock()
         self.receipt_write = self.database.collection.return_value.document.return_value.set
-        self.enqueued = self.stack.enter_context(patch.object(main, "_enqueue_export_job"))
+        self.enqueued = self.stack.enter_context(patch.object(main.export_api, "_enqueue_export_job"))
         for name, value in {
             "_redis_client": self.redis,
             "_export_queue": SimpleNamespace(),
@@ -322,7 +321,7 @@ class BatchIdempotencyTests(unittest.TestCase):
             self.stack.enter_context(patch.object(_owner(name), name, return_value=value))
         self.stack.enter_context(patch.object(main.observability, "_audit_action", return_value=None))
         self.stack.enter_context(patch.object(main.firebase_admin_setup, "get_db", return_value=self.database))
-        self.router = create_export_router(main)
+        self.router = main.export_api
         self.request = Request({"type": "http", "headers": []})
 
     def batch(self, text="Hello"):
@@ -332,7 +331,7 @@ class BatchIdempotencyTests(unittest.TestCase):
 
     def test_concurrent_same_key_only_enqueues_one_batch(self):
         barrier = threading.Barrier(2)
-        original_get = main._idem_get
+        original_get = main.request_guards._idem_get
 
         def simultaneous_get(key):
             value = original_get(key)
@@ -346,7 +345,7 @@ class BatchIdempotencyTests(unittest.TestCase):
                 return_exceptions=True,
             )
 
-        with patch.object(main, "_idem_get", side_effect=simultaneous_get):
+        with patch.object(main.request_guards, "_idem_get", side_effect=simultaneous_get):
             results = asyncio.run(submit())
         self.assertEqual(self.enqueued.call_count, 1)
         self.assertEqual(sum(isinstance(result, dict) for result in results), 1)

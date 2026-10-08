@@ -40,6 +40,10 @@ try:
     from . import api_models
 except ImportError:  # Direct execution from backend/ remains supported.
     import api_models
+try:
+    from . import request_guards
+except ImportError:  # Direct execution from backend/ remains supported.
+    import request_guards
 
 
 def create_system_router(host: ModuleType) -> SimpleNamespace:
@@ -50,11 +54,11 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
         # Unauthenticated telemetry endpoint: rate-limit per IP so it can't be used
         # as an unbounded Firestore write amplifier (cost/DoS), and reject reserved
         # server counter names so it can't poison the release gate / alerting.
-        client_ip = host._client_rate_key(request)
+        client_ip = request_guards._client_rate_key(request)
         allowed, retry_after, remaining = await host.asyncio.to_thread(
-            host._check_rate, app_state._analytics_rate, client_ip, settings.ANALYTICS_RATE_LIMIT,
+            request_guards._check_rate, app_state._analytics_rate, client_ip, settings.ANALYTICS_RATE_LIMIT,
         )
-        host._apply_rate_headers(response, settings.ANALYTICS_RATE_LIMIT, remaining, retry_after)
+        request_guards._apply_rate_headers(response, settings.ANALYTICS_RATE_LIMIT, remaining, retry_after)
         if not allowed:
             raise HTTPException(status_code=429, detail="Too many analytics events. Please slow down.")
         try:
@@ -75,13 +79,13 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
 
     @router.post("/api/support-request")
     def create_support_request(req: api_models.SupportRequest, request: Request, response: Response):
-        client_ip = host._client_rate_key(request)
-        allowed, retry_after, remaining = host._check_rate(
+        client_ip = request_guards._client_rate_key(request)
+        allowed, retry_after, remaining = request_guards._check_rate(
             app_state._support_rate,
             f"support:{client_ip}",
             settings.SUPPORT_RATE_LIMIT,
         )
-        host._apply_rate_headers(response, settings.SUPPORT_RATE_LIMIT, remaining, retry_after)
+        request_guards._apply_rate_headers(response, settings.SUPPORT_RATE_LIMIT, remaining, retry_after)
         if not allowed:
             raise HTTPException(status_code=429, detail="Too many support requests. Please wait before trying again.")
 

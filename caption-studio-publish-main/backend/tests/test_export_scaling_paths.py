@@ -77,10 +77,10 @@ class NonBlockingSubmissionTests(unittest.TestCase):
     def test_export_enqueue_wakes_workers_off_the_request_path(self):
         queue = SimpleNamespace(connection=object(), name="caption_export_jobs")
         with (patch.object(main.settings, "_IS_PRODUCTION", True),
-              patch.object(main, "enqueue_bounded_across_queues", return_value="delivery"),
+              patch.object(main.export_api, "enqueue_bounded_across_queues", return_value="delivery"),
               patch.object(main.worker_launcher, "kick") as blocking_kick,
               patch.object(main.worker_launcher, "kick_in_background") as background_kick):
-            self.assertEqual(main._enqueue_export_job(queue, job_id="job"), "delivery")
+            self.assertEqual(main.export_api._enqueue_export_job(queue, job_id="job"), "delivery")
         blocking_kick.assert_not_called()
         background_kick.assert_called_once_with(queue.connection, queue.name)
 
@@ -99,7 +99,7 @@ class NonBlockingSubmissionTests(unittest.TestCase):
               patch.object(main.operator_controls, "_assert_service_available"), patch.object(main.observability, "_track_event"),
               patch.object(main.request_security, "_authenticate_media_request", Mock(return_value={"uid": "owner"}, __name__="auth"))):
             with self.assertRaises(main.HTTPException):
-                asyncio.run(main.export_video(request, Request({"type": "http", "headers": []}), main.Response()))
+                asyncio.run(main.export_api.export_video(request, Request({"type": "http", "headers": []}), main.Response()))
         self.assertIn("auth", threads)
 
 

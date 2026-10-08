@@ -53,6 +53,10 @@ try:
     from . import api_models
 except ImportError:  # Direct execution from backend/ remains supported.
     import api_models
+try:
+    from . import request_guards
+except ImportError:  # Direct execution from backend/ remains supported.
+    import request_guards
 
 
 def create_language_router(host: ModuleType) -> SimpleNamespace:
@@ -65,17 +69,17 @@ def create_language_router(host: ModuleType) -> SimpleNamespace:
             raise HTTPException(status_code=401, detail="Authentication required")
         uid = (decoded_token.get("uid") or "").strip() or "unknown-user"
         request_security._assert_tenant_access(uid, decoded_token, req.org_id)
-        client_ip = host._client_rate_key(request)
-        allowed, retry_after, remaining = host._check_rate(
+        client_ip = request_guards._client_rate_key(request)
+        allowed, retry_after, remaining = request_guards._check_rate(
             app_state._translate_rate, f"network:{client_ip}", settings.TRANSLATE_SHARED_NETWORK_RATE_LIMIT
         )
-        host._apply_rate_headers(response, settings.TRANSLATE_SHARED_NETWORK_RATE_LIMIT, remaining, retry_after)
+        request_guards._apply_rate_headers(response, settings.TRANSLATE_SHARED_NETWORK_RATE_LIMIT, remaining, retry_after)
         if not allowed:
             raise HTTPException(status_code=429, detail="Too many translation requests. Please wait before trying again.")
-        user_allowed, user_retry_after, user_remaining = host._check_rate(
+        user_allowed, user_retry_after, user_remaining = request_guards._check_rate(
             app_state._translate_rate, f"user:{uid}", settings.TRANSLATE_USER_RATE_LIMIT
         )
-        host._apply_rate_headers(response, settings.TRANSLATE_USER_RATE_LIMIT, user_remaining, user_retry_after)
+        request_guards._apply_rate_headers(response, settings.TRANSLATE_USER_RATE_LIMIT, user_remaining, user_retry_after)
         if not user_allowed:
             raise HTTPException(status_code=429, detail="Too many translation requests. Please wait before trying again.")
         for caption in req.captions:
@@ -137,19 +141,19 @@ def create_language_router(host: ModuleType) -> SimpleNamespace:
         # Auth — same dev-mode bypass as /api/export
         decoded_token = request_security._authenticate_media_request(req.id_token, req.org_id)
         uid = (decoded_token.get("uid") or "").strip() or "unknown-user"
-        client_ip = host._client_rate_key(request)
-        allowed, retry_after, remaining = host._check_rate(
+        client_ip = request_guards._client_rate_key(request)
+        allowed, retry_after, remaining = request_guards._check_rate(
             app_state._detect_language_rate,
             f"network:{client_ip}",
             settings.DETECT_LANGUAGE_SHARED_NETWORK_RATE_LIMIT,
         )
-        host._apply_rate_headers(response, settings.DETECT_LANGUAGE_SHARED_NETWORK_RATE_LIMIT, remaining, retry_after)
+        request_guards._apply_rate_headers(response, settings.DETECT_LANGUAGE_SHARED_NETWORK_RATE_LIMIT, remaining, retry_after)
         if not allowed:
             raise HTTPException(status_code=429, detail="Too many language detection requests. Please wait before trying again.")
-        user_allowed, user_retry_after, user_remaining = host._check_rate(
+        user_allowed, user_retry_after, user_remaining = request_guards._check_rate(
             app_state._detect_language_rate, f"user:{uid}", settings.DETECT_LANGUAGE_USER_RATE_LIMIT
         )
-        host._apply_rate_headers(response, settings.DETECT_LANGUAGE_USER_RATE_LIMIT, user_remaining, user_retry_after)
+        request_guards._apply_rate_headers(response, settings.DETECT_LANGUAGE_USER_RATE_LIMIT, user_remaining, user_retry_after)
         if not user_allowed:
             raise HTTPException(status_code=429, detail="Too many language detection requests. Please wait before trying again.")
         if not media_records._validate_file_id(req.file_id):

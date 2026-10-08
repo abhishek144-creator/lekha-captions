@@ -36,6 +36,10 @@ try:
     from . import export_jobs
 except ImportError:  # Direct execution from backend/ remains supported.
     import export_jobs
+try:
+    from . import request_guards
+except ImportError:  # Direct execution from backend/ remains supported.
+    import request_guards
 
 
 def create_upload_router(host: ModuleType) -> SimpleNamespace:
@@ -92,7 +96,7 @@ def create_upload_router(host: ModuleType) -> SimpleNamespace:
             # completed upload before consuming another rate-limit slot or creating
             # a duplicate object in storage.
             upload_fingerprint = f"{safe_name}:{content_type}"
-            cached_upload = host._upload_idem_get(uid, upload_reference)
+            cached_upload = request_guards._upload_idem_get(uid, upload_reference)
             if cached_upload:
                 if cached_upload.get("fingerprint") != upload_fingerprint:
                     raise host.HTTPException(
@@ -165,14 +169,14 @@ def create_upload_router(host: ModuleType) -> SimpleNamespace:
             # reached the service. This also lets the browser safely retry a dropped
             # transfer without locking the account out.
             if request:
-                client_ip = host._client_rate_key(request)
-                allowed, retry_after, remaining = host._check_rate(
+                client_ip = request_guards._client_rate_key(request)
+                allowed, retry_after, remaining = request_guards._check_rate(
                     app_state._upload_rate,
                     f"network:{client_ip}",
                     settings.UPLOAD_SHARED_NETWORK_RATE_LIMIT,
                     settings.UPLOAD_RATE_WINDOW,
                 )
-                host._apply_rate_headers(response, settings.UPLOAD_SHARED_NETWORK_RATE_LIMIT, remaining, retry_after)
+                request_guards._apply_rate_headers(response, settings.UPLOAD_SHARED_NETWORK_RATE_LIMIT, remaining, retry_after)
                 if not allowed:
                     try:
                         host.os.remove(file_path)
@@ -180,10 +184,10 @@ def create_upload_router(host: ModuleType) -> SimpleNamespace:
                         pass
                     observability._track_event("upload_rejected_rate_limited")
                     raise host.HTTPException(status_code=429, detail="Too many uploads. Please wait before trying again.")
-                user_allowed, user_retry_after, user_remaining = host._check_rate(
+                user_allowed, user_retry_after, user_remaining = request_guards._check_rate(
                     app_state._upload_rate, f"user:{uid}", settings.UPLOAD_USER_RATE_LIMIT, settings.UPLOAD_RATE_WINDOW
                 )
-                host._apply_rate_headers(response, settings.UPLOAD_USER_RATE_LIMIT, user_remaining, user_retry_after)
+                request_guards._apply_rate_headers(response, settings.UPLOAD_USER_RATE_LIMIT, user_remaining, user_retry_after)
                 if not user_allowed:
                     try:
                         host.os.remove(file_path)
@@ -255,7 +259,7 @@ def create_upload_router(host: ModuleType) -> SimpleNamespace:
                 await host.asyncio.to_thread(
                     firebase_admin_setup.set_source_upload_state, uid, file_id, remote_path, "clean",
                 )
-            host._upload_idem_set(uid, upload_reference, {
+            request_guards._upload_idem_set(uid, upload_reference, {
                 "file_id": file_id,
                 "fingerprint": upload_fingerprint,
                 "ts": host.time.time(),

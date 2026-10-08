@@ -47,6 +47,14 @@ try:
     from . import api_models
 except ImportError:  # Direct execution from backend/ remains supported.
     import api_models
+try:
+    from . import optional_deps
+except ImportError:  # Direct execution from backend/ remains supported.
+    import optional_deps
+try:
+    from . import request_guards
+except ImportError:  # Direct execution from backend/ remains supported.
+    import request_guards
 
 
 def create_payments_router(host: ModuleType) -> SimpleNamespace:
@@ -68,14 +76,14 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
         # Check the durable operator switch before contacting Razorpay. This makes
         # emergency payment shutdown immediate and guarantees no order is created.
         operator_controls._assert_service_available("pause_payments")
-        client_ip = host._client_rate_key(request)
+        client_ip = request_guards._client_rate_key(request)
         for rate_key in (f"payment:user:{uid}", f"payment:ip:{client_ip}"):
-            allowed, retry_after, remaining = host._check_rate(app_state._payment_rate, rate_key, settings.PAYMENT_RATE_LIMIT)
-            host._apply_rate_headers(response, settings.PAYMENT_RATE_LIMIT, remaining, retry_after)
+            allowed, retry_after, remaining = request_guards._check_rate(app_state._payment_rate, rate_key, settings.PAYMENT_RATE_LIMIT)
+            request_guards._apply_rate_headers(response, settings.PAYMENT_RATE_LIMIT, remaining, retry_after)
             if not allowed:
                 raise HTTPException(status_code=429, detail="Too many payment requests. Please wait before trying again.")
-        pay_idem_key = host._require_payment_idempotency(uid, req.idempotency_key or request.headers.get("x-idempotency-key", ""), "create_order")
-        cached_payment = host._payment_idem_get(pay_idem_key)
+        pay_idem_key = request_guards._require_payment_idempotency(uid, req.idempotency_key or request.headers.get("x-idempotency-key", ""), "create_order")
+        cached_payment = request_guards._payment_idem_get(pay_idem_key)
         if cached_payment and cached_payment.get("status") == "completed":
             return {**cached_payment["payload"], "idempotent_replay": True}
         observability._audit_action("create_order_attempt", uid, {"plan_id": req.plan_id, "currency": req.currency})
@@ -107,8 +115,8 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
             if req.plan_id != expected:
                 raise HTTPException(status_code=403, detail="This top-up is not available for your current plan.")
             host._assert_topup_purchase_available(user_data_tmp, plan)
-        if not host._payment_idem_claim(pay_idem_key):
-            concurrent = host._payment_idem_get(pay_idem_key)
+        if not request_guards._payment_idem_claim(pay_idem_key):
+            concurrent = request_guards._payment_idem_get(pay_idem_key)
             if concurrent and concurrent.get("status") == "completed":
                 return {**concurrent["payload"], "idempotent_replay": True}
             raise HTTPException(status_code=409, detail="A payment order with this idempotency key is already in progress.")
@@ -122,7 +130,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
                     plan,
                 )
             except Exception:
-                host._payment_idem_delete(pay_idem_key)
+                request_guards._payment_idem_delete(pay_idem_key)
                 raise
 
         currency = req.currency.upper() if req.currency else "INR"
@@ -133,10 +141,10 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
         else:
             amount = plan.get('usd_cents', plan['inr_paise'])
 
-        if not host.RAZORPAY_AVAILABLE or app_state.rzp_client is None:
+        if not optional_deps.RAZORPAY_AVAILABLE or app_state.rzp_client is None:
             if topup_db is not None and topup_user_ref is not None:
                 host._release_topup_order_slot(topup_db, topup_user_ref, topup_reservation_id)
-            host._payment_idem_delete(pay_idem_key)
+            request_guards._payment_idem_delete(pay_idem_key)
             detail = "Payment service unavailable"
             if settings._IS_DEVELOPMENT and (not settings.RAZORPAY_KEY_ID or not settings.RAZORPAY_KEY_SECRET):
                 detail = "Payment service is not configured. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET, then restart the backend."
@@ -168,17 +176,17 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
                         reservation_id=topup_reservation_id,
                         error=str(release_error),
                     )
-            host._payment_idem_delete(pay_idem_key)
+            request_guards._payment_idem_delete(pay_idem_key)
             observability._json_log("error", "razorpay_order_create_failed", uid=uid, plan_id=req.plan_id, error=str(e))
             raise HTTPException(status_code=502, detail="Payment order could not be created. Please try again.") from e
 
         payload = {"success": True, "order": order, "plan_id": req.plan_id, "key_id": settings.RAZORPAY_KEY_ID}
-        host._payment_idem_set(pay_idem_key, {"status": "completed", "ts": time.time(), "payload": payload})
+        request_guards._payment_idem_set(pay_idem_key, {"status": "completed", "ts": time.time(), "payload": payload})
         return payload
 
     @router.post("/api/verify-payment")
     def verify_payment(req: VerifyPaymentRequest, request: Request, response: Response):
-        if not host.RAZORPAY_AVAILABLE or app_state.rzp_client is None:
+        if not optional_deps.RAZORPAY_AVAILABLE or app_state.rzp_client is None:
             raise HTTPException(status_code=503, detail="Payment service unavailable")
 
         # Verify User
@@ -187,14 +195,14 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
             raise HTTPException(status_code=401, detail="Invalid Authentication Token")
         uid = decoded_token.get('uid')
         request_security._assert_tenant_access(uid, decoded_token, req.org_id)
-        client_ip = host._client_rate_key(request)
+        client_ip = request_guards._client_rate_key(request)
         for rate_key in (f"payment:user:{uid}", f"payment:ip:{client_ip}"):
-            allowed, retry_after, remaining = host._check_rate(app_state._payment_rate, rate_key, settings.PAYMENT_RATE_LIMIT)
-            host._apply_rate_headers(response, settings.PAYMENT_RATE_LIMIT, remaining, retry_after)
+            allowed, retry_after, remaining = request_guards._check_rate(app_state._payment_rate, rate_key, settings.PAYMENT_RATE_LIMIT)
+            request_guards._apply_rate_headers(response, settings.PAYMENT_RATE_LIMIT, remaining, retry_after)
             if not allowed:
                 raise HTTPException(status_code=429, detail="Too many payment requests. Please wait before trying again.")
-        pay_idem_key = host._require_payment_idempotency(uid, req.idempotency_key or request.headers.get("x-idempotency-key", ""), "verify_payment")
-        cached_payment = host._payment_idem_get(pay_idem_key)
+        pay_idem_key = request_guards._require_payment_idempotency(uid, req.idempotency_key or request.headers.get("x-idempotency-key", ""), "verify_payment")
+        cached_payment = request_guards._payment_idem_get(pay_idem_key)
         if cached_payment and cached_payment.get("status") == "completed":
             return {**cached_payment["payload"], "idempotent_replay": True}
         observability._audit_action("verify_payment_attempt", uid, {"plan_id": req.plan_id, "order_id": req.razorpay_order_id})
@@ -288,8 +296,8 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
         if not plan_config:
             raise HTTPException(status_code=400, detail="Unable to resolve purchased plan")
 
-        if not host._payment_idem_claim(pay_idem_key):
-            concurrent = host._payment_idem_get(pay_idem_key)
+        if not request_guards._payment_idem_claim(pay_idem_key):
+            concurrent = request_guards._payment_idem_get(pay_idem_key)
             if concurrent and concurrent.get("status") == "completed":
                 return {**concurrent["payload"], "idempotent_replay": True}
             raise HTTPException(status_code=409, detail="Payment verification with this idempotency key is already in progress.")
@@ -307,7 +315,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
             order_amount_validated=True,
             order_created_at=int(order_live.get("created_at") or 0),
         )
-        host._payment_idem_set(pay_idem_key, {"status": "completed", "ts": time.time(), "payload": payload})
+        request_guards._payment_idem_set(pay_idem_key, {"status": "completed", "ts": time.time(), "payload": payload})
         return payload
 
     @router.post("/api/razorpay-webhook")
@@ -378,7 +386,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
             if not db:
                 raise HTTPException(status_code=503, detail="Database unavailable")
             refund_payment_id = str(refund_entity.get("payment_id") or payment_id or "").strip()
-            if not refund_payment_id or not host.RAZORPAY_AVAILABLE or app_state.rzp_client is None:
+            if not refund_payment_id or not optional_deps.RAZORPAY_AVAILABLE or app_state.rzp_client is None:
                 raise HTTPException(status_code=503, detail="Refund payment verification is unavailable")
             try:
                 refund_payment_live = app_state.rzp_client.payment.fetch(refund_payment_id)

@@ -146,10 +146,10 @@ class ProductionBoundaryTests(unittest.TestCase):
             patch.object(main.app_state, "_export_queues", {"caption_export_heavy": heavy}),
         ):
             self.assertIs(
-                main._queue_for_export_job_record({"queue_name": "caption_export_heavy"}),
+                main.export_api._queue_for_export_job_record({"queue_name": "caption_export_heavy"}),
                 heavy,
             )
-            self.assertIs(main._queue_for_export_job_record({}), normal)
+            self.assertIs(main.export_api._queue_for_export_job_record({}), normal)
 
     def test_preparation_timeout_cannot_fail_a_job_that_has_started(self):
         transition(self.redis, "race", {}, {"status": "queued"})
@@ -184,9 +184,9 @@ class ProductionBoundaryTests(unittest.TestCase):
               patch.object(main.operator_controls, "_assert_service_available"), patch.object(main.observability, "_track_event"),
               patch.object(main.request_security, "_authenticate_media_request", return_value={"uid": "owner"}),
               patch.object(main.export_jobs, "_process_export_job_core", new_callable=AsyncMock) as render,
-              patch.object(main, "_acquire_export_slot") as claim):
+              patch.object(main.request_guards, "_acquire_export_slot") as claim):
             with self.assertRaises(main.HTTPException) as error:
-                asyncio.run(main.export_video(request, Request({"type": "http", "headers": []}), main.Response()))
+                asyncio.run(main.export_api.export_video(request, Request({"type": "http", "headers": []}), main.Response()))
         self.assertEqual(error.exception.status_code, 503)
         self.assertEqual(error.exception.headers["Retry-After"], "10")
         render.assert_not_called()
@@ -345,7 +345,7 @@ class ProductionBoundaryTests(unittest.TestCase):
         barrier = threading.Barrier(32)
         def attempt(_):
             barrier.wait()
-            return main._check_rate(main.app_state._process_rate, "same-user", 5)[0]
+            return main.request_guards._check_rate(main.app_state._process_rate, "same-user", 5)[0]
         with patch.object(main.app_state, "_redis_client", self.redis), ThreadPoolExecutor(32) as pool:
             results = list(pool.map(attempt, range(32)))
         self.assertEqual(sum(results), 5)
@@ -353,11 +353,11 @@ class ProductionBoundaryTests(unittest.TestCase):
 
     def test_rate_window_expiry_and_endpoint_isolation(self):
         with patch.object(main.app_state, "_redis_client", self.redis), patch.object(main.time, "time", return_value=1000):
-            self.assertTrue(main._check_rate(main.app_state._process_rate, "u", 1, 60)[0])
-            self.assertEqual(main._check_rate(main.app_state._process_rate, "u", 1, 60), (False, 60, 0))
-            self.assertTrue(main._check_rate(main.app_state._upload_rate, "u", 1, 60)[0])
+            self.assertTrue(main.request_guards._check_rate(main.app_state._process_rate, "u", 1, 60)[0])
+            self.assertEqual(main.request_guards._check_rate(main.app_state._process_rate, "u", 1, 60), (False, 60, 0))
+            self.assertTrue(main.request_guards._check_rate(main.app_state._upload_rate, "u", 1, 60)[0])
         with patch.object(main.app_state, "_redis_client", self.redis), patch.object(main.time, "time", return_value=1061):
-            self.assertTrue(main._check_rate(main.app_state._process_rate, "u", 1, 60)[0])
+            self.assertTrue(main.request_guards._check_rate(main.app_state._process_rate, "u", 1, 60)[0])
 
     def test_cancellation_and_start_have_exactly_one_winner(self):
         for _ in range(25):
@@ -407,12 +407,12 @@ class ProductionBoundaryTests(unittest.TestCase):
         with (patch.object(main.app_state, "_redis_client", SimpleNamespace(eval=lambda *_: (_ for _ in ()).throw(ConnectionError()))),
               patch.object(main.settings, "_IS_PRODUCTION", True)):
             with self.assertRaises(main.HTTPException) as error:
-                main._check_rate(main.app_state._process_rate, "u", 1)
+                main.request_guards._check_rate(main.app_state._process_rate, "u", 1)
         self.assertEqual(error.exception.status_code, 503)
 
     def test_concurrent_export_receipts_have_single_owner(self):
         with patch.object(main.app_state, "_redis_client", self.redis), ThreadPoolExecutor(16) as pool:
-            results = list(pool.map(lambda _: main._idem_claim("same", {"status": "in_progress"}), range(32)))
+            results = list(pool.map(lambda _: main.request_guards._idem_claim("same", {"status": "in_progress"}), range(32)))
         self.assertEqual(sum(results), 1)
 
     def test_worker_crash_becomes_visible_failure(self):
@@ -421,7 +421,7 @@ class ProductionBoundaryTests(unittest.TestCase):
               patch.object(main.app_state, "_export_queue", queue)):
             main.export_jobs._set_export_job("job", "queued", uid="a")
             job = main.export_jobs._set_export_job("job", "starting")
-            self.assertEqual(main._reconcile_export_job("job", job)["status"], "failed")
+            self.assertEqual(main.export_api._reconcile_export_job("job", job)["status"], "failed")
 
     def test_export_wait_expires_after_configured_window_without_charging(self):
         rq_job = SimpleNamespace(cancelled=False)
@@ -429,8 +429,8 @@ class ProductionBoundaryTests(unittest.TestCase):
         queue = SimpleNamespace(fetch_job=lambda _: rq_job)
         with (patch.object(main.app_state, "_redis_client", self.redis), patch.object(main.firebase_admin_setup, "get_db", return_value=None),
               patch.object(main.app_state, "_export_queue", queue), patch.object(main.observability, "_track_event")):
-            self.assertTrue(main._acquire_export_slot("owner", "slow-job"))
-            main._idem_set("owner:slow", {"status": "in_progress"})
+            self.assertTrue(main.request_guards._acquire_export_slot("owner", "slow-job"))
+            main.request_guards._idem_set("owner:slow", {"status": "in_progress"})
             job = main.export_jobs._set_export_job(
                 "slow-job",
                 "queued",
@@ -438,12 +438,12 @@ class ProductionBoundaryTests(unittest.TestCase):
                 queue_entered_at=time.time() - main.settings.EXPORT_MAX_QUEUE_WAIT_SECONDS - 1,
                 idempotency_key="owner:slow",
             )
-            reconciled = main._reconcile_export_job("slow-job", job)
+            reconciled = main.export_api._reconcile_export_job("slow-job", job)
 
         self.assertEqual(reconciled["status"], "failed")
         self.assertEqual(reconciled["failure_code"], "preparation_timeout")
         self.assertTrue(rq_job.cancelled)
-        self.assertIsNone(main._idem_get("owner:slow"))
+        self.assertIsNone(main.request_guards._idem_get("owner:slow"))
         self.assertNotIn("owner", main.app_state._active_exports_by_user)
 
     def test_cancelled_job_skips_processing_even_when_queue_removal_failed(self):
@@ -451,12 +451,12 @@ class ProductionBoundaryTests(unittest.TestCase):
         with (patch.object(main.app_state, "_redis_client", self.redis), patch.object(main.firebase_admin_setup, "get_db", return_value=None),
               patch.object(main.app_state, "_export_queue", queue), patch.object(main.firebase_admin_setup, "verify_token", return_value={"uid": "a"}),
               patch.object(main.export_jobs, "_process_export_job_core", new_callable=AsyncMock) as core):
-            main._idem_set("a:auto:same", {"status": "in_progress", "job_id": "job", "ts": time.time()})
+            main.request_guards._idem_set("a:auto:same", {"status": "in_progress", "job_id": "job", "ts": time.time()})
             main.export_jobs._set_export_job("job", "queued", uid="a", idempotency_key="a:auto:same")
             response = TestClient(main.app).post("/api/export-cancel/job", headers={"Authorization": "Bearer a"})
             self.assertEqual(response.status_code, 200)
             self.assertTrue(response.json()["retry_allowed"])
-            self.assertIsNone(main._idem_get("a:auto:same"))
+            self.assertIsNone(main.request_guards._idem_get("a:auto:same"))
             self.assertEqual(main.run_export_job_task("job", {}, "a")["status"], "cancelled")
             core.assert_not_called()
 

@@ -40,6 +40,10 @@ try:
     from . import operator_controls
 except ImportError:  # Direct execution from backend/ remains supported.
     import operator_controls
+try:
+    from . import request_guards
+except ImportError:  # Direct execution from backend/ remains supported.
+    import request_guards
 
 
 def create_account_router(host: ModuleType) -> SimpleNamespace:
@@ -52,9 +56,9 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
 
     @router.post("/api/redeem-promo")
     def redeem_promo(req: RedeemPromoRequest, request: Request, response: Response):
-        client_ip = host._client_rate_key(request)
-        allowed, retry_after, remaining = host._check_rate(app_state._promo_rate, client_ip, settings.PROMO_RATE_LIMIT)
-        host._apply_rate_headers(response, settings.PROMO_RATE_LIMIT, remaining, retry_after)
+        client_ip = request_guards._client_rate_key(request)
+        allowed, retry_after, remaining = request_guards._check_rate(app_state._promo_rate, client_ip, settings.PROMO_RATE_LIMIT)
+        request_guards._apply_rate_headers(response, settings.PROMO_RATE_LIMIT, remaining, retry_after)
         if not allowed:
             raise HTTPException(status_code=429, detail="Too many promo code attempts. Please wait before trying again.")
         decoded = firebase_admin_setup.verify_token(req.id_token)
@@ -323,12 +327,12 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
         # bootstrap of a brand-new account is blocked.
         if not user_ref.get().exists:
             operator_controls._assert_service_available("pause_signups")
-            client_ip = host._client_rate_key(request)
+            client_ip = request_guards._client_rate_key(request)
             for rate_key, rate_limit in (
                 (f"signup:network:{client_ip}", settings.SIGNUP_SHARED_NETWORK_RATE_LIMIT),
                 (f"signup:user:{uid}", settings.SIGNUP_USER_RATE_LIMIT),
             ):
-                allowed, _retry_after, _remaining = host._check_rate(
+                allowed, _retry_after, _remaining = request_guards._check_rate(
                     app_state._signup_rate, rate_key, rate_limit
                 )
                 if not allowed:
