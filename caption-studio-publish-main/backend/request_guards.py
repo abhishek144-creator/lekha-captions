@@ -283,7 +283,7 @@ def create_request_guards(context: ServiceContext) -> SimpleNamespace:
 
     def _client_rate_key(request: Request) -> str:
         """Return the end-user address when Railway is the immediate peer."""
-        peer = (request.client.context if request.client else "").strip()
+        peer = (request.client.host if request.client else "").strip()
         try:
             peer_is_public = ipaddress.ip_address(peer).is_global
         except ValueError:

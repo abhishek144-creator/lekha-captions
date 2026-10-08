@@ -445,7 +445,7 @@ def create_account_router(context: ServiceContext) -> SimpleNamespace:
                 "terms_version": req.terms_version,
                 "privacy_version": req.privacy_version,
                 "captured_at": datetime.now(timezone.utc),
-                "ip_address": request.client.context if request.client else "unknown",
+                "ip_address": request.client.host if request.client else "unknown",
                 "user_agent": (request.headers.get("user-agent") or "")[:500],
                 "capture_method": "login_checkbox",
             }
