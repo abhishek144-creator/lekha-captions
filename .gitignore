@@ -44,3 +44,18 @@ caption-studio-publish-main/.build-time
 /.readiness/
 /.railway/b4-stage.ts
 /*.png
+
+# Private deployment diagnostics and dashboard captures; never stage credentials.
+/.readiness/
+/flat_fonts/
+/cloudflare-r2-readiness.png
+/editor-dns.png
+/editor-live.png
+/mailbox-logged-out.png
+/old-domain-detached.png
+/pr18-merged.png
+/pr19-merged.png
+/r2-token-created.png
+/r2-token-proposed.png
+/railway-api-dns.png
+/spaceship-advanced-dns.png
