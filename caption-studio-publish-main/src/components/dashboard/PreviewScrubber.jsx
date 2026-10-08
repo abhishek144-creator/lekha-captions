@@ -1,8 +1,9 @@
 import React from 'react'
 import { Slider } from '@/components/ui/slider'
 
-// Timeline scrubber over the preview. Dragging only moves the thumb; the
-// video seeks once on release (seeking during drag shows black frames).
+// Timeline scrubber over the preview. The parent seeks live while dragging
+// via liveScrub.js (one seek in flight at a time; stacked seeks showed black
+// frames) and commits the final time on release.
 export default function PreviewScrubber({ value, duration, onScrub, onCommit }) {
   return (
     <div

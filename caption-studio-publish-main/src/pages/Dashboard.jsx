@@ -27,6 +27,7 @@ import { useEditorPreferences } from '@/hooks/useEditorPreferences'
 import { useEditorDocument } from '@/hooks/useEditorDocument'
 import { useEditorHistory } from '@/hooks/useEditorHistory'
 import { useDraftPersistence } from '@/hooks/useDraftPersistence'
+import { DESKTOP_EDITOR_QUERY, useMediaQuery } from '@/hooks/useMediaQuery'
 import {
   defaultCaptionStyle,
   getLanguageDisplayName,
@@ -219,6 +220,12 @@ export default function Dashboard() {
 
   // Active tab for sidebar navigation
   const [activeTab, setActiveTab] = useState('captions');
+  // Desktop shows the side panels; phones and tablets get the bottom dock.
+  // Mount only one of them so panels are not rendered twice (once hidden).
+  const isDesktopLayout = useMediaQuery(DESKTOP_EDITOR_QUERY);
+  // Mobile dock: whether the active tool's sheet is open. Closed by default
+  // so phones open on a large preview.
+  const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false);
 
   // Floating Word Popup state
   const [wordPopup, setWordPopup] = useState(null);
@@ -236,6 +243,8 @@ export default function Dashboard() {
   // Waveform data for timeline
   const [waveformData, setWaveformData] = useState(null);
   const mediaRefreshInFlightRef = useRef(false);
+  // The preview <video>, for the mobile dock's live scrubbing.
+  const previewVideoElRef = useRef(null);
   const [showCaptionRetryNotice, setShowCaptionRetryNotice] = useState(false)
   const [showLowCreditNotice, setShowLowCreditNotice] = useState(false)
   const [translationNotice, setTranslationNotice] = useState('')
@@ -350,9 +359,10 @@ export default function Dashboard() {
     };
   }, [wordPopup]);
 
-  // Clicking empty space clears the selection. The Styling panel and its
-  // dropdown popups edit the selected caption or text box, so clicks there
-  // must keep it selected (otherwise the edit lands on the captions instead).
+  // Clicking empty space clears the selection. The Styling panel, the mobile
+  // dock (its toolbar and sheets act on the selection) and their dropdown
+  // popups edit the selected caption or text box, so clicks there must keep
+  // it selected (otherwise the edit lands on the captions instead).
   useEffect(() => {
     const handleGlobalSelectionClear = (event) => {
       const target = event.target;
@@ -360,6 +370,7 @@ export default function Dashboard() {
 
       if (
         target.closest('[data-style-panel="true"]')
+        || target.closest('[data-mobile-dock="true"]')
         || target.closest('[data-radix-popper-content-wrapper]')
         || target.closest('[data-caption-layer="true"]')
         || target.closest('[data-caption-editor="true"]')
@@ -905,7 +916,9 @@ export default function Dashboard() {
     </div>
   );
 
-  const renderTimelinePanel = () => (
+  // In the mobile dock the timeline owns its whole tab, so it never collapses
+  // (a collapsed timeline there is just an empty strip).
+  const renderTimelinePanel = ({ inDock = false } = {}) => (
     <Suspense fallback={<PanelLoadingFallback label="Loading timeline" />}>
       <CaptionTimeline
         captions={captions}
@@ -920,8 +933,8 @@ export default function Dashboard() {
         waveformData={waveformData}
         isPlaying={isPlaying}
         setIsPlaying={setIsPlaying}
-        collapsed={isTimelineCollapsed}
-        onToggleCollapsed={() => {
+        collapsed={inDock ? false : isTimelineCollapsed}
+        onToggleCollapsed={inDock ? undefined : () => {
           setIsTimelineCollapsed(prev => {
             const next = !prev;
             setTimelineHeight(next ? COLLAPSED_TIMELINE_HEIGHT : EXPANDED_TIMELINE_HEIGHT);
@@ -936,9 +949,11 @@ export default function Dashboard() {
     ? Math.max(0, Math.floor(((generationTicker || Date.now()) - generationStartedAt) / 1000))
     : 0;
   const mobileTabs = [
+    // Templates lead, like Canva's "Design" tab: picking a look is the
+    // first thing most people do with a fresh transcript.
+    { id: 'templates', label: 'Templates', icon: Layout },
     { id: 'captions', label: 'Captions', icon: Captions },
     { id: 'style', label: 'Style', icon: SlidersHorizontal },
-    { id: 'templates', label: 'Templates', icon: Layout },
     { id: 'text', label: 'Text', icon: Type },
     { id: 'animate', label: 'Animate', icon: Sparkles },
     { id: 'layers', label: 'Layers', icon: Layers },
@@ -1017,8 +1032,8 @@ export default function Dashboard() {
         ) : (
           // Editor layout
           <div className="h-full flex flex-col overflow-hidden">
-          <div className={`flex-1 overflow-hidden ${isVideoFullscreen ? 'relative p-0' : 'flex flex-col md:grid md:grid-cols-[minmax(0,1fr)] lg:grid-cols-[48px_285px_minmax(0,1fr)_285px] xl:grid-cols-[48px_300px_minmax(0,1fr)_300px] p-2 md:p-3 gap-2 md:gap-3'}`}>
-            {!isVideoFullscreen && (
+          <div className={`flex-1 overflow-hidden ${isVideoFullscreen ? 'relative p-0' : 'flex flex-col lg:grid lg:grid-cols-[48px_285px_minmax(0,1fr)_285px] xl:grid-cols-[48px_300px_minmax(0,1fr)_300px] p-0 lg:p-3 gap-0 lg:gap-3'}`}>
+            {!isVideoFullscreen && isDesktopLayout && (
               <>
                 {/* Vertical Sidebar Navigation */}
                 <div className="hidden lg:block min-h-0">
@@ -1043,13 +1058,12 @@ export default function Dashboard() {
             )}
 
             {/* Center Panel - Video Player & Timeline */}
-            <div className={`${isVideoFullscreen ? 'absolute inset-0 z-30 bg-[#050505] px-6 py-5' : 'flex-1 px-1 py-2 md:py-3'} flex flex-col overflow-hidden min-h-0`} style={{ position: isVideoFullscreen ? 'absolute' : 'relative', zIndex: 50 }}>
+            <div className={`${isVideoFullscreen ? 'absolute inset-0 z-30 bg-[#050505] px-6 py-5' : 'flex-1 px-1 py-1 md:py-2 lg:py-3'} flex flex-col overflow-hidden min-h-0`} style={{ position: isVideoFullscreen ? 'absolute' : 'relative', zIndex: 50 }}>
               {!isVideoFullscreen && (
-              <div className="relative z-10 shrink-0 flex items-center justify-between px-1 pb-2">
+              <div className="relative z-10 shrink-0 hidden lg:flex items-center justify-between px-1 pb-2">
                 <div className="flex items-center gap-3">
-                  {/* Early-access marker. This row is the only editor chrome that
-                      renders at every breakpoint — the left nav rail is lg-only,
-                      so a badge there is invisible to phone and tablet users. */}
+                  {/* Early-access marker for desktop. Below lg this row is
+                      hidden and DashboardHeader shows the badge instead. */}
                   <span
                     title="Lekha Captions is in public beta — please report anything that looks wrong."
                     className="shrink-0 rounded-full border border-[#F5A623]/40 bg-[#F5A623]/10 px-2 py-0.5 text-[9px] font-bold uppercase leading-none tracking-[0.1em] text-[#F5A623]"
@@ -1067,11 +1081,15 @@ export default function Dashboard() {
               </div>
               )}
 
+              {/* The bottom padding keeps the preview clear of the floating
+                  desktop timeline; the mobile dock sits below this panel
+                  instead. On mobile the inner wrapper takes the full height so
+                  the 9:16 frame fits it, with play controls in view. */}
               <div
-                className="relative z-10 flex-1 min-h-0 overflow-y-auto overflow-x-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-                style={{ paddingBottom: isVideoFullscreen || isTimelineCollapsed ? 0 : `${Math.max(72, timelineHeight - 24)}px` }}
+                className="relative z-10 flex-1 min-h-0 overflow-y-auto max-lg:overflow-y-hidden overflow-x-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                style={{ paddingBottom: isVideoFullscreen || isTimelineCollapsed || !isDesktopLayout ? 0 : `${Math.max(72, timelineHeight - 24)}px` }}
               >
-                <div className="transition-transform duration-200">
+                <div className="transition-transform duration-200 max-lg:h-full">
                   <Suspense fallback={<VideoLoadingFallback />}>
                     <VideoPlayer
                       videoUrl={videoUrl}
@@ -1095,6 +1113,7 @@ export default function Dashboard() {
                       wordPopup={wordPopup}
                       setWordPopup={openWordPopup}
                       onVideoLoaded={async (videoEl) => {
+                        previewVideoElRef.current = videoEl || null;
                         if (videoEl && !waveformData) {
                           const data = await extractWaveformData(videoEl, 400);
                           if (data) setWaveformData(data);
@@ -1108,7 +1127,7 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {!isVideoFullscreen && !isTimelineCollapsed && (
+              {!isVideoFullscreen && isDesktopLayout && !isTimelineCollapsed && (
                 <TimelineResizeHandle
                   timelineHeight={timelineHeight}
                   setTimelineHeight={setTimelineHeight}
@@ -1116,7 +1135,7 @@ export default function Dashboard() {
                   onCollapse={collapseTimeline}
                 />
               )}
-              {!isVideoFullscreen && (
+              {!isVideoFullscreen && isDesktopLayout && (
                 <div
                   className="hidden lg:block"
                   style={{
@@ -1146,13 +1165,13 @@ export default function Dashboard() {
               )}
             </div>
 
-            {!isVideoFullscreen && (
+            {!isVideoFullscreen && isDesktopLayout && (
               <div className="hidden lg:block w-full overflow-hidden min-h-0">
                 {renderStylePanel()}
               </div>
             )}
 
-            {!isVideoFullscreen && (
+            {!isVideoFullscreen && !isDesktopLayout && (
               <MobileDashboardDock
                 activeTab={activeTab}
                 tabs={mobileTabs}
@@ -1160,6 +1179,18 @@ export default function Dashboard() {
                 renderEditorPanel={renderEditorPanel}
                 renderStylePanel={renderStylePanel}
                 renderTimelinePanel={renderTimelinePanel}
+                isSheetOpen={isMobileSheetOpen}
+                setIsSheetOpen={setIsMobileSheetOpen}
+                captions={captions}
+                currentTime={currentTime}
+                duration={duration}
+                isPlaying={isPlaying}
+                setIsPlaying={setIsPlaying}
+                onSeek={handleSeek}
+                selectedCaptionId={selectedCaptionId}
+                onSelectCaption={setSelectedCaptionId}
+                onToggleFullscreen={() => setIsVideoFullscreen(true)}
+                getVideoElement={() => previewVideoElRef.current}
               />
             )}
           </div>
@@ -1184,6 +1215,7 @@ export default function Dashboard() {
               onEdit={() => {
                 const targetId = wordPopupTargetId(wordPopup);
                 setActiveTab('captions');
+                setIsMobileSheetOpen(true);
                 if (targetId) setSelectedCaptionId(targetId);
               }}
               onClose={() => setWordPopup(null)}

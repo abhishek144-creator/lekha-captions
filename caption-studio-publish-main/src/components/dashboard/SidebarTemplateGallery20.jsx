@@ -1868,7 +1868,7 @@ function TemplateCardButton({
   };
 
   return (
-    <div className="advanced-template-card-shell">
+    <div className={`advanced-template-card-shell${isActive ? ' is-applied-template' : ''}`}>
       <button
         type="button"
         title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
@@ -2114,7 +2114,7 @@ export default function SidebarTemplateGallery20({ currentStyle, onApplyTemplate
 
       <div className="flex-1 overflow-y-auto pr-1 space-y-2">
         {visibleTemplateSections.map((section) => (
-          <div key={section.id} className="space-y-2">
+          <div key={section.id} className="space-y-2 lekha-template-section">
             <div className="advanced-template-section-label !mb-2 !px-0">
               <span className="text-[10px] tracking-[0.18em]">{section.title}</span>
               <small>{section.templates.length}/{templateSections.find((item) => item.id === section.id)?.templates.length || 0}</small>
