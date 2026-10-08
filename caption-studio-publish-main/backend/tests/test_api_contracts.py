@@ -24,7 +24,7 @@ class ApiContractTests(unittest.TestCase):
         self.client = TestClient(app)
         # Contract fixtures use synthetic bytes, so default to valid probed
         # metadata. Tests for malformed media override this patch explicitly.
-        media_probe = patch.object(main, "_probe_media", return_value={
+        media_probe = patch.object(main.media_records, "_probe_media", return_value={
             "format": {"duration": 12.3}, "streams": [{"codec_type": "video"}],
         })
         media_probe.start()
@@ -71,9 +71,9 @@ class ApiContractTests(unittest.TestCase):
     def test_redis_rate_limits_are_isolated_by_endpoint(self):
         shared_proxy_ip = "100.64.0.4"
 
-        analytics_key = main._rate_limit_redis_key(main.app_state._analytics_rate, shared_proxy_ip)
-        process_key = main._rate_limit_redis_key(main.app_state._process_rate, shared_proxy_ip)
-        upload_key = main._rate_limit_redis_key(main.app_state._upload_rate, shared_proxy_ip)
+        analytics_key = main.request_guards._rate_limit_redis_key(main.app_state._analytics_rate, shared_proxy_ip)
+        process_key = main.request_guards._rate_limit_redis_key(main.app_state._process_rate, shared_proxy_ip)
+        upload_key = main.request_guards._rate_limit_redis_key(main.app_state._upload_rate, shared_proxy_ip)
 
         self.assertEqual(analytics_key, "rl:analytics:100.64.0.4")
         self.assertEqual(process_key, "rl:process:100.64.0.4")
@@ -89,7 +89,7 @@ class ApiContractTests(unittest.TestCase):
             },
         )
 
-        self.assertEqual(main._client_rate_key(request), "203.0.113.27")
+        self.assertEqual(main.request_guards._client_rate_key(request), "203.0.113.27")
 
     def test_client_rate_key_ignores_forwarding_header_for_public_direct_peer(self):
         request = SimpleNamespace(
@@ -97,7 +97,7 @@ class ApiContractTests(unittest.TestCase):
             headers={"x-forwarded-for": "203.0.113.99"},
         )
 
-        self.assertEqual(main._client_rate_key(request), "8.8.8.8")
+        self.assertEqual(main.request_guards._client_rate_key(request), "8.8.8.8")
 
     def test_export_daily_limit_is_enforced_when_not_disabled(self):
         user_data = {
@@ -108,7 +108,7 @@ class ApiContractTests(unittest.TestCase):
         }
 
         with patch.object(main.settings, "DISABLE_EXPORT_DAILY_LIMIT", False):
-            allowed, detail, _recent = main._evaluate_export_policy(user_data, 1_700_000_000.0)
+            allowed, detail, _recent = main.export_jobs._evaluate_export_policy(user_data, 1_700_000_000.0)
 
         self.assertFalse(allowed)
         self.assertIn("Limit reached", detail)
@@ -132,7 +132,7 @@ class ApiContractTests(unittest.TestCase):
             }],
         }
 
-        sanitized = main._sanitize_export_request_payload(payload)
+        sanitized = main.export_jobs._sanitize_export_request_payload(payload)
 
         self.assertEqual(sanitized["word_layouts"], {})
         self.assertNotIn("id_token", sanitized)
@@ -149,40 +149,40 @@ class ApiContractTests(unittest.TestCase):
     def test_service_controls_default_to_open(self):
         main.app_state._service_control_cache.update({"ts": 0.0, "value": {}})
         with patch.object(main.firebase_admin_setup, "get_db", return_value=None):
-            controls = main._read_service_controls(force=True)
+            controls = main.operator_controls._read_service_controls(force=True)
 
         for key in main.settings.SERVICE_CONTROL_KEYS:
             self.assertFalse(controls[key], key)
-        main._assert_service_available("pause_exports")
+        main.operator_controls._assert_service_available("pause_exports")
 
     def test_paused_control_blocks_with_503(self):
-        paused = main._default_service_controls()
+        paused = main.operator_controls._default_service_controls()
         paused["pause_exports"] = True
 
-        with patch.object(main, "_read_service_controls", return_value=paused):
+        with patch.object(main.operator_controls, "_read_service_controls", return_value=paused):
             with self.assertRaises(main.HTTPException) as ctx:
-                main._assert_service_available("pause_exports")
+                main.operator_controls._assert_service_available("pause_exports")
             self.assertEqual(ctx.exception.status_code, 503)
             # An unrelated switch stays open.
-            main._assert_service_available("pause_uploads")
+            main.operator_controls._assert_service_available("pause_uploads")
 
     def test_maintenance_mode_blocks_every_control(self):
-        paused = main._default_service_controls()
+        paused = main.operator_controls._default_service_controls()
         paused["maintenance_mode"] = True
         paused["notice"] = "Back at 9pm IST."
 
-        with patch.object(main, "_read_service_controls", return_value=paused):
+        with patch.object(main.operator_controls, "_read_service_controls", return_value=paused):
             for key in ("pause_payments", "pause_uploads", "pause_transcription", "pause_exports", "pause_signups"):
                 with self.assertRaises(main.HTTPException) as ctx:
-                    main._assert_service_available(key)
+                    main.operator_controls._assert_service_available(key)
                 self.assertEqual(ctx.exception.status_code, 503)
                 self.assertEqual(ctx.exception.detail, "Back at 9pm IST.")
 
     def test_service_status_is_public_and_admin_write_requires_admin(self):
-        paused = main._default_service_controls()
+        paused = main.operator_controls._default_service_controls()
         paused["pause_signups"] = True
 
-        with patch.object(main, "_read_service_controls", return_value=paused):
+        with patch.object(main.operator_controls, "_read_service_controls", return_value=paused):
             res = self.client.get("/api/service-status")
         self.assertEqual(res.status_code, 200)
         self.assertTrue(res.json()["controls"]["pause_signups"])
@@ -242,7 +242,7 @@ class ApiContractTests(unittest.TestCase):
 
         main.app_state._service_control_cache.update({"ts": 0.0, "value": {}})
         with patch.object(main.firebase_admin_setup, "get_db", return_value=ExplodingDb()):
-            controls = main._read_service_controls(force=True)
+            controls = main.operator_controls._read_service_controls(force=True)
 
         self.assertFalse(controls["maintenance_mode"])
 
@@ -253,7 +253,7 @@ class ApiContractTests(unittest.TestCase):
             headers={},
         )
         with patch.object(main.settings, "FIREBASE_APP_CHECK_ENFORCED", True):
-            missing = main._verify_firebase_app_check_request(request, "req-app-check")
+            missing = main.request_security._verify_firebase_app_check_request(request, "req-app-check")
         self.assertEqual(missing.status_code, 403)
 
         request.headers = {"x-firebase-appcheck": "valid-app-check-token"}
@@ -261,7 +261,7 @@ class ApiContractTests(unittest.TestCase):
             patch.object(main.settings, "FIREBASE_APP_CHECK_ENFORCED", True),
             patch.object(main.firebase_app_check, "verify_token", return_value={"app_id": "web-app"}) as verify,
         ):
-            accepted = main._verify_firebase_app_check_request(request, "req-app-check")
+            accepted = main.request_security._verify_firebase_app_check_request(request, "req-app-check")
         self.assertIsNone(accepted)
         verify.assert_called_once_with("valid-app-check-token")
 
@@ -271,10 +271,10 @@ class ApiContractTests(unittest.TestCase):
             flush=lambda **_kwargs: None,
         )
         with (
-            patch.object(main, "_is_admin_token", return_value=True),
+            patch.object(main.request_security, "_is_admin_token", return_value=True),
             patch.object(main.settings, "SENTRY_DSN", "https://public@example.invalid/1"),
-            patch.object(main, "SENTRY_AVAILABLE", True),
-            patch.object(main, "sentry_sdk", fake_sentry),
+            patch.object(main.optional_deps, "SENTRY_AVAILABLE", True),
+            patch.object(main.optional_deps, "sentry_sdk", fake_sentry),
             patch.object(main.observability, "_audit_action"),
         ):
             response = self.client.post(
@@ -296,11 +296,11 @@ class ApiContractTests(unittest.TestCase):
             "export_timestamps": [],
         }
 
-        allowed, detail, _recent = main._evaluate_export_policy(user_data, 1_700_000_000.0)
+        allowed, detail, _recent = main.export_jobs._evaluate_export_policy(user_data, 1_700_000_000.0)
 
         self.assertFalse(allowed)
         self.assertIn("PLAN_EXPIRED", detail)
-        self.assertEqual(main._effective_subscription_tier(user_data), "free")
+        self.assertEqual(main.entitlements._effective_subscription_tier(user_data), "free")
 
     def test_active_paid_plan_keeps_entitlements(self):
         active_until = (datetime.now(timezone.utc) + timedelta(days=5)).isoformat()
@@ -311,11 +311,11 @@ class ApiContractTests(unittest.TestCase):
             "export_timestamps": [],
         }
 
-        allowed, detail, _recent = main._evaluate_export_policy(user_data, 1_700_000_000.0)
+        allowed, detail, _recent = main.export_jobs._evaluate_export_policy(user_data, 1_700_000_000.0)
 
         self.assertTrue(allowed)
         self.assertEqual(detail, "")
-        self.assertEqual(main._effective_subscription_tier(user_data), "creator")
+        self.assertEqual(main.entitlements._effective_subscription_tier(user_data), "creator")
 
     def test_paid_plan_without_expiry_fails_closed(self):
         user_data = {
@@ -324,14 +324,14 @@ class ApiContractTests(unittest.TestCase):
             "export_timestamps": [],
         }
 
-        allowed, detail, _recent = main._evaluate_export_policy(user_data, 1_700_000_000.0)
+        allowed, detail, _recent = main.export_jobs._evaluate_export_policy(user_data, 1_700_000_000.0)
 
         self.assertFalse(allowed)
         self.assertIn("PLAN_EXPIRED", detail)
-        self.assertEqual(main._effective_subscription_tier(user_data), "free")
+        self.assertEqual(main.entitlements._effective_subscription_tier(user_data), "free")
 
-    @patch("main._authenticate_media_request", return_value={"uid": "rate-limited-user"})
-    @patch("main._get_recent_export_failures", return_value=[0.0] * main.settings.EXPORT_FAILURE_LIMIT)
+    @patch("main.request_security._authenticate_media_request", return_value={"uid": "rate-limited-user"})
+    @patch("main.request_guards._get_recent_export_failures", return_value=[0.0] * main.settings.EXPORT_FAILURE_LIMIT)
     def test_export_failure_rate_limit_is_always_enforced(self, _recent_failures, _authenticate):
         res = self.client.post(
             "/api/export",
@@ -350,30 +350,30 @@ class ApiContractTests(unittest.TestCase):
         self.assertIn("Too many failed export attempts", res.json()["detail"])
 
     def test_media_tokens_reject_tampering_expiry_and_wrong_kind(self):
-        token = main._create_media_token({
+        token = main.media_records._create_media_token({
             "kind": "upload",
             "uid": "media-user",
             "file_id": "file-1",
             "exp": 4102444800,
         })
 
-        self.assertEqual(main._verify_media_token(token, "upload")["uid"], "media-user")
+        self.assertEqual(main.media_records._verify_media_token(token, "upload")["uid"], "media-user")
 
         tampered = f"{token[:-1]}{'0' if token[-1] != '0' else '1'}"
         with self.assertRaises(Exception):
-            main._verify_media_token(tampered, "upload")
+            main.media_records._verify_media_token(tampered, "upload")
 
         with self.assertRaises(Exception):
-            main._verify_media_token(token, "export")
+            main.media_records._verify_media_token(token, "export")
 
-        expired = main._create_media_token({
+        expired = main.media_records._create_media_token({
             "kind": "upload",
             "uid": "media-user",
             "file_id": "file-1",
             "exp": 1,
         })
         with self.assertRaises(Exception):
-            main._verify_media_token(expired, "upload")
+            main.media_records._verify_media_token(expired, "upload")
 
     def test_upload_materializes_from_shared_storage_on_another_instance(self):
         file_id = "123e4567-e89b-12d3-a456-426614174055"
@@ -387,20 +387,20 @@ class ApiContractTests(unittest.TestCase):
         with (
             tempfile.TemporaryDirectory() as scratch,
             patch.object(main.settings, "UPLOAD_DIR", scratch),
-            patch.object(main, "_load_upload_metadata", return_value={
+            patch.object(main.media_records, "_load_upload_metadata", return_value={
                 "uid": "media-user",
                 "remote_path": f"uploads/media-user/{file_id}.mp4",
                 "extension": "mp4",
             }),
             patch.object(main.firebase_admin_setup, "download_from_firebase_storage", side_effect=fake_download),
         ):
-            path = main._safe_find_upload(file_id)
+            path = main.media_records._safe_find_upload(file_id)
             self.assertTrue(path and os.path.isfile(path))
             with open(path, "rb") as handle:
                 self.assertEqual(handle.read(), b"shared-media")
 
-    @patch("main._scan_upload_for_threat", return_value=True)
-    @patch("main._probe_media", return_value={"format": {"duration": 12.3}, "streams": [{"codec_type": "video"}]})
+    @patch("main.operator_controls._scan_upload_for_threat", return_value=True)
+    @patch("main.media_records._probe_media", return_value={"format": {"duration": 12.3}, "streams": [{"codec_type": "video"}]})
     @patch("main.firebase_admin_setup.verify_token", return_value={"uid": "upload-user"})
     def test_upload_contract(self, _verify_token, _probe, _scan):
         files = {"file": ("sample.mp4", io.BytesIO(b"fake-bytes"), "video/mp4")}
@@ -434,8 +434,8 @@ class ApiContractTests(unittest.TestCase):
                 patch.object(main.settings, "_IS_PRODUCTION", True),
                 patch.object(main.settings, "FIREBASE_APP_CHECK_ENFORCED", False),
                 patch.dict(main.os.environ, {"GCS_MEDIA_BUCKET": media_bucket}),
-                patch.object(main, "_authenticate_media_request", return_value={"uid": "upload-user"}) as authenticate,
-                patch.object(main, "_assert_service_available"),
+                patch.object(main.request_security, "_authenticate_media_request", return_value={"uid": "upload-user"}) as authenticate,
+                patch.object(main.operator_controls, "_assert_service_available"),
             ):
                 response = self.client.post(
                     "/api/upload",
@@ -446,8 +446,8 @@ class ApiContractTests(unittest.TestCase):
                 self.assertEqual(response.headers["x-lekha-upload-transport"], "direct-resumable")
                 authenticate.assert_not_called()
 
-    @patch("main._scan_upload_for_threat", return_value=True)
-    @patch("main._probe_media", return_value={"format": {"duration": 12.3}, "streams": [{"codec_type": "video"}]})
+    @patch("main.operator_controls._scan_upload_for_threat", return_value=True)
+    @patch("main.media_records._probe_media", return_value={"format": {"duration": 12.3}, "streams": [{"codec_type": "video"}]})
     @patch("main.firebase_admin_setup.verify_token", return_value={"uid": "upload-user"})
     def test_upload_retry_replays_completed_file_without_consuming_rate_slot(self, _verify_token, _probe, _scan):
         headers = {
@@ -477,7 +477,7 @@ class ApiContractTests(unittest.TestCase):
 
     @patch("main.firebase_admin_setup.verify_token", return_value={"uid": "process-user"})
     @patch("main.app_state.processor.generate_captions_only", new_callable=AsyncMock)
-    @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
+    @patch("main.media_records._safe_find_upload", return_value="C:/tmp/sample.mp4")
     def test_process_contract(self, _safe_find, mock_process, _verify_token):
         mock_process.return_value = {"success": True, "captions": [{"id": 1, "text": "hello", "start_time": 0, "end_time": 1}]}
         main.app_state._upload_owners["123e4567-e89b-12d3-a456-426614174000"] = "process-user"
@@ -496,8 +496,8 @@ class ApiContractTests(unittest.TestCase):
 
     @patch("main.firebase_admin_setup.verify_token", return_value={"uid": "process-idempotent-user"})
     @patch("main.app_state.processor.generate_captions_only", new_callable=AsyncMock)
-    @patch("main._compute_media_hash", side_effect=RuntimeError("skip local cache"))
-    @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
+    @patch("main.media_records._compute_media_hash", side_effect=RuntimeError("skip local cache"))
+    @patch("main.media_records._safe_find_upload", return_value="C:/tmp/sample.mp4")
     def test_process_idempotency_replays_after_response_loss(
         self, _safe_find, _hash, mock_process, _verify_token
     ):
@@ -523,15 +523,15 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(mock_process.await_count, 1)
 
     def test_process_slot_allows_only_one_active_request_per_user(self):
-        self.assertTrue(main._acquire_process_slot("process-user", "request-1"))
-        self.assertFalse(main._acquire_process_slot("process-user", "request-2"))
-        main._release_process_slot("process-user", "request-2")
-        self.assertFalse(main._acquire_process_slot("process-user", "request-3"))
-        main._release_process_slot("process-user", "request-1")
-        self.assertTrue(main._acquire_process_slot("process-user", "request-3"))
+        self.assertTrue(main.request_guards._acquire_process_slot("process-user", "request-1"))
+        self.assertFalse(main.request_guards._acquire_process_slot("process-user", "request-2"))
+        main.request_guards._release_process_slot("process-user", "request-2")
+        self.assertFalse(main.request_guards._acquire_process_slot("process-user", "request-3"))
+        main.request_guards._release_process_slot("process-user", "request-1")
+        self.assertTrue(main.request_guards._acquire_process_slot("process-user", "request-3"))
 
     @patch("main.firebase_admin_setup.verify_token", return_value={"uid": "process-user"})
-    @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
+    @patch("main.media_records._safe_find_upload", return_value="C:/tmp/sample.mp4")
     def test_process_rejects_duplicate_in_flight_request(self, _safe_find, _verify_token):
         file_id = "123e4567-e89b-12d3-a456-426614174000"
         main.app_state._upload_owners[file_id] = "process-user"
@@ -547,7 +547,7 @@ class ApiContractTests(unittest.TestCase):
 
     @patch("main.firebase_admin_setup.verify_token", return_value={"uid": "process-user"})
     @patch("main.app_state.processor.generate_captions_only", new_callable=AsyncMock)
-    @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
+    @patch("main.media_records._safe_find_upload", return_value="C:/tmp/sample.mp4")
     def test_process_rejects_successful_empty_transcription(self, _safe_find, mock_process, _verify_token):
         mock_process.return_value = {"success": True, "captions": []}
         file_id = "123e4567-e89b-12d3-a456-426614174000"
@@ -559,9 +559,9 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(res.status_code, 422)
 
     @patch("main.firebase_admin_setup.verify_token", return_value={"uid": "process-user"})
-    @patch("main._release_ai_quota")
+    @patch("main.entitlements._release_ai_quota")
     @patch("main.app_state.processor.generate_captions_only", new_callable=AsyncMock)
-    @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
+    @patch("main.media_records._safe_find_upload", return_value="C:/tmp/sample.mp4")
     def test_process_returns_ai_quota_when_provider_fails(
         self, _safe_find, mock_process, mock_release, _verify_token
     ):
@@ -579,9 +579,9 @@ class ApiContractTests(unittest.TestCase):
         mock_release.assert_called_once_with("process-user", "process")
 
     @patch("main.firebase_admin_setup.verify_token", return_value={"uid": "process-user"})
-    @patch("main._release_ai_quota")
+    @patch("main.entitlements._release_ai_quota")
     @patch("main.app_state.processor.generate_captions_only", new_callable=AsyncMock)
-    @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
+    @patch("main.media_records._safe_find_upload", return_value="C:/tmp/sample.mp4")
     def test_process_raising_provider_returns_ai_quota(
         self, _safe_find, mock_process, mock_release, _verify_token
     ):
@@ -601,9 +601,9 @@ class ApiContractTests(unittest.TestCase):
         mock_release.assert_called_once_with("process-user", "process")
 
     @patch("main.firebase_admin_setup.verify_token", return_value={"uid": "process-user"})
-    @patch("main._release_ai_quota")
+    @patch("main.entitlements._release_ai_quota")
     @patch("main.app_state.processor.generate_captions_only", new_callable=AsyncMock)
-    @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
+    @patch("main.media_records._safe_find_upload", return_value="C:/tmp/sample.mp4")
     def test_process_returns_ai_quota_when_audio_has_no_speech(
         self, _safe_find, mock_process, mock_release, _verify_token
     ):
@@ -623,63 +623,63 @@ class ApiContractTests(unittest.TestCase):
     def test_worker_transcription_failure_returns_ai_quota(self):
         """The queued worker uses trusted_uid but must receive the same refund."""
         request = main.Request({"type": "http", "headers": [], "client": ("worker", 0)})
-        req = main.ProcessRequest(
+        req = main.api_models.ProcessRequest(
             file_id="123e4567-e89b-12d3-a456-426614174000",
             language="english",
         )
         with (
-            patch.object(main, "_assert_service_available"),
-            patch.object(main, "_assert_upload_owner"),
-            patch.object(main, "_safe_find_upload", return_value="C:/tmp/sample.mp4"),
-            patch.object(main, "_lookup_subscription_tier", return_value="free"),
-            patch.object(main, "_read_service_controls", return_value={}),
-            patch.object(main, "_probe_media", return_value={"format": {"duration": 1}}),
-            patch.object(main, "_compute_media_hash", side_effect=RuntimeError("skip cache")),
-            patch.object(main, "_acquire_process_slot", return_value=True),
-            patch.object(main, "_release_process_slot"),
-            patch.object(main, "_reserve_ai_quota"),
-            patch.object(main, "_release_ai_quota") as release_quota,
+            patch.object(main.operator_controls, "_assert_service_available"),
+            patch.object(main.media_records, "_assert_upload_owner"),
+            patch.object(main.media_records, "_safe_find_upload", return_value="C:/tmp/sample.mp4"),
+            patch.object(main.entitlements, "_lookup_subscription_tier", return_value="free"),
+            patch.object(main.operator_controls, "_read_service_controls", return_value={}),
+            patch.object(main.media_records, "_probe_media", return_value={"format": {"duration": 1}}),
+            patch.object(main.media_records, "_compute_media_hash", side_effect=RuntimeError("skip cache")),
+            patch.object(main.request_guards, "_acquire_process_slot", return_value=True),
+            patch.object(main.request_guards, "_release_process_slot"),
+            patch.object(main.entitlements, "_reserve_ai_quota"),
+            patch.object(main.entitlements, "_release_ai_quota") as release_quota,
             patch.object(main.app_state.processor, "generate_captions_only", new_callable=AsyncMock,
                          return_value={"success": False, "error": "provider unavailable"}),
         ):
             with self.assertRaises(main.HTTPException) as raised:
-                asyncio.run(main._process_video_inline(req, request, main.Response(), trusted_uid="process-user"))
+                asyncio.run(main.processing_api._process_video_inline(req, request, main.Response(), trusted_uid="process-user"))
 
         self.assertEqual(raised.exception.status_code, 502)
         release_quota.assert_called_once_with("process-user", "process")
 
     def test_corrupt_direct_upload_is_rejected_before_paid_transcription(self):
         request = main.Request({"type": "http", "headers": [], "client": ("worker", 0)})
-        req = main.ProcessRequest(
+        req = main.api_models.ProcessRequest(
             file_id="123e4567-e89b-12d3-a456-426614174000",
             language="english",
         )
         with (
-            patch.object(main, "_assert_service_available"),
-            patch.object(main, "_assert_upload_owner"),
-            patch.object(main, "_safe_find_upload", return_value="C:/tmp/corrupt.mp4"),
-            patch.object(main, "_load_upload_metadata", return_value={"security_scanned_at": "done"}),
-            patch.object(main, "_lookup_subscription_tier", return_value="free"),
-            patch.object(main, "_read_service_controls", return_value={}),
-            patch.object(main, "_probe_media", side_effect=ValueError("corrupt media")),
+            patch.object(main.operator_controls, "_assert_service_available"),
+            patch.object(main.media_records, "_assert_upload_owner"),
+            patch.object(main.media_records, "_safe_find_upload", return_value="C:/tmp/corrupt.mp4"),
+            patch.object(main.media_records, "_load_upload_metadata", return_value={"security_scanned_at": "done"}),
+            patch.object(main.entitlements, "_lookup_subscription_tier", return_value="free"),
+            patch.object(main.operator_controls, "_read_service_controls", return_value={}),
+            patch.object(main.media_records, "_probe_media", side_effect=ValueError("corrupt media")),
             patch.object(main.app_state.processor, "generate_captions_only", new_callable=AsyncMock) as provider,
         ):
             with self.assertRaises(main.HTTPException) as raised:
-                asyncio.run(main._process_video_inline(req, request, main.Response(), trusted_uid="process-user"))
+                asyncio.run(main.processing_api._process_video_inline(req, request, main.Response(), trusted_uid="process-user"))
         self.assertEqual(raised.exception.status_code, 422)
         provider.assert_not_called()
 
     def test_owned_export_download_redirects_to_short_lived_storage_url(self):
         filename = "export_123e4567-e89b-12d3-a456-426614174000_abcdef123456.mp4"
-        token = main._create_media_token({
+        token = main.media_records._create_media_token({
             "kind": "export", "uid": "owner-1", "filename": filename,
             "exp": int(main.time.time()) + 60,
         })
         with (
-            patch.object(main, "_assert_account_not_deleting"),
+            patch.object(main.request_security, "_assert_account_not_deleting"),
             patch.object(main.firebase_admin_setup, "signed_export_download_url", return_value="https://storage.test/private") as sign,
         ):
-            response = main.serve_exported_media(filename, token)
+            response = main.media_api.serve_exported_media(filename, token)
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.headers["location"], "https://storage.test/private")
         sign.assert_called_once_with(f"exports/owner-1/{filename}")
@@ -729,7 +729,7 @@ class ApiContractTests(unittest.TestCase):
 
     @patch("main.settings.LOCAL_DEV_AUTH_BYPASS_ENABLED", True)
     @patch("main.app_state.processor.generate_captions_only", new_callable=AsyncMock)
-    @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
+    @patch("main.media_records._safe_find_upload", return_value="C:/tmp/sample.mp4")
     def test_process_accepts_explicitly_enabled_local_dev_bypass_token(self, _safe_find, mock_process):
         mock_process.return_value = {"success": True, "captions": [{"id": 1, "text": "hello", "start_time": 0, "end_time": 1}]}
         main.app_state._upload_owners["123e4567-e89b-12d3-a456-426614174000"] = "dev-local-user"
@@ -745,7 +745,7 @@ class ApiContractTests(unittest.TestCase):
         self.assertTrue(res.json().get("success"))
 
     @patch("main.firebase_admin_setup.verify_token", return_value={"uid": "process-user"})
-    @patch("main._safe_find_upload", return_value="C:/tmp/sample.mp4")
+    @patch("main.media_records._safe_find_upload", return_value="C:/tmp/sample.mp4")
     def test_process_fails_closed_when_upload_owner_is_unknown(self, _safe_find, _verify_token):
         res = self.client.post(
             "/api/process",
@@ -825,7 +825,7 @@ class ApiContractTests(unittest.TestCase):
     def test_export_result_refreshes_expired_media_token_without_new_job(self, _verify_token):
         job_id = "123e4567-e89b-12d3-a456-426614174099"
         filename = "export_123e4567-e89b-12d3-a456-426614174099_abcdef123456.mp4"
-        expired_url = main._signed_export_url(filename, "owner-uid", 60, "old")
+        expired_url = main.media_records._signed_export_url(filename, "owner-uid", 60, "old")
         main.app_state._export_jobs[job_id] = {
             "uid": "owner-uid",
             "status": "completed",
@@ -847,7 +847,7 @@ class ApiContractTests(unittest.TestCase):
         self.assertNotEqual(refreshed["video_url"], expired_url)
         self.assertIn("download_url_expires_at", refreshed)
         token = refreshed["video_url"].split("token=", 1)[1].split("&", 1)[0]
-        verified = main._verify_media_token(token, "export")
+        verified = main.media_records._verify_media_token(token, "export")
         self.assertEqual(verified["filename"], filename)
         self.assertEqual(verified["uid"], "owner-uid")
 
@@ -859,7 +859,7 @@ class ApiContractTests(unittest.TestCase):
             "uid": "owner-uid", "status": "completed",
             "payload": {"success": True, "export_filename": filename, "video_url": "/api/media/export/old.mp4"},
         }
-        with patch.object(main, "s3_storage_configured", return_value=True), patch.object(main.firebase_admin_setup, "signed_export_download_url", return_value="https://media.example.invalid/private"
+        with patch.object(main.export_jobs, "s3_storage_configured", return_value=True), patch.object(main.firebase_admin_setup, "signed_export_download_url", return_value="https://media.example.invalid/private"
         ) as sign:
             verify.return_value = {"uid": "other-user"}
             denied = self.client.get(f"/api/export-result/{job_id}", headers={"Authorization": "Bearer other-token"})
@@ -910,8 +910,8 @@ class ApiContractTests(unittest.TestCase):
         with (
             patch.object(main.app_state, "_export_queue", FakeQueue()),
             patch.object(main.firebase_admin_setup, "get_db", return_value=FakeDb()),
-            patch.object(main, "_persist_export_job", return_value=True),
-            patch.object(main, "_load_recorded_export_result", return_value=None),
+            patch.object(main.export_jobs, "_persist_export_job", return_value=True),
+            patch.object(main.export_jobs, "_load_recorded_export_result", return_value=None),
         ):
             res_unauth = self.client.post("/api/export-replay/job-1")
             self.assertEqual(res_unauth.status_code, 401)
@@ -949,7 +949,7 @@ class ApiContractTests(unittest.TestCase):
 
         with (
             patch.object(main.app_state, "_export_queue", FakeQueue()),
-            patch.object(main, "_persist_export_job", return_value=True),
+            patch.object(main.export_jobs, "_persist_export_job", return_value=True),
         ):
             res = self.client.post(
                 "/api/export",
@@ -1010,14 +1010,14 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(res_second.status_code, 429)
 
     def test_export_slot_can_only_be_released_by_its_owner(self):
-        self.assertTrue(main._acquire_export_slot("lease-user", "job-a"))
-        self.assertTrue(main._acquire_export_slot("lease-user", "job-a"))
-        self.assertFalse(main._acquire_export_slot("lease-user", "job-b"))
+        self.assertTrue(main.request_guards._acquire_export_slot("lease-user", "job-a"))
+        self.assertTrue(main.request_guards._acquire_export_slot("lease-user", "job-a"))
+        self.assertFalse(main.request_guards._acquire_export_slot("lease-user", "job-b"))
 
-        main._release_export_slot("lease-user", "job-b")
+        main.request_guards._release_export_slot("lease-user", "job-b")
         self.assertEqual(main.app_state._active_exports_by_user.get("lease-user"), "job-a")
 
-        main._release_export_slot("lease-user", "job-a")
+        main.request_guards._release_export_slot("lease-user", "job-a")
         self.assertNotIn("lease-user", main.app_state._active_exports_by_user)
 
     @patch("main.firebase_admin_setup.verify_token", return_value={"uid": "idem-user"})
@@ -1038,7 +1038,7 @@ class ApiContractTests(unittest.TestCase):
         }
         with (
             patch.object(main.app_state, "_export_queue", FakeQueue()),
-            patch.object(main, "_persist_export_job", return_value=True),
+            patch.object(main.export_jobs, "_persist_export_job", return_value=True),
         ):
             first = self.client.post("/api/export", json=request_body)
             replay = self.client.post("/api/export", json=request_body)
@@ -1065,7 +1065,7 @@ class ApiContractTests(unittest.TestCase):
             payment=SimpleNamespace(fetch=lambda payment_id: (_ for _ in ()).throw(RuntimeError("network down"))),
         )
 
-        with patch.object(main.app_state, "rzp_client", fake_client), patch.object(main, "RAZORPAY_AVAILABLE", True):
+        with patch.object(main.app_state, "rzp_client", fake_client), patch.object(main.optional_deps, "RAZORPAY_AVAILABLE", True):
             res = self.client.post(
                 "/api/verify-payment",
                 json={
@@ -1099,7 +1099,7 @@ class ApiContractTests(unittest.TestCase):
             }),
         )
 
-        with patch.object(main.app_state, "rzp_client", fake_client), patch.object(main, "RAZORPAY_AVAILABLE", True):
+        with patch.object(main.app_state, "rzp_client", fake_client), patch.object(main.optional_deps, "RAZORPAY_AVAILABLE", True):
             res = self.client.post(
                 "/api/verify-payment",
                 json={
@@ -1134,7 +1134,7 @@ class ApiContractTests(unittest.TestCase):
             }),
         )
 
-        with patch.object(main.app_state, "rzp_client", fake_client), patch.object(main, "RAZORPAY_AVAILABLE", True):
+        with patch.object(main.app_state, "rzp_client", fake_client), patch.object(main.optional_deps, "RAZORPAY_AVAILABLE", True):
             res = self.client.post(
                 "/api/verify-payment",
                 json={
@@ -1282,7 +1282,7 @@ class ApiContractTests(unittest.TestCase):
         with (
             patch.object(main.firebase_admin_setup, "get_db", return_value=fake_db),
             patch.object(main.firebase_admin_setup, "delete_user_exports", return_value=0),
-            patch.object(main, "_delete_user_document_tree", side_effect=RuntimeError("firestore unavailable")),
+            patch.object(main.account_api, "_delete_user_document_tree", side_effect=RuntimeError("firestore unavailable")),
         ):
             response = self.client.post("/api/account-delete", json={"id_token": "token-123"})
 
@@ -1383,7 +1383,7 @@ class ApiContractTests(unittest.TestCase):
         payment_ref = FakeRef(FakeSnapshot(False))
 
         with patch.object(main.firestore, "transactional", new=lambda fn: fn):
-            result = main._grant_payment_transactionally(
+            result = main.billing._grant_payment_transactionally(
                 db,
                 user_ref,
                 payment_ref,
@@ -1435,7 +1435,7 @@ class ApiContractTests(unittest.TestCase):
         }
 
         with self.assertRaises(main.HTTPException) as raised:
-            main._assert_topup_purchase_available(user_data, creator_plan, now_ts)
+            main.billing._assert_topup_purchase_available(user_data, creator_plan, now_ts)
 
         self.assertEqual(raised.exception.status_code, 429)
         self.assertIn("2 top-up purchases", raised.exception.detail)
@@ -1483,7 +1483,7 @@ class ApiContractTests(unittest.TestCase):
         payment_ref = FakeRef(FakeSnapshot(False))
 
         with patch.object(main.firestore, "transactional", new=lambda fn: fn):
-            result = main._grant_payment_transactionally(
+            result = main.billing._grant_payment_transactionally(
                 db,
                 user_ref,
                 payment_ref,
@@ -1533,7 +1533,7 @@ class ApiContractTests(unittest.TestCase):
             patch.object(main.firestore, "transactional", new=lambda fn: fn),
         ):
             with self.assertRaises(main.HTTPException) as raised:
-                main._reserve_ai_quota("expired-pro", "process")
+                main.entitlements._reserve_ai_quota("expired-pro", "process")
 
         self.assertEqual(raised.exception.status_code, 429)
 
@@ -1558,18 +1558,18 @@ class ApiContractTests(unittest.TestCase):
             patch.object(main.firestore, "transactional", new=lambda fn: fn),
         ):
             with self.assertRaises(main.HTTPException) as raised:
-                main._reserve_ai_quota("free-user", "process")
+                main.entitlements._reserve_ai_quota("free-user", "process")
             self.assertEqual(raised.exception.status_code, 402)
 
             fresh = self._quota_db({"subscription_tier": "free"}, writes)
             with patch.object(main.firebase_admin_setup, "get_db", return_value=fresh):
-                main._reserve_ai_quota("free-user", "process")
+                main.entitlements._reserve_ai_quota("free-user", "process")
             self.assertEqual(writes[-1]["ai_lifetime_usage"], {"process": 1})
 
             paid = self._quota_db({"subscription_tier": "pro", "subscription_expiry": (datetime.now(timezone.utc) + timedelta(days=5)).isoformat(),
                                    "ai_lifetime_usage": {"process": 99}}, writes)
             with patch.object(main.firebase_admin_setup, "get_db", return_value=paid):
-                main._reserve_ai_quota("pro-user", "process")
+                main.entitlements._reserve_ai_quota("pro-user", "process")
             self.assertNotIn("ai_lifetime_usage", writes[-1])
 
     def test_failed_free_transcription_returns_the_trial_use(self):
@@ -1581,7 +1581,7 @@ class ApiContractTests(unittest.TestCase):
             patch.object(main.settings, "_IS_TEST", False),
             patch.object(main.firestore, "transactional", new=lambda fn: fn),
         ):
-            main._release_ai_quota("free-user", "process", release_system=False)
+            main.entitlements._release_ai_quota("free-user", "process", release_system=False)
         self.assertEqual(writes[-1]["ai_lifetime_usage"], {"process": 1})
         self.assertEqual(writes[-1]["ai_daily_usage"], {"process": 0})
 
@@ -1627,12 +1627,12 @@ class ApiContractTests(unittest.TestCase):
 
         with (
             patch.object(main.settings, "RAZORPAY_WEBHOOK_SECRET", secret),
-            patch.object(main, "RAZORPAY_AVAILABLE", True),
+            patch.object(main.optional_deps, "RAZORPAY_AVAILABLE", True),
             patch.object(main.app_state, "rzp_client", fake_client),
             patch.object(main.firebase_admin_setup, "get_db", return_value=None),
-            patch.object(main, "_apply_successful_payment", return_value={"success": True}) as apply_payment,
+            patch.object(main.billing, "_apply_successful_payment", return_value={"success": True}) as apply_payment,
         ):
-            result = asyncio.run(main.razorpay_webhook(FakeRequest(body, signature)))
+            result = asyncio.run(main.payments_api.razorpay_webhook(FakeRequest(body, signature)))
 
         self.assertTrue(result["applied"])
         self.assertEqual(apply_payment.call_args.kwargs["uid"], "webhook-user")
@@ -1705,7 +1705,7 @@ class ApiContractTests(unittest.TestCase):
             patch.object(main.observability, "_track_event"),
             patch.object(main.observability, "_audit_action"),
         ):
-            result = main._apply_refund_webhook_event(
+            result = main.billing._apply_refund_webhook_event(
                 fake_db,
                 "refund.processed",
                 {
@@ -1782,8 +1782,8 @@ class ApiContractTests(unittest.TestCase):
             patch.object(main.firestore, "transactional", new=lambda fn: fn),
             patch.object(main.settings, "DISABLE_EXPORT_CREDIT_LIMIT", False),
         ):
-            main._record_export_usage(db, user_ref, history_item, 100.0, "job-1")
-            main._record_export_usage(db, user_ref, history_item, 101.0, "job-1")
+            main.export_jobs._record_export_usage(db, user_ref, history_item, 100.0, "job-1")
+            main.export_jobs._record_export_usage(db, user_ref, history_item, 101.0, "job-1")
 
         self.assertEqual([write[0] for write in transactions[0].writes], ["create", "update"])
         first_user_update = transactions[0].writes[1][2]
@@ -1797,17 +1797,17 @@ class ApiContractTests(unittest.TestCase):
 
         with patch.object(main.app_state, "_redis_client", BrokenRedis()):
             with self.assertRaises(main.HTTPException) as raised:
-                main._payment_idem_get("payment-key")
+                main.request_guards._payment_idem_get("payment-key")
 
         self.assertEqual(raised.exception.status_code, 503)
 
     def test_durable_queue_rejects_unpersisted_job_state(self):
         with (
             patch.object(main.app_state, "_export_queue", object()),
-            patch.object(main, "_persist_export_job", return_value=False),
+            patch.object(main.export_jobs, "_persist_export_job", return_value=False),
         ):
             with self.assertRaises(RuntimeError):
-                main._set_export_job("durable-job", "queued", uid="owner")
+                main.export_jobs._set_export_job("durable-job", "queued", uid="owner")
 
     @patch("main.firebase_auth.delete_user")
     @patch("main.firebase_admin_setup.verify_token", return_value={"uid": "delete-user"})
@@ -1923,7 +1923,7 @@ class ApiContractTests(unittest.TestCase):
             patch.object(main.settings, "DISABLE_EXPORT_CREDIT_LIMIT", False),
             patch.object(main.settings, "DISABLE_EXPORT_DAILY_LIMIT", False),
         ):
-            allowed, reason, _history = main._evaluate_export_policy({
+            allowed, reason, _history = main.export_jobs._evaluate_export_policy({
                 "subscription_tier": "free",
                 "credits_remaining": main.settings.FREE_PLAN_CREDITS,
                 "export_timestamps": [],
@@ -1931,7 +1931,7 @@ class ApiContractTests(unittest.TestCase):
             self.assertTrue(allowed)
             self.assertEqual(reason, "")
 
-            allowed, reason, _history = main._evaluate_export_policy({
+            allowed, reason, _history = main.export_jobs._evaluate_export_policy({
                 "subscription_tier": "starter",
                 "credits_remaining": 0,
                 "export_timestamps": [],
@@ -2050,12 +2050,12 @@ class ApiContractTests(unittest.TestCase):
 
     @patch("main.firebase_admin_setup.verify_token", return_value={"uid": "payment-user"})
     def test_paused_payments_never_contact_razorpay(self, _verify_token):
-        paused = main._default_service_controls()
+        paused = main.operator_controls._default_service_controls()
         paused["pause_payments"] = True
         fake_client = SimpleNamespace()
 
         with (
-            patch.object(main, "_read_service_controls", return_value=paused),
+            patch.object(main.operator_controls, "_read_service_controls", return_value=paused),
             patch.object(main.app_state, "rzp_client", fake_client),
         ):
             response = self.client.post(
@@ -2091,7 +2091,7 @@ class ApiContractTests(unittest.TestCase):
         )
         with (
             patch.object(main.firebase_admin_setup, "get_db", return_value=fake_db),
-            patch.object(main, "_check_rate", return_value=(False, 60, 0)),
+            patch.object(main.request_guards, "_check_rate", return_value=(False, 60, 0)),
         ):
             response = self.client.post(
                 "/api/account-bootstrap",
@@ -2122,7 +2122,7 @@ class ApiContractTests(unittest.TestCase):
 
         fake_client = SimpleNamespace(order=FakeOrderApi())
 
-        with patch.object(main.app_state, "rzp_client", fake_client), patch.object(main, "RAZORPAY_AVAILABLE", True):
+        with patch.object(main.app_state, "rzp_client", fake_client), patch.object(main.optional_deps, "RAZORPAY_AVAILABLE", True):
             payload = {
                 "plan_id": "starter",
                 "id_token": "token-123",

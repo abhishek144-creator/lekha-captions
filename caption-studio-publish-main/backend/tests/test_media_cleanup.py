@@ -40,7 +40,7 @@ class MediaCleanupTests(unittest.TestCase):
                 patch.object(main.settings, "RENDER_CACHE_DIR", paths["renders"]),
                 patch.object(main.settings, "DEAD_LETTER_DIR", paths["dead_letter"]),
             ):
-                metrics = main.cleanup_local_media_artifacts(now)
+                metrics = main.maintenance_jobs.cleanup_local_media_artifacts(now)
 
             self.assertFalse(os.path.exists(old_upload))
             self.assertFalse(os.path.exists(old_export))
