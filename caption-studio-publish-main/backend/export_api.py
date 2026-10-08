@@ -93,17 +93,9 @@ try:
 except ImportError:  # Direct execution from backend/ remains supported.
     import worker_launcher
 try:
-    from rq.job import Job
-except ImportError:
-    Job = None
-try:
-    from rq import Retry as RQRetry
-except ImportError:
-    RQRetry = None
-try:
-    from rq import Worker as RQWorker
-except ImportError:
-    RQWorker = None
+    from . import optional_deps
+except ImportError:  # Direct execution from backend/ remains supported.
+    import optional_deps
 try:
     from . import request_guards
 except ImportError:  # Direct execution from backend/ remains supported.
@@ -318,7 +310,7 @@ async def _export_video_impl(req, request, response):
                     "render_class": capacity["render_class"],
                     "renderer": capacity["renderer"],
                 },
-                retry=RQRetry(max=3, interval=[10, 30, 60]) if RQRetry else None,
+                retry=optional_deps.RQRetry(max=3, interval=[10, 30, 60]) if optional_deps.RQRetry else None,
                 ttl=settings.EXPORT_MAX_QUEUE_WAIT_SECONDS,
                 result_ttl=EXPORT_RQ_RESULT_TTL_SECONDS,
                 failure_ttl=EXPORT_RQ_FAILURE_TTL_SECONDS,
@@ -473,7 +465,7 @@ async def _create_export_batch(req, request):
                     "render_class": capacity["render_class"],
                     "renderer": capacity["renderer"],
                 },
-                retry=RQRetry(max=12, interval=[10, 15, 20, 30]) if RQRetry else None,
+                retry=optional_deps.RQRetry(max=12, interval=[10, 15, 20, 30]) if optional_deps.RQRetry else None,
                 ttl=settings.EXPORT_MAX_QUEUE_WAIT_SECONDS,
                 result_ttl=EXPORT_RQ_RESULT_TTL_SECONDS,
                 failure_ttl=EXPORT_RQ_FAILURE_TTL_SECONDS,
@@ -642,7 +634,7 @@ active_worker_cache_lock = threading.Lock()
 ACTIVE_WORKER_CACHE_SECONDS = 10
 
 def _active_workers_for_queue(queue_name: str) -> Optional[int]:
-    if RQWorker is None or app_state._rq_redis_client is None:
+    if optional_deps.RQWorker is None or app_state._rq_redis_client is None:
         return None
     now = time.monotonic()
     with active_worker_cache_lock:
@@ -659,7 +651,7 @@ def _active_workers_for_queue(queue_name: str) -> Optional[int]:
 def _count_active_workers(queue_name: str) -> Optional[int]:
     try:
         active = 0
-        for worker in RQWorker.all(connection=app_state._rq_redis_client):
+        for worker in optional_deps.RQWorker.all(connection=app_state._rq_redis_client):
             names = (
                 worker.queue_names()
                 if callable(getattr(worker, "queue_names", None))
@@ -677,7 +669,7 @@ def _count_active_workers(queue_name: str) -> Optional[int]:
 
 
 def _export_queue_prediction(job_id: str, job: Dict[str, Any]) -> Dict[str, Any]:
-    if str(job.get("status") or "").lower() != "queued" or Job is None:
+    if str(job.get("status") or "").lower() != "queued" or optional_deps.Job is None:
         return {}
     queue_name = str(job.get("queue_name") or settings.EXPORT_QUEUE_NAME)
     queue = app_state._export_queues.get(queue_name)
@@ -687,7 +679,7 @@ def _export_queue_prediction(job_id: str, job: Dict[str, Any]) -> Dict[str, Any]
         active_workers = _active_workers_for_queue(queue_name)
         return job_queue_prediction(
             queue,
-            Job,
+            optional_deps.Job,
             job_id,
             active_workers=active_workers,
             work_ledger_key=PENDING_WORK_LEDGER_KEY,
@@ -876,7 +868,7 @@ def export_replay(job_id: str, request: Request):
                 "render_class": capacity["render_class"],
                 "renderer": capacity["renderer"],
             },
-            retry=RQRetry(max=3, interval=[10, 30, 60]) if RQRetry else None,
+            retry=optional_deps.RQRetry(max=3, interval=[10, 30, 60]) if optional_deps.RQRetry else None,
             ttl=settings.EXPORT_MAX_QUEUE_WAIT_SECONDS,
             result_ttl=EXPORT_RQ_RESULT_TTL_SECONDS,
             failure_ttl=EXPORT_RQ_FAILURE_TTL_SECONDS,

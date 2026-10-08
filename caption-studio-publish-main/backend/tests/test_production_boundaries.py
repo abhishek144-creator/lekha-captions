@@ -274,10 +274,10 @@ class ProductionBoundaryTests(unittest.TestCase):
               patch.object(main.app_state, "_redis_client", Redis()),
               patch.object(main.firebase_admin_setup, "get_db", return_value=Database()),
               patch.object(main.firebase_admin_setup, "storage_backend_ready", return_value=True),
-              patch.object(main, "RQWorker", SimpleNamespace(all=lambda connection: [worker])),
+              patch.object(main.optional_deps, "RQWorker", SimpleNamespace(all=lambda connection: [worker])),
               patch.object(main.shutil, "which", side_effect=without_node),
               patch.object(main.shutil, "disk_usage", return_value=SimpleNamespace(free=3 * 1024 ** 3))):
-            snapshot = main._runtime_dependency_snapshot()
+            snapshot = main.system_api._runtime_dependency_snapshot()
 
         self.assertTrue(snapshot["checks"]["node"])
         self.assertTrue(snapshot["ready"])
@@ -301,10 +301,10 @@ class ProductionBoundaryTests(unittest.TestCase):
             patch.object(main.app_state, "_transcription_queue", empty_queue),
             patch.object(main.firebase_admin_setup, "get_db", return_value=database),
             patch.object(main.firebase_admin_setup, "storage_backend_ready", return_value=True),
-            patch.object(main, "RQWorker", SimpleNamespace(all=lambda connection: [])),
+            patch.object(main.optional_deps, "RQWorker", SimpleNamespace(all=lambda connection: [])),
             patch.object(main.shutil, "disk_usage", return_value=SimpleNamespace(free=3 * 1024 ** 3)),
         ):
-            snapshot = main._runtime_dependency_snapshot()
+            snapshot = main.system_api._runtime_dependency_snapshot()
         self.assertTrue(snapshot["ready"])
         self.assertTrue(all(
             state == "idle_scaled_to_zero"
@@ -335,7 +335,7 @@ class ProductionBoundaryTests(unittest.TestCase):
         db = SimpleNamespace(collection=lambda name: SimpleNamespace(document=lambda uid: Ref(name, uid)))
         with (patch.object(main.settings, "_IS_PRODUCTION", True), patch.object(main.firebase_admin_setup, "get_db", return_value=db),
               patch.object(main.firebase_admin_setup, "verify_token", return_value={"uid": "owner"}),
-              patch.object(main, "read_draft", return_value={"revision": 0, "draft": None}),
+              patch.object(main.account_api, "read_draft", return_value={"revision": 0, "draft": None}),
               patch.object(main.request_security, "_assert_tenant_access"), patch.object(main.observability, "_audit_action")):
             response = TestClient(main.app).post("/api/account-export", json={"id_token": "owner-token"})
         self.assertEqual(response.status_code, 200)
@@ -518,14 +518,14 @@ class ProductionBoundaryTests(unittest.TestCase):
 
     def test_liveness_is_independent_of_readiness(self):
         with (patch.object(main.settings, "_IS_PRODUCTION", True),
-              patch.object(main, "_runtime_dependency_snapshot", return_value={"ready": False})):
+              patch.object(main.system_api, "_runtime_dependency_snapshot", return_value={"ready": False})):
             client = TestClient(main.app)
             self.assertEqual(client.get("/health").status_code, 200)
             self.assertEqual(client.get("/ready").status_code, 503)
 
     def test_slow_exports_do_not_remove_healthy_api_from_service(self):
         with (patch.object(main.settings, "_IS_PRODUCTION", True),
-              patch.object(main, "_runtime_dependency_snapshot", return_value={"ready": True}),
+              patch.object(main.system_api, "_runtime_dependency_snapshot", return_value={"ready": True}),
               patch.object(main.observability, "_build_slo_snapshot", return_value={"release_gate_passed": False})):
             self.assertEqual(TestClient(main.app).get("/ready").status_code, 200)
 

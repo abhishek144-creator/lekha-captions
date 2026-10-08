@@ -32,7 +32,7 @@ class ExportSlotWaitTests(unittest.TestCase):
             main.export_jobs._set_export_job("item-1", "queued", uid="a")
             main.export_jobs._set_export_job("item-2", "queued", uid="a")
             result = main.run_export_job_task("item-2", PAYLOAD, "a")
-            self.assertIsInstance(result, main.RQRetry)
+            self.assertIsInstance(result, main.optional_deps.RQRetry)
             self.assertEqual(result.intervals, [main.settings.EXPORT_SLOT_WAIT_INTERVAL_SECONDS])
             self.assertEqual(main.export_jobs._load_export_job("item-2")["status"], "retrying")
             # The rescheduled attempt starts normally once the slot is free.

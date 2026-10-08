@@ -72,9 +72,9 @@ try:
 except ImportError:  # Direct execution from backend/ remains supported.
     from job_state import transition as transition_export_job
 try:
-    from rq import Retry as RQRetry
-except ImportError:
-    RQRetry = None
+    from . import optional_deps
+except ImportError:  # Direct execution from backend/ remains supported.
+    import optional_deps
 try:
     from . import api_models
 except ImportError:  # Direct execution from backend/ remains supported.
@@ -861,7 +861,7 @@ async def _process_export_job_core(req: api_models.ExportRequest, uid: str, rid:
 
 def _export_slot_wait_retry():
     """An RQ Retry result for a job waiting on its account slot, or None outside RQ."""
-    if RQRetry is None:
+    if optional_deps.RQRetry is None:
         return None
     try:
         from rq import get_current_job
@@ -869,4 +869,4 @@ def _export_slot_wait_retry():
             return None
     except Exception:
         return None
-    return RQRetry(max=settings.EXPORT_SLOT_WAIT_MAX_ATTEMPTS, interval=settings.EXPORT_SLOT_WAIT_INTERVAL_SECONDS)
+    return optional_deps.RQRetry(max=settings.EXPORT_SLOT_WAIT_MAX_ATTEMPTS, interval=settings.EXPORT_SLOT_WAIT_INTERVAL_SECONDS)
