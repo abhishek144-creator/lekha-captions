@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lekha Captions — Launch Film v6</title>
+<!--
+  v6 · "Say it once." The film is narrated by the sample clip's own transcript: its four caption lines
+  ("this place taught me one thing" … "say it once. let them read it.") are the four chapter cards, set on
+  ink exactly as the editor's caption list wraps them, with the list's italic numeral, timecode and duration
+  chip. Each card's amber word flies into the thing that is clicked next — the Upload button, the word
+  "strategy," itself (a match cut onto the preview line), the Templates rail icon, EXPORT — and the real
+  editor irises open around it. Footage is never covered by text. Languages + end card unchanged from v3–v5.
+-->
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@96,500;96,700;96,800&family=JetBrains+Mono:wght@500;700;800&family=Fraunces:ital,opsz,wght@1,72,400;1,72,500;1,72,600&display=block" rel="stylesheet">
+<style>
+:root { --ink:#0C0B0F; --cream:#FFFAF3; --amber:#C27A29; --amber-l:#E0A462; --amber-xl:#F3C98B; --brown:#65250c; --stone:#8A8478;
+  --sans:'Bricolage Grotesque', sans-serif; --mono:'JetBrains Mono', monospace; --serif:'Fraunces', Georgia, serif }
+* { box-sizing:border-box; margin:0; padding:0 }
+html, body { width:1920px; height:1080px; overflow:hidden; background:var(--ink) }
+body { font-family:var(--sans); color:var(--cream); -webkit-font-smoothing:antialiased }
+#stage { position:relative; width:1920px; height:1080px; overflow:hidden; background:var(--ink) }
+.full { position:absolute; inset:0 }
+
+/* seekable keyframes (data-a="name start dur [ease]") — used by the languages section and the end card */
+@keyframes drop { from { opacity:0; transform:translateY(-.6em) } to { opacity:1; transform:none } }
+@keyframes punch { 0% { opacity:0; transform:scale(2.7) } 45% { opacity:1 } 100% { opacity:1; transform:scale(1) } }
+@keyframes fade { from { opacity:0 } to { opacity:1 } }
+@keyframes rise { from { opacity:0; transform:translateY(.6em) } to { opacity:1; transform:none } }
+@keyframes in-up { from { opacity:0; transform:translateY(40px) } to { opacity:1; transform:none } }
+@keyframes in-left { from { opacity:0; transform:translateX(-60px) } to { opacity:1; transform:none } }
+@keyframes grow-x { from { transform:scaleX(0) } to { transform:scaleX(1) } }
+@keyframes cream-wipe { from { clip-path:inset(0 0 0 100%) } to { clip-path:inset(0 0 0 0) } }
+
+/* ---------- footage ---------- */
+#ED { overflow:hidden; background:var(--ink) }
+#cv { width:1920px; height:1080px; display:block }
+#fx { position:absolute; inset:0; pointer-events:none; overflow:hidden }
+#cursor { position:absolute; left:0; top:0; width:34px; height:34px; z-index:35; filter:drop-shadow(0 4px 8px rgba(0,0,0,.6)) }
+.click { position:absolute; width:80px; height:80px; border-radius:50%; border:3px solid var(--amber-l); z-index:19; opacity:0; transform:translate(-50%,-50%) }
+
+/* ---------- transcript cards: the caption list item, blown up ---------- */
+#cards { position:absolute; inset:0; z-index:30; pointer-events:none }
+.tcard { position:absolute; left:0; top:0; opacity:0 }
+.tcard .meta { display:flex; align-items:center; gap:18px; margin:0 0 26px 4px; font:700 22px var(--mono); letter-spacing:.06em; color:rgba(138,132,120,.95) }
+.tcard .meta .chip { font:700 19px var(--mono); color:var(--cream); border:2px solid rgba(255,250,243,.28); border-radius:8px; padding:3px 10px 4px }
+.tcard .meta .src { margin-left:10px; color:rgba(138,132,120,.6) }
+.tcard .row { display:flex; align-items:flex-start; gap:46px }
+.tcard .big { font:italic 400 168px/0.9 var(--serif); color:var(--stone); letter-spacing:-.02em; margin-top:-6px; width:190px }
+.tcard .txt { font-weight:800; font-size:112px; line-height:1.08; letter-spacing:-.035em; color:var(--cream) }
+.tcard .ln { white-space:nowrap }
+.tcard .w { display:inline-block; position:relative; opacity:0 }
+.tcard .w + .w { margin-left:.24em }
+.tcard .key .box { position:absolute; left:-.16em; right:-.16em; top:.1em; bottom:.02em; background:var(--amber); border-radius:16px; transform-origin:0 50%; transform:scaleX(0) }
+.tcard .key .kt { position:relative }
+.tcard .rule { position:relative; height:3px; margin:40px 0 0 236px; background:rgba(255,250,243,.12); border-radius:2px; overflow:hidden }
+.tcard .rule i { position:absolute; left:0; top:0; bottom:0; width:0; background:var(--amber-l) }
+#flyer { position:absolute; left:0; top:0; z-index:31; opacity:0; background:var(--amber); color:var(--cream); font-weight:800; letter-spacing:-.035em;
+  display:flex; align-items:center; justify-content:center; white-space:nowrap; overflow:hidden; box-shadow:0 18px 50px -14px rgba(0,0,0,.7) }
+#ink { position:absolute; inset:0; z-index:29; background:var(--ink); opacity:0; pointer-events:none }
+
+/* languages: real editor renders side by side (unchanged from v3) */
+#LANG { background:var(--ink); opacity:0 }
+#LANG .head { position:absolute; left:0; right:0; top:58px; display:flex; flex-direction:column; align-items:center; gap:8px }
+#LANG .head .a { font-weight:800; font-size:76px; letter-spacing:-.035em; background:var(--cream); color:var(--ink); padding:0 26px 8px; border-radius:14px; margin-right:160px }
+#LANG .head .b { font:800 38px var(--mono); letter-spacing:.12em; background:var(--amber); color:var(--cream); padding:8px 22px; border-radius:10px; margin-left:260px }
+#LANG .cards { position:absolute; left:0; right:0; top:330px; display:flex; justify-content:center; gap:46px }
+#LANG .card { position:relative; width:370px; height:658px; border-radius:24px; overflow:hidden; background:#000; box-shadow:0 0 0 2px rgba(255,255,255,.12), 0 40px 90px -30px rgba(0,0,0,.9); opacity:0 }
+#LANG .card canvas { width:100%; height:100%; display:block }
+#LANG .card .tag { position:absolute; left:14px; bottom:14px; font:800 15px var(--mono); letter-spacing:.14em; background:var(--cream); color:var(--ink); padding:6px 10px; border-radius:6px }
+#LANG .foot { position:absolute; left:0; right:0; top:1018px; text-align:center; font:700 19px var(--mono); letter-spacing:.3em; color:var(--stone) }
+
+/* end card (unchanged from v3) */
+.logo svg { display:block; overflow:visible }
+.logo .b1, .logo .b2 { transform-box:fill-box; transform-origin:0% 50% }
+.logo .q { transform-box:fill-box; transform-origin:50% 50% }
+#END { background:var(--cream); color:var(--ink); clip-path:inset(0 0 0 100%) }
+#END .logo { position:absolute; left:50%; top:380px; width:1040px; transform:translate(-50%,-50%) }
+#END .line { position:absolute; left:0; right:0; top:700px; text-align:center; font-weight:500; font-size:46px; letter-spacing:-.025em; color:var(--brown) }
+#END .line b { font-weight:800; color:var(--amber) }
+#END .cta { position:absolute; left:0; right:0; top:800px; display:flex; justify-content:center; gap:22px; align-items:center }
+#END .btn { font-weight:800; font-size:34px; letter-spacing:-.02em; background:var(--ink); color:var(--cream); padding:16px 40px 20px; border-radius:14px }
+#END .url { font:800 32px var(--mono); color:var(--ink); padding:16px 30px; border-radius:14px; border:3px solid var(--ink) }
+#END .url b { color:var(--amber) }
+</style>
+</head>
+<body>
+<div id="stage">
+  <section class="full" id="ED">
+    <canvas id="cv" width="1920" height="1080"></canvas>
+    <div id="fx"></div>
+    <div id="ink"></div>
+    <div id="cards"></div>
+    <div id="flyer"></div>
+  </section>
+
+  <section class="full" id="LANG">
+    <div class="head"><span class="a">Same template.</span><span class="b">any language</span></div>
+    <div class="cards" id="langcards"></div>
+    <div class="foot">LANGUAGES &amp; WRITING SYSTEMS FROM AROUND THE WORLD</div>
+  </section>
+
+  <section class="full" id="END">
+    <div class="logo" id="logo2"></div>
+    <div class="line" id="endline">Professional captions in <b>every language.</b></div>
+    <div class="cta" id="endcta"><span class="btn">Try it free</span><span class="url"><b>lekha</b>captions.com</span></div>
+  </section>
+
+  <svg id="cursor" viewBox="0 0 34 34"><path d="M5 3l22 13-9.5 2.2L13 28z" fill="#fff" stroke="#0C0B0F" stroke-width="2.2" stroke-linejoin="round"/></svg>
+</div>
+
+<script src="../launch-video-v2/assets/logo-data.js"></script>
+<script src="takes/logs.js"></script>
+<script src="segments-v6.js"></script>
+<script>
+const FPS = 30
+const W = 1920, H = 1080
+const EASES = { tpl:'cubic-bezier(.22,.68,.26,1)', film:'cubic-bezier(.7,0,.2,1)', lin:'linear', def:'cubic-bezier(.22,1,.36,1)' }
+const ease = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2)
+const easeOut = (x) => 1 - Math.pow(1 - x, 3)
+const clamp01 = (x) => Math.max(0, Math.min(1, x))
+const { SEGMENTS, LANG_SEG, FLY, OUT, END_AT, DURATION } = window.FILM
+
+/* ---------- end card + languages (unchanged from v3–v5) ---------- */
+function buildLogo(el, t0) {
+  const L = window.LOGO
+  el.innerHTML = `<svg viewBox="${L.view}" width="100%">
+    <g class="b1" fill="#0C0B0F" data-a="grow-x ${t0} .4 film">${L.box1}</g>
+    <path d="${L.word}" fill="#FFFAF3" data-a="rise ${t0 + 0.22} .45 tpl"/>
+    <g class="b2" fill="#C27A29" data-a="grow-x ${t0 + 0.55} .35 film">${L.box2}</g>
+    <path d="${L.caps}" fill="#FFFAF3" data-a="rise ${t0 + 0.75} .4 tpl"/>
+    <path class="q" d="${L.q_open}" fill="#0C0B0F" data-a="punch ${t0 + 1.1} .56 tpl"/>
+    <path class="q" d="${L.q_close}" fill="#0C0B0F" data-a="punch ${t0 + 1.25} .56 tpl"/>
+  </svg>`
+}
+buildLogo(document.getElementById('logo2'), END_AT + 0.45)
+document.getElementById('END').dataset.a = `cream-wipe ${END_AT} .55 film`
+document.getElementById('endline').dataset.a = `rise ${END_AT + 1.75} .5 tpl`
+document.getElementById('endcta').dataset.a = `in-up ${END_AT + 2.15} .45`
+const langEl = document.getElementById('langcards')
+LANG_SEG.cards.forEach((c, i) => {
+  const d = document.createElement('div')
+  d.className = 'card'
+  d.innerHTML = `<canvas width="740" height="1316"></canvas><span class="tag">${c.label}</span>`
+  d.dataset.a = `in-up ${LANG_SEG.start + 0.15 + i * 0.1} .5`
+  langEl.appendChild(d)
+})
+document.querySelector('#LANG .head .a').dataset.a = `in-left ${LANG_SEG.start + 0.1} .45`
+document.querySelector('#LANG .head .b').dataset.a = `in-left ${LANG_SEG.start + 0.3} .45`
+document.querySelector('#LANG .foot').dataset.a = `fade ${LANG_SEG.start + 1.2} .5`
+document.querySelectorAll('[data-a]').forEach((el) => {
+  el.style.animation = el.dataset.a.split(',').map((p) => p.trim()).filter(Boolean).map((p) => {
+    const [name, start, dur, e = 'def'] = p.split(/\s+/)
+    return `${name} ${dur}s ${EASES[e] || e} ${start}s 1 ${name.startsWith('out-') ? 'forwards' : 'both'}`
+  }).join(', ')
+})
+
+/* ---------- transcript cards ---------- */
+const VIEW = window.TAKE_LOGS[SEGMENTS[0].take].view
+const SC = W / VIEW.width // take CSS px → film px at full frame
+const cardsEl = document.getElementById('cards')
+const flyer = document.getElementById('flyer')
+const cards = SEGMENTS.map((s) => {
+  const c = s.card
+  const el = document.createElement('div')
+  el.className = 'tcard'
+  const words = []
+  const lines = c.lines.map((ln) => `<div class="ln">${ln.split(' ').map((w) => {
+    const key = w === c.key
+    words.push(key)
+    return key ? `<span class="w key"><b class="box"></b><span class="kt">${w}</span></span>` : `<span class="w">${w}</span>`
+  }).join('')}</div>`).join('')
+  el.innerHTML = `<div class="meta"><span>${c.n} / 04</span><span>${c.tc}</span><span class="chip">${c.dur}</span><span class="src">morning-walk.mov</span></div>`
+    + `<div class="row"><div class="big">${c.n}</div><div class="txt">${lines}</div></div><div class="rule"><i></i></div>`
+  cardsEl.appendChild(el)
+  const times = c.times
+  return { s, c, el, ws: [...el.querySelectorAll('.w')], times, keyEl: el.querySelector('.key'), box: el.querySelector('.key .box'),
+    meta: el.querySelector('.meta'), big: el.querySelector('.big'), rule: el.querySelector('.rule i'), readEnd: times[times.length - 1] + 0.2 }
+})
+function layoutCards() {
+  for (const q of cards) {
+    q.el.style.opacity = 1
+    const w = q.el.offsetWidth, h = q.el.offsetHeight
+    q.el.style.left = `${Math.round((W - w) / 2)}px`
+    q.el.style.top = `${Math.round((H - h) / 2 - 10)}px`
+    const k = q.keyEl.getBoundingClientRect(), fs = parseFloat(getComputedStyle(q.keyEl).fontSize)
+    // the box's resting rect (the .box insets in em)
+    q.from = { x: k.left - 0.16 * fs, y: k.top + 0.1 * fs, w: k.width + 0.32 * fs, h: k.height - 0.12 * fs, fs }
+    q.el.style.opacity = 0
+  }
+}
+function drawCard(q, lt, out) {
+  // lt: card time; out: 0..1 while its word flies off into the footage
+  const on = clamp01(lt / 0.22)
+  q.el.style.opacity = on
+  q.meta.style.opacity = (1 - out) * clamp01(lt / 0.3)
+  q.big.style.opacity = (1 - out) * clamp01((lt - 0.05) / 0.35)
+  q.big.style.transform = `translateY(${(1 - easeOut(clamp01(lt / 0.5))) * 24}px)`
+  q.ws.forEach((s, i) => {
+    const k = clamp01((lt - q.times[i]) / 0.2)
+    const isKey = s === q.keyEl
+    s.style.opacity = isKey ? (out > 0 ? 0 : k) : k * (1 - out)
+    s.style.transform = `translateY(${(1 - easeOut(k)) * 0.32}em)`
+  })
+  const ki = q.ws.indexOf(q.keyEl)
+  q.box.style.transform = `scaleX(${ease(clamp01((lt - q.times[ki] - 0.04) / 0.3)).toFixed(4)})`
+  q.rule.style.width = `${(easeOut(clamp01((lt - 0.15) / (q.readEnd))) * 100).toFixed(2)}%`
+  q.rule.parentElement.style.opacity = 1 - out
+}
+const targetRect = (q) => { const [cx, cy, w, h] = q.c.target; return { x: (cx - w / 2) * SC, y: (cy - h / 2) * SC, w: w * SC, h: h * SC } }
+function drawFlyer(q, k) {
+  // k: 0..1 across the flight; the box keeps its proportions of text to height, ends at the target's rect
+  if (k <= 0 || k >= 1) { flyer.style.opacity = 0; return }
+  const a = q.from, b = targetRect(q), e = ease(k)
+  // a slight arc: the box lifts before it dives into the target
+  const x = a.x + (b.x - a.x) * e, y = a.y + (b.y - a.y) * e - Math.sin(Math.PI * e) * 60
+  const w = a.w + (b.w - a.w) * e, h = a.h + (b.h - a.h) * e
+  flyer.textContent = q.c.key
+  flyer.style.left = `${x.toFixed(1)}px`; flyer.style.top = `${y.toFixed(1)}px`
+  flyer.style.width = `${w.toFixed(1)}px`; flyer.style.height = `${h.toFixed(1)}px`
+  flyer.style.fontSize = `${(a.fs * Math.min(h / a.h, w / a.w)).toFixed(2)}px`
+  flyer.style.borderRadius = `${(16 * h / a.h + 4 * e).toFixed(1)}px`
+  flyer.style.opacity = (1 - clamp01((k - 0.72) / 0.28)).toFixed(3)
+  flyer.style.color = `rgba(255,250,243,${(1 - clamp01((k - 0.55) / 0.3)).toFixed(3)})`
+}
+
+/* ---------- take frames ---------- */
+const cache = new Map()
+function frameImg(take, idx) {
+  const key = `${take}/${idx}`
+  if (!cache.has(key)) {
+    const img = new Image()
+    img.src = `takes/${take}/f${String(idx + 1).padStart(5, '0')}.jpg`
+    cache.set(key, img.decode().then(() => img).catch(() => null))
+    if (cache.size > 90) cache.delete(cache.keys().next().value)
+  }
+  return cache.get(key)
+}
+const takeFrames = (take) => ((window.TAKE_LOGS[take] || {}).frames30 || 1)
+const idxAt = (take, x) => Math.min(takeFrames(take) - 1, Math.max(0, Math.round(x * FPS)))
+const PXF = 0.25 // dissolve across a jump cut inside a chapter (s)
+const F = [906.5, 510, 1]
+
+function camAt(seg, lt) {
+  const k = seg.cam
+  if (lt <= k[0][0]) return k[0].slice(1)
+  for (let i = 0; i < k.length - 1; i++) {
+    if (lt <= k[i + 1][0]) {
+      const a = k[i], b = k[i + 1], e = ease((lt - a[0]) / (b[0] - a[0]))
+      return [a[1] + (b[1] - a[1]) * e, a[2] + (b[2] - a[2]) * e, a[3] + (b[3] - a[3]) * e]
+    }
+  }
+  return k[k.length - 1].slice(1)
+}
+function viewRect(view, c) {
+  const sc = view.scale, TW = view.width * sc, TH = view.height * sc
+  const w = TW / c[2], h = TH / c[2]
+  const x = Math.max(0, Math.min(TW - w, c[0] * sc - w / 2)), y = Math.max(0, Math.min(TH - h, c[1] * sc - h / 2))
+  return { x, y, w, h, s: W / w, sc }
+}
+function cursorAt(log, lt) {
+  let prev = null
+  for (const e of log) { if (e.kind !== 'cursor' && e.kind !== 'down' && e.kind !== 'up') continue; if (e.t > lt) break; prev = e }
+  return prev
+}
+function takeTime(seg, lt) {
+  let acc = 0
+  for (let i = 0; i < seg.pieces.length; i++) {
+    const [pf, pd] = seg.pieces[i]
+    if (lt < acc + pd || i === seg.pieces.length - 1) {
+      const prev = seg.pieces[i - 1]
+      return { tt: pf + (lt - acc), pieceStart: acc, prevTt: prev ? prev[0] + prev[1] + (lt - acc) : null }
+    }
+    acc += pd
+  }
+}
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d')
+async function drawTakeFrame(take, tt, cam = F, alpha = 1) {
+  const meta = window.TAKE_LOGS[take]
+  const v = viewRect(meta.view, cam)
+  const img = await frameImg(take, idxAt(take, tt))
+  if (img) { ctx.globalAlpha = alpha; ctx.drawImage(img, v.x, v.y, v.w, v.h, 0, 0, W, H); ctx.globalAlpha = 1 }
+  return { v, img }
+}
+async function drawSeg(seg, lt, alpha = 1) {
+  const { tt, pieceStart, prevTt } = takeTime(seg, lt)
+  const cam = camAt(seg, lt)
+  const cut = prevTt != null && lt - pieceStart < PXF
+  if (cut) await drawTakeFrame(seg.take, prevTt, cam, alpha)
+  const { v } = await drawTakeFrame(seg.take, tt, cam, cut ? alpha * ease((lt - pieceStart) / PXF) : alpha)
+  return { v, tt }
+}
+
+/* ---------- overlays ---------- */
+const fx = document.getElementById('fx')
+const cursor = document.getElementById('cursor')
+const ink = document.getElementById('ink')
+const clickEls = Array.from({ length: 4 }, () => { const d = document.createElement('div'); d.className = 'click'; fx.appendChild(d); return d })
+const ED = document.getElementById('ED'), LANG = document.getElementById('LANG')
+function drawPointer(seg, tt, v, a) {
+  const log = (window.TAKE_LOGS[seg.take] || {}).log || []
+  const toWin = (x, y) => [(x * v.sc - v.x) * v.s, (y * v.sc - v.y) * v.s]
+  const c = cursorAt(log, tt)
+  if (c && c.visible && a > 0.01) {
+    const [x, y] = toWin(c.x, c.y)
+    cursor.style.opacity = a
+    cursor.style.transform = `translate(${x - 5}px, ${y - 3}px)`
+  }
+  let ci = 0
+  for (const e of log) {
+    if (e.kind !== 'click' && e.kind !== 'down') continue
+    const k = (tt - e.t) / 0.5
+    if (k < 0 || k > 1 || ci >= clickEls.length || a < 0.3) continue
+    const [x, y] = toWin(e.x, e.y)
+    const el = clickEls[ci++]
+    el.style.left = `${x}px`; el.style.top = `${y}px`
+    el.style.opacity = (0.9 * (1 - k)).toFixed(3)
+    el.style.transform = `translate(-50%,-50%) scale(${0.25 + 1.2 * k})`
+  }
+}
+
+window.renderAt = async (t) => {
+  document.getAnimations().forEach((a) => { a.pause(); a.currentTime = t * 1000 })
+  cursor.style.opacity = 0
+  clickEls.forEach((c) => { c.style.opacity = 0 })
+  cards.forEach((q) => { q.el.style.opacity = 0 })
+  flyer.style.opacity = 0
+  ink.style.opacity = 0
+  ctx.globalAlpha = 1; ctx.filter = 'none'
+  ctx.fillStyle = '#0C0B0F'; ctx.fillRect(0, 0, W, H)
+
+  const si = SEGMENTS.findIndex((s) => t >= s.card.start && t < s.start + s.len)
+  const seg = SEGMENTS[si]
+  const q = cards[si]
+  if (seg && t < seg.start) {
+    // the transcript card, alone on ink
+    drawCard(q, t - seg.card.start, 0)
+  } else if (seg) {
+    const lt = t - seg.start
+    const k = clamp01(lt / FLY)
+    if (k < 1) {
+      // the card's word flies into the footage; the editor irises open around where it lands
+      const tr = targetRect(q), cx = tr.x + tr.w / 2, cy = tr.y + tr.h / 2
+      const R = Math.hypot(Math.max(cx, W - cx), Math.max(cy, H - cy)) + 20
+      const r = R * ease(clamp01((lt - FLY * 0.22) / (FLY * 0.78)))
+      if (r > 0) {
+        ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.clip()
+        const { v, tt } = await drawSeg(seg, lt)
+        ctx.restore()
+        ctx.save(); ctx.strokeStyle = `rgba(224,164,98,${(0.85 * (1 - r / R)).toFixed(3)})`; ctx.lineWidth = 3
+        ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke(); ctx.restore()
+        drawPointer(seg, tt, v, clamp01((lt - FLY * 0.6) / (FLY * 0.4)))
+      }
+      drawCard(q, seg.card.len + lt, easeOut(clamp01(lt / 0.28)))
+      drawFlyer(q, k)
+    } else {
+      const { v, tt } = await drawSeg(seg, lt)
+      // the chapter dips to ink before the next card (the last one hands over to the languages instead)
+      const dip = si < SEGMENTS.length - 1 ? clamp01((lt - (seg.len - OUT)) / OUT) : 0
+      ink.style.opacity = dip
+      drawPointer(seg, tt, v, 1 - dip)
+    }
+  }
+
+  // into the languages: the editor fades out, the language cards fade in (as v3–v5)
+  const last = SEGMENTS[SEGMENTS.length - 1]
+  ED.style.opacity = 1 - clamp01((t - (last.start + last.len - 0.3)) / 0.3)
+  const L = LANG_SEG
+  const lOn = clamp01((t - L.start) / 0.35) * (1 - clamp01((t - (L.start + L.len - 0.3)) / 0.3))
+  LANG.style.opacity = lOn
+  if (lOn > 0) {
+    const cvs = [...document.querySelectorAll('#LANG canvas')]
+    await Promise.all(L.cards.map(async (c, i) => {
+      const tt = c.from + (t - L.start)
+      const idx = Math.min(c.frames - 1, Math.max(0, Math.round(tt * FPS)))
+      const img = await frameImg(c.take, idx)
+      if (img) cvs[i].getContext('2d').drawImage(img, c.crop[0], c.crop[1], c.crop[2], c.crop[3], 0, 0, 740, 1316)
+    }))
+  }
+}
+
+window.ready = document.fonts.ready
+  .then(() => Promise.all(['800 112px "Bricolage Grotesque"', 'italic 400 168px "Fraunces"', '700 22px "JetBrains Mono"', '800 50px "Bricolage Grotesque"'].map((f) => document.fonts.load(f))))
+  .then(() => {
+    layoutCards()
+    return window.renderAt(Number(new URLSearchParams(location.search).get('t') || 0)).then(() => true)
+  })
+</script>
+</body>
+</html>

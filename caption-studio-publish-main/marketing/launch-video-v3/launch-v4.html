@@ -1,0 +1,573 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lekha Captions — Launch Film v4</title>
+<!--
+  v4 follows the first film's language (camera HUD, captions typed word by word, one boxed keyword,
+  a "LAND." punch, amber glow on ink) and carries it into the real editor footage:
+   · every chapter opens with its headline typed as a caption over the blurred editor, then a focus pull
+   · template cards and the preview are LIFTED out of the real recording (cropped pixels, never redrawn)
+   · LAND. irises into the logo; the logo's ink box wipes into the tagline
+  The languages section and the end card are byte-for-byte the v3 ones.
+-->
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@96,500;96,700;96,800&family=JetBrains+Mono:wght@500;700;800&family=Fraunces:ital,opsz,wght@1,72,500;1,72,600&display=block" rel="stylesheet">
+<style>
+:root { --ink:#0C0B0F; --cream:#FFFAF3; --amber:#C27A29; --amber-l:#E0A462; --amber-xl:#F3C98B; --brown:#65250c; --stone:#8A8478;
+  --sans:'Bricolage Grotesque', sans-serif; --mono:'JetBrains Mono', monospace; --serif:'Fraunces', Georgia, serif }
+* { box-sizing:border-box; margin:0; padding:0 }
+html, body { width:1920px; height:1080px; overflow:hidden; background:var(--ink) }
+body { font-family:var(--sans); color:var(--cream); -webkit-font-smoothing:antialiased }
+#stage { position:relative; width:1920px; height:1080px; overflow:hidden; background:var(--ink) }
+.full { position:absolute; inset:0 }
+.abs { position:absolute }
+.w { display:inline-block; will-change:transform, opacity, filter }
+
+/* seekable keyframes (data-a="name start dur [ease]") */
+@keyframes drop { from { opacity:0; transform:translateY(-.6em) } to { opacity:1; transform:none } }
+@keyframes punch { 0% { opacity:0; transform:scale(2.7) } 45% { opacity:1 } 100% { opacity:1; transform:scale(1) } }
+@keyframes fade { from { opacity:0 } to { opacity:1 } }
+@keyframes rise { from { opacity:0; transform:translateY(.6em) } to { opacity:1; transform:none } }
+@keyframes in-up { from { opacity:0; transform:translateY(40px) } to { opacity:1; transform:none } }
+@keyframes in-left { from { opacity:0; transform:translateX(-60px) } to { opacity:1; transform:none } }
+@keyframes in-pop { 0% { opacity:0; transform:translateY(26px) scale(.86); filter:blur(8px) } 60% { opacity:1; transform:translateY(-4px) scale(1.04); filter:blur(0) } 100% { opacity:1; transform:none; filter:blur(0) } }
+@keyframes in-blur { from { opacity:0; transform:translateY(34px); filter:blur(10px) } to { opacity:1; transform:none; filter:blur(0) } }
+@keyframes in-slam { 0% { opacity:0; transform:scale(1.9); filter:blur(24px) } 55% { opacity:1; transform:scale(.96); filter:blur(0) } 75% { transform:scale(1.015) } 100% { opacity:1; transform:scale(1); filter:blur(0) } }
+@keyframes in-scale { from { opacity:0; transform:scale(.82) } to { opacity:1; transform:none } }
+@keyframes grow-x { from { transform:scaleX(0) } to { transform:scaleX(1) } }
+@keyframes wipe { from { clip-path:inset(0 100% 0 0) } to { clip-path:inset(0 0 0 0) } }
+@keyframes out-fade { from { opacity:1 } to { opacity:0 } }
+@keyframes out-up { from { opacity:1; transform:none; filter:blur(0) } to { opacity:0; transform:translateY(-34px); filter:blur(12px) } }
+@keyframes out-zoom { from { opacity:1; transform:none; filter:blur(0) } to { opacity:0; transform:scale(1.12); filter:blur(16px) } }
+@keyframes shake { 0%,100% { transform:none } 15% { transform:translate(-14px, 8px) } 30% { transform:translate(11px, -9px) } 45% { transform:translate(-7px, 5px) } 60% { transform:translate(5px, -3px) } 80% { transform:translate(-2px, 1px) } }
+@keyframes ring { from { opacity:.9; transform:translate(-50%,-50%) scale(.2) } to { opacity:0; transform:translate(-50%,-50%) scale(2.6) } }
+@keyframes ink-wipe { from { clip-path:inset(var(--t) var(--r) var(--b) var(--l) round 22px) } to { clip-path:inset(0 0 0 0 round 0) } }
+@keyframes cream-wipe { from { clip-path:inset(0 0 0 100%) } to { clip-path:inset(0 0 0 0) } }
+@keyframes iris { from { clip-path:circle(0px at var(--x) var(--y)) } to { clip-path:circle(2300px at var(--x) var(--y)) } }
+@keyframes blink { 0% { opacity:1 } 50% { opacity:.15 } }
+
+/* ---------- atmosphere (kinetic scenes) ---------- */
+#atmo { opacity:0 }
+.glow { position:absolute; border-radius:50%; filter:blur(10px) }
+#glowA { width:1300px; height:1300px; left:310px; top:-520px; background:radial-gradient(circle, rgba(194,122,41,.2), transparent 62%) }
+#glowB { width:1000px; height:1000px; left:1150px; top:520px; background:radial-gradient(circle, rgba(224,164,98,.08), transparent 60%) }
+#grain { position:absolute; inset:-200px; opacity:0; mix-blend-mode:overlay; pointer-events:none; z-index:40;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='300'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 1 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>") }
+#vignette { position:absolute; inset:0; pointer-events:none; z-index:39; opacity:0; background:radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.62) 100%) }
+
+/* ---------- HUD (the first film's camera frame) ---------- */
+#hud { position:absolute; inset:0; z-index:30; pointer-events:none; font-family:var(--mono); opacity:0 }
+.corner { position:absolute; width:46px; height:46px; border-color:rgba(255,250,243,.3); border-style:solid }
+.c-tl { border-width:2px 0 0 2px } .c-tr { border-width:2px 2px 0 0 } .c-bl { border-width:0 0 2px 2px } .c-br { border-width:0 2px 2px 0 }
+.hud-tl { position:absolute; left:124px; top:66px; display:flex; gap:22px; align-items:center; font-size:17px; letter-spacing:.22em; color:rgba(255,250,243,.62); font-weight:700 }
+.rec { display:inline-flex; gap:10px; align-items:center; color:var(--cream) }
+.rec i { width:11px; height:11px; border-radius:50%; background:#ff4d4d; display:inline-block; box-shadow:0 0 12px #ff4d4d }
+.hud-tr { position:absolute; right:124px; top:66px; font-size:17px; letter-spacing:.22em; color:rgba(255,250,243,.5); font-weight:700 }
+.hud-tr b { color:var(--amber-l) }
+.hud-bl { position:absolute; left:124px; bottom:64px; font-size:15px; letter-spacing:.24em; color:rgba(255,250,243,.4); font-weight:700 }
+.hud-br { position:absolute; right:124px; bottom:64px; font-size:15px; letter-spacing:.24em; color:rgba(255,250,243,.45); font-weight:700 }
+.hud-br b { color:var(--amber-l) }
+#scrub { position:absolute; left:124px; right:124px; bottom:100px; height:2px; background:rgba(255,250,243,.08) }
+#scrubFill { position:absolute; inset:0; background:linear-gradient(90deg, var(--amber), var(--amber-xl)); transform-origin:left; transform:scaleX(0) }
+#scrubHead { position:absolute; top:-5px; width:12px; height:12px; border-radius:50%; background:var(--amber-xl); box-shadow:0 0 14px var(--amber); margin-left:-6px; left:0 }
+
+/* ---------- A · hook ---------- */
+.scene { position:absolute; inset:0; display:flex; align-items:center; justify-content:center }
+#A .lines { text-align:center; font-weight:800; font-size:124px; line-height:1.1; letter-spacing:-.045em }
+#A .w { margin:0 .1em }
+#A .mute { position:absolute; left:50%; top:200px; margin-left:-48px; width:96px; height:96px }
+#A .hl { position:relative; color:var(--cream); padding:0 .2em .04em; margin-left:.08em; z-index:0 }
+#A .hl::before { content:''; position:absolute; inset:.12em -.02em .02em; background:var(--amber); border-radius:.14em; z-index:-1; animation:wipe .38s cubic-bezier(.22,1,.36,1) 1.95s both }
+#A .sub { position:absolute; bottom:236px; width:100%; text-align:center; font:700 20px var(--mono); letter-spacing:.34em; color:rgba(255,250,243,.45) }
+
+/* ---------- B · land ---------- */
+#B .stack { text-align:center; position:relative }
+#B .lead { font-size:84px; font-weight:700; letter-spacing:-.04em; color:rgba(255,250,243,.86) }
+#B .lead .w { margin:0 .1em }
+#B .land { font-size:330px; font-weight:800; letter-spacing:-.06em; line-height:.9; margin-top:6px;
+  background:linear-gradient(180deg, var(--amber-xl) 0%, var(--amber-l) 40%, var(--amber) 100%); -webkit-background-clip:text; background-clip:text; color:transparent;
+  filter:drop-shadow(0 18px 60px rgba(194,122,41,.4)) }
+#B .ring { opacity:0; position:absolute; left:50%; top:64%; width:900px; height:900px; border-radius:50%; border:3px solid rgba(224,164,98,.55) }
+
+/* ---------- C · logo (the LAND. irises into cream) ---------- */
+.logo svg { display:block; overflow:visible }
+.logo .b1, .logo .b2 { transform-box:fill-box; transform-origin:0% 50% }
+.logo .q { transform-box:fill-box; transform-origin:50% 50% }
+#C { background:var(--cream); clip-path:circle(0px at 50% 50%) }
+#C .logo { position:absolute; left:50%; top:50%; width:1200px; transform:translate(-50%,-50%) }
+#C .kick { position:absolute; left:0; right:0; top:206px; text-align:center; font:800 20px var(--mono); letter-spacing:.42em; color:var(--stone) }
+#inkwipe { background:var(--ink); clip-path:inset(50% 50% 50% 50%) }
+
+/* ---------- D · tagline ---------- */
+#D .lines { position:absolute; left:0; right:0; top:330px; text-align:center; font-weight:800; font-size:132px; letter-spacing:-.04em; line-height:1.18 }
+#D .hero { background:var(--amber); color:var(--cream); padding:0 .2em .06em; border-radius:.14em; margin:0 .04em }
+#D .sub { position:absolute; left:0; right:0; top:760px; text-align:center; font:700 24px var(--mono); letter-spacing:.4em; color:var(--stone) }
+
+/* ---------- editor footage ---------- */
+#ED { opacity:0 }
+#win { position:absolute; inset:0; overflow:hidden; background:#000 }
+#cv { width:1920px; height:1080px; display:block }
+#fx { position:absolute; inset:0; pointer-events:none; overflow:hidden }
+#cursor { position:absolute; left:0; top:0; width:34px; height:34px; z-index:35; filter:drop-shadow(0 4px 8px rgba(0,0,0,.6)) }
+.click { position:absolute; width:80px; height:80px; border-radius:50%; border:3px solid var(--amber-l); z-index:19; opacity:0; transform:translate(-50%,-50%) }
+.callout { position:absolute; z-index:18; font:800 17px var(--mono); letter-spacing:.06em; color:var(--ink); background:var(--cream); padding:7px 12px; border-radius:8px; white-space:nowrap; box-shadow:0 10px 30px rgba(0,0,0,.45) }
+.callout::after { content:''; position:absolute; width:14px; height:14px; border-radius:50%; background:var(--amber); box-shadow:0 0 0 4px rgba(194,122,41,.35) }
+.callout.l::after { right:-30px; top:50%; margin-top:-7px } .callout.r::after { left:-30px; top:50%; margin-top:-7px }
+.callout.u::after { left:50%; margin-left:-7px; bottom:-30px } .callout.d::after { left:50%; margin-left:-7px; top:-30px }
+
+/* chapter headlines: typed like captions over the blurred editor */
+.chl { position:absolute; left:0; right:0; top:0; height:1080px; display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:22; pointer-events:none; text-align:center }
+.chl .k { font:800 20px var(--mono); letter-spacing:.38em; color:var(--amber-l); margin-bottom:26px }
+.chl .t { font-weight:800; font-size:128px; letter-spacing:-.045em; line-height:1.08; color:var(--cream); text-shadow:0 8px 40px rgba(0,0,0,.5) }
+.chl .t .w { margin:0 .09em }
+.chl .t + .t { margin-top:18px }
+.chl .box { background:var(--amber); color:var(--cream); padding:0 .2em .05em; border-radius:.14em; text-shadow:none }
+.chl .em { font-family:var(--serif); font-style:italic; font-weight:600; letter-spacing:-.02em; color:var(--amber-xl) }
+.chl .s { margin-top:30px; font:700 20px var(--mono); letter-spacing:.3em; color:rgba(255,250,243,.55) }
+.chl.side { align-items:flex-start; text-align:left; padding-left:170px }
+.chl.side .t { font-size:112px }
+.lifttag { position:absolute; z-index:21; font:800 16px var(--mono); letter-spacing:.16em; color:var(--ink); background:var(--cream); padding:6px 11px; border-radius:6px; white-space:nowrap; opacity:0 }
+.lifttag b { color:var(--amber) }
+
+/* languages: real editor renders side by side (unchanged from v3) */
+#LANG { background:var(--ink); opacity:0 }
+#LANG .head { position:absolute; left:0; right:0; top:58px; display:flex; flex-direction:column; align-items:center; gap:8px }
+#LANG .head .a { font-weight:800; font-size:76px; letter-spacing:-.035em; background:var(--cream); color:var(--ink); padding:0 26px 8px; border-radius:14px; margin-right:160px }
+#LANG .head .b { font:800 38px var(--mono); letter-spacing:.12em; background:var(--amber); color:var(--cream); padding:8px 22px; border-radius:10px; margin-left:260px }
+#LANG .cards { position:absolute; left:0; right:0; top:330px; display:flex; justify-content:center; gap:46px }
+#LANG .card { position:relative; width:370px; height:658px; border-radius:24px; overflow:hidden; background:#000; box-shadow:0 0 0 2px rgba(255,255,255,.12), 0 40px 90px -30px rgba(0,0,0,.9); opacity:0 }
+#LANG .card canvas { width:100%; height:100%; display:block }
+#LANG .card .tag { position:absolute; left:14px; bottom:14px; font:800 15px var(--mono); letter-spacing:.14em; background:var(--cream); color:var(--ink); padding:6px 10px; border-radius:6px }
+#LANG .foot { position:absolute; left:0; right:0; top:1018px; text-align:center; font:700 19px var(--mono); letter-spacing:.3em; color:var(--stone) }
+
+/* end card (unchanged from v3) */
+#END { background:var(--cream); color:var(--ink); clip-path:inset(0 0 0 100%) }
+#END .logo { position:absolute; left:50%; top:380px; width:1040px; transform:translate(-50%,-50%) }
+#END .line { position:absolute; left:0; right:0; top:700px; text-align:center; font-weight:500; font-size:46px; letter-spacing:-.025em; color:var(--brown) }
+#END .line b { font-weight:800; color:var(--amber) }
+#END .cta { position:absolute; left:0; right:0; top:800px; display:flex; justify-content:center; gap:22px; align-items:center }
+#END .btn { font-weight:800; font-size:34px; letter-spacing:-.02em; background:var(--ink); color:var(--cream); padding:16px 40px 20px; border-radius:14px }
+#END .url { font:800 32px var(--mono); color:var(--ink); padding:16px 30px; border-radius:14px; border:3px solid var(--ink) }
+#END .url b { color:var(--amber) }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="full" id="atmo"><div class="glow" id="glowA"></div><div class="glow" id="glowB"></div></div>
+
+  <section class="scene" id="A">
+    <svg class="mute" viewBox="0 0 96 96" data-a="in-scale .15 .5">
+      <path d="M14 36h16l20-16v56L30 60H14z" fill="none" stroke="#FFFAF3" stroke-width="5" stroke-linejoin="round"/>
+      <path d="M64 36l20 24M84 36L64 60" stroke="#E0A462" stroke-width="6" stroke-linecap="round"/>
+    </svg>
+    <div class="lines">
+      <div><span class="w" data-a="in-pop .4 .42">Your</span><span class="w" data-a="in-pop .62 .42">audience</span><span class="w" data-a="in-pop .95 .42">is</span><span class="w" data-a="in-pop 1.15 .42">scrolling</span></div>
+      <div><span class="w" data-a="in-pop 1.55 .42">on</span><span class="w hl" data-a="in-pop 1.8 .42">mute.</span></div>
+    </div>
+    <div class="sub" data-a="fade 2.35 .5">SOUND OFF · CAPTIONS ON</div>
+  </section>
+
+  <section class="scene" id="B">
+    <div class="stack" id="Bstack">
+      <div class="lead"><span class="w" data-a="in-blur 3.4 .4">So</span><span class="w" data-a="in-blur 3.58 .4">make</span><span class="w" data-a="in-blur 3.76 .4">every</span><span class="w" data-a="in-blur 3.94 .4">word</span></div>
+      <div class="land w" id="land" data-a="in-slam 4.2 .55">LAND.</div>
+      <div class="ring" data-a="ring 4.25 .9"></div>
+    </div>
+  </section>
+
+  <section class="full" id="C">
+    <div class="kick" data-a="fade 6.0 .5">INTRODUCING</div>
+    <div class="logo" id="logo1"></div>
+  </section>
+  <div class="full" id="inkwipe"></div>
+
+  <section class="full" id="D">
+    <div class="lines">
+      <div><span class="w" data-a="drop 8.95 .43 tpl">You</span> <span class="w" data-a="drop 9.23 .43 tpl">say</span> <span class="w" data-a="drop 9.51 .43 tpl">it.</span></div>
+      <div><span class="w" data-a="drop 9.95 .43 tpl">Lekha</span> <span class="w hero" data-a="punch 10.23 .56 tpl">writes</span> <span class="w" data-a="drop 10.51 .43 tpl">it.</span></div>
+    </div>
+    <div class="sub" data-a="fade 10.8 .4">INSIDE THE EDITOR</div>
+  </section>
+
+  <section class="full" id="ED">
+    <div id="win"><canvas id="cv" width="1920" height="1080"></canvas><div id="fx"></div></div>
+  </section>
+
+  <section class="full" id="LANG">
+    <div class="head"><span class="a">Same template.</span><span class="b">any language</span></div>
+    <div class="cards" id="langcards"></div>
+    <div class="foot">LANGUAGES &amp; WRITING SYSTEMS FROM AROUND THE WORLD</div>
+  </section>
+
+  <section class="full" id="END">
+    <div class="logo" id="logo2"></div>
+    <div class="line" id="endline">Professional captions in <b>every language.</b></div>
+    <div class="cta" id="endcta"><span class="btn">Try it free</span><span class="url"><b>lekha</b>captions.com</span></div>
+  </section>
+
+  <div id="hud">
+    <div class="corner c-tl"></div><div class="corner c-tr"></div><div class="corner c-bl"></div><div class="corner c-br"></div>
+    <div class="hud-tl"><span class="rec"><i id="recdot"></i>REC</span><span id="tc">00:00:00:00</span></div>
+    <div class="hud-tr">LEKHA <b>CAPTIONS</b></div>
+    <div class="hud-bl">16:9 · 1080P · 30FPS</div>
+    <div class="hud-br" id="scenelabel">SC 01</div>
+    <div id="scrub"><div id="scrubFill"></div><div id="scrubHead"></div></div>
+  </div>
+  <div id="vignette"></div>
+  <div id="grain"></div>
+
+  <svg id="cursor" viewBox="0 0 34 34"><path d="M5 3l22 13-9.5 2.2L13 28z" fill="#fff" stroke="#0C0B0F" stroke-width="2.2" stroke-linejoin="round"/></svg>
+</div>
+
+<script src="../launch-video-v2/assets/logo-data.js"></script>
+<script src="takes/logs.js"></script>
+<script src="segments-v4.js"></script>
+<script>
+const FPS = 30
+const EASES = { tpl:'cubic-bezier(.22,.68,.26,1)', film:'cubic-bezier(.7,0,.2,1)', lin:'linear', def:'cubic-bezier(.22,1,.36,1)' }
+const ease = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2)
+const clamp01 = (x) => Math.max(0, Math.min(1, x))
+const { INTRO, SEGMENTS, LANG_SEG, END_AT, DURATION } = window.FILM
+
+function buildLogo(el, t0) {
+  const L = window.LOGO
+  el.innerHTML = `<svg viewBox="${L.view}" width="100%">
+    <g class="b1" fill="#0C0B0F" data-a="grow-x ${t0} .4 film">${L.box1}</g>
+    <path d="${L.word}" fill="#FFFAF3" data-a="rise ${t0 + 0.22} .45 tpl"/>
+    <g class="b2" fill="#C27A29" data-a="grow-x ${t0 + 0.55} .35 film">${L.box2}</g>
+    <path d="${L.caps}" fill="#FFFAF3" data-a="rise ${t0 + 0.75} .4 tpl"/>
+    <path class="q" d="${L.q_open}" fill="#0C0B0F" data-a="punch ${t0 + 1.1} .56 tpl"/>
+    <path class="q" d="${L.q_close}" fill="#0C0B0F" data-a="punch ${t0 + 1.25} .56 tpl"/>
+  </svg>`
+}
+buildLogo(document.getElementById('logo1'), INTRO.logo)
+buildLogo(document.getElementById('logo2'), END_AT + 0.45)
+document.getElementById('A').dataset.a = `out-zoom ${INTRO.land - 0.3} .3`
+document.getElementById('Bstack').dataset.a = `shake .42 ${INTRO.slam + 0.02}, out-zoom ${INTRO.iris} .45`
+document.getElementById('C').dataset.a = `iris ${INTRO.iris} .6 film`
+document.getElementById('inkwipe').dataset.a = `fade ${INTRO.inkwipe - 0.01} .01 lin, ink-wipe ${INTRO.inkwipe} .55 film`
+document.getElementById('D').dataset.a = `out-fade ${INTRO.edStart - 0.25} .3`
+document.getElementById('END').dataset.a = `cream-wipe ${END_AT} .55 film`
+document.getElementById('endline').dataset.a = `rise ${END_AT + 1.75} .5 tpl`
+document.getElementById('endcta').dataset.a = `in-up ${END_AT + 2.15} .45`
+
+/* chapter headlines */
+const fx = document.getElementById('fx')
+const hlEls = SEGMENTS.map((s) => {
+  if (!s.headline) return null
+  const H = s.headline, t0 = s.start + H.t0, t1 = s.start + H.t1
+  const d = document.createElement('div')
+  d.className = `chl${H.side ? ' side' : ''}`
+  let i = 0
+  const word = (w) => {
+    const cls = w.startsWith('[') ? 'w box' : w.startsWith('~') ? 'w em' : 'w'
+    const txt = w.replace(/^[[~]|]$/g, '')
+    const anim = cls.includes('box') ? `punch ${t0 + 0.16 + i * 0.09} .5 tpl` : `drop ${t0 + 0.16 + i * 0.09} .42 tpl`
+    i++
+    return `<span class="${cls}" data-a="${anim}">${txt}</span>`
+  }
+  d.innerHTML = `<div class="k" data-a="fade ${t0} .4">${H.kicker}</div>`
+    + H.lines.map((ln) => `<div class="t">${ln.map(word).join(' ')}</div>`).join('')
+    + (H.sub ? `<div class="s" data-a="fade ${t0 + 0.6} .4">${H.sub}</div>` : '')
+  d.dataset.a = `out-up ${t1} .4`
+  fx.appendChild(d)
+  return d
+})
+
+/* lifted crops (template cards, preview) get a tag each */
+const liftTags = []
+SEGMENTS.forEach((s) => (s.lifts || []).forEach((l) => {
+  if (!l.tag) return
+  const el = document.createElement('div')
+  el.className = 'lifttag'
+  el.innerHTML = l.tag
+  fx.appendChild(el)
+  liftTags.push({ seg: s, l, el })
+}))
+
+/* language cards (unchanged from v3) */
+const langEl = document.getElementById('langcards')
+LANG_SEG.cards.forEach((c, i) => {
+  const d = document.createElement('div')
+  d.className = 'card'
+  d.innerHTML = `<canvas width="740" height="1316"></canvas><span class="tag">${c.label}</span>`
+  d.dataset.a = `in-up ${LANG_SEG.start + 0.15 + i * 0.1} .5`
+  langEl.appendChild(d)
+})
+document.querySelector('#LANG .head .a').dataset.a = `in-left ${LANG_SEG.start + 0.1} .45`
+document.querySelector('#LANG .head .b').dataset.a = `in-left ${LANG_SEG.start + 0.3} .45`
+document.querySelector('#LANG .foot').dataset.a = `fade ${LANG_SEG.start + 1.2} .5`
+
+/* callouts + click rings */
+const callouts = []
+SEGMENTS.forEach((s) => (s.callouts || []).forEach((c) => {
+  const el = document.createElement('div')
+  el.className = `callout ${c.side || 'r'}`
+  el.textContent = c.label
+  fx.appendChild(el)
+  callouts.push({ seg: s, ...c, el })
+}))
+const clickEls = Array.from({ length: 4 }, () => { const d = document.createElement('div'); d.className = 'click'; fx.appendChild(d); return d })
+
+/* data-a → seekable CSS animations */
+document.querySelectorAll('[data-a]').forEach((el) => {
+  el.style.animation = el.dataset.a.split(',').map((p) => p.trim()).filter(Boolean).map((p) => {
+    const [name, start, dur, e = 'def'] = p.split(/\s+/)
+    return `${name} ${dur}s ${EASES[e] || e} ${start}s 1 ${name.startsWith('out-') ? 'forwards' : 'both'}`
+  }).join(', ')
+})
+
+function rectOf(sel) {
+  const el = document.querySelector(sel)
+  const bb = el.getBBox(), m = el.ownerSVGElement.getScreenCTM()
+  return [m.a * bb.x + m.e, m.d * bb.y + m.f, m.a * bb.width, m.d * bb.height]
+}
+function placeWipes() {
+  // ink wipe grows out of the logo's ink box; the cream iris opens from the middle of LAND.
+  const [x, y, w, h] = rectOf('#logo1 .b1 rect')
+  const s = document.getElementById('inkwipe').style
+  s.setProperty('--t', `${y}px`); s.setProperty('--l', `${x}px`); s.setProperty('--r', `${1920 - x - w}px`); s.setProperty('--b', `${1080 - y - h}px`)
+  const lr = document.getElementById('land').getBoundingClientRect()
+  const c = document.getElementById('C').style
+  c.setProperty('--x', `${lr.left + lr.width / 2}px`); c.setProperty('--y', `${lr.top + lr.height / 2}px`)
+}
+
+/* ---------- take frames ---------- */
+const cache = new Map()
+function frameImg(take, idx) {
+  const key = `${take}/${idx}`
+  if (!cache.has(key)) {
+    const img = new Image()
+    img.src = `takes/${take}/f${String(idx + 1).padStart(5, '0')}.jpg`
+    cache.set(key, img.decode().then(() => img).catch(() => null))
+    if (cache.size > 60) cache.delete(cache.keys().next().value)
+  }
+  return cache.get(key)
+}
+const W = 1920, H = 1080
+const XF = 0.45 // dissolve between chapters (s)
+const PXF = 0.25 // dissolve across a jump cut inside a chapter (s)
+
+function camAt(seg, lt) {
+  const k = seg.cam
+  if (lt <= k[0][0]) return k[0].slice(1)
+  for (let i = 0; i < k.length - 1; i++) {
+    if (lt <= k[i + 1][0]) {
+      const a = k[i], b = k[i + 1], e = ease((lt - a[0]) / (b[0] - a[0]))
+      return [a[1] + (b[1] - a[1]) * e, a[2] + (b[2] - a[2]) * e, a[3] + (b[3] - a[3]) * e]
+    }
+  }
+  return k[k.length - 1].slice(1)
+}
+function viewRect(view, c) {
+  const sc = view.scale, TW = view.width * sc, TH = view.height * sc
+  const w = TW / c[2], h = TH / c[2]
+  const x = Math.max(0, Math.min(TW - w, c[0] * sc - w / 2)), y = Math.max(0, Math.min(TH - h, c[1] * sc - h / 2))
+  return { x, y, w, h, s: W / w, sc }
+}
+function cursorAt(log, lt) {
+  let prev = null
+  for (const e of log) { if (e.kind !== 'cursor' && e.kind !== 'down' && e.kind !== 'up') continue; if (e.t > lt) break; prev = e }
+  return prev
+}
+function takeTime(seg, lt) {
+  if (!seg.pieces) return { tt: seg.from + lt, pieceStart: 0, prevTt: null }
+  let acc = 0
+  for (let i = 0; i < seg.pieces.length; i++) {
+    const [pf, pd] = seg.pieces[i]
+    if (lt < acc + pd || i === seg.pieces.length - 1) {
+      const prev = seg.pieces[i - 1]
+      return { tt: pf + (lt - acc), pieceStart: acc, prevTt: prev ? prev[0] + prev[1] + (lt - acc) : null }
+    }
+    acc += pd
+  }
+}
+// headline blur envelope: blurred while the headline is up, focus pull as it leaves
+function focusAt(seg, lt) {
+  if (!seg.headline || seg.headline.noBlur) return 0
+  const t1 = seg.headline.t1
+  return lt < t1 ? 1 : 1 - ease(clamp01((lt - t1) / 0.55))
+}
+function liftK(l, lt) {
+  return ease(clamp01((lt - l.t0) / 0.5)) * (1 - ease(clamp01((lt - (l.t1 - 0.45)) / 0.45)))
+}
+function frameIdx(seg, x) { return Math.min(seg.frames - 1, Math.max(0, Math.round(x * FPS))) }
+
+async function drawSeg(seg, lt, alpha) {
+  const meta = window.TAKE_LOGS[seg.take]
+  const { tt, pieceStart, prevTt } = takeTime(seg, lt)
+  const v = viewRect(meta.view, camAt(seg, lt))
+  const foc = focusAt(seg, lt)
+  const lifts = (seg.lifts || []).map((l) => ({ l, k: liftK(l, lt) })).filter((x) => x.k > 0)
+  const dimK = Math.max(0, ...lifts.map((x) => x.k * (x.l.dim ?? 0.62)))
+  const blur = 13 * foc + 5 * dimK
+  const filter = blur > 0.05 || foc > 0 || dimK > 0 ? `blur(${blur.toFixed(2)}px) brightness(${(1 - 0.55 * foc - dimK).toFixed(3)})` : 'none'
+  const draw = (img, a) => { if (!img) return; ctx.globalAlpha = a; ctx.filter = filter; ctx.drawImage(img, v.x, v.y, v.w, v.h, -0, 0, W, H); ctx.filter = 'none' }
+  const cut = prevTt != null && lt - pieceStart < PXF
+  if (cut) draw(await frameImg(seg.take, frameIdx(seg, prevTt)), alpha)
+  const img = await frameImg(seg.take, frameIdx(seg, tt))
+  draw(img, cut ? alpha * ease((lt - pieceStart) / PXF) : alpha)
+  ctx.globalAlpha = 1
+  // lifted crops: real pixels of the same frame, flown from their place in the UI to centre stage
+  for (const { l, k } of lifts) {
+    if (!img) break
+    const sc = v.sc, s = l.src
+    const sx = (s[0] * sc - v.x) * v.s, sy = (s[1] * sc - v.y) * v.s, sw = s[2] * sc * v.s, sh = s[3] * sc * v.s
+    // dst may move once (dst2 from t2), e.g. card 1 slides left when card 2 joins it
+    const m = l.dst2 ? ease(clamp01((lt - l.t2) / 0.55)) : 0
+    const D = l.dst2 ? l.dst.map((n, i) => n + (l.dst2[i] - n) * m) : l.dst
+    const dh = D[2], dw = dh * s[2] / s[3], dx = D[0] - dw / 2, dy = D[1] - dh / 2
+    const x = sx + (dx - sx) * k, y = sy + (dy - sy) * k, w = sw + (dw - sw) * k, h = sh + (dh - sh) * k
+    const r = (l.r ?? 14) * (w / s[2])
+    ctx.save()
+    ctx.globalAlpha = alpha * clamp01(k * 3)
+    ctx.shadowColor = 'rgba(0,0,0,.75)'; ctx.shadowBlur = 80 * k; ctx.shadowOffsetY = 30 * k
+    ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.fillStyle = '#000'; ctx.fill()
+    ctx.shadowColor = 'transparent'
+    ctx.clip()
+    ctx.drawImage(img, s[0] * sc, s[1] * sc, s[2] * sc, s[3] * sc, x, y, w, h)
+    ctx.restore()
+    ctx.save()
+    ctx.globalAlpha = alpha * k
+    ctx.strokeStyle = 'rgba(224,164,98,.85)'; ctx.lineWidth = 2
+    ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.stroke()
+    ctx.restore()
+    l._rect = [x, y, w, h, k]
+  }
+  return { v, tt, foc, dimK, log: meta.log }
+}
+
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d')
+const ED = document.getElementById('ED'), LANG = document.getElementById('LANG')
+const cursor = document.getElementById('cursor')
+const hud = document.getElementById('hud'), atmo = document.getElementById('atmo')
+const vignette = document.getElementById('vignette'), grain = document.getElementById('grain')
+const corners = [...document.querySelectorAll('.corner')]
+const tcEl = document.getElementById('tc'), sceneEl = document.getElementById('scenelabel')
+const scrubFill = document.getElementById('scrubFill'), scrubHead = document.getElementById('scrubHead')
+const recdot = document.getElementById('recdot')
+
+function hudAt(t) {
+  // on for the kinetic intro (except the cream logo), the tagline and every chapter headline
+  const env = (a, b, fi = 0.3, fo = 0.35) => clamp01((t - a) / fi) * (1 - clamp01((t - b) / fo))
+  let on = Math.max(env(0, INTRO.iris), env(INTRO.inkwipe + 0.3, INTRO.edStart + 0.2))
+  let focus = 0
+  SEGMENTS.forEach((s) => {
+    if (!s.headline) return
+    const a = s.start + s.headline.t0 - 0.1, b = s.start + s.headline.t1 + 0.1
+    const e = env(a, b, 0.25, 0.35)
+    on = Math.max(on, e)
+    if (t >= a && t < b + 0.4) focus = Math.max(focus, 1 - ease(clamp01((t - a) / 0.6)))
+  })
+  return { on, focus }
+}
+const SCENES = [[0, 'SC 01 · HOOK'], [INTRO.land, 'SC 02 · IMPACT'], [INTRO.iris, 'SC 03 · LEKHA'], [INTRO.tag, 'SC 04 · PROMISE']]
+
+window.renderAt = async (t) => {
+  document.getAnimations().forEach((a) => { a.pause(); a.currentTime = t * 1000 })
+  cursor.style.opacity = 0
+  clickEls.forEach((c) => { c.style.opacity = 0 })
+  callouts.forEach((c) => { c.el.style.opacity = 0 })
+  liftTags.forEach((c) => { c.el.style.opacity = 0 })
+
+  // HUD + atmosphere
+  const { on, focus } = hudAt(t)
+  hud.style.opacity = on
+  const inset = 56 + 70 * focus
+  corners[0].style.left = corners[2].style.left = `${inset}px`
+  corners[1].style.right = corners[3].style.right = `${inset}px`
+  corners[0].style.top = corners[1].style.top = `${inset}px`
+  corners[2].style.bottom = corners[3].style.bottom = `${inset}px`
+  const f = Math.round(t * FPS)
+  const pad = (n) => String(n).padStart(2, '0')
+  tcEl.textContent = `00:00:${pad(Math.floor(f / FPS))}:${pad(f % FPS)}`
+  recdot.style.opacity = Math.floor(t * 2) % 2 ? 0.15 : 1
+  scrubFill.style.transform = `scaleX(${clamp01(t / DURATION)})`
+  scrubHead.style.left = `${clamp01(t / DURATION) * 100}%`
+  let label = SCENES.filter((s) => t >= s[0]).pop()[1]
+  SEGMENTS.forEach((s) => { if (t >= s.start - 0.1 && s.headline) label = `CH ${s.headline.kicker}` })
+  sceneEl.innerHTML = label.replace(/· (.*)$/, '· <b>$1</b>')
+  const kin = Math.max(clamp01(t / 0.3) * (1 - clamp01((t - INTRO.iris - 0.2) / 0.3)), clamp01((t - INTRO.inkwipe - 0.3) / 0.3) * (1 - clamp01((t - INTRO.edStart) / 0.4)))
+  atmo.style.opacity = kin
+  vignette.style.opacity = kin
+  grain.style.opacity = (0.085 * kin).toFixed(3)
+  atmo.firstElementChild.style.transform = `translate(${-120 + t * 9}px, ${t * 4}px)`
+  atmo.lastElementChild.style.transform = `translate(${-t * 16}px, ${-t * 8}px)`
+
+  // editor footage
+  const first = SEGMENTS[0], last = SEGMENTS[SEGMENTS.length - 1]
+  const edOn = clamp01((t - first.start) / 0.45) * (1 - clamp01((t - (last.start + last.len - 0.3)) / 0.3))
+  ED.style.opacity = edOn
+  const si = SEGMENTS.findIndex((s) => t >= s.start && t < s.start + s.len)
+  const seg = SEGMENTS[si]
+  if (seg && edOn > 0) {
+    const lt = t - seg.start
+    ctx.globalAlpha = 1; ctx.filter = 'none'
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H)
+    const prev = SEGMENTS[si - 1]
+    const dissolve = prev && !seg.cont && lt < XF
+    if (dissolve) await drawSeg(prev, prev.len + lt, 1)
+    const fadeIn = dissolve ? ease(lt / XF) : 1
+    const { v, tt, foc, dimK } = await drawSeg(seg, lt, fadeIn)
+    const toWin = (x, y) => [(x * v.sc - v.x) * v.s, (y * v.sc - v.y) * v.s]
+    const log = (window.TAKE_LOGS[seg.take] || {}).log || []
+    const c = cursorAt(log, tt)
+    const curA = fadeIn * (1 - foc) * (1 - clamp01(dimK * 2.2))
+    if (c && c.visible && curA > 0.01) {
+      const [x, y] = toWin(c.x, c.y)
+      cursor.style.opacity = curA
+      cursor.style.transform = `translate(${x - 5}px, ${y - 3}px)`
+    }
+    let ci = 0
+    for (const e of log) {
+      if (e.kind !== 'click' && e.kind !== 'down') continue
+      const k = (tt - e.t) / 0.5
+      if (k < 0 || k > 1 || ci >= clickEls.length || curA < 0.3) continue
+      const [x, y] = toWin(e.x, e.y)
+      const el = clickEls[ci++]
+      el.style.left = `${x}px`; el.style.top = `${y}px`
+      el.style.opacity = (0.9 * (1 - k)).toFixed(3)
+      el.style.transform = `translate(-50%,-50%) scale(${0.25 + 1.2 * k})`
+    }
+    callouts.filter((c) => c.seg === seg).forEach((c) => {
+      const a = clamp01((lt - c.t0) / 0.25) * (1 - clamp01((lt - c.t1) / 0.25))
+      if (a <= 0) return
+      const [x, y] = toWin(c.x, c.y)
+      const el = c.el, w = el.offsetWidth, h = el.offsetHeight
+      const off = { r: [30, -h / 2], l: [-w - 30, -h / 2], u: [-w / 2, -h - 30], d: [-w / 2, 30] }[c.side || 'r']
+      el.style.opacity = a
+      el.style.transform = `translate(${x + off[0]}px, ${y + off[1] + (1 - a) * 10}px)`
+    })
+    liftTags.filter((c) => c.seg === seg && c.l._rect).forEach((c) => {
+      const [x, y, w, h, k] = c.l._rect
+      if (k < 0.6) return
+      c.el.style.opacity = clamp01((k - 0.6) / 0.4)
+      c.el.style.transform = `translate(${x + 14}px, ${y + h + 18}px)`
+    })
+    SEGMENTS.forEach((s) => { (s.lifts || []).forEach((l) => { delete l._rect }) })
+  }
+
+  // languages: crop the preview out of each language take (unchanged from v3)
+  const L = LANG_SEG
+  const lOn = clamp01((t - L.start) / 0.35) * (1 - clamp01((t - (L.start + L.len - 0.3)) / 0.3))
+  LANG.style.opacity = lOn
+  if (lOn > 0) {
+    const cards = [...document.querySelectorAll('#LANG canvas')]
+    await Promise.all(L.cards.map(async (c, i) => {
+      const tt = c.from + (t - L.start)
+      const idx = Math.min(c.frames - 1, Math.max(0, Math.round(tt * FPS)))
+      const img = await frameImg(c.take, idx)
+      if (img) cards[i].getContext('2d').drawImage(img, c.crop[0], c.crop[1], c.crop[2], c.crop[3], 0, 0, 740, 1316)
+    }))
+  }
+}
+
+window.ready = document.fonts.ready
+  .then(() => Promise.all(['800 50px "Bricolage Grotesque"', 'italic 600 50px Fraunces', '800 20px "JetBrains Mono"'].map((f) => document.fonts.load(f))))
+  .then(() => {
+    placeWipes()
+    return window.renderAt(Number(new URLSearchParams(location.search).get('t') || 0)).then(() => true)
+  })
+</script>
+</body>
+</html>

@@ -1,0 +1,2464 @@
+{
+  "schema_version": 1,
+  "measured_date": "2026-10-06",
+  "benchmarks": {
+    "4": {
+      "generated_at": "2026-10-06T08:54:45.842016+00:00",
+      "environment": {
+        "platform": "Linux-6.18.15+deb13-cloud-amd64-x86_64-with-glibc2.36",
+        "python": "3.11.2",
+        "node": "v22.23.3",
+        "ffmpeg": "ffmpeg version 5.1.9-0+deb12u1 Copyright (c) 2000-2026 the FFmpeg developers",
+        "video_encoder": "auto",
+        "cpu_preset": "veryfast"
+      },
+      "fixture": {
+        "source_sha256": "3b4bfc996199a134d24c5145ba16dbdbdbd6b64f5d11a8b714716b719fff5359",
+        "duration_seconds": 60.0,
+        "source_dimensions": "720x1280",
+        "quality": "1080p",
+        "fps": 30,
+        "caption_count": 3,
+        "captions": [
+          {
+            "id": "benchmark-caption-1",
+            "text": "Measure every successful export",
+            "start_time": 0.0,
+            "end_time": 20.0,
+            "words": [
+              {
+                "word": "Measure",
+                "start": 0.0,
+                "end": 5.0
+              },
+              {
+                "word": "every",
+                "start": 5.0,
+                "end": 10.0
+              },
+              {
+                "word": "successful",
+                "start": 10.0,
+                "end": 15.0
+              },
+              {
+                "word": "export",
+                "start": 15.0,
+                "end": 20.0
+              }
+            ]
+          },
+          {
+            "id": "benchmark-caption-2",
+            "text": "Keep captions readable and aligned",
+            "start_time": 20.0,
+            "end_time": 40.0,
+            "words": [
+              {
+                "word": "Keep",
+                "start": 20.0,
+                "end": 24.0
+              },
+              {
+                "word": "captions",
+                "start": 24.0,
+                "end": 28.0
+              },
+              {
+                "word": "readable",
+                "start": 28.0,
+                "end": 32.0
+              },
+              {
+                "word": "and",
+                "start": 32.0,
+                "end": 36.0
+              },
+              {
+                "word": "aligned",
+                "start": 36.0,
+                "end": 40.0
+              }
+            ]
+          },
+          {
+            "id": "benchmark-caption-3",
+            "text": "Compare identical media workloads",
+            "start_time": 40.0,
+            "end_time": 60.0,
+            "words": [
+              {
+                "word": "Compare",
+                "start": 40.0,
+                "end": 45.0
+              },
+              {
+                "word": "identical",
+                "start": 45.0,
+                "end": 50.0
+              },
+              {
+                "word": "media",
+                "start": 50.0,
+                "end": 55.0
+              },
+              {
+                "word": "workloads",
+                "start": 55.0,
+                "end": 60.0
+              }
+            ]
+          }
+        ]
+      },
+      "configuration": {
+        "warmups_per_renderer": 1,
+        "measured_runs_per_renderer": 5,
+        "renderer_routes": {
+          "ass": "ass",
+          "dom": "dom"
+        },
+        "max_dom_to_ass_ratio": null
+      },
+      "runs": [
+        {
+          "renderer": "ass",
+          "phase": "warmup",
+          "iteration": 1,
+          "success": true,
+          "elapsed_seconds": 23.2756,
+          "output_bytes": 29213587,
+          "error": null
+        },
+        {
+          "renderer": "dom",
+          "phase": "warmup",
+          "iteration": 1,
+          "success": true,
+          "elapsed_seconds": 34.8203,
+          "output_bytes": 28061150,
+          "error": null
+        },
+        {
+          "renderer": "ass",
+          "phase": "measured",
+          "iteration": 1,
+          "success": true,
+          "elapsed_seconds": 23.0841,
+          "output_bytes": 29213587,
+          "error": null
+        },
+        {
+          "renderer": "dom",
+          "phase": "measured",
+          "iteration": 1,
+          "success": true,
+          "elapsed_seconds": 34.5679,
+          "output_bytes": 28061150,
+          "error": null
+        },
+        {
+          "renderer": "dom",
+          "phase": "measured",
+          "iteration": 2,
+          "success": true,
+          "elapsed_seconds": 34.4989,
+          "output_bytes": 28061150,
+          "error": null
+        },
+        {
+          "renderer": "ass",
+          "phase": "measured",
+          "iteration": 2,
+          "success": true,
+          "elapsed_seconds": 20.8659,
+          "output_bytes": 29213587,
+          "error": null
+        },
+        {
+          "renderer": "ass",
+          "phase": "measured",
+          "iteration": 3,
+          "success": true,
+          "elapsed_seconds": 20.1694,
+          "output_bytes": 29213587,
+          "error": null
+        },
+        {
+          "renderer": "dom",
+          "phase": "measured",
+          "iteration": 3,
+          "success": true,
+          "elapsed_seconds": 33.1883,
+          "output_bytes": 28061150,
+          "error": null
+        },
+        {
+          "renderer": "dom",
+          "phase": "measured",
+          "iteration": 4,
+          "success": true,
+          "elapsed_seconds": 32.5569,
+          "output_bytes": 28061150,
+          "error": null
+        },
+        {
+          "renderer": "ass",
+          "phase": "measured",
+          "iteration": 4,
+          "success": true,
+          "elapsed_seconds": 21.4327,
+          "output_bytes": 29213587,
+          "error": null
+        },
+        {
+          "renderer": "ass",
+          "phase": "measured",
+          "iteration": 5,
+          "success": true,
+          "elapsed_seconds": 19.2677,
+          "output_bytes": 29213587,
+          "error": null
+        },
+        {
+          "renderer": "dom",
+          "phase": "measured",
+          "iteration": 5,
+          "success": true,
+          "elapsed_seconds": 32.7738,
+          "output_bytes": 28061150,
+          "error": null
+        }
+      ],
+      "summaries": {
+        "ass": {
+          "attempts": 5,
+          "successful": 5,
+          "failed": 0,
+          "success_rate": 1.0,
+          "median_seconds": 20.8659,
+          "p95_seconds": 22.7538,
+          "median_realtime_factor": 0.3478,
+          "median_output_bytes": 29213587
+        },
+        "dom": {
+          "attempts": 5,
+          "successful": 5,
+          "failed": 0,
+          "success_rate": 1.0,
+          "median_seconds": 33.1883,
+          "p95_seconds": 34.5541,
+          "median_realtime_factor": 0.5531,
+          "median_output_bytes": 28061150
+        }
+      },
+      "comparison": {
+        "dom_to_ass_median_ratio": 1.5906
+      },
+      "runtime": {
+        "cpu_max": "400000 100000",
+        "memory_max": "8000000000",
+        "commit": "0c5182f3672a618a38a4d5bbef4847a80e9e6d72"
+      }
+    },
+    "8": {
+      "generated_at": "2026-10-06T07:56:54.942565+00:00",
+      "environment": {
+        "platform": "Linux-6.18.15+deb13-cloud-amd64-x86_64-with-glibc2.36",
+        "python": "3.11.2",
+        "node": "v22.23.3",
+        "ffmpeg": "ffmpeg version 5.1.9-0+deb12u1 Copyright (c) 2000-2026 the FFmpeg developers",
+        "video_encoder": "auto",
+        "cpu_preset": "veryfast"
+      },
+      "fixture": {
+        "source_sha256": "3b4bfc996199a134d24c5145ba16dbdbdbd6b64f5d11a8b714716b719fff5359",
+        "duration_seconds": 60.0,
+        "source_dimensions": "720x1280",
+        "quality": "1080p",
+        "fps": 30,
+        "caption_count": 3,
+        "captions": [
+          {
+            "id": "benchmark-caption-1",
+            "text": "Measure every successful export",
+            "start_time": 0.0,
+            "end_time": 20.0,
+            "words": [
+              {
+                "word": "Measure",
+                "start": 0.0,
+                "end": 5.0
+              },
+              {
+                "word": "every",
+                "start": 5.0,
+                "end": 10.0
+              },
+              {
+                "word": "successful",
+                "start": 10.0,
+                "end": 15.0
+              },
+              {
+                "word": "export",
+                "start": 15.0,
+                "end": 20.0
+              }
+            ]
+          },
+          {
+            "id": "benchmark-caption-2",
+            "text": "Keep captions readable and aligned",
+            "start_time": 20.0,
+            "end_time": 40.0,
+            "words": [
+              {
+                "word": "Keep",
+                "start": 20.0,
+                "end": 24.0
+              },
+              {
+                "word": "captions",
+                "start": 24.0,
+                "end": 28.0
+              },
+              {
+                "word": "readable",
+                "start": 28.0,
+                "end": 32.0
+              },
+              {
+                "word": "and",
+                "start": 32.0,
+                "end": 36.0
+              },
+              {
+                "word": "aligned",
+                "start": 36.0,
+                "end": 40.0
+              }
+            ]
+          },
+          {
+            "id": "benchmark-caption-3",
+            "text": "Compare identical media workloads",
+            "start_time": 40.0,
+            "end_time": 60.0,
+            "words": [
+              {
+                "word": "Compare",
+                "start": 40.0,
+                "end": 45.0
+              },
+              {
+                "word": "identical",
+                "start": 45.0,
+                "end": 50.0
+              },
+              {
+                "word": "media",
+                "start": 50.0,
+                "end": 55.0
+              },
+              {
+                "word": "workloads",
+                "start": 55.0,
+                "end": 60.0
+              }
+            ]
+          }
+        ]
+      },
+      "configuration": {
+        "warmups_per_renderer": 1,
+        "measured_runs_per_renderer": 5,
+        "renderer_routes": {
+          "ass": "ass",
+          "dom": "dom"
+        },
+        "max_dom_to_ass_ratio": null
+      },
+      "runs": [
+        {
+          "renderer": "ass",
+          "phase": "warmup",
+          "iteration": 1,
+          "success": true,
+          "elapsed_seconds": 11.1987,
+          "output_bytes": 29213587,
+          "error": null
+        },
+        {
+          "renderer": "dom",
+          "phase": "warmup",
+          "iteration": 1,
+          "success": true,
+          "elapsed_seconds": 15.4895,
+          "output_bytes": 28061150,
+          "error": null
+        },
+        {
+          "renderer": "ass",
+          "phase": "measured",
+          "iteration": 1,
+          "success": true,
+          "elapsed_seconds": 9.0059,
+          "output_bytes": 29213587,
+          "error": null
+        },
+        {
+          "renderer": "dom",
+          "phase": "measured",
+          "iteration": 1,
+          "success": true,
+          "elapsed_seconds": 16.2329,
+          "output_bytes": 28061150,
+          "error": null
+        },
+        {
+          "renderer": "dom",
+          "phase": "measured",
+          "iteration": 2,
+          "success": true,
+          "elapsed_seconds": 15.3858,
+          "output_bytes": 28061150,
+          "error": null
+        },
+        {
+          "renderer": "ass",
+          "phase": "measured",
+          "iteration": 2,
+          "success": true,
+          "elapsed_seconds": 8.9846,
+          "output_bytes": 29213587,
+          "error": null
+        },
+        {
+          "renderer": "ass",
+          "phase": "measured",
+          "iteration": 3,
+          "success": true,
+          "elapsed_seconds": 9.2821,
+          "output_bytes": 29213587,
+          "error": null
+        },
+        {
+          "renderer": "dom",
+          "phase": "measured",
+          "iteration": 3,
+          "success": true,
+          "elapsed_seconds": 15.7011,
+          "output_bytes": 28061150,
+          "error": null
+        },
+        {
+          "renderer": "dom",
+          "phase": "measured",
+          "iteration": 4,
+          "success": true,
+          "elapsed_seconds": 15.646,
+          "output_bytes": 28061150,
+          "error": null
+        },
+        {
+          "renderer": "ass",
+          "phase": "measured",
+          "iteration": 4,
+          "success": true,
+          "elapsed_seconds": 8.6905,
+          "output_bytes": 29213587,
+          "error": null
+        },
+        {
+          "renderer": "ass",
+          "phase": "measured",
+          "iteration": 5,
+          "success": true,
+          "elapsed_seconds": 8.5169,
+          "output_bytes": 29213587,
+          "error": null
+        },
+        {
+          "renderer": "dom",
+          "phase": "measured",
+          "iteration": 5,
+          "success": true,
+          "elapsed_seconds": 15.0682,
+          "output_bytes": 28061150,
+          "error": null
+        }
+      ],
+      "summaries": {
+        "ass": {
+          "attempts": 5,
+          "successful": 5,
+          "failed": 0,
+          "success_rate": 1.0,
+          "median_seconds": 8.9846,
+          "p95_seconds": 9.2269,
+          "median_realtime_factor": 0.1497,
+          "median_output_bytes": 29213587
+        },
+        "dom": {
+          "attempts": 5,
+          "successful": 5,
+          "failed": 0,
+          "success_rate": 1.0,
+          "median_seconds": 15.646,
+          "p95_seconds": 16.1265,
+          "median_realtime_factor": 0.2608,
+          "median_output_bytes": 28061150
+        }
+      },
+      "comparison": {
+        "dom_to_ass_median_ratio": 1.7414
+      },
+      "runtime": {
+        "cpu_max": "800000 100000",
+        "memory_max": "8000000000",
+        "commit": "6d5dccdb9872a99cb14a0591d47f835420c5ff09"
+      }
+    }
+  },
+  "bursts": {
+    "ten_client": {
+      "summary": {
+        "jobs": 10,
+        "successes": 10,
+        "success_rate": 1.0,
+        "total_seconds": {
+          "p50": 169.38300000000027,
+          "p95": 182.51600000000053,
+          "max": 184.96900000000005
+        },
+        "stages_seconds": {
+          "upload": {
+            "p50": 17.79699999999957,
+            "p95": 20.60899999999947
+          },
+          "process": {
+            "p50": 57.445500000000266,
+            "p95": 70.8119999999999
+          },
+          "queue_wait": {
+            "p50": 57.710499999999996,
+            "p95": 62.431
+          },
+          "export": {
+            "p50": 68.82100000000037,
+            "p95": 80.29700000000048
+          },
+          "download": {
+            "p50": 3.5470000000000255,
+            "p95": 6.95299999999952
+          }
+        },
+        "admission_retries": 0,
+        "failure_count": 0,
+        "failure_categories": {}
+      },
+      "journeys": [
+        {
+          "index": 1,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102844,
+          "stages_seconds": {
+            "upload": 10.969000000000051,
+            "process": 15.25,
+            "queue_wait": 61.901,
+            "export": 75.75,
+            "download": 6.95299999999952
+          },
+          "total_seconds": 180.9380000000001
+        },
+        {
+          "index": 2,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102844,
+          "stages_seconds": {
+            "upload": 20.73399999999947,
+            "process": 73.89100000000053,
+            "queue_wait": 1.948,
+            "export": 13.280999999999949,
+            "download": 7.780999999999949
+          },
+          "total_seconds": 119.29700000000048
+        },
+        {
+          "index": 3,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102844,
+          "stages_seconds": {
+            "upload": 17.35900000000038,
+            "process": 44.71900000000005,
+            "queue_wait": 65.864,
+            "export": 80.29700000000048,
+            "download": 3.969000000000051
+          },
+          "total_seconds": 182.51600000000053
+        },
+        {
+          "index": 4,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102844,
+          "stages_seconds": {
+            "upload": 18.10899999999947,
+            "process": 59.15700000000015,
+            "queue_wait": 23.523,
+            "export": 32.48500000000058,
+            "download": 6.405999999999949
+          },
+          "total_seconds": 137.14100000000053
+        },
+        {
+          "index": 5,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102844,
+          "stages_seconds": {
+            "upload": 14.640000000000327,
+            "process": 33.35999999999967,
+            "queue_wait": 61.697,
+            "export": 76.70299999999952,
+            "download": 4.030999999999949
+          },
+          "total_seconds": 178.96900000000005
+        },
+        {
+          "index": 6,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102844,
+          "stages_seconds": {
+            "upload": 18.28099999999995,
+            "process": 70.8119999999999,
+            "queue_wait": 12.355,
+            "export": 22.45300000000043,
+            "download": 2.063000000000102
+          },
+          "total_seconds": 122.76600000000053
+        },
+        {
+          "index": 7,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102844,
+          "stages_seconds": {
+            "upload": 13.438000000000102,
+            "process": 26.967999999999847,
+            "queue_wait": 62.316,
+            "export": 83.59400000000005,
+            "download": 3.125
+          },
+          "total_seconds": 184.96900000000005
+        },
+        {
+          "index": 8,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102844,
+          "stages_seconds": {
+            "upload": 18.640000000000327,
+            "process": 70.48499999999967,
+            "queue_wait": 33.084,
+            "export": 54.42200000000048,
+            "download": 2.530999999999949
+          },
+          "total_seconds": 155.20300000000043
+        },
+        {
+          "index": 9,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8120796,
+          "stages_seconds": {
+            "upload": 17.484999999999673,
+            "process": 55.73400000000038,
+            "queue_wait": 53.724,
+            "export": 64.11000000000058,
+            "download": 2.264999999999418
+          },
+          "total_seconds": 164.625
+        },
+        {
+          "index": 10,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102844,
+          "stages_seconds": {
+            "upload": 20.60899999999947,
+            "process": 62.875,
+            "queue_wait": 62.431,
+            "export": 73.53200000000015,
+            "download": 2.3590000000003783
+          },
+          "total_seconds": 174.14100000000053
+        }
+      ]
+    },
+    "resumed_hundred_export": {
+      "summary": {
+        "jobs": 100,
+        "successes": 85,
+        "success_rate": 0.85,
+        "total_seconds": {
+          "p50": 196.10949999999912,
+          "p95": 446.65599999999995,
+          "max": 446.95300000000043
+        },
+        "stages_seconds": {
+          "upload": {
+            "p50": 0.0,
+            "p95": 0.0
+          },
+          "process": {
+            "p50": 10.530999999999949,
+            "p95": 10.95300000000043
+          },
+          "queue_wait": {
+            "p50": 64.265,
+            "p95": 106.876
+          },
+          "export": {
+            "p50": 116.46900000000096,
+            "p95": 246.60900000000038
+          },
+          "download": {
+            "p50": 17.82799999999952,
+            "p95": 80.625
+          }
+        },
+        "admission_retries": 62,
+        "failure_count": 15,
+        "failure_categories": {
+          "storage_read_timeout": 15
+        }
+      },
+      "journeys": [
+        {
+          "index": 1,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102844,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 11.0,
+            "queue_wait": 8.681,
+            "export": 14.53099999999904,
+            "download": 2.3440000000009604
+          },
+          "total_seconds": 45.5
+        },
+        {
+          "index": 2,
+          "ok": false,
+          "admission_retries": 2,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.54699999999957,
+            "queue_wait": 37.495,
+            "export": 219.92199999999957
+          },
+          "total_seconds": 445.34399999999914
+        },
+        {
+          "index": 3,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102844,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.875,
+            "queue_wait": 106.876,
+            "export": 116.64000000000033,
+            "download": 24.67199999999866
+          },
+          "total_seconds": 169.90599999999904
+        },
+        {
+          "index": 4,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102844,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 11.0,
+            "queue_wait": 111.23,
+            "export": 134.95300000000043,
+            "download": 23.0
+          },
+          "total_seconds": 186.54700000000048
+        },
+        {
+          "index": 5,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102844,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.875,
+            "queue_wait": 105.544,
+            "export": 116.46900000000096,
+            "download": 21.57799999999952
+          },
+          "total_seconds": 166.625
+        },
+        {
+          "index": 6,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102844,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.561999999999898,
+            "queue_wait": 57.849,
+            "export": 69.92200000000048,
+            "download": 5.79700000000048
+          },
+          "total_seconds": 104.29700000000048
+        },
+        {
+          "index": 7,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102844,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.780999999999949,
+            "queue_wait": 33.022,
+            "export": 40.79700000000048,
+            "download": 4.625
+          },
+          "total_seconds": 74.0
+        },
+        {
+          "index": 8,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102844,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.82799999999952,
+            "queue_wait": 2.679,
+            "export": 11.17200000000048,
+            "download": 3.6559999999990396
+          },
+          "total_seconds": 43.40599999999904
+        },
+        {
+          "index": 9,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102844,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.186999999999898,
+            "queue_wait": 36.969,
+            "export": 48.35900000000038,
+            "download": 9.468999999999141
+          },
+          "total_seconds": 86.40599999999904
+        },
+        {
+          "index": 10,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102844,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.844000000000051,
+            "queue_wait": 80.39,
+            "export": 86.65600000000086,
+            "download": 17.54699999999866
+          },
+          "total_seconds": 132.78099999999904
+        },
+        {
+          "index": 11,
+          "ok": true,
+          "admission_retries": 2,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 9.233999999999469,
+            "queue_wait": 33.746,
+            "export": 215.70299999999952,
+            "download": 31.34400000000096
+          },
+          "total_seconds": 275.625
+        },
+        {
+          "index": 12,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.030999999999949,
+            "queue_wait": 64.43,
+            "export": 81.39000000000033,
+            "download": 17.54699999999866
+          },
+          "total_seconds": 127.51499999999942
+        },
+        {
+          "index": 13,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8121003,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.859000000000378,
+            "queue_wait": 72.453,
+            "export": 85.625,
+            "download": 8.875
+          },
+          "total_seconds": 123.0619999999999
+        },
+        {
+          "index": 14,
+          "ok": false,
+          "admission_retries": 2,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 9.515000000000327,
+            "queue_wait": 40.125,
+            "export": 219.4999999999991
+          },
+          "total_seconds": 445.7029999999995
+        },
+        {
+          "index": 15,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.561999999999898,
+            "queue_wait": 1.928,
+            "export": 17.32800000000043,
+            "download": 6.20299999999952
+          },
+          "total_seconds": 52.10900000000038
+        },
+        {
+          "index": 16,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.95300000000043,
+            "queue_wait": 107.14,
+            "export": 138.34299999999985,
+            "download": 20.67200000000048
+          },
+          "total_seconds": 187.59300000000076
+        },
+        {
+          "index": 17,
+          "ok": true,
+          "admission_retries": 1,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.967999999999847,
+            "queue_wait": 67.874,
+            "export": 169.8749999999991,
+            "download": 25.390000000001237
+          },
+          "total_seconds": 223.84300000000076
+        },
+        {
+          "index": 18,
+          "ok": false,
+          "admission_retries": 1,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 8.5,
+            "queue_wait": 82.232,
+            "export": 187.53100000000086
+          },
+          "total_seconds": 445.25
+        },
+        {
+          "index": 19,
+          "ok": false,
+          "admission_retries": 1,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.546000000000276,
+            "queue_wait": 80.452,
+            "export": 181.64099999999962
+          },
+          "total_seconds": 445.5
+        },
+        {
+          "index": 20,
+          "ok": true,
+          "admission_retries": 1,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.95300000000043,
+            "queue_wait": 44.854,
+            "export": 140.4999999999991,
+            "download": 89.90600000000086
+          },
+          "total_seconds": 258.9840000000004
+        },
+        {
+          "index": 21,
+          "ok": true,
+          "admission_retries": 2,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.811999999999898,
+            "queue_wait": 60.855,
+            "export": 252.78099999999995,
+            "download": 6.765999999999622
+          },
+          "total_seconds": 288.125
+        },
+        {
+          "index": 22,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.421000000000276,
+            "queue_wait": 14.242,
+            "export": 27.03100000000086,
+            "download": 3.2189999999991414
+          },
+          "total_seconds": 58.8119999999999
+        },
+        {
+          "index": 23,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.45299999999952,
+            "queue_wait": 110.139,
+            "export": 128.45299999999952,
+            "download": 90.3130000000001
+          },
+          "total_seconds": 247.3129999999992
+        },
+        {
+          "index": 24,
+          "ok": true,
+          "admission_retries": 1,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.125,
+            "queue_wait": 68.036,
+            "export": 170.07800000000043,
+            "download": 24.82799999999952
+          },
+          "total_seconds": 223.46900000000005
+        },
+        {
+          "index": 25,
+          "ok": true,
+          "admission_retries": 1,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.109999999999673,
+            "queue_wait": 81.056,
+            "export": 185.65599999999995,
+            "download": 92.92200000000048
+          },
+          "total_seconds": 307.14100000000053
+        },
+        {
+          "index": 26,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 9.04699999999957,
+            "queue_wait": 83.462,
+            "export": 101.42199999999957,
+            "download": 16.375
+          },
+          "total_seconds": 146.35999999999967
+        },
+        {
+          "index": 27,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 8.75,
+            "queue_wait": 103.49,
+            "export": 130.5,
+            "download": 24.03100000000086
+          },
+          "total_seconds": 183.14100000000053
+        },
+        {
+          "index": 28,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.515999999999622,
+            "queue_wait": 79.796,
+            "export": 96.35899999999947,
+            "download": 21.01599999999962
+          },
+          "total_seconds": 145.9379999999992
+        },
+        {
+          "index": 29,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.75,
+            "queue_wait": 26.317,
+            "export": 37.23400000000038,
+            "download": 14.235000000000582
+          },
+          "total_seconds": 80.01600000000053
+        },
+        {
+          "index": 30,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 9.655999999999949,
+            "queue_wait": 22.724,
+            "export": 36.95300000000043,
+            "download": 6.358999999998559
+          },
+          "total_seconds": 71.87499999999909
+        },
+        {
+          "index": 31,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 9.313000000000102,
+            "queue_wait": 91.462,
+            "export": 107.81199999999899,
+            "download": 10.84400000000096
+          },
+          "total_seconds": 147.21900000000005
+        },
+        {
+          "index": 32,
+          "ok": false,
+          "admission_retries": 0,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.70299999999952,
+            "queue_wait": 109.056,
+            "export": 128.45300000000043
+          },
+          "total_seconds": 445.84400000000005
+        },
+        {
+          "index": 33,
+          "ok": true,
+          "admission_retries": 1,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.530999999999949,
+            "queue_wait": 57.995,
+            "export": 159.21900000000096,
+            "download": 71.4369999999999
+          },
+          "total_seconds": 259.20300000000043
+        },
+        {
+          "index": 34,
+          "ok": false,
+          "admission_retries": 1,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 11.0,
+            "queue_wait": 47.202,
+            "export": 147.92199999999957
+          },
+          "total_seconds": 445.3599999999997
+        },
+        {
+          "index": 35,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8120797,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 9.984999999999673,
+            "queue_wait": 64.265,
+            "export": 81.10899999999947,
+            "download": 24.938000000000102
+          },
+          "total_seconds": 134.60999999999967
+        },
+        {
+          "index": 36,
+          "ok": false,
+          "admission_retries": 1,
+          "stages_seconds": {
+            "upload": 14.67199999999957,
+            "process": 11.641000000000531,
+            "queue_wait": 71.993,
+            "export": 170.07800000000043
+          },
+          "total_seconds": 446.8749999999991
+        },
+        {
+          "index": 37,
+          "ok": false,
+          "admission_retries": 0,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.95300000000043,
+            "queue_wait": 105.465,
+            "export": 130.8749999999991
+          },
+          "total_seconds": 445.07800000000043
+        },
+        {
+          "index": 38,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 9.405999999999949,
+            "queue_wait": 17.779,
+            "export": 33.75,
+            "download": 12.484000000000378
+          },
+          "total_seconds": 74.76500000000033
+        },
+        {
+          "index": 39,
+          "ok": false,
+          "admission_retries": 2,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 8.875,
+            "queue_wait": 46.102,
+            "export": 227.84400000000096
+          },
+          "total_seconds": 446.65599999999995
+        },
+        {
+          "index": 40,
+          "ok": true,
+          "admission_retries": 1,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 16.48400000000038,
+            "process": 12.04699999999957,
+            "queue_wait": 100.186,
+            "export": 200.375,
+            "download": 79.20299999999952
+          },
+          "total_seconds": 308.10899999999947
+        },
+        {
+          "index": 41,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.234000000000378,
+            "queue_wait": 96.779,
+            "export": 112.9380000000001,
+            "download": 42.42100000000028
+          },
+          "total_seconds": 183.89000000000033
+        },
+        {
+          "index": 42,
+          "ok": true,
+          "admission_retries": 2,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 9.5,
+            "queue_wait": 61.559,
+            "export": 246.65599999999995,
+            "download": 33.82799999999952
+          },
+          "total_seconds": 309.03099999999995
+        },
+        {
+          "index": 43,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.5,
+            "queue_wait": 41.631,
+            "export": 57.68699999999899,
+            "download": 15.76600000000144
+          },
+          "total_seconds": 102.00000000000091
+        },
+        {
+          "index": 44,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.390000000000327,
+            "queue_wait": 57.283,
+            "export": 75.14099999999962,
+            "download": 5.186999999999898
+          },
+          "total_seconds": 108.85899999999947
+        },
+        {
+          "index": 45,
+          "ok": false,
+          "admission_retries": 2,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 8.234000000000378,
+            "queue_wait": 42.603,
+            "export": 227.04699999999957
+          },
+          "total_seconds": 446.8750000000009
+        },
+        {
+          "index": 46,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 9.515000000000327,
+            "queue_wait": 1.583,
+            "export": 17.17200000000048,
+            "download": 6.015999999999622
+          },
+          "total_seconds": 51.71900000000005
+        },
+        {
+          "index": 47,
+          "ok": true,
+          "admission_retries": 2,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.109000000000378,
+            "queue_wait": 54.79,
+            "export": 246.60900000000038,
+            "download": 32.6880000000001
+          },
+          "total_seconds": 307.82800000000043
+        },
+        {
+          "index": 48,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.530999999999949,
+            "queue_wait": 33.448,
+            "export": 50.57799999999952,
+            "download": 6.985000000000582
+          },
+          "total_seconds": 86.09400000000005
+        },
+        {
+          "index": 49,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 9.67200000000048,
+            "queue_wait": 106.239,
+            "export": 120.20300000000043,
+            "download": 20.610000000000582
+          },
+          "total_seconds": 169.3750000000009
+        },
+        {
+          "index": 50,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.734000000000378,
+            "queue_wait": 47.695,
+            "export": 57.68699999999899,
+            "download": 11.735000000000582
+          },
+          "total_seconds": 97.96900000000005
+        },
+        {
+          "index": 51,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.936999999999898,
+            "queue_wait": 17.777,
+            "export": 33.48399999999947,
+            "download": 7.531000000000859
+          },
+          "total_seconds": 69.56200000000081
+        },
+        {
+          "index": 52,
+          "ok": true,
+          "admission_retries": 1,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 9.515999999999622,
+            "queue_wait": 68.029,
+            "export": 166.70299999999952,
+            "download": 10.406000000000859
+          },
+          "total_seconds": 205.625
+        },
+        {
+          "index": 53,
+          "ok": true,
+          "admission_retries": 1,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.5,
+            "queue_wait": 54.751,
+            "export": 155.125,
+            "download": 116.78100000000086
+          },
+          "total_seconds": 300.4220000000005
+        },
+        {
+          "index": 54,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.42199999999957,
+            "queue_wait": 106.964,
+            "export": 143.78099999999904,
+            "download": 133.1880000000001
+          },
+          "total_seconds": 305.53199999999924
+        },
+        {
+          "index": 55,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8120029,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.5,
+            "queue_wait": 85.216,
+            "export": 101.40600000000086,
+            "download": 11.265999999999622
+          },
+          "total_seconds": 141.1880000000001
+        },
+        {
+          "index": 56,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8120193,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.859999999999673,
+            "queue_wait": 49.64,
+            "export": 66.03099999999995,
+            "download": 5.561999999999898
+          },
+          "total_seconds": 100.125
+        },
+        {
+          "index": 57,
+          "ok": false,
+          "admission_retries": 1,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.688000000000102,
+            "queue_wait": 45.876,
+            "export": 143.40599999999995
+          },
+          "total_seconds": 445.25
+        },
+        {
+          "index": 58,
+          "ok": true,
+          "admission_retries": 1,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.813000000000102,
+            "queue_wait": 56.624,
+            "export": 156.625,
+            "download": 8.90599999999904
+          },
+          "total_seconds": 194.09399999999914
+        },
+        {
+          "index": 59,
+          "ok": true,
+          "admission_retries": 1,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.515999999999622,
+            "queue_wait": 54.758,
+            "export": 151.89000000000033,
+            "download": 44.42199999999866
+          },
+          "total_seconds": 224.84399999999914
+        },
+        {
+          "index": 60,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 9.265999999999622,
+            "queue_wait": 52.073,
+            "export": 64.51599999999962,
+            "download": 16.17200000000048
+          },
+          "total_seconds": 109.20399999999972
+        },
+        {
+          "index": 61,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 9.54699999999957,
+            "queue_wait": 78.844,
+            "export": 95.5,
+            "download": 8.20299999999952
+          },
+          "total_seconds": 132.21899999999914
+        },
+        {
+          "index": 62,
+          "ok": true,
+          "admission_retries": 1,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 9.875,
+            "queue_wait": 64.185,
+            "export": 159.39000000000033,
+            "download": 32.29699999999866
+          },
+          "total_seconds": 220.21899999999914
+        },
+        {
+          "index": 63,
+          "ok": false,
+          "admission_retries": 2,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.5,
+            "queue_wait": 41.789,
+            "export": 228.14000000000033
+          },
+          "total_seconds": 446.8600000000006
+        },
+        {
+          "index": 64,
+          "ok": true,
+          "admission_retries": 2,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.641000000000531,
+            "queue_wait": 47.355,
+            "export": 258.9999999999991,
+            "download": 15.25
+          },
+          "total_seconds": 302.7659999999996
+        },
+        {
+          "index": 65,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.063000000000102,
+            "queue_wait": 16.036,
+            "export": 31.20299999999952,
+            "download": 2.438000000000102
+          },
+          "total_seconds": 62.14099999999962
+        },
+        {
+          "index": 66,
+          "ok": true,
+          "admission_retries": 2,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.891000000000531,
+            "queue_wait": 50.684,
+            "export": 238.84299999999985,
+            "download": 40.40699999999924
+          },
+          "total_seconds": 307.7659999999996
+        },
+        {
+          "index": 67,
+          "ok": true,
+          "admission_retries": 1,
+          "bytes": 8120193,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.82800000000043,
+            "queue_wait": 91.789,
+            "export": 192.95300000000043,
+            "download": 78.84399999999914
+          },
+          "total_seconds": 300.3279999999995
+        },
+        {
+          "index": 68,
+          "ok": true,
+          "admission_retries": 1,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.70300000000043,
+            "queue_wait": 87.903,
+            "export": 192.96799999999985,
+            "download": 80.625
+          },
+          "total_seconds": 302.1090000000004
+        },
+        {
+          "index": 69,
+          "ok": false,
+          "admission_retries": 1,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.04700000000048,
+            "queue_wait": 56.094,
+            "export": 155.0619999999999
+          },
+          "total_seconds": 446.75
+        },
+        {
+          "index": 70,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.07800000000043,
+            "queue_wait": 39.45,
+            "export": 51.32800000000043,
+            "download": 10.73399999999856
+          },
+          "total_seconds": 90.57799999999952
+        },
+        {
+          "index": 71,
+          "ok": true,
+          "admission_retries": 2,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.766000000000531,
+            "queue_wait": 57.665,
+            "export": 246.76500000000033,
+            "download": 19.063000000000102
+          },
+          "total_seconds": 294.34400000000096
+        },
+        {
+          "index": 72,
+          "ok": true,
+          "admission_retries": 1,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 11.125,
+            "queue_wait": 101.206,
+            "export": 205.79699999999957,
+            "download": 13.593000000000757
+          },
+          "total_seconds": 247.90600000000086
+        },
+        {
+          "index": 73,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.75,
+            "queue_wait": 1.824,
+            "export": 23.17199999999957,
+            "download": 3.889999999999418
+          },
+          "total_seconds": 55.57799999999952
+        },
+        {
+          "index": 74,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.655999999999949,
+            "queue_wait": 36.298,
+            "export": 50.46900000000096,
+            "download": 14.60899999999856
+          },
+          "total_seconds": 93.57799999999952
+        },
+        {
+          "index": 75,
+          "ok": true,
+          "admission_retries": 1,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.280999999999949,
+            "queue_wait": 96.424,
+            "export": 200.17199999999957,
+            "download": 27.28100000000086
+          },
+          "total_seconds": 255.98400000000038
+        },
+        {
+          "index": 76,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.891000000000531,
+            "queue_wait": 88.31,
+            "export": 101.73399999999947,
+            "download": 18.32799999999952
+          },
+          "total_seconds": 148.57799999999952
+        },
+        {
+          "index": 77,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.95300000000043,
+            "queue_wait": 96.985,
+            "export": 112.84400000000005,
+            "download": 15.42200000000048
+          },
+          "total_seconds": 156.79700000000048
+        },
+        {
+          "index": 78,
+          "ok": false,
+          "admission_retries": 1,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 8.639999999999418,
+            "queue_wait": 77.026,
+            "export": 178.21900000000096
+          },
+          "total_seconds": 446.95300000000043
+        },
+        {
+          "index": 79,
+          "ok": true,
+          "admission_retries": 1,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.186999999999898,
+            "queue_wait": 68.796,
+            "export": 169.936999999999,
+            "download": 26.59400000000096
+          },
+          "total_seconds": 225.03099999999995
+        },
+        {
+          "index": 80,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 9.858999999999469,
+            "queue_wait": 48.893,
+            "export": 64.39000000000033,
+            "download": 12.515999999999622
+          },
+          "total_seconds": 105.40599999999995
+        },
+        {
+          "index": 81,
+          "ok": true,
+          "admission_retries": 1,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.936999999999898,
+            "queue_wait": 96.117,
+            "export": 197.42199999999957,
+            "download": 11.514999999999418
+          },
+          "total_seconds": 237.436999999999
+        },
+        {
+          "index": 82,
+          "ok": true,
+          "admission_retries": 1,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.061999999999898,
+            "queue_wait": 80.746,
+            "export": 181.57800000000043,
+            "download": 54.67199999999866
+          },
+          "total_seconds": 264.7499999999991
+        },
+        {
+          "index": 83,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.717999999999847,
+            "queue_wait": 108.89,
+            "export": 143.82800000000043,
+            "download": 25.79699999999866
+          },
+          "total_seconds": 198.1249999999991
+        },
+        {
+          "index": 84,
+          "ok": true,
+          "admission_retries": 2,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.70299999999952,
+            "queue_wait": 53.496,
+            "export": 239.04699999999957,
+            "download": 41.1869999999999
+          },
+          "total_seconds": 308.73399999999947
+        },
+        {
+          "index": 85,
+          "ok": true,
+          "admission_retries": 1,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.842999999999847,
+            "queue_wait": 90.971,
+            "export": 190.39000000000033,
+            "download": 62.17199999999866
+          },
+          "total_seconds": 281.061999999999
+        },
+        {
+          "index": 86,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.764999999999418,
+            "queue_wait": 2.627,
+            "export": 17.62499999999909,
+            "download": 13.75
+          },
+          "total_seconds": 59.87499999999909
+        },
+        {
+          "index": 87,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 8.719000000000051,
+            "queue_wait": 102.627,
+            "export": 120.375,
+            "download": 18.5
+          },
+          "total_seconds": 167.34400000000005
+        },
+        {
+          "index": 88,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8120165,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.860000000000582,
+            "queue_wait": 78.504,
+            "export": 92.01600000000053,
+            "download": 7.07799999999952
+          },
+          "total_seconds": 127.59400000000005
+        },
+        {
+          "index": 89,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.45300000000043,
+            "queue_wait": 92.846,
+            "export": 109.15599999999995,
+            "download": 17.82799999999952
+          },
+          "total_seconds": 155.46900000000005
+        },
+        {
+          "index": 90,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 8.766000000000531,
+            "queue_wait": 29.231,
+            "export": 44.01599999999962,
+            "download": 4.936999999999898
+          },
+          "total_seconds": 77.42199999999957
+        },
+        {
+          "index": 91,
+          "ok": false,
+          "admission_retries": 1,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.625,
+            "queue_wait": 100.383,
+            "export": 214.45300000000043
+          },
+          "total_seconds": 446.4849999999997
+        },
+        {
+          "index": 92,
+          "ok": true,
+          "admission_retries": 2,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.891000000000531,
+            "queue_wait": 61.226,
+            "export": 252.686999999999,
+            "download": 24.313000000000102
+          },
+          "total_seconds": 305.4849999999997
+        },
+        {
+          "index": 93,
+          "ok": true,
+          "admission_retries": 2,
+          "bytes": 8120193,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.719000000000051,
+            "queue_wait": 43.76,
+            "export": 231.85899999999947,
+            "download": 44.14099999999962
+          },
+          "total_seconds": 304.4849999999997
+        },
+        {
+          "index": 94,
+          "ok": true,
+          "admission_retries": 1,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.45300000000043,
+            "queue_wait": 101.047,
+            "export": 212.64099999999962,
+            "download": 66.125
+          },
+          "total_seconds": 307.2349999999997
+        },
+        {
+          "index": 95,
+          "ok": true,
+          "admission_retries": 1,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.92200000000048,
+            "queue_wait": 97.23,
+            "export": 208.82800000000043,
+            "download": 37.96899999999914
+          },
+          "total_seconds": 275.28200000000015
+        },
+        {
+          "index": 96,
+          "ok": true,
+          "admission_retries": 2,
+          "bytes": 8120797,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.890999999999622,
+            "queue_wait": 51.37,
+            "export": 239.45300000000043,
+            "download": 6.78099999999904
+          },
+          "total_seconds": 274.7029999999995
+        },
+        {
+          "index": 97,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.608999999999469,
+            "queue_wait": 67.531,
+            "export": 79.59299999999985,
+            "download": 19.625
+          },
+          "total_seconds": 127.6869999999999
+        },
+        {
+          "index": 98,
+          "ok": true,
+          "admission_retries": 1,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.686999999999898,
+            "queue_wait": 100.907,
+            "export": 211.25,
+            "download": 35.51599999999962
+          },
+          "total_seconds": 275.2659999999996
+        },
+        {
+          "index": 99,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 9.186999999999898,
+            "queue_wait": 64.536,
+            "export": 81.90600000000086,
+            "download": 15.109999999998763
+          },
+          "total_seconds": 125.46899999999914
+        },
+        {
+          "index": 100,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 8102845,
+          "stages_seconds": {
+            "upload": 0.0,
+            "process": 10.436999999999898,
+            "queue_wait": 95.022,
+            "export": 112.43699999999899,
+            "download": 45.51600000000144
+          },
+          "total_seconds": 186.42200000000048
+        }
+      ]
+    },
+    "hindi": {
+      "summary": {
+        "jobs": 10,
+        "successes": 10,
+        "success_rate": 1.0,
+        "total_seconds": {
+          "p50": 70.27350000000024,
+          "p95": 115.98500000000058,
+          "max": 130.45399999999972
+        },
+        "stages_seconds": {
+          "upload": {
+            "p50": 16.563000000000102,
+            "p95": 25.04700000000048
+          },
+          "process": {
+            "p50": 21.50000000000091,
+            "p95": 49.54600000000028
+          },
+          "queue_wait": {
+            "p50": 2.809,
+            "p95": 22.828
+          },
+          "export": {
+            "p50": 26.1875,
+            "p95": 45.07799999999952
+          },
+          "download": {
+            "p50": 4.195499999999811,
+            "p95": 4.688000000000102
+          }
+        },
+        "admission_retries": 0,
+        "failure_count": 0,
+        "failure_categories": {}
+      },
+      "journeys": [
+        {
+          "index": 1,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 13923992,
+          "stages_seconds": {
+            "upload": 25.04700000000048,
+            "process": 49.54600000000028,
+            "queue_wait": 2.782,
+            "export": 25.76599999999962,
+            "download": 4.09400000000096
+          },
+          "total_seconds": 115.98500000000058
+        },
+        {
+          "index": 2,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 13923992,
+          "stages_seconds": {
+            "upload": 28.235000000000582,
+            "process": 57.34399999999914,
+            "queue_wait": 14.502,
+            "export": 28.936999999999898,
+            "download": 4.688000000000102
+          },
+          "total_seconds": 130.45399999999972
+        },
+        {
+          "index": 3,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 13923992,
+          "stages_seconds": {
+            "upload": 16.0,
+            "process": 23.60900000000038,
+            "queue_wait": 1.972,
+            "export": 23.25,
+            "download": 4.42200000000048
+          },
+          "total_seconds": 69.0
+        },
+        {
+          "index": 4,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 13923992,
+          "stages_seconds": {
+            "upload": 16.438000000000102,
+            "process": 26.811999999999898,
+            "queue_wait": 4.755,
+            "export": 20.23400000000038,
+            "download": 4.265999999999622
+          },
+          "total_seconds": 69.29700000000048
+        },
+        {
+          "index": 5,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 13923992,
+          "stages_seconds": {
+            "upload": 15.59400000000096,
+            "process": 19.20299999999952,
+            "queue_wait": 2.079,
+            "export": 26.60900000000038,
+            "download": 4.140999999999622
+          },
+          "total_seconds": 67.15599999999904
+        },
+        {
+          "index": 6,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 13923992,
+          "stages_seconds": {
+            "upload": 15.218999999999141,
+            "process": 8.156000000000859,
+            "queue_wait": 22.828,
+            "export": 42.4380000000001,
+            "download": 3.9059999999990396
+          },
+          "total_seconds": 71.25
+        },
+        {
+          "index": 7,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 13923992,
+          "stages_seconds": {
+            "upload": 16.688000000000102,
+            "process": 8.234000000000378,
+            "queue_wait": 2.375,
+            "export": 19.59399999999914,
+            "download": 4.25
+          },
+          "total_seconds": 50.625
+        },
+        {
+          "index": 8,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 13923992,
+          "stages_seconds": {
+            "upload": 17.04699999999866,
+            "process": 8.375,
+            "queue_wait": 2.836,
+            "export": 19.79700000000048,
+            "download": 3.9690000000009604
+          },
+          "total_seconds": 50.71900000000096
+        },
+        {
+          "index": 9,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 13923992,
+          "stages_seconds": {
+            "upload": 15.796999999998661,
+            "process": 30.42200000000048,
+            "queue_wait": 2.128,
+            "export": 45.07799999999952,
+            "download": 5.54700000000048
+          },
+          "total_seconds": 98.4380000000001
+        },
+        {
+          "index": 10,
+          "ok": true,
+          "admission_retries": 0,
+          "bytes": 13923992,
+          "stages_seconds": {
+            "upload": 21.40599999999904,
+            "process": 19.39100000000144,
+            "queue_wait": 29.433,
+            "export": 45.5619999999999,
+            "download": 3.9069999999992433
+          },
+          "total_seconds": 92.09399999999914
+        }
+      ]
+    }
+  },
+  "source_artifact_sha256": {
+    "b4-4cpu-result.json": "ba15cd9c8b75359bb2191952250d31d7fb7901a8662a3e5788021a85494b7d8a",
+    "b4-4cpu-metadata.txt": "8f151bc4849c5d2d267517db051c5ed84d8a6152a2d9646dae96dd1278211bd5",
+    "b4-8cpu-result.json": "1d17d24558db7b73b5a334ca959baaef3619ccd7c04503b711eb3100e9ea05a7",
+    "b4-8cpu-metadata.txt": "de2d2dc07d4582441f77c2a59aeea6eb511255322cb26a230fb6d3a5d25d9bf3",
+    "b4-10concurrent-20261006.json": "d716bbb80dee2b706049f5c9fc4cd01876bc76fade5d6ac3a2076704de2c1227",
+    "b4-100resumed-20261006.json": "ee1b5493f1f526dede08668cf226d805dfd454266638b83222c6569471b2165e",
+    "b4-hindi-acceptance-20261006.json": "e40d92a564a700fbe1377789e4846041ee3cc76eb05513f9404cd6da94db5cc5",
+    "b4-download-recovery-20261006.json": "0156cd5362419e317f1b13edbe96916a56860cec6cebe5a7e85a6a0e21e94cbe",
+    "b4-cleanup-evidence.json": "79497c8d72a8aa86551ec0c9a5b4506d8f6146448ab994a516923f44d4e96841",
+    "production-current-readback-20261007.json": "d2227ae2fce984c6fc5681c6176bfa5ce8c39222d5028ff3253433150ce06831"
+  },
+  "download_recovery": {
+    "existing_exports_only": true,
+    "new_renders": 0,
+    "original_successes": 85,
+    "retried": 15,
+    "recovered": 15
+  },
+  "cleanup": {
+    "started_at": "2026-10-06T09:39:10.035717+00:00",
+    "disposable_ssh_key_revoked": true,
+    "staging_environment_removed": true,
+    "production_environment_preserved": true,
+    "staging_only_services_removed": 0,
+    "staging_only_volumes_removed": 0,
+    "test_users_removed": 100,
+    "owned_objects_removed": 395,
+    "owned_documents_removed": 1320,
+    "finished_at": "2026-10-06T09:46:17.765922+00:00"
+  },
+  "production_readback": {
+    "at": "2026-10-07T08:04:55.472531+00:00",
+    "billing": {
+      "currentUsage": 0.6035361807069136,
+      "usageLimit": {
+        "hardLimit": 25,
+        "isOverLimit": false,
+        "softLimit": 10
+      }
+    },
+    "environments": [
+      "production"
+    ],
+    "services": [
+      {
+        "serviceName": "lekha-cron",
+        "sleepApplication": false,
+        "deployment": {
+          "instances": [
+            {
+              "status": "EXITED"
+            }
+          ],
+          "status": "SUCCESS"
+        },
+        "commit": "63cf04f9c6f5ab34457612d4513bb78586554836",
+        "limits": {
+          "containers": {
+            "cpu": 1,
+            "memoryBytes": 1073741824
+          }
+        },
+        "settings": {
+          "EXPORT_MAX_PENDING_WORK_SECONDS": "3000",
+          "RENDER_AUTOSCALE_ENABLED": "1",
+          "RENDER_AUTOSCALE_MAX_REPLICAS": "5",
+          "TRANSCRIPTION_AUTOSCALE_ENABLED": "1",
+          "TRANSCRIPTION_AUTOSCALE_MAX_REPLICAS": "5",
+          "WORKER_LAUNCH_MAX_PARALLEL": "5"
+        }
+      },
+      {
+        "serviceName": "redis",
+        "sleepApplication": false,
+        "deployment": {
+          "instances": [
+            {
+              "status": "RUNNING"
+            }
+          ],
+          "status": "SUCCESS"
+        },
+        "commit": null,
+        "limits": null
+      },
+      {
+        "serviceName": "lekha-render",
+        "sleepApplication": true,
+        "deployment": {
+          "instances": [
+            {
+              "status": "RUNNING"
+            }
+          ],
+          "status": "SLEEPING"
+        },
+        "commit": "63cf04f9c6f5ab34457612d4513bb78586554836",
+        "limits": {
+          "containers": {
+            "cpu": 8,
+            "memoryBytes": 8589934592
+          }
+        },
+        "settings": {
+          "EXPORT_MAX_PENDING_WORK_SECONDS": "600",
+          "RENDER_AUTOSCALE_ENABLED": "1",
+          "RENDER_AUTOSCALE_MAX_REPLICAS": "5",
+          "TRANSCRIPTION_AUTOSCALE_ENABLED": "1",
+          "TRANSCRIPTION_AUTOSCALE_MAX_REPLICAS": "5",
+          "WORKER_LAUNCH_MAX_PARALLEL": "5"
+        }
+      },
+      {
+        "serviceName": "lekha-transcription",
+        "sleepApplication": true,
+        "deployment": {
+          "instances": [
+            {
+              "status": "RUNNING"
+            }
+          ],
+          "status": "SLEEPING"
+        },
+        "commit": "63cf04f9c6f5ab34457612d4513bb78586554836",
+        "limits": {
+          "containers": {
+            "cpu": 2,
+            "memoryBytes": 3221225472
+          }
+        },
+        "settings": {
+          "EXPORT_MAX_PENDING_WORK_SECONDS": "600",
+          "RENDER_AUTOSCALE_ENABLED": "1",
+          "RENDER_AUTOSCALE_MAX_REPLICAS": "5",
+          "TRANSCRIPTION_AUTOSCALE_ENABLED": "1",
+          "TRANSCRIPTION_AUTOSCALE_MAX_REPLICAS": "5",
+          "WORKER_LAUNCH_MAX_PARALLEL": "5"
+        }
+      },
+      {
+        "serviceName": "lekha-api",
+        "sleepApplication": true,
+        "deployment": {
+          "instances": [
+            {
+              "status": "RUNNING"
+            }
+          ],
+          "status": "SLEEPING"
+        },
+        "commit": "63cf04f9c6f5ab34457612d4513bb78586554836",
+        "limits": {
+          "containers": {
+            "cpu": 2,
+            "memoryBytes": 2147483648
+          }
+        },
+        "settings": {
+          "EXPORT_MAX_PENDING_WORK_SECONDS": "3000",
+          "RENDER_AUTOSCALE_ENABLED": "1",
+          "RENDER_AUTOSCALE_MAX_REPLICAS": "5",
+          "TRANSCRIPTION_AUTOSCALE_ENABLED": "1",
+          "TRANSCRIPTION_AUTOSCALE_MAX_REPLICAS": "5",
+          "WORKER_LAUNCH_MAX_PARALLEL": "5"
+        }
+      }
+    ]
+  }
+}

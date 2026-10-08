@@ -1,0 +1,11 @@
+**/out/
+**/takes/
+**/takes-v3-old/
+**/shots/
+**/__pycache__/
+**/mock/upload/
+*.zip
+*.mp4
+*.mov
+*.wav
+*.log

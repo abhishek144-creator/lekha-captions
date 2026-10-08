@@ -31,3 +31,7 @@ attached_assets
 test-artifacts
 test-results
 playwright-report
+
+# Marketing sources and the static launch film are served by Netlify.
+marketing
+public/launch-video.mp4
