@@ -33,6 +33,22 @@ try:
     from . import request_security
 except ImportError:  # Direct execution from backend/ remains supported.
     import request_security
+try:
+    from . import entitlements
+except ImportError:  # Direct execution from backend/ remains supported.
+    import entitlements
+try:
+    from . import operator_controls
+except ImportError:  # Direct execution from backend/ remains supported.
+    import operator_controls
+try:
+    from . import media_commands
+except ImportError:  # Direct execution from backend/ remains supported.
+    import media_commands
+try:
+    from . import media_records
+except ImportError:  # Direct execution from backend/ remains supported.
+    import media_records
 
 
 def create_language_router(host: ModuleType) -> SimpleNamespace:
@@ -64,7 +80,7 @@ def create_language_router(host: ModuleType) -> SimpleNamespace:
             text_value = caption.get("text", "")
             if not isinstance(text_value, str) or len(text_value) > 2_000:
                 raise HTTPException(status_code=400, detail="Caption text is invalid")
-        if host._is_content_safety_blocked(req.target_language, " ".join((c.get("text") or "") for c in req.captions[:30])):
+        if operator_controls._is_content_safety_blocked(req.target_language, " ".join((c.get("text") or "") for c in req.captions[:30])):
             observability._track_event("translate_rejected_content_safety")
             raise HTTPException(status_code=422, detail="Request blocked by content safety policy.")
         breaker = app_state._provider_breakers["openai_translate"]
@@ -72,7 +88,7 @@ def create_language_router(host: ModuleType) -> SimpleNamespace:
             observability._track_event("translate_circuit_open")
             raise HTTPException(status_code=503, detail="Translation service is temporarily unavailable. Please retry shortly.")
 
-        host._reserve_ai_quota(decoded_token.get("uid", ""), "translate")
+        entitlements._reserve_ai_quota(decoded_token.get("uid", ""), "translate")
 
         try:
             from openai import OpenAI
@@ -102,7 +118,7 @@ def create_language_router(host: ModuleType) -> SimpleNamespace:
             breaker.on_failure()
             observability._track_event("translate_failed", {"target_language": req.target_language, "error": str(e)})
             observability._json_log("error", "translation_provider_failed", uid=decoded_token.get("uid", ""), error=str(e))
-            host._release_ai_quota(decoded_token.get("uid", ""), "translate")
+            entitlements._release_ai_quota(decoded_token.get("uid", ""), "translate")
             raise HTTPException(status_code=502, detail="Translation service failed. Please retry.") from e
 
 
@@ -132,25 +148,25 @@ def create_language_router(host: ModuleType) -> SimpleNamespace:
         host._apply_rate_headers(response, settings.DETECT_LANGUAGE_USER_RATE_LIMIT, user_remaining, user_retry_after)
         if not user_allowed:
             raise HTTPException(status_code=429, detail="Too many language detection requests. Please wait before trying again.")
-        if not host._validate_file_id(req.file_id):
+        if not media_records._validate_file_id(req.file_id):
             raise HTTPException(status_code=400, detail="Invalid file_id")
-        host._assert_upload_owner(req.file_id, uid)
-        input_path = host._safe_find_upload(req.file_id)
+        media_records._assert_upload_owner(req.file_id, uid)
+        input_path = media_records._safe_find_upload(req.file_id)
         if not input_path:
             observability._track_event("detect_language_failed_not_found")
             raise HTTPException(status_code=404, detail="File not found")
-        host._ensure_upload_clean(req.file_id, uid, input_path)
+        media_records._ensure_upload_clean(req.file_id, uid, input_path)
         breaker = app_state._provider_breakers["openai_detect_language"]
         if not breaker.allow():
             observability._track_event("detect_language_circuit_open")
             raise HTTPException(status_code=503, detail="Language detection is temporarily unavailable. Please retry shortly.")
-        host._reserve_ai_quota(uid, "detect_language")
+        entitlements._reserve_ai_quota(uid, "detect_language")
         temp_path = ""
         try:
             import tempfile
             with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as _tf:
                 temp_path = _tf.name
-            extract_result = host.run_media_command([
+            extract_result = media_commands.run_media_command([
                 "ffmpeg", "-i", input_path, "-t", "30",
                 "-vn", "-acodec", "mp3", "-y", temp_path
             ], capture_output=True)
@@ -172,7 +188,7 @@ def create_language_router(host: ModuleType) -> SimpleNamespace:
             breaker.on_failure()
             observability._track_event("detect_language_failed", {"error": str(e)})
             observability._json_log("error", "language_detection_provider_failed", uid=uid, error=str(e))
-            host._release_ai_quota(uid, "detect_language")
+            entitlements._release_ai_quota(uid, "detect_language")
             raise HTTPException(status_code=502, detail="Language detection failed. Please retry.") from e
         finally:
             try:

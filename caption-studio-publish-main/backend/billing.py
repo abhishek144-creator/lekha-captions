@@ -32,6 +32,10 @@ try:
     from . import request_security
 except ImportError:  # Direct execution from backend/ remains supported.
     import request_security
+try:
+    from . import entitlements
+except ImportError:  # Direct execution from backend/ remains supported.
+    import entitlements
 
 
 def create_billing_service(host: ModuleType) -> SimpleNamespace:
@@ -146,7 +150,7 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
             if not user_doc.exists:
                 raise HTTPException(status_code=404, detail="User not found. Purchase a plan first.")
             user_data = user_doc.to_dict() or {}
-            base_tier = host._effective_subscription_tier(user_data).replace("_yearly", "")
+            base_tier = entitlements._effective_subscription_tier(user_data).replace("_yearly", "")
             if base_tier not in {"starter", "creator", "pro"}:
                 raise HTTPException(status_code=403, detail="UPGRADE_REQUIRED: Top-ups available for paid plans only.")
             if plan_id != f"topup_{base_tier}":
@@ -427,7 +431,7 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
             if is_topup:
                 if not user_doc.exists:
                     raise HTTPException(status_code=404, detail="User not found. Purchase a plan first.")
-                base_tier = host._effective_subscription_tier(user_data).replace("_yearly", "")
+                base_tier = entitlements._effective_subscription_tier(user_data).replace("_yearly", "")
                 if base_tier not in {"starter", "creator", "pro"}:
                     raise HTTPException(status_code=403, detail="UPGRADE_REQUIRED: Top-ups available for paid plans only.")
                 if plan_id != f"topup_{base_tier}":

@@ -14,12 +14,12 @@ class SmokeFlowTests(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(app)
 
-    @patch("main._scan_upload_for_threat", return_value=True)
-    @patch("main._probe_media", return_value={"format": {"duration": 14.0}, "streams": [{"codec_type": "video"}]})
+    @patch("main.operator_controls._scan_upload_for_threat", return_value=True)
+    @patch("main.media_records._probe_media", return_value={"format": {"duration": 14.0}, "streams": [{"codec_type": "video"}]})
     @patch("main.firebase_admin_setup.verify_token", return_value={"uid": "smoke-user"})
     @patch("main.app_state.processor.generate_captions_only", new_callable=AsyncMock)
     @patch("main._process_export_job_core", new_callable=AsyncMock)
-    @patch("main._safe_find_upload")
+    @patch("main.media_records._safe_find_upload")
     def test_upload_process_export_smoke(self, mock_safe_find, mock_export_core, mock_process, _verify_token, _probe, _scan):
         # 1) Upload
         files = {"file": ("sample.mp4", io.BytesIO(b"fake-video"), "video/mp4")}

@@ -32,6 +32,10 @@ try:
     from . import request_security
 except ImportError:  # Direct execution from backend/ remains supported.
     import request_security
+try:
+    from . import media_records
+except ImportError:  # Direct execution from backend/ remains supported.
+    import media_records
 
 
 def create_media_router(host: ModuleType) -> SimpleNamespace:
@@ -46,7 +50,7 @@ def create_media_router(host: ModuleType) -> SimpleNamespace:
         request_security._assert_tenant_access(uid, decoded_token, req.org_id)
         observability._audit_action("delete_file_attempt", uid, {"file_id": req.file_id})
 
-        if not host._validate_file_id(req.file_id):
+        if not media_records._validate_file_id(req.file_id):
             raise HTTPException(status_code=400, detail="Invalid file_id")
 
         db = firebase_admin_setup.get_db()
@@ -104,7 +108,7 @@ def create_media_router(host: ModuleType) -> SimpleNamespace:
                 detail={"message": "Local file cleanup was incomplete", "files": local_delete_errors, "retryable": True},
             )
 
-        upload_metadata = host._load_upload_metadata(req.file_id)
+        upload_metadata = media_records._load_upload_metadata(req.file_id)
         if upload_metadata and str(upload_metadata.get("uid") or "") == uid:
             source_remote_path = str(upload_metadata.get("remote_path") or "")
             if source_remote_path and not firebase_admin_setup.delete_from_firebase_storage(source_remote_path):
@@ -138,11 +142,11 @@ def create_media_router(host: ModuleType) -> SimpleNamespace:
 
     @router.get("/api/media/upload/{file_id}")
     def serve_uploaded_media(file_id: str, token: str = ""):
-        payload = host._verify_media_token(token, "upload")
+        payload = media_records._verify_media_token(token, "upload")
         request_security._assert_account_not_deleting(str(payload.get("uid") or ""))
         if payload.get("file_id") != file_id:
             raise HTTPException(status_code=403, detail="Media token does not match this upload")
-        path = host._safe_find_upload(file_id)
+        path = media_records._safe_find_upload(file_id)
         if not path or not host.os.path.exists(path):
             raise HTTPException(status_code=404, detail="Upload not found")
         media_type = host.mimetypes.guess_type(path)[0] or "application/octet-stream"
@@ -153,20 +157,20 @@ def create_media_router(host: ModuleType) -> SimpleNamespace:
     def refresh_uploaded_media_url(req: host.MediaUrlRequest):
         decoded_token = request_security._authenticate_media_request(req.id_token, req.org_id)
         uid = (decoded_token.get("uid") or "").strip() or "unknown-user"
-        if not host._validate_file_id(req.file_id):
+        if not media_records._validate_file_id(req.file_id):
             raise HTTPException(status_code=400, detail="Invalid file_id")
-        host._assert_upload_owner(req.file_id, uid)
-        path = host._safe_find_upload(req.file_id)
+        media_records._assert_upload_owner(req.file_id, uid)
+        path = media_records._safe_find_upload(req.file_id)
         if not path or not host.os.path.exists(path):
             raise HTTPException(status_code=404, detail="Upload not found")
-        return {"success": True, "raw_url": host._signed_upload_url(req.file_id, uid)}
+        return {"success": True, "raw_url": media_records._signed_upload_url(req.file_id, uid)}
 
 
     @router.get("/api/media/export/{filename}")
     def serve_exported_media(filename: str, token: str = ""):
         if not host.re.match(r"^export_[a-f0-9-]{36}_[a-f0-9]{12}\.mp4$", filename or ""):
             raise HTTPException(status_code=400, detail="Invalid export filename")
-        payload = host._verify_media_token(token, "export")
+        payload = media_records._verify_media_token(token, "export")
         request_security._assert_account_not_deleting(str(payload.get("uid") or ""))
         if payload.get("filename") != filename:
             raise HTTPException(status_code=403, detail="Media token does not match this export")

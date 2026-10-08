@@ -24,6 +24,14 @@ try:
     from . import request_security
 except ImportError:  # Direct execution from backend/ remains supported.
     import request_security
+try:
+    from . import operator_controls
+except ImportError:  # Direct execution from backend/ remains supported.
+    import operator_controls
+try:
+    from . import media_records
+except ImportError:  # Direct execution from backend/ remains supported.
+    import media_records
 
 
 def create_upload_router(host: ModuleType) -> SimpleNamespace:
@@ -44,7 +52,7 @@ def create_upload_router(host: ModuleType) -> SimpleNamespace:
         bytes_written = 0
         completed = False
         try:
-            host._assert_service_available("pause_uploads")
+            operator_controls._assert_service_available("pause_uploads")
             token = host._extract_bearer_token(request) if request else ""
             decoded_token = request_security._authenticate_media_request(token)
             uid = (decoded_token.get("uid") or "").strip() or "unknown-user"
@@ -58,7 +66,7 @@ def create_upload_router(host: ModuleType) -> SimpleNamespace:
 
             safe_name = host.os.path.basename(file.filename or "")
             file_ext = host.pathlib.Path(safe_name).suffix.lstrip(".").lower()
-            if host._is_content_safety_blocked(file.filename or ""):
+            if operator_controls._is_content_safety_blocked(file.filename or ""):
                 observability._track_event("upload_rejected_content_safety")
                 raise host.HTTPException(status_code=422, detail="Upload blocked by content safety policy.")
             if file_ext not in settings.ALLOWED_EXTENSIONS:
@@ -88,13 +96,13 @@ def create_upload_router(host: ModuleType) -> SimpleNamespace:
                         detail="This upload retry key was already used for a different file.",
                     )
                 cached_file_id = str(cached_upload.get("file_id") or "")
-                if host._validate_file_id(cached_file_id):
-                    host._assert_upload_owner(cached_file_id, uid)
+                if media_records._validate_file_id(cached_file_id):
+                    media_records._assert_upload_owner(cached_file_id, uid)
                     observability._track_event("upload_idempotent_replay")
                     return {
                         "success": True,
                         "file_id": cached_file_id,
-                        "raw_url": host._signed_upload_url(cached_file_id, uid),
+                        "raw_url": media_records._signed_upload_url(cached_file_id, uid),
                         "idempotent_replay": True,
                     }
 
@@ -181,7 +189,7 @@ def create_upload_router(host: ModuleType) -> SimpleNamespace:
                     raise host.HTTPException(status_code=429, detail="Too many uploads. Please wait before trying again.")
             observability._log(rid, f"Upload accepted file_id={file_id} ext={file_ext} bytes={bytes_written}")
             stage = "security_scan"
-            if not await host.asyncio.to_thread(host._scan_upload_for_threat, file_path):
+            if not await host.asyncio.to_thread(operator_controls._scan_upload_for_threat, file_path):
                 try:
                     host.os.remove(file_path)
                 except Exception:
@@ -191,9 +199,9 @@ def create_upload_router(host: ModuleType) -> SimpleNamespace:
 
             stage = "media_probe"
             try:
-                metadata = await host.asyncio.to_thread(host._probe_media, file_path)
+                metadata = await host.asyncio.to_thread(media_records._probe_media, file_path)
                 duration = float((metadata.get("format") or {}).get("duration") or 0)
-                content_sha256 = await host.asyncio.to_thread(host._compute_media_hash, file_path)
+                content_sha256 = await host.asyncio.to_thread(media_records._compute_media_hash, file_path)
             except Exception as probe_error:
                 try:
                     host.os.remove(file_path)
@@ -202,7 +210,7 @@ def create_upload_router(host: ModuleType) -> SimpleNamespace:
                 observability._track_event("upload_rejected_ffprobe", {"error": str(probe_error)})
                 raise host.HTTPException(status_code=422, detail=f"Invalid media file: {probe_error}")
 
-            controls = host._read_service_controls()
+            controls = operator_controls._read_service_controls()
             max_seconds = int(controls.get(
                 settings.MAX_UPLOAD_DURATION_CONTROL_KEY,
                 settings.GLOBAL_MAX_UPLOAD_DURATION_SECONDS,
@@ -225,7 +233,7 @@ def create_upload_router(host: ModuleType) -> SimpleNamespace:
 
             stage = "owner_persistence"
             scanned_at = observability._utcnow().isoformat() + "Z"
-            owner_persisted = host._remember_upload_owner(
+            owner_persisted = media_records._remember_upload_owner(
                 file_id,
                 uid,
                 remote_path or "",
@@ -256,7 +264,7 @@ def create_upload_router(host: ModuleType) -> SimpleNamespace:
                 "upload_reference": upload_reference,
             })
             observability._audit_action("upload_success", uid, {"file_id": file_id, "ext": file_ext, "duration": duration})
-            return {"success": True, "file_id": file_id, "raw_url": host._signed_upload_url(file_id, uid)}
+            return {"success": True, "file_id": file_id, "raw_url": media_records._signed_upload_url(file_id, uid)}
         except host.asyncio.CancelledError:
             await host.asyncio.to_thread(host._cleanup_incomplete_upload, file_path, remote_path)
             observability._track_event("upload_client_disconnected", {

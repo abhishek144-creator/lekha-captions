@@ -32,6 +32,14 @@ try:
     from . import request_security
 except ImportError:  # Direct execution from backend/ remains supported.
     import request_security
+try:
+    from . import entitlements
+except ImportError:  # Direct execution from backend/ remains supported.
+    import entitlements
+try:
+    from . import operator_controls
+except ImportError:  # Direct execution from backend/ remains supported.
+    import operator_controls
 
 
 def create_account_router(host: ModuleType) -> SimpleNamespace:
@@ -314,7 +322,7 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
         # Existing accounts keep working while sign-ups are paused; only the first
         # bootstrap of a brand-new account is blocked.
         if not user_ref.get().exists:
-            host._assert_service_available("pause_signups")
+            operator_controls._assert_service_available("pause_signups")
             client_ip = host._client_rate_key(request)
             for rate_key, rate_limit in (
                 (f"signup:network:{client_ip}", settings.SIGNUP_SHARED_NETWORK_RATE_LIMIT),
@@ -357,10 +365,10 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
         existing_user = user_ref.get()
         existing_data = existing_user.to_dict() or {} if existing_user.exists else {}
         existing_is_free = (
-            host._normalize_tier_name(existing_data.get("subscription_tier", "free")) == settings.FREE_PLAN_ID
+            entitlements._normalize_tier_name(existing_data.get("subscription_tier", "free")) == settings.FREE_PLAN_ID
         )
         existing_has_credits = "credits_remaining" in existing_data
-        normalized_existing_credits = host._normalize_free_credit_balance(
+        normalized_existing_credits = entitlements._normalize_free_credit_balance(
             existing_data.get("credits_remaining"),
             default=settings.FREE_PLAN_CREDITS if not existing_has_credits else 0,
         )
@@ -378,10 +386,10 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
                 if not snapshot.exists:
                     return False
                 data = snapshot.to_dict() or {}
-                if host._normalize_tier_name(data.get("subscription_tier", "free")) != settings.FREE_PLAN_ID:
+                if entitlements._normalize_tier_name(data.get("subscription_tier", "free")) != settings.FREE_PLAN_ID:
                     return False
                 has_credits = "credits_remaining" in data
-                repaired_credits = host._normalize_free_credit_balance(
+                repaired_credits = entitlements._normalize_free_credit_balance(
                     data.get("credits_remaining"),
                     default=settings.FREE_PLAN_CREDITS if not has_credits else 0,
                 )
