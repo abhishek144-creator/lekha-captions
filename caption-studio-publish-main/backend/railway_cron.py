@@ -121,8 +121,8 @@ def _api_host():
         _flush_telemetry=api.observability._flush_telemetry,
         _send_alert=api.observability._send_alert,
         asyncio=api.asyncio,
-        scheduled_janitor_job=api.scheduled_janitor_job,
-        scheduled_payment_reconciliation_job=api.scheduled_payment_reconciliation_job,
+        scheduled_janitor_job=api.maintenance_jobs.scheduled_janitor_job,
+        scheduled_payment_reconciliation_job=api.maintenance_jobs.scheduled_payment_reconciliation_job,
     )
 
 

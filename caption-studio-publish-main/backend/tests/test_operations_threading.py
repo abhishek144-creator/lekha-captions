@@ -88,12 +88,12 @@ class OperationsThreadingTests(unittest.IsolatedAsyncioTestCase):
     async def test_real_scheduled_helpers_offload_cleanup_reconciliation_and_leases(self):
         from backend import main
 
-        with (patch.object(main, "_claim_scheduled_job", self.blocking("claim", "lease")),
-              patch.object(main, "_release_scheduled_job", self.blocking("release")),
-              patch.object(main, "_advanced_janitor_once", self.blocking("cleanup")),
+        with (patch.object(main.maintenance_jobs, "_claim_scheduled_job", self.blocking("claim", "lease")),
+              patch.object(main.maintenance_jobs, "_release_scheduled_job", self.blocking("release")),
+              patch.object(main.maintenance_jobs, "_advanced_janitor_once", self.blocking("cleanup")),
               patch.object(main.billing, "reconcile_payments_once", self.blocking("payments", {}))):
-            await main.scheduled_janitor_job()
-            await main.scheduled_payment_reconciliation_job()
+            await main.maintenance_jobs.scheduled_janitor_job()
+            await main.maintenance_jobs.scheduled_payment_reconciliation_job()
         self.assertEqual(self.calls, ["claim", "cleanup", "release", "claim", "payments", "release"])
 
 
