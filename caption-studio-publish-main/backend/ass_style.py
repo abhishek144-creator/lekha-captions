@@ -4,6 +4,11 @@ import math
 from dataclasses import dataclass
 from typing import Any, Callable
 
+try:
+    from .processor_fonts import detect_text_script, resolve_script_font_family
+except ImportError:
+    from processor_fonts import detect_text_script, resolve_script_font_family
+
 @dataclass(frozen=True)
 class AssRenderContext:
     indic_y_corrections: dict[str, float]
@@ -38,6 +43,7 @@ class AssRenderContext:
     primary_hex: str
     scale_factor: float
     scaled_size: int
+    ass_font_size: Callable[[float], int]
     secondary_hex: str
     shadow_blur_v: float
     shadow_color_hex: str
@@ -58,18 +64,23 @@ def build_ass_context(processor, captions, style, font_info, video_w, video_h):
     ass_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f"_tmp_{_uuid.uuid4().hex[:8]}.ass")
 
     # ── Scale factor: preview coords → video coords ────────────────────
+    # Same reference as the DOM template renderer (render_template_overlay.mjs
+    # exportCssScale): style lengths are CSS px on a 360px-wide preview, the
+    # phone editor's 360x640 frame for 9:16. The server strips browser
+    # preview sizes, so preview_width is normally absent. A different
+    # reference here made a caption change size once it was animated.
     base_size = int(style.get('font_size', 18))
-    preview_h = float(style.get('preview_height', 400))
-    if preview_h < 50:
-        preview_h = 400
-    scale_factor = video_h / preview_h
+    try:
+        preview_w = float(style.get('preview_width') or 0)
+    except (TypeError, ValueError):
+        preview_w = 0.0
+    scale_factor = max(1.0, min(8.0, video_w / (preview_w if preview_w > 0 else 360.0)))
     preview_font_px = 0.0
     try:
         preview_font_px = float(style.get('preview_template_font_px') or 0)
     except (TypeError, ValueError):
         preview_font_px = 0.0
     font_size_source = preview_font_px if preview_font_px > 0 else base_size
-    scaled_size = max(int(font_size_source * scale_factor), 20)
 
     # ── Effect/stroke/shadow override tag builder ──────────────────────
     def effect_tags(eff_type, base_color_hex, stroke_data, shadow_data, eff_props):
@@ -127,39 +138,40 @@ def build_ass_context(processor, captions, style, font_info, video_w, video_h):
 
     # ── Font ───────────────────────────────────────────────────────────
     font_name = font_info['ass_name']
-    print(f"[ASS] font={font_name!r} size={scaled_size} scale_factor={scale_factor:.2f}")
+    ass_font_info = font_info
 
-    # ── Script detection + Indic font override ────────────────────────
+    # ── Script detection + script font override ───────────────────────
+    # Pick the face the editor and DOM renderer use for this text
+    # (scriptFontResolver.js, ported as resolve_script_font_family), so a
+    # static caption keeps its font once it is animated.
     all_text = " ".join(c.get('text', '') for c in captions)
     detected_script = processor._detect_script(all_text)
-    if detected_script:
-        indic_font_info = processor._ensure_indic_font(detected_script)
-        # Fonts known to include Indic Unicode ranges — keep as-is
-        _indic_safe = {
-            'noto sans', 'noto sans devanagari', 'mukta', 'baloo 2',
-            'hind', 'hind siliguri', 'hind guntur', 'hind madurai',
-            'hind vadodara', 'hind mysuru',
-            'noto sans bengali', 'noto sans telugu', 'noto sans tamil',
-            'noto sans gujarati', 'noto sans kannada', 'noto sans malayalam',
-            'noto sans oriya', 'noto sans arabic',
-            'mukta malar', 'mukta mahee', 'mukta vaani',
-            'rajdhani', 'kalam', 'tiro devanagari hindi',
-            'catamaran', 'arima', 'atma', 'galada',
-            'noto sans sinhala', 'noto sans meetei mayek', 'noto sans ol chiki',
-            'noto sans hebrew', 'noto sans jp', 'noto sans sc', 'noto sans tc',
-            'noto sans kr', 'noto sans thai', 'noto sans myanmar',
-            'noto sans khmer', 'noto sans lao', 'noto serif tibetan',
-            'noto sans georgian', 'noto sans armenian', 'noto sans ethiopic',
-            'sarabun', 'prompt', 'kanit', 'mitr', 'pridi', 'itim', 'charm',
-        }
-        if indic_font_info and font_name.lower() not in _indic_safe:
-            print(f"[ASS] Font '{font_name}' is Latin-only; overriding to {indic_font_info['ass_name']} for {detected_script}")
-            font_name = indic_font_info['ass_name']
-    indic_y_corrections = {
-        'devanagari': -0.025, 'bengali': -0.020, 'gujarati': -0.020,
-        'punjabi': -0.015, 'tamil': -0.015, 'telugu': -0.015,
-        'kannada': -0.015, 'malayalam': -0.015, 'odia': -0.015, 'arabic': -0.010,
-    }
+    requested_family = str(style.get('font_family') or font_name).strip()
+    script_family = resolve_script_font_family(requested_family, all_text)
+    if script_family.lower() not in {requested_family.lower(), font_name.lower()}:
+        script_font_info = processor._ensure_font(script_family)
+        if (
+            script_font_info.get('ass_name', '').lower() != script_family.lower()
+            or processor._font_lacks_text_glyphs(script_font_info, all_text)
+        ):
+            # Could not get a usable file for the resolver's face (offline,
+            # unknown, or a Latin-only subset): use the bundled per-script
+            # face rather than let libass substitute an arbitrary one.
+            script_font_info = (processor._ensure_indic_font(detected_script) if detected_script else None) or script_font_info
+        print(f"[ASS] Font '{font_name}' -> {script_font_info['ass_name']} for {detect_text_script(all_text)} text")
+        font_name = script_font_info['ass_name']
+        ass_font_info = script_font_info
+
+    # ASS Fontsize is the face's cell height (winAscent + winDescent), CSS
+    # font-size is its em square: convert so glyphs match the DOM renderer.
+    cell_height_ratio = processor._ass_cell_height_ratio(ass_font_info)
+
+    def ass_font_size(css_px):
+        return max(int(round(float(css_px) * scale_factor * cell_height_ratio)), 20)
+
+    scaled_size = ass_font_size(font_size_source)
+    print(f"[ASS] font={font_name!r} size={scaled_size} scale_factor={scale_factor:.2f} cell_ratio={cell_height_ratio:.3f}")
+    indic_y_corrections = {}  # All scripts use the editor position without a vertical shift.
     bord_factor = 0.65 if detected_script else 0.85
 
     # ── Per-template word-state alpha config ──────────────────────────
@@ -361,6 +373,7 @@ def build_ass_context(processor, captions, style, font_info, video_w, video_h):
         primary_hex=primary_hex,
         scale_factor=scale_factor,
         scaled_size=scaled_size,
+        ass_font_size=ass_font_size,
         secondary_hex=secondary_hex,
         shadow_blur_v=shadow_blur_v,
         shadow_color_hex=shadow_color_hex,
