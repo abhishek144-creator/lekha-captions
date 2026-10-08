@@ -46,6 +46,34 @@ export default function CaptionEditor({
   const [showAutoTip, setShowAutoTip] = useState(false);
   const [query, setQuery] = useState('');
   const [editingCaptionId, setEditingCaptionId] = useState(null);
+  const captionListRef = useRef(null);
+
+  // Bring the selected caption's row into view when it is off-screen (e.g.
+  // selected on the video, or via the mobile "Edit text" tool).
+  // The panel can mount hidden while its lazy chunk settles, so wait until the
+  // list has a real height before deciding whether the row is visible.
+  useEffect(() => {
+    const list = captionListRef.current;
+    if (!list || !selectedCaptionId) return undefined;
+    const reveal = () => {
+      if (!list.clientHeight) return false;
+      const card = [...list.querySelectorAll('[data-caption-card]')]
+        .find((node) => node.getAttribute('data-caption-card') === String(selectedCaptionId));
+      if (!card) return true;
+      const top = card.offsetTop;
+      const bottom = top + card.offsetHeight;
+      if (top < list.scrollTop || bottom > list.scrollTop + list.clientHeight) {
+        list.scrollTo({ top: Math.max(0, top - 8), behavior: 'smooth' });
+      }
+      return true;
+    };
+    if (reveal() || typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(() => {
+      if (reveal()) observer.disconnect();
+    });
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, [selectedCaptionId]);
   const [showReplace, setShowReplace] = useState(false);
   const [findText, setFindText] = useState('');
   const [replaceText, setReplaceText] = useState('');
@@ -287,7 +315,7 @@ export default function CaptionEditor({
       </div>
 
       {/* Caption list */}
-      <div className="relative z-10 flex-1 overflow-y-auto pr-1.5 pb-7 custom-scrollbar">
+      <div ref={captionListRef} className="relative z-10 flex-1 overflow-y-auto pr-1.5 pb-7 custom-scrollbar">
         <AnimatePresence>
           {filteredCaptions?.map((caption, index) => (
             <motion.div

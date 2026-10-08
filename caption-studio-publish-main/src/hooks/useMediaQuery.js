@@ -16,8 +16,14 @@ export function useMediaQuery(query) {
     const mediaQuery = window.matchMedia(query)
     const sync = () => setIsMatch(mediaQuery.matches)
     sync()
+    // Some emulated or rotated viewports resize without a `change` event, so
+    // re-check on resize too (setState bails out when nothing changed).
     mediaQuery.addEventListener('change', sync)
-    return () => mediaQuery.removeEventListener('change', sync)
+    window.addEventListener('resize', sync)
+    return () => {
+      mediaQuery.removeEventListener('change', sync)
+      window.removeEventListener('resize', sync)
+    }
   }, [query])
 
   return isMatch

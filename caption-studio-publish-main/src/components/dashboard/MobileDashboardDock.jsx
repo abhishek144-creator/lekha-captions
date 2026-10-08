@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Check, ChevronDown, Clock3, Maximize2, Pause, PencilLine, Play, SlidersHorizontal, Sparkles } from 'lucide-react'
+import { motion, useDragControls } from 'framer-motion'
 import { Slider } from '@/components/ui/slider'
 
 const formatClock = (seconds) => {
@@ -42,6 +43,7 @@ export default function MobileDashboardDock({
   onToggleFullscreen,
 }) {
   const [scrubTime, setScrubTime] = useState(null)
+  const sheetDragControls = useDragControls()
   const stripRef = useRef(null)
   const chipRefs = useRef({})
 
@@ -138,7 +140,7 @@ export default function MobileDashboardDock({
           type="button"
           onClick={onToggleFullscreen}
           aria-label="Full screen preview"
-          className="flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full border border-white/10 text-slate-300 active:bg-white/10"
+          className="flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center rounded-full border border-white/10 text-slate-300 active:bg-white/10"
         >
           <Maximize2 className="h-4 w-4" />
         </button>
@@ -162,7 +164,7 @@ export default function MobileDashboardDock({
                   onSeek(Number(caption.start_time || 0))
                   onSelectCaption(caption.id)
                 }}
-                className={`max-w-[11rem] shrink-0 touch-manipulation truncate rounded-xl border px-3 py-2 text-left text-[13px] leading-tight transition-colors ${
+                className={`max-w-[11rem] shrink-0 touch-manipulation truncate rounded-xl border px-3 py-2.5 text-left text-[13px] leading-tight transition-colors ${
                   isActive
                     ? 'border-[#F5A623]/60 bg-[#F5A623]/12 text-white'
                     : isSelected
@@ -179,25 +181,44 @@ export default function MobileDashboardDock({
 
       {/* Tool sheet */}
       {isSheetOpen && (
-        <section
+        <motion.section
           aria-label={`${activeToolLabel} tools`}
-          className="rounded-t-[22px] border-t border-white/10 bg-[#0a0a0a] shadow-[0_-18px_40px_-28px_rgba(0,0,0,0.95)]"
+          initial={{ y: 48, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ type: 'spring', stiffness: 420, damping: 36 }}
+          drag="y"
+          dragListener={false}
+          dragControls={sheetDragControls}
+          dragConstraints={{ top: 0, bottom: 0 }}
+          dragElastic={{ top: 0, bottom: 0.7 }}
+          dragSnapToOrigin
+          onDragEnd={(_, info) => {
+            if (info.offset.y > 70 || info.velocity.y > 500) setIsSheetOpen(false)
+          }}
+          className="relative rounded-t-[22px] border-t border-white/10 bg-[#0a0a0a] shadow-[0_-18px_40px_-28px_rgba(0,0,0,0.95)]"
         >
-          <div className="flex items-center justify-between px-4 pt-2.5 pb-1.5">
-            <span className="text-[13px] font-bold text-white">{activeToolLabel}</span>
-            <button
-              type="button"
-              onClick={() => setIsSheetOpen(false)}
-              aria-label="Close panel"
-              className="flex h-8 w-8 touch-manipulation items-center justify-center rounded-full bg-white/[0.06] text-slate-200 active:bg-white/15"
-            >
-              <ChevronDown className="h-5 w-5" />
-            </button>
+          {/* Grab handle + header: drag down to close, like a native sheet. */}
+          <div
+            onPointerDown={(event) => sheetDragControls.start(event)}
+            className="touch-none select-none"
+          >
+            <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-white/20" aria-hidden="true" />
+            <div className="flex items-center justify-between px-4 pt-1.5 pb-1.5">
+              <span className="text-[13px] font-bold text-white">{activeToolLabel}</span>
+              <button
+                type="button"
+                onClick={() => setIsSheetOpen(false)}
+                aria-label="Close panel"
+                className="flex h-10 w-10 touch-manipulation items-center justify-center rounded-full bg-white/[0.06] text-slate-200 active:bg-white/15"
+              >
+                <ChevronDown className="h-5 w-5" />
+              </button>
+            </div>
           </div>
-          <div className="h-[44dvh] min-h-[230px] max-h-[460px] overflow-hidden px-2 pb-2">
+          <div className="lekha-mobile-sheet h-[44dvh] min-h-[230px] max-h-[460px] overflow-hidden px-2 pb-2">
             {renderSheetBody()}
           </div>
-        </section>
+        </motion.section>
       )}
 
       {/* Toolbar: caption tools while a caption is selected, else global */}

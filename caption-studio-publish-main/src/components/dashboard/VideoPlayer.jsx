@@ -4,6 +4,7 @@ import { Play, X, Move, RotateCw, Trash2 } from 'lucide-react';
 import CanvasToolRail from './CanvasToolRail';
 import PlaybackControls from './PlaybackControls';
 import PreviewScrubber from './PreviewScrubber';
+import { DESKTOP_EDITOR_QUERY, useMediaQuery } from '@/hooks/useMediaQuery';
 import VideoPlayerKeyframes from './VideoPlayerKeyframes';
 import { resolveScriptFont, loadGoogleFont } from './fontUtils';
 import { buildEmotionalCaptionPlan } from './emotionalTemplateUtils';
@@ -73,6 +74,14 @@ import {
   renderAnimatedDetachedWordContent,
 } from './videoPlayerTemplateRendering.jsx';
 
+
+// Phones and tablets lay the preview frame out at the export template
+// renderer's CSS reference size (render_template_overlay.mjs sizes captions
+// as if the preview were 360px wide) and scale the whole frame to fit, so
+// every caption renderer - plain, basic, advanced and LC - keeps its export
+// proportions on any screen.
+const COMPACT_PREVIEW_REFERENCE_WIDTH = 360;
+const COMPACT_PREVIEW_REFERENCE_HEIGHT = 640;
 
 export default function VideoPlayer({
   videoUrl,
@@ -159,6 +168,7 @@ export default function VideoPlayer({
   const canvasPanStartRef = useRef({ x: 0, y: 0, originX: 0, originY: 0 });
   const fitCanvasSizeRef = useRef({ width: 0, height: 0 });
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
+  const isCompactPreview = !useMediaQuery(DESKTOP_EDITOR_QUERY);
 
   const clearActiveSelection = useCallback(() => {
     if (setSelectedCaptionId) setSelectedCaptionId(null);
@@ -231,9 +241,41 @@ export default function VideoPlayer({
     };
   }, [isVideoFullscreen, videoUrl]);
 
+  const frameStageRef = useRef(null);
+  const [compactFitScale, setCompactFitScale] = useState(0);
+  React.useLayoutEffect(() => {
+    if (!isCompactPreview || isVideoFullscreen) {
+      setCompactFitScale(0);
+      return undefined;
+    }
+    const stage = frameStageRef.current;
+    if (!stage) return undefined;
+    const syncFit = () => {
+      const styles = window.getComputedStyle(stage);
+      const width = stage.clientWidth - parseFloat(styles.paddingLeft) - parseFloat(styles.paddingRight) - 8;
+      const height = stage.clientHeight - parseFloat(styles.paddingTop) - parseFloat(styles.paddingBottom);
+      if (width <= 0 || height <= 0) return;
+      const next = Math.min(width / COMPACT_PREVIEW_REFERENCE_WIDTH, height / COMPACT_PREVIEW_REFERENCE_HEIGHT);
+      setCompactFitScale(prev => (Math.abs(prev - next) < 0.001 ? prev : next));
+    };
+    syncFit();
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(syncFit) : null;
+    observer?.observe(stage);
+    return () => observer?.disconnect();
+  }, [isCompactPreview, isVideoFullscreen, videoUrl]);
+  const compactFit = isCompactPreview && !isVideoFullscreen && compactFitScale > 0 ? compactFitScale : 0;
+
+  // On-screen size of the frame relative to its layout size (compact fit and
+  // canvas zoom are CSS transforms). Pointer deltas are in on-screen pixels.
+  const getFrameVisualScale = useCallback(() => {
+    const frame = videoContainerRef.current;
+    if (!frame?.offsetWidth) return 1;
+    return frame.getBoundingClientRect().width / frame.offsetWidth || 1;
+  }, []);
+
   const getPreviewRenderScale = useCallback(() => {
-    if (!isVideoFullscreen) return 1;
     const currentWidth = canvasSize.width || videoContainerRef.current?.offsetWidth || 0;
+    if (!isVideoFullscreen) return 1;
     const baselineWidth = fitCanvasSizeRef.current.width || currentWidth;
     if (!currentWidth || !baselineWidth) return 1;
     return currentWidth / baselineWidth;
@@ -2121,8 +2163,9 @@ export default function VideoPlayer({
         const videoContainer = captionRef.current?.parentElement;
         if (!videoContainer) return;
 
-        const containerHeight = videoContainer.offsetHeight;
-        const containerWidth = videoContainer.offsetWidth;
+        const containerRect = videoContainer.getBoundingClientRect();
+        const containerHeight = containerRect.height || videoContainer.offsetHeight;
+        const containerWidth = containerRect.width || videoContainer.offsetWidth;
 
         const deltaY = e.clientY - dragStartY;
         const deltaPercentY = (deltaY / containerHeight) * 100;
@@ -2165,8 +2208,9 @@ export default function VideoPlayer({
         const videoContainer = videoRef.current?.parentElement;
         if (!videoContainer) return;
 
-        const containerWidth = videoContainer.offsetWidth;
-        const containerHeight = videoContainer.offsetHeight;
+        const containerRect = videoContainer.getBoundingClientRect();
+        const containerWidth = containerRect.width || videoContainer.offsetWidth;
+        const containerHeight = containerRect.height || videoContainer.offsetHeight;
         const deltaX = e.clientX - elementDragStart.x;
         const deltaY = e.clientY - elementDragStart.y;
         const deltaPercentX = (deltaX / containerWidth) * 100;
@@ -2230,7 +2274,7 @@ export default function VideoPlayer({
 
         const isHorizontalFrameResize = ['left', 'right'].includes(elementResizeStart.direction);
         const minFrameWidth = isHorizontalFrameResize ? 28 : Math.min(elementResizeStart.minWidth || 150, 80);
-        const unscaledDelta = resizeDelta / Math.max(previewRenderScale, 0.001);
+        const unscaledDelta = resizeDelta / Math.max(previewRenderScale * getFrameVisualScale(), 0.001);
         let newWidth = elementResizeStart.initialWidth + (isHorizontalFrameResize ? unscaledDelta * 2 : unscaledDelta);
         newWidth = Math.max(minFrameWidth, Math.min(600, newWidth));
 
@@ -2273,7 +2317,7 @@ export default function VideoPlayer({
       document.removeEventListener('pointerup', handleMouseUp);
       document.removeEventListener('pointercancel', handleMouseUp);
     };
-  }, [isDragging, dragStartY, dragStartPos, setCaptionStyle, setCaptions, draggedElementId, resizedElementId, elementDragStart, elementResizeStart, previewRenderScale]);
+  }, [isDragging, dragStartY, dragStartPos, setCaptionStyle, setCaptions, draggedElementId, resizedElementId, elementDragStart, elementResizeStart, previewRenderScale, getFrameVisualScale]);
 
   useEffect(() => {
     if (!isResizing || !setCaptionStyle) return;
@@ -2306,7 +2350,7 @@ export default function VideoPlayer({
 
       const isHorizontalFrameResize = ['left', 'right'].includes(resizeDirection);
       const minFrameWidth = isHorizontalFrameResize ? 180 : 80;
-      const unscaledDelta = resizeDelta / Math.max(previewRenderScale, 0.001);
+      const unscaledDelta = resizeDelta / Math.max(previewRenderScale * getFrameVisualScale(), 0.001);
       let newWidth = resizeStartWidth + (isHorizontalFrameResize ? unscaledDelta * 2 : unscaledDelta);
       newWidth = Math.max(minFrameWidth, Math.min(600, newWidth));
 
@@ -2341,7 +2385,7 @@ export default function VideoPlayer({
       document.removeEventListener('pointerup', handleMouseUp);
       document.removeEventListener('pointercancel', handleMouseUp);
     };
-  }, [isResizing, resizeDirection, resizeStartFontSize, resizeStartWidth, resizeStartX, resizeStartY, setCaptionStyle, previewRenderScale]);
+  }, [isResizing, resizeDirection, resizeStartFontSize, resizeStartWidth, resizeStartX, resizeStartY, setCaptionStyle, previewRenderScale, getFrameVisualScale]);
 
   const selectedDetachedWordViewport = (() => {
     if (!selectedDetachedWord || typeof window === 'undefined') return null;
@@ -2642,7 +2686,7 @@ export default function VideoPlayer({
         scoped/iframe-isolated CSS. */}
     <div className={`flex flex-col h-full ${isVideoFullscreen ? 'bg-black px-2 py-2' : ''}`}>
       {/* Video container with 9:16 aspect ratio for mobile preview */}
-      <div className={`relative flex-1 rounded-xl overflow-visible flex items-center justify-center min-h-0 ${isVideoFullscreen ? 'pt-0 pb-2' : 'pt-3 pb-1 lg:pt-4 lg:pb-3'}`}>
+      <div ref={frameStageRef} className={`relative flex-1 rounded-xl overflow-visible flex items-center justify-center min-h-0 ${isVideoFullscreen ? 'pt-0 pb-2' : 'pt-3 pb-1 lg:pt-4 lg:pb-3'}`}>
         {/* Floating canvas tool rail beside the preview */}
         {setIsVideoFullscreen && (
           <CanvasToolRail
@@ -2660,7 +2704,13 @@ export default function VideoPlayer({
         )}
         <div
           className={`relative inline-flex max-w-full overflow-visible ${isVideoFullscreen ? 'scale-[1.02]' : 'max-lg:h-full'}`}
-          style={{ transition: 'transform 0.1s ease' }}
+          style={{
+            transition: 'transform 0.1s ease',
+            ...(compactFit ? {
+              width: `${COMPACT_PREVIEW_REFERENCE_WIDTH * compactFit}px`,
+              height: `${COMPACT_PREVIEW_REFERENCE_HEIGHT * compactFit}px`,
+            } : {}),
+          }}
           onClick={(e) => {
             const target = e.target;
             if (!(target instanceof Element)) return;
@@ -2682,9 +2732,17 @@ export default function VideoPlayer({
           ref={videoContainerRef}
           className={`lekha-video-frame relative aspect-[9/16] touch-none select-none bg-black shadow-[0_35px_120px_rgba(0,0,0,0.72)] ${isVideoFullscreen ? 'h-auto max-h-[calc(100dvh-92px)]' : 'h-full max-lg:max-h-full lg:max-h-[calc(100dvh-296px)]'}`}
             style={{
-              transform: `translate(${canvasOffset.x}px, ${canvasOffset.y}px) scale(${canvasScale})`,
-              transformOrigin: 'center center',
-              transition: isCanvasPanning ? 'none' : 'transform 0.1s ease',
+              transform: `translate(${canvasOffset.x}px, ${canvasOffset.y}px) scale(${canvasScale * (compactFit || 1)})`,
+              transformOrigin: compactFit ? 'top left' : 'center center',
+              ...(compactFit ? {
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: `${COMPACT_PREVIEW_REFERENCE_WIDTH}px`,
+                height: `${COMPACT_PREVIEW_REFERENCE_HEIGHT}px`,
+                maxHeight: 'none',
+              } : {}),
+              transition: isCanvasPanning || compactFit ? 'none' : 'transform 0.1s ease',
               cursor: activeCanvasTool === 'move' ? (isCanvasPanning ? 'grabbing' : 'grab') : 'default',
             }}
             onPointerDown={handleCanvasMouseDown}
