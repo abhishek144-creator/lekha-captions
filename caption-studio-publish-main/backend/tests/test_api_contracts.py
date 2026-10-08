@@ -643,7 +643,7 @@ class ApiContractTests(unittest.TestCase):
                          return_value={"success": False, "error": "provider unavailable"}),
         ):
             with self.assertRaises(main.HTTPException) as raised:
-                asyncio.run(main._process_video_inline(req, request, main.Response(), trusted_uid="process-user"))
+                asyncio.run(main.processing_api._process_video_inline(req, request, main.Response(), trusted_uid="process-user"))
 
         self.assertEqual(raised.exception.status_code, 502)
         release_quota.assert_called_once_with("process-user", "process")
@@ -665,7 +665,7 @@ class ApiContractTests(unittest.TestCase):
             patch.object(main.app_state.processor, "generate_captions_only", new_callable=AsyncMock) as provider,
         ):
             with self.assertRaises(main.HTTPException) as raised:
-                asyncio.run(main._process_video_inline(req, request, main.Response(), trusted_uid="process-user"))
+                asyncio.run(main.processing_api._process_video_inline(req, request, main.Response(), trusted_uid="process-user"))
         self.assertEqual(raised.exception.status_code, 422)
         provider.assert_not_called()
 
@@ -679,7 +679,7 @@ class ApiContractTests(unittest.TestCase):
             patch.object(main.request_security, "_assert_account_not_deleting"),
             patch.object(main.firebase_admin_setup, "signed_export_download_url", return_value="https://storage.test/private") as sign,
         ):
-            response = main.serve_exported_media(filename, token)
+            response = main.media_api.serve_exported_media(filename, token)
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.headers["location"], "https://storage.test/private")
         sign.assert_called_once_with(f"exports/owner-1/{filename}")
@@ -1282,7 +1282,7 @@ class ApiContractTests(unittest.TestCase):
         with (
             patch.object(main.firebase_admin_setup, "get_db", return_value=fake_db),
             patch.object(main.firebase_admin_setup, "delete_user_exports", return_value=0),
-            patch.object(main, "_delete_user_document_tree", side_effect=RuntimeError("firestore unavailable")),
+            patch.object(main.account_api, "_delete_user_document_tree", side_effect=RuntimeError("firestore unavailable")),
         ):
             response = self.client.post("/api/account-delete", json={"id_token": "token-123"})
 

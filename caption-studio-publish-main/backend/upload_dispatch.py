@@ -50,9 +50,9 @@ try:
 except ImportError:  # Direct execution from backend/ remains supported.
     from upload_admission import reserve_upload
 try:
-    from rq import Retry as RQRetry
-except ImportError:
-    RQRetry = None
+    from . import optional_deps
+except ImportError:  # Direct execution from backend/ remains supported.
+    import optional_deps
 
 
 def _cleanup_incomplete_upload(local_path: str = "", remote_path: str = ""):
@@ -109,7 +109,7 @@ def _schedule_media_scan(uid: str, file_id: str):
     try:
         jobs.dispatch(
             app_state._media_scan_queue,
-            retry=RQRetry(max=3, interval=[30, 120, 300]) if RQRetry else None,
+            retry=optional_deps.RQRetry(max=3, interval=[30, 120, 300]) if optional_deps.RQRetry else None,
         )
     except Exception as error:
         observability._json_log(
@@ -133,7 +133,7 @@ async def _transcription_dispatch_loop():
 def _dispatch_media_scans_once():
     return MediaScanJobs(firebase_admin_setup.get_db()).dispatch(
         app_state._media_scan_queue,
-        retry=RQRetry(max=3, interval=[30, 120, 300]) if RQRetry else None,
+        retry=optional_deps.RQRetry(max=3, interval=[30, 120, 300]) if optional_deps.RQRetry else None,
     )
 
 

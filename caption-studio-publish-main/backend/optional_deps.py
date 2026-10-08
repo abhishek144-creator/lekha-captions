@@ -19,3 +19,11 @@ try:
 except ImportError:
     sentry_sdk = None
     SENTRY_AVAILABLE = False
+
+try:
+    from rq import Retry as RQRetry, Worker as RQWorker
+    from rq.job import Job
+except ImportError:
+    RQRetry = None
+    RQWorker = None
+    Job = None

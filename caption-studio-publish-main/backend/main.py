@@ -19,19 +19,19 @@ except ImportError:  # Direct execution from backend/ remains supported.
 from dotenv import load_dotenv
 
 try:
-    from .upload_api import create_upload_router
+    from . import upload_api
 except ImportError:
-    from upload_api import create_upload_router
+    import upload_api
 
 try:
-    from .processing_api import create_processing_router
+    from . import processing_api
 except ImportError:
-    from processing_api import create_processing_router
+    import processing_api
 
 try:
-    from .provider_admin_api import create_provider_admin_router
+    from . import provider_admin_api
 except ImportError:
-    from provider_admin_api import create_provider_admin_router
+    import provider_admin_api
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Response
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
@@ -90,7 +90,7 @@ try:
     from . import payments_api
     from .redis_config import connect_redis
     from .idle_connections import RailwayIdleConnectionsMiddleware, disconnect_idle_redis_clients
-    from .system_api import create_system_router
+    from . import system_api
     from . import billing
     from . import observability
     from . import request_security
@@ -102,10 +102,10 @@ try:
     from . import maintenance_jobs
     from . import api_models
     from . import upload_dispatch
-    from .admin_api import create_admin_router
-    from .language_api import create_language_router
-    from .account_api import create_account_router
-    from .media_api import create_media_router
+    from . import admin_api
+    from . import language_api
+    from . import account_api
+    from . import media_api
     from . import export_api
     from .provider_health import transcription_provider_health
     from .direct_upload_api import create_direct_upload_router
@@ -146,7 +146,7 @@ except ImportError:
     import payments_api
     from redis_config import connect_redis
     from idle_connections import RailwayIdleConnectionsMiddleware, disconnect_idle_redis_clients
-    from system_api import create_system_router
+    import system_api
     import billing
     import observability
     import request_security
@@ -158,10 +158,10 @@ except ImportError:
     import maintenance_jobs
     import api_models
     import upload_dispatch
-    from admin_api import create_admin_router
-    from language_api import create_language_router
-    from account_api import create_account_router
-    from media_api import create_media_router
+    import admin_api
+    import language_api
+    import account_api
+    import media_api
     import export_api
     from provider_health import transcription_provider_health
     from direct_upload_api import create_direct_upload_router
@@ -206,9 +206,7 @@ except ImportError:
     print("[Warning] redis package not installed — durable rate limiting/idempotency disabled")
 
 try:
-    from rq import Queue as _RQQueue, Worker as RQWorker
-    from rq.job import Job
-    from rq import Retry as RQRetry
+    from rq import Queue as _RQQueue
 
     class Queue(_RQQueue):
         """RQ queue that starts an on-demand worker once a job is really queued.
@@ -225,9 +223,6 @@ try:
     RQ_AVAILABLE = True
 except ImportError:
     Queue = None
-    RQWorker = None
-    Job = None
-    RQRetry = None
     RQ_AVAILABLE = False
 
 
@@ -755,16 +750,9 @@ app.include_router(create_editor_preferences_router(
 ))
 
 
-_upload_api = create_upload_router(sys.modules[__name__])
-app.include_router(_upload_api.router)
-upload_video = _upload_api.upload_video
+app.include_router(upload_api.router)
 
-_processing_api = create_processing_router(sys.modules[__name__])
-app.include_router(_processing_api.router)
-process_video = _processing_api.process_video
-run_transcription_job_task = _processing_api.run_transcription_job_task
-_mark_account_activated = _processing_api._mark_account_activated
-_process_video_inline = _processing_api._process_video_inline
+app.include_router(processing_api.router)
 
 
 app.include_router(create_maintenance_router(
@@ -805,19 +793,7 @@ def run_media_scan_job_task(uid: str, file_id: str):
 app.include_router(export_api.router)
 
 
-_system_api = create_system_router(sys.modules[__name__])
-app.include_router(_system_api.router)
-analytics_track = _system_api.analytics_track
-create_support_request = _system_api.create_support_request
-api_version = _system_api.api_version
-api_health = _system_api.api_health
-api_version_v1 = _system_api.api_version_v1
-_runtime_dependency_snapshot = _system_api._runtime_dependency_snapshot
-slo_status = _system_api.slo_status
-readiness = _system_api.readiness
-feature_flags = _system_api.feature_flags
-service_status = _system_api.service_status
-admin_service_controls = _system_api.admin_service_controls
+app.include_router(system_api.router)
 
 
 app.include_router(billing.router)
@@ -842,9 +818,7 @@ app.include_router(create_workspace_router(
 ))
 
 
-_provider_admin_api = create_provider_admin_router(sys.modules[__name__])
-app.include_router(_provider_admin_api.router)
-provider_health = _provider_admin_api.provider_health
+app.include_router(provider_admin_api.router)
 app.include_router(create_analytics_router(
     is_admin=request_security._is_admin_token,
     utcnow=observability._utcnow,
@@ -862,47 +836,16 @@ app.include_router(create_analytics_router(
 app.include_router(payments_api.router)
 
 
-_admin_api = create_admin_router(sys.modules[__name__])
-app.include_router(_admin_api.router)
-admin_recovery_summary = _admin_api.admin_recovery_summary
-admin_test_alerts = _admin_api.admin_test_alerts
-admin_tenant_backfill = _admin_api.admin_tenant_backfill
+app.include_router(admin_api.router)
 
 
-_account_api = create_account_router(sys.modules[__name__])
-app.include_router(_account_api.router)
-RedeemPromoRequest = _account_api.RedeemPromoRequest
-redeem_promo = _account_api.redeem_promo
-DeleteFileRequest = _account_api.DeleteFileRequest
-AccountDataRequest = _account_api.AccountDataRequest
-SyntheticJourneyRequest = _account_api.SyntheticJourneyRequest
-authenticated_customer_journey = _account_api.authenticated_customer_journey
-AccountExportRequest = _account_api.AccountExportRequest
-_delete_user_document_tree = _account_api._delete_user_document_tree
-_account_workspace_memberships = _account_api._account_workspace_memberships
-_assert_no_owned_workspaces = _account_api._assert_no_owned_workspaces
-_delete_top_level_rows_for_account = _account_api._delete_top_level_rows_for_account
-_cleanup_account_extensions = _account_api._cleanup_account_extensions
-_remove_history_item_transactionally = _account_api._remove_history_item_transactionally
-_mark_history_item_deleting_transactionally = _account_api._mark_history_item_deleting_transactionally
-account_bootstrap = _account_api.account_bootstrap
-account_export = _account_api.account_export
-account_delete = _account_api.account_delete
+app.include_router(account_api.router)
 
 
-_language_api = create_language_router(sys.modules[__name__])
-app.include_router(_language_api.router)
-translate_captions = _language_api.translate_captions
-DetectLanguageRequest = _language_api.DetectLanguageRequest
-detect_language = _language_api.detect_language
+app.include_router(language_api.router)
 
 
-_media_api = create_media_router(sys.modules[__name__])
-app.include_router(_media_api.router)
-delete_user_file = _media_api.delete_user_file
-serve_uploaded_media = _media_api.serve_uploaded_media
-refresh_uploaded_media_url = _media_api.refresh_uploaded_media_url
-serve_exported_media = _media_api.serve_exported_media
+app.include_router(media_api.router)
 
 
 if __name__ == "__main__":

@@ -194,9 +194,9 @@ class DurableWorkflowTests(unittest.TestCase):
     def test_completed_result_survives_new_store_and_duplicate_worker(self):
         job = self.jobs.create("a", self.settings)
         with (patch.object(main.firebase_admin_setup, "get_db", return_value=self.db), patch.object(main.request_security, "_assert_account_not_deleting"),
-              patch.object(main, "_process_video_inline", new_callable=AsyncMock, return_value={"success": True, "captions": [{"text": "result"}]}) as provider):
-            main.run_transcription_job_task("a", job["job_id"])
-            main.run_transcription_job_task("a", job["job_id"])
+              patch.object(main.processing_api, "_process_video_inline", new_callable=AsyncMock, return_value={"success": True, "captions": [{"text": "result"}]}) as provider):
+            main.processing_api.run_transcription_job_task("a", job["job_id"])
+            main.processing_api.run_transcription_job_task("a", job["job_id"])
             self.assertEqual(provider.call_count, 1)
         recovered = TranscriptionJobs(self.db).create("a", self.settings)
         self.assertEqual(recovered["payload"]["captions"][0]["text"], "result")
@@ -211,18 +211,18 @@ class DurableWorkflowTests(unittest.TestCase):
             return finish(instance, *args, **kwargs)
         with (patch.object(main.firebase_admin_setup, "get_db", return_value=self.db), patch.object(main.request_security, "_assert_account_not_deleting"),
               patch.object(main.time, "sleep"), patch.object(TranscriptionJobs, "finish", new=flaky),
-              patch.object(main, "_process_video_inline", new_callable=AsyncMock, return_value={"success": True}) as provider):
-            main.run_transcription_job_task("a", job["job_id"])
+              patch.object(main.processing_api, "_process_video_inline", new_callable=AsyncMock, return_value={"success": True}) as provider):
+            main.processing_api.run_transcription_job_task("a", job["job_id"])
             self.assertEqual(provider.call_count, 1)
         self.assertEqual(len(calls), 2)
 
     def test_confirmed_worker_failure_is_retryable_without_reupload(self):
         job = self.jobs.create("a", self.settings)
         with (patch.object(main.firebase_admin_setup, "get_db", return_value=self.db), patch.object(main.request_security, "_assert_account_not_deleting"),
-              patch.object(main, "_process_video_inline", new_callable=AsyncMock,
+              patch.object(main.processing_api, "_process_video_inline", new_callable=AsyncMock,
                            side_effect=HTTPException(502, "provider unavailable"))):
             with self.assertRaises(HTTPException):
-                main.run_transcription_job_task("a", job["job_id"])
+                main.processing_api.run_transcription_job_task("a", job["job_id"])
 
         self.assertEqual(self.jobs.get("a", job["job_id"])["status"], "failed")
         retry = self.jobs.create("a", self.settings)

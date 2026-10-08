@@ -52,13 +52,9 @@ try:
 except ImportError:  # Direct execution from backend/ remains supported.
     from gcp_queue_metrics import render_queue_snapshot
 try:
-    from rq.job import Job
-except ImportError:
-    Job = None
-try:
-    from rq import Worker as RQWorker
-except ImportError:
-    RQWorker = None
+    from . import optional_deps
+except ImportError:  # Direct execution from backend/ remains supported.
+    import optional_deps
 
 
 def cleanup_local_media_artifacts(now: float = None) -> Dict[str, int]:
@@ -244,14 +240,14 @@ def _publish_queue_metrics_once():
     # Multiple Uvicorn processes and API replicas start this loop. A short
     # Redis lease ensures only one process writes the per-group time series.
     token = _claim_scheduled_job("gcp_queue_metrics", settings.QUEUE_METRICS_INTERVAL_SECONDS - 2)
-    if not token or app_state._export_queue is None or Job is None:
+    if not token or app_state._export_queue is None or optional_deps.Job is None:
         return
     render_queues = list(app_state._export_queues.values()) or [app_state._export_queue]
     active_workers = 1
     workers = []
-    if RQWorker is not None:
+    if optional_deps.RQWorker is not None:
         try:
-            workers = RQWorker.all(connection=app_state._rq_redis_client)
+            workers = optional_deps.RQWorker.all(connection=app_state._rq_redis_client)
             render_names = set(app_state._export_queues) or {settings.EXPORT_QUEUE_NAME}
             active_workers = sum(
                 1 for worker in workers
@@ -264,7 +260,7 @@ def _publish_queue_metrics_once():
             active_workers = 1
             workers = []
     depth, oldest_age_seconds, pending_work_seconds, predicted_wait_seconds = render_queue_snapshot(
-        render_queues, Job, active_workers=active_workers,
+        render_queues, optional_deps.Job, active_workers=active_workers,
     )
     publish_queue_snapshot(
         depth,
@@ -287,7 +283,7 @@ def _publish_queue_metrics_once():
             except Exception:
                 continue
         heavy_depth, heavy_age, heavy_work, heavy_wait = render_queue_snapshot(
-            [app_state._export_queues[HEAVY_EXPORT_QUEUE_NAME]], Job, active_workers=spot_workers or 1,
+            [app_state._export_queues[HEAVY_EXPORT_QUEUE_NAME]], optional_deps.Job, active_workers=spot_workers or 1,
         )
         publish_queue_snapshot(
             heavy_depth,
@@ -310,7 +306,7 @@ def _publish_queue_metrics_once():
             except Exception:
                 continue
         gpu_depth, gpu_age, gpu_work, gpu_wait = render_queue_snapshot(
-            [app_state._export_queues[GPU_EXPORT_QUEUE_NAME]], Job, active_workers=gpu_workers or 1,
+            [app_state._export_queues[GPU_EXPORT_QUEUE_NAME]], optional_deps.Job, active_workers=gpu_workers or 1,
         )
         publish_queue_snapshot(
             gpu_depth,
@@ -323,10 +319,10 @@ def _publish_queue_metrics_once():
         )
     if app_state._transcription_queue is not None and settings.TRANSCRIPTION_QUEUE_NAME != settings.EXPORT_QUEUE_NAME:
         transcription_depth, transcription_oldest = queue_snapshot(
-            app_state._transcription_queue, Job,
+            app_state._transcription_queue, optional_deps.Job,
         )
         if app_state._media_scan_queue is not None and settings.MEDIA_SCAN_QUEUE_NAME != settings.TRANSCRIPTION_QUEUE_NAME:
-            scan_depth, scan_oldest = queue_snapshot(app_state._media_scan_queue, Job)
+            scan_depth, scan_oldest = queue_snapshot(app_state._media_scan_queue, optional_deps.Job)
             transcription_depth += scan_depth
             transcription_oldest = max(transcription_oldest, scan_oldest)
         publish_queue_snapshot(
