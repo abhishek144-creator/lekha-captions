@@ -172,7 +172,135 @@ export const ADVANCED_TEMPLATE_EMPHASIS_COLORS = Object.freeze({
   t38: '#D4AF37',
   t39: '#FF3D71',
   t40: '#F2072B',
+  t41: '#FFF1D0',
+  t42: '#FFE45C',
+  t43: '#FFB21A',
+  t44: '#FF375F',
+  t45: '#FFD23F',
+  t46: '#FFFFFF',
+  t47: '#FF2E93',
+  t48: '#FFF6E5',
+  t49: '#3DF2B0',
+  t50: '#7EE787',
+  t51: '#F4C430',
+  t52: '#C1121F',
 });
+
+// T41–T52 are keyframe-driven: every phase (styled or word-by-word) animates
+// only through CSS @keyframes authored in lekha-captions-T11-T35.html, keyed on
+// `.active` and per-word `--lekha-word-step` / `--lekha-word-rest` variables.
+// No renderer drives their words with JS frames. Instead every renderer pauses
+// the block's CSS animations and seeks them with seekKeyframeTemplateAnimations,
+// so the gallery, the editor canvas and the export share one motion source.
+export const KEYFRAME_ADVANCED_TEMPLATE_IDS = Object.freeze([
+  't41', 't42', 't43', 't44', 't45', 't46',
+  't47', 't48', 't49', 't50', 't51', 't52',
+]);
+
+export function isKeyframeAdvancedTemplateId(templateId) {
+  return KEYFRAME_ADVANCED_TEMPLATE_IDS.includes(String(templateId || '').trim());
+}
+
+// Upper bounds of each template's authored schedule (across all its phases):
+// first word delay, per-word stagger, longest single-word animation and the
+// longest block-level tail (keyword finale, strip feed, decoy rewrite...). Only
+// export frame sampling uses these; playback timing is read from the DOM.
+// check-template-visual-parity.mjs verifies the DOM never outlasts them.
+export const KEYFRAME_TEMPLATE_MOTION = Object.freeze({
+  t41: { leadMs: 320, stepMs: 190, wordMs: 620, tailMs: 260, loop: false },
+  t42: { leadMs: 120, stepMs: 170, wordMs: 420, tailMs: 1100, loop: false },
+  t43: { leadMs: 80, stepMs: 200, wordMs: 760, tailMs: 120, loop: false },
+  t44: { leadMs: 420, stepMs: 120, wordMs: 420, tailMs: 900, loop: false },
+  t45: { leadMs: 120, stepMs: 210, wordMs: 620, tailMs: 760, loop: false },
+  t46: { leadMs: 520, stepMs: 150, wordMs: 480, tailMs: 1100, loop: false },
+  t47: { leadMs: 80, stepMs: 160, wordMs: 340, tailMs: 1000, loop: false },
+  t48: { leadMs: 80, stepMs: 190, wordMs: 680, tailMs: 420, loop: false },
+  t49: { leadMs: 60, stepMs: 130, wordMs: 520, tailMs: 600, loop: true },
+  t50: { leadMs: 80, stepMs: 160, wordMs: 300, tailMs: 1500, loop: false },
+  t51: { leadMs: 80, stepMs: 170, wordMs: 620, tailMs: 760, loop: false },
+  t52: { leadMs: 120, stepMs: 170, wordMs: 300, tailMs: 1100, loop: false },
+});
+
+// Fonts (with the exact weights Google serves) authored inside each keyframe
+// template. The editor canvas loads them with loadGoogleFont; the gallery imports them in the authored stylesheet and
+// export collects every authored font-family automatically.
+export const KEYFRAME_TEMPLATE_FONTS = Object.freeze({
+  t41: [['Old Standard TT', [400, 700]]],
+  t42: [['Barlow Condensed', [600, 700]]],
+  t43: [['Martian Mono', [500, 600, 700]]],
+  t44: [['Onest', [500, 600, 700]]],
+  t45: [['Public Sans', [600, 700, 900]]],
+  t46: [['Jura', [500, 600, 700]], ['Azeret Mono', [500]]],
+  t47: [['Lilita One', [400]]],
+  t48: [['Rozha One', [400]], ['Bowlby One', [400]], ['Courier Prime', [400, 700]]],
+  t49: [['Bricolage Grotesque', [600, 700]]],
+  t50: [['JetBrains Mono', [500, 700]]],
+  t51: [['Big Shoulders Display', [700, 800]]],
+  t52: [['Ubuntu Mono', [400, 700]]],
+});
+
+export function getKeyframeTemplateMotionWindowMs(templateId, wordCount = 1) {
+  const motion = KEYFRAME_TEMPLATE_MOTION[String(templateId || '').trim()];
+  if (!motion) return 0;
+  if (motion.loop) return Number.POSITIVE_INFINITY;
+  const words = Math.max(1, Math.min(16, Number(wordCount) || 1));
+  return motion.leadMs + ((words - 1) * motion.stepMs) + motion.wordMs + motion.tailMs;
+}
+
+// Same compression contract as getAdvancedPlaybackElapsedMs: a long authored
+// schedule is sped up so it finishes within 82% of a short caption, while the
+// keyframes, easing and relative stagger stay exactly as authored.
+export function getKeyframeTemplatePlaybackMs(naturalEndMs = 0, captionDurationMs = 0, rawElapsedMs = 0) {
+  const naturalMs = Math.max(0, Number(naturalEndMs) || 0);
+  const elapsedMs = Math.max(0, Number(rawElapsedMs) || 0);
+  if (!naturalMs) return elapsedMs;
+  const durationMs = Math.max(0, Number(captionDurationMs) || 0);
+  const targetMs = durationMs > 0
+    ? Math.max(220, Math.min(naturalMs, durationMs * 0.82))
+    : naturalMs;
+  return Math.min(naturalMs, elapsedMs * (naturalMs / targetMs));
+}
+
+// Pause and seek every CSS animation inside a keyframe-template block. Kept
+// free of module references other than getKeyframeTemplatePlaybackMs so the
+// export page can inline both functions with Function#toString.
+// settled=true resolves the fully visible final frame (paused editor state):
+// finite animations jump to their end, looping ones rest on their first frame.
+export function seekKeyframeTemplateAnimations(block, { elapsedMs = 0, captionDurationMs = 0, settled = false } = {}) {
+  if (!block || typeof block.getAnimations !== 'function') return 0;
+  let naturalEndMs = 0;
+  const entries = block.getAnimations({ subtree: true }).map((animation) => {
+    const effect = animation.effect;
+    const computed = effect && typeof effect.getComputedTiming === 'function' ? effect.getComputedTiming() : {};
+    const timing = effect && typeof effect.getTiming === 'function' ? effect.getTiming() : {};
+    const delayMs = Math.max(0, Number(timing.delay) || 0);
+    const looping = !Number.isFinite(Number(computed.iterations));
+    const endMs = looping
+      ? delayMs
+      : (Number.isFinite(Number(computed.endTime))
+        ? Number(computed.endTime)
+        : delayMs + (Number(computed.duration) || 0));
+    if (!looping) naturalEndMs = Math.max(naturalEndMs, endMs);
+    return { animation, looping, endMs };
+  });
+  const playbackMs = getKeyframeTemplatePlaybackMs(naturalEndMs, captionDurationMs, elapsedMs);
+  const rawElapsedMs = Math.max(0, Number(elapsedMs) || 0);
+  entries.forEach(({ animation, looping, endMs }) => {
+    try {
+      animation.pause();
+      // Land 1ms past a finished animation: seeking to exactly endTime can
+      // round to just before it, where steps() easing still shows a mid step.
+      animation.currentTime = looping
+        ? (settled ? endMs : rawElapsedMs)
+        : (settled || playbackMs >= endMs ? endMs + 1 : playbackMs);
+    } catch {
+      // A detached pseudo-element animation can refuse seeking; skip it.
+    }
+  });
+  // Never add the legacy `.in` word class here: renderer rules such as
+  // `.active .wbw-seq .w.in` would replace the authored keyframes.
+  return naturalEndMs;
+}
 
 export const RECREATED_ADVANCED_TEMPLATE_IDS = Object.freeze([
   't11', // Spiritual Awakening
@@ -504,6 +632,86 @@ export const ORIGINAL_TEMPLATE_BLOCKS = Object.freeze({
     { type: 'plain', label: 'PLAIN' },
     { type: 'styled', label: 'STYLED' },
   ],
+  t41: [
+    { type: 'styled', label: 'FRIDGE SNAP' },
+    { type: 'wbw-rise', label: 'TILE BY TILE' },
+    { type: 'styled', label: 'KEY TILE FIRST' },
+    { type: 'wbw-seq-fade', label: 'SLOW MAGNETS' },
+    { type: 'wbw-slide', label: 'SLIDE AND STICK' },
+  ],
+  t42: [
+    { type: 'styled', label: 'TAPE FEED' },
+    { type: 'wbw-slide', label: 'CLICK BY CLICK' },
+    { type: 'wbw-rise', label: 'PUNCH ROW' },
+    { type: 'wbw-seq-fade', label: 'RIBBON CLICKS' },
+  ],
+  t43: [
+    { type: 'styled', label: 'DEPARTURES' },
+    { type: 'wbw-rise', label: 'GATE CHANGE' },
+    { type: 'wbw-seq-fade', label: 'FINAL CALL' },
+    { type: 'wbw-slide', label: 'NOW BOARDING' },
+  ],
+  t44: [
+    { type: 'styled', label: 'THEY TYPED' },
+    { type: 'wbw-rise', label: 'I REPLIED' },
+    { type: 'wbw-seq-fade', label: 'THEY SENT' },
+    { type: 'wbw-slide', label: 'I REACTED' },
+  ],
+  t45: [
+    { type: 'styled', label: 'ROUTE DRAW' },
+    { type: 'wbw-rise', label: 'NEXT STOP' },
+    { type: 'styled', label: 'EXPRESS RUN' },
+    { type: 'wbw-seq-fade', label: 'LOCAL SERVICE' },
+    { type: 'styled', label: 'INTERCHANGE' },
+    { type: 'wbw-slide', label: 'LAST TRAIN' },
+  ],
+  t46: [
+    { type: 'styled', label: 'PLOT SHEET' },
+    { type: 'wbw-rise', label: 'DRAFT LINES' },
+    { type: 'wbw-seq-fade', label: 'MEASURE' },
+    { type: 'wbw-slide', label: 'ANNOTATE' },
+  ],
+  t47: [
+    { type: 'styled', label: 'SLAP' },
+    { type: 'wbw-rise', label: 'PEEL ON' },
+    { type: 'styled', label: 'BACKHAND SLAP' },
+    { type: 'wbw-seq-fade', label: 'STICKER DROP' },
+    { type: 'wbw-slide', label: 'SIDE SLAP' },
+  ],
+  t48: [
+    { type: 'styled', label: 'CUT AND PASTE' },
+    { type: 'wbw-rise', label: 'SCRAP DROP' },
+    { type: 'wbw-seq-fade', label: 'NOTE BUILD' },
+    { type: 'wbw-slide', label: 'GLUE STRIP' },
+  ],
+  t49: [
+    { type: 'styled', label: 'SOUNDCHECK' },
+    { type: 'wbw-rise', label: 'LEVEL UP' },
+    { type: 'styled', label: 'BASS SPIKE' },
+    { type: 'wbw-seq-fade', label: 'SLOW JAM' },
+    { type: 'wbw-slide', label: 'CROSSFADE' },
+  ],
+  t50: [
+    { type: 'styled', label: 'TRACK CHANGES' },
+    { type: 'wbw-rise', label: 'LIVE EDIT' },
+    { type: 'wbw-seq-fade', label: 'AUTOCORRECT' },
+    { type: 'wbw-slide', label: 'FINAL DRAFT' },
+  ],
+  t51: [
+    { type: 'styled', label: 'CHAIN REACTION' },
+    { type: 'wbw-rise', label: 'KNOCK ON' },
+    { type: 'styled', label: 'REVERSE RUN' },
+    { type: 'wbw-seq-fade', label: 'SLOW TOPPLE' },
+    { type: 'wbw-slide', label: 'LAST PIECE' },
+  ],
+  t52: [
+    { type: 'styled', label: 'TILL RECEIPT' },
+    { type: 'wbw-rise', label: 'LINE ITEMS' },
+    { type: 'styled', label: 'PRINT HEAD' },
+    { type: 'wbw-seq-fade', label: 'TALLY' },
+    { type: 'styled', label: 'TEAR OFF' },
+    { type: 'wbw-slide', label: 'CHANGE DUE' },
+  ],
 });
 
 export const ORIGINAL_TEMPLATE_BLOCK_TYPES = Object.freeze(
@@ -533,7 +741,10 @@ export function isAdvancedSequentialBlockType(blockType = '') {
   return ['wbw-seq', 'wbw-seq-fade', 'wbw-seq-flip'].includes(String(blockType));
 }
 
-export function getAdvancedAnimationWindowMs(blockType, wordCount = 1) {
+export function getAdvancedAnimationWindowMs(blockType, wordCount = 1, templateId = '') {
+  if (isKeyframeAdvancedTemplateId(templateId)) {
+    return getKeyframeTemplateMotionWindowMs(templateId, wordCount);
+  }
   if (blockType === 'plain') return 0;
   if (blockType === 'karaoke') return ADVANCED_TEMPLATE_TIMING.holdMs;
   if (isAdvancedWbwBlockType(blockType)) {

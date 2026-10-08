@@ -18,6 +18,10 @@ import {
   getAdvancedAnimationWindowMs,
   getLcMotionSchedule,
   getOriginalTemplateBlockType,
+  getKeyframeTemplatePlaybackMs,
+  isKeyframeAdvancedTemplateId,
+  KEYFRAME_ADVANCED_TEMPLATE_IDS,
+  seekKeyframeTemplateAnimations,
 } from '../src/components/dashboard/templateMotionConfig.js';
 import {
   buildAdvancedTemplateBlockMarkupMap,
@@ -127,9 +131,9 @@ function getTemplateBlockType(templateId, blockIndex = 0) {
   return getOriginalTemplateBlockType(templateId, blockIndex);
 }
 
-function getAdvancedTemplateAnimationWindow(blockType, captionDuration, wordCount = 1) {
+function getAdvancedTemplateAnimationWindow(blockType, captionDuration, wordCount = 1, templateId = '') {
   const duration = Math.max(Number(captionDuration) || 0, 0);
-  return Math.min(duration, getAdvancedAnimationWindowMs(blockType, wordCount) / 1000);
+  return Math.min(duration, getAdvancedAnimationWindowMs(blockType, wordCount, templateId) / 1000);
 }
 
 function extractOriginalTemplateRuntimeCss(originalTemplateHtml) {
@@ -850,6 +854,14 @@ async function main() {
     }
     .lekha-original-template .lekha-applied-advanced-template {
       font-size: ${exportAdvancedTemplateFontPx}px;
+    }
+    /* T41–T52 size every decoration in em: one scale input, same formula as
+       the canvas (scaleTemplateFontSize(font_size) x render scale). */
+    .lekha-original-template:is(
+      .t41-stage, .t42-stage, .t43-stage, .t44-stage, .t45-stage, .t46-stage,
+      .t47-stage, .t48-stage, .t49-stage, .t50-stage, .t51-stage, .t52-stage
+    ) .lekha-applied-advanced-template {
+      font-size: ${exportAdvancedTemplateFontPx}px !important;
     }
     .lekha-original-template .lekha-template-fit {
       display: inline-block;
@@ -2372,7 +2384,9 @@ async function main() {
             points.add(start + (segmentDuration * index));
           }
         }
-        const animationWindow = getAdvancedTemplateAnimationWindow(blockType, Math.max(end - start, 0), wordCount);
+        // Keyframe templates (T41–T52) seek authored CSS keyframes; sample their
+        // whole authored schedule (or the whole caption for looping phases).
+        const animationWindow = getAdvancedTemplateAnimationWindow(blockType, Math.max(end - start, 0), wordCount, templateId);
         const animationEnd = Math.min(end, start + animationWindow);
         for (
           let sample = start + (1 / adaptiveTemplateSampleFps);
@@ -2688,6 +2702,18 @@ async function main() {
             const captionStart = Number(shell?.dataset?.captionStart || 0);
             const captionEnd = Number(shell?.dataset?.captionEnd || captionStart);
             const captionElapsedMs = Math.max(0, (currentTime - captionStart) * 1000);
+            const keyframeTemplateId = Array.from(window.__keyframeAdvancedTemplateIds || [])
+              .find((id) => block.classList.contains(id + '-block'));
+            if (keyframeTemplateId && window.__seekKeyframeTemplateAnimations) {
+              // T41–T52: seek the authored CSS keyframes relative to this caption,
+              // exactly like the editor canvas does while playing.
+              window.__seekKeyframeTemplateAnimations(block, {
+                elapsedMs: captionElapsedMs,
+                captionDurationMs: Math.max(0, (captionEnd - captionStart) * 1000),
+                settled: false,
+              });
+              return;
+            }
             const blockType = block.dataset.templateBlockType || 'styled';
             const timing = window.__advancedTemplateTiming || {};
             const clamp = (value) => Math.max(0, Math.min(1, Number(value) || 0));

@@ -385,3 +385,51 @@ default yellow accent.
 - `node scripts/check-template-motion-parity.mjs` passed.
 - Note: the backend must reload/restart to pick up the new
   `EXPORT_RENDERER_VERSION`.
+
+## Keyframe-Driven Templates (T41–T52)
+
+### Contract
+
+- T41–T52 (`KEYFRAME_ADVANCED_TEMPLATE_IDS` in `templateMotionConfig.js`) are
+  animated only by CSS `@keyframes` authored in
+  `src/assets/lekha-captions-T11-T35.html`, keyed on the phase block's
+  `.active` class. Every phase block carries `data-keyframe-template="true"`.
+- Per-word timing comes from `--lekha-word-step` (word index) and
+  `--lekha-word-rest` (words after it), set with `:nth-of-type` rules. No
+  renderer drives these words with JS frames, and nothing adds the legacy
+  `.in` class to them: renderer rules such as `.active .wbw-seq .w.in` would
+  replace the authored keyframes.
+- The un-animated base style is the settled frame (opacity 1, `transform`
+  none, no clip-path). Static tilts use the `rotate` property; tiles, strips,
+  bars, dots, decoys and annotations are pseudo-elements, because the canvas
+  wraps each word's text in an absolutely positioned child.
+- The gallery restarts the CSS animations. The canvas and export both call
+  `seekKeyframeTemplateAnimations(block, { elapsedMs, captionDurationMs,
+  settled })`: finite animations are compressed into 82% of a short caption,
+  looping ones (T49 bars) run on the raw clock, and a paused canvas caption is
+  always settled.
+- Font size is the only scale input: the canvas passes
+  `scaleTemplateFontSize(font_size) * renderScale` as
+  `--lekha-keyframe-font-px`; export uses `exportAdvancedTemplateFontPx`.
+- Export frame sampling uses `KEYFRAME_TEMPLATE_MOTION`; the visual audit
+  fails if any phase's DOM schedule outlasts it.
+
+### Export failure: renderer exhausts memory
+
+A 3D flap (`perspective()` + `rotateX`) combined with `clip-path` made
+Chromium's software compositor (export runs with `--disable-gpu`) grow until
+the container stalled. T41–T52 author every flip in 2D (orthographic
+`rotateX(θ)` equals `scaleY(cos θ)`), and `check-template-motion-parity.mjs`
+rejects 3D transforms in that section.
+
+### Verification
+
+```powershell
+npm run test:template-parity
+npm run test:template-visual
+npm run test:template-export:keyframe-right-phases
+```
+
+The keyframe export scope renders every phase with the caption starting at
+2.4s and requires frame-to-frame motion. Renderer version:
+`2026-10-04-keyframe-templates-t41-t52-v48`.

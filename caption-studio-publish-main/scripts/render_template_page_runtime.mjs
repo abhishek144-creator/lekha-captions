@@ -1,6 +1,6 @@
 // Browser runtime builder extracted verbatim from the overlay renderer.
 import { isAdvancedTemplateId } from "../src/components/dashboard/templateTextRules.js"
-import { ADVANCED_IMP_ENTRANCES, ADVANCED_TEMPLATE_EMPHASIS_COLORS, ADVANCED_TEMPLATE_TIMING, LEGACY_TEMPLATE_TIMING, ORIGINAL_TEMPLATE_BLOCK_TYPES, RECREATED_ADVANCED_TEMPLATE_IDS, LC_TEMPLATE_TIMING, fitLcMotionScheduleToCaption, getLcMotionSchedule } from "../src/components/dashboard/templateMotionConfig.js"
+import { ADVANCED_IMP_ENTRANCES, ADVANCED_TEMPLATE_EMPHASIS_COLORS, ADVANCED_TEMPLATE_TIMING, LEGACY_TEMPLATE_TIMING, ORIGINAL_TEMPLATE_BLOCK_TYPES, RECREATED_ADVANCED_TEMPLATE_IDS, LC_TEMPLATE_TIMING, fitLcMotionScheduleToCaption, getLcMotionSchedule, getKeyframeTemplatePlaybackMs, KEYFRAME_ADVANCED_TEMPLATE_IDS, seekKeyframeTemplateAnimations } from "../src/components/dashboard/templateMotionConfig.js"
 import { APPLIED_BASIC_TEMPLATE_FONT_SCALE } from "../src/components/dashboard/basicTemplateInline.js"
 import { getCaptionWordRevealTimes, getCaptionWordStartTime } from "../src/components/dashboard/cptMotion.js"
 
@@ -760,6 +760,10 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
     };
 
     window.__advancedTemplateTiming = ${JSON.stringify(ADVANCED_TEMPLATE_TIMING)};
+    // Same seek used by the editor canvas (templateMotionConfig.js), inlined.
+    const getKeyframeTemplatePlaybackMs = ${getKeyframeTemplatePlaybackMs.toString()};
+    window.__keyframeAdvancedTemplateIds = new Set(${JSON.stringify(KEYFRAME_ADVANCED_TEMPLATE_IDS)});
+    window.__seekKeyframeTemplateAnimations = ${seekKeyframeTemplateAnimations.toString()};
     window.__advancedImpEntrances = ${JSON.stringify(ADVANCED_IMP_ENTRANCES)};
     window.__getAdvancedPlaybackElapsedMs = (blockType, wordCount, captionDurationMs, rawElapsedMs) => {
       const timing = window.__advancedTemplateTiming || {};
@@ -967,6 +971,30 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         case 't40':
           if (normalized === 2) return wrap('t40-b2', \`<span class="lekha-template-fit">\${stillFramesMarkup(full)}</span>\`);
           return wrap(\`t40-b\${normalized}\`, \`<span class="lekha-template-fit">\${stillFramesMarkup(full)}</span>\`);
+        case 't41':
+        case 't42':
+        case 't43':
+        case 't44':
+        case 't45':
+        case 't46':
+        case 't47':
+        case 't48':
+        case 't49':
+        case 't50':
+        case 't51':
+        case 't52': {
+          const keyframeLine = wbwMarkup(
+            full,
+            (blockType === 'styled' ? 'wbw-seq' : blockType) + ' ' + templateId + '-line',
+            'imp-' + templateId,
+          ).replace(/ in" data-i=/g, '" data-i=');
+          const keyframeInner = templateId === 't44'
+            ? '<span class="t44-thread ' + (normalized % 2 ? 't44-me' : 't44-them') + '">'
+              + '<span class="t44-typing" aria-hidden="true"><span class="t44-dot"></span><span class="t44-dot"></span><span class="t44-dot"></span></span>'
+              + keyframeLine + '</span>'
+            : keyframeLine;
+          return wrap(templateId + '-b' + normalized, keyframeInner);
+        }
         default:
           return '';
       }
@@ -2925,11 +2953,14 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           ? caption.preview_template_line_texts
           : style.preview_template_line_texts;
         const renderedTemplateId = String(renderStyle?.template_id || '').trim();
-        const shouldReplayPreviewLineBreaks =
+        // Keyframe templates index words with :nth-of-type inside one line
+        // container, so regrouping words into line spans would break them.
+        const shouldReplayPreviewLineBreaks = !window.__keyframeAdvancedTemplateIds.has(renderedTemplateId) && (
           !recreatedAdvancedTemplateIds.has(renderedTemplateId)
           || renderedTemplateId === 't24'
           || renderedTemplateId === 't25'
-          || renderedTemplateId === 't29';
+          || renderedTemplateId === 't29'
+        );
         if (shouldReplayPreviewLineBreaks) {
           applyPreviewTemplateLineBreaks(anchor, {
             ...style,
