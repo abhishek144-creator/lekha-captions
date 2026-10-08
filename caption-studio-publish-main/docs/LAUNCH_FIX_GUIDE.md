@@ -1,5 +1,8 @@
 # Lekha Captions — how to close every remaining launch item
 
+> Current status: [8 October consolidated blockers](CURRENT_LAUNCH_BLOCKERS_2026-10-08.md).
+> This older document retains its dated historical guidance and confirmations.
+
 Current scope: follow `CONTROLLED_LAUNCH_SCOPE.md`. The owner has deferred
 pentest/CA engagements and optional enterprise/mass-traffic work. Older steps
 below are historical guidance and do not override that essential-only scope.

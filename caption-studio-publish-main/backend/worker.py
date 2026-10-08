@@ -11,12 +11,12 @@ from rq import Worker
 
 try:
     from . import main as api
-    from .main import (
+    from .maintenance_jobs import cleanup_local_media_artifacts
+    from .settings import (
         EXPORT_QUEUE_NAME,
         TRANSCRIPTION_QUEUE_NAME,
         MEDIA_SCAN_QUEUE_NAME,
         REDIS_URL,
-        cleanup_local_media_artifacts,
     )
     from .release_metadata import release_metadata
     from .gcp_scale_in import ScaleInProtector
@@ -26,12 +26,12 @@ try:
     from .worker_launcher import WorkerLease
 except ImportError:  # Direct execution from backend/ remains supported.
     import main as api
-    from main import (
+    from maintenance_jobs import cleanup_local_media_artifacts
+    from settings import (
         EXPORT_QUEUE_NAME,
         TRANSCRIPTION_QUEUE_NAME,
         MEDIA_SCAN_QUEUE_NAME,
         REDIS_URL,
-        cleanup_local_media_artifacts,
     )
     from release_metadata import release_metadata
     from gcp_scale_in import ScaleInProtector
@@ -61,6 +61,16 @@ def _local_cleanup_loop(stop_event):
 class ReleaseWorker(Worker):
     scale_in_protector = ScaleInProtector()
     launch_lease = None
+
+    def handle_job_failure(self, job, queue, started_job_registry=None, exc_string=""):
+        # SIGKILL bypasses the task's exception handler. Repair its application
+        # state before RQ schedules the retry, including failures in work horses.
+        if job.should_retry and self._stopped_job_id != job.id:
+            try:
+                api.recover_interrupted_export_retry(job.id)
+            except Exception as error:
+                self.log.warning("Export retry reconciliation failed for %s: %s", job.id, type(error).__name__)
+        return super().handle_job_failure(job, queue, started_job_registry, exc_string)
 
     def heartbeat(self, timeout=None, pipeline=None):
         super().heartbeat(timeout=timeout, pipeline=pipeline)
@@ -279,7 +289,7 @@ def _drain_loop(state, queue_names, *, drain=None):
                 conn.connection_pool.disconnect()
             # Importing the API opens two additional Redis pools. Disconnect
             # those too; Redis's server keepalives otherwise keep idle workers awake.
-            disconnect_idle_redis_clients(api._redis_client, api._rq_redis_client)
+            disconnect_idle_redis_clients(api.app_state._redis_client, api.app_state._rq_redis_client)
             with state.lock:
                 state.running = False
         print(json.dumps({"event": "worker_idle" if keep_serving else "worker_stopped"}), flush=True)

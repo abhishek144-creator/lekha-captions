@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { Check, Zap, Crown, Star, Loader2 } from 'lucide-react'
@@ -9,13 +9,14 @@ import { toast } from '@/components/ui/use-toast'
 import { apiRequest } from '@/lib/apiClient'
 import { notifyApiError } from '@/lib/notifyApiError'
 import planCatalog from '../../../shared/planCatalog.json'
+import { getPreferredBillingCurrency, saveBillingCurrency } from '../../../shared/billingCurrency'
 
 const RAZORPAY_KEY_ID = import.meta.env.VITE_RAZORPAY_KEY_ID || ''
 const PENDING_PURCHASE_KEY = 'lekha.pendingPurchase'
 
-function savePendingPurchase(planId, billing) {
+function savePendingPurchase(planId, billing, currency) {
   try {
-    window.sessionStorage.setItem(PENDING_PURCHASE_KEY, JSON.stringify({ planId, billing }))
+    window.sessionStorage.setItem(PENDING_PURCHASE_KEY, JSON.stringify({ planId, billing, currency }))
   } catch {
     // Checkout still falls back to the normal post-signup pricing page.
   }
@@ -98,19 +99,6 @@ const loadRazorpayScript = () => {
     }
     document.head.appendChild(script)
   })
-}
-
-// USD is the default global currency. Local-currency (INR) billing is offered only
-// when the visitor clearly resolves to that billing region.
-const detectInternationalUser = () => {
-  try {
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
-    const lang = navigator.language || ''
-    const localCurrencyTZ = ['Asia/Calcutta', 'Asia/Kolkata']
-    const localCurrencyLangs = ['hi', 'ta', 'te', 'kn', 'ml', 'mr', 'gu', 'pa', 'bn', 'or', 'as', 'ur']
-    const isLocalCurrencyRegion = localCurrencyTZ.includes(tz) || localCurrencyLangs.some(l => lang.startsWith(l))
-    return !isLocalCurrencyRegion
-  } catch { return true }
 }
 
 function getDiscountPercent(monthlyMinor, yearlyMinor) {
@@ -215,15 +203,17 @@ export default function PricingSection() {
   const [processingPlan, setProcessingPlan] = useState(null)
   const [billing, setBilling] = useState('yearly')
   const [selectedPlan, setSelectedPlan] = useState(null)
-  const [isInternational, setIsInternational] = useState(false)
+  const [billingCurrency, setBillingCurrency] = useState(getPreferredBillingCurrency)
+  const isInternational = billingCurrency === 'USD'
+  const changeCurrency = event => {
+    const currency = event.target.value
+    setBillingCurrency(currency)
+    saveBillingCurrency(currency)
+  }
   const maxYearlyDiscount = isInternational
     ? Math.max(...plans.map((plan) => getDiscountPercent(plan.monthlyUsdCents, plan.yearlyUsdCents)))
     : Math.max(...plans.map((plan) => getDiscountPercent(plan.monthlyPaise, plan.yearlyPaise)))
   const { currentUser } = useAuth()
-
-  useEffect(() => {
-    setIsInternational(detectInternationalUser())
-  }, [])
 
   useEffect(() => {
     if (window.location.hash !== '#pricing') return undefined
@@ -232,10 +222,10 @@ export default function PricingSection() {
     return undefined
   }, [])
 
-  const handleSelectPlan = async (plan, requestedBilling = billing) => {
+  const handleSelectPlan = async (plan, requestedBilling = billing, requestedCurrency = billingCurrency) => {
     const checkoutUser = currentUser || auth?.currentUser
     if (!checkoutUser) {
-      savePendingPurchase(plan.id, requestedBilling)
+      savePendingPurchase(plan.id, requestedBilling, requestedCurrency)
       toast({ variant: 'destructive', title: 'Sign up to continue', description: 'Create your account, then choose your plan.' })
       const returnTo = encodeURIComponent('/#pricing')
       window.location.assign(`${createPageUrl('login')}?mode=signup&returnTo=${returnTo}`)
@@ -253,7 +243,7 @@ export default function PricingSection() {
       }
 
       const planId = requestedBilling === 'yearly' ? `${plan.id}_yearly` : plan.id
-      const currency = isInternational ? 'USD' : 'INR'
+      const currency = requestedCurrency
       const amount = requestedBilling === 'yearly'
         ? (currency === 'USD' ? plan.yearlyUsdCents : plan.yearlyPaise)
         : (currency === 'USD' ? plan.monthlyUsdCents : plan.monthlyPaise)
@@ -277,7 +267,7 @@ export default function PricingSection() {
       if (!keyId) {
         throw new Error('Razorpay payment key is not set. Please configure VITE_RAZORPAY_KEY_ID.')
       }
-      if (!Number.isSafeInteger(orderData.order.amount) || orderData.order.amount <= 0 || !['INR', 'USD'].includes(orderData.order.currency)) {
+      if (!Number.isSafeInteger(orderData.order.amount) || orderData.order.amount !== amount || orderData.order.currency !== currency) {
         throw new Error('Payment order returned an invalid amount or currency.')
       }
 
@@ -369,11 +359,14 @@ export default function PricingSection() {
     let cancelled = false
 
     const resumePendingPurchase = async () => {
+      const pendingCurrency = ['USD', 'INR'].includes(pending.currency) ? pending.currency : getPreferredBillingCurrency()
+      setBillingCurrency(pendingCurrency)
+      saveBillingCurrency(pendingCurrency)
       setBilling(pending.billing)
       setSelectedPlan(pendingPlan.id)
       await restorePricingSection()
       if (cancelled) return
-      await handleSelectPlan(pendingPlan, pending.billing)
+      await handleSelectPlan(pendingPlan, pending.billing, pendingCurrency)
     }
 
     resumePendingPurchase()
@@ -408,6 +401,14 @@ export default function PricingSection() {
           <p className="mt-4 text-[#949494] mb-8">
             Choose the plan that fits your content schedule.
           </p>
+
+          <label className="mx-auto mb-4 flex w-fit items-center gap-2 text-sm text-gray-300">
+            Currency
+            <select aria-label="Billing currency" value={billingCurrency} onChange={changeCurrency} disabled={Boolean(processingPlan)} className="rounded-md border border-white/20 bg-[#1A1A1A] px-3 py-2 text-white">
+              <option value="USD">USD ($)</option>
+              <option value="INR">INR (₹)</option>
+            </select>
+          </label>
 
           {/* Billing Toggle */}
           <div className="landing-billing-toggle flex w-fit items-center gap-1 rounded-full border border-white/10 bg-[#1A1A1A] p-1 mx-auto mb-8">

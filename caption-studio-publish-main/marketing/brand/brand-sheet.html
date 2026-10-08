@@ -1,0 +1,45 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Lekha Captions — Wordmark</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@96,500;96,800&family=JetBrains+Mono:wght@500;700&display=block" rel="stylesheet">
+<style>
+* { margin:0; box-sizing:border-box }
+body { width:1920px; height:1300px; display:grid; grid-template-columns:1fr 1fr 1fr; grid-template-rows:620px 360px 320px; background:#FFFAF3; font-family:'Bricolage Grotesque' }
+.c { position:relative; display:flex; align-items:center; justify-content:center; gap:40px }
+.lab { position:absolute; left:28px; top:22px; font:700 14px 'JetBrains Mono'; letter-spacing:.18em; color:#8A8478; text-transform:uppercase }
+.ink { background:#0C0B0F } .ink .lab { color:#6d6860 }
+.sig { background:#C27A29 } .sig .lab { color:rgba(255,250,243,.7) } .sig .lab { color:rgba(12,11,15,.55) }
+.wide { grid-column:1/3 }
+.concept { position:absolute; left:44px; right:44px; top:80px; color:#F3EEE4; font-size:31px; line-height:1.3; font-weight:500; letter-spacing:-.02em }
+.concept b { font-weight:800 }
+.concept small { display:block; margin-top:22px; font:500 15px/1.7 'JetBrains Mono'; color:#8A8478 }
+.sizes { display:flex; align-items:flex-end; gap:36px }
+.sizes span { display:block; text-align:center; font:700 12px 'JetBrains Mono'; color:#8A8478; margin-top:8px }
+.sw { position:absolute; left:40px; right:40px; bottom:40px; height:130px; display:flex; border-radius:16px; overflow:hidden }
+.sw div { flex:1; display:flex; align-items:flex-end; padding:14px; font:700 13px/1.4 'JetBrains Mono' }
+</style></head><body>
+  <div class="c wide"><div class="lab">Primary wordmark</div><img src="svg/lekha-wordmark-light.svg" width="760"></div>
+  <div class="c ink"><div class="lab">Concept</div>
+    <div class="concept"><b>Said, then subtitled.</b> Lekha means “writing”. The name is set as two burned-in subtitle lines — staggered the way captions sit on a video — and framed by big quotation marks, because every caption starts as something someone said.
+      <small>Pure type — no symbol to explain.<br>Bricolage Grotesque · JetBrains Mono · Fraunces italic quotes (all open-licence).<br>Second line: the landing page's day-theme amber, softened (#C27A29).<br>Delivered as outlined SVG: no font install needed.</small></div>
+  </div>
+  <div class="c ink"><div class="lab">On dark</div><img src="svg/lekha-wordmark-dark.svg" width="500"></div>
+  <div class="c sig"><div class="lab">One colour</div><img src="svg/lekha-wordmark-mono.svg" width="500"></div>
+  <div class="c"><div class="lab">App icon · favicon</div>
+    <div class="sizes">
+      <div><img src="svg/lekha-icon.svg" width="180"><span>180</span></div>
+      <div><img src="svg/lekha-icon.svg" width="64"><span>64</span></div>
+      <div><img src="svg/lekha-icon.svg" width="32"><span>32</span></div>
+      <div><img src="svg/lekha-icon.svg" width="16"><span>16</span></div>
+    </div>
+  </div>
+  <div class="c ink"><div class="lab">Small use</div><img src="svg/lekha-wordmark-dark.svg" width="160"></div>
+  <div class="c" style="grid-column:2/4"><div class="lab">Palette</div>
+    <div class="sw">
+      <div style="background:#0C0B0F;color:#F3EEE4">INK<br>#0C0B0F</div>
+      <div style="background:#FFFAF3;box-shadow:inset 0 0 0 2px #e8d0b2">DAY CREAM<br>#FFFAF3</div>
+      <div style="background:#C27A29;color:#FFFAF3">DAY AMBER (SOFT)<br>#C27A29</div>
+      <div style="background:#B7F27A">HIGHLIGHT<br>#B7F27A</div>
+      <div style="background:#8A8478;color:#F3EEE4">STONE<br>#8A8478</div>
+    </div>
+  </div>
+</body></html>

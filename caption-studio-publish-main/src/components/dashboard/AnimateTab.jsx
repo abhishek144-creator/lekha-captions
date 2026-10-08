@@ -298,6 +298,7 @@ export default function AnimateTab({ selectedCaption, selectedWord, captions, se
                   </span>
                 </div>
                 <Slider
+                  aria-label="Animation speed"
                   value={[currentSpeed]}
                   onValueChange={([val]) => handleSpeedChange(val)}
                   min={0.25}

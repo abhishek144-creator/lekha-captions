@@ -92,13 +92,12 @@ export function useCloudProjects({ currentUser, getAuthToken, projectId, setProj
         }
         return [next, ...projects.filter((item) => item.project_id !== next.project_id)]
       })
-      onMessage('Saved to your account')
       return data
     }
     const pending = saveChainRef.current.catch(() => {}).then(save)
     saveChainRef.current = pending
     return pending
-  }, [activeWorkspaceId, cloudReady, currentUser, getAuthToken, onMessage, projectId, setProjectId])
+  }, [activeWorkspaceId, cloudReady, currentUser, getAuthToken, projectId, setProjectId])
 
   const selectCloudProject = useCallback(async (nextProjectId) => {
     if (!currentUser || !nextProjectId) return

@@ -1,3 +1,4 @@
+import { readVideoPlayerSource } from './video-player-source.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -162,21 +163,9 @@ assert.equal(
   );
 }
 
-// VideoPlayer.jsx plus its extracted runtime modules — read all so the
-// contracts below stay satisfied wherever the declaration actually lives.
-const videoPlayerSource = (await readFile(
-  new URL('../src/components/dashboard/VideoPlayer.jsx', import.meta.url),
-  'utf8',
-)) + '\n' + (await readFile(
-  new URL('../src/components/dashboard/videoPlayerTemplateStyles.jsx', import.meta.url),
-  'utf8',
-)) + '\n' + (await readFile(
-  new URL('../src/components/dashboard/videoPlayerWordEditing.js', import.meta.url),
-  'utf8',
-)) + '\n' + (await readFile(
-  new URL('../src/components/dashboard/videoPlayerTemplateRendering.jsx', import.meta.url),
-  'utf8',
-));
+// VideoPlayer.jsx plus its extracted modules — read all so the contracts
+// below stay satisfied wherever the declaration actually lives.
+const videoPlayerSource = readVideoPlayerSource(new URL('../', import.meta.url));
 const exportPanelSource = await readFile(
   new URL('../src/components/dashboard/ExportPanel.jsx', import.meta.url),
   'utf8',
@@ -261,8 +250,8 @@ assert.doesNotMatch(
 );
 assert.match(
   videoPlayerSource,
-  /releaseClientDeltaX = Number\.isFinite\(upEvent\?\.clientX\)[\s\S]*releaseClientDeltaY = Number\.isFinite\(upEvent\?\.clientY\)[\s\S]*x: dragState\.initialX \+ releaseClientDeltaX/,
-  'drag commit must use the actual pointer-up coordinates rather than a stale final move event',
+  /releaseClientDeltaX = Number\.isFinite\(upEvent\?\.clientX\)[\s\S]*releaseClientDeltaY = Number\.isFinite\(upEvent\?\.clientY\)[\s\S]*released = resolveDelta\(releaseClientDeltaX, releaseClientDeltaY[\s\S]*x: dragState\.initialX \+ released\.deltaX/,
+  'drag commit must snap the actual pointer-up coordinates using the preview resolver',
 );
 assert.match(
   videoPlayerSource,

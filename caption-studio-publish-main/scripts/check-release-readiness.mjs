@@ -3,6 +3,9 @@ import path from "path"
 import { createHash } from "crypto"
 import { execFileSync } from "child_process"
 import { readBackendApiSource } from "./backend-api-source.mjs"
+import { readDashboardSource } from "./editor-source.mjs"
+import { readVideoPlayerSource } from "./video-player-source.mjs"
+import { pathToFileURL } from "url"
 
 const root = process.cwd()
 const checks = []
@@ -299,7 +302,7 @@ const rendererBenchmarkCore = readText("backend/rendering/renderer_benchmark.py"
 const costAnalyzer = readText("scripts/analyze_export_observations.py")
 const firebaseHostingBuild = readText("deploy/gcp/firebase-hosting/cloudbuild.yaml")
 const videoPlayerCore = readText("src/components/dashboard/VideoPlayer.jsx")
-const videoPlayer = videoPlayerCore + "\n" + readText("src/components/dashboard/videoPlayerTemplateRendering.jsx")
+const videoPlayer = readVideoPlayerSource(pathToFileURL(`${root}/`))
 const videoPlayerWordEditing = readText("src/components/dashboard/videoPlayerWordEditing.js")
 const adminOps = readText("src/pages/AdminOps.jsx")
 assertIncludes("upload CORS includes the editor origin", terraformVariables, '"https://app.lekhacaptions.com"')
@@ -440,11 +443,12 @@ assertIncludes("transcription has an independent MIG", terraformMain, 'google_co
 assertExcludes("transcription image has no staging queue baked in", readText("Dockerfile"), "caption_transcription_jobs_staging")
 assertIncludes("tests do not automatically load developer secrets", backendMain, "_bootstrap_is_test")
 assertIncludes("export daily limit is configurable", backendMain, 'DISABLE_EXPORT_DAILY_LIMIT = os.environ.get(')
-assertIncludes(
-  "export daily limit is enforced by default in every environment",
-  backendMain.replace(/\r\n/g, "\n"),
-  '    "DISABLE_EXPORT_DAILY_LIMIT",\n    "0",\n) == "1"',
-)
+const exportDailyLimitDefault = /\bDISABLE_EXPORT_DAILY_LIMIT\s*=\s*os\.environ\.get\(\s*"DISABLE_EXPORT_DAILY_LIMIT",\s*"0",?\s*\)\s*==\s*"1"/
+if (exportDailyLimitDefault.test(backendMain)) {
+  pass("export daily limit is enforced by default in every environment")
+} else {
+  fail("export daily limit is enforced by default in every environment", "Expected the disable flag to default to 0")
+}
 assertIncludes(
   "production refuses to boot with daily export limits disabled",
   backendMain,
@@ -462,7 +466,7 @@ assertIncludes("uploads use signed media URLs", backendMain, "def _signed_upload
 
 const homePage = readText("src/pages/Home.jsx")
 const homeV2Page = readText("src/pages/HomeV2.jsx")
-const dashboardPage = readText("src/pages/Dashboard.jsx")
+const dashboardPage = readDashboardSource(root)
 const errorBoundary = readText("src/components/ErrorBoundary.jsx")
 const frontendMonitoring = readText("src/lib/frontendMonitoring.js")
 const toastComponent = readText("src/components/ui/toast.jsx")

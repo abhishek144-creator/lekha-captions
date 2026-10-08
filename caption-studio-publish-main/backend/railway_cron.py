@@ -18,6 +18,7 @@ import json
 import os
 import sys
 import time
+from types import SimpleNamespace
 
 try:
     from . import main as api
@@ -31,6 +32,7 @@ except ImportError:  # pragma: no cover - run as a script from backend/
 try:
     from rq.registry import StartedJobRegistry
     from rq.scheduler import RQScheduler
+    from rq.job import Job
 except ImportError:  # pragma: no cover - production dependency is pinned
     RQScheduler = None
     StartedJobRegistry = None
@@ -60,7 +62,17 @@ def recover_expired_jobs(connection, queue_names):
     if StartedJobRegistry is None or connection is None:
         return 0
     for name in queue_names:
-        StartedJobRegistry(name=name, connection=connection).cleanup()
+        registry = StartedJobRegistry(name=name, connection=connection)
+        # Capture abandoned IDs before RQ removes them from the started registry.
+        candidates = registry.get_expired_job_ids()
+        registry.cleanup()
+        for job_id in candidates:
+            try:
+                status = Job.fetch(job_id, connection=connection).get_status()
+                if str(status).lower().split(".")[-1] in {"queued", "scheduled"}:
+                    api.recover_interrupted_export_retry(job_id)
+            except Exception as error:
+                _log("export_retry_reconciliation_failed", job_id=job_id, error=type(error).__name__)
     return len(queue_names)
 
 
@@ -98,7 +110,24 @@ def kick_backlogged_workers(connection, queue_names):
     return sum(1 for name in queue_names if worker_launcher.kick(connection, name, log=print))
 
 
-def run_once(*, host=api, launch_queues=None):
+def _api_host():
+    """The real API: shared state and helpers from the modules that own them."""
+    return SimpleNamespace(
+        _rq_redis_client=api.app_state._rq_redis_client,
+        _transcription_queue=api.app_state._transcription_queue,
+        TranscriptionJobs=api.TranscriptionJobs,
+        get_db=api.firebase_admin_setup.get_db,
+        _dispatch_media_scans_once=api.upload_dispatch._dispatch_media_scans_once,
+        _flush_telemetry=api.observability._flush_telemetry,
+        _send_alert=api.observability._send_alert,
+        asyncio=api.asyncio,
+        scheduled_janitor_job=api.maintenance_jobs.scheduled_janitor_job,
+        scheduled_payment_reconciliation_job=api.maintenance_jobs.scheduled_payment_reconciliation_job,
+    )
+
+
+def run_once(*, host=None, launch_queues=None):
+    host = host if host is not None else _api_host()
     launch_queues = list(launch_queues if launch_queues is not None else worker_launcher.job_map())
     staging = os.environ.get("RELEASE_ENVIRONMENT") == "staging"
     steps = [
@@ -141,7 +170,7 @@ def main():
     _log("cron_pass_finished", failed_steps=failures)
     sys.stdout.flush()
     sys.stderr.flush()
-    sentry = getattr(api, "sentry_sdk", None)
+    sentry = getattr(api.optional_deps, "sentry_sdk", None)
     if sentry is not None:
         try:
             sentry.flush(timeout=5)

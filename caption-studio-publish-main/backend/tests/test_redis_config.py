@@ -8,11 +8,11 @@ from backend.redis_config import connect_redis, redis_client_options, validate_r
 class RedisConfigTests(unittest.TestCase):
     def test_production_rejects_plaintext_public_redis(self):
         with self.assertRaises(RuntimeError):
-            validate_redis_url("redis://default:redacted-3a50a51e6aeb@example.invalid:6379", production=True)
+            validate_redis_url("redis://default:secret@example.com:6379", production=True)
 
     def test_production_accepts_tls_and_private_hosts(self):
         for url in (
-            "rediss://default:redacted-3a50a51e6aeb@example.invalid:6379",
+            "rediss://default:secret@example.com:6379",
             "redis://10.20.0.3:6379",
             "redis://127.0.0.1:6379/0",
             "redis://localhost:6379",
@@ -33,7 +33,7 @@ class RedisConfigTests(unittest.TestCase):
     def test_connect_passes_tls_url_and_options(self):
         with patch.dict(os.environ, {"APP_ENV": "production"}), \
                 patch("redis.Redis.from_url") as from_url:
-            connect_redis("rediss://default:redacted-3a50a51e6aeb@example.invalid:6379", decode_responses=True)
+            connect_redis("rediss://default:secret@example.com:6379", decode_responses=True)
         url, = from_url.call_args.args
         self.assertTrue(url.startswith("rediss://"))
         self.assertTrue(from_url.call_args.kwargs["decode_responses"])
@@ -43,7 +43,7 @@ class RedisConfigTests(unittest.TestCase):
         with patch.dict(os.environ, {"APP_ENV": "production"}), \
                 patch("redis.Redis.from_url") as from_url:
             with self.assertRaises(RuntimeError):
-                connect_redis("redis://default:redacted-3a50a51e6aeb@example.invalid:6379")
+                connect_redis("redis://default:secret@example.com:6379")
         from_url.assert_not_called()
 
 
