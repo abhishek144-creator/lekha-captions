@@ -6,6 +6,11 @@ import fs from "fs"
 // normalised so checks behave the same on Windows checkouts.
 export const VIDEO_PLAYER_SOURCE_FILES = [
   "src/components/dashboard/VideoPlayer.jsx",
+  "src/components/dashboard/TextElementLayer.jsx",
+  "src/components/dashboard/useCanvasTextEditing.js",
+  "src/components/dashboard/useCanvasTransforms.js",
+  "src/components/dashboard/useWordGestures.js",
+  "src/components/dashboard/useDocumentGesture.js",
   "src/components/dashboard/videoPlayerTemplateRendering.jsx",
   "src/components/dashboard/videoPlayerTemplateStyles.jsx",
   "src/components/dashboard/videoPlayerWordEditing.js",

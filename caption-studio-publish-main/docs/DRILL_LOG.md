@@ -11,11 +11,10 @@ execution times. The resumed 100-export burst is not a fresh successful
 
 | Date (UTC) | Drill Type | Scenario | Result | Evidence Link | Owner |
 |---|---|---|---|---|---|
-| 2026-10-06 | Synchronized ten-client media burst | Ten authenticated journeys, 60-second English media, 1080p exports; end-to-end median/P95 169.383/182.516 s | PASS: 10/10 | [Measured burst](LAUNCH_ACCEPTANCE_2026-10-06.md#authenticated-bursts-and-hindi) | Codex launch operator |
-| 2026-10-06 | Resumed hundred-export stress burst | All 100 exports produced; 85 first-pass downloads, 15 storage read timeouts; all 15 recovered using existing receipts without new renders | PARTIAL first pass; download recovery PASS | [Result and limitations](LAUNCH_ACCEPTANCE_2026-10-06.md#authenticated-bursts-and-hindi) | Codex launch operator |
-| 2026-10-06 | Hindi processing | Ten real Devanagari transcription/download journeys; median/P95 70.274/115.985 s; no accuracy score claimed | PASS: 10/10 | [Hindi evidence](LAUNCH_ACCEPTANCE_2026-10-06.md#authenticated-bursts-and-hindi) | Codex launch operator |
+| 2026-10-06 | Synchronized ten-client media burst | Ten authenticated journeys, 60-second English media, 1080p exports; end-to-end median/P95 169.383/182.516 s; 10/10 passed | PASS | [Measured burst](LAUNCH_ACCEPTANCE_2026-10-06.md#authenticated-bursts-and-hindi) | Codex launch operator |
+| 2026-10-06 | Hindi processing | Ten real Devanagari transcription/download journeys; median/P95 70.274/115.985 s; 10/10 passed; no accuracy score claimed | PASS | [Hindi evidence](LAUNCH_ACCEPTANCE_2026-10-06.md#authenticated-bursts-and-hindi) | Codex launch operator |
 | 2026-10-06 | Worker crash/debit recovery | Actual SIGKILL before and after transactional credit debit; both jobs recovered, exactly two credits charged | PASS | [Worker recovery](LAUNCH_ACCEPTANCE_2026-10-06.md#worker-recovery-and-sleep) | Codex launch operator |
-| 2026-10-06 | Worker resizing and idle | Both staging worker services reached five then returned to one; production workers observed Sleeping | PASS within recorded limits | [Resize and sleep evidence](LAUNCH_ACCEPTANCE_2026-10-06.md#worker-recovery-and-sleep) | Codex launch operator |
+| 2026-10-06 | Worker resizing and idle | Both staging worker services reached five then returned to one; production workers observed Sleeping, within recorded limits | PASS | [Resize and sleep evidence](LAUNCH_ACCEPTANCE_2026-10-06.md#worker-recovery-and-sleep) | Codex launch operator |
 | 2026-10-06 | Finite staging cleanup | Environment, scoped token, temporary SSH key, 100 identities and owned media removed; production preserved | PASS | [Cleanup](LAUNCH_ACCEPTANCE_2026-10-06.md#cleanup-and-cost-evidence) | Codex launch operator |
 | 2026-08-04 | Queue/worker recovery | Restarted the staging worker and verified Redis, RQ queue listening, and scheduler recovery | PASS | [Staging drill evidence](STAGING_DRILL_EVIDENCE_2026-08-04.md#queueworker-recovery--pass) | Launch operator (private roster) |
 | 2026-08-04 | Load smoke | 200 concurrent readiness/version/operator endpoint requests with no network or 5xx failures | PASS | [Staging drill evidence](STAGING_DRILL_EVIDENCE_2026-08-04.md#load-smoke--pass) | Launch operator (private roster) |
@@ -37,6 +36,17 @@ execution times. The resumed 100-export burst is not a fresh successful
 | 2026-08-28 | Production malware rejection | A scanner rejection was owner-confirmed for a disposable suspicious-file test without retaining customer data | PASS | [Owner confirmations](OWNER_CONFIRMATIONS_2026-08-28.md#malware-scanner-evidence) | Launch operator (private roster) |
 | 2026-08-28 | Production alert delivery | Production alert routing was owner-confirmed for the recorded provider test | PASS | [Owner confirmations](OWNER_CONFIRMATIONS_2026-08-28.md#alert-delivery-evidence) | Launch operator (private roster) |
 | 2026-08-28 | Real-video language/format matrix | Real Hindi, English, and Hinglish videos in the recorded formats completed the owner-confirmed media matrix | PASS | [Owner confirmations](OWNER_CONFIRMATIONS_2026-08-28.md#real-video-matrix) | Launch operator (private roster) |
+
+## Stress measurement with incomplete first-pass delivery
+
+The resumed hundred-export stress burst on 2026-10-06 remains **PARTIAL on the
+first pass**: all 100 exports were produced, but only 85 downloaded initially.
+Fifteen storage read timeouts recovered using the existing receipts with no new
+renders. Recovery passed; this does not turn the original burst into a clean
+100-user upload-to-download result. The declined fresh 100-user test remains
+outside the controlled-launch scope. Operator: Codex launch operator.
+
+Evidence: [Result and limitations](LAUNCH_ACCEPTANCE_2026-10-06.md#authenticated-bursts-and-hindi).
 
 Do not mark a drill `PASS` without a durable evidence link (logs, dashboard snapshot,
 ticket, or incident document) and the name of the operator who verified recovery.
