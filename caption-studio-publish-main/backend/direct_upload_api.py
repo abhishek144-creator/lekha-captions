@@ -13,6 +13,9 @@ class DirectUploadInitRequest(BaseModel):
     content_type: str = Field(default="application/octet-stream", max_length=160)
     size_bytes: int = Field(gt=0)
     last_modified: int = Field(default=0, ge=0)
+    # Read by the browser before uploading so plan limits can be refused before
+    # any bytes move. It is a hint: transcription re-checks the real length.
+    duration_seconds: float = Field(default=0, ge=0, le=86_400)
 
 
 class DirectUploadResumeRequest(DirectUploadInitRequest):
@@ -56,7 +59,8 @@ def create_direct_upload_router(*, authenticate, extract_token, assert_service_a
                                 remember_owner, signed_upload_url, audit_action,
                                 reserve_slot=None, release_slot=None, cancel_session=None,
                                 resume_session=None, assert_account_active=None,
-                                rate_limit_network=None, enqueue_scan=None, sign_parts=None):
+                                rate_limit_network=None, enqueue_scan=None, sign_parts=None,
+                                assert_upload_allowed=None, discard_upload=None):
     router = APIRouter()
 
     @router.post("/api/uploads/init")
@@ -79,6 +83,8 @@ def create_direct_upload_router(*, authenticate, extract_token, assert_service_a
             raise HTTPException(403, "Upload origin is not allowed")
         if rate_limit_network:
             rate_limit_network(request)
+        if assert_upload_allowed:
+            assert_upload_allowed(uid, req.duration_seconds)
         file_id = str(uuid.uuid4())
         if reserve_slot:
             reserve_slot(uid, file_id, req.size_bytes)
@@ -189,6 +195,20 @@ def create_direct_upload_router(*, authenticate, extract_token, assert_service_a
             "upload_state": "pending_scan",
             "raw_url": signed_upload_url(req.file_id, uid),
         }
+
+    @router.post("/api/uploads/discard")
+    def discard_direct_upload(req: DirectUploadCompleteRequest, request: Request):
+        """Delete a completed upload that was never used (window closed before Generate)."""
+        uid = authenticate(extract_token(request))["uid"]
+        try:
+            uuid.UUID(req.file_id)
+        except (ValueError, TypeError):
+            raise HTTPException(400, "Invalid file identifier")
+        if not discard_upload:
+            raise HTTPException(404, "Upload discard is not available")
+        discard_upload(uid, req.file_id)
+        audit_action("direct_upload_discarded", uid, {"file_id": req.file_id})
+        return {"success": True, "file_id": req.file_id}
 
     @router.post("/api/uploads/cancel")
     def cancel_direct_upload(req: DirectUploadCompleteRequest, request: Request):

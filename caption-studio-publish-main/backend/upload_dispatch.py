@@ -6,7 +6,9 @@ place and every caller sees it.
 
 import asyncio
 import os
+from datetime import date
 from fastapi import HTTPException, Request
+from typing import Any, Dict
 
 
 try:
@@ -15,6 +17,9 @@ try:
     from . import firebase_admin_setup
     from . import observability
     from . import request_guards
+    from . import entitlements
+    from . import media_records
+    from . import operator_controls
     from .services.media_scan_jobs import MediaScanJobs
     from .transcription_jobs import TranscriptionJobs
     from .upload_admission import release_upload, reserve_upload
@@ -26,6 +31,9 @@ except ImportError:  # Direct execution from backend/ remains supported.
     import firebase_admin_setup
     import observability
     import request_guards
+    import entitlements
+    import media_records
+    import operator_controls
     from services.media_scan_jobs import MediaScanJobs
     from transcription_jobs import TranscriptionJobs
     from upload_admission import release_upload, reserve_upload
@@ -77,6 +85,95 @@ def _release_direct_upload_slot(uid: str, file_id: str, *, undo_hourly: bool = F
         # The active lease has a bounded TTL; a transient Redis failure should
         # not turn a completed upload into a failed customer response.
         observability._json_log("warning", "direct_upload_slot_release_failed", error=str(exc))
+
+
+def _assert_upload_allowed(uid: str, duration_seconds: float = 0) -> None:
+    """Refuse an upload that transcription would refuse, before any bytes move.
+
+    Mirrors the plan-length check in `_process_video_inline` and the quota
+    checks in `_reserve_ai_quota` without reserving anything. The browser
+    supplies the duration, so this is an early courtesy: those later checks
+    remain the authority, and unreadable account data fails open.
+    """
+    db = firebase_admin_setup.get_db()
+    data: Dict[str, Any] = {}
+    if db:
+        try:
+            snap = db.collection("users").document(uid).get()
+            data = (snap.to_dict() or {}) if snap.exists else {}
+        except Exception:
+            return
+    tier = entitlements._effective_subscription_tier(data)
+    controls = operator_controls._read_service_controls()
+    max_seconds = min(
+        entitlements._max_video_seconds_for_tier(tier),
+        int(controls.get(settings.MAX_UPLOAD_DURATION_CONTROL_KEY, settings.GLOBAL_MAX_UPLOAD_DURATION_SECONDS)),
+    )
+    duration = float(duration_seconds or 0)
+    if duration > max_seconds + 0.5:
+        observability._track_event("upload_rejected_duration", {"tier": tier, "duration": duration, "max_seconds": max_seconds})
+        raise HTTPException(
+            status_code=403,
+            detail=f"Your plan allows videos up to {max_seconds}s. This video is {duration:.0f}s long.",
+        )
+    if settings._IS_TEST or not db:
+        return
+    base_tier = tier.replace("_yearly", "")
+    if base_tier == "free":
+        lifetime_used = int((dict(data.get("ai_lifetime_usage") or {})).get("process", 0) or 0)
+        if lifetime_used >= settings.FREE_LIFETIME_TRANSCRIPTIONS:
+            observability._track_event("upload_rejected_free_transcriptions_used")
+            raise HTTPException(
+                status_code=402,
+                detail=(
+                    f"FREE_TRANSCRIPTIONS_USED: You've used your {settings.FREE_LIFETIME_TRANSCRIPTIONS} free "
+                    "transcriptions. Upgrade to keep captioning."
+                ),
+            )
+    limits = settings.AI_DAILY_LIMITS.get(base_tier, settings.AI_DAILY_LIMITS["free"])
+    usage = dict(data.get("ai_daily_usage") or {}) if data.get("ai_usage_date") == date.today().isoformat() else {}
+    if int(usage.get("process", 0) or 0) >= int(limits["process"]):
+        observability._track_event("upload_rejected_daily_quota")
+        raise HTTPException(status_code=429, detail="Daily process quota reached for this plan")
+
+
+def _discard_unused_upload(uid: str, file_id: str) -> bool:
+    """Delete a finished upload the person abandoned before pressing Generate.
+
+    The six-hour source janitor would remove it anyway; this frees storage and
+    skips the virus scan straight away.
+    """
+    media_records._assert_upload_owner(file_id, uid)
+    metadata = media_records._load_upload_metadata(file_id)
+    if str(metadata.get("upload_state") or "").lower() == "discarded":
+        return True
+    remote_path = str(metadata.get("remote_path") or "")
+    if remote_path and not remote_path.startswith(f"uploads/{uid}/"):
+        raise HTTPException(status_code=403, detail="You do not have access to this upload")
+    media_records._update_upload_metadata(file_id, {
+        "upload_state": "discarded",
+        "discarded_at": observability._utcnow().isoformat() + "Z",
+    })
+    if remote_path and not firebase_admin_setup.delete_from_firebase_storage(remote_path):
+        observability._json_log("warning", "upload_discard_remote_delete_failed", file_id=file_id)
+    real_dir = os.path.realpath(settings.UPLOAD_DIR)
+    for name in os.listdir(settings.UPLOAD_DIR):
+        if not name.startswith(file_id):
+            continue
+        candidate = os.path.realpath(os.path.join(settings.UPLOAD_DIR, name))
+        if candidate.startswith(real_dir + os.sep):
+            try:
+                os.remove(candidate)
+            except OSError:
+                pass
+    db = firebase_admin_setup.get_db()
+    if db:
+        try:
+            MediaScanJobs(db).finish(file_id)
+        except Exception as error:
+            observability._json_log("warning", "upload_discard_scan_cancel_failed", error_type=type(error).__name__)
+    observability._track_event("upload_discarded")
+    return True
 
 
 def _schedule_media_scan(uid: str, file_id: str):

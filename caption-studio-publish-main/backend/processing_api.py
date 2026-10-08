@@ -3,7 +3,6 @@
 import asyncio
 import hashlib
 import json
-import os
 import time
 import uuid
 from fastapi import APIRouter, HTTPException, Request, Response
@@ -191,10 +190,9 @@ async def _process_video_inline(req: api_models.ProcessRequest, request: Request
         media_hash = ""
         cache_path = ""
 
-    if cache_path and os.path.exists(cache_path):
+    cached = await asyncio.to_thread(media_records._read_transcription_cache, cache_path) if cache_path else None
+    if cached is not None:
         try:
-            with open(cache_path, "r", encoding="utf-8") as f:
-                cached = json.load(f)
             if cached.get("success") and not (cached.get("captions") or []):
                 raise HTTPException(
                     status_code=422,
@@ -288,11 +286,7 @@ async def _process_video_inline(req: api_models.ProcessRequest, request: Request
                     (media_duration / 60.0) * settings.AI_COST_ESTIMATE_PER_MEDIA_MINUTE_USD,
                 )
             if cache_path:
-                try:
-                    with open(cache_path, "w", encoding="utf-8") as f:
-                        json.dump(result, f)
-                except Exception as e:
-                    observability._json_log("warning", "transcription_cache_write_failed", error=str(e))
+                await asyncio.to_thread(media_records._write_transcription_cache, cache_path, result)
             if process_idem_key:
                 request_guards._idem_set(process_idem_key, {
                     "status": "completed",

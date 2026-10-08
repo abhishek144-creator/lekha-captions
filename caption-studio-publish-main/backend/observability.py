@@ -227,6 +227,16 @@ def _track_operational_metric_sample(name: str, value: float, max_samples: int =
             pass
 
 
+def _record_client_time_to_first_caption(value: Any) -> None:
+    try:
+        duration_ms = float(value)
+    except (TypeError, ValueError):
+        return
+    if not math.isfinite(duration_ms) or duration_ms <= 0 or duration_ms > settings.CLIENT_TIME_TO_FIRST_CAPTION_MAX_MS:
+        return
+    _track_operational_metric_sample("time_to_first_caption_ms", duration_ms)
+
+
 def _read_operational_metric_samples(day_key: str, name: str) -> List[float]:
     sample_key = f"{day_key}:{name}"
     values = list(app_state._operational_metric_samples.get(sample_key, []))
