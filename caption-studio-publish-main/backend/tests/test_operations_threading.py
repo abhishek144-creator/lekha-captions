@@ -54,7 +54,7 @@ class OperationsThreadingTests(unittest.IsolatedAsyncioTestCase):
     async def test_analytics_track_and_slo_offload_blocking_helpers(self):
         from backend import main
 
-        with (patch.object(main, "_check_rate", self.blocking("rate", (True, 0, 5))),
+        with (patch.object(main.request_guards, "_check_rate", self.blocking("rate", (True, 0, 5))),
               patch.object(main.observability, "_track_event", self.blocking("track")),
               patch.object(main.request_security, "_is_admin_token", self.blocking("auth", True)),
               patch.object(main.observability, "_build_slo_snapshot", self.blocking("slo", {"success": True}))):
@@ -242,8 +242,8 @@ class MiddlewareThreadingTests(unittest.IsolatedAsyncioTestCase):
         with (patch.object(main.settings, "FIREBASE_APP_CHECK_ENFORCED", False),
               patch.object(main.settings, "_IS_PRODUCTION", False),
               patch.object(main.request_security, "_authenticate_media_request", return_value={"uid": "owner"}),
-              patch.object(main, "_acquire_process_slot", side_effect=acquire),
-              patch.object(main, "_release_process_slot", side_effect=release),
+              patch.object(main.request_guards, "_acquire_process_slot", side_effect=acquire),
+              patch.object(main.request_guards, "_release_process_slot", side_effect=release),
               patch.object(main.settings, "RUN_API_BACKGROUND_TASKS", True)):
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.post("/api/upload")

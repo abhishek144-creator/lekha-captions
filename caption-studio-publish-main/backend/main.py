@@ -11,6 +11,10 @@ try:
     from . import app_state
 except ImportError:  # Direct execution from backend/ remains supported.
     import app_state
+try:
+    from . import optional_deps
+except ImportError:  # Direct execution from backend/ remains supported.
+    import optional_deps
 
 from dotenv import load_dotenv
 
@@ -91,7 +95,7 @@ try:
     from . import observability
     from . import request_security
     from . import operator_controls
-    from .request_guards import create_request_guards
+    from . import request_guards
     from . import media_records
     from . import entitlements
     from . import export_jobs
@@ -102,7 +106,7 @@ try:
     from .language_api import create_language_router
     from .account_api import create_account_router
     from .media_api import create_media_router
-    from .export_api import create_export_router
+    from . import export_api
     from .provider_health import transcription_provider_health
     from .direct_upload_api import create_direct_upload_router
     from .api.maintenance import create_maintenance_router
@@ -147,7 +151,7 @@ except ImportError:
     import observability
     import request_security
     import operator_controls
-    from request_guards import create_request_guards
+    import request_guards
     import media_records
     import entitlements
     import export_jobs
@@ -158,7 +162,7 @@ except ImportError:
     from language_api import create_language_router
     from account_api import create_account_router
     from media_api import create_media_router
-    from export_api import create_export_router
+    import export_api
     from provider_health import transcription_provider_health
     from direct_upload_api import create_direct_upload_router
     from api.maintenance import create_maintenance_router
@@ -184,13 +188,6 @@ except ImportError:
     from services.malware import scan_upload_for_threat
     from services.upload_security import UploadSecurityService
 
-try:
-    import razorpay as _razorpay_module
-    RAZORPAY_AVAILABLE = True
-except ImportError:
-    _razorpay_module = None
-    RAZORPAY_AVAILABLE = False
-    print("[Warning] razorpay package not installed — payment endpoints will be unavailable")
 
 try:
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -233,12 +230,6 @@ except ImportError:
     RQRetry = None
     RQ_AVAILABLE = False
 
-try:
-    import sentry_sdk
-    SENTRY_AVAILABLE = True
-except ImportError:
-    sentry_sdk = None
-    SENTRY_AVAILABLE = False
 
 @asynccontextmanager
 async def app_lifespan(_app: FastAPI):
@@ -339,7 +330,7 @@ async def request_logging_middleware(request: Request, call_next):
             },
         ))
     upload_slot_uid = str(upload_identity.get("uid") or "") if request.url.path == "/api/upload" else ""
-    if upload_slot_uid and not await asyncio.to_thread(_acquire_process_slot, upload_slot_uid, f"upload:{rid}"):
+    if upload_slot_uid and not await asyncio.to_thread(request_guards._acquire_process_slot, upload_slot_uid, f"upload:{rid}"):
         return request_security._apply_security_headers(JSONResponse(status_code=429, content={"detail": "Another upload or transcription is active for this account."}, headers={"X-Request-Id": rid}))
     start = time.time()
     try:
@@ -364,7 +355,7 @@ async def request_logging_middleware(request: Request, call_next):
         }, headers={"X-Request-Id": rid, "Cache-Control": "no-store"}))
     finally:
         if upload_slot_uid:
-            await asyncio.to_thread(_release_process_slot, upload_slot_uid, f"upload:{rid}")
+            await asyncio.to_thread(request_guards._release_process_slot, upload_slot_uid, f"upload:{rid}")
         if not settings.RUN_API_BACKGROUND_TASKS:
             # Cloud Run may suspend CPU as soon as the request finishes. Flush
             # buffered events while this request still has execution time.
@@ -398,9 +389,9 @@ async def request_logging_middleware(request: Request, call_next):
     return request_security._apply_security_headers(response)
 
 
-if settings.SENTRY_DSN and SENTRY_AVAILABLE and not settings._IS_TEST:
+if settings.SENTRY_DSN and optional_deps.SENTRY_AVAILABLE and not settings._IS_TEST:
     try:
-        sentry_sdk.init(
+        optional_deps.sentry_sdk.init(
             dsn=settings.SENTRY_DSN,
             environment=settings.APP_ENV,
             release=os.environ.get("APP_RELEASE") or None,
@@ -410,7 +401,7 @@ if settings.SENTRY_DSN and SENTRY_AVAILABLE and not settings._IS_TEST:
         observability._json_log("info", "sentry_initialized", environment=settings.APP_ENV)
     except Exception as e:
         observability._json_log("warning", "sentry_init_failed", error=str(e))
-elif settings.SENTRY_DSN and not SENTRY_AVAILABLE:
+elif settings.SENTRY_DSN and not optional_deps.SENTRY_AVAILABLE:
     if settings._IS_PRODUCTION:
         raise RuntimeError("SENTRY_DSN is configured but the Sentry SDK is unavailable in production.")
     observability._json_log("warning", "sentry_dsn_set_but_sdk_missing")
@@ -422,9 +413,9 @@ observability._json_log(
     is_production=settings._IS_PRODUCTION,
 )
 
-if RAZORPAY_AVAILABLE and settings.RAZORPAY_KEY_ID and settings.RAZORPAY_KEY_SECRET:
-    app_state.rzp_client = _razorpay_module.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
-elif RAZORPAY_AVAILABLE:
+if optional_deps.RAZORPAY_AVAILABLE and settings.RAZORPAY_KEY_ID and settings.RAZORPAY_KEY_SECRET:
+    app_state.rzp_client = optional_deps._razorpay_module.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+elif optional_deps.RAZORPAY_AVAILABLE:
     observability._json_log("warning", "razorpay_credentials_missing")
 
 
@@ -561,32 +552,6 @@ app_state._provider_breakers: Dict[str, observability.CircuitBreaker] = {
 }
 
 
-_request_guards = create_request_guards(sys.modules[__name__])
-_idem_get = _request_guards._idem_get
-_idem_claim = _request_guards._idem_claim
-_idem_set = _request_guards._idem_set
-_idem_delete = _request_guards._idem_delete
-_upload_idem_key = _request_guards._upload_idem_key
-_upload_idem_get = _request_guards._upload_idem_get
-_upload_idem_set = _request_guards._upload_idem_set
-_payment_idem_get = _request_guards._payment_idem_get
-_payment_idem_set = _request_guards._payment_idem_set
-_payment_idem_claim = _request_guards._payment_idem_claim
-_payment_idem_delete = _request_guards._payment_idem_delete
-_require_payment_idempotency = _request_guards._require_payment_idempotency
-_rate_limit_namespace = _request_guards._rate_limit_namespace
-_rate_limit_redis_key = _request_guards._rate_limit_redis_key
-_client_rate_key = _request_guards._client_rate_key
-_check_rate = _request_guards._check_rate
-_record_export_failure = _request_guards._record_export_failure
-_get_recent_export_failures = _request_guards._get_recent_export_failures
-_acquire_export_slot = _request_guards._acquire_export_slot
-_release_export_slot = _request_guards._release_export_slot
-_acquire_process_slot = _request_guards._acquire_process_slot
-_release_process_slot = _request_guards._release_process_slot
-_apply_rate_headers = _request_guards._apply_rate_headers
-
-
 for d in [settings.UPLOAD_DIR, settings.EXPORT_DIR, settings.FONTS_DIR, settings.CACHE_DIR, settings.TRANSCRIPTION_CACHE_DIR, settings.RENDER_CACHE_DIR, settings.DEAD_LETTER_DIR]:
     os.makedirs(d, exist_ok=True)
 
@@ -632,7 +597,7 @@ def run_export_job_task(
     slot_acquired = False
     # RQ has removed the job ID from the pending list before invoking us. Keep
     # the atomic admission ledger aligned with pending work, not active work.
-    _release_export_pending_work(export_job_id)
+    export_api._release_export_pending_work(export_job_id)
     existing_job = export_jobs._load_export_job(export_job_id) or {}
     if existing_job.get("status") == "completed":
         return existing_job.get("payload") or {}
@@ -644,7 +609,7 @@ def run_export_job_task(
                 export_jobs._set_export_job(export_job_id, "completed", payload=recorded,
                                 completed_at=time.time(), recovered_from_usage=True)
                 if idempotency_key:
-                    _idem_set(idempotency_key, {"status": "completed", "ts": time.time(), "payload": recorded,
+                    request_guards._idem_set(idempotency_key, {"status": "completed", "ts": time.time(), "payload": recorded,
                                                "request_hash": idempotency_request_hash, "job_id": export_job_id})
                 return recorded
         export_jobs._set_export_job(export_job_id, "starting", worker_release=settings.APP_RELEASE)
@@ -659,7 +624,7 @@ def run_export_job_task(
                 "status": "cancelled",
                 "export_job_id": export_job_id,
             }
-        slot_acquired = _acquire_export_slot(uid, export_job_id)
+        slot_acquired = request_guards._acquire_export_slot(uid, export_job_id)
         if not slot_acquired:
             wait_retry = export_jobs._export_slot_wait_retry()
             if wait_retry is not None:
@@ -674,7 +639,7 @@ def run_export_job_task(
         req = api_models.ExportRequest(**req_payload)
         payload = asyncio.run(export_jobs._process_export_job_core(req, uid, rid, export_job_id))
         if idempotency_key:
-            _idem_set(idempotency_key, {
+            request_guards._idem_set(idempotency_key, {
                 "status": "completed",
                 "ts": time.time(),
                 "payload": payload,
@@ -701,7 +666,7 @@ def run_export_job_task(
                     export_jobs._set_export_job(export_job_id, "completed", payload=recorded,
                                     completed_at=time.time(), recovered_from_usage=True)
                 if idempotency_key:
-                    _idem_set(idempotency_key, {"status": "completed", "ts": time.time(), "payload": recorded,
+                    request_guards._idem_set(idempotency_key, {"status": "completed", "ts": time.time(), "payload": recorded,
                                                "request_hash": idempotency_request_hash, "job_id": export_job_id})
             except Exception as recovery_error:
                 observability._json_log("warning", "export_completion_recovery_pending", job_id=export_job_id,
@@ -733,7 +698,7 @@ def run_export_job_task(
             elapsed_ms=max(0, int((time.time() - entered_at) * 1000)),
         )
         if idempotency_key and not locals().get("retry_pending", False) and not usage_recovery_unknown:
-            _idem_delete(idempotency_key)
+            request_guards._idem_delete(idempotency_key)
         export_jobs._write_dead_letter(
             export_job_id,
             str(e),
@@ -742,7 +707,7 @@ def run_export_job_task(
         raise
     finally:
         if slot_acquired:
-            _release_export_slot(uid, export_job_id)
+            request_guards._release_export_slot(uid, export_job_id)
 
 
 @app.get("/api/fonts")
@@ -858,22 +823,7 @@ def run_media_scan_job_task(uid: str, file_id: str):
         raise
 
 
-_export_api = create_export_router(sys.modules[__name__])
-app.include_router(_export_api.router)
-_render_queue_for = _export_api._render_queue_for
-_queue_for_export_job_record = _export_api._queue_for_export_job_record
-_enqueue_export_job = _export_api._enqueue_export_job
-_release_export_pending_work = _export_api._release_export_pending_work
-export_video = _export_api.export_video
-create_export_batch = _export_api.create_export_batch
-get_export_batch = _export_api.get_export_batch
-_reconcile_export_job = _export_api._reconcile_export_job
-_active_workers_for_queue = _export_api._active_workers_for_queue
-_export_queue_prediction = _export_api._export_queue_prediction
-export_status = _export_api.export_status
-export_result = _export_api.export_result
-export_cancel = _export_api.export_cancel
-export_replay = _export_api.export_replay
+app.include_router(export_api.router)
 
 
 _system_api = create_system_router(sys.modules[__name__])

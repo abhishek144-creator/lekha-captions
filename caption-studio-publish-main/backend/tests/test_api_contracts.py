@@ -71,9 +71,9 @@ class ApiContractTests(unittest.TestCase):
     def test_redis_rate_limits_are_isolated_by_endpoint(self):
         shared_proxy_ip = "100.64.0.4"
 
-        analytics_key = main._rate_limit_redis_key(main.app_state._analytics_rate, shared_proxy_ip)
-        process_key = main._rate_limit_redis_key(main.app_state._process_rate, shared_proxy_ip)
-        upload_key = main._rate_limit_redis_key(main.app_state._upload_rate, shared_proxy_ip)
+        analytics_key = main.request_guards._rate_limit_redis_key(main.app_state._analytics_rate, shared_proxy_ip)
+        process_key = main.request_guards._rate_limit_redis_key(main.app_state._process_rate, shared_proxy_ip)
+        upload_key = main.request_guards._rate_limit_redis_key(main.app_state._upload_rate, shared_proxy_ip)
 
         self.assertEqual(analytics_key, "rl:analytics:100.64.0.4")
         self.assertEqual(process_key, "rl:process:100.64.0.4")
@@ -89,7 +89,7 @@ class ApiContractTests(unittest.TestCase):
             },
         )
 
-        self.assertEqual(main._client_rate_key(request), "203.0.113.27")
+        self.assertEqual(main.request_guards._client_rate_key(request), "203.0.113.27")
 
     def test_client_rate_key_ignores_forwarding_header_for_public_direct_peer(self):
         request = SimpleNamespace(
@@ -97,7 +97,7 @@ class ApiContractTests(unittest.TestCase):
             headers={"x-forwarded-for": "203.0.113.99"},
         )
 
-        self.assertEqual(main._client_rate_key(request), "8.8.8.8")
+        self.assertEqual(main.request_guards._client_rate_key(request), "8.8.8.8")
 
     def test_export_daily_limit_is_enforced_when_not_disabled(self):
         user_data = {
@@ -273,8 +273,8 @@ class ApiContractTests(unittest.TestCase):
         with (
             patch.object(main.request_security, "_is_admin_token", return_value=True),
             patch.object(main.settings, "SENTRY_DSN", "https://public@example.invalid/1"),
-            patch.object(main, "SENTRY_AVAILABLE", True),
-            patch.object(main, "sentry_sdk", fake_sentry),
+            patch.object(main.optional_deps, "SENTRY_AVAILABLE", True),
+            patch.object(main.optional_deps, "sentry_sdk", fake_sentry),
             patch.object(main.observability, "_audit_action"),
         ):
             response = self.client.post(
@@ -331,7 +331,7 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(main.entitlements._effective_subscription_tier(user_data), "free")
 
     @patch("main.request_security._authenticate_media_request", return_value={"uid": "rate-limited-user"})
-    @patch("main._get_recent_export_failures", return_value=[0.0] * main.settings.EXPORT_FAILURE_LIMIT)
+    @patch("main.request_guards._get_recent_export_failures", return_value=[0.0] * main.settings.EXPORT_FAILURE_LIMIT)
     def test_export_failure_rate_limit_is_always_enforced(self, _recent_failures, _authenticate):
         res = self.client.post(
             "/api/export",
@@ -523,12 +523,12 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(mock_process.await_count, 1)
 
     def test_process_slot_allows_only_one_active_request_per_user(self):
-        self.assertTrue(main._acquire_process_slot("process-user", "request-1"))
-        self.assertFalse(main._acquire_process_slot("process-user", "request-2"))
-        main._release_process_slot("process-user", "request-2")
-        self.assertFalse(main._acquire_process_slot("process-user", "request-3"))
-        main._release_process_slot("process-user", "request-1")
-        self.assertTrue(main._acquire_process_slot("process-user", "request-3"))
+        self.assertTrue(main.request_guards._acquire_process_slot("process-user", "request-1"))
+        self.assertFalse(main.request_guards._acquire_process_slot("process-user", "request-2"))
+        main.request_guards._release_process_slot("process-user", "request-2")
+        self.assertFalse(main.request_guards._acquire_process_slot("process-user", "request-3"))
+        main.request_guards._release_process_slot("process-user", "request-1")
+        self.assertTrue(main.request_guards._acquire_process_slot("process-user", "request-3"))
 
     @patch("main.firebase_admin_setup.verify_token", return_value={"uid": "process-user"})
     @patch("main.media_records._safe_find_upload", return_value="C:/tmp/sample.mp4")
@@ -635,8 +635,8 @@ class ApiContractTests(unittest.TestCase):
             patch.object(main.operator_controls, "_read_service_controls", return_value={}),
             patch.object(main.media_records, "_probe_media", return_value={"format": {"duration": 1}}),
             patch.object(main.media_records, "_compute_media_hash", side_effect=RuntimeError("skip cache")),
-            patch.object(main, "_acquire_process_slot", return_value=True),
-            patch.object(main, "_release_process_slot"),
+            patch.object(main.request_guards, "_acquire_process_slot", return_value=True),
+            patch.object(main.request_guards, "_release_process_slot"),
             patch.object(main.entitlements, "_reserve_ai_quota"),
             patch.object(main.entitlements, "_release_ai_quota") as release_quota,
             patch.object(main.app_state.processor, "generate_captions_only", new_callable=AsyncMock,
@@ -1010,14 +1010,14 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(res_second.status_code, 429)
 
     def test_export_slot_can_only_be_released_by_its_owner(self):
-        self.assertTrue(main._acquire_export_slot("lease-user", "job-a"))
-        self.assertTrue(main._acquire_export_slot("lease-user", "job-a"))
-        self.assertFalse(main._acquire_export_slot("lease-user", "job-b"))
+        self.assertTrue(main.request_guards._acquire_export_slot("lease-user", "job-a"))
+        self.assertTrue(main.request_guards._acquire_export_slot("lease-user", "job-a"))
+        self.assertFalse(main.request_guards._acquire_export_slot("lease-user", "job-b"))
 
-        main._release_export_slot("lease-user", "job-b")
+        main.request_guards._release_export_slot("lease-user", "job-b")
         self.assertEqual(main.app_state._active_exports_by_user.get("lease-user"), "job-a")
 
-        main._release_export_slot("lease-user", "job-a")
+        main.request_guards._release_export_slot("lease-user", "job-a")
         self.assertNotIn("lease-user", main.app_state._active_exports_by_user)
 
     @patch("main.firebase_admin_setup.verify_token", return_value={"uid": "idem-user"})
@@ -1065,7 +1065,7 @@ class ApiContractTests(unittest.TestCase):
             payment=SimpleNamespace(fetch=lambda payment_id: (_ for _ in ()).throw(RuntimeError("network down"))),
         )
 
-        with patch.object(main.app_state, "rzp_client", fake_client), patch.object(main, "RAZORPAY_AVAILABLE", True):
+        with patch.object(main.app_state, "rzp_client", fake_client), patch.object(main.optional_deps, "RAZORPAY_AVAILABLE", True):
             res = self.client.post(
                 "/api/verify-payment",
                 json={
@@ -1099,7 +1099,7 @@ class ApiContractTests(unittest.TestCase):
             }),
         )
 
-        with patch.object(main.app_state, "rzp_client", fake_client), patch.object(main, "RAZORPAY_AVAILABLE", True):
+        with patch.object(main.app_state, "rzp_client", fake_client), patch.object(main.optional_deps, "RAZORPAY_AVAILABLE", True):
             res = self.client.post(
                 "/api/verify-payment",
                 json={
@@ -1134,7 +1134,7 @@ class ApiContractTests(unittest.TestCase):
             }),
         )
 
-        with patch.object(main.app_state, "rzp_client", fake_client), patch.object(main, "RAZORPAY_AVAILABLE", True):
+        with patch.object(main.app_state, "rzp_client", fake_client), patch.object(main.optional_deps, "RAZORPAY_AVAILABLE", True):
             res = self.client.post(
                 "/api/verify-payment",
                 json={
@@ -1627,7 +1627,7 @@ class ApiContractTests(unittest.TestCase):
 
         with (
             patch.object(main.settings, "RAZORPAY_WEBHOOK_SECRET", secret),
-            patch.object(main, "RAZORPAY_AVAILABLE", True),
+            patch.object(main.optional_deps, "RAZORPAY_AVAILABLE", True),
             patch.object(main.app_state, "rzp_client", fake_client),
             patch.object(main.firebase_admin_setup, "get_db", return_value=None),
             patch.object(main, "_apply_successful_payment", return_value={"success": True}) as apply_payment,
@@ -1797,7 +1797,7 @@ class ApiContractTests(unittest.TestCase):
 
         with patch.object(main.app_state, "_redis_client", BrokenRedis()):
             with self.assertRaises(main.HTTPException) as raised:
-                main._payment_idem_get("payment-key")
+                main.request_guards._payment_idem_get("payment-key")
 
         self.assertEqual(raised.exception.status_code, 503)
 
@@ -2091,7 +2091,7 @@ class ApiContractTests(unittest.TestCase):
         )
         with (
             patch.object(main.firebase_admin_setup, "get_db", return_value=fake_db),
-            patch.object(main, "_check_rate", return_value=(False, 60, 0)),
+            patch.object(main.request_guards, "_check_rate", return_value=(False, 60, 0)),
         ):
             response = self.client.post(
                 "/api/account-bootstrap",
@@ -2122,7 +2122,7 @@ class ApiContractTests(unittest.TestCase):
 
         fake_client = SimpleNamespace(order=FakeOrderApi())
 
-        with patch.object(main.app_state, "rzp_client", fake_client), patch.object(main, "RAZORPAY_AVAILABLE", True):
+        with patch.object(main.app_state, "rzp_client", fake_client), patch.object(main.optional_deps, "RAZORPAY_AVAILABLE", True):
             payload = {
                 "plan_id": "starter",
                 "id_token": "token-123",

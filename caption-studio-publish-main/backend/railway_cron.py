@@ -170,7 +170,7 @@ def main():
     _log("cron_pass_finished", failed_steps=failures)
     sys.stdout.flush()
     sys.stderr.flush()
-    sentry = getattr(api, "sentry_sdk", None)
+    sentry = getattr(api.optional_deps, "sentry_sdk", None)
     if sentry is not None:
         try:
             sentry.flush(timeout=5)

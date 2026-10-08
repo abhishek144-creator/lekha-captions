@@ -36,6 +36,10 @@ try:
     from . import api_models
 except ImportError:  # Direct execution from backend/ remains supported.
     import api_models
+try:
+    from . import optional_deps
+except ImportError:  # Direct execution from backend/ remains supported.
+    import optional_deps
 
 
 def create_admin_router(host: ModuleType) -> SimpleNamespace:
@@ -92,13 +96,13 @@ def create_admin_router(host: ModuleType) -> SimpleNamespace:
             raise HTTPException(status_code=403, detail="Admin access required")
         test_id = f"alert-test-{observability._utcnow().strftime('%Y%m%d-%H%M%S')}-{host.secrets.token_hex(3)}"
         sentry_event_id = ""
-        if settings.SENTRY_DSN and host.SENTRY_AVAILABLE:
+        if settings.SENTRY_DSN and optional_deps.SENTRY_AVAILABLE:
             try:
-                sentry_event_id = str(host.sentry_sdk.capture_message(
+                sentry_event_id = str(optional_deps.sentry_sdk.capture_message(
                     f"Caption Studio production alert delivery test {test_id}",
                     level="warning",
                 ) or "")
-                host.sentry_sdk.flush(timeout=2.0)
+                optional_deps.sentry_sdk.flush(timeout=2.0)
             except Exception as e:
                 observability._json_log("warning", "sentry_test_alert_failed", test_id=test_id, error=str(e))
         observability._audit_action("production_alert_test_dispatched", "admin", {

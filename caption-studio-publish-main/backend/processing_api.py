@@ -40,6 +40,10 @@ try:
     from . import api_models
 except ImportError:  # Direct execution from backend/ remains supported.
     import api_models
+try:
+    from . import request_guards
+except ImportError:  # Direct execution from backend/ remains supported.
+    import request_guards
 
 
 def create_processing_router(host: ModuleType) -> SimpleNamespace:
@@ -144,18 +148,18 @@ def create_processing_router(host: ModuleType) -> SimpleNamespace:
         # Auth — same dev-mode bypass as /api/export
         decoded_token = {"uid": trusted_uid} if trusted_uid else request_security._authenticate_media_request(req.id_token, req.org_id)
         uid = (decoded_token.get("uid") or "").strip() or "unknown-user"
-        client_ip = host._client_rate_key(request)
-        allowed, retry_after, remaining = host._check_rate(
+        client_ip = request_guards._client_rate_key(request)
+        allowed, retry_after, remaining = request_guards._check_rate(
             app_state._process_rate, f"network:{client_ip}", settings.PROCESS_SHARED_NETWORK_RATE_LIMIT
         )
-        host._apply_rate_headers(response, settings.PROCESS_SHARED_NETWORK_RATE_LIMIT, remaining, retry_after)
+        request_guards._apply_rate_headers(response, settings.PROCESS_SHARED_NETWORK_RATE_LIMIT, remaining, retry_after)
         if not allowed:
             observability._track_event("process_rejected_rate_limited")
             raise host.HTTPException(status_code=429, detail="Too many transcription requests. Please wait before trying again.")
-        user_allowed, user_retry_after, user_remaining = host._check_rate(
+        user_allowed, user_retry_after, user_remaining = request_guards._check_rate(
             app_state._process_rate, f"user:{uid}", settings.PROCESS_USER_RATE_LIMIT
         )
-        host._apply_rate_headers(response, settings.PROCESS_USER_RATE_LIMIT, user_remaining, user_retry_after)
+        request_guards._apply_rate_headers(response, settings.PROCESS_USER_RATE_LIMIT, user_remaining, user_retry_after)
         if not user_allowed:
             observability._track_event("process_rejected_rate_limited")
             raise host.HTTPException(status_code=429, detail="Too many transcription requests. Please wait before trying again.")
@@ -227,7 +231,7 @@ def create_processing_router(host: ModuleType) -> SimpleNamespace:
             "max_words": req.max_words,
         }, sort_keys=True).encode("utf-8")).hexdigest()
         if process_idem_key:
-            cached_process = host._idem_get(process_idem_key)
+            cached_process = request_guards._idem_get(process_idem_key)
             if cached_process:
                 if cached_process.get("request_hash") != process_request_hash:
                     raise host.HTTPException(
@@ -243,7 +247,7 @@ def create_processing_router(host: ModuleType) -> SimpleNamespace:
                     )
 
         process_request_id = host.uuid.uuid4().hex
-        if not host._acquire_process_slot(uid, process_request_id):
+        if not request_guards._acquire_process_slot(uid, process_request_id):
             raise host.HTTPException(
                 status_code=409,
                 detail="A transcription is already running for this account. Wait for it to finish before retrying.",
@@ -251,7 +255,7 @@ def create_processing_router(host: ModuleType) -> SimpleNamespace:
 
         try:
             if process_idem_key:
-                host._idem_set(process_idem_key, {
+                request_guards._idem_set(process_idem_key, {
                     "status": "in_progress",
                     "ts": host.time.time(),
                     "request_hash": process_request_hash,
@@ -301,7 +305,7 @@ def create_processing_router(host: ModuleType) -> SimpleNamespace:
                     except Exception as e:
                         observability._json_log("warning", "transcription_cache_write_failed", error=str(e))
                 if process_idem_key:
-                    host._idem_set(process_idem_key, {
+                    request_guards._idem_set(process_idem_key, {
                         "status": "completed",
                         "ts": host.time.time(),
                         "request_hash": process_request_hash,
@@ -336,10 +340,10 @@ def create_processing_router(host: ModuleType) -> SimpleNamespace:
             # Failed provider calls release their quota in the branches above and
             # must not leave an in-progress receipt that blocks a real retry.
             if process_idem_key:
-                host._idem_delete(process_idem_key)
+                request_guards._idem_delete(process_idem_key)
             raise
         finally:
-            host._release_process_slot(uid, process_request_id)
+            request_guards._release_process_slot(uid, process_request_id)
 
     return SimpleNamespace(
         router=router,

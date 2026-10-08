@@ -23,6 +23,10 @@ try:
     from . import observability
 except ImportError:  # Direct execution from backend/ remains supported.
     import observability
+try:
+    from . import request_guards
+except ImportError:  # Direct execution from backend/ remains supported.
+    import request_guards
 
 
 def create_upload_dispatch(host: ModuleType) -> SimpleNamespace:
@@ -53,8 +57,8 @@ def create_upload_dispatch(host: ModuleType) -> SimpleNamespace:
 
 
     def _limit_direct_upload_network(request: host.Request):
-        network = host._client_rate_key(request)
-        allowed, retry_after, _remaining = host._check_rate(
+        network = request_guards._client_rate_key(request)
+        allowed, retry_after, _remaining = request_guards._check_rate(
             app_state._upload_rate, f"direct_network:{network}", settings.DIRECT_UPLOAD_SHARED_NETWORK_HOURLY,
             settings.UPLOAD_RATE_WINDOW,
         )

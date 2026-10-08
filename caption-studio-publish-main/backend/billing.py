@@ -40,6 +40,10 @@ try:
     from . import api_models
 except ImportError:  # Direct execution from backend/ remains supported.
     import api_models
+try:
+    from . import optional_deps
+except ImportError:  # Direct execution from backend/ remains supported.
+    import optional_deps
 
 
 def create_billing_service(host: ModuleType) -> SimpleNamespace:
@@ -198,7 +202,7 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
         order_id = str(order_id or "").strip()
         if not order_id:
             raise HTTPException(status_code=400, detail="Payment is missing its order binding.")
-        if not host.RAZORPAY_AVAILABLE or app_state.rzp_client is None:
+        if not optional_deps.RAZORPAY_AVAILABLE or app_state.rzp_client is None:
             raise HTTPException(status_code=503, detail="Payment order verification is unavailable")
 
         try:
