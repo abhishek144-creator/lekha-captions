@@ -15,6 +15,14 @@ try:
     from . import app_state
 except ImportError:  # Direct execution from backend/ remains supported.
     import app_state
+try:
+    from . import firebase_admin_setup
+except ImportError:  # Direct execution from backend/ remains supported.
+    import firebase_admin_setup
+try:
+    from . import observability
+except ImportError:  # Direct execution from backend/ remains supported.
+    import observability
 
 
 def create_upload_dispatch(host: ModuleType) -> SimpleNamespace:
@@ -24,13 +32,13 @@ def create_upload_dispatch(host: ModuleType) -> SimpleNamespace:
                 if host.os.path.exists(local_path):
                     host.os.remove(local_path)
             except OSError as cleanup_error:
-                host._json_log("warning", "upload_local_cleanup_failed", error=str(cleanup_error))
+                observability._json_log("warning", "upload_local_cleanup_failed", error=str(cleanup_error))
         if remote_path:
             try:
-                if not host.delete_from_firebase_storage(remote_path):
-                    host._json_log("warning", "upload_remote_cleanup_failed", remote_path=remote_path)
+                if not firebase_admin_setup.delete_from_firebase_storage(remote_path):
+                    observability._json_log("warning", "upload_remote_cleanup_failed", remote_path=remote_path)
             except Exception as cleanup_error:
-                host._json_log("warning", "upload_remote_cleanup_failed", error=str(cleanup_error))
+                observability._json_log("warning", "upload_remote_cleanup_failed", error=str(cleanup_error))
 
 
     def _reserve_direct_upload_slot(uid: str, file_id: str, size_bytes: int):
@@ -61,12 +69,12 @@ def create_upload_dispatch(host: ModuleType) -> SimpleNamespace:
         except Exception as exc:
             # The active lease has a bounded TTL; a transient Redis failure should
             # not turn a completed upload into a failed customer response.
-            host._json_log("warning", "direct_upload_slot_release_failed", error=str(exc))
+            observability._json_log("warning", "direct_upload_slot_release_failed", error=str(exc))
 
 
     def _schedule_media_scan(uid: str, file_id: str):
         """Persist scan intent before best-effort immediate queue delivery."""
-        jobs = host.MediaScanJobs(host.get_db())
+        jobs = host.MediaScanJobs(firebase_admin_setup.get_db())
         if not jobs.create(uid, file_id):
             return
         try:
@@ -75,7 +83,7 @@ def create_upload_dispatch(host: ModuleType) -> SimpleNamespace:
                 retry=host.RQRetry(max=3, interval=[30, 120, 300]) if host.RQRetry else None,
             )
         except Exception as error:
-            host._json_log(
+            observability._json_log(
                 "warning",
                 "media_scan_immediate_dispatch_failed",
                 file_id=file_id,
@@ -86,15 +94,15 @@ def create_upload_dispatch(host: ModuleType) -> SimpleNamespace:
     async def _transcription_dispatch_loop():
         while True:
             try:
-                await host.asyncio.to_thread(host.TranscriptionJobs(host.get_db()).dispatch, app_state._transcription_queue)
+                await host.asyncio.to_thread(host.TranscriptionJobs(firebase_admin_setup.get_db()).dispatch, app_state._transcription_queue)
                 await host.asyncio.to_thread(host._dispatch_media_scans_once)
             except Exception as error:
-                host._json_log("warning", "transcription_dispatch_failed", error_type=type(error).__name__)
+                observability._json_log("warning", "transcription_dispatch_failed", error_type=type(error).__name__)
             await host.asyncio.sleep(10)
 
 
     def _dispatch_media_scans_once():
-        return host.MediaScanJobs(host.get_db()).dispatch(
+        return host.MediaScanJobs(firebase_admin_setup.get_db()).dispatch(
             app_state._media_scan_queue,
             retry=host.RQRetry(max=3, interval=[30, 120, 300]) if host.RQRetry else None,
         )
@@ -106,7 +114,7 @@ def create_upload_dispatch(host: ModuleType) -> SimpleNamespace:
             shared_secret=settings.PAYMENT_RECONCILE_SECRET,
             service_account_email=settings.SCHEDULER_SERVICE_ACCOUNT_EMAIL,
             oidc_audience=settings.SCHEDULER_OIDC_AUDIENCE,
-            rejected_callback=lambda error: host._json_log(
+            rejected_callback=lambda error: observability._json_log(
                 "warning", "scheduler_oidc_rejected", error_type=type(error).__name__,
             ),
         )

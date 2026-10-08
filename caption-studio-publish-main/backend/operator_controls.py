@@ -15,6 +15,14 @@ try:
     from . import app_state
 except ImportError:  # Direct execution from backend/ remains supported.
     import app_state
+try:
+    from . import firebase_admin_setup
+except ImportError:  # Direct execution from backend/ remains supported.
+    import firebase_admin_setup
+try:
+    from . import observability
+except ImportError:  # Direct execution from backend/ remains supported.
+    import observability
 
 
 def create_operator_controls(host: ModuleType) -> SimpleNamespace:
@@ -43,7 +51,7 @@ def create_operator_controls(host: ModuleType) -> SimpleNamespace:
             return dict(cached)
 
         controls = host._default_service_controls()
-        db = host.get_db()
+        db = firebase_admin_setup.get_db()
         if db:
             try:
                 snap = (
@@ -70,7 +78,7 @@ def create_operator_controls(host: ModuleType) -> SimpleNamespace:
             except Exception as e:
                 # Fail open: a controls read failure must not take the product down.
                 # The last known state is preferred over an empty default.
-                host._json_log("warning", "service_controls_read_failed", error=str(e))
+                observability._json_log("warning", "service_controls_read_failed", error=str(e))
                 if cached:
                     return dict(cached)
                 return controls
@@ -89,12 +97,12 @@ def create_operator_controls(host: ModuleType) -> SimpleNamespace:
             notice = controls.get("notice") or settings._SERVICE_CONTROL_MESSAGES.get(
                 key, "This feature is temporarily paused."
             )
-            host._track_event("service_control_blocked", {"control": key})
+            observability._track_event("service_control_blocked", {"control": key})
             raise host.HTTPException(status_code=503, detail=notice)
 
 
     def _scan_upload_for_threat(file_path: str) -> bool:
-        return host.scan_upload_for_threat(file_path, log=host._json_log)
+        return host.scan_upload_for_threat(file_path, log=observability._json_log)
 
 
     def _is_content_safety_blocked(*values: str) -> bool:

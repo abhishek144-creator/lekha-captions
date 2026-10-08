@@ -23,6 +23,14 @@ try:
     from . import app_state
 except ImportError:  # Direct execution from backend/ remains supported.
     import app_state
+try:
+    from . import firebase_admin_setup
+except ImportError:  # Direct execution from backend/ remains supported.
+    import firebase_admin_setup
+try:
+    from . import observability
+except ImportError:  # Direct execution from backend/ remains supported.
+    import observability
 
 
 def create_payments_router(host: ModuleType) -> SimpleNamespace:
@@ -36,7 +44,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
         if req.require_test_mode and not settings.RAZORPAY_KEY_ID.startswith("rzp_test_"):
             raise HTTPException(409, "Payment test refused: test-mode credentials required")
         # Verify User
-        decoded_token = host.verify_token(req.id_token)
+        decoded_token = firebase_admin_setup.verify_token(req.id_token)
         if not decoded_token:
             raise HTTPException(status_code=401, detail="Invalid Authentication Token")
         uid = decoded_token.get("uid", "")
@@ -54,7 +62,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
         cached_payment = host._payment_idem_get(pay_idem_key)
         if cached_payment and cached_payment.get("status") == "completed":
             return {**cached_payment["payload"], "idempotent_replay": True}
-        host._audit_action("create_order_attempt", uid, {"plan_id": req.plan_id, "currency": req.currency})
+        observability._audit_action("create_order_attempt", uid, {"plan_id": req.plan_id, "currency": req.currency})
 
         plan = settings.PLAN_PRICING.get(req.plan_id)
         if not plan:
@@ -67,7 +75,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
         topup_reservation_id = ""
         # Top-up: validate caller's current tier before creating order
         if plan.get('is_topup'):
-            topup_db = host.get_db()
+            topup_db = firebase_admin_setup.get_db()
             if not topup_db:
                 raise HTTPException(status_code=503, detail="Account service unavailable; top-up order was not created")
             uid_tmp = decoded_token.get('uid')
@@ -137,7 +145,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
                 try:
                     host._release_topup_order_slot(topup_db, topup_user_ref, topup_reservation_id)
                 except Exception as release_error:
-                    host._json_log(
+                    observability._json_log(
                         "warning",
                         "topup_reservation_release_failed",
                         uid=uid,
@@ -145,7 +153,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
                         error=str(release_error),
                     )
             host._payment_idem_delete(pay_idem_key)
-            host._json_log("error", "razorpay_order_create_failed", uid=uid, plan_id=req.plan_id, error=str(e))
+            observability._json_log("error", "razorpay_order_create_failed", uid=uid, plan_id=req.plan_id, error=str(e))
             raise HTTPException(status_code=502, detail="Payment order could not be created. Please try again.") from e
 
         payload = {"success": True, "order": order, "plan_id": req.plan_id, "key_id": settings.RAZORPAY_KEY_ID}
@@ -158,7 +166,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
             raise HTTPException(status_code=503, detail="Payment service unavailable")
 
         # Verify User
-        decoded_token = host.verify_token(req.id_token)
+        decoded_token = firebase_admin_setup.verify_token(req.id_token)
         if not decoded_token:
             raise HTTPException(status_code=401, detail="Invalid Authentication Token")
         uid = decoded_token.get('uid')
@@ -173,7 +181,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
         cached_payment = host._payment_idem_get(pay_idem_key)
         if cached_payment and cached_payment.get("status") == "completed":
             return {**cached_payment["payload"], "idempotent_replay": True}
-        host._audit_action("verify_payment_attempt", uid, {"plan_id": req.plan_id, "order_id": req.razorpay_order_id})
+        observability._audit_action("verify_payment_attempt", uid, {"plan_id": req.plan_id, "order_id": req.razorpay_order_id})
 
         # Verify Signature
         try:
@@ -200,7 +208,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
 
         payment_order_id = (payment_live.get("order_id") or "").strip()
         if payment_order_id != req.razorpay_order_id:
-            host._json_log(
+            observability._json_log(
                 "warning",
                 "payment_order_mismatch",
                 uid=uid,
@@ -212,7 +220,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
 
         payment_status = (payment_live.get("status") or "").lower()
         if payment_status != "captured":
-            host._json_log(
+            observability._json_log(
                 "warning",
                 "payment_not_captured",
                 uid=uid,
@@ -230,7 +238,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
         order_amount = int(order_live.get("amount", 0) or 0)
         order_currency = (order_live.get("currency") or "").upper()
         if order_amount != int(amount_paid_minor or 0) or order_currency != (currency_paid or "").upper():
-            host._json_log(
+            observability._json_log(
                 "warning",
                 "payment_order_amount_mismatch",
                 uid=uid,
@@ -327,7 +335,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
         status = payment_entity.get("status", "")
         notes = payment_entity.get("notes") or {}
 
-        db = host.get_db()
+        db = firebase_admin_setup.get_db()
         webhook_ref = None
         if db:
             try:
@@ -343,9 +351,9 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
                     "status": status,
                     "refund_status": refund_entity.get("status", ""),
                     "notes": notes,
-                    "received_at": host._utcnow().isoformat() + "Z",
+                    "received_at": observability._utcnow().isoformat() + "Z",
                     "reconcile_required": event == "payment.captured" and status == "captured",
-                    "expire_at": host._retention_deadline(90),
+                    "expire_at": observability._retention_deadline(90),
                 }, merge=True)
             except Exception as e:
                 print(f"[Webhook] Failed to persist webhook event: {e}")
@@ -379,11 +387,11 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
                         "notes": refund_context,
                     })
                 except Exception as e:
-                    host._json_log("warning", "refund_webhook_context_persist_failed", payment_id=refund_payment_id, error=str(e))
+                    observability._json_log("warning", "refund_webhook_context_persist_failed", payment_id=refund_payment_id, error=str(e))
             return host._apply_refund_webhook_event(db, event, refund_entity, refund_payment_bound)
 
         if event == "payment.failed":
-            host._track_event("payment_failed", {
+            observability._track_event("payment_failed", {
                 "payment_id": payment_id,
                 "order_id": order_id,
                 "currency": currency,
@@ -405,7 +413,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
             try:
                 webhook_ref.update({"notes": order_context})
             except Exception as e:
-                host._json_log("warning", "payment_webhook_context_persist_failed", payment_id=payment_id, error=str(e))
+                observability._json_log("warning", "payment_webhook_context_persist_failed", payment_id=payment_id, error=str(e))
 
         result = host._apply_successful_payment(
             uid=uid,
@@ -424,10 +432,10 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
             try:
                 webhook_ref.update({
                     "reconcile_required": False,
-                    "reconciled_at": host._utcnow().isoformat() + "Z",
+                    "reconciled_at": observability._utcnow().isoformat() + "Z",
                 })
             except Exception as e:
-                host._json_log("warning", "payment_webhook_reconcile_mark_failed", payment_id=payment_id, error=str(e))
+                observability._json_log("warning", "payment_webhook_reconcile_mark_failed", payment_id=payment_id, error=str(e))
         return {"success": True, "applied": True, "result": result}
 
     @router.post("/api/reconcile-payments")

@@ -54,55 +54,9 @@ import hmac
 import hashlib
 from fastapi import Request
 try:
-    from .firebase_admin_setup import (
-        verify_token,
-        get_db,
-        upload_to_firebase_storage,
-        delete_from_firebase_storage,
-        delete_user_exports,
-        delete_expired_exports,
-        upload_source_media,
-        download_from_firebase_storage,
-        download_export_from_firebase_storage,
-        signed_export_download_url,
-        delete_expired_uploads,
-        delete_user_uploads,
-        storage_backend_ready,
-        create_resumable_source_upload,
-        resume_resumable_source_upload,
-        sign_resumable_upload_parts,
-        cancel_resumable_source_upload,
-        finalize_resumable_source_upload,
-        set_source_upload_state,
-        download_render_cache,
-        upload_render_cache,
-        delete_render_cache,
-    )
+    from . import firebase_admin_setup
 except ImportError:  # Direct execution from backend/ remains supported.
-    from firebase_admin_setup import (
-        verify_token,
-        get_db,
-        upload_to_firebase_storage,
-        delete_from_firebase_storage,
-        delete_user_exports,
-        delete_expired_exports,
-        upload_source_media,
-        download_from_firebase_storage,
-        download_export_from_firebase_storage,
-        signed_export_download_url,
-        delete_expired_uploads,
-        delete_user_uploads,
-        storage_backend_ready,
-        create_resumable_source_upload,
-        resume_resumable_source_upload,
-        sign_resumable_upload_parts,
-        cancel_resumable_source_upload,
-        finalize_resumable_source_upload,
-        set_source_upload_state,
-        download_render_cache,
-        upload_render_cache,
-        delete_render_cache,
-    )
+    import firebase_admin_setup
 from firebase_admin import app_check as firebase_app_check
 from firebase_admin import auth as firebase_auth
 import math
@@ -134,7 +88,7 @@ try:
     from .idle_connections import RailwayIdleConnectionsMiddleware, disconnect_idle_redis_clients
     from .system_api import create_system_router
     from .billing import create_billing_service
-    from .observability import create_observability
+    from . import observability
     from .request_security import create_request_security
     from .operator_controls import create_operator_controls
     from .request_guards import create_request_guards
@@ -190,7 +144,7 @@ except ImportError:
     from idle_connections import RailwayIdleConnectionsMiddleware, disconnect_idle_redis_clients
     from system_api import create_system_router
     from billing import create_billing_service
-    from observability import create_observability
+    import observability
     from request_security import create_request_security
     from operator_controls import create_operator_controls
     from request_guards import create_request_guards
@@ -301,36 +255,13 @@ app.add_middleware(
     clients=lambda: (app_state._redis_client, app_state._rq_redis_client),
 )
 
-_observability = create_observability(sys.modules[__name__])
-_utcnow = _observability._utcnow
-_json_log = _observability._json_log
-_send_alert = _observability._send_alert
-_urlopen_https_only = _observability._urlopen_https_only
-_retention_deadline = _observability._retention_deadline
-_enqueue_telemetry = _observability._enqueue_telemetry
-_flush_telemetry = _observability._flush_telemetry
-_telemetry_flush_loop = _observability._telemetry_flush_loop
-CircuitBreaker = _observability.CircuitBreaker
-_request_id = _observability._request_id
-_log = _observability._log
-_track_event = _observability._track_event
-_track_latency_sample = _observability._track_latency_sample
-_track_operational_metric_sample = _observability._track_operational_metric_sample
-_read_operational_metric_samples = _observability._read_operational_metric_samples
-_read_daily_analytics_counters = _observability._read_daily_analytics_counters
-_read_daily_latency_samples = _observability._read_daily_latency_samples
-_p95 = _observability._p95
-_build_slo_snapshot = _observability._build_slo_snapshot
-_maybe_alert_failure_ratio = _observability._maybe_alert_failure_ratio
-_audit_action = _observability._audit_action
-
 
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
 
 
 @app.middleware("http")
 async def request_logging_middleware(request: Request, call_next):
-    rid = _request_id(request)
+    rid = observability._request_id(request)
     request.state.request_id = rid
     if _app_check_required(request) and request.headers.get("x-firebase-appcheck"):
         # Firebase may synchronously fetch rotated signing keys. Keep its
@@ -415,7 +346,7 @@ async def request_logging_middleware(request: Request, call_next):
         response = await call_next(request)
     except Exception as e:
         elapsed_ms = int((time.time() - start) * 1000)
-        _json_log(
+        observability._json_log(
             "error",
             "http_request",
             request_id=rid,
@@ -441,12 +372,12 @@ async def request_logging_middleware(request: Request, call_next):
                 telemetry_pending = bool(app_state._telemetry_buffer)
             if telemetry_pending:
                 try:
-                    await asyncio.to_thread(_flush_telemetry)
+                    await asyncio.to_thread(observability._flush_telemetry)
                 except Exception as error:
-                    _json_log("warning", "request_telemetry_flush_failed", error=type(error).__name__)
+                    observability._json_log("warning", "request_telemetry_flush_failed", error=type(error).__name__)
     elapsed_ms = int((time.time() - start) * 1000)
     response.headers["X-Request-Id"] = rid
-    _json_log(
+    observability._json_log(
         "info",
         "http_request",
         request_id=rid,
@@ -458,7 +389,7 @@ async def request_logging_middleware(request: Request, call_next):
         replica_id=settings.RAILWAY_REPLICA_ID,
     )
     try:
-        await asyncio.to_thread(_track_latency_sample, request.url.path, elapsed_ms)
+        await asyncio.to_thread(observability._track_latency_sample, request.url.path, elapsed_ms)
     except Exception:
         pass
     response.headers["X-API-Version"] = settings.API_CURRENT_VERSION
@@ -476,15 +407,15 @@ if settings.SENTRY_DSN and SENTRY_AVAILABLE and not settings._IS_TEST:
             traces_sample_rate=float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0.05")),
             send_default_pii=False,
         )
-        _json_log("info", "sentry_initialized", environment=settings.APP_ENV)
+        observability._json_log("info", "sentry_initialized", environment=settings.APP_ENV)
     except Exception as e:
-        _json_log("warning", "sentry_init_failed", error=str(e))
+        observability._json_log("warning", "sentry_init_failed", error=str(e))
 elif settings.SENTRY_DSN and not SENTRY_AVAILABLE:
     if settings._IS_PRODUCTION:
         raise RuntimeError("SENTRY_DSN is configured but the Sentry SDK is unavailable in production.")
-    _json_log("warning", "sentry_dsn_set_but_sdk_missing")
+    observability._json_log("warning", "sentry_dsn_set_but_sdk_missing")
 
-_json_log(
+observability._json_log(
     "warning" if not settings._IS_PRODUCTION else "info",
     "runtime_mode",
     env=settings.APP_ENV,
@@ -494,7 +425,7 @@ _json_log(
 if RAZORPAY_AVAILABLE and settings.RAZORPAY_KEY_ID and settings.RAZORPAY_KEY_SECRET:
     app_state.rzp_client = _razorpay_module.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
 elif RAZORPAY_AVAILABLE:
-    _json_log("warning", "razorpay_credentials_missing")
+    observability._json_log("warning", "razorpay_credentials_missing")
 
 
 # Global APScheduler reference (None if apscheduler not installed)
@@ -512,11 +443,11 @@ if REDIS_AVAILABLE and settings.REDIS_URL and not settings._IS_TEST:
         # and turns a stalled Redis into a fast error instead of a hung request.
         app_state._rq_redis_client = connect_redis(settings.REDIS_URL, socket_timeout=15)
         app_state._rq_redis_client.ping()
-        _json_log("info", "redis_connected")
+        observability._json_log("info", "redis_connected")
     except Exception as e:
         app_state._redis_client = None
         app_state._rq_redis_client = None
-        _json_log("warning", "redis_connection_failed", error=str(e))
+        observability._json_log("warning", "redis_connection_failed", error=str(e))
 
 if settings._IS_PRODUCTION and app_state._redis_client is None:
     raise RuntimeError(
@@ -535,11 +466,11 @@ if settings.DURABLE_QUEUE_ENABLED and app_state._rq_redis_client is not None and
             for queue_name in configured_render_queues
         }
         app_state._export_queue = app_state._export_queues[settings.EXPORT_QUEUE_NAME]
-        _json_log("info", "durable_queue_enabled", queues=list(app_state._export_queues))
+        observability._json_log("info", "durable_queue_enabled", queues=list(app_state._export_queues))
     except Exception as e:
         app_state._export_queue = None
         app_state._export_queues = {}
-        _json_log("warning", "durable_queue_init_failed", error=str(e))
+        observability._json_log("warning", "durable_queue_init_failed", error=str(e))
 
 if settings._IS_PRODUCTION and app_state._export_queue is None:
     raise RuntimeError("The durable export queue is required in production; refusing API-local rendering.")
@@ -554,11 +485,11 @@ if app_state._export_queue is not None and settings.MEDIA_SCAN_QUEUE_NAME not in
 
 async def startup_event():
     if not settings.RUN_API_BACKGROUND_TASKS:
-        _json_log("info", "api_background_tasks_disabled")
+        observability._json_log("info", "api_background_tasks_disabled")
         if os.environ.get("RAILWAY_PROJECT_ID"):
             disconnect_idle_redis_clients(app_state._redis_client, app_state._rq_redis_client)
         return
-    app_state._telemetry_flush_task = asyncio.create_task(_telemetry_flush_loop())
+    app_state._telemetry_flush_task = asyncio.create_task(observability._telemetry_flush_loop())
     if settings._IS_PRODUCTION:
         app_state._transcription_dispatch_task = asyncio.create_task(_transcription_dispatch_loop())
     if settings.QUEUE_METRICS_ENABLED:
@@ -571,10 +502,10 @@ async def startup_event():
         app_state.scheduler.add_job(scheduled_janitor_job, 'interval', minutes=15)
         app_state.scheduler.add_job(scheduled_payment_reconciliation_job, 'interval', minutes=max(settings.PAYMENT_RECONCILE_INTERVAL_MINUTES, 5))
         app_state.scheduler.start()
-        _json_log("info", "scheduler_started", janitor_minutes=15,
+        observability._json_log("info", "scheduler_started", janitor_minutes=15,
                   payment_reconcile_minutes=max(settings.PAYMENT_RECONCILE_INTERVAL_MINUTES, 5))
     else:
-        _json_log("warning", "janitor_fallback_loop", reason="apscheduler not installed")
+        observability._json_log("warning", "janitor_fallback_loop", reason="apscheduler not installed")
         app_state._simple_janitor_task = asyncio.create_task(_simple_janitor_loop())
 
 
@@ -593,7 +524,7 @@ async def shutdown_event():
         app_state._simple_janitor_task = None
     if app_state.scheduler is not None and app_state.scheduler.running:
         app_state.scheduler.shutdown(wait=False)
-    await asyncio.to_thread(_flush_telemetry)
+    await asyncio.to_thread(observability._flush_telemetry)
 
 _maintenance_jobs = create_maintenance_jobs(sys.modules[__name__])
 cleanup_local_media_artifacts = _maintenance_jobs.cleanup_local_media_artifacts
@@ -624,9 +555,9 @@ app.add_middleware(
 app.add_middleware(UploadBodyLimitMiddleware)
 
 
-app_state._provider_breakers: Dict[str, CircuitBreaker] = {
-    "openai_translate": CircuitBreaker(failure_threshold=4, cooldown_seconds=120),
-    "openai_detect_language": CircuitBreaker(failure_threshold=4, cooldown_seconds=120),
+app_state._provider_breakers: Dict[str, observability.CircuitBreaker] = {
+    "openai_translate": observability.CircuitBreaker(failure_threshold=4, cooldown_seconds=120),
+    "openai_detect_language": observability.CircuitBreaker(failure_threshold=4, cooldown_seconds=120),
 }
 
 
@@ -728,7 +659,7 @@ app_state.processor = VideoProcessor(settings.FONTS_DIR)
 
 app.include_router(create_project_router(
     _authenticate_media_request,
-    get_db,
+    firebase_admin_setup.get_db,
     _validate_file_id,
     _assert_upload_owner,
 ))
@@ -822,7 +753,7 @@ def run_export_job_task(
         return {"success": False, "status": current.get("status"), "export_job_id": export_job_id}
     try:
         if (existing_job.get("status") or "").lower() == "cancelled":
-            _json_log("info", "cancelled_export_skipped", job_id=export_job_id, uid=uid)
+            observability._json_log("info", "cancelled_export_skipped", job_id=export_job_id, uid=uid)
             return {
                 "success": False,
                 "status": "cancelled",
@@ -837,7 +768,7 @@ def run_export_job_task(
                 # the job's failure retries (a 10-item batch outlived them) and
                 # without dead-lettering every poll.
                 _set_export_job(export_job_id, "retrying", error=None)
-                _json_log("info", "export_waiting_for_account_slot", job_id=export_job_id)
+                observability._json_log("info", "export_waiting_for_account_slot", job_id=export_job_id)
                 return wait_retry
             raise RuntimeError("Another export currently owns this account's export slot")
         req = ExportRequest(**req_payload)
@@ -861,7 +792,7 @@ def run_export_job_task(
         except Exception as recovery_error:
             recorded = None
             usage_recovery_unknown = True
-            _json_log("warning", "export_usage_recovery_unavailable", job_id=export_job_id,
+            observability._json_log("warning", "export_usage_recovery_unavailable", job_id=export_job_id,
                       error=type(recovery_error).__name__)
         if recorded:
             try:
@@ -873,7 +804,7 @@ def run_export_job_task(
                     _idem_set(idempotency_key, {"status": "completed", "ts": time.time(), "payload": recorded,
                                                "request_hash": idempotency_request_hash, "job_id": export_job_id})
             except Exception as recovery_error:
-                _json_log("warning", "export_completion_recovery_pending", job_id=export_job_id,
+                observability._json_log("warning", "export_completion_recovery_pending", job_id=export_job_id,
                           error=type(recovery_error).__name__)
             return recorded
         try:
@@ -887,7 +818,7 @@ def run_export_job_task(
             _set_export_job(export_job_id, "retrying" if retry_pending else "failed",
                             failed_at=time.time(), error="Export failed. Please retry or contact support.")
         except Exception as state_error:
-            _json_log(
+            observability._json_log(
                 "error",
                 "export_failure_state_persist_failed",
                 job_id=export_job_id,
@@ -895,7 +826,7 @@ def run_export_job_task(
             )
         failed_job = _load_export_job(export_job_id) or {}
         entered_at = float(failed_job.get("queue_entered_at") or time.time())
-        _json_log(
+        observability._json_log(
             "warning", "export_observation", job_id=export_job_id,
             status="retrying" if locals().get("retry_pending", False) else "failed",
             queue_wait_ms=failed_job.get("queue_wait_ms"),
@@ -924,7 +855,7 @@ def get_google_fonts():
             'https://fonts.google.com/metadata/fonts',
             headers={'User-Agent': 'Mozilla/5.0'}
         )
-        with _urlopen_https_only(req, timeout=10) as res:
+        with observability._urlopen_https_only(req, timeout=10) as res:
             raw_data = res.read().decode('utf-8')
             # The API often prefixes with )]}' for security
             if raw_data.startswith(")]}'"):
@@ -938,7 +869,7 @@ def get_google_fonts():
             app_state._cached_google_fonts = fonts
             return {"fonts": fonts}
     except Exception as e:
-        _json_log("warning", "google_fonts_fetch_failed", error=str(e))
+        observability._json_log("warning", "google_fonts_fetch_failed", error=str(e))
         return {"fonts": []}
 
 
@@ -960,23 +891,23 @@ app.include_router(create_direct_upload_router(
     allowed_content_prefixes=settings.ALLOWED_CONTENT_PREFIXES,
     allowed_origins=settings.ALLOWED_ORIGINS,
     max_upload_bytes=settings.MAX_UPLOAD_BYTES,
-    create_session=create_resumable_source_upload,
-    finalize_session=finalize_resumable_source_upload,
+    create_session=firebase_admin_setup.create_resumable_source_upload,
+    finalize_session=firebase_admin_setup.finalize_resumable_source_upload,
     remember_owner=_remember_upload_owner,
     signed_upload_url=_signed_upload_url,
-    audit_action=_audit_action,
+    audit_action=observability._audit_action,
     reserve_slot=_reserve_direct_upload_slot,
     release_slot=_release_direct_upload_slot,
-    cancel_session=cancel_resumable_source_upload,
-    resume_session=resume_resumable_source_upload,
+    cancel_session=firebase_admin_setup.cancel_resumable_source_upload,
+    resume_session=firebase_admin_setup.resume_resumable_source_upload,
     assert_account_active=_assert_account_not_deleting,
     rate_limit_network=_limit_direct_upload_network,
     enqueue_scan=_schedule_media_scan,
-    sign_parts=sign_resumable_upload_parts,
+    sign_parts=firebase_admin_setup.sign_resumable_upload_parts,
 ))
 app.include_router(create_editor_preferences_router(
     _authenticate_media_request,
-    get_db,
+    firebase_admin_setup.get_db,
 ))
 
 
@@ -994,7 +925,7 @@ _process_video_inline = _processing_api._process_video_inline
 
 app.include_router(create_maintenance_router(
     authorize=_require_scheduler_secret,
-    dispatch_transcription=lambda: TranscriptionJobs(get_db()).dispatch(app_state._transcription_queue),
+    dispatch_transcription=lambda: TranscriptionJobs(firebase_admin_setup.get_db()).dispatch(app_state._transcription_queue),
     dispatch_media_scans=_dispatch_media_scans_once,
     run_janitor=scheduled_janitor_job,
     publish_queue_metrics=_publish_queue_metrics_once,
@@ -1008,21 +939,21 @@ def run_media_scan_job_task(uid: str, file_id: str):
     _assert_upload_owner(file_id, uid)
     metadata = _load_upload_metadata(file_id)
     if str(metadata.get("upload_state") or "").lower() in {"clean", "rejected"}:
-        MediaScanJobs(get_db()).finish(file_id)
+        MediaScanJobs(firebase_admin_setup.get_db()).finish(file_id)
         return {"status": str(metadata.get("upload_state"))}
     input_path = _safe_find_upload(file_id)
     if not input_path:
         raise RuntimeError("Uploaded media could not be materialized for scanning")
     try:
         result = _ensure_upload_clean(file_id, uid, input_path)
-        MediaScanJobs(get_db()).finish(file_id)
+        MediaScanJobs(firebase_admin_setup.get_db()).finish(file_id)
         return {"status": str(result.get("upload_state") or "clean")}
     except HTTPException:
         # A malware rejection is terminal and already persisted by
         # _ensure_upload_clean. Scanner/runtime failures stay in the outbox.
         current = _load_upload_metadata(file_id)
         if str(current.get("upload_state") or "").lower() == "rejected":
-            MediaScanJobs(get_db()).finish(file_id)
+            MediaScanJobs(firebase_admin_setup.get_db()).finish(file_id)
             return {"status": "rejected"}
         raise
 
@@ -1101,24 +1032,24 @@ def _is_admin_token(id_token: str = "", request: Optional[Request] = None) -> bo
         token = request.headers.get("authorization", "").replace("Bearer ", "").strip()
     if not token:
         return False
-    decoded = verify_token(token)
+    decoded = firebase_admin_setup.verify_token(token)
     if not decoded:
         return False
     return _decoded_token_is_admin(decoded)
 
 
-app.include_router(create_cost_reconciliation_router(_is_admin_token, get_db))
-app.include_router(create_notification_router(_authenticate_bearer_request, get_db))
+app.include_router(create_cost_reconciliation_router(_is_admin_token, firebase_admin_setup.get_db))
+app.include_router(create_notification_router(_authenticate_bearer_request, firebase_admin_setup.get_db))
 app.include_router(create_public_api_router(
     authenticate_request=_authenticate_bearer_request,
-    get_database=get_db,
+    get_database=firebase_admin_setup.get_db,
     list_account_projects=list_projects,
     read_account_project=read_draft,
     load_export_job=_load_export_job,
 ))
 app.include_router(create_workspace_router(
     authenticate_request=_authenticate_bearer_request,
-    get_database=get_db,
+    get_database=firebase_admin_setup.get_db,
     assert_upload_owner=_assert_upload_owner,
     validate_file_id=_validate_file_id,
     find_upload=_safe_find_upload,
@@ -1131,13 +1062,13 @@ app.include_router(_provider_admin_api.router)
 provider_health = _provider_admin_api.provider_health
 app.include_router(create_analytics_router(
     is_admin=_is_admin_token,
-    utcnow=_utcnow,
-    get_database=get_db,
-    read_counters=_read_daily_analytics_counters,
-    read_latency_samples=_read_daily_latency_samples,
-    read_metric_samples=_read_operational_metric_samples,
-    alert_failure_ratio=_maybe_alert_failure_ratio,
-    percentile_95=_p95,
+    utcnow=observability._utcnow,
+    get_database=firebase_admin_setup.get_db,
+    read_counters=observability._read_daily_analytics_counters,
+    read_latency_samples=observability._read_daily_latency_samples,
+    read_metric_samples=observability._read_operational_metric_samples,
+    alert_failure_ratio=observability._maybe_alert_failure_ratio,
+    percentile_95=observability._p95,
 ))
 
 

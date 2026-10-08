@@ -21,6 +21,14 @@ try:
     from . import app_state
 except ImportError:  # Direct execution from backend/ remains supported.
     import app_state
+try:
+    from . import firebase_admin_setup
+except ImportError:  # Direct execution from backend/ remains supported.
+    import firebase_admin_setup
+try:
+    from . import observability
+except ImportError:  # Direct execution from backend/ remains supported.
+    import observability
 
 
 # RQ keeps each job's pickled arguments (the full editor snapshot) until these
@@ -80,7 +88,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
         try:
             host.release_pending_work(app_state._rq_redis_client, job_id)
         except Exception as error:
-            host._json_log(
+            observability._json_log(
                 "warning", "export_pending_work_release_failed",
                 job_id=job_id, error=type(error).__name__,
             )
@@ -97,14 +105,14 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
         return await _export_video_impl(req, request, response)
 
     async def _export_video_impl(req, request, response):
-        rid = host._request_id(request)
+        rid = observability._request_id(request)
         # Firestore, Firebase Auth, Redis and worker-launch calls below are
         # blocking I/O. The API runs one event loop per process, so each runs in
         # a worker thread instead of stalling every other request.
         to_thread = host.asyncio.to_thread
         await to_thread(host._assert_service_available, "pause_exports")
-        host._log(rid, f"Export requested file_id={req.file_id} quality={req.quality}")
-        host._track_event("export_requested", {"quality": req.quality, "fps": req.fps})
+        observability._log(rid, f"Export requested file_id={req.file_id} quality={req.quality}")
+        observability._track_event("export_requested", {"quality": req.quality, "fps": req.fps})
 
         # 1. Authenticate user
         decoded_token = await to_thread(host._authenticate_media_request, req.id_token, req.org_id)
@@ -113,7 +121,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
             raise HTTPException(status_code=503, detail="Export service is temporarily unavailable. Please retry shortly.",
                                 headers={"Retry-After": "10"})
         if decoded_token.get("_dev_mode"):
-            host._log(rid, "Using explicit debug auth bypass token")
+            observability._log(rid, "Using explicit debug auth bypass token")
 
         now_ts = host.time.time()
         recent_failures = await to_thread(host._get_recent_export_failures, uid)
@@ -146,7 +154,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
                         detail="This idempotency key was already used for a different export request.",
                     )
                 if cached.get("status") == "completed" and cached.get("payload"):
-                    host._log(rid, f"Idempotent replay for key={raw_idem[:16]}")
+                    observability._log(rid, f"Idempotent replay for key={raw_idem[:16]}")
                     recovery_payload = await to_thread(
                         host._refresh_completed_export_payload,
                         cached["payload"], uid, str(cached.get("job_id") or ""),
@@ -231,7 +239,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
                     result_ttl=EXPORT_RQ_RESULT_TTL_SECONDS,
                     failure_ttl=EXPORT_RQ_FAILURE_TTL_SECONDS,
                 )
-                host._audit_action("export_enqueued", uid, {"job_id": export_job_id, "file_id": req.file_id})
+                observability._audit_action("export_enqueued", uid, {"job_id": export_job_id, "file_id": req.file_id})
                 release_export_slot_in_request = False
                 return queued_payload
 
@@ -269,7 +277,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
                                   safe_request_snapshot, event, event_payload):
         host._set_export_job(export_job_id, "failed", failed_at=host.time.time(), error=error)
         host._record_export_failure(uid)
-        host._track_event(event, event_payload)
+        observability._track_event(event, event_payload)
         host._write_dead_letter(
             export_job_id,
             error,
@@ -280,7 +288,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
 
 
     def _persist_batch_receipt(payload, uid, created_at):
-        database = host.get_db()
+        database = firebase_admin_setup.get_db()
         if database is None:
             if settings._IS_PRODUCTION:
                 raise HTTPException(503, "Batch status storage is temporarily unavailable", headers={"Retry-After": "10"})
@@ -291,7 +299,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
                 "uid": uid,
                 "job_ids": [item["job_id"] for item in payload["accepted"]],
                 "created_at": created_at,
-                "expire_at": host._retention_deadline(30),
+                "expire_at": observability._retention_deadline(30),
                 "rejected": payload["rejected"],
             })
         except Exception as error:
@@ -424,14 +432,14 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
         await to_thread(host._idem_set, idem_key, receipt)
         await to_thread(_persist_batch_receipt, payload, uid, receipt["ts"])
         await to_thread(host._idem_set, idem_key, {**receipt, "batch_persisted": True})
-        host._audit_action("export_batch_enqueued", uid, {"batch_id": batch_id, "count": len(accepted)})
+        observability._audit_action("export_batch_enqueued", uid, {"batch_id": batch_id, "count": len(accepted)})
         return payload
 
 
     @router.get("/api/batch/exports/{batch_id}")
     def get_export_batch(batch_id: str, request: Request):
         uid = host._authenticate_bearer_request(request)["uid"]
-        database = host.get_db()
+        database = firebase_admin_setup.get_db()
         if database is None:
             raise HTTPException(503, "Batch status storage is unavailable")
         snapshot = database.collection("export_batches").document(batch_id).get()
@@ -473,7 +481,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
                     # Redis state write failed or all RQ retries were exhausted.
                     return {**job, "status": "completed", "payload": recorded, "error": None}
             except Exception as error:
-                host._json_log("warning", "export_usage_recovery_unavailable", job_id=job_id,
+                observability._json_log("warning", "export_usage_recovery_unavailable", job_id=job_id,
                                error=type(error).__name__)
                 # Do not present a final failure or permit a fresh debit while
                 # the authoritative outcome of the usage transaction is unknown.
@@ -500,7 +508,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
                     failed_at=host.time.time(),
                 )
                 if job.get("status") == "failed":
-                    host._json_log(
+                    observability._json_log(
                         "warning", "export_observation", job_id=job_id, status="failed",
                         queue_wait_ms=max(0, int(queue_age * 1000)),
                         failure_code="preparation_timeout",
@@ -510,7 +518,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
                     if stale_rq_job is not None:
                         stale_rq_job.cancel()
                 except Exception as error:
-                    host._json_log(
+                    observability._json_log(
                         "warning",
                         "export_preparation_timeout_cleanup_failed",
                         job_id=job_id,
@@ -519,7 +527,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
                 host._release_export_pending_work(job_id)
                 host._release_export_slot(str(job.get("uid") or ""), job_id)
                 host._idem_delete(str(job.get("idempotency_key") or ""))
-                host._track_event("export_preparation_timeout", {"job_id": job_id})
+                observability._track_event("export_preparation_timeout", {"job_id": job_id})
                 return job
             rq_job = job_queue.fetch_job(job_id) if job_queue else None
             state = rq_job.get_status(refresh=True) if rq_job else "missing"
@@ -528,7 +536,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
             if state in {"failed", "stopped", "canceled", "cancelled", "finished"} or (state == "missing" and age > 120):
                 job = host._set_export_job(job_id, "failed", error="Export was interrupted. Please retry.", failed_at=host.time.time())
                 if job.get("status") == "failed":
-                    host._json_log(
+                    observability._json_log(
                         "warning", "export_observation", job_id=job_id, status="failed",
                         queue_wait_ms=job.get("queue_wait_ms"), failure_code="worker_interrupted",
                     )
@@ -539,7 +547,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
         except host.InvalidJobTransition:
             return host._load_export_job(job_id) or job
         except Exception as error:
-            host._json_log("warning", "export_reconciliation_failed", job_id=job_id, error=type(error).__name__)
+            observability._json_log("warning", "export_reconciliation_failed", job_id=job_id, error=type(error).__name__)
         return job
 
 
@@ -601,7 +609,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
                 work_ledger_key=host.PENDING_WORK_LEDGER_KEY,
             ) or {}
         except Exception as error:
-            host._json_log(
+            observability._json_log(
                 "warning", "export_queue_prediction_failed",
                 job_id=job_id, error=type(error).__name__,
             )
@@ -712,10 +720,10 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
             if rq_job is not None:
                 rq_job.cancel()
         except Exception as error:
-            host._json_log("warning", "cancel_queue_cleanup_failed", job_id=job_id, error=type(error).__name__)
+            observability._json_log("warning", "cancel_queue_cleanup_failed", job_id=job_id, error=type(error).__name__)
         host._release_export_slot(uid, job_id)
-        host._track_event("export_cancelled", {"job_id": job_id})
-        host._audit_action("export_cancelled", uid, {"job_id": job_id})
+        observability._track_event("export_cancelled", {"job_id": job_id})
+        observability._audit_action("export_cancelled", uid, {"job_id": job_id})
         return {
             "success": True,
             "status": "cancelled",
@@ -730,7 +738,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
         host._assert_service_available("pause_exports")
         if app_state._export_queue is None:
             raise HTTPException(status_code=503, detail="Durable queue is not configured")
-        db = host.get_db()
+        db = firebase_admin_setup.get_db()
         if not db:
             raise HTTPException(status_code=503, detail="Database unavailable")
         snap = db.collection("export_jobs").document(job_id).get()
@@ -795,7 +803,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
             finally:
                 host._release_export_slot(uid, new_job_id)
             raise HTTPException(status_code=503, detail="Export replay could not be queued") from e
-        host._audit_action("export_replay_enqueued", uid, {"source_job_id": job_id, "new_job_id": new_job_id})
+        observability._audit_action("export_replay_enqueued", uid, {"source_job_id": job_id, "new_job_id": new_job_id})
         return {"success": True, "export_job_id": new_job_id, "status": "queued"}
 
 

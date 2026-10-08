@@ -12,6 +12,14 @@ try:
     from . import app_state
 except ImportError:  # Direct execution from backend/ remains supported.
     import app_state
+try:
+    from . import firebase_admin_setup
+except ImportError:  # Direct execution from backend/ remains supported.
+    import firebase_admin_setup
+try:
+    from . import observability
+except ImportError:  # Direct execution from backend/ remains supported.
+    import observability
 
 
 def create_processing_router(host: ModuleType) -> SimpleNamespace:
@@ -28,7 +36,7 @@ def create_processing_router(host: ModuleType) -> SimpleNamespace:
         await host.asyncio.to_thread(host._assert_upload_owner, req.file_id, uid)
         job_settings = {"file_id": req.file_id, "language": req.language,
                     "min_words": req.min_words, "max_words": req.max_words}
-        jobs = host.TranscriptionJobs(host.get_db())
+        jobs = host.TranscriptionJobs(firebase_admin_setup.get_db())
         job = await host.asyncio.to_thread(jobs.create, uid, job_settings)
         if job["status"] == "completed":
             return {**job["payload"], "idempotent_replay": True}
@@ -40,7 +48,7 @@ def create_processing_router(host: ModuleType) -> SimpleNamespace:
         try:
             await host.asyncio.to_thread(jobs.dispatch, app_state._transcription_queue, job["job_id"])
         except Exception as error:
-            host._json_log(
+            observability._json_log(
                 "warning",
                 "transcription_immediate_dispatch_failed",
                 job_id=job["job_id"],
@@ -52,7 +60,7 @@ def create_processing_router(host: ModuleType) -> SimpleNamespace:
 
 
     def run_transcription_job_task(uid: str, job_id: str):
-        jobs = host.TranscriptionJobs(host.get_db())
+        jobs = host.TranscriptionJobs(firebase_admin_setup.get_db())
         job = jobs.claim(uid, job_id)
         if job is None:
             return {"duplicate_or_cancelled": True}
@@ -85,7 +93,7 @@ def create_processing_router(host: ModuleType) -> SimpleNamespace:
 
     def _mark_account_activated(uid: str) -> bool:
         """Record the first successful transcription once for the business funnel."""
-        database = host.get_db()
+        database = firebase_admin_setup.get_db()
         if database is None or not uid:
             return False
         user_ref = database.collection("users").document(uid)
@@ -98,7 +106,7 @@ def create_processing_router(host: ModuleType) -> SimpleNamespace:
                 return False
             transaction.set(
                 user_ref,
-                {"activated_at": host._utcnow().isoformat() + "Z", "activation_event": "first_transcription"},
+                {"activated_at": observability._utcnow().isoformat() + "Z", "activation_event": "first_transcription"},
                 merge=True,
             )
             return True
@@ -106,12 +114,12 @@ def create_processing_router(host: ModuleType) -> SimpleNamespace:
         try:
             return bool(activate(database.transaction()))
         except Exception as error:
-            host._json_log("warning", "account_activation_persist_failed", uid=uid, error=type(error).__name__)
+            observability._json_log("warning", "account_activation_persist_failed", uid=uid, error=type(error).__name__)
             return False
 
 
     async def _process_video_inline(req: host.ProcessRequest, request: host.Request, response: host.Response, *, trusted_uid=None):
-        rid = host._request_id(request)
+        rid = observability._request_id(request)
         host._assert_service_available("pause_transcription")
         # Auth — same dev-mode bypass as /api/export
         decoded_token = {"uid": trusted_uid} if trusted_uid else host._authenticate_media_request(req.id_token, req.org_id)
@@ -122,21 +130,21 @@ def create_processing_router(host: ModuleType) -> SimpleNamespace:
         )
         host._apply_rate_headers(response, settings.PROCESS_SHARED_NETWORK_RATE_LIMIT, remaining, retry_after)
         if not allowed:
-            host._track_event("process_rejected_rate_limited")
+            observability._track_event("process_rejected_rate_limited")
             raise host.HTTPException(status_code=429, detail="Too many transcription requests. Please wait before trying again.")
         user_allowed, user_retry_after, user_remaining = host._check_rate(
             app_state._process_rate, f"user:{uid}", settings.PROCESS_USER_RATE_LIMIT
         )
         host._apply_rate_headers(response, settings.PROCESS_USER_RATE_LIMIT, user_remaining, user_retry_after)
         if not user_allowed:
-            host._track_event("process_rejected_rate_limited")
+            observability._track_event("process_rejected_rate_limited")
             raise host.HTTPException(status_code=429, detail="Too many transcription requests. Please wait before trying again.")
         if not host._validate_file_id(req.file_id):
             raise host.HTTPException(status_code=400, detail="Invalid file_id")
         host._assert_upload_owner(req.file_id, uid)
         input_path = host._safe_find_upload(req.file_id)
         if not input_path:
-            host._track_event("process_failed_not_found")
+            observability._track_event("process_failed_not_found")
             raise host.HTTPException(status_code=404, detail="File not found")
         await host.asyncio.to_thread(host._ensure_upload_clean, req.file_id, uid, input_path)
 
@@ -156,10 +164,10 @@ def create_processing_router(host: ModuleType) -> SimpleNamespace:
             _probe_meta = await host.asyncio.to_thread(host._probe_media, input_path)
             media_duration = float((_probe_meta.get("format") or {}).get("duration") or 0)
         except Exception as probe_error:
-            host._track_event("process_rejected_ffprobe", {"file_id": req.file_id, "error": str(probe_error)})
+            observability._track_event("process_rejected_ffprobe", {"file_id": req.file_id, "error": str(probe_error)})
             raise host.HTTPException(status_code=422, detail="Invalid media file") from probe_error
         if media_duration > max_seconds + 0.5:
-            host._track_event("process_rejected_duration", {"tier": user_tier, "duration": media_duration, "max_seconds": max_seconds})
+            observability._track_event("process_rejected_duration", {"tier": user_tier, "duration": media_duration, "max_seconds": max_seconds})
             raise host.HTTPException(status_code=403, detail=f"Your plan allows videos up to {max_seconds}s. This video is {media_duration:.0f}s long.")
         await host.asyncio.to_thread(host._remember_source_duration, req.file_id, media_duration)
 
@@ -180,7 +188,7 @@ def create_processing_router(host: ModuleType) -> SimpleNamespace:
                         detail="No speech with usable word timestamps was detected.",
                     )
                 cached["cached"] = True
-                host._track_event("process_cache_hit", {"language": req.language})
+                observability._track_event("process_cache_hit", {"language": req.language})
                 return cached
             except host.HTTPException:
                 raise
@@ -228,7 +236,7 @@ def create_processing_router(host: ModuleType) -> SimpleNamespace:
                     "ts": host.time.time(),
                     "request_hash": process_request_hash,
                 })
-            host._json_log("info", "process_started", request_id=rid, file_id=req.file_id, language=req.language)
+            observability._json_log("info", "process_started", request_id=rid, file_id=req.file_id, language=req.language)
             await host.asyncio.to_thread(host._reserve_ai_quota, uid, "process")
 
             def _generate_captions_in_worker_thread():
@@ -256,13 +264,13 @@ def create_processing_router(host: ModuleType) -> SimpleNamespace:
                 }
 
             if result.get("success"):
-                host._track_event("process_success", {"language": req.language, "request_id": rid})
+                observability._track_event("process_success", {"language": req.language, "request_id": rid})
                 if await host.asyncio.to_thread(host._mark_account_activated, uid):
-                    host._track_event("account_activation", {"source": "first_transcription"})
-                host._json_log("info", "process_completed", request_id=rid, caption_count=len(result.get("captions") or []))
+                    observability._track_event("account_activation", {"source": "first_transcription"})
+                observability._json_log("info", "process_completed", request_id=rid, caption_count=len(result.get("captions") or []))
                 if media_duration > 0:
-                    host._track_operational_metric_sample("transcription_media_seconds", media_duration)
-                    host._track_operational_metric_sample(
+                    observability._track_operational_metric_sample("transcription_media_seconds", media_duration)
+                    observability._track_operational_metric_sample(
                         "job_cost_usd",
                         (media_duration / 60.0) * settings.AI_COST_ESTIMATE_PER_MEDIA_MINUTE_USD,
                     )
@@ -271,7 +279,7 @@ def create_processing_router(host: ModuleType) -> SimpleNamespace:
                         with open(cache_path, "w", encoding="utf-8") as f:
                             host.json.dump(result, f)
                     except Exception as e:
-                        host._json_log("warning", "transcription_cache_write_failed", error=str(e))
+                        observability._json_log("warning", "transcription_cache_write_failed", error=str(e))
                 if process_idem_key:
                     host._idem_set(process_idem_key, {
                         "status": "completed",
@@ -280,12 +288,12 @@ def create_processing_router(host: ModuleType) -> SimpleNamespace:
                         "payload": result,
                     })
             else:
-                host._track_event("process_failed", {
+                observability._track_event("process_failed", {
                     "language": req.language,
                     "error": result.get("error", "unknown"),
                     "request_id": rid,
                 })
-                host._json_log(
+                observability._json_log(
                     "warning",
                     "process_failed",
                     request_id=rid,

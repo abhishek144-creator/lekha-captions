@@ -15,6 +15,14 @@ try:
     from . import app_state
 except ImportError:  # Direct execution from backend/ remains supported.
     import app_state
+try:
+    from . import firebase_admin_setup
+except ImportError:  # Direct execution from backend/ remains supported.
+    import firebase_admin_setup
+try:
+    from . import observability
+except ImportError:  # Direct execution from backend/ remains supported.
+    import observability
 
 
 def create_request_security(host: ModuleType) -> SimpleNamespace:
@@ -50,7 +58,7 @@ def create_request_security(host: ModuleType) -> SimpleNamespace:
         path = request.url.path
         token = str(request.headers.get("x-firebase-appcheck") or "").strip()
         if not token:
-            host._json_log("warning", "app_check_missing", path=path, request_id=request_id)
+            observability._json_log("warning", "app_check_missing", path=path, request_id=request_id)
             return host.JSONResponse(
                 status_code=403,
                 content={"success": False, "error": "App security verification is required."},
@@ -59,7 +67,7 @@ def create_request_security(host: ModuleType) -> SimpleNamespace:
         try:
             host.firebase_app_check.verify_token(token)
         except Exception as e:
-            host._json_log(
+            observability._json_log(
                 "warning",
                 "app_check_rejected",
                 path=path,
@@ -88,7 +96,7 @@ def create_request_security(host: ModuleType) -> SimpleNamespace:
     def _assert_account_not_deleting(uid: str):
         if not settings._IS_PRODUCTION:
             return
-        db = host.get_db()
+        db = firebase_admin_setup.get_db()
         if db is None:
             raise host.HTTPException(status_code=503, detail="Account status is unavailable")
         try:
@@ -117,7 +125,7 @@ def create_request_security(host: ModuleType) -> SimpleNamespace:
         if host._is_explicit_dev_auth_token(token):
             return {"uid": "dev-local-user", "_dev_mode": True}
 
-        decoded_token = host.verify_token(token) if token else None
+        decoded_token = firebase_admin_setup.verify_token(token) if token else None
         if not decoded_token:
             raise host.HTTPException(status_code=401, detail="Authentication required")
 
@@ -145,7 +153,7 @@ def create_request_security(host: ModuleType) -> SimpleNamespace:
         known_members = app_state._tenant_memberships.setdefault(token_org, set())
         if uid in known_members:
             return
-        db = host.get_db()
+        db = firebase_admin_setup.get_db()
         if db and uid:
             try:
                 tenant_ref = db.collection("tenants").document(token_org)
@@ -153,14 +161,14 @@ def create_request_security(host: ModuleType) -> SimpleNamespace:
                 if member_ref.get().exists:
                     known_members.add(uid)
                     return
-                now_iso = host._utcnow().isoformat() + "Z"
+                now_iso = observability._utcnow().isoformat() + "Z"
                 batch = db.batch()
                 batch.set(tenant_ref, {"updated_at": now_iso}, merge=True)
                 batch.set(member_ref, {"uid": uid, "org_id": token_org, "updated_at": now_iso}, merge=True)
                 batch.commit()
                 known_members.add(uid)
             except Exception as e:
-                host._json_log("warning", "tenant_membership_persist_failed", uid=uid, org_id=token_org, error=str(e))
+                observability._json_log("warning", "tenant_membership_persist_failed", uid=uid, org_id=token_org, error=str(e))
 
     return SimpleNamespace(
         _apply_security_headers=_apply_security_headers,

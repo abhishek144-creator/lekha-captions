@@ -11,6 +11,14 @@ try:
     from . import settings
 except ImportError:  # Direct execution from backend/ remains supported.
     import settings
+try:
+    from . import firebase_admin_setup
+except ImportError:  # Direct execution from backend/ remains supported.
+    import firebase_admin_setup
+try:
+    from . import observability
+except ImportError:  # Direct execution from backend/ remains supported.
+    import observability
 
 
 def create_entitlements(host: ModuleType) -> SimpleNamespace:
@@ -70,7 +78,7 @@ def create_entitlements(host: ModuleType) -> SimpleNamespace:
     Returns 'free' when the DB or user record is unavailable."""
         if not uid:
             return "free"
-        db = host.get_db()
+        db = firebase_admin_setup.get_db()
         if not db:
             return "free"
         try:
@@ -117,18 +125,18 @@ def create_entitlements(host: ModuleType) -> SimpleNamespace:
                 "total": total + 1,
                 "by_operation": by_op,
                 "limit": settings.AI_SYSTEM_DAILY_LIMIT,
-                "updated_at": host._utcnow().isoformat() + "Z",
-                "expire_at": host._retention_deadline(30),
+                "updated_at": observability._utcnow().isoformat() + "Z",
+                "expire_at": observability._retention_deadline(30),
             }, merge=True)
 
         try:
             reserve_system(db.transaction())
         except host.HTTPException:
-            host._json_log("error", "ai_system_daily_limit_reached", operation=operation, limit=settings.AI_SYSTEM_DAILY_LIMIT)
-            host._track_event("ai_system_daily_limit_reached", {"operation": operation})
+            observability._json_log("error", "ai_system_daily_limit_reached", operation=operation, limit=settings.AI_SYSTEM_DAILY_LIMIT)
+            observability._track_event("ai_system_daily_limit_reached", {"operation": operation})
             raise
         except Exception as e:
-            host._json_log("warning", "ai_system_quota_reserve_failed", operation=operation, error=str(e))
+            observability._json_log("warning", "ai_system_quota_reserve_failed", operation=operation, error=str(e))
             if settings._IS_PRODUCTION:
                 raise host.HTTPException(status_code=503, detail="AI quota service is temporarily unavailable") from e
 
@@ -139,7 +147,7 @@ def create_entitlements(host: ModuleType) -> SimpleNamespace:
             raise host.HTTPException(status_code=400, detail="Unknown AI operation")
         if settings._IS_TEST:
             return
-        db = host.get_db()
+        db = firebase_admin_setup.get_db()
         if not db:
             if settings._IS_PRODUCTION:
                 raise host.HTTPException(status_code=503, detail="AI quota service is temporarily unavailable")
@@ -187,7 +195,7 @@ def create_entitlements(host: ModuleType) -> SimpleNamespace:
                 "ai_usage_date": today,
                 "ai_daily_usage": usage,
                 **update,
-                "updated_at": host._utcnow().isoformat() + "Z",
+                "updated_at": observability._utcnow().isoformat() + "Z",
             }, merge=True)
 
         reserve(transaction)
@@ -227,7 +235,7 @@ def create_entitlements(host: ModuleType) -> SimpleNamespace:
                 snapshot["by_operation"] = dict(data.get("by_operation") or {})
                 snapshot["remaining"] = max(0, settings.AI_SYSTEM_DAILY_LIMIT - total)
         except Exception as e:
-            host._json_log("warning", "ai_system_usage_read_failed", error=str(e))
+            observability._json_log("warning", "ai_system_usage_read_failed", error=str(e))
         return snapshot
 
 
@@ -255,13 +263,13 @@ def create_entitlements(host: ModuleType) -> SimpleNamespace:
             txn.set(usage_ref, {
                 "total": total - 1,
                 "by_operation": by_op,
-                "updated_at": host._utcnow().isoformat() + "Z",
+                "updated_at": observability._utcnow().isoformat() + "Z",
             }, merge=True)
 
         try:
             release_system(db.transaction())
         except Exception as e:
-            host._json_log("warning", "ai_system_quota_release_failed", operation=operation, error=str(e))
+            observability._json_log("warning", "ai_system_quota_release_failed", operation=operation, error=str(e))
 
 
     def _release_ai_quota(uid: str, operation: str, release_system: bool = True) -> None:
@@ -281,7 +289,7 @@ def create_entitlements(host: ModuleType) -> SimpleNamespace:
             return
         if settings._IS_TEST or not uid:
             return
-        db = host.get_db()
+        db = firebase_admin_setup.get_db()
         if not db:
             return
 
@@ -311,14 +319,14 @@ def create_entitlements(host: ModuleType) -> SimpleNamespace:
                 return
             txn.set(user_ref, {
                 **update,
-                "updated_at": host._utcnow().isoformat() + "Z",
+                "updated_at": observability._utcnow().isoformat() + "Z",
             }, merge=True)
 
         try:
             release(db.transaction())
-            host._json_log("info", "ai_quota_released", uid=uid, operation=operation)
+            observability._json_log("info", "ai_quota_released", uid=uid, operation=operation)
         except Exception as e:
-            host._json_log("warning", "ai_quota_release_failed", uid=uid, operation=operation, error=str(e))
+            observability._json_log("warning", "ai_quota_release_failed", uid=uid, operation=operation, error=str(e))
 
         if release_system:
             host._release_system_ai_quota(db, operation)

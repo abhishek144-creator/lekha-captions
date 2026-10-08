@@ -111,15 +111,15 @@ def kick_backlogged_workers(connection, queue_names):
 
 
 def _api_host():
-    """The real API: shared runtime state from app_state, helpers from main."""
+    """The real API: shared state and helpers from the modules that own them."""
     return SimpleNamespace(
         _rq_redis_client=api.app_state._rq_redis_client,
         _transcription_queue=api.app_state._transcription_queue,
         TranscriptionJobs=api.TranscriptionJobs,
-        get_db=api.get_db,
+        get_db=api.firebase_admin_setup.get_db,
         _dispatch_media_scans_once=api._dispatch_media_scans_once,
-        _flush_telemetry=api._flush_telemetry,
-        _send_alert=api._send_alert,
+        _flush_telemetry=api.observability._flush_telemetry,
+        _send_alert=api.observability._send_alert,
         asyncio=api.asyncio,
         scheduled_janitor_job=api.scheduled_janitor_job,
         scheduled_payment_reconciliation_job=api.scheduled_payment_reconciliation_job,
