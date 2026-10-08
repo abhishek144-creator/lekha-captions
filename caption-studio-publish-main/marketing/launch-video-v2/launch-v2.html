@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lekha Captions — Launch Film v2</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@96,500;96,700;96,800&family=JetBrains+Mono:wght@500;700;800&family=Archivo:ital,wght@0,600;0,800;1,800&family=Inter:wght@800&family=Noto+Sans+Devanagari:wght@600;800&family=Noto+Sans+Arabic:wght@600;800&family=Noto+Sans+JP:wght@600;800&display=block" rel="stylesheet">
+<style>
+:root {
+  --ink: #0C0B0F; --cream: #FFFAF3; --amber: #C27A29; --brown: #65250c; --stone: #8A8478;
+  --tpl-hero: #6EED24;                 /* T167 keyword green, sampled from the editor */
+  --sans: 'Bricolage Grotesque', 'Noto Sans Devanagari', sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+  --tpl: 'Archivo', 'Noto Sans Devanagari', 'Noto Sans Arabic', 'Noto Sans JP', sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0 }
+html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--ink) }
+body { font-family: var(--sans); color: var(--cream); -webkit-font-smoothing: antialiased }
+#stage { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: var(--ink) }
+.abs { position: absolute }
+.full { position: absolute; inset: 0 }
+
+/* ---------- motion vocabulary (T167 engine keyframes + film transitions) ---------- */
+@keyframes drop { from { opacity: 0; transform: translateY(-.6em) } to { opacity: 1; transform: none } }
+@keyframes punch { 0% { opacity: 0; transform: scale(2.7) } 45% { opacity: 1 } 100% { opacity: 1; transform: scale(1) } }
+@keyframes fade { from { opacity: 0 } to { opacity: 1 } }
+@keyframes rise { from { opacity: 0; transform: translateY(.6em) } to { opacity: 1; transform: none } }
+@keyframes in-up { from { opacity: 0; transform: translateY(40px) } to { opacity: 1; transform: none } }
+@keyframes in-left { from { opacity: 0; transform: translateX(-50px) } to { opacity: 1; transform: none } }
+@keyframes in-scale { from { opacity: 0; transform: scale(.9) } to { opacity: 1; transform: none } }
+@keyframes in-pop { 0% { opacity: 0; transform: scale(.4) } 70% { opacity: 1; transform: scale(1.1) } 100% { opacity: 1; transform: none } }
+@keyframes grow-x { from { transform: scaleX(0) } to { transform: scaleX(1) } }
+@keyframes out-fade { from { opacity: 1 } to { opacity: 0 } }
+@keyframes out-up { from { opacity: 1; transform: none } to { opacity: 0; transform: translateY(-30px) } }
+@keyframes out-zoom { from { opacity: 1; transform: none } to { opacity: 0; transform: scale(.94) } }
+@keyframes ink-wipe { from { clip-path: inset(var(--t) var(--r) var(--b) var(--l) round 22px) } to { clip-path: inset(0 0 0 0 round 0) } }
+@keyframes cream-wipe { from { clip-path: inset(0 0 0 100%) } to { clip-path: inset(0 0 0 0) } }
+@keyframes ripple { from { opacity: .9; transform: translate(-50%,-50%) scale(.2) } to { opacity: 0; transform: translate(-50%,-50%) scale(1.6) } }
+@keyframes ring-pulse { 0%,100% { box-shadow: 0 0 0 3px var(--amber), 0 0 30px rgba(194,122,41,.5) } 50% { box-shadow: 0 0 0 5px var(--amber), 0 0 50px rgba(194,122,41,.8) } }
+
+/* ---------- logo (built from the outlined wordmark geometry) ---------- */
+.logo svg { display: block; overflow: visible }
+.logo .b1, .logo .b2 { transform-box: fill-box; transform-origin: 0% 50% }
+.logo .q { transform-box: fill-box; transform-origin: 50% 50% }
+
+/* ---------- S1 ---------- */
+#S1 { background: var(--cream) }
+#S1 .logo { position: absolute; left: 50%; top: 50%; width: 1200px; transform: translate(-50%, -50%) }
+#inkwipe { background: var(--ink); clip-path: inset(50% 50% 50% 50%) }
+
+/* ---------- S2 statement ---------- */
+#S2 .lines { position: absolute; left: 0; right: 0; top: 330px; text-align: center; font-weight: 800; font-size: 132px; letter-spacing: -.04em; line-height: 1.18 }
+#S2 .w { display: inline-block }
+#S2 .hero { background: var(--amber); color: var(--cream); padding: 0 .2em .06em; border-radius: .14em; margin: 0 .04em }
+#S2 .sub { position: absolute; left: 0; right: 0; top: 760px; text-align: center; font: 700 24px var(--mono); letter-spacing: .4em; color: var(--stone) }
+
+/* ---------- editor world ---------- */
+#world { perspective: 1800px }
+#glow { position: absolute; left: 260px; top: -300px; width: 1400px; height: 1100px; border-radius: 50%; background: radial-gradient(circle, rgba(194,122,41,.22), transparent 62%) }
+#cam { position: absolute; left: 0; top: 0; width: 1360px; height: 661px; transform-origin: 0 0; border-radius: 14px;
+  background: url(assets/editor-screenshot.png) 0 -107px / 1360px 768px no-repeat;
+  box-shadow: 0 0 0 1px rgba(255,255,255,.1), 0 50px 120px -20px rgba(0,0,0,.9) }
+#cam .patch { position: absolute; background: #0a0a0a }
+.preview { position: absolute; left: 585px; top: 97px; width: 236px; height: 419px; overflow: hidden; background: #000 }
+.preview canvas { width: 100%; height: 100%; display: block }
+.placeholder { background: #0d0d0d; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; border: 1.5px dashed #3a3a3a }
+.placeholder .ic { width: 34px; height: 34px; border-radius: 50%; border: 1.5px solid #555; display: flex; align-items: center; justify-content: center; color: #bbb; font: 700 16px var(--mono) }
+.placeholder p { font: 700 9px var(--mono); letter-spacing: .14em; color: #8d8d8d }
+.placeholder .bar { width: 150px; height: 4px; border-radius: 2px; background: #262626; overflow: hidden; position: relative }
+.placeholder .bar b { position: absolute; inset: 0; background: var(--amber); transform-origin: left }
+.placeholder .fn { font: 700 8px var(--mono); color: #cfcfcf; letter-spacing: .06em }
+/* caption layers sit at the editor's position_y = 75% */
+.capbox { position: absolute; left: 6%; right: 6%; top: 75%; transform: translateY(-50%); text-align: center }
+.plain { font: 800 16.5px 'Inter', sans-serif; color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,.7); line-height: 1.25 }
+.plain .w { display: inline-block }
+/* T167 "1 Style · V2" — type-3 normal sentence, keywordStyle box, bodyAnim drop, heroAnim punch */
+.nline { font-family: var(--tpl); font-weight: 600; line-height: 1.3; color: #eef0f3; text-shadow: 0 2px 10px rgba(0,0,0,.55) }
+.nline .w { display: inline-block; white-space: pre-wrap }
+.ns3box { font-weight: 800; font-style: italic; font-size: 1.12em; border: 1.5px solid currentColor; border-radius: .22em; padding: .02em .24em; margin: 0 .04em; color: var(--tpl-hero) }
+#focus { position: absolute; left: 585px; top: 97px; width: 236px; height: 419px; border-radius: 2px; box-shadow: 0 0 0 3000px rgba(6,6,8,0); pointer-events: none }
+#cardring { position: absolute; left: 64px; top: 177px; width: 196px; height: 243px; border-radius: 9px; box-shadow: 0 0 0 3px var(--amber), 0 0 30px rgba(194,122,41,.5) }
+#chipT167 { position: absolute; left: 197px; top: 68px; width: 64px; height: 19px; border-radius: 5px; background: #1a130a; border: 1px solid var(--amber); color: #E0A462; font: 800 8.5px var(--mono); display: flex; align-items: center; justify-content: center; letter-spacing: .06em }
+#tl { position: absolute; left: 288px; top: 586px; width: 829px; height: 28px; border-radius: 14px; background: #0c0c0c; border: 1px solid #2a2a2a; display: flex; align-items: center; gap: 6px; padding: 0 10px; overflow: hidden }
+#tl .lab { font: 800 8px var(--mono); letter-spacing: .14em; color: #8d8d8d; margin-right: 6px; white-space: nowrap }
+#tl .chip { font: 700 10px 'Inter', sans-serif; color: #eee; background: #1d1d1d; border: 1px solid #333; border-radius: 5px; padding: 2px 7px; white-space: nowrap }
+#tl .chip.k { border-color: var(--amber); color: #E0A462 }
+#tl .ph { position: absolute; top: 2px; bottom: 2px; width: 2px; background: var(--amber); border-radius: 1px; left: 90px; box-shadow: 0 0 6px var(--amber) }
+
+/* step chips — set like the logo: two stacked subtitle boxes */
+.step { position: absolute; left: 96px; top: 46px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px }
+.step .n { font: 800 20px var(--mono); letter-spacing: .2em; background: var(--amber); color: var(--cream); padding: 6px 14px; border-radius: 7px }
+.step .t { font-weight: 800; font-size: 44px; letter-spacing: -.03em; background: var(--cream); color: var(--ink); padding: 0 18px 6px; border-radius: 10px; margin-left: 46px }
+
+/* cursor + clicks */
+#cursor { position: absolute; left: 0; top: 0; width: 34px; height: 34px; z-index: 50; filter: drop-shadow(0 4px 8px rgba(0,0,0,.6)) }
+.click { position: absolute; width: 90px; height: 90px; border-radius: 50%; border: 3px solid var(--amber); z-index: 49; opacity: 0 }
+
+/* ---------- languages ---------- */
+#LANG { background: var(--ink) }
+#LANG .head { position: absolute; left: 0; right: 0; top: 60px; display: flex; flex-direction: column; align-items: center; gap: 8px }
+#LANG .head .a { font-weight: 800; font-size: 76px; letter-spacing: -.035em; background: var(--cream); color: var(--ink); padding: 0 26px 8px; border-radius: 14px; margin-right: 160px }
+#LANG .head .b { font: 800 40px var(--mono); letter-spacing: .12em; background: var(--amber); color: var(--cream); padding: 8px 22px; border-radius: 10px; margin-left: 260px }
+#LANG .cards { position: absolute; left: 234px; top: 340px; display: flex; gap: 44px }
+#LANG .card { position: relative; width: 330px; height: 587px; border-radius: 26px; overflow: hidden; background: #000; box-shadow: 0 0 0 2px rgba(255,255,255,.12), 0 40px 90px -30px rgba(0,0,0,.9) }
+#LANG .card canvas { width: 100%; height: 100%; display: block }
+#LANG .card .tag { position: absolute; left: 16px; top: 16px; font: 800 14px var(--mono); letter-spacing: .14em; background: rgba(12,11,15,.75); color: var(--cream); padding: 6px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,.18) }
+#LANG .card .nline { font-size: 19px; left: 4%; right: 4% }
+#LANG .foot { position: absolute; left: 0; right: 0; top: 968px; text-align: center; font: 700 20px var(--mono); letter-spacing: .3em; color: var(--stone) }
+
+/* ---------- export modal ---------- */
+#EXP .dim { background: rgba(4,4,6,.62) }
+#EXP .modal { position: absolute; left: 610px; top: 330px; width: 700px; height: 380px; border-radius: 22px; background: #121114; box-shadow: 0 0 0 2px rgba(194,122,41,.7), 0 50px 120px rgba(0,0,0,.8); padding: 44px 50px }
+#EXP .k { font: 800 15px var(--mono); letter-spacing: .26em; color: var(--stone) }
+#EXP h3 { position: absolute; left: 50px; top: 80px; font-weight: 800; font-size: 56px; letter-spacing: -.035em }
+#EXP h3 em { font-style: normal; color: #E0A462 }
+#EXP .file { position: absolute; left: 50px; top: 186px; font: 700 19px var(--mono); color: #cfcfcf }
+#EXP .pct { position: absolute; right: 50px; top: 186px; font: 800 19px var(--mono); color: #E0A462 }
+#EXP .bar { position: absolute; left: 50px; right: 50px; top: 226px; height: 12px; border-radius: 6px; background: #26242a; overflow: hidden }
+#EXP .bar b { position: absolute; inset: 0; background: linear-gradient(90deg, #9a5e1d, var(--amber), #E0A462); transform-origin: left }
+#EXP .chips { position: absolute; left: 50px; top: 278px; display: flex; gap: 14px }
+#EXP .chips span { font: 800 20px var(--mono); letter-spacing: .1em; padding: 10px 18px; border-radius: 9px; background: var(--cream); color: var(--ink); display: inline-block }
+#EXP .chips span.a { background: var(--amber); color: var(--cream) }
+
+/* ---------- end card ---------- */
+#END { background: var(--cream); color: var(--ink) }
+#END .logo { position: absolute; left: 50%; top: 380px; width: 1040px; transform: translate(-50%, -50%) }
+#END .line { position: absolute; left: 0; right: 0; top: 700px; text-align: center; font-weight: 500; font-size: 46px; letter-spacing: -.025em; color: var(--brown) }
+#END .line b { font-weight: 800; color: var(--amber) }
+#END .cta { position: absolute; left: 0; right: 0; top: 800px; display: flex; justify-content: center; gap: 22px; align-items: center }
+#END .btn { font-weight: 800; font-size: 34px; letter-spacing: -.02em; background: var(--ink); color: var(--cream); padding: 16px 40px 20px; border-radius: 14px }
+#END .url { font: 800 32px var(--mono); color: var(--ink); padding: 16px 30px; border-radius: 14px; border: 3px solid var(--ink) }
+#END .url b { color: var(--amber) }
+</style>
+</head>
+<body>
+<div id="stage">
+
+  <!-- ===== S1 · logo builds like subtitles appearing (0 – 3.5) ===== -->
+  <section class="full" id="S1">
+    <div class="logo" id="logo1"></div>
+  </section>
+  <div class="full" id="inkwipe" data-a="fade 2.94 .01 lin, ink-wipe 2.95 .55 film"></div>
+
+  <!-- ===== S2 · statement (3.5 – 6.9) ===== -->
+  <section class="full" id="S2" data-a="out-fade 6.75 .25">
+    <div class="lines">
+      <div><span class="w" data-a="drop 3.6 .43 tpl">You</span> <span class="w" data-a="drop 3.88 .43 tpl">say</span> <span class="w" data-a="drop 4.16 .43 tpl">it.</span></div>
+      <div><span class="w" data-a="drop 4.6 .43 tpl">Lekha</span> <span class="w hero" data-a="punch 4.88 .56 tpl">writes</span> <span class="w" data-a="drop 5.16 .43 tpl">it.</span></div>
+    </div>
+    <div class="sub" data-a="fade 5.7 .5">IN EVERY LANGUAGE</div>
+  </section>
+
+  <!-- ===== editor world (6.9 – 28.6) ===== -->
+  <section class="full" id="world" data-a="fade 6.85 .45, out-zoom 28.25 .4">
+    <div id="glow"></div>
+    <div id="cam">
+      <!-- new logo over the old one in the editor's top bar -->
+      <div class="patch" style="left:6px;top:3px;width:150px;height:36px"></div>
+      <img src="../brand/svg/lekha-wordmark-dark.svg" class="abs" style="left:14px;top:8px;height:27px">
+
+      <div class="preview" id="pv">
+        <canvas id="cv0" width="720" height="1280"></canvas>
+        <div class="capbox plain">
+          <span class="w" data-a="fade 11.95 .11 lin, out-fade 16.2 .1">humility</span>
+          <span class="w" data-a="fade 12.25 .11 lin, out-fade 16.2 .1">is</span>
+          <span class="w" data-a="fade 12.55 .11 lin, out-fade 16.2 .1">a</span>
+          <span class="w" data-a="fade 12.85 .11 lin, out-fade 16.2 .1">strategy,</span>
+          <span class="w" data-a="fade 13.15 .11 lin, out-fade 16.2 .1">not</span>
+          <span class="w" data-a="fade 13.45 .11 lin, out-fade 16.2 .1">weakness.</span>
+        </div>
+        <div class="capbox nline" id="tplEN" style="font-size:13.6px;left:3%;right:3%" data-a="out-fade 19.75 .42"></div>
+        <div class="capbox nline" id="tplENfinal" style="font-size:13.6px;left:3%;right:3%" data-a="fade 24.3 .01"></div>
+        <div class="full placeholder" data-a="out-fade 9.55 .35">
+          <div class="ic">↑</div>
+          <p>DROP A VIDEO</p>
+          <div class="bar"><b data-a="grow-x 8.6 .9 film"></b></div>
+          <div class="fn" data-a="fade 8.6 .2">IMG_5419.mov · 9:16</div>
+        </div>
+      </div>
+
+      <div id="focus"></div>
+      <div id="cardring" data-a="fade 15.45 .2, ring-pulse 15.65 .6 lin, out-fade 16.45 .3"></div>
+      <div id="chipT167" data-a="in-pop 15.9 .3">T167 ✓</div>
+      <div id="tl" data-a="fade 11.5 .3, out-fade 16.3 .3">
+        <span class="lab">CAPTIONS · EN</span>
+        <span class="chip" data-a="in-pop 11.9 .25">humility</span>
+        <span class="chip" data-a="in-pop 12.2 .25">is</span>
+        <span class="chip" data-a="in-pop 12.5 .25">a</span>
+        <span class="chip k" data-a="in-pop 12.8 .25">strategy,</span>
+        <span class="chip" data-a="in-pop 13.1 .25">not</span>
+        <span class="chip" data-a="in-pop 13.4 .25">weakness.</span>
+        <span class="lab" style="margin-left:auto" data-a="fade 13.8 .3">6 WORDS · AUTO-TIMED</span>
+        <i class="ph" id="ph"></i>
+      </div>
+    </div>
+
+    <div class="step" data-a="in-left 7.5 .5, out-up 11.15 .3"><span class="n">01</span><span class="t">Upload any video</span></div>
+    <div class="step" data-a="in-left 11.5 .5, out-up 14.95 .3"><span class="n">02</span><span class="t">Transcribed, word by word</span></div>
+    <div class="step" data-a="in-left 15.15 .5, out-up 19.7 .3"><span class="n">03</span><span class="t">One click. Animated template.</span></div>
+    <div class="step" data-a="in-left 24.6 .5, out-up 28.05 .3"><span class="n">05</span><span class="t">Export in HD &amp; 4K</span></div>
+  </section>
+
+  <!-- ===== languages (19.9 – 24.45) ===== -->
+  <section class="full" id="LANG" data-a="fade 19.85 .4, out-fade 24.2 .25">
+    <div class="head">
+      <span class="a" data-a="in-left 20.0 .45">Same template.</span>
+      <span class="b" data-a="in-left 20.2 .45">04 · any language</span>
+    </div>
+    <div class="cards" id="cards"></div>
+    <div class="foot" data-a="fade 21.6 .5">LANGUAGES &amp; WRITING SYSTEMS FROM AROUND THE WORLD</div>
+  </section>
+
+  <!-- ===== export (25.5 – 28.2) ===== -->
+  <section class="full" id="EXP" data-a="fade 25.55 .25, out-fade 27.95 .3">
+    <div class="full dim"></div>
+    <div class="modal" data-a="in-scale 25.55 .35">
+      <div class="k">EXPORT · T167 · 9:16</div>
+      <h3 data-a="out-fade 26.95 .15">Rendering your video…</h3>
+      <h3 data-a="fade 27.05 .2">Ready to <em>share.</em></h3>
+      <div class="file">lekha_reel_4K.mp4</div><div class="pct" id="pct">0%</div>
+      <div class="bar"><b id="expbar"></b></div>
+      <div class="chips">
+        <span class="a" data-a="in-pop 27.15 .3">MP4 · 4K</span><span data-a="in-pop 27.27 .3">SRT</span><span data-a="in-pop 27.39 .3">VTT</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== end card (28.3 – 32) ===== -->
+  <section class="full" id="END" data-a="cream-wipe 28.3 .55 film">
+    <div class="logo" id="logo2"></div>
+    <div class="line" data-a="rise 30.05 .5 tpl">Professional captions in <b>every language.</b></div>
+    <div class="cta">
+      <span class="btn" data-a="in-up 30.45 .45">Try it free</span>
+      <span class="url" data-a="in-up 30.6 .45"><b>lekha</b>captions.com</span>
+    </div>
+  </section>
+
+  <svg id="cursor" viewBox="0 0 34 34"><path d="M5 3l22 13-9.5 2.2L13 28z" fill="#fff" stroke="#0C0B0F" stroke-width="2.2" stroke-linejoin="round"/></svg>
+  <div class="click" id="click0"></div><div class="click" id="click1"></div><div class="click" id="click2"></div>
+</div>
+
+<script src="assets/logo-data.js"></script>
+<script>
+const FPS = 30
+const EASES = { tpl: 'cubic-bezier(.22,.68,.26,1)', film: 'cubic-bezier(.7,0,.2,1)', lin: 'linear', def: 'cubic-bezier(.22,1,.36,1)' }
+
+/* ---------- logo builder: two subtitle lines + framing quotes, animated like captions appearing ---------- */
+function buildLogo(el, t0) {
+  const L = window.LOGO
+  el.innerHTML = `<svg viewBox="${L.view}" width="100%">
+    <g class="b1" fill="#0C0B0F" data-a="grow-x ${t0} .4 film">${L.box1}</g>
+    <path d="${L.word}" fill="#FFFAF3" data-a="rise ${t0 + 0.22} .45 tpl"/>
+    <g class="b2" fill="#C27A29" data-a="grow-x ${t0 + 0.55} .35 film">${L.box2}</g>
+    <path d="${L.caps}" fill="#FFFAF3" data-a="rise ${t0 + 0.75} .4 tpl"/>
+    <path class="q" d="${L.q_open}" fill="#0C0B0F" data-a="punch ${t0 + 1.1} .56 tpl"/>
+    <path class="q" d="${L.q_close}" fill="#0C0B0F" data-a="punch ${t0 + 1.25} .56 tpl"/>
+  </svg>`
+}
+buildLogo(document.getElementById('logo1'), 0.25)
+buildLogo(document.getElementById('logo2'), 28.75)
+
+/* ---------- T167 sentence builder (mirrors buildNormal in lekha-captions-lc-2.html) ---------- */
+const STAG = 0.28, BODY = 0.43, HERO = 0.56
+function buildT167(el, { pre, hero, post, joiner = ' ', dir }, t0, animate = true) {
+  if (dir) el.dir = dir
+  const words = [...pre.map((w) => [w, false]), [hero, true], ...post.map((w) => [w, false])]
+  el.innerHTML = words.map(([w, isHero], n) => {
+    const anim = animate ? `data-a="${isHero ? 'punch' : 'drop'} ${(t0 + n * STAG).toFixed(2)} ${isHero ? HERO : BODY} tpl"` : ''
+    return `<span class="w${isHero ? ' ns3box' : ''}" ${anim}>${w}</span>`
+  }).join(joiner)
+}
+const EN = { pre: ['humility', 'is', 'a'], hero: 'strategy', post: [',', 'not', 'weakness.'] }
+buildT167(document.getElementById('tplEN'), EN, 16.9)
+buildT167(document.getElementById('tplENfinal'), EN, 0, false)
+
+const LANGS = [
+  ['ESPAÑOL', { pre: ['la', 'humildad', 'es', 'una'], hero: 'estrategia', post: [',', 'no', 'debilidad.'] }],
+  ['हिन्दी', { pre: ['विनम्रता', 'एक'], hero: 'रणनीति', post: ['है,', 'कमज़ोरी', 'नहीं।'] }],
+  ['العربية', { pre: ['التواضع'], hero: 'استراتيجية', post: ['،', 'وليس', 'ضعفًا.'], dir: 'rtl' }],
+  ['日本語', { pre: ['謙虚さは'], hero: '戦略', post: ['であり、', '弱さではない。'], joiner: '' }],
+]
+const cardsEl = document.getElementById('cards')
+LANGS.forEach(([tag, s], i) => {
+  const card = document.createElement('div')
+  card.className = 'card'
+  card.dataset.a = `in-up ${(20.0 + i * 0.08).toFixed(2)} .5`
+  card.innerHTML = `<canvas width="720" height="1280"></canvas><span class="tag">${tag}</span><div class="capbox nline"></div>`
+  cardsEl.appendChild(card)
+  buildT167(card.querySelector('.nline'), s, 20.55)
+})
+
+/* ---------- data-a → CSS animations (seekable) ---------- */
+document.querySelectorAll('[data-a]').forEach((el) => {
+  const list = el.dataset.a.split(',').map((s) => s.trim()).filter(Boolean).map((p) => {
+    const [name, start, dur, ease = 'def'] = p.split(/\s+/)
+    const fill = name.startsWith('out-') ? 'forwards' : (name === 'ring-pulse' ? 'none' : 'both')
+    const iter = name === 'ring-pulse' ? 1 : 1
+    return `${name} ${dur}s ${EASES[ease] || ease} ${start}s ${iter} ${fill}`
+  })
+  el.style.animation = list.join(', ')
+})
+
+/* ink wipe starts exactly on the logo's first subtitle box */
+function placeInkWipe() {
+  const rect = document.querySelector('#logo1 .b1 rect')
+  const bb = rect.getBBox()
+  const m = rect.ownerSVGElement.getScreenCTM()
+  const x0 = m.a * bb.x + m.e, y0 = m.d * bb.y + m.f
+  const x1 = x0 + m.a * bb.width, y1 = y0 + m.d * bb.height
+  const w = document.getElementById('inkwipe').style
+  w.setProperty('--t', `${y0}px`); w.setProperty('--l', `${x0}px`)
+  w.setProperty('--r', `${1920 - x1}px`); w.setProperty('--b', `${1080 - y1}px`)
+}
+
+/* ---------- camera (editor space → screen) ---------- */
+const SX = 960, SY = 590
+const CAM = [ // t, focusX, focusY, scale, rotateX
+  [6.9, 680, 330, 0.92, 26], [7.9, 680, 330, 1.3, 0], [15.0, 680, 330, 1.33, 0], [15.95, 680, 330, 1.33, 0],
+  [16.85, 703, 306, 2.0, 0], [24.25, 703, 306, 2.0, 0], [24.3, 680, 330, 1.3, 0], [28.3, 680, 330, 1.31, 0],
+]
+const ease = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2)
+function sample(keys, t) {
+  if (t <= keys[0][0]) return keys[0].slice(1)
+  for (let i = 0; i < keys.length - 1; i++) {
+    const [a, b] = [keys[i], keys[i + 1]]
+    if (t <= b[0]) {
+      const k = ease((t - a[0]) / (b[0] - a[0]))
+      return a.slice(1).map((v, j) => v + (b[j + 1] - v) * k)
+    }
+  }
+  return keys[keys.length - 1].slice(1)
+}
+const toScreen = (x, y, c) => [SX + (x - c[0]) * c[2], SY + (y - c[1]) * c[2]]
+
+/* cursor path in editor space: t, x, y, visible */
+const CUR = [
+  [7.9, 930, 470, 0], [8.1, 930, 470, 1], [8.45, 1126, 22, 1], [9.4, 980, 400, 1], [15.0, 1000, 420, 1],
+  [15.7, 165, 300, 1], [16.15, 170, 305, 1], [16.4, 170, 305, 0],
+  [24.6, 900, 330, 0], [24.8, 900, 330, 1], [25.35, 1301, 22, 1], [25.6, 1301, 22, 1], [25.8, 1301, 22, 0],
+]
+const CLICKS = [[8.5, 1126, 22], [15.85, 165, 300], [25.4, 1301, 22]]
+
+/* ---------- clip frames (ping-pong so the 2.8 s clip loops seamlessly) ---------- */
+const N_FRAMES = 83
+const frames = []
+const loadFrames = Promise.all(Array.from({ length: N_FRAMES }, (_, i) => new Promise((res) => {
+  const img = new Image()
+  img.onload = () => img.decode().then(() => res())
+  img.src = `assets/clip/f${String(i + 1).padStart(3, '0')}.jpg`
+  frames[i] = img
+})))
+const canvases = () => [...document.querySelectorAll('canvas')].map((c) => c.getContext('2d'))
+let ctxs = []
+
+const cam = document.getElementById('cam')
+const cursor = document.getElementById('cursor')
+const focus = document.getElementById('focus')
+const ph = document.getElementById('ph')
+const pct = document.getElementById('pct')
+const expbar = document.getElementById('expbar')
+const clickEls = [0, 1, 2].map((i) => document.getElementById('click' + i))
+const clamp01 = (x) => Math.max(0, Math.min(1, x))
+
+window.renderAt = (t) => {
+  document.getAnimations().forEach((a) => { a.pause(); a.currentTime = t * 1000 })
+
+  const c = sample(CAM, t)
+  cam.style.transform = `translate(${SX}px, ${SY}px) rotateX(${c[3]}deg) scale(${c[2]}) translate(${-c[0]}px, ${-c[1]}px)`
+
+  // focus dim around the preview while zoomed in
+  const dimIn = clamp01((t - 16.1) / 0.7), dimOut = t >= 24.3 ? 0 : 1
+  focus.style.boxShadow = `0 0 0 3000px rgba(6,6,8,${(0.8 * ease(dimIn) * dimOut).toFixed(3)})`
+
+  // cursor
+  const p = sample(CUR, t)
+  const [cx, cy] = toScreen(p[0], p[1], c)
+  cursor.style.transform = `translate(${cx - 6}px, ${cy - 4}px)`
+  cursor.style.opacity = p[2].toFixed(3)
+  CLICKS.forEach(([tc, x, y], i) => {
+    const k = (t - tc) / 0.5
+    const el = clickEls[i]
+    if (k < 0 || k > 1) { el.style.opacity = 0; return }
+    const [sx, sy] = toScreen(x, y, sample(CAM, tc))
+    el.style.left = `${sx}px`; el.style.top = `${sy}px`
+    el.style.opacity = (0.9 * (1 - k)).toFixed(3)
+    el.style.transform = `translate(-50%,-50%) scale(${0.2 + 1.3 * k})`
+  })
+
+  // timeline playhead sweeps while words land
+  ph.style.left = `${90 + 700 * clamp01((t - 11.9) / 2.9)}px`
+
+  // export progress
+  const e = ease(clamp01((t - 25.75) / 1.2))
+  expbar.style.transform = `scaleX(${e})`
+  pct.textContent = `${Math.round(e * 100)}%`
+
+  // clip frame (ping-pong)
+  const f = Math.max(0, Math.round((t - 6.9) * FPS))
+  const period = 2 * (N_FRAMES - 1)
+  const m = f % period
+  const img = frames[m < N_FRAMES ? m : period - m]
+  ctxs.forEach((ctx) => ctx.drawImage(img, 0, 0, 720, 1280))
+}
+
+window.ready = Promise.all([document.fonts.ready, loadFrames]).then(() => {
+  const faces = ['800 100px "Bricolage Grotesque"', '500 40px "Bricolage Grotesque"', '800 20px "JetBrains Mono"', '600 20px Archivo', 'italic 800 20px Archivo',
+    '800 20px Inter', '600 20px "Noto Sans Devanagari"', '800 20px "Noto Sans Devanagari"', '600 20px "Noto Sans Arabic"', '800 20px "Noto Sans Arabic"', '600 20px "Noto Sans JP"', '800 20px "Noto Sans JP"']
+  return Promise.all(faces.map((f) => document.fonts.load(f, f.includes('Devanagari') ? 'रणनीति' : f.includes('Arabic') ? 'استراتيجية' : f.includes('JP') ? '謙虚戦略' : 'Aa')))
+}).then(() => {
+  ctxs = canvases()
+  placeInkWipe()
+  window.renderAt(Number(new URLSearchParams(location.search).get('t') || 0))
+  return true
+})
+</script>
+</body>
+</html>

@@ -31,6 +31,22 @@ class FakeWorker:
 
 
 class DrainTests(unittest.TestCase):
+    def test_work_horse_failure_reconciles_before_rq_retries(self):
+        conn = fakeredis.FakeRedis()
+        instance = worker.ReleaseWorker(["render"], connection=conn)
+        job = Mock(id="crashed", should_retry=True)
+        order = []
+        with patch.object(worker.api, "recover_interrupted_export_retry", side_effect=lambda _: order.append("reconcile")), patch.object(worker.Worker, "handle_job_failure", side_effect=lambda *args: order.append("rq")):
+            instance.handle_job_failure(job, Mock())
+        self.assertEqual(order, ["reconcile", "rq"])
+
+    def test_stopped_job_is_not_reopened(self):
+        instance = worker.ReleaseWorker(["render"], connection=fakeredis.FakeRedis())
+        instance._stopped_job_id = "stopped"
+        with patch.object(worker.api, "recover_interrupted_export_retry") as reconcile, patch.object(worker.Worker, "handle_job_failure"):
+            instance.handle_job_failure(Mock(id="stopped", should_retry=True), Mock())
+        reconcile.assert_not_called()
+
     def setUp(self):
         self.redis = fakeredis.FakeRedis()
         self.ran = []
@@ -126,8 +142,8 @@ class DrainTests(unittest.TestCase):
         metrics_client, queue_client = Mock(), Mock()
         with patch.object(worker, "connect_redis", lambda url: self.redis), \
                 patch.object(worker, "cleanup_local_media_artifacts", lambda: None), \
-                patch.object(worker.api, "_redis_client", metrics_client), \
-                patch.object(worker.api, "_rq_redis_client", queue_client):
+                patch.object(worker.api.app_state, "_redis_client", metrics_client), \
+                patch.object(worker.api.app_state, "_rq_redis_client", queue_client):
             worker._drain_loop(state, ["render"], drain=lambda conn, queues: False)
         self.assertFalse(state.running)
         for client in (metrics_client, queue_client):

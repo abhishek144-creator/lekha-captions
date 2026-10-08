@@ -1,3 +1,4 @@
+import { readVideoPlayerSource } from './video-player-source.mjs';
 import fs from 'fs/promises';
 import {
   ADVANCED_TEMPLATE_RUNTIME_CSS,
@@ -28,16 +29,9 @@ const advancedSource = await readSource(
 const legacySource = await readSource(
   new URL('src/assets/lekha-captions-20-templates.html', projectRoot),
 );
-// The canvas renderer is VideoPlayer.jsx plus its extracted rendering and
-// stylesheet modules; the selectors asserted below live in whichever file owns
-// them, so read all three (in original source order) as one source.
-const videoPlayerSource = (await readSource(
-  new URL('src/components/dashboard/VideoPlayer.jsx', projectRoot),
-)) + '\n' + (await readSource(
-  new URL('src/components/dashboard/videoPlayerTemplateRendering.jsx', projectRoot),
-)) + '\n' + (await readSource(
-  new URL('src/components/dashboard/videoPlayerTemplateStyles.jsx', projectRoot),
-));
+// The canvas renderer is VideoPlayer.jsx plus its extracted modules; the
+// selectors asserted below live in whichever file owns them.
+const videoPlayerSource = readVideoPlayerSource(projectRoot);
 const basicTemplateInlineSource = await readSource(
   new URL('src/components/dashboard/basicTemplateInline.js', projectRoot),
 );
@@ -415,8 +409,12 @@ if (!exportPanelSource.includes('resolvedTemplatePhaseIndex')
   || !exportRendererSource.includes('caption?.template_phase_index')) {
   fail('advanced exports must honor the canvas stored template_phase_index before caption-order fallback');
 }
+// The live canvas path (videoPlayerTemplateRendering.jsx) builds the split
+// title for block 0 and fits it; an earlier editable copy in VideoPlayer.jsx
+// had no caller and was removed.
 if (!videoPlayerSource.includes('.lekha-original-template.t18-stage .split-title')
-  || !videoPlayerSource.includes("templateId === 't18' && normalizedBlockIndex === 0")) {
+  || !videoPlayerSource.includes("templateId === 't18' && blockIndex === 0")
+  || !videoPlayerSource.includes('<span className="split-title lekha-template-fit">')) {
   fail('Cinematic Chapter canvas/export parity must preserve split-title line structure');
 }
 const recreatedAnimatedTemplateIds = ['t11', 't13', 't16', 't18', 't24', 't25', 't26', 't29', 't31', 't33', 't34'];

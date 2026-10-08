@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { appUrl } from '@/lib/site'
+import { getPreferredBillingCurrency, saveBillingCurrency } from '../../shared/billingCurrency'
 
 const plans = [
   {
@@ -76,7 +77,6 @@ const plans = [
 ]
 
 const YEARLY_CREDIT_MULTIPLIER = 12
-const LOCAL_CURRENCY_LANGUAGES = ['hi', 'ta', 'te', 'kn', 'ml', 'mr', 'gu', 'pa', 'bn', 'or', 'as', 'ur']
 
 function getDiscountPercent(monthlyMinor, yearlyMinor) {
   const baseline = monthlyMinor * 12
@@ -90,18 +90,6 @@ function formatInr(minor) {
 
 function formatUsd(cents) {
   return `$${(cents / 100).toFixed(2)}`
-}
-
-function detectInternationalUser() {
-  try {
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
-    const lang = navigator.language || ''
-    const isLocalCurrencyRegion = ['Asia/Calcutta', 'Asia/Kolkata'].includes(tz) || LOCAL_CURRENCY_LANGUAGES.some((value) => lang.startsWith(value))
-    return !isLocalCurrencyRegion
-  } catch {
-    // USD is the global default when the region cannot be resolved.
-    return true
-  }
 }
 
 function getPlanCredits(plan, billing) {
@@ -153,10 +141,16 @@ function CheckIcon() {
 export function HomePricingSection() {
   const [billing, setBilling] = useState('yearly')
   const [selectedPlan, setSelectedPlan] = useState('creator')
-  const [isInternational, setIsInternational] = useState(false)
+  const [billingCurrency, setBillingCurrency] = useState('USD')
+  const isInternational = billingCurrency === 'USD'
+  const changeCurrency = event => {
+    const currency = event.target.value
+    setBillingCurrency(currency)
+    saveBillingCurrency(currency)
+  }
 
   useEffect(() => {
-    setIsInternational(detectInternationalUser())
+    setBillingCurrency(getPreferredBillingCurrency())
   }, [])
 
   const maxYearlyDiscount = isInternational
@@ -172,6 +166,14 @@ export function HomePricingSection() {
           <h2>Simple plans. Serious output.</h2>
           <p>Choose the plan that fits your content schedule.</p>
         </div>
+
+        <label className="sync-currency-select">
+          Currency
+          <select aria-label="Billing currency" value={billingCurrency} onChange={changeCurrency}>
+            <option value="USD">USD ($)</option>
+            <option value="INR">INR (₹)</option>
+          </select>
+        </label>
 
         <div className="sync-pricing-toggle" role="tablist" aria-label="Billing period">
           <button className={billing === 'monthly' ? 'is-active' : ''} onClick={() => setBilling('monthly')} type="button">

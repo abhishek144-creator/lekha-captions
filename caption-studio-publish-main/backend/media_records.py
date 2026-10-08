@@ -1,0 +1,431 @@
+"""Upload ownership/metadata, signed media URLs, media probing and direct-upload slots.
+
+Callers use it as a module (`media_records.NAME`), so a test patches one
+place and every caller sees it.
+"""
+
+import base64
+import hashlib
+import hmac
+import json
+import math
+import os
+import pathlib
+import time
+import uuid
+from datetime import datetime, timedelta, timezone
+from fastapi import HTTPException
+from typing import Any, Dict, List, Optional
+
+
+try:
+    from . import settings
+    from . import app_state
+    from . import firebase_admin_setup
+    from . import observability
+    from . import request_security
+    from . import operator_controls
+    from . import media_commands
+    from .services.upload_security import UploadSecurityService
+except ImportError:  # Direct execution from backend/ remains supported.
+    import settings
+    import app_state
+    import firebase_admin_setup
+    import observability
+    import request_security
+    import operator_controls
+    import media_commands
+    from services.upload_security import UploadSecurityService
+
+
+def _validate_file_id(file_id: str) -> bool:
+    """Validate file_id is a UUID4 — prevents path traversal via user-supplied IDs."""
+    try:
+        uuid.UUID(str(file_id))
+        return True
+    except (ValueError, AttributeError):
+        return False
+
+
+def _safe_find_upload(file_id: str) -> Optional[str]:
+    """Return the full path of the uploaded file for *file_id*, or None.
+    Validates UUID format and guards against directory traversal."""
+    if not _validate_file_id(file_id):
+        return None
+    real_dir = os.path.realpath(settings.UPLOAD_DIR)
+    for f in os.listdir(settings.UPLOAD_DIR):
+        if f.startswith(file_id):
+            candidate = os.path.realpath(os.path.join(settings.UPLOAD_DIR, f))
+            if candidate.startswith(real_dir + os.sep):
+                return os.path.join(settings.UPLOAD_DIR, f)
+    metadata = _load_upload_metadata(file_id)
+    remote_path = str(metadata.get("remote_path") or "")
+    extension = str(metadata.get("extension") or pathlib.Path(remote_path).suffix.lstrip(".")).lower()
+    if not remote_path.startswith("uploads/") or extension not in settings.ALLOWED_EXTENSIONS:
+        return None
+    target = os.path.realpath(os.path.join(settings.UPLOAD_DIR, f"{file_id}.{extension}"))
+    if not target.startswith(real_dir + os.sep):
+        return None
+    partial = f"{target}.part-{uuid.uuid4().hex}"
+    try:
+        if not firebase_admin_setup.download_from_firebase_storage(remote_path, partial):
+            return None
+        os.replace(partial, target)
+        return target
+    finally:
+        if os.path.exists(partial):
+            try:
+                os.remove(partial)
+            except OSError:
+                pass
+    return None
+
+
+def _load_upload_metadata(file_id: str) -> Dict[str, Any]:
+    if not file_id:
+        return {}
+    metadata: Dict[str, Any] = {}
+    if app_state._redis_client is not None:
+        try:
+            raw = app_state._redis_client.get(f"upload_meta:{file_id}")
+            if raw:
+                metadata = json.loads(raw)
+        except Exception:
+            metadata = {}
+    if metadata:
+        return metadata
+    db = firebase_admin_setup.get_db()
+    if db:
+        try:
+            snap = db.collection("uploads").document(file_id).get()
+            if snap.exists:
+                metadata = snap.to_dict() or {}
+        except Exception:
+            metadata = {}
+    return metadata
+
+
+def _remember_source_duration(file_id: str, duration_seconds: float):
+    if not math.isfinite(duration_seconds) or duration_seconds <= 0:
+        return
+    if app_state._redis_client is not None:
+        try:
+            app_state._redis_client.setex(f"upload_duration:{file_id}", 24 * 3600, duration_seconds)
+        except Exception as error:
+            observability._json_log("warning", "upload_duration_cache_failed", error=type(error).__name__)
+    db = firebase_admin_setup.get_db()
+    if db:
+        try:
+            db.collection("uploads").document(file_id).set(
+                {"duration_seconds": duration_seconds}, merge=True,
+            )
+        except Exception as error:
+            observability._json_log("warning", "upload_duration_persist_failed", error=type(error).__name__)
+
+
+def _source_duration_hint(file_id: str, uid: str) -> float:
+    metadata = _load_upload_metadata(file_id)
+    if str(metadata.get("uid") or "") != str(uid):
+        return 0
+    if app_state._redis_client is not None:
+        try:
+            cached = app_state._redis_client.get(f"upload_duration:{file_id}")
+            if cached is not None:
+                return float(cached)
+        except Exception:
+            pass
+    try:
+        return float(metadata.get("duration_seconds") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _remember_upload_owner(file_id: str, uid: str, remote_path: str = "", extension: str = "",
+                           source_metadata: Optional[Dict[str, Any]] = None):
+    if not file_id or not uid:
+        return False
+    request_security._assert_account_not_deleting(uid)
+    app_state._upload_owners[file_id] = uid
+    persisted = False
+    metadata = {
+        "file_id": file_id,
+        "uid": uid,
+        "remote_path": remote_path,
+        "extension": extension,
+        "created_at": observability._utcnow().isoformat() + "Z",
+        **(source_metadata or {}),
+    }
+    if app_state._redis_client is not None:
+        try:
+            app_state._redis_client.setex(f"upload_owner:{file_id}", 24 * 3600, uid)
+            app_state._redis_client.setex(f"upload_meta:{file_id}", 24 * 3600, json.dumps(metadata))
+            persisted = True
+        except Exception:
+            pass
+    db = firebase_admin_setup.get_db()
+    if db:
+        try:
+            db.collection("uploads").document(file_id).set(metadata, merge=True)
+            persisted = True
+        except Exception as e:
+            observability._json_log("warning", "upload_owner_persist_failed", file_id=file_id, uid=uid, error=str(e))
+    return persisted
+
+
+def _update_upload_metadata(file_id: str, values: Dict[str, Any]) -> Dict[str, Any]:
+    metadata = {**_load_upload_metadata(file_id), **values}
+    if app_state._redis_client is not None:
+        try:
+            app_state._redis_client.setex(f"upload_meta:{file_id}", 24 * 3600, json.dumps(metadata))
+        except Exception as error:
+            observability._json_log("warning", "upload_metadata_cache_failed", file_id=file_id,
+                      error_type=type(error).__name__)
+    db = firebase_admin_setup.get_db()
+    if db:
+        db.collection("uploads").document(file_id).set(values, merge=True)
+    return metadata
+
+
+def _mark_upload_security_state(file_id: str, uid: str, state: str,
+                                *, scanned_at: str = "") -> Dict[str, Any]:
+    values: Dict[str, Any] = {"upload_state": state}
+    if scanned_at:
+        values["security_scanned_at"] = scanned_at
+    metadata = _update_upload_metadata(file_id, values)
+    remote_path = str(metadata.get("remote_path") or "")
+    if remote_path:
+        firebase_admin_setup.set_source_upload_state(uid, file_id, remote_path, state)
+    return metadata
+
+
+def _assert_upload_clean(file_id: str) -> Dict[str, Any]:
+    return _upload_security_service().assert_clean(file_id)
+
+
+def _ensure_upload_clean(file_id: str, uid: str, input_path: str) -> Dict[str, Any]:
+    return _upload_security_service().ensure_clean(file_id, uid, input_path)
+
+
+def _source_media_identity(file_id: str, input_path: str) -> str:
+    return _upload_security_service().source_identity(file_id, input_path)
+
+
+def _assert_upload_owner(file_id: str, uid: str):
+    if not file_id or not uid:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    owner = app_state._upload_owners.get(file_id)
+    if not owner and app_state._redis_client is not None:
+        try:
+            owner = app_state._redis_client.get(f"upload_owner:{file_id}") or ""
+        except Exception:
+            owner = ""
+    if not owner:
+        owner = str(_load_upload_metadata(file_id).get("uid") or "")
+    if not owner:
+        # Ownership must be provable. Failing open here lets any authenticated
+        # caller reuse a known upload UUID after a restart or metadata outage.
+        raise HTTPException(status_code=403, detail="Upload ownership could not be verified")
+    if owner != uid:
+        raise HTTPException(status_code=403, detail="You do not have access to this upload")
+
+
+def _media_token_signature(payload_b64: str) -> str:
+    secret = settings.MEDIA_URL_SIGNING_SECRET.encode("utf-8")
+    return hmac.new(secret, payload_b64.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def _create_media_token(payload: Dict[str, Any]) -> str:
+    payload_b64 = base64.urlsafe_b64encode(
+        json.dumps(payload, separators=(",", ":"), default=str).encode("utf-8")
+    ).decode("ascii").rstrip("=")
+    return f"{payload_b64}.{_media_token_signature(payload_b64)}"
+
+
+def _verify_media_token(token: str, expected_kind: str) -> Dict[str, Any]:
+    try:
+        payload_b64, supplied_sig = (token or "").split(".", 1)
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid media token")
+    expected_sig = _media_token_signature(payload_b64)
+    if not supplied_sig or not hmac.compare_digest(expected_sig, supplied_sig):
+        raise HTTPException(status_code=401, detail="Invalid media token")
+    try:
+        padded = payload_b64 + ("=" * (-len(payload_b64) % 4))
+        payload = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8"))
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid media token")
+    if payload.get("kind") != expected_kind:
+        raise HTTPException(status_code=403, detail="Media token is not valid for this resource")
+    if int(payload.get("exp", 0) or 0) < int(time.time()):
+        raise HTTPException(status_code=401, detail="Media token expired")
+    return payload
+
+
+def _signed_upload_url(file_id: str, uid: str, ttl_seconds: int = 6 * 3600) -> str:
+    token = _create_media_token({
+        "kind": "upload",
+        "uid": uid,
+        "file_id": file_id,
+        "exp": int(time.time() + ttl_seconds),
+    })
+    return f"/api/media/upload/{file_id}?token={token}"
+
+
+def _signed_export_url(filename: str, uid: str, ttl_seconds: int, cache_bust: str = "",
+                       download_filename: str = "") -> str:
+    token = _create_media_token({
+        "kind": "export",
+        "uid": uid,
+        "filename": filename,
+        **({"download_filename": download_filename[:180]} if download_filename else {}),
+        "exp": int(time.time() + max(ttl_seconds, 60)),
+    })
+    suffix = f"&v={cache_bust}" if cache_bust else ""
+    return f"/api/media/export/{filename}?token={token}{suffix}"
+
+
+def _compute_media_hash(file_path: str) -> str:
+    digest = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        while True:
+            chunk = f.read(1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _upload_security_service() -> UploadSecurityService:
+    return UploadSecurityService(
+        load_metadata=_load_upload_metadata,
+        mark_state=_mark_upload_security_state,
+        scan=operator_controls._scan_upload_for_threat,
+        delete_remote=firebase_admin_setup.delete_from_firebase_storage,
+        utc_timestamp=lambda: observability._utcnow().isoformat() + "Z",
+        compute_hash=_compute_media_hash,
+        update_metadata=_update_upload_metadata,
+    )
+
+
+def _build_process_cache_path(media_hash: str, language: str, min_words: int, max_words: int) -> str:
+    key = f"{media_hash}:{language.lower()}:{min_words}:{max_words}"
+    key_hash = hashlib.sha256(key.encode("utf-8")).hexdigest()
+    return os.path.join(settings.TRANSCRIPTION_CACHE_DIR, f"{key_hash}.json")
+
+
+def _read_transcription_cache(cache_path: str) -> Optional[Dict[str, Any]]:
+    if not cache_path:
+        return None
+    try:
+        with open(cache_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        pass
+    except Exception as error:
+        observability._json_log("warning", "transcription_cache_local_read_failed", error_type=type(error).__name__)
+    db = firebase_admin_setup.get_db()
+    if not db:
+        return None
+    try:
+        key = pathlib.Path(cache_path).stem
+        snap = db.collection(settings.TRANSCRIPTION_CACHE_COLLECTION).document(key).get()
+        if not snap.exists:
+            return None
+        row = snap.to_dict() or {}
+        expire_at = row.get("expire_at")
+        # Firestore TTL deletion can lag, so expiry is enforced on read too.
+        if isinstance(expire_at, datetime) and expire_at.replace(tzinfo=expire_at.tzinfo or timezone.utc) <= datetime.now(timezone.utc):
+            return None
+        result = json.loads(row.get("payload") or "null")
+        if not isinstance(result, dict):
+            return None
+    except Exception as error:
+        observability._json_log("warning", "transcription_cache_shared_read_failed", error_type=type(error).__name__)
+        return None
+    try:
+        with open(cache_path, "w", encoding="utf-8") as f:
+            json.dump(result, f)
+    except Exception:
+        pass
+    return result
+
+
+def _write_transcription_cache(cache_path: str, result: Dict[str, Any]) -> None:
+    if not cache_path:
+        return
+    payload = json.dumps(result)
+    try:
+        with open(cache_path, "w", encoding="utf-8") as f:
+            f.write(payload)
+    except Exception as e:
+        observability._json_log("warning", "transcription_cache_write_failed", error=str(e))
+    db = firebase_admin_setup.get_db()
+    if not db or len(payload.encode("utf-8")) > settings.TRANSCRIPTION_CACHE_MAX_BYTES:
+        return
+    try:
+        db.collection(settings.TRANSCRIPTION_CACHE_COLLECTION).document(pathlib.Path(cache_path).stem).set({
+            "payload": payload,
+            "created_at": observability._utcnow().isoformat() + "Z",
+            "expire_at": datetime.now(timezone.utc) + timedelta(hours=settings.TRANSCRIPTION_CACHE_RETENTION_HOURS),
+        })
+    except Exception as error:
+        observability._json_log("warning", "transcription_cache_shared_write_failed", error_type=type(error).__name__)
+
+
+def _build_parity_signature(captions: List[Dict[str, Any]], style: Dict[str, Any], word_layouts: Dict[str, Any]) -> str:
+    payload = {
+        "captions": captions,
+        "style": style,
+        "word_layouts": word_layouts,
+    }
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True, default=str)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _validate_media_signature(file_path: str):
+    with open(file_path, "rb") as media:
+        header = media.read(32)
+    valid = (
+        (len(header) >= 12 and header[4:8] in {b"ftyp", b"moov", b"mdat", b"wide", b"free"})
+        or header.startswith(b"\x1aE\xdf\xa3")  # Matroska / WebM
+        or (header.startswith(b"RIFF") and header[8:12] in {b"WAVE", b"AVI "})
+        or header.startswith(b"ID3")
+        or (len(header) >= 2 and header[0] == 255 and header[1] & 0xE0 == 0xE0)
+    )
+    if not valid:
+        raise ValueError("Unsupported or malformed media signature.")
+
+
+def _probe_media(file_path: str) -> Dict[str, Any]:
+    _validate_media_signature(file_path)
+    cmd = [
+        "ffprobe", "-v", "error",
+        "-show_entries", "format=duration,format_name",
+        "-show_entries", "stream=codec_type,codec_name,width,height,duration",
+        "-of", "json", file_path
+    ]
+    result = media_commands.run_media_command(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise ValueError("Unable to inspect media file with ffprobe.")
+    try:
+        meta = json.loads(result.stdout or "{}")
+    except Exception:
+        raise ValueError("Invalid ffprobe output.")
+    streams = meta.get("streams", []) or []
+    if not streams:
+        raise ValueError("No media streams found.")
+    if not any(s.get("codec_type") in ("video", "audio") for s in streams):
+        raise ValueError("Unsupported media stream type.")
+    try:
+        duration = float((meta.get("format") or {}).get("duration") or 0)
+    except Exception:
+        duration = 0.0
+    if not math.isfinite(duration) or duration <= 0:
+        raise ValueError("Media duration is invalid.")
+    for stream in streams:
+        if stream.get("codec_type") == "video":
+            width, height = int(stream.get("width") or 0), int(stream.get("height") or 0)
+            # Accept up to 4K UHD in either orientation; bound decoded pixels.
+            if min(width, height) <= 0 or max(width, height) > 4096 or width * height > 3840 * 2160:
+                raise ValueError("Video resolution exceeds the supported 4K pixel limit.")
+    return meta

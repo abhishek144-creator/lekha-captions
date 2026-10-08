@@ -2,7 +2,7 @@ import os
 import sys
 import tempfile
 import unittest
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -28,10 +28,10 @@ def _future_iso():
 
 class UploadPlanPrecheckTests(unittest.TestCase):
     def run_check(self, user_data, duration=0):
-        with patch.object(main, "get_db", return_value=_fake_db(user_data)), \
-                patch.object(main, "_read_service_controls", return_value={}), \
-                patch.object(main, "_IS_TEST", False):
-            main._assert_upload_allowed("user-1", duration)
+        with patch.object(main.firebase_admin_setup, "get_db", return_value=_fake_db(user_data)), \
+                patch.object(main.operator_controls, "_read_service_controls", return_value={}), \
+                patch.object(main.settings, "_IS_TEST", False):
+            main.upload_dispatch._assert_upload_allowed("user-1", duration)
 
     def test_video_longer_than_plan_is_refused_before_upload(self):
         starter = {"subscription_tier": "starter", "subscription_expiry": _future_iso()}
@@ -42,7 +42,7 @@ class UploadPlanPrecheckTests(unittest.TestCase):
         self.run_check(starter, duration=110)
 
     def test_used_free_transcriptions_are_refused_before_upload(self):
-        free = {"subscription_tier": "free", "ai_lifetime_usage": {"process": main.FREE_LIFETIME_TRANSCRIPTIONS}}
+        free = {"subscription_tier": "free", "ai_lifetime_usage": {"process": main.settings.FREE_LIFETIME_TRANSCRIPTIONS}}
         with self.assertRaises(HTTPException) as refused:
             self.run_check(free, duration=30)
         self.assertEqual(refused.exception.status_code, 402)
@@ -52,8 +52,8 @@ class UploadPlanPrecheckTests(unittest.TestCase):
         starter = {
             "subscription_tier": "starter",
             "subscription_expiry": _future_iso(),
-            "ai_usage_date": main.date.today().isoformat(),
-            "ai_daily_usage": {"process": main.AI_DAILY_LIMITS["starter"]["process"]},
+            "ai_usage_date": date.today().isoformat(),
+            "ai_daily_usage": {"process": main.settings.AI_DAILY_LIMITS["starter"]["process"]},
         }
         with self.assertRaises(HTTPException) as refused:
             self.run_check(starter, duration=30)
@@ -155,28 +155,28 @@ class SharedTranscriptCacheTests(unittest.TestCase):
         self.result = {"success": True, "captions": [{"text": "hello"}]}
 
     def test_another_worker_reuses_a_transcript(self):
-        with patch.object(main, "get_db", return_value=self.db):
-            main._write_transcription_cache(self.path, self.result)
+        with patch.object(main.firebase_admin_setup, "get_db", return_value=self.db):
+            main.media_records._write_transcription_cache(self.path, self.result)
             os.remove(self.path)  # a different worker has no local copy
-            self.assertEqual(main._read_transcription_cache(self.path), self.result)
+            self.assertEqual(main.media_records._read_transcription_cache(self.path), self.result)
         self.assertTrue(os.path.exists(self.path), "a shared hit is copied to local scratch")
-        row = self.db.collections[main.TRANSCRIPTION_CACHE_COLLECTION]["abc123"]
+        row = self.db.collections[main.settings.TRANSCRIPTION_CACHE_COLLECTION]["abc123"]
         self.assertIn("expire_at", row)
 
     def test_expired_shared_transcript_is_ignored(self):
-        self.db.collection(main.TRANSCRIPTION_CACHE_COLLECTION).document("abc123").set({
+        self.db.collection(main.settings.TRANSCRIPTION_CACHE_COLLECTION).document("abc123").set({
             "payload": '{"success": true, "captions": []}',
             "expire_at": datetime.now(timezone.utc) - timedelta(minutes=1),
         })
-        with patch.object(main, "get_db", return_value=self.db):
-            self.assertIsNone(main._read_transcription_cache(self.path))
+        with patch.object(main.firebase_admin_setup, "get_db", return_value=self.db):
+            self.assertIsNone(main.media_records._read_transcription_cache(self.path))
 
     def test_oversized_transcript_stays_local_only(self):
-        big = {"success": True, "captions": [{"text": "x" * (main.TRANSCRIPTION_CACHE_MAX_BYTES + 10)}]}
-        with patch.object(main, "get_db", return_value=self.db):
-            main._write_transcription_cache(self.path, big)
+        big = {"success": True, "captions": [{"text": "x" * (main.settings.TRANSCRIPTION_CACHE_MAX_BYTES + 10)}]}
+        with patch.object(main.firebase_admin_setup, "get_db", return_value=self.db):
+            main.media_records._write_transcription_cache(self.path, big)
         self.assertTrue(os.path.exists(self.path))
-        self.assertNotIn(main.TRANSCRIPTION_CACHE_COLLECTION, self.db.collections)
+        self.assertNotIn(main.settings.TRANSCRIPTION_CACHE_COLLECTION, self.db.collections)
 
 
 class DiscardUnusedUploadTests(unittest.TestCase):
@@ -188,26 +188,26 @@ class DiscardUnusedUploadTests(unittest.TestCase):
                 f.write(b"video")
             updates = []
             scan_jobs = MagicMock()
-            with patch.object(main, "UPLOAD_DIR", upload_dir), \
-                    patch.object(main, "_assert_upload_owner", return_value=None), \
-                    patch.object(main, "_load_upload_metadata", return_value={
+            with patch.object(main.settings, "UPLOAD_DIR", upload_dir), \
+                    patch.object(main.media_records, "_assert_upload_owner", return_value=None), \
+                    patch.object(main.media_records, "_load_upload_metadata", return_value={
                         "remote_path": f"uploads/user-1/{file_id}.mp4", "upload_state": "pending_scan"}), \
-                    patch.object(main, "_update_upload_metadata", side_effect=lambda fid, values: updates.append(values)), \
-                    patch.object(main, "delete_from_firebase_storage", return_value=True) as delete_remote, \
-                    patch.object(main, "get_db", return_value=MagicMock()), \
-                    patch.object(main, "MediaScanJobs", return_value=scan_jobs):
-                self.assertTrue(main._discard_unused_upload("user-1", file_id))
+                    patch.object(main.media_records, "_update_upload_metadata", side_effect=lambda fid, values: updates.append(values)), \
+                    patch.object(main.firebase_admin_setup, "delete_from_firebase_storage", return_value=True) as delete_remote, \
+                    patch.object(main.firebase_admin_setup, "get_db", return_value=MagicMock()), \
+                    patch.object(main.upload_dispatch, "MediaScanJobs", return_value=scan_jobs):
+                self.assertTrue(main.upload_dispatch._discard_unused_upload("user-1", file_id))
             self.assertFalse(os.path.exists(local))
         delete_remote.assert_called_once_with(f"uploads/user-1/{file_id}.mp4")
         self.assertEqual(updates[0]["upload_state"], "discarded")
         scan_jobs.finish.assert_called_once_with(file_id)
 
     def test_discard_refuses_another_accounts_object(self):
-        with patch.object(main, "_assert_upload_owner", return_value=None), \
-                patch.object(main, "_load_upload_metadata", return_value={"remote_path": "uploads/other/x.mp4"}), \
-                patch.object(main, "delete_from_firebase_storage") as delete_remote:
+        with patch.object(main.media_records, "_assert_upload_owner", return_value=None), \
+                patch.object(main.media_records, "_load_upload_metadata", return_value={"remote_path": "uploads/other/x.mp4"}), \
+                patch.object(main.firebase_admin_setup, "delete_from_firebase_storage") as delete_remote:
             with self.assertRaises(HTTPException) as refused:
-                main._discard_unused_upload("user-1", "123e4567-e89b-12d3-a456-426614174000")
+                main.upload_dispatch._discard_unused_upload("user-1", "123e4567-e89b-12d3-a456-426614174000")
         self.assertEqual(refused.exception.status_code, 403)
         delete_remote.assert_not_called()
 
@@ -255,11 +255,11 @@ class UploadFunnelMetricsTests(unittest.TestCase):
         self.assertIsNone(metrics["time_to_first_caption_p50_s"])
 
     def test_client_time_to_first_caption_is_bounded(self):
-        with patch.object(main, "_track_operational_metric_sample") as record:
-            for bad in (None, "x", -5, 0, float("nan"), main.CLIENT_TIME_TO_FIRST_CAPTION_MAX_MS + 1):
-                main._record_client_time_to_first_caption(bad)
+        with patch.object(main.observability, "_track_operational_metric_sample") as record:
+            for bad in (None, "x", -5, 0, float("nan"), main.settings.CLIENT_TIME_TO_FIRST_CAPTION_MAX_MS + 1):
+                main.observability._record_client_time_to_first_caption(bad)
             record.assert_not_called()
-            main._record_client_time_to_first_caption(42_000)
+            main.observability._record_client_time_to_first_caption(42_000)
         record.assert_called_once_with("time_to_first_caption_ms", 42_000.0)
 
 

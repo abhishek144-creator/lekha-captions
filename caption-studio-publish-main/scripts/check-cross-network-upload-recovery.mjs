@@ -1,10 +1,11 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { readBackendApiSource } from './backend-api-source.mjs'
+import { readDashboardSource } from './editor-source.mjs'
 
 const root = path.resolve(import.meta.dirname, '..')
 const apiClient = fs.readFileSync(path.join(root, 'src/lib/apiClient.js'), 'utf8')
-const dashboard = fs.readFileSync(path.join(root, 'src/pages/Dashboard.jsx'), 'utf8')
+const dashboard = readDashboardSource(root)
 const uploadModal = fs.readFileSync(path.join(root, 'src/components/dashboard/UploadModal.jsx'), 'utf8')
 const resilientUpload = fs.readFileSync(path.join(root, 'src/lib/resilientUpload.js'), 'utf8')
 const analytics = fs.readFileSync(path.join(root, 'src/lib/analytics.js'), 'utf8')
@@ -56,10 +57,13 @@ const assertions = [
     message: 'A reload may resume only an authenticated direct upload with the exact same file fingerprint.',
   },
   {
-    ok: !/Unsynced browser draft available|Continue draft|Discard draft/.test(dashboard)
-      && /if \(!isLoaded \|\| localRecoveryDraft\) return/.test(dashboard)
+    ok: /if \(!isLoaded \|\| localRecoveryDraft\) return/.test(dashboard)
+      && /applyLocalDraft\(localRecoveryDraft\)/.test(dashboard)
+      && /Continue saved draft/.test(dashboard)
+      && /downloadDraft\(localRecoveryDraft\)/.test(dashboard)
+      && /Continue account draft/.test(dashboard)
       && /if \(localRecoveryDraft\) discardLocalDraft\(\)[\s\S]*handleUploadModalOpen\(\)/s.test(dashboard),
-    message: 'Dashboard entry must stay simple while safely replacing an older same-account browser draft only when a new upload starts.',
+    message: 'Dashboard entry must expose same-account draft recovery and backup, protect unsynced work from autosave, and replace the recovery copy only when a new upload is requested.',
   },
   {
     ok: /if too_large:[\s\S]*Count only fully received uploads[\s\S]*_check_rate\([\s\S]*_upload_rate,[\s\S]*f"network:\{client_ip\}"/s.test(backend),
