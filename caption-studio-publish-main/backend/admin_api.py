@@ -12,6 +12,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Request
 from fastapi import APIRouter
 
+try:
+    from . import settings
+except ImportError:  # Direct execution from backend/ remains supported.
+    import settings
+
 
 def create_admin_router(host: ModuleType) -> SimpleNamespace:
     router = APIRouter()
@@ -67,7 +72,7 @@ def create_admin_router(host: ModuleType) -> SimpleNamespace:
             raise HTTPException(status_code=403, detail="Admin access required")
         test_id = f"alert-test-{host._utcnow().strftime('%Y%m%d-%H%M%S')}-{host.secrets.token_hex(3)}"
         sentry_event_id = ""
-        if host.SENTRY_DSN and host.SENTRY_AVAILABLE:
+        if settings.SENTRY_DSN and host.SENTRY_AVAILABLE:
             try:
                 sentry_event_id = str(host.sentry_sdk.capture_message(
                     f"Caption Studio production alert delivery test {test_id}",

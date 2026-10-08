@@ -34,11 +34,11 @@ class MediaCleanupTests(unittest.TestCase):
             os.utime(old_cache, (now - 8 * 86400, now - 8 * 86400))
 
             with (
-                patch.object(main, "UPLOAD_DIR", paths["uploads"]),
-                patch.object(main, "EXPORT_DIR", paths["exports"]),
-                patch.object(main, "TRANSCRIPTION_CACHE_DIR", paths["transcriptions"]),
-                patch.object(main, "RENDER_CACHE_DIR", paths["renders"]),
-                patch.object(main, "DEAD_LETTER_DIR", paths["dead_letter"]),
+                patch.object(main.settings, "UPLOAD_DIR", paths["uploads"]),
+                patch.object(main.settings, "EXPORT_DIR", paths["exports"]),
+                patch.object(main.settings, "TRANSCRIPTION_CACHE_DIR", paths["transcriptions"]),
+                patch.object(main.settings, "RENDER_CACHE_DIR", paths["renders"]),
+                patch.object(main.settings, "DEAD_LETTER_DIR", paths["dead_letter"]),
             ):
                 metrics = main.cleanup_local_media_artifacts(now)
 

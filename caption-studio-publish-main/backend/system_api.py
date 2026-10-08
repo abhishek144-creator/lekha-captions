@@ -12,6 +12,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Request
 from fastapi import APIRouter
 
+try:
+    from . import settings
+except ImportError:  # Direct execution from backend/ remains supported.
+    import settings
+
 
 def create_system_router(host: ModuleType) -> SimpleNamespace:
     router = APIRouter()
@@ -23,9 +28,9 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
         # server counter names so it can't poison the release gate / alerting.
         client_ip = host._client_rate_key(request)
         allowed, retry_after, remaining = await host.asyncio.to_thread(
-            host._check_rate, host._analytics_rate, client_ip, host.ANALYTICS_RATE_LIMIT,
+            host._check_rate, host._analytics_rate, client_ip, settings.ANALYTICS_RATE_LIMIT,
         )
-        host._apply_rate_headers(response, host.ANALYTICS_RATE_LIMIT, remaining, retry_after)
+        host._apply_rate_headers(response, settings.ANALYTICS_RATE_LIMIT, remaining, retry_after)
         if not allowed:
             raise HTTPException(status_code=429, detail="Too many analytics events. Please slow down.")
         try:
@@ -35,7 +40,7 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
         event = (body.get("event") or "").strip()
         if not event or len(event) > 80:
             raise HTTPException(status_code=400, detail="Invalid analytics event")
-        if event in host.RESERVED_SERVER_ANALYTICS_EVENTS:
+        if event in settings.RESERVED_SERVER_ANALYTICS_EVENTS:
             raise HTTPException(status_code=400, detail="Reserved analytics event")
         payload = body.get("payload") or {}
         if not isinstance(payload, dict):
@@ -50,9 +55,9 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
         allowed, retry_after, remaining = host._check_rate(
             host._support_rate,
             f"support:{client_ip}",
-            host.SUPPORT_RATE_LIMIT,
+            settings.SUPPORT_RATE_LIMIT,
         )
-        host._apply_rate_headers(response, host.SUPPORT_RATE_LIMIT, remaining, retry_after)
+        host._apply_rate_headers(response, settings.SUPPORT_RATE_LIMIT, remaining, retry_after)
         if not allowed:
             raise HTTPException(status_code=429, detail="Too many support requests. Please wait before trying again.")
 
@@ -92,12 +97,12 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
     async def api_version():
         return {
             "success": True,
-            "version": host.API_CURRENT_VERSION,
-            **host.RELEASE_METADATA,
-            "release": host.APP_RELEASE,
-            "min_supported_version": host.API_MIN_SUPPORTED_VERSION,
-            "sunset_date": host.DEPRECATION_SUNSET_DATE,
-            "progressive_delivery_enabled": host.ENABLE_PROGRESSIVE_DELIVERY,
+            "version": settings.API_CURRENT_VERSION,
+            **settings.RELEASE_METADATA,
+            "release": settings.APP_RELEASE,
+            "min_supported_version": settings.API_MIN_SUPPORTED_VERSION,
+            "sunset_date": settings.DEPRECATION_SUNSET_DATE,
+            "progressive_delivery_enabled": settings.ENABLE_PROGRESSIVE_DELIVERY,
         }
 
 
@@ -107,9 +112,9 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
         return {
             "success": True,
             "ready": True,
-            "version": host.API_CURRENT_VERSION,
-            **host.RELEASE_METADATA,
-            "release": host.APP_RELEASE,
+            "version": settings.API_CURRENT_VERSION,
+            **settings.RELEASE_METADATA,
+            "release": settings.APP_RELEASE,
         }
 
 
@@ -133,7 +138,7 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
             # the API would permanently fail load-balancer health checks after the
             # production images are split by role. Inline rendering still requires
             # Node when the durable queue is disabled.
-            "node": host.DURABLE_QUEUE_ENABLED or host.shutil.which("node") is not None,
+            "node": settings.DURABLE_QUEUE_ENABLED or host.shutil.which("node") is not None,
             "redis": host._redis_client is not None,
             "firestore": False,
             "storage": False,
@@ -156,13 +161,13 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
             checks["storage"] = host.storage_backend_ready()
         except Exception as e:
             details["storage_error"] = str(e)[:200]
-        if host.DURABLE_QUEUE_ENABLED and checks["redis"] and host.RQWorker is not None:
+        if settings.DURABLE_QUEUE_ENABLED and checks["redis"] and host.RQWorker is not None:
             try:
                 workers = host.RQWorker.all(connection=host._redis_client)
-                render_queue_names = list(host._export_queues) or [host.EXPORT_QUEUE_NAME]
+                render_queue_names = list(host._export_queues) or [settings.EXPORT_QUEUE_NAME]
                 worker_counts = {
                     queue_name: 0
-                    for queue_name in (*render_queue_names, host.TRANSCRIPTION_QUEUE_NAME, host.MEDIA_SCAN_QUEUE_NAME)
+                    for queue_name in (*render_queue_names, settings.TRANSCRIPTION_QUEUE_NAME, settings.MEDIA_SCAN_QUEUE_NAME)
                 }
                 for worker in workers:
                     queue_names = getattr(worker, "queue_names", [])
@@ -172,7 +177,7 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
                     draining = host._redis_client.hget(worker.key, "draining")
                     if isinstance(worker_release, bytes):
                         worker_release = worker_release.decode("ascii")
-                    if worker_release == host.APP_RELEASE and draining not in ("1", b"1"):
+                    if worker_release == settings.APP_RELEASE and draining not in ("1", b"1"):
                         for queue_name in set(queue_names or []):
                             if queue_name in worker_counts:
                                 worker_counts[queue_name] += 1
@@ -184,16 +189,16 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
                 render_queue_depths = {}
                 for queue_name in render_queue_names:
                     queue = host._export_queues.get(queue_name)
-                    if queue is None and queue_name == host.EXPORT_QUEUE_NAME:
+                    if queue is None and queue_name == settings.EXPORT_QUEUE_NAME:
                         queue = host._export_queue
                     render_queue_depths[queue_name] = int(queue.count) if queue is not None else 0
                 queue_depths = {
                     **render_queue_depths,
-                    host.TRANSCRIPTION_QUEUE_NAME: (
+                    settings.TRANSCRIPTION_QUEUE_NAME: (
                         int(host._transcription_queue.count)
                         if host._transcription_queue is not None else 0
                     ),
-                    host.MEDIA_SCAN_QUEUE_NAME: (
+                    settings.MEDIA_SCAN_QUEUE_NAME: (
                         int(host._media_scan_queue.count)
                         if host._media_scan_queue is not None else 0
                     ),
@@ -212,7 +217,7 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
             except Exception as e:
                 details["worker_error"] = str(e)[:200]
         try:
-            disk = host.shutil.disk_usage(host.MEDIA_SCRATCH_ROOT)
+            disk = host.shutil.disk_usage(settings.MEDIA_SCRATCH_ROOT)
             details["scratch_free_bytes"] = disk.free
             checks["scratch_disk"] = disk.free >= 2 * 1024 * 1024 * 1024
         except Exception as e:
@@ -239,7 +244,7 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
         # Public readiness probe: exposes only the boolean gate result. Detailed SLO
         # actuals and queue wiring are admin-gated (see /api/slo/status) so an
         # anonymous caller can't read operational internals.
-        dependencies = await host.asyncio.to_thread(host._runtime_dependency_snapshot) if host._IS_PRODUCTION else {
+        dependencies = await host.asyncio.to_thread(host._runtime_dependency_snapshot) if settings._IS_PRODUCTION else {
             "ready": True,
             "checks": {},
             "details": {},
@@ -254,8 +259,8 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
         if host._is_admin_token(request=request):
             body["slo"] = host._build_slo_snapshot()
             body["queue"] = {
-                "durable_enabled": host.DURABLE_QUEUE_ENABLED,
-                "queue_names": list(host._export_queues) or [host.EXPORT_QUEUE_NAME],
+                "durable_enabled": settings.DURABLE_QUEUE_ENABLED,
+                "queue_names": list(host._export_queues) or [settings.EXPORT_QUEUE_NAME],
                 "connected": host._export_queue is not None,
             }
             body["dependencies"] = dependencies
@@ -276,10 +281,10 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
         return {
             "success": True,
             "flags": {
-                "enable_progressive_delivery": host.ENABLE_PROGRESSIVE_DELIVERY,
-                "enforce_tenant_isolation": host.ENFORCE_TENANT_ISOLATION,
-                "require_payment_idempotency": host.REQUIRE_PAYMENT_IDEMPOTENCY,
-                "enable_durable_queue": host.DURABLE_QUEUE_ENABLED,
+                "enable_progressive_delivery": settings.ENABLE_PROGRESSIVE_DELIVERY,
+                "enforce_tenant_isolation": settings.ENFORCE_TENANT_ISOLATION,
+                "require_payment_idempotency": settings.REQUIRE_PAYMENT_IDEMPOTENCY,
+                "enable_durable_queue": settings.DURABLE_QUEUE_ENABLED,
             },
         }
 
@@ -291,10 +296,10 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
         return {
             "success": True,
             "controls": {
-                **{key: bool(controls.get(key)) for key in host.SERVICE_CONTROL_KEYS},
-                host.MAX_UPLOAD_DURATION_CONTROL_KEY: int(controls.get(
-                    host.MAX_UPLOAD_DURATION_CONTROL_KEY,
-                    host.GLOBAL_MAX_UPLOAD_DURATION_SECONDS,
+                **{key: bool(controls.get(key)) for key in settings.SERVICE_CONTROL_KEYS},
+                settings.MAX_UPLOAD_DURATION_CONTROL_KEY: int(controls.get(
+                    settings.MAX_UPLOAD_DURATION_CONTROL_KEY,
+                    settings.GLOBAL_MAX_UPLOAD_DURATION_SECONDS,
                 )),
             },
             "notice": controls.get("notice") or "",
@@ -311,17 +316,17 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
             raise HTTPException(status_code=403, detail="Admin access required")
 
         updates: host.Dict[str, host.Any] = {}
-        for key in host.SERVICE_CONTROL_KEYS:
+        for key in settings.SERVICE_CONTROL_KEYS:
             value = getattr(req, key, None)
             if value is not None:
                 updates[key] = bool(value)
         if req.max_upload_duration_seconds is not None:
-            updates[host.MAX_UPLOAD_DURATION_CONTROL_KEY] = max(
+            updates[settings.MAX_UPLOAD_DURATION_CONTROL_KEY] = max(
                 15,
-                min(host.GLOBAL_MAX_UPLOAD_DURATION_SECONDS, int(req.max_upload_duration_seconds)),
+                min(settings.GLOBAL_MAX_UPLOAD_DURATION_SECONDS, int(req.max_upload_duration_seconds)),
             )
         if req.notice is not None:
-            updates["notice"] = str(req.notice)[:host.SERVICE_CONTROL_NOTICE_MAX]
+            updates["notice"] = str(req.notice)[:settings.SERVICE_CONTROL_NOTICE_MAX]
 
         if not updates:
             controls = host._read_service_controls(force=True)
@@ -333,7 +338,7 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
         updates["updated_at"] = host._utcnow().isoformat() + "Z"
         updates["updated_by"] = str((decoded or {}).get("uid") or "")[:128]
         try:
-            db.collection(host.SERVICE_CONTROL_COLLECTION).document(host.SERVICE_CONTROL_DOCUMENT).set(
+            db.collection(settings.SERVICE_CONTROL_COLLECTION).document(settings.SERVICE_CONTROL_DOCUMENT).set(
                 updates, merge=True
             )
         except Exception as e:
@@ -347,14 +352,14 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
             {
                 key: updates[key]
                 for key in updates
-                if key in host.SERVICE_CONTROL_KEYS or key == host.MAX_UPLOAD_DURATION_CONTROL_KEY
+                if key in settings.SERVICE_CONTROL_KEYS or key == settings.MAX_UPLOAD_DURATION_CONTROL_KEY
             },
         )
         host._json_log("warning", "service_controls_updated", **{
-            **{key: bool(controls.get(key)) for key in host.SERVICE_CONTROL_KEYS},
-            host.MAX_UPLOAD_DURATION_CONTROL_KEY: int(controls.get(
-                host.MAX_UPLOAD_DURATION_CONTROL_KEY,
-                host.GLOBAL_MAX_UPLOAD_DURATION_SECONDS,
+            **{key: bool(controls.get(key)) for key in settings.SERVICE_CONTROL_KEYS},
+            settings.MAX_UPLOAD_DURATION_CONTROL_KEY: int(controls.get(
+                settings.MAX_UPLOAD_DURATION_CONTROL_KEY,
+                settings.GLOBAL_MAX_UPLOAD_DURATION_SECONDS,
             )),
         })
         return {"success": True, "changed": True, "controls": controls}

@@ -13,6 +13,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Request
 from fastapi import APIRouter
 
+try:
+    from . import settings
+except ImportError:  # Direct execution from backend/ remains supported.
+    import settings
+
 
 # RQ keeps each job's pickled arguments (the full editor snapshot) until these
 # expire. Job status and results live in the export job record and the dead
@@ -36,7 +41,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
 
     def _render_queue_for(queue_name):
         queue = host._export_queues.get(queue_name)
-        if queue is None and not host._IS_PRODUCTION:
+        if queue is None and not settings._IS_PRODUCTION:
             return host._export_queue
         if queue is None:
             raise HTTPException(503, "The selected render queue is unavailable.", headers={"Retry-After": "10"})
@@ -44,18 +49,18 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
 
 
     def _queue_for_export_job_record(job: host.Dict[str, host.Any]):
-        queue_name = str((job or {}).get("queue_name") or host.EXPORT_QUEUE_NAME)
+        queue_name = str((job or {}).get("queue_name") or settings.EXPORT_QUEUE_NAME)
         return host._export_queues.get(queue_name) or host._export_queue
 
 
     def _enqueue_export_job(render_queue, **job):
-        if host._IS_PRODUCTION:
+        if settings._IS_PRODUCTION:
             estimated_work_seconds = (job.get("meta") or {}).get("estimated_render_seconds")
             delivery = host.enqueue_bounded_across_queues(
                 render_queue,
                 list(host._export_queues.values()),
-                host.EXPORT_MAX_PENDING_JOBS,
-                max_pending_work_seconds=host.EXPORT_MAX_PENDING_WORK_SECONDS,
+                settings.EXPORT_MAX_PENDING_JOBS,
+                max_pending_work_seconds=settings.EXPORT_MAX_PENDING_WORK_SECONDS,
                 estimated_work_seconds=estimated_work_seconds,
                 **job,
             )
@@ -81,7 +86,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
     async def export_video(req: host.ExportRequest, request: Request, response: Response):
         # Bound queued admission without creating a second event loop/thread
         # pool for the already offloaded blocking operations.
-        if host._export_queue is not None or host._IS_PRODUCTION:
+        if host._export_queue is not None or settings._IS_PRODUCTION:
             return await _run_admission(
                 lambda: _export_video_impl(req, request, response)
             )
@@ -100,7 +105,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
         # 1. Authenticate user
         decoded_token = await to_thread(host._authenticate_media_request, req.id_token, req.org_id)
         uid = (decoded_token.get("uid") or "").strip() or "dev-local-user"
-        if host._IS_PRODUCTION and host._export_queue is None:
+        if settings._IS_PRODUCTION and host._export_queue is None:
             raise HTTPException(status_code=503, detail="Export service is temporarily unavailable. Please retry shortly.",
                                 headers={"Retry-After": "10"})
         if decoded_token.get("_dev_mode"):
@@ -108,8 +113,8 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
 
         now_ts = host.time.time()
         recent_failures = await to_thread(host._get_recent_export_failures, uid)
-        if len(recent_failures) >= host.EXPORT_FAILURE_LIMIT:
-            retry_after = max(1, int(host.EXPORT_FAILURE_WINDOW - (now_ts - min(recent_failures))))
+        if len(recent_failures) >= settings.EXPORT_FAILURE_LIMIT:
+            retry_after = max(1, int(settings.EXPORT_FAILURE_WINDOW - (now_ts - min(recent_failures))))
             response.headers["Retry-After"] = str(retry_after)
             raise HTTPException(status_code=429, detail="Too many failed export attempts. Please retry after a short wait.")
 
@@ -218,7 +223,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
                         "renderer": capacity["renderer"],
                     },
                     retry=host.RQRetry(max=3, interval=[10, 30, 60]) if host.RQRetry else None,
-                    ttl=host.EXPORT_MAX_QUEUE_WAIT_SECONDS,
+                    ttl=settings.EXPORT_MAX_QUEUE_WAIT_SECONDS,
                     result_ttl=EXPORT_RQ_RESULT_TTL_SECONDS,
                     failure_ttl=EXPORT_RQ_FAILURE_TTL_SECONDS,
                 )
@@ -273,7 +278,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
     def _persist_batch_receipt(payload, uid, created_at):
         database = host.get_db()
         if database is None:
-            if host._IS_PRODUCTION:
+            if settings._IS_PRODUCTION:
                 raise HTTPException(503, "Batch status storage is temporarily unavailable", headers={"Retry-After": "10"})
             return
         try:
@@ -373,7 +378,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
                         "renderer": capacity["renderer"],
                     },
                     retry=host.RQRetry(max=12, interval=[10, 15, 20, 30]) if host.RQRetry else None,
-                    ttl=host.EXPORT_MAX_QUEUE_WAIT_SECONDS,
+                    ttl=settings.EXPORT_MAX_QUEUE_WAIT_SECONDS,
                     result_ttl=EXPORT_RQ_RESULT_TTL_SECONDS,
                     failure_ttl=EXPORT_RQ_FAILURE_TTL_SECONDS,
                 )
@@ -477,14 +482,14 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
             queue_age = host.time.time() - float(
                 job.get("queue_entered_at") or job.get("started_at") or host.time.time()
             )
-            if status == "queued" and queue_age >= host.EXPORT_MAX_QUEUE_WAIT_SECONDS:
+            if status == "queued" and queue_age >= settings.EXPORT_MAX_QUEUE_WAIT_SECONDS:
                 job = host._set_export_job(
                     job_id,
                     "failed",
                     expected_status="queued",
                     error=(
                         f"Export could not start within "
-                        f"{max(1, host.math.ceil(host.EXPORT_MAX_QUEUE_WAIT_SECONDS / 60))} minutes. "
+                        f"{max(1, host.math.ceil(settings.EXPORT_MAX_QUEUE_WAIT_SECONDS / 60))} minutes. "
                         "Please retry. No credit was charged."
                     ),
                     failure_code="preparation_timeout",
@@ -578,7 +583,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
     def _export_queue_prediction(job_id: str, job: host.Dict[str, host.Any]) -> host.Dict[str, host.Any]:
         if str(job.get("status") or "").lower() != "queued" or host.Job is None:
             return {}
-        queue_name = str(job.get("queue_name") or host.EXPORT_QUEUE_NAME)
+        queue_name = str(job.get("queue_name") or settings.EXPORT_QUEUE_NAME)
         queue = host._export_queues.get(queue_name)
         if queue is None:
             return {}
@@ -776,7 +781,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
                     "renderer": capacity["renderer"],
                 },
                 retry=host.RQRetry(max=3, interval=[10, 30, 60]) if host.RQRetry else None,
-                ttl=host.EXPORT_MAX_QUEUE_WAIT_SECONDS,
+                ttl=settings.EXPORT_MAX_QUEUE_WAIT_SECONDS,
                 result_ttl=EXPORT_RQ_RESULT_TTL_SECONDS,
                 failure_ttl=EXPORT_RQ_FAILURE_TTL_SECONDS,
             )

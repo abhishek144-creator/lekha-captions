@@ -38,7 +38,7 @@ class ProductionBoundaryTests(unittest.TestCase):
         main._export_jobs.clear()
 
     def test_scale_to_zero_api_runs_no_background_tasks_and_flushes_request_events(self):
-        with (patch.object(main, "RUN_API_BACKGROUND_TASKS", False),
+        with (patch.object(main.settings, "RUN_API_BACKGROUND_TASKS", False),
               patch.object(main.asyncio, "create_task") as create_task):
             asyncio.run(main.startup_event())
         create_task.assert_not_called()
@@ -46,7 +46,7 @@ class ProductionBoundaryTests(unittest.TestCase):
         with main._telemetry_lock:
             main._telemetry_buffer.append(("analytics_events", {"event": "test"}))
         try:
-            with (patch.object(main, "RUN_API_BACKGROUND_TASKS", False),
+            with (patch.object(main.settings, "RUN_API_BACKGROUND_TASKS", False),
                   patch.object(main, "_flush_telemetry", return_value=1) as flush):
                 response = TestClient(main.app).get("/api/version")
             self.assertEqual(response.status_code, 200)
@@ -180,7 +180,7 @@ class ProductionBoundaryTests(unittest.TestCase):
         request = main.ExportRequest(file_id="123e4567-e89b-12d3-a456-426614174000",
                                      captions=[{"id": "1", "text": "hello", "start_time": 0, "end_time": 1}])
         from starlette.requests import Request
-        with (patch.object(main, "_IS_PRODUCTION", True), patch.object(main, "_export_queue", None),
+        with (patch.object(main.settings, "_IS_PRODUCTION", True), patch.object(main, "_export_queue", None),
               patch.object(main, "_assert_service_available"), patch.object(main, "_track_event"),
               patch.object(main, "_authenticate_media_request", return_value={"uid": "owner"}),
               patch.object(main, "_process_export_job_core", new_callable=AsyncMock) as render,
@@ -252,7 +252,7 @@ class ProductionBoundaryTests(unittest.TestCase):
             @staticmethod
             def hget(_key, field):
                 if field == "app_release":
-                    return main.APP_RELEASE
+                    return main.settings.APP_RELEASE
                 return None
 
         class Database:
@@ -262,7 +262,7 @@ class ProductionBoundaryTests(unittest.TestCase):
 
         worker = SimpleNamespace(
             key="worker:ready",
-            queue_names=[main.EXPORT_QUEUE_NAME, main.TRANSCRIPTION_QUEUE_NAME],
+            queue_names=[main.settings.EXPORT_QUEUE_NAME, main.settings.TRANSCRIPTION_QUEUE_NAME],
         )
         real_which = main.shutil.which
 
@@ -270,7 +270,7 @@ class ProductionBoundaryTests(unittest.TestCase):
             return None if binary == "node" else real_which(binary) or f"/usr/bin/{binary}"
 
         main._dependency_snapshot_cache.update({"checked_at": 0.0, "value": None})
-        with (patch.object(main, "DURABLE_QUEUE_ENABLED", True),
+        with (patch.object(main.settings, "DURABLE_QUEUE_ENABLED", True),
               patch.object(main, "_redis_client", Redis()),
               patch.object(main, "get_db", return_value=Database()),
               patch.object(main, "storage_backend_ready", return_value=True),
@@ -295,7 +295,7 @@ class ProductionBoundaryTests(unittest.TestCase):
         empty_queue = SimpleNamespace(count=0)
         main._dependency_snapshot_cache.update({"checked_at": 0.0, "value": None})
         with (
-            patch.object(main, "DURABLE_QUEUE_ENABLED", True),
+            patch.object(main.settings, "DURABLE_QUEUE_ENABLED", True),
             patch.object(main, "_redis_client", redis_client),
             patch.object(main, "_export_queue", empty_queue),
             patch.object(main, "_transcription_queue", empty_queue),
@@ -333,7 +333,7 @@ class ProductionBoundaryTests(unittest.TestCase):
             def limit(self, _): return self
             def stream(self): return iter([])
         db = SimpleNamespace(collection=lambda name: SimpleNamespace(document=lambda uid: Ref(name, uid)))
-        with (patch.object(main, "_IS_PRODUCTION", True), patch.object(main, "get_db", return_value=db),
+        with (patch.object(main.settings, "_IS_PRODUCTION", True), patch.object(main, "get_db", return_value=db),
               patch.object(main, "verify_token", return_value={"uid": "owner"}),
               patch.object(main, "read_draft", return_value={"revision": 0, "draft": None}),
               patch.object(main, "_assert_tenant_access"), patch.object(main, "_audit_action")):
@@ -405,7 +405,7 @@ class ProductionBoundaryTests(unittest.TestCase):
 
     def test_redis_outage_fails_closed_for_rate_admission(self):
         with (patch.object(main, "_redis_client", SimpleNamespace(eval=lambda *_: (_ for _ in ()).throw(ConnectionError()))),
-              patch.object(main, "_IS_PRODUCTION", True)):
+              patch.object(main.settings, "_IS_PRODUCTION", True)):
             with self.assertRaises(main.HTTPException) as error:
                 main._check_rate(main._process_rate, "u", 1)
         self.assertEqual(error.exception.status_code, 503)
@@ -435,7 +435,7 @@ class ProductionBoundaryTests(unittest.TestCase):
                 "slow-job",
                 "queued",
                 uid="owner",
-                queue_entered_at=time.time() - main.EXPORT_MAX_QUEUE_WAIT_SECONDS - 1,
+                queue_entered_at=time.time() - main.settings.EXPORT_MAX_QUEUE_WAIT_SECONDS - 1,
                 idempotency_key="owner:slow",
             )
             reconciled = main._reconcile_export_job("slow-job", job)
@@ -517,14 +517,14 @@ class ProductionBoundaryTests(unittest.TestCase):
             self.assertFalse(worker._worker_ready(connection))
 
     def test_liveness_is_independent_of_readiness(self):
-        with (patch.object(main, "_IS_PRODUCTION", True),
+        with (patch.object(main.settings, "_IS_PRODUCTION", True),
               patch.object(main, "_runtime_dependency_snapshot", return_value={"ready": False})):
             client = TestClient(main.app)
             self.assertEqual(client.get("/health").status_code, 200)
             self.assertEqual(client.get("/ready").status_code, 503)
 
     def test_slow_exports_do_not_remove_healthy_api_from_service(self):
-        with (patch.object(main, "_IS_PRODUCTION", True),
+        with (patch.object(main.settings, "_IS_PRODUCTION", True),
               patch.object(main, "_runtime_dependency_snapshot", return_value={"ready": True}),
               patch.object(main, "_build_slo_snapshot", return_value={"release_gate_passed": False})):
             self.assertEqual(TestClient(main.app).get("/ready").status_code, 200)
@@ -589,7 +589,7 @@ class ProductionBoundaryTests(unittest.TestCase):
         with patch.object(main.firestore, "transactional", new=lambda fn: fn):
             with self.assertRaises(main.HTTPException) as error:
                 main._grant_payment_transactionally(SimpleNamespace(transaction=lambda: object()), user, payment,
-                    "u", "starter", main.PLAN_PRICING["starter"], "p", "o", 29900, "INR", "test", "", order_created_at=100)
+                    "u", "starter", main.settings.PLAN_PRICING["starter"], "p", "o", 29900, "INR", "test", "", order_created_at=100)
         self.assertEqual(error.exception.status_code, 409)
 
     def test_refund_before_payment_record_requests_redelivery(self):
@@ -624,11 +624,11 @@ class ProductionBoundaryTests(unittest.TestCase):
             return run
         def grant(_):
             return main._grant_payment_transactionally(SimpleNamespace(transaction=Tx), Ref("user"), Ref("payment"),
-                "u", "starter", main.PLAN_PRICING["starter"], "p", "o", 29900, "INR", "test", "", order_created_at=200)
+                "u", "starter", main.settings.PLAN_PRICING["starter"], "p", "o", 29900, "INR", "test", "", order_created_at=200)
         with patch.object(main.firestore, "transactional", new=transactional), ThreadPoolExecutor(16) as pool:
             results = list(pool.map(grant, range(16)))
         self.assertEqual(sum(bool(result.get("duplicate")) for result in results), 15)
-        self.assertEqual(data["user"]["credits_remaining"], main.PLAN_PRICING["starter"]["credits"])
+        self.assertEqual(data["user"]["credits_remaining"], main.settings.PLAN_PRICING["starter"]["credits"])
 
     def test_concurrent_usage_cannot_spend_last_credit_twice(self):
         lock = threading.Lock()
@@ -655,7 +655,7 @@ class ProductionBoundaryTests(unittest.TestCase):
             except main.HTTPException:
                 return False
         with (patch.object(main.firestore, "transactional", new=transactional),
-              patch.object(main, "DISABLE_EXPORT_CREDIT_LIMIT", False), ThreadPoolExecutor(2) as pool):
+              patch.object(main.settings, "DISABLE_EXPORT_CREDIT_LIMIT", False), ThreadPoolExecutor(2) as pool):
             results = list(pool.map(consume, range(2)))
         self.assertEqual(sum(results), 1)
         self.assertEqual(data["user"]["credits_remaining"], 0)
@@ -667,7 +667,7 @@ class ProductionBoundaryTests(unittest.TestCase):
         db = SimpleNamespace(collection=lambda _: Ref())
         file_id = "123e4567-e89b-12d3-a456-426614174000"
         token = main._create_media_token({"kind": "upload", "file_id": file_id, "uid": "deleted", "exp": int(time.time()) + 60})
-        with (patch.object(main, "_IS_PRODUCTION", True), patch.object(main, "get_db", return_value=db),
+        with (patch.object(main.settings, "_IS_PRODUCTION", True), patch.object(main, "get_db", return_value=db),
               patch.object(main, "_safe_find_upload") as find):
             response = TestClient(main.app).get(f"/api/media/upload/{file_id}?token={token}")
         self.assertEqual(response.status_code, 409)
@@ -693,7 +693,7 @@ class ProductionBoundaryTests(unittest.TestCase):
             def document(self, _): return self
             def get(self, **_): return SimpleNamespace(exists=True)
         db = SimpleNamespace(collection=lambda _: Ref(), transaction=lambda: object())
-        with patch.object(main, "_IS_PRODUCTION", True), patch.object(main.firestore, "transactional", new=lambda fn: fn):
+        with patch.object(main.settings, "_IS_PRODUCTION", True), patch.object(main.firestore, "transactional", new=lambda fn: fn):
             with self.assertRaises(main.HTTPException) as error:
                 main._create_account_if_active(db, object(), "deleted", {})
         self.assertEqual(error.exception.status_code, 409)
@@ -703,12 +703,12 @@ class ProductionBoundaryTests(unittest.TestCase):
             def document(self, _): return self
             def get(self, **_): raise RuntimeError("firestore down")
         db = SimpleNamespace(collection=lambda _: Ref(), transaction=lambda: object())
-        with (patch.object(main, "_IS_PRODUCTION", True), patch.object(main, "AI_SYSTEM_DAILY_LIMIT", 10),
+        with (patch.object(main.settings, "_IS_PRODUCTION", True), patch.object(main.settings, "AI_SYSTEM_DAILY_LIMIT", 10),
               patch.object(main.firestore, "transactional", new=lambda fn: fn)):
             with self.assertRaises(main.HTTPException) as error:
                 main._reserve_system_ai_quota(db, "process")
         self.assertEqual(error.exception.status_code, 503)
-        with (patch.object(main, "_IS_PRODUCTION", False), patch.object(main, "AI_SYSTEM_DAILY_LIMIT", 10),
+        with (patch.object(main.settings, "_IS_PRODUCTION", False), patch.object(main.settings, "AI_SYSTEM_DAILY_LIMIT", 10),
               patch.object(main.firestore, "transactional", new=lambda fn: fn)):
             main._reserve_system_ai_quota(db, "process")
 

@@ -15,6 +15,11 @@ from types import ModuleType, SimpleNamespace
 
 from fastapi import APIRouter, HTTPException, Request, Response
 
+try:
+    from . import settings
+except ImportError:  # Direct execution from backend/ remains supported.
+    import settings
+
 
 def create_payments_router(host: ModuleType) -> SimpleNamespace:
     router = APIRouter()
@@ -24,7 +29,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
 
     @router.post("/api/create-order")
     def create_order(req: CreateOrderRequest, request: Request, response: Response):
-        if req.require_test_mode and not host.RAZORPAY_KEY_ID.startswith("rzp_test_"):
+        if req.require_test_mode and not settings.RAZORPAY_KEY_ID.startswith("rzp_test_"):
             raise HTTPException(409, "Payment test refused: test-mode credentials required")
         # Verify User
         decoded_token = host.verify_token(req.id_token)
@@ -37,8 +42,8 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
         host._assert_service_available("pause_payments")
         client_ip = host._client_rate_key(request)
         for rate_key in (f"payment:user:{uid}", f"payment:ip:{client_ip}"):
-            allowed, retry_after, remaining = host._check_rate(host._payment_rate, rate_key, host.PAYMENT_RATE_LIMIT)
-            host._apply_rate_headers(response, host.PAYMENT_RATE_LIMIT, remaining, retry_after)
+            allowed, retry_after, remaining = host._check_rate(host._payment_rate, rate_key, settings.PAYMENT_RATE_LIMIT)
+            host._apply_rate_headers(response, settings.PAYMENT_RATE_LIMIT, remaining, retry_after)
             if not allowed:
                 raise HTTPException(status_code=429, detail="Too many payment requests. Please wait before trying again.")
         pay_idem_key = host._require_payment_idempotency(uid, req.idempotency_key or request.headers.get("x-idempotency-key", ""), "create_order")
@@ -47,7 +52,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
             return {**cached_payment["payload"], "idempotent_replay": True}
         host._audit_action("create_order_attempt", uid, {"plan_id": req.plan_id, "currency": req.currency})
 
-        plan = host.PLAN_PRICING.get(req.plan_id)
+        plan = settings.PLAN_PRICING.get(req.plan_id)
         if not plan:
             raise HTTPException(status_code=400, detail=f"Unknown plan: {req.plan_id}")
         if plan.get("is_free"):
@@ -105,7 +110,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
                 host._release_topup_order_slot(topup_db, topup_user_ref, topup_reservation_id)
             host._payment_idem_delete(pay_idem_key)
             detail = "Payment service unavailable"
-            if host._IS_DEVELOPMENT and (not host.RAZORPAY_KEY_ID or not host.RAZORPAY_KEY_SECRET):
+            if settings._IS_DEVELOPMENT and (not settings.RAZORPAY_KEY_ID or not settings.RAZORPAY_KEY_SECRET):
                 detail = "Payment service is not configured. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET, then restart the backend."
             raise HTTPException(status_code=503, detail=detail)
 
@@ -139,7 +144,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
             host._json_log("error", "razorpay_order_create_failed", uid=uid, plan_id=req.plan_id, error=str(e))
             raise HTTPException(status_code=502, detail="Payment order could not be created. Please try again.") from e
 
-        payload = {"success": True, "order": order, "plan_id": req.plan_id, "key_id": host.RAZORPAY_KEY_ID}
+        payload = {"success": True, "order": order, "plan_id": req.plan_id, "key_id": settings.RAZORPAY_KEY_ID}
         host._payment_idem_set(pay_idem_key, {"status": "completed", "ts": time.time(), "payload": payload})
         return payload
 
@@ -156,8 +161,8 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
         host._assert_tenant_access(uid, decoded_token, req.org_id)
         client_ip = host._client_rate_key(request)
         for rate_key in (f"payment:user:{uid}", f"payment:ip:{client_ip}"):
-            allowed, retry_after, remaining = host._check_rate(host._payment_rate, rate_key, host.PAYMENT_RATE_LIMIT)
-            host._apply_rate_headers(response, host.PAYMENT_RATE_LIMIT, remaining, retry_after)
+            allowed, retry_after, remaining = host._check_rate(host._payment_rate, rate_key, settings.PAYMENT_RATE_LIMIT)
+            host._apply_rate_headers(response, settings.PAYMENT_RATE_LIMIT, remaining, retry_after)
             if not allowed:
                 raise HTTPException(status_code=429, detail="Too many payment requests. Please wait before trying again.")
         pay_idem_key = host._require_payment_idempotency(uid, req.idempotency_key or request.headers.get("x-idempotency-key", ""), "verify_payment")
@@ -178,7 +183,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
             raise HTTPException(status_code=400, detail="Payment verification failed")
         # Resolve plan from echoed plan_id, then prove the live Razorpay payment/order
         # actually match that plan before granting credits.
-        plan_config = host.PLAN_PRICING.get(req.plan_id) if req.plan_id else None
+        plan_config = settings.PLAN_PRICING.get(req.plan_id) if req.plan_id else None
         currency_paid = "INR"
         amount_paid_minor = plan_config.get("inr_paise", 0) if plan_config else 0
 
@@ -248,10 +253,10 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
 
         if not req.plan_id and order_plan_id:
             req.plan_id = order_plan_id
-            plan_config = host.PLAN_PRICING.get(req.plan_id)
+            plan_config = settings.PLAN_PRICING.get(req.plan_id)
         if not plan_config:
             req.plan_id = host._resolve_plan_from_amount_currency(int(amount_paid_minor or 0), currency_paid) or ""
-            plan_config = host.PLAN_PRICING.get(req.plan_id)
+            plan_config = settings.PLAN_PRICING.get(req.plan_id)
         if not plan_config:
             raise HTTPException(status_code=400, detail="Unable to resolve purchased plan")
 
@@ -279,7 +284,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
 
     @router.post("/api/razorpay-webhook")
     async def razorpay_webhook(request: Request):
-        if not host.RAZORPAY_WEBHOOK_SECRET:
+        if not settings.RAZORPAY_WEBHOOK_SECRET:
             raise HTTPException(status_code=503, detail="Webhook secret not configured")
 
         declared_length = int(request.headers.get("content-length", "0") or 0)
@@ -295,7 +300,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
 
     def _handle_razorpay_webhook(body_bytes: bytes, signature: str):
         expected = hmac.new(
-            host.RAZORPAY_WEBHOOK_SECRET.encode("utf-8"),
+            settings.RAZORPAY_WEBHOOK_SECRET.encode("utf-8"),
             body_bytes,
             hashlib.sha256
         ).hexdigest()

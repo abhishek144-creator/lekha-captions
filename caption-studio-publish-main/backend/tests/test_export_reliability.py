@@ -83,7 +83,7 @@ class ExportReliabilityTests(unittest.TestCase):
             return await asyncio.gather(*submissions)
 
         with (
-            patch.object(main, "_IS_PRODUCTION", True),
+            patch.object(main.settings, "_IS_PRODUCTION", True),
             patch.object(main, "_export_queue", SimpleNamespace()),
             patch.object(main, "_authenticate_media_request", side_effect=authenticate),
             patch.object(main, "_assert_service_available"),
@@ -132,7 +132,7 @@ class ExportReliabilityTests(unittest.TestCase):
                     for patcher in (
                         patch.object(main, "get_db", return_value=database),
                         patch.object(main.firestore, "transactional", lambda fn: fn),
-                        patch.object(main, "DISABLE_EXPORT_CREDIT_LIMIT", False),
+                        patch.object(main.settings, "DISABLE_EXPORT_CREDIT_LIMIT", False),
                         patch.object(main, "_assert_account_not_deleting"),
                         patch.object(main, "_mark_export_processing", return_value=(time.time(), time.time())),
                         patch.object(main, "_set_export_job", side_effect=set_job),
@@ -141,7 +141,7 @@ class ExportReliabilityTests(unittest.TestCase):
                         patch.object(main, "_probe_media", return_value={"format": {"duration": 12}, "streams": [{"codec_type": "video", "width": 720, "height": 1280}]}),
                         patch.object(main, "_source_media_identity", return_value="media-identity"),
                         patch.object(main, "render_cache_eligible", return_value=False),
-                        patch.object(main, "EXPORT_DIR", directory), patch.object(main, "RENDER_CACHE_DIR", directory),
+                        patch.object(main.settings, "EXPORT_DIR", directory), patch.object(main.settings, "RENDER_CACHE_DIR", directory),
                         patch.object(main.processor, "burn_only", render),
                         patch.object(main, "upload_to_firebase_storage", return_value="https://storage/private"),
                         patch.object(main, "_write_last_export_request_debug"),
@@ -190,7 +190,7 @@ class ExportReliabilityTests(unittest.TestCase):
             patch.dict(os.environ, {"WORKER_LAUNCH_JOBS": '{"caption_export_jobs":"lekha-render"}'}),
             patch.object(worker_launcher, "_default_launcher", side_effect=lambda name, slot: woken.append(name)),
         ):
-            self.assertGreaterEqual(main.EXPORT_MAX_QUEUE_WAIT_SECONDS, 1800)
+            self.assertGreaterEqual(main.settings.EXPORT_MAX_QUEUE_WAIT_SECONDS, 1800)
             self.assertEqual(create_export_router(main)._reconcile_export_job("accepted-job", job)["status"], "queued")
             railway_cron.kick_backlogged_workers(connection, ["caption_export_jobs"])
         self.assertEqual(woken, ["lekha-render"])
@@ -296,10 +296,10 @@ class BatchIdempotencyTests(unittest.TestCase):
         self.enqueued = self.stack.enter_context(patch.object(main, "_enqueue_export_job"))
         for name, value in {
             "_redis_client": self.redis,
-            "_IS_PRODUCTION": True,
             "_export_queue": SimpleNamespace(),
         }.items():
             self.stack.enter_context(patch.object(main, name, value))
+        self.stack.enter_context(patch.object(main.settings, "_IS_PRODUCTION", True))
         for name, value in {
             "_authenticate_media_request": {"uid": "batch-owner"},
             "_assert_service_available": None,
