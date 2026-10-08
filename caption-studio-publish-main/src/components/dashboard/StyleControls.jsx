@@ -487,6 +487,8 @@ export default function StyleControls({
                 <Button
                   variant="outline"
                   role="combobox"
+                  aria-label={`Font family: ${getCurrentValue('font_family', 'Inter')}`}
+                  aria-expanded={fontPopoverOpen}
                   className="w-full justify-between rounded-md border-[#30313a] bg-[#17171a] px-3 text-white font-normal transition-all hover:bg-[#1d1d21] hover:text-white active:bg-[#202024] h-9"
                   style={{ fontFamily: getCurrentValue('font_family', 'Inter') }}
                 >
@@ -582,6 +584,7 @@ export default function StyleControls({
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-semibold tabular-nums text-slate-100">{getCurrentValue('font_size', 18)}px</span>
                 <Button
+                  aria-label="Reset font size"
                   variant="ghost"
                   size="icon"
                   onClick={() => updateStyle('font_size', 18)}
@@ -592,6 +595,7 @@ export default function StyleControls({
               </div>
             </div>
             <Slider
+              aria-label="Font size"
               value={[getCurrentValue('font_size', 18)]}
               onValueChange={([value]) => updateStyle('font_size', value, true)}
               onPointerDown={() => addToHistory && addToHistory()}
@@ -610,6 +614,7 @@ export default function StyleControls({
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-semibold tabular-nums text-slate-100">{getCurrentValue('line_spacing', 1.4)}</span>
                 <Button
+                  aria-label="Reset line spacing"
                   variant="ghost"
                   size="icon"
                   onClick={() => updateStyle('line_spacing', 1.4)}
@@ -620,6 +625,7 @@ export default function StyleControls({
               </div>
             </div>
             <Slider
+              aria-label="Line spacing"
               value={[getCurrentValue('line_spacing', 1.4)]}
               onValueChange={([value]) => updateStyle('line_spacing', value, true)}
               onPointerDown={() => addToHistory && addToHistory()}
@@ -643,7 +649,7 @@ export default function StyleControls({
                 if (!selectedTextElement) updateStyle('is_bold', parseInt(weight) >= 700);
               }}
             >
-              <SelectTrigger className="bg-zinc-900 border-white/10 text-white [&>span]:text-white">
+              <SelectTrigger aria-label="Font style" className="bg-zinc-900 border-white/10 text-white [&>span]:text-white">
                 <SelectValue placeholder="Select style" />
               </SelectTrigger>
               <SelectContent className="bg-zinc-900 border-white/10 max-h-80">
@@ -666,6 +672,7 @@ export default function StyleControls({
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-semibold tabular-nums text-slate-100">{getCurrentValue('letter_spacing', 0)}px</span>
                 <Button
+                  aria-label="Reset letter spacing"
                   variant="ghost"
                   size="icon"
                   onClick={() => updateStyle('letter_spacing', 0)}
@@ -676,6 +683,7 @@ export default function StyleControls({
               </div>
             </div>
             <Slider
+              aria-label="Letter spacing"
               value={[getCurrentValue('letter_spacing', 0)]}
               onValueChange={([value]) => updateStyle('letter_spacing', value, true)}
               onPointerDown={() => addToHistory && addToHistory()}
@@ -695,6 +703,7 @@ export default function StyleControls({
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] font-semibold tabular-nums text-slate-100">{captionStyle.word_spacing ?? 1}</span>
                   <Button
+                    aria-label="Reset word spacing"
                     variant="ghost"
                     size="icon"
                     onClick={() => updateStyle('word_spacing', 1)}
@@ -705,6 +714,7 @@ export default function StyleControls({
                 </div>
               </div>
               <Slider
+                aria-label="Word spacing"
                 value={[captionStyle.word_spacing ?? 1]}
                 onValueChange={([value]) => updateStyle('word_spacing', value, true)}
                 onPointerDown={() => addToHistory && addToHistory()}
@@ -729,6 +739,7 @@ export default function StyleControls({
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-semibold tabular-nums text-slate-100">{selectedTextElement ? Math.round(selectedTextElement.customStyle?.top ?? 50) : (captionStyle.position_y ?? 75)}%</span>
                 <Button
+                  aria-label="Reset vertical position"
                   variant="ghost"
                   size="icon"
                   onClick={() => updateStyle(selectedTextElement ? 'top' : 'position_y', selectedTextElement ? 50 : 75)}
@@ -739,6 +750,7 @@ export default function StyleControls({
               </div>
             </div>
             <Slider
+              aria-label="Vertical position"
               value={[selectedTextElement ? (selectedTextElement.customStyle?.top ?? 50) : (captionStyle.position_y ?? 75)]}
               onValueChange={([value]) => updateStyle(selectedTextElement ? 'top' : 'position_y', value, true)}
               onPointerDown={() => addToHistory && addToHistory()}
@@ -757,6 +769,7 @@ export default function StyleControls({
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-semibold tabular-nums text-slate-100">{selectedTextElement ? Math.round(selectedTextElement.customStyle?.left ?? 50) : (captionStyle.position_x ?? 50)}%</span>
                 <Button
+                  aria-label="Reset horizontal position"
                   variant="ghost"
                   size="icon"
                   onClick={() => updateStyle(selectedTextElement ? 'left' : 'position_x', 50)}
@@ -767,6 +780,7 @@ export default function StyleControls({
               </div>
             </div>
             <Slider
+              aria-label="Horizontal position"
               value={[selectedTextElement ? (selectedTextElement.customStyle?.left ?? 50) : (captionStyle.position_x ?? 50)]}
               onValueChange={([value]) => updateStyle(selectedTextElement ? 'left' : 'position_x', value, true)}
               onPointerDown={() => addToHistory && addToHistory()}
@@ -787,6 +801,7 @@ export default function StyleControls({
             <Label className="mb-1 block text-[9px] font-medium text-slate-400">Text Alignment</Label>
             <div className="bg-zinc-900 border border-white/5 rounded-lg p-1 flex gap-1">
               <button
+                aria-label="Align left"
                 onClick={() => { updateStyle('text_align', 'left'); if (!selectedTextElement) updateStyle('position_x', 10); }}
                 className={`flex-1 flex items-center justify-center py-1.5 rounded-md transition-all ${getCurrentValue('text_align', 'center') === 'left'
                   ? "bg-white text-black shadow-sm"
@@ -796,6 +811,7 @@ export default function StyleControls({
                 <AlignLeft className="w-4 h-4" />
               </button>
               <button
+                aria-label="Align center"
                 onClick={() => { updateStyle('text_align', 'center'); if (!selectedTextElement) updateStyle('position_x', 50); }}
                 className={`flex-1 flex items-center justify-center py-1.5 rounded-md transition-all ${getCurrentValue('text_align', 'center') === 'center'
                   ? "bg-white text-black shadow-sm"
@@ -805,6 +821,7 @@ export default function StyleControls({
                 <AlignCenter className="w-4 h-4" />
               </button>
               <button
+                aria-label="Align right"
                 onClick={() => { updateStyle('text_align', 'right'); if (!selectedTextElement) updateStyle('position_x', 90); }}
                 className={`flex-1 flex items-center justify-center py-1.5 rounded-md transition-all ${getCurrentValue('text_align', 'center') === 'right'
                   ? "bg-white text-black shadow-sm"
@@ -826,7 +843,7 @@ export default function StyleControls({
                   updateStyle('show_inactive', value === 'sentence')
                 }}
               >
-                <SelectTrigger className="bg-zinc-900 border-white/10 text-white h-9 [&>span]:text-white">
+                <SelectTrigger aria-label="Display mode" className="bg-zinc-900 border-white/10 text-white h-9 [&>span]:text-white">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-zinc-900 border-white/10">
@@ -916,6 +933,7 @@ export default function StyleControls({
                   </button>
                   {presetColors.slice(0, 6).map(color => (
                     <button
+                      aria-label={`Text color ${color}`}
                       key={color}
                       onClick={() => {
                         updateStyle('text_color', color);
@@ -932,6 +950,7 @@ export default function StyleControls({
                 <div className="grid grid-cols-7 gap-1.5">
                   {presetColors.slice(6, 9).map(color => (
                     <button
+                      aria-label={`Text color ${color}`}
                       key={color}
                       onClick={() => {
                         updateStyle('text_color', color);
@@ -953,6 +972,7 @@ export default function StyleControls({
             <div className="flex items-center gap-2 p-2 mt-3 rounded-lg bg-white/[0.02] border border-white/5">
               <input
                 type="color"
+                aria-label="Custom text color"
                 value={captionStyle.text_color || '#ffffff'}
                 onChange={(e) => {
                   updateStyle('text_color', e.target.value);
@@ -990,6 +1010,7 @@ export default function StyleControls({
                     </button>
                     {presetGradients.slice(0, 3).map(gradient => (
                       <button
+                        aria-label={`${gradient.name} text gradient`}
                         key={gradient.value}
                         onClick={() => {
                           updateStyle('text_gradient', gradient.value);
@@ -1006,6 +1027,7 @@ export default function StyleControls({
                   <div className="grid grid-cols-4 gap-1.5">
                     {presetGradients.slice(3, 6).map(gradient => (
                       <button
+                        aria-label={`${gradient.name} text gradient`}
                         key={gradient.value}
                         onClick={() => {
                           updateStyle('text_gradient', gradient.value);
@@ -1026,6 +1048,7 @@ export default function StyleControls({
                   <Plus className="w-5 h-5 text-gray-300" />
                   <input
                     type="color"
+                    aria-label="Text gradient start color"
                     value={customTextColor1}
                     onChange={(e) => {
                       setCustomTextColor1(e.target.value);
@@ -1035,6 +1058,7 @@ export default function StyleControls({
                   />
                   <input
                     type="color"
+                    aria-label="Text gradient end color"
                     value={customTextColor2}
                     onChange={(e) => {
                       setCustomTextColor2(e.target.value);
@@ -1079,6 +1103,7 @@ export default function StyleControls({
                   </button>
                   {['#fef08a', '#22c55e', '#3b82f6', '#F5A623', '#ec4899', '#ff6b35'].map(color => (
                     <button
+                      aria-label={`Highlight color ${color}`}
                       key={color}
                       onClick={() => {
                         updateStyle('highlight_color', color);
@@ -1095,6 +1120,7 @@ export default function StyleControls({
                 <div className="grid grid-cols-7 gap-1.5">
                   {['#fb923c', '#E91E63'].map(color => (
                     <button
+                      aria-label={`Highlight color ${color}`}
                       key={color}
                       onClick={() => {
                         updateStyle('highlight_color', color);
@@ -1116,6 +1142,7 @@ export default function StyleControls({
             <div className="flex items-center gap-2 p-2 mt-3 rounded-lg bg-white/[0.02] border border-white/5">
               <input
                 type="color"
+                aria-label="Custom highlight color"
                 value={captionStyle.highlight_color || '#facc15'}
                 onChange={(e) => {
                   updateStyle('highlight_color', e.target.value);
@@ -1153,6 +1180,7 @@ export default function StyleControls({
                     </button>
                     {presetGradients.slice(0, 3).map(gradient => (
                       <button
+                        aria-label={`${gradient.name} highlight gradient`}
                         key={gradient.value}
                         onClick={() => {
                           updateStyle('highlight_gradient', gradient.value);
@@ -1169,6 +1197,7 @@ export default function StyleControls({
                   <div className="grid grid-cols-4 gap-1.5">
                     {presetGradients.slice(3, 6).map(gradient => (
                       <button
+                        aria-label={`${gradient.name} highlight gradient`}
                         key={gradient.value}
                         onClick={() => {
                           updateStyle('highlight_gradient', gradient.value);
@@ -1189,6 +1218,7 @@ export default function StyleControls({
                   <Plus className="w-5 h-5 text-gray-300" />
                   <input
                     type="color"
+                    aria-label="Highlight gradient start color"
                     value={customHighlightColor1}
                     onChange={(e) => {
                       setCustomHighlightColor1(e.target.value);
@@ -1198,6 +1228,7 @@ export default function StyleControls({
                   />
                   <input
                     type="color"
+                    aria-label="Highlight gradient end color"
                     value={customHighlightColor2}
                     onChange={(e) => {
                       setCustomHighlightColor2(e.target.value);
@@ -1233,6 +1264,7 @@ export default function StyleControls({
                 <Label className="mb-1 block text-[9px] font-medium text-slate-400">Background Color</Label>
                 <input
                   type="color"
+                  aria-label="Background color"
                   value={selectedTextElement ? (selectedTextElement.customStyle?.backgroundColor || '#000000') : (captionStyle.background_color || '#000000')}
                   onChange={(e) => {
                     if (selectedTextElement && setCaptions) {
@@ -1252,6 +1284,7 @@ export default function StyleControls({
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] font-semibold tabular-nums text-slate-100">{Math.round((getCurrentValue('background_opacity', 0.7)) * 100)}%</span>
                     <Button
+                      aria-label="Reset background opacity"
                       variant="ghost"
                       size="icon"
                       onClick={() => updateStyle('background_opacity', 0.7)}
@@ -1262,6 +1295,7 @@ export default function StyleControls({
                   </div>
                 </div>
                 <Slider
+                  aria-label="Background opacity"
                   value={[(getCurrentValue('background_opacity', 0.7)) * 100]}
                   onValueChange={([value]) => updateStyle('background_opacity', value / 100, true)}
                   onPointerDown={() => addToHistory && addToHistory()}
@@ -1280,6 +1314,7 @@ export default function StyleControls({
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] font-semibold tabular-nums text-slate-100">{selectedTextElement ? (selectedTextElement.customStyle?.padding ?? 8) : (captionStyle.background_padding ?? 3)}px</span>
                       <Button
+                        aria-label="Reset background padding"
                         variant="ghost"
                         size="icon"
                         onClick={() => {
@@ -1296,6 +1331,7 @@ export default function StyleControls({
                     </div>
                   </div>
                   <Slider
+                    aria-label="Background padding"
                     value={[selectedTextElement ? (selectedTextElement.customStyle?.padding ?? 8) : (captionStyle.background_padding ?? 3)]}
                     onValueChange={([value]) => {
                       if (selectedTextElement && setCaptions) {
@@ -1318,6 +1354,7 @@ export default function StyleControls({
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] font-semibold tabular-nums text-slate-100">{((getCurrentValue('background_h_multiplier', 1.05) - 1) * 100).toFixed(2)}px</span>
                       <Button
+                        aria-label="Reset background width"
                         variant="ghost"
                         size="icon"
                         onClick={() => updateStyle('background_h_multiplier', 1.05)}
@@ -1328,6 +1365,7 @@ export default function StyleControls({
                     </div>
                   </div>
                   <Slider
+                    aria-label="Background width"
                     value={[Math.round(getCurrentValue('background_h_multiplier', 1.05) * 100)]}
                     onValueChange={([value]) => updateStyle('background_h_multiplier', value / 100, true)}
                     onPointerDown={() => addToHistory && addToHistory()}
@@ -1423,7 +1461,7 @@ export default function StyleControls({
                           <Label className="text-xs text-gray-400">Thickness</Label>
                           <span className="text-[10px] font-semibold tabular-nums text-slate-100">{getCurrentValue('effect_thickness', 50)}</span>
                         </div>
-                        <Slider value={[getCurrentValue('effect_thickness', 50)]} onValueChange={([val]) => updateStyle('effect_thickness', val, true)} onPointerDown={() => addToHistory && addToHistory()} max={100} step={1} className="cursor-pointer" {...styleTabSliderProps} />
+                        <Slider aria-label="Effect thickness" value={[getCurrentValue('effect_thickness', 50)]} onValueChange={([val]) => updateStyle('effect_thickness', val, true)} onPointerDown={() => addToHistory && addToHistory()} max={100} step={1} className="cursor-pointer" {...styleTabSliderProps} />
                       </div>
                     )}
                     {['shadow', 'splice', 'echo', 'lift'].includes(getCurrentValue('effect_type')) && (
@@ -1433,14 +1471,14 @@ export default function StyleControls({
                             <Label className="text-xs text-gray-400">Offset</Label>
                             <span className="text-[10px] font-semibold tabular-nums text-slate-100">{getCurrentValue('effect_offset', 50)}</span>
                           </div>
-                          <Slider value={[getCurrentValue('effect_offset', 50)]} onValueChange={([val]) => updateStyle('effect_offset', val, true)} onPointerDown={() => addToHistory && addToHistory()} max={100} step={1} className="cursor-pointer" {...styleTabSliderProps} />
+                          <Slider aria-label="Effect offset" value={[getCurrentValue('effect_offset', 50)]} onValueChange={([val]) => updateStyle('effect_offset', val, true)} onPointerDown={() => addToHistory && addToHistory()} max={100} step={1} className="cursor-pointer" {...styleTabSliderProps} />
                         </div>
                         <div>
                           <div className="flex items-center justify-between mb-1">
                             <Label className="text-xs text-gray-400">Direction</Label>
                             <span className="text-[10px] font-semibold tabular-nums text-slate-100">{getCurrentValue('effect_direction', -45)}°</span>
                           </div>
-                          <Slider value={[getCurrentValue('effect_direction', -45)]} onValueChange={([val]) => updateStyle('effect_direction', val, true)} onPointerDown={() => addToHistory && addToHistory()} min={-180} max={180} step={1} className="cursor-pointer" {...styleTabSliderProps} />
+                          <Slider aria-label="Effect direction" value={[getCurrentValue('effect_direction', -45)]} onValueChange={([val]) => updateStyle('effect_direction', val, true)} onPointerDown={() => addToHistory && addToHistory()} min={-180} max={180} step={1} className="cursor-pointer" {...styleTabSliderProps} />
                         </div>
                       </>
                     )}
@@ -1450,7 +1488,7 @@ export default function StyleControls({
                           <Label className="text-xs text-gray-400">Blur</Label>
                           <span className="text-[10px] font-semibold tabular-nums text-slate-100">{getCurrentValue('effect_blur', 50)}</span>
                         </div>
-                        <Slider value={[getCurrentValue('effect_blur', 50)]} onValueChange={([val]) => updateStyle('effect_blur', val, true)} onPointerDown={() => addToHistory && addToHistory()} max={100} step={1} className="cursor-pointer" {...styleTabSliderProps} />
+                        <Slider aria-label="Effect blur" value={[getCurrentValue('effect_blur', 50)]} onValueChange={([val]) => updateStyle('effect_blur', val, true)} onPointerDown={() => addToHistory && addToHistory()} max={100} step={1} className="cursor-pointer" {...styleTabSliderProps} />
                       </div>
                     )}
                     {['shadow', 'echo'].includes(getCurrentValue('effect_type')) && (
@@ -1459,7 +1497,7 @@ export default function StyleControls({
                           <Label className="text-xs text-gray-400">Transparency</Label>
                           <span className="text-[10px] font-semibold tabular-nums text-slate-100">{getCurrentValue('effect_transparency', 40)}</span>
                         </div>
-                        <Slider value={[getCurrentValue('effect_transparency', 40)]} onValueChange={([val]) => updateStyle('effect_transparency', val, true)} onPointerDown={() => addToHistory && addToHistory()} max={100} step={1} className="cursor-pointer" {...styleTabSliderProps} />
+                        <Slider aria-label="Effect transparency" value={[getCurrentValue('effect_transparency', 40)]} onValueChange={([val]) => updateStyle('effect_transparency', val, true)} onPointerDown={() => addToHistory && addToHistory()} max={100} step={1} className="cursor-pointer" {...styleTabSliderProps} />
                       </div>
                     )}
                     {['neon'].includes(getCurrentValue('effect_type')) && (
@@ -1468,13 +1506,13 @@ export default function StyleControls({
                           <Label className="text-xs text-gray-400">Intensity</Label>
                           <span className="text-[10px] font-semibold tabular-nums text-slate-100">{getCurrentValue('effect_intensity', 50)}</span>
                         </div>
-                        <Slider value={[getCurrentValue('effect_intensity', 50)]} onValueChange={([val]) => updateStyle('effect_intensity', val, true)} onPointerDown={() => addToHistory && addToHistory()} max={100} step={1} className="cursor-pointer" {...styleTabSliderProps} />
+                        <Slider aria-label="Effect intensity" value={[getCurrentValue('effect_intensity', 50)]} onValueChange={([val]) => updateStyle('effect_intensity', val, true)} onPointerDown={() => addToHistory && addToHistory()} max={100} step={1} className="cursor-pointer" {...styleTabSliderProps} />
                       </div>
                     )}
                     {!['lift'].includes(getCurrentValue('effect_type')) && (
                       <div>
                         <Label className="text-xs text-gray-400 mb-1 block">Color</Label>
-                        <input type="color" value={getCurrentValue('effect_color', '#000000')} onChange={(e) => updateStyle('effect_color', e.target.value)} className="w-10 h-8 rounded cursor-pointer border border-white/10 bg-transparent" />
+                        <input type="color" aria-label="Effect color" value={getCurrentValue('effect_color', '#000000')} onChange={(e) => updateStyle('effect_color', e.target.value)} className="w-10 h-8 rounded cursor-pointer border border-white/10 bg-transparent" />
                       </div>
                     )}
                   </div>

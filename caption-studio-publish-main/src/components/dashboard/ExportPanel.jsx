@@ -46,6 +46,7 @@ import {
 } from './templateMotionConfig';
 
 import { Progress } from "@/components/ui/progress";
+import { getDailyLimitMessage, getPlanLimitErrorKind } from './exportPlanLimits';
 
 // TESTING ONLY: unlock the export UI for an explicitly configured local test.
 // Limits are on by default in every build; a production build cannot bypass
@@ -159,14 +160,6 @@ function isRecreatedAdvancedTemplateId(templateId) {
 // Backend signals credit/plan problems as HTTP 403 with a marker prefix in `detail`.
 // apiRequest throws an ApiError for non-2xx responses, so these must be detected on
 // the thrown error (error.data.detail / error.message), not on a returned payload.
-function getPlanLimitErrorKind(errorOrDetail) {
-  const detail = typeof errorOrDetail === 'string'
-    ? errorOrDetail
-    : String(errorOrDetail?.data?.detail || errorOrDetail?.message || '');
-  if (detail.includes('PLAN_EXPIRED')) return 'expired';
-  if (detail.includes('UPGRADE_REQUIRED')) return 'upgrade';
-  return null;
-}
 
 // Simple queue system to prevent server overload
 const exportQueue = {
@@ -451,7 +444,17 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
     ].includes(normalizedTier);
   })();
 
-  const handlePlanLimitError = (kind) => {
+  const handlePlanLimitError = (kind, errorOrDetail) => {
+    if (kind === 'daily-limit') {
+      // Not a failure and nothing for support to fix: the quota resets on its own.
+      const limit = getDailyLimitMessage(errorOrDetail);
+      toast({
+        title: 'Daily export limit reached',
+        description: `${limit || 'Your plan’s daily export limit is used up.'} No credit was charged. You can export again once your oldest export today is 24 hours old, or upgrade for a higher daily limit.`,
+        duration: 15000,
+      });
+      return;
+    }
     if (kind === 'expired') {
       toast({
         variant: 'destructive',
@@ -961,7 +964,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       if (!result.success) {
         const planKind = getPlanLimitErrorKind(result.detail || result.error || '');
         if (planKind) {
-          handlePlanLimitError(planKind);
+          handlePlanLimitError(planKind, result.detail || result.error || '');
           return;
         }
         throw new Error(result.error || 'Export failed');
@@ -1023,7 +1026,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       // surfaces as a thrown ApiError — route it to the upgrade flow instead of a
       // generic failure toast.
       if (planKind) {
-        handlePlanLimitError(planKind);
+        handlePlanLimitError(planKind, error);
         return;
       }
       if (error?.exportStatus === 'failed') {

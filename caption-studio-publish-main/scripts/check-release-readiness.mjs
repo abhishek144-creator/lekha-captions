@@ -3,6 +3,9 @@ import path from "path"
 import { createHash } from "crypto"
 import { execFileSync } from "child_process"
 import { readBackendApiSource } from "./backend-api-source.mjs"
+import { readDashboardSource } from "./editor-source.mjs"
+import { readVideoPlayerSource } from "./video-player-source.mjs"
+import { pathToFileURL } from "url"
 
 const root = process.cwd()
 const checks = []
@@ -299,7 +302,7 @@ const rendererBenchmarkCore = readText("backend/rendering/renderer_benchmark.py"
 const costAnalyzer = readText("scripts/analyze_export_observations.py")
 const firebaseHostingBuild = readText("deploy/gcp/firebase-hosting/cloudbuild.yaml")
 const videoPlayerCore = readText("src/components/dashboard/VideoPlayer.jsx")
-const videoPlayer = videoPlayerCore + "\n" + readText("src/components/dashboard/videoPlayerTemplateRendering.jsx")
+const videoPlayer = readVideoPlayerSource(pathToFileURL(`${root}/`))
 const videoPlayerWordEditing = readText("src/components/dashboard/videoPlayerWordEditing.js")
 const adminOps = readText("src/pages/AdminOps.jsx")
 assertIncludes("upload CORS includes the editor origin", terraformVariables, '"https://app.lekhacaptions.com"')
@@ -462,7 +465,7 @@ assertIncludes("uploads use signed media URLs", backendMain, "def _signed_upload
 
 const homePage = readText("src/pages/Home.jsx")
 const homeV2Page = readText("src/pages/HomeV2.jsx")
-const dashboardPage = readText("src/pages/Dashboard.jsx")
+const dashboardPage = readDashboardSource(root)
 const errorBoundary = readText("src/components/ErrorBoundary.jsx")
 const frontendMonitoring = readText("src/lib/frontendMonitoring.js")
 const toastComponent = readText("src/components/ui/toast.jsx")

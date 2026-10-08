@@ -1,14 +1,15 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Play, Pause, Volume2, VolumeX, X, Maximize2, Minimize2, ZoomIn, ZoomOut, RotateCcw, Grid2X2, Move, RotateCw, Trash2 } from 'lucide-react';
-import { Slider } from '@/components/ui/slider';
-import { Button } from '@/components/ui/button';
+import { Play, X, Move, RotateCw, Trash2 } from 'lucide-react';
+import CanvasToolRail from './CanvasToolRail';
+import PlaybackControls from './PlaybackControls';
+import PreviewScrubber from './PreviewScrubber';
+import VideoPlayerKeyframes from './VideoPlayerKeyframes';
 import { resolveScriptFont, loadGoogleFont } from './fontUtils';
 import { buildEmotionalCaptionPlan } from './emotionalTemplateUtils';
 import {
   ADVANCED_TEMPLATE_EMPHASIS_COLORS,
   getOriginalTemplateBlockType,
-  normalizeTemplatePhaseIndex,
 } from './templateMotionConfig';
 
 
@@ -28,7 +29,6 @@ import {
   APPLIED_BASIC_TEMPLATE_FONT_SCALE,
   normalizeAppliedBasicTemplateFontSize,
 } from './basicTemplateInline.js';
-import { resolveCptWordSnap } from './cptSmartGuides.js';
 import {
   advanceCaptionWordRevealIndex,
   getCaptionWordRevealIndex,
@@ -51,7 +51,6 @@ import {
   getBasicTemplateWordClassName,
   scaleTemplateFontSize,
   splitWordsIntoIndexedLines,
-  resolveImpWordIndicesForWords,
   getSidebarTemplateLineCount,
   getSidebarTemplateMotion,
   resolveAdvancedTemplateEmphasisColor,
@@ -63,10 +62,8 @@ import {
   AppliedSidebarTemplateStyles,
   AppliedBasicTemplateMarkup,
   AppliedSidebarTemplateSourceRenderer,
-  getAppliedAdvancedTemplateImpClass,
   AppliedAdvancedTemplateCaption,
   MemoizedVideo,
-  formatTime,
   getAnimationStyle,
   getTextElementDisplayMetrics,
   getTextElementEffectCSS,
@@ -867,199 +864,6 @@ export default function VideoPlayer({
     const revealTimes = getCaptionWordRevealTimes(caption, wordCount);
     const revealIndex = Math.max(0, Math.min(wordCount - 1, cptRevealIndexes[caption.id]));
     return (revealTimes[revealIndex] ?? currentTime) + 0.00001;
-  };
-
-  const renderEditableAdvancedTemplateCaption = (caption, blockIndex = 0) => {
-    const words = caption.text.split(' ').filter(Boolean);
-    const wordCount = words.length;
-    const currentIdx = getCaptionCurrentWordIndex(caption, wordCount);
-    const templateId = getCaptionTemplateId(caption, captionStyle);
-    const normalizedBlockIndex = normalizeTemplatePhaseIndex(templateId, blockIndex);
-    const blockType = getOriginalTemplateBlockType(templateId, normalizedBlockIndex);
-    const blockClass = `${templateId}-b${normalizedBlockIndex}`;
-    const isWbwBlock = blockType.startsWith('wbw-');
-    const variantClass = isWbwBlock ? blockType : '';
-    const templateMarkup = caption?.applied_template_style?.template_markup
-      || caption?.template_markup
-      || captionStyle?.template_markup
-      || '';
-    const templateImpClass = getAppliedAdvancedTemplateImpClass(templateId, normalizedBlockIndex, templateMarkup);
-    const templateImpWordIndex = Number(emotionalCaptionPlan.get(caption?.id)?.impWordIndex ?? caption?.imp_word_index ?? -1);
-    const templateImpWordIndices = resolveImpWordIndicesForWords(
-      words,
-      templateImpWordIndex,
-      emotionalCaptionPlan.get(caption?.id)?.impWordIndices || caption?.imp_word_indices || [],
-    );
-    const isT17LetterSnapBlock = templateId === 't17' && normalizedBlockIndex === 1;
-    const templateFitClassName = isT17LetterSnapBlock
-      ? 'snap-txt'
-      : isWbwBlock
-        ? `${variantClass} lekha-template-fit`
-        : 'lekha-template-fit';
-    const templateFitStyle = isT17LetterSnapBlock ? {
-      opacity: 1,
-      filter: 'none',
-      transform: 'none',
-      letterSpacing: '0.04em',
-      display: 'inline-block',
-      color: '#ff3d71',
-      WebkitTextFillColor: '#ff3d71',
-      textShadow: '0 1px 8px rgba(0,0,0,0.82), 0 0 2px rgba(0,0,0,0.92), 0 0 16px rgba(255,61,113,0.22)',
-      animation: 'none',
-      transition: 'none',
-    } : undefined;
-
-    const renderEditableTemplateWord = (word, wordIndex, localIndex, localLength, options = {}) => {
-      if (shouldRevealSequentially(caption) && wordIndex > currentIdx) return null;
-
-      const styleKey = `${caption.id}-${wordIndex}`;
-      const ws = caption.wordStyles?.[styleKey] || {};
-      const detached = isWordDetached(ws);
-      const isSelected = wordPopup?.caption?.id === caption.id && wordPopup?.wordIndex === wordIndex;
-      const wordAnimation = ws.animation && ws.animation !== 'none'
-        ? getWordAnimationStyle(ws.animation, ws.animationSpeed || 1)
-        : 'none';
-      const cptMotionStyle = getCptWordMotionStyle(
-        caption,
-        ws,
-        wordIndex,
-        wordCount,
-        currentIdx,
-        { templateBlockType: blockType },
-      );
-      const resolvedWordMotionStyle = cptMotionStyle || { animation: wordAnimation };
-      const wordUsesWbwClass = options.forceWbwClass ?? isWbwBlock;
-      const isTemplateEmphasis = templateImpWordIndices.includes(wordIndex) && !!templateImpClass;
-      const emphasisClassName = isTemplateEmphasis
-        ? templateImpClass
-        : ws.isEmphasis
-          ? 'imp-bold'
-          : '';
-      const wordClassName = [
-        wordUsesWbwClass ? 'w in' : 'template-editable-word',
-        options.extraClassName || '',
-        emphasisClassName,
-        isTemplateEmphasis ? 'is-emphasis' : '',
-        isSelected ? 'ring-2 ring-[#F5A623] rounded-sm' : '',
-      ].filter(Boolean).join(' ');
-
-      return (
-        <React.Fragment key={`${styleKey}-editable`}>
-          {localIndex > 0 && ' '}
-          <span
-            data-i={wordUsesWbwClass ? wordIndex : undefined}
-            data-imp={isTemplateEmphasis ? 'true' : undefined}
-            data-imp-cls={isTemplateEmphasis ? templateImpClass : undefined}
-            data-word-key={detached ? undefined : styleKey}
-            data-template-block-class={blockClass}
-            data-template-block-type={blockType}
-            data-template-word-class={wordClassName}
-            className={wordClassName}
-            style={{
-              display: 'inline-block',
-              opacity: isCptWordPending(caption, wordIndex, currentIdx) ? 0 : undefined,
-              visibility: detached ? 'hidden' : 'visible',
-              cursor: detached
-                ? 'default'
-                : (draggingWord?.captionId === caption.id && draggingWord?.wordIndex === wordIndex ? 'grabbing' : 'grab'),
-              animation: 'none',
-            }}
-            onPointerDown={detached ? undefined : (e) => handleCaptionWordPointerIntent(
-              e,
-              caption,
-              wordIndex,
-              word,
-              { dragSource: 'template' },
-            )}
-            onClick={(e) => {
-              if (detached || Date.now() - lastDragDropTime.current < 150) return;
-              if (setWordPopup) {
-                e.stopPropagation();
-                setWordPopup({
-                  word,
-                  position: { x: e.clientX, y: e.clientY },
-                  caption,
-                  wordIndex,
-                });
-              }
-            }}
-          >
-            <span
-              data-word-drag-visual="true"
-              style={{
-                display: 'inline-block',
-                transformOrigin: 'center center',
-                ...resolvedWordMotionStyle,
-              }}
-            >
-              {renderWordTextContent(word, ws, 'inherit')}
-            </span>
-            {localIndex < localLength - 1 ? '\u00A0' : ''}
-          </span>
-        </React.Fragment>
-      );
-    };
-
-    const renderEditableLineWords = (line, options = {}) => (
-      line.map(({ word, wordIndex }, localIndex) => (
-        renderEditableTemplateWord(word, wordIndex, localIndex, line.length, options)
-      ))
-    );
-
-    const renderEditableTemplateBody = () => {
-      if (templateId === 't18' && normalizedBlockIndex === 0) {
-        const lines = splitWordsIntoIndexedLines(words, 2);
-        const topLine = lines[0] || [];
-        const bottomLine = lines[1] || [];
-        return (
-          <span className="split-title lekha-template-fit">
-            <span className="split-top">
-              {renderEditableLineWords(topLine)}
-            </span>
-            <span className="split-bot">
-              {bottomLine.length ? (
-                <span className="imp-purple is-emphasis" data-imp="true" data-imp-cls="imp-purple">
-                  {renderEditableLineWords(bottomLine)}
-                </span>
-              ) : null}
-            </span>
-          </span>
-        );
-      }
-
-      const wordNodes = words.map((word, wordIndex) => (
-        renderEditableTemplateWord(word, wordIndex, wordIndex, words.length)
-      ));
-
-      if (isT17LetterSnapBlock) {
-        return (
-          <span className="letter-snap-blk lekha-template-fit">
-            <span className={templateFitClassName} style={templateFitStyle}>
-              {wordNodes}
-            </span>
-          </span>
-        );
-      }
-
-      return (
-        <span className={templateFitClassName} style={templateFitStyle}>
-          {wordNodes}
-        </span>
-      );
-    };
-
-    return (
-      <span className={`lekha-original-template ${templateId}-stage`}>
-        <span
-          className={`sblock ${templateId}-block ${blockClass} active lekha-applied-advanced-template`}
-          data-template-block-index={normalizedBlockIndex}
-          data-template-block-type={blockType}
-          style={{ opacity: 1, transition: 'opacity 280ms ease' }}
-        >
-          {renderEditableTemplateBody()}
-        </span>
-      </span>
-    );
   };
 
   const renderAppliedSidebarTemplateCaption = (caption, templateCaptionIndex = 0) => {
@@ -2045,75 +1849,6 @@ export default function VideoPlayer({
     const startCenterYPct = containerRectAtStart?.height
       ? ((wordRectAtStart.top + wordRectAtStart.height / 2 - containerRectAtStart.top) / containerRectAtStart.height) * 100
       : 50;
-    const snapTargetsX = [6, 50, 94];
-    const snapTargetsY = [6, 50, 94];
-    const getWordSnap = (value, targets, axisSize) => {
-      const snapThresholdPct = (5 / Math.max(axisSize, 1)) * 100;
-      const match = targets.find(target => Math.abs(value - target) <= snapThresholdPct);
-      return typeof match === 'number' ? match : null;
-    };
-    const getLocalCptGuides = (deltaX, deltaY) => {
-      if (!videoContainer || !containerRectAtStart || dragState.isElement) {
-        return { deltaX, deltaY, guides: [] };
-      }
-
-      const styleKey = `${caption.id}-${wordIndex}`;
-      const siblingRects = Array.from(videoContainer.querySelectorAll('[data-word-key]'))
-        .filter(node => {
-          if (!(node instanceof Element)) return false;
-          if (node === targetElement || node === dragPreviewElement) return false;
-          const key = node.getAttribute('data-word-key') || '';
-          if (key === styleKey || !key.startsWith(`${caption.id}-`)) return false;
-          const nodeStyle = window.getComputedStyle(node);
-          if (nodeStyle.visibility === 'hidden' || nodeStyle.display === 'none' || nodeStyle.opacity === '0') return false;
-          const visualNode = node.querySelector(
-            '[data-source-word-visual="true"], [data-word-drag-visual="true"], .kf-base, .kf-fill'
-          ) || node;
-          const rect = visualNode.getBoundingClientRect();
-          return rect.width > 2 && rect.height > 2;
-        })
-        .map(node => {
-          const visualNode = node.querySelector(
-            '[data-source-word-visual="true"], [data-word-drag-visual="true"], .kf-base, .kf-fill'
-          ) || node;
-          return visualNode.getBoundingClientRect();
-        });
-      const resolved = resolveCptWordSnap({
-        draggedRect: wordRectAtStart,
-        siblingRects,
-        deltaX,
-        deltaY,
-        alignThreshold: 5,
-        magneticThreshold: 10,
-        minGap: Math.max(4, Math.min(9, wordRectAtStart.height * 0.18)),
-      });
-      const guides = resolved.guides.map((guide) => {
-        if (guide.type === 'vertical') {
-          return {
-            ...guide,
-            x: (guide.x - containerRectAtStart.left) / viewportScaleX,
-            y1: Math.max(0, (guide.y1 - containerRectAtStart.top) / viewportScaleY),
-            y2: Math.min(containerHeight, (guide.y2 - containerRectAtStart.top) / viewportScaleY),
-          };
-        }
-        if (guide.type === 'horizontal' || guide.type === 'spacing-horizontal') {
-          return {
-            ...guide,
-            y: (guide.y - containerRectAtStart.top) / viewportScaleY,
-            x1: Math.max(0, (guide.x1 - containerRectAtStart.left) / viewportScaleX),
-            x2: Math.min(containerWidth, (guide.x2 - containerRectAtStart.left) / viewportScaleX),
-          };
-        }
-        return {
-          ...guide,
-          x: (guide.x - containerRectAtStart.left) / viewportScaleX,
-          y1: Math.max(0, (guide.y1 - containerRectAtStart.top) / viewportScaleY),
-          y2: Math.min(containerHeight, (guide.y2 - containerRectAtStart.top) / viewportScaleY),
-        };
-      });
-
-      return { deltaX: resolved.deltaX, deltaY: resolved.deltaY, guides };
-    };
 
     const handleNativeMouseMove = (moveEvent) => {
       moveEvent.preventDefault();
@@ -2910,40 +2645,12 @@ export default function VideoPlayer({
       <div className={`relative flex-1 rounded-xl overflow-visible flex items-center justify-center min-h-0 ${isVideoFullscreen ? 'pt-0 pb-2' : 'pt-4 pb-3'}`}>
         {/* Floating canvas tool rail beside the preview */}
         {setIsVideoFullscreen && (
-          <div className={`absolute top-1/2 -translate-y-1/2 z-50 rounded-xl border border-white/10 bg-[#0d0d0d]/90 p-1.5 shadow-[0_18px_42px_-24px_rgba(0,0,0,0.9)] backdrop-blur-md ${isVideoFullscreen ? 'left-[24%]' : 'left-2 sm:left-4'}`}>
-            {[
-              { icon: ZoomIn, title: 'Zoom in', key: 'zoom-in', active: false },
-              { icon: ZoomOut, title: 'Zoom out', key: 'zoom-out', active: false },
-              { icon: Grid2X2, title: 'Guides', key: 'guides', active: showCornerGuides || showLayoutGuides },
-              { icon: RotateCcw, title: 'Reset view', key: 'reset', active: false },
-            ].map((tool) => {
-              const Icon = tool.icon;
-              return (
-                <button
-                  key={tool.title}
-                  type="button"
-                  className={`mb-1 flex h-7 w-7 items-center justify-center rounded-lg transition-colors last:mb-0 ${
-                    tool.active ? 'bg-white text-black' : 'text-slate-500 hover:bg-white/5 hover:text-white'
-                  }`}
-                  title={tool.title}
-                  onClick={(e) => handleCanvasToolClick(tool.key, e)}
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                </button>
-              );
-            })}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                toggleVideoFullscreen();
-              }}
-              className="mt-1 flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-white/5 hover:text-white"
-              title={`${isVideoFullscreen ? 'Collapse' : 'Expand'} (F)`}
-            >
-              {isVideoFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
-            </button>
-          </div>
+          <CanvasToolRail
+            isVideoFullscreen={isVideoFullscreen}
+            guidesActive={showCornerGuides || showLayoutGuides}
+            onToolClick={handleCanvasToolClick}
+            onToggleFullscreen={toggleVideoFullscreen}
+          />
         )}
         {/* Zoom level badge — only visible when zoomed */}
         {canvasScale !== 1 && (
@@ -4003,11 +3710,13 @@ export default function VideoPlayer({
                     />
                   )}
 
-                {/* Keep removal available without hover, including while editing. */}
+                {/* Keep removal available without hover, including while editing.
+                    Near the top of the frame the button sits below the box so the
+                    preview's scroll area cannot clip it. */}
                 {setCaptions && !element.readOnly && (
                   <button
                     type="button"
-                    className="absolute -top-9 -right-3 z-[60] flex h-7 w-7 cursor-pointer touch-manipulation items-center justify-center rounded-full border border-white/30 bg-zinc-900 text-white shadow-xl transition-colors hover:border-red-400 hover:bg-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                    className={`absolute ${Number(style.top || 50) < 20 ? 'top-full mt-2' : '-top-9'} -right-3 z-[60] flex h-7 w-7 cursor-pointer touch-manipulation items-center justify-center rounded-full border border-white/30 bg-zinc-900 text-white shadow-xl transition-colors hover:border-red-400 hover:bg-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white`}
                     data-text-element-close="true"
                     aria-label="Remove text box"
                     onPointerDown={(e) => {
@@ -4287,30 +3996,20 @@ export default function VideoPlayer({
             );
           })}
 
-          <div
-            className="absolute left-1/2 bottom-3 z-40 w-[82%] max-w-[248px] -translate-x-1/2"
-            data-video-control
-          >
-            <Slider
-              value={[localScrubTime ?? currentTime]}
-              max={duration || 100}
-              step={0.1}
-              onValueChange={([val]) => {
-                isScrubbingRef.current = true;
-                setLocalScrubTime(val);
-              }}
-              onValueCommit={([val]) => {
-                isScrubbingRef.current = false;
-                setLocalScrubTime(null);
-                if (videoRef.current) videoRef.current.currentTime = val;
-                setCurrentTime(val);
-              }}
-              className="cursor-pointer"
-              trackClassName="h-[4px] bg-white/24"
-              rangeClassName="h-[4px] bg-white"
-              thumbClassName="h-3 w-3 border border-white bg-[#050505] shadow-[0_0_0_1.5px_#ffffff,0_0_0_3px_rgba(5,5,5,0.82),0_5px_12px_rgba(0,0,0,0.24)]"
-            />
-          </div>
+          <PreviewScrubber
+            value={localScrubTime ?? currentTime}
+            duration={duration}
+            onScrub={(val) => {
+              isScrubbingRef.current = true;
+              setLocalScrubTime(val);
+            }}
+            onCommit={(val) => {
+              isScrubbingRef.current = false;
+              setLocalScrubTime(null);
+              if (videoRef.current) videoRef.current.currentTime = val;
+              setCurrentTime(val);
+            }}
+          />
 
           {/* Word Click Popup — REMOVED FROM HERE, rendered outside overflow-hidden below */}
 
@@ -4318,366 +4017,23 @@ export default function VideoPlayer({
         </div>
       </div>
 
-      <div className={`${isVideoFullscreen ? 'mt-3' : 'mt-3'} space-y-3 px-2`}>
-        <div className="mx-auto lekha-glass-chip rounded-full px-2.5 py-1.5 flex w-fit items-center gap-2.5">
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleVideoSurfaceToggle}
-              className="h-7 w-7 rounded-full hover:bg-white/10 text-white"
-              data-video-control="true"
-            >
-              {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
-            </Button>
-
-            <div className="flex items-center gap-2 group">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setIsMuted(!isMuted)}
-                className="h-7 w-7 text-gray-400 hover:text-white hover:bg-white/10"
-              >
-                {isMuted || volume === 0 ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-              </Button>
-              <div className="w-0 overflow-hidden group-hover:w-24 pl-2 transition-all duration-300 ease-in-out">
-                <Slider
-                  value={[isMuted ? 0 : volume]}
-                  max={1}
-                  step={0.05}
-                  onValueChange={([val]) => {
-                    setVolume(val);
-                    if (val > 0) setIsMuted(false);
-                  }}
-                  className="w-20 cursor-pointer py-4"
-                />
-              </div>
-            </div>
-          </div>
-
-          <span className="text-xs text-white font-mono tabular-nums">
-            {formatTime(currentTime)}
-          </span>
-          <span className="text-[10px] text-slate-600 font-mono">/</span>
-          <span className="text-[10px] text-slate-500 font-mono tabular-nums">
-            {formatTime(duration || 0)}
-          </span>
-        </div>
-      </div>
+      <PlaybackControls
+        isPlaying={isPlaying}
+        onTogglePlay={handleVideoSurfaceToggle}
+        isMuted={isMuted}
+        volume={volume}
+        onToggleMute={() => setIsMuted(!isMuted)}
+        onVolumeChange={(val) => {
+          setVolume(val);
+          if (val > 0) setIsMuted(false);
+        }}
+        currentTime={currentTime}
+        duration={duration}
+      />
 
       {/* Word Click Popup — moved to Dashboard.jsx root level */}
 
-      {/* Animation keyframes */}
-      <style>{`
-        @keyframes rise {
-          0% { transform: translateY(20px); opacity: 0; }
-          100% { transform: translateY(0); opacity: 1; }
-        }
-        @keyframes pan {
-          0% { transform: translateX(-30px); opacity: 0; }
-          100% { transform: translateX(0); opacity: 1; }
-        }
-        @keyframes fade {
-          0% { opacity: 0; }
-          100% { opacity: 1; }
-        }
-        @keyframes pop {
-          0% { transform: scale(0.5); opacity: 0; }
-          50% { transform: scale(1.1); }
-          100% { transform: scale(1); opacity: 1; }
-        }
-        @keyframes wipe {
-          0% { clip-path: inset(0 100% 0 0); }
-          100% { clip-path: inset(0 0 0 0); }
-        }
-        @keyframes blur {
-          0% { filter: blur(10px); opacity: 0; }
-          100% { filter: blur(0); opacity: 1; }
-        }
-        @keyframes succession {
-          0% { transform: translateY(-10px); opacity: 0; }
-          100% { transform: translateY(0); opacity: 1; }
-        }
-        @keyframes breathe {
-          0%, 100% { transform: scale(1); opacity: 1; }
-          50% { transform: scale(1.05); opacity: 0.9; }
-        }
-        @keyframes baseline {
-          0% { transform: translateY(5px); opacity: 0; }
-          100% { transform: translateY(0); opacity: 1; }
-        }
-        @keyframes drift {
-          0% { transform: translate(-10px, -10px); opacity: 0; }
-          100% { transform: translate(0, 0); opacity: 1; }
-        }
-        @keyframes tectonic {
-          0% { transform: translateX(-20px) rotate(-5deg); opacity: 0; }
-          100% { transform: translateX(0) rotate(0); opacity: 1; }
-        }
-        @keyframes tumble {
-          0% { transform: rotate(-180deg) scale(0.5); opacity: 0; }
-          100% { transform: rotate(0) scale(1); opacity: 1; }
-        }
-        /* Word-level keyframes — include translate(-50%,-50%) in every step
-           to preserve the inner span's centering transform */
-        @keyframes word-rise {
-          0% { transform: translate(-50%, calc(-50% + 20px)); opacity: 0; }
-          100% { transform: translate(-50%, -50%); opacity: 1; }
-        }
-        @keyframes word-pan {
-          0% { transform: translate(calc(-50% - 30px), -50%); opacity: 0; }
-          100% { transform: translate(-50%, -50%); opacity: 1; }
-        }
-        @keyframes word-pop {
-          0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
-          50% { transform: translate(-50%, -50%) scale(1.1); }
-          100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
-        }
-        @keyframes word-succession {
-          0% { transform: translate(-50%, calc(-50% - 10px)); opacity: 0; }
-          100% { transform: translate(-50%, -50%); opacity: 1; }
-        }
-        @keyframes word-breathe {
-          0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
-          50% { transform: translate(-50%, -50%) scale(1.05); opacity: 0.9; }
-        }
-        @keyframes word-baseline {
-          0% { transform: translate(-50%, calc(-50% + 5px)); opacity: 0; }
-          100% { transform: translate(-50%, -50%); opacity: 1; }
-        }
-        @keyframes word-drift {
-          0% { transform: translate(calc(-50% - 10px), calc(-50% - 10px)); opacity: 0; }
-          100% { transform: translate(-50%, -50%); opacity: 1; }
-        }
-        @keyframes word-tectonic {
-          0% { transform: translate(calc(-50% - 20px), -50%) rotate(-5deg); opacity: 0; }
-          100% { transform: translate(-50%, -50%) rotate(0); opacity: 1; }
-        }
-        @keyframes word-tumble {
-          0% { transform: translate(-50%, -50%) rotate(-180deg) scale(0.5); opacity: 0; }
-          100% { transform: translate(-50%, -50%) rotate(0) scale(1); opacity: 1; }
-        }
-        @keyframes source-word-rise {
-          0% { transform: translateY(20px); opacity: 0; }
-          100% { transform: translateY(0); opacity: 1; }
-        }
-        @keyframes source-word-pan {
-          0% { transform: translateX(-30px); opacity: 0; }
-          100% { transform: translateX(0); opacity: 1; }
-        }
-        @keyframes source-word-fade {
-          0% { opacity: 0; }
-          100% { opacity: 1; }
-        }
-        @keyframes source-word-pop {
-          0% { transform: scale(0.5); opacity: 0; }
-          50% { transform: scale(1.1); }
-          100% { transform: scale(1); opacity: 1; }
-        }
-        @keyframes source-word-wipe {
-          0% { clip-path: inset(0 100% 0 0); }
-          100% { clip-path: inset(0 0 0 0); }
-        }
-        @keyframes source-word-blur {
-          0% { filter: blur(10px); opacity: 0; }
-          100% { filter: blur(0); opacity: 1; }
-        }
-        @keyframes source-word-succession {
-          0% { transform: translateY(-10px); opacity: 0; }
-          100% { transform: translateY(0); opacity: 1; }
-        }
-        @keyframes source-word-breathe {
-          0%, 100% { transform: scale(1); opacity: 1; }
-          50% { transform: scale(1.05); opacity: 0.9; }
-        }
-        @keyframes source-word-baseline {
-          0% { transform: translateY(5px); opacity: 0; }
-          100% { transform: translateY(0); opacity: 1; }
-        }
-        @keyframes source-word-drift {
-          0% { transform: translate(-10px, -10px); opacity: 0; }
-          100% { transform: translate(0, 0); opacity: 1; }
-        }
-        @keyframes source-word-tectonic {
-          0% { transform: translateX(-20px) rotate(-5deg); opacity: 0; }
-          100% { transform: translateX(0) rotate(0); opacity: 1; }
-        }
-        @keyframes source-word-tumble {
-          0% { transform: rotate(-180deg) scale(0.5); opacity: 0; }
-          100% { transform: rotate(0) scale(1); opacity: 1; }
-        }
-        /* ── Advanced – Basic ── */
-        @keyframes zoom_in {
-          0% { transform: scale(0.65); opacity: 0; }
-          100% { transform: scale(1); opacity: 1; }
-        }
-        @keyframes zoom_out {
-          0% { transform: scale(1.35); opacity: 0; }
-          100% { transform: scale(1); opacity: 1; }
-        }
-        @keyframes fade_in {
-          0% { opacity: 0; }
-          100% { opacity: 1; }
-        }
-        @keyframes slide_up {
-          0% { transform: translateY(34px); opacity: 0; }
-          100% { transform: translateY(0); opacity: 1; }
-        }
-        @keyframes slide_down {
-          0% { transform: translateY(-34px); opacity: 0; }
-          100% { transform: translateY(0); opacity: 1; }
-        }
-        @keyframes slide_left {
-          0% { transform: translateX(44px); opacity: 0; }
-          100% { transform: translateX(0); opacity: 1; }
-        }
-        @keyframes slide_right {
-          0% { transform: translateX(-44px); opacity: 0; }
-          100% { transform: translateX(0); opacity: 1; }
-        }
-        @keyframes fadeInUp {
-          0% { transform: translateY(22px); opacity: 0; }
-          100% { transform: translateY(0); opacity: 1; }
-        }
-        @keyframes fadeInDown {
-          0% { transform: translateY(-22px); opacity: 0; }
-          100% { transform: translateY(0); opacity: 1; }
-        }
-        @keyframes slideInRight {
-          0% { transform: translateX(40px); opacity: 0; }
-          100% { transform: translateX(0); opacity: 1; }
-        }
-        @keyframes flipInX {
-          0% { transform: perspective(500px) rotateX(-90deg); opacity: 0; }
-          100% { transform: perspective(500px) rotateX(0); opacity: 1; }
-        }
-        @keyframes flipInY {
-          0% { transform: perspective(500px) rotateY(-90deg); opacity: 0; }
-          100% { transform: perspective(500px) rotateY(0); opacity: 1; }
-        }
-        @keyframes blurIn {
-          0% { filter: blur(14px); opacity: 0; }
-          100% { filter: blur(0); opacity: 1; }
-        }
-        @keyframes zoomInFade {
-          0% { transform: scale(0.65); opacity: 0; }
-          100% { transform: scale(1); opacity: 1; }
-        }
-        @keyframes bounceInUp {
-          0%   { transform: translateY(32px); opacity: 0; }
-          60%  { transform: translateY(-8px); opacity: 1; }
-          80%  { transform: translateY(4px); }
-          100% { transform: translateY(0); opacity: 1; }
-        }
-        @keyframes skewLeft {
-          0% { transform: translateX(-30px) skewX(20deg); opacity: 0; }
-          100% { transform: translateX(0) skewX(0deg); opacity: 1; }
-        }
-        /* ── Advanced – Kinetic ── */
-        @keyframes missile {
-          0%   { transform: translateX(-60px) scaleX(0.6); opacity: 0; }
-          65%  { transform: translateX(6px) scaleX(1.04); opacity: 1; }
-          100% { transform: translateX(0) scaleX(1); opacity: 1; }
-        }
-        @keyframes shockwave {
-          0%   { transform: scale(1.6); opacity: 0; filter: blur(6px); }
-          55%  { transform: scale(0.94); opacity: 1; filter: blur(0); }
-          100% { transform: scale(1); opacity: 1; }
-        }
-        @keyframes typewriter {
-          0%   { clip-path: inset(0 100% 0 0); }
-          100% { clip-path: inset(0 0% 0 0); }
-        }
-        @keyframes slamDown {
-          0%   { transform: translateY(-55px) scaleY(1.2); opacity: 0; }
-          65%  { transform: translateY(6px) scaleY(0.94); opacity: 1; }
-          100% { transform: translateY(0) scaleY(1); opacity: 1; }
-        }
-        @keyframes fireCharge {
-          0%   { transform: translateY(18px) scaleX(0.8); opacity: 0; filter: blur(5px); }
-          70%  { transform: translateY(-4px) scaleX(1.02); opacity: 1; filter: blur(0); }
-          100% { transform: translateY(0) scaleX(1); opacity: 1; }
-        }
-        @keyframes stampede {
-          0%   { transform: translateX(-55px) scaleX(1.1); opacity: 0; }
-          70%  { transform: translateX(5px) scaleX(0.98); opacity: 1; }
-          100% { transform: translateX(0) scaleX(1); opacity: 1; }
-        }
-        @keyframes recoil {
-          0%   { transform: translateX(0); opacity: 1; }
-          20%  { transform: translateX(-10px); }
-          60%  { transform: translateX(4px); }
-          100% { transform: translateX(0); opacity: 1; }
-        }
-        /* ── Advanced – Cinematic ── */
-        @keyframes irisOpen {
-          0%   { clip-path: circle(0% at 50% 50%); opacity: 0.4; }
-          100% { clip-path: circle(150% at 50% 50%); opacity: 1; }
-        }
-        @keyframes parallaxRise {
-          0%   { transform: translateY(14px) scale(0.97); opacity: 0; }
-          100% { transform: translateY(0) scale(1); opacity: 1; }
-        }
-        @keyframes goldenRatio {
-          0%   { transform: scaleX(0.618) translateX(-20px); opacity: 0; }
-          100% { transform: scaleX(1) translateX(0); opacity: 1; }
-        }
-        @keyframes curtainSplit {
-          0%   { clip-path: inset(0 50% 0 50%); opacity: 0.5; }
-          100% { clip-path: inset(0 0% 0 0%); opacity: 1; }
-        }
-        @keyframes prestige {
-          0%   { transform: scale(1.1); opacity: 0; }
-          100% { transform: scale(1); opacity: 1; }
-        }
-        @keyframes fadeThroughBlack {
-          0%   { opacity: 1; }
-          35%  { opacity: 0; }
-          65%  { opacity: 0; }
-          100% { opacity: 1; }
-        }
-        @keyframes depthPull {
-          0%   { transform: scale(0.35); opacity: 0; }
-          100% { transform: scale(1); opacity: 1; }
-        }
-        @keyframes slowBurn {
-          0%   { opacity: 0; }
-          100% { opacity: 1; }
-        }
-        @keyframes diagonalWipe {
-          0%   { clip-path: inset(0 100% 100% 0); }
-          100% { clip-path: inset(0 0% 0% 0); }
-        }
-        /* ── Advanced – Playful ── */
-        @keyframes confettiPop {
-          0%   { transform: scale(0.3) rotate(-12deg); opacity: 0; }
-          55%  { transform: scale(1.15) rotate(3deg); opacity: 1; }
-          75%  { transform: scale(0.95) rotate(-1deg); }
-          100% { transform: scale(1) rotate(0); opacity: 1; }
-        }
-        @keyframes stickerSlap {
-          0%   { transform: scale(1.45) rotate(-6deg); opacity: 0; }
-          45%  { transform: scale(0.94) rotate(1deg); opacity: 1; }
-          75%  { transform: scale(1.02) rotate(0); }
-          100% { transform: scale(1); opacity: 1; }
-        }
-        @keyframes wobbleEntry {
-          0%   { transform: translateX(-22px) rotate(-4deg); opacity: 0; }
-          35%  { transform: translateX(9px) rotate(2deg); opacity: 1; }
-          65%  { transform: translateX(-4px) rotate(-1deg); }
-          100% { transform: translateX(0) rotate(0); opacity: 1; }
-        }
-        @keyframes balloonFloat {
-          0%   { transform: translateY(22px) scale(0.8); opacity: 0; }
-          65%  { transform: translateY(-6px) scale(1.03); opacity: 1; }
-          100% { transform: translateY(0) scale(1); opacity: 1; }
-        }
-        @keyframes colorSplash {
-          0%   { transform: scale(0.85); opacity: 0; filter: saturate(3) brightness(1.6); }
-          50%  { transform: scale(1.06); opacity: 1; filter: saturate(2) brightness(1.3); }
-          100% { transform: scale(1); opacity: 1; filter: saturate(1) brightness(1); }
-        }
-      `}</style>
+      <VideoPlayerKeyframes />
 
     </div>
     {selectedDetachedWordEditor}
