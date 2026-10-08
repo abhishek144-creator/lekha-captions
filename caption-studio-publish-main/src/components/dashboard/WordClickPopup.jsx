@@ -168,7 +168,9 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
           left: isMobileViewport ? '12px' : 'auto',
           width: isMobileViewport ? 'auto' : '300px',
           zIndex: 99999,
-          maxHeight: isMobileViewport ? 'min(70dvh, 560px)' : 'calc(100vh - 200px)',
+          // Phones: a short bottom sheet, so the word being edited stays visible
+          // in the preview above it.
+          maxHeight: isMobileViewport ? 'min(48dvh, 420px)' : 'calc(100vh - 200px)',
           backgroundColor: 'rgba(24, 24, 27, 0.95)',
           backdropFilter: 'blur(12px)',
         }}
@@ -205,7 +207,7 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
               variant="ghost"
               size="icon"
               onClick={onClose}
-              className="h-6 w-6 text-gray-400 hover:text-white"
+              className="h-6 w-6 max-md:h-9 max-md:w-9 text-gray-400 hover:text-white"
             >
               <X className="w-4 h-4" />
             </Button>
@@ -240,7 +242,7 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
           </TabsList>
 
           <div
-            className="p-3 max-h-[min(54dvh,calc(100vh-320px))] overflow-y-auto custom-scrollbar bg-zinc-950/95"
+            className="p-3 max-h-[min(54dvh,calc(100vh-320px))] max-md:max-h-[calc(min(48dvh,420px)-106px)] overflow-y-auto overscroll-contain custom-scrollbar bg-zinc-950/95"
             onPointerDown={(e) => e.stopPropagation()}
           >
 
