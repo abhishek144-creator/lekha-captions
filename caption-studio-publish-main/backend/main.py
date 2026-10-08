@@ -698,6 +698,11 @@ app.include_router(create_maintenance_router(
 ))
 
 
+def run_transcription_job_task(uid: str, job_id: str):
+    """Keep the durable RQ import path valid for existing queued deliveries."""
+    return processing_api.run_transcription_job_task(uid, job_id)
+
+
 def run_media_scan_job_task(uid: str, file_id: str):
     """Materialize and scan one upload; duplicate deliveries are harmless."""
     request_security._assert_account_not_deleting(uid)
