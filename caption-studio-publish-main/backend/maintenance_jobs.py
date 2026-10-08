@@ -15,6 +15,14 @@ try:
     from . import app_state
 except ImportError:  # Direct execution from backend/ remains supported.
     import app_state
+try:
+    from . import firebase_admin_setup
+except ImportError:  # Direct execution from backend/ remains supported.
+    import firebase_admin_setup
+try:
+    from . import observability
+except ImportError:  # Direct execution from backend/ remains supported.
+    import observability
 
 
 def create_maintenance_jobs(host: ModuleType) -> SimpleNamespace:
@@ -45,7 +53,7 @@ def create_maintenance_jobs(host: ModuleType) -> SimpleNamespace:
                         host.os.remove(filepath)
                         metrics["uploads_deleted"] += 1
                 except Exception as e:
-                    host._json_log("warning", "janitor_error", error=str(e), scope="uploads")
+                    observability._json_log("warning", "janitor_error", error=str(e), scope="uploads")
                     metrics["errors"] += 1
 
         # Clean stale local exports (should be on Firebase, delete after 30 min)
@@ -59,7 +67,7 @@ def create_maintenance_jobs(host: ModuleType) -> SimpleNamespace:
                         host.os.remove(filepath)
                         metrics["exports_deleted"] += 1
                 except Exception as e:
-                    host._json_log("warning", "janitor_error", error=str(e), scope="exports")
+                    observability._json_log("warning", "janitor_error", error=str(e), scope="exports")
                     metrics["errors"] += 1
 
         # Cleanup stale temporary ASS artifacts generated during render retries.
@@ -83,7 +91,7 @@ def create_maintenance_jobs(host: ModuleType) -> SimpleNamespace:
                     host.os.remove(filepath)
                     metrics["temp_ass_deleted"] += 1
             except Exception as e:
-                host._json_log("warning", "janitor_error", error=str(e), scope="tmp_ass")
+                observability._json_log("warning", "janitor_error", error=str(e), scope="tmp_ass")
                 metrics["errors"] += 1
 
         # Clean caches/dead letter files older than 7 days.
@@ -100,7 +108,7 @@ def create_maintenance_jobs(host: ModuleType) -> SimpleNamespace:
                         host.os.remove(filepath)
                         metrics["cache_deleted"] += 1
                 except Exception as e:
-                    host._json_log("warning", "janitor_error", error=str(e), scope="cache")
+                    observability._json_log("warning", "janitor_error", error=str(e), scope="cache")
                     metrics["errors"] += 1
 
         return metrics
@@ -119,15 +127,15 @@ def create_maintenance_jobs(host: ModuleType) -> SimpleNamespace:
         })
 
         try:
-            metrics["cloud_exports_deleted"] = host.delete_expired_exports()
+            metrics["cloud_exports_deleted"] = firebase_admin_setup.delete_expired_exports()
         except Exception as e:
-            host._json_log("warning", "janitor_error", error=str(e), scope="cloud_exports")
+            observability._json_log("warning", "janitor_error", error=str(e), scope="cloud_exports")
             metrics["errors"] += 1
 
         try:
-            metrics["cloud_uploads_deleted"] = host.delete_expired_uploads()
+            metrics["cloud_uploads_deleted"] = firebase_admin_setup.delete_expired_uploads()
         except Exception as e:
-            host._json_log("warning", "janitor_error", error=str(e), scope="cloud_uploads")
+            observability._json_log("warning", "janitor_error", error=str(e), scope="cloud_uploads")
             metrics["errors"] += 1
 
         total_deleted = (
@@ -138,7 +146,7 @@ def create_maintenance_jobs(host: ModuleType) -> SimpleNamespace:
             + metrics["cloud_uploads_deleted"]
         )
         if total_deleted > 0 or metrics["errors"] > 0:
-            host._json_log(
+            observability._json_log(
                 "info",
                 "janitor_summary",
                 uploads_deleted=metrics["uploads_deleted"],
@@ -302,7 +310,7 @@ def create_maintenance_jobs(host: ModuleType) -> SimpleNamespace:
             except host.asyncio.CancelledError:
                 raise
             except Exception as error:
-                host._json_log("warning", "queue_metrics_publish_failed", error=str(error))
+                observability._json_log("warning", "queue_metrics_publish_failed", error=str(error))
             await host.asyncio.sleep(settings.QUEUE_METRICS_INTERVAL_SECONDS)
 
 
@@ -314,9 +322,9 @@ def create_maintenance_jobs(host: ModuleType) -> SimpleNamespace:
                 try:
                     await host.advanced_janitor_job()
                 except Exception as e:
-                    host._json_log("error", "janitor_job_failed", error=str(e))
+                    observability._json_log("error", "janitor_job_failed", error=str(e))
         except Exception as e:
-            host._json_log("error", "janitor_loop_crashed", error=str(e))
+            observability._json_log("error", "janitor_loop_crashed", error=str(e))
 
     return SimpleNamespace(
         cleanup_local_media_artifacts=cleanup_local_media_artifacts,

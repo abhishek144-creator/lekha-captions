@@ -20,6 +20,14 @@ try:
     from . import app_state
 except ImportError:  # Direct execution from backend/ remains supported.
     import app_state
+try:
+    from . import firebase_admin_setup
+except ImportError:  # Direct execution from backend/ remains supported.
+    import firebase_admin_setup
+try:
+    from . import observability
+except ImportError:  # Direct execution from backend/ remains supported.
+    import observability
 
 
 def create_account_router(host: ModuleType) -> SimpleNamespace:
@@ -37,12 +45,12 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
         host._apply_rate_headers(response, settings.PROMO_RATE_LIMIT, remaining, retry_after)
         if not allowed:
             raise HTTPException(status_code=429, detail="Too many promo code attempts. Please wait before trying again.")
-        decoded = host.verify_token(req.id_token)
+        decoded = firebase_admin_setup.verify_token(req.id_token)
         if not decoded:
             raise HTTPException(status_code=401, detail="Unauthorized")
         uid = decoded.get('uid')
 
-        db = host.get_db()
+        db = firebase_admin_setup.get_db()
         if not db:
             raise HTTPException(status_code=503, detail="Database unavailable")
 
@@ -67,7 +75,7 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
 
             user_doc = user_ref.get(transaction=txn)
             user_email = user_doc.to_dict().get("email", "") if user_doc.exists else ""
-            now = host._utcnow()
+            now = observability._utcnow()
             expiry_date = (now + host.relativedelta(months=int(promo["duration_months"]))).date().isoformat()
 
             txn.update(code_ref, {
@@ -125,13 +133,13 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
     it without a browser-generated App Check token. A valid Firebase user token
     is still mandatory, and the check is read-only and tenant-local.
     """
-        decoded_token = host.verify_token(req.id_token)
+        decoded_token = firebase_admin_setup.verify_token(req.id_token)
         if not decoded_token:
             raise HTTPException(status_code=401, detail="Auth required")
         uid = str(decoded_token.get("uid") or "").strip()
         if not uid:
             raise HTTPException(status_code=401, detail="Auth required")
-        db = host.get_db()
+        db = firebase_admin_setup.get_db()
         if not db:
             raise HTTPException(status_code=503, detail="Database unavailable")
         user_doc = db.collection("users").document(uid).get()
@@ -286,14 +294,14 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
     @router.post("/api/account-bootstrap")
     def account_bootstrap(req: AccountDataRequest, request: Request):
         """Create safe account defaults server-side and return the user's record."""
-        decoded_token = host.verify_token(req.id_token)
+        decoded_token = firebase_admin_setup.verify_token(req.id_token)
         if not decoded_token:
             raise HTTPException(status_code=401, detail="Auth required")
         uid = (decoded_token.get("uid") or "").strip()
         if not uid:
             raise HTTPException(status_code=401, detail="Auth required")
         host._assert_tenant_access(uid, decoded_token, req.org_id)
-        db = host.get_db()
+        db = firebase_admin_setup.get_db()
         if not db:
             raise HTTPException(status_code=503, detail="Database unavailable")
 
@@ -332,8 +340,8 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
                 "export_timestamps": [],
                 "created_at": host.time.time(),
             })
-            host._audit_action("account_bootstrap_created", uid)
-            host._track_event("account_signup", {"uid": uid})
+            observability._audit_action("account_bootstrap_created", uid)
+            observability._track_event("account_signup", {"uid": uid})
         except host.AlreadyExists:
             # Only identity-provider profile fields may be refreshed here. Billing
             # and entitlement fields remain server-controlled elsewhere.
@@ -389,7 +397,7 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
 
             repair_result = _repair_legacy_free_entitlement(db.transaction())
             if repair_result:
-                host._audit_action("account_bootstrap_repaired_free_entitlement", uid, repair_result)
+                observability._audit_action("account_bootstrap_repaired_free_entitlement", uid, repair_result)
 
         if req.consent_granted:
             if not req.terms_version or not req.privacy_version:
@@ -415,7 +423,7 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
                 "accepted_privacy_version": req.privacy_version,
                 "consent_updated_at": host.datetime.now(host.timezone.utc),
             }, merge=True)
-            host._audit_action("consent_granted", uid, {
+            observability._audit_action("consent_granted", uid, {
                 "terms_version": req.terms_version,
                 "privacy_version": req.privacy_version,
             })
@@ -428,12 +436,12 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
 
     @router.post("/api/account-export")
     def account_export(req: AccountExportRequest):
-        decoded_token = host.verify_token(req.id_token)
+        decoded_token = firebase_admin_setup.verify_token(req.id_token)
         if not decoded_token:
             raise HTTPException(status_code=401, detail="Auth required")
         uid = decoded_token.get("uid")
         host._assert_tenant_access(uid, decoded_token, req.org_id)
-        db = host.get_db()
+        db = firebase_admin_setup.get_db()
         if not db:
             raise HTTPException(status_code=503, detail="Database unavailable")
         user_ref = db.collection("users").document(uid)
@@ -488,25 +496,25 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
             "notifications": notifications,
             "next_payment_cursor": page_docs[-1].id if page_docs else None,
             "has_more_payments": has_more,
-            "exported_at": host._utcnow().isoformat() + "Z",
+            "exported_at": observability._utcnow().isoformat() + "Z",
         }
-        host._audit_action("account_export", uid, {"payment_count": len(payment_items)})
+        observability._audit_action("account_export", uid, {"payment_count": len(payment_items)})
         return {"success": True, "data": payload}
 
 
     @router.post("/api/account-delete")
     def account_delete(req: AccountDataRequest):
-        decoded_token = host.verify_token(req.id_token)
+        decoded_token = firebase_admin_setup.verify_token(req.id_token)
         if not decoded_token:
             raise HTTPException(status_code=401, detail="Auth required")
         uid = decoded_token.get("uid")
         host._assert_tenant_access(uid, decoded_token, req.org_id)
-        db = host.get_db()
+        db = firebase_admin_setup.get_db()
         if not db:
             raise HTTPException(status_code=503, detail="Database unavailable")
         host._assert_no_owned_workspaces(db, uid)
         db.collection("account_deletions").document(uid).set({
-            "status": "pending", "requested_at": host._utcnow().isoformat() + "Z",
+            "status": "pending", "requested_at": observability._utcnow().isoformat() + "Z",
         }, merge=True)
         if settings._IS_PRODUCTION:
             host.TranscriptionJobs(db).prepare_deletion(uid)
@@ -524,7 +532,7 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
             if hasattr(user_ref, "set"):
                 user_ref.set({
                     "deletion_pending": True,
-                    "deletion_requested_at": host._utcnow().isoformat() + "Z",
+                    "deletion_requested_at": observability._utcnow().isoformat() + "Z",
                 }, merge=True)
             history = user_doc.to_dict().get("history", []) or []
             for item in history:
@@ -536,33 +544,33 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
                     try:
                         host.os.remove(candidate)
                     except OSError as e:
-                        host._json_log("error", "account_delete_local_cleanup_failed", uid=uid, file=filename, error=str(e))
+                        observability._json_log("error", "account_delete_local_cleanup_failed", uid=uid, file=filename, error=str(e))
                         raise HTTPException(status_code=503, detail="Local export cleanup failed; deletion can be retried") from e
 
-        cloud_cleanup = host.delete_user_exports(uid)
-        source_cleanup = host.delete_user_uploads(uid)
+        cloud_cleanup = firebase_admin_setup.delete_user_exports(uid)
+        source_cleanup = firebase_admin_setup.delete_user_uploads(uid)
         known_cloud_exports = any(item.get("firebase_path") for item in history if isinstance(item, dict))
         if (
             (cloud_cleanup is None and (settings._IS_PRODUCTION or known_cloud_exports))
             or (source_cleanup is None and settings._IS_PRODUCTION)
         ):
-            host._json_log("error", "account_delete_storage_cleanup_failed", uid=uid)
+            observability._json_log("error", "account_delete_storage_cleanup_failed", uid=uid)
             raise HTTPException(status_code=503, detail="Cloud export cleanup failed; deletion can be retried")
         if user_doc.exists:
             try:
                 host._cleanup_account_extensions(db, uid)
                 host._delete_user_document_tree(db, user_ref)
             except Exception as e:
-                host._json_log("error", "account_delete_firestore_failed", uid=uid, error=str(e))
+                observability._json_log("error", "account_delete_firestore_failed", uid=uid, error=str(e))
                 raise HTTPException(status_code=500, detail="Account data cleanup failed; deletion can be retried") from e
         try:
             # Delete the login identity last. Until this succeeds the user can still
             # authenticate and retry an otherwise idempotent cleanup request.
             host.firebase_auth.delete_user(uid)
         except Exception as e:
-            host._json_log("warning", "account_delete_auth_delete_failed", uid=uid, error=str(e))
+            observability._json_log("warning", "account_delete_auth_delete_failed", uid=uid, error=str(e))
             raise HTTPException(status_code=500, detail="Account data was removed, but authentication deletion must be retried") from e
-        host._audit_action("account_delete", uid)
+        observability._audit_action("account_delete", uid)
         return {"success": True}
 
 

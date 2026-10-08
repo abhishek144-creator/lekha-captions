@@ -20,6 +20,14 @@ try:
     from . import app_state
 except ImportError:  # Direct execution from backend/ remains supported.
     import app_state
+try:
+    from . import firebase_admin_setup
+except ImportError:  # Direct execution from backend/ remains supported.
+    import firebase_admin_setup
+try:
+    from . import observability
+except ImportError:  # Direct execution from backend/ remains supported.
+    import observability
 
 
 def create_billing_service(host: ModuleType) -> SimpleNamespace:
@@ -225,7 +233,7 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
 
         if not req_body.id_token:
             return False
-        decoded = host.verify_token(req_body.id_token)
+        decoded = firebase_admin_setup.verify_token(req_body.id_token)
         if not decoded:
             return False
 
@@ -237,13 +245,13 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
         lookback_hours: int = settings.PAYMENT_RECONCILE_LOOKBACK_HOURS,
         limit: int = settings.PAYMENT_RECONCILE_BATCH_SIZE,
     ) -> host.Dict[str, host.Any]:
-        db = host.get_db()
+        db = firebase_admin_setup.get_db()
         if not db:
             return {"success": False, "error": "Database unavailable"}
 
         lookback = max(int(lookback_hours or 1), 1)
         query_limit = max(1, min(int(limit or settings.PAYMENT_RECONCILE_BATCH_SIZE), 1000))
-        cutoff = host._utcnow() - host.timedelta(hours=lookback)
+        cutoff = observability._utcnow() - host.timedelta(hours=lookback)
         cutoff_iso = cutoff.isoformat() + "Z"
         summary = {
             "success": True,
@@ -270,7 +278,7 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
                 .stream()
             )
         except Exception as e:
-            host._json_log("error", "payment_reconcile_query_failed", error=str(e))
+            observability._json_log("error", "payment_reconcile_query_failed", error=str(e))
             return {"success": False, "error": "Failed to query payment webhooks"}
 
         for doc in docs:
@@ -285,7 +293,7 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
                 order_context = host._fetch_bound_order_context(order_id, amount_minor, currency)
             except HTTPException as e:
                 summary["errors"] += 1
-                host._json_log(
+                observability._json_log(
                     "warning",
                     "payment_reconcile_order_resolution_failed",
                     webhook_doc=doc.id,
@@ -302,7 +310,7 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
             try:
                 doc.reference.update({"notes": order_context})
             except Exception as e:
-                host._json_log("warning", "payment_reconcile_context_persist_failed", webhook_doc=doc.id, error=str(e))
+                observability._json_log("warning", "payment_reconcile_context_persist_failed", webhook_doc=doc.id, error=str(e))
             if not payment_id:
                 payment_id = f"reconcile_{doc.id}"
 
@@ -326,11 +334,11 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
                     summary["applied"] += 1
                 doc.reference.update({
                     "reconcile_required": False,
-                    "reconciled_at": host._utcnow().isoformat() + "Z",
+                    "reconciled_at": observability._utcnow().isoformat() + "Z",
                 })
             except HTTPException as e:
                 summary["errors"] += 1
-                host._json_log(
+                observability._json_log(
                     "warning",
                     "payment_reconcile_apply_failed",
                     payment_id=payment_id,
@@ -340,19 +348,19 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
                 )
             except Exception as e:
                 summary["errors"] += 1
-                host._json_log("error", "payment_reconcile_apply_exception", payment_id=payment_id, uid=uid, error=str(e))
+                observability._json_log("error", "payment_reconcile_apply_exception", payment_id=payment_id, uid=uid, error=str(e))
 
-        summary["run_at"] = host._utcnow().isoformat() + "Z"
-        host._json_log("info", "payment_reconcile_summary", **summary)
+        summary["run_at"] = observability._utcnow().isoformat() + "Z"
+        observability._json_log("info", "payment_reconcile_summary", **summary)
         try:
             db.collection("payment_reconcile_runs").add({
                 **summary,
-                "expire_at": host._retention_deadline(90),
+                "expire_at": observability._retention_deadline(90),
             })
         except Exception as e:
-            host._json_log("warning", "payment_reconcile_persist_failed", error=str(e))
+            observability._json_log("warning", "payment_reconcile_persist_failed", error=str(e))
         if summary["errors"] >= settings.RECONCILE_ERROR_ALERT_THRESHOLD or summary["skipped"] >= settings.RECONCILE_SKIPPED_ALERT_THRESHOLD:
-            host._send_alert(
+            observability._send_alert(
                 f"[Caption Studio Alert] reconcile summary: errors={summary['errors']} skipped={summary['skipped']} "
                 f"applied={summary['applied']} reason={reason}"
             )
@@ -363,7 +371,7 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
         try:
             await host.asyncio.to_thread(host.reconcile_payments_once, reason="scheduled")
         except Exception as e:
-            host._json_log("error", "payment_reconcile_job_failed", error=str(e))
+            observability._json_log("error", "payment_reconcile_job_failed", error=str(e))
 
 
     def _grant_payment_transactionally(
@@ -382,7 +390,7 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
         topup_reservation_id: str = "",
         order_created_at: int = 0,
     ):
-        now_utc = host._utcnow()
+        now_utc = observability._utcnow()
         cycle_start = now_utc.isoformat() + "Z"
         is_topup = bool(plan_config.get("is_topup", False))
         credits_to_add = int(plan_config["credits"])
@@ -535,7 +543,7 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
         # during delayed verification/reconciliation without weakening the binding
         # between the payment, server-created order, owner, and plan.
         if not order_amount_validated and (expected_minor is None or int(amount_minor or 0) != int(expected_minor)):
-            host._json_log(
+            observability._json_log(
                 "warning",
                 "payment_amount_plan_mismatch",
                 uid=uid,
@@ -547,7 +555,7 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
             )
             raise HTTPException(status_code=400, detail="Payment amount does not match the selected plan.")
 
-        db = host.get_db()
+        db = firebase_admin_setup.get_db()
         if not db:
             raise HTTPException(status_code=500, detail="Database not initialized")
 
@@ -558,7 +566,7 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
             order_id, amount_minor, currency, source, org_id, topup_reservation_id, order_created_at,
         )
         if not result.get("duplicate"):
-            host._track_event("payment_success", {
+            observability._track_event("payment_success", {
                 "plan_id": plan_id,
                 "currency": (currency or "INR").upper(),
                 "amount_minor": int(amount_minor or 0),
@@ -630,7 +638,7 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
             else:
                 aggregate_status = "refund_pending"
 
-            updated_at = host._utcnow().isoformat() + "Z"
+            updated_at = observability._utcnow().isoformat() + "Z"
             credits_added = max(0, int(payment_data.get("credits_added", 0) or 0))
             previous_reversal_target = max(
                 0, int(payment_data.get("entitlement_reversal_target", 0) or 0)
@@ -731,19 +739,19 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
 
         result = _record(db.transaction())
         if result.get("applied"):
-            host._track_event("payment_refund_updated", {
+            observability._track_event("payment_refund_updated", {
                 "event": event,
                 "refund_status": result.get("refund_status"),
                 "payment_id": payment_id,
             })
-            host._audit_action("payment_refund_updated", uid, {
+            observability._audit_action("payment_refund_updated", uid, {
                 "event": event,
                 "refund_id": refund_id,
                 "payment_id": payment_id,
                 "refund_status": result.get("refund_status"),
             })
             if result.get("entitlement_adjustment_required"):
-                host._json_log(
+                observability._json_log(
                     "error",
                     "refund_entitlement_adjustment_required",
                     uid=uid,
@@ -751,7 +759,7 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
                     refund_id=refund_id,
                     refund_status=result.get("refund_status"),
                 )
-                host._send_alert(
+                observability._send_alert(
                     "[Caption Studio Alert] Manual refund entitlement adjustment required: "
                     f"uid={uid} payment_id={payment_id} refund_id={refund_id}"
                 )

@@ -21,6 +21,14 @@ try:
     from . import app_state
 except ImportError:  # Direct execution from backend/ remains supported.
     import app_state
+try:
+    from . import firebase_admin_setup
+except ImportError:  # Direct execution from backend/ remains supported.
+    import firebase_admin_setup
+try:
+    from . import observability
+except ImportError:  # Direct execution from backend/ remains supported.
+    import observability
 
 
 def create_language_router(host: ModuleType) -> SimpleNamespace:
@@ -28,7 +36,7 @@ def create_language_router(host: ModuleType) -> SimpleNamespace:
 
     @router.post("/api/translate")
     def translate_captions(req: host.TranslateRequest, request: Request, response: Response):
-        decoded_token = host.verify_token(req.id_token)
+        decoded_token = firebase_admin_setup.verify_token(req.id_token)
         if not decoded_token:
             raise HTTPException(status_code=401, detail="Authentication required")
         uid = (decoded_token.get("uid") or "").strip() or "unknown-user"
@@ -53,11 +61,11 @@ def create_language_router(host: ModuleType) -> SimpleNamespace:
             if not isinstance(text_value, str) or len(text_value) > 2_000:
                 raise HTTPException(status_code=400, detail="Caption text is invalid")
         if host._is_content_safety_blocked(req.target_language, " ".join((c.get("text") or "") for c in req.captions[:30])):
-            host._track_event("translate_rejected_content_safety")
+            observability._track_event("translate_rejected_content_safety")
             raise HTTPException(status_code=422, detail="Request blocked by content safety policy.")
         breaker = app_state._provider_breakers["openai_translate"]
         if not breaker.allow():
-            host._track_event("translate_circuit_open")
+            observability._track_event("translate_circuit_open")
             raise HTTPException(status_code=503, detail="Translation service is temporarily unavailable. Please retry shortly.")
 
         host._reserve_ai_quota(decoded_token.get("uid", ""), "translate")
@@ -71,7 +79,7 @@ def create_language_router(host: ModuleType) -> SimpleNamespace:
             texts = [cap.get("text", "") for cap in req.captions]
             translated_lines = _translate_lines(client, texts, req.target_language, settings.TRANSLATION_MODEL)
             if translated_lines is None:
-                host._json_log("warning", "translation_line_count_mismatch", expected=len(texts))
+                observability._json_log("warning", "translation_line_count_mismatch", expected=len(texts))
                 translated_lines = _translate_lines(client, texts, req.target_language, settings.TRANSLATION_MODEL, strict=True)
 
             if translated_lines is None:
@@ -84,12 +92,12 @@ def create_language_router(host: ModuleType) -> SimpleNamespace:
                     new_cap["text"] = translated_lines[i]
                 result_captions.append(new_cap)
             breaker.on_success()
-            host._track_event("translate_success", {"target_language": req.target_language, "count": len(req.captions)})
+            observability._track_event("translate_success", {"target_language": req.target_language, "count": len(req.captions)})
             return {"success": True, "captions": result_captions}
         except Exception as e:
             breaker.on_failure()
-            host._track_event("translate_failed", {"target_language": req.target_language, "error": str(e)})
-            host._json_log("error", "translation_provider_failed", uid=decoded_token.get("uid", ""), error=str(e))
+            observability._track_event("translate_failed", {"target_language": req.target_language, "error": str(e)})
+            observability._json_log("error", "translation_provider_failed", uid=decoded_token.get("uid", ""), error=str(e))
             host._release_ai_quota(decoded_token.get("uid", ""), "translate")
             raise HTTPException(status_code=502, detail="Translation service failed. Please retry.") from e
 
@@ -125,12 +133,12 @@ def create_language_router(host: ModuleType) -> SimpleNamespace:
         host._assert_upload_owner(req.file_id, uid)
         input_path = host._safe_find_upload(req.file_id)
         if not input_path:
-            host._track_event("detect_language_failed_not_found")
+            observability._track_event("detect_language_failed_not_found")
             raise HTTPException(status_code=404, detail="File not found")
         host._ensure_upload_clean(req.file_id, uid, input_path)
         breaker = app_state._provider_breakers["openai_detect_language"]
         if not breaker.allow():
-            host._track_event("detect_language_circuit_open")
+            observability._track_event("detect_language_circuit_open")
             raise HTTPException(status_code=503, detail="Language detection is temporarily unavailable. Please retry shortly.")
         host._reserve_ai_quota(uid, "detect_language")
         temp_path = ""
@@ -154,12 +162,12 @@ def create_language_router(host: ModuleType) -> SimpleNamespace:
             if host.os.path.exists(temp_path):
                 host.os.remove(temp_path)
             breaker.on_success()
-            host._track_event("detect_language_success", {"language": detected})
+            observability._track_event("detect_language_success", {"language": detected})
             return {"success": True, "language": detected}
         except Exception as e:
             breaker.on_failure()
-            host._track_event("detect_language_failed", {"error": str(e)})
-            host._json_log("error", "language_detection_provider_failed", uid=uid, error=str(e))
+            observability._track_event("detect_language_failed", {"error": str(e)})
+            observability._json_log("error", "language_detection_provider_failed", uid=uid, error=str(e))
             host._release_ai_quota(uid, "detect_language")
             raise HTTPException(status_code=502, detail="Language detection failed. Please retry.") from e
         finally:

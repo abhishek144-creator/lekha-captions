@@ -16,7 +16,7 @@ class SmokeFlowTests(unittest.TestCase):
 
     @patch("main._scan_upload_for_threat", return_value=True)
     @patch("main._probe_media", return_value={"format": {"duration": 14.0}, "streams": [{"codec_type": "video"}]})
-    @patch("main.verify_token", return_value={"uid": "smoke-user"})
+    @patch("main.firebase_admin_setup.verify_token", return_value={"uid": "smoke-user"})
     @patch("main.app_state.processor.generate_captions_only", new_callable=AsyncMock)
     @patch("main._process_export_job_core", new_callable=AsyncMock)
     @patch("main._safe_find_upload")
