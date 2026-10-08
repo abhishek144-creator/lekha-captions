@@ -32,6 +32,10 @@ try:
     from . import request_security
 except ImportError:  # Direct execution from backend/ remains supported.
     import request_security
+try:
+    from . import operator_controls
+except ImportError:  # Direct execution from backend/ remains supported.
+    import operator_controls
 
 
 def create_system_router(host: ModuleType) -> SimpleNamespace:
@@ -287,7 +291,7 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
 
     @router.get("/api/feature-flags")
     def feature_flags(request: Request):
-        host._validate_feature_flag_safety("feature_flags")
+        operator_controls._validate_feature_flag_safety("feature_flags")
         token = request.headers.get("authorization", "").replace("Bearer ", "").strip()
         decoded = firebase_admin_setup.verify_token(token) if token else None
         if not decoded:
@@ -308,7 +312,7 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
     @router.get("/api/service-status")
     def service_status():
         """Unauthenticated so the app can show an accurate banner while paused."""
-        controls = host._read_service_controls()
+        controls = operator_controls._read_service_controls()
         return {
             "success": True,
             "controls": {
@@ -345,7 +349,7 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
             updates["notice"] = str(req.notice)[:settings.SERVICE_CONTROL_NOTICE_MAX]
 
         if not updates:
-            controls = host._read_service_controls(force=True)
+            controls = operator_controls._read_service_controls(force=True)
             return {"success": True, "changed": False, "controls": controls}
 
         db = firebase_admin_setup.get_db()
@@ -361,7 +365,7 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
             observability._json_log("error", "service_controls_write_failed", error=str(e))
             raise HTTPException(status_code=503, detail="Service controls could not be saved") from e
 
-        controls = host._read_service_controls(force=True)
+        controls = operator_controls._read_service_controls(force=True)
         observability._audit_action(
             "service_controls_updated",
             str((decoded or {}).get("uid") or ""),

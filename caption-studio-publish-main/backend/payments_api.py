@@ -35,6 +35,14 @@ try:
     from . import request_security
 except ImportError:  # Direct execution from backend/ remains supported.
     import request_security
+try:
+    from . import entitlements
+except ImportError:  # Direct execution from backend/ remains supported.
+    import entitlements
+try:
+    from . import operator_controls
+except ImportError:  # Direct execution from backend/ remains supported.
+    import operator_controls
 
 
 def create_payments_router(host: ModuleType) -> SimpleNamespace:
@@ -55,7 +63,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
         request_security._assert_tenant_access(uid, decoded_token, req.org_id)
         # Check the durable operator switch before contacting Razorpay. This makes
         # emergency payment shutdown immediate and guarantees no order is created.
-        host._assert_service_available("pause_payments")
+        operator_controls._assert_service_available("pause_payments")
         client_ip = host._client_rate_key(request)
         for rate_key in (f"payment:user:{uid}", f"payment:ip:{client_ip}"):
             allowed, retry_after, remaining = host._check_rate(app_state._payment_rate, rate_key, settings.PAYMENT_RATE_LIMIT)
@@ -86,7 +94,7 @@ def create_payments_router(host: ModuleType) -> SimpleNamespace:
             topup_user_ref = topup_db.collection('users').document(uid_tmp)
             ud = topup_user_ref.get()
             user_data_tmp = ud.to_dict() or {} if ud.exists else {}
-            user_tier_tmp = host._effective_subscription_tier(user_data_tmp) if ud.exists else 'free'
+            user_tier_tmp = entitlements._effective_subscription_tier(user_data_tmp) if ud.exists else 'free'
             # Strip _yearly suffix for comparison
             base_tier = user_tier_tmp.replace('_yearly', '')
             if base_tier not in ['starter', 'creator', 'pro']:

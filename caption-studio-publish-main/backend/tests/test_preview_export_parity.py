@@ -2,7 +2,9 @@ import os
 import sys
 import unittest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from main import ExportRequest, _build_parity_signature, _evaluate_export_policy, _resolve_export_preset
+from main import ExportRequest, _evaluate_export_policy
+from media_records import _build_parity_signature
+from entitlements import _resolve_export_preset
 from app_state import processor
 
 

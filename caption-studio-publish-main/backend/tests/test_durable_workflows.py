@@ -248,7 +248,7 @@ class DurableWorkflowTests(unittest.TestCase):
 
     def test_production_http_returns_pending_then_replays_durable_result(self):
         with (patch.object(main.settings, "_IS_PRODUCTION", True), patch.object(main.firebase_admin_setup, "get_db", return_value=self.db),
-              patch.object(main, "_assert_service_available"), patch.object(main, "_assert_upload_owner"),
+              patch.object(main.operator_controls, "_assert_service_available"), patch.object(main.media_records, "_assert_upload_owner"),
               patch.object(main.request_security, "_authenticate_media_request", return_value={"uid": "a"})):
             client = TestClient(main.app)
             first = client.post("/api/process", json=self.settings)
@@ -266,7 +266,7 @@ class DurableWorkflowTests(unittest.TestCase):
         self.jobs.claim("a", job["job_id"])
         self.jobs.finish("a", job["job_id"], "unknown")
         with (patch.object(main.settings, "_IS_PRODUCTION", True), patch.object(main.firebase_admin_setup, "get_db", return_value=self.db),
-              patch.object(main, "_assert_service_available"), patch.object(main, "_assert_upload_owner"),
+              patch.object(main.operator_controls, "_assert_service_available"), patch.object(main.media_records, "_assert_upload_owner"),
               patch.object(main.request_security, "_authenticate_media_request", return_value={"uid": "a"})):
             response = TestClient(main.app).post("/api/process", json=self.settings)
             self.assertEqual(response.status_code, 409)

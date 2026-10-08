@@ -33,6 +33,14 @@ try:
     from . import request_security
 except ImportError:  # Direct execution from backend/ remains supported.
     import request_security
+try:
+    from . import operator_controls
+except ImportError:  # Direct execution from backend/ remains supported.
+    import operator_controls
+try:
+    from . import media_records
+except ImportError:  # Direct execution from backend/ remains supported.
+    import media_records
 
 
 # RQ keeps each job's pickled arguments (the full editor snapshot) until these
@@ -114,7 +122,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
         # blocking I/O. The API runs one event loop per process, so each runs in
         # a worker thread instead of stalling every other request.
         to_thread = host.asyncio.to_thread
-        await to_thread(host._assert_service_available, "pause_exports")
+        await to_thread(operator_controls._assert_service_available, "pause_exports")
         observability._log(rid, f"Export requested file_id={req.file_id} quality={req.quality}")
         observability._track_event("export_requested", {"quality": req.quality, "fps": req.fps})
 
@@ -183,7 +191,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
 
         release_export_slot_in_request = True
         try:
-            duration_hint = await host.asyncio.to_thread(host._source_duration_hint, req.file_id, uid)
+            duration_hint = await host.asyncio.to_thread(media_records._source_duration_hint, req.file_id, uid)
             capacity = host.estimate_render_capacity(duration_hint, safe_request_snapshot)
             await to_thread(
                 host._set_export_job,
@@ -322,7 +330,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
     bypassing the single-account concurrency and credit controls.
     """
         to_thread = host.asyncio.to_thread
-        await to_thread(host._assert_service_available, "pause_exports")
+        await to_thread(operator_controls._assert_service_available, "pause_exports")
         decoded = await to_thread(request_security._authenticate_media_request, req.id_token)
         uid = (decoded.get("uid") or "").strip()
         if app_state._export_queue is None:
@@ -356,10 +364,10 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
             job_id = str(host.uuid.uuid4())
             enqueue_attempted = False
             try:
-                await to_thread(host._assert_upload_owner, item.file_id, uid)
-                await to_thread(host._assert_upload_clean, item.file_id)
+                await to_thread(media_records._assert_upload_owner, item.file_id, uid)
+                await to_thread(media_records._assert_upload_clean, item.file_id)
                 safe_snapshot = safe_snapshots[index]
-                duration_hint = await to_thread(host._source_duration_hint, item.file_id, uid)
+                duration_hint = await to_thread(media_records._source_duration_hint, item.file_id, uid)
                 capacity = host.estimate_render_capacity(duration_hint, safe_snapshot)
                 await to_thread(
                     host._set_export_job,
@@ -739,7 +747,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
 
     @router.post("/api/export-replay/{job_id}")
     def export_replay(job_id: str, request: Request):
-        host._assert_service_available("pause_exports")
+        operator_controls._assert_service_available("pause_exports")
         if app_state._export_queue is None:
             raise HTTPException(status_code=503, detail="Durable queue is not configured")
         db = firebase_admin_setup.get_db()
@@ -769,7 +777,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
                 detail="Another export is already running for this account. Please wait.",
             )
         try:
-            duration_hint = host._source_duration_hint(str(request_snapshot.get("file_id") or ""), uid)
+            duration_hint = media_records._source_duration_hint(str(request_snapshot.get("file_id") or ""), uid)
             capacity = host.estimate_render_capacity(duration_hint, request_snapshot)
             host._set_export_job(
                 new_job_id,

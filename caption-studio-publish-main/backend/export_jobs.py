@@ -27,6 +27,14 @@ try:
     from . import request_security
 except ImportError:  # Direct execution from backend/ remains supported.
     import request_security
+try:
+    from . import entitlements
+except ImportError:  # Direct execution from backend/ remains supported.
+    import entitlements
+try:
+    from . import media_records
+except ImportError:  # Direct execution from backend/ remains supported.
+    import media_records
 
 
 def create_export_jobs(host: ModuleType) -> SimpleNamespace:
@@ -104,7 +112,7 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
     def _evaluate_export_policy(user_data: host.Dict[str, host.Any], now_ts: float):
         if user_data.get("deletion_pending"):
             return False, "Account deletion is in progress.", []
-        tier = host._normalize_tier_name(user_data.get('subscription_tier', 'free'))
+        tier = entitlements._normalize_tier_name(user_data.get('subscription_tier', 'free'))
         try:
             credits = int(user_data.get('credits_remaining', 0) or 0)
         except (TypeError, ValueError):
@@ -115,11 +123,11 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
         if tier == settings.FREE_PLAN_ID:
             # Never let a stale/manual legacy value turn the Free plan into an
             # unbounded entitlement. Account bootstrap also persists this repair.
-            credits = host._normalize_free_credit_balance(credits)
+            credits = entitlements._normalize_free_credit_balance(credits)
         export_history = user_data.get('export_timestamps', []) or []
         recent_exports = [ts for ts in export_history if ts > (now_ts - 86400)]
 
-        plan_time_expired = host._subscription_is_expired(user_data)
+        plan_time_expired = entitlements._subscription_is_expired(user_data)
         if tier != 'free' and plan_time_expired:
             return False, "PLAN_EXPIRED: Your plan has expired. Please renew to continue exporting.", recent_exports
 
@@ -165,12 +173,12 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
             dropped_history = history[5:]
             user_update = {"history": history[:5]}
             if not settings.DISABLE_EXPORT_CREDIT_LIMIT:
-                current_tier = host._normalize_tier_name(current_user.get("subscription_tier", "free"))
+                current_tier = entitlements._normalize_tier_name(current_user.get("subscription_tier", "free"))
                 if current_tier == settings.FREE_PLAN_ID:
                     # Set an exact bounded value so a corrupt Free balance such as
                     # 73 is repaired on the first metered export instead of merely
                     # becoming 72 and remaining exploitable.
-                    bounded_balance = host._normalize_free_credit_balance(
+                    bounded_balance = entitlements._normalize_free_credit_balance(
                         current_user.get("credits_remaining", 0),
                     )
                     user_update["credits_remaining"] = max(0, bounded_balance - 1)
@@ -254,7 +262,7 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
         # credit. Storage retention remains authoritative: this token only grants a
         # brief retry window and the media endpoint still returns 404 after cleanup.
         recovery_ttl_seconds = 15 * 60
-        refreshed["video_url"] = host._signed_export_url(
+        refreshed["video_url"] = media_records._signed_export_url(
             filename,
             uid,
             recovery_ttl_seconds,
@@ -560,20 +568,20 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
                 raise host.HTTPException(status_code=503, detail="Account and credit service is temporarily unavailable")
             observability._log(rid, "Firestore unavailable; explicit local export bypass enabled")
 
-        user_tier = host._normalize_tier_name(user_data.get("subscription_tier", "free") if user_data else "free")
-        preset = host._resolve_export_preset(user_tier, req.quality, req.fps)
+        user_tier = entitlements._normalize_tier_name(user_data.get("subscription_tier", "free") if user_data else "free")
+        preset = entitlements._resolve_export_preset(user_tier, req.quality, req.fps)
         if preset["downgraded"]:
             observability._log(rid, f"Export preset adjusted by tier={user_tier}: requested {req.quality}@{req.fps} -> {preset['quality']}@{preset['fps']}")
 
-        if not host._validate_file_id(req.file_id):
+        if not media_records._validate_file_id(req.file_id):
             raise host.HTTPException(status_code=400, detail="Invalid file_id")
-        host._assert_upload_owner(req.file_id, uid)
-        host._assert_upload_clean(req.file_id)
-        input_path = host._safe_find_upload(req.file_id)
+        media_records._assert_upload_owner(req.file_id, uid)
+        media_records._assert_upload_clean(req.file_id)
+        input_path = media_records._safe_find_upload(req.file_id)
         if not input_path:
             raise host.HTTPException(status_code=404, detail="Video not found")
 
-        source_meta = host._probe_media(input_path)
+        source_meta = media_records._probe_media(input_path)
         source_duration = float((source_meta.get("format") or {}).get("duration") or 0)
         source_video_stream = next(
             (stream for stream in (source_meta.get("streams") or [])
@@ -589,7 +597,7 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
         server_style = req.validated_style()
         server_word_layouts: host.Dict[str, host.Any] = {}
         # Reuse rendered artifact for identical request payload.
-        media_hash = host._source_media_identity(req.file_id, input_path)
+        media_hash = media_records._source_media_identity(req.file_id, input_path)
         request_hash = host.render_cache_identity(
             uid=uid,
             renderer_version=settings.EXPORT_RENDERER_VERSION,
@@ -658,7 +666,7 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
             render_ms = int((render_finished_at - render_started_at) * 1000)
 
         try:
-            rendered_meta = host._probe_media(output_path)
+            rendered_meta = media_records._probe_media(output_path)
             rendered_duration = float((rendered_meta.get("format") or {}).get("duration") or 0)
             rendered_video_stream = next(
                 (stream for stream in (rendered_meta.get("streams") or [])
@@ -716,7 +724,7 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
         if settings._IS_PRODUCTION and not firebase_url:
             raise host.HTTPException(status_code=503, detail="Rendered media could not be persisted. Please retry.")
         expires_at = (observability._utcnow() + host.timedelta(hours=retention_hours)).isoformat() + "Z"
-        video_url = host._signed_export_url(
+        video_url = media_records._signed_export_url(
             output_filename, uid, retention_hours * 3600, export_job_id[:8]
         )
 

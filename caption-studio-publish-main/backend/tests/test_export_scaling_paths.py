@@ -96,7 +96,7 @@ class NonBlockingSubmissionTests(unittest.TestCase):
         from starlette.requests import Request
         with (patch.object(main.asyncio, "to_thread", tracking_to_thread),
               patch.object(main.settings, "_IS_PRODUCTION", True), patch.object(main.app_state, "_export_queue", None),
-              patch.object(main, "_assert_service_available"), patch.object(main.observability, "_track_event"),
+              patch.object(main.operator_controls, "_assert_service_available"), patch.object(main.observability, "_track_event"),
               patch.object(main.request_security, "_authenticate_media_request", Mock(return_value={"uid": "owner"}, __name__="auth"))):
             with self.assertRaises(main.HTTPException):
                 asyncio.run(main.export_video(request, Request({"type": "http", "headers": []}), main.Response()))

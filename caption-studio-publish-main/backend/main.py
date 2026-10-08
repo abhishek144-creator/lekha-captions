@@ -90,10 +90,10 @@ try:
     from .billing import create_billing_service
     from . import observability
     from . import request_security
-    from .operator_controls import create_operator_controls
+    from . import operator_controls
     from .request_guards import create_request_guards
-    from .media_records import create_media_records
-    from .entitlements import create_entitlements
+    from . import media_records
+    from . import entitlements
     from .export_jobs import create_export_jobs
     from .maintenance_jobs import create_maintenance_jobs
     from .api_models import create_api_models
@@ -111,7 +111,7 @@ try:
     from .release_metadata import apply_platform_release_defaults, release_metadata
     from .media_storage import is_configured as s3_storage_configured
     from .runtime_preflight import required_storage_settings
-    from .media_commands import run_media_command
+    from . import media_commands
     from .job_state import transition as transition_export_job, InvalidJobTransition, LOCAL_LOCK as JOB_STATE_LOCK
     from .gcp_queue_metrics import job_queue_prediction, publish_queue_snapshot, queue_snapshot, render_queue_snapshot
     from .rendering.capacity import (
@@ -146,10 +146,10 @@ except ImportError:
     from billing import create_billing_service
     import observability
     import request_security
-    from operator_controls import create_operator_controls
+    import operator_controls
     from request_guards import create_request_guards
-    from media_records import create_media_records
-    from entitlements import create_entitlements
+    import media_records
+    import entitlements
     from export_jobs import create_export_jobs
     from maintenance_jobs import create_maintenance_jobs
     from api_models import create_api_models
@@ -167,7 +167,7 @@ except ImportError:
     from release_metadata import apply_platform_release_defaults, release_metadata
     from media_storage import is_configured as s3_storage_configured
     from runtime_preflight import required_storage_settings
-    from media_commands import run_media_command
+    import media_commands
     from job_state import transition as transition_export_job, InvalidJobTransition, LOCAL_LOCK as JOB_STATE_LOCK
     from gcp_queue_metrics import job_queue_prediction, publish_queue_snapshot, queue_snapshot, render_queue_snapshot
     from rendering.capacity import (
@@ -561,15 +561,6 @@ app_state._provider_breakers: Dict[str, observability.CircuitBreaker] = {
 }
 
 
-_operator_controls = create_operator_controls(sys.modules[__name__])
-_validate_feature_flag_safety = _operator_controls._validate_feature_flag_safety
-_default_service_controls = _operator_controls._default_service_controls
-_read_service_controls = _operator_controls._read_service_controls
-_assert_service_available = _operator_controls._assert_service_available
-_scan_upload_for_threat = _operator_controls._scan_upload_for_threat
-_is_content_safety_blocked = _operator_controls._is_content_safety_blocked
-
-
 _request_guards = create_request_guards(sys.modules[__name__])
 _idem_get = _request_guards._idem_get
 _idem_claim = _request_guards._idem_claim
@@ -596,47 +587,6 @@ _release_process_slot = _request_guards._release_process_slot
 _apply_rate_headers = _request_guards._apply_rate_headers
 
 
-_media_records = create_media_records(sys.modules[__name__])
-_validate_file_id = _media_records._validate_file_id
-_safe_find_upload = _media_records._safe_find_upload
-_load_upload_metadata = _media_records._load_upload_metadata
-_remember_source_duration = _media_records._remember_source_duration
-_source_duration_hint = _media_records._source_duration_hint
-_remember_upload_owner = _media_records._remember_upload_owner
-_update_upload_metadata = _media_records._update_upload_metadata
-_mark_upload_security_state = _media_records._mark_upload_security_state
-_assert_upload_clean = _media_records._assert_upload_clean
-_ensure_upload_clean = _media_records._ensure_upload_clean
-_source_media_identity = _media_records._source_media_identity
-_assert_upload_owner = _media_records._assert_upload_owner
-_media_token_signature = _media_records._media_token_signature
-_create_media_token = _media_records._create_media_token
-_verify_media_token = _media_records._verify_media_token
-_signed_upload_url = _media_records._signed_upload_url
-_signed_export_url = _media_records._signed_export_url
-_compute_media_hash = _media_records._compute_media_hash
-_upload_security_service = _media_records._upload_security_service
-_build_process_cache_path = _media_records._build_process_cache_path
-_build_parity_signature = _media_records._build_parity_signature
-_validate_media_signature = _media_records._validate_media_signature
-_probe_media = _media_records._probe_media
-
-
-_entitlements = create_entitlements(sys.modules[__name__])
-_normalize_tier_name = _entitlements._normalize_tier_name
-_normalize_free_credit_balance = _entitlements._normalize_free_credit_balance
-_subscription_is_expired = _entitlements._subscription_is_expired
-_effective_subscription_tier = _entitlements._effective_subscription_tier
-_lookup_subscription_tier = _entitlements._lookup_subscription_tier
-_max_video_seconds_for_tier = _entitlements._max_video_seconds_for_tier
-_reserve_system_ai_quota = _entitlements._reserve_system_ai_quota
-_reserve_ai_quota = _entitlements._reserve_ai_quota
-_read_system_ai_usage = _entitlements._read_system_ai_usage
-_release_system_ai_quota = _entitlements._release_system_ai_quota
-_release_ai_quota = _entitlements._release_ai_quota
-_resolve_export_preset = _entitlements._resolve_export_preset
-
-
 for d in [settings.UPLOAD_DIR, settings.EXPORT_DIR, settings.FONTS_DIR, settings.CACHE_DIR, settings.TRANSCRIPTION_CACHE_DIR, settings.RENDER_CACHE_DIR, settings.DEAD_LETTER_DIR]:
     os.makedirs(d, exist_ok=True)
 
@@ -647,8 +597,8 @@ app_state.processor = VideoProcessor(settings.FONTS_DIR)
 app.include_router(create_project_router(
     request_security._authenticate_media_request,
     firebase_admin_setup.get_db,
-    _validate_file_id,
-    _assert_upload_owner,
+    media_records._validate_file_id,
+    media_records._assert_upload_owner,
 ))
 
 
@@ -873,15 +823,15 @@ _require_scheduler_secret = _upload_dispatch._require_scheduler_secret
 app.include_router(create_direct_upload_router(
     authenticate=request_security._authenticate_media_request,
     extract_token=_extract_bearer_token,
-    assert_service_available=_assert_service_available,
+    assert_service_available=operator_controls._assert_service_available,
     allowed_extensions=settings.ALLOWED_EXTENSIONS,
     allowed_content_prefixes=settings.ALLOWED_CONTENT_PREFIXES,
     allowed_origins=settings.ALLOWED_ORIGINS,
     max_upload_bytes=settings.MAX_UPLOAD_BYTES,
     create_session=firebase_admin_setup.create_resumable_source_upload,
     finalize_session=firebase_admin_setup.finalize_resumable_source_upload,
-    remember_owner=_remember_upload_owner,
-    signed_upload_url=_signed_upload_url,
+    remember_owner=media_records._remember_upload_owner,
+    signed_upload_url=media_records._signed_upload_url,
     audit_action=observability._audit_action,
     reserve_slot=_reserve_direct_upload_slot,
     release_slot=_release_direct_upload_slot,
@@ -923,22 +873,22 @@ app.include_router(create_maintenance_router(
 def run_media_scan_job_task(uid: str, file_id: str):
     """Materialize and scan one upload; duplicate deliveries are harmless."""
     request_security._assert_account_not_deleting(uid)
-    _assert_upload_owner(file_id, uid)
-    metadata = _load_upload_metadata(file_id)
+    media_records._assert_upload_owner(file_id, uid)
+    metadata = media_records._load_upload_metadata(file_id)
     if str(metadata.get("upload_state") or "").lower() in {"clean", "rejected"}:
         MediaScanJobs(firebase_admin_setup.get_db()).finish(file_id)
         return {"status": str(metadata.get("upload_state"))}
-    input_path = _safe_find_upload(file_id)
+    input_path = media_records._safe_find_upload(file_id)
     if not input_path:
         raise RuntimeError("Uploaded media could not be materialized for scanning")
     try:
-        result = _ensure_upload_clean(file_id, uid, input_path)
+        result = media_records._ensure_upload_clean(file_id, uid, input_path)
         MediaScanJobs(firebase_admin_setup.get_db()).finish(file_id)
         return {"status": str(result.get("upload_state") or "clean")}
     except HTTPException:
         # A malware rejection is terminal and already persisted by
         # _ensure_upload_clean. Scanner/runtime failures stay in the outbox.
-        current = _load_upload_metadata(file_id)
+        current = media_records._load_upload_metadata(file_id)
         if str(current.get("upload_state") or "").lower() == "rejected":
             MediaScanJobs(firebase_admin_setup.get_db()).finish(file_id)
             return {"status": "rejected"}
@@ -1009,10 +959,10 @@ app.include_router(create_public_api_router(
 app.include_router(create_workspace_router(
     authenticate_request=request_security._authenticate_bearer_request,
     get_database=firebase_admin_setup.get_db,
-    assert_upload_owner=_assert_upload_owner,
-    validate_file_id=_validate_file_id,
-    find_upload=_safe_find_upload,
-    signed_upload_url=_signed_upload_url,
+    assert_upload_owner=media_records._assert_upload_owner,
+    validate_file_id=media_records._validate_file_id,
+    find_upload=media_records._safe_find_upload,
+    signed_upload_url=media_records._signed_upload_url,
 ))
 
 

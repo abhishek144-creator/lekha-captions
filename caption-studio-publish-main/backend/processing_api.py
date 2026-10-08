@@ -24,6 +24,18 @@ try:
     from . import request_security
 except ImportError:  # Direct execution from backend/ remains supported.
     import request_security
+try:
+    from . import entitlements
+except ImportError:  # Direct execution from backend/ remains supported.
+    import entitlements
+try:
+    from . import operator_controls
+except ImportError:  # Direct execution from backend/ remains supported.
+    import operator_controls
+try:
+    from . import media_records
+except ImportError:  # Direct execution from backend/ remains supported.
+    import media_records
 
 
 def create_processing_router(host: ModuleType) -> SimpleNamespace:
@@ -33,11 +45,11 @@ def create_processing_router(host: ModuleType) -> SimpleNamespace:
     async def process_video(req: host.ProcessRequest, request: host.Request, response: host.Response):
         if not settings._IS_PRODUCTION:
             return await host._process_video_inline(req, request, response)
-        await host.asyncio.to_thread(host._assert_service_available, "pause_transcription")
+        await host.asyncio.to_thread(operator_controls._assert_service_available, "pause_transcription")
         uid = (await host.asyncio.to_thread(request_security._authenticate_media_request, req.id_token, req.org_id))["uid"]
-        if not host._validate_file_id(req.file_id):
+        if not media_records._validate_file_id(req.file_id):
             raise host.HTTPException(400, "Invalid file_id")
-        await host.asyncio.to_thread(host._assert_upload_owner, req.file_id, uid)
+        await host.asyncio.to_thread(media_records._assert_upload_owner, req.file_id, uid)
         job_settings = {"file_id": req.file_id, "language": req.language,
                     "min_words": req.min_words, "max_words": req.max_words}
         jobs = host.TranscriptionJobs(firebase_admin_setup.get_db())
@@ -124,7 +136,7 @@ def create_processing_router(host: ModuleType) -> SimpleNamespace:
 
     async def _process_video_inline(req: host.ProcessRequest, request: host.Request, response: host.Response, *, trusted_uid=None):
         rid = observability._request_id(request)
-        host._assert_service_available("pause_transcription")
+        operator_controls._assert_service_available("pause_transcription")
         # Auth — same dev-mode bypass as /api/export
         decoded_token = {"uid": trusted_uid} if trusted_uid else request_security._authenticate_media_request(req.id_token, req.org_id)
         uid = (decoded_token.get("uid") or "").strip() or "unknown-user"
@@ -143,29 +155,29 @@ def create_processing_router(host: ModuleType) -> SimpleNamespace:
         if not user_allowed:
             observability._track_event("process_rejected_rate_limited")
             raise host.HTTPException(status_code=429, detail="Too many transcription requests. Please wait before trying again.")
-        if not host._validate_file_id(req.file_id):
+        if not media_records._validate_file_id(req.file_id):
             raise host.HTTPException(status_code=400, detail="Invalid file_id")
-        host._assert_upload_owner(req.file_id, uid)
-        input_path = host._safe_find_upload(req.file_id)
+        media_records._assert_upload_owner(req.file_id, uid)
+        input_path = media_records._safe_find_upload(req.file_id)
         if not input_path:
             observability._track_event("process_failed_not_found")
             raise host.HTTPException(status_code=404, detail="File not found")
-        await host.asyncio.to_thread(host._ensure_upload_clean, req.file_id, uid, input_path)
+        await host.asyncio.to_thread(media_records._ensure_upload_clean, req.file_id, uid, input_path)
 
         # Enforce the per-plan maximum source length. /api/upload only applies a
         # global 180s ceiling; paid plans advertise tighter caps (starter=120s) that
         # can only be enforced here, where the caller's tier is known. Checked before
         # the cache lookup so a result cached by a higher tier can't be replayed to a
         # lower-tier user with a too-long video.
-        user_tier = host._normalize_tier_name(await host.asyncio.to_thread(host._lookup_subscription_tier, uid))
-        controls = host._read_service_controls()
+        user_tier = entitlements._normalize_tier_name(await host.asyncio.to_thread(entitlements._lookup_subscription_tier, uid))
+        controls = operator_controls._read_service_controls()
         operator_max_seconds = int(controls.get(
             settings.MAX_UPLOAD_DURATION_CONTROL_KEY,
             settings.GLOBAL_MAX_UPLOAD_DURATION_SECONDS,
         ))
-        max_seconds = min(host._max_video_seconds_for_tier(user_tier), operator_max_seconds)
+        max_seconds = min(entitlements._max_video_seconds_for_tier(user_tier), operator_max_seconds)
         try:
-            _probe_meta = await host.asyncio.to_thread(host._probe_media, input_path)
+            _probe_meta = await host.asyncio.to_thread(media_records._probe_media, input_path)
             media_duration = float((_probe_meta.get("format") or {}).get("duration") or 0)
         except Exception as probe_error:
             observability._track_event("process_rejected_ffprobe", {"file_id": req.file_id, "error": str(probe_error)})
@@ -173,11 +185,11 @@ def create_processing_router(host: ModuleType) -> SimpleNamespace:
         if media_duration > max_seconds + 0.5:
             observability._track_event("process_rejected_duration", {"tier": user_tier, "duration": media_duration, "max_seconds": max_seconds})
             raise host.HTTPException(status_code=403, detail=f"Your plan allows videos up to {max_seconds}s. This video is {media_duration:.0f}s long.")
-        await host.asyncio.to_thread(host._remember_source_duration, req.file_id, media_duration)
+        await host.asyncio.to_thread(media_records._remember_source_duration, req.file_id, media_duration)
 
         try:
-            media_hash = await host.asyncio.to_thread(host._compute_media_hash, input_path)
-            cache_path = host._build_process_cache_path(media_hash, req.language, req.min_words, req.max_words)
+            media_hash = await host.asyncio.to_thread(media_records._compute_media_hash, input_path)
+            cache_path = media_records._build_process_cache_path(media_hash, req.language, req.min_words, req.max_words)
         except Exception:
             media_hash = ""
             cache_path = ""
@@ -241,7 +253,7 @@ def create_processing_router(host: ModuleType) -> SimpleNamespace:
                     "request_hash": process_request_hash,
                 })
             observability._json_log("info", "process_started", request_id=rid, file_id=req.file_id, language=req.language)
-            await host.asyncio.to_thread(host._reserve_ai_quota, uid, "process")
+            await host.asyncio.to_thread(entitlements._reserve_ai_quota, uid, "process")
 
             def _generate_captions_in_worker_thread():
                 return host.asyncio.run(app_state.processor.generate_captions_only(
@@ -257,7 +269,7 @@ def create_processing_router(host: ModuleType) -> SimpleNamespace:
                 # A failed transcription must never consume a customer's import
                 # allowance. `trusted_uid` only bypasses a second auth check in the
                 # worker; it must not change billing or quota treatment.
-                await host.asyncio.to_thread(host._release_ai_quota, uid, "process")
+                await host.asyncio.to_thread(entitlements._release_ai_quota, uid, "process")
                 raise
 
             if result.get("success") and not (result.get("captions") or []):
@@ -309,7 +321,7 @@ def create_processing_router(host: ModuleType) -> SimpleNamespace:
                 # does not use the customer's import allowance. The provider may
                 # still have billed Lekha, but that cost is not passed to a user who
                 # received no usable captions.
-                await host.asyncio.to_thread(host._release_ai_quota, uid, "process")
+                await host.asyncio.to_thread(entitlements._release_ai_quota, uid, "process")
                 raise host.HTTPException(
                     status_code=status_code,
                     detail=result.get("error", "Transcription service failed"),

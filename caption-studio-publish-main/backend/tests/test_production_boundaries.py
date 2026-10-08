@@ -181,7 +181,7 @@ class ProductionBoundaryTests(unittest.TestCase):
                                      captions=[{"id": "1", "text": "hello", "start_time": 0, "end_time": 1}])
         from starlette.requests import Request
         with (patch.object(main.settings, "_IS_PRODUCTION", True), patch.object(main.app_state, "_export_queue", None),
-              patch.object(main, "_assert_service_available"), patch.object(main.observability, "_track_event"),
+              patch.object(main.operator_controls, "_assert_service_available"), patch.object(main.observability, "_track_event"),
               patch.object(main.request_security, "_authenticate_media_request", return_value={"uid": "owner"}),
               patch.object(main, "_process_export_job_core", new_callable=AsyncMock) as render,
               patch.object(main, "_acquire_export_slot") as claim):
@@ -221,26 +221,26 @@ class ProductionBoundaryTests(unittest.TestCase):
             firebase.return_value.exists.assert_called_once_with(timeout=5)
 
     def test_processing_state_rejects_pending_or_rejected_media_for_export(self):
-        with patch.object(main, "_load_upload_metadata", return_value={"upload_state": "pending_scan"}):
+        with patch.object(main.media_records, "_load_upload_metadata", return_value={"upload_state": "pending_scan"}):
             with self.assertRaises(main.HTTPException) as pending:
-                main._assert_upload_clean("file")
+                main.media_records._assert_upload_clean("file")
         self.assertEqual(pending.exception.status_code, 409)
         self.assertEqual(pending.exception.headers["Retry-After"], "3")
-        with patch.object(main, "_load_upload_metadata", return_value={"upload_state": "rejected"}):
+        with patch.object(main.media_records, "_load_upload_metadata", return_value={"upload_state": "rejected"}):
             with self.assertRaises(main.HTTPException) as rejected:
-                main._assert_upload_clean("file")
+                main.media_records._assert_upload_clean("file")
         self.assertEqual(rejected.exception.status_code, 422)
-        with patch.object(main, "_load_upload_metadata", return_value={"upload_state": "clean"}):
-            self.assertEqual(main._assert_upload_clean("file")["upload_state"], "clean")
+        with patch.object(main.media_records, "_load_upload_metadata", return_value={"upload_state": "clean"}):
+            self.assertEqual(main.media_records._assert_upload_clean("file")["upload_state"], "clean")
 
     def test_export_reuses_upload_identity_without_rehashing_source(self):
         with (
-            patch.object(main, "_load_upload_metadata", return_value={
+            patch.object(main.media_records, "_load_upload_metadata", return_value={
                 "storage_generation": "42", "storage_crc32c": "checksum",
             }),
-            patch.object(main, "_compute_media_hash") as compute_hash,
+            patch.object(main.media_records, "_compute_media_hash") as compute_hash,
         ):
-            identity = main._source_media_identity("file", "source.mp4")
+            identity = main.media_records._source_media_identity("file", "source.mp4")
         self.assertEqual(identity, "storage:42:checksum")
         compute_hash.assert_not_called()
 
@@ -492,10 +492,10 @@ class ProductionBoundaryTests(unittest.TestCase):
     def test_probe_rejects_nonfinite_duration_and_excessive_pixels(self):
         for duration, width, height in (("nan", 100, 100), ("inf", 100, 100), (1, 9000, 9000), (1, 0, 0)):
             metadata = {"format": {"duration": duration}, "streams": [{"codec_type": "video", "width": width, "height": height}]}
-            with (patch.object(main, "_validate_media_signature"),
-                  patch.object(main, "run_media_command", return_value=SimpleNamespace(returncode=0, stdout=json.dumps(metadata)))):
+            with (patch.object(main.media_records, "_validate_media_signature"),
+                  patch.object(main.media_commands, "run_media_command", return_value=SimpleNamespace(returncode=0, stdout=json.dumps(metadata)))):
                 with self.assertRaises(ValueError):
-                    main._probe_media("input.mp4")
+                    main.media_records._probe_media("input.mp4")
 
     def test_release_identity_is_public_and_validated(self):
         with patch.dict(os.environ, {"APP_RELEASE": "a" * 40, "RELEASE_VERSION": "v1.0.0-rc.1", "APP_BUILD_TIME": "2026-09-05T00:00:00Z"}):
@@ -578,10 +578,10 @@ class ProductionBoundaryTests(unittest.TestCase):
             for data in (b"MZ" + bytes(30), b"#EXTM3U", b"", b"ffconcat version 1.0"):
                 target.write_bytes(data)
                 with self.assertRaises(ValueError):
-                    main._validate_media_signature(str(target))
+                    main.media_records._validate_media_signature(str(target))
             for data in (b"\x00\x00\x00\x18ftypisom" + bytes(20), b"RIFF" + bytes(4) + b"WAVE", b"ID3" + bytes(29)):
                 target.write_bytes(data)
-                main._validate_media_signature(str(target))
+                main.media_records._validate_media_signature(str(target))
 
     def test_older_payment_cannot_replace_newer_plan(self):
         user = SimpleNamespace(get=lambda **_: SimpleNamespace(exists=True, to_dict=lambda: {"last_subscription_order_created_at": 200, "subscription_tier": "pro"}))
@@ -666,9 +666,9 @@ class ProductionBoundaryTests(unittest.TestCase):
             def get(self): return SimpleNamespace(exists=True)
         db = SimpleNamespace(collection=lambda _: Ref())
         file_id = "123e4567-e89b-12d3-a456-426614174000"
-        token = main._create_media_token({"kind": "upload", "file_id": file_id, "uid": "deleted", "exp": int(time.time()) + 60})
+        token = main.media_records._create_media_token({"kind": "upload", "file_id": file_id, "uid": "deleted", "exp": int(time.time()) + 60})
         with (patch.object(main.settings, "_IS_PRODUCTION", True), patch.object(main.firebase_admin_setup, "get_db", return_value=db),
-              patch.object(main, "_safe_find_upload") as find):
+              patch.object(main.media_records, "_safe_find_upload") as find):
             response = TestClient(main.app).get(f"/api/media/upload/{file_id}?token={token}")
         self.assertEqual(response.status_code, 409)
         find.assert_not_called()
@@ -706,11 +706,11 @@ class ProductionBoundaryTests(unittest.TestCase):
         with (patch.object(main.settings, "_IS_PRODUCTION", True), patch.object(main.settings, "AI_SYSTEM_DAILY_LIMIT", 10),
               patch.object(main.firestore, "transactional", new=lambda fn: fn)):
             with self.assertRaises(main.HTTPException) as error:
-                main._reserve_system_ai_quota(db, "process")
+                main.entitlements._reserve_system_ai_quota(db, "process")
         self.assertEqual(error.exception.status_code, 503)
         with (patch.object(main.settings, "_IS_PRODUCTION", False), patch.object(main.settings, "AI_SYSTEM_DAILY_LIMIT", 10),
               patch.object(main.firestore, "transactional", new=lambda fn: fn)):
-            main._reserve_system_ai_quota(db, "process")
+            main.entitlements._reserve_system_ai_quota(db, "process")
 
     def test_job_state_preserves_empty_arrays_in_replay_payload(self):
         snapshot = {"waveform_data": [], "captions": [{"words": [], "word_styles": {}}]}

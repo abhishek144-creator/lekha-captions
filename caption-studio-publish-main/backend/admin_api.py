@@ -28,6 +28,10 @@ try:
     from . import request_security
 except ImportError:  # Direct execution from backend/ remains supported.
     import request_security
+try:
+    from . import entitlements
+except ImportError:  # Direct execution from backend/ remains supported.
+    import entitlements
 
 
 def create_admin_router(host: ModuleType) -> SimpleNamespace:
@@ -73,7 +77,7 @@ def create_admin_router(host: ModuleType) -> SimpleNamespace:
             "dead_letter_recent": dead_letter_rows,
             "payment_reconcile_recent": reconcile_runs,
             "slo": observability._build_slo_snapshot(),
-            "ai_system_usage_today": host._read_system_ai_usage(db),
+            "ai_system_usage_today": entitlements._read_system_ai_usage(db),
         }
 
 
