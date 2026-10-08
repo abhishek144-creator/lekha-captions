@@ -1062,8 +1062,9 @@ export default function Dashboard() {
               {!isVideoFullscreen && (
               <div className="relative z-10 shrink-0 hidden lg:flex items-center justify-between px-1 pb-2">
                 <div className="flex items-center gap-3">
-                  {/* Early-access marker for desktop. Below lg this row is
-                      hidden and DashboardHeader shows the badge instead. */}
+                  {/* Early-access marker. This row shows it on desktop and
+                      DashboardHeader shows it below lg, so the badge
+                      renders at every breakpoint (the nav rail is lg-only). */}
                   <span
                     title="Lekha Captions is in public beta — please report anything that looks wrong."
                     className="shrink-0 rounded-full border border-[#F5A623]/40 bg-[#F5A623]/10 px-2 py-0.5 text-[9px] font-bold uppercase leading-none tracking-[0.1em] text-[#F5A623]"
