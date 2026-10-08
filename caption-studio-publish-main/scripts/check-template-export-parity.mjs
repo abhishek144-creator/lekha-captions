@@ -431,7 +431,9 @@ const CASES = [
     impWordIndex: 1,
     requiredColors: ['gold', 'white'],
     minBboxHeight: 20,
-    minGoldXOffset: 40,
+    // "आज" + space is ~38px in the script font the editor uses; it measured
+    // 40+ only while the export wrongly fell back to Noto Sans Devanagari.
+    minGoldXOffset: 30,
     style: {
       preview_template_font_px: 20,
       preview_template_box_width_px: 150,
