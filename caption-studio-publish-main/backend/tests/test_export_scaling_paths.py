@@ -33,7 +33,7 @@ class ExportSlotWaitTests(unittest.TestCase):
             main._set_export_job("item-2", "queued", uid="a")
             result = main.run_export_job_task("item-2", PAYLOAD, "a")
             self.assertIsInstance(result, main.RQRetry)
-            self.assertEqual(result.intervals, [main.EXPORT_SLOT_WAIT_INTERVAL_SECONDS])
+            self.assertEqual(result.intervals, [main.settings.EXPORT_SLOT_WAIT_INTERVAL_SECONDS])
             self.assertEqual(main._load_export_job("item-2")["status"], "retrying")
             # The rescheduled attempt starts normally once the slot is free.
             self.redis.delete("expactive:a")
@@ -76,7 +76,7 @@ class DurableSnapshotTests(unittest.TestCase):
 class NonBlockingSubmissionTests(unittest.TestCase):
     def test_export_enqueue_wakes_workers_off_the_request_path(self):
         queue = SimpleNamespace(connection=object(), name="caption_export_jobs")
-        with (patch.object(main, "_IS_PRODUCTION", True),
+        with (patch.object(main.settings, "_IS_PRODUCTION", True),
               patch.object(main, "enqueue_bounded_across_queues", return_value="delivery"),
               patch.object(main.worker_launcher, "kick") as blocking_kick,
               patch.object(main.worker_launcher, "kick_in_background") as background_kick):
@@ -95,7 +95,7 @@ class NonBlockingSubmissionTests(unittest.TestCase):
         request = main.ExportRequest(**PAYLOAD)
         from starlette.requests import Request
         with (patch.object(main.asyncio, "to_thread", tracking_to_thread),
-              patch.object(main, "_IS_PRODUCTION", True), patch.object(main, "_export_queue", None),
+              patch.object(main.settings, "_IS_PRODUCTION", True), patch.object(main, "_export_queue", None),
               patch.object(main, "_assert_service_available"), patch.object(main, "_track_event"),
               patch.object(main, "_authenticate_media_request", Mock(return_value={"uid": "owner"}, __name__="auth"))):
             with self.assertRaises(main.HTTPException):

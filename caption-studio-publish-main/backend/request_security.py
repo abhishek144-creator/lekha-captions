@@ -7,26 +7,31 @@ keep applying.
 
 from types import ModuleType, SimpleNamespace
 
+try:
+    from . import settings
+except ImportError:  # Direct execution from backend/ remains supported.
+    import settings
+
 
 def create_request_security(host: ModuleType) -> SimpleNamespace:
     def _apply_security_headers(response: host.Response) -> host.Response:
-        response.headers["Content-Security-Policy"] = host.SECURITY_CSP
+        response.headers["Content-Security-Policy"] = settings.SECURITY_CSP
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "camera=(), geolocation=(), microphone=()"
         response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
-        if getattr(host, "_IS_PRODUCTION", False):
+        if settings._IS_PRODUCTION:
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         return response
 
 
     def _app_check_required(request: host.Request) -> bool:
-        if not host.FIREBASE_APP_CHECK_ENFORCED or request.method.upper() == "OPTIONS":
+        if not settings.FIREBASE_APP_CHECK_ENFORCED or request.method.upper() == "OPTIONS":
             return False
         path = request.url.path
-        return path not in host._APP_CHECK_EXEMPT_PATHS and not any(
-            path.startswith(prefix) for prefix in host._APP_CHECK_EXEMPT_PREFIXES
+        return path not in settings._APP_CHECK_EXEMPT_PATHS and not any(
+            path.startswith(prefix) for prefix in settings._APP_CHECK_EXEMPT_PREFIXES
         )
 
 
@@ -73,11 +78,11 @@ def create_request_security(host: ModuleType) -> SimpleNamespace:
 
 
     def _is_explicit_dev_auth_token(id_token: str) -> bool:
-        return (host.DEBUG_MODE_ENABLED or host.LOCAL_DEV_AUTH_BYPASS_ENABLED) and (id_token or "").strip() == "mock-token"
+        return (settings.DEBUG_MODE_ENABLED or settings.LOCAL_DEV_AUTH_BYPASS_ENABLED) and (id_token or "").strip() == "mock-token"
 
 
     def _assert_account_not_deleting(uid: str):
-        if not host._IS_PRODUCTION:
+        if not settings._IS_PRODUCTION:
             return
         db = host.get_db()
         if db is None:
@@ -91,7 +96,7 @@ def create_request_security(host: ModuleType) -> SimpleNamespace:
 
 
     def _create_account_if_active(db, user_ref, uid: str, data: host.Dict[str, host.Any]):
-        if not host._IS_PRODUCTION:
+        if not settings._IS_PRODUCTION:
             return user_ref.create(data)
         @host.firestore.transactional
         def create(transaction):
@@ -125,7 +130,7 @@ def create_request_security(host: ModuleType) -> SimpleNamespace:
 
 
     def _assert_tenant_access(uid: str, decoded_token: host.Optional[host.Dict[str, host.Any]], org_id: str = ""):
-        if not host.ENFORCE_TENANT_ISOLATION:
+        if not settings.ENFORCE_TENANT_ISOLATION:
             return
         token_org = host._tenant_id_from_token(decoded_token)
         requested_org = (org_id or "").strip()

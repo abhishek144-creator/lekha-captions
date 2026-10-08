@@ -7,19 +7,24 @@ keep applying.
 
 from types import ModuleType, SimpleNamespace
 
+try:
+    from . import settings
+except ImportError:  # Direct execution from backend/ remains supported.
+    import settings
+
 
 def create_operator_controls(host: ModuleType) -> SimpleNamespace:
     def _validate_feature_flag_safety(flag_name: str):
-        if not host.ENABLE_PROGRESSIVE_DELIVERY:
+        if not settings.ENABLE_PROGRESSIVE_DELIVERY:
             raise host.HTTPException(status_code=403, detail="Feature flags are disabled in this environment")
         if not host.re.match(r"^[a-zA-Z0-9_.-]{2,64}$", flag_name or ""):
             raise host.HTTPException(status_code=400, detail="Invalid flag name")
 
 
     def _default_service_controls() -> host.Dict[str, host.Any]:
-        controls: host.Dict[str, host.Any] = {key: False for key in host.SERVICE_CONTROL_KEYS}
+        controls: host.Dict[str, host.Any] = {key: False for key in settings.SERVICE_CONTROL_KEYS}
         controls["notice"] = ""
-        controls[host.MAX_UPLOAD_DURATION_CONTROL_KEY] = host.GLOBAL_MAX_UPLOAD_DURATION_SECONDS
+        controls[settings.MAX_UPLOAD_DURATION_CONTROL_KEY] = settings.GLOBAL_MAX_UPLOAD_DURATION_SECONDS
         return controls
 
 
@@ -29,7 +34,7 @@ def create_operator_controls(host: ModuleType) -> SimpleNamespace:
         if (
             not force
             and cached
-            and (now_ts - float(host._service_control_cache.get("ts") or 0.0)) < host.SERVICE_CONTROL_CACHE_SECONDS
+            and (now_ts - float(host._service_control_cache.get("ts") or 0.0)) < settings.SERVICE_CONTROL_CACHE_SECONDS
         ):
             return dict(cached)
 
@@ -38,25 +43,25 @@ def create_operator_controls(host: ModuleType) -> SimpleNamespace:
         if db:
             try:
                 snap = (
-                    db.collection(host.SERVICE_CONTROL_COLLECTION)
-                    .document(host.SERVICE_CONTROL_DOCUMENT)
+                    db.collection(settings.SERVICE_CONTROL_COLLECTION)
+                    .document(settings.SERVICE_CONTROL_DOCUMENT)
                     .get()
                 )
                 if snap.exists:
                     stored = snap.to_dict() or {}
-                    for key in host.SERVICE_CONTROL_KEYS:
+                    for key in settings.SERVICE_CONTROL_KEYS:
                         controls[key] = bool(stored.get(key, False))
-                    controls["notice"] = str(stored.get("notice") or "")[:host.SERVICE_CONTROL_NOTICE_MAX]
+                    controls["notice"] = str(stored.get("notice") or "")[:settings.SERVICE_CONTROL_NOTICE_MAX]
                     try:
                         configured_duration = int(stored.get(
-                            host.MAX_UPLOAD_DURATION_CONTROL_KEY,
-                            host.GLOBAL_MAX_UPLOAD_DURATION_SECONDS,
+                            settings.MAX_UPLOAD_DURATION_CONTROL_KEY,
+                            settings.GLOBAL_MAX_UPLOAD_DURATION_SECONDS,
                         ))
                     except (TypeError, ValueError):
-                        configured_duration = host.GLOBAL_MAX_UPLOAD_DURATION_SECONDS
-                    controls[host.MAX_UPLOAD_DURATION_CONTROL_KEY] = max(
+                        configured_duration = settings.GLOBAL_MAX_UPLOAD_DURATION_SECONDS
+                    controls[settings.MAX_UPLOAD_DURATION_CONTROL_KEY] = max(
                         15,
-                        min(host.GLOBAL_MAX_UPLOAD_DURATION_SECONDS, configured_duration),
+                        min(settings.GLOBAL_MAX_UPLOAD_DURATION_SECONDS, configured_duration),
                     )
             except Exception as e:
                 # Fail open: a controls read failure must not take the product down.
@@ -77,7 +82,7 @@ def create_operator_controls(host: ModuleType) -> SimpleNamespace:
         for key in ("maintenance_mode", control):
             if not controls.get(key):
                 continue
-            notice = controls.get("notice") or host._SERVICE_CONTROL_MESSAGES.get(
+            notice = controls.get("notice") or settings._SERVICE_CONTROL_MESSAGES.get(
                 key, "This feature is temporarily paused."
             )
             host._track_event("service_control_blocked", {"control": key})
@@ -89,10 +94,10 @@ def create_operator_controls(host: ModuleType) -> SimpleNamespace:
 
 
     def _is_content_safety_blocked(*values: str) -> bool:
-        if not host.CONTENT_SAFETY_BLOCKLIST:
+        if not settings.CONTENT_SAFETY_BLOCKLIST:
             return False
         joined = " ".join((v or "") for v in values).lower()
-        return any(token in joined for token in host.CONTENT_SAFETY_BLOCKLIST)
+        return any(token in joined for token in settings.CONTENT_SAFETY_BLOCKLIST)
 
     return SimpleNamespace(
         _validate_feature_flag_safety=_validate_feature_flag_safety,

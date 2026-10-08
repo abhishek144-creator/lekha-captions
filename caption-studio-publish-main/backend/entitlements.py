@@ -7,11 +7,16 @@ keep applying.
 
 from types import ModuleType, SimpleNamespace
 
+try:
+    from . import settings
+except ImportError:  # Direct execution from backend/ remains supported.
+    import settings
+
 
 def create_entitlements(host: ModuleType) -> SimpleNamespace:
     def _normalize_tier_name(tier: str) -> str:
         t = (tier or "free").strip().lower()
-        if t in host.PLAN_EXPORT_PRESETS:
+        if t in settings.PLAN_EXPORT_PRESETS:
             return t
         if t in ("professional", "business", "pro_plus"):
             return "pro"
@@ -24,7 +29,7 @@ def create_entitlements(host: ModuleType) -> SimpleNamespace:
             credits = int(value)
         except (TypeError, ValueError):
             credits = int(default)
-        return max(0, min(host.FREE_PLAN_CREDITS, credits))
+        return max(0, min(settings.FREE_PLAN_CREDITS, credits))
 
 
     def _subscription_is_expired(user_data: host.Optional[host.Dict[str, host.Any]], now: host.Optional[host.datetime] = None) -> bool:
@@ -80,7 +85,7 @@ def create_entitlements(host: ModuleType) -> SimpleNamespace:
     def _max_video_seconds_for_tier(tier: str) -> int:
         """Per-plan source-video length cap. Falls back to the global 180s ceiling
     for tiers (including 'free') that don't advertise a tighter limit."""
-        return int(host.PLAN_PRICING.get(tier, {}).get("max_video_seconds", 180) or 180)
+        return int(settings.PLAN_PRICING.get(tier, {}).get("max_video_seconds", 180) or 180)
 
 
     def _reserve_system_ai_quota(db, operation: str) -> None:
@@ -90,17 +95,17 @@ def create_entitlements(host: ModuleType) -> SimpleNamespace:
     production a counter outage fails closed: this ceiling is the last guard on
     paid-provider spend, so an unreadable counter must not mean unlimited calls.
     """
-        if host.AI_SYSTEM_DAILY_LIMIT <= 0:
+        if settings.AI_SYSTEM_DAILY_LIMIT <= 0:
             return
         today = host.date.today().isoformat()
-        usage_ref = db.collection(host.SERVICE_CONTROL_COLLECTION).document(f"ai_usage_{today}")
+        usage_ref = db.collection(settings.SERVICE_CONTROL_COLLECTION).document(f"ai_usage_{today}")
 
         @host.firestore.transactional
         def reserve_system(txn):
             snap = usage_ref.get(transaction=txn)
             data = snap.to_dict() if snap.exists else {}
             total = int((data or {}).get("total", 0) or 0)
-            if total >= host.AI_SYSTEM_DAILY_LIMIT:
+            if total >= settings.AI_SYSTEM_DAILY_LIMIT:
                 raise host.HTTPException(
                     status_code=503,
                     detail="Lekha Captions has hit today's processing capacity. Please try again tomorrow.",
@@ -111,7 +116,7 @@ def create_entitlements(host: ModuleType) -> SimpleNamespace:
                 "date": today,
                 "total": total + 1,
                 "by_operation": by_op,
-                "limit": host.AI_SYSTEM_DAILY_LIMIT,
+                "limit": settings.AI_SYSTEM_DAILY_LIMIT,
                 "updated_at": host._utcnow().isoformat() + "Z",
                 "expire_at": host._retention_deadline(30),
             }, merge=True)
@@ -119,12 +124,12 @@ def create_entitlements(host: ModuleType) -> SimpleNamespace:
         try:
             reserve_system(db.transaction())
         except host.HTTPException:
-            host._json_log("error", "ai_system_daily_limit_reached", operation=operation, limit=host.AI_SYSTEM_DAILY_LIMIT)
+            host._json_log("error", "ai_system_daily_limit_reached", operation=operation, limit=settings.AI_SYSTEM_DAILY_LIMIT)
             host._track_event("ai_system_daily_limit_reached", {"operation": operation})
             raise
         except Exception as e:
             host._json_log("warning", "ai_system_quota_reserve_failed", operation=operation, error=str(e))
-            if host._IS_PRODUCTION:
+            if settings._IS_PRODUCTION:
                 raise host.HTTPException(status_code=503, detail="AI quota service is temporarily unavailable") from e
 
 
@@ -132,11 +137,11 @@ def create_entitlements(host: ModuleType) -> SimpleNamespace:
         """Atomically reserve one daily paid-provider call before invoking it."""
         if operation not in {"process", "translate", "detect_language"}:
             raise host.HTTPException(status_code=400, detail="Unknown AI operation")
-        if host._IS_TEST:
+        if settings._IS_TEST:
             return
         db = host.get_db()
         if not db:
-            if host._IS_PRODUCTION:
+            if settings._IS_PRODUCTION:
                 raise host.HTTPException(status_code=503, detail="AI quota service is temporarily unavailable")
             return
 
@@ -153,7 +158,7 @@ def create_entitlements(host: ModuleType) -> SimpleNamespace:
             # expired Pro account keep Pro transcription/translation capacity.
             tier = host._effective_subscription_tier(data or {})
             base_tier = tier.replace("_yearly", "")
-            limits = host.AI_DAILY_LIMITS.get(base_tier, host.AI_DAILY_LIMITS["free"])
+            limits = settings.AI_DAILY_LIMITS.get(base_tier, settings.AI_DAILY_LIMITS["free"])
             limit = int(limits[operation])
             usage = dict((data or {}).get("ai_daily_usage") or {}) if (data or {}).get("ai_usage_date") == today else {}
             used = int(usage.get(operation, 0) or 0)
@@ -161,11 +166,11 @@ def create_entitlements(host: ModuleType) -> SimpleNamespace:
             if base_tier == "free" and operation == "process":
                 lifetime = dict((data or {}).get("ai_lifetime_usage") or {})
                 lifetime_used = int(lifetime.get("process", 0) or 0)
-                if lifetime_used >= host.FREE_LIFETIME_TRANSCRIPTIONS:
+                if lifetime_used >= settings.FREE_LIFETIME_TRANSCRIPTIONS:
                     raise host.HTTPException(
                         status_code=402,
                         detail=(
-                            f"FREE_TRANSCRIPTIONS_USED: You've used your {host.FREE_LIFETIME_TRANSCRIPTIONS} free "
+                            f"FREE_TRANSCRIPTIONS_USED: You've used your {settings.FREE_LIFETIME_TRANSCRIPTIONS} free "
                         "transcriptions. Upgrade to keep captioning."
                         ),
                     )
@@ -204,14 +209,14 @@ def create_entitlements(host: ModuleType) -> SimpleNamespace:
             "date": today,
             "total": 0,
             "by_operation": {},
-            "limit": host.AI_SYSTEM_DAILY_LIMIT,
-            "remaining": host.AI_SYSTEM_DAILY_LIMIT,
+            "limit": settings.AI_SYSTEM_DAILY_LIMIT,
+            "remaining": settings.AI_SYSTEM_DAILY_LIMIT,
         }
-        if not db or host.AI_SYSTEM_DAILY_LIMIT <= 0:
+        if not db or settings.AI_SYSTEM_DAILY_LIMIT <= 0:
             return snapshot
         try:
             snap = (
-                db.collection(host.SERVICE_CONTROL_COLLECTION)
+                db.collection(settings.SERVICE_CONTROL_COLLECTION)
                 .document(f"ai_usage_{today}")
                 .get()
             )
@@ -220,7 +225,7 @@ def create_entitlements(host: ModuleType) -> SimpleNamespace:
                 total = int(data.get("total", 0) or 0)
                 snapshot["total"] = total
                 snapshot["by_operation"] = dict(data.get("by_operation") or {})
-                snapshot["remaining"] = max(0, host.AI_SYSTEM_DAILY_LIMIT - total)
+                snapshot["remaining"] = max(0, settings.AI_SYSTEM_DAILY_LIMIT - total)
         except Exception as e:
             host._json_log("warning", "ai_system_usage_read_failed", error=str(e))
         return snapshot
@@ -228,10 +233,10 @@ def create_entitlements(host: ModuleType) -> SimpleNamespace:
 
     def _release_system_ai_quota(db, operation: str) -> None:
         """Return one call to the platform-wide daily ceiling. Best-effort."""
-        if host.AI_SYSTEM_DAILY_LIMIT <= 0:
+        if settings.AI_SYSTEM_DAILY_LIMIT <= 0:
             return
         today = host.date.today().isoformat()
-        usage_ref = db.collection(host.SERVICE_CONTROL_COLLECTION).document(f"ai_usage_{today}")
+        usage_ref = db.collection(settings.SERVICE_CONTROL_COLLECTION).document(f"ai_usage_{today}")
 
         @host.firestore.transactional
         def release_system(txn):
@@ -274,7 +279,7 @@ def create_entitlements(host: ModuleType) -> SimpleNamespace:
     """
         if operation not in {"process", "translate", "detect_language"}:
             return
-        if host._IS_TEST or not uid:
+        if settings._IS_TEST or not uid:
             return
         db = host.get_db()
         if not db:
@@ -320,14 +325,14 @@ def create_entitlements(host: ModuleType) -> SimpleNamespace:
 
 
     def _resolve_export_preset(tier: str, requested_quality: str, requested_fps: int) -> host.Dict[str, host.Any]:
-        normalized = "pro" if host.DISABLE_EXPORT_CREDIT_LIMIT else host._normalize_tier_name(tier)
-        preset = host.PLAN_EXPORT_PRESETS.get(normalized, host.PLAN_EXPORT_PRESETS["free"])
+        normalized = "pro" if settings.DISABLE_EXPORT_CREDIT_LIMIT else host._normalize_tier_name(tier)
+        preset = settings.PLAN_EXPORT_PRESETS.get(normalized, settings.PLAN_EXPORT_PRESETS["free"])
 
         req_quality = (requested_quality or "1080p").lower()
-        if req_quality not in host.QUALITY_RANK:
+        if req_quality not in settings.QUALITY_RANK:
             req_quality = "1080p"
         max_quality = preset["max_quality"]
-        quality = max_quality if host.QUALITY_RANK[req_quality] > host.QUALITY_RANK[max_quality] else req_quality
+        quality = max_quality if settings.QUALITY_RANK[req_quality] > settings.QUALITY_RANK[max_quality] else req_quality
 
         requested_fps = int(requested_fps or 30)
         fps_options = sorted(list(preset["fps_options"]))

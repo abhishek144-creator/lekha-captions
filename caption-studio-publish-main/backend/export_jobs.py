@@ -7,6 +7,11 @@ keep applying.
 
 from types import ModuleType, SimpleNamespace
 
+try:
+    from . import settings
+except ImportError:  # Direct execution from backend/ remains supported.
+    import settings
+
 
 def create_export_jobs(host: ModuleType) -> SimpleNamespace:
     def _persist_export_job(job_id: str, payload: host.Dict[str, host.Any], *, write_redis: bool = True) -> bool:
@@ -75,7 +80,7 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
                     return job
             except Exception as e:
                 host._json_log("warning", "export_job_firestore_load_failed", job_id=job_id, error=str(e))
-        if (host._IS_PRODUCTION or host._export_queue is not None) and job_id in host._export_jobs:
+        if (settings._IS_PRODUCTION or host._export_queue is not None) and job_id in host._export_jobs:
             raise host.HTTPException(status_code=503, detail="Export job status is temporarily unavailable")
         return host._export_jobs.get(job_id)
 
@@ -91,7 +96,7 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
             # bypass. Account bootstrap repairs only missing free balances.
             credits = 0
         credits = max(0, credits)
-        if tier == host.FREE_PLAN_ID:
+        if tier == settings.FREE_PLAN_ID:
             # Never let a stale/manual legacy value turn the Free plan into an
             # unbounded entitlement. Account bootstrap also persists this repair.
             credits = host._normalize_free_credit_balance(credits)
@@ -102,13 +107,13 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
         if tier != 'free' and plan_time_expired:
             return False, "PLAN_EXPIRED: Your plan has expired. Please renew to continue exporting.", recent_exports
 
-        if credits <= 0 and not host.DISABLE_EXPORT_CREDIT_LIMIT:
+        if credits <= 0 and not settings.DISABLE_EXPORT_CREDIT_LIMIT:
             return False, "UPGRADE_REQUIRED: You have no credits remaining. Please upgrade your plan to continue exporting.", recent_exports
 
         # Temporary escape hatch during export debugging: keep credit checks, but do not
         # block local verification on daily export quota until parity issues are closed.
-        if not host.DISABLE_EXPORT_DAILY_LIMIT:
-            daily_limit = host.PLAN_PRICING.get(tier, {}).get('daily_limit', 5)
+        if not settings.DISABLE_EXPORT_DAILY_LIMIT:
+            daily_limit = settings.PLAN_PRICING.get(tier, {}).get('daily_limit', 5)
             if daily_limit is not None and len(recent_exports) >= int(daily_limit):
                 return False, f"Limit reached: You can only export {daily_limit} videos per 24 hours.", recent_exports
 
@@ -143,9 +148,9 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
             history = [history_item, *(current_user.get("history", []) or [])]
             dropped_history = history[5:]
             user_update = {"history": history[:5]}
-            if not host.DISABLE_EXPORT_CREDIT_LIMIT:
+            if not settings.DISABLE_EXPORT_CREDIT_LIMIT:
                 current_tier = host._normalize_tier_name(current_user.get("subscription_tier", "free"))
-                if current_tier == host.FREE_PLAN_ID:
+                if current_tier == settings.FREE_PLAN_ID:
                     # Set an exact bounded value so a corrupt Free balance such as
                     # 73 is repaired on the first metered export instead of merely
                     # becoming 72 and remaining exploitable.
@@ -155,7 +160,7 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
                     user_update["credits_remaining"] = max(0, bounded_balance - 1)
                 else:
                     user_update["credits_remaining"] = host.firestore.Increment(-1)
-            if not host.DISABLE_EXPORT_DAILY_LIMIT:
+            if not settings.DISABLE_EXPORT_DAILY_LIMIT:
                 user_update["export_timestamps"] = [*recent_exports, now_ts]
             transaction.create(usage_ref, {
                 "export_job_id": export_job_id,
@@ -175,7 +180,7 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
     def _load_recorded_export_result(uid: str, export_job_id: str, file_id: str):
         database = host.get_db()
         if database is None:
-            if host._IS_PRODUCTION:
+            if settings._IS_PRODUCTION:
                 raise host.HTTPException(503, "Export recovery storage is temporarily unavailable")
             return None
         snapshot = database.collection("users").document(uid).collection("export_usage").document(export_job_id).get()
@@ -195,14 +200,14 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
             if keep_out_of_redis:
                 durable_only = {
                     field: kwargs.pop(field)
-                    for field in host._DURABLE_ONLY_EXPORT_JOB_FIELDS
+                    for field in settings._DURABLE_ONLY_EXPORT_JOB_FIELDS
                     if field in kwargs
                 }
             seed = host._load_export_job(job_id) or {}
             if keep_out_of_redis:
                 # A Redis-loss recovery seeds from Firestore; do not copy its
                 # snapshot back into Redis.
-                seed = {key: value for key, value in seed.items() if key not in host._DURABLE_ONLY_EXPORT_JOB_FIELDS}
+                seed = {key: value for key, value in seed.items() if key not in settings._DURABLE_ONLY_EXPORT_JOB_FIELDS}
             payload = host.transition_export_job(host._redis_client, job_id, seed, {
                 "status": status, "updated_at": host.time.time(), **kwargs,
             }, expected_status=expected_status)
@@ -290,7 +295,7 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
             "timestamp": host._utcnow().isoformat() + "Z",
         }
         try:
-            with open(host.os.path.join(host.DEAD_LETTER_DIR, f"{job_id}.json"), "w", encoding="utf-8") as f:
+            with open(host.os.path.join(settings.DEAD_LETTER_DIR, f"{job_id}.json"), "w", encoding="utf-8") as f:
                 host.json.dump(data, f)
         except Exception as e:
             host._json_log("warning", "dead_letter_file_write_failed", job_id=job_id, error=str(e))
@@ -311,7 +316,7 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
             return {
                 key: host._strip_client_render_hints(item)
                 for key, item in value.items()
-                if key not in host._CLIENT_RENDER_HINT_FIELDS
+                if key not in settings._CLIENT_RENDER_HINT_FIELDS
             }
         if isinstance(value, list):
             return [host._strip_client_render_hints(item) for item in value]
@@ -349,7 +354,7 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
             except Exception:
                 should_use_dom = False
             debug_payload = {
-                "renderer_version": host.EXPORT_RENDERER_VERSION,
+                "renderer_version": settings.EXPORT_RENDERER_VERSION,
                 "export_job_id": export_job_id,
                 "file_id": file_id,
                 "quality": quality,
@@ -422,7 +427,7 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
                 "should_use_dom_template_renderer": should_use_dom,
                 "written_at": host._utcnow().isoformat() + "Z",
             }
-            with open(host.os.path.join(host.CACHE_DIR, "last_export_request_debug.json"), "w", encoding="utf-8") as f:
+            with open(host.os.path.join(settings.CACHE_DIR, "last_export_request_debug.json"), "w", encoding="utf-8") as f:
                 host.json.dump(debug_payload, f, indent=2, ensure_ascii=False)
         except Exception as e:
             host._json_log("warning", "last_export_request_debug_write_failed", error=str(e))
@@ -487,11 +492,11 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
             user_doc = user_ref.get()
 
             if not user_doc.exists:
-                if host._IS_PRODUCTION:
+                if settings._IS_PRODUCTION:
                     raise host.HTTPException(status_code=409, detail="Account no longer exists.")
                 host._log(rid, f"User {uid} missing in Firestore; auto-creating defaults")
                 default_user = {
-                    'credits_remaining': host.FREE_PLAN_CREDITS,
+                    'credits_remaining': settings.FREE_PLAN_CREDITS,
                     'subscription_tier': 'free',
                     'export_timestamps': [],
                     'created_at': host.time.time(),
@@ -533,7 +538,7 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
             except (TypeError, ValueError):
                 credits = 0
         else:
-            if not host.ALLOW_EXPORT_WITHOUT_DB:
+            if not settings.ALLOW_EXPORT_WITHOUT_DB:
                 # Rendering is a metered operation. Continuing without the source of
                 # truth for credits turns a database outage into a billing bypass.
                 raise host.HTTPException(status_code=503, detail="Account and credit service is temporarily unavailable")
@@ -571,7 +576,7 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
         media_hash = host._source_media_identity(req.file_id, input_path)
         request_hash = host.render_cache_identity(
             uid=uid,
-            renderer_version=host.EXPORT_RENDERER_VERSION,
+            renderer_version=settings.EXPORT_RENDERER_VERSION,
             media_hash=media_hash,
             captions=captions,
             style=server_style,
@@ -579,7 +584,7 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
             fps=preset["fps"],
             export_aspect_ratio=req.export_aspect_ratio,
         )
-        cached_render_path = host.os.path.join(host.RENDER_CACHE_DIR, f"{request_hash}.mp4")
+        cached_render_path = host.os.path.join(settings.RENDER_CACHE_DIR, f"{request_hash}.mp4")
         template_export_active = bool(
             server_style.get("template_id")
             or server_style.get("template_20_id")
@@ -595,7 +600,7 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
         )
 
         output_filename = f"export_{req.file_id}_{request_hash[:12]}.mp4"
-        output_path = host.os.path.join(host.EXPORT_DIR, output_filename)
+        output_path = host.os.path.join(settings.EXPORT_DIR, output_filename)
         render_started_at = host.time.time()
         style_with_quality = {
             **server_style,
@@ -682,8 +687,8 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
         retention_hours = 2
         if db_available and user_data:
             current_tier = user_data.get('subscription_tier', 'free')
-            if current_tier in host.PLAN_PRICING:
-                retention_hours = host.PLAN_PRICING[current_tier].get('export_retention_hours', 2)
+            if current_tier in settings.PLAN_PRICING:
+                retention_hours = settings.PLAN_PRICING[current_tier].get('export_retention_hours', 2)
         try:
             remote_path = f"exports/{uid}/{output_filename}"
             firebase_url = host.upload_to_firebase_storage(
@@ -692,7 +697,7 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
         except Exception as e:
             host._log(rid, f"Firebase upload failed, using local export: {e}")
 
-        if host._IS_PRODUCTION and not firebase_url:
+        if settings._IS_PRODUCTION and not firebase_url:
             raise host.HTTPException(status_code=503, detail="Rendered media could not be persisted. Please retry.")
         expires_at = (host._utcnow() + host.timedelta(hours=retention_hours)).isoformat() + "Z"
         video_url = host._signed_export_url(
@@ -782,7 +787,7 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
         host._track_operational_metric_sample("export_render_ms", render_ms)
         host._track_operational_metric_sample(
             "job_cost_usd",
-            (rendered_duration / 60.0) * host.RENDER_COST_ESTIMATE_PER_MEDIA_MINUTE_USD,
+            (rendered_duration / 60.0) * settings.RENDER_COST_ESTIMATE_PER_MEDIA_MINUTE_USD,
         )
         return payload
 
@@ -797,7 +802,7 @@ def create_export_jobs(host: ModuleType) -> SimpleNamespace:
                 return None
         except Exception:
             return None
-        return host.RQRetry(max=host.EXPORT_SLOT_WAIT_MAX_ATTEMPTS, interval=host.EXPORT_SLOT_WAIT_INTERVAL_SECONDS)
+        return host.RQRetry(max=settings.EXPORT_SLOT_WAIT_MAX_ATTEMPTS, interval=settings.EXPORT_SLOT_WAIT_INTERVAL_SECONDS)
 
     return SimpleNamespace(
         _persist_export_job=_persist_export_job,

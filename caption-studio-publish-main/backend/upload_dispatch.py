@@ -7,6 +7,11 @@ keep applying.
 
 from types import ModuleType, SimpleNamespace
 
+try:
+    from . import settings
+except ImportError:  # Direct execution from backend/ remains supported.
+    import settings
+
 
 def create_upload_dispatch(host: ModuleType) -> SimpleNamespace:
     def _cleanup_incomplete_upload(local_path: str = "", remote_path: str = ""):
@@ -25,21 +30,21 @@ def create_upload_dispatch(host: ModuleType) -> SimpleNamespace:
 
 
     def _reserve_direct_upload_slot(uid: str, file_id: str, size_bytes: int):
-        if host._redis_client is None and not host._IS_PRODUCTION:
+        if host._redis_client is None and not settings._IS_PRODUCTION:
             return
         host.reserve_upload(
             host._redis_client, uid, file_id, size_bytes,
-            max_active=host.DIRECT_UPLOAD_MAX_ACTIVE,
-            max_outstanding_bytes=host.DIRECT_UPLOAD_MAX_OUTSTANDING_BYTES,
-            max_hourly=host.DIRECT_UPLOAD_MAX_HOURLY,
+            max_active=settings.DIRECT_UPLOAD_MAX_ACTIVE,
+            max_outstanding_bytes=settings.DIRECT_UPLOAD_MAX_OUTSTANDING_BYTES,
+            max_hourly=settings.DIRECT_UPLOAD_MAX_HOURLY,
         )
 
 
     def _limit_direct_upload_network(request: host.Request):
         network = host._client_rate_key(request)
         allowed, retry_after, _remaining = host._check_rate(
-            host._upload_rate, f"direct_network:{network}", host.DIRECT_UPLOAD_SHARED_NETWORK_HOURLY,
-            host.UPLOAD_RATE_WINDOW,
+            host._upload_rate, f"direct_network:{network}", settings.DIRECT_UPLOAD_SHARED_NETWORK_HOURLY,
+            settings.UPLOAD_RATE_WINDOW,
         )
         if not allowed:
             raise host.HTTPException(429, "Too many uploads from this network",
@@ -94,9 +99,9 @@ def create_upload_dispatch(host: ModuleType) -> SimpleNamespace:
     def _require_scheduler_secret(request: host.Request):
         host.require_scheduler_authorization(
             request,
-            shared_secret=host.PAYMENT_RECONCILE_SECRET,
-            service_account_email=host.SCHEDULER_SERVICE_ACCOUNT_EMAIL,
-            oidc_audience=host.SCHEDULER_OIDC_AUDIENCE,
+            shared_secret=settings.PAYMENT_RECONCILE_SECRET,
+            service_account_email=settings.SCHEDULER_SERVICE_ACCOUNT_EMAIL,
+            oidc_audience=settings.SCHEDULER_OIDC_AUDIENCE,
             rejected_callback=lambda error: host._json_log(
                 "warning", "scheduler_oidc_rejected", error_type=type(error).__name__,
             ),

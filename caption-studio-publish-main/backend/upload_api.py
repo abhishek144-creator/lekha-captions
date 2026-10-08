@@ -4,6 +4,11 @@ from types import ModuleType, SimpleNamespace
 
 from fastapi import APIRouter
 
+try:
+    from . import settings
+except ImportError:  # Direct execution from backend/ remains supported.
+    import settings
+
 
 def create_upload_router(host: ModuleType) -> SimpleNamespace:
     router = APIRouter()
@@ -28,7 +33,7 @@ def create_upload_router(host: ModuleType) -> SimpleNamespace:
             decoded_token = host._authenticate_media_request(token)
             uid = (decoded_token.get("uid") or "").strip() or "unknown-user"
 
-            if host._IS_PRODUCTION:
+            if settings._IS_PRODUCTION:
                 raise host.HTTPException(
                     status_code=409,
                     detail="Production uploads must use the direct resumable storage flow.",
@@ -40,17 +45,17 @@ def create_upload_router(host: ModuleType) -> SimpleNamespace:
             if host._is_content_safety_blocked(file.filename or ""):
                 host._track_event("upload_rejected_content_safety")
                 raise host.HTTPException(status_code=422, detail="Upload blocked by content safety policy.")
-            if file_ext not in host.ALLOWED_EXTENSIONS:
+            if file_ext not in settings.ALLOWED_EXTENSIONS:
                 host._track_event("upload_rejected_extension", {"ext": file_ext})
-                raise host.HTTPException(status_code=415, detail=f"File type .{file_ext} not supported. Allowed: {', '.join(sorted(host.ALLOWED_EXTENSIONS))}")
+                raise host.HTTPException(status_code=415, detail=f"File type .{file_ext} not supported. Allowed: {', '.join(sorted(settings.ALLOWED_EXTENSIONS))}")
 
             content_type = (file.content_type or "").lower()
             guessed_type, _ = host.mimetypes.guess_type(file.filename or "")
             # application/octet-stream is a generic browser fallback — treat extension check as authoritative
-            if content_type and content_type != "application/octet-stream" and not any(content_type.startswith(p) for p in host.ALLOWED_CONTENT_PREFIXES):
+            if content_type and content_type != "application/octet-stream" and not any(content_type.startswith(p) for p in settings.ALLOWED_CONTENT_PREFIXES):
                 host._track_event("upload_rejected_content_type", {"content_type": content_type})
                 raise host.HTTPException(status_code=415, detail=f"Unsupported MIME type: {content_type}")
-            if guessed_type and not any(guessed_type.startswith(p) for p in host.ALLOWED_CONTENT_PREFIXES):
+            if guessed_type and not any(guessed_type.startswith(p) for p in settings.ALLOWED_CONTENT_PREFIXES):
                 host._track_event("upload_rejected_guess_type", {"guessed_type": guessed_type})
                 raise host.HTTPException(status_code=415, detail=f"Unsupported file type: {guessed_type}")
 
@@ -86,12 +91,12 @@ def create_upload_router(host: ModuleType) -> SimpleNamespace:
                 content_length=content_length,
                 content_type=content_type,
             )
-            if content_length > host.MAX_PROXY_UPLOAD_BYTES + 1024 * 1024:
+            if content_length > settings.MAX_PROXY_UPLOAD_BYTES + 1024 * 1024:
                 host._track_event("upload_rejected_too_large", {"content_length": content_length})
                 raise host.HTTPException(status_code=413, detail="Large files must use direct storage upload.")
 
             file_id = str(host.uuid.uuid4())
-            file_path = host.os.path.join(host.UPLOAD_DIR, f"{file_id}.{file_ext}")
+            file_path = host.os.path.join(settings.UPLOAD_DIR, f"{file_id}.{file_ext}")
             # Stream to disk in chunks rather than buffering the whole file in RAM —
             # a 500 MiB read per request is a memory-pressure DoS under concurrency.
             # Enforce the size cap as we write so an oversized (or content-length-spoofed)
@@ -105,7 +110,7 @@ def create_upload_router(host: ModuleType) -> SimpleNamespace:
                     if not chunk:
                         break
                     bytes_written += len(chunk)
-                    if bytes_written > host.MAX_PROXY_UPLOAD_BYTES:
+                    if bytes_written > settings.MAX_PROXY_UPLOAD_BYTES:
                         too_large = True
                         break
                     buffer.write(chunk)
@@ -136,10 +141,10 @@ def create_upload_router(host: ModuleType) -> SimpleNamespace:
                 allowed, retry_after, remaining = host._check_rate(
                     host._upload_rate,
                     f"network:{client_ip}",
-                    host.UPLOAD_SHARED_NETWORK_RATE_LIMIT,
-                    host.UPLOAD_RATE_WINDOW,
+                    settings.UPLOAD_SHARED_NETWORK_RATE_LIMIT,
+                    settings.UPLOAD_RATE_WINDOW,
                 )
-                host._apply_rate_headers(response, host.UPLOAD_SHARED_NETWORK_RATE_LIMIT, remaining, retry_after)
+                host._apply_rate_headers(response, settings.UPLOAD_SHARED_NETWORK_RATE_LIMIT, remaining, retry_after)
                 if not allowed:
                     try:
                         host.os.remove(file_path)
@@ -148,9 +153,9 @@ def create_upload_router(host: ModuleType) -> SimpleNamespace:
                     host._track_event("upload_rejected_rate_limited")
                     raise host.HTTPException(status_code=429, detail="Too many uploads. Please wait before trying again.")
                 user_allowed, user_retry_after, user_remaining = host._check_rate(
-                    host._upload_rate, f"user:{uid}", host.UPLOAD_USER_RATE_LIMIT, host.UPLOAD_RATE_WINDOW
+                    host._upload_rate, f"user:{uid}", settings.UPLOAD_USER_RATE_LIMIT, settings.UPLOAD_RATE_WINDOW
                 )
-                host._apply_rate_headers(response, host.UPLOAD_USER_RATE_LIMIT, user_remaining, user_retry_after)
+                host._apply_rate_headers(response, settings.UPLOAD_USER_RATE_LIMIT, user_remaining, user_retry_after)
                 if not user_allowed:
                     try:
                         host.os.remove(file_path)
@@ -183,8 +188,8 @@ def create_upload_router(host: ModuleType) -> SimpleNamespace:
 
             controls = host._read_service_controls()
             max_seconds = int(controls.get(
-                host.MAX_UPLOAD_DURATION_CONTROL_KEY,
-                host.GLOBAL_MAX_UPLOAD_DURATION_SECONDS,
+                settings.MAX_UPLOAD_DURATION_CONTROL_KEY,
+                settings.GLOBAL_MAX_UPLOAD_DURATION_SECONDS,
             ))
             if duration > max_seconds:
                 host.os.remove(file_path)
@@ -195,7 +200,7 @@ def create_upload_router(host: ModuleType) -> SimpleNamespace:
             remote_path = await host.asyncio.to_thread(
                 host.upload_source_media, file_path, uid, file_id, file_ext, 6
             )
-            if host._IS_PRODUCTION and not remote_path:
+            if settings._IS_PRODUCTION and not remote_path:
                 try:
                     host.os.remove(file_path)
                 except OSError:
@@ -216,7 +221,7 @@ def create_upload_router(host: ModuleType) -> SimpleNamespace:
                     "size_bytes": bytes_written,
                 },
             )
-            if host._IS_PRODUCTION and not owner_persisted:
+            if settings._IS_PRODUCTION and not owner_persisted:
                 raise host.HTTPException(status_code=503, detail="Upload ownership could not be persisted. Please retry.")
             if remote_path:
                 await host.asyncio.to_thread(

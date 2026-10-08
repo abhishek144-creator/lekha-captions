@@ -13,6 +13,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Request
 from fastapi import APIRouter
 
+try:
+    from . import settings
+except ImportError:  # Direct execution from backend/ remains supported.
+    import settings
+
 
 def create_language_router(host: ModuleType) -> SimpleNamespace:
     router = APIRouter()
@@ -26,15 +31,15 @@ def create_language_router(host: ModuleType) -> SimpleNamespace:
         host._assert_tenant_access(uid, decoded_token, req.org_id)
         client_ip = host._client_rate_key(request)
         allowed, retry_after, remaining = host._check_rate(
-            host._translate_rate, f"network:{client_ip}", host.TRANSLATE_SHARED_NETWORK_RATE_LIMIT
+            host._translate_rate, f"network:{client_ip}", settings.TRANSLATE_SHARED_NETWORK_RATE_LIMIT
         )
-        host._apply_rate_headers(response, host.TRANSLATE_SHARED_NETWORK_RATE_LIMIT, remaining, retry_after)
+        host._apply_rate_headers(response, settings.TRANSLATE_SHARED_NETWORK_RATE_LIMIT, remaining, retry_after)
         if not allowed:
             raise HTTPException(status_code=429, detail="Too many translation requests. Please wait before trying again.")
         user_allowed, user_retry_after, user_remaining = host._check_rate(
-            host._translate_rate, f"user:{uid}", host.TRANSLATE_USER_RATE_LIMIT
+            host._translate_rate, f"user:{uid}", settings.TRANSLATE_USER_RATE_LIMIT
         )
-        host._apply_rate_headers(response, host.TRANSLATE_USER_RATE_LIMIT, user_remaining, user_retry_after)
+        host._apply_rate_headers(response, settings.TRANSLATE_USER_RATE_LIMIT, user_remaining, user_retry_after)
         if not user_allowed:
             raise HTTPException(status_code=429, detail="Too many translation requests. Please wait before trying again.")
         for caption in req.captions:
@@ -60,10 +65,10 @@ def create_language_router(host: ModuleType) -> SimpleNamespace:
             )
 
             texts = [cap.get("text", "") for cap in req.captions]
-            translated_lines = _translate_lines(client, texts, req.target_language, host.TRANSLATION_MODEL)
+            translated_lines = _translate_lines(client, texts, req.target_language, settings.TRANSLATION_MODEL)
             if translated_lines is None:
                 host._json_log("warning", "translation_line_count_mismatch", expected=len(texts))
-                translated_lines = _translate_lines(client, texts, req.target_language, host.TRANSLATION_MODEL, strict=True)
+                translated_lines = _translate_lines(client, texts, req.target_language, settings.TRANSLATION_MODEL, strict=True)
 
             if translated_lines is None:
                 raise RuntimeError("Translation provider returned an incomplete caption set")
@@ -100,15 +105,15 @@ def create_language_router(host: ModuleType) -> SimpleNamespace:
         allowed, retry_after, remaining = host._check_rate(
             host._detect_language_rate,
             f"network:{client_ip}",
-            host.DETECT_LANGUAGE_SHARED_NETWORK_RATE_LIMIT,
+            settings.DETECT_LANGUAGE_SHARED_NETWORK_RATE_LIMIT,
         )
-        host._apply_rate_headers(response, host.DETECT_LANGUAGE_SHARED_NETWORK_RATE_LIMIT, remaining, retry_after)
+        host._apply_rate_headers(response, settings.DETECT_LANGUAGE_SHARED_NETWORK_RATE_LIMIT, remaining, retry_after)
         if not allowed:
             raise HTTPException(status_code=429, detail="Too many language detection requests. Please wait before trying again.")
         user_allowed, user_retry_after, user_remaining = host._check_rate(
-            host._detect_language_rate, f"user:{uid}", host.DETECT_LANGUAGE_USER_RATE_LIMIT
+            host._detect_language_rate, f"user:{uid}", settings.DETECT_LANGUAGE_USER_RATE_LIMIT
         )
-        host._apply_rate_headers(response, host.DETECT_LANGUAGE_USER_RATE_LIMIT, user_remaining, user_retry_after)
+        host._apply_rate_headers(response, settings.DETECT_LANGUAGE_USER_RATE_LIMIT, user_remaining, user_retry_after)
         if not user_allowed:
             raise HTTPException(status_code=429, detail="Too many language detection requests. Please wait before trying again.")
         if not host._validate_file_id(req.file_id):

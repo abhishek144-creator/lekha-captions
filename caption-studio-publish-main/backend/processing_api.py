@@ -4,23 +4,28 @@ from types import ModuleType, SimpleNamespace
 
 from fastapi import APIRouter
 
+try:
+    from . import settings
+except ImportError:  # Direct execution from backend/ remains supported.
+    import settings
+
 
 def create_processing_router(host: ModuleType) -> SimpleNamespace:
     router = APIRouter()
 
     @router.post("/api/process")
     async def process_video(req: host.ProcessRequest, request: host.Request, response: host.Response):
-        if not host._IS_PRODUCTION:
+        if not settings._IS_PRODUCTION:
             return await host._process_video_inline(req, request, response)
         await host.asyncio.to_thread(host._assert_service_available, "pause_transcription")
         uid = (await host.asyncio.to_thread(host._authenticate_media_request, req.id_token, req.org_id))["uid"]
         if not host._validate_file_id(req.file_id):
             raise host.HTTPException(400, "Invalid file_id")
         await host.asyncio.to_thread(host._assert_upload_owner, req.file_id, uid)
-        settings = {"file_id": req.file_id, "language": req.language,
+        job_settings = {"file_id": req.file_id, "language": req.language,
                     "min_words": req.min_words, "max_words": req.max_words}
         jobs = host.TranscriptionJobs(host.get_db())
-        job = await host.asyncio.to_thread(jobs.create, uid, settings)
+        job = await host.asyncio.to_thread(jobs.create, uid, job_settings)
         if job["status"] == "completed":
             return {**job["payload"], "idempotent_replay": True}
         if job["status"] in {"failed", "unknown", "cancelled"}:
@@ -109,16 +114,16 @@ def create_processing_router(host: ModuleType) -> SimpleNamespace:
         uid = (decoded_token.get("uid") or "").strip() or "unknown-user"
         client_ip = host._client_rate_key(request)
         allowed, retry_after, remaining = host._check_rate(
-            host._process_rate, f"network:{client_ip}", host.PROCESS_SHARED_NETWORK_RATE_LIMIT
+            host._process_rate, f"network:{client_ip}", settings.PROCESS_SHARED_NETWORK_RATE_LIMIT
         )
-        host._apply_rate_headers(response, host.PROCESS_SHARED_NETWORK_RATE_LIMIT, remaining, retry_after)
+        host._apply_rate_headers(response, settings.PROCESS_SHARED_NETWORK_RATE_LIMIT, remaining, retry_after)
         if not allowed:
             host._track_event("process_rejected_rate_limited")
             raise host.HTTPException(status_code=429, detail="Too many transcription requests. Please wait before trying again.")
         user_allowed, user_retry_after, user_remaining = host._check_rate(
-            host._process_rate, f"user:{uid}", host.PROCESS_USER_RATE_LIMIT
+            host._process_rate, f"user:{uid}", settings.PROCESS_USER_RATE_LIMIT
         )
-        host._apply_rate_headers(response, host.PROCESS_USER_RATE_LIMIT, user_remaining, user_retry_after)
+        host._apply_rate_headers(response, settings.PROCESS_USER_RATE_LIMIT, user_remaining, user_retry_after)
         if not user_allowed:
             host._track_event("process_rejected_rate_limited")
             raise host.HTTPException(status_code=429, detail="Too many transcription requests. Please wait before trying again.")
@@ -139,8 +144,8 @@ def create_processing_router(host: ModuleType) -> SimpleNamespace:
         user_tier = host._normalize_tier_name(await host.asyncio.to_thread(host._lookup_subscription_tier, uid))
         controls = host._read_service_controls()
         operator_max_seconds = int(controls.get(
-            host.MAX_UPLOAD_DURATION_CONTROL_KEY,
-            host.GLOBAL_MAX_UPLOAD_DURATION_SECONDS,
+            settings.MAX_UPLOAD_DURATION_CONTROL_KEY,
+            settings.GLOBAL_MAX_UPLOAD_DURATION_SECONDS,
         ))
         max_seconds = min(host._max_video_seconds_for_tier(user_tier), operator_max_seconds)
         try:
@@ -255,7 +260,7 @@ def create_processing_router(host: ModuleType) -> SimpleNamespace:
                     host._track_operational_metric_sample("transcription_media_seconds", media_duration)
                     host._track_operational_metric_sample(
                         "job_cost_usd",
-                        (media_duration / 60.0) * host.AI_COST_ESTIMATE_PER_MEDIA_MINUTE_USD,
+                        (media_duration / 60.0) * settings.AI_COST_ESTIMATE_PER_MEDIA_MINUTE_USD,
                     )
                 if cache_path:
                     try:

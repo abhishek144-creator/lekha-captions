@@ -11,12 +11,12 @@ from rq import Worker
 
 try:
     from . import main as api
-    from .main import (
+    from .main import cleanup_local_media_artifacts
+    from .settings import (
         EXPORT_QUEUE_NAME,
         TRANSCRIPTION_QUEUE_NAME,
         MEDIA_SCAN_QUEUE_NAME,
         REDIS_URL,
-        cleanup_local_media_artifacts,
     )
     from .release_metadata import release_metadata
     from .gcp_scale_in import ScaleInProtector
@@ -26,12 +26,12 @@ try:
     from .worker_launcher import WorkerLease
 except ImportError:  # Direct execution from backend/ remains supported.
     import main as api
-    from main import (
+    from main import cleanup_local_media_artifacts
+    from settings import (
         EXPORT_QUEUE_NAME,
         TRANSCRIPTION_QUEUE_NAME,
         MEDIA_SCAN_QUEUE_NAME,
         REDIS_URL,
-        cleanup_local_media_artifacts,
     )
     from release_metadata import release_metadata
     from gcp_scale_in import ScaleInProtector

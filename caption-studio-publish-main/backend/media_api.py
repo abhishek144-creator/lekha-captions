@@ -12,6 +12,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Request
 from fastapi import APIRouter
 
+try:
+    from . import settings
+except ImportError:  # Direct execution from backend/ remains supported.
+    import settings
+
 
 def create_media_router(host: ModuleType) -> SimpleNamespace:
     router = APIRouter()
@@ -61,14 +66,14 @@ def create_media_router(host: ModuleType) -> SimpleNamespace:
         # Ownership is now proven. Delete every local render variant for this UUID.
         local_delete_errors = []
         local_deleted = 0
-        if host.os.path.exists(host.EXPORT_DIR):
-            real_export_dir = host.os.path.realpath(host.EXPORT_DIR)
+        if host.os.path.exists(settings.EXPORT_DIR):
+            real_export_dir = host.os.path.realpath(settings.EXPORT_DIR)
             valid_names = {
-                name for name in host.os.listdir(host.EXPORT_DIR)
+                name for name in host.os.listdir(settings.EXPORT_DIR)
                 if name == f"export_{req.file_id}.mp4" or name.startswith(f"export_{req.file_id}_")
             }
             for name in valid_names:
-                candidate = host.os.path.realpath(host.os.path.join(host.EXPORT_DIR, name))
+                candidate = host.os.path.realpath(host.os.path.join(settings.EXPORT_DIR, name))
                 if not candidate.startswith(real_export_dir + host.os.sep) or not host.os.path.isfile(candidate):
                     continue
                 try:
@@ -91,10 +96,10 @@ def create_media_router(host: ModuleType) -> SimpleNamespace:
                     status_code=503,
                     detail={"message": "Source media cleanup was incomplete", "retryable": True},
                 )
-            for name in list(host.os.listdir(host.UPLOAD_DIR)):
+            for name in list(host.os.listdir(settings.UPLOAD_DIR)):
                 if name.startswith(req.file_id):
-                    candidate = host.os.path.realpath(host.os.path.join(host.UPLOAD_DIR, name))
-                    if candidate.startswith(host.os.path.realpath(host.UPLOAD_DIR) + host.os.sep) and host.os.path.isfile(candidate):
+                    candidate = host.os.path.realpath(host.os.path.join(settings.UPLOAD_DIR, name))
+                    if candidate.startswith(host.os.path.realpath(settings.UPLOAD_DIR) + host.os.sep) and host.os.path.isfile(candidate):
                         try:
                             host.os.remove(candidate)
                         except OSError:
@@ -154,8 +159,8 @@ def create_media_router(host: ModuleType) -> SimpleNamespace:
                       if payload.get("download_filename") else host.signed_export_download_url(f"exports/{payload['uid']}/{filename}"))
         if direct_url:
             return RedirectResponse(direct_url, status_code=302, headers={"Cache-Control": "no-store"})
-        real_export_dir = host.os.path.realpath(host.EXPORT_DIR)
-        path = host.os.path.realpath(host.os.path.join(host.EXPORT_DIR, filename))
+        real_export_dir = host.os.path.realpath(settings.EXPORT_DIR)
+        path = host.os.path.realpath(host.os.path.join(settings.EXPORT_DIR, filename))
         if not path.startswith(real_export_dir + host.os.sep):
             raise HTTPException(status_code=400, detail="Invalid export path")
         if not host.os.path.isfile(path):
