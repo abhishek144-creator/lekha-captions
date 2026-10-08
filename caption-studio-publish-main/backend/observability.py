@@ -7,6 +7,11 @@ keep applying.
 
 from types import ModuleType, SimpleNamespace
 
+try:
+    from . import settings
+except ImportError:  # Direct execution from backend/ remains supported.
+    import settings
+
 
 def create_observability(host: ModuleType) -> SimpleNamespace:
     def _utcnow() -> host.datetime:
@@ -33,12 +38,12 @@ def create_observability(host: ModuleType) -> SimpleNamespace:
 
     def _send_alert(text: str):
         host._json_log("warning", "ops_alert", text=text)
-        if not host.SLACK_ALERT_WEBHOOK_URL:
+        if not settings.SLACK_ALERT_WEBHOOK_URL:
             return False
         try:
             payload = {"text": text}
             req = host.urllib.request.Request(
-                host.SLACK_ALERT_WEBHOOK_URL,
+                settings.SLACK_ALERT_WEBHOOK_URL,
                 data=host.json.dumps(payload).encode("utf-8"),
                 headers={"Content-Type": "application/json"},
                 method="POST",
@@ -66,7 +71,7 @@ def create_observability(host: ModuleType) -> SimpleNamespace:
         row = {**payload, "expire_at": host._retention_deadline(retention_days)}
         dropped = False
         with host._telemetry_lock:
-            if len(host._telemetry_buffer) >= host.TELEMETRY_QUEUE_LIMIT:
+            if len(host._telemetry_buffer) >= settings.TELEMETRY_QUEUE_LIMIT:
                 host._telemetry_buffer.popleft()
                 dropped = True
             host._telemetry_buffer.append((collection_name, row))
@@ -80,7 +85,7 @@ def create_observability(host: ModuleType) -> SimpleNamespace:
             return 0
         rows = []
         with host._telemetry_lock:
-            while host._telemetry_buffer and len(rows) < host.TELEMETRY_BATCH_SIZE:
+            while host._telemetry_buffer and len(rows) < settings.TELEMETRY_BATCH_SIZE:
                 rows.append(host._telemetry_buffer.popleft())
         if not rows:
             return 0
@@ -294,20 +299,20 @@ def create_observability(host: ModuleType) -> SimpleNamespace:
         export_p95 = host._p95(export_samples)
         process_p95 = host._p95(process_samples)
         release_gate_passed = (
-            (export_total < host.ERROR_BUDGET_WINDOW_MIN_EVENTS or export_rate >= host.SLO_EXPORT_SUCCESS_TARGET)
-            and (process_total < host.ERROR_BUDGET_WINDOW_MIN_EVENTS or process_rate >= host.SLO_PROCESS_SUCCESS_TARGET)
-            and (export_p95 == 0 or export_p95 <= host.SLO_EXPORT_P95_MS_TARGET)
-            and (process_p95 == 0 or process_p95 <= host.SLO_PROCESS_P95_MS_TARGET)
+            (export_total < settings.ERROR_BUDGET_WINDOW_MIN_EVENTS or export_rate >= settings.SLO_EXPORT_SUCCESS_TARGET)
+            and (process_total < settings.ERROR_BUDGET_WINDOW_MIN_EVENTS or process_rate >= settings.SLO_PROCESS_SUCCESS_TARGET)
+            and (export_p95 == 0 or export_p95 <= settings.SLO_EXPORT_P95_MS_TARGET)
+            and (process_p95 == 0 or process_p95 <= settings.SLO_PROCESS_P95_MS_TARGET)
         )
         return {
             "success": True,
-            "api_version": host.API_CURRENT_VERSION,
+            "api_version": settings.API_CURRENT_VERSION,
             "release_gate_passed": release_gate_passed,
             "targets": {
-                "export_success_rate": host.SLO_EXPORT_SUCCESS_TARGET,
-                "process_success_rate": host.SLO_PROCESS_SUCCESS_TARGET,
-                "export_p95_ms": host.SLO_EXPORT_P95_MS_TARGET,
-                "process_p95_ms": host.SLO_PROCESS_P95_MS_TARGET,
+                "export_success_rate": settings.SLO_EXPORT_SUCCESS_TARGET,
+                "process_success_rate": settings.SLO_PROCESS_SUCCESS_TARGET,
+                "export_p95_ms": settings.SLO_EXPORT_P95_MS_TARGET,
+                "process_p95_ms": settings.SLO_PROCESS_P95_MS_TARGET,
             },
             "actuals": {
                 "export_success_rate": export_rate,
@@ -342,13 +347,13 @@ def create_observability(host: ModuleType) -> SimpleNamespace:
             failure_count=failure_count,
             ratio=ratio,
         )
-        if host.SLACK_ALERT_WEBHOOK_URL:
+        if settings.SLACK_ALERT_WEBHOOK_URL:
             try:
                 payload = {
                     "text": f"[Caption Studio Alert] {window_key} failure ratio is high: {failure_count}/{total} ({ratio:.1%})"
                 }
                 req = host.urllib.request.Request(
-                    host.SLACK_ALERT_WEBHOOK_URL,
+                    settings.SLACK_ALERT_WEBHOOK_URL,
                     data=host.json.dumps(payload).encode("utf-8"),
                     headers={"Content-Type": "application/json"},
                     method="POST",

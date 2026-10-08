@@ -247,7 +247,7 @@ class DurableWorkflowTests(unittest.TestCase):
         self.assertIsNone(self.jobs.get("b", job["job_id"]))
 
     def test_production_http_returns_pending_then_replays_durable_result(self):
-        with (patch.object(main, "_IS_PRODUCTION", True), patch.object(main, "get_db", return_value=self.db),
+        with (patch.object(main.settings, "_IS_PRODUCTION", True), patch.object(main, "get_db", return_value=self.db),
               patch.object(main, "_assert_service_available"), patch.object(main, "_assert_upload_owner"),
               patch.object(main, "_authenticate_media_request", return_value={"uid": "a"})):
             client = TestClient(main.app)
@@ -265,7 +265,7 @@ class DurableWorkflowTests(unittest.TestCase):
         job = self.jobs.create("a", self.settings)
         self.jobs.claim("a", job["job_id"])
         self.jobs.finish("a", job["job_id"], "unknown")
-        with (patch.object(main, "_IS_PRODUCTION", True), patch.object(main, "get_db", return_value=self.db),
+        with (patch.object(main.settings, "_IS_PRODUCTION", True), patch.object(main, "get_db", return_value=self.db),
               patch.object(main, "_assert_service_available"), patch.object(main, "_assert_upload_owner"),
               patch.object(main, "_authenticate_media_request", return_value={"uid": "a"})):
             response = TestClient(main.app).post("/api/process", json=self.settings)

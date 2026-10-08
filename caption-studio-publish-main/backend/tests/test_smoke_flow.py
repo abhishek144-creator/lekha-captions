@@ -67,7 +67,7 @@ class SmokeFlowTests(unittest.TestCase):
         self.assertTrue(export_data.get("success"))
         self.assertIn("export_job_id", export_data)
 
-    @patch("main.RAZORPAY_WEBHOOK_SECRET", "test-secret")
+    @patch("main.settings.RAZORPAY_WEBHOOK_SECRET", "test-secret")
     def test_payment_webhook_invalid_signature_smoke(self):
         res = self.client.post(
             "/api/razorpay-webhook",

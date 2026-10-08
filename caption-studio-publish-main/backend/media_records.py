@@ -7,6 +7,11 @@ keep applying.
 
 from types import ModuleType, SimpleNamespace
 
+try:
+    from . import settings
+except ImportError:  # Direct execution from backend/ remains supported.
+    import settings
+
 
 def create_media_records(host: ModuleType) -> SimpleNamespace:
     def _validate_file_id(file_id: str) -> bool:
@@ -23,18 +28,18 @@ def create_media_records(host: ModuleType) -> SimpleNamespace:
     Validates UUID format and guards against directory traversal."""
         if not host._validate_file_id(file_id):
             return None
-        real_dir = host.os.path.realpath(host.UPLOAD_DIR)
-        for f in host.os.listdir(host.UPLOAD_DIR):
+        real_dir = host.os.path.realpath(settings.UPLOAD_DIR)
+        for f in host.os.listdir(settings.UPLOAD_DIR):
             if f.startswith(file_id):
-                candidate = host.os.path.realpath(host.os.path.join(host.UPLOAD_DIR, f))
+                candidate = host.os.path.realpath(host.os.path.join(settings.UPLOAD_DIR, f))
                 if candidate.startswith(real_dir + host.os.sep):
-                    return host.os.path.join(host.UPLOAD_DIR, f)
+                    return host.os.path.join(settings.UPLOAD_DIR, f)
         metadata = host._load_upload_metadata(file_id)
         remote_path = str(metadata.get("remote_path") or "")
         extension = str(metadata.get("extension") or host.pathlib.Path(remote_path).suffix.lstrip(".")).lower()
-        if not remote_path.startswith("uploads/") or extension not in host.ALLOWED_EXTENSIONS:
+        if not remote_path.startswith("uploads/") or extension not in settings.ALLOWED_EXTENSIONS:
             return None
-        target = host.os.path.realpath(host.os.path.join(host.UPLOAD_DIR, f"{file_id}.{extension}"))
+        target = host.os.path.realpath(host.os.path.join(settings.UPLOAD_DIR, f"{file_id}.{extension}"))
         if not target.startswith(real_dir + host.os.sep):
             return None
         partial = f"{target}.part-{host.uuid.uuid4().hex}"
@@ -201,7 +206,7 @@ def create_media_records(host: ModuleType) -> SimpleNamespace:
 
 
     def _media_token_signature(payload_b64: str) -> str:
-        secret = host.MEDIA_URL_SIGNING_SECRET.encode("utf-8")
+        secret = settings.MEDIA_URL_SIGNING_SECRET.encode("utf-8")
         return host.hmac.new(secret, payload_b64.encode("utf-8"), host.hashlib.sha256).hexdigest()
 
 
@@ -281,7 +286,7 @@ def create_media_records(host: ModuleType) -> SimpleNamespace:
     def _build_process_cache_path(media_hash: str, language: str, min_words: int, max_words: int) -> str:
         key = f"{media_hash}:{language.lower()}:{min_words}:{max_words}"
         key_hash = host.hashlib.sha256(key.encode("utf-8")).hexdigest()
-        return host.os.path.join(host.TRANSCRIPTION_CACHE_DIR, f"{key_hash}.json")
+        return host.os.path.join(settings.TRANSCRIPTION_CACHE_DIR, f"{key_hash}.json")
 
 
     def _build_parity_signature(captions: host.List[host.Dict[str, host.Any]], style: host.Dict[str, host.Any], word_layouts: host.Dict[str, host.Any]) -> str:

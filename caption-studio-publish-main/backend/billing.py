@@ -12,13 +12,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Request
 from fastapi import APIRouter
 
+try:
+    from . import settings
+except ImportError:  # Direct execution from backend/ remains supported.
+    import settings
+
 
 def create_billing_service(host: ModuleType) -> SimpleNamespace:
     router = APIRouter()
 
     def _resolve_plan_from_amount_currency(amount_minor: int, currency: str) -> host.Optional[str]:
         c = (currency or "INR").upper()
-        for plan_key, p in host.PLAN_PRICING.items():
+        for plan_key, p in settings.PLAN_PRICING.items():
             if p.get("is_free"):
                 continue
             if c == "USD" and amount_minor == p.get("usd_cents"):
@@ -56,7 +61,7 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
 
     def _recent_topup_timestamps(user_data: host.Dict[str, host.Any], now_ts: host.Optional[float] = None) -> host.List[float]:
         now_epoch = float(now_ts if now_ts is not None else host.time.time())
-        cutoff = now_epoch - host.TOPUP_PURCHASE_WINDOW_SECONDS
+        cutoff = now_epoch - settings.TOPUP_PURCHASE_WINDOW_SECONDS
         recent: host.List[float] = []
         values = user_data.get("topup_timestamps") or []
         if not isinstance(values, list):
@@ -70,7 +75,7 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
 
     def _active_topup_reservations(user_data: host.Dict[str, host.Any], now_ts: host.Optional[float] = None) -> host.List[host.Dict[str, host.Any]]:
         now_epoch = float(now_ts if now_ts is not None else host.time.time())
-        cutoff = now_epoch - host.TOPUP_ORDER_RESERVATION_SECONDS
+        cutoff = now_epoch - settings.TOPUP_ORDER_RESERVATION_SECONDS
         active: host.List[host.Dict[str, host.Any]] = []
         values = user_data.get("topup_order_reservations") or []
         if not isinstance(values, list):
@@ -191,7 +196,7 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
         topup_reservation_id = str(notes.get("topup_reservation_id") or "").strip()
         if not uid:
             raise HTTPException(status_code=400, detail="Payment order is missing its user binding.")
-        if not plan_id or plan_id not in host.PLAN_PRICING:
+        if not plan_id or plan_id not in settings.PLAN_PRICING:
             raise HTTPException(status_code=400, detail="Payment order is missing a valid plan binding.")
 
         # The order amount is authoritative for a server-created order. Do not
@@ -211,7 +216,7 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
 
     def _can_trigger_reconcile(request: Request, req_body: host.ReconcilePaymentsRequest) -> bool:
         secret_header = (request.headers.get("x-reconcile-secret") or "").strip()
-        if host.PAYMENT_RECONCILE_SECRET and secret_header and host.hmac.compare_digest(secret_header, host.PAYMENT_RECONCILE_SECRET):
+        if settings.PAYMENT_RECONCILE_SECRET and secret_header and host.hmac.compare_digest(secret_header, settings.PAYMENT_RECONCILE_SECRET):
             return True
 
         if not req_body.id_token:
@@ -225,15 +230,15 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
 
     def reconcile_payments_once(
         reason: str = "manual",
-        lookback_hours: int = host.PAYMENT_RECONCILE_LOOKBACK_HOURS,
-        limit: int = host.PAYMENT_RECONCILE_BATCH_SIZE,
+        lookback_hours: int = settings.PAYMENT_RECONCILE_LOOKBACK_HOURS,
+        limit: int = settings.PAYMENT_RECONCILE_BATCH_SIZE,
     ) -> host.Dict[str, host.Any]:
         db = host.get_db()
         if not db:
             return {"success": False, "error": "Database unavailable"}
 
         lookback = max(int(lookback_hours or 1), 1)
-        query_limit = max(1, min(int(limit or host.PAYMENT_RECONCILE_BATCH_SIZE), 1000))
+        query_limit = max(1, min(int(limit or settings.PAYMENT_RECONCILE_BATCH_SIZE), 1000))
         cutoff = host._utcnow() - host.timedelta(hours=lookback)
         cutoff_iso = cutoff.isoformat() + "Z"
         summary = {
@@ -342,7 +347,7 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
             })
         except Exception as e:
             host._json_log("warning", "payment_reconcile_persist_failed", error=str(e))
-        if summary["errors"] >= host.RECONCILE_ERROR_ALERT_THRESHOLD or summary["skipped"] >= host.RECONCILE_SKIPPED_ALERT_THRESHOLD:
+        if summary["errors"] >= settings.RECONCILE_ERROR_ALERT_THRESHOLD or summary["skipped"] >= settings.RECONCILE_SKIPPED_ALERT_THRESHOLD:
             host._send_alert(
                 f"[Caption Studio Alert] reconcile summary: errors={summary['errors']} skipped={summary['skipped']} "
                 f"applied={summary['applied']} reason={reason}"
@@ -383,7 +388,7 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
 
         @host.firestore.transactional
         def _grant(transaction):
-            if host._IS_PRODUCTION:
+            if settings._IS_PRODUCTION:
                 deletion_ref = db.collection("account_deletions").document(uid)
                 if deletion_ref.get(transaction=transaction).exists:
                     raise HTTPException(status_code=409, detail="Deleted account payment requires support reconciliation.")
@@ -509,7 +514,7 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
         order_amount_validated: bool = False,
         order_created_at: int = 0,
     ):
-        plan_config = host.PLAN_PRICING.get(plan_id)
+        plan_config = settings.PLAN_PRICING.get(plan_id)
         if not plan_config:
             raise HTTPException(status_code=400, detail=f"Unknown plan: {plan_id}")
         if plan_config.get("is_free"):

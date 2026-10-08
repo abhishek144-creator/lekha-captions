@@ -125,10 +125,10 @@ class MiddlewareThreadingTests(unittest.IsolatedAsyncioTestCase):
             release.wait(timeout=0.3)
             return {"app_id": "web-app"}
 
-        with (patch.object(main, "FIREBASE_APP_CHECK_ENFORCED", True),
+        with (patch.object(main.settings, "FIREBASE_APP_CHECK_ENFORCED", True),
               patch.object(main.firebase_app_check, "verify_token", side_effect=cold_key_verification),
               patch.object(main, "_track_latency_sample"),
-              patch.object(main, "RUN_API_BACKGROUND_TASKS", True)):
+              patch.object(main.settings, "RUN_API_BACKGROUND_TASKS", True)):
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app=self.middleware_app()),
                                          base_url="http://test") as client:
                 submission = asyncio.create_task(client.get("/api/export", headers={"x-firebase-appcheck": "token"}))
@@ -153,9 +153,9 @@ class MiddlewareThreadingTests(unittest.IsolatedAsyncioTestCase):
             telemetry_threads.append(threading.get_ident())
             time.sleep(0.03)
 
-        with (patch.object(main, "FIREBASE_APP_CHECK_ENFORCED", False),
+        with (patch.object(main.settings, "FIREBASE_APP_CHECK_ENFORCED", False),
               patch.object(main, "_track_latency_sample", side_effect=slow_redis_write),
-              patch.object(main, "RUN_API_BACKGROUND_TASKS", True)):
+              patch.object(main.settings, "RUN_API_BACKGROUND_TASKS", True)):
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app=self.middleware_app()),
                                          base_url="http://test") as client:
                 response = await client.get("/api/export")
@@ -166,9 +166,9 @@ class MiddlewareThreadingTests(unittest.IsolatedAsyncioTestCase):
     async def test_app_check_offload_still_rejects_missing_and_invalid_tokens(self):
         from backend import main
 
-        with (patch.object(main, "FIREBASE_APP_CHECK_ENFORCED", True),
+        with (patch.object(main.settings, "FIREBASE_APP_CHECK_ENFORCED", True),
               patch.object(main.firebase_app_check, "verify_token", side_effect=ValueError("invalid token")),
-              patch.object(main, "RUN_API_BACKGROUND_TASKS", True)):
+              patch.object(main.settings, "RUN_API_BACKGROUND_TASKS", True)):
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app=self.middleware_app()),
                                          base_url="http://test") as client:
                 for headers in ({}, {"x-firebase-appcheck": "invalid"}):
@@ -199,10 +199,10 @@ class MiddlewareThreadingTests(unittest.IsolatedAsyncioTestCase):
                 with lock:
                     active -= 1
 
-        with (patch.object(main, "FIREBASE_APP_CHECK_ENFORCED", True),
+        with (patch.object(main.settings, "FIREBASE_APP_CHECK_ENFORCED", True),
               patch.object(main.firebase_app_check, "verify_token", side_effect=slow_verify),
               patch.object(main, "_track_latency_sample"),
-              patch.object(main, "RUN_API_BACKGROUND_TASKS", True)):
+              patch.object(main.settings, "RUN_API_BACKGROUND_TASKS", True)):
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app=self.middleware_app()),
                                          base_url="http://test") as client:
                 submissions = [asyncio.create_task(client.get("/api/export", headers={"x-firebase-appcheck": "token"}))
@@ -239,12 +239,12 @@ class MiddlewareThreadingTests(unittest.IsolatedAsyncioTestCase):
         async def upload():
             return {"success": True}
 
-        with (patch.object(main, "FIREBASE_APP_CHECK_ENFORCED", False),
-              patch.object(main, "_IS_PRODUCTION", False),
+        with (patch.object(main.settings, "FIREBASE_APP_CHECK_ENFORCED", False),
+              patch.object(main.settings, "_IS_PRODUCTION", False),
               patch.object(main, "_authenticate_media_request", return_value={"uid": "owner"}),
               patch.object(main, "_acquire_process_slot", side_effect=acquire),
               patch.object(main, "_release_process_slot", side_effect=release),
-              patch.object(main, "RUN_API_BACKGROUND_TASKS", True)):
+              patch.object(main.settings, "RUN_API_BACKGROUND_TASKS", True)):
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.post("/api/upload")
         self.assertEqual(response.status_code, 200)

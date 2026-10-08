@@ -12,6 +12,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Request
 from fastapi import APIRouter
 
+try:
+    from . import settings
+except ImportError:  # Direct execution from backend/ remains supported.
+    import settings
+
 
 def create_account_router(host: ModuleType) -> SimpleNamespace:
     router = APIRouter()
@@ -24,8 +29,8 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
     @router.post("/api/redeem-promo")
     def redeem_promo(req: RedeemPromoRequest, request: Request, response: Response):
         client_ip = host._client_rate_key(request)
-        allowed, retry_after, remaining = host._check_rate(host._promo_rate, client_ip, host.PROMO_RATE_LIMIT)
-        host._apply_rate_headers(response, host.PROMO_RATE_LIMIT, remaining, retry_after)
+        allowed, retry_after, remaining = host._check_rate(host._promo_rate, client_ip, settings.PROMO_RATE_LIMIT)
+        host._apply_rate_headers(response, settings.PROMO_RATE_LIMIT, remaining, retry_after)
         if not allowed:
             raise HTTPException(status_code=429, detail="Too many promo code attempts. Please wait before trying again.")
         decoded = host.verify_token(req.id_token)
@@ -44,7 +49,7 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
 
         @host.firestore.transactional
         def redeem_in_transaction(txn):
-            if host._IS_PRODUCTION and db.collection("account_deletions").document(uid).get(transaction=txn).exists:
+            if settings._IS_PRODUCTION and db.collection("account_deletions").document(uid).get(transaction=txn).exists:
                 raise HTTPException(status_code=409, detail="Account deletion is pending.")
             code_doc = code_ref.get(transaction=txn)
             if not code_doc.exists:
@@ -53,7 +58,7 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
             promo = code_doc.to_dict() or {}
             if promo.get("is_used"):
                 raise HTTPException(status_code=400, detail="Invalid or already used code")
-            if promo.get("plan_id") not in host.PLAN_PRICING:
+            if promo.get("plan_id") not in settings.PLAN_PRICING:
                 raise HTTPException(status_code=400, detail="Promo code references an invalid plan")
 
             user_doc = user_ref.get(transaction=txn)
@@ -296,8 +301,8 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
             host._assert_service_available("pause_signups")
             client_ip = host._client_rate_key(request)
             for rate_key, rate_limit in (
-                (f"signup:network:{client_ip}", host.SIGNUP_SHARED_NETWORK_RATE_LIMIT),
-                (f"signup:user:{uid}", host.SIGNUP_USER_RATE_LIMIT),
+                (f"signup:network:{client_ip}", settings.SIGNUP_SHARED_NETWORK_RATE_LIMIT),
+                (f"signup:user:{uid}", settings.SIGNUP_USER_RATE_LIMIT),
             ):
                 allowed, _retry_after, _remaining = host._check_rate(
                     host._signup_rate, rate_key, rate_limit
@@ -317,7 +322,7 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
         try:
             host._create_account_if_active(db, user_ref, uid, {
                 **safe_profile,
-                "credits_remaining": host.FREE_PLAN_CREDITS,
+                "credits_remaining": settings.FREE_PLAN_CREDITS,
                 "subscription_tier": "free",
                 "subscription_expiry": None,
                 "export_timestamps": [],
@@ -336,12 +341,12 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
         existing_user = user_ref.get()
         existing_data = existing_user.to_dict() or {} if existing_user.exists else {}
         existing_is_free = (
-            host._normalize_tier_name(existing_data.get("subscription_tier", "free")) == host.FREE_PLAN_ID
+            host._normalize_tier_name(existing_data.get("subscription_tier", "free")) == settings.FREE_PLAN_ID
         )
         existing_has_credits = "credits_remaining" in existing_data
         normalized_existing_credits = host._normalize_free_credit_balance(
             existing_data.get("credits_remaining"),
-            default=host.FREE_PLAN_CREDITS if not existing_has_credits else 0,
+            default=settings.FREE_PLAN_CREDITS if not existing_has_credits else 0,
         )
         if (
             existing_user.exists
@@ -357,12 +362,12 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
                 if not snapshot.exists:
                     return False
                 data = snapshot.to_dict() or {}
-                if host._normalize_tier_name(data.get("subscription_tier", "free")) != host.FREE_PLAN_ID:
+                if host._normalize_tier_name(data.get("subscription_tier", "free")) != settings.FREE_PLAN_ID:
                     return False
                 has_credits = "credits_remaining" in data
                 repaired_credits = host._normalize_free_credit_balance(
                     data.get("credits_remaining"),
-                    default=host.FREE_PLAN_CREDITS if not has_credits else 0,
+                    default=settings.FREE_PLAN_CREDITS if not has_credits else 0,
                 )
                 if has_credits and data.get("credits_remaining") == repaired_credits:
                     return False
@@ -371,7 +376,7 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
                     "export_timestamps": data.get("export_timestamps", []) or [],
                 }
                 if not data.get("subscription_tier"):
-                    update["subscription_tier"] = host.FREE_PLAN_ID
+                    update["subscription_tier"] = settings.FREE_PLAN_ID
                 transaction.set(user_ref, update, merge=True)
                 return {
                     "previous_credits": data.get("credits_remaining") if has_credits else None,
@@ -441,7 +446,7 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
         page_docs = page_docs[:req.payment_limit]
         payment_items = [{"id": p.id, **(p.to_dict() or {})} for p in page_docs]
         deletion_record = {}
-        if host._IS_PRODUCTION:
+        if settings._IS_PRODUCTION:
             deletion_doc = db.collection("account_deletions").document(uid).get()
             if deletion_doc.exists:
                 deletion_record = deletion_doc.to_dict() or {}
@@ -499,7 +504,7 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
         db.collection("account_deletions").document(uid).set({
             "status": "pending", "requested_at": host._utcnow().isoformat() + "Z",
         }, merge=True)
-        if host._IS_PRODUCTION:
+        if settings._IS_PRODUCTION:
             host.TranscriptionJobs(db).prepare_deletion(uid)
         if host._redis_client is not None:
             try:
@@ -522,8 +527,8 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
                 filename = host.os.path.basename(str(item.get("filename") or ""))
                 if not filename:
                     continue
-                candidate = host.os.path.realpath(host.os.path.join(host.EXPORT_DIR, filename))
-                if candidate.startswith(host.os.path.realpath(host.EXPORT_DIR) + host.os.sep) and host.os.path.isfile(candidate):
+                candidate = host.os.path.realpath(host.os.path.join(settings.EXPORT_DIR, filename))
+                if candidate.startswith(host.os.path.realpath(settings.EXPORT_DIR) + host.os.sep) and host.os.path.isfile(candidate):
                     try:
                         host.os.remove(candidate)
                     except OSError as e:
@@ -534,8 +539,8 @@ def create_account_router(host: ModuleType) -> SimpleNamespace:
         source_cleanup = host.delete_user_uploads(uid)
         known_cloud_exports = any(item.get("firebase_path") for item in history if isinstance(item, dict))
         if (
-            (cloud_cleanup is None and (host._IS_PRODUCTION or known_cloud_exports))
-            or (source_cleanup is None and host._IS_PRODUCTION)
+            (cloud_cleanup is None and (settings._IS_PRODUCTION or known_cloud_exports))
+            or (source_cleanup is None and settings._IS_PRODUCTION)
         ):
             host._json_log("error", "account_delete_storage_cleanup_failed", uid=uid)
             raise HTTPException(status_code=503, detail="Cloud export cleanup failed; deletion can be retried")
