@@ -36,13 +36,17 @@ try:
     from . import media_records
 except ImportError:  # Direct execution from backend/ remains supported.
     import media_records
+try:
+    from . import api_models
+except ImportError:  # Direct execution from backend/ remains supported.
+    import api_models
 
 
 def create_processing_router(host: ModuleType) -> SimpleNamespace:
     router = APIRouter()
 
     @router.post("/api/process")
-    async def process_video(req: host.ProcessRequest, request: host.Request, response: host.Response):
+    async def process_video(req: api_models.ProcessRequest, request: host.Request, response: host.Response):
         if not settings._IS_PRODUCTION:
             return await host._process_video_inline(req, request, response)
         await host.asyncio.to_thread(operator_controls._assert_service_available, "pause_transcription")
@@ -82,7 +86,7 @@ def create_processing_router(host: ModuleType) -> SimpleNamespace:
             return {"duplicate_or_cancelled": True}
         try:
             request_security._assert_account_not_deleting(uid)
-            req = host.ProcessRequest(**job["settings"])
+            req = api_models.ProcessRequest(**job["settings"])
             request = host.Request({"type": "http", "headers": [], "client": ("worker", 0)})
             result = host.asyncio.run(host._process_video_inline(req, request, host.Response(), trusted_uid=uid))
             # A bounded retry persists the already obtained result; it never calls
@@ -134,7 +138,7 @@ def create_processing_router(host: ModuleType) -> SimpleNamespace:
             return False
 
 
-    async def _process_video_inline(req: host.ProcessRequest, request: host.Request, response: host.Response, *, trusted_uid=None):
+    async def _process_video_inline(req: api_models.ProcessRequest, request: host.Request, response: host.Response, *, trusted_uid=None):
         rid = observability._request_id(request)
         operator_controls._assert_service_available("pause_transcription")
         # Auth — same dev-mode bypass as /api/export

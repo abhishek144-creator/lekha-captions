@@ -41,6 +41,14 @@ try:
     from . import media_records
 except ImportError:  # Direct execution from backend/ remains supported.
     import media_records
+try:
+    from . import export_jobs
+except ImportError:  # Direct execution from backend/ remains supported.
+    import export_jobs
+try:
+    from . import api_models
+except ImportError:  # Direct execution from backend/ remains supported.
+    import api_models
 
 
 # RQ keeps each job's pickled arguments (the full editor snapshot) until these
@@ -107,7 +115,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
 
 
     @router.post("/api/export")
-    async def export_video(req: host.ExportRequest, request: Request, response: Response):
+    async def export_video(req: api_models.ExportRequest, request: Request, response: Response):
         # Bound queued admission without creating a second event loop/thread
         # pool for the already offloaded blocking operations.
         if app_state._export_queue is not None or settings._IS_PRODUCTION:
@@ -142,7 +150,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
             response.headers["Retry-After"] = str(retry_after)
             raise HTTPException(status_code=429, detail="Too many failed export attempts. Please retry after a short wait.")
 
-        safe_request_snapshot = host._sanitize_export_request_payload(req.model_dump(by_alias=True))
+        safe_request_snapshot = export_jobs._sanitize_export_request_payload(req.model_dump(by_alias=True))
         idempotency_request_hash = host.hashlib.sha256(
             host.json.dumps(safe_request_snapshot, sort_keys=True, default=str).encode("utf-8")
         ).hexdigest()
@@ -168,7 +176,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
                 if cached.get("status") == "completed" and cached.get("payload"):
                     observability._log(rid, f"Idempotent replay for key={raw_idem[:16]}")
                     recovery_payload = await to_thread(
-                        host._refresh_completed_export_payload,
+                        export_jobs._refresh_completed_export_payload,
                         cached["payload"], uid, str(cached.get("job_id") or ""),
                     )
                     return {**recovery_payload, "idempotent_replay": True}
@@ -194,7 +202,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
             duration_hint = await host.asyncio.to_thread(media_records._source_duration_hint, req.file_id, uid)
             capacity = host.estimate_render_capacity(duration_hint, safe_request_snapshot)
             await to_thread(
-                host._set_export_job,
+                export_jobs._set_export_job,
                 export_job_id,
                 "queued",
                 uid=uid,
@@ -255,8 +263,8 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
                 release_export_slot_in_request = False
                 return queued_payload
 
-            await to_thread(host._set_export_job, export_job_id, "starting")
-            payload = await host._process_export_job_core(req, uid, rid, export_job_id)
+            await to_thread(export_jobs._set_export_job, export_job_id, "starting")
+            payload = await export_jobs._process_export_job_core(req, uid, rid, export_job_id)
             if idem_key:
                 await to_thread(host._idem_set, idem_key, {
                     "status": "completed",
@@ -287,10 +295,10 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
 
     def _record_failed_submission(export_job_id, uid, file_id, idem_key, error,
                                   safe_request_snapshot, event, event_payload):
-        host._set_export_job(export_job_id, "failed", failed_at=host.time.time(), error=error)
+        export_jobs._set_export_job(export_job_id, "failed", failed_at=host.time.time(), error=error)
         host._record_export_failure(uid)
         observability._track_event(event, event_payload)
-        host._write_dead_letter(
+        export_jobs._write_dead_letter(
             export_job_id,
             error,
             {"uid": uid, "file_id": file_id, "req_payload": safe_request_snapshot},
@@ -319,7 +327,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
 
 
     @router.post("/api/batch/exports", status_code=202)
-    async def create_export_batch(req: host.BatchExportRequest, request: Request):
+    async def create_export_batch(req: api_models.BatchExportRequest, request: Request):
         return await _run_admission(lambda: _create_export_batch(req, request))
 
     async def _create_export_batch(req, request):
@@ -337,7 +345,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
             raise HTTPException(503, "Batch export service is temporarily unavailable", headers={"Retry-After": "10"})
 
         idem_key = f"batch:{uid}:{req.idempotency_key}"
-        safe_snapshots = [host._sanitize_export_request_payload(item.model_dump(by_alias=True)) for item in req.exports]
+        safe_snapshots = [export_jobs._sanitize_export_request_payload(item.model_dump(by_alias=True)) for item in req.exports]
         request_hash = host.hashlib.sha256(
             host.json.dumps(safe_snapshots, sort_keys=True, default=str).encode("utf-8")
         ).hexdigest()
@@ -370,7 +378,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
                 duration_hint = await to_thread(media_records._source_duration_hint, item.file_id, uid)
                 capacity = host.estimate_render_capacity(duration_hint, safe_snapshot)
                 await to_thread(
-                    host._set_export_job,
+                    export_jobs._set_export_job,
                     job_id,
                     "queued",
                     uid=uid,
@@ -417,7 +425,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
                     continue
                 try:
                     await to_thread(
-                        host._set_export_job, job_id, "failed",
+                        export_jobs._set_export_job, job_id, "failed",
                         failed_at=host.time.time(), error="Batch item was not admitted",
                     )
                 except Exception:
@@ -462,7 +470,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
             raise HTTPException(403, "Export batch does not belong to this account")
         jobs = []
         for job_id in batch.get("job_ids") or []:
-            job = host._load_export_job(str(job_id)) or {}
+            job = export_jobs._load_export_job(str(job_id)) or {}
             if job:
                 job = _reconcile_export_job(str(job_id), job)
             jobs.append({
@@ -485,7 +493,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
     def _reconcile_export_job(job_id: str, job: host.Dict[str, host.Any]):
         if job.get("status") in {"failed", "retrying", "finalizing"}:
             try:
-                recorded = host._load_recorded_export_result(
+                recorded = export_jobs._load_recorded_export_result(
                     str(job.get("uid") or ""), job_id, str(job.get("file_id") or "")
                 )
                 if recorded:
@@ -507,7 +515,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
                 job.get("queue_entered_at") or job.get("started_at") or host.time.time()
             )
             if status == "queued" and queue_age >= settings.EXPORT_MAX_QUEUE_WAIT_SECONDS:
-                job = host._set_export_job(
+                job = export_jobs._set_export_job(
                     job_id,
                     "failed",
                     expected_status="queued",
@@ -546,7 +554,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
             state = str(getattr(state, "value", state)).lower()
             age = host.time.time() - float(job.get("updated_at") or host.time.time())
             if state in {"failed", "stopped", "canceled", "cancelled", "finished"} or (state == "missing" and age > 120):
-                job = host._set_export_job(job_id, "failed", error="Export was interrupted. Please retry.", failed_at=host.time.time())
+                job = export_jobs._set_export_job(job_id, "failed", error="Export was interrupted. Please retry.", failed_at=host.time.time())
                 if job.get("status") == "failed":
                     observability._json_log(
                         "warning", "export_observation", job_id=job_id, status="failed",
@@ -555,9 +563,9 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
                 host._release_export_pending_work(job_id)
                 host._release_export_slot(str(job.get("uid") or ""), job_id)
             elif state in {"scheduled", "deferred"} and job.get("status") in {"starting", "processing", "finalizing"}:
-                job = host._set_export_job(job_id, "retrying", error="Export interrupted; retry scheduled.")
+                job = export_jobs._set_export_job(job_id, "retrying", error="Export interrupted; retry scheduled.")
         except host.InvalidJobTransition:
-            return host._load_export_job(job_id) or job
+            return export_jobs._load_export_job(job_id) or job
         except Exception as error:
             observability._json_log("warning", "export_reconciliation_failed", job_id=job_id, error=type(error).__name__)
         return job
@@ -630,10 +638,10 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
 
     @router.get("/api/export-status/{job_id}")
     def export_status(job_id: str, request: Request):
-        job = host._load_export_job(job_id)
+        job = export_jobs._load_export_job(job_id)
         if not job:
             raise HTTPException(status_code=404, detail="Export job not found")
-        host._require_export_job_access(request, job)
+        export_jobs._require_export_job_access(request, job)
         job = host._reconcile_export_job(job_id, job)
         if job.get("status") == "queued":
             # Safety net for on-demand workers: a queued job whose worker crashed
@@ -667,10 +675,10 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
 
     @router.get("/api/export-result/{job_id}")
     def export_result(job_id: str, request: Request):
-        job = host._load_export_job(job_id)
+        job = export_jobs._load_export_job(job_id)
         if not job:
             raise HTTPException(status_code=404, detail="Export job not found")
-        host._require_export_job_access(request, job)
+        export_jobs._require_export_job_access(request, job)
         job = host._reconcile_export_job(job_id, job)
         if job.get("status") != "completed":
             return {"success": False, "status": job.get("status", "unknown"), "error": "Export failed. Please retry or contact support." if job.get("error") else None}
@@ -679,15 +687,15 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
             return {"success": False, "status": "completed", "error": "Result payload missing"}
         if request.query_params.get("download_filename"):
             payload = {**payload, "download_filename": request.query_params["download_filename"]}
-        return host._refresh_completed_export_payload(payload, str(job.get("uid") or ""), job_id)
+        return export_jobs._refresh_completed_export_payload(payload, str(job.get("uid") or ""), job_id)
 
 
     @router.post("/api/export-cancel/{job_id}")
     def export_cancel(job_id: str, request: Request):
-        job = host._load_export_job(job_id)
+        job = export_jobs._load_export_job(job_id)
         if not job:
             raise HTTPException(status_code=404, detail="Export job not found")
-        host._require_export_job_access(request, job)
+        export_jobs._require_export_job_access(request, job)
 
         status = (job.get("status") or "unknown").lower()
         if status == "cancelled":
@@ -712,7 +720,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
 
         uid = str(job.get("uid") or "")
         try:
-            host._set_export_job(job_id, "cancelled", cancelled_at=host.time.time(),
+            export_jobs._set_export_job(job_id, "cancelled", cancelled_at=host.time.time(),
                             cancellation_reason="user_requested", error=None)
         except host.InvalidJobTransition as error:
             raise HTTPException(status_code=409, detail="This export has already started.") from error
@@ -757,7 +765,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
         if not snap.exists:
             raise HTTPException(status_code=404, detail="Export job not found")
         job = snap.to_dict() or {}
-        host._require_export_job_access(request, job)
+        export_jobs._require_export_job_access(request, job)
         if (job.get("status") or "").lower() != "failed":
             raise HTTPException(
                 status_code=409,
@@ -765,7 +773,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
             )
         request_snapshot = job.get("request_snapshot")
         uid = job.get("uid", "")
-        recorded = host._load_recorded_export_result(uid, job_id, str(job.get("file_id") or ""))
+        recorded = export_jobs._load_recorded_export_result(uid, job_id, str(job.get("file_id") or ""))
         if recorded:
             return {"success": True, "export_job_id": job_id, "status": "completed", "idempotent_replay": True}
         if not request_snapshot:
@@ -779,7 +787,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
         try:
             duration_hint = media_records._source_duration_hint(str(request_snapshot.get("file_id") or ""), uid)
             capacity = host.estimate_render_capacity(duration_hint, request_snapshot)
-            host._set_export_job(
+            export_jobs._set_export_job(
                 new_job_id,
                 "queued",
                 uid=uid,
@@ -811,7 +819,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
             )
         except Exception as e:
             try:
-                host._set_export_job(new_job_id, "failed", failed_at=host.time.time(), error=str(e))
+                export_jobs._set_export_job(new_job_id, "failed", failed_at=host.time.time(), error=str(e))
             finally:
                 host._release_export_slot(uid, new_job_id)
             raise HTTPException(status_code=503, detail="Export replay could not be queued") from e

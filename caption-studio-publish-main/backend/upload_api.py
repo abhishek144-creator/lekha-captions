@@ -32,6 +32,10 @@ try:
     from . import media_records
 except ImportError:  # Direct execution from backend/ remains supported.
     import media_records
+try:
+    from . import export_jobs
+except ImportError:  # Direct execution from backend/ remains supported.
+    import export_jobs
 
 
 def create_upload_router(host: ModuleType) -> SimpleNamespace:
@@ -53,7 +57,7 @@ def create_upload_router(host: ModuleType) -> SimpleNamespace:
         completed = False
         try:
             operator_controls._assert_service_available("pause_uploads")
-            token = host._extract_bearer_token(request) if request else ""
+            token = export_jobs._extract_bearer_token(request) if request else ""
             decoded_token = request_security._authenticate_media_request(token)
             uid = (decoded_token.get("uid") or "").strip() or "unknown-user"
 

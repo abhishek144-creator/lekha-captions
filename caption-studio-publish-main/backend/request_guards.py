@@ -23,6 +23,10 @@ try:
     from . import observability
 except ImportError:  # Direct execution from backend/ remains supported.
     import observability
+try:
+    from . import export_jobs
+except ImportError:  # Direct execution from backend/ remains supported.
+    import export_jobs
 
 
 def create_request_guards(host: ModuleType) -> SimpleNamespace:
@@ -370,7 +374,7 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
                 previous_job_id = str(current or "")
                 previous_terminal = False
                 try:
-                    previous_job = host._load_export_job(previous_job_id) or {}
+                    previous_job = export_jobs._load_export_job(previous_job_id) or {}
                     previous_status = str(previous_job.get("status") or "").lower()
                     previous_terminal = previous_status in {
                         "completed", "failed", "cancelled", "canceled", "stopped",

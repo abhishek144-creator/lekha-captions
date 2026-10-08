@@ -36,6 +36,10 @@ try:
     from . import operator_controls
 except ImportError:  # Direct execution from backend/ remains supported.
     import operator_controls
+try:
+    from . import api_models
+except ImportError:  # Direct execution from backend/ remains supported.
+    import api_models
 
 
 def create_system_router(host: ModuleType) -> SimpleNamespace:
@@ -70,7 +74,7 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
 
 
     @router.post("/api/support-request")
-    def create_support_request(req: host.SupportRequest, request: Request, response: Response):
+    def create_support_request(req: api_models.SupportRequest, request: Request, response: Response):
         client_ip = host._client_rate_key(request)
         allowed, retry_after, remaining = host._check_rate(
             app_state._support_rate,
@@ -327,7 +331,7 @@ def create_system_router(host: ModuleType) -> SimpleNamespace:
 
 
     @router.post("/api/admin/service-controls")
-    def admin_service_controls(req: host.ServiceControlsRequest, request: Request):
+    def admin_service_controls(req: api_models.ServiceControlsRequest, request: Request):
         decoded = firebase_admin_setup.verify_token(req.id_token) if req.id_token else None
         if not decoded and request is not None:
             header_token = request.headers.get("authorization", "").replace("Bearer ", "").strip()

@@ -25,16 +25,16 @@ class ExportSlotWaitTests(unittest.TestCase):
     def test_batch_item_waits_for_account_slot_without_spending_failure_retries(self):
         core = AsyncMock()
         with (patch.object(main.app_state, "_redis_client", self.redis), patch.object(main.firebase_admin_setup, "get_db", return_value=None),
-              patch.object(main.app_state, "_export_queue", None), patch.object(main, "_process_export_job_core", core),
-              patch.object(main, "_write_dead_letter") as dead_letter,
+              patch.object(main.app_state, "_export_queue", None), patch.object(main.export_jobs, "_process_export_job_core", core),
+              patch.object(main.export_jobs, "_write_dead_letter") as dead_letter,
               patch("rq.get_current_job", return_value=SimpleNamespace(id="item-2"))):
             self.redis.set("expactive:a", "item-1")
-            main._set_export_job("item-1", "queued", uid="a")
-            main._set_export_job("item-2", "queued", uid="a")
+            main.export_jobs._set_export_job("item-1", "queued", uid="a")
+            main.export_jobs._set_export_job("item-2", "queued", uid="a")
             result = main.run_export_job_task("item-2", PAYLOAD, "a")
             self.assertIsInstance(result, main.RQRetry)
             self.assertEqual(result.intervals, [main.settings.EXPORT_SLOT_WAIT_INTERVAL_SECONDS])
-            self.assertEqual(main._load_export_job("item-2")["status"], "retrying")
+            self.assertEqual(main.export_jobs._load_export_job("item-2")["status"], "retrying")
             # The rescheduled attempt starts normally once the slot is free.
             self.redis.delete("expactive:a")
             core.return_value = {"success": True}
@@ -44,10 +44,10 @@ class ExportSlotWaitTests(unittest.TestCase):
 
     def test_slot_conflict_outside_rq_still_fails_loudly(self):
         with (patch.object(main.app_state, "_redis_client", self.redis), patch.object(main.firebase_admin_setup, "get_db", return_value=None),
-              patch.object(main.app_state, "_export_queue", None), patch.object(main, "_write_dead_letter"),
+              patch.object(main.app_state, "_export_queue", None), patch.object(main.export_jobs, "_write_dead_letter"),
               patch("rq.get_current_job", return_value=None)):
             self.redis.set("expactive:a", "other")
-            main._set_export_job("solo", "queued", uid="a")
+            main.export_jobs._set_export_job("solo", "queued", uid="a")
             with self.assertRaises(RuntimeError):
                 main.run_export_job_task("solo", PAYLOAD, "a")
 
@@ -57,9 +57,9 @@ class DurableSnapshotTests(unittest.TestCase):
         redis_client = fakeredis.FakeRedis(decode_responses=True)
         persisted = []
         with (patch.object(main.app_state, "_redis_client", redis_client), patch.object(main.firebase_admin_setup, "get_db", return_value=object()),
-              patch.object(main, "_persist_export_job", side_effect=lambda job_id, payload, **_: persisted.append(payload) or True)):
-            main._set_export_job("big", "queued", uid="a", request_snapshot={"captions": ["x" * 1000]})
-            main._set_export_job("big", "starting")
+              patch.object(main.export_jobs, "_persist_export_job", side_effect=lambda job_id, payload, **_: persisted.append(payload) or True)):
+            main.export_jobs._set_export_job("big", "queued", uid="a", request_snapshot={"captions": ["x" * 1000]})
+            main.export_jobs._set_export_job("big", "starting")
         stored = json.loads(redis_client.get("export_job:big"))
         self.assertNotIn("request_snapshot", stored)
         self.assertEqual(stored["status"], "starting")
@@ -92,7 +92,7 @@ class NonBlockingSubmissionTests(unittest.TestCase):
             threads.append(getattr(function, "__name__", repr(function)))
             return await real_to_thread(function, *args, **kwargs)
 
-        request = main.ExportRequest(**PAYLOAD)
+        request = main.api_models.ExportRequest(**PAYLOAD)
         from starlette.requests import Request
         with (patch.object(main.asyncio, "to_thread", tracking_to_thread),
               patch.object(main.settings, "_IS_PRODUCTION", True), patch.object(main.app_state, "_export_queue", None),

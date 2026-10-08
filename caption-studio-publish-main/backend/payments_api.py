@@ -43,13 +43,17 @@ try:
     from . import operator_controls
 except ImportError:  # Direct execution from backend/ remains supported.
     import operator_controls
+try:
+    from . import api_models
+except ImportError:  # Direct execution from backend/ remains supported.
+    import api_models
 
 
 def create_payments_router(host: ModuleType) -> SimpleNamespace:
     router = APIRouter()
-    CreateOrderRequest = host.CreateOrderRequest
-    VerifyPaymentRequest = host.VerifyPaymentRequest
-    ReconcilePaymentsRequest = host.ReconcilePaymentsRequest
+    CreateOrderRequest = api_models.CreateOrderRequest
+    VerifyPaymentRequest = api_models.VerifyPaymentRequest
+    ReconcilePaymentsRequest = api_models.ReconcilePaymentsRequest
 
     @router.post("/api/create-order")
     def create_order(req: CreateOrderRequest, request: Request, response: Response):

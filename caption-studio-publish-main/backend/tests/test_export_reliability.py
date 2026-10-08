@@ -53,14 +53,14 @@ class MemoryRef:
 
 class ExportReliabilityTests(unittest.TestCase):
     def test_interrupted_processing_is_conditionally_reopened_for_rq_retry(self):
-        with patch.object(main, "_load_export_job", return_value={"status": "processing"}), patch.object(main, "_set_export_job") as write:
+        with patch.object(main.export_jobs, "_load_export_job", return_value={"status": "processing"}), patch.object(main.export_jobs, "_set_export_job") as write:
             main.recover_interrupted_export_retry("crashed")
         write.assert_called_once_with("crashed", "retrying", expected_status="processing",
                                       error="Worker interrupted; export will retry")
 
     def test_interrupted_retry_preserves_paid_and_terminal_results(self):
         for status in ("completed", "cancelled", "failed", "retrying", "queued", "finalizing"):
-            with self.subTest(status=status), patch.object(main, "_load_export_job", return_value={"status": status, "uid": "owner", "file_id": FILE_ID}), patch.object(main, "_load_recorded_export_result", return_value={"success": True}), patch.object(main, "_set_export_job") as write:
+            with self.subTest(status=status), patch.object(main.export_jobs, "_load_export_job", return_value={"status": status, "uid": "owner", "file_id": FILE_ID}), patch.object(main.export_jobs, "_load_recorded_export_result", return_value={"success": True}), patch.object(main.export_jobs, "_set_export_job") as write:
                 main.recover_interrupted_export_retry("crashed")
                 write.assert_not_called()
 
@@ -79,7 +79,7 @@ class ExportReliabilityTests(unittest.TestCase):
                 active -= 1
             return {"uid": f"user-{threading.get_ident()}"}
 
-        req = main.ExportRequest(file_id=FILE_ID, captions=[{"id": "1", "text": "Hello", "start_time": 0, "end_time": 1}])
+        req = main.api_models.ExportRequest(file_id=FILE_ID, captions=[{"id": "1", "text": "Hello", "start_time": 0, "end_time": 1}])
         router = create_export_router(main)
         request = Request({"type": "http", "headers": []})
         ticks = []
@@ -102,7 +102,7 @@ class ExportReliabilityTests(unittest.TestCase):
             patch.object(main, "_idem_claim", return_value=True),
             patch.object(main, "_idem_set"),
             patch.object(main, "_acquire_export_slot", return_value=True),
-            patch.object(main, "_set_export_job"),
+            patch.object(main.export_jobs, "_set_export_job"),
             patch.object(main.media_records, "_source_duration_hint", return_value=12),
             patch.object(main, "_render_queue_for", return_value=SimpleNamespace()),
             patch.object(main, "_enqueue_export_job", side_effect=lambda *a, **kw: time.sleep(0.08)),
@@ -120,7 +120,7 @@ class ExportReliabilityTests(unittest.TestCase):
             with self.subTest(changed_plan=changed_plan), tempfile.TemporaryDirectory() as directory:
                 users = {("users", "owner"): {"subscription_tier": "free", "credits_remaining": 1, "history": []}}
                 database = MemoryRef(users)
-                req = main.ExportRequest(file_id=FILE_ID, captions=[{"id": "1", "text": "Hello", "start_time": 0, "end_time": 1}])
+                req = main.api_models.ExportRequest(file_id=FILE_ID, captions=[{"id": "1", "text": "Hello", "start_time": 0, "end_time": 1}])
                 calls = []
                 fail_completed = [True]
 
@@ -144,44 +144,44 @@ class ExportReliabilityTests(unittest.TestCase):
                         patch.object(main.firestore, "transactional", lambda fn: fn),
                         patch.object(main.settings, "DISABLE_EXPORT_CREDIT_LIMIT", False),
                         patch.object(main.request_security, "_assert_account_not_deleting"),
-                        patch.object(main, "_mark_export_processing", return_value=(time.time(), time.time())),
-                        patch.object(main, "_set_export_job", side_effect=set_job),
+                        patch.object(main.export_jobs, "_mark_export_processing", return_value=(time.time(), time.time())),
+                        patch.object(main.export_jobs, "_set_export_job", side_effect=set_job),
                         patch.object(main.media_records, "_assert_upload_owner"), patch.object(main.media_records, "_assert_upload_clean"),
                         patch.object(main.media_records, "_safe_find_upload", return_value="source.mp4"),
                         patch.object(main.media_records, "_probe_media", return_value={"format": {"duration": 12}, "streams": [{"codec_type": "video", "width": 720, "height": 1280}]}),
                         patch.object(main.media_records, "_source_media_identity", return_value="media-identity"),
-                        patch.object(main, "render_cache_eligible", return_value=False),
+                        patch.object(main.export_jobs, "render_cache_eligible", return_value=False),
                         patch.object(main.settings, "EXPORT_DIR", directory), patch.object(main.settings, "RENDER_CACHE_DIR", directory),
                         patch.object(main.app_state.processor, "burn_only", render),
                         patch.object(main.firebase_admin_setup, "upload_to_firebase_storage", return_value="https://storage/private"),
-                        patch.object(main, "_write_last_export_request_debug"),
+                        patch.object(main.export_jobs, "_write_last_export_request_debug"),
                     ):
                         stack.enter_context(patcher)
                     with self.assertRaisesRegex(RuntimeError, "after debit"):
-                        asyncio.run(main._process_export_job_core(req, "owner", "test", "charged-job"))
+                        asyncio.run(main.export_jobs._process_export_job_core(req, "owner", "test", "charged-job"))
                     self.assertEqual(users[("users", "owner")]["credits_remaining"], 0)
                     ledger = users[("users", "owner", "export_usage", "charged-job")]
                     self.assertTrue(ledger["result_payload"]["success"])
                     self.assertIn("export_filename", ledger["result_payload"])
                     if changed_plan:
                         users[("users", "owner")].update(subscription_tier="creator", subscription_expiry="2020-01-01")
-                    with patch.object(main, "_evaluate_export_policy", side_effect=AssertionError("retry must not recheck new-export policy")):
-                        recovered = asyncio.run(main._process_export_job_core(req, "owner", "test", "charged-job"))
+                    with patch.object(main.export_jobs, "_evaluate_export_policy", side_effect=AssertionError("retry must not recheck new-export policy")):
+                        recovered = asyncio.run(main.export_jobs._process_export_job_core(req, "owner", "test", "charged-job"))
                     self.assertEqual(recovered, ledger["result_payload"])
                     self.assertEqual(render.await_count, 1)
                     self.assertEqual(len(users[("users", "owner")]["history"]), 1)
-                    self.assertIsNone(main._load_recorded_export_result("owner", "new-job", FILE_ID))
-                    self.assertIsNone(main._load_recorded_export_result("other-owner", "charged-job", FILE_ID))
+                    self.assertIsNone(main.export_jobs._load_recorded_export_result("owner", "new-job", FILE_ID))
+                    self.assertIsNone(main.export_jobs._load_recorded_export_result("other-owner", "charged-job", FILE_ID))
 
     def test_failed_state_with_committed_usage_returns_completed_result(self):
         payload = {"success": True, "export_job_id": "job"}
-        with patch.object(main, "_load_recorded_export_result", return_value=payload):
+        with patch.object(main.export_jobs, "_load_recorded_export_result", return_value=payload):
             result = create_export_router(main)._reconcile_export_job("job", {"status": "failed", "uid": "owner", "file_id": FILE_ID})
         self.assertEqual(result["status"], "completed")
         self.assertEqual(result["payload"], payload)
 
     def test_unknown_billing_outcome_stays_recoverable_during_database_outage(self):
-        with patch.object(main, "_load_recorded_export_result", side_effect=RuntimeError("Firestore offline")):
+        with patch.object(main.export_jobs, "_load_recorded_export_result", side_effect=RuntimeError("Firestore offline")):
             result = create_export_router(main)._reconcile_export_job("job", {"status": "failed", "uid": "owner", "file_id": FILE_ID})
         self.assertEqual(result["status"], "retrying")
         self.assertIsNone(result["error"])
@@ -231,10 +231,10 @@ class ExportReliabilityTests(unittest.TestCase):
             raise RuntimeError("completion write failed after charge")
 
         with (
-            patch.object(main, "_load_export_job", side_effect=lambda _: dict(job)),
-            patch.object(main, "_set_export_job", side_effect=transition),
-            patch.object(main, "_load_recorded_export_result", return_value=payload),
-            patch.object(main, "_process_export_job_core", side_effect=crash),
+            patch.object(main.export_jobs, "_load_export_job", side_effect=lambda _: dict(job)),
+            patch.object(main.export_jobs, "_set_export_job", side_effect=transition),
+            patch.object(main.export_jobs, "_load_recorded_export_result", return_value=payload),
+            patch.object(main.export_jobs, "_process_export_job_core", side_effect=crash),
             patch.object(main, "_acquire_export_slot", return_value=True),
             patch.object(main, "_release_export_slot"), patch.object(main, "_release_export_pending_work"),
             patch.object(main, "_idem_set") as store, patch.object(main, "_idem_delete") as delete,
@@ -326,8 +326,8 @@ class BatchIdempotencyTests(unittest.TestCase):
         self.request = Request({"type": "http", "headers": []})
 
     def batch(self, text="Hello"):
-        return main.BatchExportRequest(idempotency_key="retry-key", exports=[
-            main.ExportRequest(file_id=FILE_ID, captions=[{"id": "1", "text": text, "start_time": 0, "end_time": 1}])
+        return main.api_models.BatchExportRequest(idempotency_key="retry-key", exports=[
+            main.api_models.ExportRequest(file_id=FILE_ID, captions=[{"id": "1", "text": text, "start_time": 0, "end_time": 1}])
         ])
 
     def test_concurrent_same_key_only_enqueues_one_batch(self):
@@ -386,10 +386,10 @@ class BatchIdempotencyTests(unittest.TestCase):
         self.assertEqual(replay["batch_id"], result["batch_id"])
         self.assertEqual(replay["accepted"], result["accepted"])
         self.assertEqual(self.enqueued.call_count, 1)
-        self.assertFalse(any(call.args[1] == "failed" for call in main._set_export_job.call_args_list))
+        self.assertFalse(any(call.args[1] == "failed" for call in main.export_jobs._set_export_job.call_args_list))
 
     def test_partial_batch_replay_keeps_original_accepted_and_rejected_items(self):
-        req = main.BatchExportRequest(idempotency_key="partial-key", exports=[self.batch().exports[0]] * 2)
+        req = main.api_models.BatchExportRequest(idempotency_key="partial-key", exports=[self.batch().exports[0]] * 2)
         self.enqueued.side_effect = [None, HTTPException(429, "full")]
         result = asyncio.run(self.router.create_export_batch(req, self.request))
         replay = asyncio.run(self.router.create_export_batch(req, self.request))
@@ -405,8 +405,8 @@ class BatchIdempotencyTests(unittest.TestCase):
         snapshot.exists = True
         snapshot.to_dict.return_value = {"uid": "batch-owner", "job_ids": ["paid-job"], "rejected": []}
         with (patch.object(main.request_security, "_authenticate_bearer_request", return_value={"uid": "batch-owner"}),
-              patch.object(main, "_load_export_job", return_value={"status": "failed", "uid": "batch-owner", "file_id": FILE_ID}),
-              patch.object(main, "_load_recorded_export_result", return_value={"success": True})):
+              patch.object(main.export_jobs, "_load_export_job", return_value={"status": "failed", "uid": "batch-owner", "file_id": FILE_ID}),
+              patch.object(main.export_jobs, "_load_recorded_export_result", return_value={"success": True})):
             result = self.router.get_export_batch("batch-id", self.request)
         self.assertEqual(result["jobs"][0]["status"], "completed")
         self.assertEqual(result["completed_items"], 1)

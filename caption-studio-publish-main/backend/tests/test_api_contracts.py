@@ -108,7 +108,7 @@ class ApiContractTests(unittest.TestCase):
         }
 
         with patch.object(main.settings, "DISABLE_EXPORT_DAILY_LIMIT", False):
-            allowed, detail, _recent = main._evaluate_export_policy(user_data, 1_700_000_000.0)
+            allowed, detail, _recent = main.export_jobs._evaluate_export_policy(user_data, 1_700_000_000.0)
 
         self.assertFalse(allowed)
         self.assertIn("Limit reached", detail)
@@ -132,7 +132,7 @@ class ApiContractTests(unittest.TestCase):
             }],
         }
 
-        sanitized = main._sanitize_export_request_payload(payload)
+        sanitized = main.export_jobs._sanitize_export_request_payload(payload)
 
         self.assertEqual(sanitized["word_layouts"], {})
         self.assertNotIn("id_token", sanitized)
@@ -296,7 +296,7 @@ class ApiContractTests(unittest.TestCase):
             "export_timestamps": [],
         }
 
-        allowed, detail, _recent = main._evaluate_export_policy(user_data, 1_700_000_000.0)
+        allowed, detail, _recent = main.export_jobs._evaluate_export_policy(user_data, 1_700_000_000.0)
 
         self.assertFalse(allowed)
         self.assertIn("PLAN_EXPIRED", detail)
@@ -311,7 +311,7 @@ class ApiContractTests(unittest.TestCase):
             "export_timestamps": [],
         }
 
-        allowed, detail, _recent = main._evaluate_export_policy(user_data, 1_700_000_000.0)
+        allowed, detail, _recent = main.export_jobs._evaluate_export_policy(user_data, 1_700_000_000.0)
 
         self.assertTrue(allowed)
         self.assertEqual(detail, "")
@@ -324,7 +324,7 @@ class ApiContractTests(unittest.TestCase):
             "export_timestamps": [],
         }
 
-        allowed, detail, _recent = main._evaluate_export_policy(user_data, 1_700_000_000.0)
+        allowed, detail, _recent = main.export_jobs._evaluate_export_policy(user_data, 1_700_000_000.0)
 
         self.assertFalse(allowed)
         self.assertIn("PLAN_EXPIRED", detail)
@@ -623,7 +623,7 @@ class ApiContractTests(unittest.TestCase):
     def test_worker_transcription_failure_returns_ai_quota(self):
         """The queued worker uses trusted_uid but must receive the same refund."""
         request = main.Request({"type": "http", "headers": [], "client": ("worker", 0)})
-        req = main.ProcessRequest(
+        req = main.api_models.ProcessRequest(
             file_id="123e4567-e89b-12d3-a456-426614174000",
             language="english",
         )
@@ -650,7 +650,7 @@ class ApiContractTests(unittest.TestCase):
 
     def test_corrupt_direct_upload_is_rejected_before_paid_transcription(self):
         request = main.Request({"type": "http", "headers": [], "client": ("worker", 0)})
-        req = main.ProcessRequest(
+        req = main.api_models.ProcessRequest(
             file_id="123e4567-e89b-12d3-a456-426614174000",
             language="english",
         )
@@ -859,7 +859,7 @@ class ApiContractTests(unittest.TestCase):
             "uid": "owner-uid", "status": "completed",
             "payload": {"success": True, "export_filename": filename, "video_url": "/api/media/export/old.mp4"},
         }
-        with patch.object(main, "s3_storage_configured", return_value=True), patch.object(main.firebase_admin_setup, "signed_export_download_url", return_value="https://media.example.invalid/private"
+        with patch.object(main.export_jobs, "s3_storage_configured", return_value=True), patch.object(main.firebase_admin_setup, "signed_export_download_url", return_value="https://media.example.invalid/private"
         ) as sign:
             verify.return_value = {"uid": "other-user"}
             denied = self.client.get(f"/api/export-result/{job_id}", headers={"Authorization": "Bearer other-token"})
@@ -910,8 +910,8 @@ class ApiContractTests(unittest.TestCase):
         with (
             patch.object(main.app_state, "_export_queue", FakeQueue()),
             patch.object(main.firebase_admin_setup, "get_db", return_value=FakeDb()),
-            patch.object(main, "_persist_export_job", return_value=True),
-            patch.object(main, "_load_recorded_export_result", return_value=None),
+            patch.object(main.export_jobs, "_persist_export_job", return_value=True),
+            patch.object(main.export_jobs, "_load_recorded_export_result", return_value=None),
         ):
             res_unauth = self.client.post("/api/export-replay/job-1")
             self.assertEqual(res_unauth.status_code, 401)
@@ -949,7 +949,7 @@ class ApiContractTests(unittest.TestCase):
 
         with (
             patch.object(main.app_state, "_export_queue", FakeQueue()),
-            patch.object(main, "_persist_export_job", return_value=True),
+            patch.object(main.export_jobs, "_persist_export_job", return_value=True),
         ):
             res = self.client.post(
                 "/api/export",
@@ -1038,7 +1038,7 @@ class ApiContractTests(unittest.TestCase):
         }
         with (
             patch.object(main.app_state, "_export_queue", FakeQueue()),
-            patch.object(main, "_persist_export_job", return_value=True),
+            patch.object(main.export_jobs, "_persist_export_job", return_value=True),
         ):
             first = self.client.post("/api/export", json=request_body)
             replay = self.client.post("/api/export", json=request_body)
@@ -1782,8 +1782,8 @@ class ApiContractTests(unittest.TestCase):
             patch.object(main.firestore, "transactional", new=lambda fn: fn),
             patch.object(main.settings, "DISABLE_EXPORT_CREDIT_LIMIT", False),
         ):
-            main._record_export_usage(db, user_ref, history_item, 100.0, "job-1")
-            main._record_export_usage(db, user_ref, history_item, 101.0, "job-1")
+            main.export_jobs._record_export_usage(db, user_ref, history_item, 100.0, "job-1")
+            main.export_jobs._record_export_usage(db, user_ref, history_item, 101.0, "job-1")
 
         self.assertEqual([write[0] for write in transactions[0].writes], ["create", "update"])
         first_user_update = transactions[0].writes[1][2]
@@ -1804,10 +1804,10 @@ class ApiContractTests(unittest.TestCase):
     def test_durable_queue_rejects_unpersisted_job_state(self):
         with (
             patch.object(main.app_state, "_export_queue", object()),
-            patch.object(main, "_persist_export_job", return_value=False),
+            patch.object(main.export_jobs, "_persist_export_job", return_value=False),
         ):
             with self.assertRaises(RuntimeError):
-                main._set_export_job("durable-job", "queued", uid="owner")
+                main.export_jobs._set_export_job("durable-job", "queued", uid="owner")
 
     @patch("main.firebase_auth.delete_user")
     @patch("main.firebase_admin_setup.verify_token", return_value={"uid": "delete-user"})
@@ -1923,7 +1923,7 @@ class ApiContractTests(unittest.TestCase):
             patch.object(main.settings, "DISABLE_EXPORT_CREDIT_LIMIT", False),
             patch.object(main.settings, "DISABLE_EXPORT_DAILY_LIMIT", False),
         ):
-            allowed, reason, _history = main._evaluate_export_policy({
+            allowed, reason, _history = main.export_jobs._evaluate_export_policy({
                 "subscription_tier": "free",
                 "credits_remaining": main.settings.FREE_PLAN_CREDITS,
                 "export_timestamps": [],
@@ -1931,7 +1931,7 @@ class ApiContractTests(unittest.TestCase):
             self.assertTrue(allowed)
             self.assertEqual(reason, "")
 
-            allowed, reason, _history = main._evaluate_export_policy({
+            allowed, reason, _history = main.export_jobs._evaluate_export_policy({
                 "subscription_tier": "starter",
                 "credits_remaining": 0,
                 "export_timestamps": [],
