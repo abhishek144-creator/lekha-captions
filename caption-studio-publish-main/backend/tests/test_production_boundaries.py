@@ -588,7 +588,7 @@ class ProductionBoundaryTests(unittest.TestCase):
         payment = SimpleNamespace(get=lambda **_: SimpleNamespace(exists=False))
         with patch.object(main.firestore, "transactional", new=lambda fn: fn):
             with self.assertRaises(main.HTTPException) as error:
-                main._grant_payment_transactionally(SimpleNamespace(transaction=lambda: object()), user, payment,
+                main.billing._grant_payment_transactionally(SimpleNamespace(transaction=lambda: object()), user, payment,
                     "u", "starter", main.settings.PLAN_PRICING["starter"], "p", "o", 29900, "INR", "test", "", order_created_at=100)
         self.assertEqual(error.exception.status_code, 409)
 
@@ -600,7 +600,7 @@ class ProductionBoundaryTests(unittest.TestCase):
         db = SimpleNamespace(collection=lambda _: Ref(), transaction=lambda: object())
         with patch.object(main.firestore, "transactional", new=lambda fn: fn):
             with self.assertRaises(main.HTTPException) as error:
-                main._apply_refund_webhook_event(db, "refund.processed", {"id": "r", "payment_id": "p", "amount": 100}, {"id": "p", "notes": {"uid": "u"}})
+                main.billing._apply_refund_webhook_event(db, "refund.processed", {"id": "r", "payment_id": "p", "amount": 100}, {"id": "p", "notes": {"uid": "u"}})
         self.assertEqual(error.exception.status_code, 503)
 
     def test_pending_account_deletion_blocks_export_usage(self):
@@ -623,7 +623,7 @@ class ProductionBoundaryTests(unittest.TestCase):
                 with lock: return fn(tx)
             return run
         def grant(_):
-            return main._grant_payment_transactionally(SimpleNamespace(transaction=Tx), Ref("user"), Ref("payment"),
+            return main.billing._grant_payment_transactionally(SimpleNamespace(transaction=Tx), Ref("user"), Ref("payment"),
                 "u", "starter", main.settings.PLAN_PRICING["starter"], "p", "o", 29900, "INR", "test", "", order_created_at=200)
         with patch.object(main.firestore, "transactional", new=transactional), ThreadPoolExecutor(16) as pool:
             results = list(pool.map(grant, range(16)))

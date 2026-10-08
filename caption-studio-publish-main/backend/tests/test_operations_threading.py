@@ -91,7 +91,7 @@ class OperationsThreadingTests(unittest.IsolatedAsyncioTestCase):
         with (patch.object(main, "_claim_scheduled_job", self.blocking("claim", "lease")),
               patch.object(main, "_release_scheduled_job", self.blocking("release")),
               patch.object(main, "_advanced_janitor_once", self.blocking("cleanup")),
-              patch.object(main, "reconcile_payments_once", self.blocking("payments", {}))):
+              patch.object(main.billing, "reconcile_payments_once", self.blocking("payments", {}))):
             await main.scheduled_janitor_job()
             await main.scheduled_payment_reconciliation_job()
         self.assertEqual(self.calls, ["claim", "cleanup", "release", "claim", "payments", "release"])

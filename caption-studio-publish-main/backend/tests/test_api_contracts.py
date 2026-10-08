@@ -1383,7 +1383,7 @@ class ApiContractTests(unittest.TestCase):
         payment_ref = FakeRef(FakeSnapshot(False))
 
         with patch.object(main.firestore, "transactional", new=lambda fn: fn):
-            result = main._grant_payment_transactionally(
+            result = main.billing._grant_payment_transactionally(
                 db,
                 user_ref,
                 payment_ref,
@@ -1435,7 +1435,7 @@ class ApiContractTests(unittest.TestCase):
         }
 
         with self.assertRaises(main.HTTPException) as raised:
-            main._assert_topup_purchase_available(user_data, creator_plan, now_ts)
+            main.billing._assert_topup_purchase_available(user_data, creator_plan, now_ts)
 
         self.assertEqual(raised.exception.status_code, 429)
         self.assertIn("2 top-up purchases", raised.exception.detail)
@@ -1483,7 +1483,7 @@ class ApiContractTests(unittest.TestCase):
         payment_ref = FakeRef(FakeSnapshot(False))
 
         with patch.object(main.firestore, "transactional", new=lambda fn: fn):
-            result = main._grant_payment_transactionally(
+            result = main.billing._grant_payment_transactionally(
                 db,
                 user_ref,
                 payment_ref,
@@ -1630,9 +1630,9 @@ class ApiContractTests(unittest.TestCase):
             patch.object(main.optional_deps, "RAZORPAY_AVAILABLE", True),
             patch.object(main.app_state, "rzp_client", fake_client),
             patch.object(main.firebase_admin_setup, "get_db", return_value=None),
-            patch.object(main, "_apply_successful_payment", return_value={"success": True}) as apply_payment,
+            patch.object(main.billing, "_apply_successful_payment", return_value={"success": True}) as apply_payment,
         ):
-            result = asyncio.run(main.razorpay_webhook(FakeRequest(body, signature)))
+            result = asyncio.run(main.payments_api.razorpay_webhook(FakeRequest(body, signature)))
 
         self.assertTrue(result["applied"])
         self.assertEqual(apply_payment.call_args.kwargs["uid"], "webhook-user")
@@ -1705,7 +1705,7 @@ class ApiContractTests(unittest.TestCase):
             patch.object(main.observability, "_track_event"),
             patch.object(main.observability, "_audit_action"),
         ):
-            result = main._apply_refund_webhook_event(
+            result = main.billing._apply_refund_webhook_event(
                 fake_db,
                 "refund.processed",
                 {
