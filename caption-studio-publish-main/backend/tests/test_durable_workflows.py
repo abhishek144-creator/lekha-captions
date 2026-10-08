@@ -72,6 +72,20 @@ class Tx:
 
 
 class DurableWorkflowTests(unittest.TestCase):
+    def test_rq_worker_entrypoints_resolve_and_transcription_delegates(self):
+        import importlib
+        from rq.utils import import_attribute
+        # Use the package-qualified paths serialized in real Redis deliveries.
+        # Calling processing_api directly would miss a removed main entrypoint.
+        with patch.object(sys, "path", [str(Path(__file__).resolve().parents[2]), *sys.path]):
+            worker_main = importlib.import_module("backend.main")
+            for name in ("run_transcription_job_task", "run_media_scan_job_task", "run_export_job_task"):
+                self.assertIs(import_attribute(f"backend.main.{name}"), getattr(worker_main, name))
+            with patch.object(worker_main.processing_api, "run_transcription_job_task", return_value={"status": "completed"}) as task:
+                result = import_attribute("backend.main.run_transcription_job_task")("owner", "existing-job")
+                self.assertEqual(result, {"status": "completed"})
+                task.assert_called_once_with("owner", "existing-job")
+
     def setUp(self):
         self.db = MemoryDatabase()
         self.patch = patch.object(main.firestore, "transactional", self.db.transactional)
