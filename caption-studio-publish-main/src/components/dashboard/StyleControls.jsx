@@ -175,6 +175,22 @@ export default function StyleControls({
   const [fontPopoverOpen, setFontPopoverOpen] = useState(false)
   const [effectsOpen, setEffectsOpen] = useState(false)
   const [activePanelTab, setActivePanelTab] = useState('style')
+  // Phones and tablets show one style section at a time behind a chip row
+  // (Canva-style); desktop keeps the full scrolling inspector.
+  const [mobileStyleSection, setMobileStyleSection] = useState('text')
+  const mobileStyleSections = [
+    { id: 'text', label: 'Text' },
+    { id: 'position', label: 'Position' },
+    { id: 'colors', label: 'Colors' },
+    ...(showBackgroundControls ? [{ id: 'background', label: 'Background' }] : []),
+    { id: 'effects', label: 'Effects' },
+  ]
+  const activeMobileStyleSection = mobileStyleSections.some((section) => section.id === mobileStyleSection)
+    ? mobileStyleSection
+    : 'text'
+  const mobileSectionClass = (id) => (
+    activeMobileStyleSection === id ? 'max-lg:!border-t-0 max-lg:!pt-0' : 'max-lg:hidden'
+  )
 
   const updateStyle = (key, value, skipHistory = false) => {
     // Slider ticks (skipHistory=true) must use the RAW caption setter — the
@@ -400,9 +416,10 @@ export default function StyleControls({
 
   return (
     <div className="h-full flex flex-col overflow-hidden rounded-[18px] lekha-panel lekha-inspector">
-      <div className="shrink-0 border-b border-white/10 px-4 pt-4">
-        <p className="lekha-micro-label text-slate-300">Styling</p>
-        <div className="mt-5 flex items-end justify-between gap-3">
+      <div className="shrink-0 border-b border-white/10 px-4 pt-2 lg:pt-4">
+        {/* The mobile sheet already titles this panel. */}
+        <p className="lekha-micro-label text-slate-300 max-lg:hidden">Styling</p>
+        <div className="mt-1 lg:mt-5 flex items-end justify-between gap-3">
           {panelTabs.map((tab) => (
             <button
               key={tab.id}
@@ -440,7 +457,29 @@ export default function StyleControls({
           />
         </div>
       ) : (
-    <div className="flex-1 overflow-y-auto px-4 py-7 custom-scrollbar">
+    <>
+    <div role="tablist" aria-label="Style sections" className="lg:hidden shrink-0 flex gap-2 overflow-x-auto border-b border-white/10 px-3 py-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {mobileStyleSections.map((section) => {
+        const active = activeMobileStyleSection === section.id
+        return (
+          <button
+            key={section.id}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            onClick={() => setMobileStyleSection(section.id)}
+            className={`shrink-0 touch-manipulation rounded-full border px-4 py-2 text-[13px] font-semibold transition-colors ${
+              active
+                ? 'border-white/30 bg-white text-black'
+                : 'border-white/10 bg-white/[0.04] text-slate-300 active:bg-white/15'
+            }`}
+          >
+            {section.label}
+          </button>
+        )
+      })}
+    </div>
+    <div className="flex-1 overflow-y-auto px-4 py-4 lg:py-7 custom-scrollbar">
       <h2 className="hidden">
         {selectedTextElement ? 'Text Element Style' : 'Caption Style'}
       </h2>
@@ -465,8 +504,8 @@ export default function StyleControls({
 
       <div className="space-y-10">
 
-        {/* ── 1. POSITION ──────────────────────────── */}
-        <div className="space-y-7">
+        {/* ── 1. TYPOGRAPHY ────────────────────────── */}
+        <div className={`space-y-7 ${mobileSectionClass('text')}`}>
           <div className="flex items-center justify-between">
             <h3 className="text-[9px] font-medium text-slate-400">TYPOGRAPHY</h3>
             <span className="rounded-full border border-white/10 bg-black/30 px-2 py-0.5 text-[9px] font-semibold text-white">
@@ -729,7 +768,7 @@ export default function StyleControls({
         </div>
 
         {/* ── 2. POSITION ────────────────────────────── */}
-        <div className="space-y-7 pt-8 border-t border-white/5">
+        <div className={`space-y-7 pt-8 border-t border-white/5 ${mobileSectionClass('position')}`}>
           <h3 className="text-[9px] font-medium text-slate-400">POSITION</h3>
 
           {/* Position Y */}
@@ -899,7 +938,7 @@ export default function StyleControls({
         </div>
 
         {/* ── 3. COLORS ─────────────────────────────── */}
-        <div className="space-y-7 pt-8 border-t border-white/5">
+        <div className={`space-y-7 pt-8 border-t border-white/5 ${mobileSectionClass('colors')}`}>
           <h3 className="text-[9px] font-medium text-slate-400">COLORS</h3>
 
           {/* Text Color */}
@@ -1246,7 +1285,7 @@ export default function StyleControls({
 
         {/* ── 4. BACKGROUND ─────────────────────────── */}
         {showBackgroundControls && (
-        <div className="space-y-7 pt-8 border-t border-white/5">
+        <div className={`space-y-7 pt-8 border-t border-white/5 ${mobileSectionClass('background')}`}>
           <h3 className="text-[9px] font-medium text-slate-400">BACKGROUND</h3>
 
           {/* Background Toggle */}
@@ -1383,7 +1422,7 @@ export default function StyleControls({
         )}
 
         {/* ── 5. EFFECTS ────────────────────────────── */}
-        <div className="space-y-7 pt-8 border-t border-white/5">
+        <div className={`space-y-7 pt-8 border-t border-white/5 ${mobileSectionClass('effects')}`}>
           <h3 className="text-[9px] font-medium text-slate-400">EFFECTS</h3>
 
           {/* Effects Section — collapsible */}
@@ -1524,6 +1563,7 @@ export default function StyleControls({
 
       </div>
     </div>
+    </>
       )}
     </div>
   );

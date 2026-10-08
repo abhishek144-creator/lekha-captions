@@ -8,6 +8,8 @@ import { Play, X, Move, RotateCw, Trash2 } from 'lucide-react';
 import CanvasToolRail from './CanvasToolRail';
 import PlaybackControls from './PlaybackControls';
 import PreviewScrubber from './PreviewScrubber';
+import { createLiveScrubber } from './liveScrub';
+import { DESKTOP_EDITOR_QUERY, useMediaQuery } from '@/hooks/useMediaQuery';
 import VideoPlayerKeyframes from './VideoPlayerKeyframes';
 import { resolveScriptFont, loadGoogleFont } from './fontUtils';
 import { buildEmotionalCaptionPlan } from './emotionalTemplateUtils';
@@ -76,6 +78,14 @@ import {
 } from './videoPlayerTemplateRendering.jsx';
 
 
+// Phones and tablets lay the preview frame out at the export template
+// renderer's CSS reference size (render_template_overlay.mjs sizes captions
+// as if the preview were 360px wide) and scale the whole frame to fit, so
+// every caption renderer - plain, basic, advanced and LC - keeps its export
+// proportions on any screen.
+const COMPACT_PREVIEW_REFERENCE_WIDTH = 360;
+const COMPACT_PREVIEW_REFERENCE_HEIGHT = 640;
+
 export default function VideoPlayer({
   videoUrl,
   currentTime,
@@ -121,8 +131,13 @@ export default function VideoPlayer({
   const lastDragDropTime = useRef(0);
   const wordResizeActiveRef = useRef(false);
   const inputRef = useRef(null);
-  // Blocks handleTimeUpdate from propagating to Dashboard while user is dragging
-  const isScrubbingRef = useRef(false);
+  // Scrubber drags seek live (one seek in flight at a time) so the frame and
+  // captions follow the thumb; playback pauses during the drag.
+  const liveScrubRef = useRef(null);
+  if (!liveScrubRef.current) {
+    liveScrubRef.current = createLiveScrubber(() => videoRef.current);
+  }
+  const resumeAfterScrubRef = useRef(false);
 
   // ── Alignment snap guides ───────────────────────────────────────────────
   // { hLines: [pct], vLines: [pct] } — percent values to draw guide lines
@@ -140,6 +155,7 @@ export default function VideoPlayer({
   const canvasPanStartRef = useRef({ x: 0, y: 0, originX: 0, originY: 0 });
   const fitCanvasSizeRef = useRef({ width: 0, height: 0 });
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
+  const isCompactPreview = !useMediaQuery(DESKTOP_EDITOR_QUERY);
 
   const clearActiveSelection = useCallback(() => {
     if (setSelectedCaptionId) setSelectedCaptionId(null);
@@ -212,9 +228,33 @@ export default function VideoPlayer({
     };
   }, [isVideoFullscreen, videoUrl]);
 
+  const frameStageRef = useRef(null);
+  const [compactFitScale, setCompactFitScale] = useState(0);
+  React.useLayoutEffect(() => {
+    if (!isCompactPreview || isVideoFullscreen) {
+      setCompactFitScale(0);
+      return undefined;
+    }
+    const stage = frameStageRef.current;
+    if (!stage) return undefined;
+    const syncFit = () => {
+      const styles = window.getComputedStyle(stage);
+      const width = stage.clientWidth - parseFloat(styles.paddingLeft) - parseFloat(styles.paddingRight) - 8;
+      const height = stage.clientHeight - parseFloat(styles.paddingTop) - parseFloat(styles.paddingBottom);
+      if (width <= 0 || height <= 0) return;
+      const next = Math.min(width / COMPACT_PREVIEW_REFERENCE_WIDTH, height / COMPACT_PREVIEW_REFERENCE_HEIGHT);
+      setCompactFitScale(prev => (Math.abs(prev - next) < 0.001 ? prev : next));
+    };
+    syncFit();
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(syncFit) : null;
+    observer?.observe(stage);
+    return () => observer?.disconnect();
+  }, [isCompactPreview, isVideoFullscreen, videoUrl]);
+  const compactFit = isCompactPreview && !isVideoFullscreen && compactFitScale > 0 ? compactFitScale : 0;
+
   const getPreviewRenderScale = useCallback(() => {
-    if (!isVideoFullscreen) return 1;
     const currentWidth = canvasSize.width || videoContainerRef.current?.offsetWidth || 0;
+    if (!isVideoFullscreen) return 1;
     const baselineWidth = fitCanvasSizeRef.current.width || currentWidth;
     if (!currentWidth || !baselineWidth) return 1;
     return currentWidth / baselineWidth;
@@ -531,7 +571,7 @@ export default function VideoPlayer({
   onVideoLoadedRef.current = onVideoLoaded;
 
   const handleTimeUpdate = useCallback(() => {
-    if (videoRef.current && !isScrubbingRef.current) {
+    if (videoRef.current) {
       setCurrentTime(videoRef.current.currentTime);
     }
   }, [setCurrentTime]);
@@ -1643,7 +1683,7 @@ export default function VideoPlayer({
         scoped/iframe-isolated CSS. */}
     <div className={`flex flex-col h-full ${isVideoFullscreen ? 'bg-black px-2 py-2' : ''}`}>
       {/* Video container with 9:16 aspect ratio for mobile preview */}
-      <div className={`relative flex-1 rounded-xl overflow-visible flex items-center justify-center min-h-0 ${isVideoFullscreen ? 'pt-0 pb-2' : 'pt-4 pb-3'}`}>
+      <div ref={frameStageRef} className={`relative flex-1 rounded-xl overflow-visible flex items-center justify-center min-h-0 ${isVideoFullscreen ? 'pt-0 pb-2' : 'pt-3 pb-1 lg:pt-4 lg:pb-3'}`}>
         {/* Floating canvas tool rail beside the preview */}
         {setIsVideoFullscreen && (
           <CanvasToolRail
@@ -1660,8 +1700,14 @@ export default function VideoPlayer({
           </div>
         )}
         <div
-          className={`relative inline-flex max-w-full overflow-visible ${isVideoFullscreen ? 'scale-[1.02]' : ''}`}
-          style={{ transition: 'transform 0.1s ease' }}
+          className={`relative inline-flex max-w-full overflow-visible ${isVideoFullscreen ? 'scale-[1.02]' : 'max-lg:h-full'}`}
+          style={{
+            transition: 'transform 0.1s ease',
+            ...(compactFit ? {
+              width: `${COMPACT_PREVIEW_REFERENCE_WIDTH * compactFit}px`,
+              height: `${COMPACT_PREVIEW_REFERENCE_HEIGHT * compactFit}px`,
+            } : {}),
+          }}
           onClick={(e) => {
             const target = e.target;
             if (!(target instanceof Element)) return;
@@ -1681,11 +1727,19 @@ export default function VideoPlayer({
           )}
         <div
           ref={videoContainerRef}
-          className={`lekha-video-frame relative aspect-[9/16] touch-none select-none bg-black shadow-[0_35px_120px_rgba(0,0,0,0.72)] ${isVideoFullscreen ? 'h-auto max-h-[calc(100dvh-92px)]' : 'h-full max-h-[calc(100dvh-360px)] md:max-h-[calc(100dvh-296px)]'}`}
+          className={`lekha-video-frame relative aspect-[9/16] touch-none select-none bg-black shadow-[0_35px_120px_rgba(0,0,0,0.72)] ${isVideoFullscreen ? 'h-auto max-h-[calc(100dvh-92px)]' : 'h-full max-lg:max-h-full lg:max-h-[calc(100dvh-296px)]'}`}
             style={{
-              transform: `translate(${canvasOffset.x}px, ${canvasOffset.y}px) scale(${canvasScale})`,
-              transformOrigin: 'center center',
-              transition: isCanvasPanning ? 'none' : 'transform 0.1s ease',
+              transform: `translate(${canvasOffset.x}px, ${canvasOffset.y}px) scale(${canvasScale * (compactFit || 1)})`,
+              transformOrigin: compactFit ? 'top left' : 'center center',
+              ...(compactFit ? {
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: `${COMPACT_PREVIEW_REFERENCE_WIDTH}px`,
+                height: `${COMPACT_PREVIEW_REFERENCE_HEIGHT}px`,
+                maxHeight: 'none',
+              } : {}),
+              transition: isCanvasPanning || compactFit ? 'none' : 'transform 0.1s ease',
               cursor: activeCanvasTool === 'move' ? (isCanvasPanning ? 'grabbing' : 'grab') : 'default',
             }}
             onPointerDown={handleCanvasMouseDown}
@@ -1814,12 +1868,12 @@ export default function VideoPlayer({
                 onMediaError={onVideoError}
                 setIsPlaying={setIsPlaying}
               />
-              <div className="absolute top-3 left-3 z-40 flex items-center gap-2">
+              <div className="absolute top-3 left-3 z-40 hidden lg:flex items-center gap-2">
                 <span className="rounded bg-black/75 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-white">
                   <span className="inline-block w-1.5 h-1.5 rounded-full bg-white mr-1" /> Rec
                 </span>
               </div>
-              <div className="absolute top-3 right-3 z-40 rounded bg-black/75 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-white">
+              <div className="absolute top-3 right-3 z-40 hidden lg:block rounded bg-black/75 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-white">
                 9:16 - 24FPS
               </div>
               {!isPlaying && (
@@ -2664,14 +2718,20 @@ export default function VideoPlayer({
             value={localScrubTime ?? currentTime}
             duration={duration}
             onScrub={(val) => {
-              isScrubbingRef.current = true;
+              if (localScrubTime === null) {
+                resumeAfterScrubRef.current = isPlaying;
+                if (isPlaying) setIsPlaying(false);
+              }
               setLocalScrubTime(val);
+              liveScrubRef.current.scrubTo(val);
             }}
             onCommit={(val) => {
-              isScrubbingRef.current = false;
+              liveScrubRef.current.end();
               setLocalScrubTime(null);
               if (videoRef.current) videoRef.current.currentTime = val;
               setCurrentTime(val);
+              if (resumeAfterScrubRef.current) setIsPlaying(true);
+              resumeAfterScrubRef.current = false;
             }}
           />
 
@@ -2681,6 +2741,9 @@ export default function VideoPlayer({
         </div>
       </div>
 
+      {/* Phones use the mobile dock's transport bar instead, except in
+          fullscreen where the dock is hidden. */}
+      <div className={isVideoFullscreen ? '' : 'hidden lg:block'}>
       <PlaybackControls
         isPlaying={isPlaying}
         onTogglePlay={handleVideoSurfaceToggle}
@@ -2694,6 +2757,7 @@ export default function VideoPlayer({
         currentTime={currentTime}
         duration={duration}
       />
+      </div>
 
       {/* Word Click Popup — moved to Dashboard.jsx root level */}
 

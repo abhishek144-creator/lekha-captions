@@ -100,7 +100,7 @@ Caption IDs are `${Date.now()}-${idx}` (no spaces). They are used as key prefixe
 - **Imports:** use named imports; no default star imports
 - **State:** all shared state lives in `Dashboard.jsx`; child components receive props + callbacks
 - **No `var`** — use `const`/`let` only
-- **Radix UI Slider:** always use `onValueChange` for display, `onValueCommit` for actual seeks/commits (never seek video during drag — causes black frames)
+- **Radix UI Slider:** use `onValueChange` for display and `onValueCommit` for commits. Never assign `video.currentTime` directly on every tick (stacked seeks show black frames); preview seek bars scrub live through `createLiveScrubber` (`src/components/dashboard/liveScrub.js`), which keeps one seek in flight
 - **Backend models:** always declare all fields in Pydantic models; missing fields silently strip data
 - **FFmpeg vf chain order:** `crop → ass → scale` (subtitle before scale so ASS coords match PlayRes)
 
@@ -122,7 +122,7 @@ Caption IDs are `${Date.now()}-${idx}` (no spaces). They are used as key prefixe
 | id_token required | backend/main.py ExportRequest | `id_token: str = ""` (optional with default) |
 | words field dropped | backend/main.py CaptionItem | Added `words: List[Any] = []` |
 | word_styles None crash | processor.py _create_styled_ass | `(c.get('word_styles') or {})` + isinstance guard |
-| Video blank on drag | VideoPlayer.jsx Slider | No seek on `onValueChange`; seek only on `onValueCommit` |
+| Video blank on drag | VideoPlayer.jsx / MobileDashboardDock.jsx seek bars | Live scrub only via `liveScrub.js` (one seek in flight, coalesced); final seek on `onValueCommit` |
 | seekSignal unused | VideoPlayer.jsx | Added `useEffect([seekSignal])` to consume external seeks |
 | Font fallback not downloaded | processor.py _ensure_font | Update `font_path` + download Inter on fallback |
 | Font ass_name mismatch | processor.py GOOGLE_FONTS_MAP | Mitigated — Google variable fonts preserve family name in nameID=1 |
