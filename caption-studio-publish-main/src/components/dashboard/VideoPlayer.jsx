@@ -7,7 +7,7 @@ import { createPortal } from 'react-dom';
 import { Play, X, Move, RotateCw, Trash2 } from 'lucide-react';
 import CanvasToolRail from './CanvasToolRail';
 import PlaybackControls from './PlaybackControls';
-import PreviewScrubber from './PreviewScrubber';
+import PreviewScrubber from './PreviewScrubber';
 import { createLiveScrubber } from './liveScrub';
 import { DESKTOP_EDITOR_QUERY, useMediaQuery } from '@/hooks/useMediaQuery';
 import VideoPlayerKeyframes from './VideoPlayerKeyframes';
