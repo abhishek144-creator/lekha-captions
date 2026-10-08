@@ -14,3 +14,4 @@ sarvamai==0.1.25
 redis==7.4.0
 rq==2.9.0
 sentry-sdk==2.66.0
+fonttools==4.65.0

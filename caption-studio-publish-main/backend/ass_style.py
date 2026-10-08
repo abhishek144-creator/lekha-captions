@@ -4,6 +4,11 @@ import math
 from dataclasses import dataclass
 from typing import Any, Callable
 
+try:
+    from .processor_fonts import css_font_weight
+except ImportError:
+    from processor_fonts import css_font_weight
+
 @dataclass(frozen=True)
 class AssRenderContext:
     indic_y_corrections: dict[str, float]
@@ -127,6 +132,7 @@ def build_ass_context(processor, captions, style, font_info, video_w, video_h):
 
     # ── Font ───────────────────────────────────────────────────────────
     font_name = font_info['ass_name']
+    font_source = font_info
     print(f"[ASS] font={font_name!r} size={scaled_size} scale_factor={scale_factor:.2f}")
 
     # ── Script detection + Indic font override ────────────────────────
@@ -155,6 +161,12 @@ def build_ass_context(processor, captions, style, font_info, video_w, video_h):
         if indic_font_info and font_name.lower() not in _indic_safe:
             print(f"[ASS] Font '{font_name}' is Latin-only; overriding to {indic_font_info['ass_name']} for {detected_script}")
             font_name = indic_font_info['ass_name']
+            font_source = indic_font_info
+    font_weight = css_font_weight(style.get('font_weight'), style.get('is_bold', False))
+    weighted_family = processor._weighted_font_family(font_source, font_weight)
+    if weighted_family:
+        print(f"[ASS] weight {font_weight}: {font_name!r} -> {weighted_family!r}")
+        font_name = weighted_family
     indic_y_corrections = {
         'devanagari': -0.025, 'bengali': -0.020, 'gujarati': -0.020,
         'punjabi': -0.015, 'tamil': -0.015, 'telugu': -0.015,

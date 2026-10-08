@@ -123,6 +123,7 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
         self.template_overlay_script = os.path.join(self.project_root, "scripts", "render_template_overlay.mjs")
         os.makedirs(self.fonts_dir, exist_ok=True)
         self._packaged_font_matches = {}
+        self._variable_font_instances = {}
         self.client = None # Lazy init
         self._source_basic_template_ids = self._load_source_basic_template_ids()
         self._ensure_fallback_font()

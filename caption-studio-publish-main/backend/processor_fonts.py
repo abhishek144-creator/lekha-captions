@@ -10,6 +10,36 @@ import subprocess
 
 import requests
 
+try:
+    from fontTools.ttLib import TTFont
+    from fontTools.varLib.instancer import instantiateVariableFont
+except ImportError:  # variable fonts then render at libass's default instance
+    TTFont = None
+    instantiateVariableFont = None
+
+
+# Fonts baked into the image (Dockerfile copies them into the system fonts);
+# with PREFER_PACKAGED_RENDER_FONTS=1 _ensure_font does not download them.
+PACKAGED_FONTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "flat_fonts")
+
+# Instancing is pure table rewriting: ~1-5 s for Latin/Indic families, but
+# ~20 s and far more memory for a 10 MB CJK font. Above this they keep
+# libass's default instance.
+MAX_VARIABLE_FONT_INSTANCE_BYTES = 4 * 1024 * 1024
+
+
+def css_font_weight(font_weight, is_bold=False):
+    """The numeric weight the editor and DOM renderer draw `font_weight` at."""
+    raw = str(font_weight or '').strip().lower()
+    weight = {'normal': 400, 'bold': 700}.get(raw)
+    if weight is None:
+        try:
+            weight = int(float(raw))
+        except ValueError:
+            weight = 500  # the renderers' default when no weight is set
+    weight = max(1, min(weight, 1000))
+    return max(weight, 700) if is_bold else weight
+
 
 GOOGLE_FONTS_MAP = {
     'Anton': {'url': 'https://github.com/google/fonts/raw/main/ofl/anton/Anton-Regular.ttf', 'file': 'Anton-Regular.ttf', 'ass_name': 'Anton'},
@@ -383,6 +413,70 @@ class FontAssetsMixin:
             matched = False
         self._packaged_font_matches[family] = matched
         return matched
+
+    def _weighted_font_family(self, info, weight):
+        """ASS family that draws `info` at `weight`, or None to keep its ass_name.
+
+        libass only draws a variable font's default instance (Inter's is
+        wght 400) and its faux bold barely thickens it, so an 800 caption
+        exported at regular weight. Write a static instance under a family
+        name only it carries; the other axes stay at their defaults, which is
+        what the editor's Google Fonts CSS serves. Static fonts return None.
+        """
+        if instantiateVariableFont is None or not info or not info.get('file'):
+            return None
+        source = next((
+            path for path in (
+                os.path.join(self.fonts_dir, info['file']),
+                os.path.join(PACKAGED_FONTS_DIR, info['file']),
+            ) if os.path.isfile(path)
+        ), None)
+        if not source or os.path.getsize(source) > MAX_VARIABLE_FONT_INSTANCE_BYTES:
+            return None
+        cache_key = (source, os.path.getmtime(source), weight)
+        if cache_key in self._variable_font_instances:
+            return self._variable_font_instances[cache_key]
+
+        family = None
+        try:
+            font = TTFont(source)
+            axes = {axis.axisTag: axis for axis in font['fvar'].axes} if 'fvar' in font else {}
+            if 'wght' in axes:
+                wght = axes['wght']
+                weight = int(round(max(wght.minValue, min(weight, wght.maxValue))))
+                family = f"{info['ass_name']} Lekha W{weight}"
+                stem = os.path.splitext(info['file'])[0]
+                target = os.path.join(self.fonts_dir, f"{stem}-lekha-w{weight}.ttf")
+                if not os.path.isfile(target) or os.path.getmtime(target) < os.path.getmtime(source):
+                    location = {tag: (weight if tag == 'wght' else axis.defaultValue) for tag, axis in axes.items()}
+                    instance = instantiateVariableFont(font, location)
+                    names = instance['name']
+                    for name_id in (1, 2, 3, 4, 6, 16, 17, 21, 22, 25):
+                        names.removeNames(nameID=name_id)
+                    postscript = re.sub(r'[^A-Za-z0-9-]', '', family.replace(' ', '-'))[:63]
+                    for name_id, value in ((1, family), (2, 'Regular'), (3, postscript), (4, family), (6, postscript)):
+                        names.setName(value, name_id, 3, 1, 0x409)
+                    instance['OS/2'].usWeightClass = weight
+                    # Concurrent exports may build the same instance; never
+                    # let libass load a half-written file.
+                    partial = f"{target}.{os.getpid()}.tmp"
+                    try:
+                        instance.save(partial)
+                        os.replace(partial, target)
+                    except OSError:
+                        # Windows refuses to replace a file another ffmpeg has
+                        # open; that copy was built from the same source.
+                        if not os.path.isfile(target):
+                            raise
+                    finally:
+                        if os.path.exists(partial):
+                            os.remove(partial)
+                    print(f"[Fonts] Built {info['ass_name']} weight {weight} instance: {os.path.basename(target)}")
+        except Exception as e:
+            print(f"[Fonts] Could not instance {info['file']} at weight {weight}: {e}")
+            family = None
+        self._variable_font_instances[cache_key] = family
+        return family
 
     def _ensure_font(self, font_key):
         if not self._FONT_KEY_PATTERN.match(str(font_key or "")):
