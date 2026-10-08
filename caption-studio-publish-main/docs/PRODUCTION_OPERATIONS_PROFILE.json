@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "effective_date": "2026-09-02",
+  "effective_date": "2026-10-06",
   "approval_status": "approved",
-  "scope": "initial mass-public launch",
+  "scope": "controlled public launch under the approved Railway profile",
   "objectives": {
     "availability_percent": 99.5,
     "rto_minutes": 240,
@@ -11,11 +11,13 @@
     "support_first_response_business_hours": 24
   },
   "capacity": {
-    "api_replicas": 2,
+    "api_replicas": 1,
     "render_worker_replicas": 1,
     "max_concurrent_renders_per_worker": 1,
     "approved_concurrent_media_jobs": 5,
-    "max_worker_replicas_without_new_capacity_test": 3
+    "max_worker_replicas_without_new_capacity_test": 5,
+    "api_processes_per_replica": 2,
+    "transcription_worker_replicas": 1
   },
   "queue_thresholds": {
     "warning_depth": 5,
@@ -27,12 +29,14 @@
     "scale_down_after_minutes": 30
   },
   "provider_and_cost_limits": {
-    "ai_system_daily_calls": 50,
+    "ai_system_daily_calls": 2000,
     "per_user_concurrent_processes": 1,
     "per_user_concurrent_exports": 1,
     "budget_warning_percent": 80,
     "budget_hard_stop_percent": 100,
-    "hard_stop_action": "pause new paid-provider work with service controls"
+    "hard_stop_action": "pause new paid-provider work with service controls",
+    "railway_hard_cap_usd": 25,
+    "railway_alert_usd": 10
   },
   "ownership": {
     "on_call_primary": "private production roster",
@@ -44,8 +48,15 @@
     "private_roster": "docs/PRODUCTION_CONTACTS.md",
     "queue_and_restore_drills": "docs/STAGING_DRILL_EVIDENCE_2026-08-04.md",
     "alert_delivery": "docs/OWNER_CONFIRMATIONS_2026-08-28.md",
-    "capacity_confirmation": "docs/OWNER_CONFIRMATIONS_2026-09-02.md",
+    "capacity_confirmation": "docs/LAUNCH_ACCEPTANCE_2026-10-06.md",
     "incident_process": "docs/INCIDENT_RESPONSE.md",
-    "support_process": "docs/SUPPORT_TICKET_WORKFLOW.md"
+    "support_process": "docs/SUPPORT_TICKET_WORKFLOW.md",
+    "capacity_measurements": "docs/evidence/railway-b4-20261006.json",
+    "current_launch_status": "docs/CURRENT_LAUNCH_BLOCKERS_2026-10-08.md"
+  },
+  "interpretation": {
+    "objectives": "Approved service objectives, not fresh availability/restore measurements.",
+    "queue_thresholds": "Retained operational policy; this document does not change or certify every live controller variable.",
+    "provider_limits": "Documented existing limits only; Railway cap excludes other providers, frontend, storage and taxes."
   }
 }

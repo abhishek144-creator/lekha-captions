@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { releaseMetadata, releaseIdentityErrors } from './release-metadata.mjs'
+import { deploymentComponentTargets, releaseMetadata, releaseIdentityErrors } from './release-metadata.mjs'
 
 const env = { APP_RELEASE: 'a'.repeat(40), APP_BUILD_TIME: '2026-09-05T00:00:00Z', RELEASE_VERSION: 'v1.0.0-rc.1', RELEASE_ENVIRONMENT: 'staging' }
 const editor = releaseMetadata(env, 'editor', true)
@@ -14,4 +14,15 @@ assert.deepEqual(releaseIdentityErrors(editor, 'editor', 'staging'), [])
 assert.equal(releaseIdentityErrors({}, 'api').length, 4)
 assert.ok(releaseIdentityErrors(editor, 'worker', 'staging').includes('component identity mismatch'))
 assert.ok(releaseIdentityErrors(editor, 'editor').includes('release environment mismatch'))
-console.log('Release metadata: 10 assertions passed')
+assert.equal(releaseMetadata({ ...env, RELEASE_VERSION: undefined }, 'editor', true).release_version, `git-${'a'.repeat(12)}`)
+assert.match(releaseMetadata({}, 'editor', false).release_version, /^(development|git-[a-f0-9]{12})$/)
+const unified = deploymentComponentTargets('https://lekhacaptions.com', 'https://lekhacaptions.com/', ['http://render.railway.internal:8080', 'http://transcription.railway.internal:8080'])
+assert.deepEqual(unified.map(({ component }) => component), ['editor', 'editor', 'worker', 'worker'])
+assert.equal(unified[2].pathname, '/api/version')
+assert.deepEqual(releaseIdentityErrors(editor, unified[1].component, 'staging'), [])
+const separate = deploymentComponentTargets('https://app.example.com', 'https://example.com')
+assert.equal(separate[1].component, 'marketing')
+assert.ok(releaseIdentityErrors(editor, separate[1].component, 'staging').includes('component identity mismatch'))
+assert.equal(deploymentComponentTargets('https://example.com/editor', 'https://example.com/marketing')[1].component, 'marketing')
+assert.throws(() => deploymentComponentTargets('not a URL', 'https://example.com'), /Invalid URL/)
+console.log('Release metadata: 19 assertions passed')
