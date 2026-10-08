@@ -9,6 +9,18 @@ export function releaseIdentityErrors(metadata, component, environment = 'produc
   return errors
 }
 
+// A unified homepage/editor deployment publishes editor metadata at both routes.
+// Separate marketing deployments must still identify themselves as marketing.
+export function deploymentComponentTargets(frontendOrigin, marketingOrigin, workerOrigins = []) {
+  const normalize = (origin) => new URL(origin).href.replace(/\/+$/, '')
+  const unifiedFrontend = normalize(frontendOrigin) === normalize(marketingOrigin)
+  return [
+    { name: 'editor', component: 'editor', origin: frontendOrigin, pathname: '/release.json' },
+    { name: 'marketing', component: unifiedFrontend ? 'editor' : 'marketing', origin: marketingOrigin, pathname: '/release.json' },
+    ...workerOrigins.map((origin, index) => ({ name: `worker-${index + 1}`, component: 'worker', origin, pathname: '/api/version' })),
+  ]
+}
+
 export function releaseMetadata(env = process.env, component = 'editor', production = false) {
   let sha = String(env.APP_RELEASE || env.VITE_APP_RELEASE || env.COMMIT_REF || env.RAILWAY_GIT_COMMIT_SHA || '').trim()
   if (env.APP_RELEASE && env.VITE_APP_RELEASE && env.APP_RELEASE !== env.VITE_APP_RELEASE) {
@@ -22,7 +34,7 @@ export function releaseMetadata(env = process.env, component = 'editor', product
   if (!builtAt && sha) {
     try { builtAt = execFileSync('git', ['show', '-s', '--format=%cI', sha], { encoding: 'utf8' }).trim() } catch { builtAt = '' }
   }
-  const version = String(env.RELEASE_VERSION || sha.slice(0, 12) || 'development')
+  const version = String(env.RELEASE_VERSION || (sha ? `git-${sha.slice(0, 12)}` : 'development'))
   if (!/^[A-Za-z0-9._-]{1,100}$/.test(version)) throw new Error('Invalid release version')
   if (builtAt && !Number.isFinite(Date.parse(builtAt))) throw new Error('Invalid APP_BUILD_TIME')
   return { schema_version: 1, component, release: sha, release_version: version,

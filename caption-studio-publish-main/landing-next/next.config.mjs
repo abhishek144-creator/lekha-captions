@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import { writeFileSync } from 'node:fs'
 import { releaseMetadata } from '../scripts/release-metadata.mjs'
 
@@ -23,7 +24,7 @@ const nextConfig = {
   trailingSlash: true,
   images: { unoptimized: true },
   poweredByHeader: false,
-  turbopack: { root: process.cwd() },
+  turbopack: { root: fileURLToPath(new URL('../', import.meta.url)) },
 }
 
 export default nextConfig

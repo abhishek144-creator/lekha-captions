@@ -51,7 +51,7 @@ requirements. Optional work is listed separately and is not marked completed.
 ## Operating Evidence
 - [x] Run automated Chromium, Firefox, WebKit, Android, iOS-profile, overflow, and WCAG serious/critical checks (`e2e/public-launch.spec.js`)
 - [x] Record a concurrent staging media capacity run covering upload, transcription, queue saturation, rendering, storage, downloads, provider limits, cost ceilings, autoscaling, and recovery (`OWNER_CONFIRMATIONS_2026-09-02.md`; private logs retained outside the public repository)
-- [x] Deploy the Next.js marketing site as the canonical public source and verify pricing, terms, privacy, refund, and acceptable-use routes in production (`DEPLOYED_RELEASE_2026-09-07.md`)
+- [x] Publish and verify canonical public pricing and policy routes (September Next.js evidence: `DEPLOYED_RELEASE_2026-09-07.md`; the current October homepage/editor uses a unified Vite deployment — `CURRENT_LAUNCH_BLOCKERS_2026-10-08.md`). Historical route evidence is not a current-candidate acceptance pass.
 - [x] Approve and test production RTO/RPO, concurrency, provider quotas, scaling thresholds, support SLA, on-call coverage, and rollback ownership (`PRODUCTION_OPERATIONAL_APPROVAL_2026-09-02.md`; `PRODUCTION_OPERATIONS_PROFILE.json`)
 - [x] Approve the repository visibility decision and sanitize all public history (`REPOSITORY_PRIVACY_REVIEW_2026-09-02.md`; `REPOSITORY_PRIVACY_REWRITE_2026-09-03.md`)
 
