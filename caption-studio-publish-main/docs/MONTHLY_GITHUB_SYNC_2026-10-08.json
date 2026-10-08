@@ -3001,5 +3001,24 @@
     "codex/finish-code-health": "95f10d4",
     "codex/repository-privacy-cleanup": "a8f1ef8",
     "codex/authenticated-ci-followup": "2de98e3"
+  },
+  "initial_main": "211f4e184ddaa9d09aef242e0b3516e25d8ca015",
+  "latest_main_integrated_before_publication": "1d39f05bb0ace029e723062c03ece8d2bce6e8f7",
+  "final_sources_integrated": {
+    "origin/main": "1d39f05bb0ace029e723062c03ece8d2bce6e8f7",
+    "origin/claude/mobile-editor": "3132ce2fc54af067fdf29b1ff2e5493b62511277",
+    "origin/claude/export-size-reference": "0785f9b30301871955d73ccbf4537e0ce6c86840",
+    "origin/fix/ass-variable-font-weight": "4a6cfe18a1f3b5d827fecc861c5e5e9e4585b40d",
+    "origin/fix/plain-caption-export-word-gap": "b8b94d81e723c740d40cace87028c431ab2b6c3c",
+    "origin/claude/editor-journey-coverage": "91fcbdf0e668bef12ee19087b6c29e93219a0663",
+    "origin/claude/friendly-fermi-lgu4n7": "012f01bfb6d1c559676469e26fb88e50fef1a6d1",
+    "origin/claude/sweet-feynman-fcqb80": "6da5c9ed950e23c12412feb65e8a3ac63b01ed7f",
+    "origin/codex/roadmap-gap-audit": "bf61bb216dce90f896d171a5cb610399f0b73213",
+    "origin/codex/unified-netlify-deployment": "4bebfeb5deb0bd9ce60509273378dbf664fc168f"
+  },
+  "publication_audit": {
+    "local_assets_preserved": 94,
+    "uncovered_monthly_commits": 0,
+    "combined_application_tests_rerun": false
   }
 }

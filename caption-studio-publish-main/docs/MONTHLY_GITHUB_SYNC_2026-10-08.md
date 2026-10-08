@@ -1,6 +1,7 @@
 # GitHub consolidation — 8–9 October 2026
 
-Window: 8 September–8 October 2026. Baseline main: `211f4e184ddaa9d09aef242e0b3516e25d8ca015`.
+Window: 8 September–8 October 2026. Initial main: `211f4e184ddaa9d09aef242e0b3516e25d8ca015`.
+Latest main integrated before publication: `1d39f05bb0ace029e723062c03ece8d2bce6e8f7` (mobile release and beta-marker follow-up).
 Requested scope: publish all project work from Codex and Claude, including local
 work that had not yet reached GitHub. This branch is a source consolidation;
 it does not claim a production rollout or a passing combined regression suite.
@@ -10,7 +11,7 @@ it does not claim a production rollout or a passing combined regression suite.
 | Source | Included work |
 |---|---|
 | Reviewed main / PRs #50 and #54 | Editor recovery, save conflicts, undo/account isolation, backend and rendering refactors, USD pricing, worker entrypoint recovery and the previously published launch assets. |
-| Claude PR #49, `dbbc66a` | Phone/tablet editor, scaled preview, native panels, live scrubbing and application icons. |
+| Claude PR #49, `dbbc66a`, and published main `1d39f05` | Phone/tablet editor, scaled preview, native panels, live scrubbing and application icons. |
 | Claude PR #51, `0785f9b` | ASS/DOM size reference, font metrics, script font selection and non-Latin positioning. |
 | Claude PR #52, `b8b94d8` | Plain caption word spacing and correctly escaped HTML style attributes. |
 | Claude PR #53, `4a6cfe1` | Variable font weight instances, pinned fontTools and existing regression coverage. |
