@@ -14,6 +14,7 @@ import { toast } from '@/components/ui/use-toast'
 import { apiRequest } from '@/lib/apiClient'
 import { notifyApiError } from '@/lib/notifyApiError'
 import planCatalog from '../../../shared/planCatalog.json'
+import { getPreferredBillingCurrency, saveBillingCurrency, formatBillingPrice } from '../../../shared/billingCurrency'
 
 const RAZORPAY_KEY_ID = import.meta.env.VITE_RAZORPAY_KEY_ID || ''
 
@@ -56,7 +57,7 @@ function getDiscountPercent(monthlyMinor, yearlyMinor) {
 }
 
 function formatInrPrice(minor) {
-  return String(Math.round(minor / 100))
+  return formatBillingPrice(minor, 'INR')
 }
 
 const plans = [
@@ -65,6 +66,7 @@ const plans = [
     name: 'Starter',
     monthlyPrice: formatInrPrice(planCatalog.starter.inr_paise), yearlyPrice: formatInrPrice(planCatalog.starter_yearly.inr_paise),
     monthlyPaise: planCatalog.starter.inr_paise, yearlyPaise: planCatalog.starter_yearly.inr_paise,
+    monthlyUsdCents: planCatalog.starter.usd_cents, yearlyUsdCents: planCatalog.starter_yearly.usd_cents,
     credits: planCatalog.starter.credits,
     icon: Zap,
     description: 'Perfect for getting started',
@@ -82,6 +84,7 @@ const plans = [
     name: 'Creator',
     monthlyPrice: formatInrPrice(planCatalog.creator.inr_paise), yearlyPrice: formatInrPrice(planCatalog.creator_yearly.inr_paise),
     monthlyPaise: planCatalog.creator.inr_paise, yearlyPaise: planCatalog.creator_yearly.inr_paise,
+    monthlyUsdCents: planCatalog.creator.usd_cents, yearlyUsdCents: planCatalog.creator_yearly.usd_cents,
     credits: planCatalog.creator.credits,
     icon: Crown,
     description: 'Best value for serious creators',
@@ -101,6 +104,7 @@ const plans = [
     name: 'Pro',
     monthlyPrice: formatInrPrice(planCatalog.pro.inr_paise), yearlyPrice: formatInrPrice(planCatalog.pro_yearly.inr_paise),
     monthlyPaise: planCatalog.pro.inr_paise, yearlyPaise: planCatalog.pro_yearly.inr_paise,
+    monthlyUsdCents: planCatalog.pro.usd_cents, yearlyUsdCents: planCatalog.pro_yearly.usd_cents,
     credits: planCatalog.pro.credits,
     icon: Star,
     description: 'For high-volume creators',
@@ -155,11 +159,22 @@ function createIdempotencyKey(scope, planId) {
 export default function PricingModal({ isOpen, onClose, onSelectPlan, user, message, userData = null }) {
   const [processingPlan, setProcessingPlan] = useState(null)
   const [billing, setBilling] = useState('yearly')
+  const [billingCurrency, setBillingCurrency] = useState(getPreferredBillingCurrency)
   const [selectedPlan, setSelectedPlan] = useState(null)
   const [promoCode, setPromoCode] = useState('')
   const [promoStatus, setPromoStatus] = useState(null)
   const [promoLoading, setPromoLoading] = useState(false)
-  const maxYearlyDiscount = Math.max(...plans.map((plan) => getDiscountPercent(plan.monthlyPaise, plan.yearlyPaise)))
+  const maxYearlyDiscount = Math.max(...plans.map((plan) => billingCurrency === 'USD'
+    ? getDiscountPercent(plan.monthlyUsdCents, plan.yearlyUsdCents)
+    : getDiscountPercent(plan.monthlyPaise, plan.yearlyPaise)))
+  const planMinor = (plan, period) => billingCurrency === 'USD'
+    ? (period === 'yearly' ? plan.yearlyUsdCents : plan.monthlyUsdCents)
+    : (period === 'yearly' ? plan.yearlyPaise : plan.monthlyPaise)
+  const changeCurrency = event => {
+    const currency = event.target.value
+    setBillingCurrency(currency)
+    saveBillingCurrency(currency)
+  }
 
   const { refreshUserData } = useAuth()
 
@@ -211,7 +226,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
         body: JSON.stringify({
           plan_id: planId,
           id_token: token,
-          currency: 'INR',
+          currency: billingCurrency,
           idempotency_key: paymentAttemptKey,
         }),
       })
@@ -229,7 +244,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
       if (!orderData?.order?.id) {
         throw new Error('Unable to create a secure payment order. Please try again.')
       }
-      if (!Number.isSafeInteger(orderData.order.amount) || orderData.order.amount <= 0 || !['INR', 'USD'].includes(orderData.order.currency)) {
+      if (!Number.isSafeInteger(orderData.order.amount) || orderData.order.amount !== planMinor(plan, billing) || orderData.order.currency !== billingCurrency) {
         throw new Error('Payment order returned an invalid amount or currency.')
       }
 
@@ -476,6 +491,14 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
           </DialogDescription>
         </DialogHeader>
 
+        <label className="mx-auto flex items-center gap-2 text-sm text-gray-300">
+          Currency
+          <select aria-label="Billing currency" value={billingCurrency} onChange={changeCurrency} disabled={Boolean(processingPlan)} className="rounded-md border border-white/20 bg-zinc-900 px-3 py-2 text-white">
+            <option value="USD">USD ($)</option>
+            <option value="INR">INR (₹)</option>
+          </select>
+        </label>
+
         {/* Billing Toggle */}
         <div className="mt-2 flex w-fit items-center justify-center gap-1 rounded-full border border-white/10 bg-zinc-900 p-1 mx-auto">
           <button
@@ -534,12 +557,12 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
 
                 <div className="flex items-baseline gap-1 mb-1">
                   <span className="text-[28px] font-bold text-white">
-                    {billing === 'yearly' ? formatInrPrice(plan.yearlyPaise) : formatInrPrice(plan.monthlyPaise)}
+                    {formatBillingPrice(planMinor(plan, billing), billingCurrency)}
                   </span>
                   <span className="text-gray-500 text-sm">{billing === 'yearly' ? '/yr' : '/mo'}</span>
                 </div>
                 {billing === 'yearly' ? (
-                  <p className="text-xs text-[#F5A623] mb-3">{formatInrPrice(plan.yearlyPaise)} billed yearly - ~{getDiscountPercent(plan.monthlyPaise, plan.yearlyPaise)}% off</p>
+                  <p className="text-xs text-[#F5A623] mb-3">{formatBillingPrice(planMinor(plan, 'yearly'), billingCurrency)} billed yearly - ~{getDiscountPercent(planMinor(plan, 'monthly'), planMinor(plan, 'yearly'))}% off</p>
                 ) : (
                   <div className="mb-3" />
                 )}
@@ -597,7 +620,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
                     Add {topup.credits} credits to your current plan for {topup.price} - no plan change.
                   </p>
                   <p className="mt-1 text-[11px] text-gray-500">
-                    Limit: {topup.limit} {topup.limit === 1 ? 'top-up' : 'top-ups'} per rolling 30 days.
+                    Top-ups are billed in INR. Limit: {topup.limit} {topup.limit === 1 ? 'top-up' : 'top-ups'} per rolling 30 days.
                   </p>
                 </div>
                 <Button

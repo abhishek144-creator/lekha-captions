@@ -3763,3 +3763,19 @@ tr:last-child td {
     flex-direction: column;
   }
 }
+
+.sync-currency-select {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  color: #d4d4d8;
+}
+.sync-currency-select select {
+  border: 1px solid #52525b;
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: #18181b;
+  color: #fff;
+}
