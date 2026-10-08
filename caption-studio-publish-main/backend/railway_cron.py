@@ -18,6 +18,7 @@ import json
 import os
 import sys
 import time
+from types import SimpleNamespace
 
 try:
     from . import main as api
@@ -109,7 +110,24 @@ def kick_backlogged_workers(connection, queue_names):
     return sum(1 for name in queue_names if worker_launcher.kick(connection, name, log=print))
 
 
-def run_once(*, host=api, launch_queues=None):
+def _api_host():
+    """The real API: shared runtime state from app_state, helpers from main."""
+    return SimpleNamespace(
+        _rq_redis_client=api.app_state._rq_redis_client,
+        _transcription_queue=api.app_state._transcription_queue,
+        TranscriptionJobs=api.TranscriptionJobs,
+        get_db=api.get_db,
+        _dispatch_media_scans_once=api._dispatch_media_scans_once,
+        _flush_telemetry=api._flush_telemetry,
+        _send_alert=api._send_alert,
+        asyncio=api.asyncio,
+        scheduled_janitor_job=api.scheduled_janitor_job,
+        scheduled_payment_reconciliation_job=api.scheduled_payment_reconciliation_job,
+    )
+
+
+def run_once(*, host=None, launch_queues=None):
+    host = host if host is not None else _api_host()
     launch_queues = list(launch_queues if launch_queues is not None else worker_launcher.job_map())
     staging = os.environ.get("RELEASE_ENVIRONMENT") == "staging"
     steps = [

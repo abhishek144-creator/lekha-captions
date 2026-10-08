@@ -11,6 +11,10 @@ try:
     from . import settings
 except ImportError:  # Direct execution from backend/ remains supported.
     import settings
+try:
+    from . import app_state
+except ImportError:  # Direct execution from backend/ remains supported.
+    import app_state
 
 
 def create_maintenance_jobs(host: ModuleType) -> SimpleNamespace:
@@ -149,19 +153,19 @@ def create_maintenance_jobs(host: ModuleType) -> SimpleNamespace:
 
     def _claim_scheduled_job(name: str, ttl_seconds: int) -> str:
         token = host.uuid.uuid4().hex
-        if host._redis_client is None:
+        if app_state._redis_client is None:
             return token
         try:
-            return token if host._redis_client.set(f"scheduled:{name}", token, nx=True, ex=ttl_seconds) else ""
+            return token if app_state._redis_client.set(f"scheduled:{name}", token, nx=True, ex=ttl_seconds) else ""
         except Exception:
             return "" if settings._IS_PRODUCTION else token
 
 
     def _release_scheduled_job(name: str, token: str):
-        if not token or host._redis_client is None:
+        if not token or app_state._redis_client is None:
             return
         try:
-            host._redis_client.eval(
+            app_state._redis_client.eval(
                 "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
                 1,
                 f"scheduled:{name}",
@@ -197,15 +201,15 @@ def create_maintenance_jobs(host: ModuleType) -> SimpleNamespace:
         # Multiple Uvicorn processes and API replicas start this loop. A short
         # Redis lease ensures only one process writes the per-group time series.
         token = host._claim_scheduled_job("gcp_queue_metrics", settings.QUEUE_METRICS_INTERVAL_SECONDS - 2)
-        if not token or host._export_queue is None or host.Job is None:
+        if not token or app_state._export_queue is None or host.Job is None:
             return
-        render_queues = list(host._export_queues.values()) or [host._export_queue]
+        render_queues = list(app_state._export_queues.values()) or [app_state._export_queue]
         active_workers = 1
         workers = []
         if host.RQWorker is not None:
             try:
-                workers = host.RQWorker.all(connection=host._rq_redis_client)
-                render_names = set(host._export_queues) or {settings.EXPORT_QUEUE_NAME}
+                workers = host.RQWorker.all(connection=app_state._rq_redis_client)
+                render_names = set(app_state._export_queues) or {settings.EXPORT_QUEUE_NAME}
                 active_workers = sum(
                     1 for worker in workers
                     if render_names.intersection(set(
@@ -228,11 +232,11 @@ def create_maintenance_jobs(host: ModuleType) -> SimpleNamespace:
             metric_prefix="export",
             predicted_wait_seconds=predicted_wait_seconds,
         )
-        if host.HEAVY_EXPORT_QUEUE_NAME in host._export_queues:
+        if host.HEAVY_EXPORT_QUEUE_NAME in app_state._export_queues:
             spot_workers = 0
             for worker in workers:
                 try:
-                    group = host._rq_redis_client.hget(worker.key, "worker_group") or b""
+                    group = app_state._rq_redis_client.hget(worker.key, "worker_group") or b""
                     if isinstance(group, bytes):
                         group = group.decode("utf-8", "replace")
                     if group == settings.SPOT_WORKER_MIG_NAME:
@@ -240,7 +244,7 @@ def create_maintenance_jobs(host: ModuleType) -> SimpleNamespace:
                 except Exception:
                     continue
             heavy_depth, heavy_age, heavy_work, heavy_wait = host.render_queue_snapshot(
-                [host._export_queues[host.HEAVY_EXPORT_QUEUE_NAME]], host.Job, active_workers=spot_workers or 1,
+                [app_state._export_queues[host.HEAVY_EXPORT_QUEUE_NAME]], host.Job, active_workers=spot_workers or 1,
             )
             host.publish_queue_snapshot(
                 heavy_depth,
@@ -251,11 +255,11 @@ def create_maintenance_jobs(host: ModuleType) -> SimpleNamespace:
                 metric_prefix="export",
                 predicted_wait_seconds=heavy_wait,
             )
-        if settings.GPU_RENDER_ENABLED and host.GPU_EXPORT_QUEUE_NAME in host._export_queues:
+        if settings.GPU_RENDER_ENABLED and host.GPU_EXPORT_QUEUE_NAME in app_state._export_queues:
             gpu_workers = 0
             for worker in workers:
                 try:
-                    group = host._rq_redis_client.hget(worker.key, "worker_group") or b""
+                    group = app_state._rq_redis_client.hget(worker.key, "worker_group") or b""
                     if isinstance(group, bytes):
                         group = group.decode("utf-8", "replace")
                     if group == settings.GPU_WORKER_MIG_NAME:
@@ -263,7 +267,7 @@ def create_maintenance_jobs(host: ModuleType) -> SimpleNamespace:
                 except Exception:
                     continue
             gpu_depth, gpu_age, gpu_work, gpu_wait = host.render_queue_snapshot(
-                [host._export_queues[host.GPU_EXPORT_QUEUE_NAME]], host.Job, active_workers=gpu_workers or 1,
+                [app_state._export_queues[host.GPU_EXPORT_QUEUE_NAME]], host.Job, active_workers=gpu_workers or 1,
             )
             host.publish_queue_snapshot(
                 gpu_depth,
@@ -274,12 +278,12 @@ def create_maintenance_jobs(host: ModuleType) -> SimpleNamespace:
                 metric_prefix="export",
                 predicted_wait_seconds=gpu_wait,
             )
-        if host._transcription_queue is not None and settings.TRANSCRIPTION_QUEUE_NAME != settings.EXPORT_QUEUE_NAME:
+        if app_state._transcription_queue is not None and settings.TRANSCRIPTION_QUEUE_NAME != settings.EXPORT_QUEUE_NAME:
             transcription_depth, transcription_oldest = host.queue_snapshot(
-                host._transcription_queue, host.Job,
+                app_state._transcription_queue, host.Job,
             )
-            if host._media_scan_queue is not None and settings.MEDIA_SCAN_QUEUE_NAME != settings.TRANSCRIPTION_QUEUE_NAME:
-                scan_depth, scan_oldest = host.queue_snapshot(host._media_scan_queue, host.Job)
+            if app_state._media_scan_queue is not None and settings.MEDIA_SCAN_QUEUE_NAME != settings.TRANSCRIPTION_QUEUE_NAME:
+                scan_depth, scan_oldest = host.queue_snapshot(app_state._media_scan_queue, host.Job)
                 transcription_depth += scan_depth
                 transcription_oldest = max(transcription_oldest, scan_oldest)
             host.publish_queue_snapshot(

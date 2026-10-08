@@ -11,6 +11,10 @@ try:
     from . import settings
 except ImportError:  # Direct execution from backend/ remains supported.
     import settings
+try:
+    from . import app_state
+except ImportError:  # Direct execution from backend/ remains supported.
+    import app_state
 
 
 def create_media_records(host: ModuleType) -> SimpleNamespace:
@@ -61,9 +65,9 @@ def create_media_records(host: ModuleType) -> SimpleNamespace:
         if not file_id:
             return {}
         metadata: host.Dict[str, host.Any] = {}
-        if host._redis_client is not None:
+        if app_state._redis_client is not None:
             try:
-                raw = host._redis_client.get(f"upload_meta:{file_id}")
+                raw = app_state._redis_client.get(f"upload_meta:{file_id}")
                 if raw:
                     metadata = host.json.loads(raw)
             except Exception:
@@ -84,9 +88,9 @@ def create_media_records(host: ModuleType) -> SimpleNamespace:
     def _remember_source_duration(file_id: str, duration_seconds: float):
         if not host.math.isfinite(duration_seconds) or duration_seconds <= 0:
             return
-        if host._redis_client is not None:
+        if app_state._redis_client is not None:
             try:
-                host._redis_client.setex(f"upload_duration:{file_id}", 24 * 3600, duration_seconds)
+                app_state._redis_client.setex(f"upload_duration:{file_id}", 24 * 3600, duration_seconds)
             except Exception as error:
                 host._json_log("warning", "upload_duration_cache_failed", error=type(error).__name__)
         db = host.get_db()
@@ -103,9 +107,9 @@ def create_media_records(host: ModuleType) -> SimpleNamespace:
         metadata = host._load_upload_metadata(file_id)
         if str(metadata.get("uid") or "") != str(uid):
             return 0
-        if host._redis_client is not None:
+        if app_state._redis_client is not None:
             try:
-                cached = host._redis_client.get(f"upload_duration:{file_id}")
+                cached = app_state._redis_client.get(f"upload_duration:{file_id}")
                 if cached is not None:
                     return float(cached)
             except Exception:
@@ -121,7 +125,7 @@ def create_media_records(host: ModuleType) -> SimpleNamespace:
         if not file_id or not uid:
             return False
         host._assert_account_not_deleting(uid)
-        host._upload_owners[file_id] = uid
+        app_state._upload_owners[file_id] = uid
         persisted = False
         metadata = {
             "file_id": file_id,
@@ -131,10 +135,10 @@ def create_media_records(host: ModuleType) -> SimpleNamespace:
             "created_at": host._utcnow().isoformat() + "Z",
             **(source_metadata or {}),
         }
-        if host._redis_client is not None:
+        if app_state._redis_client is not None:
             try:
-                host._redis_client.setex(f"upload_owner:{file_id}", 24 * 3600, uid)
-                host._redis_client.setex(f"upload_meta:{file_id}", 24 * 3600, host.json.dumps(metadata))
+                app_state._redis_client.setex(f"upload_owner:{file_id}", 24 * 3600, uid)
+                app_state._redis_client.setex(f"upload_meta:{file_id}", 24 * 3600, host.json.dumps(metadata))
                 persisted = True
             except Exception:
                 pass
@@ -150,9 +154,9 @@ def create_media_records(host: ModuleType) -> SimpleNamespace:
 
     def _update_upload_metadata(file_id: str, values: host.Dict[str, host.Any]) -> host.Dict[str, host.Any]:
         metadata = {**host._load_upload_metadata(file_id), **values}
-        if host._redis_client is not None:
+        if app_state._redis_client is not None:
             try:
-                host._redis_client.setex(f"upload_meta:{file_id}", 24 * 3600, host.json.dumps(metadata))
+                app_state._redis_client.setex(f"upload_meta:{file_id}", 24 * 3600, host.json.dumps(metadata))
             except Exception as error:
                 host._json_log("warning", "upload_metadata_cache_failed", file_id=file_id,
                           error_type=type(error).__name__)
@@ -189,10 +193,10 @@ def create_media_records(host: ModuleType) -> SimpleNamespace:
     def _assert_upload_owner(file_id: str, uid: str):
         if not file_id or not uid:
             raise host.HTTPException(status_code=401, detail="Authentication required")
-        owner = host._upload_owners.get(file_id)
-        if not owner and host._redis_client is not None:
+        owner = app_state._upload_owners.get(file_id)
+        if not owner and app_state._redis_client is not None:
             try:
-                owner = host._redis_client.get(f"upload_owner:{file_id}") or ""
+                owner = app_state._redis_client.get(f"upload_owner:{file_id}") or ""
             except Exception:
                 owner = ""
         if not owner:

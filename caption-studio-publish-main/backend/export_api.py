@@ -17,6 +17,10 @@ try:
     from . import settings
 except ImportError:  # Direct execution from backend/ remains supported.
     import settings
+try:
+    from . import app_state
+except ImportError:  # Direct execution from backend/ remains supported.
+    import app_state
 
 
 # RQ keeps each job's pickled arguments (the full editor snapshot) until these
@@ -40,9 +44,9 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
             return await callback()
 
     def _render_queue_for(queue_name):
-        queue = host._export_queues.get(queue_name)
+        queue = app_state._export_queues.get(queue_name)
         if queue is None and not settings._IS_PRODUCTION:
-            return host._export_queue
+            return app_state._export_queue
         if queue is None:
             raise HTTPException(503, "The selected render queue is unavailable.", headers={"Retry-After": "10"})
         return queue
@@ -50,7 +54,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
 
     def _queue_for_export_job_record(job: host.Dict[str, host.Any]):
         queue_name = str((job or {}).get("queue_name") or settings.EXPORT_QUEUE_NAME)
-        return host._export_queues.get(queue_name) or host._export_queue
+        return app_state._export_queues.get(queue_name) or app_state._export_queue
 
 
     def _enqueue_export_job(render_queue, **job):
@@ -58,7 +62,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
             estimated_work_seconds = (job.get("meta") or {}).get("estimated_render_seconds")
             delivery = host.enqueue_bounded_across_queues(
                 render_queue,
-                list(host._export_queues.values()),
+                list(app_state._export_queues.values()),
                 settings.EXPORT_MAX_PENDING_JOBS,
                 max_pending_work_seconds=settings.EXPORT_MAX_PENDING_WORK_SECONDS,
                 estimated_work_seconds=estimated_work_seconds,
@@ -71,10 +75,10 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
 
 
     def _release_export_pending_work(job_id: str):
-        if host._rq_redis_client is None:
+        if app_state._rq_redis_client is None:
             return
         try:
-            host.release_pending_work(host._rq_redis_client, job_id)
+            host.release_pending_work(app_state._rq_redis_client, job_id)
         except Exception as error:
             host._json_log(
                 "warning", "export_pending_work_release_failed",
@@ -86,7 +90,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
     async def export_video(req: host.ExportRequest, request: Request, response: Response):
         # Bound queued admission without creating a second event loop/thread
         # pool for the already offloaded blocking operations.
-        if host._export_queue is not None or settings._IS_PRODUCTION:
+        if app_state._export_queue is not None or settings._IS_PRODUCTION:
             return await _run_admission(
                 lambda: _export_video_impl(req, request, response)
             )
@@ -105,7 +109,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
         # 1. Authenticate user
         decoded_token = await to_thread(host._authenticate_media_request, req.id_token, req.org_id)
         uid = (decoded_token.get("uid") or "").strip() or "dev-local-user"
-        if settings._IS_PRODUCTION and host._export_queue is None:
+        if settings._IS_PRODUCTION and app_state._export_queue is None:
             raise HTTPException(status_code=503, detail="Export service is temporarily unavailable. Please retry shortly.",
                                 headers={"Retry-After": "10"})
         if decoded_token.get("_dev_mode"):
@@ -186,7 +190,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
                 queue_name=capacity["queue_name"],
                 request_snapshot=safe_request_snapshot,
             )
-            if host._export_queue is not None:
+            if app_state._export_queue is not None:
                 queued_payload = {
                     "success": True,
                     "queued": True,
@@ -309,7 +313,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
         await to_thread(host._assert_service_available, "pause_exports")
         decoded = await to_thread(host._authenticate_media_request, req.id_token)
         uid = (decoded.get("uid") or "").strip()
-        if host._export_queue is None:
+        if app_state._export_queue is None:
             raise HTTPException(503, "Batch export service is temporarily unavailable", headers={"Retry-After": "10"})
 
         idem_key = f"batch:{uid}:{req.idempotency_key}"
@@ -474,7 +478,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
                 # Do not present a final failure or permit a fresh debit while
                 # the authoritative outcome of the usage transaction is unknown.
                 return {**job, "status": "retrying", "error": None}
-        if host._export_queue is None or job.get("status") in {"completed", "failed", "cancelled"}:
+        if app_state._export_queue is None or job.get("status") in {"completed", "failed", "cancelled"}:
             return job
         try:
             job_queue = host._queue_for_export_job_record(job)
@@ -546,7 +550,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
     ACTIVE_WORKER_CACHE_SECONDS = 10
 
     def _active_workers_for_queue(queue_name: str) -> host.Optional[int]:
-        if host.RQWorker is None or host._rq_redis_client is None:
+        if host.RQWorker is None or app_state._rq_redis_client is None:
             return None
         now = host.time.monotonic()
         with active_worker_cache_lock:
@@ -563,7 +567,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
     def _count_active_workers(queue_name: str) -> host.Optional[int]:
         try:
             active = 0
-            for worker in host.RQWorker.all(connection=host._rq_redis_client):
+            for worker in host.RQWorker.all(connection=app_state._rq_redis_client):
                 names = (
                     worker.queue_names()
                     if callable(getattr(worker, "queue_names", None))
@@ -584,7 +588,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
         if str(job.get("status") or "").lower() != "queued" or host.Job is None:
             return {}
         queue_name = str(job.get("queue_name") or settings.EXPORT_QUEUE_NAME)
-        queue = host._export_queues.get(queue_name)
+        queue = app_state._export_queues.get(queue_name)
         if queue is None:
             return {}
         try:
@@ -683,7 +687,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
                 status_code=409,
                 detail="Only a queued export can be cancelled safely. A render already in progress will finish normally.",
             )
-        if host._export_queue is None:
+        if app_state._export_queue is None:
             raise HTTPException(status_code=503, detail="Durable queue is not configured")
 
         uid = str(job.get("uid") or "")
@@ -724,7 +728,7 @@ def create_export_router(host: ModuleType) -> SimpleNamespace:
     @router.post("/api/export-replay/{job_id}")
     def export_replay(job_id: str, request: Request):
         host._assert_service_available("pause_exports")
-        if host._export_queue is None:
+        if app_state._export_queue is None:
             raise HTTPException(status_code=503, detail="Durable queue is not configured")
         db = host.get_db()
         if not db:

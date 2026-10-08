@@ -16,6 +16,10 @@ try:
     from . import settings
 except ImportError:  # Direct execution from backend/ remains supported.
     import settings
+try:
+    from . import app_state
+except ImportError:  # Direct execution from backend/ remains supported.
+    import app_state
 
 
 def create_media_router(host: ModuleType) -> SimpleNamespace:
@@ -108,12 +112,12 @@ def create_media_router(host: ModuleType) -> SimpleNamespace:
                 db.collection("uploads").document(req.file_id).delete()
             except Exception:
                 pass
-            if host._redis_client is not None:
+            if app_state._redis_client is not None:
                 try:
-                    host._redis_client.delete(f"upload_owner:{req.file_id}", f"upload_meta:{req.file_id}")
+                    app_state._redis_client.delete(f"upload_owner:{req.file_id}", f"upload_meta:{req.file_id}")
                 except Exception:
                     pass
-            host._upload_owners.pop(req.file_id, None)
+            app_state._upload_owners.pop(req.file_id, None)
 
         host._remove_history_item_transactionally(db, user_ref, req.file_id)
         host._audit_action("delete_file_success", uid, {"file_id": req.file_id, "local_files_deleted": local_deleted})

@@ -11,56 +11,60 @@ try:
     from . import settings
 except ImportError:  # Direct execution from backend/ remains supported.
     import settings
+try:
+    from . import app_state
+except ImportError:  # Direct execution from backend/ remains supported.
+    import app_state
 
 
 def create_request_guards(host: ModuleType) -> SimpleNamespace:
     def _idem_get(key: str):
         if not key:
             return None
-        if host._redis_client is not None:
+        if app_state._redis_client is not None:
             try:
-                raw = host._redis_client.get(f"idem:{key}")
+                raw = app_state._redis_client.get(f"idem:{key}")
                 return host.json.loads(raw) if raw else None
             except Exception:
                 return None
-        return host._export_idempotency.get(key)
+        return app_state._export_idempotency.get(key)
 
 
     def _idem_claim(key: str, value: host.Dict[str, host.Any]) -> bool:
-        if host._redis_client is not None:
+        if app_state._redis_client is not None:
             try:
-                return bool(host._redis_client.set(f"idem:{key}", host.json.dumps(value), nx=True, ex=6 * 3600))
+                return bool(app_state._redis_client.set(f"idem:{key}", host.json.dumps(value), nx=True, ex=6 * 3600))
             except Exception as error:
                 raise host.HTTPException(status_code=503, detail="Export safety service is unavailable") from error
         with host.JOB_STATE_LOCK:
-            if key in host._export_idempotency:
+            if key in app_state._export_idempotency:
                 return False
-            host._export_idempotency[key] = value
+            app_state._export_idempotency[key] = value
             return True
 
 
     def _idem_set(key: str, value: host.Dict[str, host.Any], ttl_seconds: int = 6 * 3600):
         if not key:
             return
-        if host._redis_client is not None:
+        if app_state._redis_client is not None:
             try:
-                host._redis_client.setex(f"idem:{key}", ttl_seconds, host.json.dumps(value))
+                app_state._redis_client.setex(f"idem:{key}", ttl_seconds, host.json.dumps(value))
                 return
             except Exception:
                 pass
-        host._export_idempotency[key] = value
+        app_state._export_idempotency[key] = value
 
 
     def _idem_delete(key: str):
         if not key:
             return
-        if host._redis_client is not None:
+        if app_state._redis_client is not None:
             try:
-                host._redis_client.delete(f"idem:{key}")
+                app_state._redis_client.delete(f"idem:{key}")
                 return
             except Exception:
                 pass
-        host._export_idempotency.pop(key, None)
+        app_state._export_idempotency.pop(key, None)
 
 
     def _upload_idem_key(uid: str, upload_reference: str) -> str:
@@ -72,41 +76,41 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
         if not upload_reference:
             return None
         key = host._upload_idem_key(uid, upload_reference)
-        if host._redis_client is not None:
+        if app_state._redis_client is not None:
             try:
-                raw = host._redis_client.get(f"upload_idem:{key}")
+                raw = app_state._redis_client.get(f"upload_idem:{key}")
                 return host.json.loads(raw) if raw else None
             except Exception as e:
                 host._json_log("warning", "upload_idempotency_read_failed", error=str(e))
-        return host._upload_idempotency.get(key)
+        return app_state._upload_idempotency.get(key)
 
 
     def _upload_idem_set(uid: str, upload_reference: str, value: host.Dict[str, host.Any], ttl_seconds: int = 24 * 3600):
         if not upload_reference:
             return
         key = host._upload_idem_key(uid, upload_reference)
-        if host._redis_client is not None:
+        if app_state._redis_client is not None:
             try:
-                host._redis_client.setex(f"upload_idem:{key}", ttl_seconds, host.json.dumps(value))
+                app_state._redis_client.setex(f"upload_idem:{key}", ttl_seconds, host.json.dumps(value))
                 return
             except Exception as e:
                 host._json_log("warning", "upload_idempotency_write_failed", error=str(e))
-        host._upload_idempotency[key] = value
+        app_state._upload_idempotency[key] = value
 
 
     def _payment_idem_get(key: str):
         if not key:
             return None
-        if host._redis_client is not None:
+        if app_state._redis_client is not None:
             try:
-                raw = host._redis_client.get(f"pay_idem:{key}")
+                raw = app_state._redis_client.get(f"pay_idem:{key}")
                 return host.json.loads(raw) if raw else None
             except Exception as e:
                 host._json_log("error", "payment_idempotency_read_failed", error=str(e))
                 raise host.HTTPException(status_code=503, detail="Payment safety service is temporarily unavailable") from e
 
         if settings._IS_TEST:
-            return host._payment_idempotency.get(key)
+            return app_state._payment_idempotency.get(key)
         db = host.get_db()
         if db:
             try:
@@ -118,22 +122,22 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
                 raise host.HTTPException(status_code=503, detail="Payment safety service is temporarily unavailable") from e
         if settings._IS_PRODUCTION:
             raise host.HTTPException(status_code=503, detail="Payment safety service is unavailable")
-        return host._payment_idempotency.get(key)
+        return app_state._payment_idempotency.get(key)
 
 
     def _payment_idem_set(key: str, value: host.Dict[str, host.Any], ttl_seconds: int = 24 * 3600):
         if not key:
             return
-        if host._redis_client is not None:
+        if app_state._redis_client is not None:
             try:
-                host._redis_client.setex(f"pay_idem:{key}", ttl_seconds, host.json.dumps(value))
+                app_state._redis_client.setex(f"pay_idem:{key}", ttl_seconds, host.json.dumps(value))
                 return
             except Exception as e:
                 host._json_log("error", "payment_idempotency_write_failed", error=str(e))
                 raise host.HTTPException(status_code=503, detail="Payment safety service is temporarily unavailable") from e
 
         if settings._IS_TEST:
-            host._payment_idempotency[key] = value
+            app_state._payment_idempotency[key] = value
             return
         db = host.get_db()
         if db:
@@ -150,7 +154,7 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
                 raise host.HTTPException(status_code=503, detail="Payment safety service is temporarily unavailable") from e
         if settings._IS_PRODUCTION:
             raise host.HTTPException(status_code=503, detail="Payment safety service is unavailable")
-        host._payment_idempotency[key] = value
+        app_state._payment_idempotency[key] = value
 
 
     def _payment_idem_claim(key: str, ttl_seconds: int = 24 * 3600) -> bool:
@@ -158,9 +162,9 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
         if not key:
             return True
         value = {"status": "in_progress", "ts": host.time.time()}
-        if host._redis_client is not None:
+        if app_state._redis_client is not None:
             try:
-                return bool(host._redis_client.set(
+                return bool(app_state._redis_client.set(
                     f"pay_idem:{key}", host.json.dumps(value), ex=ttl_seconds, nx=True
                 ))
             except Exception as e:
@@ -168,9 +172,9 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
                 raise host.HTTPException(status_code=503, detail="Payment safety service is temporarily unavailable") from e
 
         if settings._IS_TEST:
-            if key in host._payment_idempotency:
+            if key in app_state._payment_idempotency:
                 return False
-            host._payment_idempotency[key] = value
+            app_state._payment_idempotency[key] = value
             return True
         db = host.get_db()
         if db:
@@ -189,25 +193,25 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
                 raise host.HTTPException(status_code=503, detail="Payment safety service is temporarily unavailable") from e
         if settings._IS_PRODUCTION:
             raise host.HTTPException(status_code=503, detail="Payment safety service is unavailable")
-        if key in host._payment_idempotency:
+        if key in app_state._payment_idempotency:
             return False
-        host._payment_idempotency[key] = value
+        app_state._payment_idempotency[key] = value
         return True
 
 
     def _payment_idem_delete(key: str):
         if not key:
             return
-        if host._redis_client is not None:
+        if app_state._redis_client is not None:
             try:
-                host._redis_client.delete(f"pay_idem:{key}")
+                app_state._redis_client.delete(f"pay_idem:{key}")
                 return
             except Exception as e:
                 host._json_log("error", "payment_idempotency_delete_failed", error=str(e))
                 raise host.HTTPException(status_code=503, detail="Payment safety service is temporarily unavailable") from e
 
         if settings._IS_TEST:
-            host._payment_idempotency.pop(key, None)
+            app_state._payment_idempotency.pop(key, None)
             return
         db = host.get_db()
         if db:
@@ -220,7 +224,7 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
                 raise host.HTTPException(status_code=503, detail="Payment safety service is temporarily unavailable") from e
         if settings._IS_PRODUCTION:
             raise host.HTTPException(status_code=503, detail="Payment safety service is unavailable")
-        host._payment_idempotency.pop(key, None)
+        app_state._payment_idempotency.pop(key, None)
 
 
     def _require_payment_idempotency(uid: str, key: str, op: str) -> str:
@@ -235,7 +239,7 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
 
 
     def _rate_limit_namespace(store: host.Dict[str, list]) -> str:
-        for candidate, namespace in host._RATE_LIMIT_NAMESPACES:
+        for candidate, namespace in app_state._RATE_LIMIT_NAMESPACES:
             if store is candidate:
                 return namespace
         return "generic"
@@ -273,10 +277,10 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
     def _check_rate(store: host.Dict[str, list], key: str, limit: int, window: int = 3600):
         """Returns (allowed, retry_after_seconds, remaining).
     Mutates *store* in-place to record the current timestamp."""
-        if host._redis_client is not None:
+        if app_state._redis_client is not None:
             try:
                 now_ts = host.time.time()
-                admitted, retry_after, remaining = host._redis_client.eval(
+                admitted, retry_after, remaining = app_state._redis_client.eval(
                     settings.RATE_ADMISSION_SCRIPT, 1, host._rate_limit_redis_key(store, key),
                     now_ts, window, limit, host.uuid.uuid4().hex,
                 )
@@ -303,9 +307,9 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
     def _record_export_failure(uid: str):
         key = f"expfail:{uid}"
         now_ts = host.time.time()
-        if host._redis_client is not None:
+        if app_state._redis_client is not None:
             try:
-                pipe = host._redis_client.pipeline()
+                pipe = app_state._redis_client.pipeline()
                 pipe.zremrangebyscore(key, 0, now_ts - settings.EXPORT_FAILURE_WINDOW)
                 pipe.zadd(key, {f"{now_ts}:{host.uuid.uuid4().hex[:8]}": now_ts})
                 pipe.expire(key, settings.EXPORT_FAILURE_WINDOW + 10)
@@ -314,41 +318,41 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
             except Exception:
                 pass
         fail_key = f"fail:{uid}"
-        arr = [t for t in host._export_failures.get(fail_key, []) if t > now_ts - settings.EXPORT_FAILURE_WINDOW]
+        arr = [t for t in app_state._export_failures.get(fail_key, []) if t > now_ts - settings.EXPORT_FAILURE_WINDOW]
         arr.append(now_ts)
-        host._export_failures[fail_key] = arr
+        app_state._export_failures[fail_key] = arr
 
 
     def _get_recent_export_failures(uid: str) -> list:
         key = f"expfail:{uid}"
         now_ts = host.time.time()
-        if host._redis_client is not None:
+        if app_state._redis_client is not None:
             try:
-                host._redis_client.zremrangebyscore(key, 0, now_ts - settings.EXPORT_FAILURE_WINDOW)
-                vals = host._redis_client.zrange(key, 0, -1, withscores=True)
+                app_state._redis_client.zremrangebyscore(key, 0, now_ts - settings.EXPORT_FAILURE_WINDOW)
+                vals = app_state._redis_client.zrange(key, 0, -1, withscores=True)
                 return [float(v[1]) for v in vals]
             except Exception:
                 pass
         fail_key = f"fail:{uid}"
-        arr = [t for t in host._export_failures.get(fail_key, []) if t > now_ts - settings.EXPORT_FAILURE_WINDOW]
-        host._export_failures[fail_key] = arr
+        arr = [t for t in app_state._export_failures.get(fail_key, []) if t > now_ts - settings.EXPORT_FAILURE_WINDOW]
+        app_state._export_failures[fail_key] = arr
         return arr
 
 
     def _acquire_export_slot(uid: str, job_id: str) -> bool:
         if not uid or not job_id:
             return False
-        if host._redis_client is not None:
+        if app_state._redis_client is not None:
             try:
                 k = f"expactive:{uid}"
-                acquired = host._redis_client.set(k, job_id, nx=True, ex=settings.EXPORT_SLOT_TTL_SECONDS)
+                acquired = app_state._redis_client.set(k, job_id, nx=True, ex=settings.EXPORT_SLOT_TTL_SECONDS)
                 if acquired:
                     return True
-                current = host._redis_client.get(k)
+                current = app_state._redis_client.get(k)
                 if isinstance(current, bytes):
                     current = current.decode("utf-8", errors="ignore")
                 if current == job_id:
-                    host._redis_client.expire(k, settings.EXPORT_SLOT_TTL_SECONDS)
+                    app_state._redis_client.expire(k, settings.EXPORT_SLOT_TTL_SECONDS)
                     return True
                 # A worker can fail before entering run_export_job_task (for
                 # example, when an old worker cannot deserialize a newer argument
@@ -363,7 +367,7 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
                     previous_terminal = previous_status in {
                         "completed", "failed", "cancelled", "canceled", "stopped",
                     }
-                    if not previous_terminal and host._export_queue is not None:
+                    if not previous_terminal and app_state._export_queue is not None:
                         previous_queue = host._queue_for_export_job_record(previous_job)
                         rq_job = previous_queue.fetch_job(previous_job_id) if previous_queue else None
                         if rq_job is not None:
@@ -381,7 +385,7 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
                         error=type(state_error).__name__,
                     )
                 if previous_terminal:
-                    removed = host._redis_client.eval(
+                    removed = app_state._redis_client.eval(
                         "if redis.call('get', KEYS[1]) == ARGV[1] then "
                     "return redis.call('del', KEYS[1]) else return 0 end",
                         1,
@@ -389,7 +393,7 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
                         previous_job_id,
                     )
                     if removed:
-                        acquired = host._redis_client.set(k, job_id, nx=True, ex=settings.EXPORT_SLOT_TTL_SECONDS)
+                        acquired = app_state._redis_client.set(k, job_id, nx=True, ex=settings.EXPORT_SLOT_TTL_SECONDS)
                         if acquired:
                             host._json_log(
                                 "warning",
@@ -402,22 +406,22 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
                 return False
             except Exception as e:
                 host._json_log("error", "export_slot_acquire_failed", uid=uid, job_id=job_id, error=str(e))
-                if settings._IS_PRODUCTION or host._export_queue is not None:
+                if settings._IS_PRODUCTION or app_state._export_queue is not None:
                     return False
-        current = host._active_exports_by_user.get(uid)
+        current = app_state._active_exports_by_user.get(uid)
         if current and current != job_id:
             return False
-        host._active_exports_by_user[uid] = job_id
+        app_state._active_exports_by_user[uid] = job_id
         return True
 
 
     def _release_export_slot(uid: str, job_id: str):
         if not uid or not job_id:
             return
-        if host._redis_client is not None:
+        if app_state._redis_client is not None:
             try:
                 k = f"expactive:{uid}"
-                host._redis_client.eval(
+                app_state._redis_client.eval(
                     "if redis.call('get', KEYS[1]) == ARGV[1] then "
                 "return redis.call('del', KEYS[1]) else return 0 end",
                     1,
@@ -427,18 +431,18 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
                 return
             except Exception:
                 pass
-        if host._active_exports_by_user.get(uid) == job_id:
-            host._active_exports_by_user.pop(uid, None)
+        if app_state._active_exports_by_user.get(uid) == job_id:
+            app_state._active_exports_by_user.pop(uid, None)
 
 
     def _acquire_process_slot(uid: str, request_id: str) -> bool:
         """Allow one paid transcription call per user across all API instances."""
         if not uid or not request_id:
             return False
-        if host._redis_client is not None:
+        if app_state._redis_client is not None:
             try:
                 return bool(
-                    host._redis_client.set(
+                    app_state._redis_client.set(
                         f"procactive:{uid}",
                         request_id,
                         nx=True,
@@ -449,18 +453,18 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
                 host._json_log("error", "process_slot_acquire_failed", uid=uid, request_id=request_id, error=str(e))
                 if settings._IS_PRODUCTION:
                     return False
-        if host._active_processes_by_user.get(uid):
+        if app_state._active_processes_by_user.get(uid):
             return False
-        host._active_processes_by_user[uid] = request_id
+        app_state._active_processes_by_user[uid] = request_id
         return True
 
 
     def _release_process_slot(uid: str, request_id: str):
         if not uid or not request_id:
             return
-        if host._redis_client is not None:
+        if app_state._redis_client is not None:
             try:
-                host._redis_client.eval(
+                app_state._redis_client.eval(
                     "if redis.call('get', KEYS[1]) == ARGV[1] then "
                 "return redis.call('del', KEYS[1]) else return 0 end",
                     1,
@@ -470,8 +474,8 @@ def create_request_guards(host: ModuleType) -> SimpleNamespace:
                 return
             except Exception:
                 pass
-        if host._active_processes_by_user.get(uid) == request_id:
-            host._active_processes_by_user.pop(uid, None)
+        if app_state._active_processes_by_user.get(uid) == request_id:
+            app_state._active_processes_by_user.pop(uid, None)
 
 
     def _apply_rate_headers(response: host.Optional[host.Response], limit: int, remaining: int, retry_after: int = 0):

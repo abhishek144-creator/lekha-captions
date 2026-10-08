@@ -16,6 +16,10 @@ try:
     from . import settings
 except ImportError:  # Direct execution from backend/ remains supported.
     import settings
+try:
+    from . import app_state
+except ImportError:  # Direct execution from backend/ remains supported.
+    import app_state
 
 
 def create_billing_service(host: ModuleType) -> SimpleNamespace:
@@ -174,11 +178,11 @@ def create_billing_service(host: ModuleType) -> SimpleNamespace:
         order_id = str(order_id or "").strip()
         if not order_id:
             raise HTTPException(status_code=400, detail="Payment is missing its order binding.")
-        if not host.RAZORPAY_AVAILABLE or host.rzp_client is None:
+        if not host.RAZORPAY_AVAILABLE or app_state.rzp_client is None:
             raise HTTPException(status_code=503, detail="Payment order verification is unavailable")
 
         try:
-            order = host.rzp_client.order.fetch(order_id)
+            order = app_state.rzp_client.order.fetch(order_id)
         except Exception as e:
             raise HTTPException(status_code=502, detail="Unable to verify payment order with Razorpay") from e
 
