@@ -8,6 +8,8 @@
 <link href="file:///C:/Users/ADMIN/Downloads/Lekha%20Captions%20-Basic%2030._files/css2" rel="stylesheet">
 
 <style>
+/* T41–T52 gallery fonts (Google Fonts only; export and canvas load their own copies). */
+@import url('https://fonts.googleapis.com/css2?family=Old+Standard+TT:wght@400;700&family=Barlow+Condensed:wght@600;700&family=Martian+Mono:wght@500;600;700&family=Onest:wght@500;600;700&family=Public+Sans:wght@600;700;900&family=Jura:wght@500;600;700&family=Azeret+Mono:wght@500&family=Lilita+One&family=Rozha+One&family=Bowlby+One&family=Courier+Prime:wght@400;700&family=Bricolage+Grotesque:wght@600;700&family=JetBrains+Mono:wght@500;700&family=Big+Shoulders+Display:wght@700;800&family=Ubuntu+Mono:wght@400;700&display=swap');
 /* ===== GLOBAL RESET & BASE ===== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -1493,6 +1495,1615 @@ body {
   to   { opacity: 1; transform: translateX(0); }
 }
 
+
+
+/* ========================================================
+   T41–T52 — KEYFRAME-DRIVEN TEMPLATES
+   Every phase animates only through the @keyframes below, keyed on
+   `.active`. Un-animated base styles ARE the settled frame (opacity 1,
+   transform none, no clip-path), so a paused/seeked-to-end block is
+   always fully readable. Static tilts use the `rotate` property and
+   decorations live on pseudo-elements, because the editor canvas
+   wraps each word's text in an absolutely positioned child.
+   Gallery stages size type with cqw; everything inside is em-based so
+   the canvas and export scale it from the caption font size.
+   ======================================================== */
+
+/* Shared word order: --lekha-word-step = index, --lekha-word-rest = words after. */
+:is(.t41-block, .t42-block, .t43-block, .t44-block, .t45-block, .t46-block, .t47-block, .t48-block, .t49-block, .t50-block, .t51-block, .t52-block) .w { --lekha-word-step: 0; --lekha-word-rest: 0; }
+:is(.t41-block, .t42-block, .t43-block, .t44-block, .t45-block, .t46-block, .t47-block, .t48-block, .t49-block, .t50-block, .t51-block, .t52-block) .w:nth-of-type(2) { --lekha-word-step: 1; }
+:is(.t41-block, .t42-block, .t43-block, .t44-block, .t45-block, .t46-block, .t47-block, .t48-block, .t49-block, .t50-block, .t51-block, .t52-block) .w:nth-of-type(3) { --lekha-word-step: 2; }
+:is(.t41-block, .t42-block, .t43-block, .t44-block, .t45-block, .t46-block, .t47-block, .t48-block, .t49-block, .t50-block, .t51-block, .t52-block) .w:nth-of-type(4) { --lekha-word-step: 3; }
+:is(.t41-block, .t42-block, .t43-block, .t44-block, .t45-block, .t46-block, .t47-block, .t48-block, .t49-block, .t50-block, .t51-block, .t52-block) .w:nth-of-type(5) { --lekha-word-step: 4; }
+:is(.t41-block, .t42-block, .t43-block, .t44-block, .t45-block, .t46-block, .t47-block, .t48-block, .t49-block, .t50-block, .t51-block, .t52-block) .w:nth-of-type(6) { --lekha-word-step: 5; }
+:is(.t41-block, .t42-block, .t43-block, .t44-block, .t45-block, .t46-block, .t47-block, .t48-block, .t49-block, .t50-block, .t51-block, .t52-block) .w:nth-of-type(7) { --lekha-word-step: 6; }
+:is(.t41-block, .t42-block, .t43-block, .t44-block, .t45-block, .t46-block, .t47-block, .t48-block, .t49-block, .t50-block, .t51-block, .t52-block) .w:nth-of-type(8) { --lekha-word-step: 7; }
+:is(.t41-block, .t42-block, .t43-block, .t44-block, .t45-block, .t46-block, .t47-block, .t48-block, .t49-block, .t50-block, .t51-block, .t52-block) .w:nth-of-type(9) { --lekha-word-step: 8; }
+:is(.t41-block, .t42-block, .t43-block, .t44-block, .t45-block, .t46-block, .t47-block, .t48-block, .t49-block, .t50-block, .t51-block, .t52-block) .w:nth-of-type(10) { --lekha-word-step: 9; }
+:is(.t41-block, .t42-block, .t43-block, .t44-block, .t45-block, .t46-block, .t47-block, .t48-block, .t49-block, .t50-block, .t51-block, .t52-block) .w:nth-of-type(11) { --lekha-word-step: 10; }
+:is(.t41-block, .t42-block, .t43-block, .t44-block, .t45-block, .t46-block, .t47-block, .t48-block, .t49-block, .t50-block, .t51-block, .t52-block) .w:nth-of-type(12) { --lekha-word-step: 11; }
+:is(.t41-block, .t42-block, .t43-block, .t44-block, .t45-block, .t46-block, .t47-block, .t48-block, .t49-block, .t50-block, .t51-block, .t52-block) .w:nth-of-type(13) { --lekha-word-step: 12; }
+:is(.t41-block, .t42-block, .t43-block, .t44-block, .t45-block, .t46-block, .t47-block, .t48-block, .t49-block, .t50-block, .t51-block, .t52-block) .w:nth-of-type(14) { --lekha-word-step: 13; }
+:is(.t41-block, .t42-block, .t43-block, .t44-block, .t45-block, .t46-block, .t47-block, .t48-block, .t49-block, .t50-block, .t51-block, .t52-block) .w:nth-of-type(15) { --lekha-word-step: 14; }
+:is(.t41-block, .t42-block, .t43-block, .t44-block, .t45-block, .t46-block, .t47-block, .t48-block, .t49-block, .t50-block, .t51-block, .t52-block) .w:nth-of-type(n+16) { --lekha-word-step: 15; }
+:is(.t41-block, .t42-block, .t43-block, .t44-block, .t45-block, .t46-block, .t47-block, .t48-block, .t49-block, .t50-block, .t51-block, .t52-block) .w:nth-last-of-type(2) { --lekha-word-rest: 1; }
+:is(.t41-block, .t42-block, .t43-block, .t44-block, .t45-block, .t46-block, .t47-block, .t48-block, .t49-block, .t50-block, .t51-block, .t52-block) .w:nth-last-of-type(3) { --lekha-word-rest: 2; }
+:is(.t41-block, .t42-block, .t43-block, .t44-block, .t45-block, .t46-block, .t47-block, .t48-block, .t49-block, .t50-block, .t51-block, .t52-block) .w:nth-last-of-type(4) { --lekha-word-rest: 3; }
+:is(.t41-block, .t42-block, .t43-block, .t44-block, .t45-block, .t46-block, .t47-block, .t48-block, .t49-block, .t50-block, .t51-block, .t52-block) .w:nth-last-of-type(5) { --lekha-word-rest: 4; }
+:is(.t41-block, .t42-block, .t43-block, .t44-block, .t45-block, .t46-block, .t47-block, .t48-block, .t49-block, .t50-block, .t51-block, .t52-block) .w:nth-last-of-type(6) { --lekha-word-rest: 5; }
+:is(.t41-block, .t42-block, .t43-block, .t44-block, .t45-block, .t46-block, .t47-block, .t48-block, .t49-block, .t50-block, .t51-block, .t52-block) .w:nth-last-of-type(7) { --lekha-word-rest: 6; }
+:is(.t41-block, .t42-block, .t43-block, .t44-block, .t45-block, .t46-block, .t47-block, .t48-block, .t49-block, .t50-block, .t51-block, .t52-block) .w:nth-last-of-type(8) { --lekha-word-rest: 7; }
+:is(.t41-block, .t42-block, .t43-block, .t44-block, .t45-block, .t46-block, .t47-block, .t48-block, .t49-block, .t50-block, .t51-block, .t52-block) .w:nth-last-of-type(9) { --lekha-word-rest: 8; }
+:is(.t41-block, .t42-block, .t43-block, .t44-block, .t45-block, .t46-block, .t47-block, .t48-block, .t49-block, .t50-block, .t51-block, .t52-block) .w:nth-last-of-type(10) { --lekha-word-rest: 9; }
+:is(.t41-block, .t42-block, .t43-block, .t44-block, .t45-block, .t46-block, .t47-block, .t48-block, .t49-block, .t50-block, .t51-block, .t52-block) .w:nth-last-of-type(11) { --lekha-word-rest: 10; }
+:is(.t41-block, .t42-block, .t43-block, .t44-block, .t45-block, .t46-block, .t47-block, .t48-block, .t49-block, .t50-block, .t51-block, .t52-block) .w:nth-last-of-type(12) { --lekha-word-rest: 11; }
+:is(.t41-block, .t42-block, .t43-block, .t44-block, .t45-block, .t46-block, .t47-block, .t48-block, .t49-block, .t50-block, .t51-block, .t52-block) .w:nth-last-of-type(13) { --lekha-word-rest: 12; }
+:is(.t41-block, .t42-block, .t43-block, .t44-block, .t45-block, .t46-block, .t47-block, .t48-block, .t49-block, .t50-block, .t51-block, .t52-block) .w:nth-last-of-type(14) { --lekha-word-rest: 13; }
+:is(.t41-block, .t42-block, .t43-block, .t44-block, .t45-block, .t46-block, .t47-block, .t48-block, .t49-block, .t50-block, .t51-block, .t52-block) .w:nth-last-of-type(15) { --lekha-word-rest: 14; }
+:is(.t41-block, .t42-block, .t43-block, .t44-block, .t45-block, .t46-block, .t47-block, .t48-block, .t49-block, .t50-block, .t51-block, .t52-block) .w:nth-last-of-type(n+16) { --lekha-word-rest: 15; }
+:is(.t41-block, .t42-block, .t43-block, .t44-block, .t45-block, .t46-block, .t47-block, .t48-block, .t49-block, .t50-block, .t51-block, .t52-block) {
+  -webkit-text-stroke: 0 transparent;
+  paint-order: normal;
+}
+/* Canvas and export renderers give every `.lekha-original-template .wbw-* .w`
+   a hidden, offset base for their JS word reveals. T41–T52 words are revealed
+   only by keyframes, so their un-animated base must stay the settled frame. */
+.lekha-original-template:is(.t41-stage, .t42-stage, .t43-stage, .t44-stage, .t45-stage, .t46-stage, .t47-stage, .t48-stage, .t49-stage, .t50-stage, .t51-stage, .t52-stage) .lekha-applied-advanced-template .w {
+  opacity: 1;
+  transform: none;
+}
+:is(.stage.t41-stage, .stage.t42-stage, .stage.t43-stage, .stage.t44-stage, .stage.t45-stage, .stage.t46-stage, .stage.t47-stage, .stage.t48-stage, .stage.t49-stage, .stage.t50-stage, .stage.t51-stage, .stage.t52-stage) {
+  container-type: inline-size;
+}
+
+/* ===== T41 — MAGNET POETRY ===== */
+.stage.t41-stage {
+  background:
+    repeating-linear-gradient(90deg, rgba(255,255,255,0.06) 0 2px, transparent 2px 7px),
+    linear-gradient(160deg, #dde2e5 0%, #bcc4c9 55%, #a5aeb4 100%);
+}
+.stage.t41-stage .t41-block { font-size: clamp(14px, 5.3cqw, 22px); }
+.t41-block {
+  font-family: 'Old Standard TT', 'Noto Serif', 'Noto Serif Devanagari', 'Noto Sans Telugu', 'Noto Sans Tamil', serif;
+  font-weight: 700;
+  color: var(--template-primary, #1e1a16);
+  text-shadow: none;
+  --t41-lead: 60ms;
+  --t41-step: 130ms;
+}
+.t41-block .t41-line {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: center !important;
+  align-items: center !important;
+  column-gap: 0 !important;
+  row-gap: 0.6em !important;
+  max-width: min(100%, 13em) !important;
+  line-height: 1.1 !important;
+  white-space: normal !important;
+  padding: 0.3em 0.35em !important;
+}
+.t41-block .t41-line > .w {
+  position: relative;
+  isolation: isolate;
+  margin: 0 0.24em 0 0.36em;
+  color: var(--template-primary, #1e1a16);
+  -webkit-text-fill-color: var(--template-primary, #1e1a16);
+  rotate: var(--t41-tilt, 0deg);
+}
+.t41-block .t41-line > .w:nth-of-type(7n+1) { --t41-tilt: -2.5deg; }
+.t41-block .t41-line > .w:nth-of-type(7n+2) { --t41-tilt: 2deg; }
+.t41-block .t41-line > .w:nth-of-type(7n+3) { --t41-tilt: -1deg; }
+.t41-block .t41-line > .w:nth-of-type(7n+4) { --t41-tilt: 3deg; }
+.t41-block .t41-line > .w:nth-of-type(7n+5) { --t41-tilt: -3deg; }
+.t41-block .t41-line > .w:nth-of-type(7n+6) { --t41-tilt: 1.5deg; }
+.t41-block .t41-line > .w:nth-of-type(7n+7) { --t41-tilt: -0.5deg; }
+.t41-block .t41-line > .w::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: -0.16em -0.22em -0.12em -0.22em;
+  background: linear-gradient(180deg, #ffffff 0%, #f5f1e8 100%);
+  border-radius: 0.05em;
+  box-shadow: 0 0.07em 0 #c2baac, 0 0.16em 0.28em rgba(20, 16, 10, 0.36);
+}
+.t41-block .t41-line > .w[data-imp='true'] {
+  font-size: 1.14em;
+  color: var(--template-highlight, #fff1d0);
+  -webkit-text-fill-color: var(--template-highlight, #fff1d0);
+}
+.t41-block .t41-line > .w[data-imp='true']::before {
+  background: linear-gradient(180deg, #2d2822 0%, #1a1713 100%);
+  box-shadow: 0 0.07em 0 #000000, 0 0.18em 0.3em rgba(0, 0, 0, 0.45);
+}
+.t41-b0.active .t41-line > .w,
+.t41-b1.active .t41-line > .w,
+.t41-b2.active .t41-line > .w {
+  animation: t41-snap 520ms linear both;
+}
+.t41-b0.active .t41-line > .w { animation-delay: calc(var(--t41-lead) + var(--t41-jitter, 0ms)); }
+.t41-b0.active .t41-line > .w:nth-of-type(3n+2) { --t41-jitter: 90ms; }
+.t41-b0.active .t41-line > .w:nth-of-type(3n) { --t41-jitter: 45ms; }
+.t41-b0.active .t41-line > .w[data-imp='true'] { --t41-jitter: 200ms; }
+.t41-b1.active .t41-line > .w { animation-delay: calc(var(--t41-lead) + var(--lekha-word-step) * var(--t41-step)); }
+.t41-b2.active .t41-line > .w { animation-delay: calc(320ms + var(--t41-jitter, 0ms)); }
+.t41-b2.active .t41-line > .w:nth-of-type(odd) { --t41-jitter: 70ms; }
+.t41-b2.active .t41-line > .w[data-imp='true'] {
+  animation: t41-keytile 560ms linear both;
+  animation-delay: 0ms;
+}
+.t41-b3.active .t41-line > .w {
+  animation: t41-settle 600ms linear both;
+  animation-delay: calc(var(--t41-lead) + var(--lekha-word-step) * 190ms);
+}
+.t41-b4.active .t41-line > .w {
+  animation: t41-stick 540ms linear both;
+  animation-delay: calc(var(--t41-lead) + var(--lekha-word-step) * 120ms);
+}
+@keyframes t41-snap {
+  0% { opacity: 0; transform: translateY(-0.75em) scale(1.16) rotate(-5deg); animation-timing-function: cubic-bezier(0.3, 0, 0.7, 0.4); }
+  40% { opacity: 1; }
+  58% { transform: translateY(0.05em) scale(0.97) rotate(0.8deg); animation-timing-function: ease-out; }
+  78% { transform: translateY(-0.015em) scale(1.012) rotate(-0.2deg); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes t41-keytile {
+  0% { opacity: 0; transform: translateY(-1.1em) scale(1.3) rotate(7deg); animation-timing-function: cubic-bezier(0.4, 0, 0.8, 0.5); }
+  45% { opacity: 1; }
+  55% { transform: translateY(0.07em) scale(0.94) rotate(-1.2deg); animation-timing-function: ease-out; }
+  75% { transform: translateY(-0.02em) scale(1.02) rotate(0.3deg); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes t41-settle {
+  0% { opacity: 0; transform: translateY(-0.35em) scale(1.06); }
+  55% { opacity: 1; transform: translateY(0.03em) scale(0.99); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes t41-stick {
+  0% { opacity: 0; transform: translateX(1.1em) rotate(6deg); animation-timing-function: ease-out; }
+  55% { opacity: 1; transform: translateX(-0.06em) rotate(-0.8deg); }
+  80% { transform: translateX(0.02em) rotate(0.2deg); }
+  100% { opacity: 1; transform: none; }
+}
+
+/* ===== T42 — LABEL MAKER ===== */
+.stage.t42-stage { background: radial-gradient(120% 90% at 30% 20%, #3b4048 0%, #25282d 60%, #1b1d21 100%); }
+.stage.t42-stage .t42-block { font-size: clamp(14px, 5.6cqw, 23px); }
+.t42-block {
+  font-family: 'Barlow Condensed', 'Noto Sans', 'Noto Sans Devanagari', 'Noto Sans Telugu', 'Noto Sans Tamil', sans-serif;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--template-primary, #ffffff);
+  text-shadow: 0 0.05em 0 rgba(0, 0, 0, 0.55), 0 -0.035em 0 rgba(255, 255, 255, 0.42);
+  --t42-strip: #d7263d;
+  --t42-strip-dark: #a1172a;
+  --t42-lead: 80ms;
+  --t42-step: 150ms;
+}
+.t42-b1 { --t42-strip: #1f5fbf; --t42-strip-dark: #143f80; }
+.t42-b2 { --t42-strip: #1e8a4c; --t42-strip-dark: #135c32; }
+.t42-b3 { --t42-strip: #e8730c; --t42-strip-dark: #a64e05; }
+.t42-block .t42-line {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: center !important;
+  align-items: center !important;
+  column-gap: 0 !important;
+  row-gap: 0.5em !important;
+  max-width: min(100%, 13em) !important;
+  line-height: 1.15 !important;
+  white-space: normal !important;
+  padding: 0.3em 0.35em !important;
+}
+.t42-block .t42-line::before,
+.t42-block .t42-line::after {
+  content: '';
+  flex-basis: 100%;
+  height: 0;
+}
+.t42-block .t42-line::before { order: 1; }
+.t42-block .t42-line::after { order: 3; }
+.t42-block .t42-line:not(:has(> .w[data-imp='true']))::before,
+.t42-block .t42-line:not(:has(> .w[data-imp='true']))::after,
+.t42-block .t42-line:has(> .w[data-imp='true']:first-of-type)::before,
+.t42-block .t42-line:has(> .w[data-imp='true']:last-of-type)::after { display: none; }
+.t42-block .t42-line > .w {
+  position: relative;
+  isolation: isolate;
+  margin: 0 0.24em 0 0;
+}
+.t42-block .t42-line > .w::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: -0.2em -0.12em -0.22em -0.12em;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--t42-strip) 72%, #ffffff) 0%, var(--t42-strip) 24%, var(--t42-strip) 74%, var(--t42-strip-dark) 100%);
+  box-shadow: inset 0 0.06em 0 rgba(255, 255, 255, 0.3), inset 0 -0.07em 0 rgba(0, 0, 0, 0.3), 0 0.09em 0 rgba(0, 0, 0, 0.5);
+}
+.t42-block .t42-line > .w[data-imp='true'] {
+  order: 2;
+  rotate: -1.6deg;
+  color: var(--template-highlight, #ffe45c);
+  -webkit-text-fill-color: var(--template-highlight, #ffe45c);
+}
+.t42-block .t42-line > .w[data-imp='true'] ~ .w { order: 4; }
+.t42-block .t42-line > .w[data-imp='true']::before {
+  inset: -0.22em -0.34em -0.24em -0.34em;
+  background: linear-gradient(180deg, #3d3d3d 0%, #171717 24%, #111111 76%, #000000 100%);
+}
+.t42-b0.active .t42-line {
+  animation: t42-feed 900ms steps(9, end) 60ms both;
+}
+.t42-b0.active .t42-line > .w[data-imp='true'] {
+  animation: t42-punch 330ms steps(3, end) 1000ms both;
+}
+.t42-b1.active .t42-line > .w {
+  animation: t42-click 360ms steps(4, end) both;
+  animation-delay: calc(var(--t42-lead) + var(--lekha-word-step) * var(--t42-step));
+}
+.t42-b2 { --t42-step: 130ms; }
+.t42-b3 { --t42-step: 170ms; }
+.t42-b2.active .t42-line > .w {
+  animation: t42-press 300ms steps(2, end) both;
+  animation-delay: calc(var(--t42-lead) + var(--lekha-word-step) * var(--t42-step));
+}
+.t42-b3.active .t42-line > .w {
+  animation: t42-blink 330ms steps(3, end) both;
+  animation-delay: calc(var(--t42-lead) + var(--lekha-word-step) * var(--t42-step));
+}
+.t42-b1.active .t42-line > .w[data-imp='true'],
+.t42-b2.active .t42-line > .w[data-imp='true'],
+.t42-b3.active .t42-line > .w[data-imp='true'] {
+  animation: t42-punch 330ms steps(3, end) both;
+  animation-delay: calc(var(--t42-lead) + (var(--lekha-word-step) + var(--lekha-word-rest)) * var(--t42-step) + 260ms);
+}
+@keyframes t42-feed {
+  0% { clip-path: inset(-1em 100% -1em -1em); transform: translateX(-0.8em); }
+  99.9% { clip-path: inset(-1em -1em -1em -1em); transform: none; }
+  100% { clip-path: none; transform: none; }
+}
+@keyframes t42-click {
+  0% { opacity: 1; clip-path: inset(-0.5em 100% -0.5em 0); }
+  99.9% { opacity: 1; clip-path: inset(-0.5em -0.5em -0.5em -0.5em); }
+  100% { opacity: 1; clip-path: none; }
+}
+@keyframes t42-press {
+  0% { opacity: 0; transform: scale(1.22, 0.62); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes t42-blink {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+@keyframes t42-punch {
+  0% { opacity: 0; transform: translateY(-0.6em) scale(1.08); }
+  60% { opacity: 1; transform: translateY(0.06em) scale(0.98); }
+  100% { opacity: 1; transform: none; }
+}
+
+/* ===== T43 — SPLIT-FLAP BOARD ===== */
+.stage.t43-stage { background: linear-gradient(180deg, #111213 0%, #1d1e20 100%); }
+.stage.t43-stage .t43-block { font-size: clamp(12px, 4.8cqw, 20px); }
+.t43-block {
+  font-family: 'Martian Mono', 'Noto Sans Mono', 'Noto Sans Devanagari', 'Noto Sans Telugu', 'Noto Sans Tamil', monospace;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--template-primary, #f2f2e8);
+  text-shadow: none;
+  --t43-lead: 60ms;
+  --t43-step: 140ms;
+}
+.t43-block .t43-line {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: center !important;
+  align-items: center !important;
+  column-gap: 0 !important;
+  row-gap: 0.55em !important;
+  max-width: min(100%, 13em) !important;
+  line-height: 1.25 !important;
+  white-space: normal !important;
+  padding: 0.3em !important;
+}
+.t43-block .t43-line > .w {
+  position: relative;
+  isolation: isolate;
+  margin: 0 0.24em 0 0.2em;
+  transform-origin: 50% 50%;
+  color: var(--template-primary, #f2f2e8);
+  -webkit-text-fill-color: var(--template-primary, #f2f2e8);
+}
+.t43-block .t43-line > .w::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: -0.15em -0.2em -0.15em -0.2em;
+  border-radius: 0.12em;
+  background: linear-gradient(180deg, #2c2d2f 0%, #1d1e20 49%, #0e0f10 51%, #1a1b1d 100%);
+  box-shadow: 0 0.08em 0.16em rgba(0, 0, 0, 0.6), inset 0 0 0 0.04em rgba(255, 255, 255, 0.07);
+}
+.t43-block .t43-line > .w::after {
+  content: '';
+  position: absolute;
+  z-index: 7;
+  left: -0.2em;
+  right: -0.2em;
+  top: calc(50% - 0.025em);
+  height: 0.05em;
+  background: rgba(0, 0, 0, 0.85);
+  box-shadow: 0 0.03em 0 rgba(255, 255, 255, 0.07);
+}
+.t43-block .t43-line > .w[data-imp='true'] {
+  color: var(--template-highlight, #ffb21a);
+  -webkit-text-fill-color: var(--template-highlight, #ffb21a);
+}
+.t43-block .t43-line > .w[data-imp='true']::before {
+  background: linear-gradient(180deg, #4b3300 0%, #2f2000 49%, #1c1300 51%, #2c1e00 100%);
+  box-shadow: 0 0.08em 0.16em rgba(0, 0, 0, 0.6), inset 0 0 0 0.06em #ffb21a;
+}
+.t43-b0.active .t43-line > .w {
+  animation: t43-shuffle 760ms linear both;
+  animation-delay: calc(var(--t43-lead) + var(--lekha-word-step) * 70ms);
+}
+.t43-b1.active .t43-line > .w {
+  animation: t43-flap 560ms linear both;
+  animation-delay: calc(var(--t43-lead) + var(--lekha-word-step) * var(--t43-step));
+}
+.t43-b2.active .t43-line > .w {
+  animation: t43-flap 700ms linear both;
+  animation-delay: calc(var(--t43-lead) + var(--lekha-word-step) * 200ms);
+}
+.t43-b3.active .t43-line > .w {
+  animation: t43-flap 560ms linear both;
+  animation-delay: calc(var(--t43-lead) + var(--lekha-word-rest) * 130ms);
+}
+/* The flap is the top half only (clip-path to the seam) turning down about
+   the seam. Orthographic rotateX(θ) equals scaleY(cos θ) about that axis, so
+   the flip is authored in 2D: real 3D (perspective + rotateX) under clip-path
+   makes Chromium's software compositor in the export renderer exhaust memory. */
+@keyframes t43-flap {
+  0% { opacity: 0; clip-path: inset(-0.4em -0.4em 50% -0.4em); transform: scaleY(0.04); animation-timing-function: cubic-bezier(0.55, 0, 0.9, 0.55); }
+  5% { opacity: 1; }
+  46% { clip-path: inset(-0.4em -0.4em 50% -0.4em); transform: none; animation-timing-function: ease-out; }
+  52% { clip-path: inset(-0.4em -0.4em 50% -0.4em); transform: scaleY(0.9); }
+  58% { clip-path: inset(-0.4em -0.4em 50% -0.4em); transform: none; }
+  72% { clip-path: inset(-0.4em -0.4em -0.4em -0.4em); transform: none; }
+  99.9% { opacity: 1; clip-path: inset(-0.4em -0.4em -0.4em -0.4em); transform: none; }
+  100% { opacity: 1; clip-path: none; transform: none; }
+}
+@keyframes t43-shuffle {
+  0% { opacity: 0; clip-path: inset(-0.4em -0.4em 50% -0.4em); transform: scaleY(0.04); animation-timing-function: cubic-bezier(0.55, 0, 0.9, 0.55); }
+  4% { opacity: 1; }
+  24% { clip-path: inset(-0.4em -0.4em 50% -0.4em); transform: none; }
+  30% { clip-path: inset(-0.4em -0.4em -0.4em -0.4em); transform: none; }
+  34% { clip-path: inset(-0.4em -0.4em 50% -0.4em); transform: scaleY(0.04); animation-timing-function: cubic-bezier(0.55, 0, 0.9, 0.55); }
+  66% { clip-path: inset(-0.4em -0.4em 50% -0.4em); transform: none; animation-timing-function: ease-out; }
+  71% { clip-path: inset(-0.4em -0.4em 50% -0.4em); transform: scaleY(0.9); }
+  76% { clip-path: inset(-0.4em -0.4em 50% -0.4em); transform: none; }
+  86% { clip-path: inset(-0.4em -0.4em -0.4em -0.4em); transform: none; }
+  99.9% { opacity: 1; clip-path: inset(-0.4em -0.4em -0.4em -0.4em); transform: none; }
+  100% { opacity: 1; clip-path: none; transform: none; }
+}
+
+/* ===== T44 — CHAT THREAD ===== */
+.stage.t44-stage { background: linear-gradient(180deg, #0e1014 0%, #171a20 100%); }
+.stage.t44-stage .t44-block { font-size: clamp(13px, 4.9cqw, 21px); }
+.stage.t44-stage .t44-them { margin-right: auto; }
+.stage.t44-stage .t44-me { margin-left: auto; }
+.t44-block {
+  font-family: 'Onest', 'Noto Sans', 'Noto Sans Devanagari', 'Noto Sans Telugu', 'Noto Sans Tamil', sans-serif;
+  font-weight: 600;
+  color: var(--template-primary, #ffffff);
+  text-shadow: none;
+  --t44-lead: 560ms;
+  --t44-step: 80ms;
+}
+.t44-block .t44-thread {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  max-width: min(100%, 13em);
+  padding-bottom: 0.95em;
+}
+.t44-block .t44-them { align-items: flex-start; margin-right: 1.2em; }
+.t44-block .t44-me { align-items: flex-end; margin-left: 1.2em; }
+.t44-block .t44-line {
+  position: relative;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: flex-start !important;
+  align-items: baseline !important;
+  column-gap: 0 !important;
+  row-gap: 0.12em !important;
+  max-width: 100% !important;
+  line-height: 1.3 !important;
+  white-space: normal !important;
+  padding: 0.48em 0.78em 0.5em !important;
+  border-radius: 1.05em;
+  box-shadow: 0 0.12em 0.3em rgba(0, 0, 0, 0.35);
+}
+.t44-block .t44-them .t44-line {
+  background: #2f3034;
+  border-bottom-left-radius: 0.28em;
+  transform-origin: 0% 100%;
+}
+.t44-block .t44-me .t44-line {
+  background: linear-gradient(180deg, #2b8cff 0%, #0a6cf0 100%);
+  border-bottom-right-radius: 0.28em;
+  transform-origin: 100% 100%;
+}
+.t44-block .t44-line::before {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  width: 0.6em;
+  height: 0.55em;
+}
+.t44-block .t44-them .t44-line::before {
+  left: -0.26em;
+  background: #2f3034;
+  clip-path: polygon(100% 0, 100% 100%, 0 100%);
+}
+.t44-block .t44-me .t44-line::before {
+  right: -0.26em;
+  background: #0a6cf0;
+  clip-path: polygon(0 0, 100% 100%, 0 100%);
+}
+.t44-block .t44-line::after {
+  content: '';
+  order: 98;
+  flex-basis: 100%;
+  height: 0;
+}
+.t44-block .t44-line:not(:has(> .w[data-imp='true']))::after { display: none; }
+.t44-block .t44-line > .w {
+  position: relative;
+  margin: 0 0.24em 0 0;
+  color: var(--template-primary, #ffffff);
+  -webkit-text-fill-color: var(--template-primary, #ffffff);
+}
+.t44-block .t44-line > .w[data-imp='true'] {
+  order: 99;
+  isolation: isolate;
+  font-size: 0.78em;
+  font-weight: 700;
+  margin: 0.35em -1.1em -1.45em auto;
+  color: var(--template-highlight, #ff375f);
+  -webkit-text-fill-color: var(--template-highlight, #ff375f);
+}
+.t44-block .t44-me .t44-line > .w[data-imp='true'] { margin: 0.35em auto -1.45em -1.1em; }
+.t44-block .t44-line > .w[data-imp='true']::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: -0.24em -0.55em -0.22em -0.55em;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 0 0 0.12em #0f1115, 0 0.14em 0.3em rgba(0, 0, 0, 0.45);
+}
+.t44-block .t44-typing {
+  position: absolute;
+  bottom: 0.95em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2em;
+  width: 2.7em;
+  height: 1.55em;
+  border-radius: 0.8em;
+  opacity: 0;
+  pointer-events: none;
+}
+.t44-block .t44-them .t44-typing { left: 0; background: #2f3034; transform-origin: 0% 100%; }
+.t44-block .t44-me .t44-typing { right: 0; background: #0a6cf0; transform-origin: 100% 100%; }
+.t44-block .t44-dot {
+  width: 0.36em;
+  height: 0.36em;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.78);
+}
+.t44-b0.active .t44-typing,
+.t44-b1.active .t44-typing,
+.t44-b3.active .t44-typing { animation: t44-typing 440ms ease-out both; }
+.t44-b2.active .t44-typing { animation: t44-typing 640ms ease-out both; }
+.t44-b0.active .t44-dot,
+.t44-b1.active .t44-dot,
+.t44-b2.active .t44-dot,
+.t44-b3.active .t44-dot { animation: t44-hop 300ms ease-in-out both; }
+.t44-b2.active .t44-dot { animation-iteration-count: 2; }
+.t44-block.active .t44-dot:nth-child(2) { animation-delay: 70ms; }
+.t44-block.active .t44-dot:nth-child(3) { animation-delay: 140ms; }
+.t44-b0.active .t44-line,
+.t44-b1.active .t44-line,
+.t44-b2.active .t44-line { animation: t44-grow 440ms linear 360ms both; }
+.t44-b2.active .t44-line { animation-delay: 560ms; }
+.t44-b3.active .t44-line { animation: t44-swipe 420ms ease-out 360ms both; }
+.t44-b0.active .t44-line > .w[data-imp='true'] { animation: t44-chip 420ms linear 820ms both; }
+.t44-b1.active .t44-line > .w,
+.t44-b3.active .t44-line > .w {
+  animation: t44-word 240ms ease-out both;
+  animation-delay: calc(var(--t44-lead) + var(--lekha-word-step) * var(--t44-step));
+}
+.t44-b2.active .t44-line > .w {
+  animation: t44-word 300ms ease-out both;
+  animation-delay: calc(760ms + var(--lekha-word-step) * 120ms);
+}
+.t44-b1.active .t44-line > .w[data-imp='true'],
+.t44-b3.active .t44-line > .w[data-imp='true'] {
+  animation: t44-chip 420ms linear both;
+  animation-delay: calc(var(--t44-lead) + (var(--lekha-word-step) + var(--lekha-word-rest)) * var(--t44-step) + 220ms);
+}
+.t44-b2.active .t44-line > .w[data-imp='true'] {
+  animation: t44-chip 420ms linear both;
+  animation-delay: calc(760ms + (var(--lekha-word-step) + var(--lekha-word-rest)) * 120ms + 220ms);
+}
+@keyframes t44-typing {
+  0% { opacity: 0; transform: scale(0.6); }
+  15% { opacity: 1; transform: scale(1); }
+  78% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.85); }
+}
+@keyframes t44-hop {
+  0%, 100% { opacity: 0.45; transform: translateY(0); }
+  50% { opacity: 1; transform: translateY(-0.22em); }
+}
+@keyframes t44-grow {
+  0% { opacity: 0; transform: scale(0.18); animation-timing-function: cubic-bezier(0.2, 0.7, 0.4, 1); }
+  60% { opacity: 1; transform: scale(1.04); animation-timing-function: ease-in-out; }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes t44-swipe {
+  0% { opacity: 0; transform: translateX(1.6em) scale(0.9); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes t44-word {
+  0% { opacity: 0; transform: translateY(0.25em); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes t44-chip {
+  0% { opacity: 0; transform: scale(0.2) rotate(-18deg); animation-timing-function: cubic-bezier(0.2, 0.7, 0.4, 1); }
+  62% { opacity: 1; transform: scale(1.18) rotate(6deg); animation-timing-function: ease-in-out; }
+  100% { opacity: 1; transform: none; }
+}
+
+/* ===== T45 — TRANSIT LINE ===== */
+.stage.t45-stage { background: linear-gradient(180deg, #14181d 0%, #0d1013 100%); }
+.stage.t45-stage .t45-block { font-size: clamp(13px, 5cqw, 21px); }
+.t45-block {
+  font-family: 'Public Sans', 'Noto Sans', 'Noto Sans Devanagari', 'Noto Sans Telugu', 'Noto Sans Tamil', sans-serif;
+  font-weight: 700;
+  color: var(--template-primary, #ffffff);
+  text-shadow: 0 0.05em 0.16em rgba(0, 0, 0, 0.85);
+  --t45-color: #e4002b;
+  --t45-lead: 80ms;
+  --t45-step: 150ms;
+}
+.t45-b1 { --t45-color: #0072ce; }
+.t45-b2 { --t45-color: #00a651; }
+.t45-b3 { --t45-color: #ff8200; }
+.t45-b4 { --t45-color: #8e44ad; }
+.t45-b5 { --t45-color: #00b5e2; }
+.t45-block .t45-line {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: center !important;
+  align-items: flex-end !important;
+  column-gap: 0 !important;
+  row-gap: 1.1em !important;
+  max-width: min(100%, 13em) !important;
+  line-height: 1.15 !important;
+  white-space: normal !important;
+  padding: 0.2em 0.45em 0.8em !important;
+}
+.t45-block .t45-line > .w {
+  position: relative;
+  isolation: isolate;
+  margin: 0 0.24em 0 0;
+  color: var(--template-primary, #ffffff);
+  -webkit-text-fill-color: var(--template-primary, #ffffff);
+}
+.t45-block .t45-line > .w::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  left: -0.13em;
+  right: -0.13em;
+  bottom: -0.52em;
+  height: 0.17em;
+  border-radius: 0.085em;
+  background: var(--t45-color);
+  transform-origin: 0% 50%;
+  box-shadow: 0 0.04em 0.1em rgba(0, 0, 0, 0.5);
+}
+.t45-block .t45-line > .w::after {
+  content: '';
+  position: absolute;
+  z-index: 1;
+  left: 50%;
+  bottom: -0.635em;
+  width: 0.4em;
+  height: 0.4em;
+  margin-left: -0.2em;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 0 0 0.08em var(--t45-color);
+}
+.t45-block .t45-line > .w[data-imp='true'] {
+  font-weight: 900;
+  color: var(--template-highlight, #ffd23f);
+  -webkit-text-fill-color: var(--template-highlight, #ffd23f);
+}
+.t45-block .t45-line > .w[data-imp='true']::after {
+  width: 0.56em;
+  height: 0.56em;
+  margin-left: -0.28em;
+  bottom: -0.715em;
+  background: #ffffff;
+  box-shadow: 0 0 0 0.09em #111111, 0 0 0 0.16em #ffffff, 0 0 0 0.24em var(--t45-color);
+}
+.t45-block .t45-line > .w::before,
+.t45-block .t45-line > .w::after { visibility: visible; }
+.t45-block.active .t45-line > .w::before {
+  animation: t45-draw var(--t45-step) linear both;
+  animation-delay: calc(var(--t45-lead) + var(--lekha-word-step) * var(--t45-step));
+}
+.t45-block.active .t45-line > .w::after {
+  animation: t45-stop 300ms linear both;
+  animation-delay: var(--t45-stop-at);
+}
+.t45-block.active .t45-line > .w[data-imp='true']::after {
+  animation-name: t45-interchange;
+  animation-duration: 460ms;
+}
+/* Words never fade: their line segment and station dot are pseudo-elements
+   that must stay visible while the line draws. A word switches visibility on
+   when the line reaches its station and lands with a bump anchored on the
+   line, so the segment underneath keeps its length. */
+.t45-block.active .t45-line > .w {
+  --t45-stop-at: calc(var(--t45-lead) + (var(--lekha-word-step) + 0.5) * var(--t45-step));
+  transform-origin: 50% calc(100% + 0.435em);
+  animation: t45-board 1ms linear both, t45-land 420ms linear forwards;
+  animation-delay: var(--t45-stop-at), var(--t45-stop-at);
+}
+.t45-b0.active .t45-line > .w { --t45-step: 150ms; }
+.t45-b1 { --t45-step: 210ms; }
+.t45-b2 { --t45-step: 70ms; }
+.t45-b2.active .t45-line > .w {
+  --t45-stop-at: calc(var(--t45-lead) + (var(--lekha-word-step) + var(--lekha-word-rest) + 1) * var(--t45-step) + 120ms);
+}
+.t45-b3 { --t45-step: 220ms; }
+.t45-b3.active .t45-line > .w { animation: t45-board 1ms linear both; animation-delay: var(--t45-stop-at); }
+.t45-b4 { --t45-lead: 420ms; }
+.t45-b4.active .t45-line > .w[data-imp='true'] { --t45-stop-at: 0ms; }
+.t45-b5 { --t45-step: 170ms; }
+.t45-b5.active .t45-line > .w {
+  animation: t45-sweep var(--t45-step) linear both;
+  animation-delay: calc(var(--t45-lead) + var(--lekha-word-step) * var(--t45-step));
+}
+.t45-b5.active .t45-line > .w::before { animation: none; }
+@keyframes t45-draw {
+  0% { transform: scaleX(0); }
+  100% { transform: none; }
+}
+@keyframes t45-stop {
+  0% { opacity: 0; transform: scale(0); }
+  55% { opacity: 1; transform: scale(1.35); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes t45-interchange {
+  0% { opacity: 0; transform: scale(0) rotate(-90deg); }
+  50% { opacity: 1; transform: scale(1.5) rotate(10deg); }
+  75% { transform: scale(0.9); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes t45-board {
+  0% { visibility: hidden; }
+  100% { visibility: visible; }
+}
+@keyframes t45-land {
+  0% { transform: scaleY(0.45); animation-timing-function: ease-out; }
+  45% { transform: scaleY(1.14); animation-timing-function: ease-in-out; }
+  75% { transform: scaleY(0.96); }
+  100% { transform: none; }
+}
+@keyframes t45-sweep {
+  0% { clip-path: inset(-1em 100% -1.2em 0); }
+  99.9% { clip-path: inset(-1em -0.3em -1.2em -0.3em); }
+  100% { clip-path: none; }
+}
+
+/* ===== T46 — BLUEPRINT ===== */
+.stage.t46-stage {
+  background-color: #0b2a4a;
+  background-image:
+    linear-gradient(rgba(110, 200, 255, 0.13) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(110, 200, 255, 0.13) 1px, transparent 1px);
+  background-size: 14px 14px;
+}
+.stage.t46-stage .t46-block { font-size: clamp(13px, 4.9cqw, 21px); }
+.t46-block {
+  font-family: 'Jura', 'Noto Sans', 'Noto Sans Devanagari', 'Noto Sans Telugu', 'Noto Sans Tamil', sans-serif;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--template-primary, #cfefff);
+  text-shadow: none;
+  --t46-ink: #7fd6ff;
+  --t46-lead: 380ms;
+  --t46-step: 120ms;
+}
+.t46-block .t46-line {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: center !important;
+  align-items: baseline !important;
+  column-gap: 0 !important;
+  row-gap: 1.3em !important;
+  max-width: min(100%, 14em) !important;
+  line-height: 1.15 !important;
+  white-space: normal !important;
+  padding: 1.2em 0.95em 1.05em !important;
+  background-color: #0b2a4a;
+  background-image:
+    linear-gradient(rgba(110, 200, 255, 0.16) 0.05em, transparent 0.05em),
+    linear-gradient(90deg, rgba(110, 200, 255, 0.16) 0.05em, transparent 0.05em);
+  background-size: 0.75em 0.75em;
+  border: 0.06em solid rgba(160, 220, 255, 0.55);
+  border-radius: 0.12em;
+  box-shadow: 0 0.2em 0.5em rgba(0, 0, 0, 0.45);
+}
+.t46-block .t46-line > .w {
+  position: relative;
+  margin: 0 0.24em 0 0;
+  color: var(--template-primary, #cfefff);
+  -webkit-text-fill-color: var(--template-primary, #cfefff);
+}
+.t46-block .t46-line > .w[data-imp='true'] {
+  font-weight: 700;
+  color: var(--template-highlight, #ffffff);
+  -webkit-text-fill-color: var(--template-highlight, #ffffff);
+}
+.t46-block .t46-line > .w[data-imp='true']::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -0.5em;
+  height: 0.36em;
+  border-left: 0.07em solid var(--t46-ink);
+  border-right: 0.07em solid var(--t46-ink);
+  background: linear-gradient(var(--t46-ink), var(--t46-ink)) 0 50% / 100% 0.07em no-repeat;
+  transform-origin: 50% 50%;
+}
+.t46-block .t46-line > .w[data-imp='true']::after {
+  content: '\2190\00a0 key\00a0 \2192';
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 0.18em);
+  translate: -50% 0;
+  font-family: 'Azeret Mono', 'Noto Sans Mono', monospace;
+  font-size: 0.42em;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--t46-ink);
+  -webkit-text-fill-color: var(--t46-ink);
+}
+.t46-b1 .t46-line > .w[data-imp='true']::after { content: '\2190\00a0 core\00a0 \2192'; }
+.t46-b2 .t46-line > .w[data-imp='true']::after { content: '\2190\00a0 span\00a0 \2192'; }
+.t46-b3 .t46-line > .w[data-imp='true']::after { content: '\2190\00a0 note\00a0 \2192'; }
+.t46-b0.active .t46-line { animation: t46-sheet 380ms steps(6, end) both; }
+.t46-block.active .t46-line > .w {
+  animation: t46-plot 300ms linear both;
+  animation-delay: calc(var(--t46-lead) + var(--lekha-word-step) * var(--t46-step));
+}
+.t46-b1 { --t46-lead: 60ms; --t46-step: 140ms; }
+.t46-b2 { --t46-lead: 60ms; --t46-step: 150ms; }
+.t46-b2.active .t46-line > .w { animation-name: t46-ink; animation-duration: 360ms; }
+.t46-b3 { --t46-lead: 60ms; --t46-step: 130ms; }
+.t46-b3.active .t46-line > .w { animation-name: t46-shift; animation-duration: 380ms; }
+.t46-block.active .t46-line > .w[data-imp='true']::before {
+  animation: t46-dim 360ms ease-out both;
+  animation-delay: calc(var(--t46-lead) + (var(--lekha-word-step) + var(--lekha-word-rest)) * var(--t46-step) + 320ms);
+}
+.t46-block.active .t46-line > .w[data-imp='true']::after {
+  animation: t46-note 300ms ease-out both;
+  animation-delay: calc(var(--t46-lead) + (var(--lekha-word-step) + var(--lekha-word-rest)) * var(--t46-step) + 640ms);
+}
+@keyframes t46-sheet {
+  0% { clip-path: inset(0 0 100% 0); }
+  99.9% { clip-path: inset(-1em -1em -1em -1em); }
+  100% { clip-path: none; }
+}
+@keyframes t46-plot {
+  0% { opacity: 1; clip-path: inset(-0.3em 100% -0.3em -0.3em); }
+  99.9% { opacity: 1; clip-path: inset(-0.3em -0.3em -0.3em -0.3em); }
+  100% { opacity: 1; clip-path: none; }
+}
+@keyframes t46-ink {
+  0% { opacity: 0; clip-path: inset(-0.3em -0.3em 100% -0.3em); }
+  99.9% { opacity: 1; clip-path: inset(-0.3em -0.3em -0.3em -0.3em); }
+  100% { opacity: 1; clip-path: none; }
+}
+@keyframes t46-shift {
+  0% { opacity: 1; transform: translateX(-0.4em); clip-path: inset(-0.3em 100% -0.3em -0.3em); }
+  99.9% { opacity: 1; transform: none; clip-path: inset(-0.3em -0.3em -0.3em -0.3em); }
+  100% { opacity: 1; transform: none; clip-path: none; }
+}
+@keyframes t46-dim {
+  0% { transform: scaleX(0); }
+  100% { transform: none; }
+}
+@keyframes t46-note {
+  0% { opacity: 0; transform: translateY(0.4em); }
+  100% { opacity: 1; transform: none; }
+}
+
+/* ===== T47 — STICKER SLAP ===== */
+.stage.t47-stage { background: linear-gradient(135deg, #2a1840 0%, #141a3a 55%, #0d2a3a 100%); }
+.stage.t47-stage .t47-block { font-size: clamp(14px, 5.6cqw, 23px); }
+.t47-block {
+  font-family: 'Lilita One', 'Noto Sans', 'Noto Sans Devanagari', 'Noto Sans Telugu', 'Noto Sans Tamil', sans-serif;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  color: var(--template-primary, #ffffff);
+  text-shadow: 0 0.06em 0 rgba(0, 0, 0, 0.55), 0 0 0.18em rgba(0, 0, 0, 0.55);
+  --t47-lead: 60ms;
+  --t47-step: 110ms;
+}
+.t47-block .t47-line {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: center !important;
+  align-items: center !important;
+  column-gap: 0 !important;
+  row-gap: 0.35em !important;
+  max-width: min(100%, 13em) !important;
+  line-height: 1.15 !important;
+  white-space: normal !important;
+  padding: 0.5em 0.6em !important;
+}
+.t47-block .t47-line > .w {
+  position: relative;
+  margin: 0 0.24em 0 0;
+  color: var(--template-primary, #ffffff);
+  -webkit-text-fill-color: var(--template-primary, #ffffff);
+}
+.t47-block .t47-line > .w[data-imp='true'] {
+  font-size: 1.3em;
+  margin: 0.1em 0.4em 0.1em 0.16em;
+  rotate: -6deg;
+  transform-origin: 50% 100%;
+  color: var(--template-highlight, #ff2e93);
+  -webkit-text-fill-color: var(--template-highlight, #ff2e93);
+  paint-order: stroke fill;
+  -webkit-text-stroke: 0.2em #ffffff;
+  text-shadow:
+    0.11em 0 0 #ffffff, -0.11em 0 0 #ffffff, 0 0.11em 0 #ffffff, 0 -0.11em 0 #ffffff,
+    0.08em 0.08em 0 #ffffff, -0.08em 0.08em 0 #ffffff, 0.08em -0.08em 0 #ffffff, -0.08em -0.08em 0 #ffffff,
+    0.05em 0.2em 0.12em rgba(0, 0, 0, 0.45);
+}
+.t47-block .t47-line > .w[data-imp='true']::after {
+  content: '';
+  position: absolute;
+  top: -0.14em;
+  right: -0.24em;
+  width: 0.46em;
+  height: 0.46em;
+  border-bottom-left-radius: 0.16em;
+  background: linear-gradient(225deg, transparent 0 46%, #cfcfcf 47%, #ffffff 72%, #e9e9e9 100%);
+  box-shadow: -0.05em 0.05em 0.08em rgba(0, 0, 0, 0.35);
+}
+.t47-b0.active .t47-line > .w { animation: t47-blip 280ms ease-out 60ms both; }
+.t47-b0.active .t47-line > .w[data-imp='true'] { animation: t47-swing 640ms linear 420ms both; }
+.t47-b1.active .t47-line > .w {
+  animation: t47-blip 280ms ease-out both;
+  animation-delay: calc(var(--t47-lead) + var(--lekha-word-step) * var(--t47-step));
+}
+.t47-b1.active .t47-line > .w[data-imp='true'] {
+  animation: t47-swing 640ms linear both;
+  animation-delay: calc(var(--t47-lead) + var(--lekha-word-step) * var(--t47-step) + 160ms);
+}
+.t47-b2.active .t47-line > .w[data-imp='true'] { animation: t47-backhand 640ms linear 60ms both; }
+.t47-b2.active .t47-line > .w:not([data-imp='true']) {
+  animation: t47-blip 280ms ease-out both;
+  animation-delay: calc(560ms + var(--lekha-word-step) * 60ms);
+}
+.t47-b3.active .t47-line > .w {
+  animation: t47-fade 300ms ease-out both;
+  animation-delay: calc(var(--t47-lead) + var(--lekha-word-step) * 160ms);
+}
+.t47-b3.active .t47-line > .w[data-imp='true'] {
+  animation: t47-drop 600ms linear both;
+  animation-delay: calc(var(--t47-lead) + (var(--lekha-word-step) + var(--lekha-word-rest)) * 160ms + 260ms);
+}
+.t47-b4.active .t47-line > .w {
+  animation: t47-scoot 300ms ease-out both;
+  animation-delay: calc(var(--t47-lead) + var(--lekha-word-step) * 100ms);
+}
+.t47-b4.active .t47-line > .w[data-imp='true'] {
+  animation: t47-swing 640ms linear both;
+  animation-delay: calc(var(--t47-lead) + (var(--lekha-word-step) + var(--lekha-word-rest)) * 100ms + 200ms);
+}
+@keyframes t47-blip {
+  0% { opacity: 0; transform: scale(0.85); }
+  60% { opacity: 1; transform: scale(1.04); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes t47-fade {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+@keyframes t47-scoot {
+  0% { opacity: 0; transform: translateX(-0.5em); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes t47-swing {
+  0% { opacity: 0; transform: translate(1.8em, -1.6em) rotate(42deg) scale(1.6); animation-timing-function: cubic-bezier(0.3, 0, 0.7, 0.5); }
+  12% { opacity: 1; }
+  48% { transform: translate(-0.05em, 0.04em) rotate(-5deg) scale(1.02); animation-timing-function: ease-out; }
+  62% { transform: translateY(0.05em) scale(1.14, 0.8); }
+  77% { transform: translateY(-0.03em) scale(0.95, 1.06); }
+  90% { transform: scale(1.02, 0.98); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes t47-backhand {
+  0% { opacity: 0; transform: translate(-1.9em, -1.3em) rotate(-48deg) scale(1.55); animation-timing-function: cubic-bezier(0.3, 0, 0.7, 0.5); }
+  12% { opacity: 1; }
+  48% { transform: translate(0.05em, 0.04em) rotate(5deg) scale(1.02); animation-timing-function: ease-out; }
+  62% { transform: translateY(0.05em) scale(1.14, 0.8); }
+  77% { transform: translateY(-0.03em) scale(0.95, 1.06); }
+  90% { transform: scale(1.02, 0.98); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes t47-drop {
+  0% { opacity: 0; transform: translateY(-2.2em) scale(1.35); animation-timing-function: cubic-bezier(0.5, 0, 0.9, 0.5); }
+  10% { opacity: 1; }
+  46% { transform: none; animation-timing-function: ease-out; }
+  60% { transform: translateY(0.04em) scale(1.18, 0.78); }
+  76% { transform: translateY(-0.06em) scale(0.94, 1.08); }
+  90% { transform: scale(1.02, 0.98); }
+  100% { opacity: 1; transform: none; }
+}
+
+/* ===== T48 — RANSOM CUTOUT ===== */
+.stage.t48-stage { background: radial-gradient(130% 100% at 50% 0%, #2a2522 0%, #161311 70%); }
+.stage.t48-stage .t48-block { font-size: clamp(14px, 5.6cqw, 23px); }
+.t48-block {
+  font-family: 'Rozha One', 'Noto Serif Devanagari', 'Noto Sans Telugu', 'Noto Sans Tamil', serif;
+  font-weight: 400;
+  color: var(--template-primary, #141414);
+  text-shadow: none;
+  --t48-lead: 60ms;
+  --t48-step: 170ms;
+}
+.t48-block .t48-line {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: center !important;
+  align-items: center !important;
+  column-gap: 0 !important;
+  row-gap: 0.55em !important;
+  max-width: min(100%, 13em) !important;
+  line-height: 1.12 !important;
+  white-space: normal !important;
+  padding: 0.35em 0.4em !important;
+}
+.t48-block .t48-line > .w {
+  position: relative;
+  isolation: isolate;
+  margin: 0 0.24em 0 0.2em;
+  color: var(--template-primary, #141414);
+  -webkit-text-fill-color: var(--template-primary, #141414);
+  rotate: var(--t48-tilt, 0deg);
+  --t48-paper: #f4e9d0;
+}
+.t48-block .t48-line > .w:nth-of-type(3n+2) {
+  font-family: 'Bowlby One', 'Noto Sans Devanagari', 'Noto Sans Telugu', 'Noto Sans Tamil', sans-serif;
+  font-size: 0.84em;
+  text-transform: uppercase;
+}
+.t48-block .t48-line > .w:nth-of-type(3n) {
+  font-family: 'Courier Prime', 'Noto Sans Devanagari', 'Noto Sans Telugu', 'Noto Sans Tamil', monospace;
+  font-weight: 700;
+  font-size: 1.02em;
+}
+.t48-block .t48-line > .w:nth-of-type(5n+1) { --t48-tilt: -3deg; --t48-paper: #f4e9d0; }
+.t48-block .t48-line > .w:nth-of-type(5n+2) { --t48-tilt: 2.5deg; --t48-paper: #dbe7f0; }
+.t48-block .t48-line > .w:nth-of-type(5n+3) { --t48-tilt: -1.5deg; --t48-paper: #f6d8e2; }
+.t48-block .t48-line > .w:nth-of-type(5n+4) { --t48-tilt: 3.5deg; --t48-paper: #e6efd2; }
+.t48-block .t48-line > .w:nth-of-type(5n+5) { --t48-tilt: -2deg; --t48-paper: #ffffff; }
+.t48-block .t48-line > .w::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: -0.17em -0.2em -0.15em -0.19em;
+  background: linear-gradient(180deg, var(--t48-paper) 0%, var(--t48-paper) 82%, color-mix(in srgb, var(--t48-paper) 82%, #000000) 100%);
+  transform: skewX(-4deg);
+  clip-path: polygon(0 7%, 9% 0, 23% 5%, 38% 0, 55% 4%, 71% 0, 88% 6%, 100% 1%, 97% 33%, 100% 62%, 96% 100%, 80% 95%, 63% 100%, 46% 94%, 29% 100%, 13% 95%, 0 100%, 3% 66%, 0 36%);
+}
+.t48-block .t48-line > .w:nth-of-type(4n+2)::before {
+  transform: skewX(3deg);
+  clip-path: polygon(2% 0, 18% 6%, 34% 1%, 49% 7%, 66% 0, 83% 5%, 100% 0, 98% 28%, 100% 55%, 97% 82%, 100% 100%, 84% 94%, 67% 100%, 50% 95%, 32% 100%, 16% 93%, 0 98%, 3% 70%, 0 45%, 2% 20%);
+}
+.t48-block .t48-line > .w:nth-of-type(4n+3)::before {
+  transform: skewX(-2deg);
+  clip-path: polygon(0 0, 14% 4%, 29% 0, 45% 6%, 60% 2%, 76% 7%, 92% 0, 100% 9%, 98% 40%, 100% 74%, 95% 100%, 77% 94%, 58% 100%, 40% 96%, 22% 100%, 6% 94%, 0 82%, 2% 48%);
+}
+.t48-block .t48-line > .w:nth-of-type(4n)::before {
+  transform: skewX(5deg);
+  clip-path: polygon(4% 3%, 20% 0, 37% 6%, 52% 0, 69% 5%, 85% 0, 100% 4%, 96% 30%, 100% 58%, 98% 88%, 90% 100%, 72% 95%, 55% 100%, 38% 94%, 21% 100%, 0 96%, 3% 64%, 0 30%);
+}
+.t48-block .t48-line > .w[data-imp='true'] {
+  color: var(--template-highlight, #fff6e5);
+  -webkit-text-fill-color: var(--template-highlight, #fff6e5);
+  --t48-paper: #d7182a;
+}
+.t48-b0.active .t48-line > .w {
+  animation: t48-flutter 640ms linear both;
+  animation-delay: calc(var(--t48-lead) + var(--t48-shuffle, 0ms));
+}
+.t48-b0.active .t48-line > .w:nth-of-type(4n+2) { --t48-shuffle: 170ms; }
+.t48-b0.active .t48-line > .w:nth-of-type(4n+3) { --t48-shuffle: 80ms; }
+.t48-b0.active .t48-line > .w:nth-of-type(4n) { --t48-shuffle: 250ms; }
+.t48-b0.active .t48-line > .w[data-imp='true'] { --t48-shuffle: 380ms; }
+.t48-b1.active .t48-line > .w {
+  animation: t48-flutter 640ms linear both;
+  animation-delay: calc(var(--t48-lead) + var(--lekha-word-step) * var(--t48-step));
+}
+.t48-b2.active .t48-line > .w {
+  animation: t48-settle 680ms ease-out both;
+  animation-delay: calc(var(--t48-lead) + var(--lekha-word-step) * 190ms);
+}
+.t48-b3.active .t48-line > .w {
+  animation: t48-slip-left 520ms ease-out both;
+  animation-delay: calc(var(--t48-lead) + var(--lekha-word-step) * 150ms);
+}
+.t48-b3.active .t48-line > .w:nth-of-type(even) { animation-name: t48-slip-right; }
+@keyframes t48-flutter {
+  0% { opacity: 0; transform: translate(0.3em, -1.3em) rotate(-14deg); animation-timing-function: ease-in; }
+  30% { opacity: 1; transform: translate(-0.15em, -0.55em) rotate(9deg); animation-timing-function: ease-in-out; }
+  56% { transform: translate(0.08em, -0.12em) rotate(-4deg); }
+  78% { transform: translate(0, 0.03em) rotate(1.5deg); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes t48-settle {
+  0% { opacity: 0; transform: translateY(-0.35em) rotate(6deg); }
+  45% { opacity: 1; transform: translateY(0.02em) rotate(-2deg); }
+  75% { transform: rotate(0.8deg); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes t48-slip-left {
+  0% { opacity: 0; transform: translateX(-1em) rotate(-8deg); }
+  70% { opacity: 1; transform: translateX(0.05em) rotate(1deg); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes t48-slip-right {
+  0% { opacity: 0; transform: translateX(1em) rotate(8deg); }
+  70% { opacity: 1; transform: translateX(-0.05em) rotate(-1deg); }
+  100% { opacity: 1; transform: none; }
+}
+
+/* ===== T49 — EQUALIZER STAGE ===== */
+.stage.t49-stage { background: radial-gradient(110% 80% at 50% 100%, #1d2b2a 0%, #0c1011 70%); }
+.stage.t49-stage .t49-block { font-size: clamp(14px, 5.4cqw, 22px); }
+.t49-block {
+  font-family: 'Bricolage Grotesque', 'Noto Sans', 'Noto Sans Devanagari', 'Noto Sans Telugu', 'Noto Sans Tamil', sans-serif;
+  font-weight: 700;
+  color: var(--template-primary, #ffffff);
+  text-shadow: 0 0.05em 0.16em rgba(0, 0, 0, 0.8);
+  --t49-lead: 60ms;
+  --t49-step: 120ms;
+  --t49-pump: 820ms;
+}
+.t49-block .t49-line {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: center !important;
+  align-items: flex-end !important;
+  column-gap: 0 !important;
+  row-gap: 1.2em !important;
+  max-width: min(100%, 13em) !important;
+  line-height: 1.15 !important;
+  white-space: normal !important;
+  padding: 0.25em 0.4em 1.05em !important;
+}
+.t49-block .t49-line > .w {
+  position: relative;
+  margin: 0 0.24em 0 0;
+  color: var(--template-primary, #ffffff);
+  -webkit-text-fill-color: var(--template-primary, #ffffff);
+  --t49-offset: 0ms;
+}
+.t49-block .t49-line > .w:nth-of-type(5n+2) { --t49-offset: 130ms; }
+.t49-block .t49-line > .w:nth-of-type(5n+3) { --t49-offset: 260ms; }
+.t49-block .t49-line > .w:nth-of-type(5n+4) { --t49-offset: 70ms; }
+.t49-block .t49-line > .w:nth-of-type(5n+5) { --t49-offset: 200ms; }
+.t49-block .t49-line > .w::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -0.92em;
+  width: 0.2em;
+  height: 0.72em;
+  margin-left: -0.1em;
+  border-radius: 0.1em;
+  background: rgba(255, 255, 255, 0.62);
+  transform-origin: 50% 100%;
+  box-shadow: 0 0 0 0.02em rgba(0, 0, 0, 0.35);
+}
+.t49-block .t49-line > .w[data-imp='true'] {
+  color: var(--template-highlight, #3df2b0);
+  -webkit-text-fill-color: var(--template-highlight, #3df2b0);
+}
+.t49-block .t49-line > .w[data-imp='true']::after {
+  width: 0.24em;
+  height: 0.86em;
+  margin-left: -0.12em;
+  background: currentColor;
+}
+/* Words never fade or move: their bar is a pseudo-element that keeps
+   bouncing underneath, so words surface through a clip that always
+   leaves the bar band below the word uncovered. */
+.t49-b0.active .t49-line > .w {
+  animation: t49-surface 380ms ease-out 320ms both;
+}
+.t49-b0.active .t49-line > .w::after {
+  animation: t49-bar-in 260ms ease-out 60ms both, t49-pump var(--t49-pump) ease-in-out infinite;
+  animation-delay: 60ms, calc(700ms + var(--t49-offset));
+  animation-fill-mode: both, none;
+}
+.t49-b1.active .t49-line > .w,
+.t49-b4.active .t49-line > .w {
+  animation: t49-surface 380ms ease-out both;
+  animation-delay: calc(var(--t49-lead) + var(--lekha-word-step) * var(--t49-step) + 120ms);
+}
+.t49-b4.active .t49-line > .w { animation-name: t49-sweep; }
+.t49-b1.active .t49-line > .w::after,
+.t49-b4.active .t49-line > .w::after {
+  animation: t49-bar-in 260ms ease-out both, t49-pump var(--t49-pump) ease-in-out infinite;
+  animation-delay: calc(var(--t49-lead) + var(--lekha-word-step) * var(--t49-step)), calc(var(--t49-lead) + var(--lekha-word-step) * var(--t49-step) + 260ms + var(--t49-offset));
+  animation-fill-mode: both, none;
+}
+.t49-b2.active .t49-line > .w {
+  animation: t49-surface 240ms ease-out 300ms both;
+}
+.t49-b2.active .t49-line > .w::after {
+  animation: t49-spike 420ms linear 40ms both, t49-pump var(--t49-pump) ease-in-out infinite;
+  animation-delay: 40ms, calc(720ms + var(--t49-offset));
+  animation-fill-mode: both, none;
+}
+.t49-b3 { --t49-step: 200ms; --t49-pump: 1300ms; }
+.t49-b3.active .t49-line > .w {
+  animation: t49-surface 620ms ease-in-out both;
+  animation-delay: calc(var(--t49-lead) + var(--lekha-word-step) * var(--t49-step) + 120ms);
+}
+.t49-b3.active .t49-line > .w::after {
+  animation: t49-bar-in 360ms ease-out both, t49-pump var(--t49-pump) ease-in-out infinite;
+  animation-delay: calc(var(--t49-lead) + var(--lekha-word-step) * var(--t49-step)), calc(var(--t49-lead) + var(--lekha-word-step) * var(--t49-step) + 360ms + var(--t49-offset));
+  animation-fill-mode: both, none;
+}
+.t49-block.active .t49-line > .w[data-imp='true']::after { animation-name: t49-bar-in, t49-peak; }
+.t49-b2.active .t49-line > .w[data-imp='true']::after { animation-name: t49-spike, t49-peak; }
+@keyframes t49-surface {
+  0% { clip-path: inset(100% -0.4em -2em -0.4em); }
+  99.9% { clip-path: inset(-0.4em -0.4em -2em -0.4em); }
+  100% { clip-path: none; }
+}
+@keyframes t49-sweep {
+  0% { clip-path: polygon(-20% -40%, -20% -40%, -20% 100%, 120% 100%, 120% 300%, -20% 300%); }
+  99.9% { clip-path: polygon(-20% -40%, 120% -40%, 120% 100%, 120% 100%, 120% 300%, -20% 300%); }
+  100% { clip-path: none; }
+}
+@keyframes t49-bar-in {
+  0% { transform: scaleY(0); }
+  100% { transform: none; }
+}
+@keyframes t49-spike {
+  0% { transform: scaleY(0); }
+  40% { transform: scaleY(2.3); }
+  70% { transform: scaleY(0.8); }
+  100% { transform: none; }
+}
+@keyframes t49-pump {
+  0%, 100% { transform: none; }
+  20% { transform: scaleY(0.35); }
+  45% { transform: scaleY(1.45); }
+  70% { transform: scaleY(0.6); }
+}
+@keyframes t49-peak {
+  0%, 100% { transform: none; }
+  25% { transform: scaleY(0.5); }
+  50% { transform: scaleY(1.9); }
+  75% { transform: scaleY(0.85); }
+}
+
+/* ===== T50 — REWRITE ===== */
+.stage.t50-stage { background: linear-gradient(180deg, #0a0d12 0%, #0f141b 100%); }
+.stage.t50-stage .t50-block { font-size: clamp(12px, 4.6cqw, 20px); }
+.t50-block {
+  font-family: 'JetBrains Mono', 'Noto Sans Mono', 'Noto Sans Devanagari', 'Noto Sans Telugu', 'Noto Sans Tamil', monospace;
+  font-weight: 500;
+  color: var(--template-primary, #e6edf3);
+  text-shadow: none;
+  --t50-lead: 80ms;
+  --t50-step: 110ms;
+  --t50-rewrite: 1250ms;
+}
+.t50-block .t50-line {
+  position: relative;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: flex-start !important;
+  align-items: baseline !important;
+  column-gap: 0 !important;
+  row-gap: 0.28em !important;
+  max-width: min(100%, 14em) !important;
+  line-height: 1.35 !important;
+  white-space: normal !important;
+  padding: 0.55em 0.8em 0.55em 2.1em !important;
+  background: #0d1117;
+  border: 0.06em solid #30363d;
+  border-radius: 0.32em;
+  box-shadow: 0 0.2em 0.5em rgba(0, 0, 0, 0.5);
+}
+.t50-block .t50-line::before {
+  content: '1';
+  position: absolute;
+  left: 0.75em;
+  top: 0.55em;
+  font-size: 1em;
+  line-height: 1.35;
+  color: #6e7681;
+  -webkit-text-fill-color: #6e7681;
+}
+.t50-block .t50-line > .w {
+  position: relative;
+  margin: 0 0.24em 0 0;
+  color: var(--template-primary, #e6edf3);
+  -webkit-text-fill-color: var(--template-primary, #e6edf3);
+}
+.t50-block .t50-line > .w[data-imp='true'] ~ .w { --t50-after: 1; }
+.t50-block .t50-line > .w[data-imp='true'] {
+  color: var(--template-highlight, #7ee787);
+  -webkit-text-fill-color: var(--template-highlight, #7ee787);
+}
+.t50-block .t50-line > .w[data-imp='true']::before {
+  content: 'maybe';
+  position: absolute;
+  left: 0;
+  top: 0;
+  visibility: visible;
+  opacity: 0;
+  white-space: nowrap;
+  border-radius: 0.08em;
+  color: #e6edf3;
+  -webkit-text-fill-color: #e6edf3;
+}
+.t50-b1 .t50-line > .w[data-imp='true']::before { content: 'never'; }
+.t50-b2 .t50-line > .w[data-imp='true']::before { content: 'later'; }
+.t50-b3 .t50-line > .w[data-imp='true']::before { content: 'almost'; }
+.t50-block .t50-line > .w[data-imp='true']::after {
+  content: '';
+  position: absolute;
+  top: 0.14em;
+  bottom: 0.12em;
+  left: 100%;
+  width: 0.09em;
+  visibility: visible;
+  opacity: 0;
+  background: #58a6ff;
+}
+.t50-b0.active .t50-line { animation: t50-panel 300ms ease-out both; }
+.t50-b0.active .t50-line > .w {
+  animation: t50-ink 120ms steps(2, end) both;
+  animation-delay: calc(240ms + var(--t50-after, 0) * var(--t50-rewrite));
+}
+.t50-b1.active .t50-line > .w {
+  animation: t50-ink 120ms steps(2, end) both;
+  animation-delay: calc(var(--t50-lead) + var(--lekha-word-step) * var(--t50-step) + var(--t50-after, 0) * var(--t50-rewrite));
+}
+.t50-b2.active .t50-line > .w {
+  animation: t50-fade 260ms ease-out both;
+  animation-delay: calc(var(--t50-lead) + var(--lekha-word-step) * 160ms + var(--t50-after, 0) * var(--t50-rewrite));
+}
+.t50-b3.active .t50-line > .w {
+  animation: t50-shift 260ms ease-out both;
+  animation-delay: calc(var(--t50-lead) + var(--lekha-word-step) * var(--t50-step) + var(--t50-after, 0) * var(--t50-rewrite));
+}
+.t50-block.active .t50-line > .w[data-imp='true'],
+.t50-block.active .t50-line > .w[data-imp='true']::before,
+.t50-block.active .t50-line > .w[data-imp='true']::after {
+  animation-duration: var(--t50-rewrite);
+  animation-timing-function: linear;
+  animation-fill-mode: both;
+}
+.t50-block.active .t50-line > .w[data-imp='true'] { animation-name: t50-retype; }
+.t50-block.active .t50-line > .w[data-imp='true']::before { animation-name: t50-decoy; }
+.t50-block.active .t50-line > .w[data-imp='true']::after { animation-name: t50-caret; }
+.t50-b0.active .t50-line > .w[data-imp='true'],
+.t50-b0.active .t50-line > .w[data-imp='true']::before,
+.t50-b0.active .t50-line > .w[data-imp='true']::after { animation-delay: 240ms; }
+.t50-b1.active .t50-line > .w[data-imp='true'],
+.t50-b1.active .t50-line > .w[data-imp='true']::before,
+.t50-b1.active .t50-line > .w[data-imp='true']::after,
+.t50-b3.active .t50-line > .w[data-imp='true'],
+.t50-b3.active .t50-line > .w[data-imp='true']::before,
+.t50-b3.active .t50-line > .w[data-imp='true']::after { animation-delay: calc(var(--t50-lead) + var(--lekha-word-step) * var(--t50-step)); }
+.t50-b2.active .t50-line > .w[data-imp='true'],
+.t50-b2.active .t50-line > .w[data-imp='true']::before,
+.t50-b2.active .t50-line > .w[data-imp='true']::after { animation-delay: calc(var(--t50-lead) + var(--lekha-word-step) * 160ms); }
+@keyframes t50-panel {
+  0% { opacity: 0; transform: translateY(0.3em); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes t50-ink {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+@keyframes t50-fade {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+@keyframes t50-shift {
+  0% { opacity: 0; transform: translateX(-0.3em); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes t50-retype {
+  0% { opacity: 1; visibility: hidden; clip-path: inset(-0.5em -9em -0.5em -2em); }
+  56% { visibility: hidden; clip-path: inset(-0.5em -9em -0.5em -2em); }
+  56.1% { visibility: visible; clip-path: inset(-0.5em calc(100% - 0.14em) -0.5em -2em); animation-timing-function: steps(7, end); }
+  92% { visibility: visible; clip-path: inset(-0.5em -0.3em -0.5em -2em); }
+  99.9% { opacity: 1; visibility: visible; clip-path: inset(-0.5em -0.3em -0.5em -2em); }
+  100% { opacity: 1; visibility: visible; clip-path: none; }
+}
+@keyframes t50-decoy {
+  0%, 18% { opacity: 0; background-color: transparent; }
+  18.1% { opacity: 1; background-color: transparent; color: #e6edf3; -webkit-text-fill-color: #e6edf3; }
+  36% { background-color: transparent; color: #e6edf3; -webkit-text-fill-color: #e6edf3; }
+  42% { opacity: 1; background-color: #2f6feb; color: #ffffff; -webkit-text-fill-color: #ffffff; }
+  54% { opacity: 1; background-color: #2f6feb; color: #ffffff; -webkit-text-fill-color: #ffffff; }
+  54.1%, 100% { opacity: 0; background-color: transparent; }
+}
+@keyframes t50-caret {
+  0% { opacity: 0; left: -1.2em; }
+  5% { opacity: 1; }
+  16% { opacity: 1; left: 0%; }
+  28% { opacity: 1; }
+  28.1% { opacity: 0; }
+  33% { opacity: 0; }
+  33.1% { opacity: 1; }
+  56.1% { opacity: 1; left: 0%; animation-timing-function: steps(7, end); }
+  92% { opacity: 1; left: 100%; }
+  94% { opacity: 1; }
+  94.1% { opacity: 0; }
+  97% { opacity: 0; }
+  97.1% { opacity: 1; }
+  99.9% { opacity: 1; left: 100%; }
+  100% { opacity: 0; left: 100%; }
+}
+
+/* ===== T51 — DOMINO TOPPLE ===== */
+.stage.t51-stage { background: radial-gradient(120% 90% at 50% 30%, #1f3a30 0%, #10201a 75%); }
+.stage.t51-stage .t51-block { font-size: clamp(14px, 5.6cqw, 23px); }
+.t51-block {
+  font-family: 'Big Shoulders Display', 'Noto Sans', 'Noto Sans Devanagari', 'Noto Sans Telugu', 'Noto Sans Tamil', sans-serif;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--template-primary, #16130f);
+  text-shadow: none;
+  --t51-lead: 80ms;
+  --t51-step: 120ms;
+  --t51-finale: 70ms;
+}
+.t51-block .t51-line {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: center !important;
+  align-items: flex-end !important;
+  column-gap: 0 !important;
+  row-gap: 0.6em !important;
+  max-width: min(100%, 13em) !important;
+  line-height: 1.05 !important;
+  white-space: normal !important;
+  padding: 0.35em 0.5em 0.3em !important;
+}
+.t51-block .t51-line > .w {
+  position: relative;
+  isolation: isolate;
+  margin: 0 0.24em 0 0.26em;
+  transform-origin: 0% 100%;
+  color: var(--template-primary, #16130f);
+  -webkit-text-fill-color: var(--template-primary, #16130f);
+}
+.t51-block .t51-line > .w::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: -0.14em -0.22em -0.12em -0.22em;
+  border: 0.05em solid #2a241c;
+  border-radius: 0.14em;
+  background: linear-gradient(180deg, #fffaf0 0%, #ede4cf 100%);
+  box-shadow: 0.1em 0.06em 0 #b8ac91, 0.14em 0.12em 0.2em rgba(0, 0, 0, 0.45);
+}
+.t51-block .t51-line > .w[data-imp='true'] ~ .w { --t51-shift: -1; }
+.t51-block .t51-line > .w[data-imp='true'] {
+  font-size: 1.32em;
+  color: var(--template-highlight, #f4c430);
+  -webkit-text-fill-color: var(--template-highlight, #f4c430);
+}
+.t51-block .t51-line > .w[data-imp='true']::before {
+  border-color: #f4c430;
+  background: linear-gradient(180deg, #2b2b2b 0%, #0d0d0d 100%);
+  box-shadow: 0.1em 0.06em 0 #000000, 0.16em 0.14em 0.24em rgba(0, 0, 0, 0.55);
+}
+.t51-block.active .t51-line > .w {
+  animation: t51-stand 520ms linear both;
+  animation-delay: calc(var(--t51-lead) + (var(--lekha-word-step) + var(--t51-shift, 0)) * var(--t51-step));
+}
+.t51-block.active .t51-line > .w[data-imp='true'] {
+  animation: t51-thud 640ms linear both;
+  animation-delay: calc(var(--t51-lead) + (var(--lekha-word-step) + var(--lekha-word-rest)) * var(--t51-step) + var(--t51-finale));
+}
+.t51-b0 { --t51-step: 75ms; }
+.t51-b0.active .t51-line > .w { --t51-step: 75ms; }
+.t51-b1 { --t51-step: 150ms; }
+.t51-b2.active .t51-line > .w:not([data-imp='true']) {
+  animation-delay: calc(var(--t51-lead) + max(0, var(--lekha-word-rest) - 1 - var(--t51-shift, 0)) * var(--t51-step));
+}
+.t51-b3 { --t51-step: 200ms; }
+.t51-b3.active .t51-line > .w { animation-duration: 640ms; }
+.t51-b3.active .t51-line > .w[data-imp='true'] { animation-duration: 760ms; }
+.t51-b4 { --t51-finale: 420ms; }
+@keyframes t51-stand {
+  0% { opacity: 0; transform: rotate(-90deg); animation-timing-function: cubic-bezier(0.4, 0, 0.75, 0.6); }
+  8% { opacity: 1; }
+  66% { transform: rotate(6deg); animation-timing-function: ease-in-out; }
+  84% { transform: rotate(-1.5deg); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes t51-thud {
+  0% { opacity: 0; transform: rotate(-90deg); animation-timing-function: cubic-bezier(0.5, 0, 0.85, 0.5); }
+  8% { opacity: 1; }
+  56% { transform: rotate(2deg); animation-timing-function: ease-out; }
+  66% { transform: translateY(0.06em) scale(1.04, 0.9); }
+  80% { transform: translateY(-0.04em) scale(0.98, 1.04); }
+  92% { transform: scale(1.01, 0.99); }
+  100% { opacity: 1; transform: none; }
+}
+
+/* ===== T52 — RECEIPT PRINT ===== */
+.stage.t52-stage { background: radial-gradient(120% 90% at 50% 10%, #2b2824 0%, #171513 75%); }
+.stage.t52-stage .t52-block { font-size: clamp(13px, 4.9cqw, 21px); }
+.t52-block {
+  font-family: 'Ubuntu Mono', 'Noto Sans Mono', 'Noto Sans Devanagari', 'Noto Sans Telugu', 'Noto Sans Tamil', monospace;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--template-primary, #2a2a2a);
+  text-shadow: none;
+  --t52-lead: 100ms;
+  --t52-step: 130ms;
+}
+.t52-block .t52-line {
+  position: relative;
+  container-type: inline-size;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: flex-start !important;
+  align-items: baseline !important;
+  column-gap: 0 !important;
+  row-gap: 0.2em !important;
+  width: 11.5em !important;
+  max-width: 100% !important;
+  line-height: 1.3 !important;
+  white-space: normal !important;
+  padding: 0.75em 0.8em 1.1em !important;
+  background-color: #f7f4ec;
+  background-image: repeating-linear-gradient(180deg, rgba(0, 0, 0, 0.025) 0 0.08em, transparent 0.08em 0.32em);
+  -webkit-mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 0.7em 100%;
+  mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 0.7em 100%;
+}
+.t52-block .t52-line::before,
+.t52-block .t52-line::after {
+  content: '';
+  flex-basis: 100%;
+  height: 0;
+}
+.t52-block .t52-line::before { order: 1; }
+.t52-block .t52-line::after { order: 3; }
+.t52-block .t52-line:not(:has(> .w[data-imp='true']))::before,
+.t52-block .t52-line:not(:has(> .w[data-imp='true']))::after,
+.t52-block .t52-line:has(> .w[data-imp='true']:first-of-type)::before,
+.t52-block .t52-line:has(> .w[data-imp='true']:last-of-type)::after { display: none; }
+.t52-block .t52-line > .w {
+  position: relative;
+  margin: 0 0.24em 0 0;
+  color: var(--template-primary, #2a2a2a);
+  -webkit-text-fill-color: var(--template-primary, #2a2a2a);
+}
+.t52-block .t52-line > .w[data-imp='true'] {
+  order: 2;
+  margin: 0.25em 0.24em 0.05em auto;
+  font-size: 1.12em;
+  font-weight: 700;
+  color: var(--template-highlight, #c1121f);
+  -webkit-text-fill-color: var(--template-highlight, #c1121f);
+}
+.t52-block .t52-line > .w[data-imp='true'] ~ .w { order: 4; }
+.t52-block .t52-line > .w[data-imp='true']::before {
+  content: 'TOTAL';
+  position: absolute;
+  left: calc(100% + 0.24em - 100cqw);
+  bottom: 0;
+  font-weight: 700;
+  white-space: nowrap;
+  color: #2a2a2a;
+  -webkit-text-fill-color: #2a2a2a;
+}
+.t52-block .t52-line > .w[data-imp='true']::after {
+  content: '';
+  position: absolute;
+  left: calc(100% + 0.24em - 100cqw + 6.4ch);
+  right: calc(100% + 0.35em);
+  bottom: 0.3em;
+  border-bottom: 0.12em dotted #2a2a2a;
+}
+.t52-b0.active .t52-line { animation: t52-feed 700ms steps(7, end) 60ms both; }
+.t52-b0.active .t52-line > .w[data-imp='true'] { animation: t52-total 520ms steps(8, end) 820ms both; }
+.t52-b1.active .t52-line > .w,
+.t52-b3.active .t52-line > .w,
+.t52-b5.active .t52-line > .w {
+  animation: t52-print 160ms steps(2, end) both;
+  animation-delay: calc(var(--t52-lead) + var(--lekha-word-step) * var(--t52-step));
+}
+.t52-b3.active .t52-line > .w { animation: t52-fade 300ms ease-out both; animation-delay: calc(var(--t52-lead) + var(--lekha-word-step) * 170ms); }
+.t52-b5.active .t52-line > .w { animation: t52-nudge 240ms steps(3, end) both; animation-delay: calc(var(--t52-lead) + var(--lekha-word-step) * var(--t52-step)); }
+.t52-b1.active .t52-line > .w[data-imp='true'],
+.t52-b3.active .t52-line > .w[data-imp='true'],
+.t52-b5.active .t52-line > .w[data-imp='true'] {
+  animation: t52-total 520ms steps(8, end) both;
+  animation-delay: calc(var(--t52-lead) + (var(--lekha-word-step) + var(--lekha-word-rest)) * var(--t52-step) + 220ms);
+}
+.t52-b2.active .t52-line { animation: t52-feed 900ms steps(10, end) 60ms both; }
+.t52-b2.active .t52-line > .w {
+  animation: t52-print 140ms steps(2, end) both;
+  animation-delay: calc(140ms + var(--lekha-word-step) * 55ms);
+}
+.t52-b2.active .t52-line > .w[data-imp='true'] { animation: t52-total 480ms steps(8, end) 980ms both; }
+.t52-b4.active .t52-line { animation: t52-tear 620ms linear 60ms both; transform-origin: 50% 0%; }
+.t52-b4.active .t52-line > .w[data-imp='true'] { animation: t52-total 520ms steps(8, end) 720ms both; }
+@keyframes t52-feed {
+  0% { transform: translateY(1.6em); clip-path: inset(0 0 100% 0); }
+  99.9% { transform: none; clip-path: inset(-1em -1em -1em -1em); }
+  100% { transform: none; clip-path: none; }
+}
+@keyframes t52-print {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+@keyframes t52-fade {
+  0% { opacity: 0; transform: translateY(0.2em); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes t52-nudge {
+  0% { opacity: 0; transform: translateX(0.45em); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes t52-total {
+  0% { opacity: 1; clip-path: inset(-0.5em 100cqw -0.5em -20em); }
+  99.9% { opacity: 1; clip-path: inset(-0.5em -0.3em -0.5em -20em); }
+  100% { opacity: 1; clip-path: none; }
+}
+@keyframes t52-tear {
+  0% { opacity: 0; transform: translateY(-0.5em) rotate(-3deg); animation-timing-function: ease-out; }
+  35% { opacity: 1; transform: translateY(0.06em) rotate(1.6deg); animation-timing-function: ease-in-out; }
+  65% { transform: rotate(-0.7deg); }
+  85% { transform: rotate(0.25deg); }
+  100% { opacity: 1; transform: none; }
+}
 
 
 /* -- Basic Templates ---------------------------------------- */
@@ -4562,6 +6173,355 @@ body {
     </div>
   </div>
 
+  <!-- T41 -->
+  <div class="tcard" id="card-t41">
+    <div class="tcard-meta">
+      <span class="tcard-id">T41</span>
+      <span class="tcard-name">Magnet Poetry</span>
+      <span class="tcard-mood">playful</span>
+      <span class="formula-badge f2">2-Style</span>
+    </div>
+    <div class="stage t41-stage" id="stage-t41">
+      <div class="sblock t41-block t41-b0" id="t41-b0" data-type="styled" data-label="FRIDGE SNAP" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-seq t41-line" data-text="Leave a {imp-t41:little} note on the fridge"><span class="w" data-i="0">Leave</span> <span class="w" data-i="1">a</span> <span class="w imp-t41" data-i="2" data-imp="true" data-imp-cls="imp-t41">little</span> <span class="w" data-i="3">note</span> <span class="w" data-i="4">on</span> <span class="w" data-i="5">the</span> <span class="w" data-i="6">fridge</span></span>
+      </div>
+      <div class="sblock t41-block t41-b1" id="t41-b1" data-type="wbw-rise" data-label="TILE BY TILE" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-rise t41-line" data-text="Words stick when you {imp-t41:mean} them"><span class="w" data-i="0">Words</span> <span class="w" data-i="1">stick</span> <span class="w" data-i="2">when</span> <span class="w" data-i="3">you</span> <span class="w imp-t41" data-i="4" data-imp="true" data-imp-cls="imp-t41">mean</span> <span class="w" data-i="5">them</span></span>
+      </div>
+      <div class="sblock t41-block t41-b2" id="t41-b2" data-type="styled" data-label="KEY TILE FIRST" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-seq t41-line" data-text="Every {imp-t41:morning} starts a new poem"><span class="w" data-i="0">Every</span> <span class="w imp-t41" data-i="1" data-imp="true" data-imp-cls="imp-t41">morning</span> <span class="w" data-i="2">starts</span> <span class="w" data-i="3">a</span> <span class="w" data-i="4">new</span> <span class="w" data-i="5">poem</span></span>
+      </div>
+      <div class="sblock t41-block t41-b3" id="t41-b3" data-type="wbw-seq-fade" data-label="SLOW MAGNETS" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-seq-fade t41-line" data-text="Slowly the sentence {imp-t41:finds} its shape"><span class="w" data-i="0">Slowly</span> <span class="w" data-i="1">the</span> <span class="w" data-i="2">sentence</span> <span class="w imp-t41" data-i="3" data-imp="true" data-imp-cls="imp-t41">finds</span> <span class="w" data-i="4">its</span> <span class="w" data-i="5">shape</span></span>
+      </div>
+      <div class="sblock t41-block t41-b4" id="t41-b4" data-type="wbw-slide" data-label="SLIDE AND STICK" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-slide t41-line" data-text="Move it until it feels {imp-t41:true}"><span class="w" data-i="0">Move</span> <span class="w" data-i="1">it</span> <span class="w" data-i="2">until</span> <span class="w" data-i="3">it</span> <span class="w" data-i="4">feels</span> <span class="w imp-t41" data-i="5" data-imp="true" data-imp-cls="imp-t41">true</span></span>
+      </div>
+      <span class="stage-type-label" id="t41-label">FRIDGE SNAP</span>
+    </div>
+    <div class="prog-dots" id="dots-t41">
+      <div class="dot active"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    </div>
+  </div>
+  <!-- T42 -->
+  <div class="tcard" id="card-t42">
+    <div class="tcard-meta">
+      <span class="tcard-id">T42</span>
+      <span class="tcard-name">Label Maker</span>
+      <span class="tcard-mood">organized</span>
+      <span class="formula-badge f1">1-Style</span>
+    </div>
+    <div class="stage t42-stage" id="stage-t42">
+      <div class="sblock t42-block t42-b0" id="t42-b0" data-type="styled" data-label="TAPE FEED" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-seq t42-line" data-text="Label {imp-t42:everything} you own"><span class="w" data-i="0">Label</span> <span class="w imp-t42" data-i="1" data-imp="true" data-imp-cls="imp-t42">everything</span> <span class="w" data-i="2">you</span> <span class="w" data-i="3">own</span></span>
+      </div>
+      <div class="sblock t42-block t42-b1" id="t42-b1" data-type="wbw-slide" data-label="CLICK BY CLICK" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-slide t42-line" data-text="Inbox zero by {imp-t42:Friday}"><span class="w" data-i="0">Inbox</span> <span class="w" data-i="1">zero</span> <span class="w" data-i="2">by</span> <span class="w imp-t42" data-i="3" data-imp="true" data-imp-cls="imp-t42">Friday</span></span>
+      </div>
+      <div class="sblock t42-block t42-b2" id="t42-b2" data-type="wbw-rise" data-label="PUNCH ROW" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-rise t42-line" data-text="Sort the drawer {imp-t42:today}"><span class="w" data-i="0">Sort</span> <span class="w" data-i="1">the</span> <span class="w" data-i="2">drawer</span> <span class="w imp-t42" data-i="3" data-imp="true" data-imp-cls="imp-t42">today</span></span>
+      </div>
+      <div class="sblock t42-block t42-b3" id="t42-b3" data-type="wbw-seq-fade" data-label="RIBBON CLICKS" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-seq-fade t42-line" data-text="One shelf for {imp-t42:ideas}"><span class="w" data-i="0">One</span> <span class="w" data-i="1">shelf</span> <span class="w" data-i="2">for</span> <span class="w imp-t42" data-i="3" data-imp="true" data-imp-cls="imp-t42">ideas</span></span>
+      </div>
+      <span class="stage-type-label" id="t42-label">TAPE FEED</span>
+    </div>
+    <div class="prog-dots" id="dots-t42">
+      <div class="dot active"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    </div>
+  </div>
+  <!-- T43 -->
+  <div class="tcard" id="card-t43">
+    <div class="tcard-meta">
+      <span class="tcard-id">T43</span>
+      <span class="tcard-name">Split-Flap Board</span>
+      <span class="tcard-mood">travel</span>
+      <span class="formula-badge f1">1-Style</span>
+    </div>
+    <div class="stage t43-stage" id="stage-t43">
+      <div class="sblock t43-block t43-b0" id="t43-b0" data-type="styled" data-label="DEPARTURES" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-seq t43-line" data-text="Now departing to {imp-t43:Lisbon}"><span class="w" data-i="0">Now</span> <span class="w" data-i="1">departing</span> <span class="w" data-i="2">to</span> <span class="w imp-t43" data-i="3" data-imp="true" data-imp-cls="imp-t43">Lisbon</span></span>
+      </div>
+      <div class="sblock t43-block t43-b1" id="t43-b1" data-type="wbw-rise" data-label="GATE CHANGE" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-rise t43-line" data-text="Gate changed to {imp-t43:B12}"><span class="w" data-i="0">Gate</span> <span class="w" data-i="1">changed</span> <span class="w" data-i="2">to</span> <span class="w imp-t43" data-i="3" data-imp="true" data-imp-cls="imp-t43">B12</span></span>
+      </div>
+      <div class="sblock t43-block t43-b2" id="t43-b2" data-type="wbw-seq-fade" data-label="FINAL CALL" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-seq-fade t43-line" data-text="Final call for {imp-t43:boarding}"><span class="w" data-i="0">Final</span> <span class="w" data-i="1">call</span> <span class="w" data-i="2">for</span> <span class="w imp-t43" data-i="3" data-imp="true" data-imp-cls="imp-t43">boarding</span></span>
+      </div>
+      <div class="sblock t43-block t43-b3" id="t43-b3" data-type="wbw-slide" data-label="NOW BOARDING" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-slide t43-line" data-text="Your next stop is {imp-t43:home}"><span class="w" data-i="0">Your</span> <span class="w" data-i="1">next</span> <span class="w" data-i="2">stop</span> <span class="w" data-i="3">is</span> <span class="w imp-t43" data-i="4" data-imp="true" data-imp-cls="imp-t43">home</span></span>
+      </div>
+      <span class="stage-type-label" id="t43-label">DEPARTURES</span>
+    </div>
+    <div class="prog-dots" id="dots-t43">
+      <div class="dot active"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    </div>
+  </div>
+  <!-- T44 -->
+  <div class="tcard" id="card-t44">
+    <div class="tcard-meta">
+      <span class="tcard-id">T44</span>
+      <span class="tcard-name">Chat Thread</span>
+      <span class="tcard-mood">storytime</span>
+      <span class="formula-badge f1">1-Style</span>
+    </div>
+    <div class="stage t44-stage" id="stage-t44">
+      <div class="sblock t44-block t44-b0" id="t44-b0" data-type="styled" data-label="THEY TYPED" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="t44-thread t44-them"><span class="t44-typing" aria-hidden="true"><span class="t44-dot"></span><span class="t44-dot"></span><span class="t44-dot"></span></span><span class="wbw-seq t44-line" data-text="You will not {imp-t44:believe} this"><span class="w" data-i="0">You</span> <span class="w" data-i="1">will</span> <span class="w" data-i="2">not</span> <span class="w imp-t44" data-i="3" data-imp="true" data-imp-cls="imp-t44">believe</span> <span class="w" data-i="4">this</span></span></span>
+      </div>
+      <div class="sblock t44-block t44-b1" id="t44-b1" data-type="wbw-rise" data-label="I REPLIED" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="t44-thread t44-me"><span class="t44-typing" aria-hidden="true"><span class="t44-dot"></span><span class="t44-dot"></span><span class="t44-dot"></span></span><span class="wbw-rise t44-line" data-text="Wait, tell me {imp-t44:everything}"><span class="w" data-i="0">Wait,</span> <span class="w" data-i="1">tell</span> <span class="w" data-i="2">me</span> <span class="w imp-t44" data-i="3" data-imp="true" data-imp-cls="imp-t44">everything</span></span></span>
+      </div>
+      <div class="sblock t44-block t44-b2" id="t44-b2" data-type="wbw-seq-fade" data-label="THEY SENT" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="t44-thread t44-them"><span class="t44-typing" aria-hidden="true"><span class="t44-dot"></span><span class="t44-dot"></span><span class="t44-dot"></span></span><span class="wbw-seq-fade t44-line" data-text="So I opened the {imp-t44:door}"><span class="w" data-i="0">So</span> <span class="w" data-i="1">I</span> <span class="w" data-i="2">opened</span> <span class="w" data-i="3">the</span> <span class="w imp-t44" data-i="4" data-imp="true" data-imp-cls="imp-t44">door</span></span></span>
+      </div>
+      <div class="sblock t44-block t44-b3" id="t44-b3" data-type="wbw-slide" data-label="I REACTED" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="t44-thread t44-me"><span class="t44-typing" aria-hidden="true"><span class="t44-dot"></span><span class="t44-dot"></span><span class="t44-dot"></span></span><span class="wbw-slide t44-line" data-text="No way, that is {imp-t44:wild}"><span class="w" data-i="0">No</span> <span class="w" data-i="1">way,</span> <span class="w" data-i="2">that</span> <span class="w" data-i="3">is</span> <span class="w imp-t44" data-i="4" data-imp="true" data-imp-cls="imp-t44">wild</span></span></span>
+      </div>
+      <span class="stage-type-label" id="t44-label">THEY TYPED</span>
+    </div>
+    <div class="prog-dots" id="dots-t44">
+      <div class="dot active"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    </div>
+  </div>
+  <!-- T45 -->
+  <div class="tcard" id="card-t45">
+    <div class="tcard-meta">
+      <span class="tcard-id">T45</span>
+      <span class="tcard-name">Transit Line</span>
+      <span class="tcard-mood">journey</span>
+      <span class="formula-badge f3">3-Style</span>
+    </div>
+    <div class="stage t45-stage" id="stage-t45">
+      <div class="sblock t45-block t45-b0" id="t45-b0" data-type="styled" data-label="ROUTE DRAW" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-seq t45-line" data-text="Start where you {imp-t45:are} today"><span class="w" data-i="0">Start</span> <span class="w" data-i="1">where</span> <span class="w" data-i="2">you</span> <span class="w imp-t45" data-i="3" data-imp="true" data-imp-cls="imp-t45">are</span> <span class="w" data-i="4">today</span></span>
+      </div>
+      <div class="sblock t45-block t45-b1" id="t45-b1" data-type="wbw-rise" data-label="NEXT STOP" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-rise t45-line" data-text="Every step is a {imp-t45:station}"><span class="w" data-i="0">Every</span> <span class="w" data-i="1">step</span> <span class="w" data-i="2">is</span> <span class="w" data-i="3">a</span> <span class="w imp-t45" data-i="4" data-imp="true" data-imp-cls="imp-t45">station</span></span>
+      </div>
+      <div class="sblock t45-block t45-b2" id="t45-b2" data-type="styled" data-label="EXPRESS RUN" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-seq t45-line" data-text="Change lines at the {imp-t45:middle}"><span class="w" data-i="0">Change</span> <span class="w" data-i="1">lines</span> <span class="w" data-i="2">at</span> <span class="w" data-i="3">the</span> <span class="w imp-t45" data-i="4" data-imp="true" data-imp-cls="imp-t45">middle</span></span>
+      </div>
+      <div class="sblock t45-block t45-b3" id="t45-b3" data-type="wbw-seq-fade" data-label="LOCAL SERVICE" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-seq-fade t45-line" data-text="Keep riding past the {imp-t45:doubt}"><span class="w" data-i="0">Keep</span> <span class="w" data-i="1">riding</span> <span class="w" data-i="2">past</span> <span class="w" data-i="3">the</span> <span class="w imp-t45" data-i="4" data-imp="true" data-imp-cls="imp-t45">doubt</span></span>
+      </div>
+      <div class="sblock t45-block t45-b4" id="t45-b4" data-type="styled" data-label="INTERCHANGE" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-seq t45-line" data-text="Transfer to the {imp-t45:next} idea"><span class="w" data-i="0">Transfer</span> <span class="w" data-i="1">to</span> <span class="w" data-i="2">the</span> <span class="w imp-t45" data-i="3" data-imp="true" data-imp-cls="imp-t45">next</span> <span class="w" data-i="4">idea</span></span>
+      </div>
+      <div class="sblock t45-block t45-b5" id="t45-b5" data-type="wbw-slide" data-label="LAST TRAIN" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-slide t45-line" data-text="The last stop is {imp-t45:arrival}"><span class="w" data-i="0">The</span> <span class="w" data-i="1">last</span> <span class="w" data-i="2">stop</span> <span class="w" data-i="3">is</span> <span class="w imp-t45" data-i="4" data-imp="true" data-imp-cls="imp-t45">arrival</span></span>
+      </div>
+      <span class="stage-type-label" id="t45-label">ROUTE DRAW</span>
+    </div>
+    <div class="prog-dots" id="dots-t45">
+      <div class="dot active"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    </div>
+  </div>
+  <!-- T46 -->
+  <div class="tcard" id="card-t46">
+    <div class="tcard-meta">
+      <span class="tcard-id">T46</span>
+      <span class="tcard-name">Blueprint</span>
+      <span class="tcard-mood">explainer</span>
+      <span class="formula-badge f1">1-Style</span>
+    </div>
+    <div class="stage t46-stage" id="stage-t46">
+      <div class="sblock t46-block t46-b0" id="t46-b0" data-type="styled" data-label="PLOT SHEET" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-seq t46-line" data-text="Measure the {imp-t46:problem} first"><span class="w" data-i="0">Measure</span> <span class="w" data-i="1">the</span> <span class="w imp-t46" data-i="2" data-imp="true" data-imp-cls="imp-t46">problem</span> <span class="w" data-i="3">first</span></span>
+      </div>
+      <div class="sblock t46-block t46-b1" id="t46-b1" data-type="wbw-rise" data-label="DRAFT LINES" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-rise t46-line" data-text="Every system has a {imp-t46:core}"><span class="w" data-i="0">Every</span> <span class="w" data-i="1">system</span> <span class="w" data-i="2">has</span> <span class="w" data-i="3">a</span> <span class="w imp-t46" data-i="4" data-imp="true" data-imp-cls="imp-t46">core</span></span>
+      </div>
+      <div class="sblock t46-block t46-b2" id="t46-b2" data-type="wbw-seq-fade" data-label="MEASURE" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-seq-fade t46-line" data-text="Scale the {imp-t46:design} slowly"><span class="w" data-i="0">Scale</span> <span class="w" data-i="1">the</span> <span class="w imp-t46" data-i="2" data-imp="true" data-imp-cls="imp-t46">design</span> <span class="w" data-i="3">slowly</span></span>
+      </div>
+      <div class="sblock t46-block t46-b3" id="t46-b3" data-type="wbw-slide" data-label="ANNOTATE" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-slide t46-line" data-text="Label the parts that {imp-t46:matter}"><span class="w" data-i="0">Label</span> <span class="w" data-i="1">the</span> <span class="w" data-i="2">parts</span> <span class="w" data-i="3">that</span> <span class="w imp-t46" data-i="4" data-imp="true" data-imp-cls="imp-t46">matter</span></span>
+      </div>
+      <span class="stage-type-label" id="t46-label">PLOT SHEET</span>
+    </div>
+    <div class="prog-dots" id="dots-t46">
+      <div class="dot active"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    </div>
+  </div>
+  <!-- T47 -->
+  <div class="tcard" id="card-t47">
+    <div class="tcard-meta">
+      <span class="tcard-id">T47</span>
+      <span class="tcard-name">Sticker Slap</span>
+      <span class="tcard-mood">hype</span>
+      <span class="formula-badge f2">2-Style</span>
+    </div>
+    <div class="stage t47-stage" id="stage-t47">
+      <div class="sblock t47-block t47-b0" id="t47-b0" data-type="styled" data-label="SLAP" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-seq t47-line" data-text="This is {imp-t47:iconic} honestly"><span class="w" data-i="0">This</span> <span class="w" data-i="1">is</span> <span class="w imp-t47" data-i="2" data-imp="true" data-imp-cls="imp-t47">iconic</span> <span class="w" data-i="3">honestly</span></span>
+      </div>
+      <div class="sblock t47-block t47-b1" id="t47-b1" data-type="wbw-rise" data-label="PEEL ON" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-rise t47-line" data-text="Main character {imp-t47:energy} only"><span class="w" data-i="0">Main</span> <span class="w" data-i="1">character</span> <span class="w imp-t47" data-i="2" data-imp="true" data-imp-cls="imp-t47">energy</span> <span class="w" data-i="3">only</span></span>
+      </div>
+      <div class="sblock t47-block t47-b2" id="t47-b2" data-type="styled" data-label="BACKHAND SLAP" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-seq t47-line" data-text="We are so {imp-t47:back}"><span class="w" data-i="0">We</span> <span class="w" data-i="1">are</span> <span class="w" data-i="2">so</span> <span class="w imp-t47" data-i="3" data-imp="true" data-imp-cls="imp-t47">back</span></span>
+      </div>
+      <div class="sblock t47-block t47-b3" id="t47-b3" data-type="wbw-seq-fade" data-label="STICKER DROP" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-seq-fade t47-line" data-text="Slay the whole {imp-t47:week}"><span class="w" data-i="0">Slay</span> <span class="w" data-i="1">the</span> <span class="w" data-i="2">whole</span> <span class="w imp-t47" data-i="3" data-imp="true" data-imp-cls="imp-t47">week</span></span>
+      </div>
+      <div class="sblock t47-block t47-b4" id="t47-b4" data-type="wbw-slide" data-label="SIDE SLAP" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-slide t47-line" data-text="No thoughts just {imp-t47:vibes}"><span class="w" data-i="0">No</span> <span class="w" data-i="1">thoughts</span> <span class="w" data-i="2">just</span> <span class="w imp-t47" data-i="3" data-imp="true" data-imp-cls="imp-t47">vibes</span></span>
+      </div>
+      <span class="stage-type-label" id="t47-label">SLAP</span>
+    </div>
+    <div class="prog-dots" id="dots-t47">
+      <div class="dot active"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    </div>
+  </div>
+  <!-- T48 -->
+  <div class="tcard" id="card-t48">
+    <div class="tcard-meta">
+      <span class="tcard-id">T48</span>
+      <span class="tcard-name">Ransom Cutout</span>
+      <span class="tcard-mood">mystery</span>
+      <span class="formula-badge f1">1-Style</span>
+    </div>
+    <div class="stage t48-stage" id="stage-t48">
+      <div class="sblock t48-block t48-b0" id="t48-b0" data-type="styled" data-label="CUT AND PASTE" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-seq t48-line" data-text="We know your {imp-t48:secret}"><span class="w" data-i="0">We</span> <span class="w" data-i="1">know</span> <span class="w" data-i="2">your</span> <span class="w imp-t48" data-i="3" data-imp="true" data-imp-cls="imp-t48">secret</span></span>
+      </div>
+      <div class="sblock t48-block t48-b1" id="t48-b1" data-type="wbw-rise" data-label="SCRAP DROP" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-rise t48-line" data-text="Meet me at {imp-t48:midnight}"><span class="w" data-i="0">Meet</span> <span class="w" data-i="1">me</span> <span class="w" data-i="2">at</span> <span class="w imp-t48" data-i="3" data-imp="true" data-imp-cls="imp-t48">midnight</span></span>
+      </div>
+      <div class="sblock t48-block t48-b2" id="t48-b2" data-type="wbw-seq-fade" data-label="NOTE BUILD" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-seq-fade t48-line" data-text="Nobody saw the {imp-t48:truth}"><span class="w" data-i="0">Nobody</span> <span class="w" data-i="1">saw</span> <span class="w" data-i="2">the</span> <span class="w imp-t48" data-i="3" data-imp="true" data-imp-cls="imp-t48">truth</span></span>
+      </div>
+      <div class="sblock t48-block t48-b3" id="t48-b3" data-type="wbw-slide" data-label="GLUE STRIP" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-slide t48-line" data-text="Read this note {imp-t48:twice}"><span class="w" data-i="0">Read</span> <span class="w" data-i="1">this</span> <span class="w" data-i="2">note</span> <span class="w imp-t48" data-i="3" data-imp="true" data-imp-cls="imp-t48">twice</span></span>
+      </div>
+      <span class="stage-type-label" id="t48-label">CUT AND PASTE</span>
+    </div>
+    <div class="prog-dots" id="dots-t48">
+      <div class="dot active"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    </div>
+  </div>
+  <!-- T49 -->
+  <div class="tcard" id="card-t49">
+    <div class="tcard-meta">
+      <span class="tcard-id">T49</span>
+      <span class="tcard-name">Equalizer Stage</span>
+      <span class="tcard-mood">music</span>
+      <span class="formula-badge f2">2-Style</span>
+    </div>
+    <div class="stage t49-stage" id="stage-t49">
+      <div class="sblock t49-block t49-b0" id="t49-b0" data-type="styled" data-label="SOUNDCHECK" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-seq t49-line" data-text="Turn the {imp-t49:volume} up"><span class="w" data-i="0">Turn</span> <span class="w" data-i="1">the</span> <span class="w imp-t49" data-i="2" data-imp="true" data-imp-cls="imp-t49">volume</span> <span class="w" data-i="3">up</span></span>
+      </div>
+      <div class="sblock t49-block t49-b1" id="t49-b1" data-type="wbw-rise" data-label="LEVEL UP" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-rise t49-line" data-text="Feel the {imp-t49:bass} drop"><span class="w" data-i="0">Feel</span> <span class="w" data-i="1">the</span> <span class="w imp-t49" data-i="2" data-imp="true" data-imp-cls="imp-t49">bass</span> <span class="w" data-i="3">drop</span></span>
+      </div>
+      <div class="sblock t49-block t49-b2" id="t49-b2" data-type="styled" data-label="BASS SPIKE" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-seq t49-line" data-text="This track hits {imp-t49:different}"><span class="w" data-i="0">This</span> <span class="w" data-i="1">track</span> <span class="w" data-i="2">hits</span> <span class="w imp-t49" data-i="3" data-imp="true" data-imp-cls="imp-t49">different</span></span>
+      </div>
+      <div class="sblock t49-block t49-b3" id="t49-b3" data-type="wbw-seq-fade" data-label="SLOW JAM" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-seq-fade t49-line" data-text="Slow songs on {imp-t49:repeat}"><span class="w" data-i="0">Slow</span> <span class="w" data-i="1">songs</span> <span class="w" data-i="2">on</span> <span class="w imp-t49" data-i="3" data-imp="true" data-imp-cls="imp-t49">repeat</span></span>
+      </div>
+      <div class="sblock t49-block t49-b4" id="t49-b4" data-type="wbw-slide" data-label="CROSSFADE" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-slide t49-line" data-text="Stay for the {imp-t49:chorus}"><span class="w" data-i="0">Stay</span> <span class="w" data-i="1">for</span> <span class="w" data-i="2">the</span> <span class="w imp-t49" data-i="3" data-imp="true" data-imp-cls="imp-t49">chorus</span></span>
+      </div>
+      <span class="stage-type-label" id="t49-label">SOUNDCHECK</span>
+    </div>
+    <div class="prog-dots" id="dots-t49">
+      <div class="dot active"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    </div>
+  </div>
+  <!-- T50 -->
+  <div class="tcard" id="card-t50">
+    <div class="tcard-meta">
+      <span class="tcard-id">T50</span>
+      <span class="tcard-name">Rewrite</span>
+      <span class="tcard-mood">twist</span>
+      <span class="formula-badge f1">1-Style</span>
+    </div>
+    <div class="stage t50-stage" id="stage-t50">
+      <div class="sblock t50-block t50-b0" id="t50-b0" data-type="styled" data-label="TRACK CHANGES" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-seq t50-line" data-text="It was {imp-t50:definitely} worth it"><span class="w" data-i="0">It</span> <span class="w" data-i="1">was</span> <span class="w imp-t50" data-i="2" data-imp="true" data-imp-cls="imp-t50">definitely</span> <span class="w" data-i="3">worth</span> <span class="w" data-i="4">it</span></span>
+      </div>
+      <div class="sblock t50-block t50-b1" id="t50-b1" data-type="wbw-rise" data-label="LIVE EDIT" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-rise t50-line" data-text="I will {imp-t50:always} try again"><span class="w" data-i="0">I</span> <span class="w" data-i="1">will</span> <span class="w imp-t50" data-i="2" data-imp="true" data-imp-cls="imp-t50">always</span> <span class="w" data-i="3">try</span> <span class="w" data-i="4">again</span></span>
+      </div>
+      <div class="sblock t50-block t50-b2" id="t50-b2" data-type="wbw-seq-fade" data-label="AUTOCORRECT" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-seq-fade t50-line" data-text="Start the project {imp-t50:today}"><span class="w" data-i="0">Start</span> <span class="w" data-i="1">the</span> <span class="w" data-i="2">project</span> <span class="w imp-t50" data-i="3" data-imp="true" data-imp-cls="imp-t50">today</span></span>
+      </div>
+      <div class="sblock t50-block t50-b3" id="t50-b3" data-type="wbw-slide" data-label="FINAL DRAFT" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-slide t50-line" data-text="We {imp-t50:finally} shipped it"><span class="w" data-i="0">We</span> <span class="w imp-t50" data-i="1" data-imp="true" data-imp-cls="imp-t50">finally</span> <span class="w" data-i="2">shipped</span> <span class="w" data-i="3">it</span></span>
+      </div>
+      <span class="stage-type-label" id="t50-label">TRACK CHANGES</span>
+    </div>
+    <div class="prog-dots" id="dots-t50">
+      <div class="dot active"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    </div>
+  </div>
+  <!-- T51 -->
+  <div class="tcard" id="card-t51">
+    <div class="tcard-meta">
+      <span class="tcard-id">T51</span>
+      <span class="tcard-name">Domino Topple</span>
+      <span class="tcard-mood">chain reaction</span>
+      <span class="formula-badge f2">2-Style</span>
+    </div>
+    <div class="stage t51-stage" id="stage-t51">
+      <div class="sblock t51-block t51-b0" id="t51-b0" data-type="styled" data-label="CHAIN REACTION" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-seq t51-line" data-text="One small habit changes {imp-t51:everything}"><span class="w" data-i="0">One</span> <span class="w" data-i="1">small</span> <span class="w" data-i="2">habit</span> <span class="w" data-i="3">changes</span> <span class="w imp-t51" data-i="4" data-imp="true" data-imp-cls="imp-t51">everything</span></span>
+      </div>
+      <div class="sblock t51-block t51-b1" id="t51-b1" data-type="wbw-rise" data-label="KNOCK ON" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-rise t51-line" data-text="Each choice pushes the {imp-t51:next}"><span class="w" data-i="0">Each</span> <span class="w" data-i="1">choice</span> <span class="w" data-i="2">pushes</span> <span class="w" data-i="3">the</span> <span class="w imp-t51" data-i="4" data-imp="true" data-imp-cls="imp-t51">next</span></span>
+      </div>
+      <div class="sblock t51-block t51-b2" id="t51-b2" data-type="styled" data-label="REVERSE RUN" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-seq t51-line" data-text="Small cause, big {imp-t51:effect}"><span class="w" data-i="0">Small</span> <span class="w" data-i="1">cause,</span> <span class="w" data-i="2">big</span> <span class="w imp-t51" data-i="3" data-imp="true" data-imp-cls="imp-t51">effect</span></span>
+      </div>
+      <div class="sblock t51-block t51-b3" id="t51-b3" data-type="wbw-seq-fade" data-label="SLOW TOPPLE" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-seq-fade t51-line" data-text="Momentum builds one {imp-t51:step} at a time"><span class="w" data-i="0">Momentum</span> <span class="w" data-i="1">builds</span> <span class="w" data-i="2">one</span> <span class="w imp-t51" data-i="3" data-imp="true" data-imp-cls="imp-t51">step</span> <span class="w" data-i="4">at</span> <span class="w" data-i="5">a</span> <span class="w" data-i="6">time</span></span>
+      </div>
+      <div class="sblock t51-block t51-b4" id="t51-b4" data-type="wbw-slide" data-label="LAST PIECE" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-slide t51-line" data-text="Then the last piece {imp-t51:falls}"><span class="w" data-i="0">Then</span> <span class="w" data-i="1">the</span> <span class="w" data-i="2">last</span> <span class="w" data-i="3">piece</span> <span class="w imp-t51" data-i="4" data-imp="true" data-imp-cls="imp-t51">falls</span></span>
+      </div>
+      <span class="stage-type-label" id="t51-label">CHAIN REACTION</span>
+    </div>
+    <div class="prog-dots" id="dots-t51">
+      <div class="dot active"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    </div>
+  </div>
+  <!-- T52 -->
+  <div class="tcard" id="card-t52">
+    <div class="tcard-meta">
+      <span class="tcard-id">T52</span>
+      <span class="tcard-name">Receipt Print</span>
+      <span class="tcard-mood">facts</span>
+      <span class="formula-badge f3">3-Style</span>
+    </div>
+    <div class="stage t52-stage" id="stage-t52">
+      <div class="sblock t52-block t52-b0" id="t52-b0" data-type="styled" data-label="TILL RECEIPT" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-seq t52-line" data-text="Coffee, rent and {imp-t52:dreams}"><span class="w" data-i="0">Coffee,</span> <span class="w" data-i="1">rent</span> <span class="w" data-i="2">and</span> <span class="w imp-t52" data-i="3" data-imp="true" data-imp-cls="imp-t52">dreams</span></span>
+      </div>
+      <div class="sblock t52-block t52-b1" id="t52-b1" data-type="wbw-rise" data-label="LINE ITEMS" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-rise t52-line" data-text="Three facts you {imp-t52:need}"><span class="w" data-i="0">Three</span> <span class="w" data-i="1">facts</span> <span class="w" data-i="2">you</span> <span class="w imp-t52" data-i="3" data-imp="true" data-imp-cls="imp-t52">need</span></span>
+      </div>
+      <div class="sblock t52-block t52-b2" id="t52-b2" data-type="styled" data-label="PRINT HEAD" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-seq t52-line" data-text="Saved this month {imp-t52:4200}"><span class="w" data-i="0">Saved</span> <span class="w" data-i="1">this</span> <span class="w" data-i="2">month</span> <span class="w imp-t52" data-i="3" data-imp="true" data-imp-cls="imp-t52">4200</span></span>
+      </div>
+      <div class="sblock t52-block t52-b3" id="t52-b3" data-type="wbw-seq-fade" data-label="TALLY" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-seq-fade t52-line" data-text="Hours spent learning {imp-t52:120}"><span class="w" data-i="0">Hours</span> <span class="w" data-i="1">spent</span> <span class="w" data-i="2">learning</span> <span class="w imp-t52" data-i="3" data-imp="true" data-imp-cls="imp-t52">120</span></span>
+      </div>
+      <div class="sblock t52-block t52-b4" id="t52-b4" data-type="styled" data-label="TEAR OFF" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-seq t52-line" data-text="Paid in full {imp-t52:today}"><span class="w" data-i="0">Paid</span> <span class="w" data-i="1">in</span> <span class="w" data-i="2">full</span> <span class="w imp-t52" data-i="3" data-imp="true" data-imp-cls="imp-t52">today</span></span>
+      </div>
+      <div class="sblock t52-block t52-b5" id="t52-b5" data-type="wbw-slide" data-label="CHANGE DUE" data-keyframe-template="true" style="transition: none; opacity: 0;">
+        <span class="wbw-slide t52-line" data-text="Your change is {imp-t52:priceless}"><span class="w" data-i="0">Your</span> <span class="w" data-i="1">change</span> <span class="w" data-i="2">is</span> <span class="w imp-t52" data-i="3" data-imp="true" data-imp-cls="imp-t52">priceless</span></span>
+      </div>
+      <span class="stage-type-label" id="t52-label">TILL RECEIPT</span>
+    </div>
+    <div class="prog-dots" id="dots-t52">
+      <div class="dot active"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    </div>
+  </div>
+
 </div><!-- /grid -->
 
 <script>
@@ -5255,6 +7215,122 @@ const templates = [
       { id: 't40-b1', type: 'styled', label: 'STYLED' },
       { id: 't40-b2', type: 'plain',  label: 'PLAIN' },
       { id: 't40-b3', type: 'styled', label: 'STYLED' },
+    ]
+  },
+  {
+    id: 't41',
+    blocks: [
+      { id: 't41-b0', type: 'styled', label: 'FRIDGE SNAP' },
+      { id: 't41-b1', type: 'wbw-rise', label: 'TILE BY TILE' },
+      { id: 't41-b2', type: 'styled', label: 'KEY TILE FIRST' },
+      { id: 't41-b3', type: 'wbw-seq-fade', label: 'SLOW MAGNETS' },
+      { id: 't41-b4', type: 'wbw-slide', label: 'SLIDE AND STICK' },
+    ]
+  },
+  {
+    id: 't42',
+    blocks: [
+      { id: 't42-b0', type: 'styled', label: 'TAPE FEED' },
+      { id: 't42-b1', type: 'wbw-slide', label: 'CLICK BY CLICK' },
+      { id: 't42-b2', type: 'wbw-rise', label: 'PUNCH ROW' },
+      { id: 't42-b3', type: 'wbw-seq-fade', label: 'RIBBON CLICKS' },
+    ]
+  },
+  {
+    id: 't43',
+    blocks: [
+      { id: 't43-b0', type: 'styled', label: 'DEPARTURES' },
+      { id: 't43-b1', type: 'wbw-rise', label: 'GATE CHANGE' },
+      { id: 't43-b2', type: 'wbw-seq-fade', label: 'FINAL CALL' },
+      { id: 't43-b3', type: 'wbw-slide', label: 'NOW BOARDING' },
+    ]
+  },
+  {
+    id: 't44',
+    blocks: [
+      { id: 't44-b0', type: 'styled', label: 'THEY TYPED' },
+      { id: 't44-b1', type: 'wbw-rise', label: 'I REPLIED' },
+      { id: 't44-b2', type: 'wbw-seq-fade', label: 'THEY SENT' },
+      { id: 't44-b3', type: 'wbw-slide', label: 'I REACTED' },
+    ]
+  },
+  {
+    id: 't45',
+    blocks: [
+      { id: 't45-b0', type: 'styled', label: 'ROUTE DRAW' },
+      { id: 't45-b1', type: 'wbw-rise', label: 'NEXT STOP' },
+      { id: 't45-b2', type: 'styled', label: 'EXPRESS RUN' },
+      { id: 't45-b3', type: 'wbw-seq-fade', label: 'LOCAL SERVICE' },
+      { id: 't45-b4', type: 'styled', label: 'INTERCHANGE' },
+      { id: 't45-b5', type: 'wbw-slide', label: 'LAST TRAIN' },
+    ]
+  },
+  {
+    id: 't46',
+    blocks: [
+      { id: 't46-b0', type: 'styled', label: 'PLOT SHEET' },
+      { id: 't46-b1', type: 'wbw-rise', label: 'DRAFT LINES' },
+      { id: 't46-b2', type: 'wbw-seq-fade', label: 'MEASURE' },
+      { id: 't46-b3', type: 'wbw-slide', label: 'ANNOTATE' },
+    ]
+  },
+  {
+    id: 't47',
+    blocks: [
+      { id: 't47-b0', type: 'styled', label: 'SLAP' },
+      { id: 't47-b1', type: 'wbw-rise', label: 'PEEL ON' },
+      { id: 't47-b2', type: 'styled', label: 'BACKHAND SLAP' },
+      { id: 't47-b3', type: 'wbw-seq-fade', label: 'STICKER DROP' },
+      { id: 't47-b4', type: 'wbw-slide', label: 'SIDE SLAP' },
+    ]
+  },
+  {
+    id: 't48',
+    blocks: [
+      { id: 't48-b0', type: 'styled', label: 'CUT AND PASTE' },
+      { id: 't48-b1', type: 'wbw-rise', label: 'SCRAP DROP' },
+      { id: 't48-b2', type: 'wbw-seq-fade', label: 'NOTE BUILD' },
+      { id: 't48-b3', type: 'wbw-slide', label: 'GLUE STRIP' },
+    ]
+  },
+  {
+    id: 't49',
+    blocks: [
+      { id: 't49-b0', type: 'styled', label: 'SOUNDCHECK' },
+      { id: 't49-b1', type: 'wbw-rise', label: 'LEVEL UP' },
+      { id: 't49-b2', type: 'styled', label: 'BASS SPIKE' },
+      { id: 't49-b3', type: 'wbw-seq-fade', label: 'SLOW JAM' },
+      { id: 't49-b4', type: 'wbw-slide', label: 'CROSSFADE' },
+    ]
+  },
+  {
+    id: 't50',
+    blocks: [
+      { id: 't50-b0', type: 'styled', label: 'TRACK CHANGES' },
+      { id: 't50-b1', type: 'wbw-rise', label: 'LIVE EDIT' },
+      { id: 't50-b2', type: 'wbw-seq-fade', label: 'AUTOCORRECT' },
+      { id: 't50-b3', type: 'wbw-slide', label: 'FINAL DRAFT' },
+    ]
+  },
+  {
+    id: 't51',
+    blocks: [
+      { id: 't51-b0', type: 'styled', label: 'CHAIN REACTION' },
+      { id: 't51-b1', type: 'wbw-rise', label: 'KNOCK ON' },
+      { id: 't51-b2', type: 'styled', label: 'REVERSE RUN' },
+      { id: 't51-b3', type: 'wbw-seq-fade', label: 'SLOW TOPPLE' },
+      { id: 't51-b4', type: 'wbw-slide', label: 'LAST PIECE' },
+    ]
+  },
+  {
+    id: 't52',
+    blocks: [
+      { id: 't52-b0', type: 'styled', label: 'TILL RECEIPT' },
+      { id: 't52-b1', type: 'wbw-rise', label: 'LINE ITEMS' },
+      { id: 't52-b2', type: 'styled', label: 'PRINT HEAD' },
+      { id: 't52-b3', type: 'wbw-seq-fade', label: 'TALLY' },
+      { id: 't52-b4', type: 'styled', label: 'TEAR OFF' },
+      { id: 't52-b5', type: 'wbw-slide', label: 'CHANGE DUE' },
     ]
   },
 ];

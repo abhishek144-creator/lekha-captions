@@ -14,6 +14,7 @@ import {
   ADVANCED_TEMPLATE_EMPHASIS_COLORS,
   ADVANCED_TEMPLATE_RUNTIME_CSS,
   ORIGINAL_TEMPLATE_BLOCKS,
+  isKeyframeAdvancedTemplateId,
 } from './templateMotionConfig';
 import {
   isExportableTemplateCandidate,
@@ -82,6 +83,18 @@ const FALLBACK_TEMPLATE_PACK = [
   { id: 't33', code: 'T33', name: 'Archive', formula: '3-Style', stageLabel: 'DOC WIPE', mood: 'documentary' },
   { id: 't34', code: 'T34', name: 'Burst', formula: '2-Style', stageLabel: 'SPEED IN', mood: 'anime' },
   { id: 't35', code: 'T35', name: 'Secret', formula: '1-Style', stageLabel: 'SECRET REVEAL', mood: 'whisper' },
+  { id: 't41', code: 'T41', name: 'Magnet Poetry', formula: '2-Style', stageLabel: 'FRIDGE SNAP', mood: 'playful' },
+  { id: 't42', code: 'T42', name: 'Label Maker', formula: '1-Style', stageLabel: 'TAPE FEED', mood: 'organized' },
+  { id: 't43', code: 'T43', name: 'Split-Flap Board', formula: '1-Style', stageLabel: 'DEPARTURES', mood: 'travel' },
+  { id: 't44', code: 'T44', name: 'Chat Thread', formula: '1-Style', stageLabel: 'THEY TYPED', mood: 'storytime' },
+  { id: 't45', code: 'T45', name: 'Transit Line', formula: '3-Style', stageLabel: 'ROUTE DRAW', mood: 'journey' },
+  { id: 't46', code: 'T46', name: 'Blueprint', formula: '1-Style', stageLabel: 'PLOT SHEET', mood: 'explainer' },
+  { id: 't47', code: 'T47', name: 'Sticker Slap', formula: '2-Style', stageLabel: 'SLAP', mood: 'hype' },
+  { id: 't48', code: 'T48', name: 'Ransom Cutout', formula: '1-Style', stageLabel: 'CUT AND PASTE', mood: 'mystery' },
+  { id: 't49', code: 'T49', name: 'Equalizer Stage', formula: '2-Style', stageLabel: 'SOUNDCHECK', mood: 'music' },
+  { id: 't50', code: 'T50', name: 'Rewrite', formula: '1-Style', stageLabel: 'TRACK CHANGES', mood: 'twist' },
+  { id: 't51', code: 'T51', name: 'Domino Topple', formula: '2-Style', stageLabel: 'CHAIN REACTION', mood: 'chain reaction' },
+  { id: 't52', code: 'T52', name: 'Receipt Print', formula: '3-Style', stageLabel: 'TILL RECEIPT', mood: 'facts' },
 ];
 
 const ADVANCED_TEMPLATE_STYLE = {
@@ -115,6 +128,18 @@ const ADVANCED_TEMPLATE_STYLE = {
   t38: { font_family: 'Libre Baskerville', font_size: 23, font_weight: '700', secondary_color: '#D4AF37', text_color: '#FFFFFF' },
   t39: { font_family: 'IBM Plex Mono', font_size: 22, font_weight: '700', secondary_color: '#FF3D71', text_color: '#FFFFFF', text_case: 'uppercase' },
   t40: { font_family: 'Crimson Text', font_size: 24, font_weight: '600', secondary_color: '#F2072B', highlight_color: '#F2072B', emphasis_color: '#F2072B', text_color: '#FFFFFF' },
+  t41: { font_family: 'Old Standard TT', font_size: 22, font_weight: '700', secondary_color: '#FFF1D0', highlight_color: '#FFF1D0', emphasis_color: '#FFF1D0', text_color: '#1E1A16' },
+  t42: { font_family: 'Barlow Condensed', font_size: 24, font_weight: '700', secondary_color: '#FFE45C', highlight_color: '#FFE45C', emphasis_color: '#FFE45C', text_color: '#FFFFFF', text_case: 'uppercase' },
+  t43: { font_family: 'Martian Mono', font_size: 20, font_weight: '600', secondary_color: '#FFB21A', highlight_color: '#FFB21A', emphasis_color: '#FFB21A', text_color: '#F2F2E8', text_case: 'uppercase' },
+  t44: { font_family: 'Onest', font_size: 21, font_weight: '600', secondary_color: '#FF375F', highlight_color: '#FF375F', emphasis_color: '#FF375F', text_color: '#FFFFFF' },
+  t45: { font_family: 'Public Sans', font_size: 22, font_weight: '700', secondary_color: '#FFD23F', highlight_color: '#FFD23F', emphasis_color: '#FFD23F', text_color: '#FFFFFF' },
+  t46: { font_family: 'Jura', font_size: 21, font_weight: '600', secondary_color: '#FFFFFF', highlight_color: '#FFFFFF', emphasis_color: '#FFFFFF', text_color: '#CFEFFF' },
+  t47: { font_family: 'Lilita One', font_size: 24, font_weight: '400', secondary_color: '#FF2E93', highlight_color: '#FF2E93', emphasis_color: '#FF2E93', text_color: '#FFFFFF' },
+  t48: { font_family: 'Rozha One', font_size: 23, font_weight: '400', secondary_color: '#FFF6E5', highlight_color: '#FFF6E5', emphasis_color: '#FFF6E5', text_color: '#141414' },
+  t49: { font_family: 'Bricolage Grotesque', font_size: 23, font_weight: '700', secondary_color: '#3DF2B0', highlight_color: '#3DF2B0', emphasis_color: '#3DF2B0', text_color: '#FFFFFF' },
+  t50: { font_family: 'JetBrains Mono', font_size: 20, font_weight: '500', secondary_color: '#7EE787', highlight_color: '#7EE787', emphasis_color: '#7EE787', text_color: '#E6EDF3' },
+  t51: { font_family: 'Big Shoulders Display', font_size: 25, font_weight: '800', secondary_color: '#F4C430', highlight_color: '#F4C430', emphasis_color: '#F4C430', text_color: '#16130F' },
+  t52: { font_family: 'Ubuntu Mono', font_size: 22, font_weight: '400', secondary_color: '#C1121F', highlight_color: '#C1121F', emphasis_color: '#C1121F', text_color: '#2A2A2A', text_case: 'uppercase' },
 };
 
 function resolveAdvancedTemplateEmphasisColor(templateId, emphasisColor = '', blockIndex = -1) {
@@ -690,7 +715,7 @@ function buildTemplateColorPreviewCss(templateId, previewStyle = {}, { basic = f
     ${selector} .kf-fill {
       color: ${palette.accent} !important;
       -webkit-text-fill-color: ${palette.accent} !important;
-      text-shadow: 0 0 12px ${palette.accent}66 !important;
+      ${isKeyframeAdvancedTemplateId(templateId) ? '' : `text-shadow: 0 0 12px ${palette.accent}66 !important;`}
     }
     ${templateId === 't36' ? `
     #card-t36 .kf-base {
@@ -932,6 +957,9 @@ function buildTemplatePreviewDoc(templateId, options = {}) {
         const GAP = ${ADVANCED_TEMPLATE_PREVIEW_TIMING.gapMs};
         const INITIAL_BLOCK_INDEX = ${initialBlockIndex};
         const LOCK_TO_PHASE = ${lockToPhase ? 'true' : 'false'};
+        // T41–T52 animate only through authored CSS keyframes keyed on
+        // .active, so the preview restarts them instead of driving words.
+        const KEYFRAME_TEMPLATE = ${isKeyframeAdvancedTemplateId(templateId) ? 'true' : 'false'};
         const APPLIED_PREVIEW = ${appliedPreviewConfig};
         let runToken = 0;
         let activeBlockIndex = INITIAL_BLOCK_INDEX;
@@ -1263,6 +1291,15 @@ function buildTemplatePreviewDoc(templateId, options = {}) {
         }
 
         function resetWords(block) {
+          if (KEYFRAME_TEMPLATE) {
+            block.querySelectorAll('.w').forEach((word) => {
+              word.classList.remove('in', 'fx');
+              ['opacity', 'transform', 'clip-path', 'transform-origin', 'transition'].forEach((property) => {
+                word.style.removeProperty(property);
+              });
+            });
+            return;
+          }
           block.querySelectorAll('.w').forEach((word) => {
             word.classList.remove('in', 'fx');
             word.style.opacity = '0';
@@ -1448,6 +1485,15 @@ function buildTemplatePreviewDoc(templateId, options = {}) {
           block.style.zIndex = '2';
           resetWords(block);
           void block.offsetHeight;
+
+          if (KEYFRAME_TEMPLATE) {
+            block.classList.remove('active');
+            block.style.opacity = '1';
+            void block.offsetHeight;
+            block.classList.add('active');
+            if (label) label.textContent = block.dataset.label || '';
+            return;
+          }
 
           const isPlain = block.dataset.type === 'plain';
           const isWBW = block.dataset.type === 'wbw-rise'

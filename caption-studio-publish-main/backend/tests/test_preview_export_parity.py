@@ -78,6 +78,14 @@ class PreviewExportParityTests(unittest.TestCase):
             {"template_id": "t33", "text": "एक क्लबाउस है और यहाँ पे"}
         ]))
 
+    def test_keyframe_templates_select_dom_renderer(self):
+        for number in range(41, 53):
+            template_id = f"t{number}"
+            self.assertTrue(processor._should_use_dom_template_renderer({"template_id": template_id}))
+            self.assertTrue(processor._should_use_dom_template_renderer({}, [
+                {"template_id": template_id, "text": "నేను ఇక్కడ ఉన్నాను", "template_phase_index": number % 4}
+            ]))
+
     def test_dom_overlay_uses_final_export_dimensions(self):
         self.assertEqual(processor._get_output_dimensions(1080, 1920, "720p"), (720, 1280))
         self.assertEqual(processor._get_output_dimensions(1920, 1080, "1080p"), (1080, 608))
