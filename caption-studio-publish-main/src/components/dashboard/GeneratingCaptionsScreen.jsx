@@ -20,8 +20,10 @@ function useGlidingPercent(target) {
     let frame = 0;
     let last = performance.now();
     const step = (now) => {
-      const seconds = Math.min(0.1, (now - last) / 1000);
-      last = now;
+      // A frame's timestamp can be a little earlier than the performance.now()
+      // read when the effect started; never step backwards.
+      const seconds = Math.max(0, Math.min(0.1, (now - last) / 1000));
+      last = Math.max(last, now);
       const current = shownRef.current;
       if (current < target) {
         const eased = (target - current) * (1 - Math.exp(-seconds / GLIDE_SECONDS));
@@ -112,6 +114,7 @@ export default function GeneratingCaptionsScreen({ elapsedSeconds: processingSec
               aria-valuemin={0}
               aria-valuemax={100}
               aria-valuenow={Math.round(shownPercent)}
+              data-target-percent={overallPercent}
               aria-label="Caption progress"
               className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/[0.08]"
             >
