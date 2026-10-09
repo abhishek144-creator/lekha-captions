@@ -15,6 +15,7 @@ import lcTemplateHtml2 from '../../assets/lekha-captions-lc-2.html?raw';
 import lcTemplateHtml3 from '../../assets/lekha-captions-lc-3.html?raw';
 import lcTemplateHtml4 from '../../assets/lekha-captions-lc-4.html?raw';
 import lcTemplateHtml5 from '../../assets/lekha-captions-lc-5.html?raw';
+import { DEFAULT_CAPTION_POSITION_Y } from '../../lib/captionDefaults.js';
 
 function sanitizeTemplateHtml(value = '') {
   return String(value)
@@ -938,7 +939,7 @@ export function buildTemplateStyle(template) {
     has_shadow: false,
     has_stroke: false,
     text_opacity: 1,
-    position_y: 75,
+    position_y: DEFAULT_CAPTION_POSITION_Y,
     line_spacing: baseStyle.line_spacing || 1.25,
     word_spacing: 1,
     show_inactive: true,

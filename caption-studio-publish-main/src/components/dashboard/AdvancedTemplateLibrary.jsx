@@ -4,6 +4,7 @@ import { Check, History, RotateCcw, Sparkles, Search, Star } from 'lucide-react'
 import originalTemplateHtml from '../../assets/lekha-captions-T11-T35.html?raw';
 import { findAppliedBasicTemplateMarkup } from './basicTemplateInline.js';
 import { BASIC_TEMPLATE_STYLES, getBasicTemplateStyle } from './basicTemplateCatalog.js';
+import { DEFAULT_CAPTION_POSITION_Y } from '../../lib/captionDefaults.js';
 import {
   LEGACY_TEMPLATE_CARDS,
   TemplatePreviewFrame as LegacyTemplatePreviewFrame,
@@ -250,7 +251,7 @@ function buildAppliedTemplateStyle(template) {
     has_stroke: false,
     show_inactive: true,
     text_opacity: 1,
-    position_y: 75,
+    position_y: DEFAULT_CAPTION_POSITION_Y,
     line_spacing: 1.25,
     word_spacing: 1,
   };
@@ -285,7 +286,7 @@ function buildAppliedBasicTemplateStyle(template) {
     has_stroke: BASIC_TEMPLATE_STYLES[template.id]?.has_stroke === true,
     show_inactive: true,
     text_opacity: 1,
-    position_y: 75,
+    position_y: DEFAULT_CAPTION_POSITION_Y,
     line_spacing: 1.25,
     word_spacing: 1,
   };
