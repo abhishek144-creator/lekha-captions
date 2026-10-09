@@ -7,6 +7,10 @@ import re
 import requests
 import json
 import shutil
+import array
+import difflib
+import math
+import unicodedata
 from openai import OpenAI
 from sarvamai import SarvamAI
 try:
@@ -98,6 +102,123 @@ def _word_gap_points(speech_words, min_gap=0.0):
         for (_, prev_end), (next_start, _) in zip(ordered, ordered[1:])
         if next_start - prev_end >= min_gap
     ]
+
+
+def _letters(text):
+    """Lower-case letters, marks and digits only: what two transcripts can share."""
+    return "".join(
+        ch for ch in unicodedata.normalize("NFC", str(text or "")).lower()
+        if unicodedata.category(ch)[0] in "LMN"
+    )
+
+
+# Share of Sarvam's letters that must also appear, in order, in whisper's
+# transcript before whisper's word times are trusted letter by letter.
+MIN_TRANSCRIPT_AGREEMENT = 0.5
+# Opening/closing words whisper did not hear are dropped only when that audio
+# is at least this much quieter than the speech, and only this many at most.
+UNHEARD_EDGE_QUIETER_DB = 15.0
+MAX_UNHEARD_EDGE_WORDS = 8
+
+
+def _match_tokens_to_heard_words(tokens, heard_words):
+    """Time each token from the word whisper heard at the same letters.
+
+    `tokens` is one transcript as words; `heard_words` is whisper's word list
+    with text and times. The two transcripts are matched letter by letter, so
+    spelling differences ("शिप"/"शिफ") and merged words ("क्लब हाउस"/"क्लबाउस")
+    still line up. Returns None when they share too little to trust, else one
+    {"word", "start", "end", "heard"} per token; "heard" is False for a token
+    whose letters whisper never transcribed.
+    """
+    heard = [w for w in heard_words or [] if _letters(w.get("word")) and float(w["end"]) > float(w["start"])]
+    token_letters = [_letters(t) for t in tokens]
+    said = "".join(token_letters)
+    heard_text = "".join(_letters(w["word"]) for w in heard)
+    if not said or not heard_text:
+        return None
+    blocks = [b for b in difflib.SequenceMatcher(None, said, heard_text, autojunk=False).get_matching_blocks() if b.size]
+    if sum(b.size for b in blocks) < MIN_TRANSCRIPT_AGREEMENT * len(said):
+        return None
+
+    # Clock time at a letter boundary of whisper's transcript.
+    bounds = []  # (first letter index, letter count, start, end) per heard word
+    cursor = 0
+    for w in heard:
+        count = len(_letters(w["word"]))
+        bounds.append((cursor, count, float(w["start"]), float(w["end"])))
+        cursor += count
+
+    def heard_time(position, at_end):
+        for first, count, start, end in bounds:
+            if position < first + count or (at_end and position <= first + count):
+                return start + (end - start) * max(0, position - first) / count
+        return bounds[-1][3]
+
+    def heard_position(position):
+        # Letter position in whisper's transcript matching `position` in ours;
+        # between matched runs it is interpolated.
+        previous = None
+        for block in blocks:
+            if block.a <= position < block.a + block.size:
+                return block.b + (position - block.a)
+            if position < block.a:
+                if previous is None:
+                    return block.b
+                gap_said = block.a - (previous.a + previous.size)
+                gap_heard = block.b - (previous.b + previous.size)
+                offset = position - (previous.a + previous.size)
+                return previous.b + previous.size + (gap_heard * offset / gap_said if gap_said else 0)
+            previous = block
+        return previous.b + previous.size
+
+    matched = [False] * len(said)
+    for block in blocks:
+        for index in range(block.a, block.a + block.size):
+            matched[index] = True
+
+    words = []
+    cursor = 0
+    for token, letters in zip(tokens, token_letters):
+        first, last = cursor, cursor + len(letters)
+        cursor = last
+        if not letters:
+            start = end = heard_time(heard_position(first), at_end=False)
+            words.append({"word": token, "start": start, "end": end, "heard": False})
+            continue
+        start = heard_time(heard_position(first), at_end=False)
+        end = heard_time(heard_position(last), at_end=True)
+        words.append({"word": token, "start": start, "end": end, "heard": any(matched[first:last])})
+
+    # Unheard opening or closing words have no heard letters to borrow a time
+    # from; give them a short slot just before or after the heard speech.
+    heard_indexes = [i for i, w in enumerate(words) if w["heard"]]
+    if heard_indexes:
+        first_heard, last_heard = heard_indexes[0], heard_indexes[-1]
+        lead_end = words[first_heard]["start"]
+        for i in range(first_heard):
+            slot = (first_heard - i) * 0.3
+            words[i]["start"] = max(0.0, lead_end - slot)
+            words[i]["end"] = max(0.0, lead_end - slot + 0.3)
+        tail_start = words[last_heard]["end"]
+        for offset, i in enumerate(range(last_heard + 1, len(words))):
+            words[i]["start"] = tail_start + offset * 0.3
+            words[i]["end"] = tail_start + offset * 0.3 + 0.3
+
+    previous_start = 0.0
+    for w in words:
+        w["start"] = round(max(w["start"], previous_start), 3)
+        w["end"] = round(max(w["end"], w["start"] + 0.01), 3)
+        previous_start = w["start"]
+    return words
+
+
+def _unheard_edges(words):
+    """Index ranges of the unheard words before and after all heard ones."""
+    heard_indexes = [i for i, w in enumerate(words) if w.get("heard")]
+    if not heard_indexes:
+        return range(0), range(0)
+    return range(0, heard_indexes[0]), range(heard_indexes[-1] + 1, len(words))
 
 
 def _align_chunks_to_speech(chunks, speech_words):
@@ -294,7 +415,7 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
 
         duration = self._get_video_duration(audio_p)
         if duration <= SARVAM_MAX_SEGMENT_SECONDS:
-            return _align_chunks_to_speech(transcribe(audio_p), speech_words)
+            return self._time_sarvam_chunks(transcribe(audio_p), speech_words, audio_p)
 
         pauses, word_boundaries = [], []
         if speech_words:
@@ -334,7 +455,71 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
                     os.remove(piece_p)
                 except OSError:
                     pass
-        return _align_chunks_to_speech(chunks, speech_words)
+        return self._time_sarvam_chunks(chunks, speech_words, audio_p)
+
+    def _time_sarvam_chunks(self, chunks, speech_words, audio_p):
+        """Timed words for Sarvam's phrases, using whisper's words when they agree.
+
+        Matching the two transcripts gives each word the moment whisper heard
+        it. Opening or closing words whisper never heard are murmurs or
+        whispers before or after the real speech ("रेडी हम्म चेंज" said under
+        the breath before the take); they are dropped when that audio is much
+        quieter than the speech. Otherwise phrases are placed over the speech
+        whisper heard, or split evenly without whisper.
+        """
+        tokens = [token for chunk in chunks for token in str(chunk["word"]).split()]
+        matched = None
+        if any(w.get("word") for w in speech_words or []):
+            matched = _match_tokens_to_heard_words(tokens, speech_words)
+        if matched is None:
+            return _align_chunks_to_speech(chunks, speech_words)
+        try:
+            matched = self._drop_quiet_unheard_edges(matched, audio_p)
+        except Exception as trim_error:
+            print(f"[Warning] Could not check the loudness of unheard opening words: {trim_error}")
+        return [{"word": w["word"], "start": w["start"], "end": w["end"]} for w in matched]
+
+    def _drop_quiet_unheard_edges(self, words, audio_p):
+        """Remove unheard opening/closing words when that audio is much quieter."""
+        lead, tail = _unheard_edges(words)
+        if not lead and not tail:
+            return words
+        heard = [w for w in words if w["heard"]]
+        speech_start, speech_end = heard[0]["start"], heard[-1]["end"]
+        duration = self._get_video_duration(audio_p)
+        speech_db, lead_db, tail_db = self._loudness_db(
+            audio_p, [(speech_start, speech_end), (0.0, speech_start), (speech_end, duration)]
+        )
+        drop = set()
+        for edge, edge_db, edge_seconds in (
+            (lead, lead_db, speech_start),
+            (tail, tail_db, duration - speech_end),
+        ):
+            if (edge and len(edge) <= MAX_UNHEARD_EDGE_WORDS and edge_seconds >= 0.2
+                    and speech_db is not None and edge_db is not None
+                    and speech_db - edge_db >= UNHEARD_EDGE_QUIETER_DB):
+                drop.update(edge)
+        if drop:
+            print(f"[Transcribe] Dropped {len(drop)} quiet opening/closing words whisper did not hear")
+        return [w for i, w in enumerate(words) if i not in drop]
+
+    def _loudness_db(self, audio_p, windows):
+        """Mean loudness (dBFS) of each (start, end) window; None if empty."""
+        result = run_media_command(
+            ["ffmpeg", "-i", audio_p, "-f", "s16le", "-ac", "1", "-ar", "16000", "-"],
+            capture_output=True, check=True, timeout=AUDIO_EXTRACTION_TIMEOUT_SECONDS,
+        )
+        samples = array.array("h")
+        samples.frombytes(result.stdout[: len(result.stdout) // 2 * 2])
+        levels = []
+        for start, end in windows:
+            segment = samples[max(0, int(start * 16000)):max(0, int(end * 16000))]
+            if not segment:
+                levels.append(None)
+                continue
+            energy = sum(value * value for value in segment) / len(segment)
+            levels.append(10 * math.log10(energy / (32768.0 ** 2) + 1e-12))
+        return levels
 
     def _whisper_speech_timings(self, audio_p, language_code=""):
         """Word timings whisper hears in the audio, or [] if unavailable.
@@ -356,10 +541,11 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
                 )
             timings = []
             for w in getattr(result, "words", None) or []:
+                text = w.get("word") if isinstance(w, dict) else getattr(w, "word", "")
                 start = w.get("start") if isinstance(w, dict) else getattr(w, "start", None)
                 end = w.get("end") if isinstance(w, dict) else getattr(w, "end", None)
                 if start is not None and end is not None and float(end) > float(start):
-                    timings.append({"start": float(start), "end": float(end)})
+                    timings.append({"word": str(text or ""), "start": float(start), "end": float(end)})
             transcription_provider_health.record_success("openai")
             return timings
         except Exception as timing_error:
