@@ -84,6 +84,10 @@ import {
 // as if the preview were 360px wide) and scale the whole frame to fit, so
 // every caption renderer - plain, basic, advanced and LC - keeps its export
 // proportions on any screen.
+// Emphasis makes a word at least bold but never lighter than the caption:
+// an Extra Bold caption keeps its emphasised word Extra Bold, as the export does.
+const emphasisFontWeight = (weight) => Math.max(700, Number(weight) || 0);
+
 const COMPACT_PREVIEW_REFERENCE_WIDTH = 360;
 const COMPACT_PREVIEW_REFERENCE_HEIGHT = 640;
 
@@ -1188,7 +1192,7 @@ export default function VideoPlayer({
         : 'none';
       const { x: renderOffsetX, y: renderOffsetY } = getWordRenderOffset(ws);
       const emphasisStyle = ws.isEmphasis ? {
-        fontWeight: 'bold',
+        fontWeight: emphasisFontWeight(ws.fontWeight || captionStyle?.font_weight),
         color: ws.color || emphasisAccent,
         fontSize: `${Math.round(wordFontSize * 1.2)}px`,
         textShadow: `0 0 18px ${emphasisAccent}99, 0 0 6px ${emphasisAccent}66`,
@@ -1443,7 +1447,7 @@ export default function VideoPlayer({
         selectedCaptionCurrentIndex,
       );
       const selectedEmphasisStyle = selectedWordStyle.isEmphasis ? {
-        fontWeight: 'bold',
+        fontWeight: emphasisFontWeight(selectedWordStyle.fontWeight || captionStyle?.font_weight),
         color: selectedWordStyle.color || selectedEmphasisAccent,
         fontSize: `${Math.round(selectedWordFontSize * 1.2)}px`,
         textShadow: `0 0 18px ${selectedEmphasisAccent}99, 0 0 6px ${selectedEmphasisAccent}66`,
@@ -2551,7 +2555,7 @@ export default function VideoPlayer({
                         // Emphasis: bold + 1.2x scale + configured accent color + subtle glow
                         const emphasisAccent = captionStyle?.secondary_color || '#DDAA03';
                         const emphasisStyle = ws.isEmphasis ? {
-                          fontWeight: 'bold',
+                          fontWeight: emphasisFontWeight(ws.fontWeight || captionStyle?.font_weight),
                           color: ws.color || emphasisAccent,
                           fontSize: `${Math.round(wordFontSize * 1.2)}px`,
                           textShadow: `0 0 18px ${emphasisAccent}99, 0 0 6px ${emphasisAccent}66`,

@@ -576,19 +576,21 @@ export default function CaptionTimeline({
       </div>
 
       <div className="min-w-0 flex h-full flex-1 flex-col px-3 py-2">
-        <button
-          type="button"
-          className="flex h-5 w-full items-center justify-between gap-3 text-left"
-          onClick={onToggleCollapsed}
-          title="Collapse timeline"
-        >
-          <span className="flex items-center gap-2">
+        {/* The collapse control and the zoom buttons are siblings: a button
+            nested inside another button is invalid HTML. */}
+        <div className="flex h-5 w-full items-center justify-between gap-3">
+          <button
+            type="button"
+            className="flex min-w-0 flex-1 items-center gap-2 self-stretch text-left"
+            onClick={onToggleCollapsed}
+            title="Collapse timeline"
+          >
             <span className="hidden text-[8px] font-medium uppercase tracking-[0.14em] text-slate-500 sm:inline">48 kHz - Stereo</span>
             <span className="hidden h-3 w-px bg-white/10 sm:block" />
             <span className="inline-flex items-center self-center text-slate-400 text-xs leading-none">v</span>
             <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white">Timeline</span>
             <span className="text-[9px] text-slate-600">{regularCaptions.length} elements</span>
-          </span>
+          </button>
           <div className="flex min-w-0 items-center gap-3 text-[9px] text-slate-500">
             <span className="font-mono text-sky-100">{formatTime(displayTime)} / {formatTime(duration || 0)}</span>
             <button type="button" onClick={(e) => { e.stopPropagation(); setZoom(3); }} className="rounded-md p-1 hover:bg-white/5 hover:text-white" title="Reset zoom">
@@ -604,7 +606,7 @@ export default function CaptionTimeline({
               <ZoomIn className="h-3 w-3" />
             </button>
           </div>
-        </button>
+        </div>
 
         <div
           ref={scrollContainerRef}

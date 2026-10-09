@@ -1,24 +1,36 @@
+// The waveform needs the whole file and its decoded audio in memory. Above this
+// size a phone can run out of memory, so the timeline shows no waveform instead.
+const WAVEFORM_MAX_BYTES = 200 * 1024 * 1024;
+
 const readMediaBytes = async (source) => {
   if (!source) return null;
   // A local File or Blob needs no download.
-  if (typeof Blob !== 'undefined' && source instanceof Blob) return source.arrayBuffer();
+  if (typeof Blob !== 'undefined' && source instanceof Blob) {
+    return source.size > WAVEFORM_MAX_BYTES ? null : source.arrayBuffer();
+  }
   const url = typeof source === 'string' ? source : source.src;
   if (!url) return null;
   const response = await fetch(url);
+  const length = Number(response.headers.get('content-length') || 0);
+  if (!response.ok || length > WAVEFORM_MAX_BYTES) {
+    response.body?.cancel?.().catch?.(() => {});
+    return null;
+  }
   return response.arrayBuffer();
 };
 
 // Extract waveform data for visualization. `source` is a File/Blob, a media
 // URL, or a <video>/<audio> element.
 export const extractWaveformData = async (source, numSamples = 300) => {
+  let audioContext = null;
   try {
     const arrayBuffer = await readMediaBytes(source);
     if (!arrayBuffer) return null;
-    
+
     // Create audio context
     const AudioContext = window.AudioContext || window.webkitAudioContext;
-    const audioContext = new AudioContext();
-    
+    audioContext = new AudioContext();
+
     // Decode audio data
     const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
     
@@ -44,12 +56,13 @@ export const extractWaveformData = async (source, numSamples = 300) => {
     // waveform bars AND the audio-emotion analysis downstream.
     const maxAmplitude = Math.max(...samples) || 1;
     const normalizedSamples = samples.map(s => s / maxAmplitude);
-    
-    audioContext.close();
-    
+
     return normalizedSamples;
   } catch (error) {
     console.error('Waveform extraction error:', error);
     return null;
+  } finally {
+    // Browsers limit open audio contexts; a failed decode must close it too.
+    audioContext?.close().catch(() => {});
   }
 };

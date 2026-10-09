@@ -127,6 +127,87 @@ class SpokenLanguageRoutingTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("timestamp_granularities", self.whisper_calls()[0].kwargs)
 
 
+class SarvamChunkTimestampTests(unittest.TestCase):
+    # Sarvam's timestamps.words holds sentence chunks, not single words.
+    response = SimpleNamespace(timestamps={
+        "words": ["रेडी हम्म चेंज मेरे पीछे जो आप शिप देख रहे हो", "वो शिप नहीं है"],
+        "start_time_seconds": [0.0, 6.0],
+        "end_time_seconds": [6.0, 8.0],
+    })
+
+    def test_sentence_chunks_become_timed_words_in_order(self):
+        from processor import _extract_sarvam_words
+        words = _extract_sarvam_words(self.response)
+        self.assertEqual(len(words), 15)
+        self.assertEqual(words[0]["word"], "रेडी")
+        self.assertEqual(words[0]["start"], 0.0)
+        self.assertEqual(words[10]["end"], 6.0)
+        self.assertEqual(words[11]["start"], 6.0)
+        self.assertEqual(words[-1]["end"], 8.0)
+        for previous, current in zip(words, words[1:]):
+            self.assertLessEqual(previous["end"], current["start"])
+            self.assertLess(current["start"], current["end"])
+
+    def test_sentence_chunk_is_split_into_several_captions(self):
+        from processor import _extract_sarvam_words
+        processor = VideoProcessor(fonts_dir="flat_fonts")
+        captions = processor._group_words_by_speech_pace(
+            _extract_sarvam_words(self.response), min_words=5, max_words=6,
+        )
+        self.assertGreater(len(captions), 2)
+        self.assertTrue(all(len(c["words"]) <= 6 for c in captions))
+
+    def test_long_audio_is_planned_as_pieces_under_thirty_seconds_cut_at_pauses(self):
+        from processor import _plan_audio_segments, _pause_midpoints
+        pauses = _pause_midpoints(
+            "[silencedetect] silence_start: 21.0\n[silencedetect] silence_end: 21.6 | silence_duration: 0.6\n"
+            "[silencedetect] silence_start: 47.2\n[silencedetect] silence_end: 47.8 | silence_duration: 0.6\n"
+        )
+        self.assertEqual([round(p, 2) for p in pauses], [21.3, 47.5])
+        segments = _plan_audio_segments(70.0, pauses)
+        self.assertEqual([tuple(round(v, 2) for v in s) for s in segments], [(0.0, 21.3), (21.3, 47.5), (47.5, 70.0)])
+        # No pause in range: fixed 29-second cuts.
+        fixed = _plan_audio_segments(70.0, [])
+        self.assertEqual(fixed, [(0.0, 29.0), (29.0, 58.0), (58.0, 70.0)])
+        self.assertTrue(all(end - start <= 29.0 for start, end in fixed))
+
+    def test_long_audio_reaches_sarvam_in_pieces_with_shifted_timestamps(self):
+        processor = VideoProcessor(fonts_dir="flat_fonts")
+        calls = []
+
+        def fake_transcribe(**kwargs):
+            calls.append(kwargs["language_code"])
+            return SimpleNamespace(timestamps={
+                "words": [f"शब्द{len(calls)} दूसरा"], "start_time_seconds": [1.0], "end_time_seconds": [2.0],
+            })
+
+        client = MagicMock()
+        client.speech_to_text.transcribe.side_effect = fake_transcribe
+        with patch.object(processor, "_get_video_duration", return_value=70.0), \
+                patch("processor.run_media_command", return_value=SimpleNamespace(stderr="")), \
+                patch("builtins.open", unittest.mock.mock_open(read_data=b"")):
+            words = processor._transcribe_with_sarvam(client, "audio.mp3", "hi-IN")
+        self.assertEqual(calls, ["hi-IN", "hi-IN", "hi-IN"])
+        self.assertEqual([w["start"] for w in words][::2], [1.0, 30.0, 59.0])
+        self.assertEqual(words[-1]["end"], 60.0)
+
+    def test_danda_ends_a_caption_and_gets_no_extra_full_stop(self):
+        processor = VideoProcessor(fonts_dir="flat_fonts")
+        words = [
+            {"word": "वो", "start": 0.0, "end": 0.3},
+            {"word": "क्लब", "start": 0.3, "end": 0.6},
+            {"word": "हाउस", "start": 0.6, "end": 0.9},
+            {"word": "है।", "start": 0.9, "end": 1.2},
+            {"word": "यहां", "start": 1.2, "end": 1.5},
+            {"word": "पे", "start": 1.5, "end": 1.8},
+        ]
+        captions = processor._post_process_captions(
+            processor._group_words_by_speech_pace(words, min_words=5, max_words=6),
+        )
+        self.assertEqual(captions[0]["text"], "वो क्लब हाउस है।")
+        self.assertFalse(any(c["text"].endswith("।.") for c in captions))
+
+
 class _MemoryDocument:
     def __init__(self, store, key):
         self.store, self.key = store, key
