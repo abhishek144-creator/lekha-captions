@@ -5,6 +5,7 @@ import '../../styles/captionTemplates.css';
 import originalTemplateHtml from '../../assets/lekha-captions-T11-T35.html?raw';
 import { findAppliedBasicTemplateMarkup } from './basicTemplateInline.js';
 import { getBasicTemplateStyle, marksTemplateColorCustomized } from './basicTemplateCatalog.js';
+import { DEFAULT_CAPTION_POSITION_Y } from '../../lib/captionDefaults.js';
 import {
   isExportableTemplateCandidate,
   templateMatchesQuery,
@@ -436,7 +437,7 @@ export default function TemplatesTab({ currentStyle, onApplyTemplate }) {
       has_shadow: false,
       has_animation: false,
       position: 'bottom',
-      position_y: 75,
+      position_y: DEFAULT_CAPTION_POSITION_Y,
       show_inactive: undefined,
       scale: 1,
     });
