@@ -228,6 +228,60 @@ class SarvamChunkTimestampTests(unittest.TestCase):
         self.assertTrue(any(abs(cut - b) < 1e-9 for b in boundaries))
         self.assertTrue(all(not (w["start"] < cut < w["end"]) for w in heard))
 
+    # Real ship clip (2026-10-09): whisper hears speech from 2.74 s; Sarvam also
+    # transcribed the murmur before it as "रेडी हम्म चेंज".
+    SAID = "रेडी हम्म चेंज मेरे पीछे जो आप शिप देख रहे हो वो शिप नहीं है क्लब हाउस है।".split()
+    HEARD = [
+        {"word": w, "start": s, "end": e} for w, s, e in [
+            ("मेरे", 2.74, 3.14), ("पीछे", 3.14, 3.52), ("जो", 3.52, 3.68), ("आप", 3.68, 3.82),
+            ("शिफ", 3.82, 4.04), ("देख", 4.04, 4.24), ("रहे", 4.24, 4.36), ("हो", 4.36, 4.40),
+            ("वो", 4.40, 4.58), ("शिफ", 4.58, 4.88), ("नहीं", 4.88, 5.04), ("एक", 5.04, 5.24),
+            ("क्लबाउस", 5.24, 5.76), ("है", 5.76, 5.88),
+        ]
+    ]
+
+    def test_words_take_the_time_whisper_heard_them(self):
+        from processor import _match_tokens_to_heard_words
+        words = _match_tokens_to_heard_words(self.SAID, self.HEARD)
+        by_word = {w["word"]: w for w in words}
+        self.assertEqual([w["heard"] for w in words[:4]], [False, False, False, True])
+        self.assertAlmostEqual(by_word["मेरे"]["start"], 2.74, places=2)
+        self.assertAlmostEqual(by_word["नहीं"]["start"], 4.88, places=2)
+        # "क्लब हाउस" matches whisper's merged "क्लबाउस".
+        self.assertTrue(5.2 <= by_word["क्लब"]["start"] < by_word["हाउस"]["start"] < 5.8)
+        self.assertTrue(all(a["start"] <= b["start"] for a, b in zip(words, words[1:])))
+
+    def test_unrelated_transcripts_fall_back(self):
+        from processor import _match_tokens_to_heard_words
+        heard = [{"word": "مجھے", "start": 0.0, "end": 0.5}, {"word": "پتہ", "start": 0.5, "end": 1.0}]
+        self.assertIsNone(_match_tokens_to_heard_words(self.SAID, heard))
+
+    def test_quiet_unheard_opening_words_are_dropped_loud_ones_kept(self):
+        from processor import _match_tokens_to_heard_words
+        processor = VideoProcessor(fonts_dir="flat_fonts")
+        words = _match_tokens_to_heard_words(self.SAID, self.HEARD)
+        with patch.object(processor, "_get_video_duration", return_value=6.0), \
+                patch.object(processor, "_loudness_db", return_value=[-15.0, -45.0, -60.0]):
+            kept = processor._drop_quiet_unheard_edges(words, "audio.mp3")
+        self.assertEqual(kept[0]["word"], "मेरे")
+        # A loud opening whisper missed is real speech: keep it.
+        with patch.object(processor, "_get_video_duration", return_value=6.0), \
+                patch.object(processor, "_loudness_db", return_value=[-15.0, -18.0, -60.0]):
+            kept = processor._drop_quiet_unheard_edges(words, "audio.mp3")
+        self.assertEqual(kept[0]["word"], "रेडी")
+
+    def test_loudness_is_measured_from_real_audio(self):
+        import tempfile as _tempfile
+        processor = VideoProcessor(fonts_dir="flat_fonts")
+        with _tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "tone.wav")
+            # 1 s near-silence then 1 s loud tone.
+            import subprocess as _sp
+            _sp.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=f=440:d=2",
+                     "-af", "volume='if(lt(t,1),0.001,0.5)':eval=frame", "-ar", "16000", "-ac", "1", path], check=True)
+            quiet, loud = processor._loudness_db(path, [(0.1, 0.9), (1.1, 1.9)])
+        self.assertGreater(loud - quiet, 40)
+
     def test_danda_ends_a_caption_and_gets_no_extra_full_stop(self):
         processor = VideoProcessor(fonts_dir="flat_fonts")
         words = [
