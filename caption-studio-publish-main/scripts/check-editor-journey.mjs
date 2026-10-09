@@ -4,6 +4,7 @@ import fs from 'node:fs/promises'
 import { createServer } from 'vite'
 import react from '@vitejs/plugin-react'
 import puppeteer from 'puppeteer'
+import planCatalog from '../shared/planCatalog.json' with { type: 'json' }
 
 // Real Dashboard, hooks, preview and export UI with isolated auth and API
 // doubles. No credentials, provider requests, charges or production writes.
@@ -93,8 +94,11 @@ page.on('request', async (request) => {
     payload = { success: true, file_id: draft.fileId, direct_upload_available: true,
       upload_url: 'http://127.0.0.1:4187/test-storage-session', resumed: url.pathname.endsWith('/resume') }
   } else if (url.pathname === '/api/create-order') {
-    orderRequests.push({ body: JSON.parse(request.postData()), authorization: request.headers().authorization })
-    payload = { success: true, key_id: 'rzp_test_local_fixture', order: { id: 'order_local_fixture', amount: invalidOrder ? -1 : 299000, currency: 'INR' } }
+    const orderBody = JSON.parse(request.postData())
+    orderRequests.push({ body: orderBody, authorization: request.headers().authorization })
+    const currency = orderBody.currency || 'INR'
+    const catalogAmount = planCatalog[orderBody.plan_id]?.[currency === 'USD' ? 'usd_cents' : 'inr_paise']
+    payload = { success: true, key_id: 'rzp_test_local_fixture', order: { id: 'order_local_fixture', amount: invalidOrder ? -1 : catalogAmount, currency } }
   } else if (url.pathname === '/api/verify-payment') {
     verificationRequests.push({ body: JSON.parse(request.postData()), authorization: request.headers().authorization })
     payload = { success: true, credits_added: 180 }
@@ -302,7 +306,8 @@ try {
   assert.equal(order.authorization, 'Bearer local-test-token')
   assert.equal(order.body.plan_id, 'starter_yearly')
   assert.ok(order.body.idempotency_key)
-  assert.equal(await page.evaluate(() => window.checkoutOptions.amount), 299000)
+  const expectedAmount = planCatalog.starter_yearly[order.body.currency === 'USD' ? 'usd_cents' : 'inr_paise']
+  assert.equal(await page.evaluate(() => window.checkoutOptions.amount), expectedAmount)
   await page.evaluate(() => window.checkoutOptions.modal.ondismiss())
   assert.equal(verificationRequests.length, 0, 'dismissal must not grant credits')
   await textClick('Open test checkout')
