@@ -1,0 +1,3024 @@
+{
+  "window_start": "2026-09-08",
+  "baseline_main": "1d39f05bb0ace029e723062c03ece8d2bce6e8f7",
+  "branch": "codex/consolidate-month-20261008",
+  "branches": [
+    {
+      "ref": "refs/heads/archive/local-main-disconnected-20260916",
+      "sha": "d4c7c2d2bbe3479f453d0d7025483e4e100b3478",
+      "date": "2026-08-16T21:34:25+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [],
+      "consolidated_ancestor": false
+    },
+    {
+      "ref": "refs/heads/claude/cool-banach-de79bd",
+      "sha": "58afb17d0081d5105f21c99f36235195b1c58d30",
+      "date": "2026-09-29T17:30:27+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/claude/optimistic-davinci-vrojx4",
+        "refs/remotes/origin/claude/serene-sagan-76mdi6",
+        "refs/remotes/origin/claude/sweet-feynman-fcqb80",
+        "refs/remotes/origin/codex/apex-editor-domain",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reliability-fixes",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/codex/netlify-r2-editor-hosting",
+        "refs/remotes/origin/codex/r2-direct-download",
+        "refs/remotes/origin/codex/railway-api-ingress",
+        "refs/remotes/origin/codex/railway-idle-and-domain-fixes",
+        "refs/remotes/origin/codex/railway-r2-load-smoke",
+        "refs/remotes/origin/codex/railway-remaining-fixes",
+        "refs/remotes/origin/codex/railway-render-autoscaling",
+        "refs/remotes/origin/codex/railway-render-drain-safety",
+        "refs/remotes/origin/codex/railway-worker-idle-cleanup",
+        "refs/remotes/origin/codex/rendering-module-cleanup",
+        "refs/remotes/origin/codex/route-module-cleanup",
+        "refs/remotes/origin/codex/unified-netlify-deployment",
+        "refs/remotes/origin/codex/unused-artifact-cleanup",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/heads/claude/export-size-reference",
+      "sha": "0785f9b30301871955d73ccbf4537e0ce6c86840",
+      "date": "2026-10-08T23:44:42+05:30",
+      "missing_from_main_commits": [
+        "0785f9b30301871955d73ccbf4537e0ce6c86840 Match static and animated export fonts and position for non-Latin text",
+        "2b4e5dddd6eecfdd4e18266fa00e0771b0d330b3 Size ASS captions against the DOM renderer's 360px-wide reference"
+      ],
+      "already_on_github_refs": [
+        "refs/remotes/origin/claude/export-size-reference"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/heads/claude/loving-wilbur-661539",
+      "sha": "511bbe3597dfb373b8294ccc30fca05d97323b7b",
+      "date": "2026-10-08T20:38:43+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/heads/claude/mobile-editor",
+      "sha": "3132ce2fc54af067fdf29b1ff2e5493b62511277",
+      "date": "2026-10-08T23:56:36+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": false
+    },
+    {
+      "ref": "refs/heads/claude/musing-edison-f257f8",
+      "sha": "511bbe3597dfb373b8294ccc30fca05d97323b7b",
+      "date": "2026-10-08T20:38:43+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/heads/claude/serene-sagan-76mdi6",
+      "sha": "fa8b399219e7994af18a92b573ed6fe274dccc1e",
+      "date": "2026-10-03T16:22:24Z",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/claude/optimistic-davinci-vrojx4",
+        "refs/remotes/origin/claude/serene-sagan-76mdi6",
+        "refs/remotes/origin/claude/sweet-feynman-fcqb80",
+        "refs/remotes/origin/codex/apex-editor-domain",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reliability-fixes",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/codex/netlify-r2-editor-hosting",
+        "refs/remotes/origin/codex/r2-direct-download",
+        "refs/remotes/origin/codex/railway-api-ingress",
+        "refs/remotes/origin/codex/railway-idle-and-domain-fixes",
+        "refs/remotes/origin/codex/railway-r2-load-smoke",
+        "refs/remotes/origin/codex/railway-remaining-fixes",
+        "refs/remotes/origin/codex/railway-render-autoscaling",
+        "refs/remotes/origin/codex/railway-render-drain-safety",
+        "refs/remotes/origin/codex/railway-worker-idle-cleanup",
+        "refs/remotes/origin/codex/rendering-module-cleanup",
+        "refs/remotes/origin/codex/route-module-cleanup",
+        "refs/remotes/origin/codex/unified-netlify-deployment",
+        "refs/remotes/origin/codex/unused-artifact-cleanup",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/heads/claude/stoic-banach-138da2",
+      "sha": "5107440d9a2cdce22db47d1154656d55934be3ab",
+      "date": "2026-10-08T16:57:15+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/heads/codex/apex-editor-domain",
+      "sha": "5f1345a1776f308bce4949d99ec6f8e9836af05f",
+      "date": "2026-10-04T21:16:55+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/claude/optimistic-davinci-vrojx4",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reliability-fixes",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/codex/railway-r2-load-smoke",
+        "refs/remotes/origin/codex/railway-remaining-fixes",
+        "refs/remotes/origin/codex/rendering-module-cleanup",
+        "refs/remotes/origin/codex/route-module-cleanup",
+        "refs/remotes/origin/codex/unified-netlify-deployment",
+        "refs/remotes/origin/codex/unused-artifact-cleanup",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/heads/codex/authenticated-ci-followup",
+      "sha": "2de98e3675655732f5eedbb41bbff8ee6f682623",
+      "date": "2026-10-08T17:32:53+05:30",
+      "missing_from_main_commits": [
+        "2de98e3675655732f5eedbb41bbff8ee6f682623 WIP: editor journey and harness changes left uncommitted in the editor-ci-followup worktree"
+      ],
+      "already_on_github_refs": [],
+      "consolidated_ancestor": false
+    },
+    {
+      "ref": "refs/heads/codex/b4-measurement-records-20261007",
+      "sha": "dc85a24288c96747e69730c2416face4bb0d1ce1",
+      "date": "2026-10-07T13:39:57+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/heads/codex/clamav-signatures-20261006",
+      "sha": "47747752e0c71afb4257804476014741d65c160b",
+      "date": "2026-10-06T18:38:12+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/heads/codex/consolidate-month-20261008",
+      "sha": "e6699b7fe38242c319b405da8340402d32ed75b3",
+      "date": "2026-10-08T23:58:44+05:30",
+      "missing_from_main_commits": [
+        "e6699b7fe38242c319b405da8340402d32ed75b3 Integrate hosting documentation and preserve historical handoffs",
+        "9dda2d8f7982bd69ed5162a792d66e793b0c6b1a Merge remote-tracking branch 'origin/codex/roadmap-gap-audit' into codex/consolidate-month-20261008",
+        "c1f7d2daf2dcf1f719f9119aac7be6271c78c60e Integrate Claude keyframe templates with current renderer modules",
+        "9963e6f95a3e3e6c3460b4a0745e887b7dc084ea Merge remote-tracking branch 'origin/claude/friendly-fermi-lgu4n7' into codex/consolidate-month-20261008",
+        "0a780f77b9f388c444776b7702002bc65fd1d631 Merge remote-tracking branch 'origin/claude/editor-journey-coverage' into codex/consolidate-month-20261008",
+        "4eba4b987fabbe348203633a5e73bcf09393803a Integrate plain-caption spacing and escaped style attributes",
+        "7abedb6e46a2104aed3ea9828b612f804209eb5d Integrate variable font weights with script-aware ASS metrics",
+        "54b3c50d0a186dc97e8fd75996c2f7e4cd237c0c Integrate Claude export sizing and script fonts with modular ASS rendering",
+        "1128575e7b98725b7d8a6847f175cddc23bc4865 Merge remote-tracking branch 'origin/claude/mobile-editor' into codex/consolidate-month-20261008",
+        "0785f9b30301871955d73ccbf4537e0ce6c86840 Match static and animated export fonts and position for non-Latin text",
+        "012f01bfb6d1c559676469e26fb88e50fef1a6d1 Merge main into upload journey branch",
+        "4a6cfe18a1f3b5d827fecc861c5e5e9e4585b40d Render the requested weight for variable fonts in ASS exports",
+        "b8b94d81e723c740d40cace87028c431ab2b6c3c Fix missing word gaps in DOM-exported plain captions",
+        "2b4e5dddd6eecfdd4e18266fa00e0771b0d330b3 Size ASS captions against the DOM renderer's 360px-wide reference",
+        "91fcbdf0e668bef12ee19087b6c29e93219a0663 Extend the editor journey: caption correction, upload resume after reload, checkout",
+        "1b9b4cb43dff25e16fe820dc97afbe1106855fa8 Bump source-map-js to 1.2.2 for GHSA-68fv-2mgg-jv7q",
+        "fd2054d2ecafc8a6b7aa5c74c49c84ca6339d065 Merge main into upload journey branch",
+        "05a5f1714221f33ebd666071a98ff66987b6ecf7 Merge main into claude/friendly-fermi-lgu4n7",
+        "4bebfeb5deb0bd9ce60509273378dbf664fc168f Document unified Netlify landing and editor deployment",
+        "6da5c9ed950e23c12412feb65e8a3ac63b01ed7f Author T43 split-flap in 2D and guard keyframe templates against 3D",
+        "8a6c04b07d892963a1bbb8a9f967fc2e2f04b20c Add keyframe-driven caption templates T41\u2013T52 (work in progress)",
+        "4bdc899264f3d701ce1ae7b45f1b2916b4e5f42f Bump urllib3 to 2.8.0 for pip-audit advisories",
+        "bbe8c8a3fa05abe0b25fd86438b051dec4011b48 Play uploads from the device, share transcripts across workers, delete abandoned uploads, measure the upload funnel",
+        "a2c465b32be29c55862d8b6b88b50dec06c67b00 Bump pyjwt to 2.15.1 for pip-audit advisories",
+        "108f5f139b1b6935c3412134f9072bf5da870a50 Bump brace-expansion to 1.1.21 for new high-severity advisories",
+        "a7fb837c80d5a1ae6458732e03d31ad81bb73c26 Refuse over-limit uploads early, upload on file pick, route Indian speech to Sarvam",
+        "bf61bb216dce90f896d171a5cb610399f0b73213 Audit merged roadmap gaps and share public API rate limits"
+      ],
+      "already_on_github_refs": [],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/heads/codex/draft-backup-contrast",
+      "sha": "5e62571bbe2b9d19e11099fae6026f4ddb6ef43d",
+      "date": "2026-10-07T15:14:46+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/heads/codex/export-reliability-on-stack",
+      "sha": "6d5dccdb9872a99cb14a0591d47f835420c5ff09",
+      "date": "2026-10-05T22:03:02+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/heads/codex/finish-code-health",
+      "sha": "95f10d455ffbae309b1a0eb246f66dd7fbbeaa9f",
+      "date": "2026-10-08T17:23:14+05:30",
+      "missing_from_main_commits": [
+        "95f10d455ffbae309b1a0eb246f66dd7fbbeaa9f Make export limit release contract independent of indentation",
+        "f38f4e1e65e86f67ce54f02794167af3d49ab8fd Fix request client regression and align international pricing with checkout",
+        "af8da90468f1a0a8fe39c6be5b983eeb71211eb8 Extract editor gestures and backend composition; enable word snapping",
+        "084a575cbd28575ff7929a5ea9ac11b96b3f7a23 Split processor.py's VideoProcessor into topic mixins",
+        "0bb84f82574d30afca0e61ad5932b7839c49beb2 Split backend/main.py helpers into focused host-pattern modules"
+      ],
+      "already_on_github_refs": [],
+      "consolidated_ancestor": false
+    },
+    {
+      "ref": "refs/heads/codex/five-second-save-notice",
+      "sha": "1ce758fd3c0ea9c6fd98a338accd7fdbed54461c",
+      "date": "2026-10-07T15:35:08+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/heads/codex/fix-queued-transcription",
+      "sha": "211f4e184ddaa9d09aef242e0b3516e25d8ca015",
+      "date": "2026-10-08T23:29:06+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/heads/codex/hardening-checklist-20260923",
+      "sha": "48015f6512f81eecae209e707c1a61f734bf62c3",
+      "date": "2026-09-25T11:49:05+05:30",
+      "missing_from_main_commits": [
+        "48015f6512f81eecae209e707c1a61f734bf62c3 Add queue-aware render capacity and GCP services",
+        "145561c528baffe40c62de8b7e4ebd56f8d559ba Adopt production infrastructure into Terraform state",
+        "f0885782a144c3e9e9e93b82d8eac427882b1cae Deploy live payment and Sentry configuration",
+        "422adfc52000d8e6caeb779fe4b733f0f89aee1e Clean up media after controlled export journeys",
+        "4659d51a4913c229b384cdeb5cbe06055998def1 Stage payment and monitoring settings safely and add burst verification"
+      ],
+      "already_on_github_refs": [
+        "refs/remotes/origin/codex/hardening-checklist-20260923"
+      ],
+      "consolidated_ancestor": false
+    },
+    {
+      "ref": "refs/heads/codex/infra-measured-readiness-20260923",
+      "sha": "875191838c41eb12f7d004f7a7f34758b3883fdd",
+      "date": "2026-09-23T19:49:10+05:30",
+      "missing_from_main_commits": [
+        "875191838c41eb12f7d004f7a7f34758b3883fdd Measure export readiness and harden direct upload admission"
+      ],
+      "already_on_github_refs": [
+        "refs/remotes/origin/codex/infra-measured-readiness-20260923"
+      ],
+      "consolidated_ancestor": false
+    },
+    {
+      "ref": "refs/heads/codex/infra-remaining-gaps-20260923",
+      "sha": "76ef0d53dacda492412642139119e3de9650666d",
+      "date": "2026-09-24T00:31:45+05:30",
+      "missing_from_main_commits": [
+        "76ef0d53dacda492412642139119e3de9650666d Keep sanitizer guard checks aligned with browser runtime",
+        "67b47a28a45fce58bf057e3a7105de60ae65c6ce Update browser sandbox release checks for shared runtime",
+        "ff9cafebc0911ba14c5cd207736e0721dd8d70a0 Reuse render browser and measure queued render work"
+      ],
+      "already_on_github_refs": [
+        "refs/remotes/origin/codex/infra-remaining-gaps-20260923"
+      ],
+      "consolidated_ancestor": false
+    },
+    {
+      "ref": "refs/heads/codex/infra-upload-hardening-20260923",
+      "sha": "5686c80d3b309bd9f29d8da1811b959ed61bc195",
+      "date": "2026-09-23T13:14:06+05:30",
+      "missing_from_main_commits": [
+        "5686c80d3b309bd9f29d8da1811b959ed61bc195 Harden direct media uploads and private export downloads"
+      ],
+      "already_on_github_refs": [
+        "refs/remotes/origin/codex/infra-upload-hardening-20260923"
+      ],
+      "consolidated_ancestor": false
+    },
+    {
+      "ref": "refs/heads/codex/isolated-load-test-packaging",
+      "sha": "c036459c3496c688d517bb0a7c3d9ac47167562b",
+      "date": "2026-09-24T19:42:07+05:30",
+      "missing_from_main_commits": [
+        "c036459c3496c688d517bb0a7c3d9ac47167562b Record isolated 100-user media journey results",
+        "5332a2a25b1f0c6b80f3e26a444ec640e80add2e Distribute isolated load journeys across API replicas",
+        "9d4692a7da04eb13278d799b02621bcfccb151af Retry transient Firestore contention in transcription admission",
+        "f831bcc83683d07648a4a6bd583a73d491149cb9 Update storage test fixture for V4 signing",
+        "cadb7a8689e681b15abe04b97947e7986ff0e5aa Sign private exports through IAM and make load journeys resilient",
+        "2b44c0467fa20e389eec3ec81904e4ba26e81b74 Isolate staging service controls and AI quota from production",
+        "76b5a4eb415acf5c122629218a145ba2598073cf Support both API and render base images in release build",
+        "56f1c642ce7c5ba3d74eb23ebfb883a832b6c1bf Include bundled fonts in Cloud Build and honor MOV uploads"
+      ],
+      "already_on_github_refs": [
+        "refs/remotes/origin/codex/isolated-load-test-packaging"
+      ],
+      "consolidated_ancestor": false
+    },
+    {
+      "ref": "refs/heads/codex/launch-draft-recovery-20261006",
+      "sha": "61c05e5a385ba9948952cf8ae686258572d7683d",
+      "date": "2026-10-06T13:55:48+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/heads/codex/launch-publication-20261007",
+      "sha": "023e66f008aca1452506b7dc2108d78ca93e9711",
+      "date": "2026-10-07T14:34:47+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/heads/codex/launch-reliability-fixes",
+      "sha": "40dd1b39336dd7712fb88b4190440a760b2670f6",
+      "date": "2026-10-05T15:46:13+05:30",
+      "missing_from_main_commits": [
+        "40dd1b39336dd7712fb88b4190440a760b2670f6 Make recovery fault injection compatible with Python 3.11",
+        "55af58c85a4bbd64533edaddb44b72973be9434a Record approved seven dollar Actions budget",
+        "e781565c63a594debfa52bf5d88bb20560fe6118 Record owner decision to retain existing spending limits",
+        "14573759350bd41092fc51b636d0c9cef7d07c0b Prepare bounded launch acceptance and avoid duplicate CI costs",
+        "c255e6b7c858732576b8dd45a771eef9eb2f8cb1 Keep render autoscaling disabled until live acceptance",
+        "1239851cfe4213683190f5cfcdf167df2b8904c8 Fix export admission, billed-result recovery and browser downloads"
+      ],
+      "already_on_github_refs": [
+        "refs/remotes/origin/codex/launch-reliability-fixes"
+      ],
+      "consolidated_ancestor": false
+    },
+    {
+      "ref": "refs/heads/codex/launch-reviewed-release",
+      "sha": "511bbe3597dfb373b8294ccc30fca05d97323b7b",
+      "date": "2026-10-08T20:38:43+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/heads/codex/load-test-evidence-coverage",
+      "sha": "abe96ab73ab3fc56070eadf9415c848611eed9dc",
+      "date": "2026-09-28T11:07:25+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/claude/optimistic-davinci-vrojx4",
+        "refs/remotes/origin/claude/serene-sagan-76mdi6",
+        "refs/remotes/origin/claude/sweet-feynman-fcqb80",
+        "refs/remotes/origin/codex/apex-editor-domain",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reliability-fixes",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/codex/load-test-evidence-coverage",
+        "refs/remotes/origin/codex/netlify-r2-editor-hosting",
+        "refs/remotes/origin/codex/privacy-cleanup-only",
+        "refs/remotes/origin/codex/r2-direct-download",
+        "refs/remotes/origin/codex/railway-api-ingress",
+        "refs/remotes/origin/codex/railway-idle-and-domain-fixes",
+        "refs/remotes/origin/codex/railway-r2-load-smoke",
+        "refs/remotes/origin/codex/railway-remaining-fixes",
+        "refs/remotes/origin/codex/railway-render-autoscaling",
+        "refs/remotes/origin/codex/railway-render-drain-safety",
+        "refs/remotes/origin/codex/railway-worker-idle-cleanup",
+        "refs/remotes/origin/codex/rendering-module-cleanup",
+        "refs/remotes/origin/codex/repository-privacy-cleanup",
+        "refs/remotes/origin/codex/roadmap-gap-audit",
+        "refs/remotes/origin/codex/route-module-cleanup",
+        "refs/remotes/origin/codex/unified-netlify-deployment",
+        "refs/remotes/origin/codex/unused-artifact-cleanup",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/heads/codex/netlify-r2-editor-hosting",
+      "sha": "c2bc77277c00f5167d4f41a5808f38735085dff1",
+      "date": "2026-10-03T23:45:25+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/claude/optimistic-davinci-vrojx4",
+        "refs/remotes/origin/claude/sweet-feynman-fcqb80",
+        "refs/remotes/origin/codex/apex-editor-domain",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reliability-fixes",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/codex/r2-direct-download",
+        "refs/remotes/origin/codex/railway-idle-and-domain-fixes",
+        "refs/remotes/origin/codex/railway-r2-load-smoke",
+        "refs/remotes/origin/codex/railway-remaining-fixes",
+        "refs/remotes/origin/codex/railway-render-autoscaling",
+        "refs/remotes/origin/codex/railway-render-drain-safety",
+        "refs/remotes/origin/codex/railway-worker-idle-cleanup",
+        "refs/remotes/origin/codex/rendering-module-cleanup",
+        "refs/remotes/origin/codex/route-module-cleanup",
+        "refs/remotes/origin/codex/unified-netlify-deployment",
+        "refs/remotes/origin/codex/unused-artifact-cleanup",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/heads/codex/production-release-20260924",
+      "sha": "c53fdacf1bac8e19dd5519c15c9557c0333ccd3c",
+      "date": "2026-09-24T21:21:55+05:30",
+      "missing_from_main_commits": [
+        "c53fdacf1bac8e19dd5519c15c9557c0333ccd3c Record public production release verification"
+      ],
+      "already_on_github_refs": [
+        "refs/remotes/origin/codex/production-release-20260924"
+      ],
+      "consolidated_ancestor": false
+    },
+    {
+      "ref": "refs/heads/codex/queue-autoscaling",
+      "sha": "a72dc4220c78b46a2456b8726e4cb99b078684f0",
+      "date": "2026-09-17T22:04:32+05:30",
+      "missing_from_main_commits": [
+        "a72dc4220c78b46a2456b8726e4cb99b078684f0 Keep absolute CPT reveals moving across reused frames",
+        "17b6cf9299b488f9a1eade9fb1360da40b8e715c Merge remote-tracking branch 'origin/main' into codex/queue-autoscaling",
+        "ed64d8384e423c30a7819f1fd8c3e97b5e3c6d77 Document production hardening evidence",
+        "0b127c75b9c9e70a979a825f5d2ac1cf8dbc7398 Allow workers to bypass exhausted zones",
+        "b2924ed98c8d6da2afafbb6df89311de431523f9 Fix split API image readiness",
+        "02bc7840f0b1c83800dc929c202a820f5bc1bd39 Fix multi-image Cloud Build manifest",
+        "6387660664a0fa535dedfd790f051d6acdb71081 Harden production scaling and media workflows",
+        "fca1a5d0c6ab7eba0272338c8f59a7789883bbac Update final animated export rollout evidence",
+        "86801bf29b49875bd70334c1f3884837d130d799 Reuse animated caption DOM across export frames",
+        "24b66c9d2ae38727a29c1f063f97c43e58f8d700 Record animated export performance rollout",
+        "9c6525c32d7684fc9396f32a465db264691a02a2 Keep queue metric tests dependency free",
+        "c46ca4b328349be7fa7bd7ba2873fa7081b0fd65 Clarify queue metric endpoint audit",
+        "02a5eccb949a47bd5ee31e4c11022fae132a98d4 Restrict queue metric HTTP endpoints",
+        "23e1890ae8dac8f3e4e8276092fadf366a2b0199 Normalize CSP hash checks across platforms",
+        "de13f1d3caa261553d66c28bd92414c3fb7c713a Fix release gates and frontend crash handling",
+        "aaf98675ab95baffb19a654442af29b5d0e26147 Speed up animated export frame capture",
+        "41edbc56e428bb64bc5c34939dafa13878515195 Document final capacity quotas",
+        "f439ce1353de293b07d3c8d6d6c43410febfd201 Remove worker quota bottlenecks",
+        "71831b836d6bd31ec7eee2fadda3aae5f4b76a42 Add queue metrics for worker autoscaling"
+      ],
+      "already_on_github_refs": [
+        "refs/remotes/origin/codex/queue-autoscaling"
+      ],
+      "consolidated_ancestor": false
+    },
+    {
+      "ref": "refs/heads/codex/r2-direct-download",
+      "sha": "de6160ad6d869a2791f5ba1f0d48dfcbab89151c",
+      "date": "2026-10-04T11:06:34+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/claude/optimistic-davinci-vrojx4",
+        "refs/remotes/origin/codex/apex-editor-domain",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reliability-fixes",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/codex/r2-direct-download",
+        "refs/remotes/origin/codex/railway-r2-load-smoke",
+        "refs/remotes/origin/codex/railway-remaining-fixes",
+        "refs/remotes/origin/codex/railway-render-autoscaling",
+        "refs/remotes/origin/codex/railway-render-drain-safety",
+        "refs/remotes/origin/codex/railway-worker-idle-cleanup",
+        "refs/remotes/origin/codex/rendering-module-cleanup",
+        "refs/remotes/origin/codex/route-module-cleanup",
+        "refs/remotes/origin/codex/unified-netlify-deployment",
+        "refs/remotes/origin/codex/unused-artifact-cleanup",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/heads/codex/railway-api-ingress",
+      "sha": "0f2a0abdfbcbab8835bf3a226cc48440059ab097",
+      "date": "2026-10-03T23:19:52+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/claude/optimistic-davinci-vrojx4",
+        "refs/remotes/origin/claude/sweet-feynman-fcqb80",
+        "refs/remotes/origin/codex/apex-editor-domain",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reliability-fixes",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/codex/netlify-r2-editor-hosting",
+        "refs/remotes/origin/codex/r2-direct-download",
+        "refs/remotes/origin/codex/railway-idle-and-domain-fixes",
+        "refs/remotes/origin/codex/railway-r2-load-smoke",
+        "refs/remotes/origin/codex/railway-remaining-fixes",
+        "refs/remotes/origin/codex/railway-render-autoscaling",
+        "refs/remotes/origin/codex/railway-render-drain-safety",
+        "refs/remotes/origin/codex/railway-worker-idle-cleanup",
+        "refs/remotes/origin/codex/rendering-module-cleanup",
+        "refs/remotes/origin/codex/route-module-cleanup",
+        "refs/remotes/origin/codex/unified-netlify-deployment",
+        "refs/remotes/origin/codex/unused-artifact-cleanup",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/heads/codex/railway-idle-and-domain-fixes",
+      "sha": "c41416e2ee7fd989df81d27be972b143628c9efc",
+      "date": "2026-10-04T10:54:18+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/claude/optimistic-davinci-vrojx4",
+        "refs/remotes/origin/claude/sweet-feynman-fcqb80",
+        "refs/remotes/origin/codex/apex-editor-domain",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reliability-fixes",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/codex/r2-direct-download",
+        "refs/remotes/origin/codex/railway-r2-load-smoke",
+        "refs/remotes/origin/codex/railway-remaining-fixes",
+        "refs/remotes/origin/codex/railway-render-autoscaling",
+        "refs/remotes/origin/codex/railway-render-drain-safety",
+        "refs/remotes/origin/codex/railway-worker-idle-cleanup",
+        "refs/remotes/origin/codex/rendering-module-cleanup",
+        "refs/remotes/origin/codex/route-module-cleanup",
+        "refs/remotes/origin/codex/unified-netlify-deployment",
+        "refs/remotes/origin/codex/unused-artifact-cleanup",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/heads/codex/railway-r2-load-smoke",
+      "sha": "00f2adb4bb19df32b2887940a85a76552fb96249",
+      "date": "2026-10-05T16:58:04+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/codex/railway-r2-load-smoke",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/heads/codex/railway-r2-production-validation",
+      "sha": "ab85157eda0f0c24f8dd870425cc24abc822da8b",
+      "date": "2026-10-03T22:46:17+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/claude/optimistic-davinci-vrojx4",
+        "refs/remotes/origin/claude/sweet-feynman-fcqb80",
+        "refs/remotes/origin/codex/apex-editor-domain",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reliability-fixes",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/codex/netlify-r2-editor-hosting",
+        "refs/remotes/origin/codex/r2-direct-download",
+        "refs/remotes/origin/codex/railway-api-ingress",
+        "refs/remotes/origin/codex/railway-idle-and-domain-fixes",
+        "refs/remotes/origin/codex/railway-r2-load-smoke",
+        "refs/remotes/origin/codex/railway-remaining-fixes",
+        "refs/remotes/origin/codex/railway-render-autoscaling",
+        "refs/remotes/origin/codex/railway-render-drain-safety",
+        "refs/remotes/origin/codex/railway-worker-idle-cleanup",
+        "refs/remotes/origin/codex/rendering-module-cleanup",
+        "refs/remotes/origin/codex/route-module-cleanup",
+        "refs/remotes/origin/codex/unified-netlify-deployment",
+        "refs/remotes/origin/codex/unused-artifact-cleanup",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/heads/codex/railway-remaining-fixes",
+      "sha": "70b21be01abaa5e3e60240015ec3520e5cb694a7",
+      "date": "2026-10-05T16:04:23+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/codex/railway-r2-load-smoke",
+        "refs/remotes/origin/codex/railway-remaining-fixes",
+        "refs/remotes/origin/codex/rendering-module-cleanup",
+        "refs/remotes/origin/codex/route-module-cleanup",
+        "refs/remotes/origin/codex/unused-artifact-cleanup",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/heads/codex/railway-render-autoscaling",
+      "sha": "046edfe10d86b0f86fc6e7c601beb73e376f01bf",
+      "date": "2026-10-04T16:52:52+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/claude/optimistic-davinci-vrojx4",
+        "refs/remotes/origin/codex/apex-editor-domain",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reliability-fixes",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/codex/railway-r2-load-smoke",
+        "refs/remotes/origin/codex/railway-remaining-fixes",
+        "refs/remotes/origin/codex/railway-render-autoscaling",
+        "refs/remotes/origin/codex/railway-render-drain-safety",
+        "refs/remotes/origin/codex/rendering-module-cleanup",
+        "refs/remotes/origin/codex/route-module-cleanup",
+        "refs/remotes/origin/codex/unified-netlify-deployment",
+        "refs/remotes/origin/codex/unused-artifact-cleanup",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/heads/codex/railway-render-drain-safety",
+      "sha": "9f7e5f0758f03c9764d50c12ea87366a20146149",
+      "date": "2026-10-04T20:18:29+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/claude/optimistic-davinci-vrojx4",
+        "refs/remotes/origin/codex/apex-editor-domain",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reliability-fixes",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/codex/railway-r2-load-smoke",
+        "refs/remotes/origin/codex/railway-remaining-fixes",
+        "refs/remotes/origin/codex/rendering-module-cleanup",
+        "refs/remotes/origin/codex/route-module-cleanup",
+        "refs/remotes/origin/codex/unified-netlify-deployment",
+        "refs/remotes/origin/codex/unused-artifact-cleanup",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/heads/codex/railway-worker-idle-cleanup",
+      "sha": "a89bf0c9623d040b64c979e072e1d29d413494f9",
+      "date": "2026-10-04T11:23:30+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/claude/optimistic-davinci-vrojx4",
+        "refs/remotes/origin/codex/apex-editor-domain",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reliability-fixes",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/codex/railway-r2-load-smoke",
+        "refs/remotes/origin/codex/railway-remaining-fixes",
+        "refs/remotes/origin/codex/railway-render-autoscaling",
+        "refs/remotes/origin/codex/railway-render-drain-safety",
+        "refs/remotes/origin/codex/railway-worker-idle-cleanup",
+        "refs/remotes/origin/codex/rendering-module-cleanup",
+        "refs/remotes/origin/codex/route-module-cleanup",
+        "refs/remotes/origin/codex/unified-netlify-deployment",
+        "refs/remotes/origin/codex/unused-artifact-cleanup",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/heads/codex/rendering-module-cleanup",
+      "sha": "666d973de573232fa78d99056b70df1cec2cec9c",
+      "date": "2026-10-05T16:39:20+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/codex/railway-r2-load-smoke",
+        "refs/remotes/origin/codex/rendering-module-cleanup",
+        "refs/remotes/origin/codex/unused-artifact-cleanup",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/heads/codex/repository-privacy-cleanup",
+      "sha": "a8f1ef8337a20f8c9da07a14d076293c23c35181",
+      "date": "2026-10-01T15:19:16+05:30",
+      "missing_from_main_commits": [
+        "a8f1ef8337a20f8c9da07a14d076293c23c35181 Log the 2026-10-01 file splits",
+        "f4c6c6920e24e293aa89b42d4e6889e6275f034b Move VideoPlayer's stateless styling helpers into the rendering module",
+        "4a9cf0d70b40d067ce8ac98cbdf8673617dec697 Move processor.py's font tables into font_catalog.py",
+        "e34efbc1163e7af71f1f82708453806ed0871c8d Move the export job pipeline out of main.py",
+        "48ba4f3c6fdd0d578c4faa5bb48fb76b21ba75ed Require launch drills for the pay-only-when-used setup",
+        "d65773476119a3c8381aecac9b240ed485806a2d Move template-apply logic out of the editor page",
+        "c0a8238b7def5d7e358ee99036fca75fb6c78940 Give template sections and two placeholder templates real names",
+        "56fed38a06036e9d7db4db51861df263eac600fe Keep export job state in one transactional Firestore record",
+        "f5832f08e88cb191a79695cbaaacd5cfe4936040 Capture template export frames on parallel Chromium processes",
+        "6d3270c7972519ca678f3fd13b2283d29bb8ac35 Let the hosted app reach the Cloud Run API, and fill deploy guide gaps",
+        "9bee63c429b1163d4da26978e36d487fccdc7951 Replace the always-on GCP setup with a pay-only-when-used one",
+        "a28a433408580cf61455202023036751a6d3ee33 Raise Starter to 3-minute videos and fix pricing copy",
+        "70261c3841e21af875d9e6801c4c0da311a51351 Stop redo from restoring another account's captions",
+        "4a72873d3977eeed8eb51138b01761afdfe94a94 Stop the one-time caption tip from flipping Tooltip modes",
+        "f164d21668bd7a424e03b195a2e15a6afbb951b5 Patch brace-expansion high advisory in lint tooling"
+      ],
+      "already_on_github_refs": [],
+      "consolidated_ancestor": false
+    },
+    {
+      "ref": "refs/heads/codex/roadmap-gap-audit",
+      "sha": "bf61bb216dce90f896d171a5cb610399f0b73213",
+      "date": "2026-09-28T12:22:49+05:30",
+      "missing_from_main_commits": [
+        "bf61bb216dce90f896d171a5cb610399f0b73213 Audit merged roadmap gaps and share public API rate limits"
+      ],
+      "already_on_github_refs": [
+        "refs/remotes/origin/codex/roadmap-gap-audit"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/heads/codex/route-module-cleanup",
+      "sha": "1f815c2165f38f7c7ff28504c957642c58766331",
+      "date": "2026-10-05T16:12:10+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/codex/railway-r2-load-smoke",
+        "refs/remotes/origin/codex/rendering-module-cleanup",
+        "refs/remotes/origin/codex/route-module-cleanup",
+        "refs/remotes/origin/codex/unused-artifact-cleanup",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/heads/codex/unified-netlify-deployment",
+      "sha": "4bebfeb5deb0bd9ce60509273378dbf664fc168f",
+      "date": "2026-10-04T22:39:42+05:30",
+      "missing_from_main_commits": [
+        "4bebfeb5deb0bd9ce60509273378dbf664fc168f Document unified Netlify landing and editor deployment"
+      ],
+      "already_on_github_refs": [
+        "refs/remotes/origin/codex/unified-netlify-deployment"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/heads/codex/unused-artifact-cleanup",
+      "sha": "e78bc428c2757dd650f2d5dce04c62c3c83d396b",
+      "date": "2026-10-05T16:52:48+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/codex/railway-r2-load-smoke",
+        "refs/remotes/origin/codex/unused-artifact-cleanup",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/heads/feat/mobile-editor",
+      "sha": "ac164882098f3a108d69cfeb8f9ab3a8b0c26b46",
+      "date": "2026-07-07T22:11:31+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [],
+      "consolidated_ancestor": false
+    },
+    {
+      "ref": "refs/heads/fix/ass-variable-font-weight",
+      "sha": "4a6cfe18a1f3b5d827fecc861c5e5e9e4585b40d",
+      "date": "2026-10-08T23:21:34+05:30",
+      "missing_from_main_commits": [
+        "4a6cfe18a1f3b5d827fecc861c5e5e9e4585b40d Render the requested weight for variable fonts in ASS exports"
+      ],
+      "already_on_github_refs": [
+        "refs/remotes/origin/fix/ass-variable-font-weight"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/heads/fix/left-templates-unify",
+      "sha": "5f8923c562a614b6797b9dde8ff540d7c7a5f874",
+      "date": "2026-09-03T11:10:58+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/claude/optimistic-davinci-vrojx4",
+        "refs/remotes/origin/claude/serene-sagan-76mdi6",
+        "refs/remotes/origin/claude/sweet-feynman-fcqb80",
+        "refs/remotes/origin/codex/apex-editor-domain",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/hardening-checklist-20260923",
+        "refs/remotes/origin/codex/infra-measured-readiness-20260923",
+        "refs/remotes/origin/codex/infra-remaining-gaps-20260923",
+        "refs/remotes/origin/codex/infra-upload-hardening-20260923",
+        "refs/remotes/origin/codex/isolated-load-test-packaging",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reliability-fixes",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/codex/load-test-evidence-coverage",
+        "refs/remotes/origin/codex/netlify-r2-editor-hosting",
+        "refs/remotes/origin/codex/privacy-cleanup-only",
+        "refs/remotes/origin/codex/production-release-20260924",
+        "refs/remotes/origin/codex/queue-autoscaling",
+        "refs/remotes/origin/codex/r2-direct-download",
+        "refs/remotes/origin/codex/railway-api-ingress",
+        "refs/remotes/origin/codex/railway-idle-and-domain-fixes",
+        "refs/remotes/origin/codex/railway-r2-load-smoke",
+        "refs/remotes/origin/codex/railway-remaining-fixes",
+        "refs/remotes/origin/codex/railway-render-autoscaling",
+        "refs/remotes/origin/codex/railway-render-drain-safety",
+        "refs/remotes/origin/codex/railway-worker-idle-cleanup",
+        "refs/remotes/origin/codex/rendering-module-cleanup",
+        "refs/remotes/origin/codex/repository-privacy-cleanup",
+        "refs/remotes/origin/codex/roadmap-gap-audit",
+        "refs/remotes/origin/codex/route-module-cleanup",
+        "refs/remotes/origin/codex/unified-netlify-deployment",
+        "refs/remotes/origin/codex/unused-artifact-cleanup",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/comprehensive-readiness-gaps-2026-09-28",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/heads/fix/plain-caption-export-word-gap",
+      "sha": "b8b94d81e723c740d40cace87028c431ab2b6c3c",
+      "date": "2026-10-08T23:19:45+05:30",
+      "missing_from_main_commits": [
+        "b8b94d81e723c740d40cace87028c431ab2b6c3c Fix missing word gaps in DOM-exported plain captions"
+      ],
+      "already_on_github_refs": [
+        "refs/remotes/origin/fix/plain-caption-export-word-gap"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/heads/main",
+      "sha": "511bbe3597dfb373b8294ccc30fca05d97323b7b",
+      "date": "2026-10-08T20:38:43+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/heads/worktree-landing-redesign",
+      "sha": "db1132397134004f13648c0322b2502ffafbd3dc",
+      "date": "2026-07-17T22:59:53+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [],
+      "consolidated_ancestor": false
+    },
+    {
+      "ref": "refs/heads/worktree-landing-v2",
+      "sha": "52246ae1218b0631477a179331f3c6824cdf128a",
+      "date": "2026-07-08T21:58:19+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [],
+      "consolidated_ancestor": false
+    },
+    {
+      "ref": "refs/remotes/origin/archive/csp-wt-head-930214a",
+      "sha": "930214a847d1196e7070d13e9fcc5c775dcf0561",
+      "date": "2026-07-02T14:35:30+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/archive/csp-wt-head-930214a"
+      ],
+      "consolidated_ancestor": false
+    },
+    {
+      "ref": "refs/remotes/origin/claude/editor-journey-coverage",
+      "sha": "91fcbdf0e668bef12ee19087b6c29e93219a0663",
+      "date": "2026-10-08T18:26:26+05:30",
+      "missing_from_main_commits": [
+        "91fcbdf0e668bef12ee19087b6c29e93219a0663 Extend the editor journey: caption correction, upload resume after reload, checkout"
+      ],
+      "already_on_github_refs": [
+        "refs/remotes/origin/claude/editor-journey-coverage"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/remotes/origin/claude/export-size-reference",
+      "sha": "0785f9b30301871955d73ccbf4537e0ce6c86840",
+      "date": "2026-10-08T23:44:42+05:30",
+      "missing_from_main_commits": [
+        "0785f9b30301871955d73ccbf4537e0ce6c86840 Match static and animated export fonts and position for non-Latin text",
+        "2b4e5dddd6eecfdd4e18266fa00e0771b0d330b3 Size ASS captions against the DOM renderer's 360px-wide reference"
+      ],
+      "already_on_github_refs": [
+        "refs/remotes/origin/claude/export-size-reference"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+      "sha": "012f01bfb6d1c559676469e26fb88e50fef1a6d1",
+      "date": "2026-10-08T18:01:46Z",
+      "missing_from_main_commits": [
+        "012f01bfb6d1c559676469e26fb88e50fef1a6d1 Merge main into upload journey branch",
+        "1b9b4cb43dff25e16fe820dc97afbe1106855fa8 Bump source-map-js to 1.2.2 for GHSA-68fv-2mgg-jv7q",
+        "fd2054d2ecafc8a6b7aa5c74c49c84ca6339d065 Merge main into upload journey branch",
+        "05a5f1714221f33ebd666071a98ff66987b6ecf7 Merge main into claude/friendly-fermi-lgu4n7",
+        "4bdc899264f3d701ce1ae7b45f1b2916b4e5f42f Bump urllib3 to 2.8.0 for pip-audit advisories",
+        "bbe8c8a3fa05abe0b25fd86438b051dec4011b48 Play uploads from the device, share transcripts across workers, delete abandoned uploads, measure the upload funnel",
+        "a2c465b32be29c55862d8b6b88b50dec06c67b00 Bump pyjwt to 2.15.1 for pip-audit advisories",
+        "108f5f139b1b6935c3412134f9072bf5da870a50 Bump brace-expansion to 1.1.21 for new high-severity advisories",
+        "a7fb837c80d5a1ae6458732e03d31ad81bb73c26 Refuse over-limit uploads early, upload on file pick, route Indian speech to Sarvam"
+      ],
+      "already_on_github_refs": [
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/remotes/origin/claude/mobile-editor",
+      "sha": "3132ce2fc54af067fdf29b1ff2e5493b62511277",
+      "date": "2026-10-08T23:56:36+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": false
+    },
+    {
+      "ref": "refs/remotes/origin/claude/optimistic-davinci-vrojx4",
+      "sha": "90b9b3e1ce3535c803bb60bf9eb6ee2634137511",
+      "date": "2026-10-05T11:59:26Z",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/claude/optimistic-davinci-vrojx4",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/remotes/origin/claude/serene-sagan-76mdi6",
+      "sha": "9d693581cf4e00db9aea2be8f599fe0a842e47ab",
+      "date": "2026-10-03T22:31:01+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/claude/optimistic-davinci-vrojx4",
+        "refs/remotes/origin/claude/serene-sagan-76mdi6",
+        "refs/remotes/origin/claude/sweet-feynman-fcqb80",
+        "refs/remotes/origin/codex/apex-editor-domain",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reliability-fixes",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/codex/netlify-r2-editor-hosting",
+        "refs/remotes/origin/codex/r2-direct-download",
+        "refs/remotes/origin/codex/railway-api-ingress",
+        "refs/remotes/origin/codex/railway-idle-and-domain-fixes",
+        "refs/remotes/origin/codex/railway-r2-load-smoke",
+        "refs/remotes/origin/codex/railway-remaining-fixes",
+        "refs/remotes/origin/codex/railway-render-autoscaling",
+        "refs/remotes/origin/codex/railway-render-drain-safety",
+        "refs/remotes/origin/codex/railway-worker-idle-cleanup",
+        "refs/remotes/origin/codex/rendering-module-cleanup",
+        "refs/remotes/origin/codex/route-module-cleanup",
+        "refs/remotes/origin/codex/unified-netlify-deployment",
+        "refs/remotes/origin/codex/unused-artifact-cleanup",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/remotes/origin/claude/sweet-feynman-fcqb80",
+      "sha": "6da5c9ed950e23c12412feb65e8a3ac63b01ed7f",
+      "date": "2026-10-04T07:44:07Z",
+      "missing_from_main_commits": [
+        "6da5c9ed950e23c12412feb65e8a3ac63b01ed7f Author T43 split-flap in 2D and guard keyframe templates against 3D",
+        "8a6c04b07d892963a1bbb8a9f967fc2e2f04b20c Add keyframe-driven caption templates T41\u2013T52 (work in progress)"
+      ],
+      "already_on_github_refs": [
+        "refs/remotes/origin/claude/sweet-feynman-fcqb80"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/remotes/origin/codex/apex-editor-domain",
+      "sha": "51db59053bb59830db9061def8666e4ac50583c8",
+      "date": "2026-10-04T20:59:43+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/claude/optimistic-davinci-vrojx4",
+        "refs/remotes/origin/codex/apex-editor-domain",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reliability-fixes",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/codex/railway-r2-load-smoke",
+        "refs/remotes/origin/codex/railway-remaining-fixes",
+        "refs/remotes/origin/codex/rendering-module-cleanup",
+        "refs/remotes/origin/codex/route-module-cleanup",
+        "refs/remotes/origin/codex/unified-netlify-deployment",
+        "refs/remotes/origin/codex/unused-artifact-cleanup",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/remotes/origin/codex/b4-measurement-records-20261007",
+      "sha": "dc85a24288c96747e69730c2416face4bb0d1ce1",
+      "date": "2026-10-07T13:39:57+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/remotes/origin/codex/clamav-signatures-20261006",
+      "sha": "47747752e0c71afb4257804476014741d65c160b",
+      "date": "2026-10-06T18:38:12+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/remotes/origin/codex/draft-backup-contrast",
+      "sha": "5e62571bbe2b9d19e11099fae6026f4ddb6ef43d",
+      "date": "2026-10-07T15:14:46+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/remotes/origin/codex/export-reliability-on-stack",
+      "sha": "072d4e6d6f189554bf5871af123362c5c1262ae0",
+      "date": "2026-10-05T21:50:36+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/remotes/origin/codex/five-second-save-notice",
+      "sha": "1ce758fd3c0ea9c6fd98a338accd7fdbed54461c",
+      "date": "2026-10-07T15:35:08+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/remotes/origin/codex/fix-queued-transcription",
+      "sha": "3de10eca9b00bdf8585cb6e82fb02f3621b460a6",
+      "date": "2026-10-08T23:27:34+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/remotes/origin/codex/hardening-checklist-20260923",
+      "sha": "48015f6512f81eecae209e707c1a61f734bf62c3",
+      "date": "2026-09-25T11:49:05+05:30",
+      "missing_from_main_commits": [
+        "48015f6512f81eecae209e707c1a61f734bf62c3 Add queue-aware render capacity and GCP services",
+        "145561c528baffe40c62de8b7e4ebd56f8d559ba Adopt production infrastructure into Terraform state",
+        "f0885782a144c3e9e9e93b82d8eac427882b1cae Deploy live payment and Sentry configuration",
+        "422adfc52000d8e6caeb779fe4b733f0f89aee1e Clean up media after controlled export journeys",
+        "4659d51a4913c229b384cdeb5cbe06055998def1 Stage payment and monitoring settings safely and add burst verification"
+      ],
+      "already_on_github_refs": [
+        "refs/remotes/origin/codex/hardening-checklist-20260923"
+      ],
+      "consolidated_ancestor": false
+    },
+    {
+      "ref": "refs/remotes/origin/codex/infra-measured-readiness-20260923",
+      "sha": "875191838c41eb12f7d004f7a7f34758b3883fdd",
+      "date": "2026-09-23T19:49:10+05:30",
+      "missing_from_main_commits": [
+        "875191838c41eb12f7d004f7a7f34758b3883fdd Measure export readiness and harden direct upload admission"
+      ],
+      "already_on_github_refs": [
+        "refs/remotes/origin/codex/infra-measured-readiness-20260923"
+      ],
+      "consolidated_ancestor": false
+    },
+    {
+      "ref": "refs/remotes/origin/codex/infra-remaining-gaps-20260923",
+      "sha": "76ef0d53dacda492412642139119e3de9650666d",
+      "date": "2026-09-24T00:31:45+05:30",
+      "missing_from_main_commits": [
+        "76ef0d53dacda492412642139119e3de9650666d Keep sanitizer guard checks aligned with browser runtime",
+        "67b47a28a45fce58bf057e3a7105de60ae65c6ce Update browser sandbox release checks for shared runtime",
+        "ff9cafebc0911ba14c5cd207736e0721dd8d70a0 Reuse render browser and measure queued render work"
+      ],
+      "already_on_github_refs": [
+        "refs/remotes/origin/codex/infra-remaining-gaps-20260923"
+      ],
+      "consolidated_ancestor": false
+    },
+    {
+      "ref": "refs/remotes/origin/codex/infra-upload-hardening-20260923",
+      "sha": "5686c80d3b309bd9f29d8da1811b959ed61bc195",
+      "date": "2026-09-23T13:14:06+05:30",
+      "missing_from_main_commits": [
+        "5686c80d3b309bd9f29d8da1811b959ed61bc195 Harden direct media uploads and private export downloads"
+      ],
+      "already_on_github_refs": [
+        "refs/remotes/origin/codex/infra-upload-hardening-20260923"
+      ],
+      "consolidated_ancestor": false
+    },
+    {
+      "ref": "refs/remotes/origin/codex/isolated-load-test-packaging",
+      "sha": "c036459c3496c688d517bb0a7c3d9ac47167562b",
+      "date": "2026-09-24T19:42:07+05:30",
+      "missing_from_main_commits": [
+        "c036459c3496c688d517bb0a7c3d9ac47167562b Record isolated 100-user media journey results",
+        "5332a2a25b1f0c6b80f3e26a444ec640e80add2e Distribute isolated load journeys across API replicas",
+        "9d4692a7da04eb13278d799b02621bcfccb151af Retry transient Firestore contention in transcription admission",
+        "f831bcc83683d07648a4a6bd583a73d491149cb9 Update storage test fixture for V4 signing",
+        "cadb7a8689e681b15abe04b97947e7986ff0e5aa Sign private exports through IAM and make load journeys resilient",
+        "2b44c0467fa20e389eec3ec81904e4ba26e81b74 Isolate staging service controls and AI quota from production",
+        "76b5a4eb415acf5c122629218a145ba2598073cf Support both API and render base images in release build",
+        "56f1c642ce7c5ba3d74eb23ebfb883a832b6c1bf Include bundled fonts in Cloud Build and honor MOV uploads"
+      ],
+      "already_on_github_refs": [
+        "refs/remotes/origin/codex/isolated-load-test-packaging"
+      ],
+      "consolidated_ancestor": false
+    },
+    {
+      "ref": "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+      "sha": "61c05e5a385ba9948952cf8ae686258572d7683d",
+      "date": "2026-10-06T13:55:48+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/remotes/origin/codex/launch-reliability-fixes",
+      "sha": "40dd1b39336dd7712fb88b4190440a760b2670f6",
+      "date": "2026-10-05T15:46:13+05:30",
+      "missing_from_main_commits": [
+        "40dd1b39336dd7712fb88b4190440a760b2670f6 Make recovery fault injection compatible with Python 3.11",
+        "55af58c85a4bbd64533edaddb44b72973be9434a Record approved seven dollar Actions budget",
+        "e781565c63a594debfa52bf5d88bb20560fe6118 Record owner decision to retain existing spending limits",
+        "14573759350bd41092fc51b636d0c9cef7d07c0b Prepare bounded launch acceptance and avoid duplicate CI costs",
+        "c255e6b7c858732576b8dd45a771eef9eb2f8cb1 Keep render autoscaling disabled until live acceptance",
+        "1239851cfe4213683190f5cfcdf167df2b8904c8 Fix export admission, billed-result recovery and browser downloads"
+      ],
+      "already_on_github_refs": [
+        "refs/remotes/origin/codex/launch-reliability-fixes"
+      ],
+      "consolidated_ancestor": false
+    },
+    {
+      "ref": "refs/remotes/origin/codex/launch-reviewed-release",
+      "sha": "015803b64ae01f90938004f7e79d0ad5b48eceeb",
+      "date": "2026-10-08T20:35:53+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/remotes/origin/codex/load-test-evidence-coverage",
+      "sha": "abe96ab73ab3fc56070eadf9415c848611eed9dc",
+      "date": "2026-09-28T11:07:25+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/claude/optimistic-davinci-vrojx4",
+        "refs/remotes/origin/claude/serene-sagan-76mdi6",
+        "refs/remotes/origin/claude/sweet-feynman-fcqb80",
+        "refs/remotes/origin/codex/apex-editor-domain",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reliability-fixes",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/codex/load-test-evidence-coverage",
+        "refs/remotes/origin/codex/netlify-r2-editor-hosting",
+        "refs/remotes/origin/codex/privacy-cleanup-only",
+        "refs/remotes/origin/codex/r2-direct-download",
+        "refs/remotes/origin/codex/railway-api-ingress",
+        "refs/remotes/origin/codex/railway-idle-and-domain-fixes",
+        "refs/remotes/origin/codex/railway-r2-load-smoke",
+        "refs/remotes/origin/codex/railway-remaining-fixes",
+        "refs/remotes/origin/codex/railway-render-autoscaling",
+        "refs/remotes/origin/codex/railway-render-drain-safety",
+        "refs/remotes/origin/codex/railway-worker-idle-cleanup",
+        "refs/remotes/origin/codex/rendering-module-cleanup",
+        "refs/remotes/origin/codex/repository-privacy-cleanup",
+        "refs/remotes/origin/codex/roadmap-gap-audit",
+        "refs/remotes/origin/codex/route-module-cleanup",
+        "refs/remotes/origin/codex/unified-netlify-deployment",
+        "refs/remotes/origin/codex/unused-artifact-cleanup",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/remotes/origin/codex/netlify-r2-editor-hosting",
+      "sha": "08c1b91a698a1b109ed90ff3ba40d214b122cc00",
+      "date": "2026-10-03T23:32:43+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/claude/optimistic-davinci-vrojx4",
+        "refs/remotes/origin/claude/sweet-feynman-fcqb80",
+        "refs/remotes/origin/codex/apex-editor-domain",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reliability-fixes",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/codex/netlify-r2-editor-hosting",
+        "refs/remotes/origin/codex/r2-direct-download",
+        "refs/remotes/origin/codex/railway-idle-and-domain-fixes",
+        "refs/remotes/origin/codex/railway-r2-load-smoke",
+        "refs/remotes/origin/codex/railway-remaining-fixes",
+        "refs/remotes/origin/codex/railway-render-autoscaling",
+        "refs/remotes/origin/codex/railway-render-drain-safety",
+        "refs/remotes/origin/codex/railway-worker-idle-cleanup",
+        "refs/remotes/origin/codex/rendering-module-cleanup",
+        "refs/remotes/origin/codex/route-module-cleanup",
+        "refs/remotes/origin/codex/unified-netlify-deployment",
+        "refs/remotes/origin/codex/unused-artifact-cleanup",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/remotes/origin/codex/privacy-cleanup-only",
+      "sha": "2818e8a9ad36b19dfe633d08e8243e97e4b55045",
+      "date": "2026-09-28T15:21:59+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/claude/optimistic-davinci-vrojx4",
+        "refs/remotes/origin/claude/serene-sagan-76mdi6",
+        "refs/remotes/origin/claude/sweet-feynman-fcqb80",
+        "refs/remotes/origin/codex/apex-editor-domain",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reliability-fixes",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/codex/netlify-r2-editor-hosting",
+        "refs/remotes/origin/codex/privacy-cleanup-only",
+        "refs/remotes/origin/codex/r2-direct-download",
+        "refs/remotes/origin/codex/railway-api-ingress",
+        "refs/remotes/origin/codex/railway-idle-and-domain-fixes",
+        "refs/remotes/origin/codex/railway-r2-load-smoke",
+        "refs/remotes/origin/codex/railway-remaining-fixes",
+        "refs/remotes/origin/codex/railway-render-autoscaling",
+        "refs/remotes/origin/codex/railway-render-drain-safety",
+        "refs/remotes/origin/codex/railway-worker-idle-cleanup",
+        "refs/remotes/origin/codex/rendering-module-cleanup",
+        "refs/remotes/origin/codex/repository-privacy-cleanup",
+        "refs/remotes/origin/codex/route-module-cleanup",
+        "refs/remotes/origin/codex/unified-netlify-deployment",
+        "refs/remotes/origin/codex/unused-artifact-cleanup",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/remotes/origin/codex/production-release-20260924",
+      "sha": "c53fdacf1bac8e19dd5519c15c9557c0333ccd3c",
+      "date": "2026-09-24T21:21:55+05:30",
+      "missing_from_main_commits": [
+        "c53fdacf1bac8e19dd5519c15c9557c0333ccd3c Record public production release verification"
+      ],
+      "already_on_github_refs": [
+        "refs/remotes/origin/codex/production-release-20260924"
+      ],
+      "consolidated_ancestor": false
+    },
+    {
+      "ref": "refs/remotes/origin/codex/queue-autoscaling",
+      "sha": "a72dc4220c78b46a2456b8726e4cb99b078684f0",
+      "date": "2026-09-17T22:04:32+05:30",
+      "missing_from_main_commits": [
+        "a72dc4220c78b46a2456b8726e4cb99b078684f0 Keep absolute CPT reveals moving across reused frames",
+        "17b6cf9299b488f9a1eade9fb1360da40b8e715c Merge remote-tracking branch 'origin/main' into codex/queue-autoscaling",
+        "ed64d8384e423c30a7819f1fd8c3e97b5e3c6d77 Document production hardening evidence",
+        "0b127c75b9c9e70a979a825f5d2ac1cf8dbc7398 Allow workers to bypass exhausted zones",
+        "b2924ed98c8d6da2afafbb6df89311de431523f9 Fix split API image readiness",
+        "02bc7840f0b1c83800dc929c202a820f5bc1bd39 Fix multi-image Cloud Build manifest",
+        "6387660664a0fa535dedfd790f051d6acdb71081 Harden production scaling and media workflows",
+        "fca1a5d0c6ab7eba0272338c8f59a7789883bbac Update final animated export rollout evidence",
+        "86801bf29b49875bd70334c1f3884837d130d799 Reuse animated caption DOM across export frames",
+        "24b66c9d2ae38727a29c1f063f97c43e58f8d700 Record animated export performance rollout",
+        "9c6525c32d7684fc9396f32a465db264691a02a2 Keep queue metric tests dependency free",
+        "c46ca4b328349be7fa7bd7ba2873fa7081b0fd65 Clarify queue metric endpoint audit",
+        "02a5eccb949a47bd5ee31e4c11022fae132a98d4 Restrict queue metric HTTP endpoints",
+        "23e1890ae8dac8f3e4e8276092fadf366a2b0199 Normalize CSP hash checks across platforms",
+        "de13f1d3caa261553d66c28bd92414c3fb7c713a Fix release gates and frontend crash handling",
+        "aaf98675ab95baffb19a654442af29b5d0e26147 Speed up animated export frame capture",
+        "41edbc56e428bb64bc5c34939dafa13878515195 Document final capacity quotas",
+        "f439ce1353de293b07d3c8d6d6c43410febfd201 Remove worker quota bottlenecks",
+        "71831b836d6bd31ec7eee2fadda3aae5f4b76a42 Add queue metrics for worker autoscaling"
+      ],
+      "already_on_github_refs": [
+        "refs/remotes/origin/codex/queue-autoscaling"
+      ],
+      "consolidated_ancestor": false
+    },
+    {
+      "ref": "refs/remotes/origin/codex/r2-direct-download",
+      "sha": "de6160ad6d869a2791f5ba1f0d48dfcbab89151c",
+      "date": "2026-10-04T11:06:34+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/claude/optimistic-davinci-vrojx4",
+        "refs/remotes/origin/codex/apex-editor-domain",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reliability-fixes",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/codex/r2-direct-download",
+        "refs/remotes/origin/codex/railway-r2-load-smoke",
+        "refs/remotes/origin/codex/railway-remaining-fixes",
+        "refs/remotes/origin/codex/railway-render-autoscaling",
+        "refs/remotes/origin/codex/railway-render-drain-safety",
+        "refs/remotes/origin/codex/railway-worker-idle-cleanup",
+        "refs/remotes/origin/codex/rendering-module-cleanup",
+        "refs/remotes/origin/codex/route-module-cleanup",
+        "refs/remotes/origin/codex/unified-netlify-deployment",
+        "refs/remotes/origin/codex/unused-artifact-cleanup",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/remotes/origin/codex/railway-api-ingress",
+      "sha": "7952014737e498105361c4ea72d6a388cb6cf2d9",
+      "date": "2026-10-03T23:01:13+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/claude/optimistic-davinci-vrojx4",
+        "refs/remotes/origin/claude/sweet-feynman-fcqb80",
+        "refs/remotes/origin/codex/apex-editor-domain",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reliability-fixes",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/codex/netlify-r2-editor-hosting",
+        "refs/remotes/origin/codex/r2-direct-download",
+        "refs/remotes/origin/codex/railway-api-ingress",
+        "refs/remotes/origin/codex/railway-idle-and-domain-fixes",
+        "refs/remotes/origin/codex/railway-r2-load-smoke",
+        "refs/remotes/origin/codex/railway-remaining-fixes",
+        "refs/remotes/origin/codex/railway-render-autoscaling",
+        "refs/remotes/origin/codex/railway-render-drain-safety",
+        "refs/remotes/origin/codex/railway-worker-idle-cleanup",
+        "refs/remotes/origin/codex/rendering-module-cleanup",
+        "refs/remotes/origin/codex/route-module-cleanup",
+        "refs/remotes/origin/codex/unified-netlify-deployment",
+        "refs/remotes/origin/codex/unused-artifact-cleanup",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/remotes/origin/codex/railway-idle-and-domain-fixes",
+      "sha": "8ab692b915b4131d730388fe243f3b1cd71c4882",
+      "date": "2026-10-04T10:24:39+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/claude/optimistic-davinci-vrojx4",
+        "refs/remotes/origin/claude/sweet-feynman-fcqb80",
+        "refs/remotes/origin/codex/apex-editor-domain",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reliability-fixes",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/codex/r2-direct-download",
+        "refs/remotes/origin/codex/railway-idle-and-domain-fixes",
+        "refs/remotes/origin/codex/railway-r2-load-smoke",
+        "refs/remotes/origin/codex/railway-remaining-fixes",
+        "refs/remotes/origin/codex/railway-render-autoscaling",
+        "refs/remotes/origin/codex/railway-render-drain-safety",
+        "refs/remotes/origin/codex/railway-worker-idle-cleanup",
+        "refs/remotes/origin/codex/rendering-module-cleanup",
+        "refs/remotes/origin/codex/route-module-cleanup",
+        "refs/remotes/origin/codex/unified-netlify-deployment",
+        "refs/remotes/origin/codex/unused-artifact-cleanup",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/remotes/origin/codex/railway-r2-load-smoke",
+      "sha": "00f2adb4bb19df32b2887940a85a76552fb96249",
+      "date": "2026-10-05T16:58:04+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/codex/railway-r2-load-smoke",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/remotes/origin/codex/railway-remaining-fixes",
+      "sha": "70b21be01abaa5e3e60240015ec3520e5cb694a7",
+      "date": "2026-10-05T16:04:23+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/codex/railway-r2-load-smoke",
+        "refs/remotes/origin/codex/railway-remaining-fixes",
+        "refs/remotes/origin/codex/rendering-module-cleanup",
+        "refs/remotes/origin/codex/route-module-cleanup",
+        "refs/remotes/origin/codex/unused-artifact-cleanup",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/remotes/origin/codex/railway-render-autoscaling",
+      "sha": "046edfe10d86b0f86fc6e7c601beb73e376f01bf",
+      "date": "2026-10-04T16:52:52+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/claude/optimistic-davinci-vrojx4",
+        "refs/remotes/origin/codex/apex-editor-domain",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reliability-fixes",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/codex/railway-r2-load-smoke",
+        "refs/remotes/origin/codex/railway-remaining-fixes",
+        "refs/remotes/origin/codex/railway-render-autoscaling",
+        "refs/remotes/origin/codex/railway-render-drain-safety",
+        "refs/remotes/origin/codex/rendering-module-cleanup",
+        "refs/remotes/origin/codex/route-module-cleanup",
+        "refs/remotes/origin/codex/unified-netlify-deployment",
+        "refs/remotes/origin/codex/unused-artifact-cleanup",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/remotes/origin/codex/railway-render-drain-safety",
+      "sha": "29b484d797de2add42947505a366ebc23b0c5344",
+      "date": "2026-10-04T19:54:20+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/claude/optimistic-davinci-vrojx4",
+        "refs/remotes/origin/codex/apex-editor-domain",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reliability-fixes",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/codex/railway-r2-load-smoke",
+        "refs/remotes/origin/codex/railway-remaining-fixes",
+        "refs/remotes/origin/codex/railway-render-drain-safety",
+        "refs/remotes/origin/codex/rendering-module-cleanup",
+        "refs/remotes/origin/codex/route-module-cleanup",
+        "refs/remotes/origin/codex/unified-netlify-deployment",
+        "refs/remotes/origin/codex/unused-artifact-cleanup",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/remotes/origin/codex/railway-worker-idle-cleanup",
+      "sha": "a89bf0c9623d040b64c979e072e1d29d413494f9",
+      "date": "2026-10-04T11:23:30+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/claude/optimistic-davinci-vrojx4",
+        "refs/remotes/origin/codex/apex-editor-domain",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reliability-fixes",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/codex/railway-r2-load-smoke",
+        "refs/remotes/origin/codex/railway-remaining-fixes",
+        "refs/remotes/origin/codex/railway-render-autoscaling",
+        "refs/remotes/origin/codex/railway-render-drain-safety",
+        "refs/remotes/origin/codex/railway-worker-idle-cleanup",
+        "refs/remotes/origin/codex/rendering-module-cleanup",
+        "refs/remotes/origin/codex/route-module-cleanup",
+        "refs/remotes/origin/codex/unified-netlify-deployment",
+        "refs/remotes/origin/codex/unused-artifact-cleanup",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/remotes/origin/codex/rendering-module-cleanup",
+      "sha": "666d973de573232fa78d99056b70df1cec2cec9c",
+      "date": "2026-10-05T16:39:20+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/codex/railway-r2-load-smoke",
+        "refs/remotes/origin/codex/rendering-module-cleanup",
+        "refs/remotes/origin/codex/unused-artifact-cleanup",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/remotes/origin/codex/repository-privacy-cleanup",
+      "sha": "5cee8a861e51be0d9ea0b9fed98c0a4ecfb39f48",
+      "date": "2026-09-29T17:09:58+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/claude/optimistic-davinci-vrojx4",
+        "refs/remotes/origin/claude/serene-sagan-76mdi6",
+        "refs/remotes/origin/claude/sweet-feynman-fcqb80",
+        "refs/remotes/origin/codex/apex-editor-domain",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reliability-fixes",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/codex/netlify-r2-editor-hosting",
+        "refs/remotes/origin/codex/r2-direct-download",
+        "refs/remotes/origin/codex/railway-api-ingress",
+        "refs/remotes/origin/codex/railway-idle-and-domain-fixes",
+        "refs/remotes/origin/codex/railway-r2-load-smoke",
+        "refs/remotes/origin/codex/railway-remaining-fixes",
+        "refs/remotes/origin/codex/railway-render-autoscaling",
+        "refs/remotes/origin/codex/railway-render-drain-safety",
+        "refs/remotes/origin/codex/railway-worker-idle-cleanup",
+        "refs/remotes/origin/codex/rendering-module-cleanup",
+        "refs/remotes/origin/codex/repository-privacy-cleanup",
+        "refs/remotes/origin/codex/route-module-cleanup",
+        "refs/remotes/origin/codex/unified-netlify-deployment",
+        "refs/remotes/origin/codex/unused-artifact-cleanup",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/remotes/origin/codex/roadmap-gap-audit",
+      "sha": "bf61bb216dce90f896d171a5cb610399f0b73213",
+      "date": "2026-09-28T12:22:49+05:30",
+      "missing_from_main_commits": [
+        "bf61bb216dce90f896d171a5cb610399f0b73213 Audit merged roadmap gaps and share public API rate limits"
+      ],
+      "already_on_github_refs": [
+        "refs/remotes/origin/codex/roadmap-gap-audit"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/remotes/origin/codex/route-module-cleanup",
+      "sha": "1f815c2165f38f7c7ff28504c957642c58766331",
+      "date": "2026-10-05T16:12:10+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/codex/railway-r2-load-smoke",
+        "refs/remotes/origin/codex/rendering-module-cleanup",
+        "refs/remotes/origin/codex/route-module-cleanup",
+        "refs/remotes/origin/codex/unused-artifact-cleanup",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/remotes/origin/codex/unified-netlify-deployment",
+      "sha": "4bebfeb5deb0bd9ce60509273378dbf664fc168f",
+      "date": "2026-10-04T22:39:42+05:30",
+      "missing_from_main_commits": [
+        "4bebfeb5deb0bd9ce60509273378dbf664fc168f Document unified Netlify landing and editor deployment"
+      ],
+      "already_on_github_refs": [
+        "refs/remotes/origin/codex/unified-netlify-deployment"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/remotes/origin/codex/unused-artifact-cleanup",
+      "sha": "e78bc428c2757dd650f2d5dce04c62c3c83d396b",
+      "date": "2026-10-05T16:52:48+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/codex/railway-r2-load-smoke",
+        "refs/remotes/origin/codex/unused-artifact-cleanup",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/remotes/origin/fix/ass-variable-font-weight",
+      "sha": "4a6cfe18a1f3b5d827fecc861c5e5e9e4585b40d",
+      "date": "2026-10-08T23:21:34+05:30",
+      "missing_from_main_commits": [
+        "4a6cfe18a1f3b5d827fecc861c5e5e9e4585b40d Render the requested weight for variable fonts in ASS exports"
+      ],
+      "already_on_github_refs": [
+        "refs/remotes/origin/fix/ass-variable-font-weight"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/remotes/origin/fix/comprehensive-readiness-gaps-2026-09-28",
+      "sha": "7c2ed7d6f523ea64e5067bcf1a714db8a81b1e8c",
+      "date": "2026-09-24T21:59:39+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/claude/optimistic-davinci-vrojx4",
+        "refs/remotes/origin/claude/serene-sagan-76mdi6",
+        "refs/remotes/origin/claude/sweet-feynman-fcqb80",
+        "refs/remotes/origin/codex/apex-editor-domain",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reliability-fixes",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/codex/load-test-evidence-coverage",
+        "refs/remotes/origin/codex/netlify-r2-editor-hosting",
+        "refs/remotes/origin/codex/privacy-cleanup-only",
+        "refs/remotes/origin/codex/r2-direct-download",
+        "refs/remotes/origin/codex/railway-api-ingress",
+        "refs/remotes/origin/codex/railway-idle-and-domain-fixes",
+        "refs/remotes/origin/codex/railway-r2-load-smoke",
+        "refs/remotes/origin/codex/railway-remaining-fixes",
+        "refs/remotes/origin/codex/railway-render-autoscaling",
+        "refs/remotes/origin/codex/railway-render-drain-safety",
+        "refs/remotes/origin/codex/railway-worker-idle-cleanup",
+        "refs/remotes/origin/codex/rendering-module-cleanup",
+        "refs/remotes/origin/codex/repository-privacy-cleanup",
+        "refs/remotes/origin/codex/roadmap-gap-audit",
+        "refs/remotes/origin/codex/route-module-cleanup",
+        "refs/remotes/origin/codex/unified-netlify-deployment",
+        "refs/remotes/origin/codex/unused-artifact-cleanup",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/comprehensive-readiness-gaps-2026-09-28",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/remotes/origin/fix/left-templates-unify",
+      "sha": "b2a475a2383c51c075352b14691c1efff01b1099",
+      "date": "2026-09-03T09:34:00+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/claude/editor-journey-coverage",
+        "refs/remotes/origin/claude/export-size-reference",
+        "refs/remotes/origin/claude/friendly-fermi-lgu4n7",
+        "refs/remotes/origin/claude/mobile-editor",
+        "refs/remotes/origin/claude/optimistic-davinci-vrojx4",
+        "refs/remotes/origin/claude/serene-sagan-76mdi6",
+        "refs/remotes/origin/claude/sweet-feynman-fcqb80",
+        "refs/remotes/origin/codex/apex-editor-domain",
+        "refs/remotes/origin/codex/b4-measurement-records-20261007",
+        "refs/remotes/origin/codex/clamav-signatures-20261006",
+        "refs/remotes/origin/codex/draft-backup-contrast",
+        "refs/remotes/origin/codex/export-reliability-on-stack",
+        "refs/remotes/origin/codex/five-second-save-notice",
+        "refs/remotes/origin/codex/fix-queued-transcription",
+        "refs/remotes/origin/codex/hardening-checklist-20260923",
+        "refs/remotes/origin/codex/infra-measured-readiness-20260923",
+        "refs/remotes/origin/codex/infra-remaining-gaps-20260923",
+        "refs/remotes/origin/codex/infra-upload-hardening-20260923",
+        "refs/remotes/origin/codex/isolated-load-test-packaging",
+        "refs/remotes/origin/codex/launch-draft-recovery-20261006",
+        "refs/remotes/origin/codex/launch-reliability-fixes",
+        "refs/remotes/origin/codex/launch-reviewed-release",
+        "refs/remotes/origin/codex/load-test-evidence-coverage",
+        "refs/remotes/origin/codex/netlify-r2-editor-hosting",
+        "refs/remotes/origin/codex/privacy-cleanup-only",
+        "refs/remotes/origin/codex/production-release-20260924",
+        "refs/remotes/origin/codex/queue-autoscaling",
+        "refs/remotes/origin/codex/r2-direct-download",
+        "refs/remotes/origin/codex/railway-api-ingress",
+        "refs/remotes/origin/codex/railway-idle-and-domain-fixes",
+        "refs/remotes/origin/codex/railway-r2-load-smoke",
+        "refs/remotes/origin/codex/railway-remaining-fixes",
+        "refs/remotes/origin/codex/railway-render-autoscaling",
+        "refs/remotes/origin/codex/railway-render-drain-safety",
+        "refs/remotes/origin/codex/railway-worker-idle-cleanup",
+        "refs/remotes/origin/codex/rendering-module-cleanup",
+        "refs/remotes/origin/codex/repository-privacy-cleanup",
+        "refs/remotes/origin/codex/roadmap-gap-audit",
+        "refs/remotes/origin/codex/route-module-cleanup",
+        "refs/remotes/origin/codex/unified-netlify-deployment",
+        "refs/remotes/origin/codex/unused-artifact-cleanup",
+        "refs/remotes/origin/fix/ass-variable-font-weight",
+        "refs/remotes/origin/fix/comprehensive-readiness-gaps-2026-09-28",
+        "refs/remotes/origin/fix/left-templates-unify",
+        "refs/remotes/origin/fix/plain-caption-export-word-gap",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/remotes/origin/fix/plain-caption-export-word-gap",
+      "sha": "b8b94d81e723c740d40cace87028c431ab2b6c3c",
+      "date": "2026-10-08T23:19:45+05:30",
+      "missing_from_main_commits": [
+        "b8b94d81e723c740d40cace87028c431ab2b6c3c Fix missing word gaps in DOM-exported plain captions"
+      ],
+      "already_on_github_refs": [
+        "refs/remotes/origin/fix/plain-caption-export-word-gap"
+      ],
+      "consolidated_ancestor": true
+    },
+    {
+      "ref": "refs/remotes/origin/main",
+      "sha": "1d39f05bb0ace029e723062c03ece8d2bce6e8f7",
+      "date": "2026-10-08T23:59:21+05:30",
+      "missing_from_main_commits": [],
+      "already_on_github_refs": [
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/main"
+      ],
+      "consolidated_ancestor": false
+    }
+  ],
+  "source_assets": [
+    {
+      "path": "RAILWAY_COMMIT_CLASSIFICATION.md",
+      "bytes": 2223,
+      "sha256": "b30cf801673f05b50ed35ef67183b56441ebb40e1ff2ec171f68dbc289f498a9",
+      "existing_source_zip_entry": null
+    },
+    {
+      "path": "caption-studio-publish-main/fonts/NotoSansDevanagari.ttf",
+      "bytes": 641944,
+      "sha256": "14ec4af41f27482216d1c2229f417ff9b1425e1babb014e57d1d40d03229853e",
+      "existing_source_zip_entry": null
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/launch-video-v3/explore-sheet.png",
+      "bytes": 1089136,
+      "sha256": "fe5c8a9418740e76fe8d4543f0c2f9c6f58cfd854b23f7f4b6f07ed1f7b9f450",
+      "existing_source_zip_entry": null
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/launch-video-v3/explore-sheet2.png",
+      "bytes": 644198,
+      "sha256": "4deea74dc71ca2f5b9da21b0da196c53a4adc0aa8e71b66b7632eaed698e4702",
+      "existing_source_zip_entry": null
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/README.txt",
+      "bytes": 1206,
+      "sha256": "0261a564a6a0c190df20d0a817c4cbe6c3614cfe139521bc1ef6cacaa1ce217c",
+      "existing_source_zip_entry": "lekha-launch-video-v2/README.txt"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/brand/svg/lekha-wordmark-dark.svg",
+      "bytes": 15338,
+      "sha256": "225925eb9d007c9dc205821a78326611cd23940f4125d6094682ed40300676b4",
+      "existing_source_zip_entry": "lekha-launch-video-v2/brand/svg/lekha-wordmark-dark.svg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f001.jpg",
+      "bytes": 225783,
+      "sha256": "0c332437c2d3d5092f375e867af261d3f2c28297bf5d1484c44144752c093534",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f001.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f002.jpg",
+      "bytes": 216661,
+      "sha256": "5de2861e448f5cedfb84231d6e676a80876c06a3f65efbf99f3a87c114cc2527",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f002.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f003.jpg",
+      "bytes": 217337,
+      "sha256": "623a3e08678f10843b31d74e1ade8665a884a244ab5a51c3e9871e07a28db3c0",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f004.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f004.jpg",
+      "bytes": 217337,
+      "sha256": "623a3e08678f10843b31d74e1ade8665a884a244ab5a51c3e9871e07a28db3c0",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f004.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f005.jpg",
+      "bytes": 216498,
+      "sha256": "c58c86eeb8b200b668cdf6810f70a23f3853a6074326ed48a235442f488b9d19",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f005.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f006.jpg",
+      "bytes": 211358,
+      "sha256": "494d4c1db5f4633f1cdd26b722af7dae2205507a90ce076ff23054936a2f965a",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f006.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f007.jpg",
+      "bytes": 219051,
+      "sha256": "b7b0f6fb5c49e07858128baf60f353af3b49d765c525e2e41ad71b582379869a",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f007.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f008.jpg",
+      "bytes": 210204,
+      "sha256": "9d041d501d32c4084c392e2d3dd771782b21fa8219c0338db5eb9dcd982da387",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f008.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f009.jpg",
+      "bytes": 212460,
+      "sha256": "7a5917e5a0ad9cbe44c50d79361598b250e2d7c88f06310bc8fb7e244cfa82c7",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f010.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f010.jpg",
+      "bytes": 212460,
+      "sha256": "7a5917e5a0ad9cbe44c50d79361598b250e2d7c88f06310bc8fb7e244cfa82c7",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f010.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f011.jpg",
+      "bytes": 212476,
+      "sha256": "114be4db914f142e802ce1199ff35169f1a63571d18675f4a4b1cbb4add35862",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f011.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f012.jpg",
+      "bytes": 209020,
+      "sha256": "8aad69bc1970ae17a27556fa4d82df238c52e23fed4c482ae13307000b1428dc",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f012.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f013.jpg",
+      "bytes": 216571,
+      "sha256": "db100ab96992a7577004eb7085ffcc0484955e0de28fa4d326a732db71ef2519",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f013.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f014.jpg",
+      "bytes": 209492,
+      "sha256": "c8b7df07ea4fb26a1a166a7859f175c7f0c00814378a0a401d66c2b8ca22b4a8",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f014.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f015.jpg",
+      "bytes": 212441,
+      "sha256": "898e294c9e3b4dac5729dd3b62bf6469d063808b63ed4e1f6812b79b4bbf88f1",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f016.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f016.jpg",
+      "bytes": 212441,
+      "sha256": "898e294c9e3b4dac5729dd3b62bf6469d063808b63ed4e1f6812b79b4bbf88f1",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f016.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f017.jpg",
+      "bytes": 212575,
+      "sha256": "8eb1df18c6c852fc1b04b64a8f48a98886b8c6c73bc558fc7250970e96607699",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f017.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f018.jpg",
+      "bytes": 208872,
+      "sha256": "563ea552f490ba9ee83fd8699f880e52ddde6c5e8d58d626fa7039f11ca47a67",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f018.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f019.jpg",
+      "bytes": 216888,
+      "sha256": "f4d9cd0026b7d00b37054adfaec014a246cd307259e033bc25c0901c8fb3d8d0",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f019.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f020.jpg",
+      "bytes": 210581,
+      "sha256": "a90e139e092211367014b5156b9e4702adff88d9f2a63e92dd4dd7ab0c2135c5",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f020.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f021.jpg",
+      "bytes": 211158,
+      "sha256": "f9aa9b113915c294be1b238a645fd2eeecb146c75c176685fcc679d0936d6b16",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f022.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f022.jpg",
+      "bytes": 211158,
+      "sha256": "f9aa9b113915c294be1b238a645fd2eeecb146c75c176685fcc679d0936d6b16",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f022.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f023.jpg",
+      "bytes": 210899,
+      "sha256": "00ef10c0556f65d3ae22a7022a167fc8131ff7f221c1b78570bd126c068b2226",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f023.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f024.jpg",
+      "bytes": 208577,
+      "sha256": "fc8d7a33e59502863ab75fe2884952f65915b11cd92f3ff67ffe0cd6f6cf560c",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f024.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f025.jpg",
+      "bytes": 217334,
+      "sha256": "9d5d9464993d50bc6a7e15dd3be31e5475db10fe1faaca8963fae34bba7f9bd3",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f025.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f026.jpg",
+      "bytes": 205370,
+      "sha256": "c2d17b37d76fd156a235a338d48e15cb021cce071222a0b813d9544165279233",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f026.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f027.jpg",
+      "bytes": 205540,
+      "sha256": "ff6827ecd84e2de644210caf200a20e3026f317796c4658d9ad43649c0597304",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f028.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f028.jpg",
+      "bytes": 205540,
+      "sha256": "ff6827ecd84e2de644210caf200a20e3026f317796c4658d9ad43649c0597304",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f028.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f029.jpg",
+      "bytes": 204192,
+      "sha256": "252627f0fc38e1d2baee26ae606cc6b9c33351778bfb670217b24d92518c3dbf",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f029.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f030.jpg",
+      "bytes": 200934,
+      "sha256": "af08e184073b541807712687ef9f67d53de39e00074e0d368449eb2c31aaf71e",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f030.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f031.jpg",
+      "bytes": 201768,
+      "sha256": "a3048c6b0e217ffe44cce03a627a6d8da8d04eba819381ebba280a8d2d78384d",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f031.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f032.jpg",
+      "bytes": 197152,
+      "sha256": "6c847512d71f96ff5165365b75360370a3d71df1ed2ba94dcdf7c41d5f79b8af",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f032.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f033.jpg",
+      "bytes": 204047,
+      "sha256": "ea89a958c94160dc65f56c2f0d0fff9762be9db4e2ae39335f24ccc0a6efa43d",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f034.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f034.jpg",
+      "bytes": 204047,
+      "sha256": "ea89a958c94160dc65f56c2f0d0fff9762be9db4e2ae39335f24ccc0a6efa43d",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f034.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f035.jpg",
+      "bytes": 205456,
+      "sha256": "587ad2ff5273db8a05383e99804d8478a611658165ab4d8d95f85144894ad3e1",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f035.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f036.jpg",
+      "bytes": 203455,
+      "sha256": "ca96cbd22d57dd3bb9b516b9f456e34dcf83a44131cf6ae9ca114ecb7d1f3eae",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f036.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f037.jpg",
+      "bytes": 211218,
+      "sha256": "4f4c032d452177fb30932ccea9d3e2f151a76210203f77926c305b0d99b8d2ff",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f037.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f038.jpg",
+      "bytes": 205254,
+      "sha256": "736a5527376364a22c22e45cab53da46ed8add087a8855449dd7ccf94263f69f",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f038.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f039.jpg",
+      "bytes": 204520,
+      "sha256": "23d663d86ffde40be53b41b3413596eeb1a4851dd2cfb1a1402301802e45856d",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f040.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f040.jpg",
+      "bytes": 204520,
+      "sha256": "23d663d86ffde40be53b41b3413596eeb1a4851dd2cfb1a1402301802e45856d",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f040.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f041.jpg",
+      "bytes": 204781,
+      "sha256": "1783677d5d0d62406aae2842f205f8562c73acb684c43b43371a93cc3afaffba",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f041.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f042.jpg",
+      "bytes": 201754,
+      "sha256": "438bae9578184bc3ce930d9544ffc8338f6dc43c7dc42d8cbfdf79d31d7bf4fc",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f042.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f043.jpg",
+      "bytes": 211457,
+      "sha256": "77ea82df10092201f0341795e2846516f9571c0f0e11eb2ffdaa7409897e15fe",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f043.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f044.jpg",
+      "bytes": 207375,
+      "sha256": "b4997ad571abdf9d670fab42dadd7b23b1ca58004b3e401c52afc17a85ce497e",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f044.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f045.jpg",
+      "bytes": 211766,
+      "sha256": "79ea759f6bf4cd32143378fb4a155a3092a98ce4c76247b868fb7b60090eb4ad",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f046.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f046.jpg",
+      "bytes": 211766,
+      "sha256": "79ea759f6bf4cd32143378fb4a155a3092a98ce4c76247b868fb7b60090eb4ad",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f046.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f047.jpg",
+      "bytes": 211963,
+      "sha256": "b578875a95d4966b7d858170118c0511fc88c281a0df4ebe798ce1bbc02ed6d0",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f047.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f048.jpg",
+      "bytes": 208918,
+      "sha256": "ebb77ffb7b78f2da88e1654210966daa3ed012e29169aeea1cc4fc8f365d93ce",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f048.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f049.jpg",
+      "bytes": 215088,
+      "sha256": "b5feea96588dd6653e07aa1996c691b0ba3b8681bd2823ea84a414e4a44d5a52",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f049.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f050.jpg",
+      "bytes": 210548,
+      "sha256": "34f7295385e62042540d1f27e254c66ec18577a1beb00e4987116616fb156287",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f050.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f051.jpg",
+      "bytes": 210359,
+      "sha256": "ff7678feb6b5f566af97603aa29244dd59726ad2a2371dde3bf20115e57e5329",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f052.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f052.jpg",
+      "bytes": 210359,
+      "sha256": "ff7678feb6b5f566af97603aa29244dd59726ad2a2371dde3bf20115e57e5329",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f052.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f053.jpg",
+      "bytes": 214937,
+      "sha256": "c23a79b602f0b04c0a2b9cbd1a74ec211e32a1d0f97bb1a72bc94caeadac426e",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f053.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f054.jpg",
+      "bytes": 207981,
+      "sha256": "b0a65cd50602d75ad614e3bbddaa05e3eb116df4858402f9aaf8ecc7c7bad291",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f054.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f055.jpg",
+      "bytes": 216544,
+      "sha256": "e222090824926feca7887690b3061ac7c1077c06776fbe470493f21627c6d2b7",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f055.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f056.jpg",
+      "bytes": 212826,
+      "sha256": "6c85863542c7c3c4c0e80da0fa384f072dd23a505938ff880174fac1902d4065",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f056.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f057.jpg",
+      "bytes": 212757,
+      "sha256": "186f3daacc8d55baa0f172c0948fc9cda708634c6261c577b5cde0456eb3fc59",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f058.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f058.jpg",
+      "bytes": 212757,
+      "sha256": "186f3daacc8d55baa0f172c0948fc9cda708634c6261c577b5cde0456eb3fc59",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f058.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f059.jpg",
+      "bytes": 217112,
+      "sha256": "c561eefd32fa60fa6304dcb2a2dcd310657bc84e7275d5649c486b78a80bae9d",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f059.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f060.jpg",
+      "bytes": 211011,
+      "sha256": "f6cd949db3ac9769c964d3c36ff5898372145ff66e4bdd4724b8ec4c051018b4",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f060.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f061.jpg",
+      "bytes": 212405,
+      "sha256": "6248a005e176ad286f0f6c3ad6fcbc015b22bd678d26283060ae1338f35cd49f",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f061.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f062.jpg",
+      "bytes": 212314,
+      "sha256": "f494fb02e6640c60c29bb8d9d4718074b2ca78f69e104b33d7d850a24f507eec",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f062.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f063.jpg",
+      "bytes": 212961,
+      "sha256": "2a5a1f30f35999c387302ca7fea52437c626aa408e79a4729a81c9d45e1e9ac8",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f064.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f064.jpg",
+      "bytes": 212961,
+      "sha256": "2a5a1f30f35999c387302ca7fea52437c626aa408e79a4729a81c9d45e1e9ac8",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f064.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f065.jpg",
+      "bytes": 212022,
+      "sha256": "36997f76ee60e37e3aaedf4947df05e0fee35baf26f0faafc541dccea2d6861f",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f065.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f066.jpg",
+      "bytes": 204239,
+      "sha256": "f184c3baca3ae0583e8e205901f665bc1ad49f8d3bd9da2bb359ed7a26b6dcb6",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f066.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f067.jpg",
+      "bytes": 210907,
+      "sha256": "efad2895fff5987b2134f76b64649d7ef237adadd6856db8ea7c09bc017b498a",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f067.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f068.jpg",
+      "bytes": 209218,
+      "sha256": "9b6ad68332e761de2e077a909b764b1a940c964d4c7fad7f25b8c01a4b6006c6",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f068.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f069.jpg",
+      "bytes": 211324,
+      "sha256": "e9f33fcbcc8e13da25ad18207015888124d2918cc7a3a2dc966f397427fbe192",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f070.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f070.jpg",
+      "bytes": 211324,
+      "sha256": "e9f33fcbcc8e13da25ad18207015888124d2918cc7a3a2dc966f397427fbe192",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f070.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f071.jpg",
+      "bytes": 215573,
+      "sha256": "a825eba1220769823e1ae3c64e794e68bb111d62d721aebc322bfe926bba7350",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f071.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f072.jpg",
+      "bytes": 207931,
+      "sha256": "5d31b8202e2304344b0024c174b76d038884e5adab4f549fef78d83b7529631a",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f072.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f073.jpg",
+      "bytes": 214803,
+      "sha256": "a74df24691ed2fa61a14226464691b4692827ba661dbae8f8090155a7ec477c8",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f073.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f074.jpg",
+      "bytes": 213808,
+      "sha256": "e25303d60adbc9d0a6e7d1c2bf155cc28aead40203e8e64d9319bfaeee40d959",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f074.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f075.jpg",
+      "bytes": 214452,
+      "sha256": "ad0c644a3facd6a880f266d6ff51ec3ca66eea3c1f1ee5933f34cd463ec62ab9",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f076.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f076.jpg",
+      "bytes": 214452,
+      "sha256": "ad0c644a3facd6a880f266d6ff51ec3ca66eea3c1f1ee5933f34cd463ec62ab9",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f076.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f077.jpg",
+      "bytes": 217355,
+      "sha256": "ddd24df1b519a0e1098f742d2231a3f354dfd149707b3a4c8822f5a55de316c2",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f077.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f078.jpg",
+      "bytes": 208527,
+      "sha256": "1ea66367c1e74fff9e417318ba6c5df7ff9d1cecb9e75b7fbefd5b2c9e334109",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f078.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f079.jpg",
+      "bytes": 217561,
+      "sha256": "84007cae2612d43bbcf4ebaea4627b31c2eb2efe685f81090cb5a74116c33934",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f079.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f080.jpg",
+      "bytes": 209064,
+      "sha256": "9c298d56c2cd2e03e254256c01d6aec53a75b5be0a0300ab8eeab16e8a55db89",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f080.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f081.jpg",
+      "bytes": 205830,
+      "sha256": "0bb6ccf0143df5d6532bfbdb0907a5a97597ba3d22f75e97ef02009ff64879ac",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f082.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f082.jpg",
+      "bytes": 205830,
+      "sha256": "0bb6ccf0143df5d6532bfbdb0907a5a97597ba3d22f75e97ef02009ff64879ac",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f082.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/clip/f083.jpg",
+      "bytes": 211968,
+      "sha256": "a688dae1c0e86999be75faa37a6b4d5da5c557b130cc3bfe8d14943bc33f0099",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/clip/f083.jpg"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/editor-screenshot.png",
+      "bytes": 475272,
+      "sha256": "a4208573b1736bd9671628ec7a59a5b196e8f6c85dab1ef2782c7493504c6ec1",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/editor-screenshot.png"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/assets/logo-data.js",
+      "bytes": 15184,
+      "sha256": "3f771e5c7b3b1a687c54fb873974440c1790cfac86b82e69b0869bd4e360001d",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/assets/logo-data.js"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/launch-v2.html",
+      "bytes": 26651,
+      "sha256": "a731781e152e257911c39edf4231ef14ffb6d8d25eeadba817b6885fd624744a",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/launch-v2.html"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/render.mjs",
+      "bytes": 2385,
+      "sha256": "380169e417003a39ede5e0e95d30affc893953d56d2824b0c2fbb71a2e9d681b",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/render.mjs"
+    },
+    {
+      "path": "caption-studio-publish-main/marketing/lekha-launch-video-v2-source/lekha-launch-video-v2/launch-video-v2/soundtrack-v2.py",
+      "bytes": 7667,
+      "sha256": "07dfba66514133519069615056115dcdb826a6a6094a77ba954e3d0fc4c654ee",
+      "existing_source_zip_entry": "lekha-launch-video-v2/launch-video-v2/soundtrack-v2.py"
+    }
+  ],
+  "original_history_branches_to_publish": {
+    "codex/finish-code-health": "95f10d4",
+    "codex/repository-privacy-cleanup": "a8f1ef8",
+    "codex/authenticated-ci-followup": "2de98e3"
+  },
+  "initial_main": "211f4e184ddaa9d09aef242e0b3516e25d8ca015",
+  "latest_main_integrated_before_publication": "1d39f05bb0ace029e723062c03ece8d2bce6e8f7",
+  "final_sources_integrated": {
+    "origin/main": "1d39f05bb0ace029e723062c03ece8d2bce6e8f7",
+    "origin/claude/mobile-editor": "3132ce2fc54af067fdf29b1ff2e5493b62511277",
+    "origin/claude/export-size-reference": "0785f9b30301871955d73ccbf4537e0ce6c86840",
+    "origin/fix/ass-variable-font-weight": "4a6cfe18a1f3b5d827fecc861c5e5e9e4585b40d",
+    "origin/fix/plain-caption-export-word-gap": "b8b94d81e723c740d40cace87028c431ab2b6c3c",
+    "origin/claude/editor-journey-coverage": "91fcbdf0e668bef12ee19087b6c29e93219a0663",
+    "origin/claude/friendly-fermi-lgu4n7": "012f01bfb6d1c559676469e26fb88e50fef1a6d1",
+    "origin/claude/sweet-feynman-fcqb80": "6da5c9ed950e23c12412feb65e8a3ac63b01ed7f",
+    "origin/codex/roadmap-gap-audit": "bf61bb216dce90f896d171a5cb610399f0b73213",
+    "origin/codex/unified-netlify-deployment": "4bebfeb5deb0bd9ce60509273378dbf664fc168f"
+  },
+  "publication_audit": {
+    "local_assets_preserved": 94,
+    "uncovered_monthly_commits": 0,
+    "combined_application_tests_rerun": false
+  }
+}

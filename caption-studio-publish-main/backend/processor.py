@@ -123,10 +123,45 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
         self.template_overlay_script = os.path.join(self.project_root, "scripts", "render_template_overlay.mjs")
         os.makedirs(self.fonts_dir, exist_ok=True)
         self._packaged_font_matches = {}
+        self._variable_font_instances = {}
         self.client = None # Lazy init
         self._source_basic_template_ids = self._load_source_basic_template_ids()
         self._ensure_fallback_font()
 
+
+    def _detect_spoken_language(self, audio_p):
+        """Name the spoken language from the first 30 seconds, or return "".
+
+        Only a short sample is sent, so this costs a fraction of a full
+        transcription. Any failure returns "" and the caller keeps "auto".
+        """
+        if not self.client or not audio_p or not os.path.exists(audio_p):
+            return ""
+        if not transcription_provider_health.allow_request("openai"):
+            return ""
+        sample_p = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as _tf:
+                sample_p = _tf.name
+            run_media_command(["ffmpeg", "-y", "-i", audio_p, "-t", "30", sample_p],
+                              check=True, capture_output=True, timeout=AUDIO_EXTRACTION_TIMEOUT_SECONDS)
+            with open(sample_p, "rb") as f:
+                result = self.client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=f,
+                    response_format="verbose_json",
+                    timeout=TRANSCRIPTION_PROVIDER_TIMEOUT_SECONDS,
+                )
+            return str(getattr(result, "language", "") or "").strip().lower()
+        except Exception as detect_error:
+            print(f"[Warning] Spoken-language detection failed: {detect_error}")
+            return ""
+        finally:
+            try:
+                if sample_p and os.path.exists(sample_p):
+                    os.remove(sample_p)
+            except Exception:
+                pass
 
     async def generate_captions_only(self, input_p, target_language="English", min_words=0, max_words=0):
         print(f"Processing: {input_p} -> Target: {target_language}, Words: {min_words}-{max_words}")
@@ -210,8 +245,16 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
                 'maltese': 'mt', 'icelandic': 'is',
             }
 
-            is_indian_lang = target_language.lower() in sarvam_langs
             sarvam_api_key = os.environ.get("SARVAM_API_KEY")
+            # "auto" means the spoken language is unknown. When Sarvam is
+            # configured, name the language from a 30-second sample first so
+            # Indian-language speech reaches Sarvam instead of whisper-1.
+            if (target_language or "").lower() == "auto" and sarvam_api_key and api_error_msg is None:
+                spoken_language = self._detect_spoken_language(audio_p)
+                if spoken_language in sarvam_langs:
+                    print(f"[Transcribe] Detected {spoken_language} speech; routing to Sarvam.")
+                    target_language = spoken_language
+            is_indian_lang = target_language.lower() in sarvam_langs
             active_provider = ""
 
             try:

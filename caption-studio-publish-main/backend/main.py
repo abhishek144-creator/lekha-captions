@@ -676,6 +676,8 @@ app.include_router(create_direct_upload_router(
     rate_limit_network=upload_dispatch._limit_direct_upload_network,
     enqueue_scan=upload_dispatch._schedule_media_scan,
     sign_parts=firebase_admin_setup.sign_resumable_upload_parts,
+    assert_upload_allowed=upload_dispatch._assert_upload_allowed,
+    discard_upload=upload_dispatch._discard_unused_upload,
 ))
 app.include_router(create_editor_preferences_router(
     request_security._authenticate_media_request,
@@ -708,7 +710,7 @@ def run_media_scan_job_task(uid: str, file_id: str):
     request_security._assert_account_not_deleting(uid)
     media_records._assert_upload_owner(file_id, uid)
     metadata = media_records._load_upload_metadata(file_id)
-    if str(metadata.get("upload_state") or "").lower() in {"clean", "rejected"}:
+    if str(metadata.get("upload_state") or "").lower() in {"clean", "rejected", "discarded"}:
         MediaScanJobs(firebase_admin_setup.get_db()).finish(file_id)
         return {"status": str(metadata.get("upload_state"))}
     input_path = media_records._safe_find_upload(file_id)

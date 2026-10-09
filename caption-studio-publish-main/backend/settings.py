@@ -385,6 +385,10 @@ SUPPORT_RATE_LIMIT = 5  # max public support submissions per hour per IP
 # never let a client write these — otherwise an unauthenticated caller could
 # inflate failure counters to trip the readiness gate or fire ops alerts.
 RESERVED_SERVER_ANALYTICS_EVENTS = frozenset({
+    "upload_rejected_duration",
+    "upload_rejected_free_transcriptions_used",
+    "upload_rejected_daily_quota",
+    "upload_discarded",
     "account_signup",
     "account_activation",
     "upload_success",
@@ -490,9 +494,20 @@ EXPORT_DIR = os.path.join(MEDIA_SCRATCH_ROOT, "exports")
 FONTS_DIR = os.path.join(MEDIA_SCRATCH_ROOT, "flat_fonts")
 CACHE_DIR = os.path.join(MEDIA_SCRATCH_ROOT, "cache")
 TRANSCRIPTION_CACHE_DIR = os.path.join(CACHE_DIR, "transcriptions")
+# Transcripts are also kept in Firestore under the same content-hash key, so a
+# re-upload of identical media is free on any worker, not only the one whose
+# disposable scratch disk holds the local copy. Retention is deliberately short.
+TRANSCRIPTION_CACHE_COLLECTION = (
+    "transcription_cache" if _RELEASE_ENVIRONMENT == "production"
+    else f"transcription_cache_{_RELEASE_ENVIRONMENT}"
+)
+TRANSCRIPTION_CACHE_RETENTION_HOURS = 24
+TRANSCRIPTION_CACHE_MAX_BYTES = 900_000
+# Browser-measured, so bounded and kept apart from server counters and gates.
+CLIENT_TIME_TO_FIRST_CAPTION_MAX_MS = 2 * 3600 * 1000
 RENDER_CACHE_DIR = os.path.join(CACHE_DIR, "renders")
 DEAD_LETTER_DIR = os.path.join(CACHE_DIR, "dead_letter")
-EXPORT_RENDERER_VERSION = "2026-09-27-project-framing-bilingual-v47"
+EXPORT_RENDERER_VERSION = "2026-10-08-combined-export-parity-v50"
 
 _CLIENT_RENDER_HINT_FIELDS = {
     "word_layouts",

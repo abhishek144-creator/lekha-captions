@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import os
 import secrets
+import threading
 import time
 import uuid
 from collections import defaultdict, deque
@@ -12,6 +13,11 @@ from typing import Any, Callable, Dict, Set
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
+
+try:
+    import redis
+except ImportError:  # Local development without Redis remains supported.
+    redis = None
 
 
 ALLOWED_SCOPES = {"projects:read", "exports:read"}
@@ -24,18 +30,49 @@ class CreateApiKeyRequest(BaseModel):
 
 
 class ApiKeyRateLimiter:
-    def __init__(self, hourly_limit: int = 1_000):
+    def __init__(self, hourly_limit: int = 1_000, redis_client=None):
         self.hourly_limit = max(1, hourly_limit)
         self._events: Dict[str, deque] = defaultdict(deque)
+        self._lock = threading.Lock()
+        self._strict = os.environ.get("ENV", "").lower() == "production"
+        redis_url = (os.environ.get("REDIS_URL") or "").strip()
+        self._redis = redis_client if redis_client is not None else (
+            redis.Redis.from_url(
+                redis_url, decode_responses=True,
+                socket_connect_timeout=1, socket_timeout=1,
+            ) if redis is not None and redis_url else None
+        )
 
     def check(self, key_id: str) -> None:
         now = time.time()
-        events = self._events[key_id]
-        while events and events[0] <= now - 3600:
-            events.popleft()
-        if len(events) >= self.hourly_limit:
-            raise HTTPException(429, "API key hourly rate limit exceeded", headers={"Retry-After": "60"})
-        events.append(now)
+        if self._redis is not None:
+            try:
+                # A sorted set keeps the rolling-hour behavior across every API
+                # instance. The script prunes, checks and admits atomically.
+                allowed = self._redis.eval("""
+                    redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', tonumber(ARGV[1]) - 3600)
+                    if redis.call('ZCARD', KEYS[1]) >= tonumber(ARGV[2]) then return 0 end
+                    redis.call('ZADD', KEYS[1], ARGV[1], ARGV[3])
+                    redis.call('EXPIRE', KEYS[1], 3600)
+                    return 1
+                """, 1, f"lekha:public-api-rate:{key_id}", now, self.hourly_limit, uuid.uuid4().hex)
+                if not allowed:
+                    raise HTTPException(429, "API key hourly rate limit exceeded", headers={"Retry-After": "60"})
+                return
+            except HTTPException:
+                raise
+            except Exception as exc:
+                if self._strict:
+                    raise HTTPException(503, "API key rate limiting is unavailable") from exc
+        elif self._strict:
+            raise HTTPException(503, "API key rate limiting is unavailable")
+        with self._lock:
+            events = self._events[key_id]
+            while events and events[0] <= now - 3600:
+                events.popleft()
+            if len(events) >= self.hourly_limit:
+                raise HTTPException(429, "API key hourly rate limit exceeded", headers={"Retry-After": "60"})
+            events.append(now)
 
 
 def _hash_key(value: str) -> str:

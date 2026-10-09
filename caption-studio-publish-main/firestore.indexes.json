@@ -79,6 +79,28 @@
       "fieldPath": "expire_at",
       "ttl": true,
       "indexes": []
+    },
+    {
+      "collectionGroup": "transcription_cache",
+      "fieldPath": "expire_at",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "transcription_cache",
+      "fieldPath": "payload",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "transcription_cache_staging",
+      "fieldPath": "expire_at",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "transcription_cache_staging",
+      "fieldPath": "payload",
+      "indexes": []
     }
   ]
 }

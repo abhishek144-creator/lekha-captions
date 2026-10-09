@@ -4,15 +4,15 @@ This is a source-and-read-only-inventory check of the ten requested changes.
 Repository implementation and live deployment are separate states. No GCP
 resource, payment setting, DNS route, or customer media was changed.
 
-The later review of GitHub `main` at `7c2ed7d` compares a different commit
-than this open branch. PR #13 contains the implementation below and has not
-been merged. A green test on `main` therefore does not establish that these
-changes are live. The latest read-only inventory still showed the older API
-and render VM pools.
+The later review of GitHub `main` at `7c2ed7d` compares an older commit.
+PR #13 was merged into `main` as `7980118` on 28 September 2026, so the
+implementation below is now in source control. A green test on `main` still
+does not establish that these changes are live. The latest read-only inventory
+showed the older API and render VM pools.
 
 | Later review item | Current branch | Remaining evidence or rollout |
 |---|---|---|
-| Age, render work, and predicted wait scaling | Render work and predicted wait are Terraform autoscaling signals. Oldest age remains a published metric; age alone is not an independent scaler. | Verify the GCP Monitoring series and a cold 0-to-N-to-0 cycle on the new pools. |
+| Age, render work, and predicted wait scaling | Render work and predicted wait are Terraform autoscaling signals in merged `main`. Oldest age remains a published metric; age alone is not an independent scaler. | Verify the GCP Monitoring series and a cold 0-to-N-to-0 cycle on the new pools. |
 | Predicted-work admission | Redis transaction enforces both queue count and a pending-work ceiling across render classes. | Calibrate work estimates against representative completed renders before tightening the limit. |
 | Fast, normal, heavy queues and customer ETA | Queue selection, per-queue position, and bounded estimates are implemented. A pool at zero now reports no numeric ETA until a worker starts. | Measure worker startup and queue prediction error on staging. |
 | Spot and GPU | Spot overflow has a bounded Terraform pool. GPU is optional and disabled by default, with a separate driver-image requirement. | Test preemption/retry; benchmark L4 only after a GPU quota and matched cost/visual-parity run. |
