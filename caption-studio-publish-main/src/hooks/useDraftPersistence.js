@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useCloudProjects } from '@/hooks/useCloudProjects'
 import { getEffectiveAuthToken } from '@/lib/devAuth'
+import { apiRequest } from '@/lib/apiClient'
+import { resolveApiResourceUrl } from '@/components/dashboard/exportPipelineUtils'
 import { draftAutosaveSignature } from '@/lib/draftAutosave'
 import { restoreEditorDocument } from '@/lib/editorDocument'
 import { readLocalDraft, removeLocalDraft, writeLocalDraft } from '@/lib/localDraftStorage'
@@ -117,6 +119,30 @@ export function useDraftPersistence({
     setLocalRecoveryDraft(null)
   }, [currentUser?.uid, localRecoveryDraft])
 
+  const continueAccountDraft = useCallback(async () => {
+    const uid = currentUser?.uid
+    if (!uid || !cloudDraft) return false
+    const draft = { ...cloudDraft, ownerUid: uid }
+    // Account storage intentionally strips bearer URLs. Obtain a fresh,
+    // owner-authorized source URL rather than requiring another upload.
+    let rawUrl = draft._workspaceRawUrl || ''
+    if (!rawUrl && draft.fileId) {
+      try {
+        const idToken = await getEffectiveAuthToken(currentUser)
+        const media = await apiRequest('/api/media/upload-url', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ file_id: draft.fileId, id_token: idToken }),
+        })
+        if (media.success) rawUrl = media.raw_url
+      } catch {
+        // Missing/expired media still restores editable captions and relink UI.
+      }
+    }
+    if (loadedAccountRef.current !== uid) return false
+    draft.videoUrl = resolveApiResourceUrl(rawUrl, import.meta.env.VITE_API_BASE_URL) || ''
+    return applyLocalDraft(draft)
+  }, [applyLocalDraft, cloudDraft, currentUser])
+
   // A new account never inherits the previous account's editor or draft.
   useEffect(() => {
     if (isLoadingAuth) return
@@ -218,6 +244,7 @@ export function useDraftPersistence({
     showCloudSaveConflictNotice,
     localRecoveryDraft,
     applyLocalDraft,
+    continueAccountDraft,
     discardLocalDraft,
     saveNow,
   }

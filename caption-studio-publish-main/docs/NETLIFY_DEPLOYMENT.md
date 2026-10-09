@@ -37,6 +37,25 @@ no Git repository linked, despite obsolete repository metadata in the API.
 Do not assume a GitHub push automatically publishes either frontend site.
 Linking a repository requires a separate reviewed configuration change.
 
+## Coordinated release metadata
+
+Capture one full Git SHA, canonical version `git-<first 12 SHA characters>` and
+UTC build-batch timestamp before building any artifact. Reuse those exact values
+for both Netlify builds and all Railway app-service source rebuilds. Record the
+batch once; do not choose a new timestamp independently for each publisher.
+
+Pass the SHA as `APP_RELEASE`/`VITE_APP_RELEASE`, the version as `RELEASE_VERSION`
+and the timestamp as `APP_BUILD_TIME` to the frontend build. On Railway retain
+its platform Git SHA and canonical version defaults, prepare the common
+`APP_BUILD_TIME` with deployments skipped, then rebuild from the approved source.
+Updating variables alone does not prove an old running image was rebuilt.
+Preserve resource limits, spending controls, source pins and rollback IDs.
+
+Before claiming completion, run `scripts/check-deployed-release.mjs` with the
+expected full SHA and both private worker origins from the existing private
+network. Public markers alone cannot establish private worker identity. A
+hosting-only identity check also requires fresh authenticated customer acceptance.
+
 ## Settings
 
 - Netlify `VITE_API_BASE_URL`: `https://api.lekhacaptions.com`
