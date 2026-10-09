@@ -17,6 +17,7 @@ import { detectScript, scriptFontMap, loadGoogleFont } from './fontUtils';
 import AnimateTab from './AnimateTab';
 import AdvancedTemplateLibrary from './AdvancedTemplateLibrary';
 import { apiRequest } from '@/lib/apiClient';
+import { DEFAULT_CAPTION_POSITION_Y } from '../../lib/captionDefaults.js';
 import {
   AlignLeft,
   AlignCenter,
@@ -496,7 +497,7 @@ export default function StyleControls({
           <div className="mb-3 flex items-center justify-between gap-2">
             <div className="min-w-0">
               <p className="text-[9px] font-bold uppercase tracking-[0.22em] text-slate-400">Brand Kits</p>
-              <p className="mt-1 truncate text-[10px] text-slate-500">{getCurrentValue('font_family', 'Inter')} · {getCurrentValue('position_y', 75)}%</p>
+              <p className="mt-1 truncate text-[10px] text-slate-500">{getCurrentValue('font_family', 'Inter')} · {getCurrentValue('position_y', DEFAULT_CAPTION_POSITION_Y)}%</p>
             </div>
           </div>
         </div>
@@ -776,12 +777,12 @@ export default function StyleControls({
             <div className="flex items-center justify-between mb-1">
               <Label className="text-[9px] font-medium text-slate-400">Position Y</Label>
               <div className="flex items-center gap-2">
-                <span className="text-[10px] font-semibold tabular-nums text-slate-100">{selectedTextElement ? Math.round(selectedTextElement.customStyle?.top ?? 50) : (captionStyle.position_y ?? 75)}%</span>
+                <span className="text-[10px] font-semibold tabular-nums text-slate-100">{selectedTextElement ? Math.round(selectedTextElement.customStyle?.top ?? 50) : (captionStyle.position_y ?? DEFAULT_CAPTION_POSITION_Y)}%</span>
                 <Button
                   aria-label="Reset vertical position"
                   variant="ghost"
                   size="icon"
-                  onClick={() => updateStyle(selectedTextElement ? 'top' : 'position_y', selectedTextElement ? 50 : 75)}
+                  onClick={() => updateStyle(selectedTextElement ? 'top' : 'position_y', selectedTextElement ? 50 : DEFAULT_CAPTION_POSITION_Y)}
                   className="h-4 w-4 text-gray-500 hover:text-white"
                 >
                   <RotateCcw className="w-2.5 h-2.5" />
@@ -790,7 +791,7 @@ export default function StyleControls({
             </div>
             <Slider
               aria-label="Vertical position"
-              value={[selectedTextElement ? (selectedTextElement.customStyle?.top ?? 50) : (captionStyle.position_y ?? 75)]}
+              value={[selectedTextElement ? (selectedTextElement.customStyle?.top ?? 50) : (captionStyle.position_y ?? DEFAULT_CAPTION_POSITION_Y)]}
               onValueChange={([value]) => updateStyle(selectedTextElement ? 'top' : 'position_y', value, true)}
               onPointerDown={() => addToHistory && addToHistory()}
               min={5}

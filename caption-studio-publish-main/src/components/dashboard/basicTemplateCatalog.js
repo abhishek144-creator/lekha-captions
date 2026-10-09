@@ -1,3 +1,5 @@
+import { DEFAULT_CAPTION_POSITION_Y } from '../../lib/captionDefaults.js'
+
 export const BASIC_TEMPLATE_STYLES = Object.freeze({
   't-115': { font_family: 'Noto Sans', font_size: 28, font_weight: '900', font_style: 'italic', text_color: '#FFFFFF', secondary_color: '#39FF14', highlight_color: '#DDAA03', has_shadow: true, shadow_color: '#39FF14', shadow_blur: 10, shadow_offset_x: 0, shadow_offset_y: 0 },
   't-109': { font_family: 'Noto Sans', font_size: 26, font_weight: '900', text_color: '#FFFFFF', secondary_color: '#FF4500', highlight_color: '#FFF200', has_shadow: true, shadow_color: '#FF4500', shadow_offset_x: 3, shadow_offset_y: 3, shadow_blur: 0 },
@@ -33,7 +35,7 @@ export const BASIC_TEMPLATE_STYLES = Object.freeze({
 export function getBasicTemplateStyle(templateId) {
   const normalizedId = String(templateId || '').trim()
   const style = BASIC_TEMPLATE_STYLES[normalizedId]
-  return style ? { template_id: normalizedId, position_y: 75, ...style } : {}
+  return style ? { template_id: normalizedId, position_y: DEFAULT_CAPTION_POSITION_Y, ...style } : {}
 }
 
 export function getBasicTemplateExportEffects(templateId) {

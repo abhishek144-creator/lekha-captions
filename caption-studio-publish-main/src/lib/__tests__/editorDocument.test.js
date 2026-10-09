@@ -72,7 +72,7 @@ describe('normalizeCaptionStyle', () => {
     expect(normalizeCaptionStyle({ text_color: '#ff0000' })).toMatchObject({
       text_color: '#ff0000',
       font_family: defaultCaptionStyle.font_family,
-      position_y: 75,
+      position_y: 80,
     })
   })
 

@@ -1,6 +1,7 @@
 import { resolveScriptFont } from '@/components/dashboard/fontUtils'
 import { buildEmotionalCaptionPlan, EMOTIONAL_TEMPLATE_TIMING } from '@/components/dashboard/emotionalTemplateUtils'
 import { defaultCaptionStyle } from '@/lib/editorDocument'
+import { DEFAULT_CAPTION_POSITION_Y } from './captionDefaults.js'
 
 // Properties templates fully control. They are cleared before a template is
 // applied so Template B never inherits background, color, font, spacing, phase
@@ -54,7 +55,7 @@ export const TEMPLATE_OWNED_RESET = {
   shadow_offset_y: 2,
   show_inactive: undefined,
   display_mode: 'sentence',
-  position_y: 75,
+  position_y: DEFAULT_CAPTION_POSITION_Y,
 }
 
 // Per-word fields that describe a dragged/resized layout or a previous

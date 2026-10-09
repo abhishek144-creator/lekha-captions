@@ -1,3 +1,5 @@
+import { DEFAULT_CAPTION_POSITION_Y } from './captionDefaults.js'
+
 // The editor "document": everything a saved draft restores. Pure helpers so
 // restore, reset and refresh all normalize a draft the same way.
 
@@ -26,7 +28,7 @@ export const defaultCaptionStyle = {
   has_shadow: true,
   has_animation: false,
   position: 'bottom',
-  position_y: 75,
+  position_y: DEFAULT_CAPTION_POSITION_Y,
   max_lines: 2,
   max_chars: 30,
   auto_rotation: false,
