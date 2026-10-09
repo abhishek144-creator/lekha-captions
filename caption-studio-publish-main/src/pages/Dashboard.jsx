@@ -434,6 +434,8 @@ export default function Dashboard() {
     setSettings(uploadSettings);
     setIsUploadModalOpen(false);
     setIsGenerating(true);
+    // The previous video's waveform must not stay on the new timeline.
+    setWaveformData(null);
     resetHistory();
     setCaptionTracks([]);
     setActiveCaptionTrackId('source');
@@ -488,6 +490,8 @@ export default function Dashboard() {
 
       acceptedUpload = uploadData;
       setIsUploading(false);
+      // The waiting screen's caption steps count from here, after the upload.
+      setGenerationStartedAt(Date.now());
       acceptedPlayableVideoUrl = resolveApiResourceUrl(
         uploadData.raw_url,
         import.meta.env.VITE_API_BASE_URL,
@@ -600,14 +604,9 @@ export default function Dashboard() {
         settings: uploadSettings,
       });
 
-      try {
-        // Read the audio from the file already in the browser; only a retry
-        // without the file falls back to downloading it from storage.
-        const waveform = await extractWaveformData(file || acceptedPlayableVideoUrl);
-        setWaveformData(waveform);
-      } catch (e) {
-        console.warn('Waveform extraction failed:', e);
-      }
+      // The waveform is built by the editor's onVideoLoaded once this screen
+      // closes (from the local file when there is one), so decoding the whole
+      // file never keeps the finished captions waiting.
 
     } catch (error) {
       console.error('Upload failed:', error);
@@ -1101,7 +1100,7 @@ export default function Dashboard() {
         {isGenerating ? (
           <GeneratingCaptionsScreen
             elapsedSeconds={generationElapsedSeconds}
-            uploadPercent={isUploading && uploadProgress ? uploadProgress.percent : null}
+            uploadPercent={isUploading ? (uploadProgress?.percent ?? 0) : null}
           />
         ) : !videoUrl && !captions.length ? (
           <EditorEmptyState

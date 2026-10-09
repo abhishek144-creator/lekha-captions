@@ -3,6 +3,7 @@ import os
 import asyncio
 import subprocess
 import tempfile
+import re
 import requests
 import json
 import shutil
@@ -39,6 +40,72 @@ AUDIO_EXTRACTION_TIMEOUT_SECONDS = max(
     15,
     min(int(os.environ.get("AUDIO_EXTRACTION_TIMEOUT_SECONDS", "120")), 300),
 )
+
+
+# Sarvam's synchronous speech-to-text accepts at most 30 seconds of audio per
+# request; longer audio is sent as consecutive pieces cut at pauses in speech.
+SARVAM_MAX_SEGMENT_SECONDS = 29.0
+SARVAM_MIN_SEGMENT_SECONDS = 10.0
+_SILENCE_RE = re.compile(r"silence_(start|end): (-?\d+(?:\.\d+)?)")
+
+
+def _plan_audio_segments(duration, pause_points, max_len=SARVAM_MAX_SEGMENT_SECONDS, min_len=SARVAM_MIN_SEGMENT_SECONDS):
+    """Split [0, duration] into pieces of at most `max_len` seconds.
+
+    Each cut is the latest pause that leaves a piece of at least `min_len`
+    seconds, so words are not cut in half; with no pause in range the piece is
+    cut at `max_len`.
+    """
+    segments = []
+    start = 0.0
+    while duration - start > max_len:
+        in_range = [p for p in pause_points if start + min_len <= p <= start + max_len]
+        cut = max(in_range) if in_range else start + max_len
+        segments.append((start, cut))
+        start = cut
+    segments.append((start, duration))
+    return segments
+
+
+def _pause_midpoints(ffmpeg_stderr):
+    """Midpoints of the silences reported by ffmpeg's silencedetect filter."""
+    points = []
+    pending_start = None
+    for kind, value in _SILENCE_RE.findall(ffmpeg_stderr or ""):
+        if kind == "start":
+            pending_start = max(0.0, float(value))
+        elif pending_start is not None:
+            points.append((pending_start + float(value)) / 2)
+            pending_start = None
+    return points
+
+
+def _split_chunk_timestamps(chunks):
+    """Split multi-word timestamp entries into one entry per word.
+
+    Sarvam's `timestamps.words` holds phrase or whole-sentence chunks, not
+    single words. Left as-is, each chunk becomes one caption with every word
+    shown at once for its whole duration. Each chunk's span is shared across
+    its words in proportion to their length, so the words still appear in
+    speaking order and the grouper can build normal phrase captions.
+    """
+    words = []
+    for chunk in chunks:
+        tokens = str(chunk["word"]).split()
+        start = float(chunk["start"])
+        end = float(chunk["end"])
+        if len(tokens) <= 1:
+            words.append({"word": tokens[0] if tokens else "", "start": start, "end": end})
+            continue
+        weights = [max(1, len(token)) for token in tokens]
+        total = float(sum(weights))
+        span = max(0.0, end - start)
+        cursor = start
+        for index, (token, weight) in enumerate(zip(tokens, weights)):
+            token_end = end if index == len(tokens) - 1 else cursor + span * (weight / total)
+            words.append({"word": token, "start": round(cursor, 3), "end": round(token_end, 3)})
+            cursor = token_end
+    return words
 
 
 def _extract_sarvam_words(response):
@@ -81,11 +148,11 @@ def _extract_sarvam_words(response):
         or []
     )
     if timestamp_words and len(timestamp_words) == len(starts) == len(ends):
-        return [
+        return _split_chunk_timestamps([
             {"word": str(word), "start": float(start), "end": float(end)}
             for word, start, end in zip(timestamp_words, starts, ends)
             if str(word).strip() and float(end) >= float(start)
-        ]
+        ])
 
     # Retain compatibility with older SDK payloads that exposed a word list.
     legacy_words = (
@@ -112,7 +179,7 @@ def _extract_sarvam_words(response):
                 "start": float(start or 0),
                 "end": float(end or 0),
             })
-    return normalized
+    return _split_chunk_timestamps(normalized)
 
 
 class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubtitleMixin, TemplateOverlayMixin):
@@ -128,6 +195,58 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
         self._source_basic_template_ids = self._load_source_basic_template_ids()
         self._ensure_fallback_font()
 
+
+    def _transcribe_with_sarvam(self, sarvam_client, audio_p, lang_code):
+        """Timed words for the whole file, one Sarvam request per <=29 s piece."""
+        def transcribe(path):
+            with open(path, "rb") as f:
+                response = sarvam_client.speech_to_text.transcribe(
+                    file=f,
+                    model="saaras:v3",
+                    mode="transcribe",
+                    language_code=lang_code,
+                    request_options={"max_retries": 0, "additional_body_parameters": {"with_timestamps": True}}
+                )
+            return _extract_sarvam_words(response)
+
+        duration = self._get_video_duration(audio_p)
+        if duration <= SARVAM_MAX_SEGMENT_SECONDS:
+            return transcribe(audio_p)
+
+        pauses = []
+        try:
+            detection = run_media_command(
+                ["ffmpeg", "-i", audio_p, "-af", "silencedetect=noise=-30dB:d=0.25", "-f", "null", "-"],
+                capture_output=True, text=True, timeout=AUDIO_EXTRACTION_TIMEOUT_SECONDS,
+            )
+            pauses = _pause_midpoints(detection.stderr)
+        except Exception as pause_error:
+            print(f"[Warning] Pause detection failed; cutting Sarvam pieces at fixed lengths: {pause_error}")
+
+        segments = _plan_audio_segments(duration, pauses)
+        print(f"[Sarvam] {duration:.1f}s of audio sent as {len(segments)} pieces")
+        words = []
+        for seg_start, seg_end in segments:
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as _tf:
+                piece_p = _tf.name
+            try:
+                run_media_command(
+                    ["ffmpeg", "-y", "-ss", f"{seg_start:.3f}", "-t", f"{seg_end - seg_start:.3f}",
+                     "-i", audio_p, "-ar", "16000", "-ac", "1", piece_p],
+                    check=True, capture_output=True, timeout=AUDIO_EXTRACTION_TIMEOUT_SECONDS,
+                )
+                for word in transcribe(piece_p):
+                    words.append({
+                        "word": word["word"],
+                        "start": round(word["start"] + seg_start, 3),
+                        "end": round(min(word["end"], seg_end - seg_start) + seg_start, 3),
+                    })
+            finally:
+                try:
+                    os.remove(piece_p)
+                except OSError:
+                    pass
+        return words
 
     def _detect_spoken_language(self, audio_p):
         """Name the spoken language from the first 30 seconds, or return "".
@@ -276,19 +395,9 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
                         timeout=TRANSCRIPTION_PROVIDER_TIMEOUT_SECONDS,
                     )
                     lang_code = sarvam_langs[target_language.lower()]
-                    
-                    with open(audio_p, "rb") as f:
-                        response = sarvam_client.speech_to_text.transcribe(
-                            file=f,
-                            model="saaras:v3",
-                            mode="transcribe",
-                            language_code=lang_code,
-                            request_options={"max_retries": 0, "additional_body_parameters": {"with_timestamps": True}}
-                        )
-                    print(f"Sarvam API Transcription Success. Output type: {type(response)}")
-                    
+
                     try:
-                        words = _extract_sarvam_words(response)
+                        words = self._transcribe_with_sarvam(sarvam_client, audio_p, lang_code)
                         print(f"[Sarvam] Parsed {len(words)} words from response")
                         if words:
                             transcription_provider_health.record_success("sarvam")

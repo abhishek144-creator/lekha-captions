@@ -16,7 +16,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { invalidateWordTimingOutsideCaption } from './captionEditingUtils'
 import {
-  duplicateCaptionWithTiming,
+  placeDuplicateCaption,
   reconcileCaptionText,
   splitCaptionAtBoundary,
 } from './captionEditingUtils';
@@ -156,12 +156,16 @@ export default function CaptionEditor({
   const duplicateCaption = (caption) => {
     if (!caption) return;
     const newId = `${Date.now()}-duplicate`;
-    const clone = duplicateCaptionWithTiming(caption, newId)
+    const captionEnd = Number(caption.end_time) || 0
+    const nextStart = captions
+      .filter(c => c && !c.isTextElement && c.id !== caption.id && Number(c.start_time) >= captionEnd - 0.001)
+      .reduce((earliest, c) => Math.min(earliest, Number(c.start_time)), Infinity)
+    const { original, copy: clone } = placeDuplicateCaption(caption, newId, nextStart)
     setCaptions(prev => {
       const index = prev.findIndex(c => c.id === caption.id);
       if (index === -1) return [...prev, clone];
       const next = [...prev];
-      next.splice(index + 1, 0, clone);
+      next.splice(index, 1, original, clone);
       return next;
     });
     setSelectedCaptionId(clone.id);
