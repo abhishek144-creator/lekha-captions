@@ -8,6 +8,7 @@ import { Play, X, Move, RotateCw, Trash2 } from 'lucide-react';
 import CanvasToolRail from './CanvasToolRail';
 import PlaybackControls from './PlaybackControls';
 import PreviewScrubber from './PreviewScrubber';
+
 import { createLiveScrubber } from './liveScrub';
 import { DESKTOP_EDITOR_QUERY, useMediaQuery } from '@/hooks/useMediaQuery';
 import VideoPlayerKeyframes from './VideoPlayerKeyframes';
@@ -2239,6 +2240,7 @@ export default function VideoPlayer({
                               startTime={caption.start_time || caption.start || 0}
                               endTime={caption.end_time || caption.end || caption.start_time || 0}
                               renderScale={previewRenderScale}
+                              keyframeFontPx={scaleTemplateFontSize(captionStyle?.font_size) * previewRenderScale}
                               onSourceWordClick={openSourceTemplateWordPopup}
                               onSourceWordPointerDown={startSourceTemplateWordDrag}
                               isSelected={selectedCaptionId === caption.id}

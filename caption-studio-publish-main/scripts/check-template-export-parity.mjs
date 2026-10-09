@@ -6,6 +6,7 @@ import { promisify } from 'util';
 import { fileURLToPath } from 'url';
 import puppeteer from 'puppeteer';
 import {
+  KEYFRAME_ADVANCED_TEMPLATE_IDS,
   ORIGINAL_TEMPLATE_BLOCKS,
   RECREATED_ADVANCED_TEMPLATE_IDS,
 } from '../src/components/dashboard/templateMotionConfig.js';
@@ -117,6 +118,18 @@ const ADVANCED_STYLE_OVERRIDES = {
   t38: { template_name: 'Classic Weight', font_family: 'Libre Baskerville', text_color: '#FFFFFF', secondary_color: '#D4AF37', highlight_color: '#D4AF37' },
   t39: { template_name: 'Evidence Board', font_family: 'IBM Plex Mono', font_size: 22, text_color: '#FFFFFF', secondary_color: '#FF3D71', highlight_color: '#FF3D71', text_case: 'uppercase' },
   t40: { template_name: 'Final Whisper', font_family: 'Crimson Text', text_color: '#FFFFFF', secondary_color: '#F2072B', highlight_color: '#F2072B' },
+  t41: { template_name: 'Magnet Poetry', font_family: 'Old Standard TT', font_size: 22, text_color: '#1E1A16', secondary_color: '#FFF1D0', highlight_color: '#FFF1D0' },
+  t42: { template_name: 'Label Maker', font_family: 'Barlow Condensed', font_size: 24, text_color: '#FFFFFF', secondary_color: '#FFE45C', highlight_color: '#FFE45C', text_case: 'uppercase' },
+  t43: { template_name: 'Split-Flap Board', font_family: 'Martian Mono', font_size: 20, font_weight: '600', text_color: '#F2F2E8', secondary_color: '#FFB21A', highlight_color: '#FFB21A', text_case: 'uppercase' },
+  t44: { template_name: 'Chat Thread', font_family: 'Onest', font_size: 21, font_weight: '600', text_color: '#FFFFFF', secondary_color: '#FF375F', highlight_color: '#FF375F' },
+  t45: { template_name: 'Transit Line', font_family: 'Public Sans', font_size: 22, text_color: '#FFFFFF', secondary_color: '#FFD23F', highlight_color: '#FFD23F' },
+  t46: { template_name: 'Blueprint', font_family: 'Jura', font_size: 21, font_weight: '600', text_color: '#CFEFFF', secondary_color: '#FFFFFF', highlight_color: '#FFFFFF' },
+  t47: { template_name: 'Sticker Slap', font_family: 'Lilita One', font_size: 24, font_weight: '400', text_color: '#FFFFFF', secondary_color: '#FF2E93', highlight_color: '#FF2E93' },
+  t48: { template_name: 'Ransom Cutout', font_family: 'Rozha One', font_size: 23, font_weight: '400', text_color: '#141414', secondary_color: '#FFF6E5', highlight_color: '#FFF6E5' },
+  t49: { template_name: 'Equalizer Stage', font_family: 'Bricolage Grotesque', font_size: 23, text_color: '#FFFFFF', secondary_color: '#3DF2B0', highlight_color: '#3DF2B0' },
+  t50: { template_name: 'Rewrite', font_family: 'JetBrains Mono', font_size: 20, font_weight: '500', text_color: '#E6EDF3', secondary_color: '#7EE787', highlight_color: '#7EE787' },
+  t51: { template_name: 'Domino Topple', font_family: 'Big Shoulders Display', font_size: 25, font_weight: '800', text_color: '#16130F', secondary_color: '#F4C430', highlight_color: '#F4C430' },
+  t52: { template_name: 'Receipt Print', font_family: 'Ubuntu Mono', font_size: 22, font_weight: '400', text_color: '#2A2A2A', secondary_color: '#C1121F', highlight_color: '#C1121F', text_case: 'uppercase' },
 };
 
 const LC_MASTER_COLORS = [
@@ -431,7 +444,9 @@ const CASES = [
     impWordIndex: 1,
     requiredColors: ['gold', 'white'],
     minBboxHeight: 20,
-    minGoldXOffset: 40,
+    // "आज" + space is ~38px in the script font the editor uses; it measured
+    // 40+ only while the export wrongly fell back to Noto Sans Devanagari.
+    minGoldXOffset: 30,
     style: {
       preview_template_font_px: 20,
       preview_template_box_width_px: 150,
@@ -1341,6 +1356,27 @@ function buildGoalAdvancedPhaseCases() {
   });
 }
 
+// T41–T52 animate only through authored CSS keyframes. Render every phase with
+// the caption starting after 2s so a caption-relative seek is required, and
+// demand real frame-to-frame motion (not a settled static frame).
+function buildKeyframeAdvancedPhaseCases() {
+  return KEYFRAME_ADVANCED_TEMPLATE_IDS.flatMap((templateId) => {
+    const blocks = ORIGINAL_TEMPLATE_BLOCKS[templateId] || [];
+    return blocks.map((_, phaseIndex) => ({
+      id: `keyframe-${templateId}-p${phaseIndex}`,
+      templateId,
+      text: 'Every Keyframe Phase Moves Here',
+      phaseIndex,
+      impWordIndex: 2,
+      requiredColors: [],
+      minBboxHeight: 10,
+      motionCritical: true,
+      captionStart: 2.4,
+      captionEnd: 4.6,
+    }));
+  });
+}
+
 function fail(message) {
   throw new Error(`Template export parity failed: ${message}`);
 }
@@ -1554,10 +1590,12 @@ function buildPayload(testCase, outputDir) {
     ...(TEMPLATE_STYLES[testCase.templateId] || {}),
     ...(testCase.style || {}),
   };
+  const captionStart = Number(testCase.captionStart || 0);
+  const captionEnd = Number(testCase.captionEnd || 2);
   return {
       video_width: testCase.videoWidth || 360,
       video_height: testCase.videoHeight || 640,
-      duration: 2,
+      duration: Math.max(2, captionEnd),
     output_dir: outputDir,
     style: {
       template_id: testCase.templateId,
@@ -1580,8 +1618,8 @@ function buildPayload(testCase, outputDir) {
       {
         id: `${testCase.id}-caption`,
         text: testCase.text,
-        start_time: 0,
-        end_time: 2,
+        start_time: captionStart,
+        end_time: captionEnd,
         template_id: testCase.templateId,
         template_source: 'lekha-advanced',
         template_name: style.template_name,
@@ -1891,6 +1929,7 @@ const selectedCases = (() => {
     if (scope === 'all-right-phases') return buildExhaustiveAdvancedCases({ allPhases: true });
     if (scope === 'affected-right-phases') return buildAffectedAdvancedPhaseCases();
     if (scope === 'goal-right-phases') return buildGoalAdvancedPhaseCases();
+    if (scope === 'keyframe-right-phases') return buildKeyframeAdvancedPhaseCases();
     if (scope === 'all-basic') return buildExhaustiveBasicCases();
     if (scope === 'all-basic-scaled') return buildScaledBasicCases();
     return CASES;
@@ -2132,6 +2171,8 @@ try {
       ? 'affected right template phases'
       : scope === 'goal-right-phases'
       ? 'goal right template phases'
+      : scope === 'keyframe-right-phases'
+      ? 'keyframe (T41–T52) right template phases starting after 2s'
       : scope === 'all-basic'
         ? 'right basic templates'
         : scope === 'all-basic-scaled'

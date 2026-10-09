@@ -3,8 +3,10 @@ import { motion } from 'framer-motion'
 import { Check, Sparkles } from 'lucide-react'
 
 // Shown while a new upload is transcribed. Steps advance on elapsed time so
-// the screen reads as progress even before the server responds.
-export default function GeneratingCaptionsScreen({ elapsedSeconds: generationElapsedSeconds }) {
+// the screen reads as progress even before the server responds. While the
+// file is still uploading, the percentage is the real share of bytes storage
+// has received.
+export default function GeneratingCaptionsScreen({ elapsedSeconds: generationElapsedSeconds, uploadPercent = null }) {
   const step2Ready = generationElapsedSeconds >= 3;
   const step3Ready = generationElapsedSeconds >= 6;
   const step4Ready = generationElapsedSeconds >= 9;
@@ -58,8 +60,8 @@ export default function GeneratingCaptionsScreen({ elapsedSeconds: generationEla
               <p className="mt-1 text-sm font-medium text-white">Step {Math.min(completedSteps + 1, progressSteps.length)} of {progressSteps.length}</p>
             </div>
             <div className="text-right">
-              <p className="text-2xl font-semibold tracking-tight text-[#ffd7a4]">{Math.round((completedSteps / progressSteps.length) * 100)}%</p>
-              <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Prepared</p>
+              <p className="text-2xl font-semibold tracking-tight text-[#ffd7a4]">{uploadPercent ?? Math.round((completedSteps / progressSteps.length) * 100)}%</p>
+              <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">{uploadPercent === null ? 'Prepared' : 'Uploaded'}</p>
             </div>
           </div>
 

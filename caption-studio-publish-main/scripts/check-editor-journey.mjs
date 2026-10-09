@@ -4,6 +4,7 @@ import fs from 'node:fs/promises'
 import { createServer } from 'vite'
 import react from '@vitejs/plugin-react'
 import puppeteer from 'puppeteer'
+import planCatalog from '../shared/planCatalog.json' with { type: 'json' }
 
 // Real Dashboard, hooks, preview and export UI with isolated auth and API
 // doubles. No credentials, provider requests, charges or production writes.
@@ -46,6 +47,16 @@ let saveRequests = 0
 let exports = 0
 let exportPayload = null
 let downloads = 0
+let orderRequests = []
+let verificationRequests = []
+let invalidOrder = false
+let uploadInitializations = 0
+let uploadResumes = 0
+let uploadOffset = 0
+let interruptedChunk = false
+let recoveringUpload = false
+const uploadRanges = []
+const chunkBytes = 8 * 1024 * 1024
 const caption = { id: 'a', text: 'hello bright world', start_time: 0, end_time: 3, words: [{ word: 'hello', start: 0, end: 1 }, { word: 'bright', start: 1, end: 2 }, { word: 'world', start: 2, end: 3 }], wordStyles: {} }
 const draft = { ownerUid: 'editor-test-a', projectId: 'test-project', fileId: '123e4567-e89b-12d3-a456-426614174000', videoUrl: '', duration: 4, originalFileName: 'fixture.mp4', captions: [caption], captionTracks: [{ id: 'source', label: 'Original', captions: [caption] }, { id: 'hi', label: 'Hindi', captions: [{ ...caption, text: 'नमस्ते दुनिया', words: [] }] }], activeCaptionTrackId: 'source', captionStyle: { font_family: 'Inter', font_size: 17, position_y: 70, text_color: '#ffffff', has_background: true }, settings: {} }
 await page.setRequestInterception(true)
@@ -62,10 +73,36 @@ page.on('request', async (request) => {
     return request.respond({ status: 200, headers: { 'Content-Disposition': 'attachment; filename="fixture_captioned.mp4"' }, contentType: 'video/mp4', body: Buffer.from('local-test-download') })
   }
   if (url.hostname !== '127.0.0.1' && !['data:', 'blob:'].includes(url.protocol)) return request.abort()
+  if (url.pathname === '/test-storage-session') {
+    const range = request.headers()['content-range']
+    uploadRanges.push(range)
+    if (range.startsWith('bytes */')) return request.respond({ status: 308, headers: { Range: `bytes=0-${uploadOffset - 1}` } })
+    if (uploadOffset === chunkBytes && !recoveringUpload) {
+      interruptedChunk = true
+      return request.abort('internetdisconnected')
+    }
+    uploadOffset = Number(/-(\d+)\//.exec(range)[1]) + 1
+    return request.respond({ status: uploadOffset === chunkBytes * 2 ? 200 : 308, headers: { Range: `bytes=0-${uploadOffset - 1}` } })
+  }
   if (!url.pathname.startsWith('/api/')) return request.continue()
   let payload = { success: true }
   let status = 200
-  if (url.pathname === '/api/editor-preferences/load') payload.preferences = { revision: 0, brand_kits: [], glossary_terms: [] }
+  if (url.pathname.startsWith('/api/uploads/')) {
+    assert.equal(request.headers().authorization, 'Bearer local-test-token')
+    if (url.pathname.endsWith('/init')) uploadInitializations += 1
+    if (url.pathname.endsWith('/resume')) uploadResumes += 1
+    payload = { success: true, file_id: draft.fileId, direct_upload_available: true,
+      upload_url: 'http://127.0.0.1:4187/test-storage-session', resumed: url.pathname.endsWith('/resume') }
+  } else if (url.pathname === '/api/create-order') {
+    const orderBody = JSON.parse(request.postData())
+    orderRequests.push({ body: orderBody, authorization: request.headers().authorization })
+    const currency = orderBody.currency || 'INR'
+    const catalogAmount = planCatalog[orderBody.plan_id]?.[currency === 'USD' ? 'usd_cents' : 'inr_paise']
+    payload = { success: true, key_id: 'rzp_test_local_fixture', order: { id: 'order_local_fixture', amount: invalidOrder ? -1 : catalogAmount, currency } }
+  } else if (url.pathname === '/api/verify-payment') {
+    verificationRequests.push({ body: JSON.parse(request.postData()), authorization: request.headers().authorization })
+    payload = { success: true, credits_added: 180 }
+  } else if (url.pathname === '/api/editor-preferences/load') payload.preferences = { revision: 0, brand_kits: [], glossary_terms: [] }
   else if (url.pathname === '/api/editor-preferences/save') payload.preferences = { revision: 1, brand_kits: [], glossary_terms: [] }
   else if (url.pathname === '/api/draft/load') payload = { revision: 17, project_id: 'other-project', draft: null }
   else if (url.pathname === '/api/projects/list') payload.projects = []
@@ -125,8 +162,18 @@ try {
   await textClick('Add')
   await autosaveResponse
   assert.ok(saveRequests > 0, 'an actual caption edit must still autosave')
+  // Correct a caption through React before checking persistence.
+  await page.click('[data-caption-card]')
+  await page.click('[title="Edit caption"]')
+  await page.waitForSelector('textarea[data-caption-id]')
+  await page.focus('textarea[data-caption-id]')
+  await page.keyboard.down('Control'); await page.keyboard.press('a'); await page.keyboard.up('Control')
+  await page.keyboard.type('hello corrected world')
   await textClick('Save')
   await page.waitForFunction(() => document.body.textContent.includes('Saved'))
+  assert.equal(savedDraft.captions[0].text, 'hello corrected world')
+  assert.equal(savedDraft.captions[0].start_time, 0)
+  assert.equal(savedDraft.captions[0].end_time, 3)
   conflict = true
   const conflictResponse = page.waitForResponse((response) => response.url().endsWith('/api/draft/save') && response.status() === 409)
   await textClick('Save')
@@ -154,7 +201,7 @@ try {
   await new Promise((resolve) => setTimeout(resolve, 3000))
   assert.equal(saveRequests, savesBeforeOpening, 'reopening a project must not submit a conflicting save')
   assert.equal(await page.evaluate(() => document.body.textContent.includes('A newer version of this project was saved')), false)
-  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('captionEditorState')).captionTracks[0].captions[0].text), caption.text)
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('captionEditorState')).captionTracks[0].captions[0].text), 'hello corrected world')
   await page.evaluate(() => window.setTestEntitlement({ credits_remaining: 10, subscription_tier: 'pro', subscription_expiry: '2000-01-01' }))
   await textClick('Export')
   await page.waitForFunction(() => document.body.textContent.includes('Plan expired — renew to use video export'))
@@ -217,8 +264,67 @@ try {
   await page.evaluate(() => window.switchTestAccount('editor-test-b'))
   await page.waitForFunction(() => !document.querySelector('[data-caption-editor="true"]'))
   assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('captionEditorState') || '{}').ownerUid === 'editor-test-b' && JSON.parse(localStorage.getItem('captionEditorState')).captions?.length > 0), false, 'account changes cannot acquire another account’s draft')
+  // Real browser File/XHR/localStorage; only the storage service is doubled.
+  const startUpload = async () => page.evaluate(async () => {
+    const { uploadFileWithRecovery } = await import('/src/lib/resilientUpload.js')
+    const file = new File([new Uint8Array(16 * 1024 * 1024)], 'recovery.mp4', { type: 'video/mp4', lastModified: 1000 })
+    try {
+      window.uploadResult = await uploadFileWithRecovery(file, { authorization: 'local-test-token', retryDelaysMs: [] })
+    } catch { window.uploadInterrupted = true }
+  })
+  await startUpload()
+  assert.ok(interruptedChunk)
+  assert.equal(uploadOffset, chunkBytes)
+  assert.ok(await page.evaluate(() => localStorage.getItem('lekha.pendingDirectUpload.v1')))
+  await page.reload()
+  recoveringUpload = true
+  await startUpload()
+  assert.equal(uploadInitializations, 1, 'reload must not initialize another upload')
+  assert.equal(uploadResumes, 1)
+  assert.ok(uploadRanges.includes(`bytes */${chunkBytes * 2}`))
+  assert.equal(uploadRanges.at(-1), `bytes ${chunkBytes}-${chunkBytes * 2 - 1}/${chunkBytes * 2}`)
+  assert.equal(await page.evaluate(() => window.uploadResult.file_id), draft.fileId)
+  assert.equal(await page.evaluate(() => localStorage.getItem('lekha.pendingDirectUpload.v1')), null)
+
+  // Real pricing UI with a Razorpay double; external requests remain blocked.
+  await page.evaluateOnNewDocument(() => {
+    window.checkoutOptions = null
+    window.checkoutOpens = 0
+    window.Razorpay = class {
+      constructor(options) {
+        if (!options.key.startsWith('rzp_test_')) throw new Error('Live checkout refused')
+        window.checkoutOptions = options
+      }
+      on() {}
+      open() { window.checkoutOpens += 1 }
+    }
+  })
+  await page.goto('http://127.0.0.1:4187/e2e/fixtures/editor.html?testView=payment')
+  await textClick('Get Starter')
+  await page.waitForFunction(() => window.checkoutOpens === 1)
+  const order = orderRequests.at(-1)
+  assert.equal(order.authorization, 'Bearer local-test-token')
+  assert.equal(order.body.plan_id, 'starter_yearly')
+  assert.ok(order.body.idempotency_key)
+  const expectedAmount = planCatalog.starter_yearly[order.body.currency === 'USD' ? 'usd_cents' : 'inr_paise']
+  assert.equal(await page.evaluate(() => window.checkoutOptions.amount), expectedAmount)
+  await page.evaluate(() => window.checkoutOptions.modal.ondismiss())
+  assert.equal(verificationRequests.length, 0, 'dismissal must not grant credits')
+  await textClick('Open test checkout')
+  await textClick('Get Starter')
+  await page.waitForFunction(() => window.checkoutOpens === 2)
+  await page.evaluate(() => window.checkoutOptions.handler({ razorpay_order_id: 'order_local_fixture', razorpay_payment_id: 'pay_local_fixture', razorpay_signature: 'fixture-signature' }))
+  assert.equal(verificationRequests.length, 1)
+  assert.equal(verificationRequests[0].authorization, 'Bearer local-test-token')
+  assert.equal(verificationRequests[0].body.idempotency_key, orderRequests.at(-1).body.idempotency_key)
+  assert.equal(verificationRequests[0].body.plan_id, 'starter_yearly')
+  invalidOrder = true
+  await textClick('Open test checkout')
+  await textClick('Get Starter')
+  await page.waitForFunction(() => document.body.textContent.includes('invalid amount or currency'))
+  assert.equal(await page.evaluate(() => window.checkoutOpens), 2, 'invalid orders cannot open checkout')
   assert.deepEqual(errors, [])
-  console.log('Local editor journey passed: recovery, keyboard search, portrait preview, revision conflict, text-box removal/undo, reload, account isolation and named controls.')
+  console.log('Local editor journey passed: caption correction, recovery, keyboard search, portrait preview, revision conflict, text-box removal/undo, reload, account isolation, named controls, upload resume after reload and checkout.')
 } catch (error) {
   console.error('Editor test diagnostics:', errors, await page.evaluate(() => document.body.innerText.slice(0, 3500)))
   throw error

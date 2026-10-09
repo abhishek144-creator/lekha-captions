@@ -31,9 +31,9 @@ establish those outcomes by itself.
 - Processed source duration is persisted and used to attach a bounded render-work
   estimate to each queued job. The queue publisher reports the sum as
   `pending_render_work_seconds`; completed observations include estimate and
-  actual render time so the model can be calibrated. On the open architecture
-  branch, Terraform consumes render work and predicted wait and Redis admission
-  enforces a predicted-work ceiling. The recorded production deployment still
+  actual render time so the model can be calibrated. On merged `main`, Terraform
+  consumes render work and predicted wait. Redis admission enforces a
+  predicted-work ceiling. The recorded production deployment still
   uses the older scaler, so these controls need canary measurement before
   tuning their thresholds.
 
@@ -43,7 +43,7 @@ establish those outcomes by itself.
 |---|---|
 | Export speed | P50/P95/P99 end-to-end and per-stage timings on representative static, animated, English, and Indic videos; visual parity on any renderer or encoder change. |
 | Cost efficiency | Detailed Cloud Billing export for the same measurement window; total CPU, disk, Redis, API, storage, egress, and provider cost divided by successful rendered minutes; idle and burst costs. |
-| Upload architecture | Real browser uploads near 500 MiB at 10/25/50/100 concurrent users; interruption at 10/50/90% of bytes, completion replay, cancel, ownership isolation, and cleanup verified. Page-refresh recovery remains open. |
+| Upload architecture | Real browser uploads near 500 MiB at 10/25/50/100 concurrent users; interruption at 10/50/90% of bytes, completion replay, cancel, ownership isolation, and cleanup verified. Refresh recovery is implemented and contract-tested, but needs a real browser interruption trial. |
 | 100-user burst | 100 authenticated upload → transcription → export → download journeys, with simultaneous export submission, at least 99.5% success, P95 queue wait under 120 seconds, and no accepted job waiting more than 300 seconds. Repeat across typical and worst-case media. |
 | Infrastructure maturity | Redis failover, worker loss during rendering, retry and credit idempotency, release rollback, alert delivery, and staged canary outcomes. |
 
@@ -59,7 +59,7 @@ review. The existing 100-job synthetic FFmpeg test is not a substitute for the
 customer journey test. Keep current worker sizing until these measurements
 support a change.
 
-Do not treat the old 4-vCPU worker, absence of Spot/GPU pools, or API/frontend
+Do not treat the old 4-vCPU worker, disabled optional Spot/GPU pools, or API/frontend
 hosting choices as defects on their own. An 8-vCPU worker doubles per-instance
 CPU demand and the last audited 100-vCPU quota would not support 20 of them.
 The last audited GPU quota was zero. Spot capacity can disappear during a burst;

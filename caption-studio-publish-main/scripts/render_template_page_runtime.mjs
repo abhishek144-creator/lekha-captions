@@ -1,6 +1,6 @@
 // Browser runtime builder extracted verbatim from the overlay renderer.
 import { isAdvancedTemplateId } from "../src/components/dashboard/templateTextRules.js"
-import { ADVANCED_IMP_ENTRANCES, ADVANCED_TEMPLATE_EMPHASIS_COLORS, ADVANCED_TEMPLATE_TIMING, LEGACY_TEMPLATE_TIMING, ORIGINAL_TEMPLATE_BLOCK_TYPES, RECREATED_ADVANCED_TEMPLATE_IDS, LC_TEMPLATE_TIMING, fitLcMotionScheduleToCaption, getLcMotionSchedule } from "../src/components/dashboard/templateMotionConfig.js"
+import { ADVANCED_IMP_ENTRANCES, ADVANCED_TEMPLATE_EMPHASIS_COLORS, ADVANCED_TEMPLATE_TIMING, LEGACY_TEMPLATE_TIMING, ORIGINAL_TEMPLATE_BLOCK_TYPES, RECREATED_ADVANCED_TEMPLATE_IDS, LC_TEMPLATE_TIMING, fitLcMotionScheduleToCaption, getLcMotionSchedule, getKeyframeTemplatePlaybackMs, KEYFRAME_ADVANCED_TEMPLATE_IDS, seekKeyframeTemplateAnimations } from "../src/components/dashboard/templateMotionConfig.js"
 import { APPLIED_BASIC_TEMPLATE_FONT_SCALE } from "../src/components/dashboard/basicTemplateInline.js"
 import { getCaptionWordRevealTimes, getCaptionWordStartTime } from "../src/components/dashboard/cptMotion.js"
 
@@ -760,6 +760,10 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
     };
 
     window.__advancedTemplateTiming = ${JSON.stringify(ADVANCED_TEMPLATE_TIMING)};
+    // Same seek used by the editor canvas (templateMotionConfig.js), inlined.
+    const getKeyframeTemplatePlaybackMs = ${getKeyframeTemplatePlaybackMs.toString()};
+    window.__keyframeAdvancedTemplateIds = new Set(${JSON.stringify(KEYFRAME_ADVANCED_TEMPLATE_IDS)});
+    window.__seekKeyframeTemplateAnimations = ${seekKeyframeTemplateAnimations.toString()};
     window.__advancedImpEntrances = ${JSON.stringify(ADVANCED_IMP_ENTRANCES)};
     window.__getAdvancedPlaybackElapsedMs = (blockType, wordCount, captionDurationMs, rawElapsedMs) => {
       const timing = window.__advancedTemplateTiming || {};
@@ -967,6 +971,30 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         case 't40':
           if (normalized === 2) return wrap('t40-b2', \`<span class="lekha-template-fit">\${stillFramesMarkup(full)}</span>\`);
           return wrap(\`t40-b\${normalized}\`, \`<span class="lekha-template-fit">\${stillFramesMarkup(full)}</span>\`);
+        case 't41':
+        case 't42':
+        case 't43':
+        case 't44':
+        case 't45':
+        case 't46':
+        case 't47':
+        case 't48':
+        case 't49':
+        case 't50':
+        case 't51':
+        case 't52': {
+          const keyframeLine = wbwMarkup(
+            full,
+            (blockType === 'styled' ? 'wbw-seq' : blockType) + ' ' + templateId + '-line',
+            'imp-' + templateId,
+          ).replace(/ in" data-i=/g, '" data-i=');
+          const keyframeInner = templateId === 't44'
+            ? '<span class="t44-thread ' + (normalized % 2 ? 't44-me' : 't44-them') + '">'
+              + '<span class="t44-typing" aria-hidden="true"><span class="t44-dot"></span><span class="t44-dot"></span><span class="t44-dot"></span></span>'
+              + keyframeLine + '</span>'
+            : keyframeLine;
+          return wrap(templateId + '-b' + normalized, keyframeInner);
+        }
         default:
           return '';
       }
@@ -1503,7 +1531,7 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           if (wordStyle.fontStyle) inline.push(\`font-style:\${wordStyle.fontStyle}\`);
           if (index < words.length - 1) inline.push(\`margin-right:\${wordSpacing}\`);
 
-          return \`<span data-word-key="\${word.key}" class="\${className}" style="\${inline.join(';')}">\${escapeHtml(transformText(word.text, globalStyle))}</span>\`;
+          return \`<span data-word-key="\${word.key}" class="\${className}" style="\${escapeHtml(inline.join(';'))}">\${escapeHtml(transformText(word.text, globalStyle))}</span>\`;
         })
         .filter(Boolean)
         .join('');
@@ -2436,7 +2464,10 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       const words = buildWordMeta(caption);
       const currentIndex = getCurrentWordIndex(caption, time);
       const showInactive = globalStyle?.show_inactive !== false;
-      const wordSpacing = \`\${scaleExportPx((globalStyle?.word_spacing ?? 1) * 2)}px\`;
+      // Words are inline-block spans joined without whitespace, so this margin
+      // is the whole inter-word gap. Mirrors the editor preview in
+      // VideoPlayer.jsx: 0.18 x base font size + word_spacing x 2.
+      const wordSpacing = \`\${scaleExportPx((globalStyle?.font_size || 18) * 0.18 + (globalStyle?.word_spacing ?? 1) * 2)}px\`;
 
       const isCptCaption = captionHasCptWords(caption);
       const renderPlainWord = (word, index, isLastInLine = false) => {
@@ -2455,11 +2486,13 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           wordStyle.textTransform ? \`text-transform:\${wordStyle.textTransform}\` : '',
           !isLastInLine ? \`margin-right:\${wordSpacing}\` : '',
         ].filter(Boolean);
-        if (globalStyle?.has_stroke) inline.push(\`-webkit-text-stroke:\${globalStyle.stroke_width ?? 1}px \${globalStyle.stroke_color || '#000000'}\`);
-        if (globalStyle?.has_shadow) inline.push(\`text-shadow:\${globalStyle.shadow_offset_x ?? 0}px \${globalStyle.shadow_offset_y ?? 2}px \${globalStyle.shadow_blur ?? 4}px \${globalStyle.shadow_color || '#000000'}\`);
+        // Not scaleExportPx: that clamps to >= 1px, and zero shadow offsets/blur are authored values.
+        const scaleEffectPx = (value) => Math.round((Number(value) || 0) * (window.__exportCanvasScale || 1));
+        if (globalStyle?.has_stroke) inline.push(\`-webkit-text-stroke:\${scaleExportPx(globalStyle.stroke_width ?? 1)}px \${globalStyle.stroke_color || '#000000'}\`);
+        if (globalStyle?.has_shadow) inline.push(\`text-shadow:\${scaleEffectPx(globalStyle.shadow_offset_x ?? 0)}px \${scaleEffectPx(globalStyle.shadow_offset_y ?? 2)}px \${scaleEffectPx(globalStyle.shadow_blur ?? 4)}px \${globalStyle.shadow_color || '#000000'}\`);
         if (wordStyle.isEmphasis && !globalStyle?.has_shadow) {
           const accent = globalStyle?.highlight_color || globalStyle?.secondary_color || '#DDAA03';
-          inline.push(\`text-shadow:0 0 18px \${accent}99,0 0 6px \${accent}66\`);
+          inline.push(\`text-shadow:0 0 \${scaleEffectPx(18)}px \${accent}99,0 0 \${scaleEffectPx(6)}px \${accent}66\`);
         }
         const wordGradient = wordStyle.textGradient || globalStyle?.text_gradient || '';
         if (wordGradient) {
@@ -2472,7 +2505,9 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           inline.push('border-radius:4px');
         }
         Object.entries(getWordEffectInlineStyles(wordStyle)).forEach(([property, value]) => inline.push(\`\${property}:\${value}\`));
-        return \`<span data-word-key="\${word.key}" style="\${inline.join(';')}">\${escapeHtml(transformText(word.text, globalStyle))}</span>\`;
+        // Escape the attribute: font-family is double-quoted, and a raw quote
+        // here ends style="..." early, dropping every later declaration.
+        return \`<span data-word-key="\${word.key}" style="\${escapeHtml(inline.join(';'))}">\${escapeHtml(transformText(word.text, globalStyle))}</span>\`;
       };
 
       let wordCursor = 0;
@@ -2918,11 +2953,14 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           ? caption.preview_template_line_texts
           : style.preview_template_line_texts;
         const renderedTemplateId = String(renderStyle?.template_id || '').trim();
-        const shouldReplayPreviewLineBreaks =
+        // Keyframe templates index words with :nth-of-type inside one line
+        // container, so regrouping words into line spans would break them.
+        const shouldReplayPreviewLineBreaks = !window.__keyframeAdvancedTemplateIds.has(renderedTemplateId) && (
           !recreatedAdvancedTemplateIds.has(renderedTemplateId)
           || renderedTemplateId === 't24'
           || renderedTemplateId === 't25'
-          || renderedTemplateId === 't29';
+          || renderedTemplateId === 't29'
+        );
         if (shouldReplayPreviewLineBreaks) {
           applyPreviewTemplateLineBreaks(anchor, {
             ...style,

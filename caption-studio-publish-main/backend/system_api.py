@@ -64,6 +64,8 @@ async def analytics_track(request: Request, response: Response):
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Invalid analytics payload")
     await asyncio.to_thread(observability._track_event, event, payload)
+    if event == "funnel.captions.ready":
+        await asyncio.to_thread(observability._record_client_time_to_first_caption, payload.get("timeToFirstCaptionMs"))
     return {"success": True}
 
 

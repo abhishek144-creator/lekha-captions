@@ -105,7 +105,7 @@ def write_text_element(processor, f, style_context, caption_context):
     cs = caption_context.c.get('custom_style') or {}
     te_fi = processor._ensure_font(cs.get('font_family', 'Inter') or 'Inter')
     te_fn = te_fi['ass_name']
-    te_fs = max(int(int(cs.get('font_size', 18) or 18) * style_context.scale_factor), 20)
+    te_fs = style_context.ass_font_size(cs.get('font_size', 18) or 18)
     te_c = processor._hex_to_ass(cs.get('text_color', '#ffffff') or '#ffffff',
                             float(cs.get('text_opacity', 1.0) or 1.0))
     te_bold = 1 if str(cs.get('font_weight', '500') or '500') in ('bold', '700', '800', '900') else 0
@@ -165,7 +165,7 @@ def write_text_element(processor, f, style_context, caption_context):
                 wfi2 = processor._ensure_font(wsv2['fontFamily'])
                 ov2.append(f"\\fn{wfi2['ass_name']}"); rv2.append(f"\\fn{te_fn}")
             if wsv2.get('fontSize'):
-                ov2.append(f"\\fs{max(int(float(wsv2['fontSize'])*style_context.scale_factor),20)}"); rv2.append(f"\\fs{te_fs}")
+                ov2.append(f"\\fs{style_context.ass_font_size(wsv2['fontSize'])}"); rv2.append(f"\\fs{te_fs}")
             te_parts.append("{" + "".join(ov2) + "}" + tok2 + "{" + "".join(rv2) + "}" if ov2 else tok2)
     te_main = " ".join(te_parts)
     te_base = [f"\\fn{te_fn}", f"\\fs{te_fs}", f"\\1c{te_c}", f"\\an{te_align}", te_style_str]
@@ -184,7 +184,7 @@ def write_text_element(processor, f, style_context, caption_context):
         wy3 = int((float(wsv3.get('abs_y_pct', 50)) / 100) * style_context.video_h)
         wc3 = processor._hex_to_ass(wsv3.get('color', cs.get('text_color', '#ffffff') or '#ffffff'))
         wfn3 = processor._ensure_font(wsv3['fontFamily'])['ass_name'] if wsv3.get('fontFamily') else te_fn
-        wfs3 = max(int(float(wsv3['fontSize'])*style_context.scale_factor), 20) if wsv3.get('fontSize') else te_fs
+        wfs3 = style_context.ass_font_size(wsv3['fontSize']) if wsv3.get('fontSize') else te_fs
         pt3 = [f"\\fn{wfn3}", f"\\fs{wfs3}", f"\\1c{wc3}", f"\\an{te_align}", te_style_str, f"\\pos({wx3},{wy3})"]
         if te_bold: pt3.append("\\b1")
         if te_italic: pt3.append("\\i1")
@@ -332,7 +332,7 @@ def write_layout_caption(processor, f, style_context, caption_context):
         _wy_p = int((float(_ws_p.get('abs_y_pct', 75)) / 100) * style_context.video_h)
         _wc_p = _gn(_ws_p.get('color', style_context.primary_hex) or style_context.primary_hex, float(style_context.style.get('text_opacity', 1.0) or 1.0))
         _wfn_p = processor._ensure_font(_ws_p['fontFamily'])['ass_name'] if _ws_p.get('fontFamily') else style_context.font_name
-        _wfs_p = max(int(float(_ws_p['fontSize']) * style_context.scale_factor), 20) if _ws_p.get('fontSize') else style_context.scaled_size
+        _wfs_p = style_context.ass_font_size(_ws_p['fontSize']) if _ws_p.get('fontSize') else style_context.scaled_size
         _weff_t = _ws_p.get('effectType', 'none') or 'none'
         if _weff_t != 'none':
             _weff_p = {'offset': float(_ws_p.get('effectOffset', 50) or 50), 'direction': float(_ws_p.get('effectDirection', -45) or -45), 'blur': float(_ws_p.get('effectBlur', 50) or 50), 'transparency': float(_ws_p.get('effectTransparency', 40) or 40), 'thickness': float(_ws_p.get('effectThickness', 50) or 50), 'intensity': float(_ws_p.get('effectIntensity', 50) or 50), 'color': _ws_p.get('effectColor', '#000000') or '#000000'}
@@ -373,7 +373,7 @@ def prepare_regular_caption(processor, style_context, caption_context) -> AssReg
                 wfi = processor._ensure_font(ws['fontFamily'])
                 ov.append(f"\\fn{wfi['ass_name']}"); rv.append(f"\\fn{style_context.font_name}")
             if ws.get('fontSize'):
-                ov.append(f"\\fs{max(int(float(ws['fontSize'])*style_context.scale_factor),20)}"); rv.append(f"\\fs{style_context.scaled_size}")
+                ov.append(f"\\fs{style_context.ass_font_size(ws['fontSize'])}"); rv.append(f"\\fs{style_context.scaled_size}")
             if str(ws.get('fontWeight', '')) in ('bold', '700', '800', '900'):
                 ov.append("\\b1"); rv.append(f"\\b{style_context.bold_flag}")
             if ws.get('fontStyle') == 'italic':
@@ -534,7 +534,7 @@ def write_standard_caption(processor, f, style_context, caption_context, regular
                 w_tags.insert(0, f"\\fn{wfi3['ass_name']}")
             if ws2.get('fontSize'):
                 w_tags = [t for t in w_tags if not t.startswith('\\fs')]
-                w_tags.insert(1, f"\\fs{max(int(float(ws2['fontSize'])*style_context.scale_factor),20)}")
+                w_tags.insert(1, f"\\fs{style_context.ass_font_size(ws2['fontSize'])}")
             f.write(f"Dialogue: 0,{processor._fmt(w_st)},{processor._fmt(w_et)},Default,,0,0,0,,{{{''.join(w_tags)}}}{ww}\n")
     elif regular_context.main_text:
         f.write(f"Dialogue: 0,{caption_context.s},{caption_context.e},Default,,0,0,0,,{{{''.join(regular_context.tags)}}}{regular_context.main_text}\n")
@@ -549,7 +549,7 @@ def write_positioned_words(processor, f, style_context, caption_context, regular
         wc4 = processor._hex_to_ass(ws4.get('color', style_context.primary_hex) or style_context.primary_hex,
                                float(style_context.style.get('text_opacity', 1.0) or 1.0))
         wfn4 = processor._ensure_font(ws4['fontFamily'])['ass_name'] if ws4.get('fontFamily') else style_context.font_name
-        wfs4 = max(int(float(ws4['fontSize'])*style_context.scale_factor), 20) if ws4.get('fontSize') else style_context.scaled_size
+        wfs4 = style_context.ass_font_size(ws4['fontSize']) if ws4.get('fontSize') else style_context.scaled_size
         # Per-word effects from floating popup (effectType, effectBlur, etc.)
         w_eff_type = ws4.get('effectType', 'none') or 'none'
         if w_eff_type != 'none':
