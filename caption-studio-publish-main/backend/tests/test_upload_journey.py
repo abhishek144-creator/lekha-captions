@@ -35,11 +35,13 @@ class UploadPlanPrecheckTests(unittest.TestCase):
 
     def test_video_longer_than_plan_is_refused_before_upload(self):
         starter = {"subscription_tier": "starter", "subscription_expiry": _future_iso()}
+        # The cap comes from shared/planCatalog.json, so the test follows pricing changes.
+        cap = main.settings.PLAN_PRICING["starter"]["max_video_seconds"]
         with self.assertRaises(HTTPException) as refused:
-            self.run_check(starter, duration=170)
+            self.run_check(starter, duration=cap + 20)
         self.assertEqual(refused.exception.status_code, 403)
-        self.assertIn("120s", refused.exception.detail)
-        self.run_check(starter, duration=110)
+        self.assertIn(f"{cap}s", refused.exception.detail)
+        self.run_check(starter, duration=cap - 10)
 
     def test_used_free_transcriptions_are_refused_before_upload(self):
         free = {"subscription_tier": "free", "ai_lifetime_usage": {"process": main.settings.FREE_LIFETIME_TRANSCRIPTIONS}}
