@@ -162,8 +162,8 @@ async def _process_video_inline(req: api_models.ProcessRequest, request: Request
     await asyncio.to_thread(media_records._ensure_upload_clean, req.file_id, uid, input_path)
 
     # Enforce the per-plan maximum source length. /api/upload only applies a
-    # global 180s ceiling; paid plans advertise tighter caps (starter=120s) that
-    # can only be enforced here, where the caller's tier is known. Checked before
+    # global 180s ceiling; a plan's own cap (shared/planCatalog.json) can only be
+    # enforced here, where the caller's tier is known. Checked before
     # the cache lookup so a result cached by a higher tier can't be replayed to a
     # lower-tier user with a too-long video.
     user_tier = entitlements._normalize_tier_name(await asyncio.to_thread(entitlements._lookup_subscription_tier, uid))
