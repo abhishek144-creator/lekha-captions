@@ -108,7 +108,9 @@ def read_draft(db, uid, project_id=""):
         snapshot = _project_ref(db, uid, project_id).get()
         return snapshot.to_dict() if snapshot.exists else {"revision": 0, "draft": None, "project_id": project_id}
 
-    projects = list_projects(db, uid, 1)
+    # Sort the bounded account collection before selecting one. Firestore's
+    # unordered limit(1) can return an older project instead of the last save.
+    projects = list_projects(db, uid)
     if projects:
         return read_draft(db, uid, projects[0]["project_id"])
 

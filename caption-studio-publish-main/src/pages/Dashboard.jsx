@@ -293,6 +293,7 @@ export default function Dashboard() {
     showCloudSaveConflictNotice,
     localRecoveryDraft,
     applyLocalDraft,
+    continueAccountDraft,
     discardLocalDraft,
     saveNow,
   } = useDraftPersistence({
@@ -1109,7 +1110,7 @@ export default function Dashboard() {
             applyLocalDraft={applyLocalDraft}
             discardLocalDraft={discardLocalDraft}
             accountDraft={cloudReady && currentUser ? cloudDraft : null}
-            onContinueAccountDraft={() => applyLocalDraft({ ...cloudDraft, ownerUid: currentUser.uid })}
+            onContinueAccountDraft={continueAccountDraft}
             handleUploadModalOpen={handleUploadModalOpen}
           />
         ) : (
