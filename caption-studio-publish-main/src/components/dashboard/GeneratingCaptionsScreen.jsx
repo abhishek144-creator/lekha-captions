@@ -27,7 +27,7 @@ function useGlidingPercent(target) {
       const current = shownRef.current;
       if (current < target) {
         const eased = (target - current) * (1 - Math.exp(-seconds / GLIDE_SECONDS));
-        const next = Math.min(target, current + Math.max(eased, seconds * 2));
+        const next = Math.min(target, current + Math.max(eased, seconds * 10));
         shownRef.current = next;
         setShown(next);
         frame = requestAnimationFrame(step);

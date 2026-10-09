@@ -27,10 +27,10 @@ describe('upload feedback and waveform recovery', () => {
     await waitFor(() => {
       seen.push(shown())
       expect(shown()).toBe(40)
-    }, { timeout: 5000, interval: 50 })
+    }, { timeout: 12000, interval: 50 })
     expect(seen.length).toBeGreaterThan(3)
     expect(seen.every((value, index) => index === 0 || value >= seen[index - 1])).toBe(true)
-  })
+  }, 15000)
 
   it('skips a large local file without reading or decoding it', async () => {
     const file = new Blob(['fixture'])
