@@ -20,7 +20,8 @@ from typing import Any, Dict
 import anyio
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
+from starlette.requests import ClientDisconnect
 
 # Not used here: tests reach these through main (main.firestore.transactional,
 # main.firebase_auth.delete_user, main.Response(), ...).
@@ -228,14 +229,20 @@ async def request_logging_middleware(request: Request, call_next):
             ))
     if "application/json" in content_type:
         body = bytearray()
-        async for chunk in request.stream():
-            body.extend(chunk)
-            if len(body) > settings.MAX_JSON_BODY_BYTES:
-                return request_security._apply_security_headers(JSONResponse(
-                    status_code=413,
-                    content={"success": False, "error": "Request body is too large"},
-                    headers={"X-Request-Id": rid},
-                ))
+        try:
+            async for chunk in request.stream():
+                body.extend(chunk)
+                if len(body) > settings.MAX_JSON_BODY_BYTES:
+                    return request_security._apply_security_headers(JSONResponse(
+                        status_code=413,
+                        content={"success": False, "error": "Request body is too large"},
+                        headers={"X-Request-Id": rid},
+                    ))
+        except ClientDisconnect:
+            # The browser went away mid-body (page closed, navigation, network
+            # drop, or a deploy cutting a connection). Nobody receives a reply;
+            # 499 records it as a client-side close instead of a server crash.
+            return Response(status_code=499, headers={"X-Request-Id": rid})
         # Starlette's downstream receive wrapper replays this cached body. This
         # enforces the limit even for chunked requests with no Content-Length.
         request._body = bytes(body)
