@@ -308,7 +308,9 @@ def _upload_security_service() -> UploadSecurityService:
 
 
 def _build_process_cache_path(media_hash: str, language: str, min_words: int, max_words: int) -> str:
-    key = f"{media_hash}:{language.lower()}:{min_words}:{max_words}"
+    # v2: Sarvam phrase chunks are split into timed words; v1 entries may hold
+    # a whole sentence as one caption.
+    key = f"v2:{media_hash}:{language.lower()}:{min_words}:{max_words}"
     key_hash = hashlib.sha256(key.encode("utf-8")).hexdigest()
     return os.path.join(settings.TRANSCRIPTION_CACHE_DIR, f"{key_hash}.json")
 

@@ -2404,7 +2404,7 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
             'font-weight:' + (
               wordStyle.cptPaintedFontWeight
               || wordStyle.fontWeight
-              || (isEmphasis ? '800' : (globalStyle?.font_weight || '500'))
+              || (isEmphasis ? String(Math.max(700, Number(globalStyle?.font_weight) || 0)) : (globalStyle?.font_weight || '500'))
             ),
             'font-style:' + (
               wordStyle.cptPaintedFontStyle
