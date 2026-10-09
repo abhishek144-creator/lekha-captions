@@ -17,7 +17,7 @@ const plans = [
     icon: 'zap',
     features: [
       '15 video credits / month',
-      'Max 2 min per video',
+      'Max 3 min per video',
       'Max 3 videos / day',
       'No watermark',
       '100+ caption styles',
@@ -256,7 +256,7 @@ export function HomePricingSection() {
                     String(getPlanCredits(plans[1], billing)),
                     String(getPlanCredits(plans[2], billing)),
                   ],
-                  ['Max Video Length', '2 min', '3 min', '3 min'],
+                  ['Max Video Length', '3 min', '3 min', '3 min'],
                   ['Daily Limit', '3/day', '5/day', 'Unlimited'],
                   ['Export Quality', '1080p', '1080p + 4K', '1080p + 4K'],
                   ['Transcription language choices', 'Included', 'Included', 'Included'],

@@ -22,7 +22,7 @@ const plans = [
     monthlyInr: '₹299',
     savings: '~16% off monthly',
     description: 'A simple start for a steady social workflow.',
-    features: ['180 video credits / year', 'Up to 2 minutes per video', '3 videos per day', '100+ caption styles', 'Available transcription languages', '1080p HD export', 'No watermark'],
+    features: ['180 video credits / year', 'Up to 3 minutes per video', '3 videos per day', '100+ caption styles', 'Available transcription languages', '1080p HD export', 'No watermark'],
   },
   {
     name: 'Creator',
@@ -50,7 +50,7 @@ const plans = [
 const comparison = [
   ['Yearly video credits', '180', '540', '1,440'],
   ['Monthly video credits', '15', '45', '120'],
-  ['Maximum video length', '2 min', '3 min', '3 min'],
+  ['Maximum video length', '3 min', '3 min', '3 min'],
   ['Daily video limit', '3', '5', 'Unlimited'],
   ['Transcription language choices', 'Included', 'Included', 'Included'],
   ['Animated styles', '100+', '100+', '100+'],
