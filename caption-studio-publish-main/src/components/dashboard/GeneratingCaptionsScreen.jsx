@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Check, Sparkles } from 'lucide-react'
 
@@ -8,6 +8,36 @@ const UPLOAD_SHARE = 40;
 // Caption work has no server progress, so it eases towards this ceiling and
 // the screen closes when the captions arrive.
 const PROCESSING_CEILING = 95;
+// Seconds for the shown percentage to cover most of the way to the real one,
+// so upload chunks and once-a-second processing updates glide instead of jump.
+const GLIDE_SECONDS = 0.6;
+
+// The shown percentage chases the real one smoothly and never goes back.
+function useGlidingPercent(target) {
+  const [shown, setShown] = useState(0);
+  const shownRef = useRef(0);
+  useEffect(() => {
+    let frame = 0;
+    let last = performance.now();
+    const step = (now) => {
+      // A frame's timestamp can be a little earlier than the performance.now()
+      // read when the effect started; never step backwards.
+      const seconds = Math.max(0, Math.min(0.1, (now - last) / 1000));
+      last = Math.max(last, now);
+      const current = shownRef.current;
+      if (current < target) {
+        const eased = (target - current) * (1 - Math.exp(-seconds / GLIDE_SECONDS));
+        const next = Math.min(target, current + Math.max(eased, seconds * 10));
+        shownRef.current = next;
+        setShown(next);
+        frame = requestAnimationFrame(step);
+      }
+    };
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+  }, [target]);
+  return shown;
+}
 
 // Shown while a new upload is transcribed. One bar covers the whole wait:
 // while the file is uploading it follows the real share of bytes storage has
@@ -30,6 +60,7 @@ export default function GeneratingCaptionsScreen({ elapsedSeconds: processingSec
   const overallPercent = isUploading
     ? Math.round((Math.min(100, Math.max(0, Number(uploadPercent) || 0)) / 100) * UPLOAD_SHARE)
     : Math.round(UPLOAD_SHARE + (PROCESSING_CEILING - UPLOAD_SHARE) * (1 - Math.exp(-seconds / 15)));
+  const shownPercent = useGlidingPercent(overallPercent);
   return (
     <div className="relative flex h-full items-center justify-center overflow-hidden bg-[#050505] p-4 sm:p-8">
       <div aria-hidden="true" className="absolute inset-0 bg-[radial-gradient(circle_at_50%_36%,rgba(246,165,75,0.14),transparent_36%),radial-gradient(circle_at_8%_88%,rgba(255,255,255,0.045),transparent_28%)]" />
@@ -74,7 +105,7 @@ export default function GeneratingCaptionsScreen({ elapsedSeconds: processingSec
                 <p className="mt-1 text-sm font-medium text-white">Step {Math.min(completedSteps + 1, progressSteps.length)} of {progressSteps.length}</p>
               </div>
               <div className="text-right">
-                <p className="text-2xl font-semibold tracking-tight text-[#ffd7a4]">{overallPercent}%</p>
+                <p className="text-2xl font-semibold tracking-tight text-[#ffd7a4]">{Math.round(shownPercent)}%</p>
                 <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">{isUploading ? 'Uploading' : 'Processing'}</p>
               </div>
             </div>
@@ -82,13 +113,14 @@ export default function GeneratingCaptionsScreen({ elapsedSeconds: processingSec
               role="progressbar"
               aria-valuemin={0}
               aria-valuemax={100}
-              aria-valuenow={overallPercent}
+              aria-valuenow={Math.round(shownPercent)}
+              data-target-percent={overallPercent}
               aria-label="Caption progress"
               className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/[0.08]"
             >
               <div
-                className="h-full rounded-full bg-[#f6a54b] transition-[width] duration-700 ease-out"
-                style={{ width: `${overallPercent}%` }}
+                className="h-full rounded-full bg-[#f6a54b]"
+                style={{ width: `${shownPercent}%` }}
               />
             </div>
           </div>

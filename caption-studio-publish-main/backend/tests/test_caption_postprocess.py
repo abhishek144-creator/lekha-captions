@@ -11,9 +11,11 @@ class CaptionPostProcessRegressionTests(unittest.TestCase):
         # Avoid __init__ side effects (font downloads, fs setup) for pure logic tests.
         self.processor = VideoProcessor.__new__(VideoProcessor)
 
-    def test_normalize_caption_text_adds_terminal_punctuation(self):
-        normalized = self.processor._normalize_caption_text("hello   world")
-        self.assertEqual(normalized, "hello world.")
+    def test_normalize_caption_text_adds_no_punctuation(self):
+        # A caption is often mid-sentence; only transcribed punctuation stays.
+        self.assertEqual(self.processor._normalize_caption_text("hello   world"), "hello world")
+        self.assertEqual(self.processor._normalize_caption_text("hello world ."), "hello world.")
+        self.assertEqual(self.processor._normalize_caption_text("क्लब हाउस है ।"), "क्लब हाउस है।")
 
     def test_tiny_caption_merges_into_next(self):
         captions = [

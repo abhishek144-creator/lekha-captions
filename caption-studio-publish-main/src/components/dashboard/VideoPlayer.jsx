@@ -14,6 +14,7 @@ import { DESKTOP_EDITOR_QUERY, useMediaQuery } from '@/hooks/useMediaQuery';
 import VideoPlayerKeyframes from './VideoPlayerKeyframes';
 import { resolveScriptFont, loadGoogleFont } from './fontUtils';
 import { buildEmotionalCaptionPlan } from './emotionalTemplateUtils';
+import { DEFAULT_CAPTION_POSITION_Y } from '../../lib/captionDefaults.js';
 import {
   ADVANCED_TEMPLATE_EMPHASIS_COLORS,
   getOriginalTemplateBlockType,
@@ -1333,7 +1334,7 @@ export default function VideoPlayer({
   })
 
   const getPositionStyle = () => {
-    const posY = captionStyle?.position_y ?? 75;
+    const posY = captionStyle?.position_y ?? DEFAULT_CAPTION_POSITION_Y;
     const posX = captionStyle?.position_x ?? 50;
     const align = captionStyle?.text_align || 'center';
 
@@ -1997,7 +1998,7 @@ export default function VideoPlayer({
                   ? `absolute flex justify-center ${setCaptionStyle && !isEditingThis && !hasDetachedWords ? 'cursor-move' : ''}`
                   : `absolute px-3 flex justify-center ${setCaptionStyle && !isEditingThis && !hasDetachedWords ? 'cursor-move' : ''}`}
                 style={isSidebarTemplate ? {
-                  top: `${captionStyle?.position_y ?? 75}%`,
+                  top: `${captionStyle?.position_y ?? DEFAULT_CAPTION_POSITION_Y}%`,
                   left: '50%',
                   width: '100%',
                   transform: 'translate(-50%, -50%)',
@@ -2080,16 +2081,20 @@ export default function VideoPlayer({
                     />
                   )}
 
-                  {/* Delete button for the selected/hovered main caption line */}
+                  {/* Delete button for the selected/hovered main caption line. It
+                      sits above the box: at the corner the top-right resize
+                      handle covered it. Near the top of the frame it goes below
+                      the box so the preview cannot clip it. */}
                   {setCaptions && !isEditingThis && !hasDetachedWords && (
                     <button
                       type="button"
-                      className={`absolute -top-2.5 -right-2.5 w-6 h-6 bg-zinc-900 border border-white/20 hover:border-red-500/50 hover:bg-red-500/10 rounded-full transition-all z-50 flex items-center justify-center shadow-xl text-gray-400 hover:text-red-500 ${selectedCaptionId === caption.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                      className={`absolute ${Number(caption?.position_y ?? captionStyle?.position_y ?? DEFAULT_CAPTION_POSITION_Y) < 20 ? 'top-full mt-3' : '-top-10'} -right-3 z-[60] flex h-7 w-7 cursor-pointer touch-manipulation items-center justify-center rounded-full border border-white/30 bg-zinc-900 text-white shadow-xl transition-colors hover:border-red-400 hover:bg-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white ${selectedCaptionId === caption.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
                       onPointerDown={(e) => {
                         e.stopPropagation();
                         e.preventDefault();
                       }}
                       onClick={handleDeleteCaptionLine}
+                      aria-label="Delete caption line"
                       title="Delete caption line"
                     >
                       <X className="w-3.5 h-3.5" />

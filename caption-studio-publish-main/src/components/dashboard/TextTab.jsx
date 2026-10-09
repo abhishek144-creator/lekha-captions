@@ -2,6 +2,7 @@ import React from 'react';
 import { Type } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 import { loadGoogleFont } from './fontUtils';
+import { DEFAULT_CAPTION_POSITION_Y } from '../../lib/captionDefaults.js';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
@@ -26,7 +27,7 @@ const buildCaptionMatchedTextElement = ({ activeSpeechCaption, currentTime, capt
     type: 'textbox',
     isTextElement: true,
     customStyle: {
-      top: clamp((captionStyle?.position_y ?? 75) - 16, 12, 82),
+      top: clamp((captionStyle?.position_y ?? DEFAULT_CAPTION_POSITION_Y) - 16, 12, 82),
       left: captionStyle?.position_x ?? 50,
       width: estimatedWidth,
       fontSize,
