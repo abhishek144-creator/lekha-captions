@@ -30,3 +30,29 @@ class SecurityHeaderTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ClientDisconnectTests(unittest.TestCase):
+    def test_json_body_disconnect_is_a_client_close_not_a_server_error(self):
+        """A browser that hangs up mid-body must not surface as an unhandled ASGI exception."""
+        import asyncio
+
+        scope = {
+            "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1", "method": "POST",
+            "scheme": "https", "path": "/api/analytics/track", "raw_path": b"/api/analytics/track",
+            "query_string": b"", "root_path": "", "client": ("203.0.113.9", 1234), "server": ("testserver", 443),
+            "headers": [(b"host", b"testserver"), (b"content-type", b"application/json")],
+        }
+        messages = [{"type": "http.request", "body": b'{"event":', "more_body": True}, {"type": "http.disconnect"}]
+
+        async def receive():
+            return messages.pop(0) if messages else {"type": "http.disconnect"}
+
+        sent = []
+
+        async def send(message):
+            sent.append(message)
+
+        asyncio.run(main.app(scope, receive, send))
+        start = next(m for m in sent if m["type"] == "http.response.start")
+        self.assertEqual(start["status"], 499)
