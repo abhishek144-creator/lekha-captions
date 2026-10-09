@@ -89,15 +89,19 @@ class SpokenLanguageRoutingTests(unittest.IsolatedAsyncioTestCase):
         self.processor.client.audio.transcriptions.create.return_value = SimpleNamespace(language="hindi", words=[])
         with patch("processor.run_media_command", side_effect=_write_output), \
                 patch("processor.SarvamAI") as sarvam, \
-                patch("processor._extract_sarvam_words", return_value=self.words):
+                patch("processor._extract_sarvam_chunks", return_value=self.words):
             result = await self.processor.generate_captions_only("video.mp4", target_language="auto")
         self.assertTrue(result.get("success"))
         self.assertEqual(result.get("detected_language"), "hindi")
+        self.assertEqual(result.get("transcription_source"), "sarvam")
         transcribe = sarvam.return_value.speech_to_text.transcribe
         self.assertEqual(transcribe.call_args.kwargs["language_code"], "hi-IN")
-        # Only the 30-second sample went to whisper-1, without word timestamps.
-        self.assertEqual(len(self.whisper_calls()), 1)
+        # whisper-1: the 30-second language sample (no word timestamps), then
+        # word timings that place Sarvam's words (owner-approved 2026-10-09).
+        self.assertEqual(len(self.whisper_calls()), 2)
         self.assertNotIn("timestamp_granularities", self.whisper_calls()[0].kwargs)
+        self.assertEqual(self.whisper_calls()[1].kwargs["timestamp_granularities"], ["word"])
+        self.assertEqual(self.whisper_calls()[1].kwargs["language"], "hi")
 
     @patch.dict(os.environ, {"SARVAM_API_KEY": "test-key"})
     async def test_auto_english_speech_stays_on_whisper(self):
@@ -190,6 +194,39 @@ class SarvamChunkTimestampTests(unittest.TestCase):
         self.assertEqual(calls, ["hi-IN", "hi-IN", "hi-IN"])
         self.assertEqual([w["start"] for w in words][::2], [1.0, 30.0, 59.0])
         self.assertEqual(words[-1]["end"], 60.0)
+
+    def test_words_are_placed_inside_heard_speech_not_music(self):
+        from processor import _align_chunks_to_speech
+        # One Sarvam span covers 0-17 s, but speech is only 0-2 s and 4-5 s;
+        # the rest is music.
+        chunk = [{"word": "रखोगे और छल या कपट", "start": 0.0, "end": 16.92}]
+        heard = [{"start": 0.0, "end": 0.9}, {"start": 1.0, "end": 2.0}, {"start": 4.0, "end": 5.0}]
+        words = _align_chunks_to_speech(chunk, heard)
+        self.assertEqual([w["word"] for w in words], ["रखोगे", "और", "छल", "या", "कपट"])
+        self.assertEqual(words[0]["start"], 0.0)
+        self.assertLessEqual(words[-1]["end"], 5.0)
+        for word in words:
+            inside = any(s - 0.001 <= word["start"] < e for s, e in [(0.0, 0.9), (1.0, 2.0), (4.0, 5.0)])
+            self.assertTrue(inside, word)
+        for previous, current in zip(words, words[1:]):
+            self.assertLessEqual(previous["start"], current["start"])
+
+    def test_without_heard_speech_the_phrase_split_is_kept(self):
+        from processor import _align_chunks_to_speech, _split_chunk_timestamps
+        chunk = [{"word": "वो शिप नहीं है", "start": 6.0, "end": 8.0}]
+        self.assertEqual(_align_chunks_to_speech(chunk, []), _split_chunk_timestamps(chunk))
+        # Heard speech outside the phrase's span does not move it.
+        self.assertEqual(_align_chunks_to_speech(chunk, [{"start": 0.0, "end": 1.0}]), _split_chunk_timestamps(chunk))
+
+    def test_cuts_fall_between_heard_words_when_music_hides_pauses(self):
+        from processor import _plan_audio_segments, _word_gap_points
+        heard = [{"start": t, "end": t + 0.4} for t in [x * 0.45 for x in range(80)]]  # 36 s, 0.05 s gaps
+        self.assertEqual(_word_gap_points(heard, min_gap=0.25), [])
+        boundaries = _word_gap_points(heard)
+        segments = _plan_audio_segments(36.0, [], fallback_points=boundaries)
+        cut = segments[0][1]
+        self.assertTrue(any(abs(cut - b) < 1e-9 for b in boundaries))
+        self.assertTrue(all(not (w["start"] < cut < w["end"]) for w in heard))
 
     def test_danda_ends_a_caption_and_gets_no_extra_full_stop(self):
         processor = VideoProcessor(fonts_dir="flat_fonts")

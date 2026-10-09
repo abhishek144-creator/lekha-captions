@@ -8,7 +8,6 @@ import re
 # Sentence-ending marks across the scripts we transcribe: Latin, Devanagari
 # and other Indic danda, Arabic/Urdu, and CJK full-width forms.
 SENTENCE_END_MARKS = ".!?।॥۔؟。！？"
-_SENTENCE_END_RE = re.compile(f"[{re.escape(SENTENCE_END_MARKS)}]$")
 
 
 class CaptionTextMixin:
@@ -136,10 +135,9 @@ class CaptionTextMixin:
         t = " ".join((text or "").strip().split())
         if not t:
             return t
-        t = re.sub(r"\s+([,.!?;:])", r"\1", t)
-        if len(t) > 8 and not _SENTENCE_END_RE.search(t):
-            t = f"{t}."
-        return t
+        # Keep only punctuation that was transcribed: a caption is often part of
+        # a sentence, so adding a full stop put one mid-sentence ("welcome to.").
+        return re.sub(r"\s+([,.!?;:।॥])", r"\1", t)
 
     def _post_process_captions(self, captions):
         if not captions:
