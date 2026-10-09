@@ -2,7 +2,7 @@
 
 ## Verified production identity
 
-Production release `4cd7453c6572faa5f1928afa084513e63ac7fe32` was rebuilt on
+At 13:23 UTC, release `4cd7453c6572faa5f1928afa084513e63ac7fe32` was rebuilt on
 the four existing Railway application services and published to the two existing
 Netlify sites. Each artifact uses `git-4cd7453c6572` and coordinated build-batch
 time `2026-10-09T13:06:45Z`. The strict deployed verifier passed from inside the
@@ -33,7 +33,8 @@ Fresh account-only recovery exposed two defects:
   accounts during refresh cancels restoration into the new account.
 
 Verification of the prepared fix: the new lookup regression fails on old code;
-475 backend tests and 40 subtests pass after the fix. Frontend validation passes
+476 backend tests and 40 subtests pass after integrating the already merged
+client-disconnect fix from PR #58. Frontend validation passes
 74 unit tests, contracts, lint, typecheck and guarded build; all 342 release
 checks pass. The real local editor journey covers account-only recovery, fresh
 authenticated source URL, no new save on read, expired-source relink, revision
@@ -51,11 +52,13 @@ save/account-recovery/MP4 download acceptance. It is not included in `4cd7453`.
   no device/browser outcome has been reported. Local responsive checks do not
   substitute for this result.
 - Transcript-cache TTL: both checked-in cache collections currently have no
-  deployed TTL. Existing credentials cannot manage field policies (403).
-  Apply only `expire_at` TTL/index exemptions and `payload` index exemptions for
-  `transcription_cache` and `transcription_cache_staging` using an existing
-  authorized administrator. Application reads already reject expired entries;
-  automatic database cleanup is not yet established.
+  deployed TTL. The owner completed an existing administrator gcloud sign-in;
+  its field-management permissions are verified. Google rejects TTL creation
+  because billing is disabled for `captionstudio-9dfde`. Billing was not
+  reenabled. All four checked-in `expire_at`/`payload` index exemptions were
+  accepted separately; their operations are still initializing. Application
+  reads already reject expired entries; automatic database cleanup is not yet
+  established.
 - International card activation was submitted and is under provider review.
   A real international checkout with correct plan/credit grant remains pending
   provider enablement and an owner-completed transaction.
@@ -65,3 +68,12 @@ save/account-recovery/MP4 download acceptance. It is not included in `4cd7453`.
 Unrestricted mass-launch capacity is still unestablished. The owner-declined
 fresh 100-user test was not repeated. Existing finite capacity/recovery evidence
 and its limits remain in `LAUNCH_ACCEPTANCE_2026-10-06.md`.
+
+## Concurrent session state
+
+PR #59 contains the recovery fix and PR #58's merged client-disconnect change.
+At 14:32 UTC, Railway had automatically advanced its four services to main
+`0985810`, while Netlify retained the verified `4cd7453` frontend. This is not
+a newly verified coordinated release. Additional uncommitted transcription and
+processing-screen edits in the shared checkout belong to ongoing work and were
+preserved; they are not represented as pushed or deployed.
