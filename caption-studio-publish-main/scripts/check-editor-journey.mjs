@@ -42,6 +42,12 @@ async function unnamedControls() {
   }, CONTROL_NAME_RULES)
 }
 let savedDraft = null
+let accountRecovery = false
+let recoveryMediaDuration = 0
+let restoredMediaRequests = 0
+let holdRecoveryMedia = false
+let pendingRecoveryMedia = null
+let expiredAccountMedia = false
 let conflict = true
 let saveRequests = 0
 let exports = 0
@@ -104,7 +110,9 @@ page.on('request', async (request) => {
     payload = { success: true, credits_added: 180 }
   } else if (url.pathname === '/api/editor-preferences/load') payload.preferences = { revision: 0, brand_kits: [], glossary_terms: [] }
   else if (url.pathname === '/api/editor-preferences/save') payload.preferences = { revision: 1, brand_kits: [], glossary_terms: [] }
-  else if (url.pathname === '/api/draft/load') payload = { revision: 17, project_id: 'other-project', draft: null }
+  else if (url.pathname === '/api/draft/load') payload = accountRecovery
+    ? { revision: 1, project_id: 'test-project', draft: { ...draft, videoUrl: '', duration: recoveryMediaDuration, projectId: 'test-project', captions: [{ ...draft.captions[0], text: 'cloud recovery caption' }], captionTracks: [] } }
+    : { revision: 17, project_id: 'other-project', draft: null }
   else if (url.pathname === '/api/projects/list') payload.projects = []
   else if (url.pathname === '/api/workspaces') payload.workspaces = []
   else if (url.pathname === '/api/projects/save' || url.pathname === '/api/draft/save') {
@@ -114,7 +122,17 @@ page.on('request', async (request) => {
     savedDraft = saveBody.draft
     payload = conflict ? { detail: 'A newer project revision was saved on another tab or device.' } : { success: true, draft: savedDraft, revision: 1, project_id: 'test-project' }
     status = conflict ? 409 : 200
-  } else if (url.pathname === '/api/media/upload-url') { status = 404; payload = { detail: 'Source expired' } }
+  } else if (url.pathname === '/api/media/upload-url') {
+    if (accountRecovery) {
+      const mediaRequest = JSON.parse(request.postData())
+      assert.equal(mediaRequest.file_id, draft.fileId)
+      assert.equal(mediaRequest.id_token, 'local-test-token')
+      restoredMediaRequests += 1
+      if (holdRecoveryMedia) { pendingRecoveryMedia = request; return }
+      if (expiredAccountMedia) { status = 404; payload = { detail: 'Source expired' } }
+      else payload = { success: true, raw_url: '/launch-video.mp4' }
+    } else { status = 404; payload = { detail: 'Source expired' } }
+  }
   else if (url.pathname === '/api/export') { exports += 1; exportPayload = JSON.parse(request.postData()); payload = { success: true, export_job_id: 'job-1', status: 'queued' } }
   else if (url.pathname === '/api/export-status/job-1') payload = { status: 'completed', progress: 100 }
   else if (url.pathname === '/api/export-result/job-1') payload = { success: true, video_url: '/api/media/export/redirect-must-not-be-followed.mp4?token=local-media-signature', download_url: 'https://media.example.invalid/exports/test-output.mp4?signature=local-test-signature' }
@@ -286,6 +304,50 @@ try {
   assert.equal(await page.evaluate(() => window.uploadResult.file_id), draft.fileId)
   assert.equal(await page.evaluate(() => localStorage.getItem('lekha.pendingDirectUpload.v1')), null)
 
+  // A new browser with no local draft must recover the account copy and obtain
+  // fresh media without persisting a bearer URL or creating another render.
+  // Match the fixture's stored duration to the actual source; a legitimate
+  // metadata correction is an edit, not an unwanted recovery write.
+  await page.goto('http://127.0.0.1:4187/launch-video.mp4')
+  await page.waitForFunction(() => Number.isFinite(document.querySelector('video')?.duration))
+  recoveryMediaDuration = await page.$eval('video', video => video.duration)
+  accountRecovery = true
+  const savesBeforeCloudRecovery = saveRequests
+  await page.evaluate(() => localStorage.clear())
+  await page.goto('http://127.0.0.1:4187/e2e/fixtures/editor.html')
+  await textClick('Continue account draft')
+  await page.waitForFunction(() => document.body.textContent.includes('cloud recovery caption'))
+  await page.waitForFunction(() => document.querySelector('video')?.getAttribute('src')?.endsWith('/launch-video.mp4'))
+  assert.equal(restoredMediaRequests, 1, 'account recovery refreshes the source URL through authenticated ownership checks')
+  await new Promise(resolve => setTimeout(resolve, 3000))
+  assert.equal(saveRequests, savesBeforeCloudRecovery, 'reading the account draft must not write a new revision')
+
+  expiredAccountMedia = true
+  await page.evaluate(() => localStorage.clear())
+  await page.goto('http://127.0.0.1:4187/e2e/fixtures/editor.html')
+  await textClick('Continue account draft')
+  await page.waitForFunction(() => document.body.textContent.includes('cloud recovery caption') && document.body.textContent.includes('Source video unavailable'))
+  assert.ok(await page.$('input[aria-label="Relink source video"]'), 'expired media retains captions and the relink flow')
+  expiredAccountMedia = false
+
+  holdRecoveryMedia = true
+  await page.evaluate(() => localStorage.clear())
+  await page.goto('http://127.0.0.1:4187/e2e/fixtures/editor.html')
+  await textClick('Continue account draft')
+  const recoveryDeadline = Date.now() + 5000
+  while (!pendingRecoveryMedia && Date.now() < recoveryDeadline) await new Promise(resolve => setTimeout(resolve, 20))
+  assert.ok(pendingRecoveryMedia, 'source refresh is held before its response')
+  await page.evaluate(() => window.switchTestAccount('editor-test-b'))
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem('captionEditorState') || '{}').ownerUid === 'editor-test-b')
+  const recoveredMediaResponse = page.waitForResponse(response => response.url().endsWith('/api/media/upload-url') && response.status() === 200)
+  await pendingRecoveryMedia.respond({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, raw_url: '/launch-video.mp4' }) })
+  await (await recoveredMediaResponse).json()
+  await new Promise(resolve => setTimeout(resolve, 100))
+  assert.equal(await page.evaluate(() => document.body.textContent.includes('cloud recovery caption')), false, 'a late media refresh cannot restore the previous account’s project')
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('captionEditorState') || '{}').captions?.length || 0), 0)
+  holdRecoveryMedia = false
+  accountRecovery = false
+
   // Real pricing UI with a Razorpay double; external requests remain blocked.
   await page.evaluateOnNewDocument(() => {
     window.checkoutOptions = null
@@ -324,7 +386,7 @@ try {
   await page.waitForFunction(() => document.body.textContent.includes('invalid amount or currency'))
   assert.equal(await page.evaluate(() => window.checkoutOpens), 2, 'invalid orders cannot open checkout')
   assert.deepEqual(errors, [])
-  console.log('Local editor journey passed: caption correction, recovery, keyboard search, portrait preview, revision conflict, text-box removal/undo, reload, account isolation, named controls, upload resume after reload and checkout.')
+  console.log('Local editor journey passed: caption correction, account-only source recovery without a save, expired-source relink, delayed-response account isolation, keyboard search, portrait preview, revision conflict, text-box removal/undo, reload, named controls, upload resume after reload and checkout.')
 } catch (error) {
   console.error('Editor test diagnostics:', errors, await page.evaluate(() => document.body.innerText.slice(0, 3500)))
   throw error
