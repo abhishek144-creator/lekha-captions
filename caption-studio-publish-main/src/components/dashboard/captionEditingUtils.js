@@ -202,6 +202,30 @@ export function splitCaptionAtBoundary(caption, cursorPosition, newId) {
   }
 }
 
+// Shortest copy worth placing in the gap after a caption; with less room the
+// original's own time is shared instead.
+const MIN_DUPLICATE_SECONDS = 0.3
+
+// Places a duplicate without overlapping the next caption: overlapping
+// captions play on top of each other in the editor and the export. Transcribed
+// captions are back to back, so usually there is no gap and the original and
+// the copy split the original's time. Later captions never move, so they stay
+// in sync with the audio. Returns the (possibly shortened) original and copy.
+export function placeDuplicateCaption(caption, newId, nextStart = Infinity) {
+  const copy = duplicateCaptionWithTiming(caption, newId)
+  if (copy.end_time <= nextStart + 0.001) return { original: caption, copy }
+  if (nextStart - copy.start_time >= MIN_DUPLICATE_SECONDS) {
+    return { original: caption, copy: invalidateWordTimingOutsideCaption({ ...copy, end_time: nextStart }) }
+  }
+  const start = Number(caption.start_time) || 0
+  const end = Math.max(start + 0.1, Number(caption.end_time) || start + 0.1)
+  const middle = start + (end - start) / 2
+  return {
+    original: invalidateWordTimingOutsideCaption({ ...caption, end_time: middle }),
+    copy: invalidateWordTimingOutsideCaption({ ...copy, start_time: middle, end_time: end, words: caption.words || [] }),
+  }
+}
+
 export function invalidateWordTimingOutsideCaption(caption) {
   if (caption?.isTextElement || !Array.isArray(caption?.words) || !caption.words.length) return caption
   const start = Number(caption.start_time) || 0

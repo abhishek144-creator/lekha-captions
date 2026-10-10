@@ -3,9 +3,14 @@ import os
 import asyncio
 import subprocess
 import tempfile
+import re
 import requests
 import json
 import shutil
+import array
+import difflib
+import math
+import unicodedata
 from openai import OpenAI
 from sarvamai import SarvamAI
 try:
@@ -41,8 +46,266 @@ AUDIO_EXTRACTION_TIMEOUT_SECONDS = max(
 )
 
 
+# Sarvam's synchronous speech-to-text accepts at most 30 seconds of audio per
+# request; longer audio is sent as consecutive pieces cut at pauses in speech.
+SARVAM_MAX_SEGMENT_SECONDS = 29.0
+SARVAM_MIN_SEGMENT_SECONDS = 10.0
+# Whisper language codes for the Sarvam languages whisper also recognizes
+# (it has no Odia), used only to steer its word timings.
+WHISPER_INDIC_CODES = {"hi", "bn", "kn", "ml", "mr", "pa", "ta", "te", "gu", "as"}
+_SILENCE_RE = re.compile(r"silence_(start|end): (-?\d+(?:\.\d+)?)")
+
+
+def _plan_audio_segments(duration, pause_points, max_len=SARVAM_MAX_SEGMENT_SECONDS,
+                         min_len=SARVAM_MIN_SEGMENT_SECONDS, fallback_points=()):
+    """Split [0, duration] into pieces of at most `max_len` seconds.
+
+    Each cut is the latest pause that leaves a piece of at least `min_len`
+    seconds, so words are not cut in half. Without a pause in range the latest
+    `fallback_points` entry (a boundary between two words) is used, and only
+    then a fixed cut at `max_len`.
+    """
+    segments = []
+    start = 0.0
+    while duration - start > max_len:
+        in_range = [p for p in pause_points if start + min_len <= p <= start + max_len]
+        if not in_range:
+            in_range = [p for p in fallback_points if start + min_len <= p <= start + max_len]
+        cut = max(in_range) if in_range else start + max_len
+        segments.append((start, cut))
+        start = cut
+    segments.append((start, duration))
+    return segments
+
+
+def _pause_midpoints(ffmpeg_stderr):
+    """Midpoints of the silences reported by ffmpeg's silencedetect filter."""
+    points = []
+    pending_start = None
+    for kind, value in _SILENCE_RE.findall(ffmpeg_stderr or ""):
+        if kind == "start":
+            pending_start = max(0.0, float(value))
+        elif pending_start is not None:
+            points.append((pending_start + float(value)) / 2)
+            pending_start = None
+    return points
+
+
+def _word_gap_points(speech_words, min_gap=0.0):
+    """Midpoints between consecutive heard words whose gap is at least `min_gap`."""
+    ordered = sorted(
+        (float(w["start"]), float(w["end"])) for w in speech_words
+        if float(w.get("end", 0)) > float(w.get("start", 0))
+    )
+    return [
+        (prev_end + next_start) / 2
+        for (_, prev_end), (next_start, _) in zip(ordered, ordered[1:])
+        if next_start - prev_end >= min_gap
+    ]
+
+
+def _letters(text):
+    """Lower-case letters, marks and digits only: what two transcripts can share."""
+    return "".join(
+        ch for ch in unicodedata.normalize("NFC", str(text or "")).lower()
+        if unicodedata.category(ch)[0] in "LMN"
+    )
+
+
+# Share of Sarvam's letters that must also appear, in order, in whisper's
+# transcript before whisper's word times are trusted letter by letter.
+MIN_TRANSCRIPT_AGREEMENT = 0.5
+# Opening/closing words whisper did not hear are dropped only when that audio
+# is at least this much quieter than the speech, and only this many at most.
+UNHEARD_EDGE_QUIETER_DB = 15.0
+MAX_UNHEARD_EDGE_WORDS = 8
+
+
+def _match_tokens_to_heard_words(tokens, heard_words):
+    """Time each token from the word whisper heard at the same letters.
+
+    `tokens` is one transcript as words; `heard_words` is whisper's word list
+    with text and times. The two transcripts are matched letter by letter, so
+    spelling differences ("शिप"/"शिफ") and merged words ("क्लब हाउस"/"क्लबाउस")
+    still line up. Returns None when they share too little to trust, else one
+    {"word", "start", "end", "heard"} per token; "heard" is False for a token
+    whose letters whisper never transcribed.
+    """
+    heard = [w for w in heard_words or [] if _letters(w.get("word")) and float(w["end"]) > float(w["start"])]
+    token_letters = [_letters(t) for t in tokens]
+    said = "".join(token_letters)
+    heard_text = "".join(_letters(w["word"]) for w in heard)
+    if not said or not heard_text:
+        return None
+    blocks = [b for b in difflib.SequenceMatcher(None, said, heard_text, autojunk=False).get_matching_blocks() if b.size]
+    if sum(b.size for b in blocks) < MIN_TRANSCRIPT_AGREEMENT * len(said):
+        return None
+
+    # Clock time at a letter boundary of whisper's transcript.
+    bounds = []  # (first letter index, letter count, start, end) per heard word
+    cursor = 0
+    for w in heard:
+        count = len(_letters(w["word"]))
+        bounds.append((cursor, count, float(w["start"]), float(w["end"])))
+        cursor += count
+
+    def heard_time(position, at_end):
+        for first, count, start, end in bounds:
+            if position < first + count or (at_end and position <= first + count):
+                return start + (end - start) * max(0, position - first) / count
+        return bounds[-1][3]
+
+    def heard_position(position):
+        # Letter position in whisper's transcript matching `position` in ours;
+        # between matched runs it is interpolated.
+        previous = None
+        for block in blocks:
+            if block.a <= position < block.a + block.size:
+                return block.b + (position - block.a)
+            if position < block.a:
+                if previous is None:
+                    return block.b
+                gap_said = block.a - (previous.a + previous.size)
+                gap_heard = block.b - (previous.b + previous.size)
+                offset = position - (previous.a + previous.size)
+                return previous.b + previous.size + (gap_heard * offset / gap_said if gap_said else 0)
+            previous = block
+        return previous.b + previous.size
+
+    matched = [False] * len(said)
+    for block in blocks:
+        for index in range(block.a, block.a + block.size):
+            matched[index] = True
+
+    words = []
+    cursor = 0
+    for token, letters in zip(tokens, token_letters):
+        first, last = cursor, cursor + len(letters)
+        cursor = last
+        if not letters:
+            start = end = heard_time(heard_position(first), at_end=False)
+            words.append({"word": token, "start": start, "end": end, "heard": False})
+            continue
+        start = heard_time(heard_position(first), at_end=False)
+        end = heard_time(heard_position(last), at_end=True)
+        words.append({"word": token, "start": start, "end": end, "heard": any(matched[first:last])})
+
+    # Unheard opening or closing words have no heard letters to borrow a time
+    # from; give them a short slot just before or after the heard speech.
+    heard_indexes = [i for i, w in enumerate(words) if w["heard"]]
+    if heard_indexes:
+        first_heard, last_heard = heard_indexes[0], heard_indexes[-1]
+        lead_end = words[first_heard]["start"]
+        for i in range(first_heard):
+            slot = (first_heard - i) * 0.3
+            words[i]["start"] = max(0.0, lead_end - slot)
+            words[i]["end"] = max(0.0, lead_end - slot + 0.3)
+        tail_start = words[last_heard]["end"]
+        for offset, i in enumerate(range(last_heard + 1, len(words))):
+            words[i]["start"] = tail_start + offset * 0.3
+            words[i]["end"] = tail_start + offset * 0.3 + 0.3
+
+    previous_start = 0.0
+    for w in words:
+        w["start"] = round(max(w["start"], previous_start), 3)
+        w["end"] = round(max(w["end"], w["start"] + 0.01), 3)
+        previous_start = w["start"]
+    return words
+
+
+def _unheard_edges(words):
+    """Index ranges of the unheard words before and after all heard ones."""
+    heard_indexes = [i for i, w in enumerate(words) if w.get("heard")]
+    if not heard_indexes:
+        return range(0), range(0)
+    return range(0, heard_indexes[0]), range(heard_indexes[-1] + 1, len(words))
+
+
+def _align_chunks_to_speech(chunks, speech_words):
+    """Time each Sarvam word inside the speech another recognizer heard.
+
+    Sarvam gives one time span per phrase, and a span can cover a whole
+    request including music and pauses. `speech_words` (whisper word timings,
+    text unused) mark where speech actually is, so each phrase's words are
+    shared, by length, across only the speech inside its span. A phrase with
+    no heard speech inside keeps the even split over its own span.
+    """
+    intervals = sorted(
+        (float(w["start"]), float(w["end"])) for w in speech_words or []
+        if float(w.get("end", 0)) > float(w.get("start", 0))
+    )
+    if not intervals:
+        return _split_chunk_timestamps(chunks)
+
+    words = []
+    for chunk in chunks:
+        tokens = str(chunk["word"]).split()
+        if not tokens:
+            continue
+        span_start, span_end = float(chunk["start"]), float(chunk["end"])
+        spans = [(max(s, span_start), min(e, span_end)) for s, e in intervals if e > span_start and s < span_end]
+        spans = [(s, e) for s, e in spans if e - s > 0.01]
+        speech_total = sum(e - s for s, e in spans)
+        if speech_total <= 0:
+            words.extend(_split_chunk_timestamps([chunk]))
+            continue
+
+        def real_time(offset, at_end):
+            # Map seconds-of-speech to clock time. A word ending exactly at a
+            # span's end ends there; one starting there starts in the next span.
+            for s, e in spans:
+                length = e - s
+                if offset < length or (at_end and offset <= length + 1e-9):
+                    return s + offset
+                offset -= length
+            return spans[-1][1]
+
+        weights = [max(1, len(token)) for token in tokens]
+        weight_total = float(sum(weights))
+        spoken = 0.0
+        for token, weight in zip(tokens, weights):
+            start = real_time(spoken, at_end=False)
+            spoken += speech_total * weight / weight_total
+            end = max(real_time(spoken, at_end=True), start + 0.01)
+            words.append({"word": token, "start": round(start, 3), "end": round(end, 3)})
+    return words
+
+
+def _split_chunk_timestamps(chunks):
+    """Split multi-word timestamp entries into one entry per word.
+
+    Sarvam's `timestamps.words` holds phrase or whole-sentence chunks, not
+    single words. Left as-is, each chunk becomes one caption with every word
+    shown at once for its whole duration. Each chunk's span is shared across
+    its words in proportion to their length, so the words still appear in
+    speaking order and the grouper can build normal phrase captions.
+    """
+    words = []
+    for chunk in chunks:
+        tokens = str(chunk["word"]).split()
+        start = float(chunk["start"])
+        end = float(chunk["end"])
+        if len(tokens) <= 1:
+            words.append({"word": tokens[0] if tokens else "", "start": start, "end": end})
+            continue
+        weights = [max(1, len(token)) for token in tokens]
+        total = float(sum(weights))
+        span = max(0.0, end - start)
+        cursor = start
+        for index, (token, weight) in enumerate(zip(tokens, weights)):
+            token_end = end if index == len(tokens) - 1 else cursor + span * (weight / total)
+            words.append({"word": token, "start": round(cursor, 3), "end": round(token_end, 3)})
+            cursor = token_end
+    return words
+
+
 def _extract_sarvam_words(response):
-    """Normalize current and legacy Sarvam timestamp response shapes."""
+    """Timed words from a Sarvam response, phrases split evenly (no speech timings)."""
+    return _split_chunk_timestamps(_extract_sarvam_chunks(response))
+
+
+def _extract_sarvam_chunks(response):
+    """Timed phrases from current and legacy Sarvam timestamp response shapes."""
     if response is None:
         return []
 
@@ -128,6 +391,167 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
         self._source_basic_template_ids = self._load_source_basic_template_ids()
         self._ensure_fallback_font()
 
+
+    def _transcribe_with_sarvam(self, sarvam_client, audio_p, lang_code, speech_words=None):
+        """Timed words for the whole file, one Sarvam request per <=29 s piece.
+
+        `speech_words` are word timings from whisper for the same audio (text
+        unused). They place each word where speech actually is and pick cut
+        points between words; without them pauses come from silencedetect and
+        each phrase is split evenly.
+        """
+        speech_words = speech_words or []
+
+        def transcribe(path):
+            with open(path, "rb") as f:
+                response = sarvam_client.speech_to_text.transcribe(
+                    file=f,
+                    model="saaras:v3",
+                    mode="transcribe",
+                    language_code=lang_code,
+                    request_options={"max_retries": 0, "additional_body_parameters": {"with_timestamps": True}}
+                )
+            return _extract_sarvam_chunks(response)
+
+        duration = self._get_video_duration(audio_p)
+        if duration <= SARVAM_MAX_SEGMENT_SECONDS:
+            return self._time_sarvam_chunks(transcribe(audio_p), speech_words, audio_p)
+
+        pauses, word_boundaries = [], []
+        if speech_words:
+            # Music under speech hides silence; gaps between heard words do not.
+            pauses = _word_gap_points(speech_words, min_gap=0.25)
+            word_boundaries = _word_gap_points(speech_words)
+        else:
+            try:
+                detection = run_media_command(
+                    ["ffmpeg", "-i", audio_p, "-af", "silencedetect=noise=-30dB:d=0.25", "-f", "null", "-"],
+                    capture_output=True, text=True, timeout=AUDIO_EXTRACTION_TIMEOUT_SECONDS,
+                )
+                pauses = _pause_midpoints(detection.stderr)
+            except Exception as pause_error:
+                print(f"[Warning] Pause detection failed; cutting Sarvam pieces at fixed lengths: {pause_error}")
+
+        segments = _plan_audio_segments(duration, pauses, fallback_points=word_boundaries)
+        print(f"[Sarvam] {duration:.1f}s of audio sent as {len(segments)} pieces")
+        chunks = []
+        for seg_start, seg_end in segments:
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as _tf:
+                piece_p = _tf.name
+            try:
+                run_media_command(
+                    ["ffmpeg", "-y", "-ss", f"{seg_start:.3f}", "-t", f"{seg_end - seg_start:.3f}",
+                     "-i", audio_p, "-ar", "16000", "-ac", "1", piece_p],
+                    check=True, capture_output=True, timeout=AUDIO_EXTRACTION_TIMEOUT_SECONDS,
+                )
+                for chunk in transcribe(piece_p):
+                    chunks.append({
+                        "word": chunk["word"],
+                        "start": round(chunk["start"] + seg_start, 3),
+                        "end": round(min(chunk["end"], seg_end - seg_start) + seg_start, 3),
+                    })
+            finally:
+                try:
+                    os.remove(piece_p)
+                except OSError:
+                    pass
+        return self._time_sarvam_chunks(chunks, speech_words, audio_p)
+
+    def _time_sarvam_chunks(self, chunks, speech_words, audio_p):
+        """Timed words for Sarvam's phrases, using whisper's words when they agree.
+
+        Matching the two transcripts gives each word the moment whisper heard
+        it. Opening or closing words whisper never heard are murmurs or
+        whispers before or after the real speech ("रेडी हम्म चेंज" said under
+        the breath before the take); they are dropped when that audio is much
+        quieter than the speech. Otherwise phrases are placed over the speech
+        whisper heard, or split evenly without whisper.
+        """
+        tokens = [token for chunk in chunks for token in str(chunk["word"]).split()]
+        matched = None
+        if any(w.get("word") for w in speech_words or []):
+            matched = _match_tokens_to_heard_words(tokens, speech_words)
+        if matched is None:
+            return _align_chunks_to_speech(chunks, speech_words)
+        try:
+            matched = self._drop_quiet_unheard_edges(matched, audio_p)
+        except Exception as trim_error:
+            print(f"[Warning] Could not check the loudness of unheard opening words: {trim_error}")
+        return [{"word": w["word"], "start": w["start"], "end": w["end"]} for w in matched]
+
+    def _drop_quiet_unheard_edges(self, words, audio_p):
+        """Remove unheard opening/closing words when that audio is much quieter."""
+        lead, tail = _unheard_edges(words)
+        if not lead and not tail:
+            return words
+        heard = [w for w in words if w["heard"]]
+        speech_start, speech_end = heard[0]["start"], heard[-1]["end"]
+        duration = self._get_video_duration(audio_p)
+        speech_db, lead_db, tail_db = self._loudness_db(
+            audio_p, [(speech_start, speech_end), (0.0, speech_start), (speech_end, duration)]
+        )
+        drop = set()
+        for edge, edge_db, edge_seconds in (
+            (lead, lead_db, speech_start),
+            (tail, tail_db, duration - speech_end),
+        ):
+            if (edge and len(edge) <= MAX_UNHEARD_EDGE_WORDS and edge_seconds >= 0.2
+                    and speech_db is not None and edge_db is not None
+                    and speech_db - edge_db >= UNHEARD_EDGE_QUIETER_DB):
+                drop.update(edge)
+        if drop:
+            print(f"[Transcribe] Dropped {len(drop)} quiet opening/closing words whisper did not hear")
+        return [w for i, w in enumerate(words) if i not in drop]
+
+    def _loudness_db(self, audio_p, windows):
+        """Mean loudness (dBFS) of each (start, end) window; None if empty."""
+        result = run_media_command(
+            ["ffmpeg", "-i", audio_p, "-f", "s16le", "-ac", "1", "-ar", "16000", "-"],
+            capture_output=True, check=True, timeout=AUDIO_EXTRACTION_TIMEOUT_SECONDS,
+        )
+        samples = array.array("h")
+        samples.frombytes(result.stdout[: len(result.stdout) // 2 * 2])
+        levels = []
+        for start, end in windows:
+            segment = samples[max(0, int(start * 16000)):max(0, int(end * 16000))]
+            if not segment:
+                levels.append(None)
+                continue
+            energy = sum(value * value for value in segment) / len(segment)
+            levels.append(10 * math.log10(energy / (32768.0 ** 2) + 1e-12))
+        return levels
+
+    def _whisper_speech_timings(self, audio_p, language_code=""):
+        """Word timings whisper hears in the audio, or [] if unavailable.
+
+        Used only to time another provider's words, so any failure falls back
+        to that provider's own timing instead of failing the transcription.
+        """
+        if not self.client or not audio_p or not os.path.exists(audio_p):
+            return []
+        if not transcription_provider_health.allow_request("openai"):
+            return []
+        try:
+            kwargs = {"model": "whisper-1", "response_format": "verbose_json", "timestamp_granularities": ["word"]}
+            if language_code:
+                kwargs["language"] = language_code
+            with open(audio_p, "rb") as f:
+                result = self.client.audio.transcriptions.create(
+                    file=f, timeout=TRANSCRIPTION_PROVIDER_TIMEOUT_SECONDS, **kwargs
+                )
+            timings = []
+            for w in getattr(result, "words", None) or []:
+                text = w.get("word") if isinstance(w, dict) else getattr(w, "word", "")
+                start = w.get("start") if isinstance(w, dict) else getattr(w, "start", None)
+                end = w.get("end") if isinstance(w, dict) else getattr(w, "end", None)
+                if start is not None and end is not None and float(end) > float(start):
+                    timings.append({"word": str(text or ""), "start": float(start), "end": float(end)})
+            transcription_provider_health.record_success("openai")
+            return timings
+        except Exception as timing_error:
+            transcription_provider_health.record_failure("openai")
+            print(f"[Warning] Whisper word timings unavailable; using Sarvam phrase timing: {timing_error}")
+            return []
 
     def _detect_spoken_language(self, audio_p):
         """Name the spoken language from the first 30 seconds, or return "".
@@ -276,19 +700,17 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
                         timeout=TRANSCRIPTION_PROVIDER_TIMEOUT_SECONDS,
                     )
                     lang_code = sarvam_langs[target_language.lower()]
-                    
-                    with open(audio_p, "rb") as f:
-                        response = sarvam_client.speech_to_text.transcribe(
-                            file=f,
-                            model="saaras:v3",
-                            mode="transcribe",
-                            language_code=lang_code,
-                            request_options={"max_retries": 0, "additional_body_parameters": {"with_timestamps": True}}
-                        )
-                    print(f"Sarvam API Transcription Success. Output type: {type(response)}")
-                    
+
+                    # Sarvam times whole phrases (often a whole request, music
+                    # included); whisper's word timings say where speech is.
+                    whisper_code = lang_code.split("-")[0]
+                    speech_words = self._whisper_speech_timings(
+                        audio_p, whisper_code if whisper_code in WHISPER_INDIC_CODES else "",
+                    )
+                    print(f"[Transcribe] Whisper word timings for alignment: {len(speech_words)}")
+
                     try:
-                        words = _extract_sarvam_words(response)
+                        words = self._transcribe_with_sarvam(sarvam_client, audio_p, lang_code, speech_words)
                         print(f"[Sarvam] Parsed {len(words)} words from response")
                         if words:
                             transcription_provider_health.record_success("sarvam")

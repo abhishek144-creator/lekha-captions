@@ -47,6 +47,7 @@ import {
 
 import { Progress } from "@/components/ui/progress";
 import { getDailyLimitMessage, getPlanLimitErrorKind } from './exportPlanLimits';
+import { DEFAULT_CAPTION_POSITION_Y } from '../../lib/captionDefaults.js';
 
 // TESTING ONLY: unlock the export UI for an explicitly configured local test.
 // Limits are on by default in every build; a production build cannot bypass
@@ -918,7 +919,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
           effect_intensity: _cs?.effect_intensity ?? 50,
           effect_color: _cs?.effect_color || '#000000',
           position_x: _cs?.position_x ?? 50,
-          position_y: _cs?.position_y ?? 75,
+          position_y: _cs?.position_y ?? DEFAULT_CAPTION_POSITION_Y,
           letter_spacing: _cs?.letter_spacing || 0,
           // `??` not `||` — the Word Spacing slider allows 0 (min=0), and the
           // preview honors it; `||` silently exported 0 as 1.

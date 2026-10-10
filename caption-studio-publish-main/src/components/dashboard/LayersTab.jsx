@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { Captions, Download, Eye, Layers, Plus, Type, Upload, X } from 'lucide-react';
+import { DEFAULT_CAPTION_POSITION_Y } from '../../lib/captionDefaults.js';
 import {
   createBrandKitDocument,
   extractBrandKitStyle,
@@ -100,7 +101,7 @@ export default function LayersTab({
           <div className="min-w-0">
             <p className="text-[9px] font-bold uppercase tracking-[0.22em] text-slate-400">Brand Kits</p>
             <p className="mt-1 truncate text-[10px] text-slate-500">
-              {getCurrentValue('font_family', 'Inter')} - {getCurrentValue('position_y', 75)}%
+              {getCurrentValue('font_family', 'Inter')} - {getCurrentValue('position_y', DEFAULT_CAPTION_POSITION_Y)}%
             </p>
             <p className="mt-1 text-[9px] text-slate-600">
               {preferenceSyncStatus === 'synced' ? 'Synced to your account' : preferenceSyncStatus === 'saving' ? 'Saving…' : 'Saved in this browser'}

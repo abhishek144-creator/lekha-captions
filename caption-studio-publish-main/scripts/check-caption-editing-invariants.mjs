@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import {
   duplicateCaptionWithTiming,
   invalidateWordTimingOutsideCaption,
+  placeDuplicateCaption,
   reconcileCaptionText,
   splitCaptionAtBoundary,
 } from '../src/components/dashboard/captionEditingUtils.js'
@@ -49,6 +50,22 @@ assert.ok(split.every((caption) => caption.words.every((word) => word.start >= c
 const duplicate = duplicateCaptionWithTiming(source, 'caption-copy')
 assert.equal(duplicate.words[0].start, duplicate.start_time)
 assert.ok(duplicate.wordStyles['caption-copy-2'])
+// A duplicate never overlaps the next caption; later captions never move.
+const roomy = placeDuplicateCaption(source, 'copy-a', 10)
+assert.equal(roomy.original, source)
+assert.equal(roomy.copy.start_time, 4.1)
+const tight = placeDuplicateCaption(source, 'copy-b', 5)
+assert.equal(tight.copy.end_time, 5)
+assert.ok(tight.copy.start_time >= source.end_time)
+const backToBack = placeDuplicateCaption(source, 'copy-c', 4)
+assert.equal(backToBack.original.start_time, 1)
+assert.equal(backToBack.original.end_time, 2.5)
+assert.equal(backToBack.copy.start_time, 2.5)
+assert.equal(backToBack.copy.end_time, 4)
+assert.equal(backToBack.copy.text, source.text)
+for (const caption of [backToBack.original, backToBack.copy]) {
+  assert.ok(caption.words.every((word) => word.start >= caption.start_time && word.end <= caption.end_time))
+}
 
 const resized = invalidateWordTimingOutsideCaption({ ...source, start_time: 1.5 })
 assert.deepEqual(resized.words, [])
