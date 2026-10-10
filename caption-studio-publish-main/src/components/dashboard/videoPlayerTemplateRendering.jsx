@@ -3625,12 +3625,13 @@ export const renderAnimatedDetachedWordContent = (
           display: 'inline-block',
           width: shouldWrapWord ? '100%' : 'auto',
           maxWidth: shouldWrapWord ? '100%' : 'none',
-          ...animationStyle,
           pointerEvents: 'none',
           ...wrapStyle,
         }}
       >
-        {renderWordTextContent(word, wordStyle, fallbackColor)}
+        <span style={{ display: 'inline-block', width: shouldWrapWord ? '100%' : 'auto', ...wrapStyle, ...animationStyle }}>
+          {renderWordTextContent(word, wordStyle, fallbackColor)}
+        </span>
       </span>
       <span
         aria-hidden="true"

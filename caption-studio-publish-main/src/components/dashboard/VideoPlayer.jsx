@@ -2517,9 +2517,17 @@ export default function VideoPlayer({
                         const wordFontSize = rawWordFontSize * previewRenderScale;
                         const { x: renderOffsetX, y: renderOffsetY, isPositioned } = getWordRenderOffset(ws);
                         const detached = isWordDetached(ws);
-                        const layoutFontSize = baseFontSize;
                         const isPastSidebarWord = sidebarTemplateActive && wordIndex < sidebarCurrentIdx;
                         const isCurrentSidebarWord = sidebarTemplateActive && wordIndex === sidebarCurrentIdx;
+                        // Detached words keep their original slot. In-line words
+                        // reserve the size they paint, including emphasis.
+                        const layoutFontSize = detached ? baseFontSize : (ws.isEmphasis ? Math.round(wordFontSize * 1.2) : wordFontSize)
+                        const layoutTypography = detached ? {} : {
+                          fontFamily: ws.fontFamily || 'inherit',
+                          fontWeight: ws.isEmphasis ? emphasisFontWeight(ws.fontWeight || captionStyle?.font_weight) : (ws.fontWeight || (isCurrentSidebarWord ? (captionStyle?.font_weight || '700') : 'inherit')),
+                          fontStyle: ws.fontStyle || 'inherit',
+                          textTransform: ws.textTransform || undefined,
+                        }
                         if (detached) {
                           return (
                             <span
@@ -2554,8 +2562,7 @@ export default function VideoPlayer({
                             </span>
                           );
                         }
-                        // Keep line layout stable at the base caption size.
-                        // Visual word styling happens in the absolutely-positioned inner span.
+                        // The spacer follows typography; motion stays out of line layout.
 
                         // Emphasis: bold + 1.2x scale + configured accent color + subtle glow
                         const emphasisAccent = captionStyle?.secondary_color || '#DDAA03';
@@ -2595,7 +2602,7 @@ export default function VideoPlayer({
                               display: 'inline-block',
                               position: 'relative',
                               fontSize: `${layoutFontSize}px`,
-                              lineHeight: 'inherit',
+                              lineHeight: captionStyle?.line_spacing || 1.4,
                               verticalAlign: 'baseline',
                               marginRight: wordIndex < arr.length - 1 ? `${Math.round(layoutFontSize * 0.18 + (captionStyle?.word_spacing ?? 1) * 2)}px` : '0',
                               opacity: isCptWordPending(caption, wordIndex, sidebarCurrentIdx) ? 0 : undefined,
@@ -2628,7 +2635,7 @@ export default function VideoPlayer({
                               }
                             }}
                           >
-                            {/* Fixed-size selection ring — sized by spacer, never by fontSize */}
+                            {/* Selection follows the word's reserved typography box. */}
                             {isSelected && (
                               <span style={{
                                 position: 'absolute',
@@ -2674,13 +2681,12 @@ export default function VideoPlayer({
                                   WebkitTextFillColor: 'transparent',
                                   color: 'transparent',
                                 } : {}),
-                                ...resolvedWordMotionStyle,
                               }}
                             >
-                              {word}
+                              <span style={{ display: 'inline-block', ...resolvedWordMotionStyle }}>{word}</span>
                             </span>
                             {/* Invisible spacer — holds layout width at layoutFontSize (baseFontSize for dragged words) */}
-                            <span style={{ visibility: 'hidden', fontSize: `${layoutFontSize}px`, whiteSpace: 'pre' }}>
+                            <span style={{ visibility: 'hidden', fontSize: `${layoutFontSize}px`, whiteSpace: 'pre', ...layoutTypography }}>
                               {word}
                             </span>
                           </span>
