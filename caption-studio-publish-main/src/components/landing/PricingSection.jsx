@@ -9,7 +9,7 @@ import { toast } from '@/components/ui/use-toast'
 import { apiRequest } from '@/lib/apiClient'
 import { notifyApiError } from '@/lib/notifyApiError'
 import planCatalog from '../../../shared/planCatalog.json'
-import { getPreferredBillingCurrency, saveBillingCurrency } from '../../../shared/billingCurrency'
+import { getPreferredBillingCurrency, saveBillingCurrency, followVisitorBillingCurrency } from '../../../shared/billingCurrency'
 
 const RAZORPAY_KEY_ID = import.meta.env.VITE_RAZORPAY_KEY_ID || ''
 const PENDING_PURCHASE_KEY = 'lekha.pendingPurchase'
@@ -214,6 +214,8 @@ export default function PricingSection() {
     ? Math.max(...plans.map((plan) => getDiscountPercent(plan.monthlyUsdCents, plan.yearlyUsdCents)))
     : Math.max(...plans.map((plan) => getDiscountPercent(plan.monthlyPaise, plan.yearlyPaise)))
   const { currentUser } = useAuth()
+
+  useEffect(() => followVisitorBillingCurrency(setBillingCurrency), [])
 
   useEffect(() => {
     if (window.location.hash !== '#pricing') return undefined

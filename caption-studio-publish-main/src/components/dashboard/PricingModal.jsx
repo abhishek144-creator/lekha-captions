@@ -14,7 +14,7 @@ import { toast } from '@/components/ui/use-toast'
 import { apiRequest } from '@/lib/apiClient'
 import { notifyApiError } from '@/lib/notifyApiError'
 import planCatalog from '../../../shared/planCatalog.json'
-import { getPreferredBillingCurrency, saveBillingCurrency, formatBillingPrice } from '../../../shared/billingCurrency'
+import { getPreferredBillingCurrency, saveBillingCurrency, formatBillingPrice, followVisitorBillingCurrency } from '../../../shared/billingCurrency'
 
 const RAZORPAY_KEY_ID = import.meta.env.VITE_RAZORPAY_KEY_ID || ''
 
@@ -193,6 +193,8 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
   useEffect(() => {
     loadRazorpayScript().catch(() => {})
   }, [])
+
+  useEffect(() => followVisitorBillingCurrency(setBillingCurrency), [])
 
   const handlePayment = async (plan) => {
     setProcessingPlan(plan.id)

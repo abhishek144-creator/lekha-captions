@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { appUrl } from '@/lib/site'
-import { getPreferredBillingCurrency, saveBillingCurrency } from '../../shared/billingCurrency'
+import { getPreferredBillingCurrency, saveBillingCurrency, followVisitorBillingCurrency } from '../../shared/billingCurrency'
 
 const plans = [
   {
@@ -151,6 +151,7 @@ export function HomePricingSection() {
 
   useEffect(() => {
     setBillingCurrency(getPreferredBillingCurrency())
+    return followVisitorBillingCurrency(setBillingCurrency)
   }, [])
 
   const maxYearlyDiscount = isInternational
