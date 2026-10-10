@@ -224,7 +224,7 @@ class MediaUrlRequest(BaseModel):
 
 
 class TranslateRequest(BaseModel):
-    captions: List[Dict[str, Any]] = Field(min_length=1, max_length=500)
+    captions: List[Dict[str, Any]] = Field(min_length=1, max_length=1000)
     target_language: str = Field(min_length=2, max_length=50)
     id_token: str = Field(default="", max_length=8_192)
     org_id: str = Field(default="", max_length=128)

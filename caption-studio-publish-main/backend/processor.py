@@ -22,7 +22,7 @@ except ImportError:
 try:
     from .processor_fonts import FontAssetsMixin
     from .processor_media import MediaProbeMixin
-    from .processor_captions import CaptionTextMixin
+    from .processor_captions import CaptionTextMixin, SENTENCE_END_MARKS
     from .processor_ass import AssSubtitleMixin
     from .processor_templates import TemplateOverlayMixin
     from .processor_encoding import _disable_nvenc, _video_encoder_args
@@ -30,7 +30,7 @@ try:
 except ImportError:  # Direct execution from backend/ remains supported.
     from processor_fonts import FontAssetsMixin
     from processor_media import MediaProbeMixin
-    from processor_captions import CaptionTextMixin
+    from processor_captions import CaptionTextMixin, SENTENCE_END_MARKS
     from processor_ass import AssSubtitleMixin
     from processor_templates import TemplateOverlayMixin
     from processor_encoding import _disable_nvenc, _video_encoder_args
@@ -57,21 +57,25 @@ _SILENCE_RE = re.compile(r"silence_(start|end): (-?\d+(?:\.\d+)?)")
 
 
 def _plan_audio_segments(duration, pause_points, max_len=SARVAM_MAX_SEGMENT_SECONDS,
-                         min_len=SARVAM_MIN_SEGMENT_SECONDS, fallback_points=()):
+                         min_len=SARVAM_MIN_SEGMENT_SECONDS, fallback_points=(), pause_sizes=None):
     """Split [0, duration] into pieces of at most `max_len` seconds.
 
-    Each cut is the latest pause that leaves a piece of at least `min_len`
-    seconds, so words are not cut in half. Without a pause in range the latest
-    `fallback_points` entry (a boundary between two words) is used, and only
-    then a fixed cut at `max_len`.
+    Each cut is a pause that leaves a piece of at least `min_len` seconds, so
+    words are not cut in half: the longest one when `pause_sizes` gives their
+    lengths (long pauses are usually sentence ends), otherwise the latest.
+    Without a pause in range the latest `fallback_points` entry (a boundary
+    between two words) is used, and only then a fixed cut at `max_len`.
     """
     segments = []
     start = 0.0
     while duration - start > max_len:
         in_range = [p for p in pause_points if start + min_len <= p <= start + max_len]
-        if not in_range:
-            in_range = [p for p in fallback_points if start + min_len <= p <= start + max_len]
-        cut = max(in_range) if in_range else start + max_len
+        if in_range and pause_sizes:
+            cut = max(in_range, key=lambda p: (pause_sizes.get(p, 0.0), p))
+        else:
+            if not in_range:
+                in_range = [p for p in fallback_points if start + min_len <= p <= start + max_len]
+            cut = max(in_range) if in_range else start + max_len
         segments.append((start, cut))
         start = cut
     segments.append((start, duration))
@@ -89,6 +93,19 @@ def _pause_midpoints(ffmpeg_stderr):
             points.append((pending_start + float(value)) / 2)
             pending_start = None
     return points
+
+
+def _word_gaps(speech_words):
+    """{midpoint: length} for every gap between consecutive heard words."""
+    ordered = sorted(
+        (float(w["start"]), float(w["end"])) for w in speech_words
+        if float(w.get("end", 0)) > float(w.get("start", 0))
+    )
+    return {
+        (prev_end + next_start) / 2: max(0.0, next_start - prev_end)
+        for (_, prev_end), (next_start, _) in zip(ordered, ordered[1:])
+    }
+
 
 
 def _word_gap_points(speech_words, min_gap=0.0):
@@ -417,8 +434,9 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
         if duration <= SARVAM_MAX_SEGMENT_SECONDS:
             return self._time_sarvam_chunks(transcribe(audio_p), speech_words, audio_p)
 
-        pauses, word_boundaries = [], []
+        pauses, word_boundaries, gap_sizes = [], [], {}
         if speech_words:
+            gap_sizes = _word_gaps(speech_words)
             # Music under speech hides silence; gaps between heard words do not.
             pauses = _word_gap_points(speech_words, min_gap=0.25)
             word_boundaries = _word_gap_points(speech_words)
@@ -432,10 +450,12 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
             except Exception as pause_error:
                 print(f"[Warning] Pause detection failed; cutting Sarvam pieces at fixed lengths: {pause_error}")
 
-        segments = _plan_audio_segments(duration, pauses, fallback_points=word_boundaries)
+        segments = _plan_audio_segments(
+            duration, pauses, fallback_points=word_boundaries, pause_sizes=gap_sizes or None,
+        )
         print(f"[Sarvam] {duration:.1f}s of audio sent as {len(segments)} pieces")
         chunks = []
-        for seg_start, seg_end in segments:
+        for index, (seg_start, seg_end) in enumerate(segments):
             with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as _tf:
                 piece_p = _tf.name
             try:
@@ -444,12 +464,21 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
                      "-i", audio_p, "-ar", "16000", "-ac", "1", piece_p],
                     check=True, capture_output=True, timeout=AUDIO_EXTRACTION_TIMEOUT_SECONDS,
                 )
-                for chunk in transcribe(piece_p):
-                    chunks.append({
-                        "word": chunk["word"],
-                        "start": round(chunk["start"] + seg_start, 3),
-                        "end": round(min(chunk["end"], seg_end - seg_start) + seg_start, 3),
-                    })
+                piece_chunks = [{
+                    "word": chunk["word"],
+                    "start": round(chunk["start"] + seg_start, 3),
+                    "end": round(min(chunk["end"], seg_end - seg_start) + seg_start, 3),
+                } for chunk in transcribe(piece_p)]
+                # Sarvam ends every piece with a full stop/danda whether or not
+                # the sentence ended (a 1.3 s dramatic pause mid-sentence is a
+                # common cut point). Drop that mark at internal cuts: the
+                # caption still breaks at the pause, and a missing danda reads
+                # better than one in the middle of a sentence.
+                if index < len(segments) - 1 and piece_chunks:
+                    trimmed = str(piece_chunks[-1]["word"]).rstrip().rstrip(SENTENCE_END_MARKS)
+                    if trimmed.strip():
+                        piece_chunks[-1]["word"] = trimmed
+                chunks.extend(piece_chunks)
             finally:
                 try:
                     os.remove(piece_p)

@@ -173,6 +173,19 @@ class CaptionTextMixin:
             merged.append(cur)
             i += 1
 
+        # A tiny final caption has no next caption to join, so it would flash
+        # on screen alone ("होगी।" for 0.24 s); join it to the one before.
+        if len(merged) > 1:
+            last = merged[-1]
+            last_dur = last["end_time"] - last["start_time"]
+            if (not last.get("intentional_single_word") and last_dur < 0.35
+                    and len((last.get("text") or "").split()) <= 2):
+                prev = dict(merged[-2])
+                prev["text"] = self._normalize_caption_text(f"{prev.get('text', '')} {last.get('text', '')}")
+                prev["end_time"] = max(prev["end_time"], last["end_time"])
+                prev["words"] = list(prev.get("words") or []) + list(last.get("words") or [])
+                merged[-2:] = [prev]
+
         # Reading speed guard: avoid extremely dense captions.
         for idx, cap in enumerate(merged):
             dur = max(0.2, cap["end_time"] - cap["start_time"])

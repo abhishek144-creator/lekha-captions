@@ -15,6 +15,7 @@ try:
     from . import settings
     from . import app_state
     from . import firebase_admin_setup
+    from . import media_records
     from . import observability
     from . import billing
     from .rendering.capacity import GPU_EXPORT_QUEUE_NAME, HEAVY_EXPORT_QUEUE_NAME
@@ -24,6 +25,7 @@ except ImportError:  # Direct execution from backend/ remains supported.
     import settings
     import app_state
     import firebase_admin_setup
+    import media_records
     import observability
     import billing
     from rendering.capacity import GPU_EXPORT_QUEUE_NAME, HEAVY_EXPORT_QUEUE_NAME
@@ -129,6 +131,7 @@ def _advanced_janitor_once():
     metrics.update({
         "cloud_exports_deleted": 0,
         "cloud_uploads_deleted": 0,
+        "cloud_transcripts_deleted": 0,
     })
 
     try:
@@ -143,12 +146,19 @@ def _advanced_janitor_once():
         observability._json_log("warning", "janitor_error", error=str(e), scope="cloud_uploads")
         metrics["errors"] += 1
 
+    try:
+        metrics["cloud_transcripts_deleted"] = media_records._delete_expired_transcription_cache()
+    except Exception as e:
+        observability._json_log("warning", "janitor_error", error=str(e), scope="cloud_transcripts")
+        metrics["errors"] += 1
+
     total_deleted = (
         metrics["uploads_deleted"] + metrics["exports_deleted"]
         + metrics["temp_ass_deleted"] + metrics["cache_deleted"]
         + metrics["render_scratch_deleted"]
         + metrics["cloud_exports_deleted"]
         + metrics["cloud_uploads_deleted"]
+        + metrics["cloud_transcripts_deleted"]
     )
     if total_deleted > 0 or metrics["errors"] > 0:
         observability._json_log(
@@ -160,6 +170,7 @@ def _advanced_janitor_once():
             cache_deleted=metrics["cache_deleted"],
             cloud_exports_deleted=metrics["cloud_exports_deleted"],
             cloud_uploads_deleted=metrics["cloud_uploads_deleted"],
+            cloud_transcripts_deleted=metrics["cloud_transcripts_deleted"],
             errors=metrics["errors"],
         )
 

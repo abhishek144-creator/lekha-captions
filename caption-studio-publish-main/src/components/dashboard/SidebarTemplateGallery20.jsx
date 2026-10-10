@@ -929,6 +929,11 @@ export function buildTemplateStyle(template) {
     template_effect: detectTemplatePreviewEffect(template),
     template_markup: template.cardMarkup || '',
     ...baseStyle,
+    // The template's own CSS sets its word sizes, so the Font Size slider
+    // zooms the whole template by font_size / template_font_size (preview and
+    // export alike). buildTemplateApplication() records the real starting
+    // size when the template is applied; this marks the template as zoomable.
+    template_font_size: Number(baseStyle.font_size) || 22,
     ...(templateAccent ? {
       secondary_color: templateAccent,
       highlight_color: templateAccent,

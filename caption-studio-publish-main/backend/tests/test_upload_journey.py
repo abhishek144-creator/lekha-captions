@@ -282,6 +282,31 @@ class SarvamChunkTimestampTests(unittest.TestCase):
             quiet, loud = processor._loudness_db(path, [(0.1, 0.9), (1.1, 1.9)])
         self.assertGreater(loud - quiet, 40)
 
+    def test_cut_prefers_the_longest_pause_in_range(self):
+        from processor import _plan_audio_segments
+        sizes = {12.0: 0.9, 20.0: 0.3, 27.0: 0.26}
+        segments = _plan_audio_segments(40.0, list(sizes), pause_sizes=sizes)
+        self.assertEqual(segments[0], (0.0, 12.0))
+
+    def test_piece_end_danda_is_dropped_at_internal_cuts_only(self):
+        processor = VideoProcessor(fonts_dir="flat_fonts")
+        replies = iter([
+            SimpleNamespace(timestamps={"words": ["तुम अपने सामर्थ्य पर विश्वास रखोगे।"], "start_time_seconds": [0.0], "end_time_seconds": [20.0]}),
+            SimpleNamespace(timestamps={"words": ["और छल या कपट का प्रयोग नहीं करोगे।"], "start_time_seconds": [0.0], "end_time_seconds": [15.0]}),
+        ])
+        client = MagicMock()
+        client.speech_to_text.transcribe.side_effect = lambda **kwargs: next(replies)
+        # Heard words every 0.5 s with 0.1 s gaps: no real pause anywhere.
+        heard = [{"word": "x", "start": t * 0.5, "end": t * 0.5 + 0.4} for t in range(70)]
+        with patch.object(processor, "_get_video_duration", return_value=35.0), \
+                patch("processor.run_media_command", return_value=SimpleNamespace(stderr="")), \
+                patch.object(processor, "_drop_quiet_unheard_edges", side_effect=lambda words, _p: words), \
+                patch("builtins.open", unittest.mock.mock_open(read_data=b"")):
+            words = processor._transcribe_with_sarvam(client, "audio.mp3", "hi-IN", heard)
+        texts = [w["word"] for w in words]
+        self.assertIn("रखोगे", texts)        # internal cut: Sarvam's piece-end danda removed
+        self.assertEqual(texts[-1], "करोगे।")  # the real ending keeps its danda
+
     def test_danda_ends_a_caption_and_gets_no_extra_full_stop(self):
         processor = VideoProcessor(fonts_dir="flat_fonts")
         words = [
@@ -311,13 +336,50 @@ class _MemoryDocument:
         self.store[self.key] = {**(self.store.get(self.key) or {}), **values} if merge else dict(values)
 
 
+class _MemoryQuery:
+    """Just enough of a Firestore query for one `<` filter, limit and stream."""
+
+    def __init__(self, store, field=None, value=None, count=None):
+        self.store, self.field, self.value, self.count = store, field, value, count
+
+    def where(self, field, op, value):
+        assert op == "<"
+        return _MemoryQuery(self.store, field, value, self.count)
+
+    def limit(self, count):
+        return _MemoryQuery(self.store, self.field, self.value, count)
+
+    def stream(self):
+        keys = sorted(k for k, v in self.store.items() if self.field is None or v.get(self.field, "") < self.value)
+        for key in keys[: self.count]:
+            yield SimpleNamespace(id=key, reference=SimpleNamespace(key=key, store=self.store))
+
+
+class _MemoryBatch:
+    def __init__(self):
+        self.refs = []
+
+    def delete(self, ref):
+        self.refs.append(ref)
+
+    def commit(self):
+        for ref in self.refs:
+            ref.store.pop(ref.key, None)
+
+
 class _MemoryDb:
     def __init__(self):
         self.collections = {}
 
     def collection(self, name):
         store = self.collections.setdefault(name, {})
-        return SimpleNamespace(document=lambda key: _MemoryDocument(store, key))
+        query = _MemoryQuery(store)
+        return SimpleNamespace(
+            document=lambda key: _MemoryDocument(store, key), where=query.where, limit=query.limit, stream=query.stream,
+        )
+
+    def batch(self):
+        return _MemoryBatch()
 
 
 class SharedTranscriptCacheTests(unittest.TestCase):
@@ -327,6 +389,20 @@ class SharedTranscriptCacheTests(unittest.TestCase):
         self.addCleanup(self.dir.cleanup)
         self.path = os.path.join(self.dir.name, "abc123.json")
         self.result = {"success": True, "captions": [{"text": "hello"}]}
+
+    def test_janitor_deletes_only_expired_transcripts_in_small_batches(self):
+        collection = main.settings.TRANSCRIPTION_CACHE_COLLECTION
+        store = self.db.collections.setdefault(collection, {})
+        old = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=30)).isoformat() + "Z"
+        fresh = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=1)).isoformat() + "Z"
+        for i in range(5):
+            store[f"old{i}"] = {"created_at": old, "payload": "{}"}
+        store["fresh"] = {"created_at": fresh, "payload": "{}"}
+        with patch.object(main.firebase_admin_setup, "get_db", return_value=self.db):
+            self.assertEqual(main.media_records._delete_expired_transcription_cache(limit=3), 3)
+            self.assertEqual(main.media_records._delete_expired_transcription_cache(limit=3), 2)
+            self.assertEqual(main.media_records._delete_expired_transcription_cache(limit=3), 0)
+        self.assertEqual(list(store), ["fresh"])
 
     def test_another_worker_reuses_a_transcript(self):
         with patch.object(main.firebase_admin_setup, "get_db", return_value=self.db):

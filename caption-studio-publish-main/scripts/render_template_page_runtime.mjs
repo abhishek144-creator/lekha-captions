@@ -2347,7 +2347,18 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         + 'color:' + escapeHtml(appliedStyle.text_color ? (globalStyle?.text_color || appliedStyle.text_color) : (globalStyle?.text_color || '#FFFFFF')) + ';'
         + 'font-style:' + escapeHtml(globalStyle?.font_style || appliedStyle.font_style || 'normal') + ';'
         + 'line-height:' + escapeHtml(String(appliedStyle.line_spacing ? (globalStyle?.line_spacing || appliedStyle.line_spacing) : (globalStyle?.line_spacing || 1.25))) + ';'
-        + 'opacity:' + escapeHtml(String(templateSource === 'lekha-lc' ? 1 : (globalStyle?.text_opacity ?? appliedStyle.text_opacity ?? 1))) + ';"'
+        + 'opacity:' + escapeHtml(String(templateSource === 'lekha-lc' ? 1 : (globalStyle?.text_opacity ?? appliedStyle.text_opacity ?? 1))) + ';'
+        // Font Size slider: scale the whole template around its centre by
+        // font_size / the size it was applied at, exactly like
+        // getSidebarTemplateZoom() in the editor (videoPlayerTemplateRendering.jsx).
+        + (() => {
+          const designed = Number(globalStyle?.template_font_size || appliedStyle.template_font_size);
+          const chosen = Number(globalStyle?.font_size || appliedStyle.font_size);
+          if (!(designed > 0) || !(chosen > 0)) return '';
+          const scale = Math.min(2.5, Math.max(0.5, chosen / designed));
+          return scale === 1 ? '' : 'transform:scale(' + scale + ');transform-origin:center center;';
+        })()
+        + '"'
         + '>' + templateMarkup + '</div>';
     };
 

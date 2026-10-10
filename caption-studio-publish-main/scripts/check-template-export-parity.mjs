@@ -1197,6 +1197,19 @@ function buildLcSidebarCases() {
     });
 }
 
+// The Font Size slider zooms a left-gallery template by
+// font_size / template_font_size. Phase 0 of every LC card at 1.5x proves the
+// export renderer applies the same zoom as the editor.
+function buildZoomedLcCases() {
+  return buildLcSidebarCases()
+    .filter((testCase) => testCase.phaseIndex === 0)
+    .map((testCase) => ({
+      ...testCase,
+      id: `${testCase.id}-zoom150`,
+      style: { ...(testCase.style || {}), template_font_size: 20, font_size: 30 },
+    }));
+}
+
 function buildLcBoxedHeroCases() {
   const boxedHeroPhases = new Set(
     lcSidebarRawHtml
@@ -1924,6 +1937,7 @@ const selectedCases = (() => {
     if (scope === 'all-left') return buildExhaustiveSidebarCases();
     if (scope === 'lc-left') return buildLcSidebarCases();
     if (scope === 'lc-boxed') return buildLcBoxedHeroCases();
+    if (scope === 'lc-zoomed') return buildZoomedLcCases();
     if (scope === 'left-highlight-pair') return buildLeftHighlightPairCases();
     if (scope === 'all-right') return buildExhaustiveAdvancedCases();
     if (scope === 'all-right-phases') return buildExhaustiveAdvancedCases({ allPhases: true });
@@ -2161,6 +2175,8 @@ try {
       ? 'LC left templates'
       : scope === 'lc-boxed'
         ? 'LC boxed-hero phases'
+      : scope === 'lc-zoomed'
+        ? 'LC templates zoomed 1.5x by the Font Size slider'
       : scope === 'left-highlight-pair'
         ? 'left multi-word highlight phase'
     : scope === 'all-right'

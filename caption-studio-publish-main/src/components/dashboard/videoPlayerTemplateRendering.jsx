@@ -116,6 +116,19 @@ export const ADVANCED_TEMPLATE_VARIANTS = {
 };
 export const TEMPLATE_CANVAS_FONT_SCALE = 0.88;
 export const SIDEBAR_TEMPLATE_APPLIED_WIDTH_CAP = 320;
+
+// Left-gallery templates size their words in their own CSS (LC uses cqw, a
+// share of the box width), so the Font Size slider scales the whole template
+// visually: transform scale(font_size / the size it was applied at), around
+// its centre. CSS zoom was not used: it resolves cqw differently per browser.
+// Styles saved before template_font_size existed keep scale 1. The export
+// page runtime (render_template_page_runtime.mjs) applies the same formula.
+export function getSidebarTemplateZoom(style) {
+  const designed = Number(style?.template_font_size);
+  const chosen = Number(style?.font_size);
+  if (!(designed > 0) || !(chosen > 0)) return 1;
+  return Math.min(2.5, Math.max(0.5, chosen / designed));
+}
 export const sidebarLcTemplateHtml = [
   sidebarLcTemplateHtml2,
   sidebarLcTemplateHtml3,
@@ -1955,6 +1968,9 @@ export function AppliedSidebarTemplateSourceRenderer({
         lineHeight: effectiveStyle?.line_spacing || 1.25,
         opacity: effectiveStyle?.text_opacity ?? 1,
         textAlign: 'center',
+        ...(getSidebarTemplateZoom(effectiveStyle) !== 1
+          ? { transform: `scale(${getSidebarTemplateZoom(effectiveStyle)})`, transformOrigin: 'center center' }
+          : {}),
       }}
       dangerouslySetInnerHTML={{ __html: html }}
     />

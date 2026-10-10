@@ -935,6 +935,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
           template_layout: _cs?.template_layout || '',
           template_effect: _cs?.template_effect || '',
           template_markup: _cs?.template_markup || '',
+          template_font_size: Number(_cs?.template_font_size) || 0,
           template_snapshot: activeTemplateSnapshot || null,
           secondary_color: _cs?.secondary_color || '',
           karaoke_color_1: _cs?.karaoke_color_1 || '',

@@ -16,6 +16,28 @@ const apply = (templateStyle, captionStyle = defaultCaptionStyle, captions = eng
   buildTemplateApplication({ templateStyle, captionStyle, captions, waveformData: null, duration: 4, now: 1000 })
 )
 
+describe('left-gallery template font size', () => {
+  it('starts at scale 1 whatever size the template declares, then follows the slider', async () => {
+    const { getSidebarTemplateZoom } = await import('../../components/dashboard/videoPlayerTemplateRendering.jsx')
+    // "Messy" declares no font size of its own; a template that does declares 22.
+    for (const declared of [undefined, 22]) {
+      const lc = { template_id: 'sidebar-T166', template_20_id: 'T166', template_source: 'lekha-lc', template_font_size: 22, ...(declared ? { font_size: declared } : {}) }
+      const { style, templateSnapshot } = apply(lc)
+      expect(style.template_font_size).toBe(style.font_size)
+      expect(templateSnapshot.template_font_size).toBe(style.font_size)
+      expect(getSidebarTemplateZoom(style)).toBe(1)
+      expect(getSidebarTemplateZoom({ ...style, font_size: style.font_size * 1.5 })).toBeCloseTo(1.5)
+    }
+  })
+
+  it('leaves styles saved before the slider worked, and other templates, unscaled', async () => {
+    const { getSidebarTemplateZoom } = await import('../../components/dashboard/videoPlayerTemplateRendering.jsx')
+    expect(getSidebarTemplateZoom({ font_size: 30 })).toBe(1)
+    expect(apply({ template_id: 't12', template_source: 'lekha-advanced' }).style.template_font_size).toBeUndefined()
+    expect(getSidebarTemplateZoom({ template_font_size: 20, font_size: 200 })).toBe(2.5)
+  })
+})
+
 describe('buildTemplateApplication', () => {
   it('does not let template B inherit template A\'s owned properties', () => {
     const templateA = { template_id: 't12', template_source: 'lekha-advanced', background_color: '#ff00ff', letter_spacing: 3, font_family: 'Bebas Neue' }

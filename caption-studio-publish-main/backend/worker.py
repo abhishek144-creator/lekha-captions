@@ -315,7 +315,19 @@ def _wake_handler(state):
             else:
                 self._reply(404, {"error": "not found"})
 
+        def _discard_body(self):
+            # Read the request body before replying: closing a connection with
+            # unread data makes the OS reset it, and the caller then sees a
+            # connection error instead of this reply. Wake bodies are tiny.
+            try:
+                length = max(0, min(int(self.headers.get("Content-Length") or 0), 65536))
+            except ValueError:
+                length = 0
+            if length:
+                self.rfile.read(length)
+
         def do_POST(self):
+            self._discard_body()
             if self.path != "/wake":
                 self._reply(404, {"error": "not found"})
                 return

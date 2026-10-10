@@ -374,6 +374,35 @@ def _write_transcription_cache(cache_path: str, result: Dict[str, Any]) -> None:
         observability._json_log("warning", "transcription_cache_shared_write_failed", error_type=type(error).__name__)
 
 
+def _delete_expired_transcription_cache(limit: int = 100) -> int:
+    """Delete shared transcripts older than their retention.
+
+    Firestore TTL cannot be enabled for this collection while the project's
+    billing account is closed, and its `expire_at` index is deliberately off,
+    so expired entries are found by `created_at` (indexed; expiry is always
+    created_at + retention). Reads already ignore expired entries; this only
+    keeps them from piling up. A small batch per janitor run stays well inside
+    Firestore's free daily delete allowance.
+    """
+    db = firebase_admin_setup.get_db()
+    if not db:
+        return 0
+    cutoff = (
+        observability._utcnow() - timedelta(hours=settings.TRANSCRIPTION_CACHE_RETENTION_HOURS)
+    ).isoformat() + "Z"
+    collection = db.collection(settings.TRANSCRIPTION_CACHE_COLLECTION)
+    expired = list(
+        collection.where("created_at", "<", cutoff).limit(max(1, min(int(limit), 400))).stream()
+    )
+    if not expired:
+        return 0
+    batch = db.batch()
+    for snapshot in expired:
+        batch.delete(snapshot.reference)
+    batch.commit()
+    return len(expired)
+
+
 def _build_parity_signature(captions: List[Dict[str, Any]], style: Dict[str, Any], word_layouts: Dict[str, Any]) -> str:
     payload = {
         "captions": captions,

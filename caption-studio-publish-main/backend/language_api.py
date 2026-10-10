@@ -82,10 +82,7 @@ def translate_captions(req: api_models.TranslateRequest, request: Request, respo
         )
 
         texts = [cap.get("text", "") for cap in req.captions]
-        translated_lines = _translate_lines(client, texts, req.target_language, settings.TRANSLATION_MODEL)
-        if translated_lines is None:
-            observability._json_log("warning", "translation_line_count_mismatch", expected=len(texts))
-            translated_lines = _translate_lines(client, texts, req.target_language, settings.TRANSLATION_MODEL, strict=True)
+        translated_lines = _translate_in_batches(client, texts, req.target_language, settings.TRANSLATION_MODEL)
 
         if translated_lines is None:
             raise RuntimeError("Translation provider returned an incomplete caption set")
@@ -181,6 +178,27 @@ def detect_language(req: DetectLanguageRequest, request: Request, response: Resp
                 os.remove(temp_path)
         except Exception:
             pass
+
+
+# Captions per translation request. Long arrays are where the model most often
+# returns the wrong line count; batches keep each request short and a retry
+# cheap. The total text sent (and so the cost) is the same.
+TRANSLATION_BATCH_SIZE = 150
+
+
+def _translate_in_batches(client, texts, target_language, model, batch_size=TRANSLATION_BATCH_SIZE):
+    """Translate all lines in order, one strict retry per batch; None on failure."""
+    translated = []
+    for start in range(0, len(texts), batch_size):
+        batch = texts[start:start + batch_size]
+        lines = _translate_lines(client, batch, target_language, model)
+        if lines is None:
+            observability._json_log("warning", "translation_line_count_mismatch", expected=len(batch), batch_start=start)
+            lines = _translate_lines(client, batch, target_language, model, strict=True)
+        if lines is None:
+            return None
+        translated.extend(lines)
+    return translated
 
 
 def _translate_lines(client, texts, target_language, model, strict=False):

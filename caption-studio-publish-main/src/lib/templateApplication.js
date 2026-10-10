@@ -148,6 +148,13 @@ export function buildTemplateApplication({
   const scriptFont = resolveTemplateFontForCaptions(style.font_family, captions)
   if (scriptFont !== style.font_family) style.font_family = scriptFont
   if (templateSnapshot && style.font_family) templateSnapshot.font_family = style.font_family
+  // Left-gallery templates are zoomed by font_size / template_font_size.
+  // Record the size in effect right after applying, so a template always
+  // first appears exactly as designed and only the slider changes it.
+  if (templateSnapshot && 'template_font_size' in templateStyleForSnapshot) {
+    style.template_font_size = Number(style.font_size) || 22
+    templateSnapshot.template_font_size = style.template_font_size
+  }
 
   const emotionalPlan = templateSnapshot
     ? buildEmotionalCaptionPlan(captions, waveformData, duration, templateSnapshot.template_markup)
