@@ -55,7 +55,8 @@ class Ref:
             if isinstance(value, main.firestore.Increment): value = self.db.data[self.path].get(key, 0) + value.value
             self.db.data[self.path][key] = value
     def delete(self): self.db.data.pop(self.path, None)
-    def limit(self, _): return self
+    def limit(self, count):
+        return SimpleNamespace(stream=lambda: iter(list(self.stream())[:count]))
     def stream(self):
         return iter([Ref(self.db, key).get() for key in list(self.db.data)
                      if key.startswith(self.path + "/") and key.count("/") == self.path.count("/") + 1])
@@ -313,6 +314,14 @@ class DurableWorkflowTests(unittest.TestCase):
         self.assertEqual(read_draft(self.db, "a", "project-one")["draft"]["projectName"], "First")
         self.assertEqual(read_draft(self.db, "a", "project-two")["draft"]["projectName"], "Second")
         self.assertEqual({row["project_id"] for row in list_projects(self.db, "a")}, {"project-one", "project-two"})
+
+    def test_default_draft_restore_selects_most_recent_saved_project(self):
+        for project_id, saved_at in (("first-project", "2026-10-01T12:00:00+00:00"),
+                                     ("latest-project", "2026-10-09T12:00:00+00:00")):
+            save_draft(self.db, "a", {**self.draft, "projectId": project_id}, 0, project_id)
+            self.db.data[f"users/a/projects/{project_id}"]["saved_at"] = saved_at
+        self.assertEqual(read_draft(self.db, "a")["project_id"], "latest-project")
+        self.assertEqual(read_draft(self.db, "a", "first-project")["project_id"], "first-project")
 
     def test_project_delete_removes_project_and_recovery_revisions(self):
         draft = {**self.draft, "projectId": "delete-me", "projectName": "Delete me"}
