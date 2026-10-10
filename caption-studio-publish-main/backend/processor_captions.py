@@ -5,6 +5,10 @@ Mixed into processor.VideoProcessor; methods use its instance state.
 
 import re
 
+# Sentence-ending marks across the scripts we transcribe: Latin, Devanagari
+# and other Indic danda, Arabic/Urdu, and CJK full-width forms.
+SENTENCE_END_MARKS = ".!?।॥۔؟。！？"
+
 
 class CaptionTextMixin:
     def _group_words_by_speech_pace(self, words, min_words=0, max_words=0):
@@ -46,7 +50,7 @@ class CaptionTextMixin:
         current_group = []
         caption_id = 0
         SILENCE_GAP = 0.3       # seconds of silence → force break
-        PUNCTUATION = set('.!?')  # sentence-ending punctuation → force break
+        PUNCTUATION = set(SENTENCE_END_MARKS)  # sentence-ending punctuation → force break
 
         for i, word in enumerate(parsed):
             current_group.append(word)
@@ -131,10 +135,9 @@ class CaptionTextMixin:
         t = " ".join((text or "").strip().split())
         if not t:
             return t
-        t = re.sub(r"\s+([,.!?;:])", r"\1", t)
-        if len(t) > 8 and not re.search(r"[.!?]$", t):
-            t = f"{t}."
-        return t
+        # Keep only punctuation that was transcribed: a caption is often part of
+        # a sentence, so adding a full stop put one mid-sentence ("welcome to.").
+        return re.sub(r"\s+([,.!?;:।॥])", r"\1", t)
 
     def _post_process_captions(self, captions):
         if not captions:
