@@ -10,7 +10,7 @@ You are a senior motion designer with 15 years in broadcast, title design and so
 
 ## THE PRODUCT
 
-Lekha Captions is a web caption editor for Indian creators. Users upload a talking-head or vlog video and get auto-transcribed captions in English, Hindi or Hinglish. They then pick a caption template and export a burned-in MP4.
+Lekha Captions is a web caption editor mainly for Indian social media creators (Reels, Shorts and other short vertical video). Users upload a talking-head or vlog video and get auto-transcribed captions in English, Hindi or Hinglish. They then pick a caption template and export a burned-in MP4.
 
 Technical facts the design must respect:
 
@@ -30,6 +30,14 @@ Technical facts the design must respect:
 3. **No repetition between templates.** An earlier set reused one pool of effects across all templates and was rejected for it. **Each template owns its signature motion. No two templates may share a motion, and no two may share a type pairing.**
 4. **Mature, not fancy.** These were rejected as gimmicky: stickers, comic starbursts, neon flicker, bouncing letters, glitch/RGB split, camera shake, slot reels, ransom-note letters. Aim for the restraint of documentary titles, Apple keynotes, editorial magazines and premium brand films.
 5. **Market-relevant and simple to use.** Indian creator niches, working in English and Hindi. One click to apply, no setup.
+6. **Built for social media first.** The main users are social media creators posting short vertical video:
+   - **Platforms.** Instagram Reels, YouTube Shorts, Moj, Josh and Snapchat Spotlight. Facebook Reels and LinkedIn video come second.
+   - **Mobile-first and sound-off.** Most viewers watch on a phone with the sound off, so the captions carry the story. Design for a 6-inch screen viewed at arm's length while scrolling, not for a desktop monitor.
+   - **Stop the scroll.** Line 1 of every template is the hook. It must read in under a second and stand out in the first 1–2 seconds, through scale, placement or contrast, not gimmicks. Mature and attention-grabbing are not opposites: think of how a premium brand's Reel opens.
+   - **Fast pacing.** Typical speech is 150–190 words a minute, with clips of 15–90 seconds and quick cuts. Entrances must finish fast enough that the next caption never stacks on top of an unfinished one.
+   - **Real niches.** Talking-head tips, storytime, finance, fitness, food, travel, beauty and fashion, tech reviews, education, motivation, comedy skits, podcast clips, weddings and events, local business promos.
+   - **Platform-native feel.** It should look at home next to native Reels/Shorts text and survive the platform's own compression. Avoid hairlines under 2 px at 1080 wide, very thin weights at small sizes, and low-contrast colours that get muddied by compression.
+   - **Works over any footage.** Creators won't adjust per clip, so every template needs built-in legibility (shadow, a quiet panel or a scrim) on both bright selfie footage and dark night footage.
 
 ## DESIGN PRINCIPLES (APPLY ALL)
 
