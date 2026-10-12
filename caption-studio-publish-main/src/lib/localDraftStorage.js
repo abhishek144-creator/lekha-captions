@@ -1,3 +1,5 @@
+import { compactDraftForStorage } from './editorDocument.js'
+
 // Same-account browser copies of the editor draft. Reads are owner-checked so
 // one account can never restore another account's work on a shared browser.
 const LEGACY_DRAFT_KEY = 'captionEditorState'
@@ -35,13 +37,27 @@ export function readLocalDraft(uid, storage = defaultStorage()) {
 // disabled storage) are thrown so callers can tell the customer.
 export function writeLocalDraft(uid, draft, storage = defaultStorage()) {
   if (!uid) return 'signed-out'
-  const serialized = JSON.stringify({ ...draft, ownerUid: uid })
+  const serialized = JSON.stringify({ ...compactDraftForStorage(draft), ownerUid: uid })
   if (serialized.length >= MAX_LOCAL_DRAFT_CHARS) return 'too-large'
+  // Each write keeps the latest copy, this project's copy and one legacy copy.
+  // Older projects' copies are dropped first so they cannot fill the ~5 MB
+  // origin quota and make every later recovery write fail.
+  pruneOtherProjectDrafts(uid, draft.projectId, storage)
   storage.setItem(localDraftKey(uid), serialized)
   if (draft.projectId) storage.setItem(localDraftKey(uid, draft.projectId), serialized)
   // Retain one legacy copy during migration; reads remain owner-checked.
   storage.setItem(LEGACY_DRAFT_KEY, serialized)
   return 'saved'
+}
+
+function pruneOtherProjectDrafts(uid, projectId, storage) {
+  if (typeof storage?.key !== 'function') return
+  const prefix = `${USER_DRAFT_PREFIX}${String(uid)}.`
+  const keep = new Set([localDraftKey(uid), localDraftKey(uid, projectId)])
+  for (let index = storage.length - 1; index >= 0; index -= 1) {
+    const key = storage.key(index)
+    if (key?.startsWith(prefix) && !keep.has(key)) storage.removeItem(key)
+  }
 }
 
 // Removes the latest and per-project copies of one draft (not every project).

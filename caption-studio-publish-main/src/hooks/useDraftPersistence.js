@@ -33,6 +33,10 @@ export function useDraftPersistence({
   setIsLoaded,
   setSourceUnavailable,
   onEditorReset,
+  // True while a new upload is transcribed: the document is between projects
+  // (new video, captions not yet generated), so nothing is written until the
+  // captions arrive.
+  pauseAutosave = false,
 }) {
   const [cloudSaveMessage, setCloudSaveMessage] = useState('')
   const [cloudSaveConflict, setCloudSaveConflict] = useState(false)
@@ -84,7 +88,7 @@ export function useDraftPersistence({
 
   const { fileId, snapshotEditorState } = doc
   useEffect(() => {
-    if (!isLoaded || !fileId || !cloudReady || cloudSaveConflict) return
+    if (!isLoaded || !fileId || !cloudReady || cloudSaveConflict || pauseAutosave) return
     const draft = snapshotEditorState()
     const signature = draftAutosaveSignature(draft)
     const context = `${currentUser?.uid || ''}:${fileId}`
@@ -95,7 +99,7 @@ export function useDraftPersistence({
       }).catch(notifyCloudSaveError)
     }, CLOUD_AUTOSAVE_DELAY_MS)
     return () => clearTimeout(timer)
-  }, [isLoaded, fileId, cloudReady, cloudSaveConflict, currentUser?.uid, snapshotEditorState, saveCloudDraft, notifyCloudSaveError])
+  }, [isLoaded, fileId, cloudReady, cloudSaveConflict, pauseAutosave, currentUser?.uid, snapshotEditorState, saveCloudDraft, notifyCloudSaveError])
 
   const { applyDocument, resetDocument, resetPointRef } = doc
   const applyLocalDraft = useCallback((parsed) => {
@@ -201,7 +205,7 @@ export function useDraftPersistence({
   // Auto-save a browser copy whenever the document changes (debounced). Paused
   // while a recovery copy is waiting so it is never overwritten unseen.
   useEffect(() => {
-    if (!isLoaded || localRecoveryDraft) return
+    if (!isLoaded || localRecoveryDraft || pauseAutosave) return
     const timeoutId = setTimeout(() => {
       try {
         // Modal states are intentionally not saved so they don't reopen on reload.
@@ -217,7 +221,7 @@ export function useDraftPersistence({
       }
     }, LOCAL_AUTOSAVE_DELAY_MS)
     return () => clearTimeout(timeoutId)
-  }, [videoUrl, captions, captionTracks, activeCaptionTrackId, captionStyle, projectId, settings, duration, fileId, originalFileName, currentUser?.uid, isLoaded, localRecoveryDraft])
+  }, [videoUrl, captions, captionTracks, activeCaptionTrackId, captionStyle, projectId, settings, duration, fileId, originalFileName, currentUser?.uid, isLoaded, localRecoveryDraft, pauseAutosave])
 
   // Explicit Save: browser copy first, then the account. Throws nothing; a
   // failure is reported through the notices. Returns true when both saved.

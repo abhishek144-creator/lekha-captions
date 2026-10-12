@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { memo, useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -14,10 +14,10 @@ import {
   MoreHorizontal
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { invalidateWordTimingOutsideCaption } from './captionEditingUtils'
 import {
   placeDuplicateCaption,
   reconcileCaptionText,
+  shiftCaptionTiming,
   splitCaptionAtBoundary,
 } from './captionEditingUtils';
 import {
@@ -29,8 +29,9 @@ import {
 
 
 
-export default function CaptionEditor({
+function CaptionEditor({
   captions,
+  duration = 0,
   setCaptions,
   selectedCaptionId,
   setSelectedCaptionId,
@@ -109,10 +110,9 @@ export default function CaptionEditor({
   }, []);
 
   const nudgeCaption = (caption, delta) => {
-    const shift = Math.max(-Number(caption.start_time), delta)
-    setCaptions((previous) => previous.map((item) => item.id !== caption.id ? item : invalidateWordTimingOutsideCaption({
-      ...item, start_time: Number(item.start_time) + shift, end_time: Number(item.end_time) + shift,
-    })))
+    setCaptions((previous) => previous.map((item) => (
+      item.id !== caption.id ? item : shiftCaptionTiming(item, delta)
+    )))
   }
 
   const updateCaption = (id, updates) => {
@@ -136,7 +136,9 @@ export default function CaptionEditor({
         ? caption
         : reconcileCaptionText(
             caption,
-            String(caption.text || '').replace(new RegExp(escaped, 'gi'), replaceText),
+            // A function replacer inserts the text literally ("$&" and "$1"
+            // are not treated as replacement patterns).
+            String(caption.text || '').replace(new RegExp(escaped, 'gi'), () => replaceText),
           )
     )));
   };
@@ -203,17 +205,29 @@ export default function CaptionEditor({
     const safeCount = Math.max(1, Number(count) || 1);
     const timelineCaptions = (captions || []).filter(cap => cap && !cap.isTextElement);
     const lastCaption = timelineCaptions.length > 0 ? timelineCaptions[timelineCaptions.length - 1] : null;
-    const newCaptions = Array.from({ length: safeCount }, (_, index) => {
-      const baseStart = lastCaption ? (lastCaption.end_time || 0) + 0.5 : 0;
-      const start_time = baseStart + (index * 2.5);
-      return {
+    // New captions follow the last one and never run past the end of the
+    // video (they would never be shown or exported); one that does not fit
+    // its full 2 s is shortened to the time that is left.
+    const videoEnd = Number(duration) > 0 ? Number(duration) : Infinity;
+    const newCaptions = [];
+    let previousEnd = lastCaption ? (Number(lastCaption.end_time) || 0) : null;
+    for (let index = 0; index < safeCount; index += 1) {
+      const start_time = previousEnd === null ? 0 : previousEnd + 0.5;
+      const end_time = Math.min(start_time + 2, videoEnd);
+      if (end_time - start_time < 0.3) break;
+      newCaptions.push({
         id: `${Date.now()}-${index}`,
         text: `Fresh caption card ${timelineCaptions.length + index + 1} uses six clear words.`,
         start_time,
-        end_time: start_time + 2
-      };
-    });
-
+        end_time,
+      });
+      previousEnd = end_time;
+    }
+    if (newCaptions.length === 0) {
+      setCaptionEditMessage('There is no room after the last caption. Shorten or move a caption first.');
+      return;
+    }
+    setCaptionEditMessage(newCaptions.length < safeCount ? `Added ${newCaptions.length} of ${safeCount}: the rest would run past the end of the video.` : '');
     setCaptions([...(captions || []), ...newCaptions]);
     setSelectedCaptionId(newCaptions[newCaptions.length - 1].id);
   };
@@ -612,3 +626,7 @@ export default function CaptionEditor({
     </div>
   );
 }
+
+// Memoized: the dashboard re-renders on every playback tick; this panel only
+// needs to when its own props change.
+export default memo(CaptionEditor);

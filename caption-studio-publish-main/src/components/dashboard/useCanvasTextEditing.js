@@ -1,17 +1,45 @@
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import { reconcileCaptionText } from './captionEditingUtils'
+
+const readEditableText = (node) => (
+  (node?.innerText ?? node?.textContent ?? '').replace(/ /g, ' ')
+)
+
+// A text change made on the canvas keeps word timings, word styles and
+// emphasis on the words they belong to, exactly like an edit in the caption
+// list. Text elements have no measured words, so only their styles move.
+export const applyCanvasTextEdit = (caption, text) => {
+  const reconciled = reconcileCaptionText(caption, text)
+  if (!caption?.isTextElement) return reconciled
+  return {
+    ...reconciled,
+    words: caption.words,
+    word_alignment_status: caption.word_alignment_status,
+    word_alignment_note: caption.word_alignment_note,
+  }
+}
 
 export function useCanvasTextEditing({
   setCaptions,
   inputRef,
 }) {
   const [isEditing, setIsEditing] = useState(false)
+  // The editable box is uncontrolled: React renders the starting text once
+  // and the browser owns it while typing. Re-rendering typed text into a
+  // contentEditable moved the caret and misplaced characters.
+  const [editInitialText, setEditInitialText] = useState('')
   const [editText, setEditText] = useState('')
+  const originalTextRef = useRef('')
+  const cancelledRef = useRef(false)
 
   const handleCaptionDoubleClick = (e, caption) => {
     if (!setCaptions || !caption) return
     e.stopPropagation()
+    cancelledRef.current = false
+    originalTextRef.current = caption.text || ''
     setIsEditing(caption.id)
+    setEditInitialText(caption.text || '')
     setEditText(caption.text || '')
     setTimeout(() => {
       if (inputRef.current) {
@@ -27,59 +55,35 @@ export function useCanvasTextEditing({
     }, 0)
   }
 
-  const handleEditComplete = (captionId) => {
-    if (setCaptions && captionId) {
-      setCaptions(prev => prev.map(cap =>
-        cap.id === captionId ? { ...cap, text: editText } : cap
-      ))
-    }
+  const finishEditing = () => {
     setIsEditing(false)
     setEditText('')
+    setEditInitialText('')
+  }
+
+  const handleEditComplete = (captionId) => {
+    const text = inputRef.current ? readEditableText(inputRef.current) : editText
+    // Escape cancels; an unchanged text records nothing (no undo step).
+    if (!cancelledRef.current && setCaptions && captionId && text !== originalTextRef.current) {
+      setCaptions(prev => prev.map(cap => (
+        cap.id === captionId ? applyCanvasTextEdit(cap, text) : cap
+      )))
+    }
+    cancelledRef.current = false
+    finishEditing()
   }
 
   const handleEditKeyDown = (e) => {
     if (e.key === 'Escape') {
-      setIsEditing(false)
-      setEditText('')
+      cancelledRef.current = true
+      finishEditing()
     }
     // Allow all keys including backspace, Enter, etc.
   }
 
   const handleEditInput = (e) => {
-    // Save cursor position before updating state
-    const selection = window.getSelection()
-    if (!selection?.rangeCount) {
-      setEditText((e.currentTarget.innerText || e.currentTarget.textContent || '').replace(/\u00a0/g, ' '))
-      return
-    }
-    const range = selection.getRangeAt(0)
-    const preCaretRange = range.cloneRange()
-    preCaretRange.selectNodeContents(e.currentTarget)
-    preCaretRange.setEnd(range.endContainer, range.endOffset)
-    const caretOffset = preCaretRange.toString().length
-
-    const newText = (e.currentTarget.innerText || e.currentTarget.textContent || '').replace(/\u00a0/g, ' ')
-    setEditText(newText)
-
-    // Restore cursor position after state update
-    requestAnimationFrame(() => {
-      if (inputRef.current && document.activeElement === inputRef.current) {
-        const newRange = document.createRange()
-        const newSelection = window.getSelection()
-
-        let node = inputRef.current.firstChild
-
-        if (node && node.nodeType === Node.TEXT_NODE) {
-          const offset = Math.min(caretOffset, node.textContent.length)
-          newRange.setStart(node, offset)
-          newRange.setEnd(node, offset)
-          newSelection.removeAllRanges()
-          newSelection.addRange(newRange)
-        }
-      }
-    })
+    setEditText(readEditableText(e.currentTarget))
   }
 
-
-  return { isEditing, setIsEditing, editText, setEditText, handleCaptionDoubleClick, handleEditComplete, handleEditKeyDown, handleEditInput }
+  return { isEditing, setIsEditing, editText, editInitialText, setEditText, handleCaptionDoubleClick, handleEditComplete, handleEditKeyDown, handleEditInput }
 }

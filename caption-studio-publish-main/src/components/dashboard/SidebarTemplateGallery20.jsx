@@ -2052,6 +2052,8 @@ export default function SidebarTemplateGallery20({ currentStyle, onApplyTemplate
         && (!recentsOnly || isRecent('sidebar-template', template.id))
       )),
     })),
+    // templateSections is rebuilt each render from module constants.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [templateSearchQuery, favoritesOnly, isFavorite, recentsOnly, isRecent],
   );
   const visibleTemplateCount = visibleTemplateSections.reduce((total, section) => total + section.templates.length, 0);

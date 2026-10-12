@@ -21,6 +21,22 @@ const visibleTokens = (text) => {
   return tokens
 }
 
+// Word styles and emphasis are keyed by whitespace-separated word index (the
+// renderers, the word editor and export all split on whitespace). Measured
+// word timing may use finer segments for CJK/Thai text, so styles are remapped
+// with these tokens even when timing is remapped with visibleTokens.
+const whitespaceTokens = (text) => {
+  const source = String(text || '')
+  const tokens = []
+  const matcher = /\S+/gu
+  let match = matcher.exec(source)
+  while (match) {
+    tokens.push({ value: match[0], start: match.index, end: match.index + match[0].length })
+    match = matcher.exec(source)
+  }
+  return tokens
+}
+
 const normalizedToken = (value) => String(value || '').normalize('NFKC').toLocaleLowerCase()
 
 const lcsMatches = (previous, next) => {
@@ -78,9 +94,10 @@ export function reconcileCaptionText(caption, nextText) {
   const previousTokens = visibleTokens(caption?.text)
   const nextTokens = visibleTokens(text)
   const matches = lcsMatches(previousTokens, nextTokens)
-  const oldToNew = new Map(matches)
   const previousWords = Array.isArray(caption?.words) ? caption.words : []
   const hasUsableWordAlignment = previousWords.length === previousTokens.length && previousWords.length > 0
+
+  const styleOldToNew = new Map(lcsMatches(whitespaceTokens(caption?.text), whitespaceTokens(text)))
 
   const words = hasUsableWordAlignment
     ? nextTokens.map((token, newIndex) => {
@@ -99,8 +116,8 @@ export function reconcileCaptionText(caption, nextText) {
     ...caption,
     text,
     words,
-    wordStyles: remapIndexedStyles(caption?.wordStyles, caption?.id, oldToNew),
-    ...remapEmphasis(caption || {}, oldToNew),
+    wordStyles: remapIndexedStyles(caption?.wordStyles, caption?.id, styleOldToNew),
+    ...remapEmphasis(caption || {}, styleOldToNew),
     word_alignment_status: needsReview ? 'needs_review' : 'aligned',
     ...(needsReview
       ? { word_alignment_note: 'Caption text changed. Review words without measured timing before export.' }
@@ -113,7 +130,7 @@ export function duplicateCaptionWithTiming(caption, newId, gapSeconds = 0.1) {
   const end = Math.max(start + 0.1, Number(caption?.end_time) || start + 0.1)
   const newStart = end + gapSeconds
   const delta = newStart - start
-  const oldToNew = new Map(visibleTokens(caption?.text).map((_, index) => [index, index]))
+  const oldToNew = new Map(whitespaceTokens(caption?.text).map((_, index) => [index, index]))
   const wordStyles = remapIndexedStyles(caption?.wordStyles, caption?.id, oldToNew)
   const renamedStyles = Object.fromEntries(Object.entries(wordStyles).map(([key, value]) => (
     [`${newId}-${key.slice(String(caption.id).length + 1)}`, value]
@@ -164,8 +181,12 @@ export function splitCaptionAtBoundary(caption, cursorPosition, newId) {
     ? (firstEnd + secondStart) / 2
     : (captionStart + captionEnd) / 2
 
-  const firstOldToNew = new Map(Array.from({ length: firstCount }, (_, index) => [index, index]))
-  const secondOldToNew = new Map(Array.from({ length: tokens.length - firstCount }, (_, index) => [index + firstCount, index]))
+  // Styles follow whitespace words; a word the cursor splits stays with the
+  // first caption.
+  const styleTokens = whitespaceTokens(text)
+  const firstStyleCount = styleTokens.filter((token) => token.start < cursor).length
+  const firstOldToNew = new Map(Array.from({ length: firstStyleCount }, (_, index) => [index, index]))
+  const secondOldToNew = new Map(Array.from({ length: Math.max(0, styleTokens.length - firstStyleCount) }, (_, index) => [index + firstStyleCount, index]))
   const firstEmphasis = remapEmphasis(caption, firstOldToNew)
   const secondEmphasis = remapEmphasis(caption, secondOldToNew)
   const firstStyles = remapIndexedStyles(caption?.wordStyles, caption?.id, firstOldToNew)
@@ -223,6 +244,23 @@ export function placeDuplicateCaption(caption, newId, nextStart = Infinity) {
   return {
     original: invalidateWordTimingOutsideCaption({ ...caption, end_time: middle }),
     copy: invalidateWordTimingOutsideCaption({ ...copy, start_time: middle, end_time: end, words: caption.words || [] }),
+  }
+}
+
+// Moves a caption and its measured words together (nudge buttons, Alt+Arrow).
+// Shifting only the caption put every word outside it and erased word timing.
+export function shiftCaptionTiming(caption, deltaSeconds) {
+  const start = Number(caption?.start_time) || 0
+  const shift = Math.max(-start, Number(deltaSeconds) || 0)
+  if (!shift) return caption
+  const moveTime = (value) => (Number.isFinite(Number(value)) ? Number(value) + shift : value)
+  return {
+    ...caption,
+    start_time: start + shift,
+    end_time: (Number(caption?.end_time) || start) + shift,
+    ...(Array.isArray(caption?.words)
+      ? { words: caption.words.map((word) => ({ ...word, start: moveTime(word?.start), end: moveTime(word?.end) })) }
+      : {}),
   }
 }
 

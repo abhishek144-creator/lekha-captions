@@ -1876,6 +1876,9 @@ export function AppliedSidebarTemplateSourceRenderer({
       stopLcClock();
       runnerRef.current = null;
     };
+    // The runner restarts only for a new caption, template or timing; videoRef
+    // is a stable ref and the accent colour is applied without a restart.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [html, captionId, captionText, effectiveStyle?.template_20_id, effectiveStyle?.template_source, phaseOffset, startTime, endTime]);
 
   useEffect(() => {

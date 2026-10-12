@@ -27,8 +27,10 @@ const assertions = [
     message: 'Dashboard must commit an accepted upload before transcription begins.',
   },
   {
-    ok: /uploadWasAccepted[\s\S]*setVideoUrl\(uploadWasAccepted \? acceptedPlayableVideoUrl : ''\)[\s\S]*Transcription failed — video kept in editor/s.test(dashboard),
-    message: 'A transcription failure must preserve the uploaded video and open the editor.',
+    ok: /const uploadWasAccepted = [^\n]+\n\s*if \(uploadWasAccepted\) \{/.test(dashboard)
+      && /Transcription failed — video kept in editor/.test(dashboard)
+      && !/console\.error\('Upload failed:'[\s\S]{0,600}setVideoUrl\(/.test(dashboard),
+    message: 'A transcription failure must preserve the uploaded video and open the editor; a refused upload must leave the open project untouched.',
   },
   {
     ok: /DEFAULT_RETRY_DELAYS_MS\s*=\s*\[1500, 4000, 8000\][\s\S]*waitForConnection[\s\S]*isRetryableUploadError[\s\S]*await sleep\(retryDelaysMs\[attempt\]\)/s.test(resilientUpload),
@@ -57,13 +59,15 @@ const assertions = [
     message: 'A reload may resume only an authenticated direct upload with the exact same file fingerprint.',
   },
   {
-    ok: /if \(!isLoaded \|\| localRecoveryDraft\) return/.test(dashboard)
+    ok: /if \(!isLoaded \|\| localRecoveryDraft(?: \|\| pauseAutosave)?\) return/.test(dashboard)
       && /applyLocalDraft\(localRecoveryDraft\)/.test(dashboard)
       && /Continue saved draft/.test(dashboard)
       && /downloadDraft\(localRecoveryDraft\)/.test(dashboard)
       && /Continue account draft/.test(dashboard)
-      && /if \(localRecoveryDraft\) discardLocalDraft\(\)[\s\S]*handleUploadModalOpen\(\)/s.test(dashboard),
-    message: 'Dashboard entry must expose same-account draft recovery and backup, protect unsynced work from autosave, and replace the recovery copy only when a new upload is requested.',
+      && /setVideoUrl\(acceptedPlayableVideoUrl\)/.test(dashboard)
+      && /if \(localRecoveryDraft\) discardLocalDraft\(\)/.test(dashboard)
+      && !/discardLocalDraft\(\)\s*\n\s*handleUploadModalOpen\(\)/.test(dashboard),
+    message: 'Dashboard entry must expose same-account draft recovery and backup, protect unsynced work from autosave, and replace the recovery copy only once a new upload is accepted (cancelling the upload window keeps it).',
   },
   {
     ok: /if too_large:[\s\S]*Count only fully received uploads[\s\S]*_check_rate\([\s\S]*_upload_rate,[\s\S]*f"network:\{client_ip\}"/s.test(backend),
