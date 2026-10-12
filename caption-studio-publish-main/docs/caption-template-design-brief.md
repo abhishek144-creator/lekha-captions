@@ -109,6 +109,13 @@ Then build a **single self-contained HTML preview page**:
 - A grid of 9:16 phones with a simple speaker silhouette over a muted gradient "footage" background.
 - Each phone loops its five-line script, with the template's motion driven by real word timings.
 - The list of five lines under each phone highlights the line on screen.
+- **Keep each template card short.** The phone preview is the card; it should take up about one screen height at most on desktop, and on mobile the whole card should fit without scrolling. Under the phone, show only:
+  - the template name and number
+  - one line for "best for"
+  - one short line for the signature motion
+  - the five lines as a compact single-row strip of five small chips (1 to 5), with the chip for the line on screen highlighted
+  
+  Put full line descriptions in a tooltip or an expandable "Details" toggle that starts closed. No paragraphs, no long recipe lists.
 - An English/हिंदी toggle, a 0.5×/1× speed control, pause, and tap-to-restart.
 - Load Google Fonts only.
 - Test every template on all five lines in both languages before calling it done.
