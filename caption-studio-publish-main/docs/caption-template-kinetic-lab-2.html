@@ -1,0 +1,1238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lekha Kinetic Caption Lab 2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Anton&family=Archivo+Black&family=Archivo:wght@500;700&family=Bangers&family=Cinzel:wght@700&family=DM+Serif+Display:ital@0;1&family=Fredoka:wght@600;700&family=Inter:wght@500;600;700;800&family=Marcellus&family=Mukta:wght@500;700;800&family=Oswald:wght@700&family=Pacifico&family=Playfair+Display:ital,wght@0,700;1,700&family=Poppins:wght@600;700;800&family=Righteous&family=Rubik:wght@700;900&family=Silkscreen:wght@400;700&family=Space+Mono:wght@700&family=Special+Elite&family=Teko:wght@600&family=Unbounded:wght@800&display=swap" rel="stylesheet">
+<style>
+  /* Layout: a catalogue of 9:16 phone frames; each frame is a live motion study with its line recipe under it. */
+  :root {
+    --bg: #0d0f12;
+    --line: #262b33;
+    --ink: #eceef1;
+    --muted: #8d95a3;
+    --amber: #f2b84b;
+    --ui: 'Archivo', system-ui, sans-serif;
+    --hi: 'Mukta', 'Noto Sans Devanagari', sans-serif;
+    --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' seed='4'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -1.8 1.75'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    color-scheme: dark;
+  }
+  @property --sx { syntax: '<percentage>'; inherits: false; initial-value: 50%; }
+  @property --sy { syntax: '<percentage>'; inherits: false; initial-value: 60%; }
+  @property --sr { syntax: '<length>'; inherits: false; initial-value: 0px; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--ui); }
+  .wrap { max-width: 1280px; margin: 0 auto; padding-inline: 16px; }
+  header.top { padding-block: 36px 18px; }
+  h1 { margin: 0 0 8px; font: 700 30px/1.1 var(--ui); letter-spacing: -0.02em; text-wrap: balance; }
+  .lede { margin: 0; max-width: 68ch; color: var(--muted); }
+  .roles { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+  .role { font-size: 12.5px; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; }
+  .role b { color: var(--amber); margin-right: 6px; }
+
+  .toolbar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 10; background: rgba(13, 15, 18, 0.92); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+  .toolbar .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding-block: 10px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+  .seg button, .btn { background: transparent; color: var(--muted); border: 0; padding: 7px 14px; font: 600 13px var(--ui); cursor: pointer; }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+  .btn { border: 1px solid var(--line); border-radius: 999px; color: var(--ink); }
+  .btn:hover { border-color: var(--muted); }
+  button:focus-visible, .frame:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+  .hint { color: var(--muted); font-size: 12.5px; margin-left: auto; }
+
+  .grid { display: grid; gap: 34px 22px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); padding-block: 26px 72px; }
+  .card { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .meta h2 { margin: 0; font: 700 18px/1.2 var(--ui); display: flex; gap: 8px; align-items: baseline; }
+  .meta h2 span { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .best { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .recipe { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+  .recipe li { display: grid; grid-template-columns: 54px 1fr; gap: 8px; font-size: 13px; line-height: 1.45; color: #c3c8d1; }
+  .recipe li b { font: 700 10.5px/1.9 var(--ui); color: var(--amber); letter-spacing: 0.08em; text-transform: uppercase; }
+
+  /* ---------- the phone frame ---------- */
+  .frame { position: relative; width: 100%; max-width: 100%; aspect-ratio: 9 / 16; overflow: hidden; border-radius: 18px; container-type: inline-size; background: #000; isolation: isolate; cursor: pointer; box-shadow: 0 0 0 1px var(--line); }
+  .cam { position: absolute; inset: 0; }
+  .shot { position: absolute; inset: -5%; background: var(--scene); animation: drift 16s ease-in-out infinite alternate; }
+  .shot::before { content: ""; position: absolute; left: 50%; bottom: -4%; width: 76%; height: 60%; transform: translateX(-50%);
+    background: radial-gradient(circle at 50% 24%, var(--skin) 0 17%, transparent 17.6%), radial-gradient(ellipse 50% 46% at 50% 100%, var(--shirt) 0 99%, transparent 100%);
+    filter: blur(2px); opacity: 0.9; }
+  .shot::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,0.25), transparent 28%, transparent 50%, rgba(0,0,0,0.5)); }
+  @keyframes drift { to { transform: scale(1.06) translate(-1.5%, -1%); } }
+  .stage { position: absolute; inset: 0; pointer-events: none; }
+  .comp { position: absolute; left: 7cqw; right: 7cqw; top: 60%; transform: translateY(-50%); display: flex; flex-direction: column; align-items: center; text-align: center; }
+  .comp.exit { animation: out 0.42s ease both; }
+  @keyframes out { to { opacity: 0; filter: blur(5px); } }
+  .w { display: inline-block; white-space: nowrap; }
+  @keyframes pop { from { opacity: 0; } }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(0.35em); } }
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+  @keyframes blink { 50% { opacity: 0; } }
+  @keyframes litUp { from { opacity: 0.32; } }
+  @keyframes crawl { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+  .sh { text-shadow: 0 0.3cqw 1.6cqw rgba(0,0,0,0.55); }
+
+  /* Hindi: Latin display faces fall back to Mukta, so drop caps, tracking and italics and give Devanagari room */
+  .lang-hi .comp, .lang-hi .comp *, .lang-hi .lb * { text-transform: none !important; letter-spacing: 0 !important; font-style: normal !important; }
+  .lang-hi :is(.kbox, .sign, .liq, .win, .mast, .big, .burst, .zt, .sk, .bk, .b1, .b2, .tag, .dk, .lk, .pcard, .pk, .ak2, .mk, .it2, .ak, .rk, .key) { font-weight: 800 !important; line-height: 1.3 !important; }
+
+  /* 11 Breaking Ticker */
+  .t-ticker .comp { top: 64%; left: 0; right: 0; align-items: flex-start; text-align: left; }
+  .t-ticker .band { display: flex; align-items: center; gap: 2.4cqw; max-width: 96cqw; padding: 1.4cqw 4cqw 1.4cqw 0; background: rgba(10,12,16,0.85); animation: wipe 0.45s cubic-bezier(.7,0,.2,1) var(--t) both; }
+  @keyframes wipe { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+  .t-ticker .live { flex: none; display: flex; align-items: center; gap: 1.2cqw; background: #e10600; color: #fff; font: 800 3.6cqw/1 Inter, var(--hi); letter-spacing: 0.14em; padding: 1.4cqw 2.4cqw 1.4cqw 5cqw; }
+  .t-ticker .live::before { content: ""; width: 1.6cqw; height: 1.6cqw; border-radius: 50%; background: #fff; animation: blink 1s steps(1) infinite; }
+  .t-ticker .lw { font: 700 4.6cqw/1.25 Inter, var(--hi); color: #fff; }
+  .t-ticker .lw .w { animation: pop 0.12s linear var(--t) both; }
+  .t-ticker .kbox { margin: 1.6cqw 0 0 5cqw; padding: 0.02em 0.22em; background: #fff; color: #0c0d10; font: 700 13cqw/1.12 Oswald, var(--hi); text-transform: uppercase; white-space: nowrap; animation: boxUp 0.45s cubic-bezier(.2,1.2,.3,1) var(--t) both; }
+  @keyframes boxUp { from { clip-path: inset(100% 0 0 0); transform: translateY(3cqw); } to { clip-path: inset(0 0 0 0); } }
+  .t-ticker .crawl { width: 100cqw; margin-top: 2.4cqw; padding: 1.5cqw 0; background: #ffd400; overflow: hidden; white-space: nowrap; animation: wipe 0.4s cubic-bezier(.7,0,.2,1) var(--t) both; }
+  .t-ticker .track { display: inline-block; font: 800 4.2cqw/1 Inter, var(--hi); text-transform: uppercase; color: #111; animation: crawl 8s linear var(--t) infinite; }
+
+  /* 12 Neon Sign */
+  .t-neon .comp { top: 56%; }
+  .t-neon .lead { font: 400 7.4cqw/1.35 Pacifico, var(--hi); color: #c9f3ff; text-shadow: 0 0 0.6cqw #fff, 0 0 2cqw #29c5ff, 0 0 4cqw #29c5ff; }
+  .t-neon .lead .w { margin: 0 0.1em; animation: flickIn 0.5s linear var(--t) both; }
+  @keyframes flickIn { 0% { opacity: 0; } 20% { opacity: 1; } 30% { opacity: 0.2; } 45%, 100% { opacity: 1; } }
+  .t-neon .sign { margin: 3cqw 0 3.4cqw; padding: 0.12em 0.3em 0.08em; font: 400 15cqw/1 Righteous, var(--hi); text-transform: uppercase; white-space: nowrap; color: #ffe3f4; border: 0.5cqw solid #ff8fd0; border-radius: 4cqw; animation: neonOn 1s linear var(--t) both; }
+  @keyframes neonOn {
+    0%, 9%, 22% { color: #5a3a4c; border-color: #3d2a35; text-shadow: none; box-shadow: none; }
+    5%, 14%, 30%, 100% { color: #ffe3f4; border-color: #ff8fd0; text-shadow: 0 0 0.5cqw #fff, 0 0 2cqw #ff2fb3, 0 0 5cqw #ff2fb3, 0 0 10cqw #ff2fb3; box-shadow: 0 0 2cqw #ff2fb3, inset 0 0 2cqw #ff2fb3; }
+  }
+  .t-neon .tail { font: 600 5cqw/1.35 Inter, var(--hi); color: #fff; text-shadow: 0 0 1.4cqw rgba(41,197,255,0.6); }
+  .t-neon .tail .w { animation: fadeUp 0.3s ease-out var(--t) both; }
+
+  /* 13 Liquid Fill */
+  .t-liquid .comp { top: 58%; }
+  .t-liquid .lead { font: 700 5.4cqw/1.3 Inter, var(--hi); color: #fff; text-shadow: 0 0.3cqw 1.6cqw rgba(0,0,0,0.55); }
+  .t-liquid .lead .w, .t-liquid .tail .w { animation: fadeUp 0.3s ease-out var(--t) both; }
+  .t-liquid .liq { position: relative; margin: 2.6cqw 0; font: 800 14cqw/1.08 Unbounded, var(--hi); text-transform: uppercase; white-space: nowrap; animation: pop 0.3s var(--t) both; }
+  .t-liquid .base { display: block; color: rgba(255,255,255,0.08); -webkit-text-stroke: 0.35cqw #fff; }
+  .t-liquid .fillc { position: absolute; inset: 0; background: linear-gradient(180deg, #7dd3fc, #2563eb); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; clip-path: inset(100% 0 0 0); }
+  .t-liquid .tail { font: 600 5cqw/1.35 Inter, var(--hi); color: #e0f2fe; text-shadow: 0 0.3cqw 1.6cqw rgba(0,0,0,0.55); }
+
+  /* 14 Word Slot */
+  .t-slot .comp { top: 58%; }
+  .t-slot .lead, .t-slot .tail { font: 700 5.4cqw/1.3 Inter, var(--hi); color: #fff; text-shadow: 0 0.3cqw 1.6cqw rgba(0,0,0,0.55); }
+  .t-slot .lead .w, .t-slot .tail .w { animation: fadeUp 0.3s ease-out var(--t) both; }
+  .t-slot .win { --lh: 1.12em; position: relative; margin: 3cqw 0; width: 86cqw; height: var(--lh); overflow: hidden; font: 600 17cqw/1.12 Teko, var(--hi); text-transform: uppercase; color: #ffcf3f; text-shadow: 0 0.4cqw 0 #8a5a00;
+    background: linear-gradient(180deg, rgba(0,0,0,0.6), rgba(0,0,0,0.15) 30%, rgba(0,0,0,0.15) 70%, rgba(0,0,0,0.6)); border-block: 0.5cqw solid #ffcf3f; }
+  .lang-hi .t-slot .win { --lh: 1.5em; }
+  .t-slot .win::after { content: ""; position: absolute; inset: 0; background: rgba(255,207,63,0.35); opacity: 0; animation: flashO 0.6s ease-out calc(var(--t) + 600ms) both; }
+  @keyframes flashO { 0% { opacity: 0; } 15% { opacity: 1; } 100% { opacity: 0; } }
+  .t-slot .reel { animation-name: spinReel; animation-timing-function: cubic-bezier(.12,.6,.2,1.04); animation-fill-mode: both; }
+  @keyframes spinReel { from { transform: translateY(0); filter: blur(0.12em); } 75% { filter: blur(0.03em); } to { transform: translateY(calc(var(--n) * -1 * var(--lh))); filter: blur(0); } }
+  .t-slot .it { display: block; width: max-content; margin: 0 auto; height: var(--lh); line-height: var(--lh); white-space: nowrap; }
+
+  /* 15 Cover Story */
+  .t-cover .shot { animation: none; }
+  .t-cover .comp { top: 0; bottom: 0; left: 0; right: 0; transform: none; display: block; }
+  .t-cover .kicker { position: absolute; top: 33%; left: 8cqw; right: 8cqw; text-align: center; font: 700 3.6cqw/1.4 Inter, var(--hi); letter-spacing: 0.32em; text-transform: uppercase; color: #1a1414; }
+  .t-cover .kicker .w { animation: pop 0.2s var(--t) both; }
+  .t-cover .mast { position: absolute; top: 38%; left: 0; right: 0; text-align: center; font: 400 30cqw/0.95 'Abril Fatface', var(--hi); color: #c8102e; white-space: nowrap; animation: mastIn 0.8s cubic-bezier(.16,1,.3,1) var(--t) both; }
+  .t-cover .mt { display: inline-block; }
+  @keyframes mastIn { from { opacity: 0; transform: translateY(-4cqw) scale(1.08); clip-path: inset(0 0 100% 0); } to { clip-path: inset(-30% -30% -30% -30%); } }
+  .t-cover .fg { position: absolute; left: 50%; bottom: -9.4%; width: 83.6%; height: 66%; transform: translateX(-50%); background: radial-gradient(circle at 50% 24%, var(--skin) 0 17%, transparent 17.6%); filter: blur(2px); opacity: 0.9; }
+  .t-cover .cl { position: absolute; left: 7cqw; width: 40cqw; top: 70%; text-align: left; font: italic 400 6.6cqw/1.08 'DM Serif Display', var(--hi); color: #1a1414; }
+  .t-cover .cl .w { animation: fadeUp 0.4s ease-out var(--t) both; }
+  .t-cover .iss { position: absolute; right: 7cqw; top: 70%; padding-top: 1cqw; border-top: 0.4cqw solid #c8102e; font: 700 3.4cqw/1 Inter, var(--hi); letter-spacing: 0.2em; color: #c8102e; animation: pop 0.4s both; }
+
+  /* 16 Sticker Pop */
+  .t-sticker .comp { top: 58%; }
+  .t-sticker .sl, .t-sticker .kline { display: flex; flex-wrap: wrap; justify-content: center; gap: 2cqw 1.8cqw; }
+  .t-sticker .kline { margin: 3.4cqw 0; }
+  .t-sticker .st { display: inline-block; padding: 0.12em 0.42em 0.16em; border-radius: 2.4cqw; background: var(--c); color: #17131c; font: 700 5.6cqw/1.1 Fredoka, var(--hi); white-space: nowrap; transform: rotate(var(--r));
+    box-shadow: 0 0 0 0.9cqw #fff, 0 1.4cqw 2.4cqw rgba(0,0,0,0.35); animation: stickIn 0.5s cubic-bezier(.3,1.6,.5,1) var(--t) both; }
+  .t-sticker .st.big { font-size: 13cqw; background: #ffe14a; border-radius: 3.6cqw; box-shadow: 0 0 0 1.4cqw #fff, 0 2cqw 3cqw rgba(0,0,0,0.4); }
+  @keyframes stickIn { from { opacity: 0; transform: scale(0) rotate(calc(var(--r) - 30deg)); } 60% { opacity: 1; transform: scale(1.15) rotate(var(--r)); } }
+
+  /* 17 Comic Burst */
+  .t-comic .comp { top: 57%; }
+  .t-comic .cbox { align-self: flex-start; max-width: 80cqw; text-align: left; background: #ffe14a; color: #111; border: 0.7cqw solid #111; padding: 1.2cqw 2.4cqw; font: 400 5.6cqw/1.15 Bangers, var(--hi); letter-spacing: 0.04em; text-transform: uppercase; transform: rotate(-2deg); box-shadow: 1cqw 1cqw 0 #111; animation: boxIn 0.35s cubic-bezier(.3,1.5,.5,1) var(--t) both; }
+  @keyframes boxIn { from { opacity: 0; transform: translate(-8cqw, -4cqw) rotate(-8deg); } }
+  .t-comic .cbox .w, .t-comic .speech .w { animation: pop 0.1s linear var(--t) both; }
+  .t-comic .burst { position: relative; isolation: isolate; margin: 7cqw 0; padding: 0 2cqw; font: 400 15cqw/1 Bangers, var(--hi); letter-spacing: 0.03em; text-transform: uppercase; color: #fff; -webkit-text-stroke: 0.5cqw #111; paint-order: stroke fill; text-shadow: 0.8cqw 0.8cqw 0 #111; white-space: nowrap; animation: burstIn 0.5s cubic-bezier(.3,1.7,.5,1) var(--t) both; }
+  .t-comic .burst::before, .t-comic .burst::after { content: ""; position: absolute; clip-path: var(--star); animation: spinIn 0.6s cubic-bezier(.3,1.5,.5,1) var(--t) both; }
+  .t-comic .burst::before { z-index: -1; left: -14%; right: -14%; top: -60%; bottom: -60%; background: radial-gradient(circle, rgba(0,0,0,0.22) 24%, transparent 26%) 0 0 / 2.2cqw 2.2cqw, #ff3b30; }
+  .t-comic .burst::after { z-index: -2; left: -17%; right: -17%; top: -68%; bottom: -68%; background: #111; }
+  @keyframes burstIn { from { opacity: 0; transform: scale(0.2) rotate(-15deg); } }
+  @keyframes spinIn { from { transform: scale(0.3) rotate(-60deg); } }
+  .t-comic .speech { position: relative; align-self: flex-end; max-width: 72cqw; background: #fff; color: #111; border: 0.6cqw solid #111; border-radius: 6cqw; padding: 1.6cqw 3.6cqw; font: 400 5.4cqw/1.15 Bangers, var(--hi); letter-spacing: 0.04em; text-transform: uppercase; transform-origin: 80% 100%; animation: bubbleIn 0.35s cubic-bezier(.3,1.5,.5,1) var(--t) both; }
+  .t-comic .speech::after { content: ""; position: absolute; right: 10cqw; bottom: -3.2cqw; width: 5cqw; height: 3.2cqw; background: #111; clip-path: polygon(0 0, 100% 0, 80% 100%); }
+  @keyframes bubbleIn { from { opacity: 0; transform: scale(0.4); } }
+
+  /* 18 Gliding Pill */
+  .t-glide .comp { top: 62%; }
+  .t-glide .gl { position: relative; font: 700 6.6cqw/1.55 Poppins, var(--hi); color: #fff; text-shadow: 0 0.3cqw 1.2cqw rgba(0,0,0,0.5); }
+  .t-glide .pill { position: absolute; z-index: 0; left: 0; top: 0; width: 0; height: 0; border-radius: 2.4cqw; background: #7c5cff; opacity: 0; box-shadow: 0 1cqw 3cqw rgba(124,92,255,0.45); }
+  .t-glide .pill.hot { background: #ff7a1a; box-shadow: 0 1cqw 3cqw rgba(255,122,26,0.5); }
+  .t-glide .w { position: relative; z-index: 1; opacity: 0.45; transition: opacity 0.15s, transform 0.25s cubic-bezier(.3,1.6,.5,1); }
+  .t-glide .w.done, .t-glide .w.now { opacity: 1; }
+  .t-glide .w.key { font-size: 1.25em; }
+  .t-glide .w.key.now { transform: scale(1.08) rotate(-2deg); }
+
+  /* 19 Z-Tunnel */
+  .t-zoom .comp { top: 57%; }
+  .t-zoom .lead { perspective: 60cqw; font: 800 5cqw/1.3 Inter, var(--hi); text-transform: uppercase; letter-spacing: 0.12em; color: #fff; text-shadow: 0 0.3cqw 1.6cqw rgba(0,0,0,0.55); }
+  .t-zoom .lead .w, .t-zoom .tail .w { margin: 0 0.15em; animation: fromDeep 0.7s cubic-bezier(.16,1,.3,1) var(--t) both; }
+  @keyframes fromDeep { from { opacity: 0; transform: translateZ(-120cqw); filter: blur(6px); } }
+  .t-zoom .zk { margin: 3cqw 0; perspective: 60cqw; }
+  .t-zoom .zt { display: inline-block; font: 400 16cqw/1.05 'Archivo Black', var(--hi); text-transform: uppercase; color: #fff; white-space: nowrap; transform: skewX(-8deg); text-shadow: 0 0 3cqw rgba(120,180,255,0.6); animation: blast 0.6s cubic-bezier(.2,.9,.25,1.15) var(--t) both; }
+  @keyframes blast { from { opacity: 0; transform: translateZ(50cqw) skewX(-8deg); filter: blur(10px); } }
+  .t-zoom .lines { position: absolute; inset: -20%; background: repeating-conic-gradient(from 0deg at 50% 50%, rgba(255,255,255,0.22) 0 0.6deg, transparent 0.6deg 7deg); -webkit-mask-image: radial-gradient(circle at 50% 50%, transparent 22%, #000 60%); mask-image: radial-gradient(circle at 50% 50%, transparent 22%, #000 60%); animation: rush 0.7s ease-out var(--t) both; }
+  @keyframes rush { 0% { opacity: 0; transform: scale(1.6); } 20% { opacity: 1; } 100% { opacity: 0; transform: scale(1); } }
+  .t-zoom .tail { perspective: 60cqw; font: 600 5.4cqw/1.3 Inter, var(--hi); color: #dbe7ff; }
+
+  /* 20 Ransom Note */
+  .t-ransom .comp { top: 57%; }
+  .t-ransom .lead, .t-ransom .tail { font: 400 5.4cqw/1.35 'Special Elite', var(--hi); color: #f4f1ea; text-shadow: 0 0.3cqw 1.2cqw rgba(0,0,0,0.7); }
+  .t-ransom .lead .w, .t-ransom .tail .w { animation: pop 0.2s var(--t) both; }
+  .t-ransom .rk { display: flex; align-items: center; gap: 0.8cqw; margin: 4cqw 0; font-size: 13cqw; white-space: nowrap; }
+  .t-ransom .rl { display: inline-block; padding: 0.04em 0.14em; font-size: calc(var(--s) * 1em); line-height: 1.05; font-weight: 400; text-transform: uppercase; transform: rotate(var(--r)); box-shadow: 0.4cqw 0.6cqw 0 rgba(0,0,0,0.35); animation: drop 0.45s cubic-bezier(.3,1.5,.5,1) var(--t) both; }
+  @keyframes drop { from { opacity: 0; transform: translateY(-8cqw) rotate(calc(var(--r) * -3)) scale(1.3); } }
+
+  /* 21 Spotlight */
+  .t-spot .comp { top: 58%; }
+  .t-spot .dim { position: absolute; inset: 0; background: radial-gradient(circle var(--sr) at var(--sx) var(--sy), rgba(255,236,190,0.12) 0 55%, rgba(0,0,0,0.84) 100%); transition: --sx 0.35s cubic-bezier(.3,1.2,.4,1), --sy 0.35s cubic-bezier(.3,1.2,.4,1), --sr 0.55s cubic-bezier(.3,1.2,.4,1); }
+  .t-spot .lead, .t-spot .tail { font: 600 5.4cqw/1.35 Inter, var(--hi); color: #e9e4da; }
+  .t-spot .lead .w, .t-spot .tail .w { animation: fadeUp 0.3s ease-out var(--t) both; }
+  .t-spot .sk { margin: 2.6cqw 0; font: italic 700 14cqw/1.08 'Playfair Display', var(--hi); color: #ffd27a; white-space: nowrap; text-shadow: 0 0 3cqw rgba(255,190,90,0.55); animation: goldIn 0.7s cubic-bezier(.16,1,.3,1) var(--t) both; }
+  @keyframes goldIn { from { opacity: 0; transform: scale(0.85); filter: blur(4px); } }
+
+  /* 22 Bounce Drop */
+  .t-bounce .comp { top: 58%; }
+  .t-bounce .lead { font: 800 6cqw/1.3 Poppins, var(--hi); color: #fff; text-shadow: 0 0.4cqw 0 rgba(0,0,0,0.35); }
+  .t-bounce .tail { font: 600 5.4cqw/1.3 Poppins, var(--hi); color: #fff; text-shadow: 0 0.4cqw 0 rgba(0,0,0,0.35); }
+  .t-bounce .lead .w, .t-bounce .tail .w { margin: 0 0.08em; transform-origin: 50% 100%; animation: fall 0.6s linear var(--t) both; }
+  @keyframes fall {
+    0% { opacity: 0; transform: translateY(-40cqw); animation-timing-function: cubic-bezier(.5,0,1,.5); }
+    45% { opacity: 1; transform: translateY(0) scale(1.15, 0.75); animation-timing-function: cubic-bezier(0,.5,.5,1); }
+    65% { transform: translateY(-4cqw) scale(0.95, 1.05); animation-timing-function: cubic-bezier(.5,0,1,.5); }
+    82% { transform: translateY(0) scale(1.05, 0.92); }
+    100% { transform: none; }
+  }
+  .t-bounce .bk { display: flex; margin: 3cqw 0; font: 700 16cqw/1.08 Fredoka, var(--hi); white-space: nowrap; }
+  .t-bounce .bl { display: inline-block; transform-origin: 50% 100%; -webkit-text-stroke: 0.5cqw #1d1d1d; paint-order: stroke fill; text-shadow: 0 0.9cqw 0 #1d1d1d; animation: fall 0.7s linear var(--t) both, wave 1.6s ease-in-out calc(var(--t) + 900ms + var(--i) * 90ms) infinite; }
+  @keyframes wave { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1.6cqw); } }
+  .t-bounce .bl:nth-child(4n+1) { color: #ff6b6b; }
+  .t-bounce .bl:nth-child(4n+2) { color: #ffd93d; }
+  .t-bounce .bl:nth-child(4n+3) { color: #6bcb77; }
+  .t-bounce .bl:nth-child(4n) { color: #4d96ff; }
+
+  /* 23 Cross Bands */
+  .t-bands .comp { top: 56%; left: -30cqw; right: -30cqw; }
+  .t-bands .bx { position: relative; width: 100%; height: 46cqw; }
+  .t-bands .band { position: absolute; left: 0; right: 0; top: 50%; overflow: hidden; white-space: nowrap; box-shadow: 0 1.4cqw 3cqw rgba(0,0,0,0.35); }
+  .t-bands .b1 { margin-top: -9cqw; background: #ff5a1f; color: #120a06; font: 400 12cqw/1.2 'Archivo Black', var(--hi); text-transform: uppercase; transform: rotate(-8deg); animation: bandL 0.55s cubic-bezier(.16,1,.3,1) var(--t) both; }
+  .t-bands .b2 { margin-top: -2cqw; background: #111; color: #fff; font: 700 5cqw/1.7 Inter, var(--hi); text-transform: uppercase; letter-spacing: 0.12em; transform: rotate(6deg); animation: bandR 0.55s cubic-bezier(.16,1,.3,1) var(--t) both; }
+  @keyframes bandL { from { transform: rotate(-8deg) translateX(-120%); } }
+  @keyframes bandR { from { transform: rotate(6deg) translateX(120%); } }
+  .t-bands .trk { display: inline-block; animation: crawl 9s linear infinite; }
+  .t-bands .tail { max-width: 80cqw; margin-top: 2cqw; padding: 1.2cqw 3.4cqw; border-radius: 99px; background: #111; color: #fff; font: 700 5cqw/1.3 Inter, var(--hi); animation: fadeUp 0.3s var(--t) both; }
+  .t-bands .tail .w { animation: pop 0.15s var(--t) both; }
+
+  /* 24 Broadcast Bars */
+  .t-bars .comp { top: 70%; left: 6cqw; right: 6cqw; align-items: flex-start; text-align: left; }
+  .t-bars .comp.exit { animation: barsOut 0.4s cubic-bezier(.7,0,.8,.3) both; }
+  @keyframes barsOut { to { clip-path: inset(0 100% 0 0); } }
+  .t-bars .lt { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 0.8cqw; padding-left: 2.4cqw; }
+  .t-bars .lt::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 1.2cqw; background: #00b3a4; transform-origin: top; animation: growY 0.4s cubic-bezier(.7,0,.2,1) both; }
+  @keyframes growY { from { transform: scaleY(0); } }
+  .t-bars .bar { position: relative; max-width: 86cqw; padding: 1cqw 2.6cqw; }
+  .t-bars .bar::before { content: ""; position: absolute; inset: 0; transform-origin: left; animation: growX 0.45s cubic-bezier(.7,0,.2,1) var(--t) both; }
+  @keyframes growX { from { transform: scaleX(0); } }
+  .t-bars .bt { position: relative; display: inline-block; animation: slideIn 0.45s cubic-bezier(.16,1,.3,1) calc(var(--t) + 150ms) both; }
+  .t-bars .bt .w { animation: pop 0.15s var(--t) both; }
+  @keyframes slideIn { from { opacity: 0; transform: translateX(-6cqw); } }
+  .t-bars .b1 { color: #fff; font: 600 4.4cqw/1.3 Inter, var(--hi); }
+  .t-bars .b1::before { background: #00b3a4; }
+  .t-bars .b2 { color: #0f1b3d; font: 700 9.5cqw/1.12 Oswald, var(--hi); text-transform: uppercase; white-space: nowrap; }
+  .t-bars .b2::before { background: #fff; }
+  .t-bars .b3 { color: #fff; font: 500 4.2cqw/1.35 Inter, var(--hi); }
+  .t-bars .b3::before { background: #0f1b3d; }
+
+  /* 25 Scroll Focus */
+  .t-scroll .comp { top: 60%; }
+  .t-scroll .vp { position: relative; width: 86cqw; height: 64cqw; overflow: hidden; -webkit-mask-image: linear-gradient(180deg, transparent, #000 28%, #000 72%, transparent); mask-image: linear-gradient(180deg, transparent, #000 28%, #000 72%, transparent); }
+  .t-scroll .col { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4cqw; padding-block: 20cqw; }
+  .t-scroll .ln { font: 600 6cqw/1.25 Inter, var(--hi); color: #fff; opacity: 0.3; transform: scale(0.86); filter: blur(0.3cqw); transition: opacity 0.4s, transform 0.5s cubic-bezier(.3,1,.4,1), filter 0.4s; text-shadow: 0 0.3cqw 1.6cqw rgba(0,0,0,0.5); }
+  .t-scroll .ln.on { opacity: 1; transform: none; filter: none; }
+  .t-scroll .ln .w { animation: litUp 0.25s var(--t) both; }
+  .t-scroll .key { font: 400 13cqw/1.08 'DM Serif Display', var(--hi); color: #ffd9a8; white-space: nowrap; }
+  .t-scroll .kt { display: inline-block; animation: litUp 0.3s var(--t) both; }
+
+  /* 26 Ink Signature */
+  .t-ink .comp { top: 58%; }
+  .t-ink .lead, .t-ink .tail { font: 400 4.6cqw/1.6 Marcellus, var(--hi); text-transform: uppercase; letter-spacing: 0.3em; color: #fff7ea; text-shadow: 0 0.2cqw 1.4cqw rgba(0,0,0,0.5); }
+  .t-ink .lead .w, .t-ink .tail .w { animation: fadeUp 0.6s ease-out var(--t) both; }
+  .t-ink .ik { position: relative; margin: 1cqw 0 4cqw; padding: 0 3cqw; }
+  .t-ink .it2 { display: block; font: 400 15cqw/1.4 Pacifico, var(--hi); color: #fff7ea; white-space: nowrap; text-shadow: 0 0.3cqw 1.6cqw rgba(0,0,0,0.35);
+    -webkit-mask-image: linear-gradient(90deg, #000 45%, transparent 55%); mask-image: linear-gradient(90deg, #000 45%, transparent 55%);
+    -webkit-mask-size: 240% 100%; mask-size: 240% 100%; -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; -webkit-mask-position: 100% 0; mask-position: 100% 0;
+    animation: inkIn 1.1s cubic-bezier(.45,.05,.35,1) var(--t) both; }
+  @keyframes inkIn { from { -webkit-mask-position: 100% 0; mask-position: 100% 0; } to { -webkit-mask-position: 0 0; mask-position: 0 0; } }
+  .t-ink .nib { position: absolute; bottom: 24%; left: 3cqw; width: 2.2cqw; height: 2.2cqw; border-radius: 50%; background: #fff; box-shadow: 0 0 2cqw 1cqw rgba(255,214,150,0.8); animation: nib 1.1s cubic-bezier(.45,.05,.35,1) var(--t) both; }
+  @keyframes nib { 0% { opacity: 0; left: 3cqw; } 8% { opacity: 1; } 85% { opacity: 1; } 100% { opacity: 0; left: calc(100% - 3cqw); } }
+  .t-ink .sw { position: absolute; left: 4%; width: 92%; bottom: -2cqw; height: 6cqw; overflow: visible; }
+  .t-ink .sw path { fill: none; stroke: #e8c27a; stroke-width: 2.4; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw 0.6s ease-out calc(var(--t) + 900ms) forwards; }
+
+  /* 27 Mirror Floor */
+  .t-mirror .comp { top: 56%; }
+  .t-mirror .lead, .t-mirror .tail { font: 500 3.8cqw/1.6 Inter, var(--hi); text-transform: uppercase; letter-spacing: 0.42em; color: #d7dbe0; }
+  .t-mirror .lead .w, .t-mirror .tail .w { animation: fadeUp 0.5s ease-out var(--t) both; }
+  .t-mirror .mir { display: flex; flex-direction: column; align-items: center; margin: 3cqw 0 2cqw; font: 700 13cqw/1.05 Cinzel, var(--hi); }
+  .t-mirror .up, .t-mirror .dn { overflow: hidden; padding: 0 2cqw; }
+  .t-mirror .up { padding-top: 0.1em; }
+  .t-mirror .dn { height: 0.62em; margin-top: 0.04em; }
+  .t-mirror .mk { display: inline-block; white-space: nowrap; color: transparent; background: linear-gradient(180deg, #ffffff, #c3c9d2 55%, #8e96a3); -webkit-background-clip: text; background-clip: text; animation: emerge 0.9s cubic-bezier(.16,1,.3,1) calc(var(--t) + 200ms) both; }
+  @keyframes emerge { from { transform: translateY(105%); } }
+  .t-mirror .rf { transform: scaleY(-1); opacity: 0.32; filter: blur(0.25cqw); -webkit-mask-image: linear-gradient(180deg, transparent 20%, #000); mask-image: linear-gradient(180deg, transparent 20%, #000); animation-name: emergeR; }
+  @keyframes emergeR { from { transform: scaleY(-1) translateY(105%); } }
+  .t-mirror .floor { width: 70cqw; height: 0.3cqw; background: linear-gradient(90deg, transparent, #e8ecf2, transparent); transform: scaleX(0); animation: floorIn 0.7s cubic-bezier(.16,1,.3,1) var(--t) both; }
+  @keyframes floorIn { to { transform: scaleX(1); } }
+
+  /* 28 Arcade Dialog */
+  .t-arcade .comp { top: 64%; }
+  .t-arcade .ak { position: relative; margin-bottom: 4cqw; font: 700 12cqw/1.1 Silkscreen, var(--hi); color: #ffd23f; text-transform: uppercase; white-space: nowrap; text-shadow: 0.9cqw 0.9cqw 0 #d1495b, 1.8cqw 1.8cqw 0 #2b1a4a; animation: pix 0.5s steps(5, jump-none) var(--t) both; }
+  .t-arcade .akt { display: inline-block; }
+  @keyframes pix { 0% { opacity: 0; transform: translateY(6cqw) scale(0.6); } 40% { opacity: 1; transform: translateY(-3cqw) scale(1.1); } 100% { transform: none; } }
+  .t-arcade .coin { position: absolute; right: -4cqw; top: -5cqw; font: 700 5cqw/1 Silkscreen, var(--hi); color: #7cff6b; text-shadow: 0.5cqw 0.5cqw 0 #1a4d16; animation: coinUp 1.2s steps(8, jump-none) var(--t) both; }
+  @keyframes coinUp { 0% { opacity: 0; transform: translateY(2cqw); } 15% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; transform: translateY(-8cqw); } }
+  .t-arcade .dbox { position: relative; width: 84cqw; min-height: 22cqw; padding: 3cqw 3.4cqw; background: #120f2a; color: #fff; font: 400 4.4cqw/1.5 Silkscreen, var(--hi); text-align: left; box-shadow: 0 0 0 0.8cqw #fff, 0 0 0 1.6cqw #120f2a, 0 0 0 2.4cqw #fff; animation: boxPix 0.35s steps(4, jump-none) both; }
+  @keyframes boxPix { from { transform: scaleY(0.1); } }
+  .t-arcade .dl { min-height: 1.5em; }
+  .t-arcade .dl2 { margin-top: 1cqw; color: #8fd3ff; }
+  .t-arcade .ch { animation: pop 0.03s linear var(--t) both; }
+  .t-arcade .arrow { position: absolute; right: 3cqw; bottom: 1.6cqw; font-size: 3.4cqw; animation: blink 0.8s steps(1) infinite; }
+
+  /* 29 Swing Tag */
+  .t-tag .comp { top: 55%; }
+  .t-tag .lead { position: relative; z-index: 1; font: 800 5.6cqw/1.3 Inter, var(--hi); text-transform: uppercase; letter-spacing: 0.06em; color: #fff; text-shadow: 0 0.3cqw 1.6cqw rgba(0,0,0,0.55); }
+  .t-tag .lead .w, .t-tag .tail .w { animation: fadeUp 0.3s ease-out var(--t) both; }
+  .t-tag .hang { position: relative; padding-top: 12cqw; margin-top: -1cqw; transform-origin: 50% 0; animation: swing 2.2s ease-in-out var(--t) both; }
+  .t-tag .hang::before { content: ""; position: absolute; left: 50%; top: 0; width: 0.4cqw; height: 15cqw; background: #f3e8d6; transform: translateX(-50%); }
+  @keyframes swing { 0% { opacity: 0; transform: translateY(-30cqw) rotate(0deg); } 12% { opacity: 1; transform: translateY(0) rotate(16deg); } 28% { transform: rotate(-11deg); } 44% { transform: rotate(7deg); } 60% { transform: rotate(-4deg); } 76% { transform: rotate(2deg); } 100% { transform: rotate(0deg); } }
+  .t-tag .tag { position: relative; padding: 6.4cqw 4.6cqw 3.2cqw; color: #fff; font: 400 11cqw/1.05 'Archivo Black', var(--hi); text-transform: uppercase; white-space: nowrap;
+    background: radial-gradient(circle at 50% 3cqw, transparent 0 1.1cqw, #ff3d6e 1.2cqw); clip-path: polygon(50% 0, 100% 5cqw, 100% 100%, 0 100%, 0 5cqw); }
+  .t-tag .tt { display: inline-block; }
+  .t-tag .tail { margin-top: 3cqw; font: 600 5.2cqw/1.3 Inter, var(--hi); color: #fff; text-shadow: 0 0.3cqw 1.6cqw rgba(0,0,0,0.55); }
+
+  /* 30 Domino Flip */
+  .t-domino .comp { top: 58%; }
+  .t-domino .lead, .t-domino .tail { perspective: 40cqw; font: 700 5.4cqw/1.3 Rubik, var(--hi); color: #fff; text-shadow: 0 0.3cqw 1.6cqw rgba(0,0,0,0.55); }
+  .t-domino .lead .w, .t-domino .tail .w { transform-origin: 50% 100%; animation: standUp 0.5s cubic-bezier(.3,1.4,.5,1) var(--t) both; }
+  @keyframes standUp { from { opacity: 0; transform: rotateX(-90deg); } }
+  .t-domino .dk { display: flex; margin: 3cqw 0; perspective: 50cqw; font: 400 15cqw/1.08 'Archivo Black', var(--hi); text-transform: uppercase; white-space: nowrap; color: #fff; }
+  .t-domino .dl3 { display: inline-block; transform-origin: 50% 100%; text-shadow: 0 1cqw 1.4cqw rgba(0,0,0,0.4); animation: standUp 0.45s cubic-bezier(.3,1.5,.5,1) var(--t) both; }
+  .t-domino .dl3:nth-child(3n) { color: #00d1ff; }
+
+  /* 31 Text Thread */
+  .t-thread .comp { top: 58%; left: 6cqw; right: 6cqw; }
+  .t-thread .thread { width: 100%; display: flex; flex-direction: column; gap: 1.8cqw; }
+  .t-thread .msg { position: relative; max-width: 72cqw; padding: 2cqw 3.6cqw; border-radius: 5cqw; font: 500 5cqw/1.3 Inter, var(--hi); text-align: left; animation: msgIn 0.4s cubic-bezier(.3,1.5,.5,1) var(--t) both; }
+  .t-thread .in { align-self: flex-start; background: #e9e9eb; color: #111; border-bottom-left-radius: 1.4cqw; transform-origin: 0 100%; }
+  .t-thread .out { align-self: flex-end; background: #0a84ff; color: #fff; border-bottom-right-radius: 1.4cqw; transform-origin: 100% 100%; }
+  .t-thread .big { font: 800 9cqw/1.15 Inter, var(--hi); white-space: nowrap; }
+  @keyframes msgIn { from { opacity: 0; transform: scale(0.5) translateY(3cqw); } }
+  .t-thread .msg .w { animation: pop 0.12s linear var(--t) both; }
+  .t-thread .dots { position: absolute; left: 3.6cqw; top: 50%; display: flex; gap: 1cqw; transform: translateY(-50%); animation: pop 0.2s var(--t) both, dotsOut 0.15s linear var(--end) forwards; }
+  @keyframes dotsOut { to { opacity: 0; } }
+  .t-thread .dots i { width: 1.8cqw; height: 1.8cqw; border-radius: 50%; background: #8e8e93; animation: dotB 1s ease-in-out infinite; }
+  .t-thread .dots i:nth-child(2) { animation-delay: 0.15s; }
+  .t-thread .dots i:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes dotB { 0%, 60%, 100% { transform: none; opacity: 0.5; } 30% { transform: translateY(-1cqw); opacity: 1; } }
+  .t-thread .meta2 { align-self: flex-end; font: 600 3cqw/1 Inter, var(--hi); color: rgba(255,255,255,0.8); animation: pop 0.3s var(--t) both; }
+
+  /* 32 Letterbox */
+  .t-letterbox .comp { top: 64%; }
+  .t-letterbox .lb { position: absolute; left: 0; right: 0; z-index: 1; height: 14%; display: flex; align-items: center; justify-content: center; padding: 0 7cqw; background: #000; }
+  .t-letterbox .lb.top { top: 0; }
+  .t-letterbox .lb.bot { bottom: 0; }
+  .t-letterbox .lb.top.anim { animation: barDown 0.8s cubic-bezier(.7,0,.2,1) both; }
+  .t-letterbox .lb.bot.anim { animation: barUp 0.8s cubic-bezier(.7,0,.2,1) both; }
+  @keyframes barDown { from { transform: translateY(-100%); } }
+  @keyframes barUp { from { transform: translateY(100%); } }
+  .t-letterbox .slug { font: 600 3.4cqw/1.5 Inter, var(--hi); letter-spacing: 0.32em; text-transform: uppercase; color: rgba(255,255,255,0.75); text-align: center; }
+  .t-letterbox .slug .w { animation: pop 0.3s var(--t) both; }
+  .t-letterbox .sub { font: italic 500 4.8cqw/1.35 Inter, var(--hi); color: #f5e7a1; text-align: center; }
+  .t-letterbox .sub .w { animation: pop 0.15s var(--t) both; }
+  .t-letterbox .stage.exiting .slug, .t-letterbox .stage.exiting .sub { animation: out 0.42s ease both; }
+  .t-letterbox .lk { font: 400 11cqw/1.15 Marcellus, var(--hi); text-transform: uppercase; letter-spacing: 0.22em; color: #fff; text-shadow: 0 0 3cqw rgba(255,255,255,0.25); }
+  .t-letterbox .lkt { display: inline-block; white-space: nowrap; animation: focusPull 1.2s cubic-bezier(.16,1,.3,1) var(--t) both; }
+  @keyframes focusPull { from { opacity: 0; filter: blur(2.4cqw); transform: scale(1.08); } }
+  .t-letterbox .grain { position: absolute; inset: -10%; background-image: var(--grain); background-size: 30cqw; opacity: 0.12; mix-blend-mode: overlay; animation: grainJ 0.5s steps(3, jump-none) infinite; }
+  @keyframes grainJ { 0% { transform: translate(0, 0); } 50% { transform: translate(-3%, 2%); } 100% { transform: translate(2%, -3%); } }
+
+  /* 33 Pin Drop */
+  .t-pin .comp { top: 58%; }
+  .t-pin .lp { display: inline-flex; align-items: center; gap: 1.6cqw; padding: 1.4cqw 3cqw; border-radius: 99px; background: rgba(12,14,18,0.72); color: #fff; font: 700 4cqw/1.3 Inter, var(--hi); text-transform: uppercase; letter-spacing: 0.12em; animation: fadeUp 0.3s var(--t) both; }
+  .t-pin .ldot { flex: none; width: 1.8cqw; height: 1.8cqw; border-radius: 50%; background: #ff4d4d; box-shadow: 0 0 0 0.8cqw rgba(255,77,77,0.3); }
+  .t-pin .lp .w { animation: pop 0.15s var(--t) both; }
+  .t-pin .map { position: relative; width: 86cqw; height: 40cqw; margin: 9cqw 0 2cqw; }
+  .t-pin .route { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; animation: reveal var(--d) linear var(--t) both; }
+  @keyframes reveal { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(-20% -20% -20% -20%); } }
+  .t-pin .route path { fill: none; stroke: #fff; stroke-width: 0.8cqw; stroke-dasharray: 1.6cqw 1.6cqw; stroke-linecap: round; vector-effect: non-scaling-stroke; filter: drop-shadow(0 0.3cqw 0.6cqw rgba(0,0,0,0.4)); }
+  .t-pin .pin { position: absolute; left: calc(40% - 4.5cqw); top: calc(40% - 10.9cqw); width: 9cqw; height: 9cqw; border-radius: 50% 50% 50% 0; background: #ff4d4d; transform: rotate(-45deg); box-shadow: -0.6cqw 0.6cqw 1.4cqw rgba(0,0,0,0.3); animation: pinDrop 0.7s linear var(--t) both; }
+  .t-pin .pin::after { content: ""; position: absolute; inset: 2.8cqw; border-radius: 50%; background: #fff; }
+  @keyframes pinDrop {
+    0% { opacity: 0; transform: translateY(-30cqw) rotate(-45deg); animation-timing-function: cubic-bezier(.5,0,1,.5); }
+    50% { opacity: 1; transform: translateY(0) rotate(-45deg); animation-timing-function: cubic-bezier(0,.5,.5,1); }
+    70% { transform: translateY(-4cqw) rotate(-45deg); animation-timing-function: cubic-bezier(.5,0,1,.5); }
+    85% { transform: translateY(0) rotate(-45deg); }
+    100% { transform: rotate(-45deg); }
+  }
+  .t-pin .pshadow { position: absolute; left: calc(40% - 3.5cqw); top: calc(40% - 1cqw); width: 7cqw; height: 2cqw; border-radius: 50%; background: rgba(0,0,0,0.45); filter: blur(0.4cqw); animation: shadowIn 0.7s ease-out var(--t) both; }
+  @keyframes shadowIn { from { opacity: 0; transform: scale(0.2); } 50% { opacity: 1; transform: scale(1.1); } }
+  .t-pin .pcard { position: absolute; left: calc(40% + 4.4cqw); top: calc(40% - 19cqw); padding: 1.6cqw 3cqw; border-radius: 2.4cqw; background: #fff; color: #14161c; font: 800 9cqw/1.1 Poppins, var(--hi); white-space: nowrap; box-shadow: 0 1.6cqw 3cqw rgba(0,0,0,0.35); transform-origin: 0 100%; animation: cardIn 0.45s cubic-bezier(.3,1.5,.5,1) var(--t) both; }
+  .t-pin .pct { display: inline-block; }
+  @keyframes cardIn { from { opacity: 0; transform: scale(0.3) rotate(-6deg); } }
+  .t-pin .tail { font: 600 5.2cqw/1.3 Inter, var(--hi); color: #fff; text-shadow: 0 0.3cqw 1.6cqw rgba(0,0,0,0.55); }
+  .t-pin .tail .w { animation: fadeUp 0.3s ease-out var(--t) both; }
+
+  /* 34 Pulse Line */
+  .t-pulse .comp { top: 58%; }
+  .t-pulse .lead { font: 700 4.6cqw/1.4 Inter, var(--hi); text-transform: uppercase; letter-spacing: 0.16em; color: #ffd1da; }
+  .t-pulse .lead .w, .t-pulse .tail .w { animation: fadeUp 0.3s ease-out var(--t) both; }
+  .t-pulse .pk { margin-top: 2cqw; font: 600 18cqw/0.95 Teko, var(--hi); text-transform: uppercase; color: #fff; text-shadow: 0 0 3cqw rgba(255,45,85,0.6); }
+  .t-pulse .pkt { display: inline-block; white-space: nowrap; animation: pop 0.2s var(--t) both, beat 1s ease-out var(--t) infinite; }
+  @keyframes beat { 0% { transform: scale(1); } 12% { transform: scale(1.14); } 26% { transform: scale(1); } 40% { transform: scale(1.07); } 60%, 100% { transform: scale(1); } }
+  .t-pulse .ecg { flex: none; width: 100cqw; height: 16cqw; }
+  .t-pulse .ecg svg { width: 100%; height: 100%; overflow: visible; }
+  .t-pulse .ecg path { fill: none; stroke: #ff2d55; stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; filter: drop-shadow(0 0 1.2cqw #ff2d55); stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw var(--d) linear both; }
+  .t-pulse .tail { font: 600 5.2cqw/1.3 Inter, var(--hi); color: #fff; }
+
+  /* 35 Assemble */
+  .t-assemble .comp { top: 58%; }
+  .t-assemble .lead, .t-assemble .tail { font: 700 5.4cqw/1.35 Inter, var(--hi); color: #fff; text-shadow: 0 0.3cqw 1.6cqw rgba(0,0,0,0.55); }
+  .t-assemble .lead .w, .t-assemble .tail .w { animation: gather 0.7s cubic-bezier(.2,.9,.2,1) var(--t) both; }
+  @keyframes gather { from { opacity: 0; transform: translate(var(--dx), var(--dy)) rotate(var(--dr)) scale(0.5); filter: blur(4px); } }
+  .t-assemble .ak2 { display: flex; margin: 3cqw 0; font: 800 13cqw/1.08 Unbounded, var(--hi); text-transform: uppercase; white-space: nowrap; color: #fff; }
+  .t-assemble .al { display: inline-block; animation: gather 0.9s cubic-bezier(.2,.9,.2,1) var(--t) both; }
+  .t-assemble .al:last-child { color: #3df2ff; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .shot { animation: none; }
+  }
+</style>
+</head>
+<body>
+<header class="top wrap">
+  <h1>Kinetic caption lab, set 2</h1>
+  <p class="lede">Twenty-five more motion-designed caption templates, numbered 11 to 35 so they continue from the first set. Like the first ten, each one is built from the caption's important word, so it works on auto-generated captions too. Tap a phone to replay it.</p>
+  <div class="roles">
+    <span class="role"><b>Line 1</b>words before the important word</span>
+    <span class="role"><b>Line 2</b>the important word, as the hero</span>
+    <span class="role"><b>Line 3</b>words after it</span>
+  </div>
+</header>
+
+<div class="toolbar">
+  <div class="wrap">
+    <div class="seg" role="group" aria-label="Sample language">
+      <button type="button" id="lang-en" data-lang="en" aria-pressed="true">English</button>
+      <button type="button" id="lang-hi" data-lang="hi" aria-pressed="false">हिंदी</button>
+    </div>
+    <div class="seg" role="group" aria-label="Playback speed">
+      <button type="button" id="speed-slow" data-speed="0.5" aria-pressed="false">0.5×</button>
+      <button type="button" id="speed-normal" data-speed="1" aria-pressed="true">1×</button>
+    </div>
+    <button type="button" class="btn" id="play">Pause</button>
+    <button type="button" class="btn" id="restart">Restart all</button>
+    <span class="hint">Each phone loops two captions</span>
+  </div>
+</div>
+
+<main class="wrap grid" id="grid"></main>
+
+<script>
+const START_NUM = 11
+const WORD_MS = 300
+const KEY_EXTRA = 380
+const HOLD_MS = 1500
+const EXIT_MS = 440
+const state = { lang: 'en', speed: 1, playing: true }
+let uid = 0
+let held = []
+
+const $ = (tag, cls, text) => {
+  const e = document.createElement(tag)
+  if (cls) e.className = cls
+  if (text != null) e.textContent = text
+  return e
+}
+const at = (e, t) => { e.style.setProperty('--t', Math.max(0, Math.round(t)) + 'ms'); return e }
+
+function graphemes(s) {
+  try { return [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(s)].map((x) => x.segment) }
+  catch { return [...s] }
+}
+
+// Repeatable pseudo-random numbers, so a caption looks the same every loop.
+function rng(seed) {
+  let s = 2166136261
+  for (const ch of seed) s = Math.imul(s ^ ch.codePointAt(0), 16777619) >>> 0
+  return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296 }
+}
+
+// Split a caption into lead / key / tail using the important word, with spoken word times.
+function plan(text, keyExtra) {
+  const words = text.split(/\s+/).filter(Boolean).map((raw) => ({ text: raw.replace(/^\*/, ''), imp: raw.startsWith('*') }))
+  let k = words.findIndex((w) => w.imp)
+  if (k < 0) k = Math.floor(words.length / 2)
+  const times = words.map((_, i) => i * WORD_MS + (i > k ? keyExtra : 0))
+  const timed = words.map((w, i) => ({ ...w, t: times[i] }))
+  return { words: timed, k, lead: timed.slice(0, k), key: timed[k], tail: timed.slice(k + 1), end: times[times.length - 1] + HOLD_MS }
+}
+
+function addWords(box, list) {
+  list.forEach((w, i) => {
+    box.append(at($('span', 'w', w.text), w.t))
+    if (i < list.length - 1) box.append(document.createTextNode(' '))
+  })
+  return box
+}
+
+function line(cls, list) {
+  const d = $('div', cls)
+  addWords(d, list)
+  if (list.length) at(d, list[0].t)
+  else d.hidden = true
+  return d
+}
+
+// One span per letter. Devanagari letters join along a headline, so Hindi keeps the word whole where asked.
+function letters(box, text, t0, step, cls, wholeForHindi) {
+  const parts = wholeForHindi && state.lang === 'hi' ? [text] : graphemes(text)
+  return parts.map((ch, i) => {
+    const s = at($('span', cls, ch), t0 + i * step)
+    s.style.setProperty('--i', i)
+    box.append(s)
+    return s
+  })
+}
+
+// Shrink a single-line hero so it never runs past the frame.
+function fit(sizeEl, measureEl, maxCqw, frameW) {
+  const unit = frameW / 100
+  const max = maxCqw * unit
+  const w = measureEl.scrollWidth
+  if (w > max + 1) {
+    const cur = parseFloat(getComputedStyle(sizeEl).fontSize)
+    sizeEl.style.fontSize = (cur * max / w) / unit + 'cqw'
+  }
+}
+
+const STAR = (() => {
+  const pts = []
+  const n = 14
+  for (let i = 0; i < n * 2; i++) {
+    const a = Math.PI * i / n - Math.PI / 2
+    const r = i % 2 ? 34 : 50
+    pts.push(`${(50 + r * Math.cos(a)).toFixed(1)}% ${(50 + r * Math.sin(a)).toFixed(1)}%`)
+  }
+  return `polygon(${pts.join(',')})`
+})()
+document.documentElement.style.setProperty('--star', STAR)
+
+const TEMPLATES = [
+  {
+    name: 'Breaking Ticker', best: 'News, finance, updates', cls: 't-ticker',
+    scene: 'linear-gradient(170deg, #2a3442, #0d1117)', skin: '#b98a6c', shirt: '#1f2a3a',
+    recipe: [['Line 1', 'Wipes in on a dark news band behind a blinking red LIVE chip'], ['Line 2', 'Important word rises inside a white headline box'], ['Line 3', 'Scrolls past as a yellow ticker crawl along the bottom']],
+    en: ['Petrol prices drop by *₹5 from midnight tonight', 'Markets open higher as *Sensex jumps 800 points'],
+    hi: ['पेट्रोल के दाम आज रात से *₹5 कम', 'बाज़ार खुला तेज़ी के साथ *सेंसेक्स 800 अंक ऊपर'],
+    build(c, p, x) {
+      const band = $('div', 'band')
+      band.append($('span', 'live', state.lang === 'hi' ? 'लाइव' : 'LIVE'), addWords($('span', 'lw'), p.lead))
+      at(band, p.lead.length ? p.lead[0].t : 0)
+      const kb = at($('div', 'kbox', p.key.text), p.key.t)
+      c.append(band, kb)
+      if (p.tail.length) {
+        const crawl = at($('div', 'crawl'), p.tail[0].t)
+        const track = at($('div', 'track'), p.tail[0].t)
+        track.textContent = (p.tail.map((w) => w.text).join(' ') + '   ●   ').repeat(6)
+        crawl.append(track)
+        c.append(crawl)
+      }
+      x.fit(kb, kb, 86)
+    },
+  },
+  {
+    name: 'Neon Sign', best: 'Cafes, food, nightlife, music', cls: 't-neon',
+    scene: 'radial-gradient(90% 60% at 50% 30%, #2a1630, #0b070d 70%)', skin: '#a07462', shirt: '#1c1020',
+    recipe: [['Line 1', 'Blue neon script that flickers on word by word'], ['Line 2', 'An unlit pink neon sign hangs there until the word is spoken, then buzzes to life'], ['Line 3', 'Plain caption with a soft neon spill']],
+    en: ['Open till late every night *chai and stories', 'This tiny cafe makes the best *momos in town'],
+    hi: ['हर रात देर तक खुला *चाय और बातें', 'यह छोटा कैफ़े बनाता है शहर के सबसे अच्छे *मोमोज़'],
+    build(c, p, x) {
+      const k = at($('div', 'sign', p.key.text), p.key.t)
+      c.append(line('lead', p.lead), k, line('tail', p.tail))
+      x.fit(k, k, 84)
+    },
+  },
+  {
+    name: 'Liquid Fill', best: 'Fitness, drinks, goals, progress', cls: 't-liquid',
+    scene: 'linear-gradient(170deg, #0f3a4a, #06141c)', skin: '#b4836a', shirt: '#123044',
+    recipe: [['Line 1', 'Plain caption'], ['Line 2', 'Important word starts as an empty outline and fills with sloshing water'], ['Line 3', 'Plain caption in pale blue']],
+    en: ['Drink this before your workout *hydrate first always', 'Day thirty of my challenge *90% done keep going'],
+    hi: ['वर्कआउट से पहले यह पियो *पानी सबसे ज़रूरी', 'चैलेंज का तीसवाँ दिन *90% पूरा चलते रहो'],
+    build(c, p, x) {
+      const k = at($('div', 'liq'), p.key.t)
+      const base = $('span', 'base', p.key.text)
+      const fill = $('span', 'fillc', p.key.text)
+      fill.setAttribute('aria-hidden', 'true')
+      k.append(base, fill)
+      c.append(line('lead', p.lead), k, line('tail', p.tail))
+      x.fit(k, base, 86)
+      const start = p.key.t
+      return {
+        update(lt) {
+          if (lt < start) return
+          const prog = Math.min(1, (lt - start) / 1600)
+          const e = 1 - Math.pow(1 - prog, 3)
+          const level = 100 - e * 96
+          const amp = 6 * (1 - e * 0.5)
+          const ph = lt / 260
+          const pts = []
+          for (let i = 0; i <= 16; i++) pts.push(`${(i / 16 * 100).toFixed(2)}% ${(level + amp * Math.sin(ph + i * 0.75)).toFixed(2)}%`)
+          pts.push('100% 100%', '0% 100%')
+          fill.style.clipPath = `polygon(${pts.join(',')})`
+        },
+      }
+    },
+  },
+  {
+    name: 'Word Slot', best: 'Giveaways, reveals, quizzes', cls: 't-slot',
+    scene: 'radial-gradient(90% 70% at 50% 30%, #4a1d1d, #120606 70%)', skin: '#c08f6f', shirt: '#2b1414',
+    recipe: [['Line 1', 'Plain caption while the reel spins'], ['Line 2', 'A slot-machine reel of the caption\'s own words spins and lands on the important word, with a flash'], ['Line 3', 'Plain caption']],
+    en: ['And the winner of the giveaway is *Priya congratulations', "Guess the secret ingredient it's *jaggery not sugar"],
+    hi: ['और गिवअवे की विजेता है *प्रिया बधाई हो', 'सीक्रेट चीज़ है *गुड़ चीनी नहीं'],
+    keyExtra: 700,
+    build(c, p, x) {
+      const win = at($('div', 'win'), p.key.t)
+      const reel = $('div', 'reel')
+      const others = p.words.filter((_, i) => i !== p.k).map((w) => w.text)
+      const r = rng(p.key.text)
+      const items = []
+      for (let i = 0; i < 14; i++) items.push(others[Math.floor(r() * others.length)] || p.key.text)
+      items.push(p.key.text)
+      items.forEach((t) => reel.append($('div', 'it', t)))
+      win.append(reel)
+      const s0 = p.lead.length ? p.lead[0].t : 0
+      reel.style.setProperty('--n', items.length - 1)
+      reel.style.animationDelay = s0 + 'ms'
+      reel.style.animationDuration = (p.key.t - s0 + 600) + 'ms'
+      c.append(line('lead', p.lead), win, line('tail', p.tail))
+      x.fit(win, reel.lastChild, 80)
+    },
+  },
+  {
+    name: 'Cover Story', best: 'Fashion, beauty, profiles', cls: 't-cover',
+    scene: 'linear-gradient(180deg, #ecdccc, #c9a48d)', skin: '#c99a7a', shirt: '#efe6dc',
+    recipe: [['Kicker', 'Small tracked caps across the top, like a magazine strapline'], ['Mast', 'Important word becomes a giant red masthead that sits behind the speaker\'s head'], ['Cover', 'Rest of the sentence set as an italic cover line, with an issue number']],
+    en: ['This season is all about *bold colour and soft tailoring', 'Meet the designer behind *Mumbai\'s quietest label'],
+    hi: ['इस सीज़न का ट्रेंड *रंग और सादगी', 'मिलिए उस डिज़ाइनर से जिसने बनाया *मुंबई का खास लेबल'],
+    build(c, p, x) {
+      const m = at($('div', 'mast'), p.key.t)
+      const mt = $('span', 'mt', p.key.text)
+      m.append(mt)
+      c.append(line('kicker', p.lead), m, $('div', 'fg'), line('cl', p.tail), $('div', 'iss', 'No. ' + String((x.pi % 9) + 1).padStart(2, '0')))
+      x.fit(m, mt, 94)
+    },
+  },
+  {
+    name: 'Sticker Pop', best: 'Lifestyle, pets, kids, fun brands', cls: 't-sticker',
+    scene: 'linear-gradient(165deg, #8fd3ff, #5b8def)', skin: '#d4a587', shirt: '#ff8fab',
+    recipe: [['Line 1', 'Each word is a die-cut sticker that slaps on at a random tilt'], ['Line 2', 'Important word is the big yellow sticker'], ['Line 3', 'More stickers, word by word']],
+    en: ['Weekend plans are sorted *pizza and movies', 'My dog learned a new *trick today watch'],
+    hi: ['वीकेंड का प्लान तय *पिज़्ज़ा और मूवी', 'मेरे डॉगी ने सीखी नई *ट्रिक देखो'],
+    build(c, p, x) {
+      const r = rng(p.words.map((w) => w.text).join(' '))
+      const pal = ['#ff5d8f', '#4cc9f0', '#7ae582', '#ffbe0b', '#b388ff', '#ff8f5a']
+      const mk = (cls, list) => {
+        const d = $('div', cls)
+        list.forEach((w) => {
+          const s = at($('span', 'st', w.text), w.t)
+          s.style.setProperty('--r', (r() * 16 - 8).toFixed(1) + 'deg')
+          s.style.setProperty('--c', pal[Math.floor(r() * pal.length)])
+          d.append(s)
+        })
+        if (!list.length) d.hidden = true
+        return d
+      }
+      const k = mk('kline', [p.key])
+      k.firstChild.classList.add('big')
+      c.append(mk('sl', p.lead), k, mk('sl', p.tail))
+      x.fit(k.firstChild, k.firstChild, 82)
+    },
+  },
+  {
+    name: 'Comic Burst', best: 'Comedy, reactions, gaming', cls: 't-comic',
+    scene: 'linear-gradient(160deg, #3ec5ff, #2a6fdb)', skin: '#c48c6c', shirt: '#ffcf3f',
+    recipe: [['Line 1', 'A yellow comic caption box that snaps in'], ['Line 2', 'Important word explodes on a red halftone starburst'], ['Line 3', 'Rest in a comic speech bubble']],
+    en: ['Then out of nowhere my brother goes *BOOM surprise', 'I pressed the wrong button and *crash everything froze'],
+    hi: ['तभी अचानक भाई चिल्लाया *धड़ाम सरप्राइज़', 'गलत बटन दबाया और *धड़ाम सब रुक गया'],
+    build(c, p, x) {
+      const b = at($('div', 'burst'), p.key.t)
+      const bt = $('span', null, p.key.text)
+      b.append(bt)
+      c.append(line('cbox', p.lead), b, line('speech', p.tail))
+      x.fit(b, b, 70)
+    },
+  },
+  {
+    name: 'Gliding Pill', best: 'Talking-head tips, reels, coaching', cls: 't-glide',
+    scene: 'radial-gradient(110% 80% at 30% 20%, #3b4a6b, #141824)', skin: '#c99a7a', shirt: '#1d2230',
+    recipe: [['All', 'The whole caption is on screen; upcoming words wait dimmed'], ['Pill', 'One violet pill glides smoothly from word to word as they are spoken'], ['Key', 'On the important word the pill turns orange and the word grows and tilts']],
+    en: ['Here are three habits that will *change your mornings', 'Stop saying sorry and say *thank you instead'],
+    hi: ['ये तीन आदतें आपकी सुबह *बदल देंगी', 'सॉरी कहना बंद करो *शुक्रिया कहो'],
+    build(c, p) {
+      const box = $('div', 'gl')
+      const pill = $('span', 'pill')
+      box.append(pill)
+      const spans = p.words.map((w, i) => {
+        const s = at($('span', 'w', w.text), w.t)
+        if (i === p.k) s.classList.add('key')
+        box.append(s)
+        if (i < p.words.length - 1) box.append(document.createTextNode(' '))
+        return s
+      })
+      c.append(box)
+      let cur = -1
+      return {
+        update(lt) {
+          let idx = -1
+          p.words.forEach((w, i) => { if (lt >= w.t) idx = i })
+          if (idx === cur || idx < 0) return
+          const first = cur < 0
+          cur = idx
+          spans.forEach((s, i) => { s.classList.toggle('done', i < idx); s.classList.toggle('now', i === idx) })
+          const s = spans[idx]
+          const ms = Math.round(220 / state.speed)
+          const ease = 'cubic-bezier(.3,1.3,.5,1)'
+          pill.style.transition = first ? 'opacity 120ms' : `left ${ms}ms ${ease}, top ${ms}ms ${ease}, width ${ms}ms ${ease}, height ${ms}ms ${ease}, background-color ${ms}ms`
+          const padX = s.offsetHeight * 0.18
+          const padY = s.offsetHeight * 0.02
+          pill.style.left = (s.offsetLeft - padX) + 'px'
+          pill.style.top = (s.offsetTop - padY) + 'px'
+          pill.style.width = (s.offsetWidth + padX * 2) + 'px'
+          pill.style.height = (s.offsetHeight + padY * 2) + 'px'
+          pill.style.opacity = '1'
+          pill.classList.toggle('hot', idx === p.k)
+        },
+      }
+    },
+  },
+  {
+    name: 'Z-Tunnel', best: 'Trailers, launches, hype intros', cls: 't-zoom',
+    scene: 'radial-gradient(90% 70% at 50% 40%, #1d2b5a, #05070f 70%)', skin: '#9a7462', shirt: '#0f1430',
+    recipe: [['Line 1', 'Each word flies forward out of deep space and settles'], ['Line 2', 'Important word blasts in past the camera with speed lines'], ['Line 3', 'Words drift in from depth']],
+    en: ['This summer one story changes *everything forever', 'Coming to your city this *December be ready'],
+    hi: ['इस गर्मी एक कहानी बदल देगी *सबकुछ हमेशा के लिए', 'आपके शहर में आ रहे हैं इस *दिसंबर तैयार रहो'],
+    build(c, p, x) {
+      const k = at($('div', 'zk'), p.key.t)
+      const zt = $('span', 'zt', p.key.text)
+      k.append(zt)
+      c.append(line('lead', p.lead), k, line('tail', p.tail))
+      x.stage.prepend(at($('div', 'lines'), p.key.t))
+      x.fit(zt, zt, 84)
+    },
+  },
+  {
+    name: 'Ransom Note', best: 'True crime, mystery, storytime', cls: 't-ransom',
+    scene: 'linear-gradient(170deg, #2b2f36, #0d0f13)', skin: '#a8765a', shirt: '#1a1d22',
+    recipe: [['Line 1', 'Typewriter text'], ['Line 2', 'Important word is pasted together from mismatched magazine cut-out letters, dropped in one at a time'], ['Line 3', 'Typewriter text']],
+    en: ['Nobody in the house heard *anything that night', 'The last message she sent said *RUN now'],
+    hi: ['उस रात घर में किसी ने *कुछ नहीं सुना', 'उसका आखिरी मैसेज था *भागो अभी'],
+    build(c, p, x) {
+      const k = at($('div', 'rk'), p.key.t)
+      const r = rng(p.key.text + 'ransom')
+      const fonts = ['Anton', "'Abril Fatface'", "'Special Elite'", 'Bangers', 'Rubik', "'Playfair Display'", "'Space Mono'", 'Oswald']
+      const looks = [['#f4f1ea', '#111'], ['#111', '#f4f1ea'], ['#e23b2e', '#fff'], ['#ffd23f', '#111'], ['#e9e2cf', '#7a1d12'], ['#fff', '#1f3a93']]
+      graphemes(p.key.text).forEach((ch, i) => {
+        const s = at($('span', 'rl', ch), p.key.t + i * 90)
+        const lk = looks[Math.floor(r() * looks.length)]
+        s.style.background = lk[0]
+        s.style.color = lk[1]
+        s.style.fontFamily = fonts[Math.floor(r() * fonts.length)] + ', var(--hi)'
+        s.style.setProperty('--r', (r() * 20 - 10).toFixed(1) + 'deg')
+        s.style.setProperty('--s', (0.85 + r() * 0.35).toFixed(2))
+        k.append(s)
+      })
+      c.append(line('lead', p.lead), k, line('tail', p.tail))
+      x.fit(k, k, 88)
+    },
+  },
+  {
+    name: 'Spotlight', best: 'Awards, reveals, announcements', cls: 't-spot',
+    scene: 'radial-gradient(80% 60% at 50% 40%, #5a4636, #120d0a 75%)', skin: '#b98566', shirt: '#2a1f18',
+    recipe: [['Line 1', 'The frame goes dark and a small spotlight follows each word'], ['Line 2', 'Spotlight opens up on the important word in glowing gold italics'], ['Line 3', 'The light widens to the whole frame for the rest']],
+    en: ['And the award for best newcomer goes to *Aarav Mehta', 'After two years of work we finally *launched today'],
+    hi: ['और बेस्ट न्यूकमर का अवॉर्ड जाता है *आरव मेहता को', 'दो साल की मेहनत के बाद आज हमने *लॉन्च किया'],
+    build(c, p, x) {
+      const dim = $('div', 'dim')
+      x.stage.prepend(dim)
+      const l1 = line('lead', p.lead)
+      const k = at($('div', 'sk', p.key.text), p.key.t)
+      const l3 = line('tail', p.tail)
+      c.append(l1, k, l3)
+      x.fit(k, k, 86)
+      const spans = [...l1.querySelectorAll('.w'), k, ...l3.querySelectorAll('.w')]
+      let cur = -1
+      return {
+        update(lt) {
+          let idx = -1
+          p.words.forEach((w, i) => { if (lt >= w.t - 60) idx = i })
+          if (idx === cur || idx < 0) return
+          cur = idx
+          const a = spans[idx].getBoundingClientRect()
+          const b = x.frame.getBoundingClientRect()
+          const rad = idx === p.k ? b.width * 0.46 : idx > p.k ? b.width * 1.5 : b.width * 0.17
+          dim.style.setProperty('--sx', ((a.left + a.width / 2 - b.left) / b.width * 100).toFixed(2) + '%')
+          dim.style.setProperty('--sy', ((a.top + a.height / 2 - b.top) / b.height * 100).toFixed(2) + '%')
+          dim.style.setProperty('--sr', rad.toFixed(1) + 'px')
+        },
+      }
+    },
+  },
+  {
+    name: 'Bounce Drop', best: 'Kids, food, pets, fun', cls: 't-bounce',
+    scene: 'linear-gradient(170deg, #ffb86b, #ff6f91)', skin: '#c48c6c', shirt: '#4d96ff',
+    recipe: [['Line 1', 'Words drop from above and land with squash and stretch'], ['Line 2', 'Important word drops letter by letter in candy colours, then keeps doing a little wave'], ['Line 3', 'Words bounce in']],
+    en: ['Mini pancakes for breakfast *yummy and quick', 'My cat thinks she is a *tiger every morning'],
+    hi: ['नाश्ते में छोटे पैनकेक *मज़ेदार और जल्दी', 'मेरी बिल्ली हर सुबह खुद को *शेर समझती है'],
+    build(c, p, x) {
+      const k = at($('div', 'bk'), p.key.t)
+      letters(k, p.key.text, p.key.t, 70, 'bl', true)
+      c.append(line('lead', p.lead), k, line('tail', p.tail))
+      x.fit(k, k, 86)
+    },
+  },
+  {
+    name: 'Cross Bands', best: 'Sales, launches, festivals, events', cls: 't-bands',
+    scene: 'linear-gradient(165deg, #3a1e5c, #140a24)', skin: '#b4836a', shirt: '#24123a',
+    recipe: [['Band 1', 'Lead-in loops on a black band that slides in from the right'], ['Band 2', 'Important word loops on an orange band that crosses it the other way'], ['Line 3', 'Rest in a black pill underneath']],
+    en: ["The biggest festive drop starts *Friday don't miss it", 'Flat fifty percent off this *weekend only'],
+    hi: ['सबसे बड़ी फेस्टिव सेल शुरू *शुक्रवार से', 'पूरे पचास प्रतिशत छूट सिर्फ *वीकेंड पर'],
+    build(c, p) {
+      const band = (cls, text, t, dir) => {
+        const b = at($('div', 'band ' + cls), t)
+        const tr = $('div', 'trk', (text + '  ✱  ').repeat(8))
+        tr.style.animationDirection = dir
+        b.append(tr)
+        return b
+      }
+      const bx = $('div', 'bx')
+      if (p.lead.length) bx.append(band('b2', p.lead.map((w) => w.text).join(' '), p.lead[0].t, 'reverse'))
+      bx.append(band('b1', p.key.text, p.key.t, 'normal'))
+      c.append(bx, line('tail', p.tail))
+    },
+  },
+  {
+    name: 'Broadcast Bars', best: 'Interviews, corporate, LinkedIn', cls: 't-bars',
+    scene: 'linear-gradient(170deg, #c8d3df, #7d8ea3)', skin: '#c99a7a', shirt: '#22314d',
+    recipe: [['Bar 1', 'Teal bar wipes in with the lead-in, after a vertical accent grows'], ['Bar 2', 'White bar with the important word in bold condensed caps'], ['Bar 3', 'Navy bar with the rest; the whole lower third wipes off at the end']],
+    en: ['Our founder explains why the team chose *profitability over hype', 'Speaking today on hiring and *culture at scale'],
+    hi: ['हमारे फाउंडर बताते हैं कि टीम ने क्यों चुना *मुनाफ़ा दिखावा नहीं', 'आज बात होगी भर्ती और *कल्चर पर'],
+    build(c, p, x) {
+      const lt3 = $('div', 'lt')
+      const bar = (cls, content, t) => {
+        const b = at($('div', 'bar ' + cls), t)
+        const s = $('span', 'bt')
+        if (Array.isArray(content)) addWords(s, content)
+        else s.textContent = content
+        b.append(s)
+        return b
+      }
+      if (p.lead.length) lt3.append(bar('b1', p.lead, p.lead[0].t))
+      const kb = bar('b2', p.key.text, p.key.t)
+      lt3.append(kb)
+      if (p.tail.length) lt3.append(bar('b3', p.tail, p.tail[0].t))
+      c.append(lt3)
+      x.fit(kb, kb.firstChild, 80)
+    },
+  },
+  {
+    name: 'Scroll Focus', best: 'Podcasts, lyrics, voiceovers', cls: 't-scroll',
+    scene: 'radial-gradient(90% 70% at 50% 30%, #2e2a3f, #0c0b12 70%)', skin: '#a8765a', shirt: '#211d2e',
+    recipe: [['Line 1', 'A teleprompter column; the current line is sharp, the others are dim and soft'], ['Line 2', 'The column glides up to the important word in a warm serif'], ['Line 3', 'Glides on to the rest; words light up as they are spoken']],
+    en: ['You were never behind you were *building quietly', 'Every song I write ends up *about you somehow'],
+    hi: ['तुम पीछे नहीं थे तुम चुपचाप *बना रहे थे', 'मेरा हर गाना किसी तरह *तुम पर खत्म होता है'],
+    build(c, p, x) {
+      const vp = $('div', 'vp')
+      const col = $('div', 'col')
+      vp.append(col)
+      const key = at($('div', 'ln key'), p.key.t)
+      const kt = $('span', 'kt', p.key.text)
+      key.append(kt)
+      const L = [line('ln', p.lead), key, line('ln', p.tail)].filter((e) => !e.hidden)
+      L.forEach((e) => col.append(e))
+      c.append(vp)
+      x.fit(key, kt, 84)
+      const starts = L.map((e) => parseFloat(e.style.getPropertyValue('--t')))
+      let cur = -1
+      return {
+        update(lt) {
+          let idx = 0
+          starts.forEach((s, i) => { if (lt >= s - 150) idx = i })
+          if (idx === cur) return
+          const first = cur < 0
+          cur = idx
+          L.forEach((e, i) => e.classList.toggle('on', i === idx))
+          const e = L[idx]
+          col.style.transition = first ? 'none' : `transform ${Math.round(550 / state.speed)}ms cubic-bezier(.3,1,.4,1)`
+          col.style.transform = `translateY(${vp.clientHeight / 2 - (e.offsetTop + e.offsetHeight / 2)}px)`
+        },
+      }
+    },
+  },
+  {
+    name: 'Ink Signature', best: 'Weddings, beauty, personal brands', cls: 't-ink',
+    scene: 'linear-gradient(175deg, #d9b8a0, #8c5f53 60%, #3b2422)', skin: '#8e5f48', shirt: '#f3e6da',
+    recipe: [['Line 1', 'Small tracked caps in an engraved serif'], ['Line 2', 'Important word is written out in script by a glowing pen nib, then underlined with a gold swoosh'], ['Line 3', 'Small tracked caps']],
+    en: ['Two families one beautiful *promise forever', 'Handmade with love by *Meera since 2015'],
+    hi: ['दो परिवार एक खूबसूरत *वादा हमेशा के लिए', 'प्यार से हाथों से बनाया *मीरा ने 2015 से'],
+    build(c, p, x) {
+      const k = at($('div', 'ik'), p.key.t)
+      const kt = $('span', 'it2', p.key.text)
+      k.append(kt, $('span', 'nib'))
+      k.insertAdjacentHTML('beforeend', '<svg class="sw" viewBox="0 0 200 30" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M6 18 C 50 30, 120 4, 196 14"/></svg>')
+      c.append(line('lead', p.lead), k, line('tail', p.tail))
+      x.fit(kt, kt, 84)
+    },
+  },
+  {
+    name: 'Mirror Floor', best: 'Luxury products, cars, real estate', cls: 't-mirror',
+    scene: 'linear-gradient(180deg, #1c2330, #07090d)', skin: '#a8765a', shirt: '#151a24',
+    recipe: [['Line 1', 'Wide-spaced silver caps'], ['Line 2', 'A light line draws across like a showroom floor; the important word rises out of it in chrome with its reflection mirrored below'], ['Line 3', 'Wide-spaced silver caps']],
+    en: ['Introducing the all new *Aurora with silent drive', 'Sea facing three bedroom *penthouse in Bandra'],
+    hi: ['पेश है बिल्कुल नई *ऑरोरा साइलेंट ड्राइव के साथ', 'समुद्र के सामने तीन बेडरूम *पेंटहाउस बांद्रा में'],
+    build(c, p, x) {
+      const m = at($('div', 'mir'), p.key.t)
+      const up = $('div', 'up')
+      const kt = $('span', 'mk', p.key.text)
+      up.append(kt)
+      const dn = $('div', 'dn')
+      const rf = $('span', 'mk rf', p.key.text)
+      rf.setAttribute('aria-hidden', 'true')
+      dn.append(rf)
+      m.append(up, $('div', 'floor'), dn)
+      c.append(line('lead', p.lead), m, line('tail', p.tail))
+      x.fit(m, kt, 84)
+    },
+  },
+  {
+    name: 'Arcade Dialog', best: 'Gaming, kids, quizzes', cls: 't-arcade',
+    scene: 'linear-gradient(180deg, #3b2a7a, #1a1240)', skin: '#c08f6f', shirt: '#2b1a4a',
+    recipe: [['Line 1', 'Typed letter by letter into a pixel-art game dialog box'], ['Line 2', 'Important word pops above the box in chunky 8-bit type with a +100 coin'], ['Line 3', 'Typed into the box on the next line, with a blinking arrow']],
+    en: ['You found a hidden chest inside it *500 coins', 'Level five unlocked new boss *defeated easily'],
+    hi: ['तुम्हें छुपा खज़ाना मिला अंदर *500 सिक्के', 'लेवल पाँच खुला नया बॉस *हराया आसानी से'],
+    build(c, p, x) {
+      const k = at($('div', 'ak'), p.key.t)
+      const kt = $('span', 'akt', p.key.text)
+      k.append(kt, at($('span', 'coin', '+100'), p.key.t + 250))
+      const typeInto = (el, list) => list.forEach((w, i) => {
+        const g = graphemes(w.text)
+        g.forEach((ch, j) => el.append(at($('span', 'ch', ch), w.t + j * (WORD_MS * 0.7 / g.length))))
+        if (i < list.length - 1) el.append(at($('span', 'ch', ' '), w.t + WORD_MS * 0.8))
+      })
+      const box = $('div', 'dbox')
+      const l1 = $('div', 'dl')
+      typeInto(l1, p.lead)
+      const l2 = $('div', 'dl dl2')
+      typeInto(l2, p.tail)
+      if (!p.tail.length) l2.hidden = true
+      box.append(l1, l2, $('span', 'arrow', '▼'))
+      c.append(k, box)
+      x.fit(k, kt, 78)
+    },
+  },
+  {
+    name: 'Swing Tag', best: 'Shopping, deals, fashion drops', cls: 't-tag',
+    scene: 'linear-gradient(165deg, #2d2a4a, #141225)', skin: '#b98566', shirt: '#3a2d5c',
+    recipe: [['Line 1', 'Bold caps headline'], ['Line 2', 'Important word is printed on a price tag that drops on a string and swings to a stop'], ['Line 3', 'Plain caption']],
+    en: ['Festive collection now at *₹499 only today', 'Every kurta in the store *40% off till Sunday'],
+    hi: ['फेस्टिव कलेक्शन अब *₹499 सिर्फ आज', 'दुकान का हर कुर्ता *40% छूट रविवार तक'],
+    build(c, p, x) {
+      const hang = at($('div', 'hang'), p.key.t)
+      const tag = $('div', 'tag')
+      const tt = $('span', 'tt', p.key.text)
+      tag.append(tt)
+      hang.append(tag)
+      c.append(line('lead', p.lead), hang, line('tail', p.tail))
+      x.fit(tag, tt, 66)
+    },
+  },
+  {
+    name: 'Domino Flip', best: 'Explainers, lists, product updates', cls: 't-domino',
+    scene: 'linear-gradient(160deg, #16324f, #0a1626)', skin: '#b4836a', shirt: '#0f2238',
+    recipe: [['Line 1', 'Words stand up from lying flat, one after another'], ['Line 2', 'Important word stands up letter by letter like falling dominoes in reverse'], ['Line 3', 'Words stand up']],
+    en: ['Step one is simple just *focus on sleep', 'The new update brings *offline mode to everyone'],
+    hi: ['पहला कदम आसान है बस *नींद पर ध्यान', 'नए अपडेट में आया *ऑफलाइन मोड सबके लिए'],
+    build(c, p, x) {
+      const k = at($('div', 'dk'), p.key.t)
+      letters(k, p.key.text, p.key.t, 60, 'dl3', true)
+      c.append(line('lead', p.lead), k, line('tail', p.tail))
+      x.fit(k, k, 86)
+    },
+  },
+  {
+    name: 'Text Thread', best: 'Storytime, relationships, DMs', cls: 't-thread',
+    scene: 'linear-gradient(170deg, #ff9a8b, #ff6a88 55%, #a83279)', skin: '#c48c6c', shirt: '#3a2240',
+    recipe: [['Line 1', 'Typing dots, then an incoming grey message'], ['Line 2', 'Important word arrives as a big blue reply bubble'], ['Line 3', 'Rest as a follow-up bubble, then "Read 9:41"']],
+    en: ['Are you coming to the party *obviously what time', 'Did you eat my last samosa *maybe sorry'],
+    hi: ['पार्टी में आ रहे हो *बिल्कुल कितने बजे', 'मेरा आखिरी समोसा खाया *शायद सॉरी'],
+    build(c, p, x) {
+      const th = $('div', 'thread')
+      if (p.lead.length) {
+        const t0 = Math.max(0, p.lead[0].t - 700)
+        const inc = at($('div', 'msg in'), t0)
+        const dots = at($('span', 'dots'), t0)
+        dots.innerHTML = '<i></i><i></i><i></i>'
+        dots.style.setProperty('--end', p.lead[0].t + 'ms')
+        inc.append(dots, addWords($('span', 'txt'), p.lead))
+        th.append(inc)
+      }
+      const o1 = at($('div', 'msg out big', p.key.text), p.key.t)
+      th.append(o1)
+      if (p.tail.length) th.append(addWords(at($('div', 'msg out'), p.tail[0].t), p.tail))
+      const lastT = p.tail.length ? p.tail[p.tail.length - 1].t : p.key.t
+      th.append(at($('div', 'meta2', state.lang === 'hi' ? 'पढ़ लिया' : 'Read 9:41'), lastT + 500))
+      c.append(th)
+      x.fit(o1, o1, 72)
+    },
+  },
+  {
+    name: 'Letterbox', best: 'Short films, travel, cinematic vlogs', cls: 't-letterbox',
+    scene: 'linear-gradient(180deg, #e7a86a, #9c5a4b 50%, #2a1d2b)', skin: '#8e5f48', shirt: '#1d1418',
+    recipe: [['Top bar', 'Black cinema bars slide in; the lead-in sits in the top bar like a scene slug'], ['Centre', 'Important word comes into focus like a lens pull, in wide-spaced caps'], ['Bottom bar', 'Rest appears as a classic yellow film subtitle, over moving film grain']],
+    en: ['Three hundred kilometres from home I finally found *silence in the hills', 'The road ends here but the *story begins'],
+    hi: ['घर से तीन सौ किलोमीटर दूर मिली *शांति पहाड़ों में', 'सड़क यहाँ खत्म होती है पर *कहानी शुरू'],
+    build(c, p, x) {
+      const top = $('div', 'lb top')
+      const bot = $('div', 'lb bot')
+      if (x.pi === 0) { top.classList.add('anim'); bot.classList.add('anim') }
+      top.append(line('slug', p.lead))
+      bot.append(line('sub', p.tail))
+      x.stage.prepend($('div', 'grain'), top, bot)
+      const k = at($('div', 'lk'), p.key.t)
+      const kt = $('span', 'lkt', p.key.text)
+      k.append(kt)
+      c.append(k)
+      x.fit(k, kt, 88)
+    },
+  },
+  {
+    name: 'Pin Drop', best: 'Travel, food spots, real estate', cls: 't-pin',
+    scene: 'linear-gradient(165deg, #3a6b5a, #18332b)', skin: '#c08f6f', shirt: '#1d3a30',
+    recipe: [['Line 1', 'Location pill with a red dot'], ['Line 2', 'A dashed route draws across, a map pin drops and bounces, and the important word unfolds on a label card'], ['Line 3', 'Plain caption']],
+    en: ['Best street food in Old Delhi is at *Chandni Chowk go early', 'Our new home is finally in *Pune see you'],
+    hi: ['पुरानी दिल्ली का बेस्ट स्ट्रीट फूड *चांदनी चौक में', 'हमारा नया घर आखिरकार *पुणे में मिलते हैं'],
+    build(c, p, x) {
+      const lp = $('div', 'lp')
+      lp.append($('span', 'ldot'), addWords($('span', 'lpw'), p.lead))
+      if (p.lead.length) at(lp, p.lead[0].t)
+      else lp.hidden = true
+      const map = $('div', 'map')
+      map.insertAdjacentHTML('beforeend', '<svg class="route" viewBox="0 0 100 50" preserveAspectRatio="none" aria-hidden="true"><path d="M3 47 C 14 47, 12 30, 22 31 S 34 35, 40 20"/></svg>')
+      const route = map.querySelector('.route')
+      const s0 = p.lead.length ? p.lead[0].t : 0
+      at(route, s0)
+      route.style.setProperty('--d', Math.max(400, p.key.t - s0) + 'ms')
+      const card = at($('div', 'pcard'), p.key.t + 350)
+      const ct = $('span', 'pct', p.key.text)
+      card.append(ct)
+      map.append(at($('div', 'pshadow'), p.key.t), at($('div', 'pin'), p.key.t), card)
+      c.append(lp, map, line('tail', p.tail))
+      x.fit(card, ct, 40)
+    },
+  },
+  {
+    name: 'Pulse Line', best: 'Fitness, health, sports', cls: 't-pulse',
+    scene: 'radial-gradient(90% 70% at 50% 40%, #3a0d18, #0b0306 70%)', skin: '#a07462', shirt: '#200a10',
+    recipe: [['Line 1', 'Tracked caps'], ['Line 2', 'A heart-monitor line draws across the frame and spikes exactly as the important word lands; the word keeps beating'], ['Line 3', 'Plain caption under the line']],
+    en: ['Twenty minutes a day keeps your *heart young', 'The last rep is where the *change happens push'],
+    hi: ['रोज़ बीस मिनट रखते हैं आपका *दिल जवान', 'आखिरी रेप में ही होता है *बदलाव ज़ोर लगाओ'],
+    build(c, p, x) {
+      const k = at($('div', 'pk'), p.key.t)
+      const kt = $('span', 'pkt', p.key.text)
+      k.append(kt)
+      const ecg = $('div', 'ecg')
+      ecg.innerHTML = '<svg viewBox="0 0 200 40" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M0 20 L76 20 L82 18 L86 20 L90 20 L94 4 L99 36 L104 2 L109 30 L113 20 L124 20 L128 17 L132 20 L200 20"/></svg>'
+      ecg.style.setProperty('--d', Math.max(1400, p.key.t * 2) + 'ms')
+      c.append(line('lead', p.lead), k, ecg, line('tail', p.tail))
+      x.fit(k, kt, 80)
+    },
+  },
+  {
+    name: 'Assemble', best: 'Tech, product reveals, transitions', cls: 't-assemble',
+    scene: 'radial-gradient(90% 70% at 60% 30%, #173a4a, #05121a 70%)', skin: '#b4836a', shirt: '#0e2430',
+    recipe: [['Line 1', 'Words fly in from scattered positions and lock into place'], ['Line 2', 'Important word assembles from letters spinning in from all over the frame'], ['Line 3', 'Words fly in and lock']],
+    en: ['Everything you need now in *one app', 'We rebuilt the engine from *scratch for speed'],
+    hi: ['जो चाहिए अब सब *एक ऐप में', 'हमने इंजन बनाया शुरू से *नया तेज़ी के लिए'],
+    build(c, p, x) {
+      const r = rng(p.words.map((w) => w.text).join('|'))
+      const scatter = (el, amp) => {
+        el.style.setProperty('--dx', ((r() * 2 - 1) * amp).toFixed(1) + 'cqw')
+        el.style.setProperty('--dy', ((r() * 2 - 1) * amp * 0.8).toFixed(1) + 'cqw')
+        el.style.setProperty('--dr', ((r() * 2 - 1) * 160).toFixed(0) + 'deg')
+      }
+      const l1 = line('lead', p.lead)
+      l1.querySelectorAll('.w').forEach((w) => scatter(w, 14))
+      const k = at($('div', 'ak2'), p.key.t)
+      letters(k, p.key.text, p.key.t, 45, 'al', true).forEach((s) => scatter(s, 40))
+      const l3 = line('tail', p.tail)
+      l3.querySelectorAll('.w').forEach((w) => scatter(w, 14))
+      c.append(l1, k, l3)
+      x.fit(k, k, 86)
+    },
+  },
+]
+
+function setRate(root) {
+  for (const a of root.getAnimations({ subtree: true })) a.playbackRate = state.speed
+}
+
+class Player {
+  constructor(tpl, index) {
+    this.tpl = tpl
+    const card = $('article', 'card')
+    const frame = $('div', 'frame ' + tpl.cls)
+    frame.tabIndex = 0
+    frame.setAttribute('role', 'button')
+    frame.setAttribute('aria-label', `Replay ${tpl.name}`)
+    frame.style.setProperty('--scene', tpl.scene)
+    frame.style.setProperty('--skin', tpl.skin)
+    frame.style.setProperty('--shirt', tpl.shirt)
+    this.cam = $('div', 'cam')
+    this.cam.append($('div', 'shot'))
+    this.stage = $('div', 'stage')
+    this.cam.append(this.stage)
+    frame.append(this.cam)
+    const meta = $('div', 'meta')
+    const h2 = $('h2')
+    h2.append($('span', null, String(START_NUM + index)), document.createTextNode(tpl.name))
+    const ul = $('ul', 'recipe')
+    tpl.recipe.forEach(([role, text]) => {
+      const li = $('li')
+      li.append($('b', null, role), $('span', null, text))
+      ul.append(li)
+    })
+    meta.append(h2, $('div', 'best', tpl.best), ul)
+    card.append(frame, meta)
+    this.frame = frame
+    this.card = card
+    const replay = () => this.restart()
+    frame.addEventListener('click', replay)
+    frame.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); replay() } })
+  }
+
+  restart() { this.pi = 0; this.load() }
+
+  load() {
+    const list = this.tpl[state.lang]
+    const text = list[this.pi % list.length]
+    this.p = plan(text, this.tpl.keyExtra ?? KEY_EXTRA)
+    this.frame.classList.toggle('lang-hi', state.lang === 'hi')
+    this.stage.replaceChildren()
+    this.stage.classList.remove('exiting')
+    const comp = $('div', 'comp')
+    this.stage.append(comp)
+    const fw = this.frame.clientWidth || 300
+    const x = {
+      stage: this.stage,
+      frame: this.frame,
+      pi: this.pi,
+      fit: (a, b, max) => fit(a, b, max, fw),
+    }
+    this.res = this.tpl.build(comp, this.p, x) || {}
+    this.lt = 0
+    this.exiting = false
+    setRate(this.frame)
+    if (!state.playing) {
+      const running = this.frame.getAnimations({ subtree: true }).filter((a) => a.playState === 'running')
+      running.forEach((a) => a.pause())
+      held.push(...running)
+    }
+  }
+
+  tick(dt) {
+    this.lt += dt
+    this.res.update?.(this.lt)
+    if (!this.exiting && this.lt >= this.p.end) {
+      this.exiting = true
+      this.stage.classList.add('exiting')
+      this.stage.querySelector('.comp')?.classList.add('exit')
+      setRate(this.stage)
+    }
+    if (this.lt >= this.p.end + EXIT_MS) {
+      this.pi += 1
+      this.load()
+    }
+  }
+}
+
+const grid = document.getElementById('grid')
+const players = TEMPLATES.map((tpl, i) => {
+  const pl = new Player(tpl, i)
+  grid.append(pl.card)
+  return pl
+})
+
+const fontChecks = [
+  '400 20px "Abril Fatface"', '400 20px Anton', '400 20px "Archivo Black"', '400 20px Bangers', '700 20px Cinzel',
+  'italic 400 20px "DM Serif Display"', '400 20px "DM Serif Display"', '700 20px Fredoka', '500 20px Inter', '600 20px Inter',
+  '700 20px Inter', '800 20px Inter', '400 20px Marcellus', '700 20px Oswald', '400 20px Pacifico', '700 20px "Playfair Display"',
+  'italic 700 20px "Playfair Display"', '700 20px Poppins', '800 20px Poppins', '400 20px Righteous', '700 20px Rubik',
+  '400 20px Silkscreen', '700 20px Silkscreen', '700 20px "Space Mono"', '400 20px "Special Elite"', '600 20px Teko', '800 20px Unbounded',
+]
+const fontsReady = Promise.all([
+  ...fontChecks.map((f) => document.fonts.load(f).catch(() => null)),
+  document.fonts.load('800 20px Mukta', 'हिंदी').catch(() => null),
+  document.fonts.load('700 20px Mukta', 'हिंदी').catch(() => null),
+  document.fonts.load('500 20px Mukta', 'हिंदी').catch(() => null),
+])
+const timeout = new Promise((resolve) => setTimeout(resolve, 2500))
+
+Promise.race([fontsReady, timeout]).then(() => {
+  players.forEach((pl) => pl.restart())
+  let last = performance.now()
+  const frame = (now) => {
+    const dt = Math.min(100, now - last) * state.speed
+    last = now
+    if (state.playing) players.forEach((pl) => pl.tick(dt))
+    requestAnimationFrame(frame)
+  }
+  requestAnimationFrame(frame)
+})
+
+function bindSeg(attr, apply) {
+  const buttons = document.querySelectorAll(`[data-${attr}]`)
+  buttons.forEach((btn) => btn.addEventListener('click', () => {
+    buttons.forEach((b) => b.setAttribute('aria-pressed', String(b === btn)))
+    apply(btn.dataset[attr])
+  }))
+}
+bindSeg('lang', (lang) => { state.lang = lang; players.forEach((pl) => pl.restart()) })
+bindSeg('speed', (v) => {
+  state.speed = Number(v)
+  document.getAnimations().forEach((a) => { a.playbackRate = state.speed })
+})
+
+const playBtn = document.getElementById('play')
+playBtn.addEventListener('click', () => {
+  state.playing = !state.playing
+  if (state.playing) {
+    held.forEach((a) => { if (a.playState === 'paused') a.play() })
+    held = []
+  } else {
+    held = document.getAnimations().filter((a) => a.playState === 'running')
+    held.forEach((a) => a.pause())
+  }
+  playBtn.textContent = state.playing ? 'Pause' : 'Play'
+})
+document.getElementById('restart').addEventListener('click', () => players.forEach((pl) => pl.restart()))
+</script>
+</body>
+</html>
