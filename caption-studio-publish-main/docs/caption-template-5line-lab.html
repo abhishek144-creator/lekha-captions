@@ -1,0 +1,988 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lekha Five-Line Caption Packs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo:wght@500;700&family=Bangers&family=Bebas+Neue&family=Bodoni+Moda:wght@700&family=Cinzel:wght@700&family=Cormorant+Garamond:ital,wght@1,500&family=DM+Serif+Display:ital@0;1&family=Fredoka:wght@600;700&family=Inter:wght@500;600;700;800&family=Kalam:wght@700&family=League+Spartan:wght@800&family=Mukta:wght@500;600;700;800&family=Oswald:wght@600;700&family=Playfair+Display:ital,wght@0,700;1,700&family=Poppins:wght@600;700;800&family=Rozha+One&family=Rubik:wght@900&family=Space+Mono:wght@400;700&family=Special+Elite&family=Teko:wght@600&family=Unbounded:wght@800&display=swap" rel="stylesheet">
+<style>
+  /* Layout: a catalogue of 9:16 phone frames; each frame plays a five-line script where every line uses a different treatment, with the line list under it. */
+  :root {
+    --bg: #0d0f12;
+    --line: #262b33;
+    --ink-ui: #eceef1;
+    --muted: #8d95a3;
+    --amber: #f2b84b;
+    --ui: 'Archivo', system-ui, sans-serif;
+    --hi: 'Mukta', 'Noto Sans Devanagari', sans-serif;
+    --sh: 0 0.3cqw 1.6cqw rgba(0,0,0,0.55);
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink-ui); font: 15px/1.5 var(--ui); }
+  .wrap { max-width: 1280px; margin: 0 auto; padding-inline: 16px; }
+  header.top { padding-block: 36px 18px; }
+  h1 { margin: 0 0 8px; font: 700 30px/1.1 var(--ui); letter-spacing: -0.02em; text-wrap: balance; }
+  .lede { margin: 0; max-width: 70ch; color: var(--muted); }
+
+  .toolbar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 10; background: rgba(13, 15, 18, 0.92); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+  .toolbar .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding-block: 10px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+  .seg button, .btn { background: transparent; color: var(--muted); border: 0; padding: 7px 14px; font: 600 13px var(--ui); cursor: pointer; }
+  .seg button[aria-pressed="true"] { background: var(--ink-ui); color: var(--bg); }
+  .btn { border: 1px solid var(--line); border-radius: 999px; color: var(--ink-ui); }
+  .btn:hover { border-color: var(--muted); }
+  button:focus-visible, .frame:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+  .hint { color: var(--muted); font-size: 12.5px; margin-left: auto; }
+
+  .grid { display: grid; gap: 34px 22px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); padding-block: 26px 72px; }
+  .card { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .meta h2 { margin: 0; font: 700 18px/1.2 var(--ui); display: flex; gap: 8px; align-items: baseline; }
+  .meta h2 span { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .best { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .swatch { display: flex; gap: 6px; margin-top: 8px; }
+  .swatch i { width: 14px; height: 14px; border-radius: 50%; box-shadow: 0 0 0 1px rgba(255,255,255,0.15); }
+  .recipe { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 4px; }
+  .recipe li { display: grid; grid-template-columns: 22px 78px 1fr; gap: 6px; padding: 4px 6px; border-radius: 6px; font-size: 12.5px; line-height: 1.4; color: #aeb4bf; transition: background 0.2s, color 0.2s; }
+  .recipe li .n { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .recipe li b { color: var(--ink-ui); font-weight: 700; }
+  .recipe li.on { background: rgba(242,184,75,0.14); color: #e7e9ee; }
+  .recipe li.on .n, .recipe li.on b { color: var(--amber); }
+
+  /* ---------- the phone frame ---------- */
+  .frame { position: relative; width: 100%; max-width: 100%; aspect-ratio: 9 / 16; overflow: hidden; border-radius: 18px; container-type: inline-size; background: #000; isolation: isolate; cursor: pointer; box-shadow: 0 0 0 1px var(--line); }
+  .cam { position: absolute; inset: 0; }
+  .shot { position: absolute; inset: -5%; background: var(--scene); animation: drift 16s ease-in-out infinite alternate; }
+  .shot::before { content: ""; position: absolute; left: 50%; bottom: -4%; width: 76%; height: 60%; transform: translateX(-50%);
+    background: radial-gradient(circle at 50% 24%, var(--skin) 0 17%, transparent 17.6%), radial-gradient(ellipse 50% 46% at 50% 100%, var(--shirt) 0 99%, transparent 100%);
+    filter: blur(2px); opacity: 0.9; }
+  .shot::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,0.25), transparent 28%, transparent 50%, rgba(0,0,0,0.5)); }
+  @keyframes drift { to { transform: scale(1.06) translate(-1.5%, -1%); } }
+  .stage { position: absolute; inset: 0; pointer-events: none; }
+  .comp { position: absolute; left: 7cqw; right: 7cqw; top: 60%; transform: translateY(-50%); display: flex; flex-direction: column; align-items: center; text-align: center; }
+  .comp.exit { animation: out 0.42s ease both; }
+  .lineno { position: absolute; left: 4cqw; top: 4cqw; padding: 0.8cqw 2cqw; border-radius: 99px; background: rgba(0,0,0,0.45); color: rgba(255,255,255,0.8); font: 700 3cqw/1 var(--ui); letter-spacing: 0.08em; }
+  .w { display: inline-block; white-space: nowrap; }
+  .m { display: inline-block; overflow: hidden; vertical-align: bottom; padding-block: 0.06em 0.14em; margin-block: -0.06em -0.14em; }
+
+  @keyframes out { to { opacity: 0; filter: blur(5px); } }
+  @keyframes pop { from { opacity: 0; } }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(0.35em); } }
+  @keyframes rise { from { transform: translateY(115%); } }
+  @keyframes slideR { from { opacity: 0; transform: translateX(-1em); } }
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+  @keyframes blink { 50% { opacity: 0; } }
+  @keyframes shake { 0%, 100% { transform: none; } 15% { transform: translate(-1.6cqw, 1.1cqw); } 35% { transform: translate(1.3cqw, -1cqw); } 55% { transform: translate(-0.9cqw, 0.7cqw); } 75% { transform: translate(0.5cqw, -0.4cqw); } }
+  @keyframes stepIn { from { opacity: 0; transform: translate(-7cqw, 5cqw); } }
+
+  /* Hindi: Latin display faces fall back to Mukta, so drop caps, tracking and italics and give Devanagari room */
+  .lang-hi .comp, .lang-hi .comp * { text-transform: none !important; letter-spacing: 0 !important; font-style: normal !important; }
+  .lang-hi:not(.th-desi) .comp :is(.hero, .b, .zt, .tape, .bl, .mk, .h, .fk, .vk, .ckey, .dk, .solid, .echo, .al, .ck, .s2, .fillk) { font-weight: 800 !important; }
+  .lang-hi .comp :is(.hero, .b.k, .zt, .bl, .mk, .h, .fk, .ckey, .dk, .solid, .echo, .al, .ck, .s2, .fillk) { line-height: 1.3 !important; }
+  .lang-hi .tr-vert .vk { text-orientation: mixed; }
+  .lang-hi :is(.tr-mask .mt, .tr-seam .st, .tr-stack .s3, .tr-echo .el, .tr-focus .fl, .tr-count .cl, .tr-slam .lead) { font-size: 4.8cqw; }
+
+  /* ===== line treatments (all coloured from the template theme) ===== */
+
+  /* Plain */
+  .tr-plain { top: 74%; }
+  .tr-plain .pl { font: 600 6cqw/1.35 var(--f2), var(--hi); color: var(--c1); text-shadow: var(--sh); }
+  .tr-plain .pl .w { animation: fadeUp 0.3s ease-out var(--t) both; }
+  .tr-plain .pl .w.k { color: var(--c2); font-weight: 800; }
+
+  /* Slam */
+  .tr-slam { top: 50%; }
+  .tr-slam .lead { font: 700 4.2cqw/1.35 var(--f2), var(--hi); letter-spacing: 0.24em; text-transform: uppercase; color: var(--c1); text-shadow: var(--sh); }
+  .tr-slam .lead .w { margin: 0 0.15em; animation: slideR 0.38s cubic-bezier(.2,.8,.2,1) var(--t) both; }
+  .tr-slam .hero { font: var(--w1) 22cqw/0.95 var(--f1), var(--hi); text-transform: uppercase; color: var(--c2); white-space: nowrap; margin: 0.04em 0; text-shadow: 0 0.6cqw 0 rgba(0,0,0,0.35); animation: slam 0.46s cubic-bezier(.2,1.3,.35,1) var(--t) both; }
+  @keyframes slam { 0% { opacity: 0; transform: scale(2.6); filter: blur(8px); } 55% { opacity: 1; transform: scale(0.93); filter: blur(0); } 100% { transform: scale(1); } }
+  .tr-slam .tail { font: 600 5.6cqw/1.3 var(--f2), var(--hi); color: var(--c1); text-shadow: var(--sh); }
+  .tr-slam .tail .w { animation: rise 0.42s cubic-bezier(.2,.8,.2,1) var(--t) both; }
+
+  /* Boxed */
+  .tr-boxed { top: 64%; }
+  .tr-boxed .bx { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 1.8cqw 1.4cqw; }
+  .tr-boxed .b { display: inline-block; padding: 0.12em 0.38em; border-radius: 1.4cqw; background: var(--box); color: var(--ink); font: var(--w1) 6.4cqw/1.15 var(--f1), var(--hi); text-transform: uppercase; white-space: nowrap; transform: rotate(var(--r)); box-shadow: 0 1cqw 2cqw rgba(0,0,0,0.3); animation: boxPop 0.4s cubic-bezier(.3,1.6,.5,1) var(--t) both; }
+  .tr-boxed .b.k { background: var(--c2); color: var(--on2); font-size: 11cqw; }
+  @keyframes boxPop { from { opacity: 0; transform: scale(0.3) rotate(calc(var(--r) - 12deg)); } }
+
+  /* Underline */
+  .tr-under { top: 70%; align-items: flex-start; text-align: left; }
+  .tr-under .ul { font: 600 6.4cqw/1.4 var(--f2), var(--hi); color: var(--c1); text-shadow: var(--sh); }
+  .tr-under .w { position: relative; animation: fadeUp 0.3s ease-out var(--t) both; }
+  .tr-under .w.k { color: var(--c2); font-weight: 800; }
+  .tr-under .w.k::after { content: ""; position: absolute; left: 0; right: 0; bottom: -0.02em; height: 0.14em; border-radius: 0.1em; background: var(--c2); transform: scaleX(0); transform-origin: left; animation: grow 0.4s cubic-bezier(.2,.8,.2,1) calc(var(--t) + 120ms) forwards; }
+  @keyframes grow { to { transform: scaleX(1); } }
+
+  /* Z-Zoom */
+  .tr-zoom { top: 54%; }
+  .tr-zoom .zl { perspective: 60cqw; font: 700 5.6cqw/1.35 var(--f2), var(--hi); color: var(--c1); text-shadow: var(--sh); }
+  .tr-zoom .zl .w { margin: 0 0.12em; animation: fromDeep 0.7s cubic-bezier(.16,1,.3,1) var(--t) both; }
+  @keyframes fromDeep { from { opacity: 0; transform: translateZ(-120cqw); filter: blur(6px); } }
+  .tr-zoom .zk { margin: 2cqw 0; perspective: 60cqw; }
+  .tr-zoom .zt { display: inline-block; font: var(--w1) 15cqw/1.05 var(--f1), var(--hi); text-transform: uppercase; color: var(--c2); white-space: nowrap; text-shadow: var(--sh); animation: blast 0.6s cubic-bezier(.2,.9,.25,1.15) var(--t) both; }
+  @keyframes blast { from { opacity: 0; transform: translateZ(50cqw); filter: blur(10px); } }
+  .lines { position: absolute; inset: -20%; background: repeating-conic-gradient(from 0deg at 50% 50%, rgba(255,255,255,0.22) 0 0.6deg, transparent 0.6deg 7deg); -webkit-mask-image: radial-gradient(circle at 50% 50%, transparent 22%, #000 60%); mask-image: radial-gradient(circle at 50% 50%, transparent 22%, #000 60%); animation: rush 0.7s ease-out var(--t) both; }
+  @keyframes rush { 0% { opacity: 0; transform: scale(1.6); } 20% { opacity: 1; } 100% { opacity: 0; transform: scale(1); } }
+
+  /* Tape */
+  .tr-tilt { top: 38%; }
+  .tr-tilt .tape { max-width: 92cqw; padding: 2cqw 4.4cqw; background: var(--c2); color: var(--on2); font: var(--w1) 7cqw/1.2 var(--f1), var(--hi); text-transform: uppercase; transform: rotate(-5deg); box-shadow: 0 1.2cqw 2.4cqw rgba(0,0,0,0.35); animation: tapeIn 0.5s cubic-bezier(.2,1.25,.35,1) var(--t) both; }
+  @keyframes tapeIn { from { transform: translateX(-130cqw) rotate(-14deg); } }
+  .tr-tilt .tape .w { margin: 0 0.06em; animation: pop 0.06s linear var(--t) both; }
+  .tr-tilt .tape .w.k { padding: 0 0.15em; background: var(--on2); color: var(--c2); }
+
+  /* Typewriter */
+  .tr-type { top: 68%; align-items: flex-start; text-align: left; }
+  .tr-type .tw { max-width: 86cqw; padding: 1.6cqw 2.6cqw; background: rgba(0,0,0,0.5); border-left: 0.9cqw solid var(--c2); color: var(--c1); font: 400 5.2cqw/1.45 var(--fm), var(--hi); }
+  .tr-type .ch { animation: pop 0.04s linear var(--t) both; }
+  .tr-type .ch.k { color: var(--c2); font-weight: 700; }
+  .tr-type .cur { display: inline-block; width: 0.55em; height: 1.05em; margin-left: 0.1em; vertical-align: -0.18em; background: var(--c2); animation: blink 0.9s steps(1) infinite; }
+
+  /* Circled */
+  .tr-circle { top: 56%; }
+  .tr-circle .cl1 { font: 600 5.8cqw/1.3 var(--f2), var(--hi); color: var(--c1); text-shadow: var(--sh); }
+  .tr-circle .cl1 .w { animation: fadeUp 0.3s ease-out var(--t) both; }
+  .tr-circle .kw { position: relative; margin: 3.6cqw 0 1cqw; padding: 0 3cqw; }
+  .tr-circle .ckey { display: block; font: var(--w1) 12cqw/1.08 var(--f1), var(--hi); color: var(--c1); white-space: nowrap; text-shadow: var(--sh); animation: fadeUp 0.35s ease-out var(--t) both; }
+  .tr-circle .circ { position: absolute; left: -4%; top: -26%; width: 108%; height: 152%; overflow: visible; }
+  .tr-circle .circ path { fill: none; stroke: var(--c2); stroke-width: 1cqw; stroke-linecap: round; vector-effect: non-scaling-stroke; stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw 0.6s cubic-bezier(.5,0,.3,1) var(--t) forwards; }
+  .tr-circle .note { display: flex; align-items: flex-end; gap: 1cqw; align-self: flex-end; transform: rotate(-5deg); animation: pop 0.1s var(--t) both; }
+  .tr-circle .arrow { width: 12cqw; height: 9cqw; flex: none; overflow: visible; margin-bottom: 4cqw; }
+  .tr-circle .arrow path { fill: none; stroke: var(--c2); stroke-width: 3.6; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw 0.35s ease-out var(--t) forwards; }
+  .tr-circle .arrow .head { animation-delay: calc(var(--t) + 300ms); }
+  .tr-circle .hand { max-width: 62cqw; text-align: left; font: 700 7.4cqw/1.1 var(--f3), var(--hi); color: var(--c2); text-shadow: var(--sh); }
+  .tr-circle .hand .w { animation: write 0.32s steps(5, jump-none) var(--t) both; }
+  @keyframes write { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(-10% -5% -10% 0); } }
+
+  /* Bounce */
+  .tr-wave { top: 60%; }
+  .tr-wave .wl { font: 700 6cqw/1.3 var(--f2), var(--hi); color: var(--c1); text-shadow: 0 0.4cqw 0 rgba(0,0,0,0.35); }
+  .tr-wave .wl .w { margin: 0 0.08em; transform-origin: 50% 100%; animation: fall 0.6s linear var(--t) both; }
+  @keyframes fall {
+    0% { opacity: 0; transform: translateY(-40cqw); animation-timing-function: cubic-bezier(.5,0,1,.5); }
+    45% { opacity: 1; transform: translateY(0) scale(1.15, 0.75); animation-timing-function: cubic-bezier(0,.5,.5,1); }
+    65% { transform: translateY(-4cqw) scale(0.95, 1.05); animation-timing-function: cubic-bezier(.5,0,1,.5); }
+    82% { transform: translateY(0) scale(1.05, 0.92); }
+    100% { transform: none; }
+  }
+  .tr-wave .bk { display: flex; margin: 3cqw 0; font: var(--w1) 16cqw/1.1 var(--f1), var(--hi); white-space: nowrap; }
+  .tr-wave .bl { display: inline-block; transform-origin: 50% 100%; color: var(--c2); -webkit-text-stroke: 0.5cqw rgba(0,0,0,0.85); paint-order: stroke fill; text-shadow: 0 0.9cqw 0 rgba(0,0,0,0.85); animation: fall 0.7s linear var(--t) both, wave 1.6s ease-in-out calc(var(--t) + 900ms + var(--i) * 90ms) infinite; }
+  .tr-wave .bl:nth-child(even) { color: var(--c3); }
+  @keyframes wave { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1.6cqw); } }
+
+  /* Rise */
+  .tr-mask { top: 36%; align-items: flex-start; text-align: left; }
+  .tr-mask .ml { font: italic 500 6.6cqw/1.15 var(--f3), var(--hi); color: var(--c1); text-shadow: var(--sh); }
+  .tr-mask .ml .w, .tr-mask .mt .w, .tr-mask .mk .w { animation: rise 0.8s cubic-bezier(.16,1,.3,1) var(--t) both; }
+  .tr-mask .mk { margin: 1.4cqw 0; font: var(--w1) 13cqw/1.08 var(--f1), var(--hi); color: var(--c2); white-space: nowrap; text-shadow: var(--sh); }
+  .tr-mask .mt { font: 600 3.8cqw/1.6 var(--f2), var(--hi); text-transform: uppercase; letter-spacing: 0.3em; color: var(--c1); text-shadow: var(--sh); }
+
+  /* Seam */
+  .tr-seam { top: 50%; }
+  .tr-seam .sl { font: 600 5.2cqw/1.3 var(--f2), var(--hi); color: var(--c1); text-shadow: var(--sh); }
+  .tr-seam .sl .w { animation: rise 0.7s cubic-bezier(.16,1,.3,1) var(--t) both; }
+  .tr-seam .hero { position: relative; margin: 2.4cqw 0 2.8cqw; font: var(--w1) 16cqw/1.05 var(--f1), var(--hi); text-transform: uppercase; letter-spacing: 0.04em; color: var(--c1); white-space: nowrap; text-shadow: var(--sh); }
+  .tr-seam .h { display: block; }
+  .tr-seam .top { clip-path: inset(-20% -10% 50% -10%); animation: seamL 0.8s cubic-bezier(.16,1,.3,1) var(--t) both; }
+  .tr-seam .bot { position: absolute; inset: 0; clip-path: inset(50% -10% -20% -10%); animation: seamR 0.8s cubic-bezier(.16,1,.3,1) var(--t) both; }
+  @keyframes seamL { from { opacity: 0; transform: translateX(-45cqw); } }
+  @keyframes seamR { from { opacity: 0; transform: translateX(45cqw); } }
+  .tr-seam .hero::after { content: ""; position: absolute; left: -6cqw; right: -6cqw; top: 50%; height: 0.4cqw; background: var(--c2); box-shadow: 0 0 2cqw var(--c2); transform: scaleX(0); animation: seamLine 1.1s ease calc(var(--t) + 380ms) both; }
+  @keyframes seamLine { 0% { transform: scaleX(0); opacity: 1; } 35% { transform: scaleX(1); opacity: 1; } 100% { transform: scaleX(1); opacity: 0; } }
+  .tr-seam .st { font: 600 3.6cqw/1.7 var(--f2), var(--hi); text-transform: uppercase; letter-spacing: 0.36em; color: var(--c2); text-shadow: var(--sh); }
+  .tr-seam .st .w { animation: track 0.9s cubic-bezier(.16,1,.3,1) var(--t) both; }
+  @keyframes track { from { opacity: 0; letter-spacing: 1em; filter: blur(3px); } }
+
+  /* Focus */
+  .tr-focus { top: 78%; }
+  .tr-focus .fl { font: 500 4.6cqw/1.5 var(--f2), var(--hi); color: var(--c1); letter-spacing: 0.06em; text-shadow: var(--sh); }
+  .tr-focus .fl .w { animation: pop 0.4s var(--t) both; }
+  .tr-focus .fkw { margin: 1cqw 0; }
+  .tr-focus .fk { display: inline-block; font: var(--w1) 11cqw/1.15 var(--f1), var(--hi); text-transform: uppercase; letter-spacing: 0.2em; color: var(--c2); white-space: nowrap; text-shadow: 0 0 3cqw rgba(0,0,0,0.4); animation: focusPull 1.2s cubic-bezier(.16,1,.3,1) var(--t) both; }
+  @keyframes focusPull { from { opacity: 0; filter: blur(2.4cqw); transform: scale(1.08); } }
+
+  /* Vertical */
+  .tr-vert { top: 52%; left: 7cqw; right: 5cqw; flex-direction: row; align-items: center; justify-content: space-between; gap: 4cqw; text-align: left; }
+  .tr-vert .vt { flex: 1; min-width: 0; font: 600 6cqw/1.32 var(--f2), var(--hi); color: var(--c1); text-shadow: var(--sh); }
+  .tr-vert .vt .w { animation: fadeUp 0.3s ease-out var(--t) both; }
+  .tr-vert .vt .w.k { color: var(--c2); font-weight: 800; }
+  .tr-vert .vk { flex: none; writing-mode: vertical-rl; text-orientation: upright; font: var(--w1) 12cqw/1 var(--f1), var(--hi); text-transform: uppercase; letter-spacing: -0.04em; color: var(--c2); text-shadow: var(--sh); animation: vIn 0.7s cubic-bezier(.16,1,.3,1) var(--t) both; }
+  @keyframes vIn { from { clip-path: inset(0 0 100% 0); transform: translateY(-6cqw); } to { clip-path: inset(-10% -10% -10% -10%); } }
+
+  /* Karaoke */
+  .tr-glide { top: 70%; }
+  .tr-glide .gl { position: relative; font: 700 6.4cqw/1.55 var(--f2), var(--hi); color: var(--c1); text-shadow: var(--sh); }
+  .tr-glide .pill { position: absolute; z-index: 0; left: 0; top: 0; width: 0; height: 0; border-radius: 2.2cqw; background: var(--c2); opacity: 0; }
+  .tr-glide .w { position: relative; z-index: 1; opacity: 0.45; transition: opacity 0.15s, color 0.15s, transform 0.25s cubic-bezier(.3,1.6,.5,1); }
+  .tr-glide .w.done { opacity: 1; }
+  .tr-glide .w.now { opacity: 1; color: var(--on2); text-shadow: none; }
+  .tr-glide .w.key { font-size: 1.22em; }
+  .tr-glide .w.key.now { transform: scale(1.06) rotate(-2deg); }
+
+  /* Fill */
+  .tr-fill { top: 55%; }
+  .tr-fill .fl2 { font: 700 5.4cqw/1.3 var(--f2), var(--hi); color: var(--c1); text-shadow: var(--sh); }
+  .tr-fill .fl2 .w { animation: fadeUp 0.3s ease-out var(--t) both; }
+  .tr-fill .fillk { position: relative; margin: 2.6cqw 0; font: var(--w1) 15cqw/1.1 var(--f1), var(--hi); text-transform: uppercase; white-space: nowrap; animation: pop 0.3s var(--t) both; }
+  .tr-fill .base { display: block; color: rgba(255,255,255,0.08); -webkit-text-stroke: 0.35cqw var(--c1); }
+  .tr-fill .fillc { position: absolute; inset: 0; background: linear-gradient(180deg, var(--c3), var(--c2)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; clip-path: inset(100% 0 0 0); }
+
+  /* Decode */
+  .tr-decode { top: 60%; }
+  .tr-decode .dl { font: 700 5.2cqw/1.45 var(--fm), var(--hi); color: var(--c1); text-shadow: var(--sh); }
+  .tr-decode .dk { margin: 2cqw 0; font: 700 11cqw/1.15 var(--fm), var(--hi); text-transform: uppercase; color: var(--c1); white-space: nowrap; text-shadow: var(--sh); }
+  .tr-decode .dc { color: var(--c2); }
+  .tr-decode .dc.hid { visibility: hidden; }
+  .tr-decode .dl .dc.ok { color: var(--c1); }
+  .tr-decode .dk .dc.ok { color: var(--c2); }
+
+  /* Echo */
+  .tr-echo { top: 66%; }
+  .tr-echo .el { margin-bottom: 34cqw; font: 700 3.8cqw/1.5 var(--f2), var(--hi); text-transform: uppercase; letter-spacing: 0.3em; color: var(--c2); text-shadow: var(--sh); }
+  .tr-echo .el .w { animation: pop 0.2s var(--t) both; }
+  .tr-echo .stack { position: relative; margin-top: 1cqw; font: var(--w1) 20cqw/0.9 var(--f1), var(--hi); text-transform: uppercase; white-space: nowrap; }
+  .tr-echo .solid { position: relative; z-index: 2; display: block; color: var(--c1); text-shadow: var(--sh); animation: punchIn 0.5s cubic-bezier(.2,1.4,.4,1) var(--t) both; }
+  @keyframes punchIn { from { opacity: 0; transform: scale(1.5); filter: blur(6px); } }
+  .tr-echo .echo { position: absolute; left: 0; right: 0; top: 0; color: transparent; -webkit-text-stroke: 0.3cqw var(--c2); opacity: calc(1 - var(--n) * 0.26); transform: translateY(calc(var(--n) * -0.6em));
+    animation: echoOut 0.7s cubic-bezier(.2,1.5,.4,1) calc(var(--t) + 120ms + var(--n) * 80ms) both, breathe 1.4s ease-in-out calc(var(--t) + 1100ms) infinite alternate; }
+  @keyframes echoOut { from { opacity: 0; transform: translateY(0); } }
+  @keyframes breathe { from { transform: translateY(calc(var(--n) * -0.6em)); } to { transform: translateY(calc(var(--n) * -0.72em)); } }
+  .tr-echo .et { margin-top: 2.4cqw; font: italic 400 7cqw/1.15 var(--f3), var(--hi); color: var(--c1); text-shadow: var(--sh); }
+  .tr-echo .et .w { animation: fadeUp 0.4s cubic-bezier(.2,.8,.2,1) var(--t) both; }
+
+  /* Assemble */
+  .tr-scatter { top: 55%; }
+  .tr-scatter .al1 { font: 700 5.4cqw/1.35 var(--f2), var(--hi); color: var(--c1); text-shadow: var(--sh); }
+  .tr-scatter .al1 .w, .tr-scatter .al { animation: gather 0.8s cubic-bezier(.2,.9,.2,1) var(--t) both; }
+  @keyframes gather { from { opacity: 0; transform: translate(var(--dx), var(--dy)) rotate(var(--dr)) scale(0.5); filter: blur(4px); } }
+  .tr-scatter .ak { display: flex; margin: 3cqw 0; font: var(--w1) 14cqw/1.08 var(--f1), var(--hi); text-transform: uppercase; white-space: nowrap; color: var(--c1); text-shadow: var(--sh); }
+  .tr-scatter .al { display: inline-block; }
+  .tr-scatter .al:last-child { color: var(--c2); }
+
+  /* Counter */
+  .tr-count { top: 50%; }
+  .tr-count .cl { font: 700 4.6cqw/1.4 var(--f2), var(--hi); text-transform: uppercase; letter-spacing: 0.14em; color: var(--c1); text-shadow: var(--sh); }
+  .tr-count .cl .w, .tr-count .ct .w { animation: fadeUp 0.3s ease-out var(--t) both; }
+  .tr-count .ck { margin: 1cqw 0; font: var(--w1) 24cqw/1.02 var(--f1), var(--hi); color: var(--c2); white-space: nowrap; font-variant-numeric: tabular-nums; text-shadow: 0 0.6cqw 0 rgba(0,0,0,0.35); animation: pop 0.2s var(--t) both; }
+  .tr-count .ct { font: 600 5.4cqw/1.3 var(--f2), var(--hi); color: var(--c1); text-shadow: var(--sh); }
+
+  /* Staircase */
+  .tr-stack { top: 44%; left: 6cqw; right: 6cqw; align-items: stretch; }
+  .tr-stack .s1 { align-self: flex-start; max-width: 78cqw; text-align: left; font: italic 400 7.4cqw/1.08 var(--f3), var(--hi); color: var(--c1); text-shadow: var(--sh); animation: stepIn 0.7s cubic-bezier(.16,1,.3,1) var(--t) both; }
+  .tr-stack .s1 .w, .tr-stack .s3 .w { animation: pop 0.2s var(--t) both; }
+  .tr-stack .s2 { align-self: center; margin: 2cqw 0; font: var(--w1) 14cqw/1.08 var(--f1), var(--hi); text-transform: uppercase; white-space: nowrap; color: transparent; -webkit-text-stroke: 0.35cqw var(--c2);
+    background: linear-gradient(90deg, var(--c2) 0 50%, transparent 50% 100%); background-size: 200% 100%; background-position: 100% 0; -webkit-background-clip: text; background-clip: text;
+    animation: stepIn 0.7s cubic-bezier(.16,1,.3,1) var(--t) both, fillIn 0.7s cubic-bezier(.6,0,.2,1) calc(var(--t) + 420ms) both; }
+  @keyframes fillIn { to { background-position: 0 0; } }
+  .tr-stack .s3 { align-self: flex-end; max-width: 70cqw; text-align: right; font: 700 3.8cqw/1.6 var(--f2), var(--hi); text-transform: uppercase; letter-spacing: 0.28em; color: var(--c1); text-shadow: var(--sh); animation: stepIn 0.7s cubic-bezier(.16,1,.3,1) var(--t) both; }
+  .tr-stack .s3::before { content: ""; display: inline-block; width: 1.6cqw; height: 1.6cqw; margin-right: 0.8em; vertical-align: 0.1em; background: var(--c2); }
+
+  /* Marker */
+  .tr-marker { top: 72%; align-items: flex-start; text-align: left; }
+  .tr-marker .mk2 { font: 700 6.4cqw/1.45 var(--f2), var(--hi); color: var(--c1); text-shadow: var(--sh); }
+  .tr-marker .w { animation: fadeUp 0.3s ease-out var(--t) both; }
+  .tr-marker .w.k { position: relative; z-index: 0; color: var(--on2); text-shadow: none; }
+  .tr-marker .w.k::before { content: ""; position: absolute; z-index: -1; left: -0.12em; right: -0.12em; top: 10%; bottom: 2%; border-radius: 0.08em 0.3em 0.1em 0.35em; background: var(--c2); transform: skewX(-8deg) scaleX(0); transform-origin: left; animation: markIn 0.3s ease-out var(--t) forwards; }
+  @keyframes markIn { to { transform: skewX(-8deg) scaleX(1); } }
+
+  /* Bubble */
+  .tr-bubble { top: 34%; align-items: flex-start; text-align: left; }
+  .tr-bubble .bb { position: relative; max-width: 78cqw; padding: 2.4cqw 4cqw; border-radius: 6cqw; background: var(--box); color: var(--ink); font: 600 6cqw/1.3 var(--f2), var(--hi); box-shadow: 0 1.4cqw 3cqw rgba(0,0,0,0.3); transform-origin: 20% 100%; animation: bubbleIn 0.4s cubic-bezier(.3,1.5,.5,1) var(--t) both; }
+  .tr-bubble .bb::after { content: ""; position: absolute; left: 8cqw; bottom: -3cqw; width: 5cqw; height: 3.2cqw; background: var(--box); clip-path: polygon(0 0, 100% 0, 20% 100%); }
+  @keyframes bubbleIn { from { opacity: 0; transform: scale(0.4); } }
+  .tr-bubble .bb .w { animation: pop 0.1s linear var(--t) both; }
+  .tr-bubble .bb .w.k { color: var(--c3); font: var(--w1) 1.45em/1 var(--f1), var(--hi); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .shot { animation: none; }
+  }
+</style>
+</head>
+<body>
+<header class="top wrap">
+  <h1>Five-line caption packs</h1>
+  <p class="lede">Fifteen templates where every caption line looks different. Each template is a pack of five line styles that share one palette and one set of fonts: one line is placed creatively, one is plain, one is animated, and so on. As the video plays, each new caption takes the next style, so no two lines in a row look the same. Every style is still built around the caption's important word. Each phone plays a five-line script, and the list under it highlights the line that is on screen.</p>
+</header>
+
+<div class="toolbar">
+  <div class="wrap">
+    <div class="seg" role="group" aria-label="Sample language">
+      <button type="button" id="lang-en" data-lang="en" aria-pressed="true">English</button>
+      <button type="button" id="lang-hi" data-lang="hi" aria-pressed="false">हिंदी</button>
+    </div>
+    <div class="seg" role="group" aria-label="Playback speed">
+      <button type="button" id="speed-slow" data-speed="0.5" aria-pressed="false">0.5×</button>
+      <button type="button" id="speed-normal" data-speed="1" aria-pressed="true">1×</button>
+    </div>
+    <button type="button" class="btn" id="play">Pause</button>
+    <button type="button" class="btn" id="restart">Restart all</button>
+    <span class="hint">Tap a phone to restart it from line 1</span>
+  </div>
+</div>
+
+<main class="wrap grid" id="grid"></main>
+
+<script>
+const WORD_MS = 300
+const KEY_EXTRA = 380
+const HOLD_MS = 1300
+const EXIT_MS = 420
+const state = { lang: 'en', speed: 1, playing: true }
+let held = []
+
+const $ = (tag, cls, text) => {
+  const e = document.createElement(tag)
+  if (cls) e.className = cls
+  if (text != null) e.textContent = text
+  return e
+}
+const at = (e, t) => { e.style.setProperty('--t', Math.max(0, Math.round(t)) + 'ms'); return e }
+
+function graphemes(s) {
+  try { return [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(s)].map((x) => x.segment) }
+  catch { return [...s] }
+}
+
+function rng(seed) {
+  let s = 2166136261
+  for (const ch of seed) s = Math.imul(s ^ ch.codePointAt(0), 16777619) >>> 0
+  return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296 }
+}
+
+// Split a caption into lead / key / tail using the important word, with spoken word times.
+function plan(text, keyExtra) {
+  const words = text.split(/\s+/).filter(Boolean).map((raw) => ({ text: raw.replace(/^\*/, ''), imp: raw.startsWith('*') }))
+  let k = words.findIndex((w) => w.imp)
+  if (k < 0) k = Math.floor(words.length / 2)
+  const times = words.map((_, i) => i * WORD_MS + (i > k ? keyExtra : 0))
+  const timed = words.map((w, i) => ({ ...w, t: times[i] }))
+  return { words: timed, k, lead: timed.slice(0, k), key: timed[k], tail: timed.slice(k + 1), end: times[times.length - 1] + HOLD_MS }
+}
+
+function addWords(box, list, { mask = false } = {}) {
+  list.forEach((w, i) => {
+    const s = at($('span', 'w', w.text), w.t)
+    if (mask) { const m = $('span', 'm'); m.append(s); box.append(m) } else box.append(s)
+    if (i < list.length - 1) box.append(document.createTextNode(' '))
+  })
+  return box
+}
+
+function line(cls, list, opts) {
+  const d = $('div', cls)
+  addWords(d, list, opts)
+  if (list.length) at(d, list[0].t)
+  else d.hidden = true
+  return d
+}
+
+function markKey(box, k) {
+  box.querySelectorAll('.w')[k]?.classList.add('k')
+  return box
+}
+
+function letters(box, text, t0, step, cls) {
+  const parts = state.lang === 'hi' ? [text] : graphemes(text)
+  return parts.map((ch, i) => {
+    const s = at($('span', cls, ch), t0 + i * step)
+    s.style.setProperty('--i', i)
+    box.append(s)
+    return s
+  })
+}
+
+// Shrink a single-line hero so it never runs past the frame.
+function fit(sizeEl, measureEl, maxCqw, frameW) {
+  const unit = frameW / 100
+  const max = maxCqw * unit
+  const w = measureEl.scrollWidth
+  if (w > max + 1) {
+    const cur = parseFloat(getComputedStyle(sizeEl).fontSize)
+    sizeEl.style.fontSize = (cur * max / w) / unit + 'cqw'
+  }
+}
+
+// ===== the line treatments; every template picks five different ones =====
+const TREAT = {
+  plain: {
+    name: 'Plain', desc: 'Clean caption; words appear as spoken, important word in the accent colour',
+    build(c, p) { c.append(markKey(addWords($('div', 'pl'), p.words), p.k)) },
+  },
+  slam: {
+    name: 'Slam', desc: 'Small caps lead-in, then the important word slams down huge and the camera shakes',
+    build(c, p, x) {
+      const h = at($('div', 'hero', p.key.text), p.key.t)
+      c.append(line('lead', p.lead), h, line('tail', p.tail, { mask: true }))
+      x.fit(h, h, 86)
+      x.shake(p.key.t + 140)
+    },
+  },
+  boxed: {
+    name: 'Boxed', desc: 'Every word pops in its own tilted box; the important word gets the big accent box',
+    build(c, p, x) {
+      const bx = $('div', 'bx')
+      p.words.forEach((w, i) => {
+        const b = at($('span', i === p.k ? 'b k' : 'b', w.text), w.t)
+        b.style.setProperty('--r', (i % 2 ? 3 : -3) + 'deg')
+        bx.append(b)
+      })
+      c.append(bx)
+      x.fit(bx.children[p.k], bx.children[p.k], 84)
+    },
+  },
+  under: {
+    name: 'Underline', desc: 'Left-aligned line; a bar sweeps under the important word',
+    build(c, p) { c.append(markKey(addWords($('div', 'ul'), p.words), p.k)) },
+  },
+  zoom: {
+    name: 'Z-Zoom', desc: 'Words fly out of depth; the important word blasts past the camera with speed lines',
+    build(c, p, x) {
+      const k = at($('div', 'zk'), p.key.t)
+      const zt = $('span', 'zt', p.key.text)
+      k.append(zt)
+      c.append(line('zl', p.lead), k, line('zl', p.tail))
+      x.stage.prepend(at($('div', 'lines'), p.key.t))
+      x.fit(zt, zt, 84)
+    },
+  },
+  tilt: {
+    name: 'Tape', desc: 'The whole line on a tilted accent band that slaps in from the side, high in the frame',
+    build(c, p) {
+      const tape = at($('div', 'tape'), p.words[0].t)
+      c.append(markKey(addWords(tape, p.words), p.k))
+    },
+  },
+  type: {
+    name: 'Typewriter', desc: 'Typed letter by letter in a terminal box with a blinking cursor',
+    build(c, p) {
+      const tw = $('div', 'tw')
+      p.words.forEach((w, i) => {
+        const g = graphemes(w.text)
+        g.forEach((ch, j) => tw.append(at($('span', i === p.k ? 'ch k' : 'ch', ch), w.t + j * (WORD_MS * 0.75 / g.length))))
+        if (i < p.words.length - 1) tw.append(at($('span', 'ch', ' '), w.t + WORD_MS * 0.8))
+      })
+      tw.append($('span', 'cur'))
+      c.append(tw)
+    },
+  },
+  circle: {
+    name: 'Circled', desc: 'The important word gets circled by hand; the rest is handwritten with an arrow',
+    build(c, p, x) {
+      const kw = $('div', 'kw')
+      const key = at($('span', 'ckey', p.key.text), p.key.t)
+      kw.append(key)
+      kw.insertAdjacentHTML('beforeend', '<svg class="circ" viewBox="0 0 200 80" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M34 14 C 84 -2, 176 2, 192 34 C 204 64, 128 80, 64 75 C 14 71, -2 46, 12 27 C 22 13, 52 6, 82 6"/></svg>')
+      at(kw.querySelector('.circ'), p.key.t + 200)
+      c.append(line('cl1', p.lead), kw)
+      if (p.tail.length) {
+        const note = at($('div', 'note'), p.tail[0].t)
+        note.insertAdjacentHTML('beforeend', '<svg class="arrow" viewBox="0 0 60 44" aria-hidden="true"><path pathLength="1" d="M54 40 C 44 30, 30 18, 10 8"/><path class="head" pathLength="1" d="M22 4 L9 7 L14 19"/></svg>')
+        note.append(addWords($('span', 'hand'), p.tail))
+        c.append(note)
+      }
+      x.fit(key, key, 66)
+    },
+  },
+  wave: {
+    name: 'Bounce', desc: 'Words drop in with squash and stretch; the important word bounces in two colours and keeps waving',
+    build(c, p, x) {
+      const k = at($('div', 'bk'), p.key.t)
+      letters(k, p.key.text, p.key.t, 70, 'bl')
+      c.append(line('wl', p.lead), k, line('wl', p.tail))
+      x.fit(k, k, 86)
+    },
+  },
+  mask: {
+    name: 'Rise', desc: 'Upper-left placement: italic lead-in, big important word and tracked caps each rise from behind a line',
+    build(c, p, x) {
+      const k = at($('div', 'mk'), p.key.t)
+      const m = $('span', 'm')
+      m.append(at($('span', 'w', p.key.text), p.key.t))
+      k.append(m)
+      c.append(line('ml', p.lead, { mask: true }), k, line('mt', p.tail, { mask: true }))
+      x.fit(k, m, 84)
+    },
+  },
+  seam: {
+    name: 'Seam', desc: 'The important word\'s top and bottom halves slide in from opposite sides and lock, then a seam flashes',
+    build(c, p, x) {
+      const h = at($('div', 'hero'), p.key.t)
+      const top = $('span', 'h top', p.key.text)
+      h.append(top, $('span', 'h bot', p.key.text))
+      c.append(line('sl', p.lead, { mask: true }), h, line('st', p.tail))
+      x.fit(h, top, 84)
+    },
+  },
+  focus: {
+    name: 'Focus', desc: 'Sits low in the frame; the important word comes into focus like a lens pull',
+    build(c, p, x) {
+      const kw = $('div', 'fkw')
+      const fk = at($('span', 'fk', p.key.text), p.key.t)
+      kw.append(fk)
+      c.append(line('fl', p.lead), kw, line('fl', p.tail))
+      x.fit(fk, fk, 88)
+    },
+  },
+  vert: {
+    name: 'Vertical', desc: 'Readable line on the left; the important word runs vertically down the right edge',
+    build(c, p, x) {
+      const vt = markKey(addWords($('div', 'vt'), p.words), p.k)
+      const vk = at($('div', 'vk', p.key.text), p.key.t)
+      c.append(vt, vk)
+      const unit = x.frame.clientWidth / 100
+      if (vk.scrollHeight > 96 * unit) {
+        const cur = parseFloat(getComputedStyle(vk).fontSize)
+        vk.style.fontSize = (cur * 96 * unit / vk.scrollHeight) / unit + 'cqw'
+      }
+    },
+  },
+  glide: {
+    name: 'Karaoke', desc: 'The whole line waits dimmed; one accent pill glides from word to word as they are spoken',
+    build(c, p) {
+      const box = $('div', 'gl')
+      const pill = $('span', 'pill')
+      box.append(pill)
+      const spans = p.words.map((w, i) => {
+        const s = at($('span', 'w', w.text), w.t)
+        if (i === p.k) s.classList.add('key')
+        box.append(s)
+        if (i < p.words.length - 1) box.append(document.createTextNode(' '))
+        return s
+      })
+      c.append(box)
+      let cur = -1
+      return {
+        update(lt) {
+          let idx = -1
+          p.words.forEach((w, i) => { if (lt >= w.t) idx = i })
+          if (idx === cur || idx < 0) return
+          const first = cur < 0
+          cur = idx
+          spans.forEach((s, i) => { s.classList.toggle('done', i < idx); s.classList.toggle('now', i === idx) })
+          const s = spans[idx]
+          const ms = Math.round(220 / state.speed)
+          const ease = 'cubic-bezier(.3,1.3,.5,1)'
+          pill.style.transition = first ? 'opacity 120ms' : `left ${ms}ms ${ease}, top ${ms}ms ${ease}, width ${ms}ms ${ease}, height ${ms}ms ${ease}`
+          const padX = s.offsetHeight * 0.18
+          pill.style.left = (s.offsetLeft - padX) + 'px'
+          pill.style.top = s.offsetTop + 'px'
+          pill.style.width = (s.offsetWidth + padX * 2) + 'px'
+          pill.style.height = s.offsetHeight + 'px'
+          pill.style.opacity = '1'
+        },
+      }
+    },
+  },
+  fill: {
+    name: 'Fill', desc: 'The important word starts as an empty outline and fills with sloshing colour',
+    build(c, p, x) {
+      const k = at($('div', 'fillk'), p.key.t)
+      const base = $('span', 'base', p.key.text)
+      const fillc = $('span', 'fillc', p.key.text)
+      fillc.setAttribute('aria-hidden', 'true')
+      k.append(base, fillc)
+      c.append(line('fl2', p.lead), k, line('fl2', p.tail))
+      x.fit(k, base, 86)
+      return {
+        update(lt) {
+          if (lt < p.key.t) return
+          const e = 1 - Math.pow(1 - Math.min(1, (lt - p.key.t) / 1500), 3)
+          const level = 100 - e * 96
+          const amp = 6 * (1 - e * 0.5)
+          const ph = lt / 260
+          const pts = []
+          for (let i = 0; i <= 16; i++) pts.push(`${(i / 16 * 100).toFixed(2)}% ${(level + amp * Math.sin(ph + i * 0.75)).toFixed(2)}%`)
+          pts.push('100% 100%', '0% 100%')
+          fillc.style.clipPath = `polygon(${pts.join(',')})`
+        },
+      }
+    },
+  },
+  decode: {
+    name: 'Decode', desc: 'Letters scramble like a cipher and lock into place as each word is spoken',
+    build(c, p, x) {
+      const pool = graphemes(state.lang === 'hi' ? 'कखगचजटडतदनपबमयरलवसह0123456789' : 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#%&@')
+      const chars = []
+      const mk = (cls, list, isKey) => {
+        const d = $('div', cls)
+        list.forEach((w, i) => {
+          graphemes(w.text).forEach((ch, j) => {
+            const s = $('span', 'dc hid', ch)
+            d.append(s)
+            chars.push({ el: s, final: ch, show: w.t - 150 + j * 20, res: w.t + (isKey ? 300 : 120) + j * (isKey ? 70 : 35), last: -1, shown: false, done: false })
+          })
+          if (i < list.length - 1) d.append(document.createTextNode(' '))
+        })
+        if (!list.length) d.hidden = true
+        return d
+      }
+      const dk = mk('dk', [p.key], true)
+      c.append(mk('dl', p.lead, false), dk, mk('dl', p.tail, false))
+      x.fit(dk, dk, 86)
+      return {
+        update(lt) {
+          for (const o of chars) {
+            if (o.done || lt < o.show) continue
+            if (!o.shown) { o.el.classList.remove('hid'); o.shown = true }
+            if (lt >= o.res) { o.el.textContent = o.final; o.el.classList.add('ok'); o.done = true; continue }
+            const step = Math.floor(lt / 50)
+            if (step !== o.last) { o.last = step; o.el.textContent = pool[Math.floor(Math.random() * pool.length)] }
+          }
+        },
+      }
+    },
+  },
+  echo: {
+    name: 'Echo', desc: 'Tracked caps lead-in, then the important word with outline echoes that spring up and keep breathing',
+    build(c, p, x) {
+      const st = at($('div', 'stack'), p.key.t)
+      const solid = $('span', 'solid', p.key.text)
+      st.append(solid)
+      for (const n of [1, 2, 3]) {
+        const e = $('span', 'echo', p.key.text)
+        e.style.setProperty('--n', n)
+        e.setAttribute('aria-hidden', 'true')
+        st.append(e)
+      }
+      c.append(line('el', p.lead), st, line('et', p.tail))
+      x.fit(st, solid, 84)
+    },
+  },
+  scatter: {
+    name: 'Assemble', desc: 'Words and letters fly in from all over the frame and lock into place',
+    build(c, p, x) {
+      const r = rng(p.words.map((w) => w.text).join('|'))
+      const scatter = (el, amp) => {
+        el.style.setProperty('--dx', ((r() * 2 - 1) * amp).toFixed(1) + 'cqw')
+        el.style.setProperty('--dy', ((r() * 2 - 1) * amp * 0.8).toFixed(1) + 'cqw')
+        el.style.setProperty('--dr', ((r() * 2 - 1) * 160).toFixed(0) + 'deg')
+      }
+      const l1 = line('al1', p.lead)
+      l1.querySelectorAll('.w').forEach((w) => scatter(w, 14))
+      const k = at($('div', 'ak'), p.key.t)
+      letters(k, p.key.text, p.key.t, 45, 'al').forEach((s) => scatter(s, 40))
+      const l3 = line('al1', p.tail)
+      l3.querySelectorAll('.w').forEach((w) => scatter(w, 14))
+      c.append(l1, k, l3)
+      x.fit(k, k, 86)
+    },
+  },
+  count: {
+    name: 'Counter', desc: 'The number in the important word counts up from zero, huge and centred',
+    build(c, p, x) {
+      const ck = at($('div', 'ck', p.key.text), p.key.t)
+      c.append(line('cl', p.lead), ck, line('ct', p.tail))
+      x.fit(ck, ck, 88)
+      const m = p.key.text.match(/^(\D*)([\d,]+)(\D*)$/)
+      if (!m) return null
+      const target = parseFloat(m[2].replace(/,/g, ''))
+      const comma = m[2].includes(',')
+      const fmt = (v) => m[1] + (comma ? Math.round(v).toLocaleString('en-IN') : String(Math.round(v))) + m[3]
+      return {
+        update(lt) {
+          if (lt < p.key.t) return
+          const e = 1 - Math.pow(1 - Math.min(1, (lt - p.key.t) / 1000), 3)
+          ck.textContent = fmt(target * e)
+        },
+      }
+    },
+  },
+  stack: {
+    name: 'Staircase', desc: 'Three type styles stepping down a diagonal: italic top left, outlined important word that fills, tracked caps bottom right',
+    build(c, p, x) {
+      const k = at($('div', 's2', p.key.text), p.key.t)
+      c.append(line('s1', p.lead), k, line('s3', p.tail))
+      x.fit(k, k, 88)
+    },
+  },
+  marker: {
+    name: 'Marker', desc: 'Left-aligned line; a highlighter swipes behind the important word',
+    build(c, p) { c.append(markKey(addWords($('div', 'mk2'), p.words), p.k)) },
+  },
+  bubble: {
+    name: 'Bubble', desc: 'A speech bubble pops up near the speaker; the important word punches out in colour',
+    build(c, p) {
+      const bb = at($('div', 'bb'), Math.max(0, p.words[0].t - 150))
+      c.append(markKey(addWords(bb, p.words), p.k))
+    },
+  },
+}
+
+const TEMPLATES = [
+  {
+    name: 'Hustle', best: 'Motivation, self-improvement, gym talk', id: 'hustle',
+    theme: { f1: 'Anton', w1: 400, f2: 'Inter', f3: "'DM Serif Display'", fm: "'Space Mono'", c1: '#ffffff', c2: '#ffe600', c3: '#ff4d2e', box: '#ffffff', ink: '#0b0b0b', on2: '#0b0b0b' },
+    scene: 'radial-gradient(120% 90% at 70% 15%, #3a4f7a, #10141f 70%)', skin: '#c99a7a', shirt: '#1a1f2c',
+    lines: ['slam', 'plain', 'boxed', 'under', 'zoom'],
+    en: ['Nobody is coming to *save you', 'You have to build it *yourself every single day', 'Wake up show up *repeat no excuses', 'Your future depends on what you *do today', 'This is your *moment take it'],
+    hi: ['कोई तुम्हें *बचाने नहीं आएगा', 'हर दिन खुद ही *बनाना होगा', 'उठो आगे बढ़ो *दोहराओ कोई बहाना नहीं', 'तुम्हारा कल तय करता है आज का *काम', 'यही तुम्हारा *मौका है पकड़ लो'],
+  },
+  {
+    name: 'Storyteller', best: 'Storytime, family, daily vlogs', id: 'story',
+    theme: { f1: 'Rubik', w1: 900, f2: 'Poppins', f3: 'Kalam', fm: "'Special Elite'", c1: '#ffffff', c2: '#f2c14e', c3: '#e8392e', box: '#efe0b0', ink: '#1f1b12', on2: '#1f1b12' },
+    scene: 'linear-gradient(165deg, #f4b46a, #c4634c 55%, #3b1f2b)', skin: '#b98566', shirt: '#2f4a6a',
+    lines: ['tilt', 'plain', 'type', 'circle', 'wave'],
+    en: ['So last Sunday my *mom called me', 'She said come home *right now beta', 'I drove two hours in *panic mode', 'Turns out she just *made biryani for me', 'Best surprise *ever honestly'],
+    hi: ['पिछले रविवार *मम्मी का फ़ोन आया', 'बोलीं बेटा *अभी घर आओ', 'दो घंटे गाड़ी चलाई *घबराहट में', 'पता चला उन्होंने *बिरयानी बनाई थी मेरे लिए', 'सबसे अच्छा *सरप्राइज़ सच में'],
+  },
+  {
+    name: 'Cinematic', best: 'Travel, weddings, brand films', id: 'cine',
+    theme: { f1: "'Bodoni Moda'", w1: 700, f2: 'Inter', f3: "'Cormorant Garamond'", fm: "'Space Mono'", c1: '#f3e9da', c2: '#d9b26f', c3: '#ffffff', box: '#f3e9da', ink: '#1a1410', on2: '#1a1410' },
+    scene: 'linear-gradient(180deg, #f6c27a 0%, #c76d4f 40%, #3a2238 75%, #140d18)', skin: '#8e5f48', shirt: '#120d16',
+    lines: ['mask', 'seam', 'plain', 'focus', 'vert'],
+    en: ['Some places you visit once and *remember forever', 'We came for a *weekend and stayed', 'Mornings here start slow with *chai and mist', 'And every evening ends in *gold light', 'This is *home now'],
+    hi: ['कुछ जगहें एक बार देखो और *हमेशा याद रहती हैं', 'आए थे एक *वीकेंड के लिए और रुक गए', 'यहाँ सुबह धीरे शुरू होती है *चाय और धुंध के साथ', 'और हर शाम खत्म होती है *सुनहरी रोशनी में', 'अब यही *घर है'],
+  },
+  {
+    name: 'Creator Pop', best: 'Beauty, lifestyle, GRWM', id: 'pop',
+    theme: { f1: 'Fredoka', w1: 700, f2: 'Poppins', f3: 'Kalam', fm: "'Space Mono'", c1: '#ffffff', c2: '#ff5fa2', c3: '#ffb648', box: '#ffffff', ink: '#2a1030', on2: '#ffffff' },
+    scene: 'radial-gradient(100% 80% at 50% 10%, #f7c6d9, #b07aa1 55%, #3d2440)', skin: '#d6a48a', shirt: '#f3e6ee',
+    lines: ['boxed', 'glide', 'wave', 'plain', 'fill'],
+    en: ['My five minute *glow routine', 'Start with cold water and *vitamin C serum', 'Then a tiny bit of *blush', 'Finish with sunscreen *always no skipping', 'Skin is *glowing all day'],
+    hi: ['मेरा पाँच मिनट का *ग्लो रूटीन', 'ठंडे पानी और *विटामिन सी सीरम से शुरू करो', 'फिर थोड़ा सा *ब्लश', 'आखिर में सनस्क्रीन *हमेशा कभी मत छोड़ो', 'स्किन *चमकती है दिन भर'],
+  },
+  {
+    name: 'Tech Drop', best: 'Tech, AI tools, gadgets', id: 'tech',
+    theme: { f1: 'Unbounded', w1: 800, f2: 'Inter', f3: "'DM Serif Display'", fm: "'Space Mono'", c1: '#ffffff', c2: '#3df2ff', c3: '#ff2a6d', box: '#0b1020', ink: '#3df2ff', on2: '#04121a' },
+    scene: 'radial-gradient(90% 70% at 20% 20%, #22305c, #070912 70%)', skin: '#9a7462', shirt: '#0f1224',
+    lines: ['type', 'decode', 'plain', 'echo', 'scatter'],
+    en: ['I tested every new AI *tool this week', 'Only one actually *worked offline', 'It runs on your laptop with *zero internet', 'And it is completely *free', 'Link is in my *bio go try it'],
+    hi: ['इस हफ्ते हर नया AI *टूल आज़माया', 'सिर्फ एक *ऑफलाइन चला', 'यह लैपटॉप पर चलता है *बिना इंटरनेट के', 'और यह बिल्कुल *फ्री है', 'लिंक मेरे *बायो में है ज़रूर आज़माओ'],
+  },
+  {
+    name: 'Money Talk', best: 'Finance, savings, business', id: 'money',
+    theme: { f1: "'League Spartan'", w1: 800, f2: 'Inter', f3: "'DM Serif Display'", fm: "'Space Mono'", c1: '#ffffff', c2: '#22e58b', c3: '#ffd166', box: '#ffffff', ink: '#04140c', on2: '#04140c' },
+    scene: 'linear-gradient(160deg, #0f2a2a, #071314)', skin: '#b4836a', shirt: '#1e2b3a',
+    lines: ['count', 'stack', 'plain', 'under', 'boxed'],
+    en: ['I saved *₹50,000 this year', 'By following one simple *rule every month', 'Pay yourself first then spend *the rest', 'Automate your savings on *payday itself', 'Small steps build *wealth slowly'],
+    hi: ['इस साल मैंने बचाए *₹50,000', 'हर महीने एक आसान *नियम से', 'पहले खुद को दो फिर खर्च करो *बाकी', 'सेविंग ऑटोमैटिक करो *सैलरी वाले दिन ही', 'छोटे कदम बनाते हैं *दौलत धीरे धीरे'],
+  },
+  {
+    name: 'Coach', best: 'Education, study tips, coaching', id: 'coach',
+    theme: { f1: 'Poppins', w1: 800, f2: 'Poppins', f3: 'Kalam', fm: "'Space Mono'", c1: '#ffffff', c2: '#ffd84d', c3: '#7cc4ff', box: '#ffd84d', ink: '#141414', on2: '#141414' },
+    scene: 'linear-gradient(160deg, #3f5e4b, #172a22)', skin: '#c08f6f', shirt: '#e8e3d6',
+    lines: ['marker', 'circle', 'plain', 'stack', 'glide'],
+    en: ['Here is the *secret to remembering anything', 'Review it once *before bed tonight', 'Your brain files it away while you *sleep', 'Then test yourself the *next morning', 'You will remember *twice as much'],
+    hi: ['कुछ भी याद रखने का यह है *राज़', 'सोने से पहले *दोहराओ एक बार', 'सोते समय दिमाग इसे *संभाल लेता है', 'फिर अगली *सुबह खुद को टेस्ट करो', 'तुम्हें याद रहेगा *दुगना'],
+  },
+  {
+    name: 'Street', best: 'Music, dance, fashion, Gen-Z', id: 'street',
+    theme: { f1: "'Bebas Neue'", w1: 400, f2: 'Inter', f3: "'DM Serif Display'", fm: "'Space Mono'", c1: '#ffffff', c2: '#ff2e88', c3: '#3da5ff', box: '#ff2e88', ink: '#ffffff', on2: '#0b0b0b' },
+    scene: 'radial-gradient(90% 70% at 70% 20%, #5a1f63, #12061a 70%)', skin: '#a07462', shirt: '#1c0d22',
+    lines: ['echo', 'tilt', 'vert', 'slam', 'plain'],
+    en: ['Drop the beat in *three two one', 'This fit is pure *drip no notes', 'Walking in like a *boss today', 'Turn the *volume up', 'See you on the dance floor *tonight'],
+    hi: ['बीट गिराओ *तीन दो एक', 'यह लुक है पूरा *स्वैग', 'ऐसे एंट्री जैसे *बॉस हो', 'आवाज़ *तेज़ करो', 'मिलते हैं डांस फ्लोर पर *आज रात'],
+  },
+  {
+    name: 'Podcast Pro', best: 'Podcasts, interviews, long talks', id: 'pod',
+    theme: { f1: "'DM Serif Display'", w1: 400, f2: 'Inter', f3: "'DM Serif Display'", fm: "'Space Mono'", c1: '#ffffff', c2: '#8fb8ff', c3: '#ffd9a8', box: '#8fb8ff', ink: '#0b1020', on2: '#0b1020' },
+    scene: 'radial-gradient(90% 70% at 70% 30%, #6b4b3a, #1a1210)', skin: '#a8765a', shirt: '#3a2a22',
+    lines: ['glide', 'plain', 'mask', 'stack', 'focus'],
+    en: ['The best advice I ever got was to *quit early', 'Most people stay too long out of *fear', 'Quitting the wrong thing is a *skill', 'It makes room for the *right thing to grow', 'That changed my *whole career'],
+    hi: ['मुझे मिली सबसे अच्छी सलाह थी *जल्दी छोड़ो', 'ज़्यादातर लोग *डर की वजह से रुके रहते हैं', 'गलत चीज़ छोड़ना एक *हुनर है', 'इससे सही चीज़ को बढ़ने की *जगह मिलती है', 'इसने बदल दिया मेरा *पूरा करियर'],
+  },
+  {
+    name: 'Desi Vibes', best: 'Festivals, food, family, Hindi creators', id: 'desi',
+    theme: { f1: "'Rozha One'", w1: 400, f2: 'Poppins', f3: 'Kalam', fm: "'Space Mono'", c1: '#fff6e5', c2: '#ff9f1c', c3: '#ff4f9a', box: '#ff9f1c', ink: '#3a0a1e', on2: '#3a0a1e' },
+    scene: 'radial-gradient(100% 80% at 50% 20%, #8a2a4a, #2a0a18 70%)', skin: '#b4836a', shirt: '#ff9f1c',
+    lines: ['wave', 'boxed', 'plain', 'slam', 'circle'],
+    en: ["Diwali at nani's house means *sweets everywhere", 'Kaju katli gulab jamun and *jalebi', 'The whole family cooking together since *morning', 'And the *fireworks start', 'Best night of the *year every year'],
+    hi: ['नानी के घर दिवाली मतलब *मिठाई हर जगह', 'काजू कतली गुलाब जामुन और *जलेबी', 'सुबह से पूरा परिवार साथ में *पकवान बना रहा है', 'और शुरू होते हैं *पटाखे', 'साल की सबसे अच्छी *रात हर साल'],
+  },
+  {
+    name: 'News Flash', best: 'News, updates, explainers', id: 'news',
+    theme: { f1: 'Oswald', w1: 700, f2: 'Inter', f3: "'DM Serif Display'", fm: "'Space Mono'", c1: '#ffffff', c2: '#e10600', c3: '#ffd400', box: '#ffffff', ink: '#0c0d10', on2: '#ffffff' },
+    scene: 'linear-gradient(170deg, #2a3442, #0d1117)', skin: '#b98a6c', shirt: '#1f2a3a',
+    lines: ['tilt', 'boxed', 'type', 'plain', 'decode'],
+    en: ['Breaking petrol prices *drop tonight', 'New rate is *₹5 lower', 'Changes apply from *midnight across India', 'Diesel prices stay the *same for now', 'More updates *soon stay tuned'],
+    hi: ['ब्रेकिंग पेट्रोल के दाम *घटे आज रात', 'नया रेट *₹5 कम', 'बदलाव लागू होंगे *आधी रात से पूरे देश में', 'डीज़ल के दाम अभी *वही रहेंगे', 'और अपडेट *जल्द बने रहिए'],
+  },
+  {
+    name: 'Fitness Pulse', best: 'Workouts, sports, challenges', id: 'fit',
+    theme: { f1: 'Teko', w1: 600, f2: 'Inter', f3: "'DM Serif Display'", fm: "'Space Mono'", c1: '#ffffff', c2: '#ff2d55', c3: '#ff9f0a', box: '#ffffff', ink: '#111111', on2: '#ffffff' },
+    scene: 'radial-gradient(90% 70% at 50% 40%, #3a0d18, #0b0306 70%)', skin: '#a07462', shirt: '#200a10',
+    lines: ['slam', 'count', 'zoom', 'plain', 'seam'],
+    en: ['Day one of the *challenge starts now', 'Today we hit *100 push ups', 'No breaks no *excuses go', 'Breathe and keep your core *tight', 'That is how you get *stronger'],
+    hi: ['चैलेंज का पहला दिन *शुरू अभी', 'आज करेंगे *100 पुश अप्स', 'ना ब्रेक ना *बहाना चलो', 'साँस लो और कोर *टाइट रखो', 'ऐसे ही बनते हो *मज़बूत'],
+  },
+  {
+    name: 'Luxury', best: 'Jewellery, cars, real estate, fashion', id: 'lux',
+    theme: { f1: 'Cinzel', w1: 700, f2: 'Inter', f3: "'Cormorant Garamond'", fm: "'Space Mono'", c1: '#edeff3', c2: '#d8c3a5', c3: '#ffffff', box: '#edeff3', ink: '#111111', on2: '#111111' },
+    scene: 'linear-gradient(180deg, #1c2330, #07090d)', skin: '#a8765a', shirt: '#151a24',
+    lines: ['focus', 'mask', 'plain', 'vert', 'under'],
+    en: ['Introducing the new *Aurora collection', 'Handcrafted in Jaipur from *pure silver', 'Each piece takes three weeks to *finish', 'Made to *last', 'Available only by *invitation this season'],
+    hi: ['पेश है नया *ऑरोरा कलेक्शन', 'जयपुर में हाथ से बना *शुद्ध चाँदी से', 'हर पीस बनने में तीन हफ्ते *लगते हैं', 'बना है *हमेशा के लिए', 'इस सीज़न सिर्फ *निमंत्रण पर उपलब्ध'],
+  },
+  {
+    name: 'Comedy', best: 'Comedy, relatable skits, reactions', id: 'comedy',
+    theme: { f1: 'Bangers', w1: 400, f2: 'Fredoka', f3: 'Kalam', fm: "'Space Mono'", c1: '#ffffff', c2: '#ffe14a', c3: '#ff3b30', box: '#ffffff', ink: '#111111', on2: '#111111' },
+    scene: 'linear-gradient(160deg, #3ec5ff, #2a6fdb)', skin: '#c48c6c', shirt: '#ffcf3f',
+    lines: ['bubble', 'wave', 'slam', 'tilt', 'plain'],
+    en: ['Me trying to wake up at *6 am', 'Alarm one *snooze', 'Alarm two *SNOOZE', 'Alarm three *panic mode', 'Anyway I woke up at *eleven'],
+    hi: ['मैं सुबह *6 बजे उठने की कोशिश में', 'पहला अलार्म *स्नूज़', 'दूसरा अलार्म *स्नूज़', 'तीसरा अलार्म *घबराहट', 'खैर मैं उठा *ग्यारह बजे'],
+  },
+  {
+    name: 'Minimal Clean', best: 'Corporate, LinkedIn, founders', id: 'clean',
+    theme: { f1: "'Playfair Display'", w1: 700, f2: 'Inter', f3: "'Playfair Display'", fm: "'Space Mono'", c1: '#ffffff', c2: '#6f95ff', c3: '#ffffff', box: '#ffffff', ink: '#111111', on2: '#ffffff' },
+    scene: 'linear-gradient(170deg, #4b5a6e, #1b2230)', skin: '#c99a7a', shirt: '#22314d',
+    lines: ['plain', 'stack', 'under', 'mask', 'glide'],
+    en: ['We grew revenue by focusing on *retention', 'Not on chasing every *new lead', 'Happy customers bring *referrals for free', 'It is the quietest growth *engine there is', 'Start with the customers you *already have'],
+    hi: ['हमने रेवेन्यू बढ़ाया *रिटेंशन पर ध्यान देकर', 'हर नई *लीड के पीछे भागकर नहीं', 'खुश ग्राहक लाते हैं *रेफ़रल मुफ़्त में', 'यह सबसे शांत ग्रोथ *इंजन है', 'शुरुआत करो उन ग्राहकों से जो *पहले से हैं'],
+  },
+]
+
+function setRate(root) {
+  for (const a of root.getAnimations({ subtree: true })) a.playbackRate = state.speed
+}
+
+class Player {
+  constructor(tpl, index) {
+    this.tpl = tpl
+    const card = $('article', 'card')
+    const frame = $('div', 'frame th-' + tpl.id)
+    frame.tabIndex = 0
+    frame.setAttribute('role', 'button')
+    frame.setAttribute('aria-label', `Restart ${tpl.name} from line 1`)
+    frame.style.setProperty('--scene', tpl.scene)
+    frame.style.setProperty('--skin', tpl.skin)
+    frame.style.setProperty('--shirt', tpl.shirt)
+    Object.entries(tpl.theme).forEach(([k, v]) => frame.style.setProperty('--' + k, String(v)))
+    this.cam = $('div', 'cam')
+    this.cam.append($('div', 'shot'))
+    this.stage = $('div', 'stage')
+    this.cam.append(this.stage)
+    frame.append(this.cam)
+    const meta = $('div', 'meta')
+    const h2 = $('h2')
+    h2.append($('span', null, String(index + 1).padStart(2, '0')), document.createTextNode(tpl.name))
+    const sw = $('div', 'swatch')
+    ;[tpl.theme.c1, tpl.theme.c2, tpl.theme.c3, tpl.theme.box].forEach((col) => { const i = $('i'); i.style.background = col; sw.append(i) })
+    const ul = $('ul', 'recipe')
+    this.items = tpl.lines.map((id, i) => {
+      const li = $('li')
+      li.append($('span', 'n', String(i + 1)), $('b', null, TREAT[id].name), $('span', null, TREAT[id].desc))
+      ul.append(li)
+      return li
+    })
+    meta.append(h2, $('div', 'best', tpl.best), sw, ul)
+    card.append(frame, meta)
+    this.frame = frame
+    this.card = card
+    const replay = () => this.restart()
+    frame.addEventListener('click', replay)
+    frame.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); replay() } })
+  }
+
+  restart() { this.pi = 0; this.load() }
+
+  load() {
+    const idx = this.pi % this.tpl.lines.length
+    const treat = TREAT[this.tpl.lines[idx]]
+    this.p = plan(this.tpl[state.lang][idx], KEY_EXTRA)
+    this.frame.classList.toggle('lang-hi', state.lang === 'hi')
+    this.items.forEach((li, i) => li.classList.toggle('on', i === idx))
+    this.stage.replaceChildren()
+    const comp = $('div', 'comp tr-' + this.tpl.lines[idx])
+    this.stage.append(comp, $('div', 'lineno', `LINE ${idx + 1} · ${treat.name.toUpperCase()}`))
+    this.cam.style.animation = 'none'
+    const fw = this.frame.clientWidth || 300
+    const x = {
+      stage: this.stage,
+      frame: this.frame,
+      fit: (a, b, max) => fit(a, b, max, fw),
+      shake: (t) => { void this.cam.offsetWidth; this.cam.style.animation = `shake 0.38s linear ${Math.round(t)}ms both` },
+    }
+    this.res = treat.build(comp, this.p, x) || {}
+    this.lt = 0
+    this.exiting = false
+    setRate(this.frame)
+    if (!state.playing) {
+      const running = this.frame.getAnimations({ subtree: true }).filter((a) => a.playState === 'running')
+      running.forEach((a) => a.pause())
+      held.push(...running)
+    }
+  }
+
+  tick(dt) {
+    this.lt += dt
+    this.res.update?.(this.lt)
+    if (!this.exiting && this.lt >= this.p.end) {
+      this.exiting = true
+      this.stage.querySelector('.comp')?.classList.add('exit')
+      setRate(this.stage)
+    }
+    if (this.lt >= this.p.end + EXIT_MS) {
+      this.pi += 1
+      this.load()
+    }
+  }
+}
+
+const grid = document.getElementById('grid')
+const players = TEMPLATES.map((tpl, i) => {
+  const pl = new Player(tpl, i)
+  grid.append(pl.card)
+  return pl
+})
+
+const fontChecks = [
+  '400 20px Anton', '400 20px Bangers', '400 20px "Bebas Neue"', '700 20px "Bodoni Moda"', '700 20px Cinzel', 'italic 500 20px "Cormorant Garamond"',
+  '400 20px "DM Serif Display"', 'italic 400 20px "DM Serif Display"', '600 20px Fredoka', '700 20px Fredoka', '500 20px Inter', '600 20px Inter',
+  '700 20px Inter', '800 20px Inter', '700 20px Kalam', '800 20px "League Spartan"', '700 20px Oswald', '700 20px "Playfair Display"',
+  'italic 700 20px "Playfair Display"', '600 20px Poppins', '700 20px Poppins', '800 20px Poppins', '400 20px "Rozha One"', '900 20px Rubik',
+  '400 20px "Space Mono"', '700 20px "Space Mono"', '400 20px "Special Elite"', '600 20px Teko', '800 20px Unbounded',
+]
+const fontsReady = Promise.all([
+  ...fontChecks.map((f) => document.fonts.load(f).catch(() => null)),
+  document.fonts.load('400 20px "Rozha One"', 'हिंदी').catch(() => null),
+  document.fonts.load('700 20px Kalam', 'हिंदी').catch(() => null),
+  document.fonts.load('800 20px Mukta', 'हिंदी').catch(() => null),
+  document.fonts.load('600 20px Mukta', 'हिंदी').catch(() => null),
+  document.fonts.load('500 20px Mukta', 'हिंदी').catch(() => null),
+])
+const timeout = new Promise((resolve) => setTimeout(resolve, 2500))
+
+Promise.race([fontsReady, timeout]).then(() => {
+  players.forEach((pl) => pl.restart())
+  let last = performance.now()
+  const frame = (now) => {
+    const dt = Math.min(100, now - last) * state.speed
+    last = now
+    if (state.playing) players.forEach((pl) => pl.tick(dt))
+    requestAnimationFrame(frame)
+  }
+  requestAnimationFrame(frame)
+})
+
+function bindSeg(attr, apply) {
+  const buttons = document.querySelectorAll(`[data-${attr}]`)
+  buttons.forEach((btn) => btn.addEventListener('click', () => {
+    buttons.forEach((b) => b.setAttribute('aria-pressed', String(b === btn)))
+    apply(btn.dataset[attr])
+  }))
+}
+bindSeg('lang', (lang) => { state.lang = lang; players.forEach((pl) => pl.restart()) })
+bindSeg('speed', (v) => {
+  state.speed = Number(v)
+  document.getAnimations().forEach((a) => { a.playbackRate = state.speed })
+})
+
+const playBtn = document.getElementById('play')
+playBtn.addEventListener('click', () => {
+  state.playing = !state.playing
+  if (state.playing) {
+    held.forEach((a) => { if (a.playState === 'paused') a.play() })
+    held = []
+  } else {
+    held = document.getAnimations().filter((a) => a.playState === 'running')
+    held.forEach((a) => a.pause())
+  }
+  playBtn.textContent = state.playing ? 'Pause' : 'Play'
+})
+document.getElementById('restart').addEventListener('click', () => players.forEach((pl) => pl.restart()))
+</script>
+</body>
+</html>
