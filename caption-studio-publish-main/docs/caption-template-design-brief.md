@@ -12,7 +12,7 @@ You are a senior motion designer with 15 years in broadcast, title design and so
 
 Lekha Captions is a web caption editor mainly for **Indian social media creators**. Users upload a talking-head or vlog clip and get auto-transcribed captions in English, Hindi or Hinglish. They pick a template from the Templates tab and export a burned-in MP4.
 
-- **Frame.** Mainly 9:16 vertical (1080×1920). Templates must also hold up at 1:1 and 16:9.
+- **Frame.** Two first-class orientations: **9:16 vertical** (1080×1920) and **16:9 landscape** (1920×1080). 1:1 (1080×1080) is secondary. Every template, and every one of its five recipes, must be designed for both 9:16 and 16:9, not just scaled from one to the other.
 - **Caption data.**
   - Each caption is one spoken line (usually 3–9 words) with word-level start/end times.
   - It has an important word (`imp_word_index`, optionally several in `imp_word_indices`), picked automatically. The current picker skips English and Hindi stop words, prefers longer words and numbers, and uses the loudest word from the audio waveform.
@@ -30,7 +30,9 @@ Lekha Captions is a web caption editor mainly for **Indian social media creators
 
 ## 3. WHO IT IS FOR: SOCIAL MEDIA FIRST
 
-- **Platforms.** Instagram Reels, YouTube Shorts, Moj, Josh, Snapchat Spotlight. Facebook Reels and LinkedIn video come second.
+- **Platforms.**
+  - **Vertical (9:16):** Instagram Reels, YouTube Shorts, Moj, Josh, Snapchat Spotlight, Facebook Reels.
+  - **Landscape (16:9):** long-form YouTube (vlogs, podcasts, tutorials, reviews), LinkedIn and Facebook feed video, course and webinar clips.
 - **Mobile and sound-off.** Viewers watch on a 6-inch phone at arm's length, mostly with the sound off. The captions carry the story.
 - **Stop the scroll.** The first caption is the hook and must read in under a second and stand out in the first 1–2 seconds, through scale, placement or contrast, never gimmicks.
 - **Pacing.** Speech runs 150–190 words a minute, clips are 15–90 seconds, and there are quick cuts. Animations must finish before the next caption arrives.
@@ -92,6 +94,21 @@ The existing templates (about 50 advanced, plus basic ones) are built as sequenc
 
 ## 6. DESIGN PRINCIPLES (APPLY ALL)
 
+- **Two orientations, two layouts.** Each recipe has its own 9:16 layout and its own 16:9 layout.
+  - **Sizing.** Size type from the frame's shorter side, for example `min(cqw, cqh)`, so text doesn't balloon in landscape.
+  - **9:16 vertical:**
+    - text stacks into 2–3 short rows
+    - hero words can fill the width
+    - CPT layouts stack vertically
+  - **16:9 landscape:**
+    - 1–2 rows of about 32–42 characters each
+    - body text about 3.2–4.2% of frame height for readable subtitles
+    - captions usually sit as a lower third, or in a side column opposite the speaker (who is often framed left or right of centre by the rule of thirds)
+    - CPT and hero layouts use the width: the important word large on one side with supporting words beside it, a split title across the frame, or a side column
+    - never a tall narrow stack in the middle
+  - The template's signature motion, type pairing, palette and highlight treatments stay the same in both orientations; only composition and scale change.
+  - Motion distances scale with the frame. A slide that crosses 30% of a vertical frame should cross a similar visual distance in landscape, not twice as far.
+
 - **One idea per template.** Each template has:
   - one signature motion (unique across all templates)
   - one type pairing (display + body)
@@ -124,10 +141,15 @@ The existing templates (about 50 advanced, plus basic ones) are built as sequenc
   - Body text at least 5cqw of frame width, and **never below 5.4cqw for Hindi**.
   - Test contrast on a light scene and a dark scene.
   - Reading speed should not exceed about 17 characters per second. If the speech is faster, simplify the line rather than speed the motion up.
-- **Safe areas.**
+- **Safe areas: 9:16.**
   - Keep text out of the bottom 12% and the top 8%.
   - Keep it out of the right-hand 14% between 45% and 90% height (Reels buttons).
   - Keep it off the speaker's face (usually 45–65% height, centred).
+- **Safe areas: 16:9.**
+  - Keep text inside the 90% title-safe area.
+  - Keep it out of the bottom 10–12%, where YouTube's progress bar, player controls and native captions sit.
+  - Avoid the top-right corner, where YouTube end screens, cards and the channel watermark appear.
+  - Keep it off the speaker's face (usually the middle third horizontally, or the left or right third when the speaker is framed off-centre).
 - **Hindi.**
   - Never split a Devanagari word into separate letter boxes; animate whole words.
   - No uppercase or letter-spacing, and line-height of at least 1.3.
@@ -243,6 +265,8 @@ Rhythm rules:
 ### 7.5 Adapt placement and timing
 
 - **Placement.**
+  - Read the orientation first and use that recipe's 9:16 or 16:9 layout.
+  - In landscape, put side-column and CPT layouts on the side opposite the speaker.
   - Move the caption away from the face when the speaker is close to camera.
   - Alternate zones so consecutive lines don't stack in the same place.
   - Keep list items in the same zone.
@@ -291,7 +315,7 @@ Design **15 templates**. For each one, give:
    - **Line animation:** different for each of the five.
    - **Important-word highlight:** style plus motion, different for each of the five. A plain line has none.
    - **Composition:** subtitle, headline, big word, label + line, or quote.
-   - **Placement:** vertical % and alignment.
+   - **Placement:** vertical % and alignment, given **separately for 9:16 and 16:9**, plus the type scale for each.
    - **Reveal unit:** word, letter, line or all at once.
    - **Timing.**
    - **Intended use:** hook, explanation, list, number, question, punchline or CTA.
@@ -307,9 +331,10 @@ Design **15 templates**. For each one, give:
 
 Then build **one self-contained HTML preview page**:
 
-- A grid of 9:16 phones, each with a speaker silhouette over muted gradient "footage".
+- A grid of preview frames, each with a speaker silhouette over muted gradient "footage".
+- An **orientation toggle: 9:16 / 16:9** (and optionally 1:1). In 16:9 the frame switches to landscape with the speaker framed off-centre, and every recipe uses its landscape layout.
 - Each phone plays its eight-line script with the smart rules applied, so viewers see the template *choose* recipes. A small badge shows the intent for each line.
-- **Short cards.** The phone is the card, at most about one screen tall on desktop. On mobile the whole card fits without scrolling. Under the phone show only:
+- **Short cards.** The preview frame is the card, at most about one screen tall on desktop. On mobile the whole card fits without scrolling. Under the phone show only:
   - name and number
   - one line for "best for"
   - one line for the motion
@@ -330,7 +355,11 @@ Then build **one self-contained HTML preview page**:
   - Marcellus for labels.
   - Devanagari: Tiro Devanagari Hindi.
 - **Palette:** `c1` #FFF8EE, `c2` #D8B98A (old gold). The footage is darkened toward the bottom.
-- **Recipes:**
+- **Landscape (16:9):**
+  - The rule runs vertically beside a left-side column (or a right-side one when the speaker is framed left).
+  - Recipe 1's big word spans about 45% of the width on one side.
+  - Plain lines sit as a lower third at about 82% height, left-aligned, at most 2 rows of about 38 characters.
+- **Recipes (9:16 placement shown):**
 
 | # | Type | Layout and placement | Line animation | Highlight | Use |
 |---|---|---|---|---|---|
@@ -361,6 +390,7 @@ Then build **one self-contained HTML preview page**:
 - [ ] Highlights skip stop words, keep phrases together, are never forced when confidence is low, and never repeat a word back to back.
 - [ ] Nothing from the rejected list appears.
 - [ ] Hindi uses whole-word animation, a matching Devanagari font, and nothing below 5.4cqw.
-- [ ] Captions stay inside the safe areas, legible on light and dark footage, at 17 characters per second or less.
+- [ ] Every recipe has its own designed layout for both 9:16 and 16:9 (not just scaled), and the preview has an orientation toggle.
+- [ ] Captions stay inside the safe areas for each orientation (Reels UI in 9:16; YouTube progress bar, controls and end-screen corner in 16:9), legible on light and dark footage, at 17 characters per second or less.
 - [ ] Every frame is deterministic. Decisions are stored per caption, so preview and export match.
 - [ ] Cards are short. The page was tested in both languages.
