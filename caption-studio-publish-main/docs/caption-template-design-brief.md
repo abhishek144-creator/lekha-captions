@@ -39,6 +39,60 @@ Technical facts the design must respect:
    - **Platform-native feel.** It should look at home next to native Reels/Shorts text and survive the platform's own compression. Avoid hairlines under 2 px at 1080 wide, very thin weights at small sizes, and low-contrast colours that get muddied by compression.
    - **Works over any footage.** Creators won't adjust per clip, so every template needs built-in legibility (shadow, a quiet panel or a scrim) on both bright selfie footage and dark night footage.
 
+## WHAT THE APP'S TEMPLATES ALREADY DO (USE AS VOCABULARY, DO NOT COPY)
+
+The existing advanced templates (about 50) are built the same way: a sequence of lines, where each line has a *type* and the important word has its *own* animation. Use this structure and vocabulary. Do not recreate an existing template's exact combination.
+
+### Line types (mix these inside every template)
+
+| Type | What it is |
+|---|---|
+| **A. Plain** | A normal sentence. It appears as a whole with a short fade (about 240 ms). No word motion, no important-word emphasis. |
+| **B. Plain + key word only** | A normal sentence with no motion. Only the important word is styled: colour, weight, italic, underline, a box behind it, or wider spacing. |
+| **C. Sentence with animation** | Words enter one by one (rise, slide, sequential fade and so on). There is no separate important-word effect. |
+| **D. Sentence + key word + animation** | Words enter one by one, and the important word has its own, different entrance and emphasis on top: it arrives with a different motion, a little later, and holds longer. |
+| **E. Styled line** | One bespoke authored effect drives the whole line, such as a split title, ink wipe, blur focus or ticker roll. It may also emphasise the important word. |
+| **F. Karaoke** | The full sentence is visible from the start, and a highlight follows the speech word by word. |
+
+Rules:
+
+- A five-line template should use at least four of these types.
+- **The important-word animation must change from line to line** inside a template. For example: line 2 drops in, line 4 wipes in, line 5 uses a weight change.
+- Plain lines (A) are rests between busier lines. Every template needs at least one.
+
+### Word-by-word entrances already in the app
+
+Rise, slide from left, slide from right, roll, wipe, wipe-up, fade, sequential fade, scale, 3D flip, bounce, diagonal, expand, skew, stencil, lift, plus sticky wave and karaoke.
+
+### Important-word animations already in the app
+
+- **Motion:** drop, wipe, diagonal wipe, skew snap, pop, roll, lift, stamp, wipe-up, drift, stencil, flicker, typewrite.
+- **Entrance direction:** *opposite-slide* or *opposite* (the important word comes in from the opposite side to the other words).
+- **Styles:** bold, colour (gold, rose, cyan, green, purple, orange), italic, weight change, underline, box, letter-spacing.
+- **How it's chosen:** the app picks the important word by skipping English and Hindi stop words (the, and, है, का, में…) and using vocal emphasis from the audio.
+
+### Named line (styled) effects already in the app
+
+- **Reveals and wipes:** fade reveal, slow fade, crossfade, ink wipe, doc wipe, slash wipe, blur focus, grain blur, inner reveal, secret reveal, peel on, center expand, editorial word reveal.
+- **Rise and slide:** rise up, soft rise, slow rise, hard rise, slide, slide-up, slide-right, fast slide, surge in, side slap, slide and stick.
+- **Impact:** slam, slap, punch pop, center pop, pow pop, impact settle, stamp in, drop bounce, knock on, backhand slap, bass spike.
+- **Typing and editing:** typewriter, handwrite, annotate, autocorrect, track changes, live edit, cut and paste, draft lines, final draft, print head, tape feed, "they typed / they sent" (chat).
+- **Boards and paper:** ticker roll, departures / now boarding / gate change / final call (split-flap), tile by tile, key tile first, letter snap, click by click, ribbon clicks, tally, till receipt, line items, change due, tear off, glue strip, scrap drop, sticker drop, fridge snap.
+- **Kinetic and physics:** 3D flip, wave in, chain reaction, slow topple, slow magnets, breathe, measure, level up, split title, route draw, interchange, express run, reverse run, next stop, last train, last piece, plot sheet, note build.
+- **Light and sound:** neon drop, neon expand, neon flicker, neon pulse, glitch, soundcheck, slow jam.
+- **Basic-template motions:** rise in, fade up, word rise, word slide in (and reverse), wipe in, echo in, flicker on, zen fade, luxury fade, royal reveal, scholar reveal, smoke reveal, sunset rise, type click.
+
+### How this vocabulary applies to new templates
+
+- **Use freely (mature):** fade, slow fade, crossfade, rise / soft rise / slow rise, slide / slide-up / fast slide, wipe / wipe-up / ink wipe / doc wipe, blur focus, letter-spacing, typewriter, handwrite, karaoke, split title, center expand, impact settle, lift, drift, weight change, underline, box.
+- **Avoid, per the owner's maturity rule:** neon (all), glitch, comic or pow pop, candy or k-pop bounce, ice shatter, matrix drop, pixel drop, spray paint, sticker drop, fridge snap, slam with camera shake.
+
+### Timing the app already uses (stay in this range)
+
+- **Fast word-by-word:** 45 ms stagger, 210 ms per word, important-word emphasis 60 ms after its word for 300 ms, enter 200 ms, exit 260 ms.
+- **Authored hero lines:** 280 ms stagger, 430 ms body words, 560 ms important (hero) word, exit 420 ms, 50 ms gap between captions.
+- **Short captions:** on short captions, the app squeezes the authored motion so it finishes within 82% of the caption's duration, keeping the easing and relative stagger. Design motion that still reads well at about half speed.
+
 ## DESIGN PRINCIPLES (APPLY ALL)
 
 - **Vary composition, not effects.** Inside a template, the five lines change through:
@@ -102,6 +156,8 @@ Design **15 templates**. For each one, give:
    - a drawn hairline
    - a slow light sweep
 6. **Five line specs.** For each line give:
+   - **Line type:** A to F from the list above. Use at least four different types per template, including at least one plain line.
+   - **Important-word animation:** its motion and style. It must differ from the other four lines of the same template. A plain line (A) has none.
    - **Composition:** subtitle, headline, big word, label + line (with the label text), or quote.
    - **Placement:** vertical % and alignment.
    - **Reveal unit:** word, letter, line or all at once.
