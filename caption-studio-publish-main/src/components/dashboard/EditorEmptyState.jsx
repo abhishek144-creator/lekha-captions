@@ -10,7 +10,6 @@ import { downloadDraft } from '@/lib/localDraftStorage'
 export default function EditorEmptyState({
   localRecoveryDraft,
   applyLocalDraft,
-  discardLocalDraft,
   accountDraft,
   onContinueAccountDraft,
   handleUploadModalOpen,
@@ -45,11 +44,10 @@ export default function EditorEmptyState({
             Continue account draft
           </Button>
         )}
+        {/* The recovery copy is discarded only once a new upload is accepted
+            (Dashboard.handleUpload), so cancelling the upload window keeps it. */}
         <Button
-          onClick={() => {
-            if (localRecoveryDraft) discardLocalDraft()
-            handleUploadModalOpen()
-          }}
+          onClick={handleUploadModalOpen}
           size="lg"
           className="bg-white hover:bg-gray-100 text-black font-semibold px-8 rounded-[4px]"
         >

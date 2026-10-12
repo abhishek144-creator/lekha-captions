@@ -104,7 +104,7 @@ const presetGradients = [
   { name: 'Night', value: 'linear-gradient(to right, #60a5fa, #4f46e5)' },
 ];
 
-export default function StyleControls({
+function StyleControls({
   captionStyle,
   setCaptionStyle,
   setCaptionStyleRaw,
@@ -118,6 +118,7 @@ export default function StyleControls({
 }) {
   // Detect script from captions and get appropriate fonts
   const [detectedScript, setDetectedScript] = React.useState('latin');
+  const detectedScriptRef = React.useRef('latin');
   const [availableFonts, setAvailableFonts] = React.useState(
     (scriptFontMap.latin).map(f => ({ value: f.name, label: f.name }))
   );
@@ -146,14 +147,15 @@ export default function StyleControls({
       const sampleText = captions.filter(c => !c.isTextElement).map(c => c.text).join(' ');
       if (sampleText.trim()) {
         const script = detectScript(sampleText);
-        const prevScript = detectedScript;
+        const scriptChanged = script !== detectedScriptRef.current;
+        detectedScriptRef.current = script;
         setDetectedScript(script);
 
         const scriptFonts = scriptFontMap[script] || scriptFontMap.latin;
         const fontList = scriptFonts.map(f => ({ value: f.name, label: f.name }));
         setAvailableFonts(fontList);
 
-        if (script !== prevScript && script !== 'latin') {
+        if (scriptChanged && script !== 'latin') {
           const firstFont = scriptFonts[0];
           if (firstFont) {
             loadGoogleFont(firstFont.name, firstFont.weights).catch(() => { });
@@ -306,13 +308,23 @@ export default function StyleControls({
       return next;
     };
 
+    // A font size change also rescales word offsets on the captions: record
+    // one undo step for both, then apply them without further history.
+    const scalesWordOffsets = key === 'font_size' && captions && applyCaptions
+      && Number(captionStyle.font_size || 18) !== Number(value);
+    if (scalesWordOffsets && !skipHistory && addToHistory && setCaptionsRaw && setCaptionStyleRaw) {
+      addToHistory();
+      skipHistory = true;
+    }
+    const scaleCaptions = (skipHistory && setCaptionsRaw) ? setCaptionsRaw : applyCaptions;
+
     // When font size changes for main captions, scale displaced word offsets proportionally
-    if (key === 'font_size' && captions && applyCaptions) {
+    if (scalesWordOffsets) {
       const oldFontSize = captionStyle.font_size || 18;
       const newFontSize = value;
       if (oldFontSize && newFontSize && oldFontSize !== newFontSize) {
         const ratio = newFontSize / oldFontSize;
-        const captionUpdater = (typeof applyCaptions === 'function') ? applyCaptions : null;
+        const captionUpdater = (typeof scaleCaptions === 'function') ? scaleCaptions : null;
         if (captionUpdater) {
           captionUpdater(prev => prev.map(c => {
             if (c.isTextElement || !c.wordStyles) return c;
@@ -1569,3 +1581,7 @@ export default function StyleControls({
     </div>
   );
 }
+
+// Memoized: the dashboard re-renders on every playback tick; this panel only
+// needs to when its own props change.
+export default React.memo(StyleControls);

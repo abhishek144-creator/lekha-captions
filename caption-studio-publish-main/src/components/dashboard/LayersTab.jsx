@@ -15,7 +15,6 @@ export default function LayersTab({
   onSeek,
   captionStyle,
   setCaptionStyle,
-  addToHistory,
   brandKits = [],
   onBrandKitsChange,
   preferenceSyncStatus = 'loading',
@@ -48,7 +47,7 @@ export default function LayersTab({
 
   const applyBrandKit = (kit) => {
     if (!kit?.style || !setCaptionStyle) return;
-    addToHistory?.();
+    // setCaptionStyle records the undo step itself.
     setCaptionStyle((current) => ({
       ...current,
       ...kit.style,

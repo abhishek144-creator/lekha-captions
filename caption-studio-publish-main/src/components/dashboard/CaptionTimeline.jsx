@@ -15,6 +15,22 @@ const AUDIO_TRACK_TOP = SPEECH_TRACK_TOP + SPEECH_HEIGHT + 18;
 const TIMELINE_CANVAS_HEIGHT = AUDIO_TRACK_TOP + WAVEFORM_HEIGHT + 8;
 const TRACK_LEFT = 48;
 const TRACK_RIGHT = 4;
+// A press becomes a drag only after this much movement, so a click that
+// selects a block never records an undo step or snaps the block.
+const DRAG_START_THRESHOLD_PX = 3;
+
+// Word timing as it was when the drag began, so a resize recomputes from it
+// rather than from a frame that already discarded it.
+const withOriginalWordTiming = (caption, original) => (
+  original && original.id === caption.id
+    ? {
+        ...caption,
+        words: original.words,
+        word_alignment_status: original.word_alignment_status,
+        word_alignment_note: original.word_alignment_note,
+      }
+    : caption
+);
 
 export default function CaptionTimeline({
   captions,
@@ -76,6 +92,8 @@ export default function CaptionTimeline({
 
   // Auto-pan offset (CSS transform based, does NOT touch scrollLeft/scrollbar)
   const [panOffset, setPanOffset] = useState(0);
+  const panOffsetRef = useRef(0);
+  panOffsetRef.current = panOffset;
   const prevTimeRef = useRef(0);
 
   const [draggingElement, setDraggingElement] = useState(null);
@@ -147,6 +165,7 @@ export default function CaptionTimeline({
     }
 
     // Calculate where the playhead is relative to the visible window (considering both scroll and pan)
+    const panOffset = panOffsetRef.current;
     const visibleLeft = userScroll + panOffset;
     const relativeX = playheadX - visibleLeft;
 
@@ -158,7 +177,9 @@ export default function CaptionTimeline({
     else if (relativeX < containerWidth * 0.15 && panOffset > 0) {
       setPanOffset(Math.max(0, playheadX - userScroll - containerWidth * 0.85));
     }
-  }, [displayTime, duration]);
+    // Zoom changes the timeline width, so the pan is re-checked then too;
+    // otherwise zooming out while paused could leave the tracks off-screen.
+  }, [displayTime, duration, zoom]);
 
   // Global Magnetic Snapping Logic - Now includes waveform peaks!
   const getSnapTime = (targetTime, excludeElementId, allElements) => {
@@ -265,6 +286,13 @@ export default function CaptionTimeline({
     return { minStart: 0, maxEnd: duration };
   };
 
+  // The drag effect reads the latest snapping/bounds helpers (waveform peaks
+  // can arrive mid-session) and history callback without re-subscribing.
+  const dragHelpersRef = useRef(null);
+  dragHelpersRef.current = { getSnapTime, getMoveBounds, getResizeBounds };
+  const addToHistoryRef = useRef(addToHistory);
+  addToHistoryRef.current = addToHistory;
+
   const updateScrubFromClientX = React.useCallback((clientX) => {
     const bounds = scrubBoundsRef.current || timelineRef.current?.getBoundingClientRect();
     if (!bounds || !duration) return;
@@ -351,14 +379,10 @@ export default function CaptionTimeline({
       }
     };
 
-    window.addEventListener('mousemove', handleMouseMoveGlobal);
-    window.addEventListener('mouseup', handleMouseUpGlobal);
     window.addEventListener('pointermove', handleMouseMoveGlobal, { passive: false });
     window.addEventListener('pointerup', handleMouseUpGlobal);
     window.addEventListener('pointercancel', handleMouseUpGlobal);
     return () => {
-      window.removeEventListener('mousemove', handleMouseMoveGlobal);
-      window.removeEventListener('mouseup', handleMouseUpGlobal);
       window.removeEventListener('pointermove', handleMouseMoveGlobal);
       window.removeEventListener('pointerup', handleMouseUpGlobal);
       window.removeEventListener('pointercancel', handleMouseUpGlobal);
@@ -372,7 +396,9 @@ export default function CaptionTimeline({
   const handleElementDragStart = (e, element, type) => {
     e.stopPropagation();
     e.preventDefault();
-    addToHistory(); // Snapshot pre-drag state for undo
+    // Without a known duration every block sits at 0 and a drag would move the
+    // caption to 0 s or shrink it to 20 ms (e.g. while the source is relinked).
+    if (!(Number(duration) > 0) || !Number.isFinite(Number(duration))) return;
     setDraggingElement(element);
     setDragType(type);
     setDragStartX(e.clientX);
@@ -387,9 +413,19 @@ export default function CaptionTimeline({
     if (!rawSet) return;
 
     let rafId = null;
+    let dragStarted = false;
+    // The block as it was when pressed. Resizes are computed from it, so an
+    // edge dragged past a word and back keeps that caption's word timing.
+    const original = draggingElement;
+    const { getSnapTime, getMoveBounds, getResizeBounds } = dragHelpersRef.current;
     document.body.style.userSelect = 'none';
 
     const handleMouseMove = (e) => {
+      if (!dragStarted) {
+        if (Math.abs(e.clientX - dragStartX) < DRAG_START_THRESHOLD_PX) return;
+        dragStarted = true;
+        addToHistoryRef.current?.(); // Snapshot pre-drag state for undo
+      }
       if (rafId) cancelAnimationFrame(rafId);
       rafId = requestAnimationFrame(() => {
         if (!timelineRef.current) return;
@@ -456,7 +492,7 @@ export default function CaptionTimeline({
             const bounds = getResizeBounds(cap, prev, 'resize-left');
             newStart = Math.max(bounds.minStart, newStart);
             newStart = Math.max(0, Math.min(cap.end_time - 0.02, newStart));
-            return invalidateWordTimingOutsideCaption({ ...cap, start_time: newStart });
+            return invalidateWordTimingOutsideCaption({ ...withOriginalWordTiming(cap, original), start_time: newStart });
           } else if (dragType === 'resize-right') {
             let rawEnd = dragStartTime + deltaTime;
 
@@ -468,7 +504,7 @@ export default function CaptionTimeline({
             const bounds = getResizeBounds(cap, prev, 'resize-right');
             newEnd = Math.min(bounds.maxEnd, newEnd);
             newEnd = Math.max(cap.start_time + 0.02, Math.min(duration, newEnd));
-            return invalidateWordTimingOutsideCaption({ ...cap, end_time: newEnd });
+            return invalidateWordTimingOutsideCaption({ ...withOriginalWordTiming(cap, original), end_time: newEnd });
           }
 
           return cap;
@@ -478,7 +514,7 @@ export default function CaptionTimeline({
 
     const handleMouseUp = () => {
       if (rafId) cancelAnimationFrame(rafId);
-      if (draggingElement && !draggingElement.isTextElement) {
+      if (dragStarted && draggingElement && !draggingElement.isTextElement) {
         rawSet(prev => {
           const textEls = prev.filter(c => c.isTextElement);
           const speechEls = prev.filter(c => !c.isTextElement)
@@ -491,8 +527,8 @@ export default function CaptionTimeline({
       setDragType(null);
     };
 
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
+    // Pointer events cover mouse, pen and touch; also listening to mouse
+    // events ran every handler twice.
     document.addEventListener('pointermove', handleMouseMove, { passive: false });
     document.addEventListener('pointerup', handleMouseUp);
     document.addEventListener('pointercancel', handleMouseUp);
@@ -500,8 +536,6 @@ export default function CaptionTimeline({
     return () => {
       if (rafId) cancelAnimationFrame(rafId);
       document.body.style.userSelect = '';
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
       document.removeEventListener('pointermove', handleMouseMove);
       document.removeEventListener('pointerup', handleMouseUp);
       document.removeEventListener('pointercancel', handleMouseUp);
@@ -677,7 +711,7 @@ export default function CaptionTimeline({
                   data-caption-block="true"
                   initial={{ opacity: 0, scale: 0.96 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  className={`absolute rounded-[5px] border px-2 text-[9px] font-semibold transition-colors ${
+                  className={`absolute cursor-grab rounded-[5px] border px-2 text-[9px] font-semibold transition-colors active:cursor-grabbing ${
                     isSelected
                       ? 'border-sky-300/50 bg-sky-400/20 text-white'
                       : 'border-white/10 bg-white/[0.08] text-slate-200 hover:bg-white/[0.12]'
@@ -693,7 +727,22 @@ export default function CaptionTimeline({
                     onSelectCaption(caption.id);
                     onSeek(caption.start_time || 0);
                   }}
+                  onPointerDown={(e) => {
+                    if (setCaptions) handleElementDragStart(e, caption, 'move');
+                  }}
                 >
+                  <span
+                    className="absolute inset-y-0 left-0 w-1.5 cursor-ew-resize rounded-l-[5px] hover:bg-white/10"
+                    onPointerDown={(e) => {
+                      if (setCaptions) handleElementDragStart(e, caption, 'resize-left');
+                    }}
+                  />
+                  <span
+                    className="absolute inset-y-0 right-0 w-1.5 cursor-ew-resize rounded-r-[5px] hover:bg-white/10"
+                    onPointerDown={(e) => {
+                      if (setCaptions) handleElementDragStart(e, caption, 'resize-right');
+                    }}
+                  />
                   <div className="truncate leading-[18px]">{(caption.text || '').slice(0, 38)}</div>
                 </motion.div>
               );

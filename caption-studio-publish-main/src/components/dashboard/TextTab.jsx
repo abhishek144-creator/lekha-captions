@@ -6,7 +6,16 @@ import { loadGoogleFont } from './fontUtils';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
-const buildCaptionMatchedTextElement = ({ activeSpeechCaption, currentTime, captionStyle }) => {
+// A new text box lasts 3 s (or its caption's span) but never past the video.
+const textElementTiming = (activeSpeechCaption, currentTime, duration) => {
+  const videoEnd = Number(duration) > 0 ? Number(duration) : Infinity;
+  const preferredStart = activeSpeechCaption ? activeSpeechCaption.start_time : (currentTime || 0);
+  const startTime = Math.max(0, Math.min(preferredStart, videoEnd - 0.5));
+  const preferredEnd = activeSpeechCaption ? activeSpeechCaption.end_time : (startTime + 3);
+  return { startTime, endTime: Math.max(startTime + 0.1, Math.min(preferredEnd, videoEnd)) };
+};
+
+const buildCaptionMatchedTextElement = ({ activeSpeechCaption, currentTime, captionStyle, duration }) => {
   const seedText = 'Add a short headline';
   const fontSize = clamp(Number(captionStyle?.font_size) || 18, 20, 24);
   const longestLineLength = seedText.length;
@@ -16,8 +25,7 @@ const buildCaptionMatchedTextElement = ({ activeSpeechCaption, currentTime, capt
     320,
   );
 
-  const startTime = activeSpeechCaption ? activeSpeechCaption.start_time : (currentTime || 0);
-  const endTime = activeSpeechCaption ? activeSpeechCaption.end_time : (startTime + 3);
+  const { startTime, endTime } = textElementTiming(activeSpeechCaption, currentTime, duration);
 
   return {
     id: `text-${Date.now()}-${Math.random()}`,
@@ -73,7 +81,23 @@ const buildCaptionMatchedTextElement = ({ activeSpeechCaption, currentTime, capt
   };
 };
 
-export default function TextTab({ captions, setCaptions, currentTime, setSelectedCaptionId, captionStyle }) {
+// Preset text styles shown in the Text tab.
+const fontCombos = [
+  { text: 'Thank you!', fontFamily: 'Pacifico', fontSize: 28, color: '#4A90E2', fontStyle: 'italic' },
+  { text: 'Coffee Break', fontFamily: 'Satisfy', fontSize: 24, color: '#4CAF50' },
+  { text: 'FIRE\naway', fontFamily: 'Bebas Neue', fontSize: 32, color: '#FF5722', fontWeight: 'bold' },
+  { text: 'GOLDEN\nHOUR', fontFamily: 'Playfair Display', fontSize: 28, color: '#FFD700', textTransform: 'uppercase' },
+  { text: 'love you', fontFamily: 'Dancing Script', fontSize: 26, color: '#E91E63', fontStyle: 'italic' },
+  { text: 'HAPPY\nBIRTHDAY', fontFamily: 'Bebas Neue', fontSize: 30, color: '#FFFFFF', fontWeight: 'bold', textTransform: 'uppercase' },
+  { text: 'LIKE &\nSUBSCRIBE', fontFamily: 'Anton', fontSize: 24, color: '#FFC107', textTransform: 'uppercase' },
+  { text: 'THANK\nYOU', fontFamily: 'Bebas Neue', fontSize: 32, color: '#F44336', fontWeight: 'bold', textTransform: 'uppercase' },
+  { text: 'Merry\nChristmas', fontFamily: 'Satisfy', fontSize: 26, color: '#4CAF50', fontStyle: 'italic' },
+  { text: 'GLOW', fontFamily: 'Bebas Neue', fontSize: 36, color: '#E91E63', fontWeight: 'bold', textTransform: 'uppercase' },
+  { text: 'Thank you!', fontFamily: 'Pacifico', fontSize: 28, color: '#FF6B6B', fontStyle: 'italic' },
+  { text: 'engaged!', fontFamily: 'Dancing Script', fontSize: 24, color: '#FFFFFF', fontStyle: 'italic' },
+];
+
+export default function TextTab({ captions, setCaptions, currentTime, setSelectedCaptionId, captionStyle, duration = 0 }) {
   // The combo presets use display fonts that nothing else loads — without this
   // the preview grid AND the inserted text element render in a fallback font.
   React.useEffect(() => {
@@ -102,6 +126,7 @@ export default function TextTab({ captions, setCaptions, currentTime, setSelecte
         activeSpeechCaption,
         currentTime,
         captionStyle,
+        duration,
       });
 
       setCaptions([...captions, newCaption]);
@@ -109,8 +134,7 @@ export default function TextTab({ captions, setCaptions, currentTime, setSelecte
       return;
     }
 
-    const startTime = activeSpeechCaption ? activeSpeechCaption.start_time : (currentTime || 0);
-    const endTime = activeSpeechCaption ? activeSpeechCaption.end_time : (startTime + 3);
+    const { startTime, endTime } = textElementTiming(activeSpeechCaption, currentTime, duration);
 
     const newCaption = {
       id: `text-${Date.now()}-${Math.random()}`,
@@ -157,8 +181,7 @@ export default function TextTab({ captions, setCaptions, currentTime, setSelecte
     }
 
     const activeSpeechCaption = captions.find(c => !c.isTextElement && currentTime >= c.start_time && currentTime < c.end_time);
-    const startTime = activeSpeechCaption ? activeSpeechCaption.start_time : (currentTime || 0);
-    const endTime = activeSpeechCaption ? activeSpeechCaption.end_time : (startTime + 3);
+    const { startTime, endTime } = textElementTiming(activeSpeechCaption, currentTime, duration);
 
     const newCaption = {
       id: `text-${Date.now()}-${Math.random()}`,
@@ -192,20 +215,6 @@ export default function TextTab({ captions, setCaptions, currentTime, setSelecte
     if (setSelectedCaptionId) setSelectedCaptionId(newCaption.id);
   };
 
-  const fontCombos = [
-    { text: 'Thank you!', fontFamily: 'Pacifico', fontSize: 28, color: '#4A90E2', fontStyle: 'italic' },
-    { text: 'Coffee Break', fontFamily: 'Satisfy', fontSize: 24, color: '#4CAF50' },
-    { text: 'FIRE\naway', fontFamily: 'Bebas Neue', fontSize: 32, color: '#FF5722', fontWeight: 'bold' },
-    { text: 'GOLDEN\nHOUR', fontFamily: 'Playfair Display', fontSize: 28, color: '#FFD700', textTransform: 'uppercase' },
-    { text: 'love you', fontFamily: 'Dancing Script', fontSize: 26, color: '#E91E63', fontStyle: 'italic' },
-    { text: 'HAPPY\nBIRTHDAY', fontFamily: 'Bebas Neue', fontSize: 30, color: '#FFFFFF', fontWeight: 'bold', textTransform: 'uppercase' },
-    { text: 'LIKE &\nSUBSCRIBE', fontFamily: 'Anton', fontSize: 24, color: '#FFC107', textTransform: 'uppercase' },
-    { text: 'THANK\nYOU', fontFamily: 'Bebas Neue', fontSize: 32, color: '#F44336', fontWeight: 'bold', textTransform: 'uppercase' },
-    { text: 'Merry\nChristmas', fontFamily: 'Satisfy', fontSize: 26, color: '#4CAF50', fontStyle: 'italic' },
-    { text: 'GLOW', fontFamily: 'Bebas Neue', fontSize: 36, color: '#E91E63', fontWeight: 'bold', textTransform: 'uppercase' },
-    { text: 'Thank you!', fontFamily: 'Pacifico', fontSize: 28, color: '#FF6B6B', fontStyle: 'italic' },
-    { text: 'engaged!', fontFamily: 'Dancing Script', fontSize: 24, color: '#FFFFFF', fontStyle: 'italic' },
-  ];
 
   return (
     <div className="h-full flex flex-col space-y-3 overflow-y-auto pr-2 custom-scrollbar">

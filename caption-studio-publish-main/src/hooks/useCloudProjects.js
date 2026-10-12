@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { apiRequest } from '@/lib/apiClient'
+import { compactDraftForStorage } from '@/lib/editorDocument'
 
 
 export function useCloudProjects({ currentUser, getAuthToken, projectId, setProjectId, onMessage }) {
@@ -9,6 +10,10 @@ export function useCloudProjects({ currentUser, getAuthToken, projectId, setProj
   const accountRef = useRef(currentUser?.uid)
   accountRef.current = currentUser?.uid
   const saveChainRef = useRef(Promise.resolve())
+  // A draft saved before it has a project ID gets one here. Without it the
+  // server stored every such save under one shared "current" project, so a
+  // later session's first save collided with it (409) and stopped autosave.
+  const assignedProjectIdRef = useRef('')
   const [cloudDraft, setCloudDraft] = useState(null)
   const [cloudProjects, setCloudProjects] = useState([])
   const [cloudReady, setCloudReady] = useState(false)
@@ -58,14 +63,18 @@ export function useCloudProjects({ currentUser, getAuthToken, projectId, setProj
       if (!cloudReady || !currentUser || accountRef.current !== currentUser.uid) throw new Error('Cloud saving is unavailable. Your browser copy is still available.')
       const idToken = await getAuthToken(currentUser)
       if (accountRef.current !== currentUser.uid) throw new Error('Account changed; save cancelled.')
-      const targetProjectId = draft.projectId || projectId || ''
+      if (!draft.projectId && !projectId && !assignedProjectIdRef.current) {
+        assignedProjectIdRef.current = `local_${Date.now()}`
+      }
+      const targetProjectId = draft.projectId || projectId || assignedProjectIdRef.current
+      const storedDraft = compactDraftForStorage({ ...draft, projectId: targetProjectId })
       // A newly created project must not inherit the latest project's revision.
       const expectedRevision = targetProjectId === revisionProjectRef.current ? revisionRef.current : 0
       const data = activeWorkspaceId
         ? await apiRequest(`/api/workspaces/${activeWorkspaceId}/projects`, {
             method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
             body: JSON.stringify({
-              project_id: targetProjectId, draft, expected_revision: expectedRevision,
+              project_id: targetProjectId, draft: storedDraft, expected_revision: expectedRevision,
             }),
           })
         : await apiRequest('/api/draft/save', {
@@ -73,15 +82,16 @@ export function useCloudProjects({ currentUser, getAuthToken, projectId, setProj
             body: JSON.stringify({
               id_token: idToken,
               project_id: targetProjectId,
-              draft,
+              draft: storedDraft,
               expected_revision: expectedRevision,
             }),
           })
       if (accountRef.current !== currentUser.uid) return data
+      assignedProjectIdRef.current = ''
       revisionRef.current = data.revision
       revisionProjectRef.current = data.project_id || data.draft?.projectId || targetProjectId
       setCloudDraft(data.draft)
-      setProjectId(data.project_id || data.draft?.projectId || projectId)
+      setProjectId(data.project_id || data.draft?.projectId || targetProjectId)
       setCloudProjects((projects) => {
         const next = {
           project_id: data.project_id || data.draft?.projectId,

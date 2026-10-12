@@ -2092,6 +2092,9 @@ function TemplatePreviewFrame({ template, previewStyle }) {
   const palette = getTemplatePalette(previewStyle, ADVANCED_TEMPLATE_STYLE[template.id] || {});
   const srcDoc = useMemo(
     () => (shown ? buildTemplatePreviewDoc(template.id, { previewStyle }) : ''),
+    // Only the colours the preview shows rebuild the iframe; other style
+    // fields changing must not reload every card.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       template.id,
       shown,
@@ -2134,6 +2137,8 @@ function BasicTemplatePreviewFrame({ template, onSelect, previewStyle }) {
   const palette = getTemplatePalette(previewStyle, BASIC_TEMPLATE_STYLES[template.id] || {});
   const srcDoc = useMemo(
     () => (shown ? buildBasicTemplatePreviewDoc(template, { previewStyle }) : ''),
+    // Only the colours the preview shows rebuild the iframe (see above).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [template, shown, previewStyle?.template_color_customized, palette.text, palette.accent, palette.background],
   );
   const dotCount = useMemo(() => {
