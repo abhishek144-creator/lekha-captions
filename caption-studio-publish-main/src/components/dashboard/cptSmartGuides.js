@@ -26,16 +26,29 @@ const chooseClosest = (current, candidate, threshold) => {
   return current;
 };
 
+const ALIGNED_TOLERANCE = 0.75;
+
+// Guides are drawn only for edges/centres that are aligned in the final
+// position, so a collision nudge can never leave a guide on a missed target.
+const alignedGuideValues = (edgePairs, centerPair) => {
+  const isAligned = ({ draggedValue, targetValue }) => Math.abs(draggedValue - targetValue) <= ALIGNED_TOLERANCE;
+  const edges = edgePairs.filter(isAligned);
+  if (edges.length) return edges;
+  return isAligned(centerPair) ? [centerPair] : [];
+};
+
 /**
  * Resolve word-to-word smart snapping in viewport pixels.
  *
- * Alignment snaps like edges/centres together. Magnetic snaps place adjacent
- * word edges at `minGap`. The final collision pass guarantees that no sibling
- * word can be dropped underneath the dragged word.
+ * Alignment snaps like edges/centres together, and a word's centre to the
+ * frame's centre lines when `frameRect` is given. Magnetic snaps place
+ * adjacent word edges at `minGap`. The final collision pass guarantees that no
+ * sibling word can be dropped underneath the dragged word.
  */
 export function resolveCptWordSnap({
   draggedRect,
   siblingRects = [],
+  frameRect = null,
   deltaX = 0,
   deltaY = 0,
   alignThreshold = 5,
@@ -45,6 +58,23 @@ export function resolveCptWordSnap({
   const rawRect = moveRect(draggedRect, deltaX, deltaY);
   let bestX = null;
   let bestY = null;
+
+  if (frameRect?.width && frameRect?.height) {
+    bestX = chooseClosest(bestX, {
+      kind: 'center',
+      distance: centerX(frameRect) - centerX(rawRect),
+      value: centerX(frameRect),
+      mode: 'alignment',
+      targetRect: frameRect,
+    }, alignThreshold);
+    bestY = chooseClosest(bestY, {
+      kind: 'middle',
+      distance: centerY(frameRect) - centerY(rawRect),
+      value: centerY(frameRect),
+      mode: 'alignment',
+      targetRect: frameRect,
+    }, alignThreshold);
+  }
 
   siblingRects.forEach((targetRect) => {
     const rowRelated = rangesOverlap(
@@ -167,13 +197,10 @@ export function resolveCptWordSnap({
 
   if (bestX?.mode === 'alignment') {
     const target = bestX.targetRect;
-    const matchingEdges = [
+    const verticalGuides = alignedGuideValues([
       { kind: 'left', draggedValue: resolvedRect.left, targetValue: target.left },
       { kind: 'right', draggedValue: resolvedRect.right, targetValue: target.right },
-    ].filter(({ draggedValue, targetValue }) => Math.abs(draggedValue - targetValue) <= 0.75);
-    const verticalGuides = matchingEdges.length > 0
-      ? matchingEdges
-      : [{ kind: bestX.kind, draggedValue: bestX.value, targetValue: bestX.value }];
+    ], { kind: 'center', draggedValue: resolvedCenterX, targetValue: centerX(target) });
 
     verticalGuides.forEach(({ kind, targetValue }) => {
       guides.push({
@@ -187,13 +214,10 @@ export function resolveCptWordSnap({
   }
   if (bestY?.mode === 'alignment') {
     const target = bestY.targetRect;
-    const matchingEdges = [
+    const horizontalGuides = alignedGuideValues([
       { kind: 'top', draggedValue: resolvedRect.top, targetValue: target.top },
       { kind: 'bottom', draggedValue: resolvedRect.bottom, targetValue: target.bottom },
-    ].filter(({ draggedValue, targetValue }) => Math.abs(draggedValue - targetValue) <= 0.75);
-    const horizontalGuides = matchingEdges.length > 0
-      ? matchingEdges
-      : [{ kind: bestY.kind, draggedValue: bestY.value, targetValue: bestY.value }];
+    ], { kind: 'middle', draggedValue: resolvedCenterY, targetValue: centerY(target) });
 
     horizontalGuides.forEach(({ kind, targetValue }) => {
       guides.push({

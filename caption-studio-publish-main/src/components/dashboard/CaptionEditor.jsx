@@ -271,7 +271,7 @@ export default function CaptionEditor({
       {onTranslate && transcriptCount > 0 && (
         <div className="relative z-10 mb-3 rounded-xl border border-white/10 bg-black/25 p-3">
           <div className="flex flex-wrap items-center gap-2">
-            <label htmlFor="caption-translate-target" className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            <label htmlFor="caption-translate-target" className="flex w-full items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
               <Languages className="h-3.5 w-3.5" />
               Translate to
             </label>
