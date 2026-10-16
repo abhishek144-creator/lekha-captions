@@ -362,6 +362,15 @@ UPLOAD_RATE_WINDOW = 3600  # 1 hour
 
 SIGNUP_SHARED_NETWORK_RATE_LIMIT = 100
 SIGNUP_USER_RATE_LIMIT = 3  # protects retries/automation targeting one identity
+# Extra temp-mail domains refused at signup, on top of email_policy.py's list.
+DISPOSABLE_EMAIL_DOMAINS_EXTRA = frozenset(
+    domain.strip().lower()
+    for domain in (os.environ.get("DISPOSABLE_EMAIL_DOMAINS_EXTRA") or "").split(",")
+    if domain.strip()
+)
+# Anonymous Firebase sessions have no email, so they may only create accounts
+# in builds that need them (the Razorpay review build sets this to 1).
+ALLOW_ANONYMOUS_SIGNUP = os.environ.get("ALLOW_ANONYMOUS_SIGNUP") == "1"
 
 PAYMENT_RATE_LIMIT = 10   # max payment attempts per hour per IP
 

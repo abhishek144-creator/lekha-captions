@@ -14,7 +14,6 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { FixedSizeList as List } from 'react-window';
 import { detectScript, scriptFontMap, loadGoogleFont } from './fontUtils';
-import AnimateTab from './AnimateTab';
 import AdvancedTemplateLibrary from './AdvancedTemplateLibrary';
 import { apiRequest } from '@/lib/apiClient';
 import { DEFAULT_CAPTION_POSITION_Y } from '../../lib/captionDefaults.js';
@@ -110,7 +109,6 @@ export default function StyleControls({
   setCaptionStyleRaw,
   addToHistory,
   selectedCaption,
-  selectedWord,
   captions,
   setCaptions,
   setCaptionsRaw,
@@ -406,7 +404,6 @@ export default function StyleControls({
   const panelTabs = [
     { id: 'style', label: 'Style' },
     { id: 'templates', label: 'Templates' },
-    { id: 'animate', label: 'Animate' },
   ];
 
   const styleTabSliderProps = {
@@ -445,16 +442,6 @@ export default function StyleControls({
             onApplyTemplate={onApplyTemplate}
             showHeader={false}
             showBackButton={false}
-          />
-        </div>
-      ) : activePanelTab === 'animate' ? (
-        <div className="flex-1 min-h-0 p-4">
-          <AnimateTab
-            selectedWord={selectedWord}
-            selectedCaption={selectedCaption}
-            captions={captions}
-            setCaptions={setCaptions}
-            basicOnly
           />
         </div>
       ) : (

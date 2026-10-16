@@ -26,6 +26,7 @@ try:
     from . import entitlements
     from . import operator_controls
     from . import request_guards
+    from . import email_policy
     from .transcription_jobs import TranscriptionJobs
     from .drafts import list_projects, read_draft
     from .editor_preferences import read_editor_preferences
@@ -38,6 +39,7 @@ except ImportError:  # Direct execution from backend/ remains supported.
     import entitlements
     import operator_controls
     import request_guards
+    import email_policy
     from transcription_jobs import TranscriptionJobs
     from drafts import list_projects, read_draft
     from editor_preferences import read_editor_preferences
@@ -336,6 +338,16 @@ def account_bootstrap(req: AccountDataRequest, request: Request):
                     status_code=429,
                     detail="Too many account creation attempts. Please wait before trying again.",
                 )
+        rejection = email_policy.signup_rejection(decoded_token)
+        if rejection:
+            observability._track_event("account_signup_rejected", {
+                "uid": uid,
+                "email_domain": email_policy.email_domain(decoded_token.get("email") or ""),
+            })
+            raise HTTPException(status_code=403, detail={
+                "code": email_policy.REJECTION_CODE,
+                "message": rejection,
+            })
     safe_profile = {
         "uid": uid,
         "org_id": request_security._tenant_id_from_token(decoded_token),
